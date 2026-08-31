@@ -1,0 +1,8 @@
+[Unit]
+Description=Generate the Research Loops Markdown status dashboard
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/research-loops
+ExecStart=%h/research-loops/bin/research-loops dashboard --output %h/research-loops/STATUS.md

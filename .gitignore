@@ -1,0 +1,21 @@
+# Runtime state — never commit a live queue's state or logs
+/state/
+/logs/
+/STATUS.md
+
+# User-created topics under the default ./topics/ path (examples/ is committed on purpose)
+/topics/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# OS/editor noise
+.DS_Store
+*.swp

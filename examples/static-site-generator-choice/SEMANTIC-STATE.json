@@ -1,0 +1,105 @@
+{
+  "authority_sha256": "b3cadf780f22ce2ab8d549fc8527f7363462edce6e88895be381ab820434d0ed",
+  "contract_sha256": "386b112d1605c87a4f12703c9d5f1dcbab0b41a0bff1296796c105d03b9b6fa4",
+  "contradictions": [],
+  "deliverables": [
+    {
+      "acceptance_evidence_refs": [],
+      "acceptance_summary": null,
+      "description": "Topic-specific synthesis with one section per approved obligation",
+      "id": "TOPIC-SYNTHESIS",
+      "path": "SYNTHESIS.md",
+      "required_headings": [],
+      "status": "missing"
+    }
+  ],
+  "obligations": [
+    {
+      "acceptance_summary": null,
+      "adequate_search": null,
+      "confidence": null,
+      "counterevidence_reviewed": false,
+      "counterevidence_summary": null,
+      "disposition": "open",
+      "evidence_refs": [],
+      "experiment": null,
+      "gap_state": "unaddressed: SCOPE-01",
+      "id": "SCOPE-01",
+      "source_ref": "AUTHORITY.md#operator-brief-verbatim",
+      "text": "Research how to choose a static site generator for a personal technical blog with fewer than 50 posts"
+    },
+    {
+      "acceptance_summary": null,
+      "adequate_search": null,
+      "confidence": null,
+      "counterevidence_reviewed": false,
+      "counterevidence_summary": null,
+      "disposition": "open",
+      "evidence_refs": [],
+      "experiment": null,
+      "gap_state": "unaddressed: SCOPE-02",
+      "id": "SCOPE-02",
+      "source_ref": "AUTHORITY.md#operator-brief-verbatim",
+      "text": "Cover build speed and developer experience for Hugo, Eleventy (11ty), Astro, and Zola"
+    },
+    {
+      "acceptance_summary": null,
+      "adequate_search": null,
+      "confidence": null,
+      "counterevidence_reviewed": false,
+      "counterevidence_summary": null,
+      "disposition": "open",
+      "evidence_refs": [],
+      "experiment": null,
+      "gap_state": "unaddressed: SCOPE-03",
+      "id": "SCOPE-03",
+      "source_ref": "AUTHORITY.md#operator-brief-verbatim",
+      "text": "theming and plugin ecosystem maturity for each"
+    },
+    {
+      "acceptance_summary": null,
+      "adequate_search": null,
+      "confidence": null,
+      "counterevidence_reviewed": false,
+      "counterevidence_summary": null,
+      "disposition": "open",
+      "evidence_refs": [],
+      "experiment": null,
+      "gap_state": "unaddressed: SCOPE-04",
+      "id": "SCOPE-04",
+      "source_ref": "AUTHORITY.md#operator-brief-verbatim",
+      "text": "hosting/deployment friction on GitHub Pages, Netlify, and Cloudflare Pages"
+    },
+    {
+      "acceptance_summary": null,
+      "adequate_search": null,
+      "confidence": null,
+      "counterevidence_reviewed": false,
+      "counterevidence_summary": null,
+      "disposition": "open",
+      "evidence_refs": [],
+      "experiment": null,
+      "gap_state": "unaddressed: SCOPE-05",
+      "id": "SCOPE-05",
+      "source_ref": "AUTHORITY.md#operator-brief-verbatim",
+      "text": "migration cost if the author later wants to add a small amount of client-side interactivity"
+    },
+    {
+      "acceptance_summary": null,
+      "adequate_search": null,
+      "confidence": null,
+      "counterevidence_reviewed": false,
+      "counterevidence_summary": null,
+      "disposition": "open",
+      "evidence_refs": [],
+      "experiment": null,
+      "gap_state": "unaddressed: SCOPE-06",
+      "id": "SCOPE-06",
+      "source_ref": "AUTHORITY.md#operator-brief-verbatim",
+      "text": "Exclude full JavaScript framework SPAs (Next.js, Remix) -- this is specifically about static-first generators for content-heavy blogs, not app frameworks"
+    }
+  ],
+  "pending_evidence_refs": [],
+  "schema_version": 1,
+  "topic_id": "static-site-generator-choice"
+}

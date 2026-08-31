@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SEMANTIC-STATE.json",
+  "description": "Executable completion state for one topic. See docs/topic-authoring.md.",
+  "type": "object",
+  "required": ["schema_version", "topic_id", "contract_sha256", "authority_sha256", "obligations", "deliverables"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "topic_id": { "type": "string" },
+    "contract_sha256": {
+      "type": "string",
+      "description": "SHA-256 of TOPIC.md. Recompute with `chassis/semantic-state.py rehash` after editing TOPIC.md -- never by hand."
+    },
+    "authority_sha256": {
+      "type": "string",
+      "description": "SHA-256 of AUTHORITY.md. Same rule as contract_sha256."
+    },
+    "pending_evidence_refs": { "type": "array", "items": { "type": "string" } },
+    "contradictions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status"],
+        "properties": {
+          "id": { "type": "string" },
+          "status": { "enum": ["open", "resolved"] },
+          "resolution": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "obligations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "text", "source_ref", "disposition"],
+        "properties": {
+          "id": { "type": "string", "description": "Immutable once approved." },
+          "text": { "type": "string", "description": "Immutable once approved." },
+          "source_ref": { "type": "string", "description": "Immutable once approved." },
+          "disposition": { "enum": ["open", "supported", "contradicted", "unresolved", "deferred"] },
+          "confidence": { "type": ["string", "null"] },
+          "evidence_refs": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Local file paths (optionally with :Lstart-Lend), never external identifiers."
+          },
+          "counterevidence_reviewed": { "type": "boolean" },
+          "acceptance_summary": { "type": ["string", "null"] },
+          "counterevidence_summary": { "type": ["string", "null"] },
+          "gap_state": { "type": ["string", "null"] },
+          "adequate_search": {
+            "type": ["object", "null"],
+            "properties": {
+              "summary": { "type": "string" },
+              "queries": { "type": "array", "items": { "type": "string" } },
+              "source_lanes": { "type": "array", "items": { "type": "string" } },
+              "retrieval_failures": { "type": "array" }
+            }
+          },
+          "experiment": {
+            "type": ["object", "null"],
+            "properties": {
+              "question": { "type": "string" },
+              "method": { "type": "string" },
+              "success_measure": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "deliverables": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "path", "status"],
+        "properties": {
+          "id": { "type": "string" },
+          "description": { "type": "string" },
+          "path": { "type": "string", "description": "Relative to the topic directory." },
+          "required_headings": { "type": "array", "items": { "type": "string" } },
+          "status": { "enum": ["missing", "partial", "complete"] },
+          "acceptance_summary": { "type": ["string", "null"] },
+          "acceptance_evidence_refs": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh the Research Loops Markdown status dashboard every minute
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=60
+Unit=research-loops-dashboard.service
+
+[Install]
+WantedBy=timers.target

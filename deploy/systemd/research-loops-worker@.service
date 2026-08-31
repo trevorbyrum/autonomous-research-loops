@@ -1,0 +1,14 @@
+[Unit]
+Description=Research Loops queue worker (%i)
+After=network-online.target
+
+[Service]
+Type=notify
+WorkingDirectory=%h/research-loops
+ExecStart=%h/research-loops/bin/research-loops run --worker %i
+Restart=on-failure
+RestartSec=10
+WatchdogSec=120
+
+[Install]
+WantedBy=default.target

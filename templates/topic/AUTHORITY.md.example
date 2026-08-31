@@ -1,0 +1,41 @@
+# <Your Topic Title> — authoritative sources
+
+<!--
+This file is the ground truth your research is measured against. If you use
+`tools/new-topic`, it generates this for you from a brief (see docs/topic-authoring.md);
+this file shows the shape if you'd rather write one by hand.
+
+AUTHORITY.md and TOPIC.md are operator-owned: a research agent may read them but must
+never rewrite scope, obligations, or the exit condition here. If you edit either file
+after approval, run `chassis/semantic-state.py rehash <topic-dir>` afterward -- that's
+the explicit "yes, I changed the scope" action; nothing does it automatically.
+-->
+
+## Mission and boundaries
+
+One or two sentences: what question is this topic actually answering, and for whom?
+Then name what's explicitly out of scope -- the fastest way to keep a topic finite is
+to say what it is NOT about.
+
+## Scope (source material for obligations)
+
+Write your scope as a list of distinct points, separated by semicolons or as separate
+sentences -- this is what `tools/new-topic` decomposes into individual obligations, and
+it's also just clearer to read. Each point should be checkable: something a piece of
+research can actually confirm, contradict, or admit is unresolved. Avoid vague framing
+like "explore X" with no way to know when you've explored enough of it.
+
+## Evidence-quality vocabulary
+
+The default T1-T4 tier scaffold (see CONTRACT-CORE.md) is a reasonable starting point,
+but replace it if your domain has better-fitting quality dimensions -- e.g. peer-review
+status and sample size for a scientific claim, or documented-platform-behavior vs.
+vendor-marketing for a product-evaluation topic like the SEO/AEO or ATS-parsing kind of
+question. The chassis never enforces one universal hierarchy; this file does.
+
+## Required comparisons / counterevidence duties (optional)
+
+If your topic needs specific comparisons (e.g. "compare X against Y on Z"), or has a
+known failure mode you want explicitly guarded against (e.g. "actively look for
+evidence that contradicts the popular claim about X"), name it here. This is exactly
+the kind of thing that's easy to lose if it's only implied by the mission statement.

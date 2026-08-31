@@ -1,0 +1,256 @@
+#!/usr/bin/env python3
+"""Scaffold a draft topic from a short brief. Nothing this writes is binding until
+`tools/approve-topic` promotes it -- see docs/topic-authoring.md.
+
+Usage:
+    tools/new-topic <topic-id> --title "Human-readable title" --brief path/to/brief.md
+    tools/new-topic <topic-id> --title "..." --brief -   # read the brief from stdin
+
+The brief is free text: a few paragraphs describing what you want researched, what's
+in scope, what's out of scope, and anything you already know you want covered. This
+tool does NOT call an LLM -- it deterministically splits your brief into candidate
+obligations (the same approach used to decompose long-form scope text into finite,
+checkable obligations elsewhere in this project) so you can review and edit real text,
+not something an agent invented. Splitting on sentence/semicolon boundaries is not
+smart; write your brief as a list of distinct points separated by semicolons or
+periods and it will decompose cleanly. Trim, merge, or add obligations by hand in the
+DRAFT files afterward -- that's expected, not a failure of this tool.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+TEMPLATE_DIR = REPO_ROOT / "templates" / "topic"
+
+LEDGER_FILES = (
+    "SOURCE-LEDGER.md",
+    "FINDINGS-LOG.md",
+    "DECISIONS-LOG.md",
+    "NEEDS-SOURCE.md",
+    "PROGRESS.md",
+    "SYNTHESIS.md",
+)
+
+
+def split_brief(text: str) -> list[str]:
+    """Decompose free text into candidate obligations.
+
+    Splits on semicolons and sentence boundaries (period + capital letter), strips a
+    leading conjunction, and keeps each result as one whole obligation -- no further
+    comma-splitting. A paragraph with no semicolons and no internal sentence breaks
+    becomes one (possibly long) obligation; that's a signal to go back and add
+    semicolons to your brief for finer decomposition, not a bug to work around here.
+    """
+    chunks: list[str] = []
+    for paragraph in re.split(r"\n\s*\n", text):
+        cleaned = " ".join(paragraph.split())
+        if not cleaned:
+            continue
+        for value in re.split(r";\s+|\.\s+(?=[A-Z])", cleaned):
+            value = value.strip(" .")
+            value = re.sub(r"^(?:and|or|but)\s+", "", value, flags=re.IGNORECASE)
+            value = value.strip(" .")
+            if len(value) < 3:
+                continue
+            chunks.append(value)
+    return list(dict.fromkeys(chunks))
+
+
+def obligation(identifier: str, text: str, source_ref: str) -> dict[str, object]:
+    return {
+        "id": identifier,
+        "text": text,
+        "source_ref": source_ref,
+        "disposition": "open",
+        "confidence": None,
+        "evidence_refs": [],
+        "counterevidence_reviewed": False,
+        "acceptance_summary": None,
+        "counterevidence_summary": None,
+        "gap_state": f"unaddressed: {identifier}",
+        "adequate_search": None,
+        "experiment": None,
+    }
+
+
+def default_deliverables() -> list[dict[str, object]]:
+    return [
+        {
+            "id": "TOPIC-SYNTHESIS",
+            "description": "Topic-specific synthesis with one section per approved obligation",
+            "path": "SYNTHESIS.md",
+            "required_headings": [],
+            "status": "missing",
+            "acceptance_summary": None,
+            "acceptance_evidence_refs": [],
+        }
+    ]
+
+
+def sha256_text(text: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def render_authority(title: str, brief_text: str) -> str:
+    return (
+        f"# {title} — authoritative sources\n\n"
+        "This is the operator-authored scope for this topic, pasted or drafted below.\n"
+        "Replace or extend this freely -- it is the ground truth this topic's research\n"
+        "is measured against.\n\n"
+        "## Operator brief (verbatim)\n\n"
+        f"{brief_text.strip()}\n\n"
+        "## Evidence-quality vocabulary (default -- replace if your domain needs different tiers)\n\n"
+        "- **T1**: primary sources -- official documentation, peer-reviewed papers,\n"
+        "  first-party measured data, official changelogs.\n"
+        "- **T2**: reproducible independent evaluations, credible engineering reports\n"
+        "  with direct measurements.\n"
+        "- **T3**: practitioner reports and community accounts -- leads/corroboration\n"
+        "  only, never sole support for a high-confidence claim.\n"
+        "- **T4**: marketing prose, unsourced leaderboards -- leads only, never evidence.\n"
+    )
+
+
+def render_topic(
+    title: str,
+    authority_hash: str,
+    obligations: list[dict[str, object]],
+    deliverables: list[dict[str, object]],
+) -> str:
+    lines = [
+        f"# {title}",
+        "",
+        "## Authority and boundary",
+        "",
+        "This is the operator-approved semantic contract. `AUTHORITY.md` is",
+        f"incorporated verbatim by reference (SHA-256 `{authority_hash}`). No research",
+        "agent may add binding scope or redefine DONE.",
+        "",
+        "## Dependencies",
+        "",
+        "- None declared. Add real content-dependency topic IDs here if this topic",
+        "  genuinely cannot proceed without another topic's output -- not for",
+        "  scheduling preference (see docs/topic-authoring.md).",
+        "",
+        "## Approved finite obligations",
+        "",
+        "Draft, decomposed from your brief -- review and edit before approving.",
+        "",
+    ]
+    for item in obligations:
+        lines.append(f"- **{item['id']}** — {item['text']}")
+    lines.extend(["", "## Required deliverables", ""])
+    for item in deliverables:
+        lines.append(f"- **{item['id']}** — {item['description']} (`{item['path']}`).")
+    lines.extend(
+        [
+            "",
+            "## Semantic exit condition",
+            "",
+            "Continue until every obligation above has a terminal disposition",
+            "(supported, contradicted, unresolved, or deferred), pending evidence and",
+            "contradictions are dispositioned, and every deliverable exists.",
+            "`semantic-state.py validate` is the executable gate -- not a description",
+            "of it. No fixed iteration, token, source, or time limit defines DONE.",
+            "",
+            "## Storage",
+            "",
+            "This topic's own ledgers in this directory. No external storage is",
+            "required; add your own storage bindings here if you configure one.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("topic_id")
+    parser.add_argument("--title", required=True)
+    parser.add_argument("--brief", required=True, help="path to a brief text file, or '-' for stdin")
+    parser.add_argument(
+        "--dest",
+        default=str(REPO_ROOT / "topics"),
+        help="directory under which <topic_id>/ is created (default: ./topics)",
+    )
+    args = parser.parse_args(argv)
+
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", args.topic_id):
+        print("error: topic id must be lowercase letters/digits/hyphens", file=sys.stderr)
+        return 2
+
+    brief_text = sys.stdin.read() if args.brief == "-" else Path(args.brief).read_text(encoding="utf-8")
+    if not brief_text.strip():
+        print("error: brief is empty", file=sys.stderr)
+        return 2
+
+    topic_dir = Path(args.dest) / args.topic_id
+    if (topic_dir / "TOPIC.md").exists():
+        print(f"error: {topic_dir}/TOPIC.md already exists -- this topic is already approved", file=sys.stderr)
+        return 2
+    topic_dir.mkdir(parents=True, exist_ok=True)
+    (topic_dir / "logs").mkdir(exist_ok=True)
+    for name in LEDGER_FILES:
+        target = topic_dir / name
+        if not target.exists():
+            target.write_text(f"# {name}\n", encoding="utf-8")
+    (topic_dir / "DECISIONS-LOG.md").write_text(
+        "# Decisions\n\n| id | date | decision |\n|---|---|---|\n", encoding="utf-8"
+    )
+
+    chunks = split_brief(brief_text)
+    if len(chunks) < 2:
+        print(
+            "warning: only extracted "
+            f"{len(chunks)} obligation(s) from the brief -- add semicolons between "
+            "distinct points in your brief for finer decomposition, or just edit "
+            "DRAFT-TOPIC.md by hand after this runs.",
+            file=sys.stderr,
+        )
+    obligations = [
+        obligation(f"SCOPE-{i:02d}", text, "AUTHORITY.md#operator-brief-verbatim")
+        for i, text in enumerate(chunks, 1)
+    ]
+    deliverables = default_deliverables()
+
+    authority = render_authority(args.title, brief_text)
+    authority_hash = sha256_text(authority)
+    contract = render_topic(args.title, authority_hash, obligations, deliverables)
+    contract_hash = sha256_text(contract)
+
+    state = {
+        "schema_version": 1,
+        "topic_id": args.topic_id,
+        "contract_sha256": contract_hash,
+        "authority_sha256": authority_hash,
+        "obligations": obligations,
+        "deliverables": deliverables,
+        "pending_evidence_refs": [],
+        "contradictions": [],
+    }
+
+    (topic_dir / "DRAFT-AUTHORITY.md").write_text(authority, encoding="utf-8")
+    (topic_dir / "DRAFT-TOPIC.md").write_text(contract, encoding="utf-8")
+    (topic_dir / "DRAFT-SEMANTIC-STATE.json").write_text(
+        json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
+    print(f"Scaffolded {topic_dir}")
+    print(f"  {len(obligations)} candidate obligations extracted from your brief")
+    print()
+    print("Review and edit, in order:")
+    print(f"  1. {topic_dir}/DRAFT-AUTHORITY.md")
+    print(f"  2. {topic_dir}/DRAFT-TOPIC.md")
+    print("Then run:")
+    print(f"  tools/approve-topic {args.topic_id}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
