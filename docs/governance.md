@@ -13,6 +13,18 @@ make "the research is done" mean something. A system that lets its own research 
 adjust the definition of done under pressure will eventually adjust it exactly when
 pressure is highest, which is precisely when you need it not to.
 
+## The output is evidence, not a verdict
+
+The engine doesn't decide anything. Its job ends at "every obligation has a graded,
+evidence-backed disposition" — `supported`, `contradicted`, `unresolved`, or `deferred`,
+each with its own evidence trail. It deliberately stops short of "and therefore the
+answer is X" or "and therefore build it this way." That judgment call — weighing
+sometimes-contradictory graded evidence into an actual decision — stays with whoever
+reads the synthesis, same as scope stays with the operator. A topic that quietly
+collapsed its own disposition into a single recommendation would be doing exactly the
+thing §Contradictions warns against below: hiding the disagreement instead of assessing
+it.
+
 ## Quota and tool failure are never evidence
 
 If a search comes back empty because a rate limit hit, that is a fact about the
