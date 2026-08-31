@@ -5,10 +5,13 @@ import fcntl
 import json
 import shutil
 import sys
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from . import workers as workers_mod
+from .config import load_config
 from .dashboard import render_dashboard, write_dashboard
 from .queue import QueueError, QueueStore
 from .runner import LoopRunner, UsageLedger
@@ -48,6 +51,31 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("--stall-limit", type=int)
     add.add_argument("--max-attempts", type=int, default=5)
     add.add_argument("--repeat-seconds", type=int)
+    add.add_argument(
+        "--agent-main",
+        help="sets RESEARCH_LOOP_RUNNER for this item, overriding the command's "
+        "positional runner-name argument for this item only",
+    )
+    add.add_argument(
+        "--agent-secondary",
+        help="named delegate agent surfaced to the runner as "
+        "RESEARCH_LOOP_AGENT_SECONDARY, for legwork delegation only",
+    )
+    add.add_argument(
+        "--gap-policy",
+        choices=("review", "auto"),
+        default="review",
+        help="review (default): agent may only propose a gap via DECISIONS-LOG.md. "
+        "auto: agent may self-promote gaps up to --gap-auto-limit before falling "
+        "back to review (see docs/governance.md#the-operator-owns-scope)",
+    )
+    add.add_argument(
+        "--gap-auto-limit",
+        type=int,
+        default=0,
+        help="self-promotions allowed since the last operator review-reset, "
+        "when --gap-policy=auto",
+    )
     add.add_argument("command", nargs=argparse.REMAINDER)
 
     listing = sub.add_parser("list", help="show queue state")
@@ -103,6 +131,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="remove non-running queue items absent from the manifest",
     )
 
+    config = sub.add_parser(
+        "config",
+        help="declarative scheduling/agent/gap-policy config (research_loops/config.py)",
+    )
+    config_sub = config.add_subparsers(dest="config_action", required=True)
+    config_apply = config_sub.add_parser(
+        "apply",
+        help="apply a TOML config's [defaults]/[topics.<id>] settings to matching "
+        "existing queue items (never touches command/cwd/title; see "
+        "config/research-loops.example.toml)",
+    )
+    config_apply.add_argument("--config", required=True, help="path to a TOML config file")
+    config_show = config_sub.add_parser(
+        "show", help="print the resolved settings for one topic id"
+    )
+    config_show.add_argument("--config", required=True)
+    config_show.add_argument("topic_id")
+
     usage = sub.add_parser("usage", help="summarize recorded usage")
     usage.add_argument("--json", action="store_true")
     usage.add_argument(
@@ -141,6 +187,23 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--idle-sleep", type=float, default=5.0)
     run.add_argument("--poll-seconds", type=float, default=1.0)
     run.add_argument("--no-usage-snapshot", action="store_true")
+
+    workers = sub.add_parser(
+        "workers",
+        help="start/stop N `run --worker` processes per a config's `workers` count",
+    )
+    workers_sub = workers.add_subparsers(dest="workers_action", required=True)
+    workers_start = workers_sub.add_parser(
+        "start", help="spawn `workers` background `run` processes from a config"
+    )
+    workers_start.add_argument("--config", required=True)
+    workers_start.add_argument("--worker-prefix", default="worker-")
+    workers_sub.add_parser(
+        "stop", help="stop workers previously started with `workers start`"
+    )
+    workers_sub.add_parser(
+        "status", help="show which previously-started workers are still alive"
+    )
     return parser
 
 
@@ -170,6 +233,10 @@ def main(argv: list[str] | None = None) -> int:
                     stall_limit=args.stall_limit,
                     max_attempts=args.max_attempts,
                     repeat_seconds=args.repeat_seconds,
+                    agent_main=args.agent_main,
+                    agent_secondary=args.agent_secondary,
+                    gap_policy=args.gap_policy,
+                    gap_auto_limit=args.gap_auto_limit,
                 )
             )
         elif args.action in {"list", "status"}:
@@ -207,6 +274,52 @@ def main(argv: list[str] | None = None) -> int:
             if not isinstance(items, list):
                 raise QueueError("manifest must be a JSON array or an object with 'items'")
             emit(store.sync(items, prune=args.prune))
+        elif args.action == "config":
+            config = load_config(args.config)
+            if args.config_action == "show":
+                emit(asdict(config.for_topic(args.topic_id)))
+            elif args.config_action == "apply":
+                snapshot = store.snapshot()
+                existing_ids = {item["id"] for item in snapshot["items"]}
+                applied: list[str] = []
+                skipped: list[str] = []
+                for topic_id in config.topics:
+                    if topic_id not in existing_ids:
+                        skipped.append(topic_id)
+                        continue
+                    settings = config.for_topic(topic_id)
+                    store.configure_topic(
+                        topic_id,
+                        repeat_seconds=settings.repeat_seconds,
+                        max_attempts=settings.max_attempts,
+                        stall_limit=settings.stall_limit,
+                        agent_main=settings.agent_main,
+                        agent_secondary=settings.agent_secondary,
+                        gap_policy=settings.gap_policy,
+                        gap_auto_limit=settings.gap_auto_limit,
+                    )
+                    applied.append(topic_id)
+                emit({"applied": applied, "skipped_unknown_topic": skipped})
+        elif args.action == "workers":
+            if args.workers_action == "start":
+                config = load_config(args.config)
+                extra_run_args = [
+                    "--idle-sleep",
+                    str(config.idle_sleep),
+                    "--poll-seconds",
+                    str(config.poll_seconds),
+                ]
+                pids = workers_mod.start(
+                    root,
+                    config.workers,
+                    worker_prefix=args.worker_prefix,
+                    extra_run_args=extra_run_args,
+                )
+                emit({"started": pids})
+            elif args.workers_action == "stop":
+                emit(workers_mod.stop(root))
+            elif args.workers_action == "status":
+                emit(workers_mod.status(root))
         elif args.action == "usage":
             since = None
             if args.since:

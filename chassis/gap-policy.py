@@ -1,0 +1,199 @@
+#!/usr/bin/env python3
+"""Apply the operator's chosen gap-handling policy for one topic.
+
+See CONTRACT-CORE.md's governance section and docs/topic-authoring.md's
+"Ongoing gap-filling" section for the full rule. Default policy is always
+`review`: an agent may only append a PROPOSAL row to DECISIONS-LOG.md, and an
+operator promotes it by hand (or with `promote` below). `auto` is an
+explicit, bounded, fully-audited opt-in an operator sets via the repo config
+(see research_loops/config.py) or a queue item's agent_main/gap_policy
+fields — it lets an agent self-promote up to gap_auto_limit gaps since the
+last operator review before it must fall back to proposing only.
+
+This script never decides policy; it only (a) counts how much of an already
+agreed auto-budget has been used, and (b) performs the exact mechanical edit
+an operator does "by hand" today (append an obligation to TOPIC.md and
+SEMANTIC-STATE.json, then rehash) so both the reviewed and the auto path go
+through one auditable, hash-consistent action instead of two.
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+_SEMANTIC_STATE_PATH = Path(__file__).resolve().parent / "semantic-state.py"
+_spec = importlib.util.spec_from_file_location("semantic_state", _SEMANTIC_STATE_PATH)
+assert _spec is not None and _spec.loader is not None
+semantic_state = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(semantic_state)
+
+AUTO_MARKER = "AUTO-PROMOTED"
+REVIEWED_MARKER = "PROMOTED"
+RESET_MARKER = "GAP-REVIEW-RESET"
+OBLIGATIONS_HEADING = "## Approved finite obligations"
+
+
+def _today() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def _decisions_log_text(topic_dir: Path) -> str:
+    try:
+        return (topic_dir / "DECISIONS-LOG.md").read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def auto_promotions_used(topic_dir: Path) -> int:
+    """Count AUTO-PROMOTED rows since the most recent GAP-REVIEW-RESET row."""
+    used = 0
+    for line in _decisions_log_text(topic_dir).splitlines():
+        if RESET_MARKER in line:
+            used = 0
+        elif AUTO_MARKER in line:
+            used += 1
+    return used
+
+
+def status(topic_dir: Path, policy: str, limit: int) -> dict[str, Any]:
+    used = auto_promotions_used(topic_dir)
+    allowed = policy == "auto" and used < limit
+    return {
+        "policy": policy,
+        "gap_auto_limit": limit,
+        "auto_promotions_used": used,
+        "auto_promotion_allowed": allowed,
+        "remaining": max(limit - used, 0) if policy == "auto" else 0,
+    }
+
+
+def _append_decision(topic_dir: Path, row_id: str, note: str) -> None:
+    path = topic_dir / "DECISIONS-LOG.md"
+    row = f"| {row_id} | {_today()} | {note} |\n"
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(row)
+
+
+def promote(
+    topic_dir: Path,
+    *,
+    obligation_id: str,
+    text: str,
+    source_ref: str,
+    auto: bool,
+) -> None:
+    topic_md_path = topic_dir / "TOPIC.md"
+    state_path = topic_dir / "SEMANTIC-STATE.json"
+    contents = topic_md_path.read_text(encoding="utf-8")
+    if f"**{obligation_id}**" in contents:
+        raise SystemExit(f"obligation id already present in TOPIC.md: {obligation_id}")
+    if OBLIGATIONS_HEADING not in contents:
+        raise SystemExit(f"TOPIC.md has no '{OBLIGATIONS_HEADING}' section to append to")
+    bullet = f"- **{obligation_id}** — {text}\n"
+    heading_at = contents.index(OBLIGATIONS_HEADING)
+    next_heading = contents.find("\n## ", heading_at + len(OBLIGATIONS_HEADING))
+    insert_at = next_heading if next_heading != -1 else len(contents)
+    updated = contents[:insert_at].rstrip("\n") + "\n" + bullet + contents[insert_at:]
+    topic_md_path.write_text(updated, encoding="utf-8")
+
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state.setdefault("obligations", []).append(
+        semantic_state.obligation(obligation_id, text, source_ref)
+    )
+    state_path.write_text(
+        json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    semantic_state.rehash(topic_dir)
+
+    tag = AUTO_MARKER if auto else REVIEWED_MARKER
+    actor = "agent" if auto else "operator"
+    _append_decision(
+        topic_dir,
+        f"GAP-{obligation_id}",
+        f"[{actor}] {tag}: {text} (source: {source_ref})",
+    )
+
+
+def review_reset(topic_dir: Path, note: str) -> None:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    _append_decision(topic_dir, f"{RESET_MARKER}-{stamp}", f"[operator] {RESET_MARKER}: {note}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="action", required=True)
+
+    status_p = sub.add_parser(
+        "status", help="report how much of an auto gap-policy budget is used"
+    )
+    status_p.add_argument("topic_dir", type=Path)
+    status_p.add_argument("--policy", choices=("review", "auto"), default="review")
+    status_p.add_argument("--limit", type=int, default=0)
+
+    promote_p = sub.add_parser(
+        "promote",
+        help="turn a proposed gap into a binding obligation in TOPIC.md/SEMANTIC-STATE.json and rehash",
+    )
+    promote_p.add_argument("topic_dir", type=Path)
+    promote_p.add_argument("--id", required=True, dest="obligation_id")
+    promote_p.add_argument("--text", required=True)
+    promote_p.add_argument("--source-ref", required=True)
+    promote_p.add_argument(
+        "--auto",
+        action="store_true",
+        help="mark this as an agent self-promotion under an auto gap policy "
+        "(requires --limit; refuses once the budget since the last "
+        "review-reset is used up) instead of an operator-reviewed promotion",
+    )
+    promote_p.add_argument(
+        "--limit", type=int, help="required with --auto: this topic's gap_auto_limit"
+    )
+
+    reset_p = sub.add_parser(
+        "review-reset",
+        help="operator marks accumulated auto-promotions reviewed, resetting the budget",
+    )
+    reset_p.add_argument("topic_dir", type=Path)
+    reset_p.add_argument("--note", required=True)
+
+    args = parser.parse_args(argv)
+    if args.action == "status":
+        print(json.dumps(status(args.topic_dir, args.policy, args.limit), indent=2, sort_keys=True))
+        return 0
+    if args.action == "promote":
+        if args.auto:
+            if args.limit is None:
+                parser.error("--auto requires --limit")
+            used = auto_promotions_used(args.topic_dir)
+            if used >= args.limit:
+                print(
+                    f"gap auto-limit reached ({used}/{args.limit}); append a PROPOSAL "
+                    "row to DECISIONS-LOG.md instead and wait for an operator "
+                    "review-reset",
+                    file=sys.stderr,
+                )
+                return 1
+        promote(
+            args.topic_dir,
+            obligation_id=args.obligation_id,
+            text=args.text,
+            source_ref=args.source_ref,
+            auto=args.auto,
+        )
+        print(f"promoted {args.obligation_id}")
+        return 0
+    if args.action == "review-reset":
+        review_reset(args.topic_dir, args.note)
+        print("review reset recorded")
+        return 0
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -59,6 +59,28 @@ for candidate in "$TOPIC_DIR/preflight.sh" "$CHASSIS/preflight.sh"; do
   fi
 done
 
+# Agent assignment and gap-handling policy are both entirely optional and
+# both default to today's baseline behavior (no secondary agent named,
+# propose-only gap handling) when unset — see docs/operations.md and
+# docs/governance.md#the-operator-owns-scope.
+AGENT_NOTE=""
+if [[ -n "${RESEARCH_LOOP_AGENT_SECONDARY:-}" ]]; then
+  AGENT_NOTE=" DELEGATION: for independent, well-scoped legwork (discovery or extraction only, never final judgment — see CONTRACT-CORE.md step 4), delegate to: ${RESEARCH_LOOP_AGENT_SECONDARY}."
+fi
+
+GAP_POLICY="${RESEARCH_LOOP_GAP_POLICY:-review}"
+GAP_AUTO_LIMIT="${RESEARCH_LOOP_GAP_AUTO_LIMIT:-0}"
+GAP_POLICY_NOTE=" GAP POLICY: review — do not self-promote; a PROPOSAL row is the only sanctioned path."
+if [[ "$GAP_POLICY" == "auto" ]]; then
+  remaining="$(python3 "$CHASSIS/gap-policy.py" status "$TOPIC_DIR" --policy auto --limit "$GAP_AUTO_LIMIT" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["remaining"])')"
+  if [[ "$remaining" -gt 0 ]]; then
+    GAP_POLICY_NOTE=" GAP POLICY: auto ($remaining of $GAP_AUTO_LIMIT self-promotions remaining since the last operator review). If you find a real gap, you may self-promote it directly instead of only proposing it: \`python3 ${CHASSIS}/gap-policy.py promote ${TOPIC_DIR} --id <NEW-ID> --text \"<obligation text>\" --source-ref \"<where this gap came from>\" --auto --limit ${GAP_AUTO_LIMIT}\`. Still record why in the same iteration's ledger update; this budget still requires eventual operator review-reset, and running out mid-topic is expected and fine — the PROPOSAL path never goes away."
+  else
+    GAP_POLICY_NOTE=" GAP POLICY: auto, but this topic's self-promotion budget is used up ($GAP_AUTO_LIMIT/$GAP_AUTO_LIMIT since the last operator review) — append a PROPOSAL row instead and note that an operator review-reset is needed."
+  fi
+fi
+
 if [[ -f "$TOPIC_DIR/STOP" ]]; then
   echo "STOP present: $(head -n 1 "$TOPIC_DIR/STOP")" >&2
   exit 3
@@ -79,14 +101,19 @@ sed \
   -e "s#\${TOPIC_DIR}#$TOPIC_DIR#g" \
   -e "s#\${CHASSIS}#$CHASSIS#g" \
   -e "s#\${DEGRADED_NOTE}#$DEGRADED_NOTE#g" \
+  -e "s#\${AGENT_NOTE}#$AGENT_NOTE#g" \
+  -e "s#\${GAP_POLICY_NOTE}#$GAP_POLICY_NOTE#g" \
   "$CHASSIS/ITERATION-PROMPT.md" >"$prompt_file"
 
 export RESEARCH_LOOP_TOPIC_DIR="$TOPIC_DIR"
 export RESEARCH_LOOP_USAGE_FILE="$usage"
 export RESEARCH_LOOP_LOG="$log"
-# RESEARCH_LOOP_PROFILE is deliberately NOT set here unless already present in the
-# environment (the queue worker may set it per-worker) — the runner interprets it,
-# this chassis never does.
+# RESEARCH_LOOP_PROFILE, RESEARCH_LOOP_AGENT_SECONDARY, RESEARCH_LOOP_GAP_POLICY,
+# and RESEARCH_LOOP_GAP_AUTO_LIMIT are deliberately NOT set here unless already
+# present in the environment (the queue worker sets them per-item from
+# agent_main/agent_secondary/gap_policy/gap_auto_limit) — the runner and prompt
+# above already resolved what they mean; this chassis never invents a default
+# beyond what's read above.
 
 set +e
 "$RUNNER" "$TOPIC_DIR" "$prompt_file" 2>&1 | tee "$log"

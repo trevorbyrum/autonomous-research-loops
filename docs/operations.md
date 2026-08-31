@@ -24,6 +24,40 @@ already on, never starts anything new"):
 bin/research-loops worker-policy worker-2 --claim-limit 0
 ```
 
+## Declarative config
+
+`bin/research-loops` primitives (`add`, `sync`, `run --worker`) are enough on their own;
+`config/research-loops.example.toml` is a convenience layer on top for the settings you
+tend to want to see and change together in one file rather than as scattered flags:
+how many parallel workers run, how long between a topic's iterations, which runner
+adapter leads a topic and which one it may delegate legwork to, and whether a topic may
+self-promote a discovered research gap or must always route it through operator review.
+It never replaces `add`/`sync` — those still own each item's title/cwd/command.
+
+```bash
+cp config/research-loops.example.toml research-loops.toml   # then edit it
+
+bin/research-loops workers start --config research-loops.toml   # spawn `workers` run processes
+bin/research-loops workers status                               # which are still alive
+bin/research-loops workers stop                                 # terminate them
+
+bin/research-loops config show  --config research-loops.toml <topic-id>   # resolved settings
+bin/research-loops config apply --config research-loops.toml              # push them to the queue
+```
+
+`config apply` only touches topic ids explicitly listed under `[topics.*]` in the file —
+it never reconfigures a queue item just because it exists. Fields it can set
+(`repeat_seconds`, `max_attempts`, `stall_limit`, `agent_main`, `agent_secondary`,
+`gap_policy`, `gap_auto_limit`) all take effect on the item's *next* iteration only;
+none of them touch an iteration already in flight, so `config apply` is always safe to
+run against a running queue.
+
+`agent_main`/`agent_secondary` and `gap_policy`/`gap_auto_limit` can also be set per-item
+directly with `add --agent-main ... --gap-policy auto --gap-auto-limit 3` without a config
+file at all — the config is purely a convenience for managing many topics' settings in
+one reviewable place. See `docs/governance.md#the-operator-owns-scope` for what `auto` gap
+policy actually does and why its default is `review`.
+
 ## Queue control
 
 ```bash

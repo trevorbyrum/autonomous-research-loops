@@ -852,6 +852,20 @@ class LoopRunner:
             child_env["RESEARCH_LOOP_PROFILE"] = self.profile
         else:
             child_env.pop("RESEARCH_LOOP_PROFILE", None)
+        agent_main = item.get("agent_main")
+        if agent_main:
+            # chassis/run-topic.sh already resolves this same variable to pick
+            # a runner adapter; a config-assigned "main agent" just sets it.
+            child_env["RESEARCH_LOOP_RUNNER"] = agent_main
+        else:
+            child_env.pop("RESEARCH_LOOP_RUNNER", None)
+        agent_secondary = item.get("agent_secondary")
+        if agent_secondary:
+            child_env["RESEARCH_LOOP_AGENT_SECONDARY"] = agent_secondary
+        else:
+            child_env.pop("RESEARCH_LOOP_AGENT_SECONDARY", None)
+        child_env["RESEARCH_LOOP_GAP_POLICY"] = item.get("gap_policy") or "review"
+        child_env["RESEARCH_LOOP_GAP_AUTO_LIMIT"] = str(item.get("gap_auto_limit") or 0)
         try:
             with log_path.open("w", encoding="utf-8") as log:
                 process = subprocess.Popen(

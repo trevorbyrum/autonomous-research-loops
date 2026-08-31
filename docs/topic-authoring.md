@@ -64,11 +64,28 @@ ones you actually want:
 
 ```bash
 grep -l PROPOSAL topics/*/DECISIONS-LOG.md   # find pending proposals
+
+chassis/gap-policy.py promote topics/my-topic \
+  --id NEW-07 --text "The proposed obligation text." --source-ref "DECISIONS-LOG.md#proposal-row"
 ```
 
-Promoting one means adding it to `TOPIC.md`'s obligations list by hand and rehashing —
-there's no separate CLI verb for this because it's the same "you decided to change
-scope" action as any other edit.
+`promote` does exactly what you'd otherwise do by hand — append the bullet to `TOPIC.md`,
+append the matching entry to `SEMANTIC-STATE.json`, and rehash — as one auditable command
+instead of three manual edits that can drift out of sync with each other.
+
+**Auto gap policy.** A topic can instead be configured with `gap_policy = "auto"` (see
+`docs/operations.md#declarative-config` and `docs/governance.md#the-operator-owns-scope`),
+which lets the research agent call `chassis/gap-policy.py promote --auto --limit N`
+itself for a bounded number of gaps since your last review, tagged `AUTO-PROMOTED` in
+`DECISIONS-LOG.md` so it's always distinguishable from a promotion you reviewed first.
+Once that budget is used, further gaps fall back to `PROPOSAL` rows until you run:
+
+```bash
+chassis/gap-policy.py review-reset topics/my-topic --note "reviewed the last 3, all legitimate"
+```
+
+Default is always `review` — `auto` is something you opt a specific topic into, not a
+global behavior change.
 
 ## Dependencies vs. order
 

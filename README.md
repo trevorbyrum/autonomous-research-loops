@@ -160,7 +160,7 @@ bin/research-loops run --once
 - [`docs/architecture.md`](docs/architecture.md) — the three layers, the state machine, why liveness ≠ completion
 - [`docs/topic-authoring.md`](docs/topic-authoring.md) — the full topic contract, dependencies, and how to change scope safely
 - [`runners/README.md`](runners/README.md) — the Agent Runner interface and how to add a new adapter
-- [`docs/operations.md`](docs/operations.md) — running multiple workers, systemd deployment, troubleshooting
+- [`docs/operations.md`](docs/operations.md) — running multiple workers, declarative config, systemd deployment, troubleshooting
 - [`docs/governance.md`](docs/governance.md) — why the operator owns scope, and why quota failure is never evidence of absence
 
 ## Development

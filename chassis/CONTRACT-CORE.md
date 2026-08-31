@@ -24,6 +24,12 @@ binding until the operator promotes it (see `docs/topic-authoring.md` for the pr
 command) and the topic's hashes are rehashed accordingly. Silently expanding scope to
 cover a gap, without proposing it first, is exactly what this rule exists to prevent.
 
+The one exception is a topic explicitly configured with `gap_policy = "auto"` (see
+`docs/governance.md#the-operator-owns-scope`): there, the agent may self-promote a gap
+with `chassis/gap-policy.py promote --auto`, but only up to that topic's `gap_auto_limit`
+times since the operator's last review — the tool itself enforces the cap and tags every
+self-promotion `AUTO-PROMOTED`, never silently. Default policy is always `review`.
+
 Do not edit or erase archived state. Prior completion marks or taxonomies inherited from
 an earlier process are historical evidence, not authority — never treat them as proof
 that a current obligation is satisfied.

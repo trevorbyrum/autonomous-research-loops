@@ -13,6 +13,24 @@ make "the research is done" mean something. A system that lets its own research 
 adjust the definition of done under pressure will eventually adjust it exactly when
 pressure is highest, which is precisely when you need it not to.
 
+**The one configurable exception, and why it doesn't actually break the rule above.**
+A topic's `gap_policy` defaults to `review`: an agent that finds a real, uncovered gap
+may only propose it (a `PROPOSAL` row in `DECISIONS-LOG.md`); an operator promotes it,
+by hand or with `chassis/gap-policy.py promote`. Setting `gap_policy = "auto"` (per
+topic, via `add --gap-policy auto --gap-auto-limit N` or the declarative config — see
+`docs/operations.md#declarative-config`) lets an agent self-promote a gap directly, but
+only up to `gap_auto_limit` times since the operator's last review. Past that budget it
+falls back to proposing only, and `chassis/gap-policy.py promote --auto` enforces the
+cap itself — there's no path that bypasses it. Every self-promotion is tagged
+`AUTO-PROMOTED` in `DECISIONS-LOG.md`, permanently distinguishable from an
+operator-reviewed `PROMOTED` entry, and still goes through the exact same hash-relock
+(`rehash`) as a manual edit. `auto` trades the *timing* of review (before the obligation
+exists vs. within the next `gap_auto_limit` additions) for research throughput; it never
+trades away the audit trail, the cap, or the fact that an operator's review-reset is what
+lets the budget continue. Default to `review`; reach for `auto` only for a topic where
+you've decided a small, bounded amount of self-directed scope expansion between reviews
+is worth more than catching each one before it happens.
+
 ## The output is evidence, not a verdict
 
 The engine doesn't decide anything. Its job ends at "every obligation has a graded,

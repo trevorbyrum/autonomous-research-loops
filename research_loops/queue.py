@@ -23,6 +23,8 @@ class QueueConflict(QueueError):
 
 _ITEM_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 
+GAP_POLICIES = ("review", "auto")
+
 
 def validate_item_id(item_id: str) -> str:
     if not _ITEM_ID_PATTERN.fullmatch(item_id):
@@ -31,6 +33,24 @@ def validate_item_id(item_id: str) -> str:
             "and must start with a letter or number"
         )
     return item_id
+
+
+def _validate_agent_name(value: str | None, field: str) -> str | None:
+    if value is not None and (not isinstance(value, str) or not value.strip()):
+        raise QueueError(f"{field} must be a non-empty string")
+    return value
+
+
+def _validate_gap_policy(value: str) -> str:
+    if value not in GAP_POLICIES:
+        raise QueueError(f"gap_policy must be one of {list(GAP_POLICIES)}")
+    return value
+
+
+def _validate_gap_auto_limit(value: int) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise QueueError("gap_auto_limit must be a non-negative integer")
+    return value
 
 
 def utc_now() -> str:
@@ -127,6 +147,10 @@ class QueueStore:
         progress_command: list[str] | None = None,
         stall_limit: int | None = None,
         depends_on: list[str] | None = None,
+        agent_main: str | None = None,
+        agent_secondary: str | None = None,
+        gap_policy: str = "review",
+        gap_auto_limit: int = 0,
     ) -> dict[str, Any]:
         if not title.strip() or not command:
             raise QueueError("title and command are required")
@@ -136,6 +160,10 @@ class QueueStore:
             raise QueueError("repeat_seconds must be positive")
         if stall_limit is not None and stall_limit < 1:
             raise QueueError("stall_limit must be at least 1")
+        _validate_agent_name(agent_main, "agent_main")
+        _validate_agent_name(agent_secondary, "agent_secondary")
+        _validate_gap_policy(gap_policy)
+        _validate_gap_auto_limit(gap_auto_limit)
         resolved_item_id = validate_item_id(
             item_id if item_id is not None else f"loop-{uuid.uuid4().hex[:10]}"
         )
@@ -159,6 +187,10 @@ class QueueStore:
             "depends_on": resolved_dependencies,
             "progress_command": list(progress_command) if progress_command else None,
             "stall_limit": stall_limit,
+            "agent_main": agent_main,
+            "agent_secondary": agent_secondary,
+            "gap_policy": gap_policy,
+            "gap_auto_limit": gap_auto_limit,
             "progress_signature": None,
             "stall_count": 0,
             "status": "queued",
@@ -211,6 +243,24 @@ class QueueStore:
         "depends_on",
         "progress_command",
         "stall_limit",
+        "agent_main",
+        "agent_secondary",
+        "gap_policy",
+        "gap_auto_limit",
+    )
+
+    # Fields configure_topic() may adjust on an existing item without ever
+    # touching command/cwd/title/depends_on — these only affect the NEXT
+    # iteration's environment, never an in-flight subprocess, so they're safe
+    # to change regardless of the item's current status.
+    _TOPIC_CONFIG_FIELDS = (
+        "repeat_seconds",
+        "max_attempts",
+        "stall_limit",
+        "agent_main",
+        "agent_secondary",
+        "gap_policy",
+        "gap_auto_limit",
     )
 
     def sync(
@@ -448,6 +498,12 @@ class QueueStore:
             or stall_limit < 1
         ):
             raise QueueError("stall_limit must be an integer of at least 1")
+        agent_main = _validate_agent_name(entry.get("agent_main"), "agent_main")
+        agent_secondary = _validate_agent_name(
+            entry.get("agent_secondary"), "agent_secondary"
+        )
+        gap_policy = _validate_gap_policy(entry.get("gap_policy", "review"))
+        gap_auto_limit = _validate_gap_auto_limit(entry.get("gap_auto_limit", 0))
         return {
             "title": str(entry["title"]).strip(),
             "cwd": str(Path(str(entry["cwd"])).expanduser().resolve()),
@@ -463,7 +519,36 @@ class QueueStore:
             "depends_on": resolved_dependencies,
             "progress_command": list(progress_command) if progress_command else None,
             "stall_limit": stall_limit,
+            "agent_main": agent_main,
+            "agent_secondary": agent_secondary,
+            "gap_policy": gap_policy,
+            "gap_auto_limit": gap_auto_limit,
         }
+
+    def configure_topic(self, item_id: str, **settings: Any) -> dict[str, Any]:
+        """Apply a partial scheduling/agent/gap-policy update to one item.
+
+        Unlike sync(), this never requires or touches command/cwd/title/
+        depends_on, and never refuses a running item — every field here only
+        takes effect on the item's NEXT iteration, never an in-flight one.
+        Used by `research-loops config apply` (see research_loops/config.py)
+        and by the `config topic` CLI verb for one-off changes.
+        """
+        unknown = set(settings) - set(self._TOPIC_CONFIG_FIELDS)
+        if unknown:
+            raise QueueError(f"unknown topic config field(s): {sorted(unknown)}")
+        with self._locked() as state:
+            item = self._find(state, item_id)
+            candidate = {**item, **settings}
+            validated = self._definition_from({**candidate, "id": item_id})
+            changed = False
+            for field in self._TOPIC_CONFIG_FIELDS:
+                if field in settings and item.get(field) != validated[field]:
+                    item[field] = validated[field]
+                    changed = True
+            if changed:
+                item["updated_at"] = utc_now()
+            return copy.deepcopy(item)
 
     def record_progress_signature(
         self, item_id: str, signature: str | None
