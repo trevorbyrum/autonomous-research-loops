@@ -75,6 +75,38 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def find_dependency_cycle(graph: dict[str, list[str]]) -> str | None:
+    """DFS cycle detection over an id -> depends_on adjacency mapping.
+
+    Returns the id where a cycle was first detected, or None if the graph is
+    acyclic. Standalone (not a QueueStore method) so both sync() and
+    `doctor` can reuse the exact same check against different inputs (a
+    manifest-in-progress vs. the live queue's own depends_on fields).
+    """
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(item_id: str) -> str | None:
+        if item_id in visiting:
+            return item_id
+        if item_id in visited:
+            return None
+        visiting.add(item_id)
+        for dependency in graph.get(item_id, []):
+            found = visit(dependency)
+            if found is not None:
+                return found
+        visiting.remove(item_id)
+        visited.add(item_id)
+        return None
+
+    for entry_id in graph:
+        found = visit(entry_id)
+        if found is not None:
+            return found
+    return None
+
+
 class QueueStore:
     """Atomic, process-safe JSON queue storage."""
 
@@ -367,22 +399,9 @@ class QueueStore:
                     for entry_id, definition in definitions.items()
                 }
             )
-            visiting: set[str] = set()
-            visited: set[str] = set()
-
-            def visit(item_id: str) -> None:
-                if item_id in visiting:
-                    raise QueueError(f"dependency cycle includes {item_id}")
-                if item_id in visited:
-                    return
-                visiting.add(item_id)
-                for dependency in graph.get(item_id, []):
-                    visit(dependency)
-                visiting.remove(item_id)
-                visited.add(item_id)
-
-            for entry_id in graph:
-                visit(entry_id)
+            cycle_id = find_dependency_cycle(graph)
+            if cycle_id is not None:
+                raise QueueError(f"dependency cycle includes {cycle_id}")
             now = utc_now()
 
             for item in state["items"]:

@@ -173,6 +173,12 @@ class CliTests(unittest.TestCase):
         )
         self.assertTrue(enabled_item["internal_citations"])
 
+    def test_doctor_cli_reports_an_unlocked_item(self):
+        self.run_cli("add", "--id", "unlocked", "--title", "U", "--cwd", "/tmp", "--", "true")
+        report = json.loads(self.run_cli("doctor").stdout)
+        self.assertFalse(report["healthy"])
+        self.assertEqual(report["unlocked_items"], ["unlocked"])
+
 
 if __name__ == "__main__":
     unittest.main()

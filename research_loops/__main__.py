@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import topic_authoring, workers as workers_mod
+from . import doctor, topic_authoring, workers as workers_mod
 from .config import load_config
 from .dashboard import render_dashboard, write_dashboard
 from .queue import QueueError, QueueStore
@@ -237,6 +237,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="output Markdown path (default: parent of queue root/STATUS.md)",
     )
 
+    doctor = sub.add_parser(
+        "doctor",
+        help="portfolio-wide health audit (non-mutating): structural validity, "
+        "completion-lock coverage, dependency integrity, orphaned topic dirs, "
+        "source counts",
+    )
+    doctor.add_argument(
+        "--topics-root",
+        type=Path,
+        help="also check for orphaned topic directories under this path "
+        "(default: <root>/topics, matching new-topic/approve-topic's own default)",
+    )
+
     run = sub.add_parser("run", help="run the queue worker")
     run.add_argument(
         "--worker",
@@ -439,6 +452,13 @@ def main(argv: list[str] | None = None) -> int:
             content = render_dashboard(store.snapshot(), ledger.events())
             written = write_dashboard(output, content)
             emit({"output": str(written)})
+        elif args.action == "doctor":
+            topics_root = (
+                Path(args.topics_root).expanduser().resolve()
+                if args.topics_root
+                else root / "topics"
+            )
+            emit(doctor.run_doctor(store.snapshot()["items"], topics_root=topics_root))
         elif args.action == "run":
             # Per-worker lock: worker-1 keeps the legacy lock filename so an
             # in-place upgrade cannot race a still-running old worker.

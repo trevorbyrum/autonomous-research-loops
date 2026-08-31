@@ -97,12 +97,23 @@ exist by the time this item is actually claimed. If it never gets added, the ite
 uncalimed and `claim_next()` raises a clear error identifying the missing id; it does not
 fail silently.
 
+## Portfolio health audit
+
+```bash
+research-loops doctor [--topics-root DIR]
+```
+
+Non-mutating, one report: structural validity per topic, which items are missing a
+completion lock, dependency-integrity problems (a `depends_on` referencing a
+nonexistent id, or a cycle), orphaned topic directories (a dir under `--topics-root`
+that no queue item's `cwd` points at — default `<root>/topics`), and per-topic plus
+portfolio-wide cited-source counts. Run this before assuming a portfolio is in good
+shape, not just when something already looks wrong.
+
 ## Reference: what's still ad hoc (growing list, check back)
 
 The following operational needs don't have a dedicated tool yet — this section will
 shrink as later phases ship:
-- Portfolio-wide health audit (naming/lock-coverage/dependency-integrity/orphan
-  detection) — planned as `research-loops doctor`.
 - Graceful pause (finish the current iteration, then stop, instead of killing it
   mid-run) — today's `research-loops pause` terminates an in-flight iteration
   immediately; there is no "finish first" option yet.
