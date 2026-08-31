@@ -33,6 +33,17 @@ Nothing is binding until `approve-topic` runs. That command recomputes both hash
 whatever you actually left in the DRAFT files — edit them freely first. This is the one
 moment scope is allowed to become fixed.
 
+## Naming convention
+
+Bare, descriptive slugs — no family/portfolio prefix, no phase numbers.
+`static-site-generator-choice`, not `myproject-static-site-generator-choice` or
+`phase2-static-site-generator-choice`. A prefix describing "which batch this was added
+in" rather than "what this topic is about" is exactly the kind of naming debris this
+convention exists to prevent: it accretes fast (every new topic copies the last one's
+prefix by habit, whether or not it still means anything) and buys nothing the queue and
+directory structure don't already give you. See `docs/agent-operations.md#naming-convention`
+for the agent-facing version of this same rule.
+
 ## Changing scope safely after approval
 
 `TOPIC.md` and `AUTHORITY.md` are operator-owned. A research agent must never rewrite

@@ -129,6 +129,14 @@ def build_parser() -> argparse.ArgumentParser:
         "recommended for every topic; omitting it means DONE is only checked "
         "structurally, not against a pinned inventory",
     )
+    add.add_argument(
+        "--depends-on",
+        help="comma-separated item ids this topic's research is genuinely impossible "
+        "without the *completed* output of -- never for scheduling preference, use "
+        "`move` for that (see docs/topic-authoring.md#dependencies-vs-order). A "
+        "dependency may reference an id you haven't added yet -- it only has to "
+        "exist by the time this item is actually claimed",
+    )
     add.add_argument("command", nargs=argparse.REMAINDER)
 
     listing = sub.add_parser("list", help="show queue state")
@@ -287,6 +295,11 @@ def main(argv: list[str] | None = None) -> int:
                 progress_command = json.loads(args.progress_command)
                 if not isinstance(progress_command, list):
                     raise QueueError("progress_command must be a JSON array")
+            depends_on = (
+                [value.strip() for value in args.depends_on.split(",") if value.strip()]
+                if args.depends_on
+                else None
+            )
             emit(
                 store.add(
                     title=args.title,
@@ -305,6 +318,7 @@ def main(argv: list[str] | None = None) -> int:
                     gap_policy=args.gap_policy,
                     gap_auto_limit=args.gap_auto_limit,
                     completion_lock=args.lock_sha256,
+                    depends_on=depends_on,
                 )
             )
         elif args.action in {"list", "status"}:

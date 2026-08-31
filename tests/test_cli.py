@@ -134,6 +134,31 @@ class CliTests(unittest.TestCase):
         self.assertTrue(symlink.is_symlink())
         self.assertEqual(target.read_text(encoding="utf-8"), "preserve")
 
+    def test_add_depends_on_flag_round_trips_and_gates_claiming(self):
+        self.run_cli("add", "--id", "router", "--title", "Router", "--cwd", "/tmp", "--", "true")
+        consumer = json.loads(
+            self.run_cli(
+                "add", "--id", "consumer", "--title", "Consumer", "--cwd", "/tmp",
+                "--depends-on", "router", "--", "true",
+            ).stdout
+        )
+        self.assertEqual(consumer["depends_on"], ["router"])
+
+        claimed = json.loads(self.run_cli("run", "--once").stdout)
+        self.assertEqual(claimed["item_id"], "router")
+
+    def test_add_depends_on_accepts_a_not_yet_added_id(self):
+        # A dependency may forward-reference an id that doesn't exist yet -- it
+        # only has to exist by the time this item is actually claimed (see
+        # claim_next()'s own dependencies_satisfied() check).
+        consumer = json.loads(
+            self.run_cli(
+                "add", "--id", "consumer", "--title", "Consumer", "--cwd", "/tmp",
+                "--depends-on", "not-added-yet", "--", "true",
+            ).stdout
+        )
+        self.assertEqual(consumer["depends_on"], ["not-added-yet"])
+
 
 if __name__ == "__main__":
     unittest.main()

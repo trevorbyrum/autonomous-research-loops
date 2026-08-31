@@ -1,0 +1,110 @@
+# Agent operations
+
+For an agent with zero prior context on this system. Not a tutorial — a reference:
+exact commands, exact flags, the mistakes that actually happen. If you're a human,
+`docs/topic-authoring.md`/`docs/operations.md` explain the *why*; this page is the
+*what to type*. Runner-agnostic on purpose — nothing here assumes Claude Code
+specifically, since this same doc applies whether you're Claude, Codex, Hermes, or
+anything else pointed at this chassis.
+
+Every command below is `research-loops <verb> ...` (or `bin/research-loops` /
+`PYTHONPATH=. python3 -m research_loops` from a git clone — see
+`docs/operations.md#installing-on-path` for when each form applies). All output is JSON
+on stdout unless noted.
+
+## Adding a new topic
+
+Three steps, always in this order. Do not hand-write `TOPIC.md`/`AUTHORITY.md`/
+`SEMANTIC-STATE.json` yourself — the scaffolding tool produces the exact shape the
+completion validator expects, including hashes you cannot compute correctly by hand.
+
+```bash
+# 1. Scaffold from a brief (deterministic, no LLM call — just semicolon/sentence splitting)
+research-loops new-topic <topic-id> --title "Human-Readable Title" --brief path/to/brief.md
+
+# 2. Review/edit topics/<topic-id>/DRAFT-AUTHORITY.md and DRAFT-TOPIC.md by hand if needed
+
+# 3. Promote — this is the ONLY moment scope becomes binding
+research-loops approve-topic <topic-id>
+```
+
+`approve-topic`'s JSON output includes a `suggested_command` field — a complete,
+ready-to-run `research-loops add ...` command with `--lock-sha256` already filled in.
+**Copy that command exactly.** Do not reconstruct it by hand, and do not omit
+`--lock-sha256` — without it, `DONE` is only checked structurally, not against the
+approved obligation/deliverable inventory (see `docs/topic-authoring.md#the-completion-lock`).
+
+Common mistakes:
+- Skipping `approve-topic` and trying to `add` the `DRAFT-*.md` files directly — they
+  aren't real until promoted; `TOPIC.md`/`AUTHORITY.md`/`SEMANTIC-STATE.json` won't
+  exist yet.
+- Editing `SEMANTIC-STATE.json`'s hashes by hand after editing `TOPIC.md`/`AUTHORITY.md`
+  post-approval — always run `research_loops/chassis/semantic-state.py rehash <dir>`
+  instead (see `docs/topic-authoring.md#changing-scope-safely-after-approval`).
+- Choosing a topic id with a family/portfolio prefix (`myproject-foo`, `phase3-bar`).
+  Don't. See "Naming convention" below.
+
+## Naming convention
+
+**Bare, descriptive slugs. No family or portfolio prefix, no phase numbers.**
+`static-site-generator-choice`, `authentication-approach`, `vendor-comparison` — not
+`myproject-static-site-generator-choice` or `phase2-authentication-approach`. A prefix
+that describes "which batch this was added in" rather than "what this topic is about"
+is exactly the naming debris this convention exists to prevent — it accretes fast (every
+subsequent topic copies the last one's prefix by habit) and buys nothing once you have
+more than a handful of topics, since the queue and directory structure already group
+them. `research-loops new-topic` doesn't currently reject a prefixed id outright, but
+don't add one — it's a one-way door once other topics start `depends_on`-referencing it.
+
+## Adding to an already-queued or already-running topic's scope
+
+Two different needs, two different tools — pick the one that matches:
+
+- **You found a genuine gap while researching, want it added properly**: append a
+  `PROPOSAL` row to that topic's `DECISIONS-LOG.md` (see
+  `chassis/CONTRACT-CORE.md`'s governance section), then either an operator promotes it
+  by hand, or — if this topic's `gap_policy` is `auto` (check `research-loops config show
+  --config <file> <topic-id>` or the item's `gap_policy` field via `list --json`) — call
+  `research_loops/chassis/gap-policy.py promote <topic_dir> --id <NEW-ID> --text "..." --source-ref "..." --auto --limit <gap_auto_limit>`
+  yourself. It refuses once the budget is used; fall back to the `PROPOSAL` row if it does.
+- **An operator is amending scope directly** (not a self-discovered gap): the same
+  `gap-policy.py promote` command works without `--auto` for this — it's the one
+  sanctioned way to add an obligation to `TOPIC.md`/`SEMANTIC-STATE.json` and keep the
+  hashes consistent, regardless of whether the topic is queued or actively running. If
+  the topic is currently running, editing `SEMANTIC-STATE.json` while an agent is
+  mid-iteration writing to the same file is a real race with no clean fix today —
+  `research-loops pause <id>` currently terminates the in-flight iteration immediately
+  (losing that iteration's unsaved progress but avoiding the write race by removing the
+  writer entirely), which is the safest option available until a graceful "finish first"
+  pause exists (see the ad hoc list below). Amending a queued-but-not-running topic has
+  no such risk.
+
+## Dependencies vs. scheduling order
+
+`--depends-on` (on `add`) is for **genuine content dependency only** — this topic's
+research is impossible without another topic's *completed* output. It is never for "I'd
+like this worked on sooner, all else equal" — use `research-loops move <id> <position>`
+for that instead. See `docs/topic-authoring.md#dependencies-vs-order` for why conflating
+the two is a real failure mode, not a style preference.
+
+```bash
+research-loops add --id <id> --title "..." --cwd <dir> --stop-file STOP \
+  --lock-sha256 <hash> --depends-on other-id-1,other-id-2 -- <command...>
+```
+
+A dependency may reference an id that doesn't exist in the queue yet — it only has to
+exist by the time this item is actually claimed. If it never gets added, the item stays
+uncalimed and `claim_next()` raises a clear error identifying the missing id; it does not
+fail silently.
+
+## Reference: what's still ad hoc (growing list, check back)
+
+The following operational needs don't have a dedicated tool yet — this section will
+shrink as later phases ship:
+- Portfolio-wide health audit (naming/lock-coverage/dependency-integrity/orphan
+  detection) — planned as `research-loops doctor`.
+- Graceful pause (finish the current iteration, then stop, instead of killing it
+  mid-run) — today's `research-loops pause` terminates an in-flight iteration
+  immediately; there is no "finish first" option yet.
+- Reassigning a worker from its current topic to a specific queued one without
+  disrupting the in-flight iteration — no tool yet.
