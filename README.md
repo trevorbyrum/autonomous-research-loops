@@ -56,26 +56,35 @@ failures correctly (a subscription quota window is not the same problem as a bro
 config). None of these three pieces know about the other two's internals — swap any of
 them independently.
 
-```
- you write a brief
-        │
-        ▼
- tools/new-topic  ──►  DRAFT-TOPIC.md / DRAFT-AUTHORITY.md   (deterministic, no LLM call)
-        │                        │
-        │                 you review + edit
-        ▼                        ▼
- tools/approve-topic  ──►  TOPIC.md · AUTHORITY.md · SEMANTIC-STATE.json   (hash-locked)
-        │
-        ▼
- bin/research-loops add/sync  ──►  state/queue.json          (research_loops/queue.py)
-        │
-        ▼
- bin/research-loops run  ──►  chassis/run-topic.sh  ──►  runners/<adapter>.sh  ──►  your LLM CLI
-        │                            │
-        │                    reads CONTRACT-CORE.md, TOPIC.md, AUTHORITY.md,
-        │                    SEMANTIC-STATE.json; updates ledgers + state
-        ▼
- chassis/semantic-state.py validate   ──►   DONE only if every obligation is terminal
+```mermaid
+flowchart TD
+    A["You write a brief"] --> B["tools/new-topic"]
+    B --> C["DRAFT-TOPIC.md / DRAFT-AUTHORITY.md
+    deterministic, no LLM call"]
+    B --> D{{"you review + edit"}}
+    D --> E["tools/approve-topic"]
+    E --> F["TOPIC.md · AUTHORITY.md · SEMANTIC-STATE.json
+    hash-locked"]
+    E --> G["bin/research-loops add/sync"]
+    G --> H["state/queue.json
+    research_loops/queue.py"]
+    G --> I["bin/research-loops run"]
+    I --> J["chassis/run-topic.sh"]
+    J --> K["runners/&lt;adapter&gt;.sh"]
+    K --> L["your LLM CLI"]
+    K -.-> M{{"reads CONTRACT-CORE.md, TOPIC.md, AUTHORITY.md,
+    SEMANTIC-STATE.json; updates ledgers + state"}}
+    M --> N["chassis/semantic-state.py validate"]
+    N --> O["DONE
+    only if every obligation is terminal"]
+
+    style A fill:#fff,stroke:#333,stroke-width:2px
+    style O fill:#fff,stroke:#333,stroke-width:2px
+    style B fill:#eef4ff,stroke:#3b6fd4
+    style E fill:#eef4ff,stroke:#3b6fd4
+    style G fill:#eef4ff,stroke:#3b6fd4
+    style I fill:#eef4ff,stroke:#3b6fd4
+    style N fill:#eef4ff,stroke:#3b6fd4
 ```
 
 ## Quickstart
