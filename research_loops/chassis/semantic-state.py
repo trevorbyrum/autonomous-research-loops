@@ -264,6 +264,34 @@ def internal_citation_exists(
     return parse_source_ledger(text).get(ref)
 
 
+def _verification_errors(block_id: str, fields: dict[str, str], label: str) -> list[str]:
+    """A citation's *shape* (real URL, real path, real pointer) proves
+    nothing about whether the cited location actually contains what's being
+    claimed -- that's a content question, not a format question, and format
+    validation alone can't catch a well-formed hallucinated citation. This
+    is the structural half of closing that gap: `verified: true` must be
+    explicitly set by a pass that actually visited the cited location (see
+    CONTRACT-CORE.md's evidence-handling section for the "not the same
+    agent that cited it" discipline this can't itself enforce). A
+    `flagged: hallucination` block is refused outright regardless of
+    `verified`, and stays refused until an operator clears the flag --
+    finding a hallucination doesn't un-find it.
+    """
+    if fields.get("flagged", "").strip().lower() == "hallucination":
+        return [
+            f"citation {block_id} ({label}) is flagged as a hallucination -- the "
+            "cited location does not support this claim; it may not back any "
+            "disposition until an operator clears the flag"
+        ]
+    if fields.get("verified", "").strip().lower() != "true":
+        return [
+            f"citation {block_id} ({label}) is not yet independently verified -- "
+            "someone must actually visit the cited location and confirm it supports "
+            "the claim, then set `verified: true` (see docs/citations.md)"
+        ]
+    return []
+
+
 def citation_errors_for_block(
     block_id: str,
     block: dict[str, Any],
@@ -284,10 +312,12 @@ def citation_errors_for_block(
             errors.append(
                 f"citation {block_id} (external) requires retrieved as YYYY-MM-DD"
             )
+        errors.extend(_verification_errors(block_id, fields, "external"))
     elif block_type == "local":
         path = fields.get("path", "")
         if not path or not reference_exists(topic_dir, path):
             errors.append(f"citation {block_id} (local) path does not resolve: {path!r}")
+        errors.extend(_verification_errors(block_id, fields, "local"))
     elif block_type == "internal":
         if not allow_internal:
             errors.append(
@@ -311,9 +341,43 @@ def citation_errors_for_block(
                         f"citation {block_id} (internal) points at another internal "
                         f"citation ({other_topic}#{ref}) -- must point at external or local"
                     )
+                else:
+                    # Verification is transitive: an internal pointer inherits
+                    # the target's own verified/flagged status rather than
+                    # needing its own -- the target is what was actually
+                    # visited and confirmed.
+                    if _verification_errors(ref, target.get("fields", {}), target.get("type", "?")):
+                        errors.append(
+                            f"citation {block_id} (internal) points at "
+                            f"{other_topic}#{ref}, which is not yet independently "
+                            "verified or is flagged as a hallucination -- an internal "
+                            "citation inherits its target's verification status"
+                        )
     else:
         errors.append(f"citation {block_id} has unrecognized type {block_type!r}")
     return errors
+
+
+def resolve_citation_id(topic_dir: Path, reference: str) -> str | None:
+    """Resolve one evidence_ref to the SRC-NNN id it cites, or None if
+    uncited. Handles both forms: direct (`SOURCE-LEDGER.md#SRC-NNN`) and
+    indirect (an inline `[SRC-NNN]` tag inside the referenced file/line
+    range). Public (not chassis-internal) because both `completion_errors()`
+    here and `citation-index.py`'s portfolio-wide scan need the exact same
+    resolution logic -- duplicating it would let the two drift apart.
+    """
+    relative, start, end = _split_reference(reference)
+    if relative == "SOURCE-LEDGER.md" and "#" in reference:
+        fragment = reference.split("#", 1)[1]
+        if _SRC_ID_RE.match(fragment):
+            return fragment
+    target = (topic_dir / relative).resolve()
+    try:
+        target_text = target.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    tags = citation_tags_in(target_text, start, end)
+    return tags[0] if tags else None
 
 
 def evidence_citation_errors(
@@ -331,20 +395,7 @@ def evidence_citation_errors(
         ledger_text = ""
     blocks = parse_source_ledger(ledger_text)
     for reference in evidence_refs:
-        relative, start, end = _split_reference(reference)
-        src_id = None
-        if relative == "SOURCE-LEDGER.md" and "#" in reference:
-            fragment = reference.split("#", 1)[1]
-            if _SRC_ID_RE.match(fragment):
-                src_id = fragment
-        if src_id is None:
-            target = (topic_dir / relative).resolve()
-            try:
-                target_text = target.read_text(encoding="utf-8")
-            except OSError:
-                target_text = ""
-            tags = citation_tags_in(target_text, start, end)
-            src_id = tags[0] if tags else None
+        src_id = resolve_citation_id(topic_dir, reference)
         if src_id is None:
             errors.append(
                 f"obligation {obligation_id} evidence at {reference} is uncited: "

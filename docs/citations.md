@@ -78,6 +78,63 @@ An `evidence_ref` that resolves to a real file but no recognized citation (direc
 via an inline tag) is **uncited** — `validate` rejects it, same family of error as an
 open obligation or a missing acceptance summary.
 
+## Independent verification (`verified` / `flagged`)
+
+A well-formed citation (a real URL, a real path, a real internal pointer) only proves
+the *location* exists — it proves nothing about whether that location actually contains
+what's being claimed. A model can cite a real, live URL that says something completely
+different from the claim it's attached to, and that's exactly as dangerous as citing a
+dead link: both look fine in the ledger and both are wrong.
+
+An `external` or `local` block only backs a `supported`/`contradicted` disposition once
+it carries:
+
+```markdown
+## [SRC-001] external
+- url: https://developer.mozilla.org/en-US/docs/Web/HTML
+- title: HTML: HyperText Markup Language
+- retrieved: 2026-08-29
+- verified: true
+```
+
+`verified: true` means: someone actually visited the cited location and confirmed it
+supports the claim it's attached to. **It must be set by a different agent than the one
+that wrote the citation** — the same discipline `CONTRACT-CORE.md` already applies to
+pending-first evidence review, extended to citations specifically (map it onto
+`agent_secondary`'s existing role if a topic already delegates that way). Until
+`verified: true` is present, `validate` rejects the citation with "not yet independently
+verified," the same rejection family as a missing required field.
+
+If verification finds the citation is wrong — wrong page, dead link, content that
+doesn't actually say what's claimed — set `flagged: hallucination` instead:
+
+```markdown
+## [SRC-001] external
+- url: https://developer.mozilla.org/en-US/docs/Web/HTML
+- title: HTML: HyperText Markup Language
+- retrieved: 2026-08-29
+- flagged: hallucination
+```
+
+A flagged block is refused unconditionally, even if `verified: true` is also present —
+finding a hallucination doesn't un-find it. It stays refused until an operator clears
+the flag by editing the block directly (see `chassis/gap-policy.py promote`/manual
+ledger edits).
+
+An `internal` citation inherits its target's verification status transitively — the
+target is the block that was actually visited and confirmed, so the pointer doesn't need
+its own separate `verified` field. If the target is unverified or flagged, the internal
+citation is rejected too, naming the target so the operator knows exactly which block to
+resolve.
+
+**This check is deliberately bounded.** Verifying a citation means confirming *the exact
+cited location* supports the claim — nothing more. It must not expand into searching for
+a "correct" replacement source if the given one turns out to be wrong (a broken link, a
+right-domain-wrong-slug typo, a moved page). Finding the right source on the citer's
+behalf is a separate, later capability, not part of this check. When the cited location
+doesn't hold up, the correct action is `flagged: hallucination` and nothing else — not a
+substitution, not a silent fix, not a wider search.
+
 ## Source counts
 
 Because every cited source is exactly one `[SRC-NNN]` block, counting them needs no

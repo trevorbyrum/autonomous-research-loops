@@ -111,6 +111,20 @@ retry, inactivity, or revision limit defines semantic completion.
   entirely optional), a hit is a lead only — go verify it at its original citation and
   re-cite it in the current topic before it backs any disposition. An index miss is a
   capability fact, not proof no other topic has relevant evidence.
+- A well-formed citation only proves the cited location exists, not that it actually
+  supports the claim. An `external`/`local` citation only backs a
+  `supported`/`contradicted` disposition once it also carries `verified: true`, set by
+  an agent that actually visited the cited location and confirmed it — **never the same
+  agent that wrote the citation** (map onto `agent_secondary`'s role where a topic
+  already delegates that way). An `internal` citation inherits its target's verification
+  status rather than needing its own. If the cited location turns out not to support the
+  claim, set `flagged: hallucination` instead of `verified: true`; a flagged block is
+  refused unconditionally, even alongside `verified: true`, until an operator clears it.
+  This check is bounded: confirm only the exact cited location. It must never expand
+  into searching for a correct replacement source when the given one is wrong (broken
+  link, wrong slug, moved page) — that is separate, later work; the correct response
+  here is `flagged: hallucination`, not a substitution. See `docs/citations.md`'s
+  "Independent verification" section.
 
 ## Per-iteration procedure
 

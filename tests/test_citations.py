@@ -96,6 +96,7 @@ class CitationValidationTests(unittest.TestCase):
             "- url: https://example.com/article\n"
             "- title: An Example Article\n"
             "- retrieved: 2026-08-29\n"
+            "- verified: true\n"
         )
         _make_supported(self.topic_dir, 0, ["SOURCE-LEDGER.md#SRC-001"])
         result = _run("validate", str(self.topic_dir))
@@ -108,6 +109,7 @@ class CitationValidationTests(unittest.TestCase):
             "- url: https://example.com/article\n"
             "- title: An Example Article\n"
             "- retrieved: 2026-08-29\n"
+            "- verified: true\n"
         )
         (self.topic_dir / "FINDINGS-LOG.md").write_text(
             "# FINDINGS-LOG.md\n\nline2\nA verified claim. [SRC-001]\nline4\n",
@@ -120,7 +122,7 @@ class CitationValidationTests(unittest.TestCase):
 
     def test_local_citation_requires_a_resolvable_path(self):
         self._write_ledger(
-            "# SOURCE-LEDGER.md\n\n## [SRC-001] local\n- path: NOWHERE.md\n"
+            "# SOURCE-LEDGER.md\n\n## [SRC-001] local\n- path: NOWHERE.md\n- verified: true\n"
         )
         _make_supported(self.topic_dir, 0, ["SOURCE-LEDGER.md#SRC-001"])
         result = _run("validate", str(self.topic_dir))
@@ -136,11 +138,39 @@ class CitationValidationTests(unittest.TestCase):
             "# FINDINGS-LOG.md\n\nMeasured result.\n", encoding="utf-8"
         )
         self._write_ledger(
-            "# SOURCE-LEDGER.md\n\n## [SRC-001] local\n- path: FINDINGS-LOG.md\n"
+            "# SOURCE-LEDGER.md\n\n## [SRC-001] local\n- path: FINDINGS-LOG.md\n- verified: true\n"
         )
         _make_supported(self.topic_dir, 0, ["SOURCE-LEDGER.md#SRC-001"])
         result = _run("validate", str(self.topic_dir))
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_unverified_external_citation_is_rejected(self):
+        self._write_ledger(
+            "# SOURCE-LEDGER.md\n\n"
+            "## [SRC-001] external\n"
+            "- url: https://example.com/article\n"
+            "- title: An Example Article\n"
+            "- retrieved: 2026-08-29\n"
+        )
+        _make_supported(self.topic_dir, 0, ["SOURCE-LEDGER.md#SRC-001"])
+        result = _run("validate", str(self.topic_dir))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not yet independently verified", result.stderr)
+
+    def test_flagged_hallucination_is_rejected_even_if_marked_verified(self):
+        self._write_ledger(
+            "# SOURCE-LEDGER.md\n\n"
+            "## [SRC-001] external\n"
+            "- url: https://example.com/article\n"
+            "- title: An Example Article\n"
+            "- retrieved: 2026-08-29\n"
+            "- verified: true\n"
+            "- flagged: hallucination\n"
+        )
+        _make_supported(self.topic_dir, 0, ["SOURCE-LEDGER.md#SRC-001"])
+        result = _run("validate", str(self.topic_dir))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("flagged as a hallucination", result.stderr)
 
     def test_external_citation_missing_required_fields_is_rejected(self):
         self._write_ledger("# SOURCE-LEDGER.md\n\n## [SRC-001] external\n- url: not-a-url\n")
@@ -173,7 +203,8 @@ class InternalCitationTests(unittest.TestCase):
             "## [SRC-007] external\n"
             "- url: https://example.com/already-vetted\n"
             "- title: Already Vetted Source\n"
-            "- retrieved: 2026-08-20\n",
+            "- retrieved: 2026-08-20\n"
+            "- verified: true\n",
             encoding="utf-8",
         )
 
@@ -233,6 +264,44 @@ class InternalCitationTests(unittest.TestCase):
         self._cite_internal("SRC-007")
         result = _run("validate", str(self.topic_a), "--allow-internal-citations")
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_internal_citation_inherits_an_unverified_target(self):
+        (self.topic_b / "SOURCE-LEDGER.md").write_text(
+            "# SOURCE-LEDGER.md\n\n"
+            "## [SRC-007] external\n"
+            "- url: https://example.com/not-yet-checked\n"
+            "- title: Not Yet Checked\n"
+            "- retrieved: 2026-08-20\n",
+            encoding="utf-8",
+        )
+        self._cite_internal("SRC-007")
+        result = _run(
+            "validate", str(self.topic_a),
+            "--topics-root", str(self.topics_root),
+            "--allow-internal-citations",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("inherits its target's verification status", result.stderr)
+
+    def test_internal_citation_inherits_a_flagged_target(self):
+        (self.topic_b / "SOURCE-LEDGER.md").write_text(
+            "# SOURCE-LEDGER.md\n\n"
+            "## [SRC-007] external\n"
+            "- url: https://example.com/hallucinated\n"
+            "- title: Hallucinated Source\n"
+            "- retrieved: 2026-08-20\n"
+            "- verified: true\n"
+            "- flagged: hallucination\n",
+            encoding="utf-8",
+        )
+        self._cite_internal("SRC-007")
+        result = _run(
+            "validate", str(self.topic_a),
+            "--topics-root", str(self.topics_root),
+            "--allow-internal-citations",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("inherits its target's verification status", result.stderr)
 
 
 class SourceCountTests(unittest.TestCase):

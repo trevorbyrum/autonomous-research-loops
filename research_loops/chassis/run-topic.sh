@@ -83,9 +83,9 @@ fi
 
 # Citation policy (docs/citations.md) — internal citations are disabled by default;
 # see RESEARCH_LOOP_INTERNAL_CITATIONS below for how a topic opts in.
-CITATION_NOTE=" CITATIONS: every evidence_ref must resolve to a typed [SRC-NNN] citation block in SOURCE-LEDGER.md (external or local — see docs/citations.md). Internal citations (pointing at another topic's already-vetted source) are not enabled for this topic."
+CITATION_NOTE=" CITATIONS: every evidence_ref must resolve to a typed [SRC-NNN] citation block in SOURCE-LEDGER.md (external or local — see docs/citations.md). Internal citations (pointing at another topic's already-vetted source) are not enabled for this topic. A new external/local block only backs a disposition once a DIFFERENT agent visits the exact cited location and sets verified: true, or sets flagged: hallucination if it doesn't hold up — that check stops at the cited location, it never searches for a replacement source."
 if [[ "${RESEARCH_LOOP_INTERNAL_CITATIONS:-0}" == "1" ]]; then
-  CITATION_NOTE=" CITATIONS: every evidence_ref must resolve to a typed [SRC-NNN] citation block in SOURCE-LEDGER.md (external, local, or internal — see docs/citations.md). Internal citations are enabled for this topic: if the same source was already vetted in another topic, point at it (\`## [SRC-NNN] internal\` with \`topic:\`/\`ref:\` fields) instead of re-researching it."
+  CITATION_NOTE=" CITATIONS: every evidence_ref must resolve to a typed [SRC-NNN] citation block in SOURCE-LEDGER.md (external, local, or internal — see docs/citations.md). Internal citations are enabled for this topic: if the same source was already vetted in another topic, point at it (\`## [SRC-NNN] internal\` with \`topic:\`/\`ref:\` fields) instead of re-researching it. A new external/local block only backs a disposition once a DIFFERENT agent visits the exact cited location and sets verified: true, or sets flagged: hallucination if it doesn't hold up — that check stops at the cited location, it never searches for a replacement source."
 fi
 
 if [[ -f "$TOPIC_DIR/STOP" ]]; then

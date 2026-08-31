@@ -9,6 +9,7 @@ counts via `semantic-state.py source-count`.
 
 from __future__ import annotations
 
+import importlib.util
 import subprocess
 import sys
 from pathlib import Path
@@ -18,6 +19,15 @@ from .queue import find_dependency_cycle
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _SEMANTIC_STATE = _PACKAGE_DIR / "chassis" / "semantic-state.py"
+_CITATION_INDEX_PATH = _PACKAGE_DIR / "chassis" / "citation-index.py"
+
+
+def _citation_index_module():
+    spec = importlib.util.spec_from_file_location("citation_index", _CITATION_INDEX_PATH)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _run_chassis(action: str, topic_dir: Path) -> subprocess.CompletedProcess[str]:
@@ -73,11 +83,17 @@ def run_doctor(
     cycle_id = find_dependency_cycle(graph)
 
     orphaned_topic_dirs: list[str] = []
+    citation_problems: list[dict[str, Any]] = []
     if topics_root is not None and topics_root.is_dir():
         known_dirs = {Path(item["cwd"]).resolve() for item in items}
         for candidate in sorted(topics_root.iterdir()):
             if candidate.is_dir() and candidate.resolve() not in known_dirs:
                 orphaned_topic_dirs.append(str(candidate))
+        # Delegates to citation-index.py's own doctor() rather than
+        # reimplementing internal-citation drift detection here -- it
+        # operates directly on each topic's SOURCE-LEDGER.md, so this needs
+        # no pre-built index file to exist.
+        citation_problems = _citation_index_module().doctor(topics_root)
 
     return {
         "item_count": len(items),
@@ -88,11 +104,13 @@ def run_doctor(
         "orphaned_topic_dirs": orphaned_topic_dirs,
         "source_counts": source_counts,
         "total_sources_cited": sum(source_counts.values()),
+        "citation_problems": citation_problems,
         "healthy": not (
             structural_errors
             or unlocked_items
             or missing_dependencies
             or cycle_id
             or orphaned_topic_dirs
+            or citation_problems
         ),
     }
