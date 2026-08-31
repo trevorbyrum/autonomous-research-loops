@@ -193,6 +193,30 @@ class CliTests(unittest.TestCase):
         paused_now = json.loads(self.run_cli("pause", "queued", "--now").stdout)
         self.assertEqual(paused_now["status"], "paused")
 
+    def test_agents_cli_swaps_main_and_secondary_independently(self):
+        self.run_cli(
+            "add", "--id", "t1", "--title", "T1", "--cwd", "/tmp",
+            "--agent-main", "claude", "--agent-secondary", "codex", "--", "true",
+        )
+        after_main = json.loads(self.run_cli("agents", "t1", "--main", "hermes").stdout)
+        self.assertEqual(after_main["agent_main"], "hermes")
+        self.assertEqual(after_main["agent_secondary"], "codex")
+
+        after_secondary = json.loads(
+            self.run_cli("agents", "t1", "--secondary", "qwen3.8-27b").stdout
+        )
+        self.assertEqual(after_secondary["agent_main"], "hermes")
+        self.assertEqual(after_secondary["agent_secondary"], "qwen3.8-27b")
+
+        cleared = json.loads(self.run_cli("agents", "t1", "--secondary", "").stdout)
+        self.assertEqual(cleared["agent_main"], "hermes")
+        self.assertIsNone(cleared["agent_secondary"])
+
+    def test_agents_cli_requires_at_least_one_flag(self):
+        self.run_cli("add", "--id", "t1", "--title", "T1", "--cwd", "/tmp", "--", "true")
+        result = self.run_cli("agents", "t1", check=False)
+        self.assertNotEqual(result.returncode, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

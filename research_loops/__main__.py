@@ -188,6 +188,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="accept this many new topics, then only continue prior topics",
     )
 
+    agents = sub.add_parser(
+        "agents",
+        help="swap an item's main/secondary agent -- takes effect at the item's "
+        "next iteration only, never disrupts one already in flight",
+    )
+    agents.add_argument("item_id")
+    agents.add_argument(
+        "--main",
+        dest="agent_main",
+        help="sets RESEARCH_LOOP_RUNNER for this item, i.e. which runners/* adapter "
+        "leads the next iteration (omit to leave unchanged)",
+    )
+    agents.add_argument(
+        "--secondary",
+        dest="agent_secondary",
+        help="named delegate the primary may hand off legwork to (omit to leave "
+        "unchanged; pass an empty string to clear it)",
+    )
+
     sync = sub.add_parser(
         "sync",
         help=(
@@ -373,6 +392,15 @@ def main(argv: list[str] | None = None) -> int:
                     claim_limit=None if args.continuous else args.claim_limit,
                 )
             )
+        elif args.action == "agents":
+            settings: dict[str, Any] = {}
+            if args.agent_main is not None:
+                settings["agent_main"] = args.agent_main or None
+            if args.agent_secondary is not None:
+                settings["agent_secondary"] = args.agent_secondary or None
+            if not settings:
+                raise QueueError("agents: pass --main and/or --secondary")
+            emit(store.configure_topic(args.item_id, **settings))
         elif args.action == "sync":
             manifest_path = Path(args.manifest).expanduser()
             try:
