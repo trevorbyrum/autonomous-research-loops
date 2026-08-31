@@ -74,6 +74,27 @@ class NewTopicTests(unittest.TestCase):
             self.assertFalse((topic_dir / "DRAFT-AUTHORITY.md").exists())
             self.assertFalse((topic_dir / "DRAFT-SEMANTIC-STATE.json").exists())
 
+    def test_approve_topic_bakes_the_completion_lock_into_the_printed_add_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            brief = Path(tmp) / "brief.md"
+            brief.write_text("Cover A; cover B.", encoding="utf-8")
+            dest = Path(tmp) / "topics"
+            self._run(NEW_TOPIC, "lock-topic", "--title", "Lock Topic", "--brief", str(brief), "--dest", str(dest))
+            topic_dir = dest / "lock-topic"
+
+            result = self._run(APPROVE_TOPIC, "lock-topic", "--dest", str(dest))
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+            actual_lock = self._run(SEMANTIC_STATE, "lock", str(topic_dir)).stdout.strip()
+            self.assertIn("--lock-sha256", result.stdout)
+            self.assertIn(actual_lock, result.stdout)
+            # The printed command must appear BEFORE the `--` runner separator --
+            # otherwise it silently becomes an argument to the runner instead.
+            printed_command_line = next(
+                line for line in result.stdout.splitlines() if "research-loops add" in line
+            )
+            self.assertLess(printed_command_line.index("--lock-sha256"), printed_command_line.index(" -- "))
+
     def test_approved_topic_passes_the_structural_check_but_not_completion(self):
         with tempfile.TemporaryDirectory() as tmp:
             brief = Path(tmp) / "brief.md"

@@ -34,7 +34,10 @@ evidence-graded disposition, decided by a validator, not by the agent's own say-
   [`docs/governance.md`](docs/governance.md#the-output-is-evidence-not-a-verdict).
 - **Completion is executable, not asserted.** `semantic-state.py validate` either passes
   or it doesn't; a research agent writing `STOP DONE` while obligations remain open gets
-  overruled by the queue, every time.
+  overruled by the queue, every time. `tools/approve-topic` and `add` also pin a
+  completion-inventory lock by default, so an agent can't reach `DONE` by adding,
+  removing, or renaming an obligation directly in `SEMANTIC-STATE.json` either — see
+  [`docs/topic-authoring.md`](docs/topic-authoring.md#the-completion-lock-why-topicmdauthoritymd-hashes-arent-enough-on-their-own).
 - **Liveness and completion are different questions.** A topic that stops making real
   progress gets flagged for a human — it never gets silently marked finished just
   because nothing changed.
@@ -116,9 +119,12 @@ tools/new-topic my-first-topic --title "My First Topic" --brief /tmp/brief.md
 tools/approve-topic my-first-topic
 
 # 4. Queue it and run one bounded iteration with a real runner
+# (approve-topic already printed this exact command with its lock baked in --
+# this is what that output looks like)
 bin/research-loops add --id my-first-topic --title "My First Topic" \
   --cwd "$(pwd)/topics/my-first-topic" --stop-file STOP \
-  --max-attempts 8 --repeat-seconds 900 -- \
+  --max-attempts 8 --repeat-seconds 900 \
+  --lock-sha256 "$(chassis/semantic-state.py lock topics/my-first-topic)" -- \
   "$(pwd)/chassis/run-topic.sh" "$(pwd)/topics/my-first-topic" claude
 bin/research-loops run --once
 
@@ -137,7 +143,8 @@ fully approved, never-run topic — no brief-writing needed:
 bin/research-loops add --id static-site-generator-choice \
   --title "Static Site Generator Choice for a Personal Blog" \
   --cwd "$(pwd)/examples/static-site-generator-choice" --stop-file STOP \
-  --max-attempts 8 --repeat-seconds 900 -- \
+  --max-attempts 8 --repeat-seconds 900 \
+  --lock-sha256 "$(chassis/semantic-state.py lock examples/static-site-generator-choice)" -- \
   "$(pwd)/chassis/run-topic.sh" "$(pwd)/examples/static-site-generator-choice" claude
 bin/research-loops run --once
 ```

@@ -109,11 +109,15 @@ export RESEARCH_LOOP_TOPIC_DIR="$TOPIC_DIR"
 export RESEARCH_LOOP_USAGE_FILE="$usage"
 export RESEARCH_LOOP_LOG="$log"
 # RESEARCH_LOOP_PROFILE, RESEARCH_LOOP_AGENT_SECONDARY, RESEARCH_LOOP_GAP_POLICY,
-# and RESEARCH_LOOP_GAP_AUTO_LIMIT are deliberately NOT set here unless already
-# present in the environment (the queue worker sets them per-item from
-# agent_main/agent_secondary/gap_policy/gap_auto_limit) — the runner and prompt
-# above already resolved what they mean; this chassis never invents a default
-# beyond what's read above.
+# RESEARCH_LOOP_GAP_AUTO_LIMIT, and RESEARCH_LOOP_COMPLETION_LOCK are deliberately
+# NOT set here unless already present in the environment (the queue worker sets
+# them per-item from agent_main/agent_secondary/gap_policy/gap_auto_limit/
+# completion_lock) — the runner and prompt above already resolved what they mean;
+# this chassis never invents a default beyond what's read above. Running a topic
+# standalone without the queue and without setting RESEARCH_LOOP_COMPLETION_LOCK
+# means DONE is checked structurally but not against a pinned obligation
+# inventory — set it yourself (see `chassis/semantic-state.py lock`) if you want
+# the same protection the queue gives by default.
 
 set +e
 "$RUNNER" "$TOPIC_DIR" "$prompt_file" 2>&1 | tee "$log"
@@ -133,7 +137,11 @@ fi
 if [[ -f "$TOPIC_DIR/STOP" ]]; then
   first_token=$(awk 'NR==1 {gsub(/[[:punct:]]+$/, "", $1); print toupper($1)}' "$TOPIC_DIR/STOP")
   if [[ "$first_token" == "DONE" ]]; then
-    if ! python3 "$CHASSIS/semantic-state.py" validate "$TOPIC_DIR"; then
+    lock_args=()
+    if [[ -n "${RESEARCH_LOOP_COMPLETION_LOCK:-}" ]]; then
+      lock_args=(--lock-sha256 "$RESEARCH_LOOP_COMPLETION_LOCK")
+    fi
+    if ! python3 "$CHASSIS/semantic-state.py" validate "$TOPIC_DIR" "${lock_args[@]}"; then
       echo "configuration error: DONE rejected by semantic completion validator" >&2
       exit 78
     fi

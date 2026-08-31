@@ -866,6 +866,11 @@ class LoopRunner:
             child_env.pop("RESEARCH_LOOP_AGENT_SECONDARY", None)
         child_env["RESEARCH_LOOP_GAP_POLICY"] = item.get("gap_policy") or "review"
         child_env["RESEARCH_LOOP_GAP_AUTO_LIMIT"] = str(item.get("gap_auto_limit") or 0)
+        completion_lock = item.get("completion_lock")
+        if completion_lock:
+            child_env["RESEARCH_LOOP_COMPLETION_LOCK"] = completion_lock
+        else:
+            child_env.pop("RESEARCH_LOOP_COMPLETION_LOCK", None)
         try:
             with log_path.open("w", encoding="utf-8") as log:
                 process = subprocess.Popen(

@@ -72,6 +72,16 @@ adopted process that exits on its own goes to `needs_attention` rather than bein
 guessed at — a reparented orphan's real exit code isn't observable, and treating that
 as success would be exactly the wrong kind of guess.
 
+**Portability note:** the fingerprint above reads `/proc/<pid>/stat`'s start-time ticks
+plus the boot ID, so crash-adoption specifically (surviving a worker restart without
+double-launching or losing track of an in-flight iteration) is Linux-only, and
+`deploy/systemd/` is the only supplied deployment model. On another OS the queue itself
+still runs — claim/backoff/retry/stall-detection are all pure Python with no `/proc`
+dependency — but a worker restart while an iteration is in flight will not be able to
+distinguish "still running" from "gone," so treat that combination (non-Linux + a worker
+process that can restart mid-iteration) as unsupported rather than assuming the same
+safety guarantee holds.
+
 ## Dependencies vs. scheduling preference
 
 `depends_on` in a topic's queue definition is a hard claim-eligibility gate: a topic

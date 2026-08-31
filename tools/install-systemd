@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# tools/install-systemd — enable the dashboard timer for THIS clone and write
+# an initial STATUS.md immediately, instead of waiting for the timer's first
+# tick. Linux/systemd only (see docs/operations.md's portability note).
+#
+# This does NOT enable a worker unit -- that starts real research iterations
+# and consuming real quota, which stays a deliberate, separate step (see the
+# command this script prints at the end).
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if ! command -v systemctl >/dev/null 2>&1; then
+  echo "error: systemctl not found -- deploy/systemd/ is Linux/systemd-specific." >&2
+  echo "On another platform, generate STATUS.md yourself on whatever schedule you like:" >&2
+  echo "  $REPO_ROOT/bin/research-loops dashboard --output $REPO_ROOT/STATUS.md" >&2
+  exit 1
+fi
+
+UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+mkdir -p "$UNIT_DIR"
+
+install_unit() {
+  local name="$1"
+  # Templates hardcode %h/research-loops as the example clone path; rewrite it
+  # to wherever this clone actually is so the units work regardless of layout.
+  sed "s#%h/research-loops#$REPO_ROOT#g" "$REPO_ROOT/deploy/systemd/$name" >"$UNIT_DIR/$name"
+  echo "installed: $UNIT_DIR/$name"
+}
+
+install_unit research-loops-dashboard.service
+install_unit research-loops-dashboard.timer
+
+systemctl --user daemon-reload
+systemctl --user enable --now research-loops-dashboard.timer
+
+# The point of "installed" is that STATUS.md exists right away, not up to
+# OnUnitActiveSec later at the timer's first tick.
+"$REPO_ROOT/bin/research-loops" dashboard --output "$REPO_ROOT/STATUS.md" >/dev/null
+echo "wrote: $REPO_ROOT/STATUS.md (refreshed every 60s by the timer from here on)"
+
+echo
+echo "Dashboard refresh is running. Queue workers are a separate, deliberate step:"
+echo "  cp \"$REPO_ROOT/deploy/systemd/research-loops-worker@.service\" \"$UNIT_DIR/\""
+echo "  sed -i \"s#%h/research-loops#$REPO_ROOT#g\" \"$UNIT_DIR/research-loops-worker@.service\""
+echo "  systemctl --user daemon-reload"
+echo "  systemctl --user enable --now research-loops-worker@worker-1.service"

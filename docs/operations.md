@@ -90,17 +90,32 @@ Regenerate this on a cadence (cron, systemd timer — see `deploy/systemd/`) if 
 standing status file rather than running it by hand. It's a generated file: manual edits
 are overwritten on the next run.
 
-## systemd deployment
-
-`deploy/systemd/` has templates for a worker service and a dashboard-refresh timer.
-Copy them to `~/.config/systemd/user/`, edit the `WorkingDirectory`/`ExecStart` paths
-for your clone location, then:
+## systemd deployment (Linux)
 
 ```bash
+tools/install-systemd
+```
+
+Installs the dashboard-refresh timer for this exact clone (rewriting the
+`deploy/systemd/*` templates' example path to wherever you actually cloned it),
+enables it, and writes `STATUS.md` immediately rather than waiting for the timer's
+first tick — so the root of your clone has a live status file as soon as you're
+installed, the same way it's set up for a long-running portfolio. It never enables a
+worker; starting real research iterations (and consuming real quota) stays a separate,
+deliberate step, which the script prints at the end:
+
+```bash
+cp deploy/systemd/research-loops-worker@.service ~/.config/systemd/user/
+sed -i "s#%h/research-loops#$(pwd)#g" ~/.config/systemd/user/research-loops-worker@.service
 systemctl --user daemon-reload
 systemctl --user enable --now research-loops-worker@worker-1.service
-systemctl --user enable --now research-loops-dashboard.timer
 ```
+
+This is Linux/systemd-specific — see `docs/architecture.md`'s portability note for what
+that means for crash recovery on other platforms. On a non-systemd platform, generate
+`STATUS.md` on whatever schedule you have available (cron, a launchd agent, ...); the
+underlying command is the same `bin/research-loops dashboard --output STATUS.md` shown
+above.
 
 ## Troubleshooting `needs_attention`
 

@@ -76,6 +76,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="self-promotions allowed since the last operator review-reset, "
         "when --gap-policy=auto",
     )
+    add.add_argument(
+        "--lock-sha256",
+        help="the approved completion-inventory lock from `tools/approve-topic` or "
+        "`chassis/semantic-state.py lock` — passed into every DONE check for this "
+        "item so an agent cannot pass validation by adding, removing, or renaming "
+        "an obligation/deliverable directly in SEMANTIC-STATE.json. Strongly "
+        "recommended for every topic; omitting it means DONE is only checked "
+        "structurally, not against a pinned inventory",
+    )
     add.add_argument("command", nargs=argparse.REMAINDER)
 
     listing = sub.add_parser("list", help="show queue state")
@@ -237,6 +246,7 @@ def main(argv: list[str] | None = None) -> int:
                     agent_secondary=args.agent_secondary,
                     gap_policy=args.gap_policy,
                     gap_auto_limit=args.gap_auto_limit,
+                    completion_lock=args.lock_sha256,
                 )
             )
         elif args.action in {"list", "status"}:

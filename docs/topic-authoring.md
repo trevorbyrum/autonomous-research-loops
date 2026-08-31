@@ -7,10 +7,12 @@ A topic is three files plus a handful of ledgers, all in one directory:
 - **`TOPIC.md`** — the machine-facing projection: a finite obligations list, required
   deliverables, dependencies, and the exit condition. References `AUTHORITY.md` by its
   SHA-256.
-- **`SEMANTIC-STATE.json`** — the executable state. Immutable fields per obligation
-  (`id`, `text`, `source_ref`) plus agent-writable fields (`disposition`, `confidence`,
-  `evidence_refs`, ...). `chassis/semantic-state.py validate` is the completion gate —
-  see `schema/semantic-state.schema.json` for the full shape.
+- **`SEMANTIC-STATE.json`** — the executable state. Fields meant to be immutable per
+  obligation (`id`, `text`, `source_ref`) plus agent-writable fields (`disposition`,
+  `confidence`, `evidence_refs`, ...). `chassis/semantic-state.py validate` is the
+  completion gate — see `schema/semantic-state.schema.json` for the full shape. "Meant
+  to be" is enforced, not just asked-nicely, only when a completion lock is pinned (see
+  below) — `tools/approve-topic` and `research-loops add` both do this by default.
 
 ## The fast path: `tools/new-topic` + `tools/approve-topic`
 
@@ -44,6 +46,29 @@ This is a deliberate, explicit action — "yes, I changed the scope on purpose" 
 something that happens automatically. Without it, the next `validate` call will report
 a hash mismatch and refuse completion, by design: an unnoticed scope change is exactly
 the failure this is meant to catch.
+
+## The completion lock: why `TOPIC.md`/`AUTHORITY.md` hashes aren't enough on their own
+
+`contract_sha256`/`authority_sha256` prove `TOPIC.md` and `AUTHORITY.md` weren't
+rewritten. They prove nothing about `SEMANTIC-STATE.json`'s own `obligations`/
+`deliverables` arrays — nothing stops an agent from deleting an inconvenient
+`contradicted` obligation from that array, inventing a new one and marking it
+`supported`, or editing a deliverable's `required_headings` to something already in its
+own draft, all without touching either hashed file. `validate` catches malformed or
+incomplete entries, but not a *plausible*, well-formed, silently altered inventory.
+
+The completion lock closes that gap: `chassis/semantic-state.py lock topics/my-topic`
+hashes the exact `id`/`text`/`source_ref` of every obligation and `id`/`description`/
+`path`/`required_headings` of every deliverable, and `validate --lock-sha256 <hash>`
+refuses `DONE` if that hash no longer matches — catching exactly the tampering above,
+whether or not `TOPIC.md`/`AUTHORITY.md` changed. `tools/approve-topic` computes this
+lock and bakes `--lock-sha256` straight into the `research-loops add` command it prints;
+`research-loops add --lock-sha256 ...` and a manifest's `completion_lock` field both
+store it in the queue's own state (never the agent-writable topic directory), and
+`chassis/run-topic.sh` passes it into every `validate` call automatically from there.
+Running a topic outside the queue (invoking `run-topic.sh` directly)? Export
+`RESEARCH_LOOP_COMPLETION_LOCK` yourself, or you're only getting the structural checks,
+not the pinned-inventory ones.
 
 ## What makes a good obligation
 

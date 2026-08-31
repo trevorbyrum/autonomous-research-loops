@@ -13,6 +13,12 @@ make "the research is done" mean something. A system that lets its own research 
 adjust the definition of done under pressure will eventually adjust it exactly when
 pressure is highest, which is precisely when you need it not to.
 
+`TOPIC.md`/`AUTHORITY.md` hashes alone don't cover this: they prove those two files
+weren't rewritten, not that `SEMANTIC-STATE.json`'s own obligation/deliverable inventory
+still matches what was approved. `tools/approve-topic` and `research-loops add` both pin
+a completion-inventory lock by default for exactly that reason — see
+`docs/topic-authoring.md#the-completion-lock-why-topicmdauthoritymd-hashes-arent-enough-on-their-own`.
+
 **The one configurable exception, and why it doesn't actually break the rule above.**
 A topic's `gap_policy` defaults to `review`: an agent that finds a real, uncovered gap
 may only propose it (a `PROPOSAL` row in `DECISIONS-LOG.md`); an operator promotes it,

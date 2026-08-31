@@ -16,3 +16,13 @@ research-loops = "research_loops.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["research_loops*"]
+
+# This is a clone-and-run application, not a conventional installable library:
+# chassis/, runners/, tools/, templates/, and schema/ are plain top-level
+# directories, not inside the research_loops package, so a regular (non-editable)
+# `pip install .` gives you a `research-loops` command with nothing for it to
+# actually run against. `pip install -e .` from a git clone works and is
+# supported (editable installs keep __file__ pointing at your real clone, so
+# --root's repo-relative default and every chassis/runners/tools reference still
+# resolve) -- it's purely a convenience for getting `research-loops` on PATH
+# instead of typing `bin/research-loops` or `PYTHONPATH=. python3 -m research_loops`.

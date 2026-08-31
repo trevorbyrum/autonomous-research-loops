@@ -53,6 +53,18 @@ def _validate_gap_auto_limit(value: int) -> int:
     return value
 
 
+_LOCK_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def _validate_completion_lock(value: str | None) -> str | None:
+    if value is not None and not _LOCK_PATTERN.fullmatch(value):
+        raise QueueError(
+            "completion_lock must be a 64-character lowercase hex SHA-256, as printed "
+            "by `chassis/semantic-state.py lock` or `tools/approve-topic`"
+        )
+    return value
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -151,6 +163,7 @@ class QueueStore:
         agent_secondary: str | None = None,
         gap_policy: str = "review",
         gap_auto_limit: int = 0,
+        completion_lock: str | None = None,
     ) -> dict[str, Any]:
         if not title.strip() or not command:
             raise QueueError("title and command are required")
@@ -164,6 +177,7 @@ class QueueStore:
         _validate_agent_name(agent_secondary, "agent_secondary")
         _validate_gap_policy(gap_policy)
         _validate_gap_auto_limit(gap_auto_limit)
+        _validate_completion_lock(completion_lock)
         resolved_item_id = validate_item_id(
             item_id if item_id is not None else f"loop-{uuid.uuid4().hex[:10]}"
         )
@@ -191,6 +205,7 @@ class QueueStore:
             "agent_secondary": agent_secondary,
             "gap_policy": gap_policy,
             "gap_auto_limit": gap_auto_limit,
+            "completion_lock": completion_lock,
             "progress_signature": None,
             "stall_count": 0,
             "status": "queued",
@@ -247,7 +262,15 @@ class QueueStore:
         "agent_secondary",
         "gap_policy",
         "gap_auto_limit",
+        "completion_lock",
     )
+
+    # completion_lock is deliberately absent from _TOPIC_CONFIG_FIELDS: it's an
+    # approval-time decision from `approve-topic`/`semantic-state.py lock`, not
+    # a scheduling knob — changing it goes through `add` or `sync` (both of
+    # which the item's own history-preserving discipline already covers), not
+    # casual config-apply reconfiguration. sync() also protects it exactly like
+    # `command`: never silently changed under a running item.
 
     # Fields configure_topic() may adjust on an existing item without ever
     # touching command/cwd/title/depends_on — these only affect the NEXT
@@ -364,6 +387,8 @@ class QueueStore:
                     protected_changes.append(("command", "command"))
                 if desired["depends_on"] != current["depends_on"]:
                     protected_changes.append(("depends_on", "dependencies"))
+                if desired["completion_lock"] != current["completion_lock"]:
+                    protected_changes.append(("completion_lock", "completion lock"))
                 if item["status"] == "running" and protected_changes:
                     labels = " and ".join(label for _, label in protected_changes)
                     report["skipped"].append(
@@ -504,6 +529,7 @@ class QueueStore:
         )
         gap_policy = _validate_gap_policy(entry.get("gap_policy", "review"))
         gap_auto_limit = _validate_gap_auto_limit(entry.get("gap_auto_limit", 0))
+        completion_lock = _validate_completion_lock(entry.get("completion_lock"))
         return {
             "title": str(entry["title"]).strip(),
             "cwd": str(Path(str(entry["cwd"])).expanduser().resolve()),
@@ -523,6 +549,7 @@ class QueueStore:
             "agent_secondary": agent_secondary,
             "gap_policy": gap_policy,
             "gap_auto_limit": gap_auto_limit,
+            "completion_lock": completion_lock,
         }
 
     def configure_topic(self, item_id: str, **settings: Any) -> dict[str, Any]:

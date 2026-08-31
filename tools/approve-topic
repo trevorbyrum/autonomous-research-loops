@@ -79,10 +79,15 @@ def main(argv: list[str] | None = None) -> int:
     print(
         "  bin/research-loops add --id "
         f"{args.topic_id} --title \"...\" --cwd {topic_dir} "
-        f"--stop-file STOP --max-attempts 8 --repeat-seconds 900 -- "
+        f"--stop-file STOP --max-attempts 8 --repeat-seconds 900 "
+        f"--lock-sha256 {lock} -- "
         f"{run_topic} {topic_dir} generic"
     )
-    print(f"(completion inventory lock, if you want to pin it: {lock})")
+    print(
+        "(--lock-sha256 pins the approved obligation/deliverable inventory: an "
+        "agent cannot pass DONE by adding, removing, or renaming one directly in "
+        "SEMANTIC-STATE.json — see docs/governance.md#the-operator-owns-scope)"
+    )
     return 0
 
 
