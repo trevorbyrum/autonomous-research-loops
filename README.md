@@ -78,13 +78,21 @@ flowchart TD
     N --> O["DONE
     only if every obligation is terminal"]
 
-    style A fill:#fff,stroke:#333,stroke-width:2px
-    style O fill:#fff,stroke:#333,stroke-width:2px
-    style B fill:#eef4ff,stroke:#3b6fd4
-    style E fill:#eef4ff,stroke:#3b6fd4
-    style G fill:#eef4ff,stroke:#3b6fd4
-    style I fill:#eef4ff,stroke:#3b6fd4
-    style N fill:#eef4ff,stroke:#3b6fd4
+    style A fill:#fff,stroke:#333,stroke-width:2px,color:#111
+    style O fill:#fff,stroke:#333,stroke-width:2px,color:#111
+    style B fill:#eef4ff,stroke:#3b6fd4,color:#111
+    style C fill:#f7f7f7,stroke:#666,color:#111
+    style D fill:#fff8e1,stroke:#b8860b,color:#111
+    style E fill:#eef4ff,stroke:#3b6fd4,color:#111
+    style F fill:#f7f7f7,stroke:#666,color:#111
+    style G fill:#eef4ff,stroke:#3b6fd4,color:#111
+    style H fill:#f7f7f7,stroke:#666,color:#111
+    style I fill:#eef4ff,stroke:#3b6fd4,color:#111
+    style J fill:#f7f7f7,stroke:#666,color:#111
+    style K fill:#f7f7f7,stroke:#666,color:#111
+    style L fill:#f7f7f7,stroke:#666,color:#111
+    style M fill:#fff8e1,stroke:#b8860b,color:#111
+    style N fill:#eef4ff,stroke:#3b6fd4,color:#111
 ```
 
 ## Quickstart
