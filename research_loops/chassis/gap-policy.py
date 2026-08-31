@@ -23,6 +23,7 @@ import argparse
 import importlib.util
 import json
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -80,6 +81,29 @@ def _append_decision(topic_dir: Path, row_id: str, note: str) -> None:
         handle.write(row)
 
 
+_RECENTLY_ACTIVE_WINDOW_SECONDS = 60
+
+
+def _seconds_since_last_log_write(topic_dir: Path) -> float | None:
+    """Best-effort "is an iteration probably running right now" signal.
+
+    gap-policy.py has no queue awareness by design (it works standalone,
+    same as every other chassis tool) -- it can't ask the queue whether this
+    topic is claimed. The most recently modified file under logs/ is the
+    only filesystem-only proxy available. Not perfect (a stale race window
+    still exists), but real: an operator amending SEMANTIC-STATE.json while
+    an agent is mid-iteration writing to the same file is a genuine
+    conflict, and this catches the common case.
+    """
+    log_dir = topic_dir / "logs"
+    if not log_dir.is_dir():
+        return None
+    mtimes = [entry.stat().st_mtime for entry in log_dir.iterdir() if entry.is_file()]
+    if not mtimes:
+        return None
+    return time.time() - max(mtimes)
+
+
 def promote(
     topic_dir: Path,
     *,
@@ -87,7 +111,21 @@ def promote(
     text: str,
     source_ref: str,
     auto: bool,
+    force: bool = False,
 ) -> None:
+    # Only for operator-initiated amends -- an --auto self-promotion is
+    # called BY the agent FROM its own iteration, so recent log activity is
+    # expected there, not a race to warn about.
+    if not auto and not force:
+        age = _seconds_since_last_log_write(topic_dir)
+        if age is not None and age < _RECENTLY_ACTIVE_WINDOW_SECONDS:
+            raise SystemExit(
+                f"{topic_dir} looks like it may have an iteration actively running "
+                f"(a log file was modified {age:.0f}s ago) -- editing SEMANTIC-STATE.json "
+                "now risks a race with that iteration's own writes. Pause the topic "
+                "first (`research-loops pause <id>`), or pass --force if you're sure "
+                "it's safe."
+            )
     topic_md_path = topic_dir / "TOPIC.md"
     state_path = topic_dir / "SEMANTIC-STATE.json"
     contents = topic_md_path.read_text(encoding="utf-8")
@@ -154,6 +192,14 @@ def main(argv: list[str] | None = None) -> int:
     promote_p.add_argument(
         "--limit", type=int, help="required with --auto: this topic's gap_auto_limit"
     )
+    promote_p.add_argument(
+        "--force",
+        action="store_true",
+        help="operator amends only (ignored with --auto): skip the check for a "
+        "recently-modified log file that might mean an iteration is actively "
+        "running right now (a filesystem-only best-effort signal -- this tool "
+        "has no queue awareness). Pausing the topic first is the safer option",
+    )
 
     reset_p = sub.add_parser(
         "review-reset",
@@ -185,6 +231,7 @@ def main(argv: list[str] | None = None) -> int:
             text=args.text,
             source_ref=args.source_ref,
             auto=args.auto,
+            force=args.force,
         )
         print(f"promoted {args.obligation_id}")
         return 0

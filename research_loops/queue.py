@@ -906,6 +906,54 @@ class QueueStore:
             item["updated_at"] = utc_now()
         return copy.deepcopy(item)
 
+    def reassign_worker(self, worker: str, target_item_id: str) -> dict[str, Any]:
+        """Move `worker` from whatever it currently owns to `target_item_id`.
+
+        If the worker owns a running item, that iteration finishes naturally
+        (never killed -- same "don't touch an in-flight subprocess" mechanism
+        graceful pause uses) and is then released back to the normal
+        unclaimed pool, not paused: it stays schedulable for any worker
+        later, it just loses this worker's sticky claim. `target_item_id` is
+        pre-claimed for `worker` immediately, so its very next `claim_next()`
+        call picks it up first via the existing sticky-ownership check --
+        conditional on the target actually being eligible right now (an
+        unmet dependency or an active backoff timer still applies; this
+        method only changes *who* would claim it, not the claimability
+        rules themselves).
+        """
+        with self._locked() as state:
+            target = self._find(state, target_item_id)
+            if target.get("claimed_by") not in (None, worker):
+                raise QueueError(
+                    f"item {target_item_id} is already claimed by worker "
+                    f"{target['claimed_by']!r} -- refusing to steal it from another worker"
+                )
+            if target["status"] not in {"queued", "backoff"} or target["desired_state"] != "running":
+                raise QueueError(
+                    f"item {target_item_id} is not currently claimable "
+                    f"(status={target['status']!r}, desired_state={target['desired_state']!r})"
+                )
+            current = next(
+                (
+                    i
+                    for i in state["items"]
+                    if i["status"] == "running"
+                    and i.get("claimed_by", "worker-1") == worker
+                    and i["id"] != target_item_id
+                ),
+                None,
+            )
+            now = utc_now()
+            if current is not None:
+                current["desired_state"] = "releasing"
+                current["updated_at"] = now
+            target["claimed_by"] = worker
+            target["updated_at"] = now
+            return {
+                "released": copy.deepcopy(current) if current is not None else None,
+                "target": copy.deepcopy(target),
+            }
+
     def request_restart(self, item_id: str) -> dict[str, Any]:
         with self._locked() as state:
             item = self._find(state, item_id)
@@ -1129,6 +1177,18 @@ class QueueStore:
                 item["desired_state"] = "paused"
                 item["next_eligible_at"] = None
                 actual_outcome = "paused"
+
+            # reassign_worker()'s graceful release: unlike graceful stop, the
+            # goal is to hand this WORKER off to a different item, not to stop
+            # this one -- so a "scheduled"/"backoff" outcome (which normally
+            # preserves claimed_by for sticky reclaim by the same worker)
+            # instead loses that stickiness, staying otherwise normally
+            # schedulable for any worker. A "completed"/"needs_attention"
+            # outcome already clears claimed_by and needs no special handling
+            # here -- it's a more final outcome than a release request.
+            if item["desired_state"] == "releasing" and actual_outcome in {"scheduled", "backoff"}:
+                item["claimed_by"] = None
+                item["desired_state"] = "running"
 
             item["last_pid"] = None
             item["last_pid_fingerprint"] = None

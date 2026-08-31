@@ -217,6 +217,12 @@ class CliTests(unittest.TestCase):
         result = self.run_cli("agents", "t1", check=False)
         self.assertNotEqual(result.returncode, 0)
 
+    def test_swap_active_cli_claims_target_for_worker(self):
+        self.run_cli("add", "--id", "target", "--title", "T", "--cwd", "/tmp", "--", "true")
+        result = json.loads(self.run_cli("swap-active", "worker-1", "target").stdout)
+        self.assertIsNone(result["released"])
+        self.assertEqual(result["target"]["claimed_by"], "worker-1")
+
 
 if __name__ == "__main__":
     unittest.main()

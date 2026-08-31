@@ -70,14 +70,14 @@ Two different needs, two different tools — pick the one that matches:
 - **An operator is amending scope directly** (not a self-discovered gap): the same
   `gap-policy.py promote` command works without `--auto` for this — it's the one
   sanctioned way to add an obligation to `TOPIC.md`/`SEMANTIC-STATE.json` and keep the
-  hashes consistent, regardless of whether the topic is queued or actively running. If
-  the topic is currently running, editing `SEMANTIC-STATE.json` while an agent is
-  mid-iteration writing to the same file is a real race with no clean fix today —
-  `research-loops pause <id>` currently terminates the in-flight iteration immediately
-  (losing that iteration's unsaved progress but avoiding the write race by removing the
-  writer entirely), which is the safest option available until a graceful "finish first"
-  pause exists (see the ad hoc list below). Amending a queued-but-not-running topic has
-  no such risk.
+  hashes consistent, regardless of whether the topic is queued or actively running.
+  Editing `SEMANTIC-STATE.json` while an agent is mid-iteration writing to the same
+  file is a real race, so a manual (non-`--auto`) `promote` refuses by default if
+  `logs/` has a file modified in the last 60 seconds — a filesystem-only best-effort
+  signal, since `gap-policy.py` has no queue awareness. `research-loops pause <id>`
+  first (graceful by default — the iteration finishes naturally, no lost work) is the
+  safe fix; `--force` bypasses the check for the rare case you're certain it's fine.
+  Amending a queued-but-not-running topic never hits this check at all.
 
 ## Dependencies vs. scheduling order
 
@@ -139,9 +139,18 @@ in-flight" guarantee `config apply`/`add --agent-main` already have (see
 actively running changes what launches *next*; the current iteration keeps running
 under whichever agent it already started with.
 
-## Reference: what's still ad hoc (growing list, check back)
+## Moving a worker to a different topic
 
-The following operational needs don't have a dedicated tool yet — this section will
-shrink as later phases ship:
-- Reassigning a worker from its current topic to a specific queued one without
-  disrupting the in-flight iteration — no tool yet.
+```bash
+research-loops swap-active <worker> <target-item-id>
+```
+
+If `<worker>` currently owns a running item, that iteration finishes naturally (never
+killed) and is released back to the normal unclaimed pool — not paused, still
+schedulable for any worker later, it just loses this worker's sticky claim.
+`<target-item-id>` is pre-claimed for `<worker>` immediately, so its very next
+`claim_next()` picks it up first. Refuses outright (no partial effect) if the target
+is already claimed by a *different* worker, or isn't currently in a claimable state
+(paused, completed, needs_attention, or still waiting out a backoff timer). If the
+worker owns nothing running, this just claims the target immediately — no release
+step needed.

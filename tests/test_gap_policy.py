@@ -168,6 +168,38 @@ class GapPolicyTests(unittest.TestCase):
         self.assertIn("[operator] PROMOTED", log)
         self.assertNotIn("AUTO-PROMOTED", log)
 
+    def test_manual_promote_refuses_when_a_log_was_just_modified(self):
+        (self.topic_dir / "logs" / "iteration-fake.log").write_text("x", encoding="utf-8")
+        result = self._run(
+            "promote", str(self.topic_dir),
+            "--id", "RACE-01", "--text", "test", "--source-ref", "test",
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("actively running", result.stderr)
+        topic_md = (self.topic_dir / "TOPIC.md").read_text(encoding="utf-8")
+        self.assertNotIn("**RACE-01**", topic_md)
+
+    def test_manual_promote_force_bypasses_the_recent_log_check(self):
+        (self.topic_dir / "logs" / "iteration-fake.log").write_text("x", encoding="utf-8")
+        result = self._run(
+            "promote", str(self.topic_dir),
+            "--id", "RACE-02", "--text", "test", "--source-ref", "test", "--force",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        topic_md = (self.topic_dir / "TOPIC.md").read_text(encoding="utf-8")
+        self.assertIn("**RACE-02**", topic_md)
+
+    def test_auto_promote_is_never_refused_by_the_recent_log_check(self):
+        # An --auto self-promotion is called BY the agent FROM its own
+        # iteration, so recent log activity is expected, not a race.
+        (self.topic_dir / "logs" / "iteration-fake.log").write_text("x", encoding="utf-8")
+        result = self._run(
+            "promote", str(self.topic_dir),
+            "--id", "RACE-03", "--text", "test", "--source-ref", "test",
+            "--auto", "--limit", "3",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -174,6 +174,14 @@ def build_parser() -> argparse.ArgumentParser:
     restart = sub.add_parser("restart", help="restart an item safely")
     restart.add_argument("item_id")
 
+    swap_active = sub.add_parser(
+        "swap-active",
+        help="move a worker from whatever it currently owns to a specific queued "
+        "item, without killing an in-flight iteration",
+    )
+    swap_active.add_argument("worker")
+    swap_active.add_argument("target_item_id")
+
     worker_policy = sub.add_parser(
         "worker-policy", help="set a worker's durable new-topic intake policy"
     )
@@ -385,6 +393,8 @@ def main(argv: list[str] | None = None) -> int:
             emit(store.resume_item(args.item_id) if args.item_id else store.resume_all())
         elif args.action == "restart":
             emit(store.request_restart(args.item_id))
+        elif args.action == "swap-active":
+            emit(store.reassign_worker(args.worker, args.target_item_id))
         elif args.action == "worker-policy":
             emit(
                 store.configure_worker_policy(
