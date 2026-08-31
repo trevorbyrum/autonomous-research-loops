@@ -21,7 +21,7 @@ or care which LLM CLI is actually behind it.
 
 **Exit codes:** a runner owns `0` (success) and any other code it wants classified as a
 transient failure by `research_loops/runner.py`'s failure-pattern matching. It must
-**never** use `3`, `4`, `5`, or `78` — those are reserved by `chassis/run-topic.sh` for
+**never** use `3`, `4`, `5`, or `78` — those are reserved by `research_loops/chassis/run-topic.sh` for
 STOP/PAUSED/stall/configuration-error respectively. Returning one of those by accident
 will misclassify a real failure as one of those terminal states.
 

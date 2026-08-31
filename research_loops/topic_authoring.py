@@ -1,31 +1,27 @@
-#!/usr/bin/env python3
-"""Scaffold a draft topic from a short brief. Nothing this writes is binding until
-`tools/approve-topic` promotes it -- see docs/topic-authoring.md.
+"""Deterministic topic scaffolding and approval -- no LLM call, ever.
 
-Usage:
-    tools/new-topic <topic-id> --title "Human-readable title" --brief path/to/brief.md
-    tools/new-topic <topic-id> --title "..." --brief -   # read the brief from stdin
+`new_topic()` splits a free-text brief into candidate obligations and writes
+DRAFT-AUTHORITY.md/DRAFT-TOPIC.md/DRAFT-SEMANTIC-STATE.json; nothing is binding
+until `approve_topic()` promotes them, recomputing hashes from whatever you
+actually left in the DRAFT files after review. See docs/topic-authoring.md.
 
-The brief is free text: a few paragraphs describing what you want researched, what's
-in scope, what's out of scope, and anything you already know you want covered. This
-tool does NOT call an LLM -- it deterministically splits your brief into candidate
-obligations (the same approach used to decompose long-form scope text into finite,
-checkable obligations elsewhere in this project) so you can review and edit real text,
-not something an agent invented. Splitting on sentence/semicolon boundaries is not
-smart; write your brief as a list of distinct points separated by semicolons or
-periods and it will decompose cleanly. Trim, merge, or add obligations by hand in the
-DRAFT files afterward -- that's expected, not a failure of this tool.
+Backs the `research-loops new-topic`/`research-loops approve-topic`
+subcommands in __main__.py.
 """
+
 from __future__ import annotations
 
-import argparse
+import hashlib
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-TEMPLATE_DIR = REPO_ROOT / "templates" / "topic"
+from .queue import QueueError
+
+_PACKAGE_DIR = Path(__file__).resolve().parent
 
 LEDGER_FILES = (
     "SOURCE-LEDGER.md",
@@ -35,6 +31,8 @@ LEDGER_FILES = (
     "PROGRESS.md",
     "SYNTHESIS.md",
 )
+
+_TOPIC_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 
 
 def split_brief(text: str) -> list[str]:
@@ -92,9 +90,7 @@ def default_deliverables() -> list[dict[str, object]]:
     ]
 
 
-def sha256_text(text: str) -> str:
-    import hashlib
-
+def _sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
@@ -169,31 +165,15 @@ def render_topic(
     return "\n".join(lines)
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("topic_id")
-    parser.add_argument("--title", required=True)
-    parser.add_argument("--brief", required=True, help="path to a brief text file, or '-' for stdin")
-    parser.add_argument(
-        "--dest",
-        default=str(REPO_ROOT / "topics"),
-        help="directory under which <topic_id>/ is created (default: ./topics)",
-    )
-    args = parser.parse_args(argv)
-
-    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", args.topic_id):
-        print("error: topic id must be lowercase letters/digits/hyphens", file=sys.stderr)
-        return 2
-
-    brief_text = sys.stdin.read() if args.brief == "-" else Path(args.brief).read_text(encoding="utf-8")
+def new_topic(topic_id: str, *, title: str, brief_text: str, dest: Path) -> dict[str, Any]:
+    if not _TOPIC_ID_PATTERN.fullmatch(topic_id):
+        raise QueueError("topic id must be lowercase letters/digits/hyphens")
     if not brief_text.strip():
-        print("error: brief is empty", file=sys.stderr)
-        return 2
+        raise QueueError("brief is empty")
 
-    topic_dir = Path(args.dest) / args.topic_id
+    topic_dir = dest / topic_id
     if (topic_dir / "TOPIC.md").exists():
-        print(f"error: {topic_dir}/TOPIC.md already exists -- this topic is already approved", file=sys.stderr)
-        return 2
+        raise QueueError(f"{topic_dir}/TOPIC.md already exists -- this topic is already approved")
     topic_dir.mkdir(parents=True, exist_ok=True)
     (topic_dir / "logs").mkdir(exist_ok=True)
     for name in LEDGER_FILES:
@@ -205,28 +185,20 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     chunks = split_brief(brief_text)
-    if len(chunks) < 2:
-        print(
-            "warning: only extracted "
-            f"{len(chunks)} obligation(s) from the brief -- add semicolons between "
-            "distinct points in your brief for finer decomposition, or just edit "
-            "DRAFT-TOPIC.md by hand after this runs.",
-            file=sys.stderr,
-        )
     obligations = [
         obligation(f"SCOPE-{i:02d}", text, "AUTHORITY.md#operator-brief-verbatim")
         for i, text in enumerate(chunks, 1)
     ]
     deliverables = default_deliverables()
 
-    authority = render_authority(args.title, brief_text)
-    authority_hash = sha256_text(authority)
-    contract = render_topic(args.title, authority_hash, obligations, deliverables)
-    contract_hash = sha256_text(contract)
+    authority = render_authority(title, brief_text)
+    authority_hash = _sha256_text(authority)
+    contract = render_topic(title, authority_hash, obligations, deliverables)
+    contract_hash = _sha256_text(contract)
 
     state = {
         "schema_version": 1,
-        "topic_id": args.topic_id,
+        "topic_id": topic_id,
         "contract_sha256": contract_hash,
         "authority_sha256": authority_hash,
         "obligations": obligations,
@@ -241,16 +213,68 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
 
-    print(f"Scaffolded {topic_dir}")
-    print(f"  {len(obligations)} candidate obligations extracted from your brief")
-    print()
-    print("Review and edit, in order:")
-    print(f"  1. {topic_dir}/DRAFT-AUTHORITY.md")
-    print(f"  2. {topic_dir}/DRAFT-TOPIC.md")
-    print("Then run:")
-    print(f"  tools/approve-topic {args.topic_id}")
-    return 0
+    return {
+        "topic_dir": str(topic_dir),
+        "obligation_count": len(obligations),
+        "chunk_count": len(chunks),
+    }
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
+def approve_topic(topic_id: str, *, dest: Path) -> dict[str, Any]:
+    topic_dir = dest / topic_id
+    draft_authority = topic_dir / "DRAFT-AUTHORITY.md"
+    draft_topic = topic_dir / "DRAFT-TOPIC.md"
+    draft_state = topic_dir / "DRAFT-SEMANTIC-STATE.json"
+    for path in (draft_authority, draft_topic, draft_state):
+        if not path.is_file():
+            raise QueueError(f"{path} not found -- run `research-loops new-topic` first")
+    if (topic_dir / "TOPIC.md").exists():
+        raise QueueError(f"{topic_dir}/TOPIC.md already exists -- already approved")
+
+    state = json.loads(draft_state.read_text(encoding="utf-8"))
+    # Recompute from whatever is actually on disk now, not what new_topic computed
+    # at scaffold time -- the whole point of the DRAFT stage is that you edit these.
+    state["contract_sha256"] = hashlib.sha256(draft_topic.read_bytes()).hexdigest()
+    state["authority_sha256"] = hashlib.sha256(draft_authority.read_bytes()).hexdigest()
+
+    draft_authority.rename(topic_dir / "AUTHORITY.md")
+    draft_topic.rename(topic_dir / "TOPIC.md")
+    (topic_dir / "SEMANTIC-STATE.json").write_text(
+        json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    draft_state.unlink()
+
+    semantic_state_py = _PACKAGE_DIR / "chassis" / "semantic-state.py"
+    run_topic_sh = _PACKAGE_DIR / "chassis" / "run-topic.sh"
+
+    check = subprocess.run(
+        [sys.executable, str(semantic_state_py), "check", str(topic_dir)],
+        capture_output=True,
+        text=True,
+    )
+    if check.returncode != 0:
+        raise QueueError(
+            f"{check.stdout.strip()}\n{check.stderr.strip()}".strip()
+        )
+
+    lock = subprocess.run(
+        [sys.executable, str(semantic_state_py), "lock", str(topic_dir)],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+    suggested_command = (
+        "research-loops add --id "
+        f"{topic_id} --title \"...\" --cwd {topic_dir} "
+        f"--stop-file STOP --max-attempts 8 --repeat-seconds 900 "
+        f"--lock-sha256 {lock} -- "
+        f"{run_topic_sh} {topic_dir} generic"
+    )
+
+    return {
+        "topic_dir": str(topic_dir),
+        "check_output": check.stdout.strip(),
+        "lock": lock,
+        "suggested_command": suggested_command,
+    }

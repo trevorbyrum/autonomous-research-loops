@@ -26,7 +26,7 @@ cover a gap, without proposing it first, is exactly what this rule exists to pre
 
 The one exception is a topic explicitly configured with `gap_policy = "auto"` (see
 `docs/governance.md#the-operator-owns-scope`): there, the agent may self-promote a gap
-with `chassis/gap-policy.py promote --auto`, but only up to that topic's `gap_auto_limit`
+with `research_loops/chassis/gap-policy.py promote --auto`, but only up to that topic's `gap_auto_limit`
 times since the operator's last review — the tool itself enforces the cap and tags every
 self-promotion `AUTO-PROMOTED`, never silently. Default policy is always `review`.
 
@@ -91,7 +91,7 @@ retry, inactivity, or revision limit defines semantic completion.
   sources, dates, exact passages, and retrieval failures; the parent agent verifies
   load-bearing claims and owns conclusions.
 - Apply the topic's own source-priority and claim-strength dimensions. A generic
-  source-tier label (see `templates/topic/AUTHORITY.md`'s default T1–T4 scaffold) may be
+  source-tier label (see `research_loops/templates/topic/AUTHORITY.md`'s default T1–T4 scaffold) may be
   used as a starting point, but a topic author is free to replace it entirely with
   whatever evidence-quality dimensions actually fit the domain.
 - Seek counterevidence, preserve contradictions, deduplicate without erasing dated

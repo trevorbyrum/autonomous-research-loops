@@ -17,8 +17,8 @@ TERMINAL_DISPOSITIONS = {"supported", "contradicted", "unresolved", "deferred"}
 
 
 def obligation(identifier: str, text: str, source_ref: str) -> dict[str, object]:
-    """Build a fresh, open obligation record. Used by tools/new-topic when
-    promoting a draft; never called by a running research agent."""
+    """Build a fresh, open obligation record. Used by `new-topic`/`approve-topic`
+    when promoting a draft; never called by a running research agent."""
     return {
         "id": identifier,
         "text": text,

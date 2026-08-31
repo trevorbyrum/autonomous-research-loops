@@ -34,7 +34,7 @@ evidence-graded disposition, decided by a validator, not by the agent's own say-
   [`docs/governance.md`](docs/governance.md#the-output-is-evidence-not-a-verdict).
 - **Completion is executable, not asserted.** `semantic-state.py validate` either passes
   or it doesn't; a research agent writing `STOP DONE` while obligations remain open gets
-  overruled by the queue, every time. `tools/approve-topic` and `add` also pin a
+  overruled by the queue, every time. `approve-topic` and `add` also pin a
   completion-inventory lock by default, so an agent can't reach `DONE` by adding,
   removing, or renaming an obligation directly in `SEMANTIC-STATE.json` either — see
   [`docs/topic-authoring.md`](docs/topic-authoring.md#the-completion-lock-why-topicmdauthoritymd-hashes-arent-enough-on-their-own).
@@ -61,23 +61,23 @@ them independently.
 
 ```mermaid
 flowchart TD
-    A["You write a brief"] --> B["tools/new-topic"]
+    A["You write a brief"] --> B["research-loops new-topic"]
     B --> C["DRAFT-TOPIC.md / DRAFT-AUTHORITY.md
     deterministic, no LLM call"]
     B --> D{{"you review + edit"}}
-    D --> E["tools/approve-topic"]
+    D --> E["research-loops approve-topic"]
     E --> F["TOPIC.md · AUTHORITY.md · SEMANTIC-STATE.json
     hash-locked"]
     E --> G["bin/research-loops add/sync"]
     G --> H["state/queue.json
     research_loops/queue.py"]
     G --> I["bin/research-loops run"]
-    I --> J["chassis/run-topic.sh"]
+    I --> J["research_loops/chassis/run-topic.sh"]
     J --> K["runners/&lt;adapter&gt;.sh"]
     K --> L["your LLM CLI"]
     K -.-> M{{"reads CONTRACT-CORE.md, TOPIC.md, AUTHORITY.md,
     SEMANTIC-STATE.json; updates ledgers + state"}}
-    M --> N["chassis/semantic-state.py validate"]
+    M --> N["semantic-state.py validate"]
     N --> O["DONE
     only if every obligation is terminal"]
 
@@ -113,10 +113,10 @@ little client-side interactivity. Exclude full SPA frameworks like Next.js.
 EOF
 
 # 2. Turn it into a draft topic (deterministic, no LLM call yet)
-tools/new-topic my-first-topic --title "My First Topic" --brief /tmp/brief.md
+bin/research-loops new-topic my-first-topic --title "My First Topic" --brief /tmp/brief.md
 
 # 3. Read topics/my-first-topic/DRAFT-*.md, edit anything you want, then:
-tools/approve-topic my-first-topic
+bin/research-loops approve-topic my-first-topic
 
 # 4. Queue it and run one bounded iteration with a real runner
 # (approve-topic already printed this exact command with its lock baked in --
@@ -124,8 +124,8 @@ tools/approve-topic my-first-topic
 bin/research-loops add --id my-first-topic --title "My First Topic" \
   --cwd "$(pwd)/topics/my-first-topic" --stop-file STOP \
   --max-attempts 8 --repeat-seconds 900 \
-  --lock-sha256 "$(chassis/semantic-state.py lock topics/my-first-topic)" -- \
-  "$(pwd)/chassis/run-topic.sh" "$(pwd)/topics/my-first-topic" claude
+  --lock-sha256 "$(python3 research_loops/chassis/semantic-state.py lock topics/my-first-topic)" -- \
+  "$(pwd)/research_loops/chassis/run-topic.sh" "$(pwd)/topics/my-first-topic" claude
 bin/research-loops run --once
 
 # 5. Check status any time
@@ -133,8 +133,8 @@ bin/research-loops dashboard --output STATUS.md && cat STATUS.md
 ```
 
 `claude` above is just one choice — swap the last positional argument for `codex`,
-`hermes`, or `generic` (see [`runners/README.md`](runners/README.md)) depending on
-which CLI you already have authenticated.
+`hermes`, or `generic` (see [`runners/README.md`](research_loops/runners/README.md))
+depending on which CLI you already have authenticated.
 
 Want to skip straight to a real run? `examples/static-site-generator-choice/` is a
 fully approved, never-run topic — no brief-writing needed:
@@ -144,29 +144,36 @@ bin/research-loops add --id static-site-generator-choice \
   --title "Static Site Generator Choice for a Personal Blog" \
   --cwd "$(pwd)/examples/static-site-generator-choice" --stop-file STOP \
   --max-attempts 8 --repeat-seconds 900 \
-  --lock-sha256 "$(chassis/semantic-state.py lock examples/static-site-generator-choice)" -- \
-  "$(pwd)/chassis/run-topic.sh" "$(pwd)/examples/static-site-generator-choice" claude
+  --lock-sha256 "$(python3 research_loops/chassis/semantic-state.py lock examples/static-site-generator-choice)" -- \
+  "$(pwd)/research_loops/chassis/run-topic.sh" "$(pwd)/examples/static-site-generator-choice" claude
 bin/research-loops run --once
 ```
+
+Installed via `pip install -e .` instead of a bare clone? Drop `bin/` — `research-loops`
+is on PATH and resolves the same source tree either way (see
+[`docs/operations.md`](docs/operations.md#installing-on-path)).
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `research_loops/` | the queue engine: atomic state, crash-safe claim/retry, failure classification, dashboard |
-| `chassis/` | the per-iteration contract every topic runs under (`CONTRACT-CORE.md`, `run-topic.sh`, the completion validator) |
-| `runners/` | adapters translating the Agent Runner contract to a specific CLI (Claude Code, Codex, Hermes, or your own) |
-| `tools/` | `new-topic` and `approve-topic` — brief in, reviewed hash-locked topic out |
-| `templates/topic/` | the three-file shape (`TOPIC.md`, `AUTHORITY.md`, `SEMANTIC-STATE.json`) if you'd rather write one by hand |
-| `schema/` | JSON Schema for `SEMANTIC-STATE.json` |
+| `research_loops/` | the queue engine: atomic state, crash-safe claim/retry, failure classification, dashboard, plus the `new-topic`/`approve-topic` subcommands |
+| `research_loops/chassis/` | the per-iteration contract every topic runs under (`CONTRACT-CORE.md`, `run-topic.sh`, the completion validator) |
+| `research_loops/runners/` | adapters translating the Agent Runner contract to a specific CLI (Claude Code, Codex, Hermes, or your own) |
+| `research_loops/templates/topic/` | the three-file shape (`TOPIC.md`, `AUTHORITY.md`, `SEMANTIC-STATE.json`) if you'd rather write one by hand |
+| `research_loops/schema/` | JSON Schema for `SEMANTIC-STATE.json` |
+| `tools/install-systemd` | enables the dashboard-refresh timer for a git-clone deployment (see `docs/operations.md`) |
 | `examples/` | one real, runnable, fully-approved topic |
 | `docs/` | architecture, topic authoring, and operations detail |
+
+Everything under `research_loops/` ships in a real `pip install`, not just a git clone —
+see `docs/operations.md#installing-on-path` for what changes between the two.
 
 ## Documentation
 
 - [`docs/architecture.md`](docs/architecture.md) — the three layers, the state machine, why liveness ≠ completion
 - [`docs/topic-authoring.md`](docs/topic-authoring.md) — the full topic contract, dependencies, and how to change scope safely
-- [`runners/README.md`](runners/README.md) — the Agent Runner interface and how to add a new adapter
+- [`runners/README.md`](research_loops/runners/README.md) — the Agent Runner interface and how to add a new adapter
 - [`docs/operations.md`](docs/operations.md) — running multiple workers, declarative config, systemd deployment, troubleshooting
 - [`docs/governance.md`](docs/governance.md) — why the operator owns scope, and why quota failure is never evidence of absence
 

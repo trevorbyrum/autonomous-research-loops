@@ -36,15 +36,15 @@ max_attempts = 8
 # not covered by any existing obligation:
 #   "review" (default) — the agent may only propose it (a PROPOSAL row in
 #     DECISIONS-LOG.md); an operator promotes it by hand or with
-#     `chassis/gap-policy.py promote`. This is the engine's default and
+#     `research_loops/chassis/gap-policy.py promote`. This is the engine's default and
 #     matches docs/governance.md#the-operator-owns-scope.
 #   "auto" — the agent may self-promote a gap directly into a binding
-#     obligation (chassis/gap-policy.py promote --auto), up to
+#     obligation (research_loops/chassis/gap-policy.py promote --auto), up to
 #     gap_auto_limit times since the operator's last review-reset. Every
 #     self-promotion is tagged AUTO-PROMOTED in DECISIONS-LOG.md and fully
 #     auditable; once the limit is hit the agent falls back to proposing
 #     only, until you run:
-#       chassis/gap-policy.py review-reset topics/<id> --note "..."
+#       research_loops/chassis/gap-policy.py review-reset topics/<id> --note "..."
 gap_policy = "review"
 gap_auto_limit = 0
 

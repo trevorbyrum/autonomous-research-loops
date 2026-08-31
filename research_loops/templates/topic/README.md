@@ -1,9 +1,10 @@
 # Topic template
 
-Most people should use `tools/new-topic` + `tools/approve-topic` instead of copying
-this directory by hand — see [`docs/topic-authoring.md`](../../docs/topic-authoring.md).
-This exists for the case where you'd rather write a topic's contract yourself, or want
-to see the exact shape those tools produce.
+Most people should use `research-loops new-topic` + `research-loops approve-topic`
+instead of copying this directory by hand — see
+[`docs/topic-authoring.md`](../../../docs/topic-authoring.md). This exists for the case
+where you'd rather write a topic's contract yourself, or want to see the exact shape
+those commands produce.
 
 - **`TOPIC.md.example`**, **`AUTHORITY.md.example`** — commented reference versions.
   Copy, rename (drop `.example`), and fill in.
@@ -16,10 +17,10 @@ There's no `SEMANTIC-STATE.json.example` here on purpose: it has to be generated
 written both by hand, initialize it and lock the hashes with:
 
 ```bash
-chassis/semantic-state.py rehash path/to/your-topic
+python3 research_loops/chassis/semantic-state.py rehash path/to/your-topic
 ```
 
 (That command updates the hash fields on an existing `SEMANTIC-STATE.json` — for a
-brand-new hand-written topic, start from `schema/semantic-state.schema.json`'s shape,
-set the obligation/deliverable lists yourself, put placeholder hashes in, then run
+brand-new hand-written topic, start from `research_loops/schema/semantic-state.schema.json`'s
+shape, set the obligation/deliverable lists yourself, put placeholder hashes in, then run
 `rehash` once to make them real.)

@@ -60,7 +60,7 @@ def _validate_completion_lock(value: str | None) -> str | None:
     if value is not None and not _LOCK_PATTERN.fullmatch(value):
         raise QueueError(
             "completion_lock must be a 64-character lowercase hex SHA-256, as printed "
-            "by `chassis/semantic-state.py lock` or `tools/approve-topic`"
+            "by `research_loops/chassis/semantic-state.py lock` or `approve-topic`"
         )
     return value
 

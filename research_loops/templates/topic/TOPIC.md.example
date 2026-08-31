@@ -1,10 +1,10 @@
 # <Your Topic Title>
 
 <!--
-The machine-facing projection of AUTHORITY.md. If you use `tools/new-topic` +
-`tools/approve-topic`, this is generated and hash-linked for you. This file shows the
+The machine-facing projection of AUTHORITY.md. If you use `research-loops new-topic` +
+`research-loops approve-topic`, this is generated and hash-linked for you. This file shows the
 shape if you'd rather write one by hand -- in that case, compute the hashes yourself
-with `chassis/semantic-state.py rehash <topic-dir>` once TOPIC.md and AUTHORITY.md
+with `research_loops/chassis/semantic-state.py rehash <topic-dir>` once TOPIC.md and AUTHORITY.md
 exist, before this topic is added to the queue.
 -->
 
@@ -34,7 +34,7 @@ binding scope or redefine DONE.
 
 Continue until every obligation above has a terminal disposition (supported,
 contradicted, unresolved, or deferred), pending evidence and contradictions are
-dispositioned, and every deliverable exists. `chassis/semantic-state.py validate` is
+dispositioned, and every deliverable exists. `research_loops/chassis/semantic-state.py validate` is
 the executable gate — not a description of it. No fixed iteration, token, source, or
 time limit defines DONE.
 

@@ -9,17 +9,17 @@ A topic is three files plus a handful of ledgers, all in one directory:
   SHA-256.
 - **`SEMANTIC-STATE.json`** — the executable state. Fields meant to be immutable per
   obligation (`id`, `text`, `source_ref`) plus agent-writable fields (`disposition`,
-  `confidence`, `evidence_refs`, ...). `chassis/semantic-state.py validate` is the
-  completion gate — see `schema/semantic-state.schema.json` for the full shape. "Meant
+  `confidence`, `evidence_refs`, ...). `research_loops/chassis/semantic-state.py validate` is the
+  completion gate — see `research_loops/schema/semantic-state.schema.json` for the full shape. "Meant
   to be" is enforced, not just asked-nicely, only when a completion lock is pinned (see
-  below) — `tools/approve-topic` and `research-loops add` both do this by default.
+  below) — `approve-topic` and `research-loops add` both do this by default.
 
-## The fast path: `tools/new-topic` + `tools/approve-topic`
+## The fast path: `new-topic` + `approve-topic`
 
 ```bash
-tools/new-topic my-topic --title "My Topic" --brief path/to/brief.md
+bin/research-loops new-topic my-topic --title "My Topic" --brief path/to/brief.md
 # review/edit topics/my-topic/DRAFT-AUTHORITY.md and DRAFT-TOPIC.md
-tools/approve-topic my-topic
+bin/research-loops approve-topic my-topic
 ```
 
 `new-topic` doesn't call an LLM. It deterministically splits your brief on semicolon and
@@ -39,7 +39,7 @@ moment scope is allowed to become fixed.
 them. If *you* edit them later:
 
 ```bash
-chassis/semantic-state.py rehash topics/my-topic
+python3 research_loops/chassis/semantic-state.py rehash topics/my-topic
 ```
 
 This is a deliberate, explicit action — "yes, I changed the scope on purpose" — never
@@ -57,15 +57,15 @@ rewritten. They prove nothing about `SEMANTIC-STATE.json`'s own `obligations`/
 own draft, all without touching either hashed file. `validate` catches malformed or
 incomplete entries, but not a *plausible*, well-formed, silently altered inventory.
 
-The completion lock closes that gap: `chassis/semantic-state.py lock topics/my-topic`
+The completion lock closes that gap: `research_loops/chassis/semantic-state.py lock topics/my-topic`
 hashes the exact `id`/`text`/`source_ref` of every obligation and `id`/`description`/
 `path`/`required_headings` of every deliverable, and `validate --lock-sha256 <hash>`
 refuses `DONE` if that hash no longer matches — catching exactly the tampering above,
-whether or not `TOPIC.md`/`AUTHORITY.md` changed. `tools/approve-topic` computes this
+whether or not `TOPIC.md`/`AUTHORITY.md` changed. `approve-topic` computes this
 lock and bakes `--lock-sha256` straight into the `research-loops add` command it prints;
 `research-loops add --lock-sha256 ...` and a manifest's `completion_lock` field both
 store it in the queue's own state (never the agent-writable topic directory), and
-`chassis/run-topic.sh` passes it into every `validate` call automatically from there.
+`research_loops/chassis/run-topic.sh` passes it into every `validate` call automatically from there.
 Running a topic outside the queue (invoking `run-topic.sh` directly)? Export
 `RESEARCH_LOOP_COMPLETION_LOCK` yourself, or you're only getting the structural checks,
 not the pinned-inventory ones.
@@ -90,7 +90,7 @@ ones you actually want:
 ```bash
 grep -l PROPOSAL topics/*/DECISIONS-LOG.md   # find pending proposals
 
-chassis/gap-policy.py promote topics/my-topic \
+research_loops/chassis/gap-policy.py promote topics/my-topic \
   --id NEW-07 --text "The proposed obligation text." --source-ref "DECISIONS-LOG.md#proposal-row"
 ```
 
@@ -100,13 +100,13 @@ instead of three manual edits that can drift out of sync with each other.
 
 **Auto gap policy.** A topic can instead be configured with `gap_policy = "auto"` (see
 `docs/operations.md#declarative-config` and `docs/governance.md#the-operator-owns-scope`),
-which lets the research agent call `chassis/gap-policy.py promote --auto --limit N`
+which lets the research agent call `research_loops/chassis/gap-policy.py promote --auto --limit N`
 itself for a bounded number of gaps since your last review, tagged `AUTO-PROMOTED` in
 `DECISIONS-LOG.md` so it's always distinguishable from a promotion you reviewed first.
 Once that budget is used, further gaps fall back to `PROPOSAL` rows until you run:
 
 ```bash
-chassis/gap-policy.py review-reset topics/my-topic --note "reviewed the last 3, all legitimate"
+research_loops/chassis/gap-policy.py review-reset topics/my-topic --note "reviewed the last 3, all legitimate"
 ```
 
 Default is always `review` — `auto` is something you opt a specific topic into, not a

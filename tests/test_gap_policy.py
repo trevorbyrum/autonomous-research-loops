@@ -7,9 +7,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-GAP_POLICY = ROOT / "chassis" / "gap-policy.py"
+GAP_POLICY = ROOT / "research_loops" / "chassis" / "gap-policy.py"
 EXAMPLE_TOPIC = ROOT / "examples" / "static-site-generator-choice"
-SEMANTIC_STATE = ROOT / "chassis" / "semantic-state.py"
+SEMANTIC_STATE = ROOT / "research_loops" / "chassis" / "semantic-state.py"
 
 
 class GapPolicyTests(unittest.TestCase):

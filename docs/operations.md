@@ -1,5 +1,29 @@
 # Operations
 
+## Installing on PATH
+
+Everything under `research_loops/` — the queue engine, `chassis/`, `runners/`,
+`templates/`, `schema/` — ships in a real `pip install`, not just a git clone:
+
+```bash
+pip install -e .        # from a clone: research-loops on PATH, same source tree either way
+pip install .            # a real (non-editable) install
+python -m build --wheel  # or just build the wheel yourself
+```
+
+The two install modes differ in exactly one place: `--root`'s default. A git clone or
+`pip install -e .` resolves it to the actual clone (`research-loops` on PATH still hits
+the one queue in that clone, regardless of your current directory — the same behavior
+`bin/research-loops` has always given you). A real `pip install` has no such clone to
+fall back to, so it defaults to your current directory instead, the same convention
+`git`/`npm` use — run it from the project directory you want it to operate on, or pass
+`--root` explicitly. See `research_loops/__main__.py`'s `_default_root()` if you want the
+exact detection logic.
+
+`bin/research-loops` (used throughout this doc and the README) is still the right choice
+for a git clone you don't want on PATH — it always passes `--root` explicitly and needs
+no install step at all.
+
 ## Running one worker
 
 ```bash

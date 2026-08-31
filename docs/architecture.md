@@ -3,14 +3,17 @@
 Three layers, deliberately unaware of each other's internals.
 
 ```
-research_loops/  (the queue)         chassis/  (the contract)        runners/  (the CLI)
+research_loops/  (the queue)         research_loops/chassis/            research_loops/runners/
   queue.py    -- atomic JSON state     CONTRACT-CORE.md -- invariants   claude.sh
   runner.py   -- claim/retry/classify  run-topic.sh     -- one iteration codex.sh
   dashboard.py-- STATUS.md rendering   semantic-state.py-- completion    hermes.sh
                                                             gate          generic.sh
 ```
 
-The queue calls `chassis/run-topic.sh <topic-dir>` as a subprocess and only cares about
+All three live under `research_loops/` so they ship together in a real `pip install`,
+not just a git clone (see `docs/operations.md#installing-on-path`) — but they remain
+three independent layers at runtime, not one module: the queue calls
+`chassis/run-topic.sh <topic-dir>` as a subprocess and only cares about
 its exit code. `run-topic.sh` calls a runner adapter as a subprocess and only cares
 about its exit code and stdout. A runner adapter calls whatever LLM CLI it wraps. Each
 boundary is a real process boundary — you can replace any one layer without touching

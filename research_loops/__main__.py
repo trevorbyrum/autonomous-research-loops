@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import workers as workers_mod
+from . import topic_authoring, workers as workers_mod
 from .config import load_config
 from .dashboard import render_dashboard, write_dashboard
 from .queue import QueueError, QueueStore
@@ -21,6 +21,28 @@ def emit(value: Any) -> None:
     print(json.dumps(value, indent=2, sort_keys=True))
 
 
+def _default_root() -> Path:
+    """The queue root to use when --root is omitted.
+
+    A git clone or an editable install (`pip install -e .`) keeps __file__
+    pointing at the real source tree -- recognizable because pyproject.toml
+    sits next to research_loops/ there. That never happens for a real
+    (non-editable) wheel install: chassis/ ships as package data either way
+    (see pyproject.toml's [tool.setuptools.package-data]), so its presence
+    can't be used to tell the two apart, but pyproject.toml is a source-only
+    file, never installed into site-packages. When it's present, default to
+    the source tree root, so `research-loops` on PATH hits the same one queue
+    regardless of cwd, exactly like today's git-clone/systemd workflows. A
+    real wheel install has no such repo to fall back to; there, default to
+    cwd, the same convention git/npm use ("operate on the directory you're
+    standing in").
+    """
+    source_tree_root = Path(__file__).resolve().parents[1]
+    if (source_tree_root / "pyproject.toml").is_file():
+        return source_tree_root
+    return Path.cwd()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="research-loops",
@@ -29,10 +51,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--root",
-        default=str(Path(__file__).resolve().parents[1]),
-        help="queue root containing state/ and logs/",
+        default=str(_default_root()),
+        help="queue root containing state/ and logs/ (defaults to this install's "
+        "source tree for a git clone/editable install, or the current directory "
+        "for a real pip install — see docs/operations.md)",
     )
     sub = parser.add_subparsers(dest="action", required=True)
+
+    new_topic = sub.add_parser(
+        "new-topic",
+        help="scaffold a draft topic from a brief (deterministic, no LLM call)",
+    )
+    new_topic.add_argument("topic_id")
+    new_topic.add_argument("--title", required=True)
+    new_topic.add_argument(
+        "--brief", required=True, help="path to a brief text file, or '-' for stdin"
+    )
+    new_topic.add_argument(
+        "--dest", help="directory under which <topic_id>/ is created (default: <root>/topics)"
+    )
+
+    approve_topic = sub.add_parser(
+        "approve-topic",
+        help="promote a reviewed draft topic to a real, queueable topic",
+    )
+    approve_topic.add_argument("topic_id")
+    approve_topic.add_argument("--dest", help="default: <root>/topics")
 
     add = sub.add_parser("add", help="add a loop command")
     add.add_argument("--id")
@@ -78,9 +122,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add.add_argument(
         "--lock-sha256",
-        help="the approved completion-inventory lock from `tools/approve-topic` or "
-        "`chassis/semantic-state.py lock` — passed into every DONE check for this "
-        "item so an agent cannot pass validation by adding, removing, or renaming "
+        help="the approved completion-inventory lock from `approve-topic` or "
+        "`research_loops/chassis/semantic-state.py lock` — passed into every DONE "
+        "check for this item so an agent cannot pass validation by adding, removing, or renaming "
         "an obligation/deliverable directly in SEMANTIC-STATE.json. Strongly "
         "recommended for every topic; omitting it means DONE is only checked "
         "structurally, not against a pinned inventory",
@@ -222,7 +266,21 @@ def main(argv: list[str] | None = None) -> int:
     store = QueueStore(root)
     ledger = UsageLedger(root / "state" / "events.jsonl")
     try:
-        if args.action == "add":
+        if args.action == "new-topic":
+            dest = Path(args.dest).expanduser().resolve() if args.dest else root / "topics"
+            brief_text = (
+                sys.stdin.read()
+                if args.brief == "-"
+                else Path(args.brief).read_text(encoding="utf-8")
+            )
+            result = topic_authoring.new_topic(
+                args.topic_id, title=args.title, brief_text=brief_text, dest=dest
+            )
+            emit(result)
+        elif args.action == "approve-topic":
+            dest = Path(args.dest).expanduser().resolve() if args.dest else root / "topics"
+            emit(topic_authoring.approve_topic(args.topic_id, dest=dest))
+        elif args.action == "add":
             command = args.command[1:] if args.command[:1] == ["--"] else args.command
             progress_command = None
             if args.progress_command:

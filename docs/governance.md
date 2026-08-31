@@ -15,18 +15,18 @@ pressure is highest, which is precisely when you need it not to.
 
 `TOPIC.md`/`AUTHORITY.md` hashes alone don't cover this: they prove those two files
 weren't rewritten, not that `SEMANTIC-STATE.json`'s own obligation/deliverable inventory
-still matches what was approved. `tools/approve-topic` and `research-loops add` both pin
+still matches what was approved. `approve-topic` and `research-loops add` both pin
 a completion-inventory lock by default for exactly that reason — see
 `docs/topic-authoring.md#the-completion-lock-why-topicmdauthoritymd-hashes-arent-enough-on-their-own`.
 
 **The one configurable exception, and why it doesn't actually break the rule above.**
 A topic's `gap_policy` defaults to `review`: an agent that finds a real, uncovered gap
 may only propose it (a `PROPOSAL` row in `DECISIONS-LOG.md`); an operator promotes it,
-by hand or with `chassis/gap-policy.py promote`. Setting `gap_policy = "auto"` (per
+by hand or with `research_loops/chassis/gap-policy.py promote`. Setting `gap_policy = "auto"` (per
 topic, via `add --gap-policy auto --gap-auto-limit N` or the declarative config — see
 `docs/operations.md#declarative-config`) lets an agent self-promote a gap directly, but
 only up to `gap_auto_limit` times since the operator's last review. Past that budget it
-falls back to proposing only, and `chassis/gap-policy.py promote --auto` enforces the
+falls back to proposing only, and `research_loops/chassis/gap-policy.py promote --auto` enforces the
 cap itself — there's no path that bypasses it. Every self-promotion is tagged
 `AUTO-PROMOTED` in `DECISIONS-LOG.md`, permanently distinguishable from an
 operator-reviewed `PROMOTED` entry, and still goes through the exact same hash-relock
@@ -53,9 +53,9 @@ it.
 
 If a search comes back empty because a rate limit hit, that is a fact about the
 *capability* available this iteration — not a fact about whether the claim is true,
-false, or unsearched. `CONTRACT-CORE.md` states this explicitly and `chassis/run-topic.sh`
+false, or unsearched. `CONTRACT-CORE.md` states this explicitly and `research_loops/chassis/run-topic.sh`
 propagates a capability notice into the prompt when a preflight check finds something
-degraded (see `runners/README.md`), so an agent knows the difference between "I looked
+degraded (see `research_loops/runners/README.md`), so an agent knows the difference between "I looked
 and found nothing" and "I couldn't look." Conflating the two produces a false
 `unresolved` disposition that looks identical to a real one until someone checks.
 

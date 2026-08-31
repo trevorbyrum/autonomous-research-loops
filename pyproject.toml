@@ -17,12 +17,24 @@ research-loops = "research_loops.__main__:main"
 [tool.setuptools.packages.find]
 include = ["research_loops*"]
 
-# This is a clone-and-run application, not a conventional installable library:
-# chassis/, runners/, tools/, templates/, and schema/ are plain top-level
-# directories, not inside the research_loops package, so a regular (non-editable)
-# `pip install .` gives you a `research-loops` command with nothing for it to
-# actually run against. `pip install -e .` from a git clone works and is
-# supported (editable installs keep __file__ pointing at your real clone, so
-# --root's repo-relative default and every chassis/runners/tools reference still
-# resolve) -- it's purely a convenience for getting `research-loops` on PATH
-# instead of typing `bin/research-loops` or `PYTHONPATH=. python3 -m research_loops`.
+[tool.setuptools.package-data]
+# chassis/, runners/, templates/, and schema/ live inside the research_loops
+# package specifically so a real (non-editable) `pip install .`/wheel ships
+# them too -- setuptools only includes .py files by default, so this is
+# required in addition to the directories physically living under
+# research_loops/, not a substitute for it. These are subprocess-invoked
+# shell scripts and reference markdown/JSON, not importable Python, which is
+# why they're package-data rather than their own subpackages. Explicit
+# extensions rather than a "**" glob so a stray __pycache__/*.pyc (created
+# whenever chassis/gap-policy.py dynamically loads semantic-state.py as a
+# module) can never get swept into a build by accident.
+research_loops = [
+    "chassis/*.sh",
+    "chassis/*.py",
+    "chassis/*.md",
+    "runners/*.sh",
+    "runners/*.md",
+    "templates/topic/*.md",
+    "templates/topic/*.example",
+    "schema/*.json",
+]

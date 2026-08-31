@@ -8,7 +8,7 @@
 #                relative path, then runners/<name> next to this chassis, then
 #                <name> on PATH.
 #
-# See docs/runners.md for the full Agent Runner contract. Summary: the runner receives
+# See runners/README.md for the full Agent Runner contract. Summary: the runner receives
 # (topic_dir, prompt_file) as argv plus RESEARCH_LOOP_* env vars, streams its transcript
 # to stdout/stderr, may optionally write RESEARCH_LOOP_USAGE_FILE as JSON, and owns exit
 # code 0 or any non-zero it wants classified as a transient failure. It must never itself

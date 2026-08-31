@@ -18,7 +18,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SEMANTIC_STATE = ROOT / "chassis" / "semantic-state.py"
+SEMANTIC_STATE = ROOT / "research_loops" / "chassis" / "semantic-state.py"
 EXAMPLE_TOPIC = ROOT / "examples" / "static-site-generator-choice"
 
 
@@ -174,7 +174,7 @@ class RunTopicShLockWiringTests(unittest.TestCase):
         env = os.environ.copy()
         env.update(env_extra)
         return subprocess.run(
-            [str(ROOT / "chassis" / "run-topic.sh"), str(self.topic_dir), str(self.tamper_runner)],
+            [str(ROOT / "research_loops" / "chassis" / "run-topic.sh"), str(self.topic_dir), str(self.tamper_runner)],
             capture_output=True,
             text=True,
             env=env,
