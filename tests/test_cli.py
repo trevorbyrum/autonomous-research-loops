@@ -159,6 +159,20 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(consumer["depends_on"], ["not-added-yet"])
 
+    def test_internal_citations_flag_defaults_off_and_round_trips_on(self):
+        default_item = json.loads(
+            self.run_cli("add", "--id", "default", "--title", "D", "--cwd", "/tmp", "--", "true").stdout
+        )
+        self.assertFalse(default_item["internal_citations"])
+
+        enabled_item = json.loads(
+            self.run_cli(
+                "add", "--id", "enabled", "--title", "E", "--cwd", "/tmp",
+                "--internal-citations", "--", "true",
+            ).stdout
+        )
+        self.assertTrue(enabled_item["internal_citations"])
+
 
 if __name__ == "__main__":
     unittest.main()

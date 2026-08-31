@@ -28,6 +28,7 @@ class TopicSettings:
     agent_secondary: str | None = None
     gap_policy: str = "review"
     gap_auto_limit: int = 0
+    internal_citations: bool = False
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,15 @@ def _optional_str(table: dict[str, Any], key: str) -> str | None:
     return value
 
 
+def _optional_bool(table: dict[str, Any], key: str) -> bool | None:
+    if key not in table:
+        return None
+    value = table[key]
+    if not isinstance(value, bool):
+        raise QueueError(f"{key} must be true or false")
+    return value
+
+
 def _settings_from(table: dict[str, Any], base: TopicSettings) -> TopicSettings:
     updates: dict[str, Any] = {}
     repeat_seconds = _positive_int(table, "repeat_seconds")
@@ -101,6 +111,9 @@ def _settings_from(table: dict[str, Any], base: TopicSettings) -> TopicSettings:
     gap_auto_limit = _non_negative_int(table, "gap_auto_limit")
     if gap_auto_limit is not None:
         updates["gap_auto_limit"] = gap_auto_limit
+    internal_citations = _optional_bool(table, "internal_citations")
+    if internal_citations is not None:
+        updates["internal_citations"] = internal_citations
     return replace(base, **updates)
 
 

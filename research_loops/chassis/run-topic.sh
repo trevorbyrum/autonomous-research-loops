@@ -81,6 +81,13 @@ if [[ "$GAP_POLICY" == "auto" ]]; then
   fi
 fi
 
+# Citation policy (docs/citations.md) — internal citations are disabled by default;
+# see RESEARCH_LOOP_INTERNAL_CITATIONS below for how a topic opts in.
+CITATION_NOTE=" CITATIONS: every evidence_ref must resolve to a typed [SRC-NNN] citation block in SOURCE-LEDGER.md (external or local — see docs/citations.md). Internal citations (pointing at another topic's already-vetted source) are not enabled for this topic."
+if [[ "${RESEARCH_LOOP_INTERNAL_CITATIONS:-0}" == "1" ]]; then
+  CITATION_NOTE=" CITATIONS: every evidence_ref must resolve to a typed [SRC-NNN] citation block in SOURCE-LEDGER.md (external, local, or internal — see docs/citations.md). Internal citations are enabled for this topic: if the same source was already vetted in another topic, point at it (\`## [SRC-NNN] internal\` with \`topic:\`/\`ref:\` fields) instead of re-researching it."
+fi
+
 if [[ -f "$TOPIC_DIR/STOP" ]]; then
   echo "STOP present: $(head -n 1 "$TOPIC_DIR/STOP")" >&2
   exit 3
@@ -96,6 +103,7 @@ usage="$LOG_DIR/iteration-$stamp-usage.json"
 prompt_file="$LOG_DIR/.iteration-$stamp-prompt.txt"
 touch "$TOPIC_DIR/PROGRESS.md"
 before=$("$CHASSIS/progress-signature.sh" "$TOPIC_DIR")
+sources_before=$(python3 "$CHASSIS/semantic-state.py" source-count "$TOPIC_DIR" 2>/dev/null || echo 0)
 
 sed \
   -e "s#\${TOPIC_DIR}#$TOPIC_DIR#g" \
@@ -103,21 +111,23 @@ sed \
   -e "s#\${DEGRADED_NOTE}#$DEGRADED_NOTE#g" \
   -e "s#\${AGENT_NOTE}#$AGENT_NOTE#g" \
   -e "s#\${GAP_POLICY_NOTE}#$GAP_POLICY_NOTE#g" \
+  -e "s#\${CITATION_NOTE}#$CITATION_NOTE#g" \
   "$CHASSIS/ITERATION-PROMPT.md" >"$prompt_file"
 
 export RESEARCH_LOOP_TOPIC_DIR="$TOPIC_DIR"
 export RESEARCH_LOOP_USAGE_FILE="$usage"
 export RESEARCH_LOOP_LOG="$log"
 # RESEARCH_LOOP_PROFILE, RESEARCH_LOOP_AGENT_SECONDARY, RESEARCH_LOOP_GAP_POLICY,
-# RESEARCH_LOOP_GAP_AUTO_LIMIT, and RESEARCH_LOOP_COMPLETION_LOCK are deliberately
-# NOT set here unless already present in the environment (the queue worker sets
-# them per-item from agent_main/agent_secondary/gap_policy/gap_auto_limit/
-# completion_lock) — the runner and prompt above already resolved what they mean;
-# this chassis never invents a default beyond what's read above. Running a topic
-# standalone without the queue and without setting RESEARCH_LOOP_COMPLETION_LOCK
-# means DONE is checked structurally but not against a pinned obligation
-# inventory — set it yourself (see `chassis/semantic-state.py lock`) if you want
-# the same protection the queue gives by default.
+# RESEARCH_LOOP_GAP_AUTO_LIMIT, RESEARCH_LOOP_COMPLETION_LOCK, RESEARCH_LOOP_INTERNAL_CITATIONS,
+# and RESEARCH_LOOP_TOPICS_ROOT are deliberately NOT set here unless already present in
+# the environment (the queue worker sets them per-item from agent_main/agent_secondary/
+# gap_policy/gap_auto_limit/completion_lock/internal_citations) — the runner and prompt
+# above already resolved what they mean; this chassis never invents a default beyond
+# what's read above. Running a topic standalone without the queue and without setting
+# RESEARCH_LOOP_COMPLETION_LOCK means DONE is checked structurally but not against a
+# pinned obligation inventory — set it yourself (see `chassis/semantic-state.py lock`)
+# if you want the same protection the queue gives by default. Likewise,
+# RESEARCH_LOOP_INTERNAL_CITATIONS defaults to disabled standalone.
 
 set +e
 "$RUNNER" "$TOPIC_DIR" "$prompt_file" 2>&1 | tee "$log"
@@ -141,6 +151,12 @@ if [[ -f "$TOPIC_DIR/STOP" ]]; then
     if [[ -n "${RESEARCH_LOOP_COMPLETION_LOCK:-}" ]]; then
       lock_args=(--lock-sha256 "$RESEARCH_LOOP_COMPLETION_LOCK")
     fi
+    if [[ "${RESEARCH_LOOP_INTERNAL_CITATIONS:-0}" == "1" ]]; then
+      lock_args+=(--allow-internal-citations)
+    fi
+    if [[ -n "${RESEARCH_LOOP_TOPICS_ROOT:-}" ]]; then
+      lock_args+=(--topics-root "$RESEARCH_LOOP_TOPICS_ROOT")
+    fi
     if ! python3 "$CHASSIS/semantic-state.py" validate "$TOPIC_DIR" "${lock_args[@]}"; then
       echo "configuration error: DONE rejected by semantic completion validator" >&2
       exit 78
@@ -148,4 +164,7 @@ if [[ -f "$TOPIC_DIR/STOP" ]]; then
   fi
   echo "STOP written this iteration: $(head -n 1 "$TOPIC_DIR/STOP")"
 fi
-echo "iteration-ok log=$log usage=$usage"
+sources_after=$(python3 "$CHASSIS/semantic-state.py" source-count "$TOPIC_DIR" 2>/dev/null || echo 0)
+sources_cited=$((sources_after - sources_before))
+echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) iteration $stamp: sources_cited=$sources_cited (total=$sources_after)" >> "$TOPIC_DIR/PROGRESS.md"
+echo "iteration-ok log=$log usage=$usage sources_cited=$sources_cited"

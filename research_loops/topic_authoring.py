@@ -32,6 +32,13 @@ LEDGER_FILES = (
     "SYNTHESIS.md",
 )
 
+SOURCE_LEDGER_STUB = (
+    "# SOURCE-LEDGER.md\n\n"
+    "Every claim an obligation cites as evidence must resolve to a typed citation\n"
+    "block here -- see ../../docs/citations.md for the full format "
+    "(`external`/`local`/`internal`).\n"
+)
+
 _TOPIC_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 
 
@@ -109,7 +116,10 @@ def render_authority(title: str, brief_text: str) -> str:
         "  with direct measurements.\n"
         "- **T3**: practitioner reports and community accounts -- leads/corroboration\n"
         "  only, never sole support for a high-confidence claim.\n"
-        "- **T4**: marketing prose, unsourced leaderboards -- leads only, never evidence.\n"
+        "- **T4**: marketing prose, unsourced leaderboards -- leads only, never evidence.\n\n"
+        "Every evidence_ref this topic's obligations cite must resolve to a typed\n"
+        "citation block in SOURCE-LEDGER.md -- see docs/citations.md for the exact\n"
+        "format (`external`/`local`/`internal`) before writing your first one.\n"
     )
 
 
@@ -179,7 +189,10 @@ def new_topic(topic_id: str, *, title: str, brief_text: str, dest: Path) -> dict
     for name in LEDGER_FILES:
         target = topic_dir / name
         if not target.exists():
-            target.write_text(f"# {name}\n", encoding="utf-8")
+            target.write_text(
+                SOURCE_LEDGER_STUB if name == "SOURCE-LEDGER.md" else f"# {name}\n",
+                encoding="utf-8",
+            )
     (topic_dir / "DECISIONS-LOG.md").write_text(
         "# Decisions\n\n| id | date | decision |\n|---|---|---|\n", encoding="utf-8"
     )
@@ -197,7 +210,7 @@ def new_topic(topic_id: str, *, title: str, brief_text: str, dest: Path) -> dict
     contract_hash = _sha256_text(contract)
 
     state = {
-        "schema_version": 1,
+        "schema_version": 2,
         "topic_id": topic_id,
         "contract_sha256": contract_hash,
         "authority_sha256": authority_hash,

@@ -137,6 +137,13 @@ def build_parser() -> argparse.ArgumentParser:
         "dependency may reference an id you haven't added yet -- it only has to "
         "exist by the time this item is actually claimed",
     )
+    add.add_argument(
+        "--internal-citations",
+        action="store_true",
+        help="allow this topic to cite a source already vetted in another topic's "
+        "SOURCE-LEDGER.md instead of re-researching it (see docs/citations.md). "
+        "Disabled by default",
+    )
     add.add_argument("command", nargs=argparse.REMAINDER)
 
     listing = sub.add_parser("list", help="show queue state")
@@ -319,6 +326,7 @@ def main(argv: list[str] | None = None) -> int:
                     gap_auto_limit=args.gap_auto_limit,
                     completion_lock=args.lock_sha256,
                     depends_on=depends_on,
+                    internal_citations=args.internal_citations,
                 )
             )
         elif args.action in {"list", "status"}:
@@ -379,6 +387,7 @@ def main(argv: list[str] | None = None) -> int:
                         agent_secondary=settings.agent_secondary,
                         gap_policy=settings.gap_policy,
                         gap_auto_limit=settings.gap_auto_limit,
+                        internal_citations=settings.internal_citations,
                     )
                     applied.append(topic_id)
                 emit({"applied": applied, "skipped_unknown_topic": skipped})

@@ -5,7 +5,11 @@
   "type": "object",
   "required": ["schema_version", "topic_id", "contract_sha256", "authority_sha256", "obligations", "deliverables"],
   "properties": {
-    "schema_version": { "type": "integer", "const": 1 },
+    "schema_version": {
+      "type": "integer",
+      "enum": [1, 2],
+      "description": "1: original shape. 2: also enforces the typed citation format in SOURCE-LEDGER.md for every evidence_ref (see docs/citations.md) -- schema_version 1 topics are never retroactively checked against it."
+    },
     "topic_id": { "type": "string" },
     "contract_sha256": {
       "type": "string",

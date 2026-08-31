@@ -53,6 +53,12 @@ def _validate_gap_auto_limit(value: int) -> int:
     return value
 
 
+def _validate_internal_citations(value: bool) -> bool:
+    if not isinstance(value, bool):
+        raise QueueError("internal_citations must be a boolean")
+    return value
+
+
 _LOCK_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
 
 
@@ -164,6 +170,7 @@ class QueueStore:
         gap_policy: str = "review",
         gap_auto_limit: int = 0,
         completion_lock: str | None = None,
+        internal_citations: bool = False,
     ) -> dict[str, Any]:
         if not title.strip() or not command:
             raise QueueError("title and command are required")
@@ -178,6 +185,7 @@ class QueueStore:
         _validate_gap_policy(gap_policy)
         _validate_gap_auto_limit(gap_auto_limit)
         _validate_completion_lock(completion_lock)
+        _validate_internal_citations(internal_citations)
         resolved_item_id = validate_item_id(
             item_id if item_id is not None else f"loop-{uuid.uuid4().hex[:10]}"
         )
@@ -206,6 +214,7 @@ class QueueStore:
             "gap_policy": gap_policy,
             "gap_auto_limit": gap_auto_limit,
             "completion_lock": completion_lock,
+            "internal_citations": internal_citations,
             "progress_signature": None,
             "stall_count": 0,
             "status": "queued",
@@ -263,6 +272,7 @@ class QueueStore:
         "gap_policy",
         "gap_auto_limit",
         "completion_lock",
+        "internal_citations",
     )
 
     # completion_lock is deliberately absent from _TOPIC_CONFIG_FIELDS: it's an
@@ -284,6 +294,7 @@ class QueueStore:
         "agent_secondary",
         "gap_policy",
         "gap_auto_limit",
+        "internal_citations",
     )
 
     def sync(
@@ -530,6 +541,9 @@ class QueueStore:
         gap_policy = _validate_gap_policy(entry.get("gap_policy", "review"))
         gap_auto_limit = _validate_gap_auto_limit(entry.get("gap_auto_limit", 0))
         completion_lock = _validate_completion_lock(entry.get("completion_lock"))
+        internal_citations = _validate_internal_citations(
+            entry.get("internal_citations", False)
+        )
         return {
             "title": str(entry["title"]).strip(),
             "cwd": str(Path(str(entry["cwd"])).expanduser().resolve()),
@@ -550,6 +564,7 @@ class QueueStore:
             "gap_policy": gap_policy,
             "gap_auto_limit": gap_auto_limit,
             "completion_lock": completion_lock,
+            "internal_citations": internal_citations,
         }
 
     def configure_topic(self, item_id: str, **settings: Any) -> dict[str, Any]:

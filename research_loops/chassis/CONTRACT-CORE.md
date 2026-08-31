@@ -98,6 +98,19 @@ retry, inactivity, or revision limit defines semantic completion.
   supersession or genuine disagreement, and retain provenance plus temporal metadata.
 - New records remain pending until a later verification pass approves, corrects,
   contradicts, or rejects them.
+- On a `schema_version >= 2` topic, every `evidence_ref` an obligation cites must
+  resolve to a typed `[SRC-NNN]` citation block in `SOURCE-LEDGER.md` (`external`,
+  `local`, or `internal` — see `docs/citations.md`), not just an existing file. A file
+  that exists but contains no recognized citation is uncited, not evidence.
+- An `internal` citation's cross-topic lookup (confirming another topic's
+  `SOURCE-LEDGER.md#SRC-NNN` actually exists) is a read of another topic's own
+  directory — this does not violate "write only the current topic directory" above;
+  that boundary is about writes. `internal` citations are disabled by default and must
+  be explicitly enabled (portfolio-wide or per topic) before they're accepted.
+- If a cross-reference index has been built (`research_loops/chassis/citation-index.py`,
+  entirely optional), a hit is a lead only — go verify it at its original citation and
+  re-cite it in the current topic before it backs any disposition. An index miss is a
+  capability fact, not proof no other topic has relevant evidence.
 
 ## Per-iteration procedure
 

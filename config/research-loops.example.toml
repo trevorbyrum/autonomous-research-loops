@@ -73,3 +73,9 @@ agent_secondary = "codex"
 # has to look at it.
 gap_policy = "auto"
 gap_auto_limit = 3
+
+# internal_citations lets this topic cite a source already vetted in another
+# topic (`## [SRC-NNN] internal` in SOURCE-LEDGER.md, see docs/citations.md)
+# instead of re-researching it. Disabled by default, portfolio-wide and per
+# topic -- set true in [defaults] to enable everywhere, or per topic like here.
+internal_citations = true

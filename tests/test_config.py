@@ -68,6 +68,25 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaises(QueueError):
                 load_config(path)
 
+    def test_internal_citations_defaults_off_and_layers_like_gap_policy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write(
+                tmp,
+                "[defaults]\n"
+                "internal_citations = false\n\n"
+                "[topics.opted-in]\n"
+                "internal_citations = true\n",
+            )
+            config = load_config(path)
+            self.assertFalse(config.for_topic("untouched").internal_citations)
+            self.assertTrue(config.for_topic("opted-in").internal_citations)
+
+    def test_internal_citations_must_be_a_boolean(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write(tmp, '[defaults]\ninternal_citations = "yes"\n')
+            with self.assertRaises(QueueError):
+                load_config(path)
+
     def test_zero_workers_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = self._write(tmp, "workers = 0\n")

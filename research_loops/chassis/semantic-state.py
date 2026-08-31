@@ -179,10 +179,204 @@ def reference_exists(topic_dir: Path, reference: object) -> bool:
     return target.is_relative_to(topic_root) and target.is_file() and target.stat().st_size > 0
 
 
+# --- Citation format (see docs/citations.md) -------------------------------
+
+_SRC_HEADING_RE = re.compile(r"^## \[(SRC-\d+)\] (external|internal|local)\s*$")
+_FIELD_RE = re.compile(r"^- ([a-z_]+):\s*(.+?)\s*$")
+_LINE_RANGE_RE = re.compile(r":L(\d+)(?:-L?(\d+))?$")
+_TAG_RE = re.compile(r"\[(SRC-\d+)\]")
+_URL_RE = re.compile(r"^https?://\S+$")
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_TOPIC_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+_SRC_ID_RE = re.compile(r"^SRC-\d+$")
+
+
+def parse_source_ledger(text: str) -> dict[str, dict[str, Any]]:
+    """Parse '## [SRC-NNN] <type>' blocks + their '- key: value' fields.
+
+    A strict key/value record, not free text -- unrecognized lines inside a
+    block (prose, blank lines) are silently ignored, matching this project's
+    existing philosophy of deterministic parsing over cleverness (see
+    topic_authoring.split_brief()).
+    """
+    blocks: dict[str, dict[str, Any]] = {}
+    current: dict[str, Any] | None = None
+    for line in text.splitlines():
+        heading = _SRC_HEADING_RE.match(line)
+        if heading:
+            current = {"type": heading.group(2), "fields": {}}
+            blocks[heading.group(1)] = current
+            continue
+        if line.startswith("## "):
+            current = None
+            continue
+        if current is not None:
+            field = _FIELD_RE.match(line)
+            if field:
+                current["fields"][field.group(1)] = field.group(2)
+    return blocks
+
+
+def _split_reference(reference: str) -> tuple[str, int | None, int | None]:
+    """Split 'path#fragment' / 'path:Lstart-Lend' into (relative_path, start, end).
+
+    Line numbers are 1-indexed and inclusive; a bare ':L42' form returns
+    (42, 42). Mirrors the stripping order reference_exists() already used
+    (fragment first, then line range), just returning the parsed pieces
+    instead of discarding them.
+    """
+    relative = reference.split("#", 1)[0]
+    match = _LINE_RANGE_RE.search(relative)
+    if not match:
+        return relative, None, None
+    start = int(match.group(1))
+    end = int(match.group(2)) if match.group(2) else start
+    return relative[: match.start()], start, end
+
+
+def citation_tags_in(text: str, start: int | None, end: int | None) -> list[str]:
+    """Extract [SRC-NNN] tags from the given 1-indexed inclusive line range
+    (or the whole text if no range given)."""
+    if start is not None:
+        lines = text.splitlines()
+        scope = "\n".join(lines[start - 1 : end])
+    else:
+        scope = text
+    return _TAG_RE.findall(scope)
+
+
+def internal_citation_exists(
+    topics_root: Path, other_topic_id: str, ref: str
+) -> dict[str, Any] | None:
+    """Read-only lookup of another topic's SOURCE-LEDGER.md citation block.
+
+    Deliberately narrow: only ever reads topics_root/<other_topic_id>/
+    SOURCE-LEDGER.md (never an arbitrary path -- an `internal` block only
+    ever names a topic id + SRC ref, never a raw path), never writes
+    anything. This doesn't violate CONTRACT-CORE.md's "write only the
+    current topic directory" boundary -- reading isn't writing.
+    """
+    other_ledger = topics_root / other_topic_id / "SOURCE-LEDGER.md"
+    try:
+        text = other_ledger.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return parse_source_ledger(text).get(ref)
+
+
+def citation_errors_for_block(
+    block_id: str,
+    block: dict[str, Any],
+    *,
+    topic_dir: Path,
+    topics_root: Path,
+    allow_internal: bool,
+) -> list[str]:
+    errors: list[str] = []
+    fields = block.get("fields", {})
+    block_type = block.get("type")
+    if block_type == "external":
+        if not _URL_RE.match(fields.get("url", "")):
+            errors.append(f"citation {block_id} (external) requires a valid url")
+        if not fields.get("title", "").strip():
+            errors.append(f"citation {block_id} (external) requires a title")
+        if not _DATE_RE.match(fields.get("retrieved", "")):
+            errors.append(
+                f"citation {block_id} (external) requires retrieved as YYYY-MM-DD"
+            )
+    elif block_type == "local":
+        path = fields.get("path", "")
+        if not path or not reference_exists(topic_dir, path):
+            errors.append(f"citation {block_id} (local) path does not resolve: {path!r}")
+    elif block_type == "internal":
+        if not allow_internal:
+            errors.append(
+                f"citation {block_id} is internal but internal citations are not "
+                "enabled for this topic (see docs/citations.md)"
+            )
+        else:
+            other_topic = fields.get("topic", "")
+            ref = fields.get("ref", "")
+            if not _TOPIC_ID_RE.match(other_topic) or not _SRC_ID_RE.match(ref):
+                errors.append(f"citation {block_id} (internal) has a malformed topic/ref")
+            else:
+                target = internal_citation_exists(topics_root, other_topic, ref)
+                if target is None:
+                    errors.append(
+                        f"citation {block_id} (internal) points at "
+                        f"{other_topic}#{ref} which does not exist"
+                    )
+                elif target.get("type") == "internal":
+                    errors.append(
+                        f"citation {block_id} (internal) points at another internal "
+                        f"citation ({other_topic}#{ref}) -- must point at external or local"
+                    )
+    else:
+        errors.append(f"citation {block_id} has unrecognized type {block_type!r}")
+    return errors
+
+
+def evidence_citation_errors(
+    topic_dir: Path,
+    topics_root: Path,
+    obligation_id: str,
+    evidence_refs: list[str],
+    *,
+    allow_internal: bool,
+) -> list[str]:
+    errors: list[str] = []
+    try:
+        ledger_text = (topic_dir / "SOURCE-LEDGER.md").read_text(encoding="utf-8")
+    except OSError:
+        ledger_text = ""
+    blocks = parse_source_ledger(ledger_text)
+    for reference in evidence_refs:
+        relative, start, end = _split_reference(reference)
+        src_id = None
+        if relative == "SOURCE-LEDGER.md" and "#" in reference:
+            fragment = reference.split("#", 1)[1]
+            if _SRC_ID_RE.match(fragment):
+                src_id = fragment
+        if src_id is None:
+            target = (topic_dir / relative).resolve()
+            try:
+                target_text = target.read_text(encoding="utf-8")
+            except OSError:
+                target_text = ""
+            tags = citation_tags_in(target_text, start, end)
+            src_id = tags[0] if tags else None
+        if src_id is None:
+            errors.append(
+                f"obligation {obligation_id} evidence at {reference} is uncited: "
+                "no [SRC-NNN] citation tag found (see docs/citations.md)"
+            )
+            continue
+        block = blocks.get(src_id)
+        if block is None:
+            errors.append(
+                f"obligation {obligation_id} evidence at {reference} cites {src_id} "
+                "which is not defined in SOURCE-LEDGER.md"
+            )
+            continue
+        errors.extend(
+            citation_errors_for_block(
+                src_id,
+                block,
+                topic_dir=topic_dir,
+                topics_root=topics_root,
+                allow_internal=allow_internal,
+            )
+        )
+    return errors
+
+
 def completion_errors(
     topic_dir: Path,
     state: dict[str, Any],
     approved_lock: str | None = None,
+    *,
+    topics_root: Path | None = None,
+    allow_internal_citations: bool = False,
 ) -> list[str]:
     errors: list[str] = []
     if approved_lock is not None and inventory_lock(state) != approved_lock:
@@ -270,6 +464,19 @@ def completion_errors(
                 ):
                     errors.append(
                         f"obligation {obligation_id} evidence reference does not exist"
+                    )
+                elif state.get("schema_version", 1) >= 2:
+                    # Citation enforcement (docs/citations.md) only applies from
+                    # schema_version 2 on -- topics approved before this existed
+                    # keep validating exactly as they did, unchanged.
+                    errors.extend(
+                        evidence_citation_errors(
+                            topic_dir,
+                            topics_root or topic_dir.resolve().parent,
+                            obligation_id,
+                            evidence_refs,
+                            allow_internal=allow_internal_citations,
+                        )
                     )
                 confidence = obligation.get("confidence")
                 if not isinstance(confidence, str) or not confidence.strip():
@@ -432,7 +639,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "action",
-        choices=("validate", "signature", "lock", "rehash", "check"),
+        choices=("validate", "signature", "lock", "rehash", "check", "source-count"),
         help=(
             "validate: the DONE gate -- exit 0 only if every obligation/deliverable "
             "is terminal. "
@@ -442,13 +649,27 @@ def main(argv: list[str] | None = None) -> int:
             "by the queue's stall guard. "
             "lock: print the completion-inventory hash for --lock-sha256 pinning. "
             "rehash: recompute contract/authority hashes after YOU edit TOPIC.md or "
-            "AUTHORITY.md -- never run by a research agent."
+            "AUTHORITY.md -- never run by a research agent. "
+            "source-count: print the number of [SRC-NNN] citation blocks in "
+            "SOURCE-LEDGER.md (see docs/citations.md)."
         ),
     )
     parser.add_argument("topic_dir", type=Path, help="path to the topic's directory")
     parser.add_argument(
         "--lock-sha256",
         help="with `validate`, also require the completion inventory to match this hash",
+    )
+    parser.add_argument(
+        "--topics-root",
+        type=Path,
+        help="with `validate` on a schema_version >= 2 topic, the directory containing "
+        "every topic (for resolving `internal` citations); default: topic_dir's parent",
+    )
+    parser.add_argument(
+        "--allow-internal-citations",
+        action="store_true",
+        help="with `validate`, accept well-formed `internal` citation blocks for this "
+        "topic (see docs/citations.md) -- rejected by default",
     )
     args = parser.parse_args(argv)
     if args.action == "rehash":
@@ -468,7 +689,13 @@ def main(argv: list[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return 2
     if args.action == "validate":
-        errors = completion_errors(args.topic_dir, state, args.lock_sha256)
+        errors = completion_errors(
+            args.topic_dir,
+            state,
+            args.lock_sha256,
+            topics_root=args.topics_root,
+            allow_internal_citations=args.allow_internal_citations,
+        )
         if errors:
             print("\n".join(errors), file=sys.stderr)
             return 1
@@ -484,6 +711,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.action == "lock":
         print(inventory_lock(state))
+        return 0
+    if args.action == "source-count":
+        try:
+            ledger_text = (args.topic_dir / "SOURCE-LEDGER.md").read_text(encoding="utf-8")
+        except OSError:
+            ledger_text = ""
+        print(len(parse_source_ledger(ledger_text)))
         return 0
     payload = json.dumps(semantic_projection(state), sort_keys=True, separators=(",", ":"))
     print(hashlib.sha256(payload.encode("utf-8")).hexdigest())

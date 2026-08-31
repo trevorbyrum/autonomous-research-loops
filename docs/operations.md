@@ -72,15 +72,16 @@ bin/research-loops config apply --config research-loops.toml              # push
 `config apply` only touches topic ids explicitly listed under `[topics.*]` in the file —
 it never reconfigures a queue item just because it exists. Fields it can set
 (`repeat_seconds`, `max_attempts`, `stall_limit`, `agent_main`, `agent_secondary`,
-`gap_policy`, `gap_auto_limit`) all take effect on the item's *next* iteration only;
-none of them touch an iteration already in flight, so `config apply` is always safe to
-run against a running queue.
+`gap_policy`, `gap_auto_limit`, `internal_citations`) all take effect on the item's
+*next* iteration only; none of them touch an iteration already in flight, so
+`config apply` is always safe to run against a running queue.
 
-`agent_main`/`agent_secondary` and `gap_policy`/`gap_auto_limit` can also be set per-item
-directly with `add --agent-main ... --gap-policy auto --gap-auto-limit 3` without a config
-file at all — the config is purely a convenience for managing many topics' settings in
-one reviewable place. See `docs/governance.md#the-operator-owns-scope` for what `auto` gap
-policy actually does and why its default is `review`.
+`agent_main`/`agent_secondary`, `gap_policy`/`gap_auto_limit`, and `internal_citations`
+can also be set per-item directly with `add --agent-main ... --gap-policy auto
+--gap-auto-limit 3 --internal-citations` without a config file at all — the config is
+purely a convenience for managing many topics' settings in one reviewable place. See
+`docs/governance.md#the-operator-owns-scope` for what `auto` gap policy actually does
+and why its default is `review`, and `docs/citations.md` for `internal_citations`.
 
 ## Queue control
 

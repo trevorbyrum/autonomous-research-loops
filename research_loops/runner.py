@@ -871,6 +871,9 @@ class LoopRunner:
             child_env["RESEARCH_LOOP_COMPLETION_LOCK"] = completion_lock
         else:
             child_env.pop("RESEARCH_LOOP_COMPLETION_LOCK", None)
+        child_env["RESEARCH_LOOP_INTERNAL_CITATIONS"] = (
+            "1" if item.get("internal_citations") else "0"
+        )
         try:
             with log_path.open("w", encoding="utf-8") as log:
                 process = subprocess.Popen(
