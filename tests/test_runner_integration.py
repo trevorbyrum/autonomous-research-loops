@@ -186,7 +186,7 @@ class LoopRunnerTests(unittest.TestCase):
         deadline = time.time() + 5
         while time.time() < deadline and not self.store.get(item["id"])["last_pid"]:
             time.sleep(0.02)
-        self.store.pause_item(item["id"], "operator test")
+        self.store.pause_item(item["id"], "operator test", graceful=False)
         thread.join(timeout=5)
 
         self.assertFalse(thread.is_alive())
@@ -207,7 +207,7 @@ class LoopRunnerTests(unittest.TestCase):
         deadline = time.time() + 5
         while time.time() < deadline and not self.store.get(item["id"])["last_pid"]:
             time.sleep(0.02)
-        self.store.pause_all("maintenance")
+        self.store.pause_all("maintenance", graceful=False)
         thread.join(timeout=5)
 
         self.assertEqual(result["outcome"], "global_paused")
@@ -215,6 +215,99 @@ class LoopRunnerTests(unittest.TestCase):
         self.assertIsNone(self.store.claim_next())
         self.store.resume_all()
         self.assertEqual(self.store.claim_next()["id"], item["id"])
+
+    def _is_alive(self, pid):
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+
+    def test_graceful_pause_on_a_recurring_item_lets_the_child_finish_then_lands_paused(self):
+        # The core new behavior: a recurring item that would normally be
+        # rescheduled ("scheduled"/backoff) instead lands on paused, without
+        # ever killing the in-flight child.
+        item = self.store.add(
+            title="Recurring",
+            cwd=str(self.root),
+            command=[sys.executable, "-c", "import time; time.sleep(1)"],
+            repeat_seconds=900,
+        )
+        result = {}
+        thread = threading.Thread(target=lambda: result.update(self.runner.run_once() or {}))
+        thread.start()
+        deadline = time.time() + 5
+        while time.time() < deadline and not self.store.get(item["id"])["last_pid"]:
+            time.sleep(0.02)
+        pid = self.store.get(item["id"])["last_pid"]
+
+        self.store.pause_item(item["id"], "graceful test")  # default graceful=True
+        time.sleep(0.3)
+        self.assertTrue(self._is_alive(pid), "graceful pause must not kill the child")
+
+        thread.join(timeout=10)
+        self.assertEqual(result["outcome"], "paused")
+        final = self.store.get(item["id"])
+        self.assertEqual(final["status"], "paused")
+        self.assertEqual(final["desired_state"], "paused")
+        self.assertIsNone(final["next_eligible_at"])
+        self.assertIsNone(self.store.claim_next())
+
+    def test_graceful_pause_all_does_not_kill_running_children_but_blocks_new_claims(self):
+        item = self.store.add(
+            title="Recurring",
+            cwd=str(self.root),
+            command=[sys.executable, "-c", "import time; time.sleep(1)"],
+            repeat_seconds=900,
+        )
+        result = {}
+        thread = threading.Thread(target=lambda: result.update(self.runner.run_once() or {}))
+        thread.start()
+        deadline = time.time() + 5
+        while time.time() < deadline and not self.store.get(item["id"])["last_pid"]:
+            time.sleep(0.02)
+        pid = self.store.get(item["id"])["last_pid"]
+
+        self.store.pause_all("graceful global test")  # default graceful=True
+        time.sleep(0.3)
+        self.assertTrue(self._is_alive(pid), "graceful pause_all must not kill running children")
+        self.assertIsNone(self.store.claim_next(), "stopping must block new claims like paused")
+
+        thread.join(timeout=10)
+        self.assertEqual(self.store.get(item["id"])["status"], "paused")
+
+        self.store.resume_all()
+        self.assertIsNone(self.store.snapshot()["pause_reason"])
+        self.assertFalse(self.store.snapshot()["stopping"])
+
+    def test_graceful_pause_on_a_non_running_item_pauses_immediately(self):
+        item = self.store.add(title="Queued", cwd="/tmp", command=["true"])
+        self.store.pause_item(item["id"], "graceful on idle item")
+        self.assertEqual(self.store.get(item["id"])["status"], "paused")
+        self.assertEqual(self.store.get(item["id"])["desired_state"], "paused")
+
+    def test_resuming_a_graceful_stop_in_flight_cancels_it(self):
+        item = self.store.add(
+            title="Recurring",
+            cwd=str(self.root),
+            command=[sys.executable, "-c", "import time; time.sleep(1)"],
+            repeat_seconds=900,
+        )
+        result = {}
+        thread = threading.Thread(target=lambda: result.update(self.runner.run_once() or {}))
+        thread.start()
+        deadline = time.time() + 5
+        while time.time() < deadline and not self.store.get(item["id"])["last_pid"]:
+            time.sleep(0.02)
+
+        self.store.pause_item(item["id"], "graceful test")
+        self.assertEqual(self.store.get(item["id"])["desired_state"], "stopping")
+        self.store.resume_item(item["id"])
+        self.assertEqual(self.store.get(item["id"])["desired_state"], "running")
+
+        thread.join(timeout=10)
+        self.assertEqual(result["outcome"], "scheduled")
+        self.assertEqual(self.store.get(item["id"])["status"], "backoff")
 
     def _run_with_control_after_final_poll(self, control, *, exit_code):
         item = self.store.add(
@@ -264,12 +357,28 @@ class LoopRunnerTests(unittest.TestCase):
         self.assertEqual(self.store.get(item["id"])["status"], "paused")
 
     def test_global_pause_after_final_child_poll_prevents_completion(self):
+        # graceful=False: the operator asked to kill, so a "completed" outcome
+        # racing against that kill must never be trusted -- the child could
+        # have been mid-write of its own STOP DONE when terminated.
         item, result = self._run_with_control_after_final_poll(
-            lambda _item_id: self.store.pause_all("race"), exit_code=0
+            lambda _item_id: self.store.pause_all("race", graceful=False), exit_code=0
         )
 
         self.assertEqual(result["outcome"], "global_paused")
         self.assertEqual(self.store.get(item["id"])["status"], "queued")
+
+    def test_graceful_global_pause_after_final_child_poll_still_honors_a_real_completion(self):
+        # graceful=True (the default): the child was never killed, so a
+        # "completed" outcome it actually reached on its own is real and
+        # trustworthy -- the opposite guarantee from the graceful=False case
+        # above. Overriding a genuine completion to "paused" here would hide
+        # real, finished work behind an artificial pause.
+        item, result = self._run_with_control_after_final_poll(
+            lambda _item_id: self.store.pause_all("race"), exit_code=0
+        )
+
+        self.assertEqual(result["outcome"], "completed")
+        self.assertEqual(self.store.get(item["id"])["status"], "completed")
 
     def test_runner_rejects_invalid_poll_interval(self):
         for value in (0, -1, math.nan, math.inf):

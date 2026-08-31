@@ -179,6 +179,20 @@ class CliTests(unittest.TestCase):
         self.assertFalse(report["healthy"])
         self.assertEqual(report["unlocked_items"], ["unlocked"])
 
+    def test_pause_cli_defaults_graceful_and_now_flag_requests_immediate(self):
+        queued = json.loads(
+            self.run_cli("add", "--id", "queued", "--title", "Q", "--cwd", "/tmp", "--", "true").stdout
+        )
+        # A non-running item pauses immediately regardless of --now.
+        self.assertEqual(queued["status"], "queued")
+        paused = json.loads(self.run_cli("pause", "queued").stdout)
+        self.assertEqual(paused["status"], "paused")
+        self.assertEqual(paused["desired_state"], "paused")
+
+        self.run_cli("resume", "queued")
+        paused_now = json.loads(self.run_cli("pause", "queued", "--now").stdout)
+        self.assertEqual(paused_now["status"], "paused")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -188,7 +188,10 @@ def render_dashboard(
             category = "needs_attention"
         elif status == "paused" or desired == "paused":
             category = "paused"
-        elif status in {"running", "backoff"} and owned and desired == "running":
+        elif status in {"running", "backoff"} and owned and desired in {"running", "stopping"}:
+            # desired == "stopping": a graceful pause/swap was requested but
+            # this iteration hasn't finished yet -- still genuinely active
+            # until it lands (at which point desired becomes "paused").
             category = "active"
         elif status in {"queued", "backoff"} and not owned and desired == "running":
             category = "queued"
@@ -202,8 +205,10 @@ def render_dashboard(
         f"Generated: **{_cell(generated)}**  ",
         f"Queue revision: **{_cell(state.get('revision', 'unavailable'))}**  ",
         f"Queue globally paused: **{'yes' if state.get('paused') is True else 'no'}**",
+        f"Queue globally stopping (graceful, in-flight iterations finishing first): "
+        f"**{'yes' if state.get('stopping') is True else 'no'}**",
     ]
-    if state.get("paused") is True:
+    if state.get("paused") is True or state.get("stopping") is True:
         lines.append(f"Pause reason: **{_cell(state.get('pause_reason') or 'not recorded')}**")
     lines.extend(
         [

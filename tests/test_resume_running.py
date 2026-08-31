@@ -126,7 +126,7 @@ class ResumeAfterWorkerRestartTests(unittest.TestCase):
                 e["type"] == "process_adopted" for e in self.ledger.events()
             ):
                 time.sleep(0.02)
-            self.store.pause_item(item["id"], "operator pause during adoption")
+            self.store.pause_item(item["id"], "operator pause during adoption", graceful=False)
             thread.join(timeout=10)
 
         self.assertFalse(thread.is_alive())
@@ -274,7 +274,7 @@ class ResumeAfterWorkerRestartTests(unittest.TestCase):
             if fingerprint:
                 break
             time.sleep(0.02)
-        self.store.pause_item(item["id"], "stop test child")
+        self.store.pause_item(item["id"], "stop test child", graceful=False)
         thread.join(timeout=10)
 
         assert fingerprint is not None

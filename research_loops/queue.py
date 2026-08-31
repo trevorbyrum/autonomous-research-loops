@@ -130,6 +130,7 @@ class QueueStore:
             "revision": 0,
             "paused": False,
             "pause_reason": None,
+            "stopping": False,
             "created_at": now,
             "updated_at": now,
             "worker_policies": {},
@@ -702,7 +703,7 @@ class QueueStore:
         additive: it skips owned items and claims the next unclaimed one.
         """
         with self._locked() as state:
-            if state["paused"]:
+            if state["paused"] or state.get("stopping"):
                 return None
             # Missing is the legacy continuous-mode default; an explicitly
             # persisted malformed policy must fail before every claim path,
@@ -848,24 +849,44 @@ class QueueStore:
             result["resumed"] = False
             return result
 
-    def pause_all(self, reason: str | None = None) -> dict[str, Any]:
+    def pause_all(self, reason: str | None = None, *, graceful: bool = True) -> dict[str, Any]:
+        """Pause every item. Graceful (default): a currently-running iteration
+        finishes naturally -- finalize_run() lands it on `paused` once it
+        does, instead of killing it mid-work. `graceful=False` preserves the
+        original immediate-SIGTERM behavior (runner.py's poll loop terminates
+        any running child as soon as it observes `state["paused"]`)."""
         with self._locked() as state:
-            state["paused"] = True
+            if graceful:
+                state["stopping"] = True
+            else:
+                state["paused"] = True
             state["pause_reason"] = reason or "paused by operator"
         return self.snapshot()
 
     def resume_all(self) -> dict[str, Any]:
         with self._locked() as state:
             state["paused"] = False
+            state["stopping"] = False
             state["pause_reason"] = None
         return self.snapshot()
 
-    def pause_item(self, item_id: str, reason: str | None = None) -> dict[str, Any]:
+    def pause_item(
+        self, item_id: str, reason: str | None = None, *, graceful: bool = True
+    ) -> dict[str, Any]:
+        """Pause one item. Graceful (default): if it's currently running, its
+        iteration finishes naturally and finalize_run() lands it on `paused`
+        once it does -- status stays `running` until then. A non-running item
+        (queued/backoff) has nothing in flight to protect, so it's paused
+        immediately regardless of `graceful`. `graceful=False` preserves the
+        original immediate-SIGTERM behavior for a running item."""
         with self._locked() as state:
             item = self._find(state, item_id)
-            item["desired_state"] = "paused"
-            if item["status"] != "running":
-                item["status"] = "paused"
+            if graceful and item["status"] == "running":
+                item["desired_state"] = "stopping"
+            else:
+                item["desired_state"] = "paused"
+                if item["status"] != "running":
+                    item["status"] = "paused"
             item["last_error"] = reason or "paused by operator"
             item["last_error_kind"] = "operator_pause"
             item["updated_at"] = utc_now()
@@ -1087,6 +1108,27 @@ class QueueStore:
                 item["last_error"] = (message or "")[-4000:]
             else:
                 raise QueueError(f"unknown terminal outcome: {actual_outcome}")
+
+            # Graceful stop (pause_item/pause_all with graceful=True on an item
+            # that was mid-iteration): the child was never terminated, so it
+            # ran to this real, correctly classified outcome above -- every
+            # field the branches just set (error info, exit code,
+            # consecutive_failures) is accurate and stays as-is. Only override
+            # the scheduling outcome itself, so "scheduled"/"backoff" (which
+            # would otherwise auto-reclaim this item at next_eligible_at) land
+            # on paused instead, honoring the stop that was requested.
+            graceful_stop_requested = (
+                item["desired_state"] == "stopping" or state.get("stopping", False)
+            )
+            if (
+                graceful_stop_requested
+                and actual_outcome in {"scheduled", "backoff"}
+                and item["status"] == "backoff"
+            ):
+                item["status"] = "paused"
+                item["desired_state"] = "paused"
+                item["next_eligible_at"] = None
+                actual_outcome = "paused"
 
             item["last_pid"] = None
             item["last_pid_fingerprint"] = None

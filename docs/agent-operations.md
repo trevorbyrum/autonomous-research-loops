@@ -110,12 +110,24 @@ that no queue item's `cwd` points at — default `<root>/topics`), and per-topic
 portfolio-wide cited-source counts. Run this before assuming a portfolio is in good
 shape, not just when something already looks wrong.
 
+## Pausing
+
+```bash
+research-loops pause [item-id] [--reason "..."]   # graceful (default): finish the
+                                                   # current iteration, then stop --
+                                                   # never kills an in-flight child
+research-loops pause [item-id] --now              # immediate: SIGTERM an in-flight
+                                                   # iteration right away instead
+```
+
+A non-running (queued/backoff) item pauses immediately either way — there's nothing
+in flight to protect. `--now` is for when you genuinely need the process gone right
+away; the default is almost always what you want, since it never discards in-progress
+work or risks a half-written ledger from a mid-write kill.
+
 ## Reference: what's still ad hoc (growing list, check back)
 
 The following operational needs don't have a dedicated tool yet — this section will
 shrink as later phases ship:
-- Graceful pause (finish the current iteration, then stop, instead of killing it
-  mid-run) — today's `research-loops pause` terminates an in-flight iteration
-  immediately; there is no "finish first" option yet.
 - Reassigning a worker from its current topic to a specific queued one without
   disrupting the in-flight iteration — no tool yet.

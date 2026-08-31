@@ -160,6 +160,13 @@ def build_parser() -> argparse.ArgumentParser:
     pause = sub.add_parser("pause", help="pause one item or the whole queue")
     pause.add_argument("item_id", nargs="?")
     pause.add_argument("--reason")
+    pause.add_argument(
+        "--now",
+        action="store_true",
+        help="kill an in-flight iteration immediately (SIGTERM) instead of the "
+        "default: let it finish naturally, then land on paused without "
+        "auto-rescheduling. A non-running item pauses immediately either way",
+    )
 
     resume = sub.add_parser("resume", help="resume one item or the whole queue")
     resume.add_argument("item_id", nargs="?")
@@ -349,10 +356,11 @@ def main(argv: list[str] | None = None) -> int:
         elif args.action == "remove":
             emit(store.remove(args.item_id))
         elif args.action == "pause":
+            graceful = not args.now
             emit(
-                store.pause_item(args.item_id, args.reason)
+                store.pause_item(args.item_id, args.reason, graceful=graceful)
                 if args.item_id
-                else store.pause_all(args.reason)
+                else store.pause_all(args.reason, graceful=graceful)
             )
         elif args.action == "resume":
             emit(store.resume_item(args.item_id) if args.item_id else store.resume_all())
