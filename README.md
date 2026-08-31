@@ -26,12 +26,12 @@ research — the first quits early, the second never quits. This engine forces a
 option: research ends when every question you defined up front has a real, checkable,
 evidence-graded disposition, decided by a validator, not by the agent's own say-so.
 
-That disposition is `supported`, `contradicted`, `unresolved`, or `deferred` — never a
-verdict. The engine's job is to collect and grade evidence thoroughly enough that a
-human (or a downstream process) can actually decide the real question — which library
-to use, how to architect something, what the answer is — not to hand down that decision
-itself. See [`docs/governance.md`](docs/governance.md#the-output-is-evidence-not-a-verdict).
-
+- **The goal is non-deterministic — evidence, not an answer.** Each disposition is
+  `supported`, `contradicted`, `unresolved`, or `deferred`, never a verdict. The engine's
+  job is to collect and grade evidence thoroughly enough that a human (or a downstream
+  process) can actually decide the real question — which library to use, how to
+  architect something, what the answer is — not to hand down that decision itself. See
+  [`docs/governance.md`](docs/governance.md#the-output-is-evidence-not-a-verdict).
 - **Completion is executable, not asserted.** `semantic-state.py validate` either passes
   or it doesn't; a research agent writing `STOP DONE` while obligations remain open gets
   overruled by the queue, every time.
