@@ -424,12 +424,32 @@ def semantic_projection(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "action", choices=("validate", "signature", "lock", "rehash", "check")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Validate and fingerprint one topic's executable completion state "
+            "(SEMANTIC-STATE.json). See docs/topic-authoring.md."
+        )
     )
-    parser.add_argument("topic_dir", type=Path)
-    parser.add_argument("--lock-sha256")
+    parser.add_argument(
+        "action",
+        choices=("validate", "signature", "lock", "rehash", "check"),
+        help=(
+            "validate: the DONE gate -- exit 0 only if every obligation/deliverable "
+            "is terminal. "
+            "check: structural sanity for a freshly approved topic, before any "
+            "research has happened. "
+            "signature: deterministic digest of qualifying semantic progress, used "
+            "by the queue's stall guard. "
+            "lock: print the completion-inventory hash for --lock-sha256 pinning. "
+            "rehash: recompute contract/authority hashes after YOU edit TOPIC.md or "
+            "AUTHORITY.md -- never run by a research agent."
+        ),
+    )
+    parser.add_argument("topic_dir", type=Path, help="path to the topic's directory")
+    parser.add_argument(
+        "--lock-sha256",
+        help="with `validate`, also require the completion inventory to match this hash",
+    )
     args = parser.parse_args(argv)
     if args.action == "rehash":
         try:

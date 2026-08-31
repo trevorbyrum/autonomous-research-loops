@@ -76,7 +76,7 @@ class StopFileTests(unittest.TestCase):
         self.assertEqual(state["last_error_kind"], "configuration")
         self.assertIn("open obligations remain", state["last_error"])
 
-    def test_recurring_needs_trevor_stop_goes_to_attention(self):
+    def test_recurring_needs_operator_stop_goes_to_attention(self):
         stop_file = self.root / "STOP"
         command = (
             f"import pathlib; pathlib.Path({str(stop_file)!r}).write_text('NEEDS-OPERATOR: manual review')"

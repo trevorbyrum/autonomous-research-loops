@@ -1,8 +1,13 @@
 # research-loops
 
-A small, durable engine for running autonomous research topics to genuine completion —
-not a fixed iteration count, not a token budget, an actual executable check that every
-question you asked has a real answer (or an honest "unresolved, here's why").
+**A durable engine for running autonomous research topics to genuine completion.**
+
+Not a fixed iteration count, not a token budget — an actual executable check that every
+question you asked has a real answer, or an honest "unresolved, and here's why."
+
+`v0.1.0` · Apache-2.0 · Python 3.12+ · zero third-party dependencies · 133 tests passing
+
+---
 
 You bring an LLM CLI you already have access to and a short brief describing what you
 want researched. This engine handles the rest: queueing, crash-safe retry, liveness
@@ -12,6 +17,26 @@ detection, and a completion gate that a research agent cannot talk its way past.
 ship a vector database or a knowledge graph, and it doesn't need one — a topic's local
 markdown ledgers are always its evidence of record. Bring your own retrieval if you want
 richer infrastructure; the default path needs nothing but a runner CLI and Python 3.12+.
+
+## Why this exists
+
+Most "agent does research" demos either stop when the model feels like stopping, or run
+forever accumulating sources without ever answering the actual question. Neither is
+research — the first quits early, the second never quits. This engine forces a third
+option: research ends when every question you defined up front has a real, checkable
+answer, decided by a validator, not by the agent's own say-so.
+
+- **Completion is executable, not asserted.** `semantic-state.py validate` either passes
+  or it doesn't; a research agent writing `STOP DONE` while obligations remain open gets
+  overruled by the queue, every time.
+- **Liveness and completion are different questions.** A topic that stops making real
+  progress gets flagged for a human — it never gets silently marked finished just
+  because nothing changed.
+- **Scope is yours, not the agent's.** An agent can propose a gap it found; only you can
+  turn that proposal into binding scope.
+- **Nothing required beyond a runner CLI.** No mandatory vector database, no mandatory
+  graph store, no mandatory external gateway. A topic's own markdown ledgers are always
+  its evidence of record.
 
 ## The idea in one paragraph
 
@@ -24,6 +49,28 @@ however many topics and workers you're running, survives crashes, and classifies
 failures correctly (a subscription quota window is not the same problem as a broken
 config). None of these three pieces know about the other two's internals — swap any of
 them independently.
+
+```
+ you write a brief
+        │
+        ▼
+ tools/new-topic  ──►  DRAFT-TOPIC.md / DRAFT-AUTHORITY.md   (deterministic, no LLM call)
+        │                        │
+        │                 you review + edit
+        ▼                        ▼
+ tools/approve-topic  ──►  TOPIC.md · AUTHORITY.md · SEMANTIC-STATE.json   (hash-locked)
+        │
+        ▼
+ bin/research-loops add/sync  ──►  state/queue.json          (research_loops/queue.py)
+        │
+        ▼
+ bin/research-loops run  ──►  chassis/run-topic.sh  ──►  runners/<adapter>.sh  ──►  your LLM CLI
+        │                            │
+        │                    reads CONTRACT-CORE.md, TOPIC.md, AUTHORITY.md,
+        │                    SEMANTIC-STATE.json; updates ledgers + state
+        ▼
+ chassis/semantic-state.py validate   ──►   DONE only if every obligation is terminal
+```
 
 ## Quickstart
 
@@ -56,9 +103,21 @@ bin/research-loops run --once
 bin/research-loops dashboard --output STATUS.md && cat STATUS.md
 ```
 
-Already have a runnable example? See `examples/static-site-generator-choice/` — a
-fully approved, never-run topic you can queue and run immediately without writing a
-brief first.
+`claude` above is just one choice — swap the last positional argument for `codex`,
+`hermes`, or `generic` (see [`runners/README.md`](runners/README.md)) depending on
+which CLI you already have authenticated.
+
+Want to skip straight to a real run? `examples/static-site-generator-choice/` is a
+fully approved, never-run topic — no brief-writing needed:
+
+```bash
+bin/research-loops add --id static-site-generator-choice \
+  --title "Static Site Generator Choice for a Personal Blog" \
+  --cwd "$(pwd)/examples/static-site-generator-choice" --stop-file STOP \
+  --max-attempts 8 --repeat-seconds 900 -- \
+  "$(pwd)/chassis/run-topic.sh" "$(pwd)/examples/static-site-generator-choice" claude
+bin/research-loops run --once
+```
 
 ## Layout
 
@@ -81,7 +140,17 @@ brief first.
 - [`docs/operations.md`](docs/operations.md) — running multiple workers, systemd deployment, troubleshooting
 - [`docs/governance.md`](docs/governance.md) — why the operator owns scope, and why quota failure is never evidence of absence
 
+## Development
+
+```bash
+PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_*.py'
+```
+
+No dependencies to install for that — the engine is pure standard library. See
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for how to add a runner adapter, propose a change,
+or report an issue with a specific topic's obligation decomposition.
+
 ## License
 
-Apache License 2.0 — see [`LICENSE`](LICENSE). Research output your topics produce is
-yours; this license covers the engine, not what it finds.
+Apache License 2.0 — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE). Research output
+your topics produce is yours; this license covers the engine, not what it finds.

@@ -19,7 +19,11 @@ def emit(value: Any) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="research-loops")
+    parser = argparse.ArgumentParser(
+        prog="research-loops",
+        description="Durable queue for running research topics via a pluggable runner. "
+        "See docs/operations.md for day-to-day use.",
+    )
     parser.add_argument(
         "--root",
         default=str(Path(__file__).resolve().parents[1]),
