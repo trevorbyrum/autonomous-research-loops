@@ -167,4 +167,10 @@ fi
 sources_after=$(python3 "$CHASSIS/semantic-state.py" source-count "$TOPIC_DIR" 2>/dev/null || echo 0)
 sources_cited=$((sources_after - sources_before))
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) iteration $stamp: sources_cited=$sources_cited (total=$sources_after)" >> "$TOPIC_DIR/PROGRESS.md"
+# Stable alias of this iteration's usage JSON so a queue item's usage_file
+# can point at one fixed path (the runner's freshness check compares
+# mtime/size before and after each run, so an unchanged copy is ignored).
+if [[ -s "$usage" ]]; then
+  cp -f "$usage" "$LOG_DIR/latest-usage.json"
+fi
 echo "iteration-ok log=$log usage=$usage sources_cited=$sources_cited"

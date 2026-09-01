@@ -240,16 +240,26 @@ class RunnerRefreshIntegrationTests(unittest.TestCase):
         return len(state["obligations"])
 
     def test_a_real_tick_reopens_a_due_topic_and_it_becomes_claimable_again(self):
+        # The command writes a real STOP DONE, like an actual completed topic
+        # has on disk. The refresh must clear it -- a surviving stale STOP
+        # would make run-topic.sh refuse the reopened topic's next iteration
+        # outright (exit 3 -> needs_attention).
+        stop_writer = (
+            "from pathlib import Path; "
+            f"Path({str(self.topic_dir / 'STOP')!r}).write_text('DONE\\n')"
+        )
         self.store.add(
             title="a",
             cwd=str(self.topic_dir),
-            command=[sys.executable, "-c", "pass"],
+            command=[sys.executable, "-c", stop_writer],
             item_id="a",
+            stop_file=str(self.topic_dir / "STOP"),
             topic_refresh="weekly",
             topic_refresh_mode="light",
         )
         first = self.runner.run_once()
         self.assertEqual(first["outcome"], "completed")
+        self.assertTrue((self.topic_dir / "STOP").exists())
         before_obligations = self._obligation_count()
 
         # Simulate the schedule coming due (backdate on disk -- there's no
@@ -261,9 +271,10 @@ class RunnerRefreshIntegrationTests(unittest.TestCase):
 
         second = self.runner.run_once()
         # _process_due_refreshes() reopened "a" for real (refresh-policy.py
-        # ran against the actual topic dir on disk) and claim_next() picked
-        # it straight back up within the same tick, running the trivial
-        # command again to a fresh completion.
+        # ran against the actual topic dir on disk, clearing the stale STOP)
+        # and claim_next() picked it straight back up within the same tick,
+        # running the command again to a fresh completion (a fresh STOP DONE
+        # written by the second run itself).
         self.assertEqual(second["outcome"], "completed")
         after_obligations = self._obligation_count()
         self.assertEqual(after_obligations, before_obligations + 1)

@@ -50,6 +50,7 @@ class RefreshPolicyTests(unittest.TestCase):
             "mode": "light",
             "obligations_touched": 1,
             "fell_back_to_light": False,
+            "stop_removed": False,
         })
 
         after = self._state()
@@ -132,6 +133,28 @@ class RefreshPolicyTests(unittest.TestCase):
         result = _run("apply", str(self.topic_dir), "light")
         self.assertEqual(result.returncode, 1)
         self.assertTrue(result.stderr.strip())
+
+    def test_every_mode_removes_a_stale_stop_file(self):
+        # A completed topic's STOP DONE would make run-topic.sh exit 3 on the
+        # very next iteration -- reopening must clear it. Fresh topic copy per
+        # mode: light-style obligation ids are second-resolution timestamps,
+        # so repeated applies against one dir could collide.
+        for mode in ("light", "continue", "full"):
+            with self.subTest(mode=mode):
+                topic_dir = Path(self._tmp.name) / f"topic-{mode}"
+                shutil.copytree(EXAMPLE_TOPIC, topic_dir)
+                stop = topic_dir / "STOP"
+                stop.write_text("DONE\n\nvalidated earlier\n", encoding="utf-8")
+                result = _run("apply", str(topic_dir), mode)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                summary = json.loads(result.stdout)
+                self.assertTrue(summary["stop_removed"])
+                self.assertFalse(stop.exists())
+
+    def test_apply_without_a_stop_file_reports_stop_removed_false(self):
+        result = _run("apply", str(self.topic_dir), "full")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(json.loads(result.stdout)["stop_removed"])
 
 
 if __name__ == "__main__":

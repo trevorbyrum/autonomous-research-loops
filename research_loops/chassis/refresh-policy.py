@@ -111,15 +111,28 @@ def apply(topic_dir: Path, mode: str) -> dict[str, Any]:
             fell_back_to_light = True
 
     semantic_state.rehash(topic_dir)
+
+    # The STOP file records the completion this refresh is deliberately
+    # reopening -- leave it and run-topic.sh refuses the very next iteration
+    # (exit 3 -> needs_attention), making every refreshed topic dead on
+    # arrival. Removing it is part of the reopen edit itself, not cleanup.
+    stop_path = topic_dir / "STOP"
+    stop_removed = stop_path.exists()
+    if stop_removed:
+        stop_path.unlink()
+
     note = f"[system] REFRESH-{mode}: reopened/added {touched} obligation(s)"
     if fell_back_to_light:
         note += " (fell back to light: no supported obligations to reopen)"
+    if stop_removed:
+        note += "; cleared prior STOP"
     _append_decision(topic_dir, f"REFRESH-{mode}-{stamp}", note)
 
     return {
         "mode": mode,
         "obligations_touched": touched,
         "fell_back_to_light": fell_back_to_light,
+        "stop_removed": stop_removed,
     }
 
 
