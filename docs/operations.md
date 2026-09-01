@@ -191,3 +191,28 @@ the topic's own `logs/` directory for the actual iteration transcript:
   worker restart, was supervised until it exited, and its exit status couldn't be
   observed. Check the topic's ledgers directly to see whether real progress happened;
   `restart` is safe either way since topics checkpoint their own state every iteration.
+- **`transient` / `outage` / `rate_limit`** — an external condition (a gateway down, a
+  provider blip, a rate window) exhausted the retry budget. You usually don't need to
+  do anything: the worker auto-resumes these parks after a 30-minute cooldown (each
+  resume is an `auto_resume` event in the ledger). If you want one to STAY down,
+  `pause` it — an explicit pause always wins over auto-resume.
+
+Two things auto-resume never touches: `configuration`/`auth` (they won't heal on their
+own) and stall escalations (liveness is a judgment call). Those wait for you.
+
+## Changing an approved topic's scope
+
+Operator scope edits (adding an obligation outside the gap-policy path, retiring one,
+renaming a deliverable) change the completion inventory, and the pinned
+`completion_lock` will then reject every future `DONE` with "approved completion
+inventory lock mismatch" — permanently, by design, until you re-pin it. The sanctioned
+path after you've made and reviewed the edit:
+
+```bash
+bin/research-loops relock <item-id>
+```
+
+This recomputes the lock from the topic's current `SEMANTIC-STATE.json` and records
+the previous lock in its output. `sync` deliberately refuses `completion_lock` changes
+so a manifest edit can never re-pin what DONE means silently; `relock` is the explicit
+per-item operator action that may.

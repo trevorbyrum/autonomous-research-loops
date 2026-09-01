@@ -13,11 +13,28 @@
 # to stdout/stderr, may optionally write RESEARCH_LOOP_USAGE_FILE as JSON, and owns exit
 # code 0 or any non-zero it wants classified as a transient failure. It must never itself
 # use exit codes 3/4/5/78 — those belong to this chassis:
-#   exit 0  = iteration completed with ledger progress
+#   exit 0  = iteration completed (including iterations with an unchanged semantic
+#             signature: the chassis MEASURES progress and reports it in the result
+#             file below; whether unchanged signatures constitute a stall is the
+#             queue's decision — its stall guard counts stall_limit CONSECUTIVE
+#             unchanged runs. CONTRACT-CORE's evidence discipline makes
+#             discovery-only iterations legitimate, so a single unchanged
+#             signature is never, by itself, a failure.)
 #   exit 3  = STOP file present (terminal; queue maps to completed/attention)
 #   exit 4  = PAUSED file present
-#   exit 5  = liveness stall (semantic signature unchanged on rc=0)
+#   exit 5  = reserved (the pre-2026-09 chassis exited 5 on the FIRST unchanged
+#             signature, pre-empting the queue's stall_limit and parking
+#             contract-compliant discovery iterations; the chassis no longer
+#             emits it, but the code stays reserved so old logs remain readable
+#             and runners still must not use it)
 #   exit 78 = invalid or unavailable runtime configuration
+#
+# Every completed runner invocation also writes $LOG_DIR/result-<stamp>.json
+# (and the stable alias $LOG_DIR/latest-result.json): a small structured record
+# of chassis-level facts — outcome, exit code, signature before/after,
+# sources cited, STOP status, degraded capabilities. The queue prefers this
+# file over scraping the transcript; treat it as the chassis→queue interface
+# and keep it runner-agnostic.
 set -euo pipefail
 
 CHASSIS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -136,13 +153,70 @@ set -e
 rm -f "$prompt_file"
 
 after=$("$CHASSIS/progress-signature.sh" "$TOPIC_DIR")
+sources_after=$(python3 "$CHASSIS/semantic-state.py" source-count "$TOPIC_DIR" 2>/dev/null || echo 0)
+sources_cited=$((sources_after - sources_before))
+
+# The chassis→queue result record: chassis-level facts the queue classifies
+# from instead of scraping LLM transcript prose. Written on every path where
+# the runner actually ran, success or failure, and always runner-agnostic.
+# $3 (optional) = error_class: a FailureKind name recorded only when the
+# CHASSIS knows the failure's class (e.g. a rejected DONE is configuration);
+# the queue treats a recorded class as authoritative over prose scanning and
+# falls back to the transcript tail when it is absent.
+write_result() {
+  RESULT_OUTCOME="$1" RESULT_EXIT="$2" RESULT_ERROR_CLASS="${3:-}" RESULT_STAMP="$stamp" \
+  RESULT_BEFORE="$before" RESULT_AFTER="$after" \
+  RESULT_SOURCES_CITED="$sources_cited" RESULT_LOG="$log" \
+  RESULT_RUNNER="$RUNNER_NAME" RESULT_TOPIC_DIR="$TOPIC_DIR" \
+  RESULT_DEGRADED_FILE="${degraded_file:-}" \
+  python3 - "$LOG_DIR" <<'PY' || echo "warning: could not write iteration result record" >&2
+import json, os, sys
+
+log_dir = sys.argv[1]
+degraded = []
+degraded_path = os.environ.get("RESULT_DEGRADED_FILE") or ""
+if degraded_path and os.path.isfile(degraded_path):
+    with open(degraded_path, encoding="utf-8") as fh:
+        degraded = [line.strip() for line in fh if line.strip()]
+stop_path = os.path.join(os.environ["RESULT_TOPIC_DIR"], "STOP")
+stop_written = os.path.isfile(stop_path)
+stop_first = None
+if stop_written:
+    with open(stop_path, encoding="utf-8") as fh:
+        stop_first = (fh.readline() or "").strip()[:200] or None
+result = {
+    "schema_version": 1,
+    "stamp": os.environ["RESULT_STAMP"],
+    "outcome": os.environ["RESULT_OUTCOME"],
+    "exit_code": int(os.environ["RESULT_EXIT"]),
+    "runner": os.environ["RESULT_RUNNER"],
+    "signature_before": os.environ["RESULT_BEFORE"],
+    "signature_after": os.environ["RESULT_AFTER"],
+    "signature_changed": os.environ["RESULT_BEFORE"] != os.environ["RESULT_AFTER"],
+    "sources_cited": int(os.environ["RESULT_SOURCES_CITED"]),
+    "stop_written": stop_written,
+    "stop_first_line": stop_first,
+    "degraded_capabilities": degraded,
+    "log": os.environ["RESULT_LOG"],
+}
+error_class = os.environ.get("RESULT_ERROR_CLASS") or ""
+if error_class:
+    result["error_class"] = error_class
+payload = json.dumps(result, indent=2, sort_keys=True) + "\n"
+with open(os.path.join(log_dir, f"result-{result['stamp']}.json"), "w", encoding="utf-8") as fh:
+    fh.write(payload)
+latest = os.path.join(log_dir, "latest-result.json")
+tmp = latest + ".tmp"
+with open(tmp, "w", encoding="utf-8") as fh:
+    fh.write(payload)
+os.replace(tmp, latest)
+PY
+}
+
 if [[ $rc -ne 0 ]]; then
+  write_result runner_failed "$rc"
   echo "iteration failed rc=$rc log=$log" >&2
   exit "$rc"
-fi
-if [[ "$before" == "$after" && ! -f "$TOPIC_DIR/STOP" ]]; then
-  echo "stalled: semantic state unchanged; operator attention required; log=$log" >&2
-  exit 5
 fi
 if [[ -f "$TOPIC_DIR/STOP" ]]; then
   first_token=$(awk 'NR==1 {gsub(/[[:punct:]]+$/, "", $1); print toupper($1)}' "$TOPIC_DIR/STOP")
@@ -158,14 +232,14 @@ if [[ -f "$TOPIC_DIR/STOP" ]]; then
       lock_args+=(--topics-root "$RESEARCH_LOOP_TOPICS_ROOT")
     fi
     if ! python3 "$CHASSIS/semantic-state.py" validate "$TOPIC_DIR" "${lock_args[@]}"; then
+      write_result done_rejected 78 configuration
       echo "configuration error: DONE rejected by semantic completion validator" >&2
       exit 78
     fi
   fi
   echo "STOP written this iteration: $(head -n 1 "$TOPIC_DIR/STOP")"
 fi
-sources_after=$(python3 "$CHASSIS/semantic-state.py" source-count "$TOPIC_DIR" 2>/dev/null || echo 0)
-sources_cited=$((sources_after - sources_before))
+write_result ok 0
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) iteration $stamp: sources_cited=$sources_cited (total=$sources_after)" >> "$TOPIC_DIR/PROGRESS.md"
 # Stable alias of this iteration's usage JSON so a queue item's usage_file
 # can point at one fixed path (the runner's freshness check compares

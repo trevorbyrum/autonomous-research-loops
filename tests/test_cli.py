@@ -223,6 +223,36 @@ class CliTests(unittest.TestCase):
         self.assertIsNone(result["released"])
         self.assertEqual(result["target"]["claimed_by"], "worker-1")
 
+    def test_relock_recomputes_the_completion_lock_from_topic_state(self):
+        # relock is the sanctioned path after an operator-approved scope
+        # change: sync deliberately refuses completion_lock edits, and a
+        # stale lock rejects every future DONE with no remedy but
+        # hand-editing hashes.
+        import shutil
+
+        example = Path(__file__).resolve().parents[1] / "examples" / "static-site-generator-choice"
+        topic_dir = Path(self.tempdir.name) / "topic"
+        shutil.copytree(example, topic_dir)
+        stale_lock = "0" * 64
+        self.run_cli(
+            "add", "--id", "t", "--title", "T", "--cwd", str(topic_dir),
+            "--lock-sha256", stale_lock, "--", "true",
+        )
+        relocked = json.loads(self.run_cli("relock", "t").stdout)
+        self.assertEqual(relocked["previous_completion_lock"], stale_lock)
+        self.assertNotEqual(relocked["completion_lock"], stale_lock)
+        self.assertRegex(relocked["completion_lock"], r"^[0-9a-f]{64}$")
+        # The new lock is the topic's actual current inventory hash.
+        chassis = (
+            Path(__file__).resolve().parents[1]
+            / "research_loops" / "chassis" / "semantic-state.py"
+        )
+        expected = subprocess.run(
+            [sys.executable, str(chassis), "lock", str(topic_dir)],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        self.assertEqual(relocked["completion_lock"], expected)
+
 
 if __name__ == "__main__":
     unittest.main()

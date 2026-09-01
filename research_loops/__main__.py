@@ -4,6 +4,7 @@ import argparse
 import fcntl
 import json
 import shutil
+import subprocess
 import sys
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -192,6 +193,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     restart = sub.add_parser("restart", help="restart an item safely")
     restart.add_argument("item_id")
+
+    relock = sub.add_parser(
+        "relock",
+        help=(
+            "recompute an item's completion lock from its topic's current "
+            "SEMANTIC-STATE.json after an operator-approved scope change — the "
+            "sanctioned alternative to hand-editing hashes (sync deliberately "
+            "refuses completion_lock changes, and a stale lock rejects every "
+            "future DONE with no remedy)"
+        ),
+    )
+    relock.add_argument("item_id")
 
     swap_active = sub.add_parser(
         "swap-active",
@@ -428,6 +441,23 @@ def main(argv: list[str] | None = None) -> int:
             emit(store.resume_item(args.item_id) if args.item_id else store.resume_all())
         elif args.action == "restart":
             emit(store.request_restart(args.item_id))
+        elif args.action == "relock":
+            item = store.get(args.item_id)
+            chassis_lock = (
+                Path(__file__).resolve().parent / "chassis" / "semantic-state.py"
+            )
+            proc = subprocess.run(
+                [sys.executable, str(chassis_lock), "lock", item["cwd"]],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if proc.returncode != 0:
+                raise QueueError(
+                    "could not compute the completion lock for "
+                    f"{args.item_id}: {(proc.stderr or proc.stdout).strip()}"
+                )
+            emit(store.set_completion_lock(args.item_id, proc.stdout.strip()))
         elif args.action == "swap-active":
             emit(store.reassign_worker(args.worker, args.target_item_id))
         elif args.action == "refresh":

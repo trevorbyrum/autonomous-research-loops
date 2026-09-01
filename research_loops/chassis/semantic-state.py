@@ -15,6 +15,54 @@ from typing import Any
 STATE_FILE = "SEMANTIC-STATE.json"
 TERMINAL_DISPOSITIONS = {"supported", "contradicted", "unresolved", "deferred"}
 
+# ---------------------------------------------------------------------------
+# Single source of truth for what counts as semantic state.
+#
+# completion_errors() (the DONE gate) and semantic_projection() (the liveness
+# signature the queue's stall guard hashes) MUST agree on which fields carry
+# semantic meaning. Any field the validator reasons over that the projection
+# omits creates a whole class of contract-compliant iterations that register
+# as "no progress": the 2026-08-31 incident was exactly this — CONTRACT-CORE
+# requires discovery-only iterations whose only state change is new
+# pending_evidence_refs, the old projection didn't carry that field, so a
+# mandated evidence-discipline step tripped the stall guard.
+#
+# These tuples are the agreement. semantic_projection() is DERIVED from them,
+# and tests/test_projection_parity.py fails the build if completion_errors()
+# starts reasoning over a field that is not listed here.
+#
+# Identity fields (obligation text/source_ref; deliverable description/path/
+# required_headings) are deliberately absent: they are pinned by the
+# completion-inventory lock and the TOPIC.md contract hash — both of which
+# the projection already carries via contract_sha256/authority_sha256 — so an
+# identity change is a scope change, not iteration progress.
+OBLIGATION_SEMANTIC_FIELDS = (
+    "id",
+    "disposition",
+    "confidence",
+    "counterevidence_reviewed",
+    "acceptance_summary",
+    "counterevidence_summary",
+    "gap_state",
+    "experiment",
+    "evidence_refs",
+    "adequate_search",
+)
+CONTRADICTION_SEMANTIC_FIELDS = ("id", "status", "resolution")
+DELIVERABLE_SEMANTIC_FIELDS = (
+    "id",
+    "status",
+    "acceptance_summary",
+    "acceptance_evidence_refs",
+)
+TOP_LEVEL_SEMANTIC_FIELDS = (
+    "schema_version",
+    "topic_id",
+    "contract_sha256",
+    "authority_sha256",
+    "pending_evidence_refs",
+)
+
 
 def obligation(identifier: str, text: str, source_ref: str) -> dict[str, object]:
     """Build a fresh, open obligation record. Used by `new-topic`/`approve-topic`
@@ -662,22 +710,33 @@ def completion_errors(
     return errors
 
 
+def _normalized_semantic_value(value: Any) -> Any:
+    """Normalize a projected field so only meaningful change moves the signature.
+
+    Reference lists (evidence_refs, pending_evidence_refs, ...) are sorted:
+    adding or removing a reference is progress, reordering the same set is not.
+    Everything else projects verbatim.
+    """
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return sorted(value)
+    return value
+
+
 def semantic_projection(state: dict[str, Any]) -> dict[str, Any]:
-    """Return only state transitions that qualify as semantic progress."""
+    """Return only state transitions that qualify as semantic progress.
+
+    Derived from the *_SEMANTIC_FIELDS tuples above — the same field sets the
+    completion validator reasons over — so the liveness signature and the DONE
+    gate can never disagree about what counts as semantic state.
+    """
     obligations = []
     for value in state.get("obligations", []):
         if not isinstance(value, dict):
             continue
         obligations.append(
             {
-                "id": value.get("id"),
-                "disposition": value.get("disposition"),
-                "confidence": value.get("confidence"),
-                "counterevidence_reviewed": value.get("counterevidence_reviewed"),
-                "acceptance_summary": value.get("acceptance_summary"),
-                "counterevidence_summary": value.get("counterevidence_summary"),
-                "gap_state": value.get("gap_state"),
-                "experiment": value.get("experiment"),
+                field: _normalized_semantic_value(value.get(field))
+                for field in OBLIGATION_SEMANTIC_FIELDS
             }
         )
     contradictions = []
@@ -686,9 +745,8 @@ def semantic_projection(state: dict[str, Any]) -> dict[str, Any]:
             continue
         contradictions.append(
             {
-                "id": value.get("id"),
-                "status": value.get("status"),
-                "resolution": value.get("resolution"),
+                field: _normalized_semantic_value(value.get(field))
+                for field in CONTRADICTION_SEMANTIC_FIELDS
             }
         )
     deliverables = []
@@ -697,22 +755,24 @@ def semantic_projection(state: dict[str, Any]) -> dict[str, Any]:
             continue
         deliverables.append(
             {
-                "id": value.get("id"),
-                "status": value.get("status"),
-                "acceptance_summary": value.get("acceptance_summary"),
+                field: _normalized_semantic_value(value.get(field))
+                for field in DELIVERABLE_SEMANTIC_FIELDS
             }
         )
-    return {
-        "schema_version": state.get("schema_version"),
-        "topic_id": state.get("topic_id"),
-        "contract_sha256": state.get("contract_sha256"),
-        "authority_sha256": state.get("authority_sha256"),
-        "obligations": sorted(obligations, key=lambda value: str(value["id"])),
-        "contradictions": sorted(
-            contradictions, key=lambda value: str(value["id"])
-        ),
-        "deliverables": sorted(deliverables, key=lambda value: str(value["id"])),
+    projection = {
+        field: _normalized_semantic_value(state.get(field))
+        for field in TOP_LEVEL_SEMANTIC_FIELDS
     }
+    projection.update(
+        {
+            "obligations": sorted(obligations, key=lambda value: str(value["id"])),
+            "contradictions": sorted(
+                contradictions, key=lambda value: str(value["id"])
+            ),
+            "deliverables": sorted(deliverables, key=lambda value: str(value["id"])),
+        }
+    )
+    return projection
 
 
 def main(argv: list[str] | None = None) -> int:
