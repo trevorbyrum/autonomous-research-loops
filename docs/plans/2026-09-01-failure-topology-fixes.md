@@ -79,7 +79,10 @@ Defect: the queue classifies failures by regexing the last 2KB of LLM transcript
 
 Fix: run-topic.sh writes `$LOG_DIR/result-<stamp>.json` from chassis-level facts:
 `{schema_version, outcome, exit_code, signature_before, signature_after,
-sources_cited, stop_written, degraded_capabilities: [], error_class_hint}`.
+sources_cited, stop_written, degraded_capabilities: [], error_class?}` —
+`error_class` present only when the chassis itself knows the failure's
+FailureKind (e.g. a rejected DONE is `configuration`); the queue treats it as
+authoritative and prose-scans only in its absence.
 - The queue classifies from this file first; the tail-regex path survives only as a
   fallback when the file is absent (back-compat with old iterations).
 - `degraded_capabilities` is the structured home for capability facts (gateway down,

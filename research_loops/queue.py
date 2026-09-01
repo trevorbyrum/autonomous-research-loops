@@ -1023,9 +1023,9 @@ class QueueStore:
         record carries the non-persisted ``previous_completion_lock`` so the
         change is auditable at the call site.
         """
-        _validate_completion_lock(completion_lock)
         if not completion_lock:
             raise QueueError("a completion lock is required")
+        _validate_completion_lock(completion_lock)
         with self._locked() as state:
             item = self._find(state, item_id)
             previous = item.get("completion_lock")
@@ -1252,13 +1252,28 @@ class QueueStore:
         return copy.deepcopy(item)
 
     def mark_needs_attention(
-        self, item_id: str, *, exit_code: int, error_kind: str, message: str
+        self,
+        item_id: str,
+        *,
+        exit_code: int,
+        error_kind: str,
+        message: str,
+        consume_failure: bool = True,
     ) -> dict[str, Any]:
+        """Park an item for operator attention.
+
+        `consume_failure=False` is for escalations that are not failures —
+        the stall guard parks a topic whose successful runs stopped
+        converging, and recording that as a consecutive failure would
+        misstate history (the runs all succeeded) and consume budget the
+        liveness path must never touch.
+        """
         with self._locked() as state:
             item = self._find(state, item_id)
             item["status"] = "needs_attention"
             item["desired_state"] = "paused"
-            item["consecutive_failures"] += 1
+            if consume_failure:
+                item["consecutive_failures"] += 1
             item["last_exit_code"] = exit_code
             item["last_error_kind"] = error_kind
             item["last_error"] = message[-4000:]

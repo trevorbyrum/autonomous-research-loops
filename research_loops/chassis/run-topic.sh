@@ -159,8 +159,12 @@ sources_cited=$((sources_after - sources_before))
 # The chassis→queue result record: chassis-level facts the queue classifies
 # from instead of scraping LLM transcript prose. Written on every path where
 # the runner actually ran, success or failure, and always runner-agnostic.
+# $3 (optional) = error_class: a FailureKind name recorded only when the
+# CHASSIS knows the failure's class (e.g. a rejected DONE is configuration);
+# the queue treats a recorded class as authoritative over prose scanning and
+# falls back to the transcript tail when it is absent.
 write_result() {
-  RESULT_OUTCOME="$1" RESULT_EXIT="$2" RESULT_STAMP="$stamp" \
+  RESULT_OUTCOME="$1" RESULT_EXIT="$2" RESULT_ERROR_CLASS="${3:-}" RESULT_STAMP="$stamp" \
   RESULT_BEFORE="$before" RESULT_AFTER="$after" \
   RESULT_SOURCES_CITED="$sources_cited" RESULT_LOG="$log" \
   RESULT_RUNNER="$RUNNER_NAME" RESULT_TOPIC_DIR="$TOPIC_DIR" \
@@ -195,6 +199,9 @@ result = {
     "degraded_capabilities": degraded,
     "log": os.environ["RESULT_LOG"],
 }
+error_class = os.environ.get("RESULT_ERROR_CLASS") or ""
+if error_class:
+    result["error_class"] = error_class
 payload = json.dumps(result, indent=2, sort_keys=True) + "\n"
 with open(os.path.join(log_dir, f"result-{result['stamp']}.json"), "w", encoding="utf-8") as fh:
     fh.write(payload)
@@ -225,7 +232,7 @@ if [[ -f "$TOPIC_DIR/STOP" ]]; then
       lock_args+=(--topics-root "$RESEARCH_LOOP_TOPICS_ROOT")
     fi
     if ! python3 "$CHASSIS/semantic-state.py" validate "$TOPIC_DIR" "${lock_args[@]}"; then
-      write_result done_rejected 78
+      write_result done_rejected 78 configuration
       echo "configuration error: DONE rejected by semantic completion validator" >&2
       exit 78
     fi

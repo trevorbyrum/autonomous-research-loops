@@ -149,3 +149,74 @@ class StallGuardTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DefaultStallGuardTests(unittest.TestCase):
+    """Liveness detection must not depend on optional per-item configuration.
+
+    With the chassis's first-miss exit-5 retired, a research topic whose item
+    configures neither stall_limit nor progress_command would otherwise have
+    NO stall detection at all and could loop forever without converging. Such
+    topics get the chassis signature probe and DEFAULT_STALL_LIMIT by
+    default; generic items with no SEMANTIC-STATE.json keep explicit-config
+    behavior (there is no semantic signature to probe)."""
+
+    def setUp(self):
+        import shutil
+
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name) / "queue"
+        self.topic_dir = Path(self.tempdir.name) / "topic"
+        example = Path(__file__).resolve().parents[1] / "examples" / "static-site-generator-choice"
+        shutil.copytree(example, self.topic_dir)
+        self.store = QueueStore(self.root)
+        self.ledger = UsageLedger(self.root / "state" / "events.jsonl")
+        self.runner = LoopRunner(self.store, self.ledger, poll_seconds=0.05)
+
+    def tearDown(self):
+        self.tempdir.cleanup()
+
+    def _run_and_requeue(self):
+        result = self.runner.run_once()
+        assert result is not None
+        with self.store._locked() as state:
+            found = self.store._find(state, result["item_id"])
+            if found["status"] == "backoff":
+                found["status"] = "queued"
+                found["next_eligible_at"] = None
+        return result
+
+    def test_unconfigured_research_topic_is_still_guarded(self):
+        self.store.add(
+            title="unconfigured topic",
+            cwd=str(self.topic_dir),
+            command=[sys.executable, "-c", "print('no progress made')"],
+            item_id="t",
+            repeat_seconds=900,
+        )
+        outcomes = [
+            self._run_and_requeue()["outcome"]
+            for _ in range(LoopRunner.DEFAULT_STALL_LIMIT + 1)
+        ]
+        self.assertEqual(
+            outcomes[: LoopRunner.DEFAULT_STALL_LIMIT],
+            ["scheduled"] * LoopRunner.DEFAULT_STALL_LIMIT,
+        )
+        self.assertEqual(outcomes[-1], "needs_attention")
+        item = self.store.get("t")
+        self.assertEqual(item["last_error_kind"], "stalled")
+        # Attempts budget untouched by liveness escalation.
+        self.assertEqual(item["consecutive_failures"], 0)
+
+    def test_generic_item_without_semantic_state_stays_unguarded(self):
+        cwd = Path(self.tempdir.name) / "generic"
+        cwd.mkdir()
+        self.store.add(
+            title="generic",
+            cwd=str(cwd),
+            command=[sys.executable, "-c", "print('ok')"],
+            item_id="g",
+            repeat_seconds=900,
+        )
+        for _ in range(LoopRunner.DEFAULT_STALL_LIMIT + 2):
+            self.assertEqual(self._run_and_requeue()["outcome"], "scheduled")

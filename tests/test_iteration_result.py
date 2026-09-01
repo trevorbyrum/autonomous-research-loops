@@ -102,6 +102,21 @@ class ChassisResultRecordTests(unittest.TestCase):
         record = self._latest_result()
         self.assertEqual(record["outcome"], "runner_failed")
         self.assertEqual(record["exit_code"], 7)
+        self.assertNotIn("error_class", record)
+
+    def test_rejected_done_records_a_configuration_error_class(self):
+        # The example topic is all-open, so a bare STOP DONE fails the
+        # chassis validator — and here the chassis KNOWS the class, so the
+        # record carries it and the queue never has to prose-scan.
+        stub = self._stub_runner(
+            'printf "DONE\\n" > "$1/STOP"'
+        )
+        result = self._run(stub)
+        self.assertEqual(result.returncode, 78)
+        record = self._latest_result()
+        self.assertEqual(record["outcome"], "done_rejected")
+        self.assertEqual(record["error_class"], "configuration")
+        self.assertTrue(record["stop_written"])
 
 
 class RunnerResultConsumptionTests(unittest.TestCase):

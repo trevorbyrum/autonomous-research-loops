@@ -599,6 +599,13 @@ class LoopRunner:
                 command += ["--lock-sha256", completion_lock]
             if item.get("internal_citations"):
                 command += ["--allow-internal-citations"]
+            # Mirror the chassis's own DONE validation exactly: it honors
+            # RESEARCH_LOOP_TOPICS_ROOT for resolving internal citations, and
+            # this re-validation must never reject a DONE the chassis just
+            # accepted because the two resolved different topics roots.
+            topics_root = os.environ.get("RESEARCH_LOOP_TOPICS_ROOT")
+            if topics_root:
+                command += ["--topics-root", topics_root]
         try:
             result = subprocess.run(
                 command,
@@ -831,15 +838,43 @@ class LoopRunner:
             return None
         return None if kind is FailureKind.NONE else kind
 
+    # Applied when a research topic configures no stall_limit of its own.
+    # Matches the value the current deployments pin explicitly.
+    DEFAULT_STALL_LIMIT = 6
+
+    @staticmethod
+    def _default_progress_command(item: dict[str, Any]) -> list[str] | None:
+        """The chassis signature probe for research topics with no
+        progress_command configured.
+
+        Liveness detection must not depend on optional per-item
+        configuration any more than completion validation may (see
+        _completion_error): with the chassis's first-miss exit-5 gone, an
+        unconfigured research topic would otherwise have NO stall detection
+        at all and could loop forever without converging. Items with no
+        SEMANTIC-STATE.json (generic loop commands) have no semantic
+        signature to probe and keep their explicit-config-only behavior.
+        """
+        if item.get("progress_command"):
+            return item["progress_command"]
+        if not (Path(item["cwd"]) / "SEMANTIC-STATE.json").is_file():
+            return None
+        return [
+            sys.executable,
+            str(_CHASSIS_DIR / "semantic-state.py"),
+            "signature",
+            item["cwd"],
+        ]
+
     def _progress_signature(self, item: dict[str, Any]) -> str | None:
-        """Run the item's progress_command to capture a qualifying-progress signature.
+        """Run the item's progress probe to capture a qualifying-progress signature.
 
         The command prints a deterministic digest of ledger state that counts
         as real progress (e.g. unit states + admitted-source count), excluding
         refinement noise. None when unconfigured or the probe fails — the
         guard only accuses on positive evidence.
         """
-        command = item.get("progress_command")
+        command = self._default_progress_command(item)
         if not command:
             return None
         try:
@@ -870,9 +905,9 @@ class LoopRunner:
         """
         if outcome not in {"scheduled", "completed"}:
             return outcome, None
-        stall_limit = item.get("stall_limit")
-        if not stall_limit or not item.get("progress_command"):
+        if self._default_progress_command(item) is None:
             return outcome, None
+        stall_limit = item.get("stall_limit") or self.DEFAULT_STALL_LIMIT
         signature = self._progress_signature(item)
         stall_count, _ = self.store.record_progress_signature(item["id"], signature)
         event = {
@@ -893,7 +928,11 @@ class LoopRunner:
             "ledgers, then resume or remove this item."
         )
         self.store.mark_needs_attention(
-            item["id"], exit_code=0, error_kind="stalled", message=message
+            item["id"],
+            exit_code=0,
+            error_kind="stalled",
+            message=message,
+            consume_failure=False,
         )
         event["escalated"] = True
         return "needs_attention", event
