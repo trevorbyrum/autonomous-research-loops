@@ -3,6 +3,9 @@
 /logs/
 /STATUS.md
 
+# Local deployment config (docs/operations.md says: copy the example here and edit)
+/research-loops.toml
+
 # User-created topics under the default ./topics/ path (examples/ is committed on purpose)
 /topics/
 
