@@ -175,6 +175,27 @@ def render_topic(
     return "\n".join(lines)
 
 
+def compute_lock(topic_dir: Path) -> str:
+    """The topic's current completion-inventory lock, via the chassis.
+
+    The single shared implementation for everything that pins or re-pins a
+    lock (approve_topic here, the CLI `relock`, the MCP relock_topic tool) —
+    duplicating the chassis invocation would let their lock semantics drift.
+    """
+    semantic_state_py = _PACKAGE_DIR / "chassis" / "semantic-state.py"
+    result = subprocess.run(
+        [sys.executable, str(semantic_state_py), "lock", str(topic_dir)],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise QueueError(
+            f"could not compute the completion lock for {topic_dir}: "
+            f"{(result.stderr or result.stdout).strip()}"
+        )
+    return result.stdout.strip()
+
+
 def new_topic(topic_id: str, *, title: str, brief_text: str, dest: Path) -> dict[str, Any]:
     if not _TOPIC_ID_PATTERN.fullmatch(topic_id):
         raise QueueError("topic id must be lowercase letters/digits/hyphens")
@@ -270,12 +291,7 @@ def approve_topic(topic_id: str, *, dest: Path) -> dict[str, Any]:
             f"{check.stdout.strip()}\n{check.stderr.strip()}".strip()
         )
 
-    lock = subprocess.run(
-        [sys.executable, str(semantic_state_py), "lock", str(topic_dir)],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
+    lock = compute_lock(topic_dir)
 
     suggested_command = (
         "research-loops add --id "
