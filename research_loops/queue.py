@@ -945,6 +945,96 @@ class QueueStore:
             item["updated_at"] = utc_now()
         return copy.deepcopy(item)
 
+    # Failure kinds that describe an external condition expected to heal on
+    # its own (a gateway restart, a provider blip, a rate window resetting).
+    # Everything else needs a human: configuration/auth won't self-heal,
+    # "stalled" is a liveness judgment, and subscription_limit never parks
+    # this way in the first place (it is non-consuming and always backs off).
+    AUTO_RESUME_ERROR_KINDS = frozenset({"transient", "outage", "rate_limit"})
+
+    def auto_resume_transient(
+        self, *, cooldown_seconds: int = 1800
+    ) -> list[dict[str, Any]]:
+        """Requeue needs_attention items whose failure was external and self-healing.
+
+        A failure taxonomy with no behavior attached is decoration: before
+        this method, transient/outage/rate_limit parks were exactly as
+        terminal as configuration parks, so an infrastructure hiccup longer
+        than the retry budget converted into a silent research stoppage that
+        waited for a human (the 2026-08-31 gateway outage parked three topics
+        for hours after the gateway had already recovered). After
+        `cooldown_seconds` since the parking `finished_at`, such items return
+        to the queue with a fresh consecutive-failure budget.
+
+        An operator who wants a transient-parked item to STAY down converts
+        it with pause_item (needs_attention → paused); this method never
+        touches paused items. There is deliberately no auto-resume cap: if
+        the dependency is still broken the item re-parks after max_attempts
+        cheap, ledgered failures — repeated cheap retries are the
+        fault-tolerant topology, a permanent park is not.
+
+        Returns the resumed items, each carrying a non-persisted
+        ``resumed_from_kind`` describing the failure kind it recovered from.
+        """
+        resumed: list[dict[str, Any]] = []
+        now = datetime.now(timezone.utc)
+        with self._locked() as state:
+            if state.get("paused") or state.get("stopping"):
+                return []
+            for item in state["items"]:
+                if item["status"] != "needs_attention":
+                    continue
+                prior_kind = item.get("last_error_kind")
+                if prior_kind not in self.AUTO_RESUME_ERROR_KINDS:
+                    continue
+                finished = item.get("finished_at")
+                if not finished:
+                    continue
+                try:
+                    finished_at = datetime.fromisoformat(
+                        finished.replace("Z", "+00:00")
+                    )
+                except ValueError:
+                    continue
+                if now - finished_at < timedelta(seconds=cooldown_seconds):
+                    continue
+                item["status"] = "queued"
+                item["desired_state"] = "running"
+                item["consecutive_failures"] = 0
+                item["next_eligible_at"] = None
+                item["claimed_by"] = None
+                item["updated_at"] = utc_now()
+                record = copy.deepcopy(item)
+                record["resumed_from_kind"] = prior_kind
+                resumed.append(record)
+        return resumed
+
+    def set_completion_lock(
+        self, item_id: str, completion_lock: str
+    ) -> dict[str, Any]:
+        """Operator-sanctioned completion_lock update (the `relock` command).
+
+        sync() deliberately refuses completion_lock changes so a manifest
+        edit can never silently re-pin what DONE means; this explicit
+        per-item action is the one path that may. Without it, an
+        operator-approved scope change bricks the topic: the stale lock
+        rejects every future DONE ("approved completion inventory lock
+        mismatch") with no remedy but hand-editing hashes. The returned
+        record carries the non-persisted ``previous_completion_lock`` so the
+        change is auditable at the call site.
+        """
+        _validate_completion_lock(completion_lock)
+        if not completion_lock:
+            raise QueueError("a completion lock is required")
+        with self._locked() as state:
+            item = self._find(state, item_id)
+            previous = item.get("completion_lock")
+            item["completion_lock"] = completion_lock
+            item["updated_at"] = utc_now()
+            record = copy.deepcopy(item)
+        record["previous_completion_lock"] = previous
+        return record
+
     def reassign_worker(self, worker: str, target_item_id: str) -> dict[str, Any]:
         """Move `worker` from whatever it currently owns to `target_item_id`.
 
