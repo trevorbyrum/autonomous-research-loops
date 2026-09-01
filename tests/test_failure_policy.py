@@ -37,14 +37,24 @@ class FailurePolicyTests(unittest.TestCase):
         self.assertEqual(classify_failure(127, "command not found"), FailureKind.CONFIGURATION)
 
     def test_loop_entrypoint_exit_codes_map_to_operator_attention(self):
-        # run-iteration.sh contracts: 3 = STOP present, 4 = PAUSED present,
-        # 5 = no qualifying semantic progress (liveness attention only).
+        # run-topic.sh contracts: 3 = STOP present, 4 = PAUSED present.
         # Adapter contracts: 64 = usage error, 78 = NEEDS-OPERATOR. None may retry.
-        for code in (3, 4, 5, 64, 78, 126):
+        for code in (3, 4, 64, 78, 126):
             with self.subTest(code=code):
                 kind = classify_failure(code, "no matching text at all")
                 self.assertEqual(kind, FailureKind.CONFIGURATION)
                 self.assertIsNone(retry_delay(kind, 1))
+
+    def test_exit_5_is_not_a_configuration_error(self):
+        # Exit 5 was the pre-2026-09 chassis's first-miss stall signal; mapping
+        # it to CONFIGURATION parked contract-compliant discovery-only
+        # iterations before the stall guard's stall_limit could apply.
+        # The chassis no longer emits it; a stale chassis that still does must
+        # fall through to tail classification and retry with backoff instead
+        # of instantly parking.
+        kind = classify_failure(5, "stalled: semantic state unchanged")
+        self.assertEqual(kind, FailureKind.TRANSIENT)
+        self.assertIsNotNone(retry_delay(kind, 1))
 
     def test_classification_scans_only_the_log_tail(self):
         # LLM research prose early in a long transcript must not classify the

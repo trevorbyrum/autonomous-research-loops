@@ -256,6 +256,13 @@ class RunnerRefreshIntegrationTests(unittest.TestCase):
             stop_file=str(self.topic_dir / "STOP"),
             topic_refresh="weekly",
             topic_refresh_mode="light",
+            # This test exercises refresh mechanics, not completion
+            # validation; the example topic is all-open, so the default
+            # chassis validation would (correctly) reject its bare DONE.
+            # An explicitly configured completion_command stays
+            # authoritative, which is the sanctioned way to opt a test
+            # fixture out.
+            completion_command=["true"],
         )
         first = self.runner.run_once()
         self.assertEqual(first["outcome"], "completed")

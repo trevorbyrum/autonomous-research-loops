@@ -8,6 +8,7 @@ import re
 import signal
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 from datetime import datetime, timedelta, timezone
@@ -51,15 +52,24 @@ _PATTERNS = {
 
 
 # Deterministic exit-code meanings take precedence over log-text pattern scanning.
-# 3/4/5 are loop entrypoint contracts (STOP present / PAUSED present / no
-# qualifying semantic progress): operator-attention states that must never be
-# retried as transient failures. Exit 5 is liveness only and never completion.
+# 3/4 are loop entrypoint contracts (STOP present / PAUSED present):
+# operator-attention states that must never be retried as transient failures.
 # 64 (EX_USAGE) and 78 (EX_CONFIG, the adapter's NEEDS-OPERATOR) are sysexits;
 # 126/127 are shell cannot-execute/not-found.
+#
+# Exit 5 is deliberately ABSENT: the pre-2026-09 chassis exited 5 on the first
+# iteration with an unchanged semantic signature, and mapping it to
+# CONFIGURATION here parked contract-compliant discovery-only iterations as
+# needs_attention before the stall guard's stall_limit could ever apply
+# (the 2026-08-31 psych-user-modeling-persona incident). Liveness is the
+# stall guard's job (_apply_stall_guard): the chassis measures, the queue
+# counts stall_limit CONSECUTIVE unchanged signatures, and only then
+# escalates — without ever consuming the attempt budget. A stale chassis
+# that still emits 5 falls through to tail classification (TRANSIENT),
+# which retries with backoff instead of instantly parking.
 _EXIT_CODE_KINDS = {
     3: FailureKind.CONFIGURATION,
     4: FailureKind.CONFIGURATION,
-    5: FailureKind.CONFIGURATION,
     64: FailureKind.CONFIGURATION,
     78: FailureKind.CONFIGURATION,
     126: FailureKind.CONFIGURATION,
@@ -73,6 +83,10 @@ _EXIT_CODE_KINDS = {
 # summary prose risks matching "the request timed out" in a *successful* iteration.
 _SCAN_TAIL_CHARS = 2000
 _PROFILE_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}\Z")
+
+# The chassis shipped inside this package — used for the default completion
+# validation on research topics whose items configure no completion_command.
+_CHASSIS_DIR = Path(__file__).resolve().parent / "chassis"
 
 
 def validate_profile_name(profile: str) -> str:
@@ -301,6 +315,12 @@ def _numeric_usage(data: Any, key: str) -> float | int:
 
 
 class LoopRunner:
+    # Cooldown before an externally-caused needs_attention park (transient/
+    # outage/rate_limit) returns to the queue on its own. Long enough that a
+    # dependency gets a real chance to recover, short enough that a healed
+    # gateway doesn't leave research parked for hours awaiting a human.
+    AUTO_RESUME_COOLDOWN_SECONDS = 1800
+
     def __init__(
         self,
         store: QueueStore,
@@ -310,6 +330,7 @@ class LoopRunner:
         usage_command: list[str] | None = None,
         worker: str = "worker-1",
         profile: str | None = None,
+        auto_resume_cooldown_seconds: int | None = None,
     ):
         self.store = store
         self.ledger = ledger
@@ -319,6 +340,11 @@ class LoopRunner:
         self.usage_command = usage_command
         self.worker = validate_item_id(worker)
         self.profile = validate_profile_name(profile) if profile is not None else None
+        if auto_resume_cooldown_seconds is None:
+            auto_resume_cooldown_seconds = self.AUTO_RESUME_COOLDOWN_SECONDS
+        if auto_resume_cooldown_seconds < 0:
+            raise QueueError("auto_resume_cooldown_seconds must not be negative")
+        self.auto_resume_cooldown_seconds = auto_resume_cooldown_seconds
         self.log_dir = store.root / "logs"
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -547,10 +573,32 @@ class LoopRunner:
 
     @staticmethod
     def _completion_error(item: dict[str, Any]) -> str | None:
-        """Return why a fresh DONE is semantically invalid, or None if valid."""
+        """Return why a fresh DONE is semantically invalid, or None if valid.
+
+        A configured completion_command is authoritative. Without one, a
+        research topic (any item whose cwd carries SEMANTIC-STATE.json) gets
+        the chassis validator BY DEFAULT — completion validation must never
+        depend on optional per-item configuration, or a topic that
+        self-declares `STOP DONE` completes with open obligations, the exact
+        failure class this engine exists to prevent. Items with no semantic
+        state (generic loop commands) keep the previous accept-on-DONE
+        behavior: there is nothing semantic to validate.
+        """
         command = item.get("completion_command")
         if not command:
-            return None
+            if not (Path(item["cwd"]) / "SEMANTIC-STATE.json").is_file():
+                return None
+            command = [
+                sys.executable,
+                str(_CHASSIS_DIR / "semantic-state.py"),
+                "validate",
+                item["cwd"],
+            ]
+            completion_lock = item.get("completion_lock")
+            if completion_lock:
+                command += ["--lock-sha256", completion_lock]
+            if item.get("internal_citations"):
+                command += ["--allow-internal-citations"]
         try:
             result = subprocess.run(
                 command,
@@ -739,6 +787,50 @@ class LoopRunner:
         )
         return {"item_id": item_id, "outcome": outcome, "exit_code": exit_code}
 
+    @staticmethod
+    def _read_iteration_result(
+        result_path: Path, signature_before: tuple[int, int] | None
+    ) -> dict[str, Any] | None:
+        """Read the chassis's structured result record for THIS run, or None.
+
+        The chassis→queue interface (chassis/run-topic.sh write_result):
+        chassis-level facts about the iteration, preferred over scraping
+        transcript prose. Freshness-checked exactly like usage_file so a
+        stale record from an earlier attempt is never misattributed.
+        """
+        try:
+            stat = result_path.stat()
+        except OSError:
+            return None
+        if (stat.st_mtime_ns, stat.st_size) == signature_before:
+            return None
+        try:
+            value = json.loads(result_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        return value if isinstance(value, dict) else None
+
+    @staticmethod
+    def _structured_failure_kind(
+        result: dict[str, Any] | None,
+    ) -> FailureKind | None:
+        """FailureKind from the result record's error_class, if it names one.
+
+        When the chassis records a valid kind it is authoritative — it saw
+        the actual failure; the queue only sees transcript prose. Absent or
+        unrecognized values fall back to tail-pattern classification.
+        """
+        if not result:
+            return None
+        hint = result.get("error_class")
+        if not isinstance(hint, str):
+            return None
+        try:
+            kind = FailureKind(hint)
+        except ValueError:
+            return None
+        return None if kind is FailureKind.NONE else kind
+
     def _progress_signature(self, item: dict[str, Any]) -> str | None:
         """Run the item's progress_command to capture a qualifying-progress signature.
 
@@ -825,8 +917,32 @@ class LoopRunner:
                     due["id"], exit_code=1, error_kind="refresh_failed", message=str(exc)
                 )
 
+    def _process_auto_resumes(self) -> None:
+        """Return externally-parked items to the queue once their cooldown passes.
+
+        Runs before claim_next() on every tick (like _process_due_refreshes)
+        so a freshly recovered item is immediately eligible for this same
+        claim call. Each resume is a ledger event — the park-and-recover
+        history stays queryable even though the item's own error fields are
+        cleared by its next successful run.
+        """
+        for item in self.store.auto_resume_transient(
+            cooldown_seconds=self.auto_resume_cooldown_seconds
+        ):
+            self.ledger.append(
+                {
+                    "type": "auto_resume",
+                    "item_id": item["id"],
+                    "title": item.get("title"),
+                    "worker": self.worker,
+                    "resumed_from_kind": item.get("resumed_from_kind"),
+                    "cooldown_seconds": self.auto_resume_cooldown_seconds,
+                }
+            )
+
     def run_once(self) -> dict[str, Any] | None:
         self._process_due_refreshes()
+        self._process_auto_resumes()
         item = self.store.claim_next(worker=self.worker)
         if item is None:
             return None
@@ -850,9 +966,18 @@ class LoopRunner:
         # Same freshness rule as usage_file: only a stop file that THIS run
         # created or modified counts as a signal. A stale STOP left over from
         # an earlier attempt is ignored here — the loop's own entrypoint
-        # already refuses to run while STOP is present (exit 3 → 
+        # already refuses to run while STOP is present (exit 3 →
         # needs_attention), so pre-existing files stay the loop's contract.
         stop_signature_before = self._stop_file_signature(item)
+        # The chassis's structured result record (chassis/run-topic.sh
+        # write_result) — the chassis→queue interface, preferred over
+        # scraping transcript prose. Freshness-checked like usage_file.
+        result_path = Path(item["cwd"]) / "logs" / "latest-result.json"
+        try:
+            result_stat = result_path.stat()
+            result_signature_before = (result_stat.st_mtime_ns, result_stat.st_size)
+        except OSError:
+            result_signature_before = None
         before_usage = self._usage_snapshot()
         started = time.monotonic()
         self.ledger.append(
@@ -958,6 +1083,10 @@ class LoopRunner:
             except (OSError, json.JSONDecodeError):
                 usage = None
 
+        iteration_result = self._read_iteration_result(
+            result_path, result_signature_before
+        )
+
         base_event = {
             "type": "process_finished",
             "item_id": item_id,
@@ -973,6 +1102,19 @@ class LoopRunner:
             "quota_snapshot_before": before_usage,
             "quota_snapshot_after": after_usage,
         }
+        if iteration_result is not None:
+            # Capability degradation and progress facts become queryable queue
+            # history instead of living only inside agent transcript prose.
+            base_event["iteration_result"] = {
+                key: iteration_result.get(key)
+                for key in (
+                    "outcome",
+                    "signature_changed",
+                    "sources_cited",
+                    "stop_written",
+                    "degraded_capabilities",
+                )
+            }
 
         error_kind = None
         message = None
@@ -1011,7 +1153,9 @@ class LoopRunner:
                 next_at = datetime.now(timezone.utc) + timedelta(seconds=repeat_seconds)
                 next_eligible_at = next_at.isoformat().replace("+00:00", "Z")
         else:
-            kind = classify_failure(exit_code, output)
+            kind = self._structured_failure_kind(iteration_result)
+            if kind is None:
+                kind = classify_failure(exit_code, output)
             error_kind = kind.value
             current = self.store.get(item_id)
             consume_failure = kind is not FailureKind.SUBSCRIPTION_LIMIT
