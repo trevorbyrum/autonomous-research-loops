@@ -27,9 +27,15 @@ command -v "$bin" >/dev/null 2>&1 || {
 cd "$topic_dir"
 prompt="$(cat "$prompt_file")"
 
+# A nonzero claude exit must still surface its output: the queue's failure
+# classifier regex-scans the log tail to distinguish subscription-limit /
+# rate-limit / outage failures (each with different backoff), and claude
+# prints those reasons to stdout/stderr as it exits. Under plain `set -e`
+# the assignment would abort the adapter before the echo, losing exactly
+# that text -- so capture the exit code explicitly instead.
+rc=0
 # shellcheck disable=SC2086
-output="$("$bin" -p "$prompt" --model "$model" --output-format json ${RESEARCH_LOOP_CLAUDE_FLAGS:-} 2>&1)"
-rc=$?
+output="$("$bin" -p "$prompt" --model "$model" --output-format json ${RESEARCH_LOOP_CLAUDE_FLAGS:-} 2>&1)" || rc=$?
 echo "$output"
 
 if [[ -n "${RESEARCH_LOOP_USAGE_FILE:-}" ]]; then
