@@ -125,6 +125,11 @@ retry, inactivity, or revision limit defines semantic completion.
   link, wrong slug, moved page) — that is separate, later work; the correct response
   here is `flagged: hallucination`, not a substitution. See `docs/citations.md`'s
   "Independent verification" section.
+- An obligation reopened or added by a scheduled/manual refresh (`topic_refresh`, see
+  `docs/operations.md#topic_refresh`) is not special-cased — it's a normal obligation
+  in `SEMANTIC-STATE.json` and is subject to every rule above, including pending-first
+  review and independent citation verification, exactly like one an operator or a gap
+  proposal added.
 
 ## Per-iteration procedure
 

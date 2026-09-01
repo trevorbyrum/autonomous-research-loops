@@ -35,6 +35,40 @@ def obligation(identifier: str, text: str, source_ref: str) -> dict[str, object]
     }
 
 
+OBLIGATIONS_HEADING = "## Approved finite obligations"
+
+
+def append_obligation(
+    topic_dir: Path, obligation_id: str, text: str, source_ref: str
+) -> None:
+    """Append one new, open obligation to both TOPIC.md (the bullet an operator
+    or `gap-policy.py promote` would otherwise type by hand under the approved
+    obligations heading) and SEMANTIC-STATE.json, in lockstep -- the exact
+    mechanical edit `gap-policy.py promote()` and `refresh-policy.py`'s light
+    mode both need, factored out once so they can't drift apart. Does not
+    rehash(); call that separately once all of a caller's edits are done.
+    """
+    topic_md_path = topic_dir / "TOPIC.md"
+    state_path = topic_dir / STATE_FILE
+    contents = topic_md_path.read_text(encoding="utf-8")
+    if f"**{obligation_id}**" in contents:
+        raise ValueError(f"obligation id already present in TOPIC.md: {obligation_id}")
+    if OBLIGATIONS_HEADING not in contents:
+        raise ValueError(f"TOPIC.md has no '{OBLIGATIONS_HEADING}' section to append to")
+    bullet = f"- **{obligation_id}** — {text}\n"
+    heading_at = contents.index(OBLIGATIONS_HEADING)
+    next_heading = contents.find("\n## ", heading_at + len(OBLIGATIONS_HEADING))
+    insert_at = next_heading if next_heading != -1 else len(contents)
+    updated = contents[:insert_at].rstrip("\n") + "\n" + bullet + contents[insert_at:]
+    topic_md_path.write_text(updated, encoding="utf-8")
+
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state.setdefault("obligations", []).append(obligation(obligation_id, text, source_ref))
+    state_path.write_text(
+        json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
+
 def deliverable(
     identifier: str, path: str, headings: list[str], description: str
 ) -> dict[str, object]:

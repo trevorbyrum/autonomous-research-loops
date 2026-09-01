@@ -79,3 +79,14 @@ gap_auto_limit = 3
 # instead of re-researching it. Disabled by default, portfolio-wide and per
 # topic -- set true in [defaults] to enable everywhere, or per topic like here.
 internal_citations = true
+
+# topic_refresh controls whether a COMPLETED topic automatically comes back
+# to check for new information: "off" (default, portfolio-wide and per
+# topic) -- never automatic, use `research-loops refresh <id>` by hand;
+# "weekly" / "monthly" -- automatically requeued that often once completed.
+topic_refresh = "monthly"
+# topic_refresh_mode controls how much gets reopened each time a refresh
+# fires: "light" (one new check obligation only), "continue" (default --
+# reopens previously-supported obligations), "full" (reopens everything).
+# See docs/operations.md#topic_refresh.
+topic_refresh_mode = "continue"

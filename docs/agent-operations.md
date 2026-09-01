@@ -154,3 +154,29 @@ is already claimed by a *different* worker, or isn't currently in a claimable st
 (paused, completed, needs_attention, or still waiting out a backoff timer). If the
 worker owns nothing running, this just claims the target immediately — no release
 step needed.
+
+## Keeping a completed topic current
+
+```bash
+research-loops add ... --topic-refresh weekly --topic-refresh-mode continue   # at creation
+research-loops config apply --config research-loops.toml                     # or via config
+research-loops refresh <item-id> [--mode light|continue|full]                # trigger by hand
+```
+
+`--topic-refresh` (`off` default / `weekly` / `monthly`) is how often a *completed*
+topic automatically comes back to check for new information. `--topic-refresh-mode`
+(`light` / `continue` default / `full`) controls how much of the topic actually gets
+reopened each time — see `docs/operations.md#topic_refresh` for the full breakdown of
+what each mode does.
+
+`research-loops refresh <item-id>` triggers one refresh immediately regardless of the
+schedule — this is the only way to refresh a topic left at `--topic-refresh off`, and
+also works to force an out-of-schedule check on a scheduled topic. It refuses on
+anything but a completed item (status must literally be `completed`); there is nothing
+to refresh in a topic that's still queued, running, or backed off.
+
+There is no separate "refresh prompt" to write or read: reopening a topic for refresh
+works by adding or reopening real obligations in `SEMANTIC-STATE.json` before the item
+is requeued, so a run picks up the reopened work exactly like any other open obligation
+— follow the normal "select one highest-value unblocked open obligation" instruction,
+nothing refresh-specific to do differently once you're mid-iteration.

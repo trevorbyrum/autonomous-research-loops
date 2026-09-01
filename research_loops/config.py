@@ -17,6 +17,8 @@ from typing import Any
 from .queue import QueueError
 
 GAP_POLICIES = ("review", "auto")
+TOPIC_REFRESH_SCHEDULES = ("off", "weekly", "monthly")
+TOPIC_REFRESH_MODES = ("light", "continue", "full")
 
 
 @dataclass(frozen=True)
@@ -29,6 +31,8 @@ class TopicSettings:
     gap_policy: str = "review"
     gap_auto_limit: int = 0
     internal_citations: bool = False
+    topic_refresh: str = "off"
+    topic_refresh_mode: str = "continue"
 
 
 @dataclass(frozen=True)
@@ -86,6 +90,15 @@ def _optional_bool(table: dict[str, Any], key: str) -> bool | None:
     return value
 
 
+def _optional_choice(table: dict[str, Any], key: str, choices: tuple[str, ...]) -> str | None:
+    if key not in table:
+        return None
+    value = table[key]
+    if value not in choices:
+        raise QueueError(f"{key} must be one of {list(choices)}")
+    return value
+
+
 def _settings_from(table: dict[str, Any], base: TopicSettings) -> TopicSettings:
     updates: dict[str, Any] = {}
     repeat_seconds = _positive_int(table, "repeat_seconds")
@@ -114,6 +127,12 @@ def _settings_from(table: dict[str, Any], base: TopicSettings) -> TopicSettings:
     internal_citations = _optional_bool(table, "internal_citations")
     if internal_citations is not None:
         updates["internal_citations"] = internal_citations
+    topic_refresh = _optional_choice(table, "topic_refresh", TOPIC_REFRESH_SCHEDULES)
+    if topic_refresh is not None:
+        updates["topic_refresh"] = topic_refresh
+    topic_refresh_mode = _optional_choice(table, "topic_refresh_mode", TOPIC_REFRESH_MODES)
+    if topic_refresh_mode is not None:
+        updates["topic_refresh_mode"] = topic_refresh_mode
     return replace(base, **updates)
 
 

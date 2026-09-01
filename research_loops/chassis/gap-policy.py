@@ -37,7 +37,6 @@ _spec.loader.exec_module(semantic_state)
 AUTO_MARKER = "AUTO-PROMOTED"
 REVIEWED_MARKER = "PROMOTED"
 RESET_MARKER = "GAP-REVIEW-RESET"
-OBLIGATIONS_HEADING = "## Approved finite obligations"
 
 
 def _today() -> str:
@@ -126,27 +125,10 @@ def promote(
                 "first (`research-loops pause <id>`), or pass --force if you're sure "
                 "it's safe."
             )
-    topic_md_path = topic_dir / "TOPIC.md"
-    state_path = topic_dir / "SEMANTIC-STATE.json"
-    contents = topic_md_path.read_text(encoding="utf-8")
-    if f"**{obligation_id}**" in contents:
-        raise SystemExit(f"obligation id already present in TOPIC.md: {obligation_id}")
-    if OBLIGATIONS_HEADING not in contents:
-        raise SystemExit(f"TOPIC.md has no '{OBLIGATIONS_HEADING}' section to append to")
-    bullet = f"- **{obligation_id}** — {text}\n"
-    heading_at = contents.index(OBLIGATIONS_HEADING)
-    next_heading = contents.find("\n## ", heading_at + len(OBLIGATIONS_HEADING))
-    insert_at = next_heading if next_heading != -1 else len(contents)
-    updated = contents[:insert_at].rstrip("\n") + "\n" + bullet + contents[insert_at:]
-    topic_md_path.write_text(updated, encoding="utf-8")
-
-    state = json.loads(state_path.read_text(encoding="utf-8"))
-    state.setdefault("obligations", []).append(
-        semantic_state.obligation(obligation_id, text, source_ref)
-    )
-    state_path.write_text(
-        json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    try:
+        semantic_state.append_obligation(topic_dir, obligation_id, text, source_ref)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     semantic_state.rehash(topic_dir)
 
     tag = AUTO_MARKER if auto else REVIEWED_MARKER

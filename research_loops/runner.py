@@ -15,6 +15,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from . import refresh as refresh_mod
 from .queue import QueueError, QueueStore, utc_now, validate_item_id
 
 
@@ -805,7 +806,27 @@ class LoopRunner:
         event["escalated"] = True
         return "needs_attention", event
 
+    def _process_due_refreshes(self) -> None:
+        """Requeue any completed item whose topic_refresh schedule has come
+        due. Runs before claim_next() on every tick so a freshly-reopened
+        item is immediately eligible for this same call to claim. Silently
+        skips an item another worker already reopened in the meantime (a
+        normal multi-worker race, not a failure); only a genuine
+        refresh-policy.py failure escalates to needs_attention.
+        """
+        for due in self.store.due_refreshes():
+            item = self.store.get(due["id"])
+            if item["status"] != "completed":
+                continue
+            try:
+                refresh_mod.apply_refresh(self.store, due["id"], due["mode"])
+            except QueueError as exc:
+                self.store.mark_needs_attention(
+                    due["id"], exit_code=1, error_kind="refresh_failed", message=str(exc)
+                )
+
     def run_once(self) -> dict[str, Any] | None:
+        self._process_due_refreshes()
         item = self.store.claim_next(worker=self.worker)
         if item is None:
             return None

@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import doctor, topic_authoring, workers as workers_mod
+from . import doctor, refresh as refresh_mod, topic_authoring, workers as workers_mod
 from .config import load_config
 from .dashboard import render_dashboard, write_dashboard
 from .queue import QueueError, QueueStore
@@ -144,6 +144,25 @@ def build_parser() -> argparse.ArgumentParser:
         "SOURCE-LEDGER.md instead of re-researching it (see docs/citations.md). "
         "Disabled by default",
     )
+    add.add_argument(
+        "--topic-refresh",
+        choices=("off", "weekly", "monthly"),
+        default="off",
+        help="off (default): a completed topic never automatically reruns -- "
+        "use `research-loops refresh` to trigger one by hand. weekly/monthly: "
+        "once completed, this topic is automatically requeued that often to "
+        "check for new information (see docs/operations.md#topic_refresh)",
+    )
+    add.add_argument(
+        "--topic-refresh-mode",
+        choices=("light", "continue", "full"),
+        default="continue",
+        help="what a refresh actually reopens: light (one new check obligation "
+        "only), continue (reopens previously-supported obligations, the "
+        "default), full (reopens every obligation). Only matters once "
+        "--topic-refresh is not off, or when `research-loops refresh` is run "
+        "without --mode",
+    )
     add.add_argument("command", nargs=argparse.REMAINDER)
 
     listing = sub.add_parser("list", help="show queue state")
@@ -181,6 +200,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     swap_active.add_argument("worker")
     swap_active.add_argument("target_item_id")
+
+    refresh = sub.add_parser(
+        "refresh",
+        help="manually trigger a refresh on a completed item, regardless of its "
+        "--topic-refresh schedule (the 'manual' half of off/weekly/monthly -- "
+        "see docs/operations.md#topic_refresh)",
+    )
+    refresh.add_argument("item_id")
+    refresh.add_argument(
+        "--mode",
+        choices=("light", "continue", "full"),
+        help="defaults to the item's configured --topic-refresh-mode "
+        "(or 'continue' if never set)",
+    )
 
     worker_policy = sub.add_parser(
         "worker-policy", help="set a worker's durable new-topic intake policy"
@@ -374,6 +407,8 @@ def main(argv: list[str] | None = None) -> int:
                     completion_lock=args.lock_sha256,
                     depends_on=depends_on,
                     internal_citations=args.internal_citations,
+                    topic_refresh=args.topic_refresh,
+                    topic_refresh_mode=args.topic_refresh_mode,
                 )
             )
         elif args.action in {"list", "status"}:
@@ -395,6 +430,8 @@ def main(argv: list[str] | None = None) -> int:
             emit(store.request_restart(args.item_id))
         elif args.action == "swap-active":
             emit(store.reassign_worker(args.worker, args.target_item_id))
+        elif args.action == "refresh":
+            emit(refresh_mod.apply_refresh(store, args.item_id, args.mode))
         elif args.action == "worker-policy":
             emit(
                 store.configure_worker_policy(
@@ -447,6 +484,8 @@ def main(argv: list[str] | None = None) -> int:
                         gap_policy=settings.gap_policy,
                         gap_auto_limit=settings.gap_auto_limit,
                         internal_citations=settings.internal_citations,
+                        topic_refresh=settings.topic_refresh,
+                        topic_refresh_mode=settings.topic_refresh_mode,
                     )
                     applied.append(topic_id)
                 emit({"applied": applied, "skipped_unknown_topic": skipped})

@@ -8,7 +8,7 @@ import re
 import tempfile
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -24,6 +24,13 @@ class QueueConflict(QueueError):
 _ITEM_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 
 GAP_POLICIES = ("review", "auto")
+
+# Days until a completed item with this schedule becomes due for refresh
+# again. "off" (the default -- no topic auto-refreshes unless explicitly
+# opted in) deliberately has no entry here; see _validate_topic_refresh.
+TOPIC_REFRESH_DAYS = {"weekly": 7, "monthly": 30}
+TOPIC_REFRESH_SCHEDULES = ("off", "weekly", "monthly")
+TOPIC_REFRESH_MODES = ("light", "continue", "full")
 
 
 def validate_item_id(item_id: str) -> str:
@@ -56,6 +63,18 @@ def _validate_gap_auto_limit(value: int) -> int:
 def _validate_internal_citations(value: bool) -> bool:
     if not isinstance(value, bool):
         raise QueueError("internal_citations must be a boolean")
+    return value
+
+
+def _validate_topic_refresh(value: str) -> str:
+    if value not in TOPIC_REFRESH_SCHEDULES:
+        raise QueueError(f"topic_refresh must be one of {list(TOPIC_REFRESH_SCHEDULES)}")
+    return value
+
+
+def _validate_topic_refresh_mode(value: str) -> str:
+    if value not in TOPIC_REFRESH_MODES:
+        raise QueueError(f"topic_refresh_mode must be one of {list(TOPIC_REFRESH_MODES)}")
     return value
 
 
@@ -204,6 +223,8 @@ class QueueStore:
         gap_auto_limit: int = 0,
         completion_lock: str | None = None,
         internal_citations: bool = False,
+        topic_refresh: str = "off",
+        topic_refresh_mode: str = "continue",
     ) -> dict[str, Any]:
         if not title.strip() or not command:
             raise QueueError("title and command are required")
@@ -219,6 +240,8 @@ class QueueStore:
         _validate_gap_auto_limit(gap_auto_limit)
         _validate_completion_lock(completion_lock)
         _validate_internal_citations(internal_citations)
+        _validate_topic_refresh(topic_refresh)
+        _validate_topic_refresh_mode(topic_refresh_mode)
         resolved_item_id = validate_item_id(
             item_id if item_id is not None else f"loop-{uuid.uuid4().hex[:10]}"
         )
@@ -248,6 +271,10 @@ class QueueStore:
             "gap_auto_limit": gap_auto_limit,
             "completion_lock": completion_lock,
             "internal_citations": internal_citations,
+            "topic_refresh": topic_refresh,
+            "topic_refresh_mode": topic_refresh_mode,
+            "refresh_due_at": None,
+            "refresh_count": 0,
             "progress_signature": None,
             "stall_count": 0,
             "status": "queued",
@@ -306,6 +333,8 @@ class QueueStore:
         "gap_auto_limit",
         "completion_lock",
         "internal_citations",
+        "topic_refresh",
+        "topic_refresh_mode",
     )
 
     # completion_lock is deliberately absent from _TOPIC_CONFIG_FIELDS: it's an
@@ -328,6 +357,8 @@ class QueueStore:
         "gap_policy",
         "gap_auto_limit",
         "internal_citations",
+        "topic_refresh",
+        "topic_refresh_mode",
     )
 
     def sync(
@@ -464,6 +495,8 @@ class QueueStore:
                     "last_pid_fingerprint": None,
                     "progress_signature": None,
                     "stall_count": 0,
+                    "refresh_due_at": None,
+                    "refresh_count": 0,
                 }
                 state["items"].append(item)
                 report["added"].append(entry_id)
@@ -564,6 +597,10 @@ class QueueStore:
         internal_citations = _validate_internal_citations(
             entry.get("internal_citations", False)
         )
+        topic_refresh = _validate_topic_refresh(entry.get("topic_refresh", "off"))
+        topic_refresh_mode = _validate_topic_refresh_mode(
+            entry.get("topic_refresh_mode", "continue")
+        )
         return {
             "title": str(entry["title"]).strip(),
             "cwd": str(Path(str(entry["cwd"])).expanduser().resolve()),
@@ -585,6 +622,8 @@ class QueueStore:
             "gap_auto_limit": gap_auto_limit,
             "completion_lock": completion_lock,
             "internal_citations": internal_citations,
+            "topic_refresh": topic_refresh,
+            "topic_refresh_mode": topic_refresh_mode,
         }
 
     def configure_topic(self, item_id: str, **settings: Any) -> dict[str, Any]:
@@ -954,6 +993,56 @@ class QueueStore:
                 "target": copy.deepcopy(target),
             }
 
+    def due_refreshes(self, *, now: datetime | None = None) -> list[dict[str, str]]:
+        """Read-only scan for completed items whose scheduled refresh has
+        come due. Pure query -- the actual chassis mutation
+        (`refresh-policy.py apply`) is a subprocess call and must happen
+        OUTSIDE this lock; the caller (runner.py) is expected to follow up
+        a hit with `reopen_for_refresh()` once that subprocess succeeds.
+        """
+        reference = now or datetime.now(timezone.utc)
+        with self._locked() as state:
+            return [
+                {
+                    "id": item["id"],
+                    "cwd": item["cwd"],
+                    "mode": item.get("topic_refresh_mode", "continue"),
+                }
+                for item in state["items"]
+                if item["status"] == "completed"
+                and item.get("refresh_due_at")
+                and datetime.fromisoformat(item["refresh_due_at"].replace("Z", "+00:00"))
+                <= reference
+            ]
+
+    def reopen_for_refresh(self, item_id: str) -> dict[str, Any]:
+        """Requeue a completed item after its scheduled or manually
+        triggered refresh has already been applied on disk (see
+        `refresh-policy.py apply`). Refuses on anything but a completed
+        item -- a running/queued/backoff item has nothing to "refresh" yet.
+        Deliberately a separate method from `resume_item()` rather than
+        widening its resettable-status set, so resuming a paused item keeps
+        its current, independently-tested behavior.
+        """
+        with self._locked() as state:
+            item = self._find(state, item_id)
+            if item["status"] != "completed":
+                raise QueueError(
+                    f"item {item_id} is not completed (status={item['status']!r}); "
+                    "only a completed item can be refreshed"
+                )
+            item["status"] = "queued"
+            item["desired_state"] = "running"
+            item["claimed_by"] = None
+            item["refresh_due_at"] = None
+            item["refresh_count"] = item.get("refresh_count", 0) + 1
+            item["next_eligible_at"] = None
+            item["consecutive_failures"] = 0
+            item["last_error"] = None
+            item["last_error_kind"] = None
+            item["updated_at"] = utc_now()
+        return copy.deepcopy(item)
+
     def request_restart(self, item_id: str) -> dict[str, Any]:
         with self._locked() as state:
             item = self._find(state, item_id)
@@ -1197,6 +1286,19 @@ class QueueStore:
             # terminal and operator outcomes release the item for any worker.
             if actual_outcome not in {"scheduled", "backoff"}:
                 item["claimed_by"] = None
+            # Scheduling the NEXT refresh happens here, at the one point a
+            # terminal status is committed -- fires identically whether this
+            # is the topic's first-ever completion or a re-completion after
+            # reopen_for_refresh(), so no special-casing is needed for either.
+            if item["status"] == "completed":
+                refresh_days = TOPIC_REFRESH_DAYS.get(item.get("topic_refresh", "off"))
+                item["refresh_due_at"] = (
+                    (datetime.now(timezone.utc) + timedelta(days=refresh_days))
+                    .isoformat()
+                    .replace("+00:00", "Z")
+                    if refresh_days
+                    else None
+                )
             item["finished_at"] = now
             item["updated_at"] = now
         return actual_outcome, copy.deepcopy(item)

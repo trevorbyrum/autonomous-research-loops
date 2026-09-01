@@ -72,9 +72,10 @@ bin/research-loops config apply --config research-loops.toml              # push
 `config apply` only touches topic ids explicitly listed under `[topics.*]` in the file —
 it never reconfigures a queue item just because it exists. Fields it can set
 (`repeat_seconds`, `max_attempts`, `stall_limit`, `agent_main`, `agent_secondary`,
-`gap_policy`, `gap_auto_limit`, `internal_citations`) all take effect on the item's
-*next* iteration only; none of them touch an iteration already in flight, so
-`config apply` is always safe to run against a running queue.
+`gap_policy`, `gap_auto_limit`, `internal_citations`, `topic_refresh`,
+`topic_refresh_mode`) all take effect on the item's *next* iteration only; none of them
+touch an iteration already in flight, so `config apply` is always safe to run against a
+running queue.
 
 `agent_main`/`agent_secondary`, `gap_policy`/`gap_auto_limit`, and `internal_citations`
 can also be set per-item directly with `add --agent-main ... --gap-policy auto
@@ -82,6 +83,37 @@ can also be set per-item directly with `add --agent-main ... --gap-policy auto
 purely a convenience for managing many topics' settings in one reviewable place. See
 `docs/governance.md#the-operator-owns-scope` for what `auto` gap policy actually does
 and why its default is `review`, and `docs/citations.md` for `internal_citations`.
+
+### `topic_refresh`: keeping a completed topic current
+
+By default (`topic_refresh = "off"`), a completed topic never runs again — the only way
+to re-check it is `bin/research-loops refresh <item-id>`, run by hand whenever you want.
+Set `topic_refresh = "weekly"` or `"monthly"` (per-topic, or in `[defaults]`) to have it
+automatically requeued that often once it completes, to check for anything new.
+
+`topic_refresh_mode` controls what actually gets reopened when a refresh fires (default
+`"continue"`):
+
+- `"light"` — appends exactly one new obligation asking the agent to check for new
+  information since the last completion. Cheapest; nothing existing is touched.
+- `"continue"` — resets every `supported` obligation back to `open` (these are the
+  claims that could plausibly have gone stale); `contradicted`/`unresolved`/`deferred`
+  obligations are left alone. Falls back to `light`'s single-obligation append if the
+  topic has no `supported` obligations. This is the default because it's the closest
+  match to "the topic just keeps going" rather than "add one narrow check."
+- `"full"` — the same reset as `continue`, applied to every obligation regardless of
+  disposition. A genuine do-over of the whole contract; most expensive.
+
+`bin/research-loops refresh <item-id> [--mode light|continue|full]` triggers one refresh
+immediately, on any completed item, regardless of its `topic_refresh` setting — this is
+the manual escape hatch for `topic_refresh = "off"` topics, or for forcing an
+out-of-schedule check on a scheduled one. It refuses on anything but a completed item.
+
+The mechanism is entirely obligation-based, not a special runtime mode: `refresh-policy.py`
+reopens/appends real obligations in `SEMANTIC-STATE.json` before the item is ever
+requeued, so the agent discovers the new work exactly the way it discovers any other
+open obligation. See `research_loops/chassis/refresh-policy.py`'s module docstring for
+the exact mechanics of each mode.
 
 ## Queue control
 
