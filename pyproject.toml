@@ -11,8 +11,14 @@ license = { text = "Apache-2.0" }
 requires-python = ">=3.12"
 dependencies = []
 
+[project.optional-dependencies]
+# The MCP server (research_loops/mcp_server.py) is the engine's only
+# optional dependency; the core stays dependency-free without it.
+mcp = ["mcp>=2"]
+
 [project.scripts]
 research-loops = "research_loops.__main__:main"
+research-loops-mcp = "research_loops.mcp_server:main"
 
 [tool.setuptools.packages.find]
 include = ["research_loops*"]

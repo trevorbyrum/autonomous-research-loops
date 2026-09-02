@@ -4,7 +4,6 @@ import argparse
 import fcntl
 import json
 import shutil
-import subprocess
 import sys
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -443,21 +442,8 @@ def main(argv: list[str] | None = None) -> int:
             emit(store.request_restart(args.item_id))
         elif args.action == "relock":
             item = store.get(args.item_id)
-            chassis_lock = (
-                Path(__file__).resolve().parent / "chassis" / "semantic-state.py"
-            )
-            proc = subprocess.run(
-                [sys.executable, str(chassis_lock), "lock", item["cwd"]],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if proc.returncode != 0:
-                raise QueueError(
-                    "could not compute the completion lock for "
-                    f"{args.item_id}: {(proc.stderr or proc.stdout).strip()}"
-                )
-            emit(store.set_completion_lock(args.item_id, proc.stdout.strip()))
+            lock = topic_authoring.compute_lock(Path(item["cwd"]))
+            emit(store.set_completion_lock(args.item_id, lock))
         elif args.action == "swap-active":
             emit(store.reassign_worker(args.worker, args.target_item_id))
         elif args.action == "refresh":
