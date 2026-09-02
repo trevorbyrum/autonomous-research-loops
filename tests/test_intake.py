@@ -44,11 +44,18 @@ class QaModesTests(unittest.TestCase):
             content = content.replace(heading, heading + "\n\n" + answer, 1)
         qa.write_text(content, encoding="utf-8")
 
+    def _criteria_pass(self, topic_id):
+        # Stand-in for a completed discovery/criteria pass.
+        (self.dest / topic_id / "SCOPE-PROPOSAL.md").write_text(
+            "## Contract criteria findings\n\nall pass\n", encoding="utf-8"
+        )
+
     def test_broad_is_default_and_requires_scope_decision(self):
         result = self._draft("b-topic", "broad")
         self.assertEqual(result["mode"], "broad")
         qa = (self.dest / "b-topic" / "QA-RECORD.md").read_text()
         self.assertIn("## Scope decision", qa)
+        self._criteria_pass("b-topic")
         # Confirmation alone is not enough in broad mode.
         self._answer("b-topic", ("## Operator confirmation", "Confirmed."))
         with self.assertRaises(QueueError) as ctx:
@@ -62,10 +69,48 @@ class QaModesTests(unittest.TestCase):
         self._draft("s-topic", "scoped")
         qa = (self.dest / "s-topic" / "QA-RECORD.md").read_text()
         self.assertNotIn("## Scope decision", qa)
+        self._criteria_pass("s-topic")
         with self.assertRaises(QueueError):
             topic_authoring.approve_topic("s-topic", dest=self.dest)
         self._answer("s-topic", ("## Operator confirmation", "Confirmed."))
         approved = topic_authoring.approve_topic("s-topic", dest=self.dest)
+        self.assertIn("lock", approved)
+
+    def test_approval_requires_a_criteria_pass_in_both_modes(self):
+        for topic_id, mode in (("np-broad", "broad"), ("np-scoped", "scoped")):
+            with self.subTest(mode=mode):
+                self._draft(topic_id, mode)
+                answers = [("## Operator confirmation", "Confirmed.")]
+                if mode == "broad":
+                    answers.append(("## Scope decision", "Adopt."))
+                self._answer(topic_id, *answers)
+                with self.assertRaises(QueueError) as ctx:
+                    topic_authoring.approve_topic(topic_id, dest=self.dest)
+                self.assertIn("SCOPE-PROPOSAL.md", str(ctx.exception))
+
+    def test_deterministic_deliverables_are_refused_without_exception(self):
+        self._draft("det-topic", "scoped")
+        topic = self.dest / "det-topic" / "DRAFT-TOPIC.md"
+        content = topic.read_text(encoding="utf-8").replace(
+            "## Required deliverables\n",
+            "## Required deliverables\n\n- **DRIFT-PLAYBOOK** — Detection-and-recovery playbook (`DRIFT-PLAYBOOK.md`).\n",
+            1,
+        )
+        topic.write_text(content, encoding="utf-8")
+        self._criteria_pass("det-topic")
+        self._answer("det-topic", ("## Operator confirmation", "Confirmed."))
+        with self.assertRaises(QueueError) as ctx:
+            topic_authoring.approve_topic("det-topic", dest=self.dest)
+        self.assertIn("DRIFT-PLAYBOOK", str(ctx.exception))
+        self.assertIn("deterministic", str(ctx.exception))
+        # An explicit operator exception in the QA record unlocks it.
+        qa = self.dest / "det-topic" / "QA-RECORD.md"
+        qa.write_text(
+            qa.read_text(encoding="utf-8")
+            + "\n## Deliverable exceptions\n\nDRIFT-PLAYBOOK — operator accepts this artifact.\n",
+            encoding="utf-8",
+        )
+        approved = topic_authoring.approve_topic("det-topic", dest=self.dest)
         self.assertIn("lock", approved)
 
     def test_authority_carries_the_assumptions_section(self):
@@ -150,18 +195,49 @@ class DiscoveryChassisTests(unittest.TestCase):
         )
         self.assertEqual(produced.returncode, 0, produced.stderr)
 
-    def test_discovery_refuses_an_approved_topic(self):
+    def test_approved_topic_gets_a_contract_review_pass(self):
         qa = self.draft_dir / "QA-RECORD.md"
         content = qa.read_text().replace(
             "## Operator confirmation", "## Operator confirmation\n\nConfirmed.", 1
         ).replace("## Scope decision", "## Scope decision\n\nAdopt.", 1)
         qa.write_text(content)
+        (self.draft_dir / "SCOPE-PROPOSAL.md").write_text(
+            "## Contract criteria findings\n\nok\n", encoding="utf-8"
+        )
         topic_authoring.approve_topic("d-topic", dest=self.dest)
+        (self.draft_dir / "SCOPE-PROPOSAL.md").unlink()  # review must write its own
+        captured = Path(self._tmp.name) / "captured-prompt.txt"
+        stub = self._stub(
+            f'cp "$2" "{captured}"\n'
+            'printf "## Contract criteria findings\\n" > "$1/SCOPE-PROPOSAL.md"'
+        )
         result = subprocess.run(
-            [str(RUN_DISCOVERY), str(self.draft_dir), "true"],
+            [str(RUN_DISCOVERY), str(self.draft_dir), str(stub)],
             capture_output=True, text=True,
         )
-        self.assertEqual(result.returncode, 78)  # drafts only
+        self.assertEqual(result.returncode, 0, result.stderr)
+        prompt = captured.read_text(encoding="utf-8")
+        # The approved-contract pass is a review, not intake discovery.
+        self.assertIn("CONTRACT REVIEW", prompt)
+        self.assertIn("TOPIC.md", prompt)
+        self.assertNotIn("DRAFT-TOPIC.md", prompt)
+
+    def test_scoped_draft_prompt_is_criteria_only(self):
+        qa = self.draft_dir / "QA-RECORD.md"
+        qa.write_text(qa.read_text().replace("\nbroad\n", "\nscoped\n", 1))
+        captured = Path(self._tmp.name) / "captured-prompt.txt"
+        stub = self._stub(
+            f'cp "$2" "{captured}"\n'
+            'printf "## Contract criteria findings\\n" > "$1/SCOPE-PROPOSAL.md"'
+        )
+        result = subprocess.run(
+            [str(RUN_DISCOVERY), str(self.draft_dir), str(stub)],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        prompt = captured.read_text(encoding="utf-8")
+        self.assertIn("QA mode: scoped", prompt)
+        self.assertIn("CONTRACT CRITERIA", prompt)
 
 
 class DiscoverCliTests(unittest.TestCase):
@@ -183,6 +259,40 @@ class DiscoverCliTests(unittest.TestCase):
             self.assertEqual(item["lane"], "intake")
             self.assertEqual(item["id"], "discovery.c-topic")
             self.assertIsNone(item["repeat_seconds"])  # bounded: one pass
+
+    def test_discover_reviews_approved_topics_and_requeues(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "root"
+            root.mkdir()
+            dest = root / "topics"
+            topic_authoring.new_topic(
+                "r-topic", title="R", brief_text="Brief.", dest=dest, mode="scoped"
+            )
+            qa = dest / "r-topic" / "QA-RECORD.md"
+            qa.write_text(qa.read_text().replace(
+                "## Operator confirmation", "## Operator confirmation\n\nConfirmed.", 1
+            ))
+            (dest / "r-topic" / "SCOPE-PROPOSAL.md").write_text(
+                "## Contract criteria findings\n\nok\n", encoding="utf-8"
+            )
+            topic_authoring.approve_topic("r-topic", dest=dest)
+
+            def discover():
+                return subprocess.run(
+                    [sys.executable, "-m", "research_loops", "--root", str(root),
+                     "discover", "r-topic"],
+                    capture_output=True, text=True,
+                )
+
+            first = discover()
+            self.assertEqual(first.returncode, 0, first.stderr)
+            item = json.loads(first.stdout)
+            self.assertEqual(item["title"], "Contract review: r-topic")
+            self.assertEqual(item["lane"], "intake")
+            # Re-queueing replaces the prior non-running pass, never errors.
+            second = discover()
+            self.assertEqual(second.returncode, 0, second.stderr)
+            self.assertEqual(json.loads(second.stdout)["id"], "discovery.r-topic")
 
 
 if __name__ == "__main__":

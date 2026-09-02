@@ -23,8 +23,25 @@ RUNNER_NAME="${RESEARCH_LOOP_RUNNER:-${2:-generic}}"
 LOG_DIR="$TOPIC_DIR/logs"
 mkdir -p "$LOG_DIR"
 
-[[ -f "$TOPIC_DIR/DRAFT-TOPIC.md" ]] || { echo "configuration error: $TOPIC_DIR/DRAFT-TOPIC.md missing (discovery runs on drafts, before approval)" >&2; exit 78; }
-[[ -f "$TOPIC_DIR/QA-RECORD.md" ]] || { echo "configuration error: $TOPIC_DIR/QA-RECORD.md missing (re-run new-topic to scaffold it)" >&2; exit 78; }
+# A pass runs against either a DRAFT (pre-approval intake) or an already
+# APPROVED contract (operator-ordered contract review); the prompt differs.
+if [[ -f "$TOPIC_DIR/DRAFT-TOPIC.md" ]]; then
+  PASS_KIND=draft
+  TEMPLATE="$CHASSIS/DISCOVERY-PROMPT.md"
+  [[ -f "$TOPIC_DIR/QA-RECORD.md" ]] || { echo "configuration error: $TOPIC_DIR/QA-RECORD.md missing (re-run new-topic to scaffold it)" >&2; exit 78; }
+elif [[ -f "$TOPIC_DIR/TOPIC.md" ]]; then
+  PASS_KIND=review
+  TEMPLATE="$CHASSIS/CONTRACT-REVIEW-PROMPT.md"
+  if [[ ! -f "$TOPIC_DIR/QA-RECORD.md" ]]; then
+    printf '# QA record\n\n## Mode\n\nreview\n\n## Questions for the operator\n\n## Operator confirmation\n\n' >"$TOPIC_DIR/QA-RECORD.md"
+  fi
+else
+  echo "configuration error: $TOPIC_DIR has neither DRAFT-TOPIC.md nor TOPIC.md" >&2
+  exit 78
+fi
+
+QA_MODE="$(sed -n '/^## Mode$/,/^## /p' "$TOPIC_DIR/QA-RECORD.md" | sed '1d;/^## /d;/^[[:space:]]*$/d' | head -1 | tr -d '[:space:]')"
+QA_MODE="${QA_MODE:-broad}"
 
 if [[ -x "$RUNNER_NAME" ]]; then
   RUNNER="$RUNNER_NAME"
@@ -49,10 +66,11 @@ log="$LOG_DIR/discovery-$stamp.log"
 usage="$LOG_DIR/discovery-$stamp-usage.json"
 prompt_file="$LOG_DIR/.discovery-$stamp-prompt.txt"
 
-python3 "$CHASSIS/render-prompt.py" "$CHASSIS/DISCOVERY-PROMPT.md" \
+python3 "$CHASSIS/render-prompt.py" "$TEMPLATE" \
   "TOPIC_DIR=$TOPIC_DIR" \
   "CHASSIS=$CHASSIS" \
   "AGENT_NOTE=$AGENT_NOTE" \
+  "QA_MODE=$QA_MODE" \
   >"$prompt_file"
 
 export RESEARCH_LOOP_TOPIC_DIR="$TOPIC_DIR"

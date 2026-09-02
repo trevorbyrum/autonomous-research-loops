@@ -136,6 +136,12 @@ class EngineToolsTests(unittest.TestCase):
         self.tools.record_qa(
             "phone-topic", "Scope decision", "Adopt the draft obligations as scoped."
         )
+        # Stand-in for the criteria/discovery pass (normally written by the
+        # intake worker's queued pass; the gate itself is tested in
+        # tests/test_intake.py).
+        (self.root / "topics" / "phone-topic" / "SCOPE-PROPOSAL.md").write_text(
+            "## Contract criteria findings\n\nall pass\n", encoding="utf-8"
+        )
 
         result = self.tools.approve_and_queue(
             "phone-topic", confirm="phone-topic", position=0

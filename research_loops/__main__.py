@@ -418,17 +418,33 @@ def main(argv: list[str] | None = None) -> int:
         elif args.action == "discover":
             dest = Path(args.dest).expanduser().resolve() if args.dest else root / "topics"
             draft_dir = dest / args.topic_id
-            if not (draft_dir / "DRAFT-TOPIC.md").is_file():
+            if (draft_dir / "DRAFT-TOPIC.md").is_file():
+                pass_title = f"Discovery: {args.topic_id}"
+            elif (draft_dir / "TOPIC.md").is_file():
+                # Approved contract: the chassis runs an operator-ordered
+                # contract review pass (criteria check, propose-only) instead
+                # of intake discovery.
+                pass_title = f"Contract review: {args.topic_id}"
+            else:
                 raise QueueError(
-                    f"{draft_dir}/DRAFT-TOPIC.md not found -- run `new-topic` first "
-                    "(discovery operates on drafts, before approval)"
+                    f"{draft_dir} has neither DRAFT-TOPIC.md nor TOPIC.md -- "
+                    "run `new-topic` first"
                 )
             run_discovery = (
                 Path(__file__).resolve().parent / "chassis" / "run-discovery.sh"
             )
+            # Re-queueing a pass for the same topic is normal (a draft can be
+            # re-discovered after edits; a contract can be re-reviewed) -- a
+            # prior non-running pass item is replaced, never a blocker.
+            try:
+                existing = store.get(f"discovery.{args.topic_id}")
+            except QueueError:
+                existing = None
+            if existing is not None and existing.get("status") != "running":
+                store.remove(f"discovery.{args.topic_id}")
             emit(
                 store.add(
-                    title=f"Discovery: {args.topic_id}",
+                    title=pass_title,
                     cwd=str(draft_dir),
                     command=[str(run_discovery), str(draft_dir), args.agent_main],
                     item_id=f"discovery.{args.topic_id}",

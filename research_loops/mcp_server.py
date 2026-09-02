@@ -310,6 +310,7 @@ class EngineTools:
         "Operator confirmation",
         "Scope decision",
         "Questions for the operator",
+        "Deliverable exceptions",
     )
 
     def record_qa(self, topic_id: str, heading: str, text: str) -> dict[str, Any]:

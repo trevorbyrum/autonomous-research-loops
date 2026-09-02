@@ -817,6 +817,29 @@ def semantic_projection(state: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _flag_needs_operator(topic_dir: Path, flag: str, detail: str) -> None:
+    """Escalate to the operator through the loop's own STOP contract.
+
+    Deferral is a scope decision, and scope belongs to the operator: a loop
+    may record that it chose not to pursue an obligation, but that choice
+    must surface for review instead of silently counting toward DONE.
+    Writing STOP parks the topic as needs_attention at the queue layer; the
+    `flag:` lines tell the operator exactly where to look.
+    """
+    stop = topic_dir / "STOP"
+    lines: list[str] = []
+    if stop.exists():
+        lines = [l for l in stop.read_text(encoding="utf-8").splitlines() if l.strip()]
+    if not lines or lines[0].split(None, 1)[0].rstrip(":.,;") != "NEEDS-OPERATOR":
+        lines.insert(0, "NEEDS-OPERATOR")
+    entry = f"flag: {flag}"
+    if entry not in lines:
+        lines.append(entry)
+        if detail:
+            lines.append(f"  {detail}")
+    stop.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _write_state(topic_dir: Path, state: dict[str, Any]) -> None:
     """The single atomic write path for every mutating subcommand."""
     path = topic_dir / STATE_FILE
@@ -1190,6 +1213,13 @@ def main(argv: list[str] | None = None) -> int:
         _write_state(args.topic_dir, state)
         found = find_record(state, args.obligation_id)
         assert found is not None
+        if found[1].get("disposition") == "deferred":
+            summary = (found[1].get("acceptance_summary") or found[1].get("gap_state") or "").strip()
+            _flag_needs_operator(
+                args.topic_dir,
+                f"deferred-obligation {args.obligation_id}",
+                summary[:300],
+            )
         print(json.dumps(
             {
                 "id": args.obligation_id,

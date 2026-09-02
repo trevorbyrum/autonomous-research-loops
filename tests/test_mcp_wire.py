@@ -131,6 +131,12 @@ class WireTests(unittest.TestCase):
                         {"topic_id": "wire-topic", "heading": "Scope decision",
                          "text": "Adopt the draft obligations as scoped."},
                     )
+                    # Stand-in for the criteria/discovery pass the intake
+                    # worker would have written (queued above but no worker
+                    # runs in this test).
+                    (self.root / "topics" / "wire-topic" / "SCOPE-PROPOSAL.md").write_text(
+                        "## Contract criteria findings\n\nall pass\n", encoding="utf-8"
+                    )
                     approved = await call(
                         "approve_and_queue",
                         {"topic_id": "wire-topic", "confirm": "wire-topic", "position": 0},

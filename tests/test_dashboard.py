@@ -350,3 +350,33 @@ class DashboardIntakeLaneTests(unittest.TestCase):
         output = self._render("completed")
         overview = self._section(output, "Overview")
         self.assertIn("| Intake | 1 |", overview.replace("  ", " "))
+
+
+class NeedsAttentionFlagTests(unittest.TestCase):
+    """The Needs attention table says WHERE to look, not just that something broke."""
+
+    def _render(self, last_error):
+        state = {
+            "revision": 1,
+            "paused": False,
+            "items": [{
+                "id": "t", "title": "Some topic", "status": "needs_attention",
+                "desired_state": "running", "claimed_by": None, "attempts": 3,
+                "last_error": last_error, "last_error_kind": "configuration",
+            }],
+        }
+        return render_dashboard(state, [], generated_at=datetime(2026, 9, 3, tzinfo=UTC))
+
+    def test_structured_flags_surface_in_their_own_column(self):
+        output = self._render(
+            "NEEDS-OPERATOR\nflag: deferred-obligation SCOPE-A3\n  depends on unshipped tooling\n"
+        )
+        section = output.split("## Needs attention\n")[1].split("\n## ")[0]
+        self.assertIn("Flags", section)
+        self.assertIn("deferred", section)
+        self.assertIn("SCOPE", section)
+
+    def test_unstructured_errors_fall_back_to_first_line(self):
+        section = self._render("STOP present: NEEDS-OPERATOR\nmore detail").split(
+            "## Needs attention\n")[1].split("\n## ")[0]
+        self.assertIn("STOP present", section)

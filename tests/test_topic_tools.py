@@ -25,6 +25,10 @@ def answer_qa(topic_dir: Path) -> None:
         if heading in content:
             content = content.replace(heading, heading + "\n\n" + answer, 1)
     qa.write_text(content, encoding="utf-8")
+    # Stand-in for the criteria/discovery pass approval also requires.
+    (Path(topic_dir) / "SCOPE-PROPOSAL.md").write_text(
+        "## Contract criteria findings\n\nall pass\n", encoding="utf-8"
+    )
 
 
 class NewTopicTests(unittest.TestCase):

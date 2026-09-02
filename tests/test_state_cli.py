@@ -231,3 +231,73 @@ class ContinuousCadenceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DeferredEscalationTests(unittest.TestCase):
+    """Deferring is allowed as a record, never as a silent exit.
+
+    Scope belongs to the operator: a deferred disposition immediately writes
+    a NEEDS-OPERATOR STOP with a structured `flag:` line, so the queue parks
+    the topic as needs_attention and the operator knows exactly where to
+    look. Sneaking toward DONE via deferrals is structurally impossible.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.topic_dir = Path(self._tmp.name) / "topic"
+        shutil.copytree(EXAMPLE_TOPIC, self.topic_dir)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _defer(self, obligation_id):
+        return _run(
+            "transition", str(self.topic_dir), obligation_id,
+            "--disposition", "deferred",
+            "--counterevidence-reviewed", "true",
+            "--acceptance-summary", "deferred: depends on unshipped tooling",
+            "--counterevidence-summary", "none reviewed; deferral is scope, not evidence",
+            "--experiment", json.dumps({
+                "question": "does the tooling exist yet",
+                "method": "re-check the vendor changelog",
+                "success_measure": "tooling shipped and testable",
+            }),
+        )
+
+    def test_deferred_transition_writes_flagged_stop(self):
+        state = json.loads((self.topic_dir / "SEMANTIC-STATE.json").read_text())
+        first = state["obligations"][0]["id"]
+        result = self._defer(first)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        stop = self.topic_dir / "STOP"
+        self.assertTrue(stop.exists(), "deferral must park the topic for the operator")
+        body = stop.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(body[0], "NEEDS-OPERATOR")
+        self.assertIn(f"flag: deferred-obligation {first}", body)
+
+    def test_second_deferral_appends_without_duplicating(self):
+        state = json.loads((self.topic_dir / "SEMANTIC-STATE.json").read_text())
+        ids = [o["id"] for o in state["obligations"][:2]]
+        self.assertEqual(self._defer(ids[0]).returncode, 0)
+        self.assertEqual(self._defer(ids[1]).returncode, 0)
+        body = (self.topic_dir / "STOP").read_text(encoding="utf-8")
+        self.assertEqual(body.count("NEEDS-OPERATOR"), 1)
+        for oid in ids:
+            self.assertEqual(body.count(f"flag: deferred-obligation {oid}"), 1)
+
+    def test_non_deferred_terminal_writes_no_stop(self):
+        state = json.loads((self.topic_dir / "SEMANTIC-STATE.json").read_text())
+        first = state["obligations"][0]["id"]
+        result = _run(
+            "transition", str(self.topic_dir), first,
+            "--disposition", "unresolved",
+            "--counterevidence-reviewed", "true",
+            "--acceptance-summary", "searched, nothing decisive",
+            "--counterevidence-summary", "no counterevidence located",
+            "--adequate-search", json.dumps({
+                "summary": "s", "queries": ["q"],
+                "source_lanes": ["web"], "retrieval_failures": [],
+            }),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.topic_dir / "STOP").exists())

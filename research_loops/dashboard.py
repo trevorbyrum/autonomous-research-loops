@@ -330,10 +330,20 @@ def render_dashboard(
         ])
     lines.extend(["", "## Completed topics", "", _table(["Topic", "Queue attempts", "Retained runs", "Interactions", "Avg duration / retained run", "Reported tokens", "Avg reported tokens / covered run", "Models observed", "Finished"], completed_rows)])
 
-    attention_rows = [[item.get("title", item.get("id")), item.get("attempts", "unavailable"), item.get("last_error_kind") or "unavailable", item.get("finished_at") or "unavailable"] for _, item in categories["needs_attention"]]
+    def _attention_flags(item: dict[str, Any]) -> str:
+        # Structured `flag:` lines (e.g. from a deferred-obligation STOP)
+        # say exactly where to look; fall back to the error's first line.
+        error = str(item.get("last_error") or "")
+        flags = [line.strip()[5:].strip() for line in error.splitlines() if line.strip().startswith("flag:")]
+        if flags:
+            return "; ".join(flags)
+        first = next((line.strip() for line in error.splitlines() if line.strip()), "")
+        return first or "unavailable"
+
+    attention_rows = [[item.get("title", item.get("id")), item.get("attempts", "unavailable"), item.get("last_error_kind") or "unavailable", _attention_flags(item), item.get("finished_at") or "unavailable"] for _, item in categories["needs_attention"]]
     paused_rows = [[item.get("title", item.get("id")), item.get("claimed_by") or "none", item.get("attempts", "unavailable"), item.get("last_error_kind") or "operator / unspecified"] for _, item in categories["paused"]]
     unclassified_rows = [[position, item.get("id", "unavailable"), item.get("title", "unavailable"), item.get("status", "unavailable"), item.get("desired_state", "unavailable"), item.get("claimed_by") or "none"] for position, item in categories["unclassified"]]
-    lines.extend(["", "## Needs attention", "", _table(["Topic", "Attempts", "Reason class", "Finished"], attention_rows)])
+    lines.extend(["", "## Needs attention", "", _table(["Topic", "Attempts", "Reason class", "Flags (where to look)", "Finished"], attention_rows)])
     lines.extend(["", "## Paused topics", "", _table(["Topic", "Stale/current owner", "Attempts", "Reason class"], paused_rows)])
     lines.extend(["", "## Unclassified items", "", _table(["Queue position", "ID", "Title", "Status", "Desired state", "Owner"], unclassified_rows)])
 

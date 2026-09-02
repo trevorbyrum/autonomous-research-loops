@@ -205,6 +205,44 @@ def compute_lock(topic_dir: Path) -> str:
 
 QA_MODES = ("scoped", "broad")
 
+# The engine produces research -- evidence, synthesis, catalogs of what the
+# literature shows. A prescriptive/deterministic artifact (a playbook, a
+# design, an implementation plan) is a different kind of output and a
+# category error in a non-deterministic research contract. Deliverable lines
+# matching these terms are refused at approval unless the operator records
+# an explicit exception in QA-RECORD.md under `## Deliverable exceptions`.
+DETERMINISTIC_DELIVERABLE_TERMS = (
+    "playbook", "runbook", "blueprint", "template", "implementation",
+    "design", "plan", "script", "tool", "config", "procedure", "how-to",
+)
+
+
+def deterministic_deliverable_errors(contract_text: str, qa_text: str) -> list[str]:
+    """Flag deliverables that describe deterministic artifacts, not research."""
+    parts = contract_text.split("## Required deliverables", 1)
+    if len(parts) < 2:
+        return []
+    body = parts[1].split("\n## ", 1)[0]
+    exceptions = ""
+    if "## Deliverable exceptions" in qa_text:
+        exceptions = qa_text.split("## Deliverable exceptions", 1)[1].split("\n## ", 1)[0]
+    errors: list[str] = []
+    for line in body.splitlines():
+        match = re.match(r"- \*\*([A-Za-z0-9._-]+)\*\*", line.strip())
+        if not match:
+            continue
+        lowered = line.lower()
+        hits = [t for t in DETERMINISTIC_DELIVERABLE_TERMS if re.search(rf"\b{re.escape(t)}s?\b", lowered)]
+        if hits and match.group(1) not in exceptions:
+            errors.append(
+                f"deliverable {match.group(1)} reads as a deterministic artifact "
+                f"({', '.join(hits)}) -- this engine produces research "
+                "(synthesis/evidence), not prescriptive outputs; reword it, or "
+                "record an operator exception in QA-RECORD.md under "
+                f"'## Deliverable exceptions' naming {match.group(1)}"
+            )
+    return errors
+
 
 def new_topic(
     topic_id: str,
@@ -347,6 +385,23 @@ def approve_topic(topic_id: str, *, dest: Path) -> dict[str, Any]:
                 "operator must rule before this contract can bind "
                 "(see docs/topic-authoring.md#the-qa-round)"
             )
+
+    # Both modes require a discovery/criteria pass on record: broad mode's
+    # maps the space; scoped mode's checks the contract against the intake
+    # criteria only. Either way, approval without one is approval of an
+    # unreviewed contract.
+    if not (topic_dir / "SCOPE-PROPOSAL.md").is_file():
+        raise QueueError(
+            "SCOPE-PROPOSAL.md not found -- run `research-loops discover "
+            f"{topic_id}` first; every draft (broad or scoped) gets a "
+            "criteria/discovery pass before it can bind"
+        )
+
+    deterministic = deterministic_deliverable_errors(
+        draft_topic.read_text(encoding="utf-8"), qa_text
+    )
+    if deterministic:
+        raise QueueError("\n".join(deterministic))
 
     state = json.loads(draft_state.read_text(encoding="utf-8"))
     # Recompute from whatever is actually on disk now, not what new_topic computed
