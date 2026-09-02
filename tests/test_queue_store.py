@@ -146,11 +146,16 @@ class QueueStoreTests(unittest.TestCase):
                 self.store.add(
                     title="Invalid", cwd="/tmp", command=["true"], max_attempts=max_attempts
                 )
-        for repeat_seconds in (0, -1):
-            with self.subTest(repeat_seconds=repeat_seconds), self.assertRaises(QueueError):
-                self.store.add(
-                    title="Invalid", cwd="/tmp", command=["true"], repeat_seconds=repeat_seconds
-                )
+        # 0 is legal: continuous cadence (re-eligible the moment an iteration
+        # finishes). Only negatives are rejected; None stays "bounded, run once".
+        with self.assertRaises(QueueError):
+            self.store.add(
+                title="Invalid", cwd="/tmp", command=["true"], repeat_seconds=-1
+            )
+        continuous = self.store.add(
+            title="Continuous", cwd="/tmp", command=["true"], repeat_seconds=0
+        )
+        self.assertEqual(continuous["repeat_seconds"], 0)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -503,6 +504,108 @@ def evidence_citation_errors(
     return errors
 
 
+def obligation_terminal_errors(
+    topic_dir: Path,
+    state: dict[str, Any],
+    obligation: dict[str, Any],
+    *,
+    topics_root: Path | None = None,
+    allow_internal_citations: bool = False,
+) -> list[str]:
+    """Everything one obligation must satisfy to stand as recorded.
+
+    The SINGLE implementation of per-obligation rules, used by BOTH the DONE
+    gate (completion_errors) and the write path (`transition`), so a terminal
+    disposition can never be written that the completion gate would later
+    reject — and the two rule sets cannot drift. tests/test_projection_parity.py
+    introspects this function alongside completion_errors.
+    """
+    errors: list[str] = []
+    obligation_id = str(obligation.get("id", "<missing-id>"))
+    for field in ("id", "text", "source_ref"):
+        if not isinstance(obligation.get(field), str) or not obligation[field].strip():
+            errors.append(f"obligation {obligation_id} requires immutable {field}")
+    disposition = obligation.get("disposition")
+    if disposition == "open":
+        errors.append(f"open obligation {obligation_id}")
+    elif disposition not in TERMINAL_DISPOSITIONS:
+        errors.append(
+            f"obligation {obligation_id} has invalid disposition {disposition!r}"
+        )
+    else:
+        if obligation.get("counterevidence_reviewed") is not True:
+            errors.append(
+                f"obligation {obligation_id} requires counterevidence review"
+            )
+        acceptance_summary = obligation.get("acceptance_summary")
+        if not isinstance(acceptance_summary, str) or not acceptance_summary.strip():
+            errors.append(f"obligation {obligation_id} requires an acceptance summary")
+        counterevidence_summary = obligation.get("counterevidence_summary")
+        if not (
+            isinstance(counterevidence_summary, str)
+            and counterevidence_summary.strip()
+        ):
+            errors.append(
+                f"obligation {obligation_id} requires a counterevidence summary"
+            )
+        if disposition in {"supported", "contradicted"}:
+            evidence_refs = obligation.get("evidence_refs")
+            if not isinstance(evidence_refs, list) or not evidence_refs:
+                errors.append(f"obligation {obligation_id} requires evidence_refs")
+            elif any(
+                not reference_exists(topic_dir, reference)
+                for reference in evidence_refs
+            ):
+                errors.append(
+                    f"obligation {obligation_id} evidence reference does not exist"
+                )
+            elif state.get("schema_version", 1) >= 2:
+                # Citation enforcement (docs/citations.md) only applies from
+                # schema_version 2 on -- topics approved before this existed
+                # keep validating exactly as they did, unchanged.
+                errors.extend(
+                    evidence_citation_errors(
+                        topic_dir,
+                        topics_root or topic_dir.resolve().parent,
+                        obligation_id,
+                        evidence_refs,
+                        allow_internal=allow_internal_citations,
+                    )
+                )
+            confidence = obligation.get("confidence")
+            if not isinstance(confidence, str) or not confidence.strip():
+                errors.append(f"obligation {obligation_id} requires confidence")
+        elif disposition == "unresolved":
+            search = obligation.get("adequate_search")
+            if not (
+                isinstance(search, dict)
+                and isinstance(search.get("summary"), str)
+                and search["summary"].strip()
+                and isinstance(search.get("queries"), list)
+                and search["queries"]
+                and isinstance(search.get("source_lanes"), list)
+                and search["source_lanes"]
+                and isinstance(search.get("retrieval_failures"), list)
+            ):
+                errors.append(
+                    f"obligation {obligation_id} requires an adequate-search record"
+                )
+        elif disposition == "deferred":
+            experiment = obligation.get("experiment")
+            if not (
+                isinstance(experiment, dict)
+                and all(
+                    isinstance(experiment.get(field), str)
+                    and experiment[field].strip()
+                    for field in ("question", "method", "success_measure")
+                )
+            ):
+                errors.append(
+                    f"obligation {obligation_id} requires a precise experiment"
+                )
+    return errors
+
+
 def completion_errors(
     topic_dir: Path,
     state: dict[str, Any],
@@ -560,88 +663,15 @@ def completion_errors(
         if not isinstance(obligation, dict):
             errors.append("every obligation must be an object")
             continue
-        obligation_id = str(obligation.get("id", "<missing-id>"))
-        for field in ("id", "text", "source_ref"):
-            if not isinstance(obligation.get(field), str) or not obligation[field].strip():
-                errors.append(f"obligation {obligation_id} requires immutable {field}")
-        disposition = obligation.get("disposition")
-        if disposition == "open":
-            errors.append(f"open obligation {obligation_id}")
-        elif disposition not in TERMINAL_DISPOSITIONS:
-            errors.append(
-                f"obligation {obligation_id} has invalid disposition {disposition!r}"
+        errors.extend(
+            obligation_terminal_errors(
+                topic_dir,
+                state,
+                obligation,
+                topics_root=topics_root,
+                allow_internal_citations=allow_internal_citations,
             )
-        else:
-            if obligation.get("counterevidence_reviewed") is not True:
-                errors.append(
-                    f"obligation {obligation_id} requires counterevidence review"
-                )
-            acceptance_summary = obligation.get("acceptance_summary")
-            if not isinstance(acceptance_summary, str) or not acceptance_summary.strip():
-                errors.append(f"obligation {obligation_id} requires an acceptance summary")
-            counterevidence_summary = obligation.get("counterevidence_summary")
-            if not (
-                isinstance(counterevidence_summary, str)
-                and counterevidence_summary.strip()
-            ):
-                errors.append(
-                    f"obligation {obligation_id} requires a counterevidence summary"
-                )
-            if disposition in {"supported", "contradicted"}:
-                evidence_refs = obligation.get("evidence_refs")
-                if not isinstance(evidence_refs, list) or not evidence_refs:
-                    errors.append(f"obligation {obligation_id} requires evidence_refs")
-                elif any(
-                    not reference_exists(topic_dir, reference)
-                    for reference in evidence_refs
-                ):
-                    errors.append(
-                        f"obligation {obligation_id} evidence reference does not exist"
-                    )
-                elif state.get("schema_version", 1) >= 2:
-                    # Citation enforcement (docs/citations.md) only applies from
-                    # schema_version 2 on -- topics approved before this existed
-                    # keep validating exactly as they did, unchanged.
-                    errors.extend(
-                        evidence_citation_errors(
-                            topic_dir,
-                            topics_root or topic_dir.resolve().parent,
-                            obligation_id,
-                            evidence_refs,
-                            allow_internal=allow_internal_citations,
-                        )
-                    )
-                confidence = obligation.get("confidence")
-                if not isinstance(confidence, str) or not confidence.strip():
-                    errors.append(f"obligation {obligation_id} requires confidence")
-            elif disposition == "unresolved":
-                search = obligation.get("adequate_search")
-                if not (
-                    isinstance(search, dict)
-                    and isinstance(search.get("summary"), str)
-                    and search["summary"].strip()
-                    and isinstance(search.get("queries"), list)
-                    and search["queries"]
-                    and isinstance(search.get("source_lanes"), list)
-                    and search["source_lanes"]
-                    and isinstance(search.get("retrieval_failures"), list)
-                ):
-                    errors.append(
-                        f"obligation {obligation_id} requires an adequate-search record"
-                    )
-            elif disposition == "deferred":
-                experiment = obligation.get("experiment")
-                if not (
-                    isinstance(experiment, dict)
-                    and all(
-                        isinstance(experiment.get(field), str)
-                        and experiment[field].strip()
-                        for field in ("question", "method", "success_measure")
-                    )
-                ):
-                    errors.append(
-                        f"obligation {obligation_id} requires a precise experiment"
-                    )
+        )
     deliverables = state.get("deliverables")
     if not isinstance(deliverables, list) or not deliverables:
         errors.append("semantic state must contain at least one deliverable")
@@ -775,47 +805,291 @@ def semantic_projection(state: dict[str, Any]) -> dict[str, Any]:
     return projection
 
 
+# ---------------------------------------------------------------------------
+# Accessor / write-through layer (docs/state-access.md)
+#
+# The state file is the source of truth, but agents should neither read it
+# whole (49 obligations of terminal prose re-enter the context every turn)
+# nor rewrite it whole with ad-hoc scripts (one bad script bricks the topic).
+# `select` and `get` are the scoped read paths; `transition`/`pending`/
+# `deliverable`/`contradiction` are the guarded write paths, validating at
+# write time with the SAME rule implementations the DONE gate uses.
+# ---------------------------------------------------------------------------
+
+
+def _write_state(topic_dir: Path, state: dict[str, Any]) -> None:
+    """The single atomic write path for every mutating subcommand."""
+    path = topic_dir / STATE_FILE
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(
+        json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    os.replace(tmp, path)
+
+
+def work_selection_view(state: dict[str, Any]) -> dict[str, Any]:
+    """Everything work selection needs, nothing it doesn't.
+
+    Open (non-terminal) obligations in full — selection judgment needs their
+    complete records. Terminal obligations as skeletons — they are done; a
+    revalidation pass that needs one fetches it via `get`. Open
+    contradictions in full, resolved ones as skeletons. This is a read
+    projection: the file is untouched and remains authoritative.
+    """
+    open_obligations: list[dict[str, Any]] = []
+    terminal: list[dict[str, Any]] = []
+    for value in state.get("obligations", []):
+        if not isinstance(value, dict):
+            continue
+        if value.get("disposition") in TERMINAL_DISPOSITIONS:
+            terminal.append(
+                {
+                    "id": value.get("id"),
+                    "disposition": value.get("disposition"),
+                    "confidence": value.get("confidence"),
+                }
+            )
+        else:
+            open_obligations.append(value)
+    contradictions = [
+        value
+        if value.get("status") == "open"
+        else {"id": value.get("id"), "status": value.get("status")}
+        for value in state.get("contradictions", [])
+        if isinstance(value, dict)
+    ]
+    deliverables = [
+        {"id": value.get("id"), "status": value.get("status"), "path": value.get("path")}
+        for value in state.get("deliverables", [])
+        if isinstance(value, dict)
+    ]
+    return {
+        "topic_id": state.get("topic_id"),
+        "schema_version": state.get("schema_version"),
+        "counts": {
+            "obligations_open": len(open_obligations),
+            "obligations_terminal": len(terminal),
+            "pending_evidence_refs": len(state.get("pending_evidence_refs") or []),
+        },
+        "open_obligations": open_obligations,
+        "terminal_obligations": terminal,
+        "pending_evidence_refs": state.get("pending_evidence_refs", []),
+        "contradictions": contradictions,
+        "deliverables": deliverables,
+    }
+
+
+def find_record(state: dict[str, Any], record_id: str) -> tuple[str, dict[str, Any]] | None:
+    """Locate one record by id across obligations/deliverables/contradictions."""
+    for kind, key in (
+        ("obligation", "obligations"),
+        ("deliverable", "deliverables"),
+        ("contradiction", "contradictions"),
+    ):
+        for value in state.get(key, []):
+            if isinstance(value, dict) and value.get("id") == record_id:
+                return kind, value
+    return None
+
+
+_OBLIGATION_WRITABLE_FIELDS = {
+    "disposition",
+    "confidence",
+    "gap_state",
+    "acceptance_summary",
+    "counterevidence_summary",
+    "counterevidence_reviewed",
+    "adequate_search",
+    "experiment",
+}
+
+
+def apply_obligation_transition(
+    topic_dir: Path,
+    state: dict[str, Any],
+    obligation_id: str,
+    updates: dict[str, Any],
+    add_evidence_refs: list[str],
+    *,
+    topics_root: Path | None = None,
+    allow_internal_citations: bool = False,
+) -> list[str]:
+    """Apply a guarded update to one obligation, in place. Returns errors.
+
+    Identity fields (id/text/source_ref) are operator-owned and not writable
+    here. A transition to a terminal disposition must be complete in one
+    call: the updated record is checked against obligation_terminal_errors —
+    the exact DONE-gate rules — and NOTHING is written if it fails, so a
+    terminal state the completion gate would reject can never land on disk.
+    """
+    found = find_record(state, obligation_id)
+    if found is None or found[0] != "obligation":
+        return [f"unknown obligation: {obligation_id}"]
+    obligation = found[1]
+    illegal = set(updates) - _OBLIGATION_WRITABLE_FIELDS
+    if illegal:
+        return [
+            f"field(s) {sorted(illegal)} are not writable via transition "
+            "(identity fields are operator-owned; see rehash/relock for scope changes)"
+        ]
+    errors: list[str] = []
+    for reference in add_evidence_refs:
+        if not reference_exists(topic_dir, reference):
+            errors.append(f"evidence reference does not exist: {reference}")
+    if errors:
+        return errors
+    candidate = dict(obligation)
+    candidate.update(updates)
+    refs = list(candidate.get("evidence_refs") or [])
+    for reference in add_evidence_refs:
+        if reference not in refs:
+            refs.append(reference)
+    candidate["evidence_refs"] = refs
+    disposition = candidate.get("disposition")
+    if disposition not in TERMINAL_DISPOSITIONS and disposition != "open":
+        return [f"invalid disposition {disposition!r}"]
+    if disposition in TERMINAL_DISPOSITIONS:
+        errors = obligation_terminal_errors(
+            topic_dir,
+            state,
+            candidate,
+            topics_root=topics_root,
+            allow_internal_citations=allow_internal_citations,
+        )
+        if errors:
+            return [
+                "terminal transition refused (a terminal disposition must be "
+                "complete in one call; nothing was written):",
+                *errors,
+            ]
+    obligation.clear()
+    obligation.update(candidate)
+    return []
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Validate and fingerprint one topic's executable completion state "
-            "(SEMANTIC-STATE.json). See docs/topic-authoring.md."
+            "Validate, fingerprint, and access one topic's executable completion "
+            "state (SEMANTIC-STATE.json). Agents: read via `select`/`get`, write "
+            "via `transition`/`pending`/`deliverable`/`contradiction` — never "
+            "read or rewrite the whole file. See docs/topic-authoring.md and "
+            "docs/state-access.md."
         )
     )
-    parser.add_argument(
-        "action",
-        choices=("validate", "signature", "lock", "rehash", "check", "source-count"),
-        help=(
-            "validate: the DONE gate -- exit 0 only if every obligation/deliverable "
-            "is terminal. "
-            "check: structural sanity for a freshly approved topic, before any "
-            "research has happened. "
-            "signature: deterministic digest of qualifying semantic progress, used "
-            "by the queue's stall guard. "
-            "lock: print the completion-inventory hash for --lock-sha256 pinning. "
-            "rehash: recompute contract/authority hashes after YOU edit TOPIC.md or "
-            "AUTHORITY.md -- never run by a research agent. "
-            "source-count: print the number of [SRC-NNN] citation blocks in "
-            "SOURCE-LEDGER.md (see docs/citations.md)."
-        ),
-    )
-    parser.add_argument("topic_dir", type=Path, help="path to the topic's directory")
-    parser.add_argument(
+    sub = parser.add_subparsers(dest="action", required=True)
+
+    def _topic(p: argparse.ArgumentParser) -> argparse.ArgumentParser:
+        p.add_argument("topic_dir", type=Path, help="path to the topic's directory")
+        return p
+
+    validate = _topic(sub.add_parser(
+        "validate",
+        help="the DONE gate -- exit 0 only if every obligation/deliverable is terminal",
+    ))
+    validate.add_argument(
         "--lock-sha256",
-        help="with `validate`, also require the completion inventory to match this hash",
+        help="also require the completion inventory to match this hash",
     )
-    parser.add_argument(
+    validate.add_argument(
         "--topics-root",
         type=Path,
-        help="with `validate` on a schema_version >= 2 topic, the directory containing "
-        "every topic (for resolving `internal` citations); default: topic_dir's parent",
+        help="on a schema_version >= 2 topic, the directory containing every topic "
+        "(for resolving `internal` citations); default: topic_dir's parent",
     )
-    parser.add_argument(
+    validate.add_argument(
         "--allow-internal-citations",
         action="store_true",
-        help="with `validate`, accept well-formed `internal` citation blocks for this "
-        "topic (see docs/citations.md) -- rejected by default",
+        help="accept well-formed `internal` citation blocks (see docs/citations.md)",
     )
+    _topic(sub.add_parser(
+        "check", help="structural sanity for a freshly approved topic"
+    ))
+    _topic(sub.add_parser(
+        "signature",
+        help="deterministic digest of qualifying semantic progress (stall guard)",
+    ))
+    _topic(sub.add_parser(
+        "lock", help="print the completion-inventory hash for --lock-sha256 pinning"
+    ))
+    _topic(sub.add_parser(
+        "rehash",
+        help="recompute contract/authority hashes after YOU edit TOPIC.md or "
+        "AUTHORITY.md -- never run by a research agent",
+    ))
+    _topic(sub.add_parser(
+        "source-count",
+        help="print the number of [SRC-NNN] citation blocks in SOURCE-LEDGER.md",
+    ))
+
+    _topic(sub.add_parser(
+        "select",
+        help="work-selection view: open obligations in full, terminal ones as "
+        "skeletons, pending refs, open contradictions, deliverable statuses -- "
+        "the read path for orientation (never read the whole state file)",
+    ))
+    get_parser = _topic(sub.add_parser(
+        "get", help="one full record (obligation/deliverable/contradiction) by id"
+    ))
+    get_parser.add_argument("record_id")
+
+    transition = _topic(sub.add_parser(
+        "transition",
+        help="guarded update to one obligation; a terminal disposition must be "
+        "complete in one call and is checked with the DONE gate's own rules "
+        "before anything is written",
+    ))
+    transition.add_argument("obligation_id")
+    transition.add_argument("--disposition")
+    transition.add_argument("--confidence")
+    transition.add_argument("--gap-state")
+    transition.add_argument("--acceptance-summary")
+    transition.add_argument("--counterevidence-summary")
+    transition.add_argument("--counterevidence-reviewed", choices=("true", "false"))
+    transition.add_argument(
+        "--add-evidence-ref",
+        action="append",
+        default=[],
+        help="repeatable; each must resolve inside the topic directory",
+    )
+    transition.add_argument(
+        "--adequate-search", help="JSON object: summary/queries/source_lanes/retrieval_failures"
+    )
+    transition.add_argument(
+        "--experiment", help="JSON object: question/method/success_measure"
+    )
+    transition.add_argument(
+        "--topics-root", type=Path, help="as for validate (internal citations)"
+    )
+    transition.add_argument("--allow-internal-citations", action="store_true")
+
+    pending = _topic(sub.add_parser(
+        "pending", help="add or remove one pending evidence reference"
+    ))
+    pending_action = pending.add_mutually_exclusive_group(required=True)
+    pending_action.add_argument("--add", metavar="REF")
+    pending_action.add_argument("--remove", metavar="REF")
+
+    deliverable_parser = _topic(sub.add_parser(
+        "deliverable",
+        help="update one deliverable's status/acceptance (required-heading "
+        "checks stay at the DONE gate, which reads the artifact itself)",
+    ))
+    deliverable_parser.add_argument("deliverable_id")
+    deliverable_parser.add_argument("--status", choices=("missing", "complete"))
+    deliverable_parser.add_argument("--acceptance-summary")
+    deliverable_parser.add_argument(
+        "--add-acceptance-ref", action="append", default=[]
+    )
+
+    contradiction_parser = _topic(sub.add_parser(
+        "contradiction", help="open a new contradiction or resolve an existing one"
+    ))
+    contradiction_action = contradiction_parser.add_mutually_exclusive_group(required=True)
+    contradiction_action.add_argument("--open", metavar="ID", dest="open_id")
+    contradiction_action.add_argument("--resolve", metavar="ID", dest="resolve_id")
+    contradiction_parser.add_argument("--resolution")
+
     args = parser.parse_args(argv)
     if args.action == "rehash":
         try:
@@ -863,6 +1137,150 @@ def main(argv: list[str] | None = None) -> int:
         except OSError:
             ledger_text = ""
         print(len(parse_source_ledger(ledger_text)))
+        return 0
+    if args.action == "select":
+        print(json.dumps(work_selection_view(state), indent=2, sort_keys=True))
+        return 0
+    if args.action == "get":
+        found = find_record(state, args.record_id)
+        if found is None:
+            print(f"no record with id {args.record_id!r}", file=sys.stderr)
+            return 1
+        kind, record = found
+        print(json.dumps({"kind": kind, "record": record}, indent=2, sort_keys=True))
+        return 0
+    if args.action == "transition":
+        updates: dict[str, Any] = {}
+        for field, value in (
+            ("disposition", args.disposition),
+            ("confidence", args.confidence),
+            ("gap_state", args.gap_state),
+            ("acceptance_summary", args.acceptance_summary),
+            ("counterevidence_summary", args.counterevidence_summary),
+        ):
+            if value is not None:
+                updates[field] = value
+        if args.counterevidence_reviewed is not None:
+            updates["counterevidence_reviewed"] = args.counterevidence_reviewed == "true"
+        for field, raw in (
+            ("adequate_search", args.adequate_search),
+            ("experiment", args.experiment),
+        ):
+            if raw is not None:
+                try:
+                    updates[field] = json.loads(raw)
+                except json.JSONDecodeError as exc:
+                    print(f"--{field.replace('_', '-')} is not valid JSON: {exc}", file=sys.stderr)
+                    return 2
+        if not updates and not args.add_evidence_ref:
+            print("transition: nothing to change", file=sys.stderr)
+            return 2
+        errors = apply_obligation_transition(
+            args.topic_dir,
+            state,
+            args.obligation_id,
+            updates,
+            args.add_evidence_ref,
+            topics_root=args.topics_root,
+            allow_internal_citations=args.allow_internal_citations,
+        )
+        if errors:
+            print("\n".join(errors), file=sys.stderr)
+            return 1
+        _write_state(args.topic_dir, state)
+        found = find_record(state, args.obligation_id)
+        assert found is not None
+        print(json.dumps(
+            {
+                "id": args.obligation_id,
+                "disposition": found[1].get("disposition"),
+                "changed": sorted(updates) + (["evidence_refs"] if args.add_evidence_ref else []),
+            },
+            sort_keys=True,
+        ))
+        return 0
+    if args.action == "pending":
+        refs = state.setdefault("pending_evidence_refs", [])
+        if not isinstance(refs, list):
+            print("pending_evidence_refs is malformed", file=sys.stderr)
+            return 1
+        if args.add is not None:
+            if not reference_exists(args.topic_dir, args.add):
+                print(f"pending reference does not exist: {args.add}", file=sys.stderr)
+                return 1
+            if args.add not in refs:
+                refs.append(args.add)
+        else:
+            if args.remove not in refs:
+                print(f"not a pending reference: {args.remove}", file=sys.stderr)
+                return 1
+            refs.remove(args.remove)
+        _write_state(args.topic_dir, state)
+        print(json.dumps({"pending_evidence_refs": len(refs)}, sort_keys=True))
+        return 0
+    if args.action == "deliverable":
+        found = find_record(state, args.deliverable_id)
+        if found is None or found[0] != "deliverable":
+            print(f"unknown deliverable: {args.deliverable_id}", file=sys.stderr)
+            return 1
+        record = found[1]
+        candidate = dict(record)
+        if args.status is not None:
+            candidate["status"] = args.status
+        if args.acceptance_summary is not None:
+            candidate["acceptance_summary"] = args.acceptance_summary
+        refs = list(candidate.get("acceptance_evidence_refs") or [])
+        for reference in args.add_acceptance_ref:
+            if not reference_exists(args.topic_dir, reference):
+                print(f"acceptance reference does not exist: {reference}", file=sys.stderr)
+                return 1
+            if reference not in refs:
+                refs.append(reference)
+        candidate["acceptance_evidence_refs"] = refs
+        if candidate.get("status") == "complete":
+            summary = candidate.get("acceptance_summary")
+            if not isinstance(summary, str) or not summary.strip():
+                print(
+                    "completing a deliverable requires --acceptance-summary "
+                    "(nothing was written)",
+                    file=sys.stderr,
+                )
+                return 1
+            if not refs:
+                print(
+                    "completing a deliverable requires at least one "
+                    "--add-acceptance-ref (nothing was written)",
+                    file=sys.stderr,
+                )
+                return 1
+        record.clear()
+        record.update(candidate)
+        _write_state(args.topic_dir, state)
+        print(json.dumps({"id": args.deliverable_id, "status": record.get("status")}, sort_keys=True))
+        return 0
+    if args.action == "contradiction":
+        contradictions = state.setdefault("contradictions", [])
+        if args.open_id is not None:
+            if find_record(state, args.open_id) is not None:
+                print(f"id already exists: {args.open_id}", file=sys.stderr)
+                return 1
+            contradictions.append(
+                {"id": args.open_id, "status": "open", "resolution": None}
+            )
+            _write_state(args.topic_dir, state)
+            print(json.dumps({"id": args.open_id, "status": "open"}, sort_keys=True))
+            return 0
+        found = find_record(state, args.resolve_id)
+        if found is None or found[0] != "contradiction":
+            print(f"unknown contradiction: {args.resolve_id}", file=sys.stderr)
+            return 1
+        if not args.resolution or not args.resolution.strip():
+            print("--resolution is required to resolve a contradiction", file=sys.stderr)
+            return 1
+        found[1]["status"] = "resolved"
+        found[1]["resolution"] = args.resolution
+        _write_state(args.topic_dir, state)
+        print(json.dumps({"id": args.resolve_id, "status": "resolved"}, sort_keys=True))
         return 0
     payload = json.dumps(semantic_projection(state), sort_keys=True, separators=(",", ":"))
     print(hashlib.sha256(payload.encode("utf-8")).hexdigest())
