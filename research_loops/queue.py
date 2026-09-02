@@ -81,6 +81,18 @@ def _validate_topic_refresh_mode(value: str) -> str:
 _LOCK_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
 
 
+LANES = ("research", "intake")
+
+
+def _validate_lane(value: str) -> str:
+    """Queue lanes keep intake work (discovery passes for draft topics) from
+    ever competing with the research fleet: a worker only claims items in the
+    lanes it was started with, so discovery runs genuinely in parallel."""
+    if value not in LANES:
+        raise QueueError(f"lane must be one of {LANES}")
+    return value
+
+
 def _validate_completion_lock(value: str | None) -> str | None:
     if value is not None and not _LOCK_PATTERN.fullmatch(value):
         raise QueueError(
@@ -225,6 +237,7 @@ class QueueStore:
         internal_citations: bool = False,
         topic_refresh: str = "off",
         topic_refresh_mode: str = "continue",
+        lane: str = "research",
     ) -> dict[str, Any]:
         if not title.strip() or not command:
             raise QueueError("title and command are required")
@@ -245,6 +258,7 @@ class QueueStore:
         _validate_internal_citations(internal_citations)
         _validate_topic_refresh(topic_refresh)
         _validate_topic_refresh_mode(topic_refresh_mode)
+        _validate_lane(lane)
         resolved_item_id = validate_item_id(
             item_id if item_id is not None else f"loop-{uuid.uuid4().hex[:10]}"
         )
@@ -276,6 +290,7 @@ class QueueStore:
             "internal_citations": internal_citations,
             "topic_refresh": topic_refresh,
             "topic_refresh_mode": topic_refresh_mode,
+            "lane": lane,
             "refresh_due_at": None,
             "refresh_count": 0,
             "progress_signature": None,
@@ -338,6 +353,7 @@ class QueueStore:
         "internal_citations",
         "topic_refresh",
         "topic_refresh_mode",
+        "lane",
     )
 
     # completion_lock is deliberately absent from _TOPIC_CONFIG_FIELDS: it's an
@@ -445,6 +461,10 @@ class QueueStore:
                     continue
                 desired = dict(definitions[item["id"]])
                 current = {field: item.get(field) for field in self._DEFINITION_FIELDS}
+                if current.get("lane") is None:
+                    # Items predating the lane field are research-lane; without
+                    # this default, sync would report them updated forever.
+                    current["lane"] = "research"
                 if desired == current:
                     continue
                 protected_changes = []
@@ -552,6 +572,7 @@ class QueueStore:
             or repeat_seconds < 0
         ):
             raise QueueError("repeat_seconds must be a non-negative integer")
+        lane = _validate_lane(entry.get("lane") or "research")
         progress_command = entry.get("progress_command")
         if progress_command is not None and (
             not isinstance(progress_command, list)
@@ -627,6 +648,7 @@ class QueueStore:
             "internal_citations": internal_citations,
             "topic_refresh": topic_refresh,
             "topic_refresh_mode": topic_refresh_mode,
+            "lane": lane,
         }
 
     def configure_topic(self, item_id: str, **settings: Any) -> dict[str, Any]:
@@ -735,15 +757,49 @@ class QueueStore:
             policies[worker] = policy
         return copy.deepcopy(policy)
 
-    def claim_next(self, *, worker: str = "worker-1") -> dict[str, Any] | None:
-        """Claim the next eligible item for `worker`.
+    def claim_next(
+        self, *, worker: str = "worker-1", lanes: tuple[str, ...] = ("research",)
+    ) -> dict[str, Any] | None:
+        """Claim the next eligible item for `worker`, within `lanes`.
 
         Sequential-per-topic contract: a worker OWNS its claimed item through
         cadence (scheduled/backoff) cycles until the item reaches a terminal
         state — it never starts a second topic while its own is mid-flight,
         and other workers never touch an owned item. A second worker is purely
         additive: it skips owned items and claims the next unclaimed one.
+
+        Lanes keep intake work (discovery passes) parallel to research: a
+        worker only ever sees items whose lane is in its `lanes`, so a
+        dedicated intake worker can never be starved by — or starve — the
+        research fleet. Items predating the field count as "research".
         """
+        for lane in lanes:
+            _validate_lane(lane)
+
+        def in_lanes(i: dict[str, Any]) -> bool:
+            return i.get("lane", "research") in lanes
+
+        def lane_capacity_ok(state_: dict[str, Any], i: dict[str, Any]) -> bool:
+            """Lane-level concurrency cap, enforced at claim time.
+
+            The intake lane defaults to max 1 active discovery pass — a fleet
+            of broad-mode drafts must queue their discovery runs, never fan
+            out — configurable via `[lanes]` in research-loops.toml
+            (set_lane_limit). None/unset on the research lane = unlimited
+            (research concurrency is governed by worker count, as before).
+            Enforced here rather than per-worker so even a misconfigured
+            second intake worker cannot exceed the cap.
+            """
+            lane = i.get("lane", "research")
+            limits = state_.get("lane_limits") or {}
+            limit = limits.get(lane, 1 if lane == "intake" else None)
+            if limit is None:
+                return True
+            running = sum(
+                1 for x in state_["items"]
+                if x["status"] == "running" and x.get("lane", "research") == lane
+            )
+            return running < limit
         with self._locked() as state:
             if state["paused"] or state.get("stopping"):
                 return None
@@ -757,6 +813,7 @@ class QueueStore:
                     for i in state["items"]
                     if i["status"] == "running"
                     and i.get("claimed_by", "worker-1") == worker
+                    and in_lanes(i)
                 ),
                 None,
             )
@@ -794,6 +851,7 @@ class QueueStore:
                 return (
                     i["status"] in {"queued", "backoff"}
                     and i["desired_state"] == "running"
+                    and lane_capacity_ok(state, i)
                     and dependencies_satisfied(i)
                     and (
                         not i.get("next_eligible_at")
@@ -814,6 +872,7 @@ class QueueStore:
                     if i.get("claimed_by") == worker
                     and i["status"] in {"queued", "backoff"}
                     and i["desired_state"] == "running"
+                    and in_lanes(i)
                 ),
                 None,
             )
@@ -832,6 +891,7 @@ class QueueStore:
                         and i["desired_state"] == "running"
                         and dependencies_satisfied(i)
                         and worker in self._accepted_workers(i)
+                        and in_lanes(i)
                     ),
                     None,
                 )
@@ -852,6 +912,7 @@ class QueueStore:
                             and i["status"] in {"queued", "backoff"}
                             and i["desired_state"] == "running"
                             and dependencies_satisfied(i)
+                            and in_lanes(i)
                         ),
                         None,
                     )
@@ -1011,6 +1072,26 @@ class QueueStore:
                 record["resumed_from_kind"] = prior_kind
                 resumed.append(record)
         return resumed
+
+    def set_lane_limit(self, lane: str, limit: int | None) -> dict[str, Any]:
+        """Operator-set concurrency cap for a lane (None = unlimited).
+
+        The intake lane's effective default is 1 even when unset — discovery
+        passes serialize unless the operator deliberately raises the cap.
+        """
+        _validate_lane(lane)
+        if limit is not None and (
+            not isinstance(limit, int) or isinstance(limit, bool) or limit < 1
+        ):
+            raise QueueError("lane limit must be a positive integer or None")
+        with self._locked() as state:
+            limits = state.setdefault("lane_limits", {})
+            if limit is None:
+                limits.pop(lane, None)
+            else:
+                limits[lane] = limit
+            result = dict(limits)
+        return {"lane_limits": result}
 
     def set_completion_lock(
         self, item_id: str, completion_lock: str

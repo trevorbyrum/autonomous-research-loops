@@ -126,6 +126,17 @@ class EngineToolsTests(unittest.TestCase):
         with self.assertRaises(QueueError):
             self.tools.approve_and_queue("phone-topic", confirm="yes")
 
+        # The QA gate: even a correct confirm is refused until the operator
+        # has actually answered the QA round.
+        with self.assertRaises(QueueError):
+            self.tools.approve_and_queue("phone-topic", confirm="phone-topic")
+        self.tools.record_qa(
+            "phone-topic", "Operator confirmation", "Confirmed: matches my intent."
+        )
+        self.tools.record_qa(
+            "phone-topic", "Scope decision", "Adopt the draft obligations as scoped."
+        )
+
         result = self.tools.approve_and_queue(
             "phone-topic", confirm="phone-topic", position=0
         )

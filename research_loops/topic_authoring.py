@@ -109,6 +109,13 @@ def render_authority(title: str, brief_text: str) -> str:
         "is measured against.\n\n"
         "## Operator brief (verbatim)\n\n"
         f"{brief_text.strip()}\n\n"
+        "## Assumptions\n\n"
+        "### Operator-fixed (binding -- research agents must never revisit these)\n\n"
+        "- (none recorded yet -- the operator adds fixed premises here; in scoped\n"
+        "  mode the stated frame itself is fixed and not up for discussion)\n\n"
+        "### Surfaced and answered (QA/discovery findings with the operator's ruling)\n\n"
+        "- (none yet -- the intake QA round and any discovery pass append\n"
+        "  surfaced assumptions here once the operator answers them)\n\n"
         "## Evidence-quality vocabulary (default -- replace if your domain needs different tiers)\n\n"
         "- **T1**: primary sources -- official documentation, peer-reviewed papers,\n"
         "  first-party measured data, official changelogs.\n"
@@ -196,11 +203,23 @@ def compute_lock(topic_dir: Path) -> str:
     return result.stdout.strip()
 
 
-def new_topic(topic_id: str, *, title: str, brief_text: str, dest: Path) -> dict[str, Any]:
+QA_MODES = ("scoped", "broad")
+
+
+def new_topic(
+    topic_id: str,
+    *,
+    title: str,
+    brief_text: str,
+    dest: Path,
+    mode: str = "broad",
+) -> dict[str, Any]:
     if not _TOPIC_ID_PATTERN.fullmatch(topic_id):
         raise QueueError("topic id must be lowercase letters/digits/hyphens")
     if not brief_text.strip():
         raise QueueError("brief is empty")
+    if mode not in QA_MODES:
+        raise QueueError(f"mode must be one of {QA_MODES}")
 
     topic_dir = dest / topic_id
     if (topic_dir / "TOPIC.md").exists():
@@ -247,8 +266,39 @@ def new_topic(topic_id: str, *, title: str, brief_text: str, dest: Path) -> dict
         json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
 
+    (topic_dir / "QA-RECORD.md").write_text(
+        f"# QA record — {topic_id}\n\n"
+        f"## Mode\n\n{mode}\n\n"
+        "## Intent (operator brief, verbatim)\n\n"
+        f"{brief_text.strip()}\n\n"
+        "## Restated intent\n\n"
+        "(QA agent: restate the operator's intent in your own words. In scoped\n"
+        "mode the stated frame is FIXED — do not question premises; ask only\n"
+        "intra-scope clarifications. In broad mode also run the discovery pass\n"
+        "and record surfaced assumptions below.)\n\n"
+        "## Traceability review\n\n"
+        "(QA agent: check both directions against DRAFT-TOPIC.md — every intent\n"
+        "element covered by at least one obligation; every obligation traceable\n"
+        "to intent. Flag narrowing and creep explicitly.)\n\n"
+        "## Questions for the operator\n\n"
+        "(numbered; keep each answerable in a sentence)\n\n"
+        "## Operator confirmation\n\n"
+        "(required before approval: the operator's answers and explicit\n"
+        "confirmation of the restated intent)\n"
+        + (
+            "\n## Scope decision\n\n"
+            "(broad mode: required before approval — the operator's ruling on\n"
+            "the discovery pass's SCOPE-PROPOSAL.md: adopt / adopt-with-edits /\n"
+            "reject, and the final obligation set)\n"
+            if mode == "broad"
+            else ""
+        ),
+        encoding="utf-8",
+    )
+
     return {
         "topic_dir": str(topic_dir),
+        "mode": mode,
         "obligation_count": len(obligations),
         "chunk_count": len(chunks),
     }
@@ -264,6 +314,39 @@ def approve_topic(topic_id: str, *, dest: Path) -> dict[str, Any]:
             raise QueueError(f"{path} not found -- run `research-loops new-topic` first")
     if (topic_dir / "TOPIC.md").exists():
         raise QueueError(f"{topic_dir}/TOPIC.md already exists -- already approved")
+
+    # The QA gate: approval mints binding scope, so understanding must be
+    # confirmed FIRST. Structural check only — the tooling can verify that a
+    # QA round happened and the operator ruled; it cannot grade the answers.
+    qa_path = topic_dir / "QA-RECORD.md"
+    if not qa_path.is_file():
+        raise QueueError(
+            "QA-RECORD.md not found -- every topic needs a QA round before "
+            "approval (re-run `new-topic` on an old draft to scaffold one)"
+        )
+    qa_text = qa_path.read_text(encoding="utf-8")
+    mode_match = re.search(r"## Mode\s*\n+\s*(\w+)", qa_text)
+    mode = mode_match.group(1) if mode_match else "broad"
+    required = ["## Restated intent", "## Traceability review", "## Operator confirmation"]
+    if mode == "broad":
+        required.append("## Scope decision")
+    missing = [h for h in required if h not in qa_text]
+    if missing:
+        raise QueueError(f"QA-RECORD.md is missing section(s): {missing}")
+    for heading in ("## Operator confirmation",) + (
+        ("## Scope decision",) if mode == "broad" else ()
+    ):
+        section = qa_text.split(heading, 1)[1].split("\n## ", 1)[0]
+        # Placeholder guidance is parenthetical and may wrap lines; strip
+        # whole (...) blocks before judging whether the operator answered.
+        stripped = re.sub(r"\([^)]*\)", "", section, flags=re.DOTALL)
+        meaningful = [line for line in stripped.splitlines() if line.strip()]
+        if not meaningful:
+            raise QueueError(
+                f"QA gate: the '{heading[3:]}' section is unanswered -- the "
+                "operator must rule before this contract can bind "
+                "(see docs/topic-authoring.md#the-qa-round)"
+            )
 
     state = json.loads(draft_state.read_text(encoding="utf-8"))
     # Recompute from whatever is actually on disk now, not what new_topic computed

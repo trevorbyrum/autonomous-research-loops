@@ -9,6 +9,24 @@ ROOT = Path(__file__).resolve().parents[1]
 SEMANTIC_STATE = ROOT / "research_loops" / "chassis" / "semantic-state.py"
 
 
+def answer_qa(topic_dir: Path) -> None:
+    """Record operator answers so the approval QA gate opens.
+
+    Tests that exercise approval mechanics (hashes, locks, idempotency) are
+    not QA-gate tests; this is the minimum honest record. The gate itself is
+    covered in tests/test_intake.py.
+    """
+    qa = Path(topic_dir) / "QA-RECORD.md"
+    content = qa.read_text(encoding="utf-8")
+    for heading, answer in (
+        ("## Operator confirmation", "Confirmed: matches my intent."),
+        ("## Scope decision", "Adopt the draft obligations as scoped."),
+    ):
+        if heading in content:
+            content = content.replace(heading, heading + "\n\n" + answer, 1)
+    qa.write_text(content, encoding="utf-8")
+
+
 class NewTopicTests(unittest.TestCase):
     def _run(self, action, *args, root=None):
         return subprocess.run(
@@ -68,6 +86,7 @@ class NewTopicTests(unittest.TestCase):
             draft_topic = topic_dir / "DRAFT-TOPIC.md"
             draft_topic.write_text(draft_topic.read_text() + "\n<!-- human edit -->\n", encoding="utf-8")
 
+            answer_qa(dest / "edit-topic")
             result = self._run("approve-topic", "edit-topic", "--dest", str(dest))
             self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -88,6 +107,7 @@ class NewTopicTests(unittest.TestCase):
             self._run("new-topic", "lock-topic", "--title", "Lock Topic", "--brief", str(brief), "--dest", str(dest))
             topic_dir = dest / "lock-topic"
 
+            answer_qa(dest / "lock-topic")
             result = self._run("approve-topic", "lock-topic", "--dest", str(dest))
             self.assertEqual(result.returncode, 0, result.stderr)
             payload = json.loads(result.stdout)
@@ -114,6 +134,7 @@ class NewTopicTests(unittest.TestCase):
             dest = Path(tmp) / "topics"
             self._run("new-topic", "check-topic", "--title", "Check Topic", "--brief", str(brief), "--dest", str(dest))
             topic_dir = dest / "check-topic"
+            answer_qa(dest / "check-topic")
             self._run("approve-topic", "check-topic", "--dest", str(dest))
 
             check = subprocess.run(
@@ -137,6 +158,7 @@ class NewTopicTests(unittest.TestCase):
             brief.write_text("Cover A.", encoding="utf-8")
             dest = Path(tmp) / "topics"
             self._run("new-topic", "twice-topic", "--title", "Twice", "--brief", str(brief), "--dest", str(dest))
+            answer_qa(dest / "twice-topic")
             first = self._run("approve-topic", "twice-topic", "--dest", str(dest))
             self.assertEqual(first.returncode, 0, first.stderr)
             second = self._run("approve-topic", "twice-topic", "--dest", str(dest))

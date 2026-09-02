@@ -70,6 +70,26 @@ def build_parser() -> argparse.ArgumentParser:
     new_topic.add_argument(
         "--dest", help="directory under which <topic_id>/ is created (default: <root>/topics)"
     )
+    new_topic.add_argument(
+        "--mode",
+        choices=("scoped", "broad"),
+        default="broad",
+        help="QA mode. broad (default): assumptions are surfaced and a "
+        "discovery pass maps the topic space before scoping. scoped: the "
+        "operator's stated frame is fixed -- QA clarifies within it, never "
+        "questions premises",
+    )
+
+    discover = sub.add_parser(
+        "discover",
+        help="queue a bounded discovery pass for a DRAFT topic on the intake "
+        "lane (parallel to research workers): maps the topic space, writes "
+        "SCOPE-PROPOSAL.md, appends surfaced assumptions to QA-RECORD.md",
+    )
+    discover.add_argument("topic_id")
+    discover.add_argument("--dest", help="drafts directory (default: <root>/topics)")
+    discover.add_argument("--agent-main", default="claude")
+    discover.add_argument("--agent-secondary", default=None)
 
     approve_topic = sub.add_parser(
         "approve-topic",
@@ -343,6 +363,13 @@ def build_parser() -> argparse.ArgumentParser:
             "each queue item's positional profile"
         ),
     )
+    run.add_argument(
+        "--lanes",
+        default="research",
+        help="comma-separated lanes this worker claims from (research, intake). "
+        "A dedicated intake worker (--lanes intake) runs discovery passes in "
+        "parallel with the research fleet without competing for it",
+    )
     run.add_argument("--once", action="store_true")
     run.add_argument("--idle-sleep", type=float, default=5.0)
     run.add_argument("--poll-seconds", type=float, default=1.0)
@@ -381,9 +408,37 @@ def main(argv: list[str] | None = None) -> int:
                 else Path(args.brief).read_text(encoding="utf-8")
             )
             result = topic_authoring.new_topic(
-                args.topic_id, title=args.title, brief_text=brief_text, dest=dest
+                args.topic_id,
+                title=args.title,
+                brief_text=brief_text,
+                dest=dest,
+                mode=args.mode,
             )
             emit(result)
+        elif args.action == "discover":
+            dest = Path(args.dest).expanduser().resolve() if args.dest else root / "topics"
+            draft_dir = dest / args.topic_id
+            if not (draft_dir / "DRAFT-TOPIC.md").is_file():
+                raise QueueError(
+                    f"{draft_dir}/DRAFT-TOPIC.md not found -- run `new-topic` first "
+                    "(discovery operates on drafts, before approval)"
+                )
+            run_discovery = (
+                Path(__file__).resolve().parent / "chassis" / "run-discovery.sh"
+            )
+            emit(
+                store.add(
+                    title=f"Discovery: {args.topic_id}",
+                    cwd=str(draft_dir),
+                    command=[str(run_discovery), str(draft_dir), args.agent_main],
+                    item_id=f"discovery.{args.topic_id}",
+                    usage_file="logs/latest-usage.json",
+                    max_attempts=3,
+                    agent_main=args.agent_main,
+                    agent_secondary=args.agent_secondary,
+                    lane="intake",
+                )
+            )
         elif args.action == "approve-topic":
             dest = Path(args.dest).expanduser().resolve() if args.dest else root / "topics"
             emit(topic_authoring.approve_topic(args.topic_id, dest=dest))
@@ -481,6 +536,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.config_action == "show":
                 emit(asdict(config.for_topic(args.topic_id)))
             elif args.config_action == "apply":
+                store.set_lane_limit("intake", config.intake_max_active)
                 snapshot = store.snapshot()
                 existing_ids = {item["id"] for item in snapshot["items"]}
                 applied: list[str] = []
@@ -581,6 +637,9 @@ def main(argv: list[str] | None = None) -> int:
             llm_usage = shutil.which("llm-usage")
             if llm_usage and not args.no_usage_snapshot:
                 usage_command = [llm_usage, "--json"]
+            lanes = tuple(
+                lane.strip() for lane in args.lanes.split(",") if lane.strip()
+            )
             runner = LoopRunner(
                 store,
                 ledger,
@@ -588,6 +647,7 @@ def main(argv: list[str] | None = None) -> int:
                 usage_command=usage_command,
                 worker=args.worker,
                 profile=args.profile,
+                lanes=lanes,
             )
             try:
                 if args.once:

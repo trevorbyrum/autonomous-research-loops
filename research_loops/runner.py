@@ -331,6 +331,7 @@ class LoopRunner:
         worker: str = "worker-1",
         profile: str | None = None,
         auto_resume_cooldown_seconds: int | None = None,
+        lanes: tuple[str, ...] = ("research",),
     ):
         self.store = store
         self.ledger = ledger
@@ -345,6 +346,7 @@ class LoopRunner:
         if auto_resume_cooldown_seconds < 0:
             raise QueueError("auto_resume_cooldown_seconds must not be negative")
         self.auto_resume_cooldown_seconds = auto_resume_cooldown_seconds
+        self.lanes = tuple(lanes)
         self.log_dir = store.root / "logs"
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -982,7 +984,7 @@ class LoopRunner:
     def run_once(self) -> dict[str, Any] | None:
         self._process_due_refreshes()
         self._process_auto_resumes()
-        item = self.store.claim_next(worker=self.worker)
+        item = self.store.claim_next(worker=self.worker, lanes=self.lanes)
         if item is None:
             return None
         if item.get("resumed"):

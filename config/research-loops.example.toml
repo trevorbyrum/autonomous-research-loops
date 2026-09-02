@@ -90,3 +90,9 @@ topic_refresh = "monthly"
 # reopens previously-supported obligations), "full" (reopens everything).
 # See docs/operations.md#topic_refresh.
 topic_refresh_mode = "continue"
+
+[lanes]
+# Max concurrent discovery passes on the intake lane. Deliberately 1 by
+# default: a pile of broad-mode drafts queues its discovery runs one at a
+# time — raise this only on purpose.
+intake_max_active = 1

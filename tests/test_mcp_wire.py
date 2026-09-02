@@ -102,11 +102,34 @@ class WireTests(unittest.TestCase):
                     )
                     self.assertIn("SCOPE-01", draft)
                     await call("read_draft", {"topic_id": "wire-topic"})
+                    # Intake flow over the wire: queue a discovery pass (lands
+                    # on the intake lane) and review the QA record.
+                    discovery = await call("start_discovery", {"topic_id": "wire-topic"})
+                    self.assertIn("discovery.wire-topic", discovery)
+                    review = await call("read_scope_proposal", {"topic_id": "wire-topic"})
+                    self.assertIn("## Mode", review)
                     # Refusal path: wrong confirmation must be a tool error.
                     await call(
                         "approve_and_queue",
                         {"topic_id": "wire-topic", "confirm": "nope"},
                         expect_error=True,
+                    )
+                    # The QA gate refuses even a correct confirm until the
+                    # operator answers.
+                    await call(
+                        "approve_and_queue",
+                        {"topic_id": "wire-topic", "confirm": "wire-topic"},
+                        expect_error=True,
+                    )
+                    await call(
+                        "record_qa",
+                        {"topic_id": "wire-topic", "heading": "Operator confirmation",
+                         "text": "Confirmed: matches my intent."},
+                    )
+                    await call(
+                        "record_qa",
+                        {"topic_id": "wire-topic", "heading": "Scope decision",
+                         "text": "Adopt the draft obligations as scoped."},
                     )
                     approved = await call(
                         "approve_and_queue",
