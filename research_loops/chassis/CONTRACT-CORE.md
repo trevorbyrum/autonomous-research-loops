@@ -133,8 +133,10 @@ retry, inactivity, or revision limit defines semantic completion.
 
 ## Per-iteration procedure
 
-1. Read this contract, `TOPIC.md`, `AUTHORITY.md`, `SEMANTIC-STATE.json`, decisions,
-   pending evidence, recent progress, and relevant synthesis sections.
+1. Read this contract, `TOPIC.md`, `AUTHORITY.md`, the semantic-state work-selection
+   view (`semantic-state.py select` — never the whole state file; `get <id>` for any
+   single full record), decisions, pending evidence, recent progress, and relevant
+   synthesis sections.
 2. Reconcile pending evidence first.
 3. Select one highest-value unblocked open obligation using the topic's work-selection
    rules.
@@ -143,7 +145,11 @@ retry, inactivity, or revision limit defines semantic completion.
 5. Independently verify load-bearing evidence, apply topic-specific quality rules, and
    seek counterevidence.
 6. Update research ledgers and synthesis while preserving provenance and contradictions.
-7. Update `SEMANTIC-STATE.json` only when a named semantic state actually changed.
+7. Record semantic-state changes only when a named semantic state actually changed, and
+   only through the state CLI (`transition`/`pending`/`deliverable`/`contradiction`) —
+   never by reading or rewriting `SEMANTIC-STATE.json` directly. The CLI enforces the
+   DONE gate's own per-record rules at write time and refuses incomplete terminal
+   transitions atomically.
 8. Write `STOP DONE` only after the executable semantic gate passes. If no unblocked
    obligation can advance, write one precise `STOP NEEDS-OPERATOR` question instead.
 

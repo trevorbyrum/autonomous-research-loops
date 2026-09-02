@@ -73,7 +73,11 @@ class ProjectionParityTests(unittest.TestCase):
     STATE_CONTAINER_FIELDS = {"obligations", "deliverables", "contradictions"}
 
     def setUp(self):
-        self.validator_source = inspect.getsource(chassis.completion_errors)
+        # The per-obligation rules live in obligation_terminal_errors (shared
+        # with the `transition` write path); the parity guard must see both.
+        self.validator_source = inspect.getsource(
+            chassis.completion_errors
+        ) + inspect.getsource(chassis.obligation_terminal_errors)
 
     def _accessed(self, variable: str) -> set[str]:
         """Every field completion_errors() reads off `variable`, whether via

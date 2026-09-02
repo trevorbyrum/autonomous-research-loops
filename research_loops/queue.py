@@ -230,8 +230,11 @@ class QueueStore:
             raise QueueError("title and command are required")
         if max_attempts < 1:
             raise QueueError("max_attempts must be at least 1")
-        if repeat_seconds is not None and repeat_seconds <= 0:
-            raise QueueError("repeat_seconds must be positive")
+        if repeat_seconds is not None and repeat_seconds < 0:
+            # 0 is deliberate: continuous cadence — the item is re-eligible the
+            # moment an iteration finishes (no rest interval). None still means
+            # a bounded, run-once item; the two are different contracts.
+            raise QueueError("repeat_seconds must be zero or positive")
         if stall_limit is not None and stall_limit < 1:
             raise QueueError("stall_limit must be at least 1")
         _validate_agent_name(agent_main, "agent_main")
@@ -546,9 +549,9 @@ class QueueStore:
         if repeat_seconds is not None and (
             not isinstance(repeat_seconds, int)
             or isinstance(repeat_seconds, bool)
-            or repeat_seconds <= 0
+            or repeat_seconds < 0
         ):
-            raise QueueError("repeat_seconds must be a positive integer")
+            raise QueueError("repeat_seconds must be a non-negative integer")
         progress_command = entry.get("progress_command")
         if progress_command is not None and (
             not isinstance(progress_command, list)
