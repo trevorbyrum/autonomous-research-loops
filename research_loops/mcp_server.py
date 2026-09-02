@@ -218,16 +218,20 @@ class EngineTools:
         return self.store.set_completion_lock(topic_id, lock)
 
     def draft_topic(
-        self, topic_id: str, title: str, brief: str
+        self, topic_id: str, title: str, brief: str, mode: str = "broad"
     ) -> dict[str, Any]:
         """Scaffold a DRAFT topic from an operator brief.
 
-        Drafts are reviewable and re-draftable: calling again with a
-        refined brief overwrites the DRAFT-* files. Nothing is binding
-        until approve_and_queue.
+        mode="broad" (default): assumptions get surfaced and a discovery pass
+        (start_discovery) maps the topic space before scoping. mode="scoped":
+        the operator's stated frame is fixed — QA clarifies within it and
+        never questions premises. Drafts are reviewable and re-draftable:
+        calling again with a refined brief overwrites the DRAFT-* files.
+        Nothing is binding until approve_and_queue, which is gated on a
+        completed QA record either way.
         """
         result = topic_authoring.new_topic(
-            topic_id, title=title, brief_text=brief, dest=self.topics_root
+            topic_id, title=title, brief_text=brief, dest=self.topics_root, mode=mode
         )
         draft_state = json.loads(
             (self.topics_root / topic_id / "DRAFT-SEMANTIC-STATE.json").read_text(
@@ -250,6 +254,94 @@ class EngineTools:
             "topic_id": topic_id,
             "draft_topic_md": draft.read_text(encoding="utf-8"),
         }
+
+    def start_discovery(
+        self, topic_id: str, agent_main: str = DEFAULT_AGENT_MAIN,
+        agent_secondary: str = DEFAULT_AGENT_SECONDARY,
+    ) -> dict[str, Any]:
+        """Queue a bounded discovery pass for a DRAFT topic on the intake lane.
+
+        Runs in parallel with the research fleet (dedicated intake worker),
+        but discovery passes themselves serialize: the intake lane's
+        concurrency cap defaults to 1, so a pile of broad-mode drafts queue
+        their passes one at a time. Output: SCOPE-PROPOSAL.md plus surfaced
+        assumptions appended to QA-RECORD.md, awaiting the operator's ruling.
+        """
+        draft_dir = self.topics_root / topic_id
+        if not (draft_dir / "DRAFT-TOPIC.md").is_file():
+            raise QueueError(
+                f"no draft for {topic_id} -- call draft_topic first "
+                "(discovery runs on drafts, before approval)"
+            )
+        run_discovery = (
+            Path(__file__).resolve().parent / "chassis" / "run-discovery.sh"
+        )
+        return self.store.add(
+            title=f"Discovery: {topic_id}",
+            cwd=str(draft_dir),
+            command=[str(run_discovery), str(draft_dir), agent_main],
+            item_id=f"discovery.{topic_id}",
+            usage_file="logs/latest-usage.json",
+            max_attempts=3,
+            agent_main=agent_main,
+            agent_secondary=agent_secondary,
+            lane="intake",
+        )
+
+    def read_scope_proposal(self, topic_id: str) -> dict[str, Any]:
+        """The discovery pass's output plus the current QA record, for the
+        operator's review before ruling via record_qa."""
+        draft_dir = self.topics_root / topic_id
+        result: dict[str, Any] = {"topic_id": topic_id}
+        proposal = draft_dir / "SCOPE-PROPOSAL.md"
+        if proposal.is_file():
+            result["scope_proposal_md"] = proposal.read_text(encoding="utf-8")
+        qa = draft_dir / "QA-RECORD.md"
+        if qa.is_file():
+            result["qa_record_md"] = qa.read_text(encoding="utf-8")
+        if len(result) == 1:
+            raise QueueError(
+                f"nothing to review for {topic_id}: no SCOPE-PROPOSAL.md or "
+                "QA-RECORD.md (draft it, run discovery, then review)"
+            )
+        return result
+
+    _QA_HEADINGS = (
+        "Operator confirmation",
+        "Scope decision",
+        "Questions for the operator",
+    )
+
+    def record_qa(self, topic_id: str, heading: str, text: str) -> dict[str, Any]:
+        """Append the operator's ruling under a QA-RECORD.md section.
+
+        Restricted to the operator-owned headings — the QA agent's own
+        sections are its to write. approve_and_queue refuses until
+        'Operator confirmation' (and, broad mode, 'Scope decision') carry a
+        real answer, so this is how a phone session unblocks approval.
+        """
+        if heading not in self._QA_HEADINGS:
+            raise QueueError(
+                f"heading must be one of {list(self._QA_HEADINGS)}"
+            )
+        if not text.strip():
+            raise QueueError("text is required")
+        qa = self.topics_root / topic_id / "QA-RECORD.md"
+        if not qa.is_file():
+            raise QueueError(f"no QA-RECORD.md for {topic_id} -- draft_topic first")
+        content = qa.read_text(encoding="utf-8")
+        marker = f"## {heading}"
+        if marker in content:
+            head, tail = content.split(marker, 1)
+            rest = tail.split("\n## ", 1)
+            section = rest[0].rstrip() + f"\n\n{text.strip()}\n"
+            content = head + marker + section + (
+                ("\n## " + rest[1]) if len(rest) > 1 else ""
+            )
+        else:
+            content = content.rstrip() + f"\n\n{marker}\n\n{text.strip()}\n"
+        qa.write_text(content, encoding="utf-8")
+        return {"topic_id": topic_id, "heading": heading, "recorded": True}
 
     def approve_and_queue(
         self,
@@ -326,6 +418,9 @@ _OPERATOR_TOOLS = (
     "relock_topic",
     "draft_topic",
     "read_draft",
+    "start_discovery",
+    "read_scope_proposal",
+    "record_qa",
     "approve_and_queue",
 )
 

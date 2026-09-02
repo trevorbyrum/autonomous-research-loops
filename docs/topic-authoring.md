@@ -139,3 +139,45 @@ depends on all of it; almost nothing else does.
 its `AUTHORITY.md` and `TOPIC.md` side by side to see the brief-to-obligations mapping
 in a real case, then queue it and run one iteration yourself (see the main
 [README](../README.md#quickstart)).
+
+## The QA round
+
+A contract binds research for days; approving one on a misread brief wastes
+all of it. Every draft therefore carries a `QA-RECORD.md`, and
+`approve-topic` / the MCP `approve_and_queue` tool structurally refuse until
+the operator has ruled.
+
+Two modes, chosen at `new-topic --mode` (`draft_topic(mode=...)` over MCP):
+
+- **broad** (the default — assumptions are addressed unless the operator
+  says otherwise): the QA agent restates the intent, runs the traceability
+  review (every intent element covered by an obligation; every obligation
+  traceable to intent — the draft's formatting must never scope research
+  below what was actually asked), surfaces the assumptions the draft
+  silently encodes, and a **discovery pass** maps the topic space before
+  scoping. Approval requires both an answered `## Operator confirmation`
+  and an answered `## Scope decision`.
+- **scoped**: the operator knows exactly what they want. The stated frame
+  is FIXED — QA clarifies within it (breadth, exclusions, what done looks
+  like) and never questions premises. Approval requires an answered
+  `## Operator confirmation` only.
+
+Fixed premises live in AUTHORITY.md's `## Assumptions` section: the
+**Operator-fixed** list is binding (research agents and discovery must
+never revisit it); **Surfaced and answered** records QA/discovery findings
+with the operator's ruling, so future rescopes can see what was decided
+versus what was silently inherited.
+
+### Discovery passes (broad mode)
+
+`research-loops discover <topic-id>` (or the `start_discovery` MCP tool)
+queues one bounded pass on the **intake lane** — a separate queue lane a
+dedicated worker serves (`research-loops run --worker intake-1 --lanes
+intake`), so discovery runs in parallel with the research fleet without
+competing for it. The intake lane itself serializes: at most one discovery
+pass runs at a time by default, however many drafts are waiting. Raise it
+deliberately via `[lanes] intake_max_active` in research-loops.toml
+(`config apply`). The pass writes `SCOPE-PROPOSAL.md` (traceability
+findings, a topic-space map, a keep/add/reword/drop obligation set,
+proposed exclusions) and appends its surfaced questions to `QA-RECORD.md`;
+a pass that produces no proposal fails (exit 65) rather than counting.

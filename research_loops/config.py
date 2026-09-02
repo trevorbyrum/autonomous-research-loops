@@ -42,6 +42,10 @@ class RepoConfig:
     idle_sleep: float
     defaults: TopicSettings
     topics: dict[str, TopicSettings]
+    # Lane concurrency caps ([lanes] in research-loops.toml). The intake lane
+    # (discovery passes) defaults to 1: broad-mode drafts queue their
+    # discovery runs one at a time unless the operator deliberately raises it.
+    intake_max_active: int = 1
 
     def for_topic(self, topic_id: str) -> TopicSettings:
         return self.topics.get(topic_id, self.defaults)
@@ -167,10 +171,16 @@ def load_config(path: str | Path) -> RepoConfig:
             raise QueueError(f"[topics.{topic_id}] must be a table")
         topics[topic_id] = _settings_from(table, defaults)
 
+    lanes_table = data.get("lanes", {})
+    if not isinstance(lanes_table, dict):
+        raise QueueError("[lanes] must be a table")
+    intake_max_active = _positive_int(lanes_table, "intake_max_active") or 1
+
     return RepoConfig(
         workers=workers,
         poll_seconds=poll_seconds,
         idle_sleep=idle_sleep,
+        intake_max_active=intake_max_active,
         defaults=defaults,
         topics=topics,
     )
