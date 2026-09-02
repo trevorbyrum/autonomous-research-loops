@@ -182,6 +182,12 @@ def render_dashboard(
         status = item.get("status")
         desired = item.get("desired_state")
         owned = bool(item.get("claimed_by"))
+        if item.get("lane") == "intake":
+            # Intake work (discovery passes) is pipeline machinery, not
+            # research output -- it gets its own section, never a seat in
+            # the research tables.
+            categories["intake"].append((position, item))
+            continue
         if status == "completed":
             category = "completed"
         elif status == "needs_attention":
@@ -220,7 +226,7 @@ def render_dashboard(
             "",
             _table(
                 ["Category", "Topics"],
-                [[name.replace("_", " ").title(), len(categories[name])] for name in ("active", "queued", "completed", "needs_attention", "paused", "unclassified")],
+                [[name.replace("_", " ").title(), len(categories[name])] for name in ("active", "queued", "completed", "needs_attention", "paused", "intake", "unclassified")],
             ),
         ]
     )
@@ -292,6 +298,18 @@ def render_dashboard(
         for position, item in categories["queued"]
     ]
     lines.extend(["", "## Queued topics", "", _table(["Queue position", "Topic", "State", "Attempts", "Previously accepted by"], queued_rows)])
+
+    intake_rows = [
+        [
+            item.get("title", item.get("id")),
+            item.get("status"),
+            item.get("attempts", "unavailable"),
+            item.get("claimed_by") or "—",
+            item.get("finished_at") or "—",
+        ]
+        for _, item in categories["intake"]
+    ]
+    lines.extend(["", "## Intake (discovery passes)", "", _table(["Item", "State", "Attempts", "Owner", "Finished"], intake_rows)])
 
     completed_rows = []
     for _, item in categories["completed"]:

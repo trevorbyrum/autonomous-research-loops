@@ -298,3 +298,55 @@ class DashboardServiceTemplateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DashboardIntakeLaneTests(unittest.TestCase):
+    """Intake items (discovery passes) never sit in the research tables."""
+
+    def _render(self, status, desired="paused", claimed=None):
+        state = {
+            "revision": 1,
+            "paused": False,
+            "items": [
+                {
+                    "id": "discovery.some-topic",
+                    "title": "Discovery: some",
+                    "status": status,
+                    "desired_state": desired,
+                    "claimed_by": claimed,
+                    "attempts": 1,
+                    "lane": "intake",
+                    "finished_at": "2026-09-03T00:00:00Z",
+                },
+            ],
+        }
+        return render_dashboard(state, [], generated_at=datetime(2026, 9, 3, tzinfo=UTC))
+
+    def _section(self, output, heading):
+        body = output.split(f"## {heading}\n")[1]
+        return body.split("\n## ")[0]
+
+    def test_completed_discovery_is_in_intake_not_completed(self):
+        output = self._render("completed")
+        self.assertIn("## Intake (discovery passes)", output)
+        self.assertIn("Discovery: some", self._section(output, "Intake (discovery passes)"))
+        self.assertNotIn("Discovery: some", self._section(output, "Completed topics"))
+
+    def test_every_intake_state_stays_out_of_research_tables(self):
+        for status, desired, claimed in (
+            ("queued", "running", None),
+            ("running", "running", "intake-1"),
+            ("needs_attention", "running", None),
+            ("paused", "paused", None),
+        ):
+            with self.subTest(status=status):
+                output = self._render(status, desired, claimed)
+                intake = self._section(output, "Intake (discovery passes)")
+                self.assertIn("Discovery: some", intake)
+                for heading in ("Active topics", "Queued topics", "Completed topics", "Needs attention", "Paused topics", "Unclassified items"):
+                    self.assertNotIn("Discovery: some", self._section(output, heading))
+
+    def test_overview_counts_intake_separately(self):
+        output = self._render("completed")
+        overview = self._section(output, "Overview")
+        self.assertIn("| Intake | 1 |", overview.replace("  ", " "))
