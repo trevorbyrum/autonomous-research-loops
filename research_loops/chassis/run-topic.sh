@@ -122,14 +122,17 @@ touch "$TOPIC_DIR/PROGRESS.md"
 before=$("$CHASSIS/progress-signature.sh" "$TOPIC_DIR")
 sources_before=$(python3 "$CHASSIS/semantic-state.py" source-count "$TOPIC_DIR" 2>/dev/null || echo 0)
 
-sed \
-  -e "s#\${TOPIC_DIR}#$TOPIC_DIR#g" \
-  -e "s#\${CHASSIS}#$CHASSIS#g" \
-  -e "s#\${DEGRADED_NOTE}#$DEGRADED_NOTE#g" \
-  -e "s#\${AGENT_NOTE}#$AGENT_NOTE#g" \
-  -e "s#\${GAP_POLICY_NOTE}#$GAP_POLICY_NOTE#g" \
-  -e "s#\${CITATION_NOTE}#$CITATION_NOTE#g" \
-  "$CHASSIS/ITERATION-PROMPT.md" >"$prompt_file"
+# Literal substitution (render-prompt.py): sed's `&`/delimiter
+# metacharacters corrupted prompts when values carried them (e.g. an
+# agent_secondary of "codex exec ... 2>&1").
+python3 "$CHASSIS/render-prompt.py" "$CHASSIS/ITERATION-PROMPT.md" \
+  "TOPIC_DIR=$TOPIC_DIR" \
+  "CHASSIS=$CHASSIS" \
+  "DEGRADED_NOTE=$DEGRADED_NOTE" \
+  "AGENT_NOTE=$AGENT_NOTE" \
+  "GAP_POLICY_NOTE=$GAP_POLICY_NOTE" \
+  "CITATION_NOTE=$CITATION_NOTE" \
+  >"$prompt_file"
 
 export RESEARCH_LOOP_TOPIC_DIR="$TOPIC_DIR"
 export RESEARCH_LOOP_USAGE_FILE="$usage"

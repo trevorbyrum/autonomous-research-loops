@@ -187,3 +187,93 @@ class DiscoverCliTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LaneReclaimTests(unittest.TestCase):
+    """Ownership trumps lanes for reclaim; strays get released, not hostaged.
+
+    Regression: the first lane implementation filtered the own-running lookup
+    by lane, so an intake worker restarted without --lanes intake abandoned
+    its running item forever — and, on the capped intake lane, permanently
+    blocked every future intake claim.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.store = QueueStore(Path(self._tmp.name))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_restarted_worker_still_reclaims_running_item_across_lanes(self):
+        self.store.add(
+            title="d", cwd=self._tmp.name, command=["true"],
+            item_id="discovery.x", lane="intake",
+        )
+        claimed = self.store.claim_next(worker="w", lanes=("intake",))
+        self.assertEqual(claimed["id"], "discovery.x")
+        # Same worker, restarted with research-only lanes: it must still get
+        # its running item back (resumed) so the dead-PID/supervision path runs.
+        reclaimed = self.store.claim_next(worker="w", lanes=("research",))
+        self.assertIsNotNone(reclaimed)
+        self.assertEqual(reclaimed["id"], "discovery.x")
+        self.assertTrue(reclaimed.get("resumed"))
+
+    def test_stray_queued_claim_is_released_to_the_pool(self):
+        self.store.add(
+            title="d", cwd=self._tmp.name, command=["true"],
+            item_id="discovery.y", lane="intake",
+        )
+        self.store.add(
+            title="r", cwd=self._tmp.name, command=["true"],
+            item_id="research-1", lane="research",
+        )
+        # Worker claims the intake item, then it lands back in queued state
+        # (simulating a finished cadence cycle would need a runner; emulate
+        # the sticky-claim shape directly).
+        self.store.claim_next(worker="w", lanes=("intake",))
+        with self.store._locked() as state:
+            item = self.store._find(state, "discovery.y")
+            item["status"] = "queued"
+        # Restarted as research-only: the stray intake claim is released and
+        # the worker claims research work instead of hostaging the intake item.
+        claimed = self.store.claim_next(worker="w", lanes=("research",))
+        self.assertEqual(claimed["id"], "research-1")
+        self.assertIsNone(self.store.get("discovery.y")["claimed_by"])
+        # A proper intake worker can now take it.
+        taken = self.store.claim_next(worker="intake-1", lanes=("intake",))
+        self.assertEqual(taken["id"], "discovery.y")
+
+
+class PromptTemplatingTests(unittest.TestCase):
+    """sed metacharacters in substituted values must pass through verbatim."""
+
+    def test_agent_note_with_sed_metacharacters_renders_literally(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "topics"
+            topic_authoring.new_topic(
+                "m-topic", title="M", brief_text="Brief.", dest=dest, mode="broad"
+            )
+            draft = dest / "m-topic"
+            captured = Path(tmp) / "captured-prompt.txt"
+            stub = Path(tmp) / "stub.sh"
+            stub.write_text(
+                "#!/usr/bin/env bash\n"
+                f'cp "$2" "{captured}"\n'
+                'echo done > "$1/SCOPE-PROPOSAL.md"\n'
+                "exit 0\n"
+            )
+            stub.chmod(0o755)
+            import os
+            env = os.environ.copy()
+            env["RESEARCH_LOOP_AGENT_SECONDARY"] = "codex exec -m luna 2>&1 #priority"
+            result = subprocess.run(
+                [str(RUN_DISCOVERY), str(draft), str(stub)],
+                capture_output=True, text=True, env=env,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            prompt = captured.read_text(encoding="utf-8")
+            # The exact operator string, unmangled: no `&` expansion into the
+            # matched pattern, no truncation at `#`.
+            self.assertIn("codex exec -m luna 2>&1 #priority", prompt)
+            self.assertNotIn("${AGENT_NOTE}", prompt)
