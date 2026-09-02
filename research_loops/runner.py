@@ -346,6 +346,12 @@ class LoopRunner:
         if auto_resume_cooldown_seconds < 0:
             raise QueueError("auto_resume_cooldown_seconds must not be negative")
         self.auto_resume_cooldown_seconds = auto_resume_cooldown_seconds
+        from .queue import _validate_lane
+
+        for lane in lanes:
+            _validate_lane(lane)  # fail at startup, not on the first claim
+        if not lanes:
+            raise QueueError("a worker needs at least one lane")
         self.lanes = tuple(lanes)
         self.log_dir = store.root / "logs"
         self.log_dir.mkdir(parents=True, exist_ok=True)
