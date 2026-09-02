@@ -157,7 +157,8 @@ Two modes, chosen at `new-topic --mode` (`draft_topic(mode=...)` over MCP):
   silently encodes, and a **discovery pass** maps the topic space before
   scoping. Approval requires both an answered `## Operator confirmation`
   and an answered `## Scope decision`.
-- **scoped**: the operator knows exactly what they want. The stated frame
+- **focused** (formerly `scoped`; the old name is still accepted): the
+  operator knows exactly what they want. The stated frame
   is FIXED — QA clarifies within it (breadth, exclusions, what done looks
   like) and never questions premises. Approval requires an answered
   `## Operator confirmation` only.

@@ -72,10 +72,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     new_topic.add_argument(
         "--mode",
-        choices=("scoped", "broad"),
+        choices=("focused", "broad", "scoped"),
         default="broad",
         help="QA mode. broad (default): assumptions are surfaced and a "
-        "discovery pass maps the topic space before scoping. scoped: the "
+        "discovery pass maps the topic space before scoping. focused (formerly scoped): the "
         "operator's stated frame is fixed -- QA clarifies within it, never "
         "questions premises",
     )

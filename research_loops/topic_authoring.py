@@ -111,7 +111,7 @@ def render_authority(title: str, brief_text: str) -> str:
         f"{brief_text.strip()}\n\n"
         "## Assumptions\n\n"
         "### Operator-fixed (binding -- research agents must never revisit these)\n\n"
-        "- (none recorded yet -- the operator adds fixed premises here; in scoped\n"
+        "- (none recorded yet -- the operator adds fixed premises here; in focused\n"
         "  mode the stated frame itself is fixed and not up for discussion)\n\n"
         "### Surfaced and answered (QA/discovery findings with the operator's ruling)\n\n"
         "- (none yet -- the intake QA round and any discovery pass append\n"
@@ -203,7 +203,9 @@ def compute_lock(topic_dir: Path) -> str:
     return result.stdout.strip()
 
 
-QA_MODES = ("scoped", "broad")
+QA_MODES = ("focused", "broad")
+# Legacy name for "focused", still accepted on input and in old QA records.
+LEGACY_QA_MODES = {"scoped": "focused"}
 
 # The engine produces research -- evidence, synthesis, catalogs of what the
 # literature shows. A prescriptive/deterministic artifact (a playbook, a
@@ -256,6 +258,7 @@ def new_topic(
         raise QueueError("topic id must be lowercase letters/digits/hyphens")
     if not brief_text.strip():
         raise QueueError("brief is empty")
+    mode = LEGACY_QA_MODES.get(mode, mode)
     if mode not in QA_MODES:
         raise QueueError(f"mode must be one of {QA_MODES}")
 
@@ -310,7 +313,7 @@ def new_topic(
         "## Intent (operator brief, verbatim)\n\n"
         f"{brief_text.strip()}\n\n"
         "## Restated intent\n\n"
-        "(QA agent: restate the operator's intent in your own words. In scoped\n"
+        "(QA agent: restate the operator's intent in your own words. In focused\n"
         "mode the stated frame is FIXED — do not question premises; ask only\n"
         "intra-scope clarifications. In broad mode also run the discovery pass\n"
         "and record surfaced assumptions below.)\n\n"
@@ -387,13 +390,13 @@ def approve_topic(topic_id: str, *, dest: Path) -> dict[str, Any]:
             )
 
     # Both modes require a discovery/criteria pass on record: broad mode's
-    # maps the space; scoped mode's checks the contract against the intake
+    # maps the space; focused mode's checks the contract against the intake
     # criteria only. Either way, approval without one is approval of an
     # unreviewed contract.
     if not (topic_dir / "SCOPE-PROPOSAL.md").is_file():
         raise QueueError(
             "SCOPE-PROPOSAL.md not found -- run `research-loops discover "
-            f"{topic_id}` first; every draft (broad or scoped) gets a "
+            f"{topic_id}` first; every draft (broad or focused) gets a "
             "criteria/discovery pass before it can bind"
         )
 

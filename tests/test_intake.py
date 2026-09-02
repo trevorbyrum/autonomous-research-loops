@@ -1,7 +1,7 @@
 """The intake pipeline: QA-gated topic authoring with parallel discovery.
 
 Pins the operator-designed properties: broad mode is the default and
-surfaces assumptions; scoped mode fixes the operator's frame; approval is
+surfaces assumptions; focused mode (formerly scoped) fixes the operator's frame; approval is
 structurally impossible without the operator's recorded ruling; discovery
 runs on its own lane so it never competes with research workers; and the
 intake lane serializes (cap 1 by default, a general config knob) — a pile
@@ -65,8 +65,8 @@ class QaModesTests(unittest.TestCase):
         approved = topic_authoring.approve_topic("b-topic", dest=self.dest)
         self.assertIn("lock", approved)
 
-    def test_scoped_mode_needs_no_scope_decision(self):
-        self._draft("s-topic", "scoped")
+    def test_focused_mode_needs_no_scope_decision(self):
+        self._draft("s-topic", "focused")
         qa = (self.dest / "s-topic" / "QA-RECORD.md").read_text()
         self.assertNotIn("## Scope decision", qa)
         self._criteria_pass("s-topic")
@@ -77,7 +77,7 @@ class QaModesTests(unittest.TestCase):
         self.assertIn("lock", approved)
 
     def test_approval_requires_a_criteria_pass_in_both_modes(self):
-        for topic_id, mode in (("np-broad", "broad"), ("np-scoped", "scoped")):
+        for topic_id, mode in (("np-broad", "broad"), ("np-scoped", "focused")):
             with self.subTest(mode=mode):
                 self._draft(topic_id, mode)
                 answers = [("## Operator confirmation", "Confirmed.")]
@@ -89,7 +89,7 @@ class QaModesTests(unittest.TestCase):
                 self.assertIn("SCOPE-PROPOSAL.md", str(ctx.exception))
 
     def test_deterministic_deliverables_are_refused_without_exception(self):
-        self._draft("det-topic", "scoped")
+        self._draft("det-topic", "focused")
         topic = self.dest / "det-topic" / "DRAFT-TOPIC.md"
         content = topic.read_text(encoding="utf-8").replace(
             "## Required deliverables\n",
@@ -222,9 +222,9 @@ class DiscoveryChassisTests(unittest.TestCase):
         self.assertIn("TOPIC.md", prompt)
         self.assertNotIn("DRAFT-TOPIC.md", prompt)
 
-    def test_scoped_draft_prompt_is_criteria_only(self):
+    def test_focused_draft_prompt_is_criteria_only(self):
         qa = self.draft_dir / "QA-RECORD.md"
-        qa.write_text(qa.read_text().replace("\nbroad\n", "\nscoped\n", 1))
+        qa.write_text(qa.read_text().replace("\nbroad\n", "\nfocused\n", 1))
         captured = Path(self._tmp.name) / "captured-prompt.txt"
         stub = self._stub(
             f'cp "$2" "{captured}"\n'
@@ -236,7 +236,7 @@ class DiscoveryChassisTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         prompt = captured.read_text(encoding="utf-8")
-        self.assertIn("QA mode: scoped", prompt)
+        self.assertIn("QA mode: focused", prompt)
         self.assertIn("CONTRACT CRITERIA", prompt)
 
 
@@ -266,7 +266,7 @@ class DiscoverCliTests(unittest.TestCase):
             root.mkdir()
             dest = root / "topics"
             topic_authoring.new_topic(
-                "r-topic", title="R", brief_text="Brief.", dest=dest, mode="scoped"
+                "r-topic", title="R", brief_text="Brief.", dest=dest, mode="focused"
             )
             qa = dest / "r-topic" / "QA-RECORD.md"
             qa.write_text(qa.read_text().replace(

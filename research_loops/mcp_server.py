@@ -223,7 +223,7 @@ class EngineTools:
         """Scaffold a DRAFT topic from an operator brief.
 
         mode="broad" (default): assumptions get surfaced and a discovery pass
-        (start_discovery) maps the topic space before scoping. mode="scoped":
+        (start_discovery) maps the topic space before scoping. mode="focused":
         the operator's stated frame is fixed — QA clarifies within it and
         never questions premises. Drafts are reviewable and re-draftable:
         calling again with a refined brief overwrites the DRAFT-* files.
