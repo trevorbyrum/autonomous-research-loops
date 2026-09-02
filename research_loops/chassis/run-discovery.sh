@@ -49,11 +49,11 @@ log="$LOG_DIR/discovery-$stamp.log"
 usage="$LOG_DIR/discovery-$stamp-usage.json"
 prompt_file="$LOG_DIR/.discovery-$stamp-prompt.txt"
 
-sed \
-  -e "s#\${TOPIC_DIR}#$TOPIC_DIR#g" \
-  -e "s#\${CHASSIS}#$CHASSIS#g" \
-  -e "s#\${AGENT_NOTE}#$AGENT_NOTE#g" \
-  "$CHASSIS/DISCOVERY-PROMPT.md" >"$prompt_file"
+python3 "$CHASSIS/render-prompt.py" "$CHASSIS/DISCOVERY-PROMPT.md" \
+  "TOPIC_DIR=$TOPIC_DIR" \
+  "CHASSIS=$CHASSIS" \
+  "AGENT_NOTE=$AGENT_NOTE" \
+  >"$prompt_file"
 
 export RESEARCH_LOOP_TOPIC_DIR="$TOPIC_DIR"
 export RESEARCH_LOOP_USAGE_FILE="$usage"

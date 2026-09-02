@@ -807,13 +807,17 @@ class QueueStore:
             # persisted malformed policy must fail before every claim path,
             # including running resume and prior-topic reacquisition.
             policy = self._worker_policy(state, worker)
+            # Ownership trumps lanes here: reclaiming a running item is how a
+            # dead PID gets requeued and a live one gets supervised. A worker
+            # restarted with different lanes must still find its own running
+            # item, or the item is orphaned forever (and, on a capped lane,
+            # blocks every future claim in that lane).
             own_running = next(
                 (
                     i
                     for i in state["items"]
                     if i["status"] == "running"
                     and i.get("claimed_by", "worker-1") == worker
-                    and in_lanes(i)
                 ),
                 None,
             )
@@ -865,6 +869,22 @@ class QueueStore:
             # Sticky ownership: if this worker owns a non-terminal item, wait
             # for it (return it when eligible, None during its cadence gap)
             # instead of starting another topic.
+            stray = next(
+                (
+                    i
+                    for i in state["items"]
+                    if i.get("claimed_by") == worker
+                    and i["status"] in {"queued", "backoff"}
+                    and not in_lanes(i)
+                ),
+                None,
+            )
+            if stray is not None:
+                # The worker no longer serves this item's lane: release the
+                # claim so a properly-laned worker can pick it up, instead of
+                # holding it hostage to a lanes config it no longer matches.
+                stray["claimed_by"] = None
+                stray["updated_at"] = utc_now()
             own = next(
                 (
                     i
