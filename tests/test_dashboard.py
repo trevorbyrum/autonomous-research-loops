@@ -457,8 +457,8 @@ class IterationEconomicsTests(unittest.TestCase):
             output = render_dashboard(state, events, generated_at=datetime(2026, 9, 3, tzinfo=UTC))
             section = output.split("## Iteration economics")[1].split("\n## ")[0]
             self.assertIn("1/2", section)          # obligations resolved/total
-            self.assertIn("2 (classified 3/4)", section)  # exclusion disclosed
-            self.assertIn("2.0", section)          # productive iters per resolved
+            self.assertIn("classified 3/4", section)  # exclusion disclosed
+            self.assertIn("2\\.0", section)       # productive iters per resolved (escaped cell)
             # min/median/max over the two productive runs only (5s idle excluded)
             self.assertIn("1m 0s / 2m 0s / 3m 0s", section)
 
