@@ -365,3 +365,45 @@ class SaturationFloorTests(unittest.TestCase):
             json.dumps(state, indent=2, sort_keys=True))
         validate = _run("validate", str(self.topic_dir))
         self.assertNotIn("adequate-search record", validate.stderr)
+
+
+class EvidenceRefReplacementTests(unittest.TestCase):
+    """--remove-evidence-ref exists to replace wrongly-resolving citations
+    (the software-architecture 2026-09-03 escalation: legacy #Fxx anchors
+    misattributing via whole-file scan, unfixable by append-only refs)."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.topic_dir = Path(self._tmp.name) / "topic"
+        shutil.copytree(EXAMPLE_TOPIC, self.topic_dir)
+        (self.topic_dir / "FINDINGS-LOG.md").write_text("finding\n", encoding="utf-8")
+        (self.topic_dir / "DECISIONS-LOG.md").write_text("decisions\n", encoding="utf-8")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _first_id(self):
+        state = json.loads((self.topic_dir / "SEMANTIC-STATE.json").read_text())
+        return state["obligations"][0]["id"]
+
+    def test_replace_a_ref_in_one_guarded_call(self):
+        oid = self._first_id()
+        seed = _run("transition", str(self.topic_dir), oid,
+                    "--add-evidence-ref", "FINDINGS-LOG.md")
+        self.assertEqual(seed.returncode, 0, seed.stderr)
+        result = _run(
+            "transition", str(self.topic_dir), oid,
+            "--remove-evidence-ref", "FINDINGS-LOG.md",
+            "--add-evidence-ref", "DECISIONS-LOG.md",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        record = json.loads(_run("get", str(self.topic_dir), oid).stdout)["record"]
+        self.assertEqual(record["evidence_refs"], ["DECISIONS-LOG.md"])
+
+    def test_removing_an_absent_ref_is_refused(self):
+        result = _run(
+            "transition", str(self.topic_dir), self._first_id(),
+            "--remove-evidence-ref", "NOT-ON-RECORD.md",
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("cannot remove evidence ref not on the record", result.stderr)

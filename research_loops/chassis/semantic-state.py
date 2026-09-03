@@ -933,6 +933,7 @@ def apply_obligation_transition(
     obligation_id: str,
     updates: dict[str, Any],
     add_evidence_refs: list[str],
+    remove_evidence_refs: list[str] = (),
     *,
     topics_root: Path | None = None,
     allow_internal_citations: bool = False,
@@ -964,6 +965,14 @@ def apply_obligation_transition(
     candidate = dict(obligation)
     candidate.update(updates)
     refs = list(candidate.get("evidence_refs") or [])
+    # Removal exists for exactly one legitimate case: replacing a ref whose
+    # citation resolves wrongly (e.g. legacy pre-schema2 `#Fxx` anchors that
+    # misattribute via whole-file scan). Removing a ref not on the record is
+    # refused -- a typo must never silently "succeed".
+    for reference in remove_evidence_refs:
+        if reference not in refs:
+            return [f"cannot remove evidence ref not on the record: {reference}"]
+        refs.remove(reference)
     for reference in add_evidence_refs:
         if reference not in refs:
             refs.append(reference)
@@ -1095,6 +1104,14 @@ def main(argv: list[str] | None = None) -> int:
         help="repeatable; each must resolve inside the topic directory",
     )
     transition.add_argument(
+        "--remove-evidence-ref",
+        action="append",
+        default=[],
+        help="repeatable; remove a ref currently on the record (for replacing "
+        "a wrongly-resolving citation -- pair with --add-evidence-ref); the "
+        "resulting record must still pass the full terminal gate",
+    )
+    transition.add_argument(
         "--adequate-search", help="JSON object: summary/queries/source_lanes/retrieval_failures"
     )
     transition.add_argument(
@@ -1214,7 +1231,7 @@ def main(argv: list[str] | None = None) -> int:
                 except json.JSONDecodeError as exc:
                     print(f"--{field.replace('_', '-')} is not valid JSON: {exc}", file=sys.stderr)
                     return 2
-        if not updates and not args.add_evidence_ref:
+        if not updates and not args.add_evidence_ref and not args.remove_evidence_ref:
             print("transition: nothing to change", file=sys.stderr)
             return 2
         errors = apply_obligation_transition(
@@ -1223,6 +1240,7 @@ def main(argv: list[str] | None = None) -> int:
             args.obligation_id,
             updates,
             args.add_evidence_ref,
+            args.remove_evidence_ref,
             topics_root=args.topics_root,
             allow_internal_citations=args.allow_internal_citations,
         )
