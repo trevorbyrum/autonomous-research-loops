@@ -111,28 +111,33 @@ def _accepted_label(item: dict[str, Any]) -> str:
     return ", ".join(workers) if workers else "none"
 
 
+# The moment the saturation regime went live (workers restarted onto the
+# saturation-gate runner, 2026-09-03). Iteration economics deliberately
+# ignores everything before it: pre-saturation iterations ran under exit
+# semantics the operator ruled inadequate, so they would poison any
+# planning ballpark for what topics cost under the current engine.
+SATURATION_EPOCH = "2026-09-03T13:51:51"
+
+
 def _iteration_economics(
     items: list[Any], by_item: dict[str, list[dict[str, Any]]]
 ) -> list[list[Any]] | None:
-    """Fleet-global iteration economics over PRODUCTIVE iterations only.
+    """Fleet-global iteration economics, saturation-era + productive only.
 
     Productive = the chassis-measured semantic signature changed during the
-    run. Idle/verification passes and unclassifiable (pre-instrumentation)
-    events are excluded. The per-obligation ratio additionally excludes
-    migration-era topics (identified by the schema-2 conversion marker
-    `evidence_refs_pre_schema2` in their state), because obligations resolved
-    by inherited old-era work would distort what a NEW topic costs under the
-    current engine.
+    run. Only events at or after SATURATION_EPOCH count at all. The
+    per-obligation ratio is stricter still: it includes only topics whose
+    ENTIRE recorded history is post-epoch, so no obligation resolved under
+    the old exit semantics (or inherited from migration) is priced in.
     """
     import json as _json
     all_durations: list[float] = []
-    total_events = 0
     total_classified = 0
     total_productive = 0
     per_topic_ratios: list[float] = []
     ratio_productive = 0
     ratio_resolved = 0
-    excluded_migrated = 0
+    pre_era_topics = 0
     for item in items:
         if not isinstance(item, dict) or item.get("lane") == "intake":
             continue
@@ -150,22 +155,24 @@ def _iteration_economics(
         if not obligations:
             continue
         events = by_item.get(str(item.get("id")), [])
+        stamped = [e for e in events if isinstance(e.get("ts"), str)]
+        era = [e for e in stamped if e["ts"] >= SATURATION_EPOCH]
         classified = [
-            e for e in events
+            e for e in era
             if isinstance(e.get("iteration_result"), dict)
             and isinstance(e["iteration_result"].get("signature_changed"), bool)
         ]
         productive = [e for e in classified if e["iteration_result"]["signature_changed"]]
-        total_events += len(events)
         total_classified += len(classified)
         total_productive += len(productive)
         all_durations.extend(
             d for e in productive
             if (d := _number(e.get("duration_seconds"))) is not None
         )
-        migrated = any("evidence_refs_pre_schema2" in o for o in obligations)
-        if migrated:
-            excluded_migrated += 1
+        fully_post_epoch = bool(era) and len(era) == len(stamped)
+        if not fully_post_epoch:
+            if stamped:
+                pre_era_topics += 1
             continue
         terminal = sum(
             1 for o in obligations
@@ -188,33 +195,32 @@ def _iteration_economics(
         rows.append([
             "Productive iteration duration",
             f"{_fmt(srt[0])} min / {_fmt(statistics.median(srt))} median / "
-            f"{_fmt(srt[-1])} max / {_fmt(sum(srt) / len(srt))} avg "
-            f"(n={len(srt)})",
+            f"{_fmt(srt[-1])} max / {_fmt(sum(srt) / len(srt))} avg (n={len(srt)})",
         ])
-    rows.append([
-        "Productive share of classified iterations",
-        f"{total_productive}/{total_classified} "
-        f"({total_productive / total_classified:.0%})" if total_classified else "unavailable",
-    ])
+    if total_classified:
+        rows.append([
+            "Productive share of iterations",
+            f"{total_productive}/{total_classified} ({total_productive / total_classified:.0%})",
+        ])
     if per_topic_ratios:
         srt = sorted(per_topic_ratios)
         rows.append([
-            "Productive iterations per resolved obligation (post-migration topics only)",
+            "Productive iterations per resolved obligation",
             f"{ratio_productive / ratio_resolved:.1f} overall / "
             f"{srt[0]:.1f} min / {statistics.median(srt):.1f} median / {srt[-1]:.1f} max "
-            f"(over {len(per_topic_ratios)} topics; {excluded_migrated} migration-era topics excluded)",
-        ])
-    unclassified = total_events - total_classified
-    if unclassified:
-        rows.append([
-            "Excluded from all distributions",
-            f"{total_classified - total_productive} idle passes; {unclassified} unclassifiable pre-instrumentation events",
+            f"(over {len(per_topic_ratios)} fully-saturation-era topics)",
         ])
     else:
         rows.append([
-            "Excluded from all distributions",
-            f"{total_classified - total_productive} idle passes",
+            "Productive iterations per resolved obligation",
+            "no fully-saturation-era topic has resolved obligations yet "
+            "(populates as the current queue front completes)",
         ])
+    rows.append([
+        "Scope",
+        f"iterations since {SATURATION_EPOCH}Z only; earlier eras excluded; "
+        f"{pre_era_topics} topics with pre-era history excluded from the ratio",
+    ])
     return rows
 
 
@@ -473,7 +479,7 @@ def render_dashboard(
     if economics_rows:
         lines.extend([
             "",
-            "## Iteration economics (global, productive iterations only)",
+            "## Iteration economics (saturation era, productive iterations only)",
             "",
             _table(["Metric", "Value"], economics_rows),
         ])
@@ -517,7 +523,7 @@ def render_dashboard(
             "- **Duration:** elapsed process time from valid, non-negative `duration_seconds`, displayed in seconds-derived wall-clock units.",
             "- **Reported tokens:** valid, non-negative `usage.total_tokens`. Provider semantics can include input, output, cache, and delegated work; this is not a dollar charge.",
             "- **Coverage:** `covered/retained runs`. Missing or invalid metrics are unavailable and are never silently counted as zero.",
-            "- **Productive iteration:** the chassis-measured semantic signature changed during the run (`iteration_result.signature_changed`). Verification/idle passes and pre-instrumentation events (no recorded result) are excluded from iteration-economics distributions; the classified/total counts disclose the exclusion.",
+            "- **Productive iteration:** the chassis-measured semantic signature changed during the run (`iteration_result.signature_changed`). Iteration economics counts only events since the saturation regime went live; idle passes and pre-instrumentation events are excluded, and the per-obligation ratio uses only topics whose entire history is saturation-era.",
             "- **Retention:** the event ledger has a maximum retention age of 90 days; the actual oldest/newest timestamps above define this dashboard's observed window.",
             "- **Identity limitation:** retained events are grouped by current `item_id`; IDs and attempt numbers are not immutable run-incarnation keys and can be reused or reset.",
             "- **Consistency limitation:** queue state is finalized before the corresponding event is appended. A refresh may temporarily show newer queue state or newer event data than the other source.",

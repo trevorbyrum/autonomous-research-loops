@@ -419,61 +419,60 @@ class UnclassifiedVisibilityTests(unittest.TestCase):
 
 
 class IterationEconomicsTests(unittest.TestCase):
-    """Global productive-only distributions: idle passes and migration-era
-    topics never drag the numbers."""
+    """Saturation-era only: pre-epoch iterations and mixed-era topics never
+    price into the planning numbers."""
 
     def _render(self, tmp):
+        from research_loops.dashboard import SATURATION_EPOCH
+        pre, post = "2026-09-01T00:00:00Z", "2026-09-04T00:00:00Z"
         new_topic = Path(tmp) / "new-topic"
         new_topic.mkdir()
         (new_topic / "SEMANTIC-STATE.json").write_text(json.dumps({
-            "obligations": [
-                {"id": "A", "disposition": "supported"},
-                {"id": "B", "disposition": "supported"},
-            ],
+            "obligations": [{"id": "A", "disposition": "supported"},
+                            {"id": "B", "disposition": "supported"}],
         }))
-        migrated = Path(tmp) / "migrated"
-        migrated.mkdir()
-        (migrated / "SEMANTIC-STATE.json").write_text(json.dumps({
-            "obligations": [
-                {"id": "M", "disposition": "supported",
-                 "evidence_refs_pre_schema2": ["old"]},
-            ],
+        mixed = Path(tmp) / "mixed"
+        mixed.mkdir()
+        (mixed / "SEMANTIC-STATE.json").write_text(json.dumps({
+            "obligations": [{"id": "M", "disposition": "supported"}],
         }))
         state = {"revision": 1, "paused": False, "items": [
             {"id": "t", "title": "T", "status": "running", "desired_state": "running",
              "claimed_by": "w", "attempts": 5, "cwd": str(new_topic)},
             {"id": "m", "title": "M", "status": "completed", "desired_state": "paused",
-             "claimed_by": None, "attempts": 9, "cwd": str(migrated)},
+             "claimed_by": None, "attempts": 9, "cwd": str(mixed)},
         ]}
         events = [
-            {"type": "process_finished", "item_id": "t", "duration_seconds": 60,
+            # fully post-epoch topic: two productive + one idle
+            {"type": "process_finished", "item_id": "t", "ts": post, "duration_seconds": 60,
              "iteration_result": {"signature_changed": True}},
-            {"type": "process_finished", "item_id": "t", "duration_seconds": 180,
+            {"type": "process_finished", "item_id": "t", "ts": post, "duration_seconds": 180,
              "iteration_result": {"signature_changed": True}},
-            {"type": "process_finished", "item_id": "t", "duration_seconds": 5,
-             "iteration_result": {"signature_changed": False}},   # idle
-            {"type": "process_finished", "item_id": "t", "duration_seconds": 2},  # unclassifiable
-            # migrated topic: productive events counted in DURATIONS but its
-            # inherited resolution excluded from the per-obligation ratio
-            {"type": "process_finished", "item_id": "m", "duration_seconds": 120,
+            {"type": "process_finished", "item_id": "t", "ts": post, "duration_seconds": 5,
+             "iteration_result": {"signature_changed": False}},
+            # mixed-era topic: one pre-epoch productive (fully ignored for
+            # durations), one post-epoch productive (counted for durations,
+            # NOT for the ratio -- topic has pre-era history)
+            {"type": "process_finished", "item_id": "m", "ts": pre, "duration_seconds": 999,
+             "iteration_result": {"signature_changed": True}},
+            {"type": "process_finished", "item_id": "m", "ts": post, "duration_seconds": 120,
              "iteration_result": {"signature_changed": True}},
         ]
-        return render_dashboard(state, events, generated_at=datetime(2026, 9, 3, tzinfo=UTC))
+        return render_dashboard(state, events, generated_at=datetime(2026, 9, 4, tzinfo=UTC))
 
-    def test_global_stats_exclude_idle_and_migrated(self):
+    def test_epoch_scoping_and_ratio_strictness(self):
         import tempfile as _tf
         with _tf.TemporaryDirectory() as tmp:
             output = self._render(tmp)
             section = output.split("## Iteration economics")[1].split("\n## ")[0]
-            # durations over the 3 productive runs (60/120/180): min 1m, median 2m, max 3m
+            # durations: 60/120/180 post-epoch productive; the 999s pre-epoch run absent
             self.assertIn("1m 0s min / 2m 0s median / 3m 0s max", section)
-            # per-obligation ratio over the ONE post-migration topic: 2 productive / 2 resolved
-            self.assertIn("1 migration\\-era topics excluded", section)
-            self.assertIn("over 1 topics", section)
-            # exclusion disclosure
-            self.assertIn("idle passes", section)
+            self.assertNotIn("16m 39s", section)
+            # ratio only over the fully-post-epoch topic: 2 productive / 2 resolved
+            self.assertIn("over 1 fully", section)
+            self.assertIn("1 topics with pre", section)
 
     def test_no_data_means_no_section(self):
         state = {"revision": 1, "paused": False, "items": []}
-        output = render_dashboard(state, [], generated_at=datetime(2026, 9, 3, tzinfo=UTC))
+        output = render_dashboard(state, [], generated_at=datetime(2026, 9, 4, tzinfo=UTC))
         self.assertNotIn("## Iteration economics", output)
