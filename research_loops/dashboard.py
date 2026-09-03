@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import math
 import os
+import statistics
 import tempfile
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -108,6 +109,74 @@ def _accepted_label(item: dict[str, Any]) -> str:
         return "none"
     workers = [str(worker) for worker in accepted if isinstance(worker, str)]
     return ", ".join(workers) if workers else "none"
+
+
+def _iteration_economics(
+    items: list[Any], by_item: dict[str, list[dict[str, Any]]]
+) -> list[list[Any]]:
+    """Per-topic iteration economics over PRODUCTIVE iterations only.
+
+    Productive = the chassis-measured semantic signature changed during the
+    run (iteration_result.signature_changed). Verification/idle passes and
+    pre-instrumentation events (no iteration_result recorded) are excluded
+    rather than allowed to drag the distribution down; coverage is shown so
+    exclusion is never silent.
+    """
+    rows: list[list[Any]] = []
+    for item in items:
+        if not isinstance(item, dict) or item.get("lane") == "intake":
+            continue
+        cwd = item.get("cwd")
+        if not isinstance(cwd, str):
+            continue
+        state_path = Path(cwd) / "SEMANTIC-STATE.json"
+        if not state_path.is_file():
+            continue
+        try:
+            import json as _json
+            state = _json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        obligations = [o for o in state.get("obligations", []) if isinstance(o, dict)]
+        if not obligations:
+            continue
+        terminal = sum(
+            1 for o in obligations
+            if o.get("disposition") in ("supported", "contradicted", "unresolved", "deferred")
+        )
+        events = by_item.get(str(item.get("id")), [])
+        classified = [
+            e for e in events
+            if isinstance(e.get("iteration_result"), dict)
+            and isinstance(e["iteration_result"].get("signature_changed"), bool)
+        ]
+        productive = [
+            e for e in classified if e["iteration_result"]["signature_changed"]
+        ]
+        durations = sorted(
+            d for e in productive
+            if (d := _number(e.get("duration_seconds"))) is not None
+        )
+        def _fmt(seconds: float) -> str:
+            m, s = divmod(int(round(seconds)), 60)
+            return f"{m}m {s}s"
+        if durations:
+            duration_cell = (
+                f"{_fmt(durations[0])} / {_fmt(statistics.median(durations))} / {_fmt(durations[-1])}"
+            )
+        else:
+            duration_cell = "unavailable"
+        per_resolved = (
+            f"{len(productive) / terminal:.1f}" if terminal else "n/a (none resolved)"
+        )
+        rows.append([
+            item.get("title", item.get("id")),
+            f"{terminal}/{len(obligations)}",
+            f"{len(productive)} (classified {len(classified)}/{len(events)})",
+            per_resolved,
+            duration_cell,
+        ])
+    return rows
 
 
 def write_dashboard(output: str | Path, content: str) -> Path:
@@ -361,6 +430,18 @@ def render_dashboard(
         # when it actually caught something; an always-empty table is noise.
         lines.extend(["", "## Unclassified items", "", _table(["Queue position", "ID", "Title", "Status", "Desired state", "Owner"], unclassified_rows)])
 
+    economics_rows = _iteration_economics(items, by_item)
+    if economics_rows:
+        lines.extend([
+            "",
+            "## Iteration economics (productive iterations only)",
+            "",
+            _table(
+                ["Topic", "Obligations resolved/total", "Productive iterations", "Productive iters / resolved obligation", "Duration min / median / max"],
+                economics_rows,
+            ),
+        ])
+
     calls_total, calls_covered, retained_count = _metric(finished, "api_calls", nested=True)
     duration_total, duration_covered, _ = _metric(finished, "duration_seconds")
     token_total, token_covered, _ = _metric(finished, "total_tokens", nested=True)
@@ -400,6 +481,7 @@ def render_dashboard(
             "- **Duration:** elapsed process time from valid, non-negative `duration_seconds`, displayed in seconds-derived wall-clock units.",
             "- **Reported tokens:** valid, non-negative `usage.total_tokens`. Provider semantics can include input, output, cache, and delegated work; this is not a dollar charge.",
             "- **Coverage:** `covered/retained runs`. Missing or invalid metrics are unavailable and are never silently counted as zero.",
+            "- **Productive iteration:** the chassis-measured semantic signature changed during the run (`iteration_result.signature_changed`). Verification/idle passes and pre-instrumentation events (no recorded result) are excluded from iteration-economics distributions; the classified/total counts disclose the exclusion.",
             "- **Retention:** the event ledger has a maximum retention age of 90 days; the actual oldest/newest timestamps above define this dashboard's observed window.",
             "- **Identity limitation:** retained events are grouped by current `item_id`; IDs and attempt numbers are not immutable run-incarnation keys and can be reused or reset.",
             "- **Consistency limitation:** queue state is finalized before the corresponding event is appended. A refresh may temporarily show newer queue state or newer event data than the other source.",

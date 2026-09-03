@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -415,3 +416,56 @@ class UnclassifiedVisibilityTests(unittest.TestCase):
         output = render_dashboard(state, [], generated_at=datetime(2026, 9, 3, tzinfo=UTC))
         self.assertIn("## Unclassified items", output)
         self.assertIn("malformed item", output)
+
+
+class IterationEconomicsTests(unittest.TestCase):
+    """Productive-only distributions: idle passes never drag the stats down."""
+
+    def _state_and_events(self, tmp):
+        topic = Path(tmp) / "topic"
+        topic.mkdir()
+        (topic / "SEMANTIC-STATE.json").write_text(json.dumps({
+            "obligations": [
+                {"id": "A", "disposition": "supported"},
+                {"id": "B", "disposition": "open"},
+            ],
+        }))
+        state = {"revision": 1, "paused": False, "items": [{
+            "id": "t", "title": "Topic T", "status": "running",
+            "desired_state": "running", "claimed_by": "w", "attempts": 5,
+            "cwd": str(topic),
+        }]}
+        events = [
+            # productive, 60s
+            {"type": "process_finished", "item_id": "t", "duration_seconds": 60,
+             "iteration_result": {"signature_changed": True}},
+            # productive, 180s
+            {"type": "process_finished", "item_id": "t", "duration_seconds": 180,
+             "iteration_result": {"signature_changed": True}},
+            # idle verification pass -- excluded
+            {"type": "process_finished", "item_id": "t", "duration_seconds": 5,
+             "iteration_result": {"signature_changed": False}},
+            # pre-instrumentation event -- unclassifiable, excluded
+            {"type": "process_finished", "item_id": "t", "duration_seconds": 2},
+        ]
+        return state, events
+
+    def test_productive_only_stats_and_disclosure(self):
+        import tempfile as _tf
+        with _tf.TemporaryDirectory() as tmp:
+            state, events = self._state_and_events(tmp)
+            output = render_dashboard(state, events, generated_at=datetime(2026, 9, 3, tzinfo=UTC))
+            section = output.split("## Iteration economics")[1].split("\n## ")[0]
+            self.assertIn("1/2", section)          # obligations resolved/total
+            self.assertIn("2 (classified 3/4)", section)  # exclusion disclosed
+            self.assertIn("2.0", section)          # productive iters per resolved
+            # min/median/max over the two productive runs only (5s idle excluded)
+            self.assertIn("1m 0s / 2m 0s / 3m 0s", section)
+
+    def test_no_semantic_topics_means_no_section(self):
+        state = {"revision": 1, "paused": False, "items": [{
+            "id": "x", "title": "X", "status": "queued", "desired_state": "running",
+            "claimed_by": None, "attempts": 0, "cwd": "/nonexistent",
+        }]}
+        output = render_dashboard(state, [], generated_at=datetime(2026, 9, 3, tzinfo=UTC))
+        self.assertNotIn("## Iteration economics", output)
