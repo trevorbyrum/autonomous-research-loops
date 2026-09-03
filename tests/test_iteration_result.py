@@ -327,3 +327,31 @@ class ChassisMeasuredDoneTests(unittest.TestCase):
                   completion=["true"])
         result = self.runner.run_once()
         self.assertEqual(result["outcome"], "scheduled")
+
+
+class IterationPromptProtocolTests(unittest.TestCase):
+    """The DONE declaration is an executable checklist, never buried prose.
+
+    Regression for the 2026-09-03 incident: seven iterations typed "STOP
+    DONE" as words because the file write was one prose sentence in a rule
+    wall, after 'finish with JSON' had anchored output-production as the
+    terminal act.
+    """
+
+    def test_prompt_ends_with_an_ordered_protocol_and_literal_commands(self):
+        prompt = (
+            Path(__file__).resolve().parents[1]
+            / "research_loops" / "chassis" / "ITERATION-PROMPT.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("END-OF-ITERATION PROTOCOL", prompt)
+        self.assertIn("printf 'DONE\\n' > ${TOPIC_DIR}/STOP", prompt)
+        self.assertIn("only the file counts", prompt)
+        # The protocol is the terminal block: nothing rule-like after step 4.
+        self.assertLess(
+            prompt.index("Finish your reply with compact JSON"),
+            len(prompt),
+        )
+        self.assertGreater(
+            prompt.index("END-OF-ITERATION PROTOCOL"),
+            len(prompt) - 1600,
+        )
