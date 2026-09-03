@@ -419,53 +419,61 @@ class UnclassifiedVisibilityTests(unittest.TestCase):
 
 
 class IterationEconomicsTests(unittest.TestCase):
-    """Productive-only distributions: idle passes never drag the stats down."""
+    """Global productive-only distributions: idle passes and migration-era
+    topics never drag the numbers."""
 
-    def _state_and_events(self, tmp):
-        topic = Path(tmp) / "topic"
-        topic.mkdir()
-        (topic / "SEMANTIC-STATE.json").write_text(json.dumps({
+    def _render(self, tmp):
+        new_topic = Path(tmp) / "new-topic"
+        new_topic.mkdir()
+        (new_topic / "SEMANTIC-STATE.json").write_text(json.dumps({
             "obligations": [
                 {"id": "A", "disposition": "supported"},
-                {"id": "B", "disposition": "open"},
+                {"id": "B", "disposition": "supported"},
             ],
         }))
-        state = {"revision": 1, "paused": False, "items": [{
-            "id": "t", "title": "Topic T", "status": "running",
-            "desired_state": "running", "claimed_by": "w", "attempts": 5,
-            "cwd": str(topic),
-        }]}
+        migrated = Path(tmp) / "migrated"
+        migrated.mkdir()
+        (migrated / "SEMANTIC-STATE.json").write_text(json.dumps({
+            "obligations": [
+                {"id": "M", "disposition": "supported",
+                 "evidence_refs_pre_schema2": ["old"]},
+            ],
+        }))
+        state = {"revision": 1, "paused": False, "items": [
+            {"id": "t", "title": "T", "status": "running", "desired_state": "running",
+             "claimed_by": "w", "attempts": 5, "cwd": str(new_topic)},
+            {"id": "m", "title": "M", "status": "completed", "desired_state": "paused",
+             "claimed_by": None, "attempts": 9, "cwd": str(migrated)},
+        ]}
         events = [
-            # productive, 60s
             {"type": "process_finished", "item_id": "t", "duration_seconds": 60,
              "iteration_result": {"signature_changed": True}},
-            # productive, 180s
             {"type": "process_finished", "item_id": "t", "duration_seconds": 180,
              "iteration_result": {"signature_changed": True}},
-            # idle verification pass -- excluded
             {"type": "process_finished", "item_id": "t", "duration_seconds": 5,
-             "iteration_result": {"signature_changed": False}},
-            # pre-instrumentation event -- unclassifiable, excluded
-            {"type": "process_finished", "item_id": "t", "duration_seconds": 2},
+             "iteration_result": {"signature_changed": False}},   # idle
+            {"type": "process_finished", "item_id": "t", "duration_seconds": 2},  # unclassifiable
+            # migrated topic: productive events counted in DURATIONS but its
+            # inherited resolution excluded from the per-obligation ratio
+            {"type": "process_finished", "item_id": "m", "duration_seconds": 120,
+             "iteration_result": {"signature_changed": True}},
         ]
-        return state, events
+        return render_dashboard(state, events, generated_at=datetime(2026, 9, 3, tzinfo=UTC))
 
-    def test_productive_only_stats_and_disclosure(self):
+    def test_global_stats_exclude_idle_and_migrated(self):
         import tempfile as _tf
         with _tf.TemporaryDirectory() as tmp:
-            state, events = self._state_and_events(tmp)
-            output = render_dashboard(state, events, generated_at=datetime(2026, 9, 3, tzinfo=UTC))
+            output = self._render(tmp)
             section = output.split("## Iteration economics")[1].split("\n## ")[0]
-            self.assertIn("1/2", section)          # obligations resolved/total
-            self.assertIn("classified 3/4", section)  # exclusion disclosed
-            self.assertIn("2\\.0", section)       # productive iters per resolved (escaped cell)
-            # min/median/max over the two productive runs only (5s idle excluded)
-            self.assertIn("1m 0s / 2m 0s / 3m 0s", section)
+            # durations over the 3 productive runs (60/120/180): min 1m, median 2m, max 3m
+            self.assertIn("1m 0s min / 2m 0s median / 3m 0s max", section)
+            # per-obligation ratio over the ONE post-migration topic: 2 productive / 2 resolved
+            self.assertIn("1 migration\\-era topics excluded", section)
+            self.assertIn("over 1 topics", section)
+            # exclusion disclosure
+            self.assertIn("idle passes", section)
 
-    def test_no_semantic_topics_means_no_section(self):
-        state = {"revision": 1, "paused": False, "items": [{
-            "id": "x", "title": "X", "status": "queued", "desired_state": "running",
-            "claimed_by": None, "attempts": 0, "cwd": "/nonexistent",
-        }]}
+    def test_no_data_means_no_section(self):
+        state = {"revision": 1, "paused": False, "items": []}
         output = render_dashboard(state, [], generated_at=datetime(2026, 9, 3, tzinfo=UTC))
         self.assertNotIn("## Iteration economics", output)

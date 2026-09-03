@@ -113,16 +113,26 @@ def _accepted_label(item: dict[str, Any]) -> str:
 
 def _iteration_economics(
     items: list[Any], by_item: dict[str, list[dict[str, Any]]]
-) -> list[list[Any]]:
-    """Per-topic iteration economics over PRODUCTIVE iterations only.
+) -> list[list[Any]] | None:
+    """Fleet-global iteration economics over PRODUCTIVE iterations only.
 
     Productive = the chassis-measured semantic signature changed during the
-    run (iteration_result.signature_changed). Verification/idle passes and
-    pre-instrumentation events (no iteration_result recorded) are excluded
-    rather than allowed to drag the distribution down; coverage is shown so
-    exclusion is never silent.
+    run. Idle/verification passes and unclassifiable (pre-instrumentation)
+    events are excluded. The per-obligation ratio additionally excludes
+    migration-era topics (identified by the schema-2 conversion marker
+    `evidence_refs_pre_schema2` in their state), because obligations resolved
+    by inherited old-era work would distort what a NEW topic costs under the
+    current engine.
     """
-    rows: list[list[Any]] = []
+    import json as _json
+    all_durations: list[float] = []
+    total_events = 0
+    total_classified = 0
+    total_productive = 0
+    per_topic_ratios: list[float] = []
+    ratio_productive = 0
+    ratio_resolved = 0
+    excluded_migrated = 0
     for item in items:
         if not isinstance(item, dict) or item.get("lane") == "intake":
             continue
@@ -133,48 +143,77 @@ def _iteration_economics(
         if not state_path.is_file():
             continue
         try:
-            import json as _json
             state = _json.loads(state_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
         obligations = [o for o in state.get("obligations", []) if isinstance(o, dict)]
         if not obligations:
             continue
-        terminal = sum(
-            1 for o in obligations
-            if o.get("disposition") in ("supported", "contradicted", "unresolved", "deferred")
-        )
         events = by_item.get(str(item.get("id")), [])
         classified = [
             e for e in events
             if isinstance(e.get("iteration_result"), dict)
             and isinstance(e["iteration_result"].get("signature_changed"), bool)
         ]
-        productive = [
-            e for e in classified if e["iteration_result"]["signature_changed"]
-        ]
-        durations = sorted(
+        productive = [e for e in classified if e["iteration_result"]["signature_changed"]]
+        total_events += len(events)
+        total_classified += len(classified)
+        total_productive += len(productive)
+        all_durations.extend(
             d for e in productive
             if (d := _number(e.get("duration_seconds"))) is not None
         )
-        def _fmt(seconds: float) -> str:
-            m, s = divmod(int(round(seconds)), 60)
-            return f"{m}m {s}s"
-        if durations:
-            duration_cell = (
-                f"{_fmt(durations[0])} / {_fmt(statistics.median(durations))} / {_fmt(durations[-1])}"
-            )
-        else:
-            duration_cell = "unavailable"
-        per_resolved = (
-            f"{len(productive) / terminal:.1f}" if terminal else "n/a (none resolved)"
+        migrated = any("evidence_refs_pre_schema2" in o for o in obligations)
+        if migrated:
+            excluded_migrated += 1
+            continue
+        terminal = sum(
+            1 for o in obligations
+            if o.get("disposition") in ("supported", "contradicted", "unresolved", "deferred")
         )
+        if terminal and productive:
+            per_topic_ratios.append(len(productive) / terminal)
+            ratio_productive += len(productive)
+            ratio_resolved += terminal
+    if not all_durations and not per_topic_ratios:
+        return None
+
+    def _fmt(seconds: float) -> str:
+        m, s = divmod(int(round(seconds)), 60)
+        return f"{m}m {s}s"
+
+    rows: list[list[Any]] = []
+    if all_durations:
+        srt = sorted(all_durations)
         rows.append([
-            item.get("title", item.get("id")),
-            f"{terminal}/{len(obligations)}",
-            f"{len(productive)} (classified {len(classified)}/{len(events)})",
-            per_resolved,
-            duration_cell,
+            "Productive iteration duration",
+            f"{_fmt(srt[0])} min / {_fmt(statistics.median(srt))} median / "
+            f"{_fmt(srt[-1])} max / {_fmt(sum(srt) / len(srt))} avg "
+            f"(n={len(srt)})",
+        ])
+    rows.append([
+        "Productive share of classified iterations",
+        f"{total_productive}/{total_classified} "
+        f"({total_productive / total_classified:.0%})" if total_classified else "unavailable",
+    ])
+    if per_topic_ratios:
+        srt = sorted(per_topic_ratios)
+        rows.append([
+            "Productive iterations per resolved obligation (post-migration topics only)",
+            f"{ratio_productive / ratio_resolved:.1f} overall / "
+            f"{srt[0]:.1f} min / {statistics.median(srt):.1f} median / {srt[-1]:.1f} max "
+            f"(over {len(per_topic_ratios)} topics; {excluded_migrated} migration-era topics excluded)",
+        ])
+    unclassified = total_events - total_classified
+    if unclassified:
+        rows.append([
+            "Excluded from all distributions",
+            f"{total_classified - total_productive} idle passes; {unclassified} unclassifiable pre-instrumentation events",
+        ])
+    else:
+        rows.append([
+            "Excluded from all distributions",
+            f"{total_classified - total_productive} idle passes",
         ])
     return rows
 
@@ -434,12 +473,9 @@ def render_dashboard(
     if economics_rows:
         lines.extend([
             "",
-            "## Iteration economics (productive iterations only)",
+            "## Iteration economics (global, productive iterations only)",
             "",
-            _table(
-                ["Topic", "Obligations resolved/total", "Productive iterations", "Productive iters / resolved obligation", "Duration min / median / max"],
-                economics_rows,
-            ),
+            _table(["Metric", "Value"], economics_rows),
         ])
 
     calls_total, calls_covered, retained_count = _metric(finished, "api_calls", nested=True)
