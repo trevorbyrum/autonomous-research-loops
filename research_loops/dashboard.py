@@ -103,6 +103,14 @@ def _models(events: list[dict[str, Any]]) -> str:
     return ", ".join(names) if names else "unavailable"
 
 
+# The moment the saturation regime went live (workers restarted onto the
+# saturation-gate runner, 2026-09-03). Iteration economics deliberately
+# ignores everything before it: pre-saturation iterations ran under exit
+# semantics the operator ruled inadequate, so they would poison any
+# planning ballpark for what topics cost under the current engine.
+SATURATION_EPOCH = "2026-09-03T13:51:51"
+
+
 def _iteration_economics(
     items: list[Any], by_item: dict[str, list[dict[str, Any]]]
 ) -> list[list[Any]] | None:
