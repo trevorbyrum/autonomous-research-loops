@@ -356,7 +356,10 @@ def render_dashboard(
     unclassified_rows = [[position, item.get("id", "unavailable"), item.get("title", "unavailable"), item.get("status", "unavailable"), item.get("desired_state", "unavailable"), item.get("claimed_by") or "none"] for position, item in categories["unclassified"]]
     lines.extend(["", "## Needs attention", "", _table(["Topic", "Attempts", "Reason class", "Flags (where to look)", "Finished"], attention_rows)])
     lines.extend(["", "## Paused topics", "", _table(["Topic", "Stale/current owner", "Attempts", "Reason class"], paused_rows)])
-    lines.extend(["", "## Unclassified items", "", _table(["Queue position", "ID", "Title", "Status", "Desired state", "Owner"], unclassified_rows)])
+    if unclassified_rows:
+        # A catch-all for malformed/unexpected queue states -- rendered only
+        # when it actually caught something; an always-empty table is noise.
+        lines.extend(["", "## Unclassified items", "", _table(["Queue position", "ID", "Title", "Status", "Desired state", "Owner"], unclassified_rows)])
 
     calls_total, calls_covered, retained_count = _metric(finished, "api_calls", nested=True)
     duration_total, duration_covered, _ = _metric(finished, "duration_seconds")

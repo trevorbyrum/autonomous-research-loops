@@ -51,9 +51,21 @@ except (json.JSONDecodeError, ValueError):
 usage = envelope.get("usage") if isinstance(envelope, dict) else None
 if not isinstance(usage, dict):
     sys.exit(0)
+# The -p JSON envelope has no top-level "model"; the models that actually
+# ran live as the keys of "modelUsage" (primary + any subagent models).
+model_usage = envelope.get("modelUsage")
+models = sorted(model_usage.keys()) if isinstance(model_usage, dict) and model_usage else []
+duration_ms = envelope.get("duration_ms")
+num_turns = envelope.get("num_turns")
 out = {
     "provider": "anthropic",
-    "model": envelope.get("model"),
+    "model": ", ".join(models) or None,
+    "api_calls": num_turns if isinstance(num_turns, int) and num_turns >= 0 else None,
+    "duration_seconds": (
+        round(duration_ms / 1000, 1)
+        if isinstance(duration_ms, (int, float)) and duration_ms >= 0
+        else None
+    ),
     "total_tokens": sum(
         v for k, v in usage.items()
         if isinstance(v, (int, float)) and "token" in k

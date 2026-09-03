@@ -362,7 +362,7 @@ class DashboardIntakeLaneTests(unittest.TestCase):
                 output = self._render(status, desired, claimed)
                 intake = self._section(output, "Intake (awaiting the operator)")
                 self.assertIn("Discovery: some", intake)
-                for heading in ("Active topics", "Queued topics", "Completed topics", "Needs attention", "Paused topics", "Unclassified items"):
+                for heading in ("Active topics", "Queued topics", "Completed topics", "Needs attention", "Paused topics"):
                     self.assertNotIn("Discovery: some", self._section(output, heading))
 
     def test_overview_counts_only_awaiting_intake(self):
@@ -402,3 +402,16 @@ class NeedsAttentionFlagTests(unittest.TestCase):
         section = self._render("STOP present: NEEDS-OPERATOR\nmore detail").split(
             "## Needs attention\n")[1].split("\n## ")[0]
         self.assertIn("STOP present", section)
+
+
+class UnclassifiedVisibilityTests(unittest.TestCase):
+    def test_empty_unclassified_section_is_omitted(self):
+        state = {"revision": 1, "paused": False, "items": []}
+        output = render_dashboard(state, [], generated_at=datetime(2026, 9, 3, tzinfo=UTC))
+        self.assertNotIn("## Unclassified items", output)
+
+    def test_malformed_item_still_surfaces_the_section(self):
+        state = {"revision": 1, "paused": False, "items": ["not-a-dict"]}
+        output = render_dashboard(state, [], generated_at=datetime(2026, 9, 3, tzinfo=UTC))
+        self.assertIn("## Unclassified items", output)
+        self.assertIn("malformed item", output)
