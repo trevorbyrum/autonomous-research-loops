@@ -145,6 +145,10 @@ class StateCliTests(unittest.TestCase):
             "--acceptance-summary", "s",
             "--counterevidence-summary", "s",
             "--add-evidence-ref", "FINDINGS-LOG.md",
+            "--adequate-search", json.dumps({
+                "summary": "s", "queries": ["q"],
+                "source_lanes": ["web"], "retrieval_failures": [],
+            }),
         )
         self.assertEqual(ok.returncode, 0, ok.stderr)
 
@@ -301,3 +305,63 @@ class DeferredEscalationTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse((self.topic_dir / "STOP").exists())
+
+
+class SaturationFloorTests(unittest.TestCase):
+    """supported/contradicted now require the adequate-search record at write
+    time (cheap support is unwritable), while grandfathered states validate."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.topic_dir = Path(self._tmp.name) / "topic"
+        shutil.copytree(EXAMPLE_TOPIC, self.topic_dir)
+        (self.topic_dir / "FINDINGS-LOG.md").write_text("finding\n", encoding="utf-8")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _first_id(self):
+        state = json.loads((self.topic_dir / "SEMANTIC-STATE.json").read_text())
+        return state["obligations"][0]["id"]
+
+    def test_supported_without_search_record_is_refused_at_write_time(self):
+        result = _run(
+            "transition", str(self.topic_dir), self._first_id(),
+            "--disposition", "supported",
+            "--counterevidence-reviewed", "true",
+            "--acceptance-summary", "s",
+            "--counterevidence-summary", "s",
+            "--add-evidence-ref", "FINDINGS-LOG.md",
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("adequate-search record", result.stderr)
+
+    def test_supported_with_search_record_lands(self):
+        result = _run(
+            "transition", str(self.topic_dir), self._first_id(),
+            "--disposition", "supported",
+            "--counterevidence-reviewed", "true",
+            "--acceptance-summary", "s",
+            "--counterevidence-summary", "s",
+            "--confidence", "mixed-support",
+            "--add-evidence-ref", "FINDINGS-LOG.md",
+            "--adequate-search", json.dumps({
+                "summary": "two lanes", "queries": ["q"],
+                "source_lanes": ["web"], "retrieval_failures": [],
+            }),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_grandfathered_supported_states_still_validate(self):
+        # Write-time-only strictness: a legacy state with supported-without-
+        # search must not start failing the DONE gate retroactively.
+        state = json.loads((self.topic_dir / "SEMANTIC-STATE.json").read_text())
+        o = state["obligations"][0]
+        o.update(disposition="supported", confidence="mixed-support",
+                 counterevidence_reviewed=True, acceptance_summary="s",
+                 counterevidence_summary="s", evidence_refs=["FINDINGS-LOG.md"],
+                 adequate_search=None)
+        (self.topic_dir / "SEMANTIC-STATE.json").write_text(
+            json.dumps(state, indent=2, sort_keys=True))
+        validate = _run("validate", str(self.topic_dir))
+        self.assertNotIn("adequate-search record", validate.stderr)

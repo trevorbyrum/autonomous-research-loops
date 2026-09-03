@@ -972,6 +972,25 @@ def apply_obligation_transition(
     if disposition not in TERMINAL_DISPOSITIONS and disposition != "open":
         return [f"invalid disposition {disposition!r}"]
     if disposition in TERMINAL_DISPOSITIONS:
+        # Saturation floor (operator ruling 2026-09-03): supported and
+        # contradicted must carry the same adequate-search record unresolved
+        # always required -- write-time only, so grandfathered states keep
+        # validating, but no NEW cheap-support transition can land.
+        if disposition in ("supported", "contradicted"):
+            search = candidate.get("adequate_search")
+            if not (
+                isinstance(search, dict)
+                and isinstance(search.get("summary"), str) and search["summary"].strip()
+                and isinstance(search.get("queries"), list) and search["queries"]
+                and isinstance(search.get("source_lanes"), list) and search["source_lanes"]
+                and isinstance(search.get("retrieval_failures"), list)
+            ):
+                return [
+                    f"terminal transition refused: disposition {disposition!r} now "
+                    "requires an adequate-search record (--adequate-search JSON with "
+                    "summary/queries/source_lanes/retrieval_failures) -- the same bar "
+                    "as unresolved; cheap support is no longer writable"
+                ]
         errors = obligation_terminal_errors(
             topic_dir,
             state,

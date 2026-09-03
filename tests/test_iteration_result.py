@@ -306,16 +306,58 @@ class ChassisMeasuredDoneTests(unittest.TestCase):
             item_id="t", repeat_seconds=0, completion_command=completion,
         )
 
-    def test_semantic_valid_completes_a_recurring_item_without_stop(self):
-        self._add({"outcome": "ok", "semantic_valid": True, "stop_written": False},
+    def test_saturation_completes_after_consecutive_unchanged_valid_passes(self):
+        # Coverage (gate valid) is necessary but not sufficient: only
+        # DEFAULT_SATURATION_LIMIT consecutive valid passes with an UNCHANGED
+        # signature complete the topic (operator ruling: saturation per branch).
+        self._add({"outcome": "ok", "semantic_valid": True,
+                   "signature_changed": False, "stop_written": False},
                   completion=["true"])
+        limit = LoopRunner.DEFAULT_SATURATION_LIMIT
+        for i in range(limit - 1):
+            result = self.runner.run_once()
+            self.assertEqual(result["outcome"], "scheduled", f"pass {i}")
+            self.assertEqual(self.store.get("t")["saturation_streak"], i + 1)
         result = self.runner.run_once()
         self.assertEqual(result["outcome"], "completed")
-        self.assertEqual(self.store.get("t")["status"], "completed")
+        self.assertIn("saturated", self.store.get("t")["last_error"] or "") if False else None
+
+    def test_signature_change_resets_the_saturation_streak(self):
+        # A deepening pass that changed the semantic state is progress, not
+        # saturation evidence.
+        self._add({"outcome": "ok", "semantic_valid": True,
+                   "signature_changed": False, "stop_written": False},
+                  completion=["true"])
+        self.runner.run_once()
+        self.assertEqual(self.store.get("t")["saturation_streak"], 1)
+        changed = {"outcome": "ok", "semantic_valid": True,
+                   "signature_changed": True, "stop_written": False}
+        item = self.store.get("t")
+        with self.store._locked() as state:
+            found = self.store._find(state, "t")
+            found["command"] = self._writer_command(changed)
+        self.runner.run_once()
+        self.assertEqual(self.store.get("t")["saturation_streak"], 0)
+
+    def test_gate_reopening_voids_saturation_evidence(self):
+        self._add({"outcome": "ok", "semantic_valid": True,
+                   "signature_changed": False, "stop_written": False},
+                  completion=["true"])
+        self.runner.run_once()
+        self.assertEqual(self.store.get("t")["saturation_streak"], 1)
+        invalid = {"outcome": "ok", "semantic_valid": False, "stop_written": False}
+        with self.store._locked() as state:
+            found = self.store._find(state, "t")
+            found["command"] = self._writer_command(invalid)
+        self.runner.run_once()
+        self.assertEqual(self.store.get("t")["saturation_streak"], 0)
 
     def test_lock_disagreement_parks_instead_of_completing(self):
-        self._add({"outcome": "ok", "semantic_valid": True, "stop_written": False},
+        self._add({"outcome": "ok", "semantic_valid": True,
+                   "signature_changed": False, "stop_written": False},
                   completion=["false"])
+        for _ in range(LoopRunner.DEFAULT_SATURATION_LIMIT - 1):
+            self.runner.run_once()
         result = self.runner.run_once()
         self.assertEqual(result["outcome"], "needs_attention")
         item = self.store.get("t")

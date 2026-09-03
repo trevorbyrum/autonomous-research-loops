@@ -696,6 +696,17 @@ class QueueStore:
             item["updated_at"] = utc_now()
             return item["stall_count"], copy.deepcopy(item)
 
+    def record_saturation_streak(self, item_id: str, streak: int) -> dict[str, Any]:
+        """Persist the saturation counter (consecutive semantically-valid runs
+        with an unchanged semantic signature). Owned by the runner's
+        saturation gate; survives worker restarts because completion must
+        never depend on one process's memory."""
+        with self._locked() as state:
+            item = self._find(state, item_id)
+            item["saturation_streak"] = int(streak)
+            item["updated_at"] = utc_now()
+            return copy.deepcopy(item)
+
     @staticmethod
     def _accepted_workers(item: dict[str, Any]) -> list[str]:
         accepted = item.get("accepted_by_workers", [])

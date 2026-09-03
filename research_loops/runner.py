@@ -849,6 +849,11 @@ class LoopRunner:
     # Applied when a research topic configures no stall_limit of its own.
     # Matches the value the current deployments pin explicitly.
     DEFAULT_STALL_LIMIT = 6
+    # Saturation gate: consecutive semantically-valid runs with an unchanged
+    # semantic signature required before a recurring research topic completes.
+    # Must stay below DEFAULT_STALL_LIMIT so saturation wins before the stall
+    # guard would park a genuinely finished topic.
+    DEFAULT_SATURATION_LIMIT = 3
 
     @staticmethod
     def _default_progress_command(item: dict[str, Any]) -> list[str] | None:
@@ -1199,27 +1204,48 @@ class LoopRunner:
                 isinstance(iteration_result, dict)
                 and iteration_result.get("semantic_valid") is True
             ):
-                # Chassis-measured DONE: the semantic gate passed this
-                # iteration even though the loop never wrote STOP DONE (a
-                # documented failure class: the agent SAYS "STOP DONE" in its
-                # reply instead of writing the file, then idles forever until
-                # the stall guard parks it). The chassis measures; the queue
+                # SATURATION GATE (operator ruling 2026-09-03: "saturation per
+                # branch"). Coverage — every obligation terminal, gate valid —
+                # is necessary but NOT sufficient for DONE. Once valid, the
+                # loop's iterations become deepening passes (chase logged
+                # leads, add evidence, elevate confidence on the weakest
+                # terminal obligations); any pass that changes the semantic
+                # signature resets the streak. Only saturation_limit
+                # consecutive valid passes with an UNCHANGED signature —
+                # positive evidence that deepening no longer changes anything
+                # — completes the topic. The chassis measures; the queue
                 # decides — re-validate with the pinned lock before acting.
-                completion_error = self._completion_error(item)
-                if completion_error is None:
-                    intended_outcome = "completed"
-                    message = (
-                        "chassis-measured DONE: semantic gate passed with no "
-                        "STOP file written by the loop"
-                    )
+                signature_changed = bool(iteration_result.get("signature_changed"))
+                previous_streak = int(item.get("saturation_streak") or 0)
+                streak = 0 if signature_changed else previous_streak + 1
+                saturation_limit = int(
+                    item.get("saturation_limit") or self.DEFAULT_SATURATION_LIMIT
+                )
+                if streak >= saturation_limit:
+                    completion_error = self._completion_error(item)
+                    if completion_error is None:
+                        intended_outcome = "completed"
+                        message = (
+                            f"saturated: {streak} consecutive semantically-valid "
+                            "deepening passes with an unchanged semantic signature"
+                        )
+                    else:
+                        intended_outcome = "needs_attention"
+                        error_kind = FailureKind.CONFIGURATION.value
+                        message = (
+                            "chassis reports the semantic gate passing but the "
+                            f"lock-pinned validation disagrees: {completion_error}"
+                        )
                 else:
-                    intended_outcome = "needs_attention"
-                    error_kind = FailureKind.CONFIGURATION.value
-                    message = (
-                        "chassis reports the semantic gate passing but the "
-                        f"lock-pinned validation disagrees: {completion_error}"
-                    )
+                    self.store.record_saturation_streak(item_id, streak)
+                    intended_outcome = "scheduled"
+                    next_at = datetime.now(timezone.utc) + timedelta(seconds=repeat_seconds)
+                    next_eligible_at = next_at.isoformat().replace("+00:00", "Z")
             else:
+                if int(item.get("saturation_streak") or 0):
+                    # The gate stopped validating (an obligation reopened):
+                    # saturation evidence is void.
+                    self.store.record_saturation_streak(item_id, 0)
                 intended_outcome = "scheduled"
                 next_at = datetime.now(timezone.utc) + timedelta(seconds=repeat_seconds)
                 next_eligible_at = next_at.isoformat().replace("+00:00", "Z")
