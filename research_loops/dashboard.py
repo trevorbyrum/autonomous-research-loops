@@ -184,9 +184,18 @@ def render_dashboard(
         owned = bool(item.get("claimed_by"))
         if item.get("lane") == "intake":
             # Intake work (discovery passes) is pipeline machinery, not
-            # research output -- it gets its own section, never a seat in
-            # the research tables.
-            categories["intake"].append((position, item))
+            # research output -- it never sits in the research tables.
+            # "Intake" means work still waiting on the operator: a pass in
+            # flight, or a finished pass whose topic is still an unapproved
+            # draft. A finished pass whose topic got approved is history and
+            # moves to the Completed-intakes table at the end of the doc.
+            if item.get("status") == "completed" and not (
+                isinstance(item.get("cwd"), str)
+                and (Path(item["cwd"]) / "DRAFT-TOPIC.md").is_file()
+            ):
+                categories["intake_done"].append((position, item))
+            else:
+                categories["intake"].append((position, item))
             continue
         if status == "completed":
             category = "completed"
@@ -299,17 +308,19 @@ def render_dashboard(
     ]
     lines.extend(["", "## Queued topics", "", _table(["Queue position", "Topic", "State", "Attempts", "Previously accepted by"], queued_rows)])
 
-    intake_rows = [
-        [
-            item.get("title", item.get("id")),
-            item.get("status"),
-            item.get("attempts", "unavailable"),
-            item.get("claimed_by") or "—",
-            item.get("finished_at") or "—",
+    def _intake_rows(entries):
+        return [
+            [
+                item.get("title", item.get("id")),
+                item.get("status"),
+                item.get("attempts", "unavailable"),
+                item.get("claimed_by") or "—",
+                item.get("finished_at") or "—",
+            ]
+            for _, item in entries
         ]
-        for _, item in categories["intake"]
-    ]
-    lines.extend(["", "## Intake (discovery passes)", "", _table(["Item", "State", "Attempts", "Owner", "Finished"], intake_rows)])
+
+    lines.extend(["", "## Intake (awaiting the operator)", "", _table(["Item", "State", "Attempts", "Owner", "Finished"], _intake_rows(categories["intake"]))])
 
     completed_rows = []
     for _, item in categories["completed"]:
@@ -371,6 +382,13 @@ def render_dashboard(
                     ["Newest retained process_finished", timestamps[-1] if timestamps else "unavailable"],
                 ],
             ),
+            "",
+            "## Completed intakes",
+            "",
+            _table(["Item", "Attempts", "Finished"], [
+                [item.get("title", item.get("id")), item.get("attempts", "unavailable"), item.get("finished_at") or "unavailable"]
+                for _, item in categories["intake_done"]
+            ]),
             "",
             "## Metric definitions and coverage",
             "",

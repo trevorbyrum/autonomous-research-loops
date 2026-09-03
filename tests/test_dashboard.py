@@ -326,11 +326,30 @@ class DashboardIntakeLaneTests(unittest.TestCase):
         body = output.split(f"## {heading}\n")[1]
         return body.split("\n## ")[0]
 
-    def test_completed_discovery_is_in_intake_not_completed(self):
+    def test_completed_resolved_discovery_moves_to_completed_intakes(self):
+        # No DRAFT-TOPIC.md at cwd -> the pass is resolved history, shown at
+        # the end of the doc, never in the awaiting table or research tables.
         output = self._render("completed")
-        self.assertIn("## Intake (discovery passes)", output)
-        self.assertIn("Discovery: some", self._section(output, "Intake (discovery passes)"))
+        self.assertIn("Discovery: some", self._section(output, "Completed intakes"))
+        self.assertNotIn("Discovery: some", self._section(output, "Intake (awaiting the operator)"))
         self.assertNotIn("Discovery: some", self._section(output, "Completed topics"))
+
+    def test_completed_discovery_with_open_draft_awaits_the_operator(self):
+        import tempfile, os
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "DRAFT-TOPIC.md").write_text("draft")
+            state = {
+                "revision": 1, "paused": False,
+                "items": [{
+                    "id": "discovery.some-topic", "title": "Discovery: some-topic",
+                    "status": "completed", "desired_state": "paused",
+                    "claimed_by": None, "attempts": 1, "lane": "intake",
+                    "cwd": tmp, "finished_at": "2026-09-03T00:00:00Z",
+                }],
+            }
+            output = render_dashboard(state, [], generated_at=datetime(2026, 9, 3, tzinfo=UTC))
+            self.assertIn("Discovery: some", self._section(output, "Intake (awaiting the operator)"))
+            self.assertNotIn("Discovery: some", self._section(output, "Completed intakes"))
 
     def test_every_intake_state_stays_out_of_research_tables(self):
         for status, desired, claimed in (
@@ -341,14 +360,17 @@ class DashboardIntakeLaneTests(unittest.TestCase):
         ):
             with self.subTest(status=status):
                 output = self._render(status, desired, claimed)
-                intake = self._section(output, "Intake (discovery passes)")
+                intake = self._section(output, "Intake (awaiting the operator)")
                 self.assertIn("Discovery: some", intake)
                 for heading in ("Active topics", "Queued topics", "Completed topics", "Needs attention", "Paused topics", "Unclassified items"):
                     self.assertNotIn("Discovery: some", self._section(output, heading))
 
-    def test_overview_counts_intake_separately(self):
+    def test_overview_counts_only_awaiting_intake(self):
         output = self._render("completed")
         overview = self._section(output, "Overview")
+        self.assertIn("| Intake | 0 |", overview.replace("  ", " "))
+        running = self._render("running", "running", "intake-1")
+        overview = self._section(running, "Overview")
         self.assertIn("| Intake | 1 |", overview.replace("  ", " "))
 
 
