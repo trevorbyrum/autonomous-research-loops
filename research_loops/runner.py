@@ -1195,6 +1195,30 @@ class LoopRunner:
                     message = stop_signal
             elif repeat_seconds is None:
                 intended_outcome = "completed"
+            elif (
+                isinstance(iteration_result, dict)
+                and iteration_result.get("semantic_valid") is True
+            ):
+                # Chassis-measured DONE: the semantic gate passed this
+                # iteration even though the loop never wrote STOP DONE (a
+                # documented failure class: the agent SAYS "STOP DONE" in its
+                # reply instead of writing the file, then idles forever until
+                # the stall guard parks it). The chassis measures; the queue
+                # decides — re-validate with the pinned lock before acting.
+                completion_error = self._completion_error(item)
+                if completion_error is None:
+                    intended_outcome = "completed"
+                    message = (
+                        "chassis-measured DONE: semantic gate passed with no "
+                        "STOP file written by the loop"
+                    )
+                else:
+                    intended_outcome = "needs_attention"
+                    error_kind = FailureKind.CONFIGURATION.value
+                    message = (
+                        "chassis reports the semantic gate passing but the "
+                        f"lock-pinned validation disagrees: {completion_error}"
+                    )
             else:
                 intended_outcome = "scheduled"
                 next_at = datetime.now(timezone.utc) + timedelta(seconds=repeat_seconds)

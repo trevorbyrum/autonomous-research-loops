@@ -159,6 +159,15 @@ after=$("$CHASSIS/progress-signature.sh" "$TOPIC_DIR")
 sources_after=$(python3 "$CHASSIS/semantic-state.py" source-count "$TOPIC_DIR" 2>/dev/null || echo 0)
 sources_cited=$((sources_after - sources_before))
 
+# Chassis-measured DONE-gate probe (no lock — the queue re-validates with the
+# pinned lock before acting). A loop that finishes its contract but fumbles
+# the STOP file write must never idle: the chassis measures, the queue decides.
+semantic_valid=false
+if [[ -f "$TOPIC_DIR/SEMANTIC-STATE.json" ]] && \
+   python3 "$CHASSIS/semantic-state.py" validate "$TOPIC_DIR" --topics-root "$(dirname "$TOPIC_DIR")" >/dev/null 2>&1; then
+  semantic_valid=true
+fi
+
 # The chassis→queue result record: chassis-level facts the queue classifies
 # from instead of scraping LLM transcript prose. Written on every path where
 # the runner actually ran, success or failure, and always runner-agnostic.
@@ -172,6 +181,7 @@ write_result() {
   RESULT_SOURCES_CITED="$sources_cited" RESULT_LOG="$log" \
   RESULT_RUNNER="$RUNNER_NAME" RESULT_TOPIC_DIR="$TOPIC_DIR" \
   RESULT_DEGRADED_FILE="${degraded_file:-}" \
+  RESULT_SEMANTIC_VALID="$semantic_valid" \
   python3 - "$LOG_DIR" <<'PY' || echo "warning: could not write iteration result record" >&2
 import json, os, sys
 
@@ -199,6 +209,7 @@ result = {
     "sources_cited": int(os.environ["RESULT_SOURCES_CITED"]),
     "stop_written": stop_written,
     "stop_first_line": stop_first,
+    "semantic_valid": os.environ.get("RESULT_SEMANTIC_VALID") == "true",
     "degraded_capabilities": degraded,
     "log": os.environ["RESULT_LOG"],
 }

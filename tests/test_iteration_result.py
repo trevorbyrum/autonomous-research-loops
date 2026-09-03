@@ -266,3 +266,64 @@ class DefaultCompletionValidationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ChassisMeasuredDoneTests(unittest.TestCase):
+    """A finished contract must complete even when the loop fumbles the STOP file.
+
+    Documented failure class (2026-09-03): the agent types "STOP DONE" in its
+    reply instead of writing the file, then idles until the stall guard parks
+    a genuinely finished topic. The chassis now probes the semantic gate each
+    iteration and reports semantic_valid; the queue re-validates with its own
+    completion authority before acting.
+    """
+
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name)
+        self.store = QueueStore(self.root)
+        self.ledger = UsageLedger(self.root / "state" / "events.jsonl")
+        self.runner = LoopRunner(self.store, self.ledger, poll_seconds=0.05)
+        self.cwd = self.root / "item-cwd"
+        (self.cwd / "logs").mkdir(parents=True)
+
+    def tearDown(self):
+        self.tempdir.cleanup()
+
+    def _writer_command(self, record: dict) -> list[str]:
+        script = (
+            "import json, pathlib, sys\n"
+            f"record = {record!r}\n"
+            f"path = pathlib.Path({str(self.cwd / 'logs' / 'latest-result.json')!r})\n"
+            "path.write_text(json.dumps(record) + '\\n')\n"
+            "sys.exit(0)\n"
+        )
+        return [sys.executable, "-c", script]
+
+    def _add(self, record, completion):
+        self.store.add(
+            title="t", cwd=str(self.cwd), command=self._writer_command(record),
+            item_id="t", repeat_seconds=0, completion_command=completion,
+        )
+
+    def test_semantic_valid_completes_a_recurring_item_without_stop(self):
+        self._add({"outcome": "ok", "semantic_valid": True, "stop_written": False},
+                  completion=["true"])
+        result = self.runner.run_once()
+        self.assertEqual(result["outcome"], "completed")
+        self.assertEqual(self.store.get("t")["status"], "completed")
+
+    def test_lock_disagreement_parks_instead_of_completing(self):
+        self._add({"outcome": "ok", "semantic_valid": True, "stop_written": False},
+                  completion=["false"])
+        result = self.runner.run_once()
+        self.assertEqual(result["outcome"], "needs_attention")
+        item = self.store.get("t")
+        self.assertEqual(item["last_error_kind"], "configuration")
+        self.assertIn("disagrees", item["last_error"])
+
+    def test_without_semantic_valid_the_cadence_continues(self):
+        self._add({"outcome": "ok", "semantic_valid": False, "stop_written": False},
+                  completion=["true"])
+        result = self.runner.run_once()
+        self.assertEqual(result["outcome"], "scheduled")
