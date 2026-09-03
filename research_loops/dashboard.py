@@ -103,22 +103,6 @@ def _models(events: list[dict[str, Any]]) -> str:
     return ", ".join(names) if names else "unavailable"
 
 
-def _accepted_label(item: dict[str, Any]) -> str:
-    accepted = item.get("accepted_by_workers")
-    if not isinstance(accepted, list):
-        return "none"
-    workers = [str(worker) for worker in accepted if isinstance(worker, str)]
-    return ", ".join(workers) if workers else "none"
-
-
-# The moment the saturation regime went live (workers restarted onto the
-# saturation-gate runner, 2026-09-03). Iteration economics deliberately
-# ignores everything before it: pre-saturation iterations ran under exit
-# semantics the operator ruled inadequate, so they would poison any
-# planning ballpark for what topics cost under the current engine.
-SATURATION_EPOCH = "2026-09-03T13:51:51"
-
-
 def _iteration_economics(
     items: list[Any], by_item: dict[str, list[dict[str, Any]]]
 ) -> list[list[Any]] | None:
@@ -417,10 +401,10 @@ def render_dashboard(
     lines.extend(["", "## Active topics", "", _table(["Topic", "Worker", "State", "Queue iteration", "Profile", "Next eligible"], active_rows)])
 
     queued_rows = [
-        [position, item.get("title", item.get("id")), item.get("status"), item.get("attempts", "unavailable"), _accepted_label(item)]
+        [position, item.get("title", item.get("id")), item.get("attempts", "unavailable")]
         for position, item in categories["queued"]
     ]
-    lines.extend(["", "## Queued topics", "", _table(["Queue position", "Topic", "State", "Attempts", "Previously accepted by"], queued_rows)])
+    lines.extend(["", "## Queued topics", "", _table(["Queue position", "Topic", "Attempts"], queued_rows)])
 
     def _intake_rows(entries):
         return [
