@@ -292,6 +292,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--flags", dest="agent_flags",
         help="extra CLI flags for the main adapter (sets RESEARCH_LOOP_<RUNNER>_FLAGS); '' to unset",
     )
+    worker_agents.add_argument(
+        "--interval", dest="interval_seconds", type=int,
+        help="station cadence: seconds to pause between iterations (0 = continuous)",
+    )
     worker_agents.add_argument("--clear", action="store_true", help="drop the profile")
     sync = sub.add_parser(
         "sync",
@@ -553,6 +557,7 @@ def main(argv: list[str] | None = None) -> int:
                     agent_secondary=args.agent_secondary,
                     agent_model=args.agent_model,
                     agent_flags=args.agent_flags,
+                    interval_seconds=args.interval_seconds,
                     clear=args.clear,
                 )
             )

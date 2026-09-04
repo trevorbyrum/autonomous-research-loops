@@ -110,3 +110,47 @@ class RunnerUsesStationProfileTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StationIntervalTests(unittest.TestCase):
+    """Cadence is a station property: the runner pauses by the worker's
+    interval, and topics carry only recurring-vs-bounded."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.store = QueueStore(self.root)
+        self.ledger = UsageLedger(self.root / "state" / "events.jsonl")
+        self.runner = LoopRunner(self.store, self.ledger, poll_seconds=0.05)
+        self.cwd = self.root / "item-cwd"
+        (self.cwd / "logs").mkdir(parents=True)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_profile_interval_validation_and_roundtrip(self):
+        with self.assertRaises(QueueError):
+            self.store.configure_worker_agents("worker-1", interval_seconds=-1)
+        self.store.configure_worker_agents("worker-1", interval_seconds=1800)
+        self.assertEqual(self.store.station_interval("worker-1"), 1800)
+        self.assertEqual(self.store.station_interval("worker-9"), 0)
+
+    def test_runner_pauses_by_station_interval_not_item(self):
+        self.store.add(
+            title="t", cwd=str(self.cwd), command=["true"], item_id="t", repeat_seconds=0,
+        )
+        self.store.configure_worker_agents("worker-1", interval_seconds=1800)
+        result = self.runner.run_once()
+        self.assertEqual(result["outcome"], "scheduled")
+        item = self.store.get("t")
+        self.assertIsNotNone(item["next_eligible_at"])  # continuous item, but station pauses
+
+    def test_continuous_station_keeps_continuous_item_immediate(self):
+        self.store.add(
+            title="t", cwd=str(self.cwd), command=["true"], item_id="t", repeat_seconds=0,
+        )
+        self.store.configure_worker_agents("worker-1", agent_main="claude", interval_seconds=0)
+        self.runner.run_once()
+        # With a 0 gap the item is eligible again at once (next_eligible_at ~ now).
+        item = self.store.get("t")
+        self.assertEqual(item["status"], "backoff")
