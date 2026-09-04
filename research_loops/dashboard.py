@@ -356,7 +356,12 @@ def render_dashboard(
             worker,
             item.get("status"),
             iteration,
-            _profile_for(item, str(worker) if worker else None, events),
+            (
+                # Station configuration wins: the worker's agent profile is
+                # what actually runs the iteration (queue items carry no binding).
+                ((state.get("worker_agents") or {}).get(str(worker)) or {}).get("agent_main")
+                or _profile_for(item, str(worker) if worker else None, events)
+            ),
             "running now"
             if item.get("status") == "running"
             else item.get("next_eligible_at") or "eligible now",

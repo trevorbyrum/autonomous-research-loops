@@ -194,12 +194,37 @@ class EngineTools:
     def swap_active(self, worker: str, topic_id: str) -> dict[str, Any]:
         return self.store.reassign_worker(worker, topic_id)
 
+    def set_worker_agents(
+        self,
+        worker: str,
+        agent_main: str | None = None,
+        agent_secondary: str | None = None,
+        agent_model: str | None = None,
+        agent_flags: str | None = None,
+        clear: bool = False,
+    ) -> dict[str, Any]:
+        """Set a worker's agent profile -- which harness/model pair that
+        station runs. The queue carries no agent binding; this is the one
+        place agents are configured."""
+        return self.store.configure_worker_agents(
+            worker,
+            agent_main=agent_main,
+            agent_secondary=agent_secondary,
+            agent_model=agent_model,
+            agent_flags=agent_flags,
+            clear=clear,
+        )
+
     def set_agents(
         self,
         topic_id: str,
         agent_main: str | None = None,
         agent_secondary: str | None = None,
     ) -> dict[str, Any]:
+        raise QueueError(
+            "set_agents is deprecated: agents are a worker (station) property, "
+            "not a topic property -- use set_worker_agents(worker, ...)"
+        )
         settings: dict[str, Any] = {}
         if agent_main is not None:
             settings["agent_main"] = agent_main or None
@@ -415,6 +440,7 @@ _OPERATOR_TOOLS = (
     "restart_topic",
     "swap_active",
     "set_agents",
+    "set_worker_agents",
     "refresh_topic",
     "relock_topic",
     "draft_topic",

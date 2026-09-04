@@ -193,29 +193,31 @@ class CliTests(unittest.TestCase):
         paused_now = json.loads(self.run_cli("pause", "queued", "--now").stdout)
         self.assertEqual(paused_now["status"], "paused")
 
-    def test_agents_cli_swaps_main_and_secondary_independently(self):
-        self.run_cli(
-            "add", "--id", "t1", "--title", "T1", "--cwd", "/tmp",
-            "--agent-main", "claude", "--agent-secondary", "codex", "--", "true",
-        )
-        after_main = json.loads(self.run_cli("agents", "t1", "--main", "hermes").stdout)
-        self.assertEqual(after_main["agent_main"], "hermes")
-        self.assertEqual(after_main["agent_secondary"], "codex")
-
-        after_secondary = json.loads(
-            self.run_cli("agents", "t1", "--secondary", "qwen3.8-27b").stdout
-        )
-        self.assertEqual(after_secondary["agent_main"], "hermes")
-        self.assertEqual(after_secondary["agent_secondary"], "qwen3.8-27b")
-
-        cleared = json.loads(self.run_cli("agents", "t1", "--secondary", "").stdout)
-        self.assertEqual(cleared["agent_main"], "hermes")
-        self.assertIsNone(cleared["agent_secondary"])
-
-    def test_agents_cli_requires_at_least_one_flag(self):
+    def test_agents_cli_is_deprecated_in_favor_of_worker_agents(self):
         self.run_cli("add", "--id", "t1", "--title", "T1", "--cwd", "/tmp", "--", "true")
-        result = self.run_cli("agents", "t1", check=False)
+        result = self.run_cli("agents", "t1", "--main", "hermes", check=False)
         self.assertNotEqual(result.returncode, 0)
+        self.assertIn("worker-agents", result.stderr + result.stdout)
+
+    def test_worker_agents_cli_configures_the_station_not_the_queue(self):
+        # Agents are a worker (station) property: the queue item stays untouched.
+        self.run_cli("add", "--id", "t1", "--title", "T1", "--cwd", "/tmp", "--", "true")
+        first = json.loads(self.run_cli(
+            "worker-agents", "worker-1", "--main", "codex", "--model", "gpt-5.6-terra",
+            "--secondary", "claude -p --model claude-haiku-4-5-20251001",
+        ).stdout)
+        self.assertEqual(first["profile"]["agent_main"], "codex")
+        self.assertEqual(first["profile"]["agent_model"], "gpt-5.6-terra")
+        item = json.loads(self.run_cli("status").stdout)["items"][0]
+        self.assertIsNone(item.get("agent_main"))  # queue carries no binding
+        # Merge semantics: unset one field with "", others survive.
+        second = json.loads(self.run_cli("worker-agents", "worker-1", "--secondary", "").stdout)
+        self.assertEqual(second["profile"]["agent_main"], "codex")
+        self.assertNotIn("agent_secondary", second["profile"])
+        # No fields at all is an error; --clear drops the profile.
+        self.assertNotEqual(self.run_cli("worker-agents", "worker-1", check=False).returncode, 0)
+        cleared = json.loads(self.run_cli("worker-agents", "worker-1", "--clear").stdout)
+        self.assertEqual(cleared["profile"], {})
 
     def test_swap_active_cli_claims_target_for_worker(self):
         self.run_cli("add", "--id", "target", "--title", "T", "--cwd", "/tmp", "--", "true")

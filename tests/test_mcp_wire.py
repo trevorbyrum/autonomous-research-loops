@@ -164,8 +164,14 @@ class WireTests(unittest.TestCase):
                     await call(
                         "swap_active", {"worker": "worker-1", "topic_id": "wire-topic"}
                     )
+                    # Per-item agents are deprecated (station property now):
+                    # a tool error on the wire, never a silent no-op.
+                    await call(
+                        "set_agents", {"topic_id": "wire-topic", "agent_main": "hermes"},
+                        expect_error=True,
+                    )
                     agents = await call(
-                        "set_agents", {"topic_id": "wire-topic", "agent_main": "hermes"}
+                        "set_worker_agents", {"worker": "worker-1", "agent_main": "hermes"}
                     )
                     self.assertIn("hermes", agents)
                     await call("relock_topic", {"topic_id": "wire-topic"})
