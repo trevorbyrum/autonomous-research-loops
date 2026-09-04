@@ -1362,7 +1362,74 @@ class LoopRunner:
         self.ledger.append(event)
         if stall_event is not None:
             self.ledger.append(stall_event)
+        if outcome == "completed":
+            hook_event = self._run_completion_hook(item)
+            if hook_event is not None:
+                self.ledger.append(hook_event)
         return {"item_id": item_id, "outcome": outcome, "exit_code": exit_code}
+
+    # Completion hooks are given generous room (a corpus ingest embeds every
+    # record) but never unbounded: a hung hook must not wedge the worker.
+    COMPLETION_HOOK_TIMEOUT_SECONDS = 1800
+
+    def _run_completion_hook(self, item: dict[str, Any]) -> dict[str, Any] | None:
+        """Run the item's on_completed_command exactly once, after it lands
+        completed.
+
+        Operator ruling 2026-09-04: derived stores (e.g. a knowledge graph)
+        are fed by a mechanical backfill at topic completion, never by the
+        research agent writing per-source mid-loop. The hook is therefore a
+        plain subprocess with the topic dir in its environment -- no LLM in
+        the write path.
+
+        The hook is derivative by definition: the completed research already
+        exists in the topic's own ledgers. So a hook failure is recorded as a
+        completion_hook event (ok=false) and NEVER changes the item's
+        completed status -- re-run the command by hand after fixing whatever
+        broke; it must be idempotent.
+        """
+        command = item.get("on_completed_command")
+        if not command:
+            return None
+        env = {
+            **os.environ,
+            "RESEARCH_LOOP_TOPIC_DIR": item["cwd"],
+            "RESEARCH_LOOP_ITEM_ID": item["id"],
+        }
+        started = datetime.now(timezone.utc)
+        try:
+            proc = subprocess.run(
+                command,
+                cwd=item["cwd"],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=self.COMPLETION_HOOK_TIMEOUT_SECONDS,
+            )
+            exit_code: int | None = proc.returncode
+            tail = ((proc.stdout or "") + (proc.stderr or ""))[-2000:]
+        except subprocess.TimeoutExpired:
+            exit_code = None
+            tail = (
+                f"completion hook timed out after "
+                f"{self.COMPLETION_HOOK_TIMEOUT_SECONDS}s"
+            )
+        except OSError as error:
+            exit_code = None
+            tail = f"completion hook failed to start: {error}"
+        return {
+            "type": "completion_hook",
+            "item_id": item["id"],
+            "worker": self.worker,
+            "command": list(command),
+            "exit_code": exit_code,
+            "ok": exit_code == 0,
+            "duration_seconds": round(
+                (datetime.now(timezone.utc) - started).total_seconds(), 3
+            ),
+            "output_tail": tail,
+            "ts": started.isoformat().replace("+00:00", "Z"),
+        }
 
     # Retention sweeps are daily housekeeping, not per-run work: the events
     # sweep re-reads the whole ledger, so running it every cycle would add

@@ -106,6 +106,14 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("--usage-file")
     add.add_argument("--stop-file")
     add.add_argument(
+        "--on-completed",
+        help=(
+            "shell-free argv (JSON array) run once when the item lands "
+            "completed (e.g. a corpus ingest); failure is ledgered, never "
+            "un-completes the item"
+        ),
+    )
+    add.add_argument(
         "--progress-command",
         help=(
             "shell-free argv (JSON array) printing a qualifying-progress digest; "
@@ -482,6 +490,11 @@ def main(argv: list[str] | None = None) -> int:
                 progress_command = json.loads(args.progress_command)
                 if not isinstance(progress_command, list):
                     raise QueueError("progress_command must be a JSON array")
+            on_completed_command = None
+            if args.on_completed:
+                on_completed_command = json.loads(args.on_completed)
+                if not isinstance(on_completed_command, list):
+                    raise QueueError("on_completed must be a JSON array")
             depends_on = (
                 [value.strip() for value in args.depends_on.split(",") if value.strip()]
                 if args.depends_on
@@ -497,6 +510,7 @@ def main(argv: list[str] | None = None) -> int:
                     usage_file=args.usage_file,
                     stop_file=args.stop_file,
                     progress_command=progress_command,
+                    on_completed_command=on_completed_command,
                     stall_limit=args.stall_limit,
                     max_attempts=args.max_attempts,
                     repeat_seconds=args.repeat_seconds,
@@ -597,6 +611,7 @@ def main(argv: list[str] | None = None) -> int:
                         agent_secondary=settings.agent_secondary,
                         gap_policy=settings.gap_policy,
                         gap_auto_limit=settings.gap_auto_limit,
+                        on_completed_command=settings.on_completed_command,
                         internal_citations=settings.internal_citations,
                         topic_refresh=settings.topic_refresh,
                         topic_refresh_mode=settings.topic_refresh_mode,

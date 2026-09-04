@@ -228,6 +228,7 @@ class QueueStore:
         stop_file: str | None = None,
         completion_command: list[str] | None = None,
         progress_command: list[str] | None = None,
+        on_completed_command: list[str] | None = None,
         stall_limit: int | None = None,
         depends_on: list[str] | None = None,
         agent_main: str | None = None,
@@ -282,6 +283,9 @@ class QueueStore:
             ),
             "depends_on": resolved_dependencies,
             "progress_command": list(progress_command) if progress_command else None,
+            "on_completed_command": (
+                list(on_completed_command) if on_completed_command else None
+            ),
             "stall_limit": stall_limit,
             "agent_main": agent_main,
             "agent_secondary": agent_secondary,
@@ -345,6 +349,7 @@ class QueueStore:
         "completion_command",
         "depends_on",
         "progress_command",
+        "on_completed_command",
         "stall_limit",
         "agent_main",
         "agent_secondary",
@@ -379,6 +384,8 @@ class QueueStore:
         "internal_citations",
         "topic_refresh",
         "topic_refresh_mode",
+        # Read exactly once, when an item lands completed -- never mid-run.
+        "on_completed_command",
     )
 
     def sync(
@@ -574,6 +581,18 @@ class QueueStore:
         ):
             raise QueueError("repeat_seconds must be a non-negative integer")
         lane = _validate_lane(entry.get("lane") or "research")
+        on_completed_command = entry.get("on_completed_command")
+        if on_completed_command is not None and (
+            not isinstance(on_completed_command, list)
+            or not on_completed_command
+            or not all(
+                isinstance(part, str) and part.strip()
+                for part in on_completed_command
+            )
+        ):
+            raise QueueError(
+                "on_completed_command must be a non-empty JSON array of non-empty strings"
+            )
         progress_command = entry.get("progress_command")
         if progress_command is not None and (
             not isinstance(progress_command, list)
@@ -640,6 +659,9 @@ class QueueStore:
             ),
             "depends_on": resolved_dependencies,
             "progress_command": list(progress_command) if progress_command else None,
+            "on_completed_command": (
+                list(on_completed_command) if on_completed_command else None
+            ),
             "stall_limit": stall_limit,
             "agent_main": agent_main,
             "agent_secondary": agent_secondary,
