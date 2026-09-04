@@ -27,26 +27,55 @@ prompt="$(cat "$prompt_file")"
 model_flag=()
 [[ -n "${RESEARCH_LOOP_CODEX_MODEL:-}" ]] && model_flag=(-m "$RESEARCH_LOOP_CODEX_MODEL")
 
-# Capture the transcript (still streamed to stdout for run-topic.sh's log) so
-# the usage record the queue's dashboard reads can be written: `codex exec`
-# prints a trailing "tokens used" / "<N>" pair; model is whatever we asked for.
-tmp_out="$(mktemp)"
+# OpenAI's documented headless pattern: `--json` turns stdout into a JSONL
+# event stream (turn.completed carries token usage), `-o` captures the
+# agent's final message, and stdin is explicitly closed -- codex exec reads
+# extra instructions from a piped stdin and blocks forever on one that never
+# closes ("Reading additional input from stdin..."). Sandbox/approval flags
+# come from RESEARCH_LOOP_CODEX_FLAGS (the worker's agent_flags profile).
+events="$(mktemp)"
+last_message="$(mktemp)"
 set +e
 # shellcheck disable=SC2086
-"$bin" exec "${model_flag[@]}" ${RESEARCH_LOOP_CODEX_FLAGS:-} "$prompt" | tee "$tmp_out"
+"$bin" exec "${model_flag[@]}" --json -o "$last_message" ${RESEARCH_LOOP_CODEX_FLAGS:-} "$prompt" \
+  </dev/null | tee "$events"
 rc=${PIPESTATUS[0]}
 set -e
+if [[ -s "$last_message" ]]; then
+  printf '\n--- final message ---\n'
+  cat "$last_message"
+  printf '\n'
+fi
 if [[ -n "${RESEARCH_LOOP_USAGE_FILE:-}" ]]; then
-  python3 - "$tmp_out" "$RESEARCH_LOOP_USAGE_FILE" "${RESEARCH_LOOP_CODEX_MODEL:-}" <<'PY' 2>/dev/null || true
-import json, re, sys
-text = open(sys.argv[1], errors="replace").read()
-tokens = None
-for m in re.finditer(r"tokens used\s*\n\s*([0-9][0-9,]*)", text):
-    tokens = int(m.group(1).replace(",", ""))  # last occurrence wins
-out = {"provider": "openai", "model": sys.argv[3] or None, "total_tokens": tokens}
+  python3 - "$events" "$RESEARCH_LOOP_USAGE_FILE" "${RESEARCH_LOOP_CODEX_MODEL:-}" <<'PY' 2>/dev/null || true
+import json, sys
+total, turns, seen = 0, 0, False
+for line in open(sys.argv[1], errors="replace"):
+    line = line.strip()
+    if not line.startswith("{"):
+        continue
+    try:
+        event = json.loads(line)
+    except ValueError:
+        continue
+    if event.get("type") != "turn.completed":
+        continue
+    turns += 1
+    usage = event.get("usage") or {}
+    for key in ("input_tokens", "output_tokens", "reasoning_output_tokens"):
+        value = usage.get(key)
+        if isinstance(value, (int, float)):
+            total += int(value)
+            seen = True
+out = {
+    "provider": "openai",
+    "model": sys.argv[3] or None,
+    "api_calls": turns or None,
+    "total_tokens": total if seen else None,
+}
 with open(sys.argv[2], "w", encoding="utf-8") as fh:
     json.dump(out, fh)
 PY
 fi
-rm -f "$tmp_out"
+rm -f "$events" "$last_message"
 exit "$rc"
