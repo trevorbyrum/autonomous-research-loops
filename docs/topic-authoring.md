@@ -71,7 +71,7 @@ incomplete entries, but not a *plausible*, well-formed, silently altered invento
 The completion lock closes that gap: `research_loops/chassis/semantic-state.py lock topics/my-topic`
 hashes the exact `id`/`text`/`source_ref` of every obligation and `id`/`description`/
 `path`/`required_headings` of every deliverable, and `validate --lock-sha256 <hash>`
-refuses `DONE` if that hash no longer matches — catching exactly the tampering above,
+refuses completion if that hash no longer matches — catching exactly the tampering above,
 whether or not `TOPIC.md`/`AUTHORITY.md` changed. `approve-topic` computes this
 lock and bakes `--lock-sha256` straight into the `research-loops add` command it prints;
 `research-loops add --lock-sha256 ...` and a manifest's `completion_lock` field both

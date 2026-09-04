@@ -32,12 +32,24 @@ evidence-graded disposition, decided by a validator, not by the agent's own say-
   process) can actually decide the real question — which library to use, how to
   architect something, what the answer is — not to hand down that decision itself. See
   [`docs/governance.md`](docs/governance.md#the-output-is-evidence-not-a-verdict).
-- **Completion is executable, not asserted.** `semantic-state.py validate` either passes
-  or it doesn't; a research agent writing `STOP DONE` while obligations remain open gets
-  overruled by the queue, every time. `approve-topic` and `add` also pin a
-  completion-inventory lock by default, so an agent can't reach `DONE` by adding,
-  removing, or renaming an obligation directly in `SEMANTIC-STATE.json` either — see
+- **Completion is measured, never asserted.** A research topic finishes only through
+  the saturation gate: consecutive deepening passes that leave the semantic signature
+  unchanged while `semantic-state.py validate` passes. An agent writing `STOP DONE` is
+  simply ignored — the file is discarded and the loop reschedules; the one terminal
+  signal an agent owns is `STOP NEEDS-OPERATOR` (I'm blocked), which is an escalation,
+  not a completion claim. `approve-topic` and `add` also pin a completion-inventory
+  lock by default, so a topic can't reach completion by adding, removing, or renaming
+  an obligation directly in `SEMANTIC-STATE.json` either — see
   [`docs/topic-authoring.md`](docs/topic-authoring.md#the-completion-lock-why-topicmdauthoritymd-hashes-arent-enough-on-their-own).
+- **Workers are stations; cadence and agent choice are station properties.** Each
+  worker carries a profile (runner, model, delegate, flags, iteration interval) set
+  with `research-loops worker-agents`; queue position is priority across stations, and
+  a faster station takes the higher-priority topic off a slower one at an iteration
+  boundary (see [`docs/architecture.md`](docs/architecture.md#stations-and-the-cascade)).
+- **Completion can trigger downstream ingestion, mechanically.** An optional
+  `on_completed_command` per item runs exactly once when the topic lands completed —
+  e.g. to index the finished corpus into your own knowledge store. Failures are
+  ledgered and never un-complete the research; no LLM sits in that write path.
 - **Liveness and completion are different questions.** A topic that stops making real
   progress gets flagged for a human — it never gets silently marked finished just
   because nothing changed.

@@ -52,6 +52,9 @@ gap_auto_limit = 0
 # `config apply` — it never silently reconfigures a queue item that isn't
 # listed under [topics.*].
 [topics.example-topic]
+# Optional: argv run exactly once when this topic lands completed (e.g. index the
+# finished corpus into your own store). Ledgered on failure, never un-completes.
+# on_completed_command = ["/home/you/bin/my-corpus-ingest"]
 repeat_seconds = 600
 max_attempts = 5
 

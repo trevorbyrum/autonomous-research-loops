@@ -48,6 +48,29 @@ already on, never starts anything new"):
 bin/research-loops worker-policy worker-2 --claim-limit 0
 ```
 
+## Station profiles (worker-agents)
+
+Cadence and agent assignment belong to the worker (the *station*), not to queue items.
+Configure each station once:
+
+```bash
+bin/research-loops worker-agents worker-1 \
+  --main codex --model gpt-5.6-terra \
+  --secondary 'codex exec --model gpt-5.6-luna ...' \
+  --flags '--sandbox danger-full-access -c approval_policy=never ...' \
+  --interval 0          # 0 = continuous; seconds otherwise
+bin/research-loops worker-agents worker-2 --interval 1800   # partial updates fine
+```
+
+The runner re-reads the profile at every iteration spawn, so changes take effect at
+the next boundary with no restart. Station N+1 may never have a shorter interval than
+station N (max 5 stations). Queue position is priority across stations — a faster
+station takes the higher-priority topic off a slower one at an iteration boundary
+(immediately if the slower station is idle between iterations, else it reserves the
+topic and waits for the boundary). Use `swap-active <worker> <item>` for manual
+reassignment; it lands the in-flight iteration first and refuses to steal from
+another worker. The old per-item `agents` verb is deprecated and refuses to run.
+
 ## Declarative config
 
 `bin/research-loops` primitives (`add`, `sync`, `run --worker`) are enough on their own;
@@ -114,6 +137,24 @@ reopens/appends real obligations in `SEMANTIC-STATE.json` before the item is eve
 requeued, so the agent discovers the new work exactly the way it discovers any other
 open obligation. See `research_loops/chassis/refresh-policy.py`'s module docstring for
 the exact mechanics of each mode.
+
+## The completion hook (`on_completed_command`)
+
+To feed a derived store (knowledge graph, vector index, anything) when a topic
+finishes, give the item a hook:
+
+```bash
+bin/research-loops add ... --on-completed '["/home/you/bin/my-corpus-ingest"]'
+# or later, per topic, via config apply:
+#   [topics.my-topic]
+#   on_completed_command = ["/home/you/bin/my-corpus-ingest"]
+```
+
+The worker runs it exactly once when the item lands `completed` (any path, including
+the saturation gate), with `RESEARCH_LOOP_TOPIC_DIR`/`RESEARCH_LOOP_ITEM_ID` set,
+30-minute timeout. Failure is ledgered as a `completion_hook` event and never
+un-completes the item — make the command idempotent and re-run it by hand after
+fixing whatever broke. Keep credentials in the hook's own config outside the repo.
 
 ## Queue control
 
@@ -204,7 +245,7 @@ own) and stall escalations (liveness is a judgment call). Those wait for you.
 
 Operator scope edits (adding an obligation outside the gap-policy path, retiring one,
 renaming a deliverable) change the completion inventory, and the pinned
-`completion_lock` will then reject every future `DONE` with "approved completion
+`completion_lock` will then reject every future completion with "approved completion
 inventory lock mismatch" — permanently, by design, until you re-pin it. The sanctioned
 path after you've made and reviewed the edit:
 

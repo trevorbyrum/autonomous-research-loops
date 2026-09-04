@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+- **Breaking (semantics): completion is saturation-only for research topics.** A
+  recurring item carrying `SEMANTIC-STATE.json` completes exclusively through the
+  saturation gate — `saturation_limit` (default 3) consecutive semantically-valid
+  deepening passes with an unchanged semantic signature, re-validated against the
+  pinned completion lock. An agent-written `STOP DONE` is discarded (file unlinked,
+  `ignored_stop_done` on the event) instead of completing or parking the item; the
+  DONE instruction is gone from `ITERATION-PROMPT.md`/`CONTRACT-CORE.md`.
+  `NEEDS-OPERATOR` keeps full escalation authority. Bounded one-shots and generic
+  loops keep accept-on-DONE (no saturation signal exists for them).
+- Reactivating a completed item (`refresh`, `restart` out of completed) now deletes
+  its leftover terminal STOP file — previously the chassis's stale-STOP rule parked a
+  re-opened topic on its first iteration back.
+- **`on_completed_command`:** optional per-item argv run exactly once when an item
+  lands completed (any completion path), with `RESEARCH_LOOP_TOPIC_DIR`/
+  `RESEARCH_LOOP_ITEM_ID` exported; result ledgered as a `completion_hook` event;
+  failure never un-completes the item. Settable via `add --on-completed`, `sync`,
+  `configure_topic`, and `config apply`.
+- **Stations:** cadence and agent assignment moved from queue items to worker
+  profiles (`research-loops worker-agents`; the per-item `agents` verb now refuses
+  with a deprecation error). Queue position is priority across stations: a
+  faster station claims the higher-priority topic off a slower one at an iteration
+  boundary (`reserved_for` wait if mid-iteration), up to 5 stations with a monotonic
+  cadence invariant. `swap-active` performs manual reassignment landing the in-flight
+  iteration first.
+
 - **Breaking:** `chassis/`, `runners/`, `templates/`, and `schema/` moved under
   `research_loops/` (e.g. `chassis/run-topic.sh` is now
   `research_loops/chassis/run-topic.sh`), and `[tool.setuptools.package-data]` now

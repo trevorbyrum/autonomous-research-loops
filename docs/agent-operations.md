@@ -31,7 +31,7 @@ research-loops approve-topic <topic-id>
 `approve-topic`'s JSON output includes a `suggested_command` field — a complete,
 ready-to-run `research-loops add ...` command with `--lock-sha256` already filled in.
 **Copy that command exactly.** Do not reconstruct it by hand, and do not omit
-`--lock-sha256` — without it, `DONE` is only checked structurally, not against the
+`--lock-sha256` — without it, completion is only checked structurally, not against the
 approved obligation/deliverable inventory (see `docs/topic-authoring.md#the-completion-lock`).
 
 Common mistakes:

@@ -63,7 +63,11 @@ and found nothing" and "I couldn't look." Conflating the two produces a false
 
 A topic can be alive (making real changes every iteration) without being close to done.
 A topic can also *stop* making changes without being done — that's a stall, and the
-correct response is escalation to a human, never a mechanical `DONE`. No iteration
+correct response is escalation to a human, never a mechanical completion. The inverse
+also holds: an agent *believing* it is done carries no authority. A research agent's
+self-declared `DONE` is discarded outright; the queue completes a topic only on
+measured saturation — consecutive deepening passes that change nothing while the
+executable gate passes. The only terminal signal an agent owns is `NEEDS-OPERATOR`. No iteration
 count, token budget, or elapsed time substitutes for the actual completion check. See
 `docs/architecture.md` for the mechanism; this page is about why that mechanism exists
 at all — a fixed budget is an invitation to declare victory at the budget, regardless of
