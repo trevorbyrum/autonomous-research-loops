@@ -346,51 +346,6 @@ def render_dashboard(
         ]
     )
 
-    worker_ids = {"worker-1"}
-    policies = state.get("worker_policies")
-    if isinstance(policies, dict):
-        worker_ids.update(str(worker) for worker in policies)
-    for _, item in enumerate(items):
-        if isinstance(item, dict):
-            if item.get("claimed_by"):
-                worker_ids.add(str(item["claimed_by"]))
-            accepted = item.get("accepted_by_workers")
-            if isinstance(accepted, list):
-                worker_ids.update(str(worker) for worker in accepted if isinstance(worker, str))
-    for event in events:
-        if isinstance(event, dict) and event.get("worker"):
-            worker_ids.add(str(event["worker"]))
-
-    worker_rows = []
-    for worker in sorted(worker_ids):
-        owned_items = [
-            item
-            for item in items
-            if isinstance(item, dict) and item.get("claimed_by") == worker
-        ]
-        owned_item = next(
-            (
-                item
-                for item in owned_items
-                if item.get("status") in {"running", "backoff"}
-                and item.get("desired_state") == "running"
-            ),
-            owned_items[0] if owned_items else None,
-        )
-        policy = policies.get(worker) if isinstance(policies, dict) and isinstance(policies.get(worker), dict) else {}
-        limit = policy.get("claim_limit")
-        intake = "continuous" if limit is None else f"finite {policy.get('claims_used', 0)}/{limit}"
-        if owned_item is None:
-            activity = "idle / no ownership"
-            profile = "unavailable"
-            topic = "—"
-        else:
-            activity = str(owned_item.get("status", "unclassified"))
-            profile = _profile_for(owned_item, worker, events)
-            topic = owned_item.get("title", owned_item.get("id", "unavailable"))
-        worker_rows.append([worker, activity, topic, profile, intake])
-    lines.extend(["", "## Workers", "", _table(["Worker", "Queue activity", "Owned topic", "Profile", "New-topic intake"], worker_rows)])
-
     active_rows = []
     for _, item in categories["active"]:
         attempts = item.get("attempts") if isinstance(item.get("attempts"), int) and not isinstance(item.get("attempts"), bool) else "unavailable"
@@ -407,6 +362,21 @@ def render_dashboard(
             else item.get("next_eligible_at") or "eligible now",
         ])
     lines.extend(["", "## Active topics", "", _table(["Topic", "Worker", "State", "Queue iteration", "Profile", "Next eligible"], active_rows)])
+
+    def _attention_flags(item: dict[str, Any]) -> str:
+        # Structured `flag:` lines (e.g. from a deferred-obligation STOP)
+        # say exactly where to look; fall back to the error's first line.
+        error = str(item.get("last_error") or "")
+        flags = [line.strip()[5:].strip() for line in error.splitlines() if line.strip().startswith("flag:")]
+        if flags:
+            return "; ".join(flags)
+        first = next((line.strip() for line in error.splitlines() if line.strip()), "")
+        return first or "unavailable"
+
+    attention_rows = [[item.get("title", item.get("id")), item.get("attempts", "unavailable"), item.get("last_error_kind") or "unavailable", _attention_flags(item), item.get("finished_at") or "unavailable"] for _, item in categories["needs_attention"]]
+    paused_rows = [[item.get("title", item.get("id")), item.get("claimed_by") or "none", item.get("attempts", "unavailable"), item.get("last_error_kind") or "operator / unspecified"] for _, item in categories["paused"]]
+    unclassified_rows = [[position, item.get("id", "unavailable"), item.get("title", "unavailable"), item.get("status", "unavailable"), item.get("desired_state", "unavailable"), item.get("claimed_by") or "none"] for position, item in categories["unclassified"]]
+    lines.extend(["", "## Needs attention", "", _table(["Topic", "Attempts", "Reason class", "Flags (where to look)", "Finished"], attention_rows)])
 
     queued_rows = [
         [position, item.get("title", item.get("id")), item.get("attempts", "unavailable")]
@@ -447,20 +417,6 @@ def render_dashboard(
         ])
     lines.extend(["", "## Completed topics", "", _table(["Topic", "Queue attempts", "Retained runs", "Interactions", "Avg duration / retained run", "Reported tokens", "Avg reported tokens / covered run", "Models observed", "Finished"], completed_rows)])
 
-    def _attention_flags(item: dict[str, Any]) -> str:
-        # Structured `flag:` lines (e.g. from a deferred-obligation STOP)
-        # say exactly where to look; fall back to the error's first line.
-        error = str(item.get("last_error") or "")
-        flags = [line.strip()[5:].strip() for line in error.splitlines() if line.strip().startswith("flag:")]
-        if flags:
-            return "; ".join(flags)
-        first = next((line.strip() for line in error.splitlines() if line.strip()), "")
-        return first or "unavailable"
-
-    attention_rows = [[item.get("title", item.get("id")), item.get("attempts", "unavailable"), item.get("last_error_kind") or "unavailable", _attention_flags(item), item.get("finished_at") or "unavailable"] for _, item in categories["needs_attention"]]
-    paused_rows = [[item.get("title", item.get("id")), item.get("claimed_by") or "none", item.get("attempts", "unavailable"), item.get("last_error_kind") or "operator / unspecified"] for _, item in categories["paused"]]
-    unclassified_rows = [[position, item.get("id", "unavailable"), item.get("title", "unavailable"), item.get("status", "unavailable"), item.get("desired_state", "unavailable"), item.get("claimed_by") or "none"] for position, item in categories["unclassified"]]
-    lines.extend(["", "## Needs attention", "", _table(["Topic", "Attempts", "Reason class", "Flags (where to look)", "Finished"], attention_rows)])
     lines.extend(["", "## Paused topics", "", _table(["Topic", "Stale/current owner", "Attempts", "Reason class"], paused_rows)])
     if unclassified_rows:
         # A catch-all for malformed/unexpected queue states -- rendered only

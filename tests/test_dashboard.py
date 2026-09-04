@@ -227,23 +227,6 @@ class DashboardRenderingTests(unittest.TestCase):
             )
             self.assertIn("Retained process\\_finished records | 1", result)
 
-    def test_worker_summary_prefers_active_claim_over_stale_paused_owner(self):
-        state = {
-            "revision": 5,
-            "paused": False,
-            "worker_policies": {},
-            "items": [
-                {"id": "stale", "title": "Stale paused", "status": "paused", "desired_state": "paused", "claimed_by": "worker-1", "attempts": 4},
-                {"id": "active", "title": "Actually active", "status": "backoff", "desired_state": "running", "claimed_by": "worker-1", "attempts": 8},
-            ],
-        }
-
-        result = render_dashboard(state, [], generated_at=datetime(2026, 8, 28, tzinfo=UTC))
-
-        self.assertIn("| worker\\-1 | backoff | Actually active |", result)
-
-
-class DashboardWriterTests(unittest.TestCase):
     def test_atomic_write_replaces_content_with_mode_0600(self):
         with tempfile.TemporaryDirectory() as tempdir:
             output = Path(tempdir) / "STATUS.md"
