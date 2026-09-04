@@ -707,7 +707,20 @@ class QueueStore:
     # agent_main/agent_secondary fields are inert -- operator ruling 2026-09-04).
     # ------------------------------------------------------------------
 
-    WORKER_AGENT_FIELDS = ("agent_main", "agent_secondary", "agent_model", "agent_flags")
+    WORKER_AGENT_FIELDS = ("agent_main", "agent_secondary", "agent_model", "agent_flags", "interval_seconds")
+
+    @staticmethod
+    def _station_interval(state: dict[str, Any], worker: str) -> int:
+        """Seconds a station pauses between iterations (0 = continuous).
+        Cadence is a STATION property: the gap belongs to the worker that
+        ran the iteration, never to the topic (operator ruling 2026-09-04)."""
+        profiles = state.get("worker_agents") or {}
+        profile = profiles.get(worker) if isinstance(profiles, dict) else None
+        value = profile.get("interval_seconds") if isinstance(profile, dict) else None
+        return int(value) if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+    def station_interval(self, worker: str) -> int:
+        return self._station_interval(self.snapshot(), worker)
 
     def worker_agents(self, worker: str) -> dict[str, Any]:
         state = self.snapshot()
@@ -723,11 +736,14 @@ class QueueStore:
         agent_secondary: str | None = None,
         agent_model: str | None = None,
         agent_flags: str | None = None,
+        interval_seconds: int | None = None,
         clear: bool = False,
     ) -> dict[str, Any]:
-        """Set (merge) a worker's agent profile. Pass "" for a field to unset
-        it; clear=True drops the whole profile. Takes effect at the worker's
-        next iteration launch -- never disrupts one already in flight."""
+        """Set (merge) a worker's station profile. Pass "" for a string
+        field to unset it; clear=True drops the whole profile. Takes effect
+        at the worker's next iteration launch -- never disrupts one already
+        in flight. interval_seconds is the station's pause between
+        iterations (0 = continuous)."""
         validate_item_id(worker)
         updates = {
             "agent_main": agent_main,
@@ -735,7 +751,12 @@ class QueueStore:
             "agent_model": agent_model,
             "agent_flags": agent_flags,
         }
-        if not clear and all(v is None for v in updates.values()):
+        if interval_seconds is not None and (
+            not isinstance(interval_seconds, int) or isinstance(interval_seconds, bool)
+            or interval_seconds < 0
+        ):
+            raise QueueError("interval_seconds must be a non-negative integer")
+        if not clear and all(v is None for v in updates.values()) and interval_seconds is None:
             raise QueueError("worker-agents: pass at least one field, or --clear")
         with self._locked() as state:
             profiles = state.setdefault("worker_agents", {})
@@ -754,6 +775,8 @@ class QueueStore:
                     profile[field] = value.strip()
                 else:
                     profile.pop(field, None)
+            if interval_seconds is not None:
+                profile["interval_seconds"] = interval_seconds
             if profile:
                 profiles[worker] = profile
             else:
@@ -974,6 +997,56 @@ class QueueStore:
             if own is not None:
                 item = own if eligible(own) else None
             else:
+                # CASCADE (operator design 2026-09-04): queue order is priority
+                # across stations of different cadence. Before taking the first
+                # UNCLAIMED topic, check whether a higher-priority topic is held
+                # by a SLOWER station. If so, and that station is in its pause
+                # (nothing running), take it over now; if that station is
+                # mid-iteration, reserve it and sit IDLE until the boundary --
+                # a fast station never leapfrogs priority by grabbing a lower
+                # topic. Equal-or-faster holders are left alone (normal skip).
+                my_interval = self._station_interval(state, worker)
+                if any(
+                    i.get("reserved_for") == worker and i["status"] == "running"
+                    for i in state["items"]
+                ):
+                    return None  # waiting at a slower station's boundary
+                for i in state["items"]:
+                    if i.get("reserved_for") == worker and i["status"] != "running":
+                        i.pop("reserved_for", None)  # stale reservation self-heals
+                priority = next(
+                    (
+                        i
+                        for i in state["items"]
+                        if i["status"] in {"queued", "backoff", "running"}
+                        and i["desired_state"] == "running"
+                        and in_lanes(i)
+                        and dependencies_satisfied(i)
+                    ),
+                    None,
+                )
+                cascade = None
+                if (
+                    priority is not None
+                    and priority.get("claimed_by")
+                    and priority.get("claimed_by") != worker
+                    and my_interval < self._station_interval(state, priority["claimed_by"])
+                ):
+                    if priority["status"] == "running":
+                        priority["reserved_for"] = worker
+                        priority["updated_at"] = utc_now()
+                        return None
+                    # Holder is pausing: nothing runs, so the takeover is a claim.
+                    priority["claimed_by"] = worker
+                    priority["next_eligible_at"] = None
+                    cascade = priority
+                if cascade is not None:
+                    item = cascade if lane_capacity_ok(state, cascade) else None
+                    if item is None:
+                        return None
+                else:
+                    item = None
+            if item is None and own is None:
                 # Strict queue order: the candidate is the FIRST unclaimed
                 # non-terminal item, full stop. If it is mid-cadence/backoff,
                 # WAIT — never skip ahead to a later topic (that would run two
@@ -1391,6 +1464,15 @@ class QueueStore:
             item["last_error_kind"] = None
             item["last_error"] = None
             item["next_eligible_at"] = next_eligible_at
+            reserved_for = item.pop("reserved_for", None)
+            if reserved_for:
+                # CASCADE at the iteration boundary: a faster station reserved
+                # this higher-priority topic while it was mid-flight here.
+                # Ownership transfers now and the pause that would have
+                # applied belongs to the slower station, not the topic, so
+                # the topic is immediately eligible for its new station.
+                item["claimed_by"] = reserved_for
+                item["next_eligible_at"] = None
             item["last_pid"] = None
             item["last_pid_fingerprint"] = None
             item["finished_at"] = utc_now()

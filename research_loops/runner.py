@@ -1197,6 +1197,13 @@ class LoopRunner:
             intended_outcome = control_outcome
         elif exit_code == 0:
             repeat_seconds = item.get("repeat_seconds")
+            if repeat_seconds is not None:
+                # Cadence is a station property: the pause between iterations
+                # is the WORKER's interval (a legacy positive item value is
+                # honored as a floor). 0/0 = continuous.
+                repeat_seconds = max(
+                    int(repeat_seconds), self.store.station_interval(self.worker)
+                )
             stop_signal = self._check_stop_file(item, stop_signature_before)
             if stop_signal is not None:
                 # The loop wrote its own terminal STOP file during this

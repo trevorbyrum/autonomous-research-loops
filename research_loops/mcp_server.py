@@ -201,17 +201,20 @@ class EngineTools:
         agent_secondary: str | None = None,
         agent_model: str | None = None,
         agent_flags: str | None = None,
+        interval_seconds: int | None = None,
         clear: bool = False,
     ) -> dict[str, Any]:
-        """Set a worker's agent profile -- which harness/model pair that
-        station runs. The queue carries no agent binding; this is the one
-        place agents are configured."""
+        """Set a worker's station profile -- which harness/model pair it runs
+        and its cadence (interval_seconds between iterations; 0 = continuous).
+        The queue carries no agent or cadence binding; this is the one place
+        stations are configured."""
         return self.store.configure_worker_agents(
             worker,
             agent_main=agent_main,
             agent_secondary=agent_secondary,
             agent_model=agent_model,
             agent_flags=agent_flags,
+            interval_seconds=interval_seconds,
             clear=clear,
         )
 
