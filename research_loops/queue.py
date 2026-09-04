@@ -708,6 +708,18 @@ class QueueStore:
     # ------------------------------------------------------------------
 
     WORKER_AGENT_FIELDS = ("agent_main", "agent_secondary", "agent_model", "agent_flags", "interval_seconds")
+    MAX_STATIONS = 5  # operator ruling 2026-09-04: "up to 5 stations, for now"
+    _STATION_NAME = re.compile(r"^(?P<prefix>.*)-(?P<number>\d+)$")
+
+    @classmethod
+    def _station_number(cls, worker: str) -> int | None:
+        m = cls._STATION_NAME.match(worker)
+        return int(m.group("number")) if m else None
+
+    @classmethod
+    def _station_prefix(cls, worker: str) -> str | None:
+        m = cls._STATION_NAME.match(worker)
+        return m.group("prefix") if m else None
 
     @staticmethod
     def _station_interval(state: dict[str, Any], worker: str) -> int:
@@ -758,6 +770,12 @@ class QueueStore:
             raise QueueError("interval_seconds must be a non-negative integer")
         if not clear and all(v is None for v in updates.values()) and interval_seconds is None:
             raise QueueError("worker-agents: pass at least one field, or --clear")
+        number = self._station_number(worker)
+        if number is not None and number > self.MAX_STATIONS:
+            raise QueueError(
+                f"at most {self.MAX_STATIONS} stations are supported for now "
+                f"({worker} is numbered {number})"
+            )
         with self._locked() as state:
             profiles = state.setdefault("worker_agents", {})
             if not isinstance(profiles, dict):
@@ -776,6 +794,29 @@ class QueueStore:
                 else:
                     profile.pop(field, None)
             if interval_seconds is not None:
+                # Invariant: station N+1 can never be faster than station N
+                # (intervals non-decreasing by station number), so station
+                # number is the priority tier and cascade order is total.
+                if number is not None:
+                    for other, other_profile in profiles.items():
+                        if other == worker or not isinstance(other_profile, dict):
+                            continue
+                        other_number = self._station_number(other)
+                        if other_number is None or self._station_prefix(other) != self._station_prefix(worker):
+                            continue
+                        other_interval = other_profile.get("interval_seconds", 0) or 0
+                        if other_number < number and interval_seconds < other_interval:
+                            raise QueueError(
+                                f"{worker} cannot be faster than {other} "
+                                f"({interval_seconds}s < {other_interval}s): station "
+                                "intervals must be non-decreasing by station number"
+                            )
+                        if other_number > number and interval_seconds > other_interval:
+                            raise QueueError(
+                                f"{worker} cannot be slower than {other} "
+                                f"({interval_seconds}s > {other_interval}s): station "
+                                "intervals must be non-decreasing by station number"
+                            )
                 profile["interval_seconds"] = interval_seconds
             if profile:
                 profiles[worker] = profile
@@ -998,13 +1039,14 @@ class QueueStore:
                 item = own if eligible(own) else None
             else:
                 # CASCADE (operator design 2026-09-04): queue order is priority
-                # across stations of different cadence. Before taking the first
-                # UNCLAIMED topic, check whether a higher-priority topic is held
-                # by a SLOWER station. If so, and that station is in its pause
-                # (nothing running), take it over now; if that station is
-                # mid-iteration, reserve it and sit IDLE until the boundary --
-                # a fast station never leapfrogs priority by grabbing a lower
-                # topic. Equal-or-faster holders are left alone (normal skip).
+                # across stations of different cadence, for ANY number of
+                # stations. Walk the queue top-down: an unclaimed topic is this
+                # station's; a topic held by a SLOWER station cascades to it
+                # (immediately if that station is pausing; reserve-and-idle at
+                # the boundary if it is mid-flight -- never leapfrog priority
+                # by grabbing a lower topic); a topic held by an equal-or-
+                # faster station is skipped. Priority thus fills in from the
+                # fastest stations downward through every tier.
                 my_interval = self._station_interval(state, worker)
                 if any(
                     i.get("reserved_for") == worker and i["status"] == "running"
@@ -1014,38 +1056,33 @@ class QueueStore:
                 for i in state["items"]:
                     if i.get("reserved_for") == worker and i["status"] != "running":
                         i.pop("reserved_for", None)  # stale reservation self-heals
-                priority = next(
-                    (
-                        i
-                        for i in state["items"]
-                        if i["status"] in {"queued", "backoff", "running"}
-                        and i["desired_state"] == "running"
-                        and in_lanes(i)
-                        and dependencies_satisfied(i)
-                    ),
-                    None,
-                )
-                cascade = None
-                if (
-                    priority is not None
-                    and priority.get("claimed_by")
-                    and priority.get("claimed_by") != worker
-                    and my_interval < self._station_interval(state, priority["claimed_by"])
-                ):
-                    if priority["status"] == "running":
-                        priority["reserved_for"] = worker
-                        priority["updated_at"] = utc_now()
-                        return None
-                    # Holder is pausing: nothing runs, so the takeover is a claim.
-                    priority["claimed_by"] = worker
-                    priority["next_eligible_at"] = None
-                    cascade = priority
-                if cascade is not None:
-                    item = cascade if lane_capacity_ok(state, cascade) else None
-                    if item is None:
-                        return None
-                else:
-                    item = None
+                item = None
+                for i in state["items"]:
+                    if (
+                        i["status"] not in {"queued", "backoff", "running"}
+                        or i["desired_state"] != "running"
+                        or not in_lanes(i)
+                        or not dependencies_satisfied(i)
+                    ):
+                        continue
+                    holder = i.get("claimed_by")
+                    if not holder:
+                        break  # unclaimed head: the strict-order candidate path takes it
+                    if holder == worker:
+                        continue
+                    if my_interval < self._station_interval(state, holder):
+                        if i["status"] == "running":
+                            i["reserved_for"] = worker
+                            i["updated_at"] = utc_now()
+                            return None
+                        if not lane_capacity_ok(state, i):
+                            return None
+                        # Holder is pausing: nothing runs, so the takeover is a claim.
+                        i["claimed_by"] = worker
+                        i["next_eligible_at"] = None
+                        item = i
+                        break
+                    # equal-or-faster holder: skip and keep scanning
             if item is None and own is None:
                 # Strict queue order: the candidate is the FIRST unclaimed
                 # non-terminal item, full stop. If it is mid-cadence/backoff,
