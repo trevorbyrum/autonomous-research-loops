@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import math
 import os
+import statistics
 import tempfile
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -102,12 +103,117 @@ def _models(events: list[dict[str, Any]]) -> str:
     return ", ".join(names) if names else "unavailable"
 
 
-def _accepted_label(item: dict[str, Any]) -> str:
-    accepted = item.get("accepted_by_workers")
-    if not isinstance(accepted, list):
-        return "none"
-    workers = [str(worker) for worker in accepted if isinstance(worker, str)]
-    return ", ".join(workers) if workers else "none"
+# The moment the saturation regime went live (workers restarted onto the
+# saturation-gate runner, 2026-09-03). Iteration economics deliberately
+# ignores everything before it: pre-saturation iterations ran under exit
+# semantics the operator ruled inadequate, so they would poison any
+# planning ballpark for what topics cost under the current engine.
+SATURATION_EPOCH = "2026-09-03T13:51:51"
+
+
+def _iteration_economics(
+    items: list[Any], by_item: dict[str, list[dict[str, Any]]]
+) -> list[list[Any]] | None:
+    """Fleet-global iteration economics, saturation-era + productive only.
+
+    Productive = the chassis-measured semantic signature changed during the
+    run. Only events at or after SATURATION_EPOCH count at all. The
+    per-obligation ratio is stricter still: it includes only topics whose
+    ENTIRE recorded history is post-epoch, so no obligation resolved under
+    the old exit semantics (or inherited from migration) is priced in.
+    """
+    import json as _json
+    all_durations: list[float] = []
+    total_classified = 0
+    total_productive = 0
+    per_topic_ratios: list[float] = []
+    ratio_productive = 0
+    ratio_resolved = 0
+    pre_era_topics = 0
+    for item in items:
+        if not isinstance(item, dict) or item.get("lane") == "intake":
+            continue
+        cwd = item.get("cwd")
+        if not isinstance(cwd, str):
+            continue
+        state_path = Path(cwd) / "SEMANTIC-STATE.json"
+        if not state_path.is_file():
+            continue
+        try:
+            state = _json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        obligations = [o for o in state.get("obligations", []) if isinstance(o, dict)]
+        if not obligations:
+            continue
+        events = by_item.get(str(item.get("id")), [])
+        stamped = [e for e in events if isinstance(e.get("ts"), str)]
+        era = [e for e in stamped if e["ts"] >= SATURATION_EPOCH]
+        classified = [
+            e for e in era
+            if isinstance(e.get("iteration_result"), dict)
+            and isinstance(e["iteration_result"].get("signature_changed"), bool)
+        ]
+        productive = [e for e in classified if e["iteration_result"]["signature_changed"]]
+        total_classified += len(classified)
+        total_productive += len(productive)
+        all_durations.extend(
+            d for e in productive
+            if (d := _number(e.get("duration_seconds"))) is not None
+        )
+        fully_post_epoch = bool(era) and len(era) == len(stamped)
+        if not fully_post_epoch:
+            if stamped:
+                pre_era_topics += 1
+            continue
+        terminal = sum(
+            1 for o in obligations
+            if o.get("disposition") in ("supported", "contradicted", "unresolved", "deferred")
+        )
+        if terminal and productive:
+            per_topic_ratios.append(len(productive) / terminal)
+            ratio_productive += len(productive)
+            ratio_resolved += terminal
+    if not all_durations and not per_topic_ratios:
+        return None
+
+    def _fmt(seconds: float) -> str:
+        m, s = divmod(int(round(seconds)), 60)
+        return f"{m}m {s}s"
+
+    rows: list[list[Any]] = []
+    if all_durations:
+        srt = sorted(all_durations)
+        rows.append([
+            "Productive iteration duration",
+            f"{_fmt(srt[0])} min / {_fmt(statistics.median(srt))} median / "
+            f"{_fmt(srt[-1])} max / {_fmt(sum(srt) / len(srt))} avg (n={len(srt)})",
+        ])
+    if total_classified:
+        rows.append([
+            "Productive share of iterations",
+            f"{total_productive}/{total_classified} ({total_productive / total_classified:.0%})",
+        ])
+    if per_topic_ratios:
+        srt = sorted(per_topic_ratios)
+        rows.append([
+            "Productive iterations per resolved obligation",
+            f"{ratio_productive / ratio_resolved:.1f} overall / "
+            f"{srt[0]:.1f} min / {statistics.median(srt):.1f} median / {srt[-1]:.1f} max "
+            f"(over {len(per_topic_ratios)} fully-saturation-era topics)",
+        ])
+    else:
+        rows.append([
+            "Productive iterations per resolved obligation",
+            "no fully-saturation-era topic has resolved obligations yet "
+            "(populates as the current queue front completes)",
+        ])
+    rows.append([
+        "Scope",
+        f"iterations since {SATURATION_EPOCH}Z only; earlier eras excluded; "
+        f"{pre_era_topics} topics with pre-era history excluded from the ratio",
+    ])
+    return rows
 
 
 def write_dashboard(output: str | Path, content: str) -> Path:
@@ -303,10 +409,10 @@ def render_dashboard(
     lines.extend(["", "## Active topics", "", _table(["Topic", "Worker", "State", "Queue iteration", "Profile", "Next eligible"], active_rows)])
 
     queued_rows = [
-        [position, item.get("title", item.get("id")), item.get("status"), item.get("attempts", "unavailable"), _accepted_label(item)]
+        [position, item.get("title", item.get("id")), item.get("attempts", "unavailable")]
         for position, item in categories["queued"]
     ]
-    lines.extend(["", "## Queued topics", "", _table(["Queue position", "Topic", "State", "Attempts", "Previously accepted by"], queued_rows)])
+    lines.extend(["", "## Queued topics", "", _table(["Queue position", "Topic", "Attempts"], queued_rows)])
 
     def _intake_rows(entries):
         return [
@@ -361,6 +467,15 @@ def render_dashboard(
         # when it actually caught something; an always-empty table is noise.
         lines.extend(["", "## Unclassified items", "", _table(["Queue position", "ID", "Title", "Status", "Desired state", "Owner"], unclassified_rows)])
 
+    economics_rows = _iteration_economics(items, by_item)
+    if economics_rows:
+        lines.extend([
+            "",
+            "## Iteration economics (saturation era, productive iterations only)",
+            "",
+            _table(["Metric", "Value"], economics_rows),
+        ])
+
     calls_total, calls_covered, retained_count = _metric(finished, "api_calls", nested=True)
     duration_total, duration_covered, _ = _metric(finished, "duration_seconds")
     token_total, token_covered, _ = _metric(finished, "total_tokens", nested=True)
@@ -400,6 +515,7 @@ def render_dashboard(
             "- **Duration:** elapsed process time from valid, non-negative `duration_seconds`, displayed in seconds-derived wall-clock units.",
             "- **Reported tokens:** valid, non-negative `usage.total_tokens`. Provider semantics can include input, output, cache, and delegated work; this is not a dollar charge.",
             "- **Coverage:** `covered/retained runs`. Missing or invalid metrics are unavailable and are never silently counted as zero.",
+            "- **Productive iteration:** the chassis-measured semantic signature changed during the run (`iteration_result.signature_changed`). Iteration economics counts only events since the saturation regime went live; idle passes and pre-instrumentation events are excluded, and the per-obligation ratio uses only topics whose entire history is saturation-era.",
             "- **Retention:** the event ledger has a maximum retention age of 90 days; the actual oldest/newest timestamps above define this dashboard's observed window.",
             "- **Identity limitation:** retained events are grouped by current `item_id`; IDs and attempt numbers are not immutable run-incarnation keys and can be reused or reset.",
             "- **Consistency limitation:** queue state is finalized before the corresponding event is appended. A refresh may temporarily show newer queue state or newer event data than the other source.",
