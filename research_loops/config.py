@@ -29,6 +29,7 @@ class TopicSettings:
     agent_main: str | None = None
     agent_secondary: str | None = None
     gap_policy: str = "review"
+    on_completed_command: list[str] | None = None
     gap_auto_limit: int = 0
     internal_citations: bool = False
     topic_refresh: str = "off"
@@ -137,6 +138,15 @@ def _settings_from(table: dict[str, Any], base: TopicSettings) -> TopicSettings:
     topic_refresh_mode = _optional_choice(table, "topic_refresh_mode", TOPIC_REFRESH_MODES)
     if topic_refresh_mode is not None:
         updates["topic_refresh_mode"] = topic_refresh_mode
+    if "on_completed_command" in table:
+        value = table["on_completed_command"]
+        if not isinstance(value, list) or not value or not all(
+            isinstance(part, str) and part.strip() for part in value
+        ):
+            raise QueueError(
+                "on_completed_command must be a non-empty array of non-empty strings"
+            )
+        updates["on_completed_command"] = list(value)
     return replace(base, **updates)
 
 

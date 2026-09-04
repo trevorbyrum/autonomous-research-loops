@@ -580,6 +580,37 @@ class LoopRunner:
         return body
 
     @staticmethod
+    def _saturation_eligible(item: dict[str, Any], repeat_seconds: Any) -> bool:
+        """True when the SATURATION GATE — not the agent — decides completion.
+
+        Any recurring item carrying a semantic contract. Coverage (every
+        obligation terminal, validator green) is what an agent can see and
+        self-certify; saturation is a property of consecutive iterations that
+        only the queue can observe. Where both exist, the measured signal
+        wins and the self-declared one is discarded.
+        """
+        if repeat_seconds is None:
+            return False
+        return (Path(item["cwd"]) / "SEMANTIC-STATE.json").is_file()
+
+    @classmethod
+    def _discard_stop_file(cls, item: dict[str, Any]) -> None:
+        """Remove a STOP file whose terminal intent this run refuses to honor.
+
+        Leaving it on disk would park the topic anyway: the chassis exits 3
+        on ANY STOP present at the next iteration's start, so an ignored DONE
+        would silently become a stall instead of the deepening pass the gate
+        just asked for.
+        """
+        path = cls._stop_file_path(item)
+        if path is None:
+            return
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+    @staticmethod
     def _completion_error(item: dict[str, Any]) -> str | None:
         """Return why a fresh DONE is semantically invalid, or None if valid.
 
@@ -1190,6 +1221,7 @@ class LoopRunner:
         message = None
         next_eligible_at = None
         consume_failure = True
+        ignored_stop_done = False
         if control_outcome is not None:
             # The worker itself terminated the child to honor an operator
             # control (pause/restart); the nonzero exit is not a failure and
@@ -1205,6 +1237,20 @@ class LoopRunner:
                     int(repeat_seconds), self.store.station_interval(self.worker)
                 )
             stop_signal = self._check_stop_file(item, stop_signature_before)
+            if stop_signal == "done" and self._saturation_eligible(
+                item, repeat_seconds
+            ):
+                # A contract-bearing research topic does not get to declare
+                # itself finished (operator ruling 2026-09-04). The agent can
+                # only observe coverage, and coverage is explicitly NOT
+                # sufficient for DONE; three consecutive semantically-valid
+                # passes with an unchanged signature are. Discard the claim
+                # and let the gate below rule on the measured evidence.
+                # NEEDS-OPERATOR keeps full authority: being blocked is a
+                # fact only the agent holds, not a completion claim.
+                self._discard_stop_file(item)
+                stop_signal = None
+                ignored_stop_done = True
             if stop_signal is not None:
                 # The loop wrote its own terminal STOP file during this
                 # iteration (e.g. "DONE" or "NEEDS-OPERATOR: …").  For recurring
@@ -1309,12 +1355,81 @@ class LoopRunner:
         )
         outcome, stall_event = self._apply_stall_guard(item, outcome)
         event = {**base_event, "outcome": outcome}
+        if ignored_stop_done:
+            event["ignored_stop_done"] = True
         if error_kind is not None:
             event["failure_kind"] = error_kind
         self.ledger.append(event)
         if stall_event is not None:
             self.ledger.append(stall_event)
+        if outcome == "completed":
+            hook_event = self._run_completion_hook(item)
+            if hook_event is not None:
+                self.ledger.append(hook_event)
         return {"item_id": item_id, "outcome": outcome, "exit_code": exit_code}
+
+    # Completion hooks are given generous room (a corpus ingest embeds every
+    # record) but never unbounded: a hung hook must not wedge the worker.
+    COMPLETION_HOOK_TIMEOUT_SECONDS = 1800
+
+    def _run_completion_hook(self, item: dict[str, Any]) -> dict[str, Any] | None:
+        """Run the item's on_completed_command exactly once, after it lands
+        completed.
+
+        Operator ruling 2026-09-04: derived stores (e.g. a knowledge graph)
+        are fed by a mechanical backfill at topic completion, never by the
+        research agent writing per-source mid-loop. The hook is therefore a
+        plain subprocess with the topic dir in its environment -- no LLM in
+        the write path.
+
+        The hook is derivative by definition: the completed research already
+        exists in the topic's own ledgers. So a hook failure is recorded as a
+        completion_hook event (ok=false) and NEVER changes the item's
+        completed status -- re-run the command by hand after fixing whatever
+        broke; it must be idempotent.
+        """
+        command = item.get("on_completed_command")
+        if not command:
+            return None
+        env = {
+            **os.environ,
+            "RESEARCH_LOOP_TOPIC_DIR": item["cwd"],
+            "RESEARCH_LOOP_ITEM_ID": item["id"],
+        }
+        started = datetime.now(timezone.utc)
+        try:
+            proc = subprocess.run(
+                command,
+                cwd=item["cwd"],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=self.COMPLETION_HOOK_TIMEOUT_SECONDS,
+            )
+            exit_code: int | None = proc.returncode
+            tail = ((proc.stdout or "") + (proc.stderr or ""))[-2000:]
+        except subprocess.TimeoutExpired:
+            exit_code = None
+            tail = (
+                f"completion hook timed out after "
+                f"{self.COMPLETION_HOOK_TIMEOUT_SECONDS}s"
+            )
+        except OSError as error:
+            exit_code = None
+            tail = f"completion hook failed to start: {error}"
+        return {
+            "type": "completion_hook",
+            "item_id": item["id"],
+            "worker": self.worker,
+            "command": list(command),
+            "exit_code": exit_code,
+            "ok": exit_code == 0,
+            "duration_seconds": round(
+                (datetime.now(timezone.utc) - started).total_seconds(), 3
+            ),
+            "output_tail": tail,
+            "ts": started.isoformat().replace("+00:00", "Z"),
+        }
 
     # Retention sweeps are daily housekeeping, not per-run work: the events
     # sweep re-reads the whole ledger, so running it every cycle would add

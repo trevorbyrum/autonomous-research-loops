@@ -357,3 +357,84 @@ class RefreshCLITests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReactivationClearsStopFileTests(unittest.TestCase):
+    """A completed topic returning to the queue must not carry its STOP file.
+
+    Operator ruling 2026-09-04: "anytime an item gets moved from completed
+    back into the queue or active the stop should be removed." The chassis
+    exits 3 on ANY STOP present at an iteration's start, so the terminal
+    STOP written when the topic finished would park it on its first pass
+    back -- the operator resumes it and nothing runs. This is the mechanism
+    that silently parked context-memory on 2026-09-02.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.store = QueueStore(self.root)
+        self.cwd = self.root / "topic"
+        self.cwd.mkdir()
+        self.stop = self.cwd / "STOP"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _add(self, item_id="t"):
+        self.store.add(
+            title="t", cwd=str(self.cwd), command=["true"], item_id=item_id,
+            repeat_seconds=0, stop_file="STOP",
+        )
+
+    def _complete(self, item_id="t"):
+        self.store.claim_next(worker="worker-1")
+        self.store.finalize_run(
+            item_id, expected_restart_generation=0, requested_control=None,
+            outcome="completed", exit_code=0,
+        )
+
+    def test_reopen_for_refresh_clears_it(self):
+        self._add()
+        self.stop.write_text("DONE\n", encoding="utf-8")
+        self._complete()
+        self.store.reopen_for_refresh("t")
+        self.assertFalse(self.stop.exists())
+        self.assertEqual(self.store.get("t")["status"], "queued")
+
+    def test_request_restart_from_completed_clears_it(self):
+        self._add()
+        self.stop.write_text("DONE\n", encoding="utf-8")
+        self._complete()
+        self.store.request_restart("t")
+        self.assertFalse(self.stop.exists())
+
+    def test_restart_of_a_live_item_leaves_its_stop_file_alone(self):
+        # Only the completed -> queued transition clears. A restart of a
+        # running/queued item has no terminal STOP to clear, and a
+        # NEEDS-OPERATOR file there is still the operator's to act on.
+        self._add()
+        self.stop.write_text("NEEDS-OPERATOR\nflag: look here\n", encoding="utf-8")
+        self.store.request_restart("t")
+        self.assertTrue(self.stop.exists())
+
+    def test_clearing_is_safe_when_no_stop_file_exists(self):
+        self._add()
+        self._complete()
+        self.store.reopen_for_refresh("t")
+        self.assertEqual(self.store.get("t")["status"], "queued")
+
+    def test_item_without_a_declared_stop_file_is_untouched(self):
+        self.store.add(
+            title="n", cwd=str(self.cwd), command=["true"], item_id="n",
+            repeat_seconds=0,
+        )
+        stray = self.cwd / "STOP"
+        stray.write_text("DONE\n", encoding="utf-8")
+        self.store.claim_next(worker="worker-1")
+        self.store.finalize_run(
+            "n", expected_restart_generation=0, requested_control=None,
+            outcome="completed", exit_code=0,
+        )
+        self.store.reopen_for_refresh("n")
+        self.assertTrue(stray.exists())

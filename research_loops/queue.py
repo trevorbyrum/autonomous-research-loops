@@ -228,6 +228,7 @@ class QueueStore:
         stop_file: str | None = None,
         completion_command: list[str] | None = None,
         progress_command: list[str] | None = None,
+        on_completed_command: list[str] | None = None,
         stall_limit: int | None = None,
         depends_on: list[str] | None = None,
         agent_main: str | None = None,
@@ -282,6 +283,9 @@ class QueueStore:
             ),
             "depends_on": resolved_dependencies,
             "progress_command": list(progress_command) if progress_command else None,
+            "on_completed_command": (
+                list(on_completed_command) if on_completed_command else None
+            ),
             "stall_limit": stall_limit,
             "agent_main": agent_main,
             "agent_secondary": agent_secondary,
@@ -345,6 +349,7 @@ class QueueStore:
         "completion_command",
         "depends_on",
         "progress_command",
+        "on_completed_command",
         "stall_limit",
         "agent_main",
         "agent_secondary",
@@ -379,6 +384,8 @@ class QueueStore:
         "internal_citations",
         "topic_refresh",
         "topic_refresh_mode",
+        # Read exactly once, when an item lands completed -- never mid-run.
+        "on_completed_command",
     )
 
     def sync(
@@ -574,6 +581,18 @@ class QueueStore:
         ):
             raise QueueError("repeat_seconds must be a non-negative integer")
         lane = _validate_lane(entry.get("lane") or "research")
+        on_completed_command = entry.get("on_completed_command")
+        if on_completed_command is not None and (
+            not isinstance(on_completed_command, list)
+            or not on_completed_command
+            or not all(
+                isinstance(part, str) and part.strip()
+                for part in on_completed_command
+            )
+        ):
+            raise QueueError(
+                "on_completed_command must be a non-empty JSON array of non-empty strings"
+            )
         progress_command = entry.get("progress_command")
         if progress_command is not None and (
             not isinstance(progress_command, list)
@@ -640,6 +659,9 @@ class QueueStore:
             ),
             "depends_on": resolved_dependencies,
             "progress_command": list(progress_command) if progress_command else None,
+            "on_completed_command": (
+                list(on_completed_command) if on_completed_command else None
+            ),
             "stall_limit": stall_limit,
             "agent_main": agent_main,
             "agent_secondary": agent_secondary,
@@ -1384,6 +1406,27 @@ class QueueStore:
                 <= reference
             ]
 
+    @staticmethod
+    def _clear_stop_file(item: dict[str, Any]) -> bool:
+        """Drop a completed item's STOP file as it returns to the queue.
+
+        The chassis exits 3 on ANY STOP present at an iteration's start, so a
+        terminal STOP left over from the previous completion parks the topic
+        on its very first pass back — the operator resumes it and nothing
+        runs (operator ruling 2026-09-04: reactivation clears the stop).
+        """
+        stop_file = item.get("stop_file")
+        if not stop_file:
+            return False
+        path = Path(stop_file)
+        if not path.is_absolute():
+            path = Path(item["cwd"]) / path
+        try:
+            path.unlink()
+            return True
+        except OSError:
+            return False
+
     def reopen_for_refresh(self, item_id: str) -> dict[str, Any]:
         """Requeue a completed item after its scheduled or manually
         triggered refresh has already been applied on disk (see
@@ -1400,6 +1443,7 @@ class QueueStore:
                     f"item {item_id} is not completed (status={item['status']!r}); "
                     "only a completed item can be refreshed"
                 )
+            self._clear_stop_file(item)
             item["status"] = "queued"
             item["desired_state"] = "running"
             item["claimed_by"] = None
@@ -1417,6 +1461,8 @@ class QueueStore:
             item = self._find(state, item_id)
             item["restart_generation"] += 1
             item["desired_state"] = "running"
+            if item["status"] == "completed":
+                self._clear_stop_file(item)
             if item["status"] != "running":
                 item["status"] = "queued"
             item["next_eligible_at"] = None

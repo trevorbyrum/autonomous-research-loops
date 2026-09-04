@@ -372,12 +372,14 @@ class ChassisMeasuredDoneTests(unittest.TestCase):
 
 
 class IterationPromptProtocolTests(unittest.TestCase):
-    """The DONE declaration is an executable checklist, never buried prose.
+    """The escalation signal is an executable checklist, never buried prose.
 
     Regression for the 2026-09-03 incident: seven iterations typed "STOP
     DONE" as words because the file write was one prose sentence in a rule
     wall, after 'finish with JSON' had anchored output-production as the
-    terminal act.
+    terminal act. The DONE half of that protocol is gone entirely as of
+    2026-09-04 — the agent no longer has any completion authority to fumble —
+    but NEEDS-OPERATOR is still its own to send, and still must be literal.
     """
 
     def test_prompt_ends_with_an_ordered_protocol_and_literal_commands(self):
@@ -386,7 +388,11 @@ class IterationPromptProtocolTests(unittest.TestCase):
             / "research_loops" / "chassis" / "ITERATION-PROMPT.md"
         ).read_text(encoding="utf-8")
         self.assertIn("END-OF-ITERATION PROTOCOL", prompt)
-        self.assertIn("printf 'DONE\\n' > ${TOPIC_DIR}/STOP", prompt)
+        # The agent's ONE terminal signal is being blocked, never being done
+        # (operator ruling 2026-09-04): completion belongs to the saturation
+        # gate, so the prompt must not hand back a DONE command.
+        self.assertIn("printf 'NEEDS-OPERATOR\\nflag: <what to look at>\\n' > ${TOPIC_DIR}/STOP", prompt)
+        self.assertNotIn("printf 'DONE", prompt)
         self.assertIn("only the file counts", prompt)
         # The protocol is the terminal block: nothing rule-like after step 4.
         self.assertLess(
@@ -397,3 +403,113 @@ class IterationPromptProtocolTests(unittest.TestCase):
             prompt.index("END-OF-ITERATION PROTOCOL"),
             len(prompt) - 1600,
         )
+
+
+class AgentDoneHasNoCompletionAuthorityTests(unittest.TestCase):
+    """Completion belongs to the saturation gate, not to the agent.
+
+    Operator ruling 2026-09-04. Before it, `_check_stop_file` was evaluated
+    ahead of the saturation branch, so an agent that wrote `DONE` completed
+    the topic on nothing more than COVERAGE (every obligation terminal,
+    validator green) -- the exact standard the saturation gate's own comment
+    calls "necessary but NOT sufficient". Two doors to completion with
+    different standards, weakest checked first. Every research topic that
+    finished before this ruling went through that door.
+
+    NEEDS-OPERATOR keeps full authority: being blocked is a fact only the
+    agent holds, and it is not a completion claim.
+    """
+
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name)
+        self.store = QueueStore(self.root)
+        self.ledger = UsageLedger(self.root / "state" / "events.jsonl")
+        self.runner = LoopRunner(self.store, self.ledger, poll_seconds=0.05)
+        self.cwd = self.root / "item-cwd"
+        (self.cwd / "logs").mkdir(parents=True)
+        self.stop = self.cwd / "STOP"
+
+    def tearDown(self):
+        self.tempdir.cleanup()
+
+    def _contract(self):
+        (self.cwd / "SEMANTIC-STATE.json").write_text("{}", encoding="utf-8")
+
+    def _command(self, record: dict, stop_body: str | None) -> list[str]:
+        script = (
+            "import json, pathlib, sys\n"
+            f"record = {record!r}\n"
+            f"pathlib.Path({str(self.cwd / 'logs' / 'latest-result.json')!r})"
+            ".write_text(json.dumps(record) + '\\n')\n"
+        )
+        if stop_body is not None:
+            script += (
+                f"pathlib.Path({str(self.stop)!r})"
+                f".write_text({stop_body!r})\n"
+            )
+        script += "sys.exit(0)\n"
+        return [sys.executable, "-c", script]
+
+    def _add(self, *, stop_body, contract=True, repeat_seconds=0,
+             signature_changed=False):
+        if contract:
+            self._contract()
+        record = {"outcome": "ok", "semantic_valid": True,
+                  "signature_changed": signature_changed, "stop_written": True}
+        self.store.add(
+            title="t", cwd=str(self.cwd), command=self._command(record, stop_body),
+            item_id="t", repeat_seconds=repeat_seconds,
+            completion_command=["true"], stop_file="STOP",
+        )
+
+    def _events(self):
+        path = self.root / "state" / "events.jsonl"
+        return [json.loads(line) for line in path.read_text().splitlines() if line]
+
+    def test_self_declared_done_is_discarded_and_the_loop_continues(self):
+        self._add(stop_body="DONE\n")
+        result = self.runner.run_once()
+        self.assertEqual(result["outcome"], "scheduled")
+        # One valid unchanged pass is saturation evidence, not completion.
+        self.assertEqual(self.store.get("t")["saturation_streak"], 1)
+
+    def test_the_discarded_stop_file_is_removed(self):
+        # Left on disk it would park the topic anyway: the chassis exits 3 on
+        # ANY STOP present at the next iteration's start.
+        self._add(stop_body="DONE\n")
+        self.runner.run_once()
+        self.assertFalse(self.stop.exists())
+
+    def test_the_discard_is_recorded_on_the_event(self):
+        self._add(stop_body="DONE\n")
+        self.runner.run_once()
+        finished = [e for e in self._events() if e.get("type") == "process_finished"]
+        self.assertTrue(finished[-1].get("ignored_stop_done"))
+
+    def test_saturation_still_completes_the_topic_normally(self):
+        # Discarding DONE must not disturb the measured path: the same item
+        # completes once the streak reaches the limit.
+        self._add(stop_body="DONE\n")
+        for _ in range(LoopRunner.DEFAULT_SATURATION_LIMIT - 1):
+            self.assertEqual(self.runner.run_once()["outcome"], "scheduled")
+        self.assertEqual(self.runner.run_once()["outcome"], "completed")
+
+    def test_needs_operator_still_parks_and_keeps_its_file(self):
+        self._add(stop_body="NEEDS-OPERATOR\nflag: check RL-04\n")
+        result = self.runner.run_once()
+        self.assertEqual(result["outcome"], "needs_attention")
+        self.assertTrue(self.stop.exists())
+        self.assertIn("NEEDS-OPERATOR", self.store.get("t")["last_error"])
+
+    def test_done_still_completes_a_loop_with_no_semantic_contract(self):
+        # Generic loop commands have no saturation signal at all; removing
+        # their DONE would leave them no way to finish.
+        self._add(stop_body="DONE\n", contract=False)
+        self.assertEqual(self.runner.run_once()["outcome"], "completed")
+
+    def test_done_still_completes_a_bounded_item(self):
+        # repeat_seconds=None is a one-shot (discovery passes): nothing
+        # recurring to saturate.
+        self._add(stop_body="DONE\n", repeat_seconds=None)
+        self.assertEqual(self.runner.run_once()["outcome"], "completed")

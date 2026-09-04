@@ -22,3 +22,8 @@ dist/
 # OS/editor noise
 .DS_Store
 *.swp
+
+# Operator-side wiring and credentials (e.g. the GraphRAG ingest hook's
+# endpoints file) — must never enter the public repo, tracked or not
+*.env
+graphrag.env
