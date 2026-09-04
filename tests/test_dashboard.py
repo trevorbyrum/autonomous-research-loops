@@ -148,8 +148,11 @@ class DashboardRenderingTests(unittest.TestCase):
 
         result = render_dashboard(state, events, generated_at=datetime(2026, 8, 28, tzinfo=UTC))
 
-        self.assertGreaterEqual(result.count("unavailable \\(coverage 0/5\\)"), 5)
-        self.assertIn("| Done | 99 | 5 |", result)
+        # Completed rows carry identity only (operator ruling 2026-09-04:
+        # metric detail moves to STATS.md), so the coverage-disclosing cells
+        # now all come from the economics section.
+        self.assertGreaterEqual(result.count("unavailable \\(coverage 0/5\\)"), 4)
+        self.assertIn("| Done | 99 | 5 | unavailable |", result)
 
     def test_duplicate_attempts_id_reuse_and_removed_ids_are_disclosed(self):
         state = {
@@ -202,7 +205,7 @@ class DashboardRenderingTests(unittest.TestCase):
             "items": [{"id": "terminal", "title": "Terminal", "status": "completed", "desired_state": "paused", "attempts": 1}],
         }
         older_events = render_dashboard(terminal_without_event, [], generated_at=generated)
-        self.assertIn("| Terminal | 1 | 0 | unavailable \\(coverage 0/0\\)", older_events)
+        self.assertIn("| Terminal | 1 | 0 | unavailable |", older_events)
 
         newer_events = render_dashboard(
             empty,

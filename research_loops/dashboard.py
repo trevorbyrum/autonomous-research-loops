@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import re
 import math
 import os
 import statistics
@@ -88,6 +89,27 @@ def _profile_for(item: dict[str, Any], worker: str | None, events: list[dict[str
     if isinstance(command, list) and len(command) >= 3 and isinstance(command[2], str):
         return command[2]
     return "unavailable"
+
+
+def _station_models(state: dict[str, Any], worker: Any, item: dict[str, Any],
+                    events: list[dict[str, Any]]) -> str:
+    """`1st: x, 2nd: y` from the claiming station's profile.
+
+    The profile is what actually runs the iteration (queue items carry no
+    binding). The secondary is stored as a full delegate command line, so its
+    model is extracted from the --model/-m flag; a delegate with no model flag
+    falls back to its first token (the bare CLI name).
+    """
+    profile = (state.get("worker_agents") or {}).get(str(worker)) or {}
+    primary = profile.get("agent_model") or profile.get("agent_main") or _profile_for(
+        item, str(worker) if worker else None, events
+    )
+    secondary = "—"
+    raw = profile.get("agent_secondary") or ""
+    if raw:
+        match = re.search(r"(?:--model|-m)[ =](\S+)", raw)
+        secondary = match.group(1) if match else raw.split()[0]
+    return f"1st: {primary}, 2nd: {secondary}"
 
 
 def _models(events: list[dict[str, Any]]) -> str:
@@ -356,17 +378,12 @@ def render_dashboard(
             worker,
             item.get("status"),
             iteration,
-            (
-                # Station configuration wins: the worker's agent profile is
-                # what actually runs the iteration (queue items carry no binding).
-                ((state.get("worker_agents") or {}).get(str(worker)) or {}).get("agent_main")
-                or _profile_for(item, str(worker) if worker else None, events)
-            ),
+            _station_models(state, worker, item, events),
             "running now"
             if item.get("status") == "running"
             else item.get("next_eligible_at") or "eligible now",
         ])
-    lines.extend(["", "## Active topics", "", _table(["Topic", "Worker", "State", "Queue iteration", "Profile", "Next eligible"], active_rows)])
+    lines.extend(["", "## Active topics", "", _table(["Topic", "Worker", "State", "Queue iteration", "Models", "Next eligible"], active_rows)])
 
     def _attention_flags(item: dict[str, Any]) -> str:
         # Structured `flag:` lines (e.g. from a deferred-obligation STOP)
@@ -406,21 +423,16 @@ def render_dashboard(
     completed_rows = []
     for _, item in categories["completed"]:
         retained = by_item.get(str(item.get("id")), [])
-        calls_total, calls_covered, run_count = _metric(retained, "api_calls", nested=True)
-        duration_total, duration_covered, _ = _metric(retained, "duration_seconds")
-        token_total, token_covered, _ = _metric(retained, "total_tokens", nested=True)
+        _, _, run_count = _metric(retained, "api_calls", nested=True)
+        # Interactions/duration/token/model detail belongs in STATS.md
+        # (operator ruling 2026-09-04) -- STATUS.md keeps the identity row.
         completed_rows.append([
             item.get("title", item.get("id")),
             item.get("attempts", "unavailable"),
             run_count,
-            _reported_total(calls_total, calls_covered, run_count),
-            _duration_average(duration_total, duration_covered, run_count),
-            _reported_total(token_total, token_covered, run_count),
-            _reported_average(token_total, token_covered, run_count),
-            _models(retained),
             item.get("finished_at") or "unavailable",
         ])
-    lines.extend(["", "## Completed topics", "", _table(["Topic", "Queue attempts", "Retained runs", "Interactions", "Avg duration / retained run", "Reported tokens", "Avg reported tokens / covered run", "Models observed", "Finished"], completed_rows)])
+    lines.extend(["", "## Completed topics", "", _table(["Topic", "Queue attempts", "Retained runs", "Finished"], completed_rows)])
 
     lines.extend(["", "## Paused topics", "", _table(["Topic", "Stale/current owner", "Attempts", "Reason class"], paused_rows)])
     if unclassified_rows:
