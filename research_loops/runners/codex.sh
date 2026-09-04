@@ -50,6 +50,8 @@ if [[ -n "${RESEARCH_LOOP_USAGE_FILE:-}" ]]; then
   python3 - "$events" "$RESEARCH_LOOP_USAGE_FILE" "${RESEARCH_LOOP_CODEX_MODEL:-}" <<'PY' 2>/dev/null || true
 import json, sys
 total, turns, seen = 0, 0, False
+detail = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0,
+          "reasoning_output_tokens": 0}
 for line in open(sys.argv[1], errors="replace"):
     line = line.strip()
     if not line.startswith("{"):
@@ -67,12 +69,20 @@ for line in open(sys.argv[1], errors="replace"):
         if isinstance(value, (int, float)):
             total += int(value)
             seen = True
+    # Cached input is billed at ~a tenth of fresh input: keep the split so
+    # cost-weighted quota regression can price the iteration correctly.
+    for key in detail:
+        value = usage.get(key)
+        if isinstance(value, (int, float)):
+            detail[key] += int(value)
 out = {
     "provider": "openai",
     "model": sys.argv[3] or None,
     "api_calls": turns or None,
     "total_tokens": total if seen else None,
 }
+if seen and sys.argv[3]:
+    out["models"] = {sys.argv[3]: detail}
 with open(sys.argv[2], "w", encoding="utf-8") as fh:
     json.dump(out, fh)
 PY

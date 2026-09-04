@@ -71,6 +71,26 @@ out = {
         if isinstance(v, (int, float)) and "token" in k
     ) or None,
 }
+# Per-model breakdown (operator request 2026-09-04): modelUsage carries exact
+# per-model token fields AND the CLI-priced costUSD -- record them so quota
+# trajectory can be regressed against real per-model spend, never a blended mix.
+if isinstance(model_usage, dict):
+    FIELDS = (
+        ("input_tokens", "inputTokens"), ("output_tokens", "outputTokens"),
+        ("cache_read_tokens", "cacheReadInputTokens"),
+        ("cache_creation_tokens", "cacheCreationInputTokens"),
+        ("thinking_tokens", "thinkingTokens"), ("cost_usd", "costUSD"),
+    )
+    models_out = {}
+    for name, fields in model_usage.items():
+        if not isinstance(fields, dict):
+            continue
+        rec = {dst: fields[src] for dst, src in FIELDS
+               if isinstance(fields.get(src), (int, float))}
+        if rec:
+            models_out[name] = rec
+    if models_out:
+        out["models"] = models_out
 with open(sys.argv[1], "w") as fh:
     json.dump(out, fh)
 ' "$RESEARCH_LOOP_USAGE_FILE" 2>/dev/null || true
