@@ -1384,6 +1384,27 @@ class QueueStore:
                 <= reference
             ]
 
+    @staticmethod
+    def _clear_stop_file(item: dict[str, Any]) -> bool:
+        """Drop a completed item's STOP file as it returns to the queue.
+
+        The chassis exits 3 on ANY STOP present at an iteration's start, so a
+        terminal STOP left over from the previous completion parks the topic
+        on its very first pass back — the operator resumes it and nothing
+        runs (operator ruling 2026-09-04: reactivation clears the stop).
+        """
+        stop_file = item.get("stop_file")
+        if not stop_file:
+            return False
+        path = Path(stop_file)
+        if not path.is_absolute():
+            path = Path(item["cwd"]) / path
+        try:
+            path.unlink()
+            return True
+        except OSError:
+            return False
+
     def reopen_for_refresh(self, item_id: str) -> dict[str, Any]:
         """Requeue a completed item after its scheduled or manually
         triggered refresh has already been applied on disk (see
@@ -1400,6 +1421,7 @@ class QueueStore:
                     f"item {item_id} is not completed (status={item['status']!r}); "
                     "only a completed item can be refreshed"
                 )
+            self._clear_stop_file(item)
             item["status"] = "queued"
             item["desired_state"] = "running"
             item["claimed_by"] = None
@@ -1417,6 +1439,8 @@ class QueueStore:
             item = self._find(state, item_id)
             item["restart_generation"] += 1
             item["desired_state"] = "running"
+            if item["status"] == "completed":
+                self._clear_stop_file(item)
             if item["status"] != "running":
                 item["status"] = "queued"
             item["next_eligible_at"] = None

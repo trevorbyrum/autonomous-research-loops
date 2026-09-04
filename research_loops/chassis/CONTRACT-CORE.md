@@ -150,8 +150,11 @@ retry, inactivity, or revision limit defines semantic completion.
    never by reading or rewriting `SEMANTIC-STATE.json` directly. The CLI enforces the
    DONE gate's own per-record rules at write time and refuses incomplete terminal
    transitions atomically.
-8. Write `STOP DONE` only after the executable semantic gate passes. If no unblocked
-   obligation can advance, write one precise `STOP NEEDS-OPERATOR` question instead.
+8. Never declare completion. The executable semantic gate passing means the contract is
+   COVERED, not finished: the queue completes a topic only after consecutive deepening
+   passes stop changing its semantic signature, and a self-written `STOP DONE` is
+   discarded. If no unblocked obligation can advance, write one precise
+   `STOP NEEDS-OPERATOR` question instead — that is the only terminal signal you own.
 
 ## Efficiency
 

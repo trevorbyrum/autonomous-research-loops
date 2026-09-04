@@ -2,10 +2,9 @@ Run exactly one bounded iteration of the research topic in ${TOPIC_DIR}. Read ${
 
 END-OF-ITERATION PROTOCOL — run these steps, in order, as your LAST actions:
 1. Run: `python3 ${CHASSIS}/semantic-state.py validate ${TOPIC_DIR}`
-2. If it prints `semantic completion valid` AND you attempted a genuine deepening pass this iteration that changed nothing (no leads left, no confidence elevatable), you MAY run exactly:
-   `printf 'DONE\n' > ${TOPIC_DIR}/STOP`
-   This is a shell command you execute. Typing the words "STOP DONE" in your reply does nothing — only the file counts.
-3. Otherwise, if (and only if) no unblocked obligation can advance without the operator, run:
+   This tells you whether the contract is COVERED. It does not mean you are done, and you cannot declare yourself done: the queue completes a topic only after consecutive deepening passes stop changing its semantic signature. Writing `DONE` yourself has no effect — the queue discards it and reschedules you. Keep deepening; the gate will notice.
+2. If (and only if) no unblocked obligation can advance without the operator, run:
    `printf 'NEEDS-OPERATOR\nflag: <what to look at>\n' > ${TOPIC_DIR}/STOP`
-4. Finish your reply with compact JSON naming the obligation, verified findings, counterevidence, state changes, next gap, and whether this was qualifying semantic progress.
-In every other case, skip steps 2-3 and just do step 4 — the queue reschedules you.
+   This is a shell command you execute. Typing the words in your reply does nothing — only the file counts. Being blocked is the one terminal signal that is yours to send.
+3. Finish your reply with compact JSON naming the obligation, verified findings, counterevidence, state changes, next gap, and whether this was qualifying semantic progress.
+In every other case, skip step 2 and just do step 3 — the queue reschedules you.
