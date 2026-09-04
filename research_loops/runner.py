@@ -1050,18 +1050,36 @@ class LoopRunner:
             child_env["RESEARCH_LOOP_PROFILE"] = self.profile
         else:
             child_env.pop("RESEARCH_LOOP_PROFILE", None)
-        agent_main = item.get("agent_main")
+        # Station configuration: the WORKER's agent profile decides which
+        # harness/model pair runs this iteration. Items carry no binding --
+        # their legacy agent_main/agent_secondary fields are consulted only
+        # when the worker has no profile at all (backward compatibility for
+        # fleets that never configured one).
+        profile = self.store.worker_agents(self.worker)
+        agent_main = profile.get("agent_main") or item.get("agent_main")
         if agent_main:
             # chassis/run-topic.sh already resolves this same variable to pick
-            # a runner adapter; a config-assigned "main agent" just sets it.
+            # a runner adapter.
             child_env["RESEARCH_LOOP_RUNNER"] = agent_main
         else:
             child_env.pop("RESEARCH_LOOP_RUNNER", None)
-        agent_secondary = item.get("agent_secondary")
+        agent_secondary = (
+            profile.get("agent_secondary")
+            if profile.get("agent_main")
+            else item.get("agent_secondary")
+        )
         if agent_secondary:
             child_env["RESEARCH_LOOP_AGENT_SECONDARY"] = agent_secondary
         else:
             child_env.pop("RESEARCH_LOOP_AGENT_SECONDARY", None)
+        # Model/flags are per-adapter env vars (RESEARCH_LOOP_<RUNNER>_MODEL /
+        # _FLAGS); the profile sets them for whichever adapter it names.
+        runner_key = (agent_main or "").upper().replace("-", "_")
+        if runner_key:
+            if profile.get("agent_model"):
+                child_env[f"RESEARCH_LOOP_{runner_key}_MODEL"] = profile["agent_model"]
+            if profile.get("agent_flags"):
+                child_env[f"RESEARCH_LOOP_{runner_key}_FLAGS"] = profile["agent_flags"]
         child_env["RESEARCH_LOOP_GAP_POLICY"] = item.get("gap_policy") or "review"
         child_env["RESEARCH_LOOP_GAP_AUTO_LIMIT"] = str(item.get("gap_auto_limit") or 0)
         completion_lock = item.get("completion_lock")

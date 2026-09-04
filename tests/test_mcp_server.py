@@ -99,10 +99,12 @@ class EngineToolsTests(unittest.TestCase):
         paused = self.tools.pause_topic("a", "hold", graceful=False)
         self.assertEqual(paused["status"], "paused")
         self.assertEqual(self.tools.resume_topic("a")["status"], "queued")
-        updated = self.tools.set_agents("a", agent_main="hermes")
-        self.assertEqual(updated["agent_main"], "hermes")
         with self.assertRaises(QueueError):
-            self.tools.set_agents("a")
+            self.tools.set_agents("a", agent_main="hermes")  # deprecated: station property
+        updated = self.tools.set_worker_agents("worker-1", agent_main="hermes")
+        self.assertEqual(updated["profile"]["agent_main"], "hermes")
+        with self.assertRaises(QueueError):
+            self.tools.set_worker_agents("worker-1")
 
     def test_relock_repins_from_topic_state(self):
         self._add_example()

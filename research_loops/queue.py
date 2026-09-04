@@ -165,6 +165,7 @@ class QueueStore:
             "created_at": now,
             "updated_at": now,
             "worker_policies": {},
+            "worker_agents": {},
             "items": [],
         }
 
@@ -695,6 +696,69 @@ class QueueStore:
             item["progress_signature"] = signature
             item["updated_at"] = utc_now()
             return item["stall_count"], copy.deepcopy(item)
+
+    # ------------------------------------------------------------------
+    # Worker agent profiles (station configuration)
+    #
+    # The queue is the production line: it knows WHAT work exists and in what
+    # order. A worker is a station: WHICH harness/model pair processes an item
+    # is the station's property, never the item's. Swapping a worker's agents
+    # is one durable change here; items carry no agent binding (their legacy
+    # agent_main/agent_secondary fields are inert -- operator ruling 2026-09-04).
+    # ------------------------------------------------------------------
+
+    WORKER_AGENT_FIELDS = ("agent_main", "agent_secondary", "agent_model", "agent_flags")
+
+    def worker_agents(self, worker: str) -> dict[str, Any]:
+        state = self.snapshot()
+        profiles = state.get("worker_agents") or {}
+        profile = profiles.get(worker) if isinstance(profiles, dict) else None
+        return dict(profile) if isinstance(profile, dict) else {}
+
+    def configure_worker_agents(
+        self,
+        worker: str,
+        *,
+        agent_main: str | None = None,
+        agent_secondary: str | None = None,
+        agent_model: str | None = None,
+        agent_flags: str | None = None,
+        clear: bool = False,
+    ) -> dict[str, Any]:
+        """Set (merge) a worker's agent profile. Pass "" for a field to unset
+        it; clear=True drops the whole profile. Takes effect at the worker's
+        next iteration launch -- never disrupts one already in flight."""
+        validate_item_id(worker)
+        updates = {
+            "agent_main": agent_main,
+            "agent_secondary": agent_secondary,
+            "agent_model": agent_model,
+            "agent_flags": agent_flags,
+        }
+        if not clear and all(v is None for v in updates.values()):
+            raise QueueError("worker-agents: pass at least one field, or --clear")
+        with self._locked() as state:
+            profiles = state.setdefault("worker_agents", {})
+            if not isinstance(profiles, dict):
+                raise QueueError("worker_agents must be an object")
+            if clear:
+                profiles.pop(worker, None)
+                return {"worker": worker, "profile": {}}
+            profile = dict(profiles.get(worker) or {})
+            for field, value in updates.items():
+                if value is None:
+                    continue
+                if not isinstance(value, str):
+                    raise QueueError(f"{field} must be a string")
+                if value.strip():
+                    profile[field] = value.strip()
+                else:
+                    profile.pop(field, None)
+            if profile:
+                profiles[worker] = profile
+            else:
+                profiles.pop(worker, None)
+            return {"worker": worker, "profile": dict(profile)}
 
     def record_saturation_streak(self, item_id: str, streak: int) -> dict[str, Any]:
         """Persist the saturation counter (consecutive semantically-valid runs

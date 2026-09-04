@@ -263,23 +263,36 @@ def build_parser() -> argparse.ArgumentParser:
 
     agents = sub.add_parser(
         "agents",
-        help="swap an item's main/secondary agent -- takes effect at the item's "
-        "next iteration only, never disrupts one already in flight",
+        help="DEPRECATED: agents are a worker (station) property now -- use "
+        "`worker-agents`",
     )
     agents.add_argument("item_id")
-    agents.add_argument(
-        "--main",
-        dest="agent_main",
-        help="sets RESEARCH_LOOP_RUNNER for this item, i.e. which runners/* adapter "
-        "leads the next iteration (omit to leave unchanged)",
+    agents.add_argument("--main", dest="agent_main")
+    agents.add_argument("--secondary", dest="agent_secondary")
+    worker_agents = sub.add_parser(
+        "worker-agents",
+        help="set a worker's agent profile (which harness/model pair the station "
+        "runs) -- durable, takes effect at that worker's next iteration launch; "
+        "the queue itself carries no agent binding",
     )
-    agents.add_argument(
-        "--secondary",
-        dest="agent_secondary",
-        help="named delegate the primary may hand off legwork to (omit to leave "
-        "unchanged; pass an empty string to clear it)",
+    worker_agents.add_argument("worker")
+    worker_agents.add_argument(
+        "--main", dest="agent_main",
+        help="runner adapter name (claude|codex|hermes|generic); '' to unset",
     )
-
+    worker_agents.add_argument(
+        "--secondary", dest="agent_secondary",
+        help="delegation command the primary runs for legwork; '' to unset",
+    )
+    worker_agents.add_argument(
+        "--model", dest="agent_model",
+        help="model id for the main adapter (sets RESEARCH_LOOP_<RUNNER>_MODEL); '' to unset",
+    )
+    worker_agents.add_argument(
+        "--flags", dest="agent_flags",
+        help="extra CLI flags for the main adapter (sets RESEARCH_LOOP_<RUNNER>_FLAGS); '' to unset",
+    )
+    worker_agents.add_argument("--clear", action="store_true", help="drop the profile")
     sync = sub.add_parser(
         "sync",
         help=(
@@ -527,14 +540,22 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
         elif args.action == "agents":
-            settings: dict[str, Any] = {}
-            if args.agent_main is not None:
-                settings["agent_main"] = args.agent_main or None
-            if args.agent_secondary is not None:
-                settings["agent_secondary"] = args.agent_secondary or None
-            if not settings:
-                raise QueueError("agents: pass --main and/or --secondary")
-            emit(store.configure_topic(args.item_id, **settings))
+            raise QueueError(
+                "`agents` is deprecated: agents are a worker (station) property, "
+                "not a queue-item property. Use `worker-agents <worker> --main ... "
+                "--secondary ... --model ... --flags ...` instead."
+            )
+        elif args.action == "worker-agents":
+            emit(
+                store.configure_worker_agents(
+                    args.worker,
+                    agent_main=args.agent_main,
+                    agent_secondary=args.agent_secondary,
+                    agent_model=args.agent_model,
+                    agent_flags=args.agent_flags,
+                    clear=args.clear,
+                )
+            )
         elif args.action == "sync":
             manifest_path = Path(args.manifest).expanduser()
             try:
