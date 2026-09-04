@@ -910,10 +910,22 @@ class QueueStore:
             if own is not None:
                 item = own if eligible(own) else None
             else:
-                # A previously accepted topic is continuation, not new intake.
-                # Reacquire the first such topic before considering any new
-                # candidate, even if an unaccepted head item precedes it.
-                prior = next(
+                # Strict queue order: the candidate is the FIRST unclaimed
+                # non-terminal item, full stop. If it is mid-cadence/backoff,
+                # WAIT — never skip ahead to a later topic (that would run two
+                # topics in parallel on one worker; parallelism is only ever
+                # added by starting another worker). Items owned by other
+                # workers are skipped: they are already being handled.
+                #
+                # Ownership history does NOT reorder the queue (operator ruling
+                # 2026-09-04): stickiness is the one topic a worker currently
+                # holds mid-cadence (`own`, above), never every topic it has
+                # ever accepted. The former "reacquire a previously accepted
+                # topic before the head item" tier made queue position
+                # meaningless for a single-worker fleet. Finite-policy
+                # accounting is unaffected: `previously_accepted` below still
+                # exempts re-touched topics from counting as new intake.
+                candidate = next(
                     (
                         i
                         for i in state["items"]
@@ -921,37 +933,15 @@ class QueueStore:
                         and i["status"] in {"queued", "backoff"}
                         and i["desired_state"] == "running"
                         and dependencies_satisfied(i)
-                        and worker in self._accepted_workers(i)
                         and in_lanes(i)
                     ),
                     None,
                 )
-                if prior is not None:
-                    item = prior if eligible(prior) else None
-                else:
-                # Strict queue order: the candidate is the FIRST unclaimed
-                # non-terminal item, full stop. If it is mid-cadence/backoff,
-                # WAIT — never skip ahead to a later topic (that would run two
-                # topics in parallel on one worker; parallelism is only ever
-                # added by starting another worker). Items owned by other
-                # workers are skipped: they are already being handled.
-                    candidate = next(
-                        (
-                            i
-                            for i in state["items"]
-                            if not i.get("claimed_by")
-                            and i["status"] in {"queued", "backoff"}
-                            and i["desired_state"] == "running"
-                            and dependencies_satisfied(i)
-                            and in_lanes(i)
-                        ),
-                        None,
-                    )
-                    item = (
-                        candidate
-                        if candidate is not None and eligible(candidate)
-                        else None
-                    )
+                item = (
+                    candidate
+                    if candidate is not None and eligible(candidate)
+                    else None
+                )
             if item is None:
                 return None
             accepted = self._accepted_workers(item)

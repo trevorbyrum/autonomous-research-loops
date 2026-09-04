@@ -85,7 +85,28 @@ class MultiWorkerTests(unittest.TestCase):
             self.store.snapshot()["worker_policies"]["worker-1"]["claims_used"], 1
         )
 
-    def test_exhausted_worker_reacquires_prior_topic_behind_new_head(self):
+    def test_queue_order_beats_ownership_history(self):
+        """Operator ruling 2026-09-04: a worker's HISTORY never reorders the
+        queue. Stickiness is the one topic it currently holds mid-cadence;
+        once that is released, the head of the queue wins -- even if the
+        worker previously accepted a topic further back."""
+        self._add("old-topic"); self._add("head")
+        # worker-1 works old-topic to a released, re-runnable state.
+        self.store.claim_next(worker="worker-1")
+        self.store.mark_completed("old-topic", exit_code=0)
+        self.store.request_restart("old-topic")
+        self.store.move("head", 0)
+        # The head item, never touched by worker-1, must win over the topic
+        # worker-1 previously accepted.
+        claimed = self.store.claim_next(worker="worker-1")
+        assert claimed is not None
+        self.assertEqual(claimed["id"], "head")
+
+    def test_exhausted_worker_waits_at_a_new_head_instead_of_skipping_ahead(self):
+        """A finite-policy worker whose limit is spent does not jump past an
+        unaccepted head item to reach a prior topic behind it: strict order
+        means it waits (parallelism only ever comes from another worker).
+        Re-touching a prior topic that IS the head still costs no new claim."""
         self._add("owned-by-other"); self._add("prior")
         self.store.claim_next(worker="worker-1")
         self.store.configure_worker_policy("worker-3", claim_limit=1)
@@ -95,6 +116,10 @@ class MultiWorkerTests(unittest.TestCase):
         self._add("new-head")
         self.store.move("new-head", 1)
 
+        # new-head precedes prior and worker-3's limit is spent: wait.
+        self.assertIsNone(self.store.claim_next(worker="worker-3"))
+        # Put prior at the head: reacquisition is free (previously accepted).
+        self.store.move("prior", 1)
         reclaimed = self.store.claim_next(worker="worker-3")
         assert reclaimed is not None
         self.assertEqual(reclaimed["id"], "prior")
