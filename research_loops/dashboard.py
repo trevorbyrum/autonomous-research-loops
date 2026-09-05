@@ -376,14 +376,10 @@ def render_dashboard(
         active_rows.append([
             item.get("title", item.get("id")),
             worker,
-            item.get("status"),
             iteration,
             _station_models(state, worker, item, events),
-            "running now"
-            if item.get("status") == "running"
-            else item.get("next_eligible_at") or "eligible now",
         ])
-    lines.extend(["", "## Active topics", "", _table(["Topic", "Worker", "State", "Queue iteration", "Models", "Next eligible"], active_rows)])
+    lines.extend(["", "## Active topics", "", _table(["Topic", "Worker", "Queue iteration", "Models"], active_rows)])
 
     def _attention_flags(item: dict[str, Any]) -> str:
         # Structured `flag:` lines (e.g. from a deferred-obligation STOP)
