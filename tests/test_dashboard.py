@@ -93,7 +93,7 @@ class DashboardRenderingTests(unittest.TestCase):
         self.assertIn("current 4", result)
         # State / Next eligible dropped from the Active table (operator, 2026-09-05)
         self.assertNotIn("running now", result)
-        self.assertNotIn("| State |", result)
+        self.assertNotIn("| Topic | Worker | State |", result)
         self.assertIn("Queued topic", result)
         self.assertIn("Completed topic", result)
         self.assertIn("10 reported \\(coverage 2/3\\)", result)
