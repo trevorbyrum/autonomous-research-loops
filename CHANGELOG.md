@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Runners record per-model usage detail (`models` object in usage records:
+  token fields split by model, cache splits, and CLI-priced `cost_usd` on the
+  Claude runner) alongside the blended totals.
+- docs: station MCP wiring patterns (Claude `--mcp-config` via `agent_flags`,
+  Codex `config.toml` approval-mode scoping incl. the live-verified
+  `"approve"`-means-preapproved semantics), delegate-wrapper conventions, and
+  the per-model usage record schema.
+
 - **Breaking (semantics): completion is saturation-only for research topics.** A
   recurring item carrying `SEMANTIC-STATE.json` completes exclusively through the
   saturation gate — `saturation_limit` (default 3) consecutive semantically-valid

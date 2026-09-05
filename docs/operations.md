@@ -138,6 +138,43 @@ requeued, so the agent discovers the new work exactly the way it discovers any o
 open obligation. See `research_loops/chassis/refresh-policy.py`'s module docstring for
 the exact mechanics of each mode.
 
+## Giving research agents MCP tools
+
+The engine itself stays MCP-agnostic; tool access is station wiring:
+
+- **Claude runner**: the profile's `agent_flags` string is passed verbatim to
+  `claude -p`, so add `--mcp-config /path/to/mcp.json` (and scope with
+  `--disallowedTools tool1,tool2,...` -- allow/deny operates per tool name, it
+  cannot subset verbs inside one tool, so scope sensitive capability at the
+  server side too, e.g. read-only API tokens).
+- **Codex runner**: `codex exec` reads the user-level `~/.codex/config.toml`
+  `[mcp_servers.*]` entries automatically; no engine flag involved. To scope
+  under the headless `approval_policy=never`, set per-server
+  `default_tools_approval_mode = "prompt"` (fails closed headless -- there is
+  no one to ask) and per-tool `approval_mode = "approve"` for exactly the
+  tools agents may call. NOTE (verified live 2026-09-05, codex 0.153.x):
+  `"approve"` means PRE-approved; the documented-sounding value `"auto"` is
+  invalid and silently falls back to require-approval -- test both an allowed
+  and a blocked tool after any change.
+- **Delegate wrappers**: a profile's `agent_secondary` may point at a wrapper
+  script instead of a bare CLI (e.g. to record delegate usage to
+  `$RESEARCH_LOOP_TOPIC_DIR/logs/delegate-usage.jsonl`). The wrapper must
+  preserve the delegate's stdout contract (final answer only) and accept the
+  delegate prompt as its trailing arguments; a leading `--model <m>` argument
+  is the convention for making the model visible to dashboards that parse the
+  profile string.
+
+## Per-model usage records
+
+Runner usage files (`logs/latest-usage.json`, mirrored into `process_finished`
+events) carry an optional `models` object alongside the blended totals:
+per-model `input_tokens`/`output_tokens`, cache fields
+(`cache_read_tokens`/`cache_creation_tokens` for Claude,
+`cached_input_tokens` for Codex), `thinking_tokens`/`reasoning_output_tokens`,
+and -- Claude only -- `cost_usd` as priced by the CLI itself. Blended
+`total_tokens` counts every token at face value regardless of cache status;
+use the per-model fields when weighting against quota or dollars.
+
 ## The completion hook (`on_completed_command`)
 
 To feed a derived store (knowledge graph, vector index, anything) when a topic
