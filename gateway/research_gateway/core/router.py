@@ -459,10 +459,12 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
         out["lanes"].append(entry)
         if entry.get("count") is not None and lane.source_id in (out.get("next") or {}):
             entry["next"] = out["next"][lane.source_id]
-        elif rt == "find" and entry.get("count") is not None:
-            # a lane that answered without a continuation is EXHAUSTED — an EMPTY answer
-            # included: say so explicitly, so handing the whole `next` map back never
-            # restarts it from page one (finding 9, both shapes)
+        elif rt == "find" and entry.get("coverage") in (COVERAGE_OK, COVERAGE_EMPTY):
+            # a lane that SUCCESSFULLY answered without a continuation is EXHAUSTED — an
+            # empty answer included: say so explicitly, so handing the whole `next` map
+            # back never restarts it from page one. A FAILED lane is never exhausted —
+            # marking it so would let a continuation clear its blocker without any
+            # successful research (finding 9, all three rounds).
             entry["exhausted"] = True
             out.setdefault("next", {})[lane.source_id] = EXHAUSTED_CURSOR
         records.extend(got)

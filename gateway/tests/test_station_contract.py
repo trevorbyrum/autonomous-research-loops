@@ -319,19 +319,30 @@ class ReverifyRoundPins(unittest.TestCase):
 
     def test_html_with_a_success_status_is_unavailable_not_empty(self):
         from research_gateway.adapters.base import Response, SourceUnavailable, check
-        html = Response(200, {"content-type": "text/html"}, b"<!DOCTYPE html><html>bot wall</html>", "u")
-        with self.assertRaises(SourceUnavailable):
-            check("crossref", html)
+        for body in (b"<!DOCTYPE html><html>bot wall</html>",
+                     b"\xef\xbb\xbf<html>BOM first</html>",
+                     b"<!-- served by cdn --><html>challenge</html>"):
+            with self.assertRaises(SourceUnavailable, msg=body):
+                check("crossref", Response(200, {"content-type": "text/html"}, body, "u"))
+        with self.assertRaises(SourceUnavailable, msg="sniff without a declared type"):
+            check("crossref", Response(200, {}, b"  <!doctype html><html/>", "u"))
+        html = Response(200, {"content-type": "text/html"}, b"<html>doc</html>", "u")
         self.assertTrue(check("globe", html, allow_html=True), "raw file paths may fetch HTML documents")
         self.assertTrue(check("crossref", Response(200, {}, b'{"ok": 1}', "u")))
+        self.assertTrue(check("bis", Response(200, {"content-type": "application/xml"},
+                                              b"<!-- sdmx --><?xml version='1.0'?><doc/>", "u")),
+                        "a comment-prefixed XML answer with a declared type stays usable")
 
-    def test_empty_lanes_are_exhausted_too(self):
+    def test_empty_lanes_are_exhausted_too_but_failed_lanes_never_are(self):
         r, c, t = make()
         t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [], "total-results": 0}})
-        t.add("GET", "https://doaj.org/api/search/articles/", body={"results": [], "total": 0})
+        t.add("GET", "https://doaj.org/api/search/articles/", status=503)
         out = R.execute(r, {"request_type": "find", "query": "nothing here", "kind": "article"}, c)
         self.assertEqual(out["next"].get("crossref"), R.EXHAUSTED_CURSOR,
                          "an EMPTY answer is also final: continuation must not re-dispatch it")
+        self.assertNotIn("doaj", out.get("next") or {},
+                         "a FAILED lane is never exhausted — that would clear its blocker "
+                         "without any successful research (closing-round finding 9)")
 
     def test_empty_fulltext_enrichment_is_metadata_only(self):
         r, c, t = make()
@@ -356,20 +367,34 @@ class ReverifyRoundPins(unittest.TestCase):
         self.assertEqual(len({l["query_or_identity"] for l in lines}), 2,
                          "a GDP failure and an UNRATE success are different requests (finding 4)")
 
-    def test_polled_job_lanes_feed_the_activity_file(self):
+    def test_polled_job_lanes_key_by_the_original_request(self):
         with tempfile.TemporaryDirectory() as d:
             path = str(Path(d) / "activity.jsonl")
             client = StubClient()
-            client.job_payload = {"topic_id": "topic-x", "query": "stored q"}
-            client.job_result = None
-            job = {"id": 9, "status": "done", "payload": client.job_payload,
+            job = {"id": 9, "status": "done", "request_type": "find",
+                   "payload": {"topic_id": "topic-x", "query": "stored q"},
                    "result": {"lanes": [{"source": "crossref", "coverage": "provider_unavailable"}]}}
             client.job = lambda job_id: job
             mcp_stdio.call_tool(client, "research_job", {"job_id": 9}, activity=path)
             lines = [json.loads(l) for l in Path(path).read_text().splitlines()]
-        self.assertIn(("crossref", "provider_unavailable", "stored q"),
-                      [(l["source"], l["coverage"], l["query_or_identity"]) for l in lines],
-                      "degraded lanes inside a polled job's stored result feed the guard (finding 3)")
+        self.assertIn(("crossref", "provider_unavailable", "find", "stored q"),
+                      [(l["source"], l["coverage"], l["request_type"], l["query_or_identity"]) for l in lines],
+                      "a polled failure and a direct retry of the same search share one blocker "
+                      "key (closing-round finding 6)")
+
+    def test_polling_outages_are_recorded_never_mistaken_for_policy_violations(self):
+        """Closing-round finding 3: a gateway-trouble poll answer has no payload — it is
+        an outage observation for the guard, not a policy question."""
+        with tempfile.TemporaryDirectory() as d:
+            path = str(Path(d) / "activity.jsonl")
+            client = StubClient()
+            client.job = lambda job_id: {"capability_fact": "gateway_unavailable", "error": "connection refused"}
+            out = mcp_stdio.call_tool(client, "research_job", {"job_id": 5}, policy=BOUND, activity=path)
+            self.assertEqual(out["capability_fact"], "gateway_unavailable")
+            lines = [json.loads(l) for l in Path(path).read_text().splitlines()]
+        self.assertEqual([(l["source"], l["coverage"], l["query_or_identity"]) for l in lines],
+                         [("gateway", "provider_unavailable", "job:5")],
+                         "recorded under the stable job key, so a later successful poll clears it")
 
 
 if __name__ == "__main__":

@@ -127,6 +127,16 @@ def apply_policy(args: dict, policy: dict) -> dict:
     return out
 
 
+def _subject_of(mapping: dict) -> str:
+    """One subject rule for arguments AND stored job payloads: two different data series
+    from one source are two different requests (finding 4)."""
+    subject = mapping.get("query") or mapping.get("identity") or mapping.get("target") or ""
+    if not subject and mapping.get("source"):
+        subject = json.dumps({"source": mapping["source"], "params": mapping.get("params") or {}},
+                             sort_keys=True, separators=(",", ":"))
+    return subject
+
+
 def record_activity(path: str | None, tool: str, args: dict, result: dict | None, error: str | None = None) -> None:
     """Append degraded coverage states (and outright failures) for the chassis. Best-effort by
     design: a broken activity file must never break research itself."""
@@ -134,47 +144,51 @@ def record_activity(path: str | None, tool: str, args: dict, result: dict | None
         return
     lines = []
     at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    subject = args.get("query") or args.get("identity") or args.get("target") or ""
-    if not subject and args.get("source"):
-        # data requests: two different series from one source are two different requests —
-        # the subject carries the params, or a GDP failure and an UNRATE success would
-        # share one blocker key (re-verify finding 4)
-        subject = json.dumps({"source": args["source"], "params": args.get("params") or {}},
-                             sort_keys=True, separators=(",", ":"))
-    if not subject and isinstance(result, dict):
-        payload = result.get("payload") or {}
-        subject = payload.get("query") or payload.get("identity") or payload.get("target") or ""
-    observed: list[tuple[str, str, str | None]] = []
+    payload = (result or {}).get("payload") if isinstance((result or {}).get("payload"), dict) else {}
+    if tool == "research_job":
+        # gateway-level polling events key by the JOB (stable across poll attempts, so a
+        # failed poll's blocker clears when a later poll of the same job answers); the
+        # job's inner lanes key by the ORIGINAL request so a direct retry matches too
+        request_type = "research_job"
+        subject = f"job:{args.get('job_id')}"
+        lane_rt = str((result or {}).get("request_type") or payload.get("request_type") or request_type)
+        lane_subject = _subject_of(payload) or subject
+    else:
+        request_type = REQUEST_TOOLS.get(tool, tool)
+        subject = _subject_of(args)
+        lane_rt, lane_subject = request_type, subject
+    observed: list[tuple[str, str, str | None, str, str]] = []
     gateway_trouble = False
     if error is not None:
-        observed.append(("gateway", "provider_unavailable", error[:200]))
+        observed.append(("gateway", "provider_unavailable", error[:200], request_type, subject))
         gateway_trouble = True
     fact = str((result or {}).get("capability_fact") or "")
     if fact.startswith("gateway"):   # the client answered with a capability-fact dict, not lanes (finding 3)
-        observed.append(("gateway", "provider_unavailable", ((result or {}).get("error") or fact)[:200]))
+        observed.append(("gateway", "provider_unavailable", ((result or {}).get("error") or fact)[:200],
+                         request_type, subject))
         gateway_trouble = True
     # lanes live at the top level of a direct answer AND nested inside a polled job's
-    # stored result — both feed the completion guard (re-verify finding 3)
+    # stored result — both feed the completion guard, under the ORIGINAL request's key
     lanes = list((result or {}).get("lanes") or [])
     lanes += list(((result or {}).get("result") or {}).get("lanes") or []) if isinstance((result or {}).get("result"), dict) else []
     for lane in lanes:
         if lane.get("source") and lane.get("coverage"):
-            observed.append((lane["source"], lane["coverage"], None))
+            observed.append((lane["source"], lane["coverage"], None, lane_rt, lane_subject))
     if isinstance(result, dict) and result.get("status") == "failed":   # a polled job that failed (finding 3)
-        observed.append(("gateway", "provider_unavailable", str(result.get("error_class") or "job failed")[:200]))
+        observed.append(("gateway", "provider_unavailable", str(result.get("error_class") or "job failed")[:200],
+                         request_type, subject))
         gateway_trouble = True
     if not gateway_trouble and result is not None:
         # the gateway itself answered: that clears a gateway blocker for this request —
-        # otherwise a transport blip's blocker could never resolve (re-verify finding 6)
-        observed.append(("gateway", "searched_ok", None))
-    request_type = REQUEST_TOOLS.get(tool, tool)
-    for source, coverage, detail in observed:
-        state_key = (path, source, request_type, subject)
+        # otherwise a transport blip's blocker could never resolve (finding 6)
+        observed.append(("gateway", "searched_ok", None, request_type, subject))
+    for source, coverage, detail, rt, subj in observed:
+        state_key = (path, source, rt, subj)
         if _LAST_STATE.get(state_key) == coverage:
             continue   # unchanged state for this exact request: every TRANSITION (either direction) gets a line
         _LAST_STATE[state_key] = coverage
-        line = {"at": at, "source": source, "request_type": request_type,
-                "coverage": coverage, "query_or_identity": subject}
+        line = {"at": at, "source": source, "request_type": rt,
+                "coverage": coverage, "query_or_identity": subj}
         if detail:
             line["detail"] = detail
         lines.append(line)
@@ -233,7 +247,18 @@ def call_tool(client: GatewayClient, name: str, args: dict, *, policy: dict | No
     if name == "research_status":
         return client.status()
     if name == "research_job":
-        job = client.job(int(args["job_id"]))
+        try:
+            job = client.job(int(args["job_id"]))
+        except Exception as e:
+            record_activity(activity, name, args, None, error=f"{type(e).__name__}: {e}")
+            raise
+        if isinstance(job, dict) and "payload" not in job:
+            # a gateway-trouble answer (capability fact, no job payload) is an OUTAGE
+            # observation, never a policy question: record it and hand it back —
+            # raising a policy error here would hide the outage from the completion
+            # guard (closing-round finding 3)
+            record_activity(activity, name, args, job)
+            return job
         if policy and isinstance(job, dict):
             payload = job.get("payload") or {}
             if policy.get("topic_id") and payload.get("topic_id") != policy["topic_id"]:

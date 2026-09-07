@@ -338,9 +338,17 @@ def check(source_id: str, resp: Response, *, allow_404: bool = True, allow_html:
     flowing on to become a false `searched_empty` (pass-1 finding 7). Raw-file fetch
     paths that may legitimately retrieve HTML documents pass allow_html=True."""
     if resp.ok:
-        if not allow_html and resp.body and resp.body.lstrip()[:15].lower().startswith((b"<html", b"<!doctype")):
-            raise SourceUnavailable(source_id, Response(resp.status, resp.headers, b"", resp.url,
-                                                        error="HTML answer with a success status (unreadable)"))
+        if not allow_html and resp.body:
+            ctype = next((v for k, v in (resp.headers or {}).items() if k.lower() == "content-type"), "")
+            head = resp.body.lstrip(b"\xef\xbb\xbf \t\r\n")[:15].lower()
+            # the declared type is the robust signal (a BOM or leading comment defeats any
+            # sniff); the prefix sniff covers answers that omit the header
+            # a bare leading comment counts only without a declared type: an XML answer
+            # (SDMX) may legitimately open with one and declares itself as xml
+            if ("text/html" in str(ctype).lower() or head.startswith((b"<html", b"<!doctype"))
+                    or (head.startswith(b"<!--") and not ctype)):
+                raise SourceUnavailable(source_id, Response(resp.status, resp.headers, b"", resp.url,
+                                                            error="HTML answer with a success status (unreadable)"))
         return True
     if resp.status == 404 and allow_404:
         return False
