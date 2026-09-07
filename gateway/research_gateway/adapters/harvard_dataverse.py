@@ -118,7 +118,7 @@ def fetch_in(client: Client, base: str, source_id: str, secret_name: str | None,
                         "capability_fact": f"download refused before fetching: {why} is not usable commercially (R-8)"}
         resp = client.get(source_id, "fetch", f"{base}/api/access/datafile/{int(file_id)}", headers={**headers(client, secret_name), "Accept": "*/*"},
                           identity=f"{ds['identity']}#{file_id}")
-        if not check(source_id, resp):
+        if not check(source_id, resp, allow_html=True):  # raw file download: an HTML document can be legitimate content here
             return {"identity": ds["identity"], "records": []}
         return {"identity": ds["identity"], "records": [], "content": resp.body,
                 "content_type": resp.headers.get("content-type"), "license": ds.get("license")}

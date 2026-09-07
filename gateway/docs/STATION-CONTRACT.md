@@ -40,8 +40,8 @@ is never conflated with "not searched" or "unavailable":
 |-----------------------|---------|
 | `searched_ok`         | lane dispatched and returned ≥ 1 record |
 | `searched_empty`      | THIS successful query returned 0 records — never that the provider was down, refused, unreadable or skipped; and never proof the literature is silent beyond this query |
-| `not_searched`        | lane exists but was not dispatched (commercial policy, budget, breaker) |
-| `provider_unavailable`| outage, timeout, quota or an unreadable answer |
+| `not_searched`        | lane exists but the OPERATOR'S POLICY excluded it (commercial verdict) — never a capacity refusal |
+| `provider_unavailable`| outage, timeout, quota, an unreadable answer, or a budget/breaker refusal — required research that COULD NOT run |
 | `auth_failed`         | credentials rejected — or not configured at all (a keyless required tier is an auth problem, not an empty search) |
 | `metadata_only`       | the record was found but the requested full text / file is not retrievable |
 | `exhausted`           | a continuation: this lane already returned everything it has (its `next` sentinel skips it) |

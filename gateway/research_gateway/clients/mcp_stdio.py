@@ -134,18 +134,39 @@ def record_activity(path: str | None, tool: str, args: dict, result: dict | None
         return
     lines = []
     at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    subject = args.get("query") or args.get("identity") or args.get("target") or args.get("source") or ""
+    subject = args.get("query") or args.get("identity") or args.get("target") or ""
+    if not subject and args.get("source"):
+        # data requests: two different series from one source are two different requests —
+        # the subject carries the params, or a GDP failure and an UNRATE success would
+        # share one blocker key (re-verify finding 4)
+        subject = json.dumps({"source": args["source"], "params": args.get("params") or {}},
+                             sort_keys=True, separators=(",", ":"))
+    if not subject and isinstance(result, dict):
+        payload = result.get("payload") or {}
+        subject = payload.get("query") or payload.get("identity") or payload.get("target") or ""
     observed: list[tuple[str, str, str | None]] = []
+    gateway_trouble = False
     if error is not None:
         observed.append(("gateway", "provider_unavailable", error[:200]))
+        gateway_trouble = True
     fact = str((result or {}).get("capability_fact") or "")
     if fact.startswith("gateway"):   # the client answered with a capability-fact dict, not lanes (finding 3)
         observed.append(("gateway", "provider_unavailable", ((result or {}).get("error") or fact)[:200]))
-    for lane in (result or {}).get("lanes") or []:
+        gateway_trouble = True
+    # lanes live at the top level of a direct answer AND nested inside a polled job's
+    # stored result — both feed the completion guard (re-verify finding 3)
+    lanes = list((result or {}).get("lanes") or [])
+    lanes += list(((result or {}).get("result") or {}).get("lanes") or []) if isinstance((result or {}).get("result"), dict) else []
+    for lane in lanes:
         if lane.get("source") and lane.get("coverage"):
             observed.append((lane["source"], lane["coverage"], None))
     if isinstance(result, dict) and result.get("status") == "failed":   # a polled job that failed (finding 3)
         observed.append(("gateway", "provider_unavailable", str(result.get("error_class") or "job failed")[:200]))
+        gateway_trouble = True
+    if not gateway_trouble and result is not None:
+        # the gateway itself answered: that clears a gateway blocker for this request —
+        # otherwise a transport blip's blocker could never resolve (re-verify finding 6)
+        observed.append(("gateway", "searched_ok", None))
     request_type = REQUEST_TOOLS.get(tool, tool)
     for source, coverage, detail in observed:
         state_key = (path, source, request_type, subject)
@@ -213,11 +234,17 @@ def call_tool(client: GatewayClient, name: str, args: dict, *, policy: dict | No
         return client.status()
     if name == "research_job":
         job = client.job(int(args["job_id"]))
-        if (policy or {}).get("topic_id") and isinstance(job, dict) \
-                and (job.get("payload") or {}).get("topic_id") != policy["topic_id"]:
-            # polling is policy-bound too: a topic never reads results another topic
-            # obtained under a different (possibly looser) posture (pass-1 finding 1)
-            raise PolicyError("policy-bound: that job belongs to a different topic")
+        if policy and isinstance(job, dict):
+            payload = job.get("payload") or {}
+            if policy.get("topic_id") and payload.get("topic_id") != policy["topic_id"]:
+                # polling is policy-bound too: a topic never reads results another topic
+                # obtained under a different (possibly looser) posture (pass-1 finding 1)
+                raise PolicyError("policy-bound: that job belongs to a different topic")
+            for field in ("commercial", "accept_per_item"):
+                # even the SAME topic's older jobs must match the policy in force NOW —
+                # a since-tightened commercial posture never reads personal-mode results
+                if field in policy and bool(payload.get(field)) != policy[field]:
+                    raise PolicyError(f"policy-bound: that job was created under a different {field} posture")
         record_activity(activity, name, args, job if isinstance(job, dict) else None)
         return job
     if name == "research_batch":

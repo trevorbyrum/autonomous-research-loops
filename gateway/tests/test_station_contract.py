@@ -147,7 +147,8 @@ class StubClient:
 
     def job(self, job_id):
         self.seen.append(("job", job_id))
-        return {"id": job_id, "status": "done", "payload": getattr(self, "job_payload", {"topic_id": "topic-x"})}
+        default = {"topic_id": "topic-x", "commercial": True, "accept_per_item": False}
+        return {"id": job_id, "status": "done", "payload": getattr(self, "job_payload", default)}
 
 
 BOUND = {"topic_id": "topic-x", "commercial": True, "accept_per_item": False, "domain": "finance"}
@@ -183,12 +184,17 @@ class PolicyBinding(unittest.TestCase):
         self.assertIn("policy-bound", out["content"][0]["text"])
 
     def test_job_polling_is_policy_bound_too(self):
-        """Pass-1 finding 1: a bound topic never reads another topic's job results."""
+        """Findings 1 (both rounds): a bound topic never reads another topic's job, and
+        even its OWN older jobs must match the policy in force now."""
         client = StubClient()
         client.job_payload = {"topic_id": "someone-else", "query": "q"}
         with self.assertRaises(mcp_stdio.PolicyError):
             mcp_stdio.call_tool(client, "research_job", {"job_id": 7}, policy=BOUND)
-        client.job_payload = {"topic_id": "topic-x", "query": "q"}
+        client.job_payload = {"topic_id": "topic-x", "query": "q", "commercial": False}
+        with self.assertRaises(mcp_stdio.PolicyError, msg="a since-tightened commercial posture "
+                               "never reads personal-mode results"):
+            mcp_stdio.call_tool(client, "research_job", {"job_id": 7}, policy=BOUND)
+        client.job_payload = {"topic_id": "topic-x", "query": "q", "commercial": True, "accept_per_item": False}
         out = mcp_stdio.call_tool(client, "research_job", {"job_id": 7}, policy=BOUND)
         self.assertEqual(out["id"], 7)
         out = mcp_stdio.call_tool(StubClient(), "research_job", {"job_id": 7}, policy={})
@@ -239,9 +245,10 @@ class ActivityFile(unittest.TestCase):
             mcp_stdio.call_tool(fact, "research_find", {"query": "q2"}, activity=path)
             lines = [json.loads(l) for l in Path(path).read_text().splitlines()]
         self.assertEqual([(l["source"], l["coverage"]) for l in lines],
-                         [("crossref", "provider_unavailable"), ("gateway", "provider_unavailable"),
-                          ("gateway", "provider_unavailable")],
-                         "thrown errors AND capability-fact answers both land (finding 3)")
+                         [("crossref", "provider_unavailable"), ("gateway", "searched_ok"),
+                          ("gateway", "provider_unavailable"), ("gateway", "provider_unavailable")],
+                         "thrown errors AND capability-fact answers both land; a gateway that "
+                         "answered logs its own ok so its blocker can clear (findings 3, 6)")
 
     def test_transitions_are_ordered_and_recovery_is_never_deduplicated(self):
         """Pass-1 finding 6: fail -> ok for the SAME request must be visible as the
@@ -256,10 +263,13 @@ class ActivityFile(unittest.TestCase):
                 mcp_stdio.call_tool(StubClient(result=result), "research_find", {"query": "q"}, activity=path)
             mcp_stdio.call_tool(StubClient(result=ok), "research_find", {"query": "other"}, activity=path)
             lines = [json.loads(l) for l in Path(path).read_text().splitlines()]
-        self.assertEqual([(l["coverage"], l["query_or_identity"]) for l in lines],
+        crossref = [(l["coverage"], l["query_or_identity"]) for l in lines if l["source"] == "crossref"]
+        self.assertEqual(crossref,
                          [("searched_ok", "q"), ("provider_unavailable", "q"), ("searched_ok", "q"),
                           ("searched_ok", "other")],
                          "one line per transition, per exact request, in order")
+        self.assertEqual([l["query_or_identity"] for l in lines if l["source"] == "gateway"], ["q", "other"],
+                         "each answered request also logs the gateway ok, once per request")
         out = mcp_stdio.call_tool(StubClient(), "research_find", {"query": "q"},
                                   activity="/nonexistent-dir/activity.jsonl")
         self.assertIn("lanes", out, "an unwritable activity file never breaks the answer")
@@ -300,6 +310,66 @@ class DownloadHandoff(unittest.TestCase):
         out = mcp_stdio.call_tool(client, "research_fetch", {"target": "url:x"}, download_dir=None)
         self.assertEqual((out["content"], out["content_bytes"]), (None, 3))
         self.assertNotIn("saved_to", out)
+
+
+
+
+class ReverifyRoundPins(unittest.TestCase):
+    """The seven re-verification reopenings, pinned (report findings 1/3/4/6/7/9/19)."""
+
+    def test_html_with_a_success_status_is_unavailable_not_empty(self):
+        from research_gateway.adapters.base import Response, SourceUnavailable, check
+        html = Response(200, {"content-type": "text/html"}, b"<!DOCTYPE html><html>bot wall</html>", "u")
+        with self.assertRaises(SourceUnavailable):
+            check("crossref", html)
+        self.assertTrue(check("globe", html, allow_html=True), "raw file paths may fetch HTML documents")
+        self.assertTrue(check("crossref", Response(200, {}, b'{"ok": 1}', "u")))
+
+    def test_empty_lanes_are_exhausted_too(self):
+        r, c, t = make()
+        t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [], "total-results": 0}})
+        t.add("GET", "https://doaj.org/api/search/articles/", body={"results": [], "total": 0})
+        out = R.execute(r, {"request_type": "find", "query": "nothing here", "kind": "article"}, c)
+        self.assertEqual(out["next"].get("crossref"), R.EXHAUSTED_CURSOR,
+                         "an EMPTY answer is also final: continuation must not re-dispatch it")
+
+    def test_empty_fulltext_enrichment_is_metadata_only(self):
+        r, c, t = make()
+        t.add("GET", "https://api.unpaywall.org/v2/", body={"doi": "10.1/x", "oa_locations": [], "best_oa_location": None})
+        out = R.execute(r, {"request_type": "enrich", "identity": "doi:10.1/x", "what": "oa_location"}, c)
+        lanes = {ln["source"]: ln.get("coverage") for ln in out["lanes"]}
+        self.assertIn("metadata_only", lanes.values(),
+                      "the record exists; an empty full-text answer is not an empty search")
+
+    def test_data_requests_key_by_series_not_source(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = str(Path(d) / "activity.jsonl")
+            down = {"request_type": "data", "records": [], "facts": [],
+                    "lanes": [{"source": "fred", "coverage": "provider_unavailable"}]}
+            ok = {"request_type": "data", "records": [], "facts": [],
+                  "lanes": [{"source": "fred", "coverage": "searched_ok"}]}
+            mcp_stdio.call_tool(StubClient(result=down), "research_data",
+                                {"source": "fred", "params": {"series": "GDP"}}, activity=path)
+            mcp_stdio.call_tool(StubClient(result=ok), "research_data",
+                                {"source": "fred", "params": {"series": "UNRATE"}}, activity=path)
+            lines = [json.loads(l) for l in Path(path).read_text().splitlines() if json.loads(l)["source"] == "fred"]
+        self.assertEqual(len({l["query_or_identity"] for l in lines}), 2,
+                         "a GDP failure and an UNRATE success are different requests (finding 4)")
+
+    def test_polled_job_lanes_feed_the_activity_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = str(Path(d) / "activity.jsonl")
+            client = StubClient()
+            client.job_payload = {"topic_id": "topic-x", "query": "stored q"}
+            client.job_result = None
+            job = {"id": 9, "status": "done", "payload": client.job_payload,
+                   "result": {"lanes": [{"source": "crossref", "coverage": "provider_unavailable"}]}}
+            client.job = lambda job_id: job
+            mcp_stdio.call_tool(client, "research_job", {"job_id": 9}, activity=path)
+            lines = [json.loads(l) for l in Path(path).read_text().splitlines()]
+        self.assertIn(("crossref", "provider_unavailable", "stored q"),
+                      [(l["source"], l["coverage"], l["query_or_identity"]) for l in lines],
+                      "degraded lanes inside a polled job's stored result feed the guard (finding 3)")
 
 
 if __name__ == "__main__":

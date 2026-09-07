@@ -41,6 +41,17 @@ def make_record(*, identity: str, kind: str, source_id: str, title: str | None =
     return rec
 
 
+PROVENANCE_SUMMARY_FIELDS = ("source_id", "identity", "license", "retrieved_at", "attribution", "link")
+# what a stored/persisted provenance member may say (8a): citation ingredients as SCALAR
+# STRINGS only — a nested object in a whitelisted name can never smuggle a raw payload
+# (D-30). Shared by job-result storage (router) and cache persistence.
+
+
+def member_summary(member: dict) -> dict:
+    out = {k: member[k] for k in PROVENANCE_SUMMARY_FIELDS if isinstance(member.get(k), str) and member[k]}
+    return out or {"source_id": member.get("source_id") if isinstance(member.get("source_id"), str) else None}
+
+
 def year_from(text: str | None) -> int | None:
     """First 4-digit year in a date-ish string, or None."""
     if not text:

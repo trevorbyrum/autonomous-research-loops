@@ -15,6 +15,7 @@ import time
 from typing import Callable
 
 from . import identity as ident
+from .canonical import member_summary
 
 
 class Cache:
@@ -63,9 +64,11 @@ class Cache:
                                 (key, self.metadata_ttl))
                     row = cur.fetchone()
                     members = []
-                    if row:
-                        # a reload must not forget WHO said what and when: rebuild the
-                        # provenance summary from record_sources (pass-1 finding 19)
+                    if row and not row[0].get("provenance"):
+                        # legacy rows persisted before the canonical summary existed: rebuild
+                        # what record_sources still knows (licence + persistence time) so a
+                        # reload never forgets WHO said what (finding 19). New rows carry the
+                        # full original summary inside canonical and skip this.
                         cur.execute("SELECT source_id, license, fetched_at FROM gateway.record_sources "
                                     "WHERE identity = %s ORDER BY source_id", (key,))
                         members = [{"source_id": sid, "identity": key, "license": lic,
@@ -119,6 +122,12 @@ class Cache:
             return
         canonical = {k: v for k, v in record.items() if k not in ("raw", "provenance")}
         canonical["sources"] = [p["source_id"] for p in members]
+        # the citation-grade member summary survives persistence VERBATIM (original
+        # retrieval stamps, links, attribution — scalar strings only, never raw): a
+        # reload must not replace two distinct retrieval times with the persistence
+        # time (re-verify finding 19). All members' facts are kept, not only the
+        # raw-persisted ones — facts are not payloads (D-25).
+        canonical["provenance"] = [member_summary(m) for m in provenance if isinstance(m, dict)]
         with self.conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO gateway.records (identity, kind, canonical, last_seen) VALUES (%s, %s, %s, now()) "

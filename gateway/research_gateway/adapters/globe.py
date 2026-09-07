@@ -26,6 +26,6 @@ def fetch(client: Client, target: str | None = None, *, download: bool = False) 
         rec = make_record(identity=identity, kind="file", source_id=SOURCE_ID, title=url.rsplit("/", 1)[-1], links=[url], raw=None)
         return {"identity": identity, "records": [rec]}
     resp = client.get(SOURCE_ID, "fetch", url, headers={"Accept": "*/*"}, identity=identity)
-    if not check(SOURCE_ID, resp):
+    if not check(SOURCE_ID, resp, allow_html=True):  # raw file download: an HTML document can be legitimate content here
         return {"identity": identity, "records": []}
     return {"identity": identity, "records": [], "content": resp.body, "content_type": resp.headers.get("content-type")}

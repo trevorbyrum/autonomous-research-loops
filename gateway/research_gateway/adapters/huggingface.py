@@ -84,7 +84,7 @@ def fetch(client: Client, target: str, *, path: str | None = None, download: boo
                     "capability_fact": f"download refused before fetching: licence {rec['license'] or 'unknown'} is not usable commercially (R-8)"}
         url = f"{BASE}/datasets/{quote(repo, safe='/')}/resolve/{quote(revision, safe='')}/{quote(path, safe='/')}"
         resp = client.get(SOURCE_ID, "fetch", url, headers={**_headers(client), "Accept": "*/*"}, identity=f"{identity}#{path}")
-        if not check(SOURCE_ID, resp):
+        if not check(SOURCE_ID, resp, allow_html=True):  # raw file download: an HTML document can be legitimate content here
             return {"identity": identity, "records": []}
         return {"identity": identity, "records": [], "content": resp.body,
                 "content_type": resp.headers.get("content-type"), "license": rec["license"], "gated": rec["gated"]}

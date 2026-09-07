@@ -331,9 +331,16 @@ class SourceUnavailable(Exception):
         self.source_id, self.response = source_id, response
 
 
-def check(source_id: str, resp: Response, *, allow_404: bool = True) -> bool:
-    """True when usable; False on 404 (when allowed); raises SourceUnavailable otherwise."""
+def check(source_id: str, resp: Response, *, allow_404: bool = True, allow_html: bool = False) -> bool:
+    """True when usable; False on 404 (when allowed); raises SourceUnavailable otherwise.
+    An HTTP-200 answer whose body is an HTML page is a bot-wall or an error page wearing
+    a success status, never a usable API answer — it raises as unavailable instead of
+    flowing on to become a false `searched_empty` (pass-1 finding 7). Raw-file fetch
+    paths that may legitimately retrieve HTML documents pass allow_html=True."""
     if resp.ok:
+        if not allow_html and resp.body and resp.body.lstrip()[:15].lower().startswith((b"<html", b"<!doctype")):
+            raise SourceUnavailable(source_id, Response(resp.status, resp.headers, b"", resp.url,
+                                                        error="HTML answer with a success status (unreadable)"))
         return True
     if resp.status == 404 and allow_404:
         return False

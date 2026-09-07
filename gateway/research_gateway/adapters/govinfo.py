@@ -79,7 +79,7 @@ def fetch(client: Client, target: str, *, fmt: str = "pdf", download: bool = Fal
                  for f in rec["formats"] if f in FORMATS]
         return {"identity": identity, "records": files}
     resp = client.get(SOURCE_ID, "fetch", f"{BASE}/packages/{quote(pid, safe='')}/{fmt}", headers={**hdrs, "Accept": "*/*"}, identity=identity)
-    if not check(SOURCE_ID, resp):
+    if not check(SOURCE_ID, resp, allow_html=True):  # raw file download: an HTML document can be legitimate content here
         return {"identity": identity, "records": []}
     return {"identity": identity, "records": [], "content": resp.body, "content_type": resp.headers.get("content-type"),
             "format": fmt, "license": "US Government Work"}

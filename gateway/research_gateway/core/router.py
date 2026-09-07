@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 
 from ..adapters.base import AdapterError, Client, SourceUnavailable
 from . import calllog, dedup, licenses
+from . import canonical as canonical_mod
 from . import identity as ident
 from .cache import Cache
 
@@ -52,7 +53,6 @@ COVERAGE_SKIPPED, COVERAGE_DOWN = "not_searched", "provider_unavailable"
 COVERAGE_AUTH, COVERAGE_METADATA_ONLY = "auth_failed", "metadata_only"
 COVERAGE_EXHAUSTED = "exhausted"          # a continuation: this lane already returned everything it has
 EXHAUSTED_CURSOR = "exhausted"            # the `next` sentinel for such a lane; handing it back skips the lane
-_BROKER_REFUSALS = ("NoPolicy", "BreakerOpen", "BudgetExhausted")
 
 
 def _fact_coverage(fact: str) -> str:
@@ -425,16 +425,20 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
                 entry["coverage"] = COVERAGE_OK
             elif fact:  # answered nothing AND explained why: that is not a successful empty search
                 entry["coverage"] = _fact_coverage(fact)
+            elif rt == "enrich" and payload.get("what") in ("full_text", "oa_location"):
+                # the caller already HOLDS the record's identity: an empty answer here means
+                # the requested full text is not retrievable, never that nothing exists (finding 7)
+                entry["coverage"] = COVERAGE_METADATA_ONLY
             else:
                 entry["coverage"] = COVERAGE_EMPTY
             if rt == "fetch" and (payload.get("params") or {}).get("download") and out.get("content") is None and got:
                 entry["coverage"] = COVERAGE_METADATA_ONLY  # found, but the requested file is not retrievable
         except SourceUnavailable as e:
             entry["error"] = str(e)
-            broker_refused = e.response.status is None and any(
-                str(e.response.error or "").startswith(name) for name in _BROKER_REFUSALS)
-            entry["coverage"] = (COVERAGE_SKIPPED if broker_refused   # never dispatched: budget/breaker/policy
-                                 else COVERAGE_AUTH if e.response.status in (401, 403) else COVERAGE_DOWN)
+            # a broker refusal (budget spent, breaker open, no policy) means required research
+            # COULD NOT run — that must block completion like any outage, so it is
+            # provider_unavailable, never the non-blocking policy-skip state (finding 4)
+            entry["coverage"] = COVERAGE_AUTH if e.response.status in (401, 403) else COVERAGE_DOWN
             out["facts"].append(f"{lane.source_id}: unavailable ({e.response.error or e.response.status}) — R-10")
             out["lanes"].append(entry)
             continue
@@ -455,9 +459,10 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
         out["lanes"].append(entry)
         if entry.get("count") is not None and lane.source_id in (out.get("next") or {}):
             entry["next"] = out["next"][lane.source_id]
-        elif rt == "find" and entry.get("count"):
-            # a lane that answered without a continuation is EXHAUSTED: say so explicitly, so
-            # handing the whole `next` map back never restarts it from page one (finding 9)
+        elif rt == "find" and entry.get("count") is not None:
+            # a lane that answered without a continuation is EXHAUSTED — an EMPTY answer
+            # included: say so explicitly, so handing the whole `next` map back never
+            # restarts it from page one (finding 9, both shapes)
             entry["exhausted"] = True
             out.setdefault("next", {})[lane.source_id] = EXHAUSTED_CURSOR
         records.extend(got)
@@ -528,21 +533,20 @@ def redact_secrets(obj, values: set):
     return redact(obj)
 
 
-PROVENANCE_SUMMARY_FIELDS = ("source_id", "identity", "license", "retrieved_at", "attribution", "link")
 # what a STORED provenance member may say (8a): where a citation came from, under which
-# CONTENT licence, retrieved when, linked where — a whitelist of SCALAR STRING values, so a
-# member can never smuggle a nested raw payload through a field that happens to share a
-# whitelisted name (pass-1 finding 8). `metadata_license` is added from the registry (the
+# CONTENT licence, retrieved when, linked where — canonical.member_summary's scalar-string
+# whitelist, so a member can never smuggle a nested raw payload through a field that shares
+# a whitelisted name (pass-1 finding 8). `metadata_license` is added from the registry (the
 # per-source verdict in docs/LICENSING.md) when the sources map is available.
 
 
 def _member_summary(m: dict, sources: dict | None = None) -> dict:
-    out = {k: m[k] for k in PROVENANCE_SUMMARY_FIELDS if isinstance(m.get(k), str) and m[k]}
+    out = canonical_mod.member_summary(m)
     if sources and isinstance(m.get("source_id"), str):
         meta = (sources.get(m["source_id"]) or {}).get("license")
         if isinstance(meta, str) and meta:
             out["metadata_license"] = meta
-    return out or {"source_id": m.get("source_id") if isinstance(m.get("source_id"), str) else None}
+    return out
 
 
 def redact_for_storage(result: dict, sources: dict | None = None) -> dict:

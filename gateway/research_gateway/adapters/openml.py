@@ -80,7 +80,7 @@ def fetch(client: Client, target: str, *, download: bool = False, prefer: str = 
     if not urls or not urls[0].startswith(HOSTS):
         return {"identity": identity, "records": files, "capability_fact": "no OpenML-hosted data file to download"}
     resp = client.get(SOURCE_ID, "fetch", urls[0], headers={"Accept": "*/*"}, identity=files[0]["identity"])
-    if not check(SOURCE_ID, resp):
+    if not check(SOURCE_ID, resp, allow_html=True):  # raw file download: an HTML document can be legitimate content here
         return {"identity": identity, "records": files}
     return {"identity": identity, "records": files, "content": resp.body,
             "content_type": resp.headers.get("content-type"), "license": rec["license"]}

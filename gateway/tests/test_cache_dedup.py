@@ -172,6 +172,27 @@ class PersistentCache(unittest.TestCase):
         self.assertEqual(served["sources"], ["crossref", "doaj"])
         self.assertIsNone(fresh.get_record(f"doi:10.1000/{self.tag}-mem"))
 
+    def test_reload_keeps_member_stamps_links_and_attribution_verbatim(self):
+        """Re-verify finding 19: two members' distinct original retrieval times, links and
+        attribution survive persistence and a fresh-process reload unchanged."""
+        c = C.Cache(self.conn)
+        keep = rec(f"doi:10.1000/{self.tag}-fid", "crossref", "Fidelity")
+        keep["provenance"] = [
+            {"source_id": "crossref", "identity": keep["identity"], "raw": {"a": 1}, "license": "cc-by-4.0",
+             "retrieved_at": "2026-09-01T00:00:00+00:00", "link": "https://crossref/doi", "attribution": "Crossref"},
+            {"source_id": "doaj", "identity": keep["identity"], "raw": {"b": 2}, "license": "cc0",
+             "retrieved_at": "2026-09-05T12:00:00+00:00", "link": "https://doaj/doi", "attribution": None},
+        ]
+        c.put_record(keep, redistributable=True, persist_members=[0, 1])
+        served = C.Cache(self.conn).get_record(keep["identity"])
+        members = {m["source_id"]: m for m in served["provenance"]}
+        self.assertEqual(members["crossref"]["retrieved_at"], "2026-09-01T00:00:00+00:00")
+        self.assertEqual(members["doaj"]["retrieved_at"], "2026-09-05T12:00:00+00:00",
+                         "distinct original stamps are never replaced by the persistence time")
+        self.assertEqual(members["crossref"]["link"], "https://crossref/doi")
+        self.assertEqual(members["crossref"]["attribution"], "Crossref")
+        self.assertNotIn("raw", str(served["provenance"]))
+
     def test_sources_only_persistence_indexes_align_with_the_router(self):
         """D-26: the cache's synthesized member list mirrors the router's, so an index authorized
         for the crossref member never persists the Semantic Scholar lead's raw payload."""

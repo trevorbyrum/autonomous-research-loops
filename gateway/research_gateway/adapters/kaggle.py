@@ -58,7 +58,7 @@ def fetch(client: Client, target: str, *, file_name: str | None = None, download
     if download:
         url = f"{BASE}/datasets/download/{ref}" + (f"/{quote(file_name, safe='')}" if file_name else "")
         resp = client.get(SOURCE_ID, "fetch", url, headers={**hdrs, "Accept": "*/*"}, identity=identity)
-        if not check(SOURCE_ID, resp):
+        if not check(SOURCE_ID, resp, allow_html=True):  # raw file download: an HTML document can be legitimate content here
             return {"identity": identity, "records": []}
         return {"identity": identity, "records": [], "content": resp.body, "content_type": resp.headers.get("content-type")}
     resp = client.get(SOURCE_ID, "fetch", f"{BASE}/datasets/list/{ref}", headers=hdrs, identity=identity)
