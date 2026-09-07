@@ -49,9 +49,11 @@ is never conflated with "not searched" or "unavailable":
   `coverage` (one of the states above) next to its existing `source` and `count`;
   prose `facts` remain for humans and never become the machine channel.
 - Client → chassis: when `RESEARCH_LOOP_RESEARCH_ACTIVITY` names a writable file, the
-  stdio dispatcher appends one JSON line per non-`searched_ok`/`searched_empty` lane
-  state and per failed tool call:
-  `{"at": iso8601, "source": id, "request_type": t, "coverage": state, "query_or_identity": s}`.
+  stdio dispatcher appends JSON lines
+  `{"at": iso8601, "source": id, "request_type": t, "coverage": state, "query_or_identity": s}`:
+  every degraded lane state and failed tool call, plus each SUCCESSFUL
+  (source, coverage) pair once per process — successes are the signal that clears a
+  blocker when a previously failed source answers again.
 - Chassis → queue: the iteration result record gains `research_failures` (the
   distinct `(source, coverage)` pairs from that file). The runner keeps
   `research_blockers` per item: a `provider_unavailable`/`auth_failed` entry adds the

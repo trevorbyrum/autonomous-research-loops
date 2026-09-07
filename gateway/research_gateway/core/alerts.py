@@ -53,6 +53,8 @@ class Alerter:
         self._queue: queue_module.Queue = queue_module.Queue(maxsize=queue_size)
         self.dropped = 0
         self.delivered = 0
+        self.delivery_failures = 0   # sends that raised: visible in /v1/status (8f) — an alert
+                                     # channel that silently eats alerts is its own outage
         self._thread: threading.Thread | None = None
         if send is not None:
             self._thread = threading.Thread(target=self._pump, name="gateway-alerts", daemon=True)
@@ -69,7 +71,7 @@ class Alerter:
                 self._send(title, message, priority)
                 self.delivered += 1
             except Exception:
-                pass  # a sender that fails must never take anything else down
+                self.delivery_failures += 1  # counted, never raised: a failing sender must never take anything else down
             finally:
                 self._queue.task_done()
 
@@ -148,8 +150,17 @@ def check_calls(conn, alerter: Alerter) -> dict:
     """One pass over gateway.calls for the patterns §7 names; returns what it saw (for tests/status).
     Also enforces call-log retention (RESEARCH_GATEWAY_CALLS_RETENTION_DAYS, default 180)."""
     retention = max(1, int(os.environ.get("RESEARCH_GATEWAY_CALLS_RETENTION_DAYS", "180") or 180))
+    jobs_retention = max(1, int(os.environ.get("RESEARCH_GATEWAY_JOBS_RETENTION_DAYS", "30") or 30))
+    records_retention = max(1, int(os.environ.get("RESEARCH_GATEWAY_RECORDS_RETENTION_DAYS", "30") or 30))
     with conn.cursor() as cur:
         cur.execute("DELETE FROM gateway.calls WHERE at < now() - make_interval(days => %s)", (retention,))
+        # terminal jobs and expired FETCHED cache records accumulate otherwise (8f); harvested
+        # venue/repository rows are the local index's data and are never retention-deleted —
+        # cache expiry (last_seen TTL) already stops serving stale rows long before this runs
+        cur.execute("DELETE FROM gateway.jobs WHERE status IN ('done', 'failed') "
+                    "AND created_at < now() - make_interval(days => %s)", (jobs_retention,))
+        cur.execute("DELETE FROM gateway.records WHERE kind NOT IN ('venue', 'repository') "
+                    "AND last_seen < now() - make_interval(days => %s)", (records_retention,))
     conn.commit()
     seen = {"failures": [], "zero_results": []}
     with conn.cursor() as cur:
@@ -185,6 +196,7 @@ class Watcher(threading.Thread):
         self._connect, self._alerter, self._health, self._stop_event, self._interval = connect, alerter, health, stop, interval
         self._sweep = sweep   # e.g. the queue's stale-job reclaim, run on the watcher's cadence
         self.passes = 0
+        self.last_pass_at: float | None = None   # epoch seconds; /v1/status turns it into freshness (8f)
         self.error: str | None = None
 
     def run(self) -> None:
@@ -198,6 +210,7 @@ class Watcher(threading.Thread):
                 if not h.get("ok"):
                     self._alerter.health(str({k: v for k, v in h.items() if k in ("db", "workers")}))
                 self.passes += 1
+                self.last_pass_at = time.time()
                 self.error = None
             except Exception as e:  # the watcher reports; it never dies quietly
                 self.error = f"{type(e).__name__}: {e}"[:300]

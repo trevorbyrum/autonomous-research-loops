@@ -190,6 +190,11 @@ def main(argv: list[str] | None = None) -> int:
         client.broker.seed_usage(todays_usage(conn))       # the loader shares the day's budgets (I-1, D-25)
         client.broker.seed_breakers(open_breakers(conn))
         n = run(conn, client, args.loader, limit=args.limit)
+        with conn.cursor() as cur:  # proof of a COMPLETED refresh, written only on success (8f)
+            cur.execute("INSERT INTO gateway.meta (key, value, updated_at) VALUES (%s, %s, now()) "
+                        "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()",
+                        (f"harvest:{args.loader}", json.dumps({"loaded": n, "limit": args.limit})))
+        conn.commit()
         print(json.dumps({"loader": args.loader, "loaded": n, **index.counts(conn)}, indent=1))
     return 0
 

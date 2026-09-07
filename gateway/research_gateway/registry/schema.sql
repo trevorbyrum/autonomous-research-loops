@@ -123,3 +123,12 @@ CREATE TABLE IF NOT EXISTS gateway.index_docs (
   tsv       tsvector NOT NULL
 );
 CREATE INDEX IF NOT EXISTS index_docs_tsv_idx ON gateway.index_docs USING gin (tsv);
+
+-- Operational metadata: last successful harvest per loader, and anything else a
+-- maintenance run must prove happened (partial batch commits make "last row
+-- updated" insufficient evidence of a completed refresh) — Phase 8f.
+CREATE TABLE IF NOT EXISTS gateway.meta (
+  key        text PRIMARY KEY,
+  value      jsonb NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);

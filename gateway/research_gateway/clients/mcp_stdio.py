@@ -74,8 +74,11 @@ REQUEST_TOOLS = {"research_find": "find", "research_resolve": "resolve", "resear
 BATCH_TOOLS = ("research_resolve", "research_enrich")
 BATCH_LIMIT = 20
 
-# coverage states that the chassis's saturation gate cares about (STATION-CONTRACT.md §2)
+# coverage states that the chassis's saturation gate cares about (STATION-CONTRACT.md §2);
+# successful states are ALSO logged (once per distinct pair per process) so the chassis can
+# clear a blocker when a previously failed source answers again
 DEGRADED_COVERAGE = ("not_searched", "provider_unavailable", "auth_failed", "metadata_only")
+_ACTIVITY_SEEN: set[tuple[str, str, str]] = set()   # (path, source, coverage) already written
 
 POLICY_ENV = {"topic_id": "RESEARCH_TOPIC_ID", "commercial": "RESEARCH_TOPIC_COMMERCIAL",
               "accept_per_item": "RESEARCH_TOPIC_ACCEPT_PER_ITEM", "domain": "RESEARCH_TOPIC_DOMAIN"}
@@ -131,10 +134,16 @@ def record_activity(path: str | None, tool: str, args: dict, result: dict | None
     if error is not None:
         lines.append({"at": at, "source": "gateway", "request_type": REQUEST_TOOLS.get(tool, tool),
                       "coverage": "provider_unavailable", "query_or_identity": subject, "detail": error[:200]})
+        _ACTIVITY_SEEN.discard((path, "gateway", "searched_ok"))   # a comeback is loggable again
     for lane in (result or {}).get("lanes") or []:
-        if lane.get("coverage") in DEGRADED_COVERAGE:
-            lines.append({"at": at, "source": lane.get("source"), "request_type": REQUEST_TOOLS.get(tool, tool),
-                          "coverage": lane["coverage"], "query_or_identity": subject})
+        source, coverage = lane.get("source"), lane.get("coverage")
+        if not source or not coverage:
+            continue
+        if coverage in DEGRADED_COVERAGE or (path, source, coverage) not in _ACTIVITY_SEEN:
+            if coverage not in DEGRADED_COVERAGE:
+                _ACTIVITY_SEEN.add((path, source, coverage))   # successes once per pair; failures every time
+            lines.append({"at": at, "source": source, "request_type": REQUEST_TOOLS.get(tool, tool),
+                          "coverage": coverage, "query_or_identity": subject})
     if not lines:
         return
     try:

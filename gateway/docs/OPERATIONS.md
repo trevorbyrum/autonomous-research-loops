@@ -107,3 +107,56 @@ Retention for `gateway.calls` is a deployment setting (default 180 days).
 See `README.md` — seed row with evidence, adapter with a fixture test,
 regenerate docs, run tests. Sources without an API, or whose terms have not
 been read, are documented but not scheduled.
+
+## Maintenance window, retention, snapshot refresh (Phase 8f)
+
+- **Harvest runs in an exclusive window.** The loaders refuse while a service answers
+  on the gateway URL (I-1). `deploy/research-gateway-maintenance.sh` is the sanctioned
+  window: it stops the service unit, runs every registry loader, and ALWAYS restores
+  the service's prior state (a failed harvest never leaves the gateway down). The
+  monthly `research-gateway-harvest.timer` invokes it. A completed loader stamps
+  `gateway.meta` (`harvest:<loader>`), surfaced under `/v1/status` `harvest` — partial
+  batch commits make "last row updated" insufficient evidence of a completed refresh.
+- **Quarterly OpenAlex snapshot refresh.** Sync the public snapshot's `data/sources/`
+  part files into `private/openalex-sources/` (the operator syncs; the loader reads
+  disk only, D-19), then run `python3 -m research_gateway.harvest.registries
+  openalex_snapshot` inside the maintenance window. ISSN twins consolidate only on a
+  FULL rebuild (delete venue records, reload all loaders) — see D-26.
+- **Catalogue reload vs. deployment switches.** `registry/load.py --load` updates the
+  catalogue and PRESERVES each existing row's deployed `enabled` flag; pass
+  `--seed-operational` only to deliberately reassert the seed's switches (fresh
+  deploy or reset). The running service snapshots sources and rate policies at
+  startup: any registry or policy change needs a service restart to take effect.
+- **Retention.** The watcher enforces: call log 180 days
+  (`RESEARCH_GATEWAY_CALLS_RETENTION_DAYS`), terminal jobs 30 days
+  (`RESEARCH_GATEWAY_JOBS_RETENTION_DAYS`), and expired FETCHED cache records 30 days
+  past `last_seen` (`RESEARCH_GATEWAY_RECORDS_RETENTION_DAYS`) — harvested
+  venue/repository rows are index data and are never retention-deleted. Service
+  stdout/stderr goes to the journal: bound it with `SystemMaxUse=` in journald.conf
+  or a `LogRateLimit`/`StandardOutput=append:` file with logrotate.
+
+## Token rotation (two lifecycles, one procedure)
+
+Source API keys and gateway client tokens rotate differently — rotate BOTH sides
+deliberately:
+
+1. **Source keys** (Vault `services/<source>`): write the new key in Vault; the
+   gateway's Vault cache expires within 15 minutes (`secrets.py`), no restart needed.
+   A 401 forces one immediate refetch.
+2. **Gateway client tokens** (Vault `services/research_gateway`, field `tokens`):
+   write the new `name=token` list in Vault, then restart the service (tokens load at
+   startup only), then update every client that holds the old value: the loops
+   wrapper (`~/bin/research-loops-research-mcp` fetches per launch — next iteration
+   picks it up), the homelab peer entry's hydrated environment (restart that
+   gateway), and any CLI environment.
+
+## Backup and restore
+
+The evidence of record lives in the topics; the gateway schema is still worth a
+backup: the call log is the budget/audit history and the records/index tables are
+days of harvest work. `deploy/backup-gateway.sh` runs
+`pg_dump --schema=gateway --format=custom` to a dated file (default
+`private/backups/`). Restore with
+`pg_restore --schema=gateway --clean --if-exists -d "$DSN" <file>` — stop the
+service first (one service per database, D-25), and rehearse the restore against a
+scratch database before trusting it.

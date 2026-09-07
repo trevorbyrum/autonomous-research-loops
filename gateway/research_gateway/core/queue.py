@@ -212,3 +212,13 @@ def stats(conn) -> dict[str, int]:
     with conn.cursor() as cur:
         cur.execute("SELECT status, count(*) FROM gateway.jobs GROUP BY status")
         return {status: n for status, n in cur.fetchall()}
+
+
+def oldest_ages(conn) -> dict[str, float | None]:
+    """Age in seconds of the oldest queued and oldest running job — the two numbers an
+    external monitor needs to notice a stuck queue (8f); None when none exist."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT status, extract(epoch FROM now() - min(created_at)) FROM gateway.jobs "
+                    "WHERE status IN ('queued', 'running') GROUP BY status")
+        ages = {status: float(age) for status, age in cur.fetchall()}
+    return {"oldest_queued_seconds": ages.get("queued"), "oldest_running_seconds": ages.get("running")}

@@ -1,8 +1,10 @@
 """Phase 1 acceptance: the seed validates, mirrors the plan, and the docs match it."""
+import os
 import unittest
 from pathlib import Path
 
 from research_gateway.registry import docs, load
+from research_gateway.registry.load import read_seed
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -111,3 +113,35 @@ class Validation(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(os.environ.get("RESEARCH_GATEWAY_DSN") and os.environ.get("RESEARCH_GATEWAY_TEST_OK") == "1",
+                     "needs RESEARCH_GATEWAY_DSN and RESEARCH_GATEWAY_TEST_OK=1")
+class ReloadPreservesDeployment(unittest.TestCase):
+    """8f: a catalogue reload and a deployment decision are different acts — the deployed
+    `enabled` switch survives an ordinary reload; --seed-operational reasserts the seed."""
+
+    def test_enabled_flag_survives_a_reload_unless_reasserted(self):
+        import psycopg
+        from research_gateway.registry.load import load as load_seed
+        dsn = os.environ["RESEARCH_GATEWAY_DSN"]
+        sources = read_seed()
+        seeded = next(s for s in sources if s.get("enabled"))
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute("SELECT enabled FROM gateway.sources WHERE id = %s", (seeded["id"],))
+            original = cur.fetchone()[0]
+            cur.execute("UPDATE gateway.sources SET enabled = false WHERE id = %s", (seeded["id"],))
+            conn.commit()
+        try:
+            load_seed(sources, dsn, apply_schema=False)
+            with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+                cur.execute("SELECT enabled FROM gateway.sources WHERE id = %s", (seeded["id"],))
+                self.assertFalse(cur.fetchone()[0], "an ordinary reload preserves the deployed switch")
+            load_seed(sources, dsn, apply_schema=False, seed_operational=True)
+            with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+                cur.execute("SELECT enabled FROM gateway.sources WHERE id = %s", (seeded["id"],))
+                self.assertTrue(cur.fetchone()[0], "--seed-operational reasserts the seed's value")
+        finally:
+            with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+                cur.execute("UPDATE gateway.sources SET enabled = %s WHERE id = %s", (original, seeded["id"]))
+                conn.commit()

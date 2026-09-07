@@ -103,15 +103,20 @@ def _sql_array(values: list[str]) -> str:
     return "{" + ",".join('"' + v.replace('"', '\\"') + '"' for v in values) + "}"
 
 
-def load(sources: list[dict], dsn: str, apply_schema: bool) -> None:
+def load(sources: list[dict], dsn: str, apply_schema: bool, *, seed_operational: bool = False) -> None:
+    """Upsert the seed. A catalogue update and a deployment decision are different acts (8f):
+    on an EXISTING row the deployed `enabled` flag is preserved — the operator's on/off
+    switch survives every reload — unless `seed_operational` deliberately reasserts the
+    seed's values (fresh deploys, or an operator reset). New rows always take the seed's."""
     import psycopg  # the one allowed driver (I-12); imported here so --dry-run needs no DB
 
+    enabled_update = "enabled=EXCLUDED.enabled" if seed_operational else "enabled=gateway.sources.enabled"
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         if apply_schema:
             cur.execute(SCHEMA.read_text())
         for s in sources:
             cur.execute(
-                """
+                f"""
                 INSERT INTO gateway.sources (id, name, kind, homepage, docs_url, capabilities, identifiers,
                     base_for, domains, auth, secret_ref, key_instructions, license, use_commercial,
                     use_evidence, freshness_lag, substitution_group, enabled, notes, updated_at)
@@ -123,7 +128,7 @@ def load(sources: list[dict], dsn: str, apply_schema: bool) -> None:
                     auth=EXCLUDED.auth, secret_ref=EXCLUDED.secret_ref, key_instructions=EXCLUDED.key_instructions,
                     license=EXCLUDED.license, use_commercial=EXCLUDED.use_commercial,
                     use_evidence=EXCLUDED.use_evidence, freshness_lag=EXCLUDED.freshness_lag,
-                    substitution_group=EXCLUDED.substitution_group, enabled=EXCLUDED.enabled,
+                    substitution_group=EXCLUDED.substitution_group, {enabled_update},
                     notes=EXCLUDED.notes, updated_at=now()
                 """,
                 (s["id"], s["name"], s["kind"], s.get("homepage"), s.get("docs_url"),
@@ -157,6 +162,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--schema", action="store_true", help="apply schema.sql before loading")
     ap.add_argument("--load", action="store_true", help="upsert the seed into gateway.sources / rate_policies")
     ap.add_argument("--dsn", default=os.environ.get("RESEARCH_GATEWAY_DSN"), help="libpq URI (default: $RESEARCH_GATEWAY_DSN)")
+    ap.add_argument("--seed-operational", action="store_true",
+                    help="also reassert the seed's enabled flags on EXISTING rows (a deployment "
+                         "reset); by default a reload updates the catalogue and preserves the "
+                         "deployed on/off switches (8f)")
     args = ap.parse_args(argv)
 
     sources = read_seed()
@@ -189,8 +198,9 @@ def main(argv: list[str] | None = None) -> int:
         if not args.dsn:
             print("RESEARCH_GATEWAY_DSN is not set", file=sys.stderr)
             return 4
-        load(sources, args.dsn, apply_schema=args.schema)
-        print(f"loaded {len(sources)} sources into gateway.sources (schema {'applied' if args.schema else 'unchanged'})")
+        load(sources, args.dsn, apply_schema=args.schema, seed_operational=args.seed_operational)
+        print(f"loaded {len(sources)} sources into gateway.sources (schema {'applied' if args.schema else 'unchanged'}; "
+              f"enabled flags {'reasserted from seed' if args.seed_operational else 'preserved on existing rows'})")
     return rc
 
 

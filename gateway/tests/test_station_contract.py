@@ -194,14 +194,18 @@ class ActivityFile(unittest.TestCase):
                          [("crossref", "provider_unavailable"), ("gateway", "provider_unavailable")])
         self.assertTrue(all(l["at"] and l["request_type"] == "find" for l in lines))
 
-    def test_healthy_answers_write_nothing_and_bad_paths_never_break_research(self):
+    def test_successes_are_logged_once_per_pair_so_blockers_can_clear(self):
         with tempfile.TemporaryDirectory() as d:
             path = str(Path(d) / "activity.jsonl")
             client = StubClient(result={"request_type": "find", "records": [], "facts": [],
                                         "lanes": [{"source": "crossref", "coverage": "searched_ok"},
                                                   {"source": "doaj", "coverage": "searched_empty"}]})
             mcp_stdio.call_tool(client, "research_find", {"query": "q"}, activity=path)
-            self.assertFalse(Path(path).exists(), "clean coverage leaves no activity entries")
+            mcp_stdio.call_tool(client, "research_find", {"query": "q2"}, activity=path)
+            lines = [json.loads(l) for l in Path(path).read_text().splitlines()]
+        self.assertEqual([(l["source"], l["coverage"]) for l in lines],
+                         [("crossref", "searched_ok"), ("doaj", "searched_empty")],
+                         "each successful (source, coverage) pair is written once per process, not per call")
         out = mcp_stdio.call_tool(StubClient(), "research_find", {"query": "q"},
                                   activity="/nonexistent-dir/activity.jsonl")
         self.assertIn("lanes", out, "an unwritable activity file never breaks the answer")

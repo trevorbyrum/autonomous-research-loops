@@ -7,6 +7,7 @@ Description=Research gateway registry harvest (Crossref journals, DOAJ journals,
 Type=oneshot
 WorkingDirectory=%h/work/research-loops-public/gateway
 EnvironmentFile=%h/.config/research-loops/gateway.env
-ExecStart=%h/.venvs/research-gateway/bin/python3 -m research_gateway.harvest.registries datacite
-ExecStart=%h/.venvs/research-gateway/bin/python3 -m research_gateway.harvest.registries doaj
-ExecStart=%h/.venvs/research-gateway/bin/python3 -m research_gateway.harvest.registries crossref
+# The maintenance window stops the service, harvests, and ALWAYS restores the prior
+# state (8f) — the loaders' running-service guard is satisfied by the window itself.
+Environment=RESEARCH_GATEWAY_PYTHON=%h/.venvs/research-gateway/bin/python3
+ExecStart=/usr/bin/bash deploy/research-gateway-maintenance.sh

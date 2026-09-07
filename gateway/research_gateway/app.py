@@ -319,9 +319,31 @@ class Gateway:
     def status(self) -> dict:
         out = {"health": self.health(detailed=True), "broker": self.broker.status(), "cache": self.cache.stats(),
                "workers": [{"name": w.name, "alive": w.is_alive(), "processed": w.processed, "error": w.error} for w in self.workers],
-               "alerts": {"enabled": self.alerter.enabled, "recent": [{"at": t, "key": k, "title": ti} for t, k, ti in self.alerter.history[-10:]],
-                          "watcher": {"passes": self.watcher.passes, "error": self.watcher.error} if self.watcher else None}}
+               "alerts": {"enabled": self.alerter.enabled, "delivered": self.alerter.delivered,
+                          "delivery_failures": self.alerter.delivery_failures, "dropped": self.alerter.dropped,
+                          "recent": [{"at": t, "key": k, "title": ti} for t, k, ti in self.alerter.history[-10:]],
+                          "watcher": {"passes": self.watcher.passes, "error": self.watcher.error,
+                                      "seconds_since_pass": (time.time() - self.watcher.last_pass_at
+                                                             if self.watcher.last_pass_at else None)}
+                          if self.watcher else None}}
         if self.conn is not None:
             with self._lock:
-                out["jobs"] = queue.stats(self.conn)
+                out["jobs"] = {**queue.stats(self.conn), **queue.oldest_ages(self.conn)}
+                out["harvest"] = self._harvest_state()
         return out
+
+    def _harvest_state(self) -> dict:
+        """Last PROVEN-complete harvest per loader (gateway.meta, written only after a loader
+        finishes — partial batch commits make 'last row updated' insufficient, 8f)."""
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("SELECT key, value, updated_at FROM gateway.meta WHERE key LIKE 'harvest:%'")
+                rows = cur.fetchall()
+            self.conn.commit()
+            return {key.split(":", 1)[1]: {**value, "updated_at": str(at)} for key, value, at in rows}
+        except Exception:  # a pre-8f database without gateway.meta still answers status
+            try:
+                self.conn.rollback()
+            except Exception:
+                pass
+            return {}
