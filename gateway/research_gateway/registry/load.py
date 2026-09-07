@@ -111,6 +111,12 @@ def load(sources: list[dict], dsn: str, apply_schema: bool, *, seed_operational:
     import psycopg  # the one allowed driver (I-12); imported here so --dry-run needs no DB
 
     enabled_update = "enabled=EXCLUDED.enabled" if seed_operational else "enabled=gateway.sources.enabled"
+    # rate caps and their verified state are deployment overrides too (pass-1 finding 12):
+    # an ordinary catalogue reload refreshes only the evidence link; --seed-operational
+    # reasserts the seed's numbers deliberately
+    rate_update = ("per_second=EXCLUDED.per_second, per_minute=EXCLUDED.per_minute, per_hour=EXCLUDED.per_hour, "
+                   "per_day=EXCLUDED.per_day, cost_cap_per_day=EXCLUDED.cost_cap_per_day, burst=EXCLUDED.burst, "
+                   "verified=EXCLUDED.verified, evidence=EXCLUDED.evidence") if seed_operational else "evidence=EXCLUDED.evidence"
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         if apply_schema:
             cur.execute(SCHEMA.read_text())
@@ -140,14 +146,12 @@ def load(sources: list[dict], dsn: str, apply_schema: bool, *, seed_operational:
             )
             r = s["rate"]
             cur.execute(
-                """
+                f"""
                 INSERT INTO gateway.rate_policies (source_id, per_second, per_minute, per_hour, per_day,
                     cost_cap_per_day, burst, verified, evidence)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT (source_id) DO UPDATE SET
-                    per_second=EXCLUDED.per_second, per_minute=EXCLUDED.per_minute, per_hour=EXCLUDED.per_hour,
-                    per_day=EXCLUDED.per_day, cost_cap_per_day=EXCLUDED.cost_cap_per_day, burst=EXCLUDED.burst,
-                    verified=EXCLUDED.verified, evidence=EXCLUDED.evidence
+                    {rate_update}
                 """,
                 (s["id"], r.get("per_second"), r.get("per_minute"), r.get("per_hour"), r.get("per_day"),
                  r.get("cost_cap_per_day"), r.get("burst"), bool(r.get("verified", False)), r.get("evidence")),

@@ -52,6 +52,26 @@ class CoverageStates(unittest.TestCase):
         self.assertTrue(skipped, "commercially dropped lanes appear with coverage not_searched")
         self.assertTrue(all(ln["coverage"] == "not_searched" for ln in skipped))
 
+    def test_capability_facts_are_never_searched_empty(self):
+        self.assertEqual(R._fact_coverage("no BEA key configured"), "auth_failed")
+        self.assertEqual(R._fact_coverage("no Census key configured; the keyless 500/day tier is not enabled"), "auth_failed")
+        self.assertEqual(R._fact_coverage("BEA: something went wrong"), "provider_unavailable")
+
+    def test_exhausted_lanes_are_marked_and_never_restarted(self):
+        r, c, t = make()
+        t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [CROSSREF_WORK], "total-results": 1}})
+        t.add("GET", "https://doaj.org/api/search/articles/", body={"results": [], "total": 0})
+        out = R.execute(r, {"request_type": "find", "query": "exhaustion", "kind": "article"}, c)
+        self.assertEqual(out["next"].get("crossref"), R.EXHAUSTED_CURSOR,
+                         "a lane that answered without a continuation says so explicitly")
+        calls_before = len(t.calls)
+        again = R.execute(r, {"request_type": "find", "query": "exhaustion", "kind": "article",
+                              "cursors": dict(out["next"])}, c)
+        entry = next(ln for ln in again["lanes"] if ln["source"] == "crossref")
+        self.assertEqual(entry["coverage"], "exhausted")
+        self.assertFalse(any("crossref" in u for _, u, _, _ in t.calls[calls_before:]),
+                         "handing the next map back never re-dispatches the exhausted lane")
+
     def test_data_answers_echo_the_request_for_reproducible_citations(self):
         r, c, _ = make()
         out = R.execute(r, {"request_type": "data", "source": "fred", "params": {"series": "GDP"}}, c)
@@ -84,13 +104,27 @@ class StoredProvenanceSummary(unittest.TestCase):
                  "retrieved_at": "2026-09-07T00:00:00+00:00", "raw": {"secret": "payload"}},
                 {"source_id": "doaj", "identity": "doi:10.1/p", "license": None, "raw": {"x": 1}, "rows": [[1]]},
             ]}], "facts": [], "lanes": []}
-        stored = R.redact_for_storage(result)
+        stored = R.redact_for_storage(result, {"crossref": {"license": "CC0 1.0"}})
         members = stored["records"][0]["provenance"]
         self.assertEqual(members[0], {"source_id": "crossref", "identity": "doi:10.1/p", "license": "cc-by-4.0",
-                                      "retrieved_at": "2026-09-07T00:00:00+00:00"})
+                                      "retrieved_at": "2026-09-07T00:00:00+00:00", "metadata_license": "CC0 1.0"})
         self.assertEqual(members[1], {"source_id": "doaj", "identity": "doi:10.1/p"})
         self.assertNotIn("raw", json.dumps(stored), "no member ever smuggles raw into gateway.jobs")
         self.assertEqual(stored["records"][0]["retrieved_at"], "2026-09-07T00:00:00+00:00")
+
+    def test_summary_values_must_be_scalar_strings(self):
+        """Pass-1 finding 8: a nested object in a whitelisted field name (a DOAJ licence
+        dict carrying raw) must never ride the summary into gateway.jobs."""
+        result = {"request_type": "find", "records": [{
+            "identity": "doi:10.1/n", "kind": "article", "sources": ["doaj"],
+            "provenance": [{"source_id": "doaj", "identity": "doi:10.1/n",
+                            "license": {"type": "CC BY", "raw": {"rows": [[1]], "text": "full text"}},
+                            "attribution": ["not", "a", "string"]}]}], "facts": [], "lanes": []}
+        stored = R.redact_for_storage(result)
+        self.assertEqual(stored["records"][0]["provenance"], [{"source_id": "doaj", "identity": "doi:10.1/n"}])
+        flat = json.dumps(stored)
+        for forbidden in ("raw", "rows", "full text"):
+            self.assertNotIn(forbidden, flat)
 
 
 class StubClient:
@@ -113,7 +147,7 @@ class StubClient:
 
     def job(self, job_id):
         self.seen.append(("job", job_id))
-        return {"id": job_id, "status": "done"}
+        return {"id": job_id, "status": "done", "payload": getattr(self, "job_payload", {"topic_id": "topic-x"})}
 
 
 BOUND = {"topic_id": "topic-x", "commercial": True, "accept_per_item": False, "domain": "finance"}
@@ -148,6 +182,18 @@ class PolicyBinding(unittest.TestCase):
         self.assertTrue(out["isError"])
         self.assertIn("policy-bound", out["content"][0]["text"])
 
+    def test_job_polling_is_policy_bound_too(self):
+        """Pass-1 finding 1: a bound topic never reads another topic's job results."""
+        client = StubClient()
+        client.job_payload = {"topic_id": "someone-else", "query": "q"}
+        with self.assertRaises(mcp_stdio.PolicyError):
+            mcp_stdio.call_tool(client, "research_job", {"job_id": 7}, policy=BOUND)
+        client.job_payload = {"topic_id": "topic-x", "query": "q"}
+        out = mcp_stdio.call_tool(client, "research_job", {"job_id": 7}, policy=BOUND)
+        self.assertEqual(out["id"], 7)
+        out = mcp_stdio.call_tool(StubClient(), "research_job", {"job_id": 7}, policy={})
+        self.assertEqual(out["id"], 7, "unbound sessions poll exactly as before")
+
     def test_unbound_session_passes_arguments_through_unchanged(self):
         client = StubClient()
         mcp_stdio.call_tool(client, "research_find", {"query": "q", "commercial": False}, policy={})
@@ -177,7 +223,7 @@ class BatchAndJob(unittest.TestCase):
     def test_job_lookup(self):
         client = StubClient()
         out = mcp_stdio.call_tool(client, "research_job", {"job_id": 41})
-        self.assertEqual(out, {"id": 41, "status": "done"})
+        self.assertEqual((out["id"], out["status"]), (41, "done"))
 
 
 class ActivityFile(unittest.TestCase):
@@ -189,46 +235,69 @@ class ActivityFile(unittest.TestCase):
             down = StubClient(boom=ConnectionError("gateway is gone"))
             with self.assertRaises(ConnectionError):
                 mcp_stdio.call_tool(down, "research_find", {"query": "q"}, activity=path)
+            fact = StubClient(result={"capability_fact": "gateway_unavailable", "error": "connection refused"})
+            mcp_stdio.call_tool(fact, "research_find", {"query": "q2"}, activity=path)
             lines = [json.loads(l) for l in Path(path).read_text().splitlines()]
         self.assertEqual([(l["source"], l["coverage"]) for l in lines],
-                         [("crossref", "provider_unavailable"), ("gateway", "provider_unavailable")])
-        self.assertTrue(all(l["at"] and l["request_type"] == "find" for l in lines))
+                         [("crossref", "provider_unavailable"), ("gateway", "provider_unavailable"),
+                          ("gateway", "provider_unavailable")],
+                         "thrown errors AND capability-fact answers both land (finding 3)")
 
-    def test_successes_are_logged_once_per_pair_so_blockers_can_clear(self):
+    def test_transitions_are_ordered_and_recovery_is_never_deduplicated(self):
+        """Pass-1 finding 6: fail -> ok for the SAME request must be visible as the
+        key's last state; repeats of an unchanged state write nothing."""
         with tempfile.TemporaryDirectory() as d:
             path = str(Path(d) / "activity.jsonl")
-            client = StubClient(result={"request_type": "find", "records": [], "facts": [],
-                                        "lanes": [{"source": "crossref", "coverage": "searched_ok"},
-                                                  {"source": "doaj", "coverage": "searched_empty"}]})
-            mcp_stdio.call_tool(client, "research_find", {"query": "q"}, activity=path)
-            mcp_stdio.call_tool(client, "research_find", {"query": "q2"}, activity=path)
+            ok = {"request_type": "find", "records": [], "facts": [],
+                  "lanes": [{"source": "crossref", "coverage": "searched_ok"}]}
+            bad = {"request_type": "find", "records": [], "facts": [],
+                   "lanes": [{"source": "crossref", "coverage": "provider_unavailable"}]}
+            for result in (ok, ok, bad, ok):
+                mcp_stdio.call_tool(StubClient(result=result), "research_find", {"query": "q"}, activity=path)
+            mcp_stdio.call_tool(StubClient(result=ok), "research_find", {"query": "other"}, activity=path)
             lines = [json.loads(l) for l in Path(path).read_text().splitlines()]
-        self.assertEqual([(l["source"], l["coverage"]) for l in lines],
-                         [("crossref", "searched_ok"), ("doaj", "searched_empty")],
-                         "each successful (source, coverage) pair is written once per process, not per call")
+        self.assertEqual([(l["coverage"], l["query_or_identity"]) for l in lines],
+                         [("searched_ok", "q"), ("provider_unavailable", "q"), ("searched_ok", "q"),
+                          ("searched_ok", "other")],
+                         "one line per transition, per exact request, in order")
         out = mcp_stdio.call_tool(StubClient(), "research_find", {"query": "q"},
                                   activity="/nonexistent-dir/activity.jsonl")
         self.assertIn("lanes", out, "an unwritable activity file never breaks the answer")
 
 
 class DownloadHandoff(unittest.TestCase):
-    def test_bytes_land_in_the_topic_downloads_dir(self):
-        client = StubClient(result={"request_type": "fetch", "records": [], "facts": [], "lanes": [],
-                                    "content": b"\xd0\xcf\x11payload", "content_type": "application/vnd.ms-excel"})
+    def _client(self):
+        return StubClient(result={"request_type": "fetch", "records": [], "facts": [], "lanes": [],
+                                  "content": b"\xd0\xcf\x11payload", "content_type": "application/vnd.ms-excel"})
+
+    def test_bytes_land_in_the_iteration_download_dir(self):
         with tempfile.TemporaryDirectory() as d:
-            out = mcp_stdio.call_tool(client, "research_fetch",
-                                      {"target": "https://globeproject.com/data/x.xls"}, topic_dir=d)
+            out = mcp_stdio.call_tool(self._client(), "research_fetch",
+                                      {"target": "https://globeproject.com/data/x.xls"}, download_dir=d)
             self.assertIsNone(out["content"])
             self.assertEqual(out["content_bytes"], 10)
             saved = Path(out["saved_to"])
-            self.assertEqual(saved.parent, Path(d) / "downloads")
+            self.assertEqual(saved.parent, Path(d))
             self.assertEqual(saved.read_bytes(), b"\xd0\xcf\x11payload")
             self.assertIn("x.xls", saved.name)
 
-    def test_without_a_topic_dir_bytes_are_only_counted(self):
+    def test_same_second_downloads_never_overwrite_and_carry_identity(self):
+        """Pass-1 finding 11: two files from one dataset in one second are two files."""
+        with tempfile.TemporaryDirectory() as d:
+            first = mcp_stdio.call_tool(self._client(), "research_fetch",
+                                        {"target": "doi:10.7910/DVN/X", "params": {"download": True, "file_id": 1}},
+                                        download_dir=d)
+            second = mcp_stdio.call_tool(self._client(), "research_fetch",
+                                         {"target": "doi:10.7910/DVN/X", "params": {"download": True, "file_id": 1}},
+                                         download_dir=d)
+            self.assertNotEqual(first["saved_to"], second["saved_to"])
+            self.assertEqual(len(list(Path(d).iterdir())), 2)
+            self.assertIn("_1", Path(first["saved_to"]).name, "the file identity is in the name")
+
+    def test_without_a_download_dir_bytes_are_only_counted(self):
         client = StubClient(result={"request_type": "fetch", "records": [], "facts": [], "lanes": [],
                                     "content": b"abc"})
-        out = mcp_stdio.call_tool(client, "research_fetch", {"target": "url:x"}, topic_dir=None)
+        out = mcp_stdio.call_tool(client, "research_fetch", {"target": "url:x"}, download_dir=None)
         self.assertEqual((out["content"], out["content_bytes"]), (None, 3))
         self.assertNotIn("saved_to", out)
 

@@ -74,11 +74,15 @@ REQUEST_TOOLS = {"research_find": "find", "research_resolve": "resolve", "resear
 BATCH_TOOLS = ("research_resolve", "research_enrich")
 BATCH_LIMIT = 20
 
-# coverage states that the chassis's saturation gate cares about (STATION-CONTRACT.md §2);
-# successful states are ALSO logged (once per distinct pair per process) so the chassis can
-# clear a blocker when a previously failed source answers again
+# coverage states that the chassis's saturation gate cares about (STATION-CONTRACT.md §2).
+# The activity file records STATE TRANSITIONS in order: a line is written whenever a
+# source's coverage differs from the last state this process logged for it, successes
+# included — recovery (fail → ok) is a transition and is never deduplicated away, so the
+# chassis can apply each source's LAST outcome (pass-1 finding 6).
 DEGRADED_COVERAGE = ("not_searched", "provider_unavailable", "auth_failed", "metadata_only")
-_ACTIVITY_SEEN: set[tuple[str, str, str]] = set()   # (path, source, coverage) already written
+_LAST_STATE: dict[tuple[str, str, str, str], str] = {}   # (path, source, request_type, subject) -> last coverage written
+# keyed per REQUEST (source + type + query/identity), matching the chassis's blocker key:
+# a success on an unrelated query must never mask or clear a different request's failure (finding 4)
 
 POLICY_ENV = {"topic_id": "RESEARCH_TOPIC_ID", "commercial": "RESEARCH_TOPIC_COMMERCIAL",
               "accept_per_item": "RESEARCH_TOPIC_ACCEPT_PER_ITEM", "domain": "RESEARCH_TOPIC_DOMAIN"}
@@ -131,19 +135,28 @@ def record_activity(path: str | None, tool: str, args: dict, result: dict | None
     lines = []
     at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     subject = args.get("query") or args.get("identity") or args.get("target") or args.get("source") or ""
+    observed: list[tuple[str, str, str | None]] = []
     if error is not None:
-        lines.append({"at": at, "source": "gateway", "request_type": REQUEST_TOOLS.get(tool, tool),
-                      "coverage": "provider_unavailable", "query_or_identity": subject, "detail": error[:200]})
-        _ACTIVITY_SEEN.discard((path, "gateway", "searched_ok"))   # a comeback is loggable again
+        observed.append(("gateway", "provider_unavailable", error[:200]))
+    fact = str((result or {}).get("capability_fact") or "")
+    if fact.startswith("gateway"):   # the client answered with a capability-fact dict, not lanes (finding 3)
+        observed.append(("gateway", "provider_unavailable", ((result or {}).get("error") or fact)[:200]))
     for lane in (result or {}).get("lanes") or []:
-        source, coverage = lane.get("source"), lane.get("coverage")
-        if not source or not coverage:
-            continue
-        if coverage in DEGRADED_COVERAGE or (path, source, coverage) not in _ACTIVITY_SEEN:
-            if coverage not in DEGRADED_COVERAGE:
-                _ACTIVITY_SEEN.add((path, source, coverage))   # successes once per pair; failures every time
-            lines.append({"at": at, "source": source, "request_type": REQUEST_TOOLS.get(tool, tool),
-                          "coverage": coverage, "query_or_identity": subject})
+        if lane.get("source") and lane.get("coverage"):
+            observed.append((lane["source"], lane["coverage"], None))
+    if isinstance(result, dict) and result.get("status") == "failed":   # a polled job that failed (finding 3)
+        observed.append(("gateway", "provider_unavailable", str(result.get("error_class") or "job failed")[:200]))
+    request_type = REQUEST_TOOLS.get(tool, tool)
+    for source, coverage, detail in observed:
+        state_key = (path, source, request_type, subject)
+        if _LAST_STATE.get(state_key) == coverage:
+            continue   # unchanged state for this exact request: every TRANSITION (either direction) gets a line
+        _LAST_STATE[state_key] = coverage
+        line = {"at": at, "source": source, "request_type": request_type,
+                "coverage": coverage, "query_or_identity": subject}
+        if detail:
+            line["detail"] = detail
+        lines.append(line)
     if not lines:
         return
     try:
@@ -161,29 +174,52 @@ def strip_bytes(out: dict) -> dict:
     return out
 
 
-def deliver_content(out: dict, target: str, topic_dir: str | None) -> dict:
-    """With a bound topic, downloaded bytes land under <topic>/downloads/ and the path is
-    returned (8a — the CLI's `fetch --out` behaviour, station-side); otherwise the byte
-    count alone is reported, exactly as before."""
+def deliver_content(out: dict, target: str, args: dict, download_dir: str | None) -> dict:
+    """With a bound topic, downloaded bytes land in the iteration's TEMPORARY download
+    directory (the chassis creates it per iteration and removes it when the iteration
+    ends, normal or interrupted — copy what you keep into the topic's ledgers/files);
+    otherwise the byte count alone is reported. Names carry the file/revision identity
+    from the request and are created exclusively — a second file in the same second can
+    never overwrite the first (pass-1 findings 11, 20)."""
     if not isinstance(out.get("content"), (bytes, bytearray)):
         return out
-    if not topic_dir:
+    if not download_dir:
         return strip_bytes(out)
-    directory = Path(topic_dir) / "downloads"
+    directory = Path(download_dir)
     directory.mkdir(parents=True, exist_ok=True)
-    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", target or "download").strip("_")[-80:] or "download"
-    dest = directory / f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{safe}"
-    dest.write_bytes(out["content"])
-    return {**out, "content": None, "saved_to": str(dest), "content_bytes": len(out["content"])}
+    params = args.get("params") if isinstance(args.get("params"), dict) else {}
+    identity_bits = [str(params[k]) for k in ("file_id", "revision", "path", "filename") if params.get(k)]
+    stem = "-".join([target or "download"] + identity_bits)
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("_")[-100:] or "download"
+    base = f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{safe}"
+    for suffix in [""] + [f"-{i}" for i in range(1, 1000)]:
+        dest = directory / (base + suffix)
+        try:
+            with open(dest, "xb") as fh:   # exclusive: an existing file is never overwritten
+                fh.write(out["content"])
+            break
+        except FileExistsError:
+            continue
+    else:
+        return strip_bytes(out)
+    return {**out, "content": None, "saved_to": str(dest), "target": target,
+            "content_bytes": len(out["content"])}
 
 
 def call_tool(client: GatewayClient, name: str, args: dict, *, policy: dict | None = None,
-              activity: str | None = None, topic_dir: str | None = None) -> dict:
+              activity: str | None = None, download_dir: str | None = None) -> dict:
     """Tool dispatch for the stdio server: everything goes over HTTP to the gateway."""
     if name == "research_status":
         return client.status()
     if name == "research_job":
-        return client.job(int(args["job_id"]))
+        job = client.job(int(args["job_id"]))
+        if (policy or {}).get("topic_id") and isinstance(job, dict) \
+                and (job.get("payload") or {}).get("topic_id") != policy["topic_id"]:
+            # polling is policy-bound too: a topic never reads results another topic
+            # obtained under a different (possibly looser) posture (pass-1 finding 1)
+            raise PolicyError("policy-bound: that job belongs to a different topic")
+        record_activity(activity, name, args, job if isinstance(job, dict) else None)
+        return job
     if name == "research_batch":
         calls = args.get("calls")
         if not isinstance(calls, list) or not calls:
@@ -200,7 +236,7 @@ def call_tool(client: GatewayClient, name: str, args: dict, *, policy: dict | No
             try:
                 results.append({"tool": tool,
                                 "result": call_tool(client, tool, sub_args, policy=policy,
-                                                    activity=activity, topic_dir=topic_dir)})
+                                                    activity=activity, download_dir=download_dir)})
             except Exception as e:  # one bad entry never sinks its neighbours
                 results.append({"tool": tool, "error": f"{type(e).__name__}: {e}"})
         return {"results": results}
@@ -212,9 +248,9 @@ def call_tool(client: GatewayClient, name: str, args: dict, *, policy: dict | No
     except Exception as e:
         record_activity(activity, name, bound, None, error=f"{type(e).__name__}: {e}")
         raise
-    record_activity(activity, name, bound, out)
+    record_activity(activity, name, bound, out)   # lanes, capability-fact dicts and failed jobs all land here
     if name == "research_fetch":
-        return deliver_content(out, str(bound.get("target") or ""), topic_dir)
+        return deliver_content(out, str(bound.get("target") or ""), bound, download_dir)
     return strip_bytes(out)
 
 
@@ -246,8 +282,11 @@ def main() -> int:
     client = from_env()
     policy = policy_from_env()
     activity = os.environ.get("RESEARCH_LOOP_RESEARCH_ACTIVITY")
+    # the chassis provides a per-iteration TEMPORARY dir and removes it at iteration end;
+    # without one (operator/ad-hoc use) downloads land under the topic's downloads/ as before
     topic_dir = os.environ.get("RESEARCH_LOOP_TOPIC_DIR")
-    call = lambda name, args: call_tool(client, name, args, policy=policy, activity=activity, topic_dir=topic_dir)  # noqa: E731
+    download_dir = os.environ.get("RESEARCH_LOOP_DOWNLOAD_DIR") or (str(Path(topic_dir) / "downloads") if topic_dir else None)
+    call = lambda name, args: call_tool(client, name, args, policy=policy, activity=activity, download_dir=download_dir)  # noqa: E731
     for line in sys.stdin:
         line = line.strip()
         if not line:

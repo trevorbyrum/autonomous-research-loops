@@ -62,6 +62,15 @@ class Cache:
                     cur.execute("SELECT canonical FROM gateway.records WHERE identity = %s AND last_seen > now() - make_interval(secs => %s)",
                                 (key, self.metadata_ttl))
                     row = cur.fetchone()
+                    members = []
+                    if row:
+                        # a reload must not forget WHO said what and when: rebuild the
+                        # provenance summary from record_sources (pass-1 finding 19)
+                        cur.execute("SELECT source_id, license, fetched_at FROM gateway.record_sources "
+                                    "WHERE identity = %s ORDER BY source_id", (key,))
+                        members = [{"source_id": sid, "identity": key, "license": lic,
+                                    "retrieved_at": fetched.isoformat(timespec="seconds") if fetched else None}
+                                   for sid, lic, fetched in cur.fetchall()]
                 self.conn.commit()
             except Exception:
                 try:
@@ -69,7 +78,9 @@ class Cache:
                 except Exception:
                     pass
                 raise
-            return row[0] if row else None
+            if row is None:
+                return None
+            return {**row[0], "provenance": members} if members else row[0]
 
     def put_record(self, record: dict, *, redistributable: bool, persist_members: list[int] | None = None) -> None:
         """Keep the record in memory — for `metadata_ttl` only when EVERY member is redistributable,

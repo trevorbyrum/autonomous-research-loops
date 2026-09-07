@@ -44,10 +44,25 @@ class Plan:
 
 
 # coverage-state vocabulary (docs/STATION-CONTRACT.md §2): every lane entry carries one,
-# so "searched and found nothing" is never conflated with "not searched" or "unavailable"
+# so "searched and found nothing" is never conflated with "not searched" or "unavailable".
+# searched_empty means exactly: THIS successful query returned no records — never that the
+# provider was down, refused, unreadable, or skipped (pass-1 finding 7).
 COVERAGE_OK, COVERAGE_EMPTY = "searched_ok", "searched_empty"
 COVERAGE_SKIPPED, COVERAGE_DOWN = "not_searched", "provider_unavailable"
 COVERAGE_AUTH, COVERAGE_METADATA_ONLY = "auth_failed", "metadata_only"
+COVERAGE_EXHAUSTED = "exhausted"          # a continuation: this lane already returned everything it has
+EXHAUSTED_CURSOR = "exhausted"            # the `next` sentinel for such a lane; handing it back skips the lane
+_BROKER_REFUSALS = ("NoPolicy", "BreakerOpen", "BudgetExhausted")
+
+
+def _fact_coverage(fact: str) -> str:
+    """A lane that answered 0 records WITH a capability fact was not a successful empty
+    search: unconfigured credentials are an auth problem, everything else is the provider
+    being unusable (pass-1 finding 7 — keyless BEA/Census must never look searched_empty)."""
+    f = fact.lower()
+    if "key" in f or "credential" in f or "auth" in f or "token" in f:
+        return COVERAGE_AUTH
+    return COVERAGE_DOWN
 
 
 def resolve_domain(domain: str | None) -> str:
@@ -339,12 +354,13 @@ def _run_lane(router: Router, rt: str, lane: Lane, payload: dict, client: Client
                                     f"{res.get('license') or 'unknown'} is not usable commercially (R-8)")
     if not isinstance(res, dict):
         raise TypeError(f"adapter returned {type(res).__name__}, not a result dict")
-    if res.get("capability_fact"):
-        out["facts"].append(f"{lane.source_id}: {res['capability_fact']}")
+    fact = res.get("capability_fact")
+    if fact:
+        out["facts"].append(f"{lane.source_id}: {fact}")
     nxt = _lane_next(res)
     if nxt is not None:
         out.setdefault("next", {})[lane.source_id] = nxt
-    return _valid_records(res.get("records"), out["facts"], lane.source_id)
+    return _valid_records(res.get("records"), out["facts"], lane.source_id), (str(fact) if fact else None)
 
 
 def _drop_unlicensed(records: list[dict], router: Router, payload: dict, facts: list[str]) -> list[dict]:
@@ -395,15 +411,30 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
     records: list[dict] = []
     for lane in plan.lanes:
         entry = {"source": lane.source_id, "role": lane.role}
+        if rt == "find" and (payload.get("cursors") or {}).get(lane.source_id) == EXHAUSTED_CURSOR:
+            # the caller handed back this lane's exhaustion marker: honour it instead of
+            # restarting the lane from page one (pass-1 finding 9)
+            entry.update(count=0, coverage=COVERAGE_EXHAUSTED, exhausted=True)
+            out["lanes"].append(entry)
+            out.setdefault("next", {})[lane.source_id] = EXHAUSTED_CURSOR
+            continue
         try:
-            got = _run_lane(router, rt, lane, payload, client, out)
+            got, fact = _run_lane(router, rt, lane, payload, client, out)
             entry["count"] = len(got)
-            entry["coverage"] = COVERAGE_OK if got else COVERAGE_EMPTY
+            if got:
+                entry["coverage"] = COVERAGE_OK
+            elif fact:  # answered nothing AND explained why: that is not a successful empty search
+                entry["coverage"] = _fact_coverage(fact)
+            else:
+                entry["coverage"] = COVERAGE_EMPTY
             if rt == "fetch" and (payload.get("params") or {}).get("download") and out.get("content") is None and got:
                 entry["coverage"] = COVERAGE_METADATA_ONLY  # found, but the requested file is not retrievable
         except SourceUnavailable as e:
             entry["error"] = str(e)
-            entry["coverage"] = COVERAGE_AUTH if e.response.status in (401, 403) else COVERAGE_DOWN
+            broker_refused = e.response.status is None and any(
+                str(e.response.error or "").startswith(name) for name in _BROKER_REFUSALS)
+            entry["coverage"] = (COVERAGE_SKIPPED if broker_refused   # never dispatched: budget/breaker/policy
+                                 else COVERAGE_AUTH if e.response.status in (401, 403) else COVERAGE_DOWN)
             out["facts"].append(f"{lane.source_id}: unavailable ({e.response.error or e.response.status}) — R-10")
             out["lanes"].append(entry)
             continue
@@ -424,6 +455,11 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
         out["lanes"].append(entry)
         if entry.get("count") is not None and lane.source_id in (out.get("next") or {}):
             entry["next"] = out["next"][lane.source_id]
+        elif rt == "find" and entry.get("count"):
+            # a lane that answered without a continuation is EXHAUSTED: say so explicitly, so
+            # handing the whole `next` map back never restarts it from page one (finding 9)
+            entry["exhausted"] = True
+            out.setdefault("next", {})[lane.source_id] = EXHAUSTED_CURSOR
         records.extend(got)
         if rt in ("resolve", "enrich") and got:
             break  # primary answered; fallbacks are for failure only
@@ -492,18 +528,24 @@ def redact_secrets(obj, values: set):
     return redact(obj)
 
 
-PROVENANCE_SUMMARY_FIELDS = ("source_id", "identity", "license", "retrieved_at", "attribution")
-# what a STORED provenance member may say (8a): where a citation came from, under which licence,
-# retrieved when — a whitelist, so a member can never smuggle its raw payload into gateway.jobs.
-# `license` is the member's reported CONTENT licence; per-source METADATA terms are registry
-# policy, documented in docs/LICENSING.md, never a per-record field.
+PROVENANCE_SUMMARY_FIELDS = ("source_id", "identity", "license", "retrieved_at", "attribution", "link")
+# what a STORED provenance member may say (8a): where a citation came from, under which
+# CONTENT licence, retrieved when, linked where — a whitelist of SCALAR STRING values, so a
+# member can never smuggle a nested raw payload through a field that happens to share a
+# whitelisted name (pass-1 finding 8). `metadata_license` is added from the registry (the
+# per-source verdict in docs/LICENSING.md) when the sources map is available.
 
 
-def _member_summary(m: dict) -> dict:
-    return {k: m.get(k) for k in PROVENANCE_SUMMARY_FIELDS if m.get(k) is not None} or {"source_id": m.get("source_id")}
+def _member_summary(m: dict, sources: dict | None = None) -> dict:
+    out = {k: m[k] for k in PROVENANCE_SUMMARY_FIELDS if isinstance(m.get(k), str) and m[k]}
+    if sources and isinstance(m.get("source_id"), str):
+        meta = (sources.get(m["source_id"]) or {}).get("license")
+        if isinstance(meta, str) and meta:
+            out["metadata_license"] = meta
+    return out or {"source_id": m.get("source_id") if isinstance(m.get("source_id"), str) else None}
 
 
-def redact_for_storage(result: dict) -> dict:
+def redact_for_storage(result: dict, sources: dict | None = None) -> dict:
     """What a persisted job result may hold: canonical metadata, links, counts, and a whitelisted
     provenance summary per member (source, identity, licence, retrieved_at — a citation's
     ingredients, 8a). Raw payloads, row data, full text and file bytes never enter
@@ -520,7 +562,7 @@ def redact_for_storage(result: dict) -> dict:
             cleaned = {}
             for k, inner in v.items():
                 if k == "provenance" and isinstance(inner, list):
-                    cleaned[k] = [_member_summary(m) for m in inner if isinstance(m, dict)]
+                    cleaned[k] = [_member_summary(m, sources) for m in inner if isinstance(m, dict)]
                     continue
                 if k in STORAGE_STRIPPED:
                     if k in ("text", "rows") and inner is not None:
@@ -546,5 +588,5 @@ def make_handlers(router: Router, cache: Cache | None = None) -> dict[str, Calla
         payload = dict(job["payload"])
         payload.setdefault("request_type", job["request_type"])
         payload.setdefault("commercial", bool(job.get("commercial")))
-        return redact_for_storage(execute(router, payload, client, cache))
+        return redact_for_storage(execute(router, payload, client, cache), router.sources)
     return {rt: handler for rt in ("find", "resolve", "enrich", "fetch", "data")}

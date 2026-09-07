@@ -39,29 +39,40 @@ is never conflated with "not searched" or "unavailable":
 | State                 | Meaning |
 |-----------------------|---------|
 | `searched_ok`         | lane dispatched and returned ≥ 1 record |
-| `searched_empty`      | lane dispatched successfully and returned 0 records |
-| `not_searched`        | lane exists for this domain but was not dispatched (budget/refusal/policy) |
-| `provider_unavailable`| dispatched; outage, timeout, quota or unreadable answer |
-| `auth_failed`         | dispatched; the source rejected our credentials |
+| `searched_empty`      | THIS successful query returned 0 records — never that the provider was down, refused, unreadable or skipped; and never proof the literature is silent beyond this query |
+| `not_searched`        | lane exists but was not dispatched (commercial policy, budget, breaker) |
+| `provider_unavailable`| outage, timeout, quota or an unreadable answer |
+| `auth_failed`         | credentials rejected — or not configured at all (a keyless required tier is an auth problem, not an empty search) |
 | `metadata_only`       | the record was found but the requested full text / file is not retrievable |
+| `exhausted`           | a continuation: this lane already returned everything it has (its `next` sentinel skips it) |
 
 - Gateway → client: every `lanes[]` entry in a find/resolve/enrich answer carries
   `coverage` (one of the states above) next to its existing `source` and `count`;
   prose `facts` remain for humans and never become the machine channel.
 - Client → chassis: when `RESEARCH_LOOP_RESEARCH_ACTIVITY` names a writable file, the
   stdio dispatcher appends JSON lines
-  `{"at": iso8601, "source": id, "request_type": t, "coverage": state, "query_or_identity": s}`:
-  every degraded lane state and failed tool call, plus each SUCCESSFUL
-  (source, coverage) pair once per process — successes are the signal that clears a
-  blocker when a previously failed source answers again.
-- Chassis → queue: the iteration result record gains `research_failures` (the
-  distinct `(source, coverage)` pairs from that file). The runner keeps
-  `research_blockers` per item: a `provider_unavailable`/`auth_failed` entry adds the
-  source; a later `searched_ok`/`searched_empty` for the same source clears it
-  (historical failures are never permanent vetoes).
-- Gate (one condition, used for BOTH saturation eligibility and automatic completion):
-  an iteration that recorded a blocking coverage state and produced no qualifying
-  semantic change does not advance the saturation streak and cannot be the completing
-  pass. A completed topic stamps the coverage state it completed under
-  (`completion_coverage`) so a later source-family addition can trigger a targeted
-  refresh without invalidating the earlier research.
+  `{"at": iso8601, "source": id, "request_type": t, "coverage": state, "query_or_identity": s}`
+  — one per coverage-state TRANSITION, in order, keyed by the exact request
+  (source + request type + query/identity). Recovery (fail → ok) is a transition and is
+  never deduplicated away; capability-fact answers, transport failures and failed
+  polled jobs all land here, not only lane lists.
+- Chassis → queue: the result record carries `research_failures` (requests whose FINAL
+  state is degraded, each with its key), `research_ok` (keys whose final state
+  cleared), and `research_coverage` (each source's last state — accumulated on the item
+  for the completion stamp). The runner keeps `research_blockers` per item, KEYED BY
+  REQUEST: a `provider_unavailable`/`auth_failed` final state adds the request; only
+  the SAME request succeeding clears it — a success on an unrelated query never does.
+  Historical failures still never become permanent vetoes: the operator releases a
+  blocker explicitly with `research-loops resolve-research <id> --reason ...` (a
+  recorded evidence decision). An ordinary pause/resume never touches blockers.
+- Gate (one condition, used for BOTH saturation eligibility and every automatic
+  completion branch): an iteration that recorded a blocking coverage state and
+  produced no qualifying semantic change does not advance the saturation streak and
+  cannot be the completing pass; reaching the streak limit with unresolved blockers
+  HOLDS completion. A completed topic stamps the accumulated coverage map and policy
+  it completed under (`completion_coverage`) so a later source-family addition can
+  trigger a targeted refresh without invalidating the earlier research.
+- Station downloads are TEMPORARY: the chassis provides a per-iteration directory
+  (`RESEARCH_LOOP_DOWNLOAD_DIR`) and removes it on every exit path; the agent copies
+  what it keeps into the topic's own files during the iteration. Names carry the
+  file/revision identity and are created exclusively — never overwritten.

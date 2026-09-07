@@ -119,29 +119,45 @@ if __name__ == "__main__":
                      "needs RESEARCH_GATEWAY_DSN and RESEARCH_GATEWAY_TEST_OK=1")
 class ReloadPreservesDeployment(unittest.TestCase):
     """8f: a catalogue reload and a deployment decision are different acts — the deployed
-    `enabled` switch survives an ordinary reload; --seed-operational reasserts the seed."""
+    `enabled` switch and rate caps survive an ordinary reload; --seed-operational
+    reasserts the seed. Exercised on THROWAWAY fixture rows only: this test never loads
+    the real seed and never touches a deployed source's row (pass-1 finding 2)."""
 
-    def test_enabled_flag_survives_a_reload_unless_reasserted(self):
+    FIXTURE = {"id": "test-reload-probe", "name": "Reload probe", "kind": "article", "auth": "none",
+               "capabilities": ["find"], "identifiers": [], "base_for": [], "domains": [],
+               "use_commercial": "deny", "enabled": True, "notes": "test fixture — safe to delete",
+               "rate": {"per_second": 1, "per_day": 100, "verified": True, "evidence": "test"}}
+
+    def setUp(self):
         import psycopg
-        from research_gateway.registry.load import load as load_seed
-        dsn = os.environ["RESEARCH_GATEWAY_DSN"]
-        sources = read_seed()
-        seeded = next(s for s in sources if s.get("enabled"))
-        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
-            cur.execute("SELECT enabled FROM gateway.sources WHERE id = %s", (seeded["id"],))
-            original = cur.fetchone()[0]
-            cur.execute("UPDATE gateway.sources SET enabled = false WHERE id = %s", (seeded["id"],))
+        self.dsn = os.environ["RESEARCH_GATEWAY_DSN"]
+        self.psycopg = psycopg
+
+    def tearDown(self):
+        with self.psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
+            cur.execute("DELETE FROM gateway.rate_policies WHERE source_id = %s", (self.FIXTURE["id"],))
+            cur.execute("DELETE FROM gateway.sources WHERE id = %s", (self.FIXTURE["id"],))
             conn.commit()
-        try:
-            load_seed(sources, dsn, apply_schema=False)
-            with psycopg.connect(dsn) as conn, conn.cursor() as cur:
-                cur.execute("SELECT enabled FROM gateway.sources WHERE id = %s", (seeded["id"],))
-                self.assertFalse(cur.fetchone()[0], "an ordinary reload preserves the deployed switch")
-            load_seed(sources, dsn, apply_schema=False, seed_operational=True)
-            with psycopg.connect(dsn) as conn, conn.cursor() as cur:
-                cur.execute("SELECT enabled FROM gateway.sources WHERE id = %s", (seeded["id"],))
-                self.assertTrue(cur.fetchone()[0], "--seed-operational reasserts the seed's value")
-        finally:
-            with psycopg.connect(dsn) as conn, conn.cursor() as cur:
-                cur.execute("UPDATE gateway.sources SET enabled = %s WHERE id = %s", (original, seeded["id"]))
-                conn.commit()
+
+    def _row(self):
+        with self.psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
+            cur.execute("SELECT s.enabled, r.per_day, r.verified FROM gateway.sources s "
+                        "JOIN gateway.rate_policies r ON r.source_id = s.id WHERE s.id = %s",
+                        (self.FIXTURE["id"],))
+            return cur.fetchone()
+
+    def test_deployment_switches_survive_a_reload_unless_reasserted(self):
+        from research_gateway.registry.load import load as load_seed
+        fixture = [dict(self.FIXTURE, rate=dict(self.FIXTURE["rate"]))]
+        load_seed(fixture, self.dsn, apply_schema=False)         # insert takes the seed values
+        self.assertEqual(self._row(), (True, 100, True))
+        with self.psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
+            cur.execute("UPDATE gateway.sources SET enabled = false WHERE id = %s", (self.FIXTURE["id"],))
+            cur.execute("UPDATE gateway.rate_policies SET per_day = 7, verified = false WHERE source_id = %s",
+                        (self.FIXTURE["id"],))
+            conn.commit()
+        load_seed(fixture, self.dsn, apply_schema=False)         # ordinary reload: deployment preserved
+        self.assertEqual(self._row(), (False, 7, False),
+                         "an ordinary reload preserves the deployed switch AND rate overrides")
+        load_seed(fixture, self.dsn, apply_schema=False, seed_operational=True)
+        self.assertEqual(self._row(), (True, 100, True), "--seed-operational reasserts the seed")

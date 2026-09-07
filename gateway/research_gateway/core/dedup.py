@@ -44,7 +44,9 @@ def _provenance_of(rec: dict) -> list[dict]:
     return [{"source_id": s, "identity": rec["identity"],
              "raw": rec.get("raw") if s == own else None,
              "license": rec.get("license") if s == own else None,
-             "retrieved_at": rec.get("retrieved_at") if s == own else None}
+             "retrieved_at": rec.get("retrieved_at") if s == own else None,
+             "attribution": rec.get("attribution") if s == own else None,
+             "link": (rec.get("links") or [None])[0] if s == own else None}
             for s in rec.get("sources") or [own]]
 
 

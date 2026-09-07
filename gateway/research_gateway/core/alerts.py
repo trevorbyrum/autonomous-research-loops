@@ -32,11 +32,11 @@ def ntfy_sender(url: str, topic: str, *, username: str | None = None, password: 
     def send(title: str, message: str, priority: str) -> None:
         req = urllib.request.Request(endpoint, data=message.encode(), method="POST",
                                      headers={**headers, "Title": title, "Priority": priority, "Tags": "research-gateway"})
-        try:
-            with urllib.request.urlopen(req, timeout=timeout):
-                pass
-        except (urllib.error.URLError, TimeoutError, OSError):
-            pass  # an alert that cannot be delivered must never take the gateway down
+        # delivery errors PROPAGATE: the asynchronous pump is the one place that both
+        # swallows them (nothing else is ever taken down) and counts them — a sender that
+        # ate its own failures made `delivered` lie during an ntfy outage (pass-1 finding 17)
+        with urllib.request.urlopen(req, timeout=timeout):
+            pass
     return send
 
 
@@ -158,7 +158,9 @@ def check_calls(conn, alerter: Alerter) -> dict:
         # venue/repository rows are the local index's data and are never retention-deleted —
         # cache expiry (last_seen TTL) already stops serving stale rows long before this runs
         cur.execute("DELETE FROM gateway.jobs WHERE status IN ('done', 'failed') "
-                    "AND created_at < now() - make_interval(days => %s)", (jobs_retention,))
+                    "AND coalesce(finished_at, created_at) < now() - make_interval(days => %s)", (jobs_retention,))
+        # finished_at, not created_at: a job that survived a long outage in the queue gets its
+        # full retrieval window AFTER completing, never deleted the moment it finally ran (finding 14)
         cur.execute("DELETE FROM gateway.records WHERE kind NOT IN ('venue', 'repository') "
                     "AND last_seen < now() - make_interval(days => %s)", (records_retention,))
     conn.commit()

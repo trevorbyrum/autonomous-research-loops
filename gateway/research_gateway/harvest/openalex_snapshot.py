@@ -90,6 +90,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     with db.connect() as conn:
         n = run(conn, args.snapshot_dir, limit=args.limit)
+        with conn.cursor() as cur:  # proof of a COMPLETED refresh, written only on success (8f, finding 5)
+            cur.execute("INSERT INTO gateway.meta (key, value, updated_at) VALUES (%s, %s, now()) "
+                        "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()",
+                        (f"harvest:{SOURCE_ID}", json.dumps({"loaded": n, "limit": args.limit,
+                                                             "snapshot_dir": str(args.snapshot_dir)})))
+        conn.commit()
         print(json.dumps({"loader": SOURCE_ID, "loaded": n, **index.counts(conn)}, indent=1))
     return 0
 

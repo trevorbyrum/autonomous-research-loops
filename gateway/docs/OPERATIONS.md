@@ -119,8 +119,11 @@ been read, are documented but not scheduled.
   batch commits make "last row updated" insufficient evidence of a completed refresh.
 - **Quarterly OpenAlex snapshot refresh.** Sync the public snapshot's `data/sources/`
   part files into `private/openalex-sources/` (the operator syncs; the loader reads
-  disk only, D-19), then run `python3 -m research_gateway.harvest.registries
-  openalex_snapshot` inside the maintenance window. ISSN twins consolidate only on a
+  disk only, D-19), then run the maintenance window with the snapshot included:
+  `RESEARCH_GATEWAY_SNAPSHOT_DIR=private/openalex-sources bash
+  deploy/research-gateway-maintenance.sh` (or standalone inside a window:
+  `python3 -m research_gateway.harvest.openalex_snapshot private/openalex-sources`).
+  A completed load stamps `gateway.meta` like every other loader. ISSN twins consolidate only on a
   FULL rebuild (delete venue records, reload all loaders) — see D-26.
 - **Catalogue reload vs. deployment switches.** `registry/load.py --load` updates the
   catalogue and PRESERVES each existing row's deployed `enabled` flag; pass

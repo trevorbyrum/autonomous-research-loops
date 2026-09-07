@@ -19,18 +19,25 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 _URL = re.compile(r"https?://[^\s\"')>]+")
+_HOST_SHAPE = re.compile(r"^[a-z0-9.-]+$")   # a REAL hostname: an f-string template segment ({domain}) is not one
 # hosts adapters mention that the gateway does NOT front (loopback, examples, doc links)
 _EXCLUDED = ("127.0.0.1", "localhost", "example.org", "example.com", "gateway.local")
+# fronted endpoints that never appear as URL literals in the adapter sources: Socrata
+# portals are vouched dynamically through the discovery catalog (R-6), so the discovery
+# endpoints are pinned here and individual portal hosts remain a documented residual —
+# the hook cannot enumerate hosts the gateway itself only learns at runtime.
+_EXTRA = ("api.us.socrata.com", "api.eu.socrata.com")
 
 
 def fronted_hosts() -> list[str]:
-    hosts: set[str] = set()
+    hosts: set[str] = set(_EXTRA)
     for path in sorted((Path(__file__).resolve().parent.parent / "adapters").glob("*.py")):
         if path.name in ("base.py", "__init__.py"):
             continue
         for match in _URL.findall(path.read_text(encoding="utf-8")):
             host = (urlsplit(match).hostname or "").lower().strip(".")
-            if host and not any(host == e or host.endswith("." + e) for e in _EXCLUDED):
+            if (host and _HOST_SHAPE.fullmatch(host) and "." in host
+                    and not any(host == e or host.endswith("." + e) for e in _EXCLUDED)):
                 hosts.add(host)
     return sorted(hosts)
 
