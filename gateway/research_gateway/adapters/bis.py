@@ -6,6 +6,7 @@ from ..core.canonical import make_record
 from .base import AdapterError, Client, check
 
 SOURCE_ID = "bis"
+SMOKE = {'capability': 'data', 'params': {'dataflow': 'WS_EER', 'key': 'M.N.B.US', 'start': '2026-01'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("data",)
 BASE = "https://stats.bis.org/api/v2/data/dataflow/BIS"
 ATTRIBUTION = "Bank for International Settlements"

@@ -1,4 +1,5 @@
 """Phase 4: licence allow-list, staged dedup, cache TTLs and the redistribution rule (§6, I-8)."""
+import os
 import unittest
 import uuid
 
@@ -107,7 +108,8 @@ class MemoryCache(unittest.TestCase):
         self.assertGreater(c.stats()["evicted"], 0)
 
 
-@unittest.skipUnless(db.configured(), "RESEARCH_GATEWAY_DSN not set")
+@unittest.skipUnless(db.configured() and os.environ.get("RESEARCH_GATEWAY_TEST_OK") == "1",
+                     "needs RESEARCH_GATEWAY_DSN and RESEARCH_GATEWAY_TEST_OK=1 (DB tests exercise the real queue)")
 class PersistentCache(unittest.TestCase):
     def setUp(self):
         self.conn = db.connect()

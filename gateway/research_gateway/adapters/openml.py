@@ -5,6 +5,7 @@ from ..core.canonical import make_record, year_from
 from .base import AdapterError, Client, check, quote
 
 SOURCE_ID = "openml"
+SMOKE = {'capability': 'resolve', 'identity': 'openml:61'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("find", "resolve", "fetch")
 BASE = "https://www.openml.org/api/v1/json"
 HOSTS = ("https://www.openml.org/", "https://api.openml.org/", "https://data.openml.org/")
@@ -76,4 +77,5 @@ def fetch(client: Client, target: str, *, download: bool = False, prefer: str = 
     resp = client.get(SOURCE_ID, "fetch", urls[0], headers={"Accept": "*/*"}, identity=files[0]["identity"])
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "records": files}
-    return {"identity": identity, "records": files, "content": resp.body, "content_type": resp.headers.get("content-type")}
+    return {"identity": identity, "records": files, "content": resp.body,
+            "content_type": resp.headers.get("content-type"), "license": rec["license"]}

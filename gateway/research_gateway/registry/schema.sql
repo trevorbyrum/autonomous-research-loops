@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS gateway.jobs (
   client_id     text NOT NULL,
   topic_id      text,
   commercial    boolean NOT NULL DEFAULT false,
+  attempts      integer NOT NULL DEFAULT 0,
   created_at    timestamptz NOT NULL DEFAULT now(),
   started_at    timestamptz,
   finished_at   timestamptz,
@@ -80,6 +81,7 @@ CREATE TABLE IF NOT EXISTS gateway.calls (
   at             timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE gateway.calls ADD COLUMN IF NOT EXISTS client_id text;   -- databases created before Phase 5
+ALTER TABLE gateway.jobs ADD COLUMN IF NOT EXISTS attempts integer NOT NULL DEFAULT 0;  -- lease reclaim (D-23)
 CREATE INDEX IF NOT EXISTS calls_source_at_idx ON gateway.calls (source_id, at DESC);
 
 CREATE TABLE IF NOT EXISTS gateway.breakers (

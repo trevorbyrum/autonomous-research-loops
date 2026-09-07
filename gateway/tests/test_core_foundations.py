@@ -135,6 +135,58 @@ class MeteredClient(unittest.TestCase):
         self.assertIn("BreakerOpen", r.error)
         self.assertEqual(len(t.calls), 1)
 
+    def test_redirects_are_validated_metered_and_stripped_of_credentials(self):
+        """D-23: no hop is followed blindly. IP-literal locations keep the test off DNS."""
+        t = FakeTransport()
+        t.add("GET", "https://93.184.216.34/start", status=302, headers={"Location": "https://93.184.216.35/next"})
+        t.add("GET", "https://93.184.216.35/next", body={"ok": 1})
+        c = make_client(policies={"src": RatePolicy(per_second=100)}, transport=t)
+        r = c.get("src", "find", "https://93.184.216.34/start", headers={"Authorization": "Bearer sekrit", "X-Api-Key": "k"})
+        self.assertTrue(r.ok)
+        self.assertEqual(len(t.calls), 2)
+        self.assertIn("Authorization", t.calls[0][2])
+        self.assertNotIn("Authorization", t.calls[1][2], "credentials never cross origins")
+        self.assertNotIn("X-Api-Key", t.calls[1][2])
+        self.assertEqual([rec.status for rec in c.log], [302, 200], "every hop is logged")
+
+    def test_redirects_to_private_or_downgraded_destinations_are_refused(self):
+        for location in ("http://93.184.216.34/x",      # https → http downgrade
+                         "https://127.0.0.1/steal",     # loopback
+                         "https://10.0.0.7/x",          # private range
+                         "ftp://93.184.216.34/x"):      # non-http scheme
+            t = FakeTransport()
+            t.add("GET", "https://93.184.216.34/start", status=301, headers={"Location": location})
+            c = make_client(policies={"src": RatePolicy(per_second=100)}, transport=t)
+            r = c.get("src", "find", "https://93.184.216.34/start", headers={"X-Api-Key": "k"})
+            self.assertFalse(r.ok, location)
+            self.assertIn("redirect", r.error or "", location)
+            self.assertEqual(len(t.calls), 1, f"the refused hop was never contacted: {location}")
+            self.assertEqual(c.log[-1].failure_class, "refused")
+
+    def test_real_transport_never_raises(self):
+        from research_gateway.adapters.base import Transport
+        r = Transport().request("GET", "http://127.0.0.1:9/none", {"User-Agent": "t"}, None, 0.5)
+        self.assertIsNone(r.status)
+        self.assertTrue(r.error, "a connect failure is an error Response, so the call row always exists (I-6)")
+
+    def test_broken_call_log_fails_closed(self):
+        """I-6/D-23: when the log cannot be written, nothing keeps dispatching unaudited."""
+        from research_gateway.core import calllog
+
+        class DeadConn:
+            def cursor(self):
+                raise RuntimeError("connection is closed")
+
+            def rollback(self):
+                pass
+
+        t = FakeTransport()
+        t.add("GET", "https://api.example/x", body={"ok": 1})
+        c = make_client(transport=t)
+        c.conn = DeadConn()
+        with self.assertRaises(calllog.AuditError):
+            c.get("src", "find", "https://api.example/x")
+
     def test_post_json(self):
         t = FakeTransport()
         t.add("POST", "https://api.example/batch", body=[{"id": 1}])

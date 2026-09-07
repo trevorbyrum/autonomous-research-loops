@@ -199,7 +199,63 @@ class FromRows(unittest.TestCase):
         self.assertEqual(pol["a"].per_second, 2.0)
         self.assertEqual(pol["a"].burst, 5)
         self.assertEqual(pol["b"].per_hour, 7200.0)
-        self.assertEqual(len(pol["a"].windows()), 1)
+        self.assertEqual(pol["a"].windows(), [(1.0, 5.0), (2.5, 5.0)],
+                         "burst is capacity over a sustained 2/s average, not a 5/s replacement (D-23)")
+        self.assertEqual(RatePolicy(per_second=0.5).windows(), [(2.0, 1.0)],
+                         "a fractional rate is spacing: one call every two seconds")
+
+    def test_fractional_rate_and_burst_are_enforced_as_documented(self):
+        b, clock, _ = make({"core": RatePolicy(per_second=0.5)})
+        self.assertEqual(b.acquire("core"), 0.0)
+        wait = b.acquire("core")
+        self.assertGreater(wait, 1.0, "0.5/s means the second call waits ~2s, not ~1s")
+        clock.advance(wait)
+        self.assertEqual(b.acquire("core"), 0.0)
+        b2, clock2, _ = make({"doaj": RatePolicy(per_second=2, burst=5)})
+        grants = sum(1 for _ in range(10) if b2.acquire("doaj") == 0.0)
+        self.assertEqual(grants, 5, "burst capacity")
+        clock2.advance(1.1)
+        grants2 = sum(1 for _ in range(10) if b2.acquire("doaj") == 0.0)
+        self.assertLess(grants2, 5, "after a burst the sustained 2/s average holds, not 5 more per second")
+
+    def test_retry_after_http_date_and_no_shortening(self):
+        import email.utils
+        import time as _time
+        from research_gateway.adapters.base import Response
+        when = email.utils.formatdate(_time.time() + 120, usegmt=True)
+        r = Response(429, {"retry-after": when}, b"", "u")
+        self.assertAlmostEqual(r.retry_after_seconds(), 120, delta=5)
+        b, clock, _ = make({"src": RatePolicy(per_second=100)})
+        b.record("src", 429, retry_after=900)
+        b.record("src", 429, retry_after=3)
+        with self.assertRaises(BreakerOpen):
+            b.acquire("src")
+        clock.advance(10)
+        with self.assertRaises(BreakerOpen):
+            b.acquire("src")  # the later, shorter Retry-After did not truncate the 900s deadline
+
+    def test_elapsed_breaker_closes_on_acquire_with_callback(self):
+        events = []
+        b, clock, _ = make({"src": RatePolicy(per_second=100)},
+                           on_breaker_change=lambda s, state, until, reason: events.append((s, state)))
+        b.record("src", 429, retry_after=5)
+        clock.advance(6)
+        self.assertEqual(b.acquire("src"), 0.0)
+        self.assertEqual(events, [("src", "open"), ("src", "closed")])
+
+    def test_callbacks_run_outside_the_lock_and_cannot_break_acquisition(self):
+        def bad(*a):
+            raise RuntimeError("listener broke")
+        b, _, _ = make({"src": RatePolicy(per_second=100, per_day=10)}, on_budget=bad, on_breaker_change=bad)
+        for _ in range(10):
+            b.acquire("src")  # the failing budget listener never surfaces
+        b.record("src", 429, retry_after=1)  # nor the failing breaker listener
+
+    def test_seed_usage_restores_daily_budgets(self):
+        b, _, _ = make({"src": RatePolicy(per_second=100, per_day=5)})
+        b.seed_usage({"src": (5, 0.0), "unknown": (3, 0.0)})
+        with self.assertRaises(BudgetExhausted):
+            b.acquire("src")
 
 
 if __name__ == "__main__":

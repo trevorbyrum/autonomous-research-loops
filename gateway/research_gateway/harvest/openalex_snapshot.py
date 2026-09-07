@@ -76,7 +76,8 @@ def read_snapshot(root: Path, *, limit: int | None = None, issn_map: index.IssnM
 
 
 def run(conn, root: Path, *, limit: int | None = None) -> int:
-    return index.load(conn, read_snapshot(root, limit=limit, issn_map=index.IssnMap(conn)), SOURCE_ID, license="CC0")
+    return index.load(conn, lambda: read_snapshot(root, limit=limit, issn_map=index.IssnMap(conn)),
+                      SOURCE_ID, license="CC0")
 
 
 def main(argv: list[str] | None = None) -> int:

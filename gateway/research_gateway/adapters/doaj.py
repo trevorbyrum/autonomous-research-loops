@@ -6,6 +6,7 @@ from ..core.identity import normalize_doi, normalize_issn
 from .base import Client, check, quote
 
 SOURCE_ID = "doaj"
+SMOKE = {'capability': 'find', 'query': 'management', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("find", "resolve")
 SCHEMES = ("doi", "issn")
 BASE = "https://doaj.org/api"
@@ -48,7 +49,25 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1) -> dict:
 
 
 def resolve(client: Client, identity: str) -> dict | None:
-    doi = normalize_doi(identity.split(":", 1)[-1] if identity.startswith("doi:") else identity)
+    """A DOI resolves to its article; an ISSN resolves to its journal (both declared in SCHEMES)."""
+    value = identity.split(":", 1)[-1] if ":" in identity else identity
+    issn = normalize_issn(value) if identity.lower().startswith("issn:") or normalize_issn(value) else None
+    if issn and not normalize_doi(value):
+        resp = client.get(SOURCE_ID, "resolve", f"{BASE}/search/journals/" + quote(f'issn:"{issn}"'),
+                          params={"pageSize": 1}, identity=f"issn:{issn}")
+        if not check(SOURCE_ID, resp):
+            return None
+        results = (resp.json or {}).get("results") or []
+        if not results:
+            return None
+        b = results[0].get("bibjson") or {}
+        return make_record(identity=f"issn:{issn}", kind="venue", source_id=SOURCE_ID, title=b.get("title"),
+                           venue=b.get("publisher", {}).get("name") if isinstance(b.get("publisher"), dict) else b.get("publisher"),
+                           identifiers={"issn": issn}, links=[r.get("url") for r in b.get("ref", {}).values()] if isinstance(b.get("ref"), dict) else [],
+                           license=((b.get("license") or [{}])[0]).get("type"),
+                           extra={"in_doaj": True, "subjects": [s.get("term") for s in b.get("subject") or [] if s.get("term")]},
+                           raw=results[0])
+    doi = normalize_doi(value)
     if not doi:
         return None
     resp = client.get(SOURCE_ID, "resolve", f"{BASE}/search/articles/" + quote(f'doi:"{doi}"'),

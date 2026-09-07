@@ -6,6 +6,7 @@ from ..core.canonical import make_record
 from .base import AdapterError, Client, check
 
 SOURCE_ID = "ecb"
+SMOKE = {'capability': 'data', 'params': {'dataflow': 'EXR', 'key': 'D.USD.EUR.SP00.A', 'start': '2026-08-01'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("data",)
 BASE = "https://data-api.ecb.europa.eu/service/data"
 ATTRIBUTION = "European Central Bank"

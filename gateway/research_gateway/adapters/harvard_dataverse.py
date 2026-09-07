@@ -6,6 +6,7 @@ from ..core.identity import normalize_doi
 from .base import AdapterError, Client, check
 
 SOURCE_ID = "harvard_dataverse"
+SMOKE = {'capability': 'resolve', 'identity': 'doi:10.7910/DVN/OY6CBK'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("find", "resolve", "fetch")
 SCHEMES = ("doi",)
 BASE = "https://dataverse.harvard.edu"
@@ -94,11 +95,21 @@ def fetch_in(client: Client, base: str, source_id: str, secret_name: str | None,
     if download:
         if not file_id:
             raise AdapterError(f"{source_id}.fetch download needs file_id")
+        # membership and licence first: the file must belong to THIS dataset, and the download
+        # carries the dataset's licence so the executor can authorize it (R-6, R-8, D-23)
+        d = get_dataset(client, base, source_id, secret_name, target, "fetch")
+        if d is None:
+            return {"identity": target, "records": [], "capability_fact": "dataset not found"}
+        ds = dataset_record(base, source_id, d)
+        member_ids = {(f.get("dataFile") or {}).get("id") for f in (d.get("latestVersion") or {}).get("files") or []}
+        if int(file_id) not in member_ids:
+            raise AdapterError(f"{source_id}: file {file_id} does not belong to {ds['identity']}")
         resp = client.get(source_id, "fetch", f"{base}/api/access/datafile/{int(file_id)}", headers={**headers(client, secret_name), "Accept": "*/*"},
-                          identity=f"{target}#{file_id}")
+                          identity=f"{ds['identity']}#{file_id}")
         if not check(source_id, resp):
-            return {"identity": target, "records": []}
-        return {"identity": target, "records": [], "content": resp.body, "content_type": resp.headers.get("content-type")}
+            return {"identity": ds["identity"], "records": []}
+        return {"identity": ds["identity"], "records": [], "content": resp.body,
+                "content_type": resp.headers.get("content-type"), "license": ds.get("license")}
     d = get_dataset(client, base, source_id, secret_name, target, "fetch")
     if d is None:
         return {"identity": target, "records": []}

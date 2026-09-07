@@ -5,6 +5,7 @@ from ..core.canonical import make_record
 from .base import AdapterError, Client, check
 
 SOURCE_ID = "bls"
+SMOKE = {'capability': 'data', 'params': {'series': 'CUUR0000SA0', 'start_year': 2025, 'end_year': 2025}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("data",)
 BASE = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
 ATTRIBUTION = "U.S. Bureau of Labor Statistics"
@@ -23,9 +24,12 @@ def data(client: Client, params: dict) -> dict:
     if params.get("catalog"):
         body["catalog"] = True
     key = client.secret("bls")
-    if key:
-        body["registrationkey"] = key
     identity = f"series:bls:{','.join(ids[:3])}{'…' if len(ids) > 3 else ''}"
+    if not key:
+        # unregistered BLS is 25 queries/day; the enabled 500/day policy assumes a key (D-23)
+        return {"identity": identity, "records": [],
+                "capability_fact": "no BLS registration key configured; the unregistered 25/day tier is not enabled"}
+    body["registrationkey"] = key
     resp = client.post(SOURCE_ID, "data", BASE, body=body, identity=identity)
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "records": []}

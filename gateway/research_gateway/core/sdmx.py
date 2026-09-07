@@ -20,7 +20,7 @@ def series_xml(text: str) -> list[dict]:
     for el in root.iter():
         if _local(el.tag) != "Series":
             continue
-        observations = []
+        observations, observations_raw = [], []
         for obs in el:
             if _local(obs.tag) != "Obs":
                 continue
@@ -30,7 +30,8 @@ def series_xml(text: str) -> list[dict]:
             except ValueError:
                 value = raw
             observations.append((obs.get("TIME_PERIOD"), value))
-        out.append({"key": dict(el.attrib), "observations": observations})
+            observations_raw.append(dict(obs.attrib))   # status/confidentiality flags survive into raw (I-8)
+        out.append({"key": dict(el.attrib), "observations": observations, "observations_raw": observations_raw})
     return out
 
 
@@ -73,5 +74,6 @@ def series(j: dict) -> list[dict]:
                 period = periods[oi] if oi < len(periods) else str(oi)
                 value = arr[0] if isinstance(arr, list) and arr else arr
                 observations.append((period, value))
-            out.append({"key": dim_values, "observations": observations})
+            out.append({"key": dim_values, "observations": observations,
+                        "observations_raw": s.get("observations")})   # full per-observation arrays survive (I-8)
     return out

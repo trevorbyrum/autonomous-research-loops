@@ -5,6 +5,7 @@ from ..core.canonical import make_record, year_from
 from .base import AdapterError, Client, check, quote
 
 SOURCE_ID = "huggingface"
+SMOKE = {'capability': 'resolve', 'identity': 'stanfordnlp/imdb'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("find", "resolve", "fetch")
 SCHEMES = ("hf",)
 BASE = "https://huggingface.co"
@@ -68,11 +69,15 @@ def fetch(client: Client, target: str, *, path: str | None = None, download: boo
     if download:
         if not path:
             raise AdapterError("huggingface.fetch download needs path")
+        rec = resolve(client, identity)  # the repository's licence travels with the bytes (R-8, D-23)
+        if rec is None:
+            return {"identity": identity, "records": [], "capability_fact": "repository not found"}
         url = f"{BASE}/datasets/{quote(repo, safe='/')}/resolve/{quote(revision, safe='')}/{quote(path, safe='/')}"
         resp = client.get(SOURCE_ID, "fetch", url, headers={**_headers(client), "Accept": "*/*"}, identity=f"{identity}#{path}")
         if not check(SOURCE_ID, resp):
             return {"identity": identity, "records": []}
-        return {"identity": identity, "records": [], "content": resp.body, "content_type": resp.headers.get("content-type")}
+        return {"identity": identity, "records": [], "content": resp.body,
+                "content_type": resp.headers.get("content-type"), "license": rec["license"], "gated": rec["gated"]}
     rec = resolve(client, identity)
     if rec is None:
         return {"identity": identity, "records": []}

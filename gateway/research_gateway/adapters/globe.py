@@ -5,6 +5,7 @@ from ..core.canonical import make_record
 from .base import AdapterError, Client, check
 
 SOURCE_ID = "globe"
+SMOKE = {'local': 'static files; nothing to probe without a file URL'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("fetch",)
 SCHEMES = ("url",)
 HOST = "https://globeproject.com/"

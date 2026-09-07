@@ -145,7 +145,12 @@ PATTERN_SQL = "lower(left(query, 80))"
 
 
 def check_calls(conn, alerter: Alerter) -> dict:
-    """One pass over gateway.calls for the patterns §7 names; returns what it saw (for tests/status)."""
+    """One pass over gateway.calls for the patterns §7 names; returns what it saw (for tests/status).
+    Also enforces call-log retention (RESEARCH_GATEWAY_CALLS_RETENTION_DAYS, default 180)."""
+    retention = int(os.environ.get("RESEARCH_GATEWAY_CALLS_RETENTION_DAYS", "180"))
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM gateway.calls WHERE at < now() - make_interval(days => %s)", (retention,))
+    conn.commit()
     seen = {"failures": [], "zero_results": []}
     with conn.cursor() as cur:
         cur.execute(
@@ -175,9 +180,10 @@ class Watcher(threading.Thread):
     """Runs check_calls and the health check every `interval` seconds on its own connection."""
 
     def __init__(self, connect, alerter: Alerter, health: Callable[[], dict], stop: threading.Event,
-                 interval: float = 300.0, name: str = "gateway-watcher"):
+                 interval: float = 300.0, name: str = "gateway-watcher", sweep: Callable | None = None):
         super().__init__(name=name, daemon=True)
         self._connect, self._alerter, self._health, self._stop_event, self._interval = connect, alerter, health, stop, interval
+        self._sweep = sweep   # e.g. the queue's stale-job reclaim, run on the watcher's cadence
         self.passes = 0
         self.error: str | None = None
 
@@ -186,6 +192,8 @@ class Watcher(threading.Thread):
             try:
                 with self._connect() as conn:
                     check_calls(conn, self._alerter)
+                    if self._sweep is not None:
+                        self._sweep(conn)
                 h = self._health()
                 if not h.get("ok"):
                     self._alerter.health(str({k: v for k, v in h.items() if k in ("db", "workers")}))

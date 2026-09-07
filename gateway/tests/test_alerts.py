@@ -1,5 +1,6 @@
 """Phase 7 (§7): alert events, once-per-interval delivery, budget warning at 80 %, the call-log checks."""
 import threading
+import os
 import unittest
 import uuid
 
@@ -74,7 +75,8 @@ class Delivery(unittest.TestCase):
         self.assertEqual(credits[0][0], "credits")
 
 
-@unittest.skipUnless(db.configured(), "RESEARCH_GATEWAY_DSN not set")
+@unittest.skipUnless(db.configured() and os.environ.get("RESEARCH_GATEWAY_TEST_OK") == "1",
+                     "needs RESEARCH_GATEWAY_DSN and RESEARCH_GATEWAY_TEST_OK=1 (DB tests exercise the real queue)")
 class CallLogChecks(unittest.TestCase):
     def setUp(self):
         self.conn = db.connect()

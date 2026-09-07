@@ -6,6 +6,7 @@ from ..core.identity import normalize_doi
 from .base import Client, check
 
 SOURCE_ID = "opencitations"
+SMOKE = {'capability': 'enrich', 'identity': 'doi:10.1162/qss_a_00023', 'what': 'references'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("enrich",)
 ENRICHES = ("citations", "references", "metadata")
 INDEX = "https://api.opencitations.net/index/v2"

@@ -52,11 +52,12 @@ class SeedValidation(unittest.TestCase):
         """D-5 verdicts recorded 2026-09-07."""
         v = {s["id"]: s["use_commercial"] for s in self.sources}
         for sid in ("crossref", "datacite", "doaj", "openaire", "openalex_snapshot", "opencitations", "unpaywall",
-                    "fred", "bea", "census", "bls", "bis", "ecb", "govinfo", "wms", "harvard_dataverse", "pew"):
+                    "fred", "bea", "census", "bls", "bis", "ecb", "govinfo", "wms", "pew"):
             self.assertEqual(v[sid], "allow", sid)
         for sid in ("semanticscholar", "core", "kaggle", "qdr"):
             self.assertEqual(v[sid], "deny", sid)
-        for sid in ("europepmc", "socrata", "huggingface", "openml"):
+        # harvard_dataverse: depositors choose the dataset licence, so platform-wide allow was wrong (D-23)
+        for sid in ("europepmc", "socrata", "huggingface", "openml", "harvard_dataverse"):
             self.assertEqual(v[sid], "per-item", sid)
         self.assertEqual(v["globe"], "unknown")
 

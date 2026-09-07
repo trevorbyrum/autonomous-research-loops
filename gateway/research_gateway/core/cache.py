@@ -65,19 +65,24 @@ class Cache:
             return row[0] if row else None
 
     def put_record(self, record: dict, *, redistributable: bool, persist_sources: set[str] | None = None) -> None:
-        """Keep the record in memory; persist it (and only the provenance members whose source
-        is in `persist_sources`, default: the record's own source) when redistributable."""
+        """Keep the record in memory — for `metadata_ttl` only when EVERY member is redistributable,
+        else `memory_ttl` (§6: a restricted member never outlives an hour) — and persist only the
+        provenance members whose source is in `persist_sources` (default: the record's own source),
+        skipping members that carry no raw payload so a stored payload is never overwritten with
+        nothing (D-23)."""
         key = ident.canonical(record["identity"])
         ttl = self.metadata_ttl if redistributable else self.memory_ttl
         with self._lock:
             self._bound(self._records, self.max_records)
             self._records[key] = (self._clock() + ttl, record)
-            if redistributable and self.conn is not None:
-                self._persist(key, record, persist_sources if persist_sources is not None else {record.get("source_id")})
+            if self.conn is not None:
+                self._persist(key, record, persist_sources if persist_sources is not None
+                              else ({record.get("source_id")} if redistributable else set()))
 
     def _persist(self, key: str, record: dict, persist_sources: set[str]) -> None:
-        members = [p for p in (record.get("provenance") or [{"source_id": record.get("source_id"), "raw": record.get("raw")}])
-                   if p.get("source_id") in persist_sources]
+        members = [p for p in (record.get("provenance") or [{"source_id": record.get("source_id"), "raw": record.get("raw"),
+                                                             "license": record.get("license")}])
+                   if p.get("source_id") in persist_sources and p.get("raw") is not None]
         if not members:
             return
         canonical = {k: v for k, v in record.items() if k not in ("raw", "provenance")}
@@ -93,7 +98,8 @@ class Cache:
                     "INSERT INTO gateway.record_sources (identity, source_id, raw, fetched_at, license, redistributable) "
                     "VALUES (%s, %s, %s, now(), %s, true) ON CONFLICT (identity, source_id) DO UPDATE SET "
                     "raw = EXCLUDED.raw, fetched_at = now(), license = EXCLUDED.license, redistributable = true",
-                    (key, prov["source_id"], json.dumps(prov.get("raw"), default=str), record.get("license")),
+                    (key, prov["source_id"], json.dumps(prov.get("raw"), default=str),
+                     prov.get("license") if "license" in prov else record.get("license")),  # each member's own licence (D-23)
                 )
         self.conn.commit()
         self.persisted += 1

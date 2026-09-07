@@ -2,6 +2,7 @@
 schema when RESEARCH_GATEWAY_DSN is set, otherwise skipped, because these
 tests exercise Postgres semantics (SKIP LOCKED, partial unique indexes) that
 no in-memory substitute reproduces."""
+import os
 import threading
 import unittest
 import uuid
@@ -10,7 +11,9 @@ from research_gateway.adapters.base import Client, FakeTransport
 from research_gateway.core import calllog, db, queue
 from research_gateway.core.broker import Broker, RatePolicy
 
-HAVE_DB = db.configured()
+HAVE_DB = db.configured() and os.environ.get("RESEARCH_GATEWAY_TEST_OK") == "1"
+# DB tests claim jobs and write rows: they need BOTH a DSN and the explicit
+# RESEARCH_GATEWAY_TEST_OK=1 acknowledgement that this database may be exercised (D-23)
 
 
 def plain_client(conn, job):

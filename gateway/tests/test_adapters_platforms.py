@@ -49,12 +49,13 @@ class OpenAire(unittest.TestCase):
         openaire.find(c, "again")
         self.assertEqual(sum(1 for m, *_ in t.calls if m == "POST"), 1, "token reused within its lifetime")
 
-    def test_keyless_when_no_credentials(self):
+    def test_no_credentials_refuses_instead_of_running_keyless(self):
+        """The enabled policy is the registered 7,200/h tier; keyless would be 60/h (D-23)."""
         c, t = client()
-        t.add("GET", "https://api.openaire.eu/graph/v1/researchProducts?", body={"header": {"numFound": 1}, "results": [OPENAIRE_PUB]})
-        rec = openaire.resolve(c, "10.46298/abc")
-        self.assertEqual(rec["title"], "Repository paper")
-        self.assertNotIn("Authorization", t.calls[0][2])
+        self.assertIsNone(openaire.resolve(c, "10.46298/abc"))
+        out = openaire.find(c, "anything")
+        self.assertIn("no OpenAIRE client credentials", out["capability_fact"])
+        self.assertEqual(t.calls, [], "no keyless call ever leaves")
 
 
 class SemanticScholar(unittest.TestCase):

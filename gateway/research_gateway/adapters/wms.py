@@ -5,6 +5,7 @@ from . import harvard_dataverse as dv
 from .base import Client
 
 SOURCE_ID = "wms"
+SMOKE = {'capability': 'fetch', 'target': None}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("fetch",)
 DOI = "10.7910/DVN/OY6CBK"
 SCHEMES = (f"doi:{DOI.lower()}",)  # only this one dataset; the router prefers the most specific match

@@ -5,6 +5,7 @@ from ..core.canonical import make_record
 from .base import AdapterError, Client, check
 
 SOURCE_ID = "census"
+SMOKE = {'capability': 'data', 'params': {'dataset': '2022/acs/acs1', 'get': ['NAME'], 'for': 'state:37'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("data",)
 BASE = "https://api.census.gov/data"
 ATTRIBUTION = "U.S. Census Bureau"
@@ -17,6 +18,10 @@ def data(client: Client, params: dict) -> dict:
     if not dataset or not get:
         raise AdapterError("census.data needs 'dataset' and 'get'")
     key = client.secret("census")
+    if not key:
+        # keyless Census is 500/day per IP; the enabled policy is the keyed no-cap tier (D-23)
+        return {"identity": f"table:census:{dataset}", "records": [],
+                "capability_fact": "no Census key configured; the keyless 500/day tier is not enabled"}
     query = {"get": ",".join(get) if isinstance(get, (list, tuple)) else get, "key": key}
     for k in ("for", "in"):
         if p.get(k):

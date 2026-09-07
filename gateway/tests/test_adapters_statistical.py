@@ -84,9 +84,16 @@ class Bls(unittest.TestCase):
         self.assertEqual(sent["startyear"], "2026")
 
     def test_failed_status_is_capability_fact(self):
-        c, t = client()
+        c, t = client({"bls": "REG"})
         t.add("POST", "https://api.bls.gov/publicAPI/v2/timeseries/data/", body={"status": "REQUEST_NOT_PROCESSED", "message": ["daily threshold reached"]})
         self.assertIn("daily threshold", bls.data(c, {"series": ["A", "B"]})["capability_fact"])
+
+    def test_no_key_refuses_instead_of_running_on_the_wrong_tier(self):
+        """Keyless BLS is 25/day and keyless Census is 500/day; the enabled policies assume keys (D-23)."""
+        c, t = client()
+        self.assertIn("not enabled", bls.data(c, {"series": "X"})["capability_fact"])
+        self.assertIn("not enabled", census.data(c, {"dataset": "2022/acs/acs1", "get": ["NAME"]})["capability_fact"])
+        self.assertEqual(t.calls, [])
 
 
 SDMX_10 = {"structure": {"dimensions": {"series": [{"id": "FREQ", "values": [{"id": "D"}]}, {"id": "CURRENCY", "values": [{"id": "USD"}]}],

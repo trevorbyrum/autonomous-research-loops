@@ -11,6 +11,7 @@ import time
 from .base import Client
 
 SOURCE_ID = "openalex_snapshot"
+SMOKE = {'local': 'local index, no network'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("find",)
 LOCAL = True   # answers from the local index; the router runs it before any live lane (§8)
 

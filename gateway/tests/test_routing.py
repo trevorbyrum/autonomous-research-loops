@@ -1,6 +1,7 @@
 """Phase 4 acceptance: every routing rule R-1..R-10 (PLAN.md §4) has a test, planned against the real seed."""
 import copy
 import datetime as dt
+import json
 import unittest
 
 from research_gateway import adapters
@@ -254,13 +255,40 @@ class ExecuteMergeAndCache(unittest.TestCase):
         self.assertEqual(c.log[-1].source_id, "cache")
         self.assertTrue(c.log[-1].cache_hit)
 
-    def test_merged_record_persists_only_redistributable_members(self):
+    def test_merged_record_gating_is_per_member_with_each_members_own_licence(self):
+        """D-23: the lead record's licence never speaks for a member's, in either direction."""
         r, _, _ = make()
-        merged = {"identity": "doi:10.1000/m", "kind": "article", "source_id": "crossref", "license": None,
-                  "provenance": [{"source_id": "crossref"}, {"source_id": "semanticscholar"}, {"source_id": "europepmc"}]}
-        self.assertEqual(r.persistable_sources(merged), {"crossref"}, "deny and unlicensed per-item members stay out of record_sources")
-        merged["license"] = "cc-by-4.0"
+        merged = {"identity": "doi:10.1000/m", "kind": "article", "source_id": "crossref", "license": "cc-by-4.0",
+                  "provenance": [{"source_id": "crossref", "license": "cc-by-4.0"},
+                                 {"source_id": "semanticscholar", "license": None},
+                                 {"source_id": "europepmc", "license": None}]}
+        self.assertEqual(r.persistable_sources(merged), {"crossref"},
+                         "the CC-BY lead does not launder the unlicensed Europe PMC member into record_sources")
+        self.assertFalse(r.redistributable_all(merged), "one restricted member caps the whole record at memory TTL")
+        self.assertFalse(r.record_allowed(merged, {"commercial": True, "accept_per_item": True}),
+                         "a commercial answer may not include the denied member either")
+        merged["provenance"][2]["license"] = "cc-by-4.0"
         self.assertEqual(r.persistable_sources(merged), {"crossref", "europepmc"})
+        clean = {"identity": "doi:10.1000/c", "kind": "article", "source_id": "crossref", "license": "cc0",
+                 "provenance": [{"source_id": "crossref", "license": "cc0"}]}
+        self.assertTrue(r.record_allowed(clean, {"commercial": True}))
+        self.assertTrue(r.redistributable_all(clean))
+        restricted_series = {"identity": "series:fred:X", "kind": "series", "source_id": "fred", "license": None,
+                             "third_party_restricted": True}
+        self.assertFalse(r.record_allowed(restricted_series, {"commercial": True}),
+                         "a FRED series flagged with third-party terms fails the commercial gate (D-23)")
+
+    def test_secret_echoes_are_redacted_from_results(self):
+        r, _, t = make()
+        echo = {"BEAAPI": {"Request": {"RequestParam": [{"ParameterName": "UserID", "ParameterValue": "sekrit-key-123"}]},
+                           "Results": {"Data": [{"TableName": "T1", "LineDescription": "GDP", "DataValue": "1"}]}}}
+        t.add("GET", "https://apps.bea.gov/api/data/", body=echo)
+        c = Client(broker=Broker({"bea": RatePolicy(per_second=100)}), transport=t,
+                   secrets=lambda n, f=None: "sekrit-key-123" if n == "bea" else None)
+        out = R.execute(r, {"request_type": "data", "source": "bea", "params": {"method": "GetData", "dataset": "NIPA"}}, c)
+        self.assertNotIn("sekrit-key-123", json.dumps({k: v for k, v in out.items() if k != "content"}, default=str),
+                         "a source echoing the key back never leaks it into a result or store (D-23)")
+        self.assertIn("[redacted]", json.dumps(out["records"][0]["raw"], default=str))
 
     def test_resolve_serves_from_cache_and_never_persists_non_redistributable(self):
         r, c, t = make()
@@ -286,16 +314,49 @@ class ExecuteMergeAndCache(unittest.TestCase):
         self.assertEqual(out["records"], [])
         self.assertIn("doaj", [ln["source"] for ln in out["lanes"]], "the job still completes on the other lanes")
 
-    def test_stored_job_results_never_carry_bytes_or_full_text(self):
-        result = {"request_type": "fetch", "records": [{"kind": "full_text", "identity": "doi:x", "text": "the whole paper"}],
-                  "content": b"\x00pdf", "content_type": "application/pdf", "facts": []}
+    def test_stored_job_results_hold_canonical_metadata_only(self):
+        """jobs.result never carries raw payloads, rows, text or bytes — persistence with
+        provenance is the cache's job, under the licence rules (D-23)."""
+        result = {"request_type": "fetch", "facts": [],
+                  "records": [{"kind": "full_text", "identity": "doi:x", "source_id": "core", "title": "T",
+                               "text": "the whole paper", "raw": {"fullText": "no"}},
+                              {"kind": "file", "identity": "socrata:d:x#rows", "source_id": "socrata", "title": "rows",
+                               "rows": [{"a": 1}], "row_count": 1, "license": None}],
+                  "content": b"\x00pdf", "content_type": "application/pdf"}
         stored = R.redact_for_storage(result)
         self.assertIsNone(stored["content"])
         self.assertEqual(stored["content_bytes"], 4)
-        self.assertIsNone(stored["records"][0]["text"])
-        self.assertEqual(stored["records"][0]["text_chars"], 15)
+        for rec in stored["records"]:
+            for banned in ("text", "raw", "rows", "content", "provenance"):
+                self.assertNotIn(banned, rec, banned)
+        self.assertTrue(stored["records"][0]["text_dropped"])
+        self.assertTrue(stored["records"][1]["rows_dropped"])
+        self.assertEqual(stored["records"][1]["row_count"], 1, "counts and metadata survive")
         self.assertEqual(result["content"], b"\x00pdf", "the inline result is untouched")
         self.assertEqual(result["records"][0]["text"], "the whole paper")
+
+    def test_download_is_authorized_before_bytes_leave_and_secrets_are_redacted(self):
+        seed = copy.deepcopy(SEED)
+        for s in seed:
+            if s["id"] in ("huggingface", "globe"):
+                s["enabled"] = True
+        r = R.Router(seed, ADAPTERS)
+        t = FakeTransport()
+        hf = {"id": "owner/nc-corpus", "cardData": {"license": "cc-by-nc-4.0"}, "siblings": [{"rfilename": "data.csv"}], "gated": False}
+        t.add("GET", "https://huggingface.co/api/datasets/owner/nc-corpus", body=hf)
+        t.add("GET", "https://huggingface.co/datasets/owner/nc-corpus/resolve/main/data.csv", body="secret,rows\n")
+        c = Client(broker=Broker({sid: RatePolicy(per_second=100) for sid in ("huggingface",)}), transport=t,
+                   secrets=lambda n, f=None: "tok-echoed" if n == "huggingface" else None)
+        p = {"request_type": "fetch", "target": "hf:owner/nc-corpus", "params": {"path": "data.csv", "download": True},
+             "commercial": True, "accept_per_item": True}
+        out = R.execute(r, p, c)
+        self.assertIsNone(out.get("content"), "a non-commercial licence keeps the bytes inside the gateway")
+        self.assertTrue(any("download withheld" in f for f in out["facts"]))
+        personal = R.execute(r, {**p, "commercial": False}, c)
+        self.assertEqual(personal["content"], b"secret,rows\n", "the personal baseline still downloads")
+        echoed = R.execute(r, {"request_type": "resolve", "identity": "hf:owner/nc-corpus"}, c)
+        # plant an echo of the token into the record and confirm redaction would strip it:
+        self.assertNotIn("tok-echoed", str({k: v for k, v in echoed.items() if k != "content"}))
 
     def test_make_handlers_use_job_fields(self):
         r, c, t = make()

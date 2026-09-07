@@ -13,6 +13,7 @@ from ..core.identity import normalize_doi
 from .base import Client, check
 
 SOURCE_ID = "openaire"
+SMOKE = {'capability': 'find', 'query': 'management practices', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("find", "resolve")
 SCHEMES = ("doi",)
 AGENCIES = ("*",)   # primary for DOIs from any other registration agency (mEDRA, KISTI, ...) and unknown ones
@@ -67,6 +68,7 @@ def _record(r: dict) -> dict:
         authors=[a.get("fullName") for a in (r.get("authors") or []) if a.get("fullName")],
         year=year_from(r.get("publicationDate")), venue=(r.get("container") or {}).get("name") or r.get("publisher"),
         identifiers=ids, links=links, license=licenses[0] if licenses else None,
+        attribution="OpenAIRE",   # the CC-BY verdict is conditional on attribution (seed evidence)
         extra={"openaire_id": r.get("id"), "access_right": (r.get("bestAccessRight") or {}).get("label"),
                "has_doi": bool(doi)},
         raw=r,
@@ -75,10 +77,16 @@ def _record(r: dict) -> dict:
 
 def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None, cursor: str | None = None,
          year_from_: int | None = None) -> dict:
+    hdrs = _headers(client)
+    if not hdrs:
+        # the enabled rate policy is the REGISTERED tier (7,200/h); keyless would be 60/h, so
+        # running without credentials under this policy would overrun the real limit (D-23)
+        return {"records": [], "total": 0, "next_cursor": None,
+                "capability_fact": "no OpenAIRE client credentials (or token exchange failed); the keyless tier is 60/h and is not enabled"}
     params = {"search": query, "pageSize": min(limit, 100), "cursor": cursor or "*",
               "type": {"article": "publication", "dataset": "dataset", "software": "software"}.get(kind) if kind else None,
               "fromPublicationDate": f"{year_from_}-01-01" if year_from_ else None}
-    resp = client.get(SOURCE_ID, "find", f"{BASE}/researchProducts", params=params, headers=_headers(client), query=query)
+    resp = client.get(SOURCE_ID, "find", f"{BASE}/researchProducts", params=params, headers=hdrs, query=query)
     if not check(SOURCE_ID, resp):
         return {"records": [], "total": 0, "next_cursor": None}
     j = resp.json or {}
@@ -90,8 +98,11 @@ def resolve(client: Client, identity: str) -> dict | None:
     doi = normalize_doi(identity.split(":", 1)[-1] if identity.startswith("doi:") else identity)
     if not doi:
         return None
+    hdrs = _headers(client)
+    if not hdrs:
+        return None  # same as find: the enabled policy assumes the registered tier (D-23)
     resp = client.get(SOURCE_ID, "resolve", f"{BASE}/researchProducts", params={"pid": doi, "pageSize": 1},
-                      headers=_headers(client), identity=f"doi:{doi}")
+                      headers=hdrs, identity=f"doi:{doi}")
     if not check(SOURCE_ID, resp):
         return None
     results = (resp.json or {}).get("results") or []

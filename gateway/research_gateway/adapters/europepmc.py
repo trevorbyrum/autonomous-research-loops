@@ -6,6 +6,7 @@ from ..core.identity import normalize_doi
 from .base import Client, check
 
 SOURCE_ID = "europepmc"
+SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("find", "resolve")
 SCHEMES = ("doi", "pmid")
 BASE = "https://www.ebi.ac.uk/europepmc/webservices/rest"
@@ -20,7 +21,7 @@ def _record(r: dict) -> dict:
         identity=identity, kind="article", source_id=SOURCE_ID, title=r.get("title"),
         authors=[a.strip() for a in (r.get("authorString") or "").rstrip(".").split(",") if a.strip()],
         year=int(r["pubYear"]) if str(r.get("pubYear", "")).isdigit() else None, venue=r.get("journalTitle"),
-        identifiers=ids, links=links, license=None,
+        identifiers=ids, links=links, license=r.get("license"),  # per-article CC variant when the source states one
         extra={"open_access": (r.get("isOpenAccess") == "Y"), "has_full_text": (r.get("hasTextMinedTerms") == "Y") or (r.get("inEPMC") == "Y"),
                "redistributable": False},
         raw=r,

@@ -7,6 +7,7 @@ from ..core.canonical import make_record, year_from
 from .base import AdapterError, Client, check, quote
 
 SOURCE_ID = "kaggle"
+SMOKE = {'capability': 'find', 'query': 'housing prices', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("find", "fetch")
 BASE = "https://www.kaggle.com/api/v1"
 

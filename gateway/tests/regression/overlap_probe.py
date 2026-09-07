@@ -5,7 +5,7 @@ This probe re-asks a subset of those sources through the gateway's own metered
 client and reports the per-source presence rate now against then. A source
 that drifts by more than the tolerance (default 5 points) fails the run.
 
-    python3 -m tests.regression.overlap_probe --expectations private/regression/overlap-sample.json --live --sample 40
+    python3 -m tests.regression.overlap_probe --expectations <path outside the public tree> --live --sample 100
 
 The expectations file is a JSON list of {"doi": ..., "origin": ..., "found": {"crossref": true, ...}};
 it comes from the private discovery tables and is not in the public tree.
@@ -92,9 +92,16 @@ def main(argv: list[str] | None = None) -> int:
     if not args.live:
         print(f"{len(rows)} of {len(expected)} works would be probed against {sorted(keys)}; add --live to run")
         return 0
+    import os
+
     from research_gateway import adapters
     from research_gateway.app import Gateway, load_settings
     from research_gateway.core import db
+    from research_gateway.smoke import service_is_running
+    if service_is_running() and os.environ.get("RESEARCH_GATEWAY_ALLOW_CONCURRENT") != "1":
+        print("refusing: a gateway service is running and owns these sources' limits (I-1). "
+              "Stop it, or set RESEARCH_GATEWAY_ALLOW_CONCURRENT=1 knowingly.", file=sys.stderr)
+        return 2
     gw = Gateway(load_settings(), use_db=False)
     mods = adapters.load_all()
     observed = {}
@@ -109,6 +116,12 @@ def main(argv: list[str] | None = None) -> int:
     print(render(result))
     if args.report:
         args.report.write_text(json.dumps({"sample": len(rows), "result": result}, indent=1))
+    # coverage gate: a source that produced nothing comparable was NOT verified — that is a
+    # failure of the run, never a silent pass (D-23)
+    uncompared = [k for k in keys if k not in result]
+    if uncompared:
+        print(f"FAIL: no comparable observations for {', '.join(uncompared)} — sources unavailable or expectations empty", file=sys.stderr)
+        return 1
     return 0 if all(v["ok"] for v in result.values()) else 1
 
 

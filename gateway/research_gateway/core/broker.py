@@ -35,10 +35,22 @@ class RatePolicy:
     burst: int | None = None
 
     def windows(self) -> list[tuple[float, float]]:
-        """(window length in seconds, allowed count) for each configured limit."""
+        """(window length in seconds, allowed count) for each configured limit.
+
+        A fractional per-second rate becomes one call per 1/rate seconds (0.5/s = every 2 s,
+        not 1/s). `burst` is CAPACITY on top of the sustained rate, not a replacement: it widens
+        the short window to `burst` calls while a second window holds the average at the
+        sustained rate (D-23)."""
         out = []
         if self.per_second:
-            out.append((1.0, float(self.burst) if self.burst else float(self.per_second)))
+            ps = float(self.per_second)
+            if self.burst and float(self.burst) > ps:
+                out.append((1.0, float(self.burst)))
+                out.append((float(self.burst) / ps, float(self.burst)))   # sustained average stays ps
+            elif ps >= 1.0:
+                out.append((1.0, ps))
+            else:
+                out.append((1.0 / ps, 1.0))
         if self.per_minute:
             out.append((60.0, float(self.per_minute)))
         if self.per_hour:
@@ -143,6 +155,10 @@ class Broker:
             now = self._clock()
             if st.breaker_until > now:
                 raise BreakerOpen(source_id, st.breaker_until, st.breaker_reason)
+            if st.breaker_until:  # the window elapsed: the breaker closes on the next acquisition, observably
+                st.breaker_until, st.breaker_reason = 0.0, ""
+                if self._on_breaker_change:
+                    pending.append(lambda s=source_id: self._on_breaker_change(s, "closed", None, "window elapsed"))
             pol = self._policies[source_id]
             if pol.cost_cap_per_day and st.credits_today + credits > pol.cost_cap_per_day:
                 raise BudgetExhausted(source_id, "cost cap")
@@ -205,12 +221,15 @@ class Broker:
         self._fire(pending)
 
     def _open(self, source_id: str, st: _State, seconds: float, reason: str, pending: list) -> None:
-        st.breaker_until = self._clock() + seconds
+        until = self._clock() + seconds
+        if until <= st.breaker_until:
+            return  # a shorter, later-arriving Retry-After never truncates an active deadline (D-23)
+        st.breaker_until = until
         st.breaker_reason = reason
         st.consecutive_limit_errors, st.backoff_until = 0, 0.0
         if self._on_breaker_change:
-            until = self._wall() + seconds
-            pending.append(lambda: self._on_breaker_change(source_id, "open", until, reason))
+            wall_until = self._wall() + seconds
+            pending.append(lambda: self._on_breaker_change(source_id, "open", wall_until, reason))
 
     def breaker_open(self, source_id: str) -> bool:
         pending: list = []
@@ -235,6 +254,17 @@ class Broker:
                 st.breaker_until, st.breaker_reason, st.consecutive_limit_errors = 0.0, "", 0
         if self._on_breaker_change:
             self._fire([lambda: self._on_breaker_change(source_id, "closed", None, "operator")])
+
+    def seed_usage(self, usage: dict[str, tuple[int, float]]) -> None:
+        """Restore today's dispatched/credit counters (from gateway.calls) so a restart never
+        resets a daily budget (D-23). Only counts for the current UTC day should be passed."""
+        with self._lock:
+            for source_id, (dispatched, credits) in usage.items():
+                if source_id not in self._policies:
+                    continue
+                st = self._state_for(source_id)
+                st.dispatched_today = max(st.dispatched_today, int(dispatched))
+                st.credits_today = max(st.credits_today, float(credits or 0.0))
 
     # ---------------------------------------------------------------- status
     def status(self) -> dict[str, dict]:

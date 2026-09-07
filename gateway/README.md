@@ -55,7 +55,8 @@ python3 -m research_gateway.registry.docs --check      # docs match the seed
 export RESEARCH_GATEWAY_DSN='postgresql://gateway@db-host:5432/research_loops'   # password via PGPASSWORD or ~/.pgpass
 python3 -m research_gateway.registry.load --schema --load
 export RESEARCH_GATEWAY_TOKENS='loops=<token>'
-python3 -m research_gateway.api.http                   # serve; see docs/OPERATIONS.md for clients
+python3 -m research_gateway.api.http &                 # serve; see docs/OPERATIONS.md for clients
+export RESEARCH_GATEWAY_TOKEN='<token>'                # the client presents one of the tokens above
 python3 -m research_gateway.clients.cli resolve doi:10.1038/nature12373
 ```
 

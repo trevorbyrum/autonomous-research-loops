@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.request
 from typing import Protocol
 
@@ -50,12 +51,20 @@ class VaultBackend:
         self.mount = mount or os.environ.get("RESEARCH_GATEWAY_VAULT_MOUNT") or "secret"
         self.prefix = prefix or os.environ.get("RESEARCH_GATEWAY_VAULT_PREFIX") or "services"
         self.aliases = aliases if aliases is not None else parse_aliases(os.environ.get("RESEARCH_GATEWAY_VAULT_ALIASES"))
-        self._cache: dict[str, dict] = {}
+        self._cache: dict[str, tuple[float, dict]] = {}
+        self.success_ttl, self.failure_ttl = 900.0, 60.0   # rotation lands within 15 min; a hiccup retries within 1 (D-23)
+
+    class _Opener(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return None  # a vault never redirects a KV read; following one could re-send the token elsewhere
+
+    _opener = urllib.request.build_opener(_Opener)
 
     def _read(self, name: str) -> dict:
         name = self.aliases.get(name, name)
-        if name in self._cache:
-            return self._cache[name]
+        hit = self._cache.get(name)
+        if hit and hit[0] > time.monotonic():
+            return hit[1]
         if not self.addr:
             return {}
         try:
@@ -63,11 +72,12 @@ class VaultBackend:
                 token = f.read().strip()
             req = urllib.request.Request(f"{self.addr}/v1/{self.mount}/data/{self.prefix}/{name}",
                                          headers={"X-Vault-Token": token})
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with self._opener.open(req, timeout=10) as resp:
                 data = (json.load(resp).get("data") or {}).get("data") or {}
+            ttl = self.success_ttl
         except (OSError, ValueError):
-            data = {}
-        self._cache[name] = data
+            data, ttl = {}, self.failure_ttl
+        self._cache[name] = (time.monotonic() + ttl, data)
         return data
 
     def get(self, name: str, field: str | None = None) -> str | None:

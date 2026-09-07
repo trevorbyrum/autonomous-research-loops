@@ -13,7 +13,10 @@ _ISSN_RE = re.compile(r"^\d{4}-?\d{3}[\dXx]$")
 _ARXIV_NEW = re.compile(r"^\d{4}\.\d{4,5}(v\d+)?$")
 _ARXIV_OLD = re.compile(r"^[a-z\-]+(\.[A-Z]{2})?/\d{7}(v\d+)?$")
 _SCHEME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,15}$")
-KNOWN_SCHEMES = {"doi", "issn", "arxiv", "handle", "series", "url", "title", "pmid", "dataset", "repo"}
+KNOWN_SCHEMES = {"doi", "issn", "arxiv", "handle", "series", "url", "title", "pmid", "dataset", "repo",
+                 # namespaces the gateway itself emits: index kinds, table identities, and per-source
+                 # labels for records that carry no portable identifier (D-23)
+                 "venue", "repository", "table", "s2", "doaj", "openaire", "datacite", "europepmc", "govinfo"}
 
 
 def register_schemes(schemes) -> None:

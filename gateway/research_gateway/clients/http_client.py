@@ -41,6 +41,7 @@ class GatewayClient:
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 raw, ctype = resp.read(), resp.headers.get("Content-Type", "")
+                envelope = resp.headers.get("X-Research-Gateway") == "result"
         except urllib.error.HTTPError as e:
             raw, ctype = e.read(), e.headers.get("Content-Type", "")
             detail = {}
@@ -55,8 +56,11 @@ class GatewayClient:
             return {"capability_fact": f"gateway_error_{e.code}", "status": e.code, **detail}
         except (urllib.error.URLError, TimeoutError, OSError) as e:
             return {"capability_fact": "gateway_unavailable", "error": f"{type(e).__name__}: {e}", "url": self.url}
-        if "application/json" in ctype:
-            return json.loads(raw)
+        if envelope and "application/json" in ctype:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                return parsed
+        # anything else — including a downloaded file that happens to BE JSON — stays bytes
         return {"content": raw, "content_type": ctype}
 
     def request(self, request_type: str, payload: dict) -> dict:

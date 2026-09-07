@@ -12,19 +12,24 @@ from __future__ import annotations
 
 import json
 
-from ..app import Gateway
+from ..app import Gateway, validate_payload
 from ..clients.mcp_stdio import REQUEST_TOOLS, handle, strip_bytes
 
 PEER_NAME = "research"
 
 
 def make_call(gateway: Gateway, client_id: str):
-    """Tool dispatch bound to an in-process gateway for one authenticated client."""
+    """Tool dispatch bound to an in-process gateway for one authenticated client. Arguments go
+    through the SAME payload validation as the HTTP door — the MCP door is not a side entrance
+    around type checks (D-23)."""
     def call(name: str, args: dict) -> dict:
         if name == "research_status":
             return gateway.status()
         if name not in REQUEST_TOOLS:
             raise LookupError(name)
+        problem = validate_payload(args or {})
+        if problem:
+            return {"capability_fact": "gateway_error_400", "error": problem}
         payload = {**(args or {}), "request_type": REQUEST_TOOLS[name]}
         return strip_bytes(gateway.handle(payload, client_id))
     return call

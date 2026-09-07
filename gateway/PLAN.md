@@ -253,12 +253,12 @@ R-2  `find` kind=article → Crossref + local OpenAlex index; add DOAJ always
 R-3  `find` kind=dataset → DataCite (base) + every registry source of kind
      dataset whose `domains` list contains the request domain (D-16: the seed,
      not this text, is the routing table). With the 2026-09-07 seed:
-     social → Harvard Dataverse, QDR (personal only);
+     social → Harvard Dataverse (per-item, D-23), QDR (personal only);
      ai-ml → Kaggle (personal only), Hugging Face, OpenML;
      software → Kaggle (personal only), Hugging Face;
-     market → GovInfo, Harvard Dataverse, Socrata, Kaggle (personal only);
-     finance → GovInfo, Harvard Dataverse, Socrata; management → GovInfo,
-     Harvard Dataverse, QDR (personal only). A source with no `domains` and no
+     market → GovInfo, Harvard Dataverse (per-item), Socrata, Kaggle (personal only);
+     finance → GovInfo, Harvard Dataverse (per-item), Socrata; management → GovInfo,
+     Harvard Dataverse (per-item), QDR (personal only). A source with no `domains` and no
      `base_for` is never a discovery lane (OpenAIRE, Unpaywall).
 R-4  `enrich` is opt-in per request; lanes are the enabled sources whose adapter
      declares the requested kind in `ENRICHES`, dedicated bases first (D-16):
@@ -314,9 +314,11 @@ R-10 A source with an open breaker or exhausted budget is skipped and the job
   (oldest evicted). A cache hit is re-checked against R-8 before it answers a
   commercial request.
 - Allow-listed licences permit commercial reuse with attribution at most:
-  CC0, CC-BY, public domain, ODC-BY/ODbL/PDDL, MIT/Apache/BSD/ISC/zlib/
-  Unlicense, U.S. federal works. NC, ND and share-alike variants are not
-  allow-listed (D-18).
+  CC0, CC-BY, public domain, ODC-BY/PDDL, MIT/Apache/BSD/ISC/zlib/Unlicense,
+  U.S. federal works. NC, ND and share-alike variants — including ODbL, whose
+  share-alike terms this list once wrongly included — are not allow-listed
+  (D-18, corrected by D-23). Recognition is exact (SPDX ids, names, canonical
+  URLs); unknown or annotated licence text fails closed.
 - Dedup stages: DOI normalise → exact identity → fuzzy (title ≥ 0.92 AND same
   year AND same first author, all three present — a missing year or author
   never merges) → cluster, greedily in lane order (the base lane's record is
@@ -391,7 +393,7 @@ Plus README, ARCHITECTURE, OPERATIONS, PUBLIC-PRIVATE, LICENSING.
 
 ## 12. Public / private boundary checklist (run before every commit on this branch)
 
-- [ ] `git grep -nE '192\.168\.|10\.0\.|vault-token|X-Vault|postgresql://[^ ]+:[^ ]+@|api_key=[A-Za-z0-9]|KGAT_|hvs\.' -- gateway/ ':!gateway/PLAN.md' ':!gateway/research_gateway/core/secrets.py'` returns nothing (`core/secrets.py` is the generic Vault KV client: it names the protocol header and the default token-file path, never an address or a value)
+- [ ] `git grep -nE '192\.168\.|10\.0\.|vault-token|X-Vault|postgresql://[^ ]+:[^ ]+@|api_key=[A-Za-z0-9]|KGAT_|hvs\.' -- gateway/ ':!gateway/PLAN.md' ':!gateway/research_gateway/core/secrets.py' ':!gateway/tests/test_core_foundations.py'` returns nothing (`core/secrets.py` is the generic Vault KV client: it names the protocol header and the default token-file path, never an address or a value; the foundations test names a private address precisely to assert the transport REFUSES redirecting to it)
 - [ ] no file under `gateway/` references `private/`, Duke, Fuqua, WRDS, Elsevier keys
 - [ ] `sources.example.toml` contains no real credentials
 - [ ] no data files (CSV/JSONL/parquet) under `gateway/` except test fixtures ≤ 50 KB
@@ -580,6 +582,12 @@ public) and its commit hash recorded in the phase's acceptance note.
 - **D-12 (2026-09-07)** Add a permissive catch-all domain `other` (= base + all domain lanes); absent/unknown domains resolve to it, so mis-tagging never loses coverage.
 - **D-13 (2026-09-07)** Engineering rules, hard: no placeholders in shipped code (I-10); ≤ 1,500 lines per file (I-11); simplest thing that works (I-12); independent Terra/Codex review each phase (I-13); tests and logs ship with every module (I-14).
 - **D-14 (2026-09-07)** Phase 0 approved by the operator ("approved"). Phase 1 begins.
+- **D-23 (2026-09-07)** Full-tree review resolutions (Astra, GPT-6-Astra, `private/reviews/full-f9efc63-astra.md`, verdict FAIL — 12 blockers, 19 should-fixes, all addressed):
+  transport follows no redirect on its own — each hop is validated (no scheme downgrade, no non-global destination), re-metered, logged, and credentials never cross origins; the transport never raises, so the call row always exists, and a call-log write failure fails the job closed (`calllog.AuditError`) — refusals that never touch the network and prefix-cached agency lookups are capability facts, not phantom call rows;
+  licence recognition is exact (SPDX ids, names, canonical URLs; extra words fail closed; share-alike is out, ODbL is recognised but NOT allow-listed — the §6 mention of ODbL as allow-listed was wrong and is corrected here); every commercial and persistence decision is per provenance member with that member's own licence; a record with any restricted member lives ≤ 1 hour in memory; downloads carry the fetched item's licence and are authorized before bytes leave; `jobs.result` stores canonical metadata only (no raw, rows, text, or bytes); secret values handed to adapters are redacted from results; FRED metadata is always fetched and third-party-restricted series fail the commercial gate; Harvard Dataverse's verdict is `per-item` (depositors choose licences);
+  index answers are never written back as fetched records, reindex covers venue/repository kinds only, harvest merges union list fields and build the search vector from the merged record, loaders build their ISSN state under the loader lock, and a failed page or malformed catalogue fails the load loudly;
+  the broker enforces fractional rates as spacing, treats burst as capacity over a sustained average, honours HTTP-date Retry-After, never shortens an active breaker, closes elapsed breakers observably, and re-seeds daily budgets from the call log at startup; maintenance runners (harvest, smoke, regression) refuse to run while a service answers on the gateway URL unless RESEARCH_GATEWAY_ALLOW_CONCURRENT=1, and log under their own client ids; OpenAIRE/Census/BLS refuse keyless calls because their enabled policies assume the keyed tier;
+  job identity includes the client (no cross-client dedup); workers reconnect instead of dying and a lease sweep requeues jobs stuck `running` (3 attempts, then failed); both front doors validate payloads through one parser; the HTTP server bounds concurrency and read timeouts; gateway JSON envelopes carry a marker header so clients never parse a downloaded JSON file as an answer; the regression gate requires paired agreement ≥ 90 % and full source coverage; smoke probes are declared per adapter (`SMOKE`), and call-log retention (default 180 days) is enforced by the watcher.
 - **D-22 (2026-09-07)** Phase 6–7 review resolutions: broker callbacks run after its lock is released and alerts are delivered from a bounded queue on their own thread (a slow or broken ntfy never stalls a request); journal identity is the identity already holding any of the journal's ISSNs (an in-memory ISSN map per load, OpenAlex's ISSN-L first), no-ISSN venues are keyed by registry + full title + publisher; the index merge is additive by design — a wrong non-empty value is corrected by a later non-empty value from any loader, a value is removed only by deleting the record and reloading; the zero-results watcher compares the same query pattern (lower-cased first 80 characters) across the two periods; the regression gate is paired agreement ≥ 90 % as well as the rate tolerance; the index query guards the `works_count` cast and clamps `limit` to 1..100; responses over 256 MB are errors; systemd units use a virtual environment; the tower-token file path no longer matches the §12 grep. Phase 7's operational checks remain pending on the operator (D-21).
 - **D-21 (2026-09-07)** Alerts are an `Alerter` (once per key per hour, ntfy) fed by broker callbacks (breaker open, 80 % of a daily budget) and a watcher thread over `gateway.calls` (auth/bot-wall failures, zero-results pattern, health). Deployment is handed to the operator with `deploy/`: the tower gate cannot build images or write files, so placing the service (tower vs. workstation), storing its client tokens in Vault, adding the homelab peer entry and switching a loop topic to the tool are operator steps, listed in `deploy/README.md`.
 - **D-20 (2026-09-07)** Phase 5 review resolutions: every call-log row carries `client_id` (queued jobs pass theirs to the metered client; inline requests set it directly, with their own connection and `job_id` NULL); inline mode *without* a database keeps the log in process only and is a laptop mode, not a deployment; clients see only their own jobs; the unauthenticated health answer is ok/version/mode only; front-door payload fields are type-checked (400 otherwise) and `/v1/jobs/<id>` is digits only; the cache has its own connection and lock; the shared client never relays non-JSON error bodies.

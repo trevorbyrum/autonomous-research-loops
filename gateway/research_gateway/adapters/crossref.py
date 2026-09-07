@@ -6,6 +6,7 @@ from ..core.identity import normalize_doi, normalize_issn
 from .base import Client, check
 
 SOURCE_ID = "crossref"
+SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("find", "resolve", "enrich")
 ENRICHES = ("references",)
 SCHEMES = ("doi",)
@@ -62,7 +63,10 @@ def resolve(client: Client, identity: str) -> dict | None:
                       identity=f"doi:{doi}")
     if not check(SOURCE_ID, resp):
         return None
-    return _record(client, (resp.json or {}).get("message") or {})
+    msg = (resp.json or {}).get("message")
+    if not isinstance(msg, dict) or not normalize_doi(msg.get("DOI")):
+        return None  # an HTTP 200 that is not a Crossref work envelope (bot wall, HTML) is not a record (D-23)
+    return _record(client, msg)
 
 
 def enrich(client: Client, identity: str, what: str = "references") -> dict:

@@ -50,6 +50,32 @@ class Settings:
         return int(self.listen.rsplit(":", 1)[1])
 
 
+# payload fields a request may carry, with the type each must have; both front doors (HTTP and
+# MCP) validate through this one table before anything reaches the router or the queue (D-23)
+FIELD_TYPES = {"query": str, "identity": str, "target": str, "what": str, "source": str, "kind": str, "domain": str,
+               "topic_id": str, "published_after": str, "priority": str, "params": dict, "cursors": dict,
+               "commercial": bool, "accept_per_item": bool, "limit": int, "year_from": int, "timeout": (int, float)}
+
+
+def validate_payload(body: dict) -> str | None:
+    """The reason a body is unacceptable, or None."""
+    if not isinstance(body, dict):
+        return "payload must be an object"
+    for key, value in body.items():
+        want = FIELD_TYPES.get(key)
+        if want is None:
+            return f"unknown field {key!r}"
+        if value is None:
+            continue
+        if isinstance(value, bool) and want is not bool:
+            return f"{key} must be {getattr(want, '__name__', 'a number')}"
+        if not isinstance(value, want):
+            return f"{key} must be {getattr(want, '__name__', 'a number')}"
+        if key in ("limit", "year_from", "timeout") and value <= 0:
+            return f"{key} must be positive"
+    return None
+
+
 def parse_tokens(text: str | None) -> dict[str, str]:
     """'loops=abc,mcp=def' → {'loops': 'abc', 'mcp': 'def'}."""
     out = {}
@@ -84,6 +110,19 @@ def load_settings(path: Path | None = None, environ: dict | None = None) -> Sett
     if not s.tokens:
         s.tokens = parse_tokens(from_config(s.secrets_backend).get("research_gateway", "tokens"))
     return s
+
+
+def todays_usage(conn) -> dict[str, tuple[int, float]]:
+    """Per-source dispatched/credit counts for the current UTC day, from the call log — the shared
+    record every gateway or maintenance process writes, so budgets are owned jointly (I-1, D-23)."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT source_id, count(*), coalesce(sum(credits), 0) FROM gateway.calls "
+            "WHERE at >= date_trunc('day', now() AT TIME ZONE 'utc') AT TIME ZONE 'utc' "
+            "AND failure_class <> 'refused' AND NOT cache_hit GROUP BY source_id")
+        usage = {sid: (int(n), float(c)) for sid, n, c in cur.fetchall()}
+    conn.commit()
+    return usage
 
 
 def sources_from_db(conn) -> list[dict]:
@@ -123,6 +162,8 @@ class Gateway:
             self.alerter.breaker(source_id, state, retry_after_wall, reason)
 
         self.broker = Broker(policies, on_breaker_change=on_breaker, on_budget=self.alerter.budget)
+        if self.conn is not None:
+            self.broker.seed_usage(todays_usage(self.conn))  # budgets survive restarts (D-23)
         self.transport = transport
         # the cache persists from worker threads and HTTP threads alike: it gets its own connection and lock
         self.cache = Cache(db.connect() if self.conn is not None else None)
@@ -149,7 +190,8 @@ class Gateway:
             w.start()
             self.workers.append(w)
         self.watcher = alerts.Watcher(db.connect, self.alerter, lambda: self.health(detailed=True), self.stop_event,
-                                      interval=self.settings.watch_interval)
+                                      interval=self.settings.watch_interval,
+                                      sweep=lambda conn: queue.reclaim_stale(conn))
         self.watcher.start()
 
     def stop(self) -> None:

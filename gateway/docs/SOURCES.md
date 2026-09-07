@@ -91,7 +91,7 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Commercial:** **allow** — the source's terms permit commercial use of what the gateway retrieves. Evidence: https://help.openalex.org/access/snapshot/
 - **Freshness:** quarterly (snapshot)
 - **Enabled in the default seed:** yes
-- **Notes:** Served from gateway.index_docs, not from any live call. Holds ~10% of works Crossref lacks.
+- **Notes:** Served from gateway.index_docs, not from any live call. The index holds the snapshot's VENUES and repositories (D-19), which is how the ~10% of works Crossref lacks are reached: through their venues, not a works index.
 
 ### Semantic Scholar
 
@@ -123,7 +123,7 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Commercial:** **allow** — the source's terms permit commercial use of what the gateway retrieves. Evidence: https://support.datacite.org/docs/datacite-data-file-use-policy
 - **Freshness:** origin registry for dataset DOIs (Zenodo, figshare, institutional repositories)
 - **Enabled in the default seed:** yes
-- **Notes:** Base lane for datasets. Zenodo and figshare records are discovered here; their own APIs are used only to fetch files.
+- **Notes:** Base lane for datasets. Zenodo and figshare records are discovered here; following their download links is a fetch against the registry row that owns the host (no dedicated Zenodo/figshare adapter exists).
 
 ### GLOBE Project (leadership and culture data)
 
@@ -165,7 +165,7 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **How to get access:** No key needed for public data. An optional API token (account menu → API Token) raises limits and reaches restricted files.
 - **Rate limit:** 5/s (verified) — no documented limit; 5/s is a self-imposed ceiling. smoke 2026-09-07: one live call answered 200 (dataset lookup), no rate-limit headers
 - **Licence:** CC0 by default; depositors may set another licence per dataset.
-- **Commercial:** **allow** — the source's terms permit commercial use of what the gateway retrieves. Evidence: https://support.dataverse.harvard.edu/harvard-dataverse-general-terms-use
+- **Commercial:** **per-item** — the platform permits it, but each record carries its own licence; records without an allow-listed licence are dropped in commercial mode. Evidence: https://support.dataverse.harvard.edu/harvard-dataverse-general-terms-use (terms let each depositor pick the dataset licence, so commercial use is judged per record, not platform-wide)
 - **Freshness:** immediate
 - **Enabled in the default seed:** yes
 - **Notes:** Also hosts the World Management Survey public data (DOI 10.7910/DVN/OY6CBK, CC0).

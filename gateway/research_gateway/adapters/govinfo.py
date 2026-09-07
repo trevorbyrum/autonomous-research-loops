@@ -5,6 +5,7 @@ from ..core.canonical import make_record, year_from
 from .base import AdapterError, Client, check, quote
 
 SOURCE_ID = "govinfo"
+SMOKE = {'capability': 'find', 'query': 'artificial intelligence', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("find", "resolve", "fetch")
 BASE = "https://api.govinfo.gov"
 FORMATS = ("pdf", "htm", "xml", "txt", "zip")
@@ -80,4 +81,5 @@ def fetch(client: Client, target: str, *, fmt: str = "pdf", download: bool = Fal
     resp = client.get(SOURCE_ID, "fetch", f"{BASE}/packages/{quote(pid, safe='')}/{fmt}", headers={**hdrs, "Accept": "*/*"}, identity=identity)
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "records": []}
-    return {"identity": identity, "records": [], "content": resp.body, "content_type": resp.headers.get("content-type"), "format": fmt}
+    return {"identity": identity, "records": [], "content": resp.body, "content_type": resp.headers.get("content-type"),
+            "format": fmt, "license": "US Government Work"}

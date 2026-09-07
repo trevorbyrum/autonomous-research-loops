@@ -11,7 +11,10 @@ Adapters never import urllib; that is the invariant the tests check.
 """
 from __future__ import annotations
 
+import email.utils
+import ipaddress
 import json
+import socket
 import time
 import urllib.error
 import urllib.parse
@@ -54,27 +57,84 @@ class Response:
         try:
             return float(v)
         except ValueError:
+            pass
+        try:  # the header's other legal form is an HTTP-date (RFC 9110)
+            when = email.utils.parsedate_to_datetime(v)
+            return max(0.0, when.timestamp() - time.time())
+        except (TypeError, ValueError):
             return None
 
 
 MAX_BODY_BYTES = 256 * 1024 * 1024   # a response bigger than this is an error, not a memory event
+MAX_REDIRECTS = 5
+REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+CREDENTIAL_HEADERS = {"authorization", "x-api-key", "x-dataverse-key", "x-app-token", "cookie"}
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """3xx answers come back to the metered client instead of being followed underneath it (D-23)."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
+def redirect_target(current_url: str, location: str) -> tuple[str | None, str | None]:
+    """(next url, None) when the hop is permitted; (None, reason) otherwise. Permitted means:
+    http/https only, no https→http downgrade, and no loopback/private/link-local destination —
+    every address the hostname resolves to must be global (SSRF guard, D-23)."""
+    nxt = urllib.parse.urljoin(current_url, location)
+    old, new = urllib.parse.urlsplit(current_url), urllib.parse.urlsplit(nxt)
+    if new.scheme not in ("http", "https"):
+        return None, f"redirect to scheme {new.scheme!r} refused"
+    if old.scheme == "https" and new.scheme == "http":
+        return None, "redirect downgrades https to http"
+    host = new.hostname or ""
+    if not host:
+        return None, "redirect without a host"
+    try:
+        addresses = [info[4][0] for info in socket.getaddrinfo(host, new.port or (443 if new.scheme == "https" else 80),
+                                                               proto=socket.IPPROTO_TCP)]
+    except OSError as e:
+        return None, f"redirect host does not resolve ({e})"
+    for addr in addresses:
+        try:
+            ip = ipaddress.ip_address(addr.split("%")[0])
+        except ValueError:
+            return None, f"redirect host resolves to unparseable address {addr!r}"
+        if not ip.is_global:
+            return None, f"redirect into a non-global address ({ip}) refused"
+    return nxt, None
+
+
+def same_origin(a: str, b: str) -> bool:
+    ua, ub = urllib.parse.urlsplit(a), urllib.parse.urlsplit(b)
+    return (ua.scheme, ua.hostname, ua.port) == (ub.scheme, ub.hostname, ub.port)
 
 
 class Transport:
-    """Real network transport."""
+    """Real network transport. Never raises and never follows redirects: every outcome —
+    including a 3xx, an oversized body, or a mid-read failure — is a Response, so the
+    caller's accounting and logging always run (I-6)."""
 
     def request(self, method: str, url: str, headers: dict, body: bytes | None, timeout: float) -> Response:
         req = urllib.request.Request(url, data=body, method=method, headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with _OPENER.open(req, timeout=timeout) as resp:
                 data = resp.read(MAX_BODY_BYTES + 1)
                 if len(data) > MAX_BODY_BYTES:
                     return Response(None, {k.lower(): v for k, v in resp.headers.items()}, b"", url,
                                     error=f"response exceeds {MAX_BODY_BYTES} bytes")
                 return Response(resp.status, {k.lower(): v for k, v in resp.headers.items()}, data, url)
         except urllib.error.HTTPError as e:
-            return Response(e.code, {k.lower(): v for k, v in e.headers.items()}, e.read(MAX_BODY_BYTES) or b"", url)
-        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            try:
+                payload = e.read(MAX_BODY_BYTES) or b""
+            except Exception:
+                payload = b""
+            return Response(e.code, {k.lower(): v for k, v in e.headers.items()}, payload, url)
+        except Exception as e:  # URLError, timeouts, IncompleteRead, TLS errors, anything: an error Response
             return Response(None, {}, b"", url, error=f"{type(e).__name__}: {e}")
 
 
@@ -113,12 +173,16 @@ class Client:
     max_wait: float = 120.0
     sleep: Callable[[float], None] = time.sleep   # injected in tests so backoff waits are not real
     log: list[calllog.CallRecord] = field(default_factory=list)  # in-memory mirror (tests, status)
+    secret_values: set = field(default_factory=set)              # every secret handed out through this client
     job_id: int | None = None
     client_id: str | None = None
     domain_resolved: str | None = None
 
     def secret(self, name: str, field: str | None = None) -> str | None:
-        return self.secrets(name, field)
+        value = self.secrets(name, field)
+        if value:
+            self.secret_values.add(str(value))  # remembered so response echoes can be redacted (D-23)
+        return value
 
     def get(self, source_id: str, request_type: str, url: str, *, params: dict | None = None,
             headers: dict | None = None, identity: str | None = None, query: str | None = None,
@@ -146,12 +210,36 @@ class Client:
             return resp
         hdrs = {"User-Agent": self.user_agent, "Accept": "application/json"}
         hdrs.update(headers or {})
-        t0 = time.monotonic()
-        resp = self.transport.request(method, url, hdrs, body, self.timeout)
-        latency = int((time.monotonic() - t0) * 1000)
-        self.broker.record(source_id, resp.status, retry_after=resp.retry_after_seconds(),
-                           network_error=resp.status is None)
-        self._record(source_id, request_type, identity, query, resp, latency, credits)
+        for hop in range(MAX_REDIRECTS + 1):
+            t0 = time.monotonic()
+            resp = self.transport.request(method, url, hdrs, body, self.timeout)
+            latency = int((time.monotonic() - t0) * 1000)
+            self.broker.record(source_id, resp.status, retry_after=resp.retry_after_seconds(),
+                               network_error=resp.status is None)
+            self._record(source_id, request_type, identity, query, resp, latency, credits)
+            if resp.status not in REDIRECT_STATUSES:
+                return resp
+            location = resp.headers.get("location")
+            if not location or hop == MAX_REDIRECTS:
+                return Response(None, resp.headers, b"", url,
+                                error="redirect without Location" if not location else f"more than {MAX_REDIRECTS} redirects")
+            nxt, reason = redirect_target(url, location)
+            if nxt is None:
+                refused = Response(None, resp.headers, b"", url, error=reason)
+                self._record(source_id, request_type, identity, query, refused, 0, 0.0, refused=True)
+                return refused
+            if not same_origin(url, nxt):  # credentials never travel to another origin (D-23)
+                hdrs = {k: v for k, v in hdrs.items() if k.lower() not in CREDENTIAL_HEADERS}
+            if resp.status == 303 or (resp.status in (301, 302) and method == "POST"):
+                method, body = "GET", None
+                hdrs.pop("Content-Type", None)
+            url = nxt
+            try:  # each hop is its own metered dispatch under the same source (I-1)
+                self.broker.acquire_blocking(source_id, credits=0.0, max_wait=self.max_wait, sleep=self.sleep)
+            except (NoPolicy, BreakerOpen, BudgetExhausted) as e:
+                refused = Response(None, {}, b"", url, error=f"{type(e).__name__}: {e}")
+                self._record(source_id, request_type, identity, query, refused, 0, 0.0, refused=True)
+                return refused
         return resp
 
     def local(self, source_id: str, request_type: str, *, query: str | None = None, identity: str | None = None,

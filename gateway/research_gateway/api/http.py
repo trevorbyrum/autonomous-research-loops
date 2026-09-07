@@ -13,9 +13,11 @@ from __future__ import annotations
 import json
 import re
 import sys
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
+from .. import app as app_module
 from ..app import Gateway, Settings, load_settings
 from ..core.queue import REQUEST_TYPES
 from ..mcp import homelab_adapter
@@ -23,31 +25,13 @@ from ..mcp import homelab_adapter
 MAX_TIMEOUT = 120.0
 MAX_BODY = 1 << 20
 JOB_ROUTE = re.compile(r"^/v1/jobs/(\d{1,18})$")
-# payload fields the front door accepts, with the type each must have; anything else is a 400
-FIELD_TYPES = {"query": str, "identity": str, "target": str, "what": str, "source": str, "kind": str, "domain": str,
-               "topic_id": str, "published_after": str, "priority": str, "params": dict, "commercial": bool,
-               "accept_per_item": bool, "limit": int, "year_from": int, "timeout": (int, float)}
-
-
-def validate_payload(body: dict) -> str | None:
-    """The reason a body is unacceptable, or None."""
-    for key, value in body.items():
-        want = FIELD_TYPES.get(key)
-        if want is None:
-            return f"unknown field {key!r}"
-        if value is None:
-            continue
-        if isinstance(value, bool) and want is not bool:
-            return f"{key} must be {getattr(want, '__name__', 'a number')}"
-        if not isinstance(value, want):
-            return f"{key} must be {getattr(want, '__name__', 'a number')}"
-        if key in ("limit", "year_from", "timeout") and value <= 0:
-            return f"{key} must be positive"
-    return None
+MAX_CONCURRENT = 64
+validate_payload = app_module.validate_payload   # one parser for both front doors (D-23)
 
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "research-gateway/0.1"
+    timeout = 30      # a slow or stalled client releases its thread (D-23)
     gateway: Gateway  # set on the server object
 
     # ------------------------------------------------------------ plumbing
@@ -55,9 +39,12 @@ class Handler(BaseHTTPRequestHandler):
         sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
 
     def _send(self, status: int, body, content_type: str = "application/json") -> None:
-        data = body if isinstance(body, (bytes, bytearray)) else json.dumps(body, default=str).encode()
+        envelope = not isinstance(body, (bytes, bytearray))
+        data = json.dumps(body, default=str).encode() if envelope else body
         self.send_response(status)
         self.send_header("Content-Type", content_type)
+        if envelope:
+            self.send_header("X-Research-Gateway", "result")  # so clients never parse a downloaded JSON file as a gateway answer
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -160,9 +147,35 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, reply)
 
 
-def serve(gateway: Gateway, host: str, port: int) -> ThreadingHTTPServer:
-    server = ThreadingHTTPServer((host, port), Handler)
-    server.daemon_threads = True
+class Server(ThreadingHTTPServer):
+    """Bounded concurrency: past MAX_CONCURRENT in-flight connections, new ones are closed
+    immediately instead of growing threads without limit (D-23)."""
+
+    daemon_threads = True
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._slots = threading.Semaphore(MAX_CONCURRENT)
+
+    def process_request(self, request, client_address):
+        if not self._slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
+
+
+def serve(gateway: Gateway, host: str, port: int) -> Server:
+    server = Server((host, port), Handler)
     server.gateway = gateway
     return server
 

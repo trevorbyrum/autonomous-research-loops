@@ -146,9 +146,10 @@ SOCRATA_CATALOG = {"resultSetSize": 1, "results": [{"resource": {"id": "abcd-123
 
 class Socrata(unittest.TestCase):
     def test_find_resolve_fetch(self):
+        socrata.reset_known_domains()
         c, t = client({"socrata": "APP"})
         t.add("GET", "https://api.us.socrata.com/api/catalog/v1?", body=SOCRATA_CATALOG)
-        out = socrata.find(c, "business licenses", domain="data.cityofchicago.org")
+        out = socrata.find(c, "business licenses", portal="data.cityofchicago.org")
         r = out["records"][0]
         self.assertEqual(r["identity"], "socrata:data.cityofchicago.org:abcd-1234")
         self.assertEqual(r["license"], "Public Domain")
@@ -163,6 +164,8 @@ class Socrata(unittest.TestCase):
         t.add("GET", "https://data.cityofchicago.org/resource/abcd-1234.json?", body=[{"license_id": "1"}, {"license_id": "2"}])
         rows = socrata.fetch(c, r["identity"], limit=2, where="license_id > 0")
         self.assertEqual(rows["records"][0]["row_count"], 2)
+        self.assertEqual(rows["records"][0]["license"], "Public Domain", "the dataset licence travels with the rows (R-8)")
+        self.assertEqual(rows["license"], "Public Domain")
         self.assertEqual(rows["next_offset"], 2)
         self.assertIn("%24where=license_id+%3E+0", t.calls[-1][1])
         with self.assertRaises(AdapterError):
@@ -175,12 +178,27 @@ class Socrata(unittest.TestCase):
         with self.assertRaises(AdapterError):
             socrata.resolve(c, "socrata:evil.example:abcd-1234")
         self.assertEqual(len(t.calls), 1, "the catalog was asked; the portal was never contacted")
-        t.add("GET", "https://api.us.socrata.com/api/catalog/v1?domains=data.example.gov", body={"resultSetSize": 3, "results": []})
+        with self.assertRaises(AdapterError):
+            socrata.resolve(c, "socrata:bad_host!:abcd-1234")
+        self.assertEqual(len(t.calls), 1, "a syntactically invalid hostname never reaches the catalog")
+        # a nonzero count for a DIFFERENT portal is not a voucher: the result must name the exact portal
+        t.add("GET", "https://api.us.socrata.com/api/catalog/v1?domains=data.example.gov",
+              body={"resultSetSize": 3, "results": [{"resource": {"id": "x"}, "metadata": {"domain": "other.example.gov"}}]})
+        with self.assertRaises(AdapterError):
+            socrata.resolve(c, "socrata:data.example.gov:xy12-3456")
+        socrata.reset_known_domains()
+        t.routes.clear()
+        t.add("GET", "https://api.us.socrata.com/api/catalog/v1?domains=data.example.gov",
+              body={"resultSetSize": 1, "results": [{"resource": {"id": "xy12-3456", "name": "N"}, "metadata": {"domain": "data.example.gov", "license": "CC0"}}]})
+        t.add("GET", "https://data.example.gov/api/views/xy12-3456.json", body={"id": "xy12-3456", "name": "N", "license": {"name": "CC0"}, "columns": []})
         t.add("GET", "https://data.example.gov/resource/xy12-3456.json?", body=[{"a": 1}])
         out = socrata.fetch(c, "socrata:data.example.gov:xy12-3456", limit=5)
         self.assertEqual(out["records"][0]["row_count"], 1)
+        self.assertEqual(out["license"], "CC0")
+        calls_before = len(t.calls)
         socrata.fetch(c, "socrata:DATA.example.gov:xy12-3456", limit=5)
-        self.assertEqual(sum("catalog/v1" in call[1] for call in t.calls), 2, "vouching is remembered per portal")
+        catalog_calls = sum("catalog/v1" in call[1] for call in t.calls)
+        self.assertEqual(catalog_calls, 3, "vouching is remembered per portal after the first success")
         socrata.reset_known_domains()
 
 

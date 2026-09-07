@@ -1,13 +1,17 @@
 """Phase 3 live smoke (PLAN.md §13): one minimal call per adapter capability.
 
-Prints what each source actually answered — status, latency, rate-limit
-headers, failure class — so the operator can turn "(verify)" rows in the seed
-into verified evidence. Nothing here writes to the registry; the seed stays the
-source of truth and is edited by hand from this report.
+Each adapter declares its own probe in a `SMOKE` attribute (I-2): adding a source
+never edits this file. Prints what each source actually answered — status,
+latency, rate-limit headers, failure class — so the operator can turn "(verify)"
+rows in the seed into verified evidence. Nothing here writes to the registry.
+
+The smoke refuses to run while a gateway service owns the same limits, unless
+RESEARCH_GATEWAY_ALLOW_CONCURRENT=1 (I-1, D-23). With a database configured its
+calls are logged like everyone else's, under client id `smoke`.
 
     python3 -m research_gateway.smoke                # plan only (no network)
     python3 -m research_gateway.smoke --live         # run it
-    python3 -m research_gateway.smoke --live --only fred,bea --report out.json
+    python3 -m research_gateway.smoke --live --only fred,bea --report out.json --strict
 """
 from __future__ import annotations
 
@@ -16,68 +20,66 @@ import json
 import os
 import sys
 import time
-from typing import Callable
 
 from . import adapters
 from .adapters.base import AdapterError, Client, SourceUnavailable
+from .core import db
 from .core.broker import Broker, policies_from_rows
 from .core.secrets import from_config
 from .registry.load import read_seed
 
-DOI = "doi:10.1038/nature12373"        # a Crossref-registered article with open-access locations
-DATASET_DOI = "doi:10.7910/DVN/OY6CBK"  # the World Management Survey on Harvard Dataverse (DataCite DOI)
 
-# (source id, capability, callable(module, client)) — each makes the smallest sensible request.
-PLAN: list[tuple[str, str, Callable]] = [
-    ("crossref", "resolve", lambda m, c: m.resolve(c, DOI)),
-    ("doaj", "find", lambda m, c: m.find(c, "management", limit=1)),
-    ("datacite", "resolve", lambda m, c: m.resolve(c, DATASET_DOI)),
-    ("unpaywall", "enrich", lambda m, c: m.enrich(c, DOI, "oa_location")),
-    ("opencitations", "enrich", lambda m, c: m.enrich(c, "doi:10.1162/qss_a_00023", "references")),
-    ("openaire", "find", lambda m, c: m.find(c, "management practices", limit=1)),
-    ("semanticscholar", "resolve", lambda m, c: m.resolve(c, DOI)),
-    ("core", "resolve", lambda m, c: m.resolve(c, DOI)),
-    ("europepmc", "resolve", lambda m, c: m.resolve(c, DOI)),
-    ("doi_org", "resolve", lambda m, c: m.resolve(c, DOI)),
-    ("govinfo", "find", lambda m, c: m.find(c, "artificial intelligence", limit=1)),
-    ("harvard_dataverse", "resolve", lambda m, c: m.resolve(c, DATASET_DOI)),
-    ("wms", "fetch", lambda m, c: m.fetch(c)),
-    ("qdr", "find", lambda m, c: m.find(c, "interview", limit=1)),
-    ("socrata", "find", lambda m, c: m.find(c, "business licenses", limit=1)),
-    ("kaggle", "find", lambda m, c: m.find(c, "housing prices", limit=1)),
-    ("huggingface", "resolve", lambda m, c: m.resolve(c, "stanfordnlp/imdb")),
-    ("openml", "resolve", lambda m, c: m.resolve(c, "openml:61")),
-    ("fred", "data", lambda m, c: m.data(c, {"series": "GDP", "limit": 1, "include_meta": False})),
-    ("bea", "data", lambda m, c: m.data(c, {"method": "GETDATASETLIST"})),
-    ("census", "data", lambda m, c: m.data(c, {"dataset": "2022/acs/acs1", "get": ["NAME"], "for": "state:37"})),
-    ("bls", "data", lambda m, c: m.data(c, {"series": "CUUR0000SA0", "start_year": 2025, "end_year": 2025})),
-    ("bis", "data", lambda m, c: m.data(c, {"dataflow": "WS_EER", "key": "M.N.B.US", "start": "2026-01"})),
-    ("ecb", "data", lambda m, c: m.data(c, {"dataflow": "EXR", "key": "D.USD.EUR.SP00.A", "start": "2026-08-01"})),
-]
-LOCAL_ONLY = {"openalex_snapshot": "local index, no network", "globe": "static files; nothing to probe without a file URL"}
+def probes() -> tuple[dict[str, dict], dict[str, str]]:
+    """(source id -> SMOKE spec) for network probes, (source id -> reason) for local-only ones."""
+    plan, local = {}, {}
+    for sid, mod in adapters.load_all().items():
+        spec = getattr(mod, "SMOKE", None)
+        if spec is None:
+            raise RuntimeError(f"adapter {sid} declares no SMOKE probe (I-2)")
+        if "local" in spec:
+            local[sid] = spec["local"]
+        else:
+            plan[sid] = spec
+    return plan, local
 
 
-def build_client(seed: list[dict], transport=None, secrets=None) -> Client:
+def probe_call(mod, spec: dict):
+    cap = spec["capability"]
+    if cap == "find":
+        return lambda c: mod.find(c, spec["query"], limit=spec.get("limit", 1))
+    if cap == "resolve":
+        return lambda c: mod.resolve(c, spec["identity"])
+    if cap == "enrich":
+        return lambda c: mod.enrich(c, spec["identity"], spec["what"])
+    if cap == "data":
+        return lambda c: mod.data(c, dict(spec["params"]))
+    if cap == "fetch":
+        return (lambda c: mod.fetch(c)) if spec.get("target") is None else (lambda c: mod.fetch(c, spec["target"]))
+    raise RuntimeError(f"unknown smoke capability {cap!r}")
+
+
+def build_client(seed: list[dict], transport=None, secrets=None, conn=None) -> Client:
     """A client whose broker carries every seeded policy — the smoke *is* the verification step."""
     rows = [{"source_id": s["id"], **s.get("rate", {})} for s in seed if s["kind"] != "manual"]
     email = os.environ.get("RESEARCH_GATEWAY_CONTACT_EMAIL", "gateway@example.org")
     kw = {"transport": transport} if transport is not None else {}
     backend = secrets if secrets is not None else from_config(os.environ.get("RESEARCH_GATEWAY_SECRETS", "env"))
     return Client(broker=Broker(policies_from_rows(rows)), secrets=backend.get, contact_email=email,
-                  user_agent=f"research-gateway/0.1 (mailto:{email})", **kw)
+                  user_agent=f"research-gateway/0.1 (mailto:{email})", conn=conn, client_id="smoke", **kw)
 
 
 def run(client: Client, only: set[str] | None = None) -> list[dict]:
+    plan, local = probes()
     mods = adapters.load_all()
     out = []
-    for sid, cap, call in PLAN:
+    for sid, spec in plan.items():
         if only and sid not in only:
             continue
         before = len(client.log)
         t0 = time.monotonic()
-        row = {"source": sid, "capability": cap, "outcome": "ok", "detail": None}
+        row = {"source": sid, "capability": spec["capability"], "outcome": "ok", "detail": None}
         try:
-            result = call(mods[sid], client)
+            result = probe_call(mods[sid], spec)(client)
             if isinstance(result, dict) and "records" not in result and "items" not in result:
                 row["detail"] = "1 record: " + str(result.get("identity") or result.get("agency"))
             elif isinstance(result, dict):
@@ -94,7 +96,7 @@ def run(client: Client, only: set[str] | None = None) -> list[dict]:
         row["calls"] = [{"status": r.status, "class": r.failure_class, "latency_ms": r.latency_ms, "ratelimit": r.ratelimit}
                         for r in client.log[before:]]
         out.append(row)
-    for sid, why in LOCAL_ONLY.items():
+    for sid, why in local.items():
         if not only or sid in only:
             out.append({"source": sid, "capability": "-", "outcome": "skipped", "detail": why, "seconds": 0, "calls": []})
     return out
@@ -111,27 +113,48 @@ def render(rows: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def service_is_running() -> bool:
+    """True when a gateway service answers on RESEARCH_GATEWAY_URL — its broker owns the limits then (I-1)."""
+    from .clients.http_client import from_env
+    health = from_env().health()
+    return bool(health.get("ok")) and "capability_fact" not in health
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--live", action="store_true", help="actually call the sources (one request each)")
     ap.add_argument("--only", default="", help="comma-separated source ids")
     ap.add_argument("--report", default="", help="write the JSON report here")
+    ap.add_argument("--strict", action="store_true", help="unavailable sources fail the run too")
     args = ap.parse_args(argv)
     only = {s for s in args.only.split(",") if s} or None
+    plan, _ = probes()
     if not args.live:
-        for sid, cap, _ in PLAN:
+        for sid, spec in plan.items():
             if not only or sid in only:
-                print(f"{sid:18} {cap}")
+                print(f"{sid:18} {spec['capability']}")
         print("(add --live to run)")
         return 0
-    rows = run(build_client(read_seed()), only)
+    if service_is_running() and os.environ.get("RESEARCH_GATEWAY_ALLOW_CONCURRENT") != "1":
+        print("refusing: a gateway service is running and owns these sources' limits (I-1). "
+              "Stop it, or set RESEARCH_GATEWAY_ALLOW_CONCURRENT=1 knowingly.", file=sys.stderr)
+        return 2
+    conn = db.connect() if db.configured() else None
+    try:
+        rows = run(build_client(read_seed(), conn=conn), only)
+    finally:
+        if conn is not None:
+            conn.close()
     print(render(rows))
     if args.report:
         with open(args.report, "w") as f:
             json.dump(rows, f, indent=1)
         print(f"report: {args.report}")
     bad = [r for r in rows if r["outcome"] in ("crash", "adapter-error")]
-    return 1 if bad else 0
+    unavailable = [r for r in rows if r["outcome"] == "unavailable"]
+    if unavailable:
+        print(f"note: {len(unavailable)} source(s) unavailable — their limits were NOT verified by this run", file=sys.stderr)
+    return 1 if bad or (args.strict and unavailable) else 0
 
 
 if __name__ == "__main__":

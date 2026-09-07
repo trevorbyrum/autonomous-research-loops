@@ -6,6 +6,7 @@ from ..core.identity import normalize_doi
 from .base import Client, check, quote
 
 SOURCE_ID = "core"
+SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("resolve", "enrich")
 ENRICHES = ("full_text",)
 SCHEMES = ("doi",)

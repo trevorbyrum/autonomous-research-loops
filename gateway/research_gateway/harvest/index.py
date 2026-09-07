@@ -54,14 +54,38 @@ def text_for(record: dict) -> str:
     return " ".join(str(p) for p in parts if p)
 
 
+UNION_FIELDS = ("issns", "subjects", "aliases", "links")
+
+
+def merge_canonical(existing: dict | None, incoming: dict) -> dict:
+    """A later loader's non-empty scalars refresh; list fields UNION (an alias one registry knows
+    is never erased by one that does not); identifier maps merge (D-23)."""
+    merged = dict(existing or {})
+    for k, v in incoming.items():
+        if v in (None, "", [], {}):
+            continue
+        if k in UNION_FIELDS and isinstance(v, list):
+            seen = list(merged.get(k) or [])
+            merged[k] = seen + [x for x in v if x not in seen]
+        elif k == "identifiers" and isinstance(v, dict):
+            merged[k] = {**(merged.get(k) or {}), **v}
+        else:
+            merged[k] = v
+    return merged
+
+
 def upsert(cur, record: dict, source_id: str, *, license: str | None = None) -> None:
-    """Merge one record: canonical fields fill in (later loaders add, never erase), a
-    provenance row per loader, and the index document."""
-    canonical = {k: v for k, v in record.items() if k not in ("raw", "provenance") and v not in (None, "", [], {})}
+    """Merge one record — a provenance row per loader, the merged canonical, and an index
+    document built from the MERGED record, so search terms a previous loader contributed
+    survive the next one (D-23)."""
+    incoming = {k: v for k, v in record.items() if k not in ("raw", "provenance")}
+    cur.execute("SELECT canonical FROM gateway.records WHERE identity = %s", (record["identity"],))
+    row = cur.fetchone()
+    merged = merge_canonical(row[0] if row else None, incoming)
     cur.execute(
         "INSERT INTO gateway.records (identity, kind, canonical, last_seen) VALUES (%s, %s, %s, now()) "
-        "ON CONFLICT (identity) DO UPDATE SET canonical = gateway.records.canonical || EXCLUDED.canonical, last_seen = now()",
-        (record["identity"], record["kind"], json.dumps(canonical, default=str)),
+        "ON CONFLICT (identity) DO UPDATE SET canonical = EXCLUDED.canonical, last_seen = now()",
+        (record["identity"], record["kind"], json.dumps(merged, default=str)),
     )
     cur.execute(
         "INSERT INTO gateway.record_sources (identity, source_id, raw, fetched_at, license, redistributable) "
@@ -74,33 +98,46 @@ def upsert(cur, record: dict, source_id: str, *, license: str | None = None) -> 
         "VALUES (%s, %s, %s, %s, to_tsvector('english', %s)) ON CONFLICT (identity) DO UPDATE SET "
         "kind = EXCLUDED.kind, domain = COALESCE(EXCLUDED.domain, gateway.index_docs.domain), "
         "year = COALESCE(EXCLUDED.year, gateway.index_docs.year), tsv = EXCLUDED.tsv",
-        (record["identity"], record["kind"], record.get("domain"), record.get("year"), text_for(record)),
+        (record["identity"], record["kind"], merged.get("domain"), merged.get("year"), text_for(merged)),
     )
 
 
 LOADER_LOCK = 7_310_001   # advisory lock key: loaders run one at a time (they upsert overlapping identities)
 
 
-def load(conn, records: Iterable[dict], source_id: str, *, license: str | None = None, batch: int = BATCH) -> int:
+def load(conn, records, source_id: str, *, license: str | None = None, batch: int = BATCH) -> int:
     """Upsert a stream of records in batches under the loader lock; returns how many were written.
-    A batch that still deadlocks (another writer on the same rows) is retried a few times."""
+    `records` may be an iterable OR a zero-argument factory returning one — a factory is called
+    only after the lock is held, so state it builds (the ISSN map) cannot go stale between
+    construction and the lock (D-23). Any failure rolls back the open batch before unlocking;
+    the exception propagates so a partial load is never mistaken for a complete one."""
     n = 0
     with conn.cursor() as cur:
         cur.execute("SELECT pg_advisory_lock(%s)", (LOADER_LOCK,))
     conn.commit()
     try:
+        stream = records() if callable(records) else records
         pending: list[dict] = []
-        for rec in records:
+        for rec in stream:
             pending.append(rec)
             if len(pending) >= batch:
                 n += _write_batch(conn, pending, source_id, license)
                 pending = []
         if pending:
             n += _write_batch(conn, pending, source_id, license)
+    except BaseException:
+        try:
+            conn.rollback()   # the aborted transaction would otherwise swallow the unlock too
+        except Exception:
+            pass
+        raise
     finally:
-        with conn.cursor() as cur:
-            cur.execute("SELECT pg_advisory_unlock(%s)", (LOADER_LOCK,))
-        conn.commit()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT pg_advisory_unlock(%s)", (LOADER_LOCK,))
+            conn.commit()
+        except Exception:
+            pass  # the lock dies with the session if even unlock fails
     return n
 
 
@@ -121,12 +158,15 @@ def _write_batch(conn, batch: list[dict], source_id: str, license: str | None, a
 
 
 def reindex(conn, identities: list[str] | None = None) -> int:
-    """Rebuild index documents from the stored canonical records (all of them, or the given identities)."""
+    """Rebuild index documents from stored canonical records — venue/repository ONLY (D-19):
+    the index never grows to cover works or datasets the cache happens to hold, which would
+    also relabel their answers with the index's identity."""
     with conn.cursor() as cur:
         if identities is None:
-            cur.execute("SELECT identity, kind, canonical FROM gateway.records")
+            cur.execute("SELECT identity, kind, canonical FROM gateway.records WHERE kind IN ('venue', 'repository')")
         else:
-            cur.execute("SELECT identity, kind, canonical FROM gateway.records WHERE identity = ANY(%s)", (list(identities),))
+            cur.execute("SELECT identity, kind, canonical FROM gateway.records "
+                        "WHERE identity = ANY(%s) AND kind IN ('venue', 'repository')", (list(identities),))
         rows = cur.fetchall()
         for identity, kind, canonical in rows:
             rec = dict(canonical)

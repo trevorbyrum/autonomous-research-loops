@@ -52,7 +52,24 @@ def ratelimit_headers(headers) -> dict:
     return out
 
 
+class AuditError(RuntimeError):
+    """The call log could not be written. The gateway fails closed: a request that cannot be
+    audited does not keep dispatching (I-6, D-23). Raised instead of the database's own error
+    so callers can tell 'logging broke' from 'a source misbehaved'."""
+
+
 def record(conn, rec: CallRecord) -> int:
+    try:
+        return _record(conn, rec)
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise AuditError(f"call log write failed: {type(e).__name__}: {e}") from e
+
+
+def _record(conn, rec: CallRecord) -> int:
     with conn.cursor() as cur:
         cur.execute(
             "INSERT INTO gateway.calls (job_id, source_id, request_type, identity, query, status, latency_ms, "

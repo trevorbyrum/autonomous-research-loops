@@ -12,6 +12,7 @@ import csv
 import hashlib
 import io
 import json
+import os
 import sys
 from typing import Iterator
 
@@ -71,8 +72,7 @@ def crossref_journals(client: Client, *, limit: int | None = None, rows: int = 1
     while cursor:
         resp = client.get("crossref", "find", CROSSREF_JOURNALS,
                           params={"rows": rows, "cursor": cursor, "mailto": client.contact_email}, query="journals harvest")
-        if not check("crossref", resp):
-            return
+        check("crossref", resp, allow_404=False)   # a failed page fails the load (D-23)
         msg = (resp.json or {}).get("message") or {}
         items = msg.get("items") if isinstance(msg, dict) else None
         items = items if isinstance(items, list) else []
@@ -90,9 +90,10 @@ def crossref_journals(client: Client, *, limit: int | None = None, rows: int = 1
 # ---------------------------------------------------------------- DOAJ journals (CSV)
 def doaj_journals(client: Client, *, limit: int | None = None, issn_map: index.IssnMap | None = None) -> Iterator[dict]:
     resp = client.get("doaj", "find", DOAJ_CSV, headers={"Accept": "text/csv"}, query="journals csv")
-    if not check("doaj", resp):
-        return
+    check("doaj", resp, allow_404=False)   # a missing catalogue is a failed load, never a zero-row success (D-23)
     reader = csv.DictReader(io.StringIO(resp.text))
+    if not reader.fieldnames or "Journal title" not in reader.fieldnames:
+        raise ValueError(f"DOAJ CSV shape changed: columns {list(reader.fieldnames or [])[:5]!r} lack 'Journal title'")
     for n, row in enumerate(reader, 1):
         title = row.get("Journal title")
         identity, clean = venue_identity([row.get("Journal ISSN (print version)"), row.get("Journal EISSN (online version)")],
@@ -116,8 +117,7 @@ def datacite_repositories(client: Client, *, limit: int | None = None, size: int
     while True:
         resp = client.get("datacite", "find", DATACITE_REPOSITORIES, params={"page[size]": size, "page[number]": page},
                           query="repositories harvest")
-        if not check("datacite", resp):
-            return
+        check("datacite", resp, allow_404=False)   # a failed page fails the load (D-23)
         j = resp.json if isinstance(resp.json, dict) else {}
         data = j.get("data") if isinstance(j.get("data"), list) else []
 
@@ -155,19 +155,28 @@ LOADERS = {"crossref": (crossref_journals, "Metadata: no rights asserted (facts)
 
 def run(conn, client: Client, name: str, *, limit: int | None = None) -> int:
     fn, license = LOADERS[name]
-    kw = {"issn_map": index.IssnMap(conn)} if name in ("crossref", "doaj") else {}
-    return index.load(conn, fn(client, limit=limit, **kw), name, license=license)
+
+    def stream():  # built only once the loader lock is held (D-23)
+        kw = {"issn_map": index.IssnMap(conn)} if name in ("crossref", "doaj") else {}
+        return fn(client, limit=limit, **kw)
+
+    return index.load(conn, stream, name, license=license)
 
 
 def main(argv: list[str] | None = None) -> int:
     from ..app import Gateway, load_settings  # the app owns client construction (I-6)
+    from ..smoke import service_is_running
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("loader", choices=sorted(LOADERS))
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args(argv)
+    if service_is_running() and os.environ.get("RESEARCH_GATEWAY_ALLOW_CONCURRENT") != "1":
+        print("refusing: a gateway service is running and owns these sources' limits (I-1). "
+              "Stop it, or set RESEARCH_GATEWAY_ALLOW_CONCURRENT=1 knowingly.", file=sys.stderr)
+        return 2
     gw = Gateway(load_settings(), use_db=False)
     with db.connect() as conn:
-        n = run(conn, gw.make_client(conn), args.loader, limit=args.limit)
+        n = run(conn, gw.make_client(conn, client_id="harvest"), args.loader, limit=args.limit)
         print(json.dumps({"loader": args.loader, "loaded": n, **index.counts(conn)}, indent=1))
     return 0
 

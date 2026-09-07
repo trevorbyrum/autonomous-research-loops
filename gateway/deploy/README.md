@@ -54,7 +54,9 @@ systemctl --user status research-gateway
 ## Checks after deploying (PLAN.md §13 Phase 7)
 
 1. `/v1/health` answers `{"ok": true, ...}`; `/v1/status` (with a token) shows the workers alive and the watcher passing.
-2. Force a breaker (`curl` a 429-answering test source, or lower a policy) and confirm the ntfy message.
+2. Confirm an alert end to end: point one source's key at a wrong value (for example
+   `RESEARCH_GATEWAY_SECRET_SEMANTIC_SCHOLAR=wrong`), restart, run three finds against it,
+   and the auth-failure alert arrives on the next watcher pass. Restore the key after.
 3. Run one research-loop iteration with the tool mounted; `SELECT client_id, source_id, count(*) FROM gateway.calls WHERE at > now() - interval '1 hour' GROUP BY 1, 2` shows only gateway-routed calls.
 4. `python3 -m tests.regression.overlap_probe --expectations <private file> --live --sample 40` stays within tolerance.
 

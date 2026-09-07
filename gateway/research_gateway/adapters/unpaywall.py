@@ -6,6 +6,7 @@ from ..core.identity import normalize_doi
 from .base import Client, check
 
 SOURCE_ID = "unpaywall"
+SMOKE = {'capability': 'enrich', 'identity': 'doi:10.1038/nature12373', 'what': 'oa_location'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("enrich",)
 ENRICHES = ("oa_location",)
 BASE = "https://api.unpaywall.org/v2"

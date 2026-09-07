@@ -2,6 +2,7 @@
 the stdio client, and the CLI payload mapping. Servers bind to an ephemeral localhost port."""
 import json
 import threading
+import os
 import unittest
 import urllib.error
 import urllib.request
@@ -209,7 +210,8 @@ class Wiring(unittest.TestCase):
         self.assertFalse(app.Gateway.is_inline_only({"request_type": "fetch", "params": {}}))
 
 
-@unittest.skipUnless(db.configured(), "RESEARCH_GATEWAY_DSN not set")
+@unittest.skipUnless(db.configured() and os.environ.get("RESEARCH_GATEWAY_TEST_OK") == "1",
+                     "needs RESEARCH_GATEWAY_DSN and RESEARCH_GATEWAY_TEST_OK=1 (DB tests exercise the real queue)")
 class QueuedGateway(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

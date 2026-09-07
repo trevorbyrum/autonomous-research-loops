@@ -3,6 +3,7 @@ and the Tier 0 index they feed — index writes need the database, shape tests d
 import gzip
 import json
 import tempfile
+import os
 import unittest
 from pathlib import Path
 
@@ -112,9 +113,9 @@ class Shapes(unittest.TestCase):
         self.assertEqual(registries.venue_identity([None, "9999-9983"], "doaj", "J", "P", m)[0], "issn:9999-9991")
         self.assertEqual(registries.venue_identity(["9999-9975"], "doaj", "Other", "P", m)[0], "issn:9999-9975")
         self.assertEqual(len(m), 3)
-        skipped = []
-        recs = list(registries.crossref_journals(client()[0], skipped=skipped))
-        self.assertEqual(recs, [], "a 404 catalogue yields nothing and raises nothing")
+        from research_gateway.adapters.base import SourceUnavailable
+        with self.assertRaises(SourceUnavailable):
+            list(registries.crossref_journals(client()[0]))  # a 404 catalogue FAILS the load (D-23)
 
     def test_malformed_registry_rows_are_skipped_not_fatal(self):
         c, t = client()
@@ -137,7 +138,8 @@ class Shapes(unittest.TestCase):
             self.assertIn(needle, text)
 
 
-@unittest.skipUnless(db.configured(), "RESEARCH_GATEWAY_DSN not set")
+@unittest.skipUnless(db.configured() and os.environ.get("RESEARCH_GATEWAY_TEST_OK") == "1",
+                     "needs RESEARCH_GATEWAY_DSN and RESEARCH_GATEWAY_TEST_OK=1 (DB tests exercise the real queue)")
 class IndexRoundTrip(unittest.TestCase):
     IDS = ("issn:9999-9991", "issn:9999-9983", "repository:datacite:harvest.test", "repository:openalex:s999999902",
            registries.venue_identity([], "crossref", "No ISSN Newsletter", "P")[0])

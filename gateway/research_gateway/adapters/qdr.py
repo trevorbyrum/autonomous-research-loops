@@ -5,6 +5,7 @@ from . import harvard_dataverse as dv
 from .base import Client
 
 SOURCE_ID = "qdr"
+SMOKE = {'capability': 'find', 'query': 'interview', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("find", "resolve")
 SCHEMES = ("doi",)
 BASE = "https://data.qdr.syr.edu"

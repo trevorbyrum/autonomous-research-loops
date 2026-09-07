@@ -5,6 +5,7 @@ from ..core.canonical import make_record
 from .base import AdapterError, Client, check
 
 SOURCE_ID = "bea"
+SMOKE = {'capability': 'data', 'params': {'method': 'GETDATASETLIST'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("data",)
 BASE = "https://apps.bea.gov/api/data/"
 ATTRIBUTION = "U.S. Bureau of Economic Analysis"

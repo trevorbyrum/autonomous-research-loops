@@ -45,7 +45,8 @@ policy row. Without a database the same client runs inline.
 
 A canonical record per identity, with each contributing source's raw payload
 kept for provenance (normalisation is lossy). Cache keyed by identity with a
-per-source TTL; sources whose terms forbid redistribution are cached in memory
+per-class TTL (metadata seven days, searches one hour, anything with a
+restricted member one hour); sources whose terms forbid redistribution are cached in memory
 only (bounded, at most an hour) and never persisted or exported — a merged
 record persists only its redistributable members. Dedup by normalised
 identifier, then exact identity, then fuzzy title with the same year and first
@@ -54,11 +55,12 @@ against the commercial rule before they answer.
 
 ## Local index (Tier 0)
 
-Registries with bulk routes (OpenAlex sources snapshot, Crossref journals,
-DOAJ, DataCite repositories, re3data) are loaded on a schedule into a Postgres
-full-text index. `find` consults the index first and live lanes for freshness
-and the long tail. Embedding and reranking tiers are optional later additions
-and degrade to this tier — no GPU or vector database is required.
+Registries with bulk routes (the OpenAlex sources snapshot, Crossref journals,
+DOAJ journals, DataCite repositories — re3data arrives through DataCite's
+identifiers) are loaded on a schedule into a Postgres full-text index of
+venues and repositories. `find` consults the index first and live lanes for
+freshness and the long tail. Embedding and reranking tiers are optional later
+additions and degrade to this tier — no GPU or vector database is required.
 
 ## Front doors
 

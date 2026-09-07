@@ -11,6 +11,7 @@ from ..core.identity import normalize_arxiv, normalize_doi
 from .base import Client, check
 
 SOURCE_ID = "semanticscholar"
+SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("find", "resolve", "enrich")
 ENRICHES = ("citations", "references", "full_text")
 SCHEMES = ("doi", "arxiv", "s2")

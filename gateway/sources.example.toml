@@ -6,14 +6,14 @@
 
 [gateway]
 contact_email = "you@example.org"        # sent to Crossref/Unpaywall polite pools and in User-Agent
-dsn_env = "RESEARCH_GATEWAY_DSN"         # libpq URI for the research_loops database (schema: gateway)
 listen = "127.0.0.1:8765"
 secrets_backend = "env"                  # env | vault (vault settings live outside the public tree)
-
-# Which seeded sources this deployment enables beyond the seed defaults.
-# A source can only be enabled if its rate limit is verified (see docs/SOURCES.md).
-[enable]
-sources = ["crossref", "doaj", "openaire", "openalex_snapshot", "semanticscholar", "core", "unpaywall", "govinfo"]
+workers = 2                              # queue worker threads (queued mode)
+sync_timeout = 60                        # seconds a synchronous request waits for its job
+watch_interval = 300                     # seconds between alert/lease-sweep passes
+# Which sources are enabled is the registry decision: edit the seed, re-run
+# python3 -m research_gateway.registry.load --load, and restart the gateway
+# (source rows and rate policies are read at startup).
 
 # Secret names expected by the enabled sources (values come from the environment):
 #   openaire         -> RESEARCH_GATEWAY_SECRET_OPENAIRE_CLIENT_ID / _CLIENT_SECRET

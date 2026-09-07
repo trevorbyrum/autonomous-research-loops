@@ -5,13 +5,15 @@ from ..core.canonical import make_record
 from .base import AdapterError, Client, check
 
 SOURCE_ID = "fred"
+SMOKE = {'capability': 'data', 'params': {'series': 'GDP', 'limit': 1}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("data",)
 BASE = "https://api.stlouisfed.org/fred"
 ATTRIBUTION = "Source: FRED, Federal Reserve Bank of St. Louis"
 
 
 def data(client: Client, params: dict) -> dict:
-    """params: series (required), start, end, limit, include_meta."""
+    """params: series (required), start, end, limit. Series metadata is ALWAYS fetched: its notes
+    are where FRED flags third-party restrictions, and skipping that check is not an option (D-23)."""
     series_id = (params or {}).get("series")
     if not series_id:
         raise AdapterError("fred.data needs 'series'")
@@ -27,13 +29,12 @@ def data(client: Client, params: dict) -> dict:
         return {"identity": f"series:fred:{series_id}", "records": []}
     obs = [(o.get("date"), o.get("value")) for o in (resp.json or {}).get("observations", [])]
     meta, series_payload = {}, None
-    if params.get("include_meta", True):
-        m = client.get(SOURCE_ID, "data", f"{BASE}/series", params={**common, "series_id": series_id},
-                       identity=f"series:fred:{series_id}")
-        if m.ok:
-            series_payload = m.json
-            s = ((m.json or {}).get("seriess") or [{}])[0]
-            meta = {k: s.get(k) for k in ("title", "units", "frequency", "seasonal_adjustment", "last_updated", "notes")}
+    m = client.get(SOURCE_ID, "data", f"{BASE}/series", params={**common, "series_id": series_id},
+                   identity=f"series:fred:{series_id}")
+    if m.ok:
+        series_payload = m.json
+        s = ((m.json or {}).get("seriess") or [{}])[0]
+        meta = {k: s.get(k) for k in ("title", "units", "frequency", "seasonal_adjustment", "last_updated", "notes")}
     rec = make_record(identity=f"series:fred:{series_id}", kind="series", source_id=SOURCE_ID, title=meta.get("title"),
                       links=[f"https://fred.stlouisfed.org/series/{series_id}"], attribution=ATTRIBUTION,
                       extra={"units": meta.get("units"), "frequency": meta.get("frequency"), "observations": obs,

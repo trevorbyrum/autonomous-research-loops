@@ -6,6 +6,7 @@ from ..core.identity import normalize_doi
 from .base import Client, check
 
 SOURCE_ID = "datacite"
+SMOKE = {'capability': 'resolve', 'identity': 'doi:10.7910/DVN/OY6CBK'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("find", "resolve")
 SCHEMES = ("doi",)
 AGENCIES = ("DataCite",)

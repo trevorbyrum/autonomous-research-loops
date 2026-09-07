@@ -32,10 +32,12 @@ class EnqueueContention(RuntimeError):
     """Retryable: an identical job kept racing this one to completion."""
 
 
-def payload_hash(request_type: str, payload: dict, commercial: bool = False) -> str:
-    """Identity of a job for in-flight dedup; the commercial flag is part of it because it
-    changes which lanes may run (R-8), so a personal and a commercial twin never share a result."""
-    canon = json.dumps({"t": request_type, "p": payload, "c": bool(commercial)}, sort_keys=True, separators=(",", ":"))
+def payload_hash(request_type: str, payload: dict, commercial: bool = False, client_id: str = "") -> str:
+    """Identity of a job for in-flight dedup. The commercial flag is part of it because it changes
+    which lanes may run (R-8); the client is part of it because a job, its result and its call
+    rows belong to one client — two clients asking the same thing get two audited jobs (D-23)."""
+    canon = json.dumps({"t": request_type, "p": payload, "c": bool(commercial), "cl": client_id},
+                       sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canon.encode()).hexdigest()
 
 
@@ -44,7 +46,7 @@ def enqueue(conn, request_type: str, payload: dict, *, client_id: str, priority:
     """Returns (job id, created). created=False means an identical job is already in flight."""
     if request_type not in REQUEST_TYPES:
         raise ValueError(f"unknown request type {request_type!r}")
-    h = payload_hash(request_type, payload, commercial)
+    h = payload_hash(request_type, payload, commercial, client_id)
     in_flight ="SELECT id FROM gateway.jobs WHERE request_type = %s AND payload_hash = %s AND status IN ('queued','running')"
     # The in-flight twin can finish between our unique-violation and the re-read; then we simply insert again,
     # backing off a little each time, and give up with a retryable error only after a bounded run of flaps.
@@ -148,15 +150,47 @@ class Worker(threading.Thread):
         self.error: str | None = None
 
     def run(self) -> None:
-        try:
-            with self._connect() as conn:
-                while not self._stop_event.is_set():
-                    if run_once(conn, self._handlers, self._make_client):
-                        self.processed += 1
-                    else:
-                        time.sleep(self._poll)
-        except Exception as e:  # surfaced to the supervisor via .error
-            self.error = f"{type(e).__name__}: {e}"
+        """A worker survives its connection: on any failure it reconnects with backoff and keeps
+        claiming until stopped (D-23). The abandoned job it may have held is reclaimed by the
+        lease sweep. `.error` holds the most recent failure for the status page."""
+        backoff = 1.0
+        while not self._stop_event.is_set():
+            try:
+                with self._connect() as conn:
+                    self.error = None
+                    backoff = 1.0
+                    while not self._stop_event.is_set():
+                        if run_once(conn, self._handlers, self._make_client):
+                            self.processed += 1
+                        else:
+                            self._stop_event.wait(self._poll)
+            except Exception as e:
+                self.error = f"{type(e).__name__}: {e}"
+                self._stop_event.wait(backoff)
+                backoff = min(backoff * 2, 60.0)
+
+
+RECLAIM_AFTER_MINUTES = 30
+MAX_ATTEMPTS = 3
+
+
+def reclaim_stale(conn, *, after_minutes: int = RECLAIM_AFTER_MINUTES) -> tuple[int, int]:
+    """Jobs stuck `running` past the lease (a worker died mid-job) go back to `queued`, up to
+    MAX_ATTEMPTS; beyond that they fail with a visible reason. Returns (requeued, failed) (D-23)."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE gateway.jobs SET status = 'queued', started_at = NULL, attempts = attempts + 1 "
+            "WHERE status = 'running' AND started_at < now() - make_interval(mins => %s) AND attempts < %s "
+            "RETURNING id", (after_minutes, MAX_ATTEMPTS - 1))
+        requeued = len(cur.fetchall())
+        cur.execute(
+            "UPDATE gateway.jobs SET status = 'failed', finished_at = now(), error_class = 'outage', "
+            "result = %s WHERE status = 'running' AND started_at < now() - make_interval(mins => %s) "
+            "AND attempts >= %s RETURNING id",
+            (json.dumps({"error": f"abandoned by a dead worker {MAX_ATTEMPTS} times"}), after_minutes, MAX_ATTEMPTS - 1))
+        failed = len(cur.fetchall())
+    conn.commit()
+    return requeued, failed
 
 
 def stats(conn) -> dict[str, int]:

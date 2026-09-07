@@ -22,7 +22,8 @@ DOMAINS = {"finance", "market", "social", "management", "ai-ml", "software", "bi
 OTHER = "other"
 RECENT_DAYS = 30
 FIND_KINDS = ("article", "dataset", "venue", "repository")   # venue/repository come from the local index (§8)
-FIND_KWARGS = ("limit", "year_from_", "kind", "domain")
+CURSOR_PARAMS = ("cursor", "page", "offset", "offset_mark")  # whichever of these an adapter pages by
+NEXT_KEYS = ("next_cursor", "next_page", "next_offset", "next_offset_mark")
 
 
 @dataclass
@@ -120,16 +121,39 @@ class Router:
                 out.append(sid)
         return out
 
+    def _members(self, record: dict) -> list[dict]:
+        """Every provenance member of a (possibly merged) record, with its OWN licence — the lead
+        record's licence never speaks for a member's (D-23)."""
+        provenance = record.get("provenance")
+        if not provenance:
+            return [{"source_id": record.get("source_id"), "license": record.get("license"), "raw": record.get("raw")}]
+        return [{"source_id": p.get("source_id"),
+                 "license": p.get("license") if "license" in p else record.get("license"),
+                 "raw": p.get("raw")} for p in provenance]
+
     def record_allowed(self, record: dict, payload: dict) -> bool:
-        """R-8 for one record (used for cache hits too, so a personal-mode cache never leaks
-        into a commercial answer)."""
-        src = self.sources.get(record.get("source_id"), {})
-        return licenses.commercially_usable(src, record, payload)
+        """R-8 for one record: EVERY member must pass (used for cache hits too, so a
+        personal-mode cache — or a merge led by an allowed source — never leaks a denied
+        member into a commercial answer)."""
+        if not payload.get("commercial"):
+            return True
+        if record.get("third_party_restricted"):
+            return False  # e.g. FRED series flagged by the source as carrying third-party terms
+        return all(licenses.commercially_usable(self.sources.get(m["source_id"], {}),
+                                                {"kind": record.get("kind"), "license": m["license"]}, payload)
+                   for m in self._members(record))
 
     def persistable_sources(self, record: dict) -> set[str]:
-        """Provenance members whose source lets the gateway keep their raw payload (§6)."""
-        return {p.get("source_id") for p in record.get("provenance") or [{"source_id": record.get("source_id")}]
-                if licenses.redistributable(self.sources.get(p.get("source_id"), {}), record)}
+        """Provenance members whose source and OWN licence let the gateway keep their raw payload (§6)."""
+        return {m["source_id"] for m in self._members(record)
+                if licenses.redistributable(self.sources.get(m["source_id"], {}),
+                                            {"kind": record.get("kind"), "license": m["license"]})}
+
+    def redistributable_all(self, record: dict) -> bool:
+        """True only when every member may be kept: anything less caches in memory for ≤ 1 hour (§6)."""
+        return all(licenses.redistributable(self.sources.get(m["source_id"], {}),
+                                            {"kind": record.get("kind"), "license": m["license"]})
+                   for m in self._members(record))
 
     # ------------------------------------------------------------ planning
     def plan(self, payload: dict, *, agency: str | None = None) -> Plan:
@@ -237,7 +261,20 @@ def _call_find(mod, client: Client, payload: dict) -> dict:
     params = inspect.signature(mod.find).parameters
     kwargs = {"limit": payload.get("limit") or 20, "year_from_": payload.get("year_from"),
               "kind": payload.get("kind"), "domain": resolve_domain(payload.get("domain"))}
+    cursor = (payload.get("cursors") or {}).get(getattr(mod, "SOURCE_ID", ""))
+    if cursor is not None:  # §6 continuation: the caller hands back what the lane reported as `next`
+        for name in CURSOR_PARAMS:
+            if name in params:
+                kwargs[name] = cursor
+                break
     return mod.find(client, payload.get("query") or "", **{k: v for k, v in kwargs.items() if k in params and v is not None})
+
+
+def _lane_next(res: dict):
+    for key in NEXT_KEYS:
+        if res.get(key) is not None:
+            return res[key]
+    return None
 
 
 def _log_cache_hit(client: Client, request_type: str, identity: str | None, query: str | None) -> None:
@@ -262,7 +299,7 @@ def _run_lane(router: Router, rt: str, lane: Lane, payload: dict, client: Client
     if rt == "find":
         res = _call_find(mod, client, payload)
     elif rt == "resolve":
-        if lane.source_id != lane.source_id.strip() or "resolve" not in getattr(mod, "CAPABILITIES", ()):
+        if "resolve" not in getattr(mod, "CAPABILITIES", ()):
             items = mod.enrich(client, payload["identity"], "oa_location").get("items") or []
             res = {"records": [dict(items[0], kind="article")] if items else []}
         else:
@@ -276,12 +313,22 @@ def _run_lane(router: Router, rt: str, lane: Lane, payload: dict, client: Client
     else:  # fetch
         fparams = {k: v for k, v in (payload.get("params") or {}).items() if k in inspect.signature(mod.fetch).parameters}
         res = mod.fetch(client, payload["target"], **fparams)
-        if "content" in res:
-            out["content"], out["content_type"] = res["content"], res.get("content_type")
+        if "content" in res and res["content"] is not None:
+            # a download is authorized BEFORE its bytes leave the gateway: the fetched item's own
+            # licence (reported by the adapter) must pass R-8, exactly like a record would (D-23)
+            pseudo = {"kind": "file", "source_id": lane.source_id, "license": res.get("license")}
+            if router.record_allowed(pseudo, payload):
+                out["content"], out["content_type"] = res["content"], res.get("content_type")
+            else:
+                out["facts"].append(f"{lane.source_id}: download withheld — licence "
+                                    f"{res.get('license') or 'unknown'} is not usable commercially (R-8)")
     if not isinstance(res, dict):
         raise TypeError(f"adapter returned {type(res).__name__}, not a result dict")
     if res.get("capability_fact"):
         out["facts"].append(f"{lane.source_id}: {res['capability_fact']}")
+    nxt = _lane_next(res)
+    if nxt is not None:
+        out.setdefault("next", {})[lane.source_id] = nxt
     return _valid_records(res.get("records"), out["facts"], lane.source_id)
 
 
@@ -306,7 +353,10 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
     out = {"request_type": rt, "records": [], "facts": [], "lanes": [], "domain_resolved": client.domain_resolved}
     agency = None
     if rt == "resolve" and ident.parse(payload.get("identity") or "")[0] == "doi":
-        hit = cache.get_record(payload["identity"]) if cache is not None else None
+        try:
+            hit = cache.get_record(payload["identity"]) if cache is not None else None
+        except Exception:
+            hit = None
         if hit and router.record_allowed(hit, payload):
             _log_cache_hit(client, rt, payload["identity"], None)
             return {**out, "records": [hit], "cache_hit": True}
@@ -338,41 +388,77 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
             out["facts"].append(f"{lane.source_id}: refused ({e})")
             out["lanes"].append(entry)
             continue
+        except calllog.AuditError:
+            raise  # a broken call log fails the whole job: nothing runs unaudited (I-6, D-23)
         except Exception as e:  # anything else a lane throws is a source fact, never a dead job
             entry["error"] = f"{type(e).__name__}: {e}"[:300]
             out["facts"].append(f"{lane.source_id}: malformed response ({type(e).__name__}) — treated as unavailable (R-10)")
             out["lanes"].append(entry)
             continue
         out["lanes"].append(entry)
+        if entry.get("count") is not None and lane.source_id in (out.get("next") or {}):
+            entry["next"] = out["next"][lane.source_id]
         records.extend(got)
         if rt in ("resolve", "enrich") and got:
             break  # primary answered; fallbacks are for failure only
+        if rt == "fetch" and (got or out.get("content") is not None):
+            break  # a fetch that answered never runs again on a fallback lane (D-23)
     records = _drop_unlicensed(records, router, payload, out["facts"])
     if rt == "find":
         records = dedup.cluster(records)
     out["records"] = records
     if cache is not None:
-        for r in records:
-            if rt in ("resolve", "find") and r.get("identity"):
-                src = router.sources.get(r.get("source_id"), {})
-                cache.put_record(r, redistributable=licenses.redistributable(src, r), persist_sources=router.persistable_sources(r))
-        if rt == "find":
-            cache.put_search(cache.search_key(rt, _search_payload(payload)), out)
-    return out
+        try:
+            for r in records:
+                if rt not in ("resolve", "find") or not r.get("identity"):
+                    continue
+                if any(getattr(router.adapters.get(m["source_id"]), "LOCAL", False) for m in router._members(r)):
+                    continue  # index answers came FROM the store; writing them back would erase harvested payloads (D-23)
+                cache.put_record(r, redistributable=router.redistributable_all(r), persist_sources=router.persistable_sources(r))
+            if rt == "find":
+                cache.put_search(cache.search_key(rt, _search_payload(payload)), out)
+        except Exception as e:  # a broken cache degrades to no cache, never a failed request
+            out["facts"].append(f"cache unavailable ({type(e).__name__})")
+    return redact_secrets(out, client.secret_values)
+
+
+STORAGE_STRIPPED = ("raw", "text", "rows", "content", "provenance")
+
+
+def redact_secrets(obj, values: set):
+    """Replace any occurrence of a secret value the client handed out inside strings of the
+    result — some sources echo request parameters back (D-23). Bytes (downloads) are untouched."""
+    if not values:
+        return obj
+    if isinstance(obj, str):
+        for v in values:
+            if v and v in obj:
+                obj = obj.replace(v, "[redacted]")
+        return obj
+    if isinstance(obj, dict):
+        return {k: redact_secrets(v, values) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [redact_secrets(v, values) for v in obj]
+    return obj
 
 
 def redact_for_storage(result: dict) -> dict:
-    """What a persisted job result may hold: never file bytes or full text (I-7).
-    Those are delivered only on the inline path and discarded afterwards."""
+    """What a persisted job result may hold: canonical metadata, links and counts only. Raw
+    payloads, row data, full text and file bytes never enter `gateway.jobs` — persistence with
+    provenance is the cache's job, under the licence rules (§6, I-7, D-23). The inline path
+    delivers the full result and discards it."""
     out = dict(result)
     if "content" in out:
         out["content_bytes"] = len(out["content"] or b"")
         out["content"] = None
     records = []
     for r in out.get("records") or []:
-        if r.get("kind") == "full_text" and r.get("text") is not None:
-            r = {**r, "text": None, "text_chars": len(r["text"])}
-        records.append(r)
+        slim = {k: v for k, v in r.items() if k not in STORAGE_STRIPPED}
+        for key in ("text", "rows"):
+            if r.get(key) is not None:
+                slim[f"{key}_dropped"] = True
+        slim["sources"] = r.get("sources") or [r.get("source_id")]
+        records.append(slim)
     out["records"] = records
     return out
 
