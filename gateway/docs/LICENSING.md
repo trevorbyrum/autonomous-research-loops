@@ -52,6 +52,11 @@ FRED additionally flags series with third-party restrictions per series.
 - A verdict describes the *source's* terms, not the content's. A CC0
   metadata record may describe a copyrighted paper; the gateway returns
   links to content, not the content (`PLAN.md` I-7).
+- A record's `license` field — and each provenance member's — is the CONTENT
+  licence that source reported for the work itself. The licence covering the
+  source's *metadata* is a per-source registry verdict (this document and the
+  seed), never a per-record field: the two answer different questions and the
+  gateway does not conflate them (STATION-CONTRACT.md, 8a).
 - None of this is legal advice. The verdicts are documented readings of
   published terms so that a deployment can make its own decision with the
   evidence in front of it.

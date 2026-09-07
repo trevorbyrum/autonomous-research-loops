@@ -25,6 +25,26 @@ def make_call(gateway: Gateway, client_id: str):
     def call(name: str, args: dict) -> dict:
         if name == "research_status":
             return gateway.status()
+        if name == "research_job":
+            job = gateway.job(int((args or {}).get("job_id") or 0), client_id)
+            return job if job is not None else {"capability_fact": "gateway_error_404", "error": "no such job for this client"}
+        if name == "research_batch":
+            calls = (args or {}).get("calls")
+            if not isinstance(calls, list) or not calls:
+                return {"capability_fact": "gateway_error_400", "error": "calls must be a non-empty array"}
+            if len(calls) > 20:
+                return {"capability_fact": "gateway_error_400", "error": "at most 20 calls per batch"}
+            results = []
+            for entry in calls:
+                tool = (entry or {}).get("tool")
+                if tool not in ("research_resolve", "research_enrich"):
+                    results.append({"tool": tool, "error": "batch entries may only be research_resolve or research_enrich"})
+                    continue
+                try:
+                    results.append({"tool": tool, "result": call(tool, (entry or {}).get("arguments") or {})})
+                except Exception as e:  # one bad entry never sinks its neighbours
+                    results.append({"tool": tool, "error": f"{type(e).__name__}: {e}"})
+            return {"results": results}
         if name not in REQUEST_TOOLS:
             raise LookupError(name)
         if args is not None and not isinstance(args, dict):

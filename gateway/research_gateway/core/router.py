@@ -40,6 +40,14 @@ class Plan:
     lanes: list[Lane] = field(default_factory=list)
     facts: list[str] = field(default_factory=list)   # capability facts (R-8, R-10, refusals)
     domain_resolved: str = OTHER
+    skipped: list[str] = field(default_factory=list)  # lanes that exist but were not dispatched (coverage: not_searched)
+
+
+# coverage-state vocabulary (docs/STATION-CONTRACT.md §2): every lane entry carries one,
+# so "searched and found nothing" is never conflated with "not searched" or "unavailable"
+COVERAGE_OK, COVERAGE_EMPTY = "searched_ok", "searched_empty"
+COVERAGE_SKIPPED, COVERAGE_DOWN = "not_searched", "provider_unavailable"
+COVERAGE_AUTH, COVERAGE_METADATA_ONLY = "auth_failed", "metadata_only"
 
 
 def resolve_domain(domain: str | None) -> str:
@@ -110,6 +118,7 @@ class Router:
             return True
         plan.facts.append(f"{sid}: skipped, commercial verdict {verdict}"
                           + (" (set accept_per_item to include per-item lanes)" if verdict == "per-item" else ""))
+        plan.skipped.append(sid)
         return False
 
     def _domain_lanes(self, kind: str, cap: str, domain: str, exclude: set[str]) -> list[str]:
@@ -381,19 +390,26 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
             return {**hit, "cache_hit": True}
     plan = router.plan(payload, agency=agency)
     out["facts"].extend(plan.facts)
+    if rt == "data":  # a cited table must be reproducible: echo what was asked of which source (8a)
+        out["request"] = {"source": payload.get("source"), "params": payload.get("params") or {}}
     records: list[dict] = []
     for lane in plan.lanes:
         entry = {"source": lane.source_id, "role": lane.role}
         try:
             got = _run_lane(router, rt, lane, payload, client, out)
             entry["count"] = len(got)
+            entry["coverage"] = COVERAGE_OK if got else COVERAGE_EMPTY
+            if rt == "fetch" and (payload.get("params") or {}).get("download") and out.get("content") is None and got:
+                entry["coverage"] = COVERAGE_METADATA_ONLY  # found, but the requested file is not retrievable
         except SourceUnavailable as e:
             entry["error"] = str(e)
+            entry["coverage"] = COVERAGE_AUTH if e.response.status in (401, 403) else COVERAGE_DOWN
             out["facts"].append(f"{lane.source_id}: unavailable ({e.response.error or e.response.status}) — R-10")
             out["lanes"].append(entry)
             continue
         except AdapterError as e:
             entry["error"] = str(e)
+            entry["coverage"] = COVERAGE_SKIPPED  # refused before dispatch (keyless tier, policy)
             out["facts"].append(f"{lane.source_id}: refused ({e})")
             out["lanes"].append(entry)
             continue
@@ -401,6 +417,7 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
             raise  # a broken call log fails the whole job: nothing runs unaudited (I-6, D-23)
         except Exception as e:  # anything else a lane throws is a source fact, never a dead job
             entry["error"] = f"{type(e).__name__}: {e}"[:300]
+            entry["coverage"] = COVERAGE_DOWN
             out["facts"].append(f"{lane.source_id}: malformed response ({type(e).__name__}) — treated as unavailable (R-10)")
             out["lanes"].append(entry)
             continue
@@ -412,6 +429,8 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
             break  # primary answered; fallbacks are for failure only
         if rt == "fetch" and (got or out.get("content") is not None):
             break  # a fetch that answered never runs again on a fallback lane (D-23)
+    for sid in plan.skipped:  # lanes that exist for this request but were never dispatched
+        out["lanes"].append({"source": sid, "role": "skipped", "coverage": COVERAGE_SKIPPED})
     records = _drop_unlicensed(records, router, payload, out["facts"])
     if rt == "find":
         records = dedup.cluster(records)
@@ -473,11 +492,23 @@ def redact_secrets(obj, values: set):
     return redact(obj)
 
 
+PROVENANCE_SUMMARY_FIELDS = ("source_id", "identity", "license", "retrieved_at", "attribution")
+# what a STORED provenance member may say (8a): where a citation came from, under which licence,
+# retrieved when — a whitelist, so a member can never smuggle its raw payload into gateway.jobs.
+# `license` is the member's reported CONTENT licence; per-source METADATA terms are registry
+# policy, documented in docs/LICENSING.md, never a per-record field.
+
+
+def _member_summary(m: dict) -> dict:
+    return {k: m.get(k) for k in PROVENANCE_SUMMARY_FIELDS if m.get(k) is not None} or {"source_id": m.get("source_id")}
+
+
 def redact_for_storage(result: dict) -> dict:
-    """What a persisted job result may hold: canonical metadata, links and counts only. Raw
-    payloads, row data, full text and file bytes never enter `gateway.jobs` — persistence with
-    provenance is the cache's job, under the licence rules (§6, I-7, D-23). The inline path
-    delivers the full result and discards it."""
+    """What a persisted job result may hold: canonical metadata, links, counts, and a whitelisted
+    provenance summary per member (source, identity, licence, retrieved_at — a citation's
+    ingredients, 8a). Raw payloads, row data, full text and file bytes never enter
+    `gateway.jobs` — persistence WITH raw payloads is the cache's job, under the licence rules
+    (§6, I-7, D-23). The inline path delivers the full result and discards it."""
     out = dict(result)
     if "content" in out:
         out["content_bytes"] = len(out["content"] or b"")
@@ -488,6 +519,9 @@ def redact_for_storage(result: dict) -> dict:
         if isinstance(v, dict):
             cleaned = {}
             for k, inner in v.items():
+                if k == "provenance" and isinstance(inner, list):
+                    cleaned[k] = [_member_summary(m) for m in inner if isinstance(m, dict)]
+                    continue
                 if k in STORAGE_STRIPPED:
                     if k in ("text", "rows") and inner is not None:
                         cleaned[f"{k}_dropped"] = True

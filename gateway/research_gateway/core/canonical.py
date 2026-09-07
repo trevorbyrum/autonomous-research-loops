@@ -5,6 +5,7 @@ relevant slice of it), kept so nothing is lost to normalisation.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 KINDS = ("article", "dataset", "software", "document", "series", "citation", "oa_location", "full_text", "file",
@@ -30,6 +31,9 @@ def make_record(*, identity: str, kind: str, source_id: str, title: str | None =
         "links": links or [],
         "license": license,
         "attribution": attribution,
+        # when THIS source's answer was obtained — a citation's retrieval date, never a
+        # verification date (verification is the reviewing agent's act, STATION-CONTRACT.md)
+        "retrieved_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
     if extra:
         rec.update({k: v for k, v in extra.items() if k not in rec})

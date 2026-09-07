@@ -4,11 +4,23 @@ Mounted by a station via --mcp-config exactly like the read-only GitHub tool:
   {"research": {"type": "stdio", "command": "python3", "args": ["-m", "research_gateway.clients.mcp_stdio"]}}
 Environment: RESEARCH_GATEWAY_URL (default http://127.0.0.1:8765) and
 RESEARCH_GATEWAY_TOKEN or RESEARCH_GATEWAY_TOKEN_FILE. Newline-delimited JSON-RPC 2.0; no third-party deps.
+
+Topic binding (docs/STATION-CONTRACT.md): when the runner exports RESEARCH_TOPIC_*
+variables, this dispatcher INJECTS the topic's policy into every call and REJECTS
+conflicting arguments — the agent cannot loosen or tighten the operator's licence
+posture. When RESEARCH_LOOP_RESEARCH_ACTIVITY names a file, degraded coverage states
+and failed calls are appended there for the chassis's saturation gate; when
+RESEARCH_LOOP_TOPIC_DIR is set, downloaded bytes are saved under <topic>/downloads/
+instead of being reported as a bare byte count.
 """
 from __future__ import annotations
 
 import json
+import os
+import re
 import sys
+import time
+from pathlib import Path
 
 from .http_client import GatewayClient, from_env
 
@@ -17,19 +29,39 @@ COMMON = {"domain": {**STR, "description": "finance|market|social|management|ai-
           "commercial": {**BOOL, "description": "true when the topic's output may be used commercially: deny/unknown sources are skipped"},
           "accept_per_item": {**BOOL, "description": "with commercial=true, also use per-item-licensed sources and keep only allow-listed records"},
           "topic_id": STR}
+INSTEAD = ("USE THIS instead of calling source APIs (Crossref, OpenAlex, Semantic Scholar, DOAJ, doi.org, ...) "
+           "directly with curl/WebFetch: calls here are budgeted, licence-checked, deduplicated, logged, and "
+           "carry the provenance a citation needs. ")
 TOOLS = [
-    ("research_find", "Search articles and datasets across the registry's lanes for a domain; deduplicated, with provenance and capability facts.",
-     {"query": STR, "kind": {**STR, "description": "article|dataset (default both)"}, "limit": INT, "year_from": INT,
-      "published_after": {**STR, "description": "ISO date; within 30 days skips the local index"}, **COMMON}, ["query"]),
-    ("research_resolve", "Look up one identity (doi:, arxiv:, issn:, hf:, openml:, ...) at the registry that owns it, with fallbacks.",
+    ("research_find", "Search scholarly articles and datasets across the registered sources for a domain. " + INSTEAD +
+     "`limit` applies PER SOURCE LANE before dedup. Every lane in the answer reports `coverage` "
+     "(searched_ok|searched_empty|not_searched|provider_unavailable|auth_failed) — searched-and-empty is never the same "
+     "as unavailable. To continue a search, pass the answer's `next` map back as `cursors`.",
+     {"query": STR, "kind": {**STR, "description": "article|dataset|venue|repository (default: articles and datasets)"},
+      "limit": INT, "year_from": INT,
+      "published_after": {**STR, "description": "ISO date; within 30 days skips the local index"},
+      "cursors": {**OBJ, "description": "continuation: the `next` map from a previous research_find answer, unchanged"},
+      **COMMON}, ["query"]),
+    ("research_resolve", "Look up one identity (doi:, arxiv:, issn:, hf:, openml:, ...) at the registry that owns it, with fallbacks. " + INSTEAD,
      {"identity": STR, **COMMON}, ["identity"]),
-    ("research_enrich", "Citations, references, open-access location or full text link for an identity.",
+    ("research_enrich", "Citations, references, open-access location or full text link for an identity. " + INSTEAD,
      {"identity": STR, "what": {**STR, "description": "citations|references|oa_location|full_text|metadata"}, **COMMON}, ["identity", "what"]),
-    ("research_fetch", "List a dataset's or document's files (or download one) from a registry source: doi:, hf:, kaggle:, openml:, socrata:, govinfo:, url:.",
+    ("research_fetch", "List a dataset's or document's files (or download one) from a registry source: doi:, hf:, kaggle:, "
+     "openml:, socrata:, govinfo:, url:. " + INSTEAD + "Downloads are saved under the topic's downloads/ directory when one "
+     "is bound (the saved path is returned), never dumped into context.",
      {"target": STR, "params": {**OBJ, "description": "adapter options, e.g. {\"download\": true, \"file_id\": 123}"}, **COMMON}, ["target"]),
-    ("research_data", "A statistical series/table from exactly one source: fred|bea|census|bls|bis|ecb, with source-native params.",
+    ("research_data", "A statistical series/table from exactly one source: fred|bea|census|bls|bis|ecb, with source-native "
+     "params. " + INSTEAD + "The answer echoes the request (source + params) so the cited table is reproducible.",
      {"source": STR, "params": OBJ, **COMMON}, ["source", "params"]),
     ("research_status", "Gateway health, breaker states, budgets, cache and queue counts.", {}, []),
+    ("research_job", "Fetch a previously returned pending/async job by its job_id (jobs are visible only to the client that created them).",
+     {"job_id": INT}, ["job_id"]),
+    ("research_batch", "Run up to 20 independent research_resolve / research_enrich calls in one request. Each entry is "
+     "{\"tool\": name, \"arguments\": {...}}; results and failures come back per entry, in order. Prefer this over "
+     "sequential single calls for identifier lists.",
+     {"calls": {"type": "array", "items": {"type": "object"},
+                "description": "up to 20 entries of {\"tool\": \"research_resolve\"|\"research_enrich\", \"arguments\": {...}}"}},
+     ["calls"]),
 ]
 
 
@@ -39,6 +71,78 @@ def tool_specs() -> list[dict]:
 
 REQUEST_TOOLS = {"research_find": "find", "research_resolve": "resolve", "research_enrich": "enrich",
                  "research_fetch": "fetch", "research_data": "data"}
+BATCH_TOOLS = ("research_resolve", "research_enrich")
+BATCH_LIMIT = 20
+
+# coverage states that the chassis's saturation gate cares about (STATION-CONTRACT.md §2)
+DEGRADED_COVERAGE = ("not_searched", "provider_unavailable", "auth_failed", "metadata_only")
+
+POLICY_ENV = {"topic_id": "RESEARCH_TOPIC_ID", "commercial": "RESEARCH_TOPIC_COMMERCIAL",
+              "accept_per_item": "RESEARCH_TOPIC_ACCEPT_PER_ITEM", "domain": "RESEARCH_TOPIC_DOMAIN"}
+ENFORCED = ("topic_id", "commercial", "accept_per_item")   # injected; a conflicting argument is an error
+ADVISORY = ("domain",)                                     # injected only when the agent said nothing
+
+
+class PolicyError(Exception):
+    """An agent argument conflicts with the topic's operator-bound research policy."""
+
+
+def policy_from_env(environ: dict | None = None) -> dict:
+    env = os.environ if environ is None else environ
+    policy: dict = {}
+    for field, var in POLICY_ENV.items():
+        raw = env.get(var)
+        if raw is None or raw == "":
+            continue
+        if field in ("commercial", "accept_per_item"):
+            policy[field] = raw.strip().lower() in ("1", "true", "yes")
+        else:
+            policy[field] = raw
+    return policy
+
+
+def apply_policy(args: dict, policy: dict) -> dict:
+    """STATION-CONTRACT.md §1: bound fields are injected; a conflicting agent argument is
+    rejected in-band, never silently overridden in either direction. Advisory fields fill
+    only when absent. No policy (operator CLI, ad-hoc use) = unchanged behaviour."""
+    if not policy:
+        return args
+    out = dict(args)
+    for field in ENFORCED:
+        if field not in policy:
+            continue
+        if field in out and out[field] is not None and out[field] != policy[field]:
+            raise PolicyError(f"policy-bound: {field} is set by the topic, not the agent")
+        out[field] = policy[field]
+    for field in ADVISORY:
+        if field in policy and out.get(field) is None:
+            out[field] = policy[field]
+    return out
+
+
+def record_activity(path: str | None, tool: str, args: dict, result: dict | None, error: str | None = None) -> None:
+    """Append degraded coverage states (and outright failures) for the chassis. Best-effort by
+    design: a broken activity file must never break research itself."""
+    if not path:
+        return
+    lines = []
+    at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    subject = args.get("query") or args.get("identity") or args.get("target") or args.get("source") or ""
+    if error is not None:
+        lines.append({"at": at, "source": "gateway", "request_type": REQUEST_TOOLS.get(tool, tool),
+                      "coverage": "provider_unavailable", "query_or_identity": subject, "detail": error[:200]})
+    for lane in (result or {}).get("lanes") or []:
+        if lane.get("coverage") in DEGRADED_COVERAGE:
+            lines.append({"at": at, "source": lane.get("source"), "request_type": REQUEST_TOOLS.get(tool, tool),
+                          "coverage": lane["coverage"], "query_or_identity": subject})
+    if not lines:
+        return
+    try:
+        with open(path, "a", encoding="utf-8") as fh:
+            for line in lines:
+                fh.write(json.dumps(line, separators=(",", ":")) + "\n")
+    except OSError:
+        pass
 
 
 def strip_bytes(out: dict) -> dict:
@@ -48,13 +152,61 @@ def strip_bytes(out: dict) -> dict:
     return out
 
 
-def call_tool(client: GatewayClient, name: str, args: dict) -> dict:
+def deliver_content(out: dict, target: str, topic_dir: str | None) -> dict:
+    """With a bound topic, downloaded bytes land under <topic>/downloads/ and the path is
+    returned (8a — the CLI's `fetch --out` behaviour, station-side); otherwise the byte
+    count alone is reported, exactly as before."""
+    if not isinstance(out.get("content"), (bytes, bytearray)):
+        return out
+    if not topic_dir:
+        return strip_bytes(out)
+    directory = Path(topic_dir) / "downloads"
+    directory.mkdir(parents=True, exist_ok=True)
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", target or "download").strip("_")[-80:] or "download"
+    dest = directory / f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{safe}"
+    dest.write_bytes(out["content"])
+    return {**out, "content": None, "saved_to": str(dest), "content_bytes": len(out["content"])}
+
+
+def call_tool(client: GatewayClient, name: str, args: dict, *, policy: dict | None = None,
+              activity: str | None = None, topic_dir: str | None = None) -> dict:
     """Tool dispatch for the stdio server: everything goes over HTTP to the gateway."""
     if name == "research_status":
         return client.status()
+    if name == "research_job":
+        return client.job(int(args["job_id"]))
+    if name == "research_batch":
+        calls = args.get("calls")
+        if not isinstance(calls, list) or not calls:
+            raise ValueError("calls must be a non-empty array")
+        if len(calls) > BATCH_LIMIT:
+            raise ValueError(f"at most {BATCH_LIMIT} calls per batch")
+        results = []
+        for i, entry in enumerate(calls):
+            tool = (entry or {}).get("tool")
+            sub_args = (entry or {}).get("arguments") or {}
+            if tool not in BATCH_TOOLS:
+                results.append({"tool": tool, "error": f"batch entries may only be {' or '.join(BATCH_TOOLS)}"})
+                continue
+            try:
+                results.append({"tool": tool,
+                                "result": call_tool(client, tool, sub_args, policy=policy,
+                                                    activity=activity, topic_dir=topic_dir)})
+            except Exception as e:  # one bad entry never sinks its neighbours
+                results.append({"tool": tool, "error": f"{type(e).__name__}: {e}"})
+        return {"results": results}
     if name not in REQUEST_TOOLS:
         raise LookupError(name)
-    return strip_bytes(client.request(REQUEST_TOOLS[name], args))
+    bound = apply_policy(args, policy or {})
+    try:
+        out = client.request(REQUEST_TOOLS[name], bound)
+    except Exception as e:
+        record_activity(activity, name, bound, None, error=f"{type(e).__name__}: {e}")
+        raise
+    record_activity(activity, name, bound, out)
+    if name == "research_fetch":
+        return deliver_content(out, str(bound.get("target") or ""), topic_dir)
+    return strip_bytes(out)
 
 
 def handle(msg: dict, call) -> dict:
@@ -83,7 +235,10 @@ def handle(msg: dict, call) -> dict:
 
 def main() -> int:
     client = from_env()
-    call = lambda name, args: call_tool(client, name, args)  # noqa: E731 - the one binding of tools to transport
+    policy = policy_from_env()
+    activity = os.environ.get("RESEARCH_LOOP_RESEARCH_ACTIVITY")
+    topic_dir = os.environ.get("RESEARCH_LOOP_TOPIC_DIR")
+    call = lambda name, args: call_tool(client, name, args, policy=policy, activity=activity, topic_dir=topic_dir)  # noqa: E731
     for line in sys.stdin:
         line = line.strip()
         if not line:
