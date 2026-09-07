@@ -27,5 +27,5 @@ dist/
 # endpoints file) — must never enter the public repo, tracked or not
 *.env
 graphrag.env
-SOURCES.md
+/SOURCES.md
 private/
