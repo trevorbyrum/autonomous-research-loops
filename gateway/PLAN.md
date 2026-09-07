@@ -63,6 +63,29 @@ records; the loops judge.
   registry's sources with their links, key instructions, licence and commercial
   verdict — generated from the registry, then committed; a drift check fails if
   they diverge.
+- **I-10 No placeholders.** Nothing merges with `TODO`, `FIXME`, `XXX`,
+  `NotImplementedError`, `pass  # stub`, "placeholder", or a function whose body
+  only raises/returns a dummy. Every shipped function does its job; every
+  declared capability works against its fixture. Docs may be short; they may
+  not be lorem-ipsum.
+- **I-11 ≤ 1,500 lines per file, hard.** Enforced by a test
+  (`tests/test_file_limits.py`) that fails the suite. Split by concern, never by
+  arbitrary cut.
+- **I-12 Simplest thing that works.** Standard library first; one small HTTP
+  framework and one Postgres driver are the only third-party runtime
+  dependencies allowed in v1. No abstraction with a single implementation except
+  the adapter interface and the secrets backend. No configuration knob without
+  a documented reason. If a 40-line function does what a class hierarchy would,
+  ship the function.
+- **I-13 Independent review each phase.** Before a phase is declared done, a
+  separate agent on a different model (Terra — `gpt-5.6-terra` via Codex, or
+  the nearest available) reviews the diff against this plan with the review
+  brief in §13a. Findings are fixed or logged in §16 with a reason; the phase's
+  acceptance record names the reviewer and the commit reviewed.
+- **I-14 Tests and logs are part of every phase**, not a later phase: each
+  module ships with its tests; each externally-observable action writes a
+  `gateway.calls` or structured log line. A phase with code but no tests is
+  not done.
 
 ---
 
@@ -209,6 +232,12 @@ later as personal-only), the keep-on-hand set (73 rows in `source_decisions`).
 Inputs: `request_type`, `identity` (if any), `kind_filter`, `domain` (explicit
 from caller; never inferred in v1), `commercial` flag, breaker states, budgets.
 
+Domains in v1: `finance`, `market`, `social`, `management`, `ai-ml`, `software`,
+`biomed`, and **`other`**. `other` is the permissive catch-all: base lanes plus
+**every** domain lane the commercial flag and budgets allow. A request with no
+domain, or with a domain the registry does not know, is treated as `other` —
+mis-tagging costs extra calls, never missed coverage (D-12).
+
 R-1  `resolve` with a DOI → look up registration agency (cached) →
      Crossref-registered: Crossref; DataCite-registered: DataCite; else OpenAIRE.
      Fallback on failure/breaker: substitution group {Crossref, OpenAIRE, Unpaywall}.
@@ -235,6 +264,9 @@ R-8  `commercial=true` removes every lane whose verdict ≠ allow, and removes
      per-item lanes unless the caller opts in with `accept_per_item=true`, in
      which case records lacking an allow-listed licence are dropped.
 R-9  Domain lanes ADD to base lanes; nothing ever suppresses a base lane.
+R-9a `domain=other` (or absent/unknown) → base lanes + all domain lanes, filtered
+     only by R-8 and R-10. Logged with `domain_resolved=other` so mis-tagging is
+     visible in the call log.
 R-10 A source with an open breaker or exhausted budget is skipped and the job
      result records `capability_fact` for it; the job still completes.
 
@@ -330,6 +362,9 @@ Plus README, ARCHITECTURE, OPERATIONS, PUBLIC-PRIVATE, LICENSING.
 - [ ] no data files (CSV/JSONL/parquet) under `gateway/` except test fixtures ≤ 50 KB
 - [ ] `gateway/docs/SOURCES.md` matches `registry/docs.py` output
 - [ ] no adapter exists for a source that is not in `seed/sources.yaml`
+- [ ] `git grep -nE 'TODO|FIXME|XXX|NotImplementedError|placeholder|lorem' -- gateway/ research_gateway/ tests/` returns nothing (I-10)
+- [ ] `pytest tests/test_file_limits.py` passes: no file > 1,500 lines (I-11)
+- [ ] `pytest -q` green, and every module touched in the commit has a test file touched or added (I-14)
 
 ---
 
@@ -384,6 +419,25 @@ presence expectations within ±5 %; container deployed on the tower; ntfy alert
 fires on a forced breaker; loops switched from direct web access to the tool
 for one topic, iteration completes, call log shows only gateway-routed calls.
 
+### 13a. Independent review gate (every phase; I-13)
+
+Reviewer: a Codex-backed agent on `gpt-5.6-terra` (fallback: `gpt-5.6-sol`),
+given the phase's diff, this plan, and this brief. It must answer, with file
+and line references:
+1. Does any code call a source outside `adapters/`, or an adapter without a
+   registry row? (I-1, I-2)
+2. Is there any placeholder, stub, dead branch, or unreachable capability? (I-10)
+3. Any file over 1,500 lines, or a module that should be split by concern? (I-11)
+4. Anything over-engineered — abstraction with one implementation, config with
+   no consumer, framework where the stdlib would do? (I-12)
+5. Which acceptance checks in §13 for this phase are NOT actually exercised by
+   a test? Name each.
+6. Does anything under `gateway/` violate the public/private checklist (§12)?
+7. Where does the code contradict this plan? Quote both.
+Findings are resolved in the same phase or logged in §16 with a reason. The
+reviewer's report is saved to `private/reviews/<phase>-<commit>.md` (not
+public) and its commit hash recorded in the phase's acceptance note.
+
 ---
 
 ## 14. Session checklist (anti-drift; run at the start of every gateway session)
@@ -401,6 +455,9 @@ for one topic, iteration completes, call log shows only gateway-routed calls.
    commented reference in `harvest/openalex_snapshot.py` (D-2).
 9. State in the session log which phase/check is being worked; if the task
    isn't in §13, it's scope creep — stop and record a decision.
+10. Placeholder grep (I-10) empty; file-limit test (I-11) green; every changed
+    module has tests (I-14).
+11. Before declaring a phase done: run the §13a review, record reviewer + commit.
 
 ---
 
@@ -427,3 +484,5 @@ for one topic, iteration completes, call log shows only gateway-routed calls.
 - **D-9 (2026-09-07)** Links not papers; topic findings stay in topic results; open-licensed cited full texts may be cached at completion alongside the knowledge-graph ingest.
 - **D-10 (2026-09-07)** Working set fixed as §3 (28 sources) after operator approval of the loop's Part B batch.
 - **D-11 (2026-09-07)** `private/` is the gitignored parking folder; SOURCES.md to be purged from public history by the operator.
+- **D-12 (2026-09-07)** Add a permissive catch-all domain `other` (= base + all domain lanes); absent/unknown domains resolve to it, so mis-tagging never loses coverage.
+- **D-13 (2026-09-07)** Engineering rules, hard: no placeholders in shipped code (I-10); ≤ 1,500 lines per file (I-11); simplest thing that works (I-12); independent Terra/Codex review each phase (I-13); tests and logs ship with every module (I-14).
