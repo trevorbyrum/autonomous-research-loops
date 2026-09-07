@@ -28,3 +28,4 @@ dist/
 *.env
 graphrag.env
 SOURCES.md
+private/
