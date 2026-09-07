@@ -32,8 +32,10 @@ class EnqueueContention(RuntimeError):
     """Retryable: an identical job kept racing this one to completion."""
 
 
-def payload_hash(request_type: str, payload: dict) -> str:
-    canon = json.dumps({"t": request_type, "p": payload}, sort_keys=True, separators=(",", ":"))
+def payload_hash(request_type: str, payload: dict, commercial: bool = False) -> str:
+    """Identity of a job for in-flight dedup; the commercial flag is part of it because it
+    changes which lanes may run (R-8), so a personal and a commercial twin never share a result."""
+    canon = json.dumps({"t": request_type, "p": payload, "c": bool(commercial)}, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canon.encode()).hexdigest()
 
 
@@ -42,8 +44,8 @@ def enqueue(conn, request_type: str, payload: dict, *, client_id: str, priority:
     """Returns (job id, created). created=False means an identical job is already in flight."""
     if request_type not in REQUEST_TYPES:
         raise ValueError(f"unknown request type {request_type!r}")
-    h = payload_hash(request_type, payload)
-    in_flight = "SELECT id FROM gateway.jobs WHERE request_type = %s AND payload_hash = %s AND status IN ('queued','running')"
+    h = payload_hash(request_type, payload, commercial)
+    in_flight ="SELECT id FROM gateway.jobs WHERE request_type = %s AND payload_hash = %s AND status IN ('queued','running')"
     # The in-flight twin can finish between our unique-violation and the re-read; then we simply insert again,
     # backing off a little each time, and give up with a retryable error only after a bounded run of flaps.
     for attempt in range(ENQUEUE_ATTEMPTS):

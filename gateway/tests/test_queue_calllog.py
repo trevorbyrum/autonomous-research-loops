@@ -186,6 +186,14 @@ class CallLogTests(unittest.TestCase):
             self.assertEqual(cur.fetchone(), ("crossref", 200, "ok", "50", False))
 
 
+class JobIdentity(unittest.TestCase):
+    def test_commercial_flag_is_part_of_the_job_identity(self):
+        p = {"identity": "doi:10.1000/x"}
+        self.assertEqual(queue.payload_hash("resolve", p), queue.payload_hash("resolve", dict(p), commercial=False))
+        self.assertNotEqual(queue.payload_hash("resolve", p), queue.payload_hash("resolve", p, commercial=True),
+                            "a personal and a commercial twin must never collapse onto one job (R-8)")
+
+
 class Classification(unittest.TestCase):
     def test_classes(self):
         self.assertEqual(calllog.classify(200), "ok")

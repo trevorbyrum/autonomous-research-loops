@@ -238,9 +238,13 @@ Domains in v1: `finance`, `market`, `social`, `management`, `ai-ml`, `software`,
 domain, or with a domain the registry does not know, is treated as `other` —
 mis-tagging costs extra calls, never missed coverage (D-12).
 
-R-1  `resolve` with a DOI → look up registration agency (cached) →
-     Crossref-registered: Crossref; DataCite-registered: DataCite; else OpenAIRE.
-     Fallback on failure/breaker: substitution group {Crossref, OpenAIRE, Unpaywall}.
+R-1  `resolve` with a DOI → look up registration agency (cached, via the
+     `doi_org` source) → the enabled resolver whose adapter declares that agency
+     in `AGENCIES` (Crossref → Crossref; DataCite → DataCite; `*` = OpenAIRE
+     for any other or unknown agency). Fallback on failure/breaker: the
+     primary's substitution group from the registry — resolvers first, then
+     members that can return metadata through an `oa_location` enrichment
+     (Unpaywall). Nothing in this rule is hard-coded (D-16).
 R-2  `find` kind=article → Crossref + local OpenAlex index; add DOAJ always
      (open-access long tail); add Semantic Scholar only when `domain` ∈
      {ai-ml, software}; add Europe PMC only when `domain` ∈ {biomed} (out of
@@ -305,9 +309,18 @@ R-10 A source with an open breaker or exhausted budget is skipped and the job
   `(source, query)`. TTL per source (default 7 days metadata; 1 hour search).
 - `redistributable=false` sources (Semantic Scholar, CORE, BASE, per-item
   records without an allow-listed licence) are cached in memory only, ≤ 1 hour,
-  never written to `record_sources`, never exported.
-- Dedup stages: DOI normalise → exact identity → (title normalised + year +
-  first author) fuzzy ≥ 0.92 → cluster; provenance kept for every member.
+  never written to `record_sources`, never exported. A merged record persists
+  only its redistributable provenance members. Memory caches are bounded
+  (oldest evicted). A cache hit is re-checked against R-8 before it answers a
+  commercial request.
+- Allow-listed licences permit commercial reuse with attribution at most:
+  CC0, CC-BY, public domain, ODC-BY/ODbL/PDDL, MIT/Apache/BSD/ISC/zlib/
+  Unlicense, U.S. federal works. NC, ND and share-alike variants are not
+  allow-listed (D-18).
+- Dedup stages: DOI normalise → exact identity → fuzzy (title ≥ 0.92 AND same
+  year AND same first author, all three present — a missing year or author
+  never merges) → cluster, greedily in lane order (the base lane's record is
+  canonical); provenance kept for every member.
 - Paging is stateless: opaque resumption token = (query hash, offset, lane cursor set).
 
 ---
@@ -432,12 +445,26 @@ guaranteed by construction (D-17). Test backoff waits now run on a fake clock.
 Checks: every rule R-1..R-10 has a passing test; commercial=true excludes
 deny/unknown sources; per-item records without allow-listed licence dropped;
 non-redistributable payloads never appear in `record_sources`.
+Built 2026-09-07 (`tests/test_routing.py`, `tests/test_cache_dedup.py`).
+Review (Terra, `private/reviews/phase4-c570832.md`): FAIL — 9 findings, all
+resolved by D-18 and its tests (per-member persistence, cache/queue commercial
+gating, bounded caches, strict fuzzy dedup, broad lane fault containment,
+declared schemes, share-alike, registry-declared DOI agencies).
 
 **Phase 5 — HTTP API, auth, two front doors.**
 Checks: `/v1/health` green; stdio client mounted in a station profile returns a
 `find` result; homelab-gateway registration lists the five tools; a request
 with a bad token is refused; killing the gateway makes the client return
 `capability_fact: gateway_unavailable` (I-1).
+Built 2026-09-07: `app.py` (assembled process; inline mode without a DB),
+`api/http.py` (bearer tokens; `/v1/*`; `POST /mcp` stateless MCP for the
+homelab gateway, which consumes peers from its `external-mcp.json` —
+`mcp/homelab_adapter.peer_entry()` renders the entry, the operator applies it
+on the tower), `clients/mcp_stdio.py`, `clients/cli.py`. End-to-end run on the
+workstation: health green in queued mode (2 workers), stdio client listed the
+six tools and resolved a DOI through a queued job, the CLI ran a live `find`
+(Crossref + DOAJ + local index), bad token → 401. Station mounting waits for
+the tower deployment (Phase 7).
 
 **Phase 6 — Harvest loaders + Tier 0 index + docs complete.**
 Checks: index row counts ≥ snapshot record counts − dedup; `find` on a known
@@ -518,6 +545,7 @@ public) and its commit hash recorded in the phase's acceptance note.
 - **D-12 (2026-09-07)** Add a permissive catch-all domain `other` (= base + all domain lanes); absent/unknown domains resolve to it, so mis-tagging never loses coverage.
 - **D-13 (2026-09-07)** Engineering rules, hard: no placeholders in shipped code (I-10); ≤ 1,500 lines per file (I-11); simplest thing that works (I-12); independent Terra/Codex review each phase (I-13); tests and logs ship with every module (I-14).
 - **D-14 (2026-09-07)** Phase 0 approved by the operator ("approved"). Phase 1 begins.
+- **D-18 (2026-09-07)** Phase 4 review resolutions: a merged record persists only redistributable provenance members; the `commercial` flag is part of a job's identity and cache hits are re-gated by R-8; memory caches are bounded; fuzzy dedup requires title, year and first author all present and equal; share-alike licences are not allow-listed (attribution at most), ISC/zlib/Unlicense are; identity schemes are only those built in or registered by adapters (a title like "AI:ML" is a title); DOI registration-agency routing is declared by adapters (`AGENCIES`) and the fallback chain comes from the registry's substitution group; any exception a lane raises is a capability fact.
 - **D-17 (2026-09-07)** Phase 3 review resolutions: `raw` is the source's own object for the record (I-8), minus only CORE's `fullText` field (I-7); file bytes and full text never enter `jobs.result` (`router.redact_for_storage`) — they are delivered only on the inline path and discarded; Socrata portals must be vouched for by the discovery catalog before they are called (R-6); a response an adapter cannot read becomes a capability fact, not a job failure (R-10); call logging is guaranteed by construction (adapters cannot reach the network except through `base.Client`, and only the gateway's own factories build clients — both tested) rather than by a transport-level interceptor.
 - **D-16 (2026-09-07)** Routing is derived, not written: domain lanes come from each seed row's `domains`, enrich lanes from each adapter's `ENRICHES`, resolve/fetch targets from each adapter's `SCHEMES`/`HOSTS`. §4's per-domain lists are the 2026-09-07 rendering of the seed; a new source is a seed row plus an adapter, never a router edit (I-2).
 - **D-15 (2026-09-07)** Phase 1–2 review resolutions: broker state is keyed per source (one credential per source in the registry; revisit if a second credential is ever added); `jobs.result` is inline jsonb rather than a `result_ref`; BEA's 100 MB/min volume cap is not broker-enforced (the adapter requests single tables; the 100/min request cap is).

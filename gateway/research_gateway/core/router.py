@@ -2,8 +2,8 @@
 runs the lanes through the metered client, dedups, enforces licences, caches.
 
 Everything routable comes from the registry rows plus what each adapter
-declares about itself (CAPABILITIES, ENRICHES, SCHEMES, HOSTS): adding a
-source is a seed row and an adapter file, never an edit here (I-2).
+declares about itself (CAPABILITIES, ENRICHES, SCHEMES, HOSTS, AGENCIES):
+adding a source is a seed row and an adapter file, never an edit here (I-2).
 """
 from __future__ import annotations
 
@@ -84,6 +84,8 @@ class Router:
     def __init__(self, sources: list[dict], adapters: dict[str, object]):
         self.sources = {s["id"]: s for s in sources}
         self.adapters = adapters
+        ident.register_schemes(s for mod in adapters.values() for s in _schemes(mod) if ":" not in s)
+        ident.register_schemes(adapters)
 
     # ------------------------------------------------------------ helpers
     def _usable(self, sid: str, cap: str) -> bool:
@@ -117,6 +119,17 @@ class Router:
                 out.append(sid)
         return out
 
+    def record_allowed(self, record: dict, payload: dict) -> bool:
+        """R-8 for one record (used for cache hits too, so a personal-mode cache never leaks
+        into a commercial answer)."""
+        src = self.sources.get(record.get("source_id"), {})
+        return licenses.commercially_usable(src, record, payload)
+
+    def persistable_sources(self, record: dict) -> set[str]:
+        """Provenance members whose source lets the gateway keep their raw payload (§6)."""
+        return {p.get("source_id") for p in record.get("provenance") or [{"source_id": record.get("source_id")}]
+                if licenses.redistributable(self.sources.get(p.get("source_id"), {}), record)}
+
     # ------------------------------------------------------------ planning
     def plan(self, payload: dict, *, agency: str | None = None) -> Plan:
         rt = payload.get("request_type")
@@ -147,17 +160,25 @@ class Router:
         identity = payload.get("identity") or ""
         scheme, value = ident.parse(identity)
         if scheme == "doi":
-            primary = {"Crossref": "crossref", "DataCite": "datacite"}.get(agency or "", "openaire")
-            group = self.sources.get(primary, {}).get("substitution_group") or "doi-metadata"
-            fallbacks = [sid for sid in self._ordered("resolve")
-                         if sid != primary and self.sources[sid].get("substitution_group") == group]
-            if self._usable(primary, "resolve") and self._commercial_gate(primary, payload, plan):
+            # R-1: the primary is the enabled resolver that declares this registration agency
+            # (or '*' for any other); fallbacks are its substitution group, resolvers first,
+            # then members that can at least return metadata through an OA-location enrichment.
+            resolvers = self._ordered("resolve")
+            primary = next((sid for sid in resolvers if agency and agency in getattr(self.adapters[sid], "AGENCIES", ())), None)
+            if primary is None:
+                primary = next((sid for sid in resolvers if "*" in getattr(self.adapters[sid], "AGENCIES", ())), None)
+            group = (self.sources.get(primary, {}).get("substitution_group") if primary else None) or "doi-metadata"
+            members = [sid for sid, s in self.sources.items() if s.get("substitution_group") == group and sid != primary]
+            fallbacks = [sid for sid in members if self._usable(sid, "resolve")]
+            fallbacks += [sid for sid in members if sid not in fallbacks and self._usable(sid, "enrich")
+                          and "oa_location" in getattr(self.adapters[sid], "ENRICHES", ())]
+            if primary and self._commercial_gate(primary, payload, plan):
                 plan.lanes.append(Lane(primary, "primary", f"registration agency {agency or 'unknown'}"))
             for sid in fallbacks:
                 if self._commercial_gate(sid, payload, plan):
                     plan.lanes.append(Lane(sid, "fallback"))
-            if self._usable("unpaywall", "enrich") and self._commercial_gate("unpaywall", payload, plan):
-                plan.lanes.append(Lane("unpaywall", "fallback", "oa_location as metadata of last resort"))
+            if not plan.lanes:
+                plan.facts.append("no DOI resolver available")
             return
         for sid in self._ordered("resolve"):
             if matches_scheme(self.adapters[sid], f"{scheme}:{value}") and self._commercial_gate(sid, payload, plan):
@@ -225,84 +246,85 @@ def _log_cache_hit(client: Client, request_type: str, identity: str | None, quer
         calllog.record(client.conn, rec)
 
 
+def _valid_records(items, facts: list[str], source_id: str) -> list[dict]:
+    """Only well-formed canonical records count as an answer; the rest is a fact (R-10)."""
+    good = [r for r in (items or []) if isinstance(r, dict) and r.get("identity") and r.get("kind")]
+    if len(good) != len(items or []):
+        facts.append(f"{source_id}: {len(items) - len(good)} malformed record(s) dropped")
+    return good
+
+
+def _run_lane(router: Router, rt: str, lane: Lane, payload: dict, client: Client, out: dict) -> list[dict]:
+    mod = router.adapters[lane.source_id]
+    if rt == "find":
+        res = _call_find(mod, client, payload)
+    elif rt == "resolve":
+        if lane.source_id != lane.source_id.strip() or "resolve" not in getattr(mod, "CAPABILITIES", ()):
+            items = mod.enrich(client, payload["identity"], "oa_location").get("items") or []
+            res = {"records": [dict(items[0], kind="article")] if items else []}
+        else:
+            rec = mod.resolve(client, payload["identity"])
+            res = {"records": [rec] if rec else []}
+    elif rt == "enrich":
+        res = mod.enrich(client, payload["identity"], payload["what"])
+        res = {"records": res.get("items"), **{k: v for k, v in res.items() if k != "items"}}
+    elif rt == "data":
+        res = mod.data(client, payload.get("params") or {})
+    else:  # fetch
+        fparams = {k: v for k, v in (payload.get("params") or {}).items() if k in inspect.signature(mod.fetch).parameters}
+        res = mod.fetch(client, payload["target"], **fparams)
+        if "content" in res:
+            out["content"], out["content_type"] = res["content"], res.get("content_type")
+    if not isinstance(res, dict):
+        raise TypeError(f"adapter returned {type(res).__name__}, not a result dict")
+    if res.get("capability_fact"):
+        out["facts"].append(f"{lane.source_id}: {res['capability_fact']}")
+    return _valid_records(res.get("records"), out["facts"], lane.source_id)
+
+
 def _drop_unlicensed(records: list[dict], router: Router, payload: dict, facts: list[str]) -> list[dict]:
-    """R-8 second half: under commercial=true, per-item records need an allow-listed licence."""
+    """R-8 second half: under commercial=true every returned record must pass the per-record gate."""
     if not payload.get("commercial"):
         return records
-    kept, dropped = [], 0
-    for r in records:
-        src = router.sources.get(r.get("source_id"), {})
-        if src.get("use_commercial") == "per-item" and not licenses.allow_listed(r.get("license")):
-            dropped += 1
-            continue
-        kept.append(r)
-    if dropped:
-        facts.append(f"{dropped} per-item record(s) dropped: no allow-listed licence (R-8)")
+    kept = [r for r in records if router.record_allowed(r, payload)]
+    if len(kept) != len(records):
+        facts.append(f"{len(records) - len(kept)} record(s) dropped: not usable commercially (R-8)")
     return kept
 
 
-def execute(router: Router, payload: dict, client: Client, cache: Cache | None = None,
-            agencies: ident.RegistrationAgencies | None = None) -> dict:
+def _search_payload(payload: dict) -> dict:
+    return {k: v for k, v in payload.items() if k != "request_type"}
+
+
+def execute(router: Router, payload: dict, client: Client, cache: Cache | None = None) -> dict:
     """Run a request end to end. Never raises for source trouble: those become facts (R-10)."""
     rt = payload.get("request_type")
     client.domain_resolved = resolve_domain(payload.get("domain"))
+    out = {"request_type": rt, "records": [], "facts": [], "lanes": [], "domain_resolved": client.domain_resolved}
     agency = None
     if rt == "resolve" and ident.parse(payload.get("identity") or "")[0] == "doi":
-        if cache is not None:
-            hit = cache.get_record(payload["identity"])
-            if hit:
-                _log_cache_hit(client, rt, payload["identity"], None)
-                return {"request_type": rt, "records": [hit], "facts": [], "lanes": [], "cache_hit": True}
-        try:
-            agency = (agencies or ident.RegistrationAgencies(client)).agency(ident.parse(payload["identity"])[1])
-        except (SourceUnavailable, AdapterError):
-            agency = None
-    plan = router.plan(payload, agency=agency)
-    out = {"request_type": rt, "records": [], "facts": list(plan.facts), "lanes": [], "domain_resolved": plan.domain_resolved}
+        hit = cache.get_record(payload["identity"]) if cache is not None else None
+        if hit and router.record_allowed(hit, payload):
+            _log_cache_hit(client, rt, payload["identity"], None)
+            return {**out, "records": [hit], "cache_hit": True}
+        if "doi_org" in router.adapters and router._usable("doi_org", "resolve"):
+            try:
+                agency = (router.adapters["doi_org"].resolve(client, payload["identity"]) or {}).get("agency")
+            except Exception as e:  # the lookup is metered like any call; its failure is a fact, not a crash
+                out["facts"].append(f"doi_org: registration-agency lookup failed ({type(e).__name__}) — routing as unknown")
     if rt == "find" and cache is not None:
-        key = cache.search_key(rt, {k: v for k, v in payload.items() if k != "request_type"})
-        hit = cache.get_search(key)
+        hit = cache.get_search(cache.search_key(rt, _search_payload(payload)))
         if hit:
             _log_cache_hit(client, rt, None, payload.get("query"))
             return {**hit, "cache_hit": True}
+    plan = router.plan(payload, agency=agency)
+    out["facts"].extend(plan.facts)
     records: list[dict] = []
     for lane in plan.lanes:
-        mod, entry = router.adapters[lane.source_id], {"source": lane.source_id, "role": lane.role}
+        entry = {"source": lane.source_id, "role": lane.role}
         try:
-            if rt == "find":
-                res = _call_find(mod, client, payload)
-                got = res.get("records") or []
-                entry.update(count=len(got), total=res.get("total"))
-                if res.get("capability_fact"):
-                    out["facts"].append(f"{lane.source_id}: {res['capability_fact']}")
-            elif rt == "resolve":
-                if lane.source_id == "unpaywall":
-                    items = mod.enrich(client, payload["identity"], "oa_location").get("items") or []
-                    got = [dict(items[0], kind="article")] if items else []
-                else:
-                    rec = mod.resolve(client, payload["identity"])
-                    got = [rec] if rec else []
-                entry.update(count=len(got))
-            elif rt == "enrich":
-                res = mod.enrich(client, payload["identity"], payload["what"])
-                got = res.get("items") or []
-                entry.update(count=len(got))
-            elif rt == "data":
-                res = mod.data(client, payload.get("params") or {})
-                got = res.get("records") or []
-                entry.update(count=len(got))
-                if res.get("capability_fact"):
-                    out["facts"].append(f"{lane.source_id}: {res['capability_fact']}")
-            else:  # fetch
-                fparams = {k: v for k, v in (payload.get("params") or {}).items()
-                           if k in inspect.signature(mod.fetch).parameters}
-                res = mod.fetch(client, payload["target"], **fparams)
-                got = res.get("records") or []
-                entry.update(count=len(got), has_content="content" in res)
-                if res.get("capability_fact"):
-                    out["facts"].append(f"{lane.source_id}: {res['capability_fact']}")
-                if "content" in res:
-                    out["content"], out["content_type"] = res["content"], res.get("content_type")
+            got = _run_lane(router, rt, lane, payload, client, out)
+            entry["count"] = len(got)
         except SourceUnavailable as e:
             entry["error"] = str(e)
             out["facts"].append(f"{lane.source_id}: unavailable ({e.response.error or e.response.status}) — R-10")
@@ -313,14 +335,13 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
             out["facts"].append(f"{lane.source_id}: refused ({e})")
             out["lanes"].append(entry)
             continue
-        except (TypeError, ValueError, KeyError, AttributeError, IndexError) as e:
-            # a response the adapter did not expect is a source fact, not a crash of the job
-            entry["error"] = f"malformed response: {type(e).__name__}: {e}"[:300]
+        except Exception as e:  # anything else a lane throws is a source fact, never a dead job
+            entry["error"] = f"{type(e).__name__}: {e}"[:300]
             out["facts"].append(f"{lane.source_id}: malformed response ({type(e).__name__}) — treated as unavailable (R-10)")
             out["lanes"].append(entry)
             continue
         out["lanes"].append(entry)
-        records.extend(r for r in got if isinstance(r, dict))
+        records.extend(got)
         if rt in ("resolve", "enrich") and got:
             break  # primary answered; fallbacks are for failure only
     records = _drop_unlicensed(records, router, payload, out["facts"])
@@ -329,11 +350,11 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
     out["records"] = records
     if cache is not None:
         for r in records:
-            src = router.sources.get(r.get("source_id"), {})
             if rt in ("resolve", "find") and r.get("identity"):
-                cache.put_record(r, redistributable=licenses.redistributable(src, r))
+                src = router.sources.get(r.get("source_id"), {})
+                cache.put_record(r, redistributable=licenses.redistributable(src, r), persist_sources=router.persistable_sources(r))
         if rt == "find":
-            cache.put_search(cache.search_key(rt, {k: v for k, v in payload.items() if k != "request_type"}), out)
+            cache.put_search(cache.search_key(rt, _search_payload(payload)), out)
     return out
 
 

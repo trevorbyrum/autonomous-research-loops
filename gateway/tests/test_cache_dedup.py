@@ -9,10 +9,19 @@ from research_gateway.core.canonical import make_record
 class Licenses(unittest.TestCase):
     def test_allow_list(self):
         for ok in ("CC0 1.0", "cc-by-4.0", "Creative Commons Attribution 4.0", "Public Domain", "ODC-BY", "MIT", "Apache-2.0",
-                   "U.S. federal public domain (17 U.S.C. 105)", "CC-BY-SA-4.0"):
+                   "U.S. federal public domain (17 U.S.C. 105)", "ISC License", "Zlib License", "Unlicense"):
             self.assertTrue(licenses.allow_listed(ok), ok)
-        for bad in (None, "", "CC-BY-NC-4.0", "cc by nc sa", "CC-BY-ND-4.0", "GPL-3.0", "Proprietary", "restricted", "custom"):
+        for bad in (None, "", "CC-BY-NC-4.0", "cc by nc sa", "CC-BY-ND-4.0", "CC-BY-SA-4.0", "Creative Commons Attribution-ShareAlike 4.0",
+                    "GPL-3.0", "Proprietary", "restricted", "custom"):
             self.assertFalse(licenses.allow_listed(bad), bad)
+        allow, per_item, deny = {"use_commercial": "allow"}, {"use_commercial": "per-item"}, {"use_commercial": "deny"}
+        rec = {"license": "cc-by-4.0"}
+        self.assertTrue(licenses.commercially_usable(deny, rec, {"commercial": False}), "personal baseline")
+        self.assertFalse(licenses.commercially_usable(deny, rec, {"commercial": True}))
+        self.assertFalse(licenses.commercially_usable(per_item, rec, {"commercial": True}))
+        self.assertTrue(licenses.commercially_usable(per_item, rec, {"commercial": True, "accept_per_item": True}))
+        self.assertFalse(licenses.commercially_usable(per_item, {"license": "CC-BY-NC"}, {"commercial": True, "accept_per_item": True}))
+        self.assertTrue(licenses.commercially_usable(allow, {}, {"commercial": True}))
 
     def test_redistributable(self):
         allow, per_item, deny = {"use_commercial": "allow"}, {"use_commercial": "per-item"}, {"use_commercial": "deny"}
@@ -46,8 +55,10 @@ class Dedup(unittest.TestCase):
         b = rec("title:reranking", "openaire", "Reranking with Large Language Models — A Survey", authors=("Lovelace, Ada",))
         c = rec("title:other", "openaire", "Reranking with large language models: a survey", year=2019)
         d = rec("title:other2", "openaire", "Reranking with large language models: a survey", authors=("Grace Hopper",))
-        out = dedup.cluster([a, b, c, d])
-        self.assertEqual(len(out), 3, "same title+year+author merges; different year or author does not")
+        e = rec("title:noyear", "openaire", "Reranking with large language models: a survey", year=None)
+        f = rec("title:noauthor", "openaire", "Reranking with large language models: a survey", authors=())
+        out = dedup.cluster([a, b, c, d, e, f])
+        self.assertEqual(len(out), 5, "same title+year+author merges; a different or missing year/author never does")
         self.assertEqual(out[0]["sources"], ["crossref", "openaire"])
 
     def test_different_kinds_never_merge(self):
@@ -84,6 +95,17 @@ class MemoryCache(unittest.TestCase):
         self.assertIsNone(c.get_search(key))
         self.assertEqual(c.persisted, 0)
 
+    def test_memory_is_bounded(self):
+        c = C.Cache(None, max_records=3, max_searches=2)
+        for i in range(10):
+            c.put_record(rec(f"doi:10.1000/{i}", "crossref", str(i)), redistributable=True)
+            c.put_search(f"k{i}", {"i": i})
+        self.assertLess(c.stats()["records_in_memory"], 4)
+        self.assertLess(c.stats()["searches_in_memory"], 3)
+        self.assertIsNotNone(c.get_record("doi:10.1000/9"), "the newest survives")
+        self.assertIsNone(c.get_record("doi:10.1000/0"), "the oldest was evicted")
+        self.assertGreater(c.stats()["evicted"], 0)
+
 
 @unittest.skipUnless(db.configured(), "RESEARCH_GATEWAY_DSN not set")
 class PersistentCache(unittest.TestCase):
@@ -101,16 +123,20 @@ class PersistentCache(unittest.TestCase):
         c = C.Cache(self.conn)
         keep = rec(f"doi:10.1000/{self.tag}-keep", "crossref", "Kept")
         keep["provenance"] = [{"source_id": "crossref", "identity": keep["identity"], "raw": {"a": 1}},
-                              {"source_id": "doaj", "identity": keep["identity"], "raw": {"b": 2}}]
-        c.put_record(keep, redistributable=True)
+                              {"source_id": "doaj", "identity": keep["identity"], "raw": {"b": 2}},
+                              {"source_id": "semanticscholar", "identity": keep["identity"], "raw": {"never": "persisted"}}]
+        c.put_record(keep, redistributable=True, persist_sources={"crossref", "doaj"})
         c.put_record(rec(f"doi:10.1000/{self.tag}-mem", "semanticscholar", "Memory only"), redistributable=False)
         with self.conn.cursor() as cur:
             cur.execute("SELECT identity, kind FROM gateway.records WHERE identity LIKE %s ORDER BY identity", (f"doi:10.1000/{self.tag}%",))
             self.assertEqual(cur.fetchall(), [(f"doi:10.1000/{self.tag}-keep", "article")])
             cur.execute("SELECT source_id, redistributable, raw FROM gateway.record_sources WHERE identity = %s ORDER BY source_id", (keep["identity"],))
-            self.assertEqual(cur.fetchall(), [("crossref", True, {"a": 1}), ("doaj", True, {"b": 2})])
+            self.assertEqual(cur.fetchall(), [("crossref", True, {"a": 1}), ("doaj", True, {"b": 2})],
+                             "the non-redistributable member's raw payload never reaches record_sources (§6)")
         fresh = C.Cache(self.conn)
-        self.assertEqual(fresh.get_record(keep["identity"])["title"], "Kept", "served from the database after a restart")
+        served = fresh.get_record(keep["identity"])
+        self.assertEqual(served["title"], "Kept", "served from the database after a restart")
+        self.assertEqual(served["sources"], ["crossref", "doaj"])
         self.assertIsNone(fresh.get_record(f"doi:10.1000/{self.tag}-mem"))
 
 

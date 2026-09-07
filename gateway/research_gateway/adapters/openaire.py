@@ -15,6 +15,7 @@ from .base import Client, check
 SOURCE_ID = "openaire"
 CAPABILITIES = ("find", "resolve")
 SCHEMES = ("doi",)
+AGENCIES = ("*",)   # primary for DOIs from any other registration agency (mEDRA, KISTI, ...) and unknown ones
 BASE = "https://api.openaire.eu/graph/v1"
 TOKEN_URL = "https://aai.openaire.eu/oidc/token"
 _TOKEN: dict[str, object] = {}   # {"value": str, "exp": float}; one per process

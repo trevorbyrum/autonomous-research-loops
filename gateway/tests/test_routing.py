@@ -38,6 +38,7 @@ class R1_ResolveByAgency(unittest.TestCase):
 
     def test_execute_falls_back_when_primary_is_down(self):
         r, c, t = make()
+        R.ident.RegistrationAgencies._shared.clear()
         t.add("GET", "https://doi.org/ra/", body=[{"DOI": "10.1000/x", "RA": "Crossref"}])
         t.add("GET", "https://api.crossref.org/works/", status=503)
         t.add("GET", "https://api.openaire.eu/graph/v1/researchProducts", body={"results": [OPENAIRE_PUB], "header": {"numFound": 1}})
@@ -149,6 +150,29 @@ class R8_Commercial(unittest.TestCase):
         self.assertTrue(any("accept_per_item" in f for f in plan.facts))
         plan = r.plan({"request_type": "find", "kind": "dataset", "domain": "ai-ml", "commercial": True, "accept_per_item": True})
         self.assertEqual(lanes(plan), ["datacite", "huggingface", "openml"])
+        seed = copy.deepcopy(SEED)
+        next(s for s in seed if s["id"] == "globe")["enabled"] = True
+        r, _, _ = make(seed)
+        plan = r.plan({"request_type": "fetch", "target": "https://globeproject.com/data/x.xls", "commercial": True})
+        self.assertEqual(lanes(plan), [], "unknown verdict fails closed (I-4)")
+        self.assertTrue(any("globe: skipped, commercial verdict unknown" in f for f in plan.facts))
+
+    def test_cache_hits_are_gated_too(self):
+        r, c, t = make()
+        R.ident.RegistrationAgencies._shared.clear()
+        cache = Cache(None)
+        t.add("GET", "https://doi.org/ra/", body=[{"DOI": "10.1000/s2", "RA": "Crossref"}])
+        t.add("GET", "https://api.crossref.org/works/10.1000/s2", status=404)
+        t.add("GET", "https://api.openaire.eu/graph/v1/researchProducts", body={"results": [], "header": {"numFound": 0}})
+        s2 = {**HF_DATASET}  # any dict works: we plant the cached record directly
+        cache.put_record({"identity": "doi:10.1000/s2", "kind": "article", "source_id": "semanticscholar", "title": "S2 only",
+                          "license": None, "raw": s2}, redistributable=False)
+        personal = R.execute(r, {"request_type": "resolve", "identity": "doi:10.1000/s2"}, c, cache)
+        self.assertTrue(personal.get("cache_hit"))
+        commercial = R.execute(r, {"request_type": "resolve", "identity": "doi:10.1000/s2", "commercial": True}, c, cache)
+        self.assertFalse(commercial.get("cache_hit"), "a personal-mode cache entry never answers a commercial request")
+        self.assertEqual(commercial["records"], [])
+        self.assertTrue(any("semanticscholar" not in ln["source"] for ln in commercial["lanes"]))
 
     def test_per_item_records_without_allow_listed_licence_are_dropped(self):
         r, c, t = make()
@@ -158,7 +182,7 @@ class R8_Commercial(unittest.TestCase):
         p = {"request_type": "find", "kind": "dataset", "domain": "ai-ml", "query": "corpus", "commercial": True, "accept_per_item": True}
         out = R.execute(r, p, c)
         self.assertEqual([rec["identity"] for rec in out["records"]], ["hf:owner/corpus"])
-        self.assertTrue(any("1 per-item record(s) dropped" in f for f in out["facts"]))
+        self.assertTrue(any("1 record(s) dropped: not usable commercially (R-8)" in f for f in out["facts"]))
         out = R.execute(r, {**p, "commercial": False}, c)
         self.assertEqual(len(out["records"]), 2, "personal baseline keeps everything")
 
@@ -187,6 +211,24 @@ class R10_Facts(unittest.TestCase):
         self.assertIn("doaj", [ln["source"] for ln in out["lanes"]])
         self.assertEqual(c.log[0].failure_class, "refused")
 
+    def test_exhausted_budget_becomes_a_fact(self):
+        t = FakeTransport()
+        t.add("GET", "https://doaj.org/api/search/articles/", body={"results": [], "total": 0})
+        b = Broker({"crossref": RatePolicy(per_day=1), "doaj": RatePolicy(per_second=100), "openalex_snapshot": RatePolicy(per_second=100)})
+        c = Client(broker=b, transport=t)
+        b.acquire("crossref")  # today's single call is spent
+        out = R.execute(R.Router(SEED, ADAPTERS), {"request_type": "find", "kind": "article", "query": "q", "domain": "finance"}, c)
+        self.assertTrue(any(f.startswith("crossref: unavailable (BudgetExhausted") for f in out["facts"]))
+        self.assertEqual([ln["source"] for ln in out["lanes"] if "error" not in ln][0], "doaj")
+
+    def test_registry_declared_agencies_pick_the_primary(self):
+        r, _, _ = make()
+        self.assertEqual(lanes(r.plan({"request_type": "resolve", "identity": "doi:10.1000/x"}, agency="KISTI"))[0], "openaire")
+        for sid, mod in ADAPTERS.items():
+            for agency in getattr(mod, "AGENCIES", ()):
+                if agency != "*":
+                    self.assertEqual(lanes(r.plan({"request_type": "resolve", "identity": "doi:10.1000/x"}, agency=agency))[0], sid)
+
 
 class ExecuteMergeAndCache(unittest.TestCase):
     def test_find_dedups_across_lanes_and_caches(self):
@@ -206,8 +248,17 @@ class ExecuteMergeAndCache(unittest.TestCase):
         self.assertEqual(c.log[-1].source_id, "cache")
         self.assertTrue(c.log[-1].cache_hit)
 
+    def test_merged_record_persists_only_redistributable_members(self):
+        r, _, _ = make()
+        merged = {"identity": "doi:10.1000/m", "kind": "article", "source_id": "crossref", "license": None,
+                  "provenance": [{"source_id": "crossref"}, {"source_id": "semanticscholar"}, {"source_id": "europepmc"}]}
+        self.assertEqual(r.persistable_sources(merged), {"crossref"}, "deny and unlicensed per-item members stay out of record_sources")
+        merged["license"] = "cc-by-4.0"
+        self.assertEqual(r.persistable_sources(merged), {"crossref", "europepmc"})
+
     def test_resolve_serves_from_cache_and_never_persists_non_redistributable(self):
         r, c, t = make()
+        R.ident.RegistrationAgencies._shared.clear()
         cache = Cache(None)
         t.add("GET", "https://doi.org/ra/", body=[{"DOI": "10.1234/abc", "RA": "Crossref"}])
         t.add("GET", "https://api.crossref.org/works/10.1234/abc", body={"message": CROSSREF_WORK})

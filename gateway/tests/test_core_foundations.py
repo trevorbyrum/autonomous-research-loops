@@ -25,6 +25,12 @@ class Identity(unittest.TestCase):
     def test_parse_and_canonical(self):
         self.assertEqual(identity.parse("10.1000/ABC"), ("doi", "10.1000/abc"))
         self.assertEqual(identity.parse("series:fred:GDP"), ("series", "fred:GDP"))
+        self.assertEqual(identity.parse("AI:ML systems"), ("title", "ai ml systems"), "undeclared schemes are titles")
+        self.assertEqual(identity.parse("Reranking: a survey")[0], "title")
+        identity.register_schemes(["hf", "HTTPS", "bad scheme"])
+        self.assertEqual(identity.parse("hf:owner/corpus"), ("hf", "owner/corpus"))
+        self.assertEqual(identity.parse("https://doi.org/10.1000/x"), ("doi", "10.1000/x"))
+        self.assertNotIn("https", identity.KNOWN_SCHEMES)
         self.assertEqual(identity.canonical("DOI:10.1000/ABC"), "doi:10.1000/abc")
         self.assertEqual(identity.canonical("Reranking: A Survey!"), "title:reranking a survey")
         self.assertEqual(identity.canonical("issn:12345678"), "issn:1234-5678")

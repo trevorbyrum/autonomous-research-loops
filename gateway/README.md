@@ -19,8 +19,10 @@ routes, key instructions, rate limits and licence verdicts are documented in
 
 ## Status
 
-Phase 1 (registry, schema, seed, documentation) — see `PLAN.md` §13 for the
-phase list and acceptance checks. Nothing serves traffic yet.
+Phases 1–5 built (registry and seed, queue and broker, 26 adapters with a live
+smoke, router/cache/dedup/licence enforcement, HTTP + MCP front doors and the
+CLI); Phase 6 (harvest loaders and the local index) and Phase 7 (deployment)
+follow — see `PLAN.md` §13 for the acceptance checks and §16 for decisions.
 
 ## Layout
 
@@ -30,19 +32,28 @@ gateway/
   docs/                      SOURCES, ARCHITECTURE, OPERATIONS, PUBLIC-PRIVATE, LICENSING
   research_gateway/          Python 3.12 package (standard library + psycopg)
     registry/                schema.sql, seed/sources.toml, load.py, docs.py
+    adapters/                one module per source; base.py is the only network path
+    core/                    identity, secrets, broker, queue, call log, router, cache, dedup, licences
+    api/http.py              HTTP front door (+ POST /mcp)
+    clients/                 stdio MCP server for the loops, shared HTTP client, CLI
+    mcp/homelab_adapter.py   in-process MCP dispatch + the peer entry for an external MCP gateway
+    app.py                   the assembled process; smoke.py: one live call per adapter
   tests/                     unittest suite (python -m unittest discover -s tests -t .)
   sources.example.toml       deployment config example (no secrets)
 ```
 
-## Quick start (Phase 1)
+## Quick start
 
 ```bash
 cd gateway
-python3 -m unittest discover -s tests -t .            # validate seed, docs, limits
+python3 -m unittest discover -s tests -t .            # validate seed, docs, limits, routing, front doors
 python3 -m research_gateway.registry.load --dry-run    # seed summary
 python3 -m research_gateway.registry.docs --check      # docs match the seed
 export RESEARCH_GATEWAY_DSN='postgresql://gateway@db-host:5432/research_loops'   # password via PGPASSWORD or ~/.pgpass
 python3 -m research_gateway.registry.load --schema --load
+export RESEARCH_GATEWAY_TOKENS='loops=<token>'
+python3 -m research_gateway.api.http                   # serve; see docs/OPERATIONS.md for clients
+python3 -m research_gateway.clients.cli resolve doi:10.1038/nature12373
 ```
 
 ## Adding a source

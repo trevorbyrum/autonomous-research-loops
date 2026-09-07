@@ -1,18 +1,20 @@
 """Licence allow-list and redistribution policy (PLAN.md §6, docs/LICENSING.md).
 
 `allow_listed(license)` says whether a per-item licence string permits
-commercial reuse with attribution at most; `redistributable(source, record)`
-says whether the gateway may keep and export what it retrieved.
+commercial reuse with attribution at most — share-alike, non-commercial and
+no-derivatives variants are out; `redistributable(source, record)` says whether
+the gateway may keep and export what it retrieved.
 """
 from __future__ import annotations
 
 import re
 
 # substrings (after normalisation) that identify an allow-listed licence
-_ALLOW = ("cc0", "cc-by", "public domain", "publicdomain", "odc-by", "odbl", "pddl", "mit", "apache", "bsd",
-          "us government", "u.s. government", "federal public domain", "17 u.s.c. 105")
+_ALLOW = ("cc0", "cc-by", "public domain", "publicdomain", "odc-by", "odbl", "pddl", "mit", "apache", "bsd", "isc", "zlib",
+          "unlicense", "us government", "u.s. government", "federal public domain", "17 u.s.c. 105")
 # markers that withdraw the allowance even when an allow marker is present
-_RESTRICT = ("-nc", " nc", "non-commercial", "noncommercial", "-nd", " nd ", "no derivatives", "gpl", "proprietary", "restricted")
+_RESTRICT = ("-nc", " nc", "non-commercial", "noncommercial", "-nd", " nd ", "no derivatives", "-sa", " sa ", "sharealike",
+             "share-alike", "share alike", "gpl", "proprietary", "restricted")
 
 
 def normalize(license: str | None) -> str:
@@ -25,7 +27,7 @@ def normalize(license: str | None) -> str:
 
 
 def allow_listed(license: str | None) -> bool:
-    """True only for licences that clearly permit commercial reuse (attribution at most)."""
+    """True only for licences that clearly permit commercial reuse with attribution at most."""
     s = normalize(license)
     if not s:
         return False
@@ -45,4 +47,17 @@ def redistributable(source: dict, record: dict | None = None) -> bool:
         return True
     if verdict == "per-item":
         return allow_listed((record or {}).get("license"))
+    return False
+
+
+def commercially_usable(source: dict, record: dict | None, payload: dict) -> bool:
+    """R-8 applied to one record: with commercial=true, allow sources pass, per-item sources
+    pass only with accept_per_item and an allow-listed licence, everything else fails."""
+    if not payload.get("commercial"):
+        return True
+    verdict = source.get("use_commercial")
+    if verdict == "allow":
+        return True
+    if verdict == "per-item":
+        return bool(payload.get("accept_per_item")) and allow_listed((record or {}).get("license"))
     return False

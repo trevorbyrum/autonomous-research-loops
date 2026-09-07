@@ -13,7 +13,16 @@ _ISSN_RE = re.compile(r"^\d{4}-?\d{3}[\dXx]$")
 _ARXIV_NEW = re.compile(r"^\d{4}\.\d{4,5}(v\d+)?$")
 _ARXIV_OLD = re.compile(r"^[a-z\-]+(\.[A-Z]{2})?/\d{7}(v\d+)?$")
 _SCHEME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,15}$")
-_KNOWN_SCHEMES = {"doi", "issn", "arxiv", "handle", "series", "url", "title", "pmid", "dataset", "repo"}
+KNOWN_SCHEMES = {"doi", "issn", "arxiv", "handle", "series", "url", "title", "pmid", "dataset", "repo"}
+
+
+def register_schemes(schemes) -> None:
+    """Adapters declare the identity schemes they serve (hf, openml, kaggle, ...); the router
+    registers them at start-up so parse()/canonical() recognise them."""
+    for s in schemes:
+        s = str(s).lower()
+        if _SCHEME_RE.match(s) and s not in {"http", "https", "ftp"}:
+            KNOWN_SCHEMES.add(s)
 _DOI_PREFIXES = ("https://doi.org/", "http://doi.org/", "https://dx.doi.org/", "http://dx.doi.org/", "doi:", "DOI:")
 
 
@@ -69,10 +78,9 @@ def parse(identity: str) -> tuple[str, str]:
         scheme, _, value = s.partition(":")
         scheme = scheme.lower()
         value = value.strip()
-        # known schemes always; other short word-like schemes (hf, openml, kaggle, ...) only when the
-        # value has no whitespace, so a title such as "Reranking: a survey" is not mistaken for one
-        if scheme in _KNOWN_SCHEMES or (_SCHEME_RE.match(scheme) and scheme not in {"http", "https", "ftp"}
-                                        and value and not any(ch.isspace() for ch in value)):
+        # only declared schemes count (built-ins plus what the registry's adapters register),
+        # so a title such as "AI:ML systems" or "Reranking: a survey" is never mistaken for one
+        if scheme in KNOWN_SCHEMES and value:
             return scheme, value
     if normalize_doi(s):
         return "doi", normalize_doi(s)
@@ -107,10 +115,11 @@ class RegistrationAgencies:
     The lookup itself is an outbound call and goes through the metered client."""
 
     URL = "https://doi.org/ra/"
+    _shared: dict[str, str] = {}   # prefix → agency, shared by every instance in the process
 
-    def __init__(self, client):
+    def __init__(self, client, cache: dict[str, str] | None = None):
         self._client = client
-        self._cache: dict[str, str] = {}
+        self._cache = self._shared if cache is None else cache
 
     def agency(self, doi: str) -> str:
         prefix = doi_prefix(doi)

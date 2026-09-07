@@ -1,5 +1,7 @@
 """Staged dedup (PLAN.md §6): identity normalise → exact identity → fuzzy
-(title + year + first author) ≥ 0.92 → clusters with full provenance."""
+(title ≥ 0.92 AND same year AND same first author, all three present) → clusters
+with full provenance. Clustering is greedy in lane order: a record joins the
+first cluster it matches, so the base lane's record is the canonical one."""
 from __future__ import annotations
 
 from difflib import SequenceMatcher
@@ -20,13 +22,13 @@ def _surname(author: str | None) -> str:
 
 
 def _fuzzy_same(a: dict, b: dict, threshold: float) -> bool:
+    """Only records that carry a title, a year and a first author can merge fuzzily;
+    anything less would merge different works that merely share a title."""
     ta, tb = ident.normalize_title(a.get("title")), ident.normalize_title(b.get("title"))
-    if not ta or not tb:
-        return False
-    if a.get("year") and b.get("year") and a["year"] != b["year"]:
+    if not ta or not tb or not a.get("year") or not b.get("year") or a["year"] != b["year"]:
         return False
     sa, sb = _surname((a.get("authors") or [None])[0]), _surname((b.get("authors") or [None])[0])
-    if sa and sb and sa != sb:
+    if not sa or not sb or sa != sb:
         return False
     return SequenceMatcher(None, ta, tb).ratio() >= threshold
 

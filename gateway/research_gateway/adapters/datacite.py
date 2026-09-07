@@ -8,6 +8,7 @@ from .base import Client, check
 SOURCE_ID = "datacite"
 CAPABILITIES = ("find", "resolve")
 SCHEMES = ("doi",)
+AGENCIES = ("DataCite",)
 BASE = "https://api.datacite.org"
 
 _KIND = {"Dataset": "dataset", "Software": "software", "Text": "document", "JournalArticle": "article",

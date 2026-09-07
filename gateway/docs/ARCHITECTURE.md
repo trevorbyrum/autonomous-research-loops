@@ -33,20 +33,24 @@ registration-agency lookup), with a substitution group as fallback.
 ## Queue and broker
 
 A Postgres jobs table (`SELECT … FOR UPDATE SKIP LOCKED`) fed by both front
-doors; worker coroutines in the gateway process; one token bucket per source
-per credential seeded from the registry's rate policy; daily budgets;
-`Retry-After` honoured; a circuit breaker per source that opens after repeated
-limit errors and routes to the substitution group. Nothing is dispatched
-without a rate policy row.
+doors; worker threads in the gateway process, each handing its job a metered
+client bound to the job id so every outbound call lands in the call log;
+sliding windows per source (second/minute/hour) and per-UTC-day budgets seeded
+from the registry's rate policy; `Retry-After` honoured, otherwise a 10→80 s
+backoff; a circuit breaker per source that opens after repeated limit errors
+and routes to the substitution group. Nothing is dispatched without a rate
+policy row. Without a database the same client runs inline.
 
 ## Records, cache, dedup
 
 A canonical record per identity, with each contributing source's raw payload
 kept for provenance (normalisation is lossy). Cache keyed by identity with a
 per-source TTL; sources whose terms forbid redistribution are cached in memory
-only and never persisted or exported. Dedup by normalised identifier, then
-exact identity, then fuzzy title + year + first author. Paging uses stateless
-resumption tokens.
+only (bounded, at most an hour) and never persisted or exported — a merged
+record persists only its redistributable members. Dedup by normalised
+identifier, then exact identity, then fuzzy title with the same year and first
+author (all three present), greedily in lane order. Cache hits are re-checked
+against the commercial rule before they answer.
 
 ## Local index (Tier 0)
 
@@ -58,7 +62,14 @@ and degrade to this tier — no GPU or vector database is required.
 
 ## Front doors
 
-An HTTP API with bearer-token clients; a stdio MCP client mounted by the
-research loops as a local tool; an MCP adapter that registers the same five
-tools on an external MCP gateway. All three call the same service, so all
-three share the same limits.
+An HTTP API with bearer-token clients (`/v1/*`); a stdio MCP server mounted
+by the research loops as a local tool, which forwards to that API; and a
+stateless MCP-over-HTTP endpoint (`POST /mcp`) that an external MCP gateway
+registers as a peer, serving the same tools in-process. All three go through
+the same broker and call log, so all three share the same limits. File bytes
+and full text are delivered inline and never stored in a job result.
+
+Routing itself is derived from data, not written into the router: base and
+domain lanes from the seed's `base_for` and `domains`, enrichment lanes from
+each adapter's `ENRICHES`, resolve/fetch targets from `SCHEMES`/`HOSTS`, DOI
+primaries from `AGENCIES`. A new source is a seed row plus an adapter file.

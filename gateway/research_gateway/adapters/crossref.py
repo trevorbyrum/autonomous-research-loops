@@ -9,6 +9,7 @@ SOURCE_ID = "crossref"
 CAPABILITIES = ("find", "resolve", "enrich")
 ENRICHES = ("references",)
 SCHEMES = ("doi",)
+AGENCIES = ("Crossref",)   # DOI registration agencies this source is the primary resolver for (R-1)
 BASE = "https://api.crossref.org"
 
 
@@ -74,6 +75,8 @@ def enrich(client: Client, identity: str, what: str = "references") -> dict:
     if not check(SOURCE_ID, resp):
         return {"identity": f"doi:{doi}", "what": what, "items": []}
     refs = ((resp.json or {}).get("message") or {}).get("reference") or []
-    items = [{"identity": f"doi:{normalize_doi(r['DOI'])}", "unstructured": r.get("unstructured")}
+    items = [make_record(identity=f"doi:{normalize_doi(r['DOI'])}", kind="citation", source_id=SOURCE_ID,
+                         title=r.get("article-title"), year=year_from(r.get("year")), venue=r.get("journal-title"),
+                         identifiers={"doi": normalize_doi(r["DOI"])}, extra={"unstructured": r.get("unstructured")}, raw=r)
              for r in refs if r.get("DOI") and normalize_doi(r.get("DOI"))]
     return {"identity": f"doi:{doi}", "what": what, "items": items}

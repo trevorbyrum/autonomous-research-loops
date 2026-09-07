@@ -1,9 +1,10 @@
 """Identity-keyed cache with a redistribution policy (PLAN.md §6, I-8).
 
 Redistributable records are persisted to gateway.records / record_sources with
-their raw payload and served for `metadata_ttl`. Everything else lives in
-process memory for at most `memory_ttl` (default one hour) and is never written
-to the database or exported. Search results are memory-only.
+their raw payload and served for `metadata_ttl`; only provenance members from
+redistributable sources are written. Everything else lives in process memory
+for at most `memory_ttl` (default one hour), bounded in size, and is never
+written to the database or exported. Search results are memory-only.
 """
 from __future__ import annotations
 
@@ -17,12 +18,28 @@ from . import identity as ident
 
 class Cache:
     def __init__(self, conn=None, *, clock: Callable[[], float] = time.time, memory_ttl: float = 3600.0,
-                 metadata_ttl: float = 7 * 86400.0, search_ttl: float = 3600.0):
+                 metadata_ttl: float = 7 * 86400.0, search_ttl: float = 3600.0,
+                 max_records: int = 10_000, max_searches: int = 2_000):
         self.conn, self._clock = conn, clock
         self.memory_ttl, self.metadata_ttl, self.search_ttl = memory_ttl, metadata_ttl, search_ttl
+        self.max_records, self.max_searches = max_records, max_searches
         self._records: dict[str, tuple[float, dict]] = {}
         self._searches: dict[str, tuple[float, dict]] = {}
         self.persisted = 0
+        self.evicted = 0
+
+    # ------------------------------------------------------------ bounds
+    def _bound(self, store: dict, limit: int) -> None:
+        """Drop expired entries once the store is full; then the oldest, until it fits."""
+        if len(store) < limit:
+            return
+        now = self._clock()
+        for k in [k for k, (exp, _) in store.items() if exp <= now]:
+            del store[k]
+            self.evicted += 1
+        while len(store) >= limit:
+            del store[next(iter(store))]
+            self.evicted += 1
 
     # ------------------------------------------------------------ records
     def get_record(self, identity: str) -> dict | None:
@@ -41,22 +58,30 @@ class Cache:
         self.conn.commit()
         return row[0] if row else None
 
-    def put_record(self, record: dict, *, redistributable: bool) -> None:
+    def put_record(self, record: dict, *, redistributable: bool, persist_sources: set[str] | None = None) -> None:
+        """Keep the record in memory; persist it (and only the provenance members whose source
+        is in `persist_sources`, default: the record's own source) when redistributable."""
         key = ident.canonical(record["identity"])
         ttl = self.metadata_ttl if redistributable else self.memory_ttl
+        self._bound(self._records, self.max_records)
         self._records[key] = (self._clock() + ttl, record)
         if redistributable and self.conn is not None:
-            self._persist(key, record)
+            self._persist(key, record, persist_sources if persist_sources is not None else {record.get("source_id")})
 
-    def _persist(self, key: str, record: dict) -> None:
+    def _persist(self, key: str, record: dict, persist_sources: set[str]) -> None:
+        members = [p for p in (record.get("provenance") or [{"source_id": record.get("source_id"), "raw": record.get("raw")}])
+                   if p.get("source_id") in persist_sources]
+        if not members:
+            return
         canonical = {k: v for k, v in record.items() if k not in ("raw", "provenance")}
+        canonical["sources"] = [p["source_id"] for p in members]
         with self.conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO gateway.records (identity, kind, canonical, last_seen) VALUES (%s, %s, %s, now()) "
                 "ON CONFLICT (identity) DO UPDATE SET kind = EXCLUDED.kind, canonical = EXCLUDED.canonical, last_seen = now()",
                 (key, record["kind"], json.dumps(canonical, default=str)),
             )
-            for prov in record.get("provenance") or [{"source_id": record["source_id"], "raw": record.get("raw")}]:
+            for prov in members:
                 cur.execute(
                     "INSERT INTO gateway.record_sources (identity, source_id, raw, fetched_at, license, redistributable) "
                     "VALUES (%s, %s, %s, now(), %s, true) ON CONFLICT (identity, source_id) DO UPDATE SET "
@@ -81,10 +106,11 @@ class Cache:
         return None
 
     def put_search(self, key: str, result: dict) -> None:
+        self._bound(self._searches, self.max_searches)
         self._searches[key] = (self._clock() + self.search_ttl, result)
 
     def stats(self) -> dict:
         now = self._clock()
         return {"records_in_memory": sum(1 for exp, _ in self._records.values() if exp > now),
                 "searches_in_memory": sum(1 for exp, _ in self._searches.values() if exp > now),
-                "persisted": self.persisted}
+                "persisted": self.persisted, "evicted": self.evicted}
