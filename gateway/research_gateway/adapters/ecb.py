@@ -59,7 +59,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
     if not within:
         resp = client.get(SOURCE_ID, "catalog", STRUCTURE_BASE + "/dataflow/" + AGENCY,
                           params=STRUCTURE_PARAMS or None, headers={"Accept": "application/xml"}, query=query)
-        if not check(SOURCE_ID, resp):
+        if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
         flows = sdmx.dataflows_xml(resp.text)
         if not flows:
@@ -73,7 +73,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
     resp = client.get(SOURCE_ID, "catalog", STRUCTURE_BASE + "/dataflow/" + AGENCY + "/" + within,
                       params=STRUCTURE_PARAMS or None, headers={"Accept": "application/xml"},
                       identity=f"series:{SOURCE_ID}:{within}")
-    if not check(SOURCE_ID, resp):
+    if not check(SOURCE_ID, resp, allow_404=False):
         return {"entries": []}
     flows = sdmx.dataflows_xml(resp.text)
     if not flows:
@@ -82,12 +82,12 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
     ds = client.get(SOURCE_ID, "catalog", STRUCTURE_BASE + "/datastructure/" + AGENCY + "/" + ref,
                     params=STRUCTURE_PARAMS or None, headers={"Accept": "application/xml"},
                     identity=f"series:{SOURCE_ID}:{within}")
-    if not check(SOURCE_ID, ds):
+    if not check(SOURCE_ID, ds, allow_404=False):
         return {"entries": []}
     dims = sdmx.dimensions_xml(ds.text)
     if not dims:
         return {"entries": [], "capability_fact": f"datastructure {ref!r}: no dimensions parsed — refusing to "
-                                                  "invent an empty key template"}
+                                                  "invent an empty series template"}
     entry = {"id": within, "label": flows[0]["label"], "kind": "dataflow",
              "dimensions_in_key_order": dims,
              "data_request": {"tool": "research_data", "partial": True,

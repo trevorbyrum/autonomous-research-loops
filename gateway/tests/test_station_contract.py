@@ -825,3 +825,27 @@ class CatalogReviewPins(unittest.TestCase):
         spec = next(s for s in mcp_stdio.tool_specs() if s["name"] == "research_catalog")
         self.assertEqual(spec["inputSchema"]["properties"]["cursor"]["type"], ["string", "integer"],
                          "the advertised schema accepts what the gateway returns")
+
+
+class FinalSliverPins(unittest.TestCase):
+    """D-32b: the two residual slivers."""
+
+    def test_periods_are_calendar_true(self):
+        from research_gateway.adapters.base import validate_data_params
+        ecb = ADAPTERS["ecb"]
+        for bad in ("2020-02-31", "2020-01-99", "2020-W99", "2020-W00", "2020-13"):
+            self.assertIsNotNone(validate_data_params(ecb, {"dataflow": "EXR", "key": "k", "start": bad}), bad)
+        for good in ("2020", "2020-02", "2020-02-29", "2020-Q1", "2020-S2", "2020-W53"):
+            self.assertIsNone(validate_data_params(ecb, {"dataflow": "EXR", "key": "k", "start": good}), good)
+
+    def test_missing_datastructure_blocks_and_never_reads_as_auth(self):
+        t = FakeTransport()
+        c = Client(broker=Broker({s["id"]: RatePolicy(per_second=100) for s in SEED}), transport=t)
+        t.add("GET", "https://data-api.ecb.europa.eu/service/dataflow/ECB/EXR", body=CatalogDiscovery.SDMX_FLOWS)
+        t.add("GET", "https://data-api.ecb.europa.eu/service/datastructure/ECB/ECB_EXR1", status=404)
+        from research_gateway.adapters.base import SourceUnavailable
+        with self.assertRaises(SourceUnavailable, msg="a 404 on the referenced datastructure blocks"):
+            ADAPTERS["ecb"].catalog(c, within="EXR")
+        self.assertEqual(R._fact_coverage("datastructure 'X': no dimensions parsed — refusing to "
+                                          "invent an empty series template"), "provider_unavailable",
+                         "the zero-dimension fact reads as an outage, never as an auth failure")

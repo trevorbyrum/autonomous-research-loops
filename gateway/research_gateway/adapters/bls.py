@@ -69,7 +69,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
     that still needs the BLS data finder by hand (documented residual)."""
     if not within:
         resp = client.get(SOURCE_ID, "catalog", "https://api.bls.gov/publicAPI/v2/surveys", query=query)
-        if not check(SOURCE_ID, resp):
+        if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
         q = (query or "").lower()
         entries = [{"id": s.get("survey_abbreviation"), "label": s.get("survey_name"), "kind": "survey",
@@ -84,7 +84,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                 "notes": "BLS has no series search API: browse a survey's popular series, or find ids at data.bls.gov"}
     resp = client.get(SOURCE_ID, "catalog", f"https://api.bls.gov/publicAPI/v2/timeseries/popular?survey={within}",
                       identity=f"series:bls:{within}")
-    if not check(SOURCE_ID, resp):
+    if not check(SOURCE_ID, resp, allow_404=False):
         return {"entries": []}
     series = (((resp.json or {}).get("Results") or {}).get("series") or [])
     entries = [{"id": s.get("seriesID"), "label": s.get("seriesID"), "kind": "series",

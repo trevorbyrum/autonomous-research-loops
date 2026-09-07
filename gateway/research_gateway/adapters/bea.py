@@ -84,7 +84,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
 
     def call(method, **extra):
         resp = client.get(SOURCE_ID, "catalog", BASE, params={**base_q, "method": method, **extra}, query=query)
-        if not check(SOURCE_ID, resp):
+        if not check(SOURCE_ID, resp, allow_404=False):
             return None, None
         j = resp.json or {}
         err = _error(j)

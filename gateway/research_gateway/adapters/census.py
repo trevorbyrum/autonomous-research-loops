@@ -63,7 +63,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
     offset = int(cursor or 0)
     if not within:
         resp = client.get(SOURCE_ID, "catalog", "https://api.census.gov/data.json", query=query)
-        if not check(SOURCE_ID, resp):
+        if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
         q = (query or "").lower()
         entries = []
@@ -81,7 +81,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         return {"entries": page, "next": str(offset + limit) if len(entries) > offset + limit else None}
     resp = client.get(SOURCE_ID, "catalog", f"https://api.census.gov/data/{within.strip('/')}/variables.json",
                       identity=f"table:census:{within}", query=query)
-    if not check(SOURCE_ID, resp):
+    if not check(SOURCE_ID, resp, allow_404=False):
         return {"entries": []}
     q = (query or "").lower()
     entries = []

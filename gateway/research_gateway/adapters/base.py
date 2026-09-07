@@ -356,14 +356,28 @@ def _real_date(v) -> bool:
         return False
 
 
+def _real_period(v) -> bool:
+    """SDMX periods, calendar-true: a year, a real month, a REAL date (2020-02-31 must
+    fail preflight, D-32b), a quarter Q1-Q4, a half S1-S2, or a week W01-W53."""
+    if not isinstance(v, str):
+        return False
+    if re.fullmatch(r"\d{4}", v) or re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", v):
+        return True
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+        return _real_date(v)
+    m = re.fullmatch(r"\d{4}-([QS])(\d)", v)
+    if m:
+        return int(m.group(2)) in ((1, 2, 3, 4) if m.group(1) == "Q" else (1, 2))
+    m = re.fullmatch(r"\d{4}-W(\d{2})", v)
+    return bool(m) and 1 <= int(m.group(1)) <= 53
+
+
 _VALUE_CHECKS = {
     "string": lambda v, s: isinstance(v, str) and v.strip() != "",
     "integer": lambda v, s: isinstance(v, int) and not isinstance(v, bool),
     "boolean": lambda v, s: isinstance(v, bool),
     "date": lambda v, s: _real_date(v),
-    # SDMX periods: a year, a real month (with optional day), a quarter, a half or a week
-    "period": lambda v, s: isinstance(v, str) and bool(
-        re.fullmatch(r"\d{4}(-(0[1-9]|1[0-2])(-\d{2})?|-Q[1-4]|-S[12]|-W\d{2})?", v)),
+    "period": lambda v, s: _real_period(v),
     "year": lambda v, s: (isinstance(v, int) and not isinstance(v, bool) and 1500 <= v <= 2200)
                          or (isinstance(v, str) and v.isdigit() and 1500 <= int(v) <= 2200),
     "string_or_int": lambda v, s: (isinstance(v, str) and v.strip() != "")

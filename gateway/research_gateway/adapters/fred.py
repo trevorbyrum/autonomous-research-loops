@@ -77,7 +77,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
     if within:
         resp = client.get(SOURCE_ID, "catalog", f"{BASE}/series", params={**common, "series_id": within},
                           identity=f"series:fred:{within}")
-        if not check(SOURCE_ID, resp):
+        if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
         seriess = (resp.json or {}).get("seriess") or []
     else:
@@ -87,7 +87,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         resp = client.get(SOURCE_ID, "catalog", f"{BASE}/series/search",
                           params={**common, "search_text": query, "limit": limit, "offset": offset},
                           query=query)
-        if not check(SOURCE_ID, resp):
+        if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
         seriess = (resp.json or {}).get("seriess") or []
     entries = [{"id": s.get("id"), "label": s.get("title"), "kind": "series",
