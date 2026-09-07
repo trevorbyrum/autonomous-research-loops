@@ -50,7 +50,11 @@ class Shapes(unittest.TestCase):
         c, t = client()
         t.add("GET", "https://api.crossref.org/journals?", body=CROSSREF_PAGE)
         recs = list(registries.crossref_journals(c, limit=5))
-        self.assertEqual([r["identity"] for r in recs], ["issn:9999-9991", "venue:crossref:no issn newsletter"])
+        self.assertEqual(recs[0]["identity"], "issn:9999-9991")
+        self.assertEqual(recs[1]["identity"], registries.venue_identity([], "crossref", "No ISSN Newsletter", "P")[0])
+        self.assertRegex(recs[1]["identity"], r"^venue:crossref:[0-9a-f]{16}$", "no-ISSN venues are keyed by full title + publisher")
+        self.assertNotEqual(registries.venue_identity([], "crossref", "Journal of X", "P")[0],
+                            registries.venue_identity([], "crossref", "Journal of X: Part Two", "P")[0])
         self.assertEqual(recs[0]["kind"], "venue")
         self.assertEqual(recs[0]["works_count"], 1234)
         self.assertEqual(recs[0]["subjects"], ["Management"])
@@ -97,6 +101,35 @@ class Shapes(unittest.TestCase):
             self.assertEqual([r["identity"] for r in got], ["issn:9999-9991", "repository:openalex:s999999902"])
             self.assertEqual(len(list(openalex_snapshot.read_snapshot(Path(d), limit=1))), 1)
 
+    def test_issn_map_joins_print_electronic_and_issn_l(self):
+        m = index.IssnMap(None)
+        self.assertEqual(registries.venue_identity(["9999-9991"], "crossref", "J", "P", m)[0], "issn:9999-9991")
+        # OpenAlex lists the same journal under its ISSN-L plus the electronic ISSN: it joins the existing record
+        rec = openalex_snapshot.record_from({"id": "https://openalex.org/S1", "display_name": "J", "issn_l": "9999-9983",
+                                             "issn": ["9999-9983", "9999-9991"], "type": "journal"}, m)
+        self.assertEqual(rec["identity"], "issn:9999-9991")
+        # a DOAJ row that only knows the electronic ISSN lands on the same record too
+        self.assertEqual(registries.venue_identity([None, "9999-9983"], "doaj", "J", "P", m)[0], "issn:9999-9991")
+        self.assertEqual(registries.venue_identity(["9999-9975"], "doaj", "Other", "P", m)[0], "issn:9999-9975")
+        self.assertEqual(len(m), 3)
+        skipped = []
+        recs = list(registries.crossref_journals(client()[0], skipped=skipped))
+        self.assertEqual(recs, [], "a 404 catalogue yields nothing and raises nothing")
+
+    def test_malformed_registry_rows_are_skipped_not_fatal(self):
+        c, t = client()
+        t.add("GET", "https://api.crossref.org/journals?", body={"message": {"items": [
+            "not a journal", {"title": None, "ISSN": "notalist"}, {"title": "Broken", "issn-type": "bad"},
+            CROSSREF_PAGE["message"]["items"][0]]}})
+        skipped = []
+        recs = list(registries.crossref_journals(c, skipped=skipped))
+        self.assertEqual([r["identity"] for r in recs], ["issn:9999-9991"], "nothing to key on → skipped; malformed → skipped")
+        self.assertEqual(len(skipped), 1, "only the row that raised is reported")
+        self.assertIn("AttributeError", skipped[0])
+        self.assertIsNone(openalex_snapshot.record_from("junk"))
+        odd = openalex_snapshot.record_from({"id": "https://openalex.org/S2", "issn": "notalist", "display_name": "x"})
+        self.assertEqual((odd["identity"], odd["issns"]), ("venue:openalex:s2", []))
+
     def test_index_text(self):
         rec = openalex_snapshot.record_from(OPENALEX_SOURCES[0])
         text = index.text_for(rec)
@@ -107,7 +140,7 @@ class Shapes(unittest.TestCase):
 @unittest.skipUnless(db.configured(), "RESEARCH_GATEWAY_DSN not set")
 class IndexRoundTrip(unittest.TestCase):
     IDS = ("issn:9999-9991", "issn:9999-9983", "repository:datacite:harvest.test", "repository:openalex:s999999902",
-           "venue:crossref:no issn newsletter")
+           registries.venue_identity([], "crossref", "No ISSN Newsletter", "P")[0])
 
     def setUp(self):
         self.conn = db.connect()

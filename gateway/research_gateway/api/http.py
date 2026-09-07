@@ -41,6 +41,8 @@ def validate_payload(body: dict) -> str | None:
             return f"{key} must be {getattr(want, '__name__', 'a number')}"
         if not isinstance(value, want):
             return f"{key} must be {getattr(want, '__name__', 'a number')}"
+        if key in ("limit", "year_from", "timeout") and value <= 0:
+            return f"{key} must be positive"
     return None
 
 

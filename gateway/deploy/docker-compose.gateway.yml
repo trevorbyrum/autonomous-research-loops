@@ -17,7 +17,7 @@ services:
     volumes:
       - ../sources.local.toml:/app/sources.local.toml:ro
       - ./snapshots:/snapshots:ro            # OpenAlex sources snapshot part files for the harvest loader
-      - ./vault-token:/run/vault-token:ro     # only with RESEARCH_GATEWAY_SECRETS=vault
+      - ./secrets:/run/secrets:ro             # token file for RESEARCH_GATEWAY_SECRETS=vault, if used
 
   # One-shot harvest runs (profile "harvest"): docker compose ... --profile harvest run --rm harvest crossref
   harvest:
@@ -28,5 +28,5 @@ services:
     volumes:
       - ../sources.local.toml:/app/sources.local.toml:ro
       - ./snapshots:/snapshots:ro
-      - ./vault-token:/run/vault-token:ro
+      - ./secrets:/run/secrets:ro
     entrypoint: ["python3", "-m", "research_gateway.harvest.registries"]

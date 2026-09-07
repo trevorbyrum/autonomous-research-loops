@@ -25,8 +25,27 @@ class Delivery(unittest.TestCase):
         self.assertTrue(a.alert("breaker:doaj", "doaj: breaker open", "x", "high"))
         clock.t += 3601
         self.assertTrue(a.alert("breaker:crossref", "crossref: breaker open", "later", "high"))
+        a.flush()
         self.assertEqual([t for t, _ in sent], ["crossref: breaker open", "doaj: breaker open", "crossref: breaker open"])
         self.assertEqual(len(a.history), 3)
+        self.assertEqual(a.delivered, 3)
+
+    def test_delivery_is_off_the_callers_thread_and_never_raises(self):
+        import threading
+        calls, gate = [], threading.Event()
+
+        def slow_then_broken(title, message, priority):
+            calls.append(title)
+            gate.wait(5)
+            raise RuntimeError("ntfy down")
+
+        a = alerts.Alerter(slow_then_broken)
+        self.assertTrue(a.alert("k1", "first", "m"))
+        self.assertTrue(a.alert("k2", "second", "m"), "the caller returns while the sender is still blocked")
+        gate.set()
+        a.flush()
+        self.assertEqual(calls, ["first", "second"])
+        self.assertEqual(a.delivered, 0, "sender errors are swallowed, not raised")
 
     def test_silent_when_unconfigured_and_events_have_shapes(self):
         a = alerts.Alerter(None)
@@ -35,9 +54,9 @@ class Delivery(unittest.TestCase):
         a.breaker("crossref", "closed", None, "window elapsed")
         a.budget("core", "requests", 160, 200)
         a.failures("semanticscholar", "auth", 4, 10)
-        a.zero_results("doaj", 6, 40)
+        a.zero_results("doaj", "supply chain", 6, 40)
         a.health("db down")
-        self.assertEqual([k for _, k, _ in a.history], ["breaker:crossref", "budget:core:requests", "auth:semanticscholar", "zero:doaj", "health"])
+        self.assertEqual([k for _, k, _ in a.history], ["breaker:crossref", "budget:core:requests", "auth:semanticscholar", "zero:doaj:supply chain", "health"])
         self.assertEqual(alerts.from_env(None, environ={}).enabled, False)
         self.assertTrue(alerts.from_env(None, environ={"RESEARCH_GATEWAY_NTFY_URL": "http://ntfy.local", "RESEARCH_GATEWAY_NTFY_TOPIC": "t"}).enabled)
 
@@ -77,18 +96,22 @@ class CallLogChecks(unittest.TestCase):
         a = alerts.Alerter(lambda t, m, p: sent.append(t))
         for _ in range(3):
             self._row(status=401, failure_class="auth")
-        for _ in range(5):
-            self._row(result_count=0)
+        for _ in range(3):
+            self._row(result_count=0, query="Supply Chain resilience")
+        for _ in range(3):
+            self._row(result_count=0, query="another query")
         seen = alerts.check_calls(self.conn, a)
         self.assertEqual(seen["failures"], [(self.src, "auth", 3)])
-        self.assertEqual(seen["zero_results"], [], "no earlier hits on record, so silence is not news")
+        self.assertEqual(seen["zero_results"], [], "no earlier hits for these queries, so silence is not news")
         with self.conn.cursor() as cur:
-            cur.execute("INSERT INTO gateway.calls (source_id, request_type, status, latency_ms, result_count, failure_class, at) "
-                        "VALUES (%s, 'find', 200, 1, 7, 'ok', now() - interval '2 days')", (self.src,))
+            cur.execute("INSERT INTO gateway.calls (source_id, request_type, query, status, latency_ms, result_count, failure_class, at) "
+                        "VALUES (%s, 'find', 'supply chain RESILIENCE', 200, 1, 7, 'ok', now() - interval '2 days')", (self.src,))
         self.conn.commit()
         seen = alerts.check_calls(self.conn, a)
-        self.assertEqual(seen["zero_results"], [(self.src, 5, 1)])
-        self.assertEqual(sent, [f"{self.src}: 3 auth failure(s) in 10 min", f"{self.src}: find returns nothing"])
+        self.assertEqual(seen["zero_results"], [(self.src, "supply chain resilience", 3, 1)],
+                         "the same query pattern used to return results; the other query never did")
+        a.flush()
+        self.assertEqual(sent, [f"{self.src}: 3 auth failure(s) in 10 min", f"{self.src}: find returns nothing for a query that used to"])
 
     def test_watcher_runs_and_stops(self):
         stop = threading.Event()

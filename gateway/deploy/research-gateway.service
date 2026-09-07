@@ -1,7 +1,9 @@
 # systemd unit for a Linux host running the gateway from a checkout (user or system scope).
 #   cp deploy/research-gateway.service ~/.config/systemd/user/ && systemctl --user daemon-reload
 #   systemctl --user enable --now research-gateway
-# EnvironmentFile holds RESEARCH_GATEWAY_DSN, RESEARCH_GATEWAY_TOKENS and the secrets settings; it is not in the repository.
+# Needs a virtual environment with psycopg: python3 -m venv ~/.venvs/research-gateway && ~/.venvs/research-gateway/bin/pip install 'psycopg[binary]'
+# WorkingDirectory is the gateway/ directory of your checkout; EnvironmentFile holds RESEARCH_GATEWAY_DSN,
+# RESEARCH_GATEWAY_TOKENS and the secrets settings and is not in the repository.
 [Unit]
 Description=Research gateway (metered, logged, licence-aware door to research sources)
 After=network-online.target postgresql.service
@@ -11,7 +13,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=%h/work/research-loops-public/gateway
 EnvironmentFile=%h/.config/research-loops/gateway.env
-ExecStart=/usr/bin/python3 -m research_gateway.api.http
+ExecStart=%h/.venvs/research-gateway/bin/python3 -m research_gateway.api.http
 Restart=on-failure
 RestartSec=5
 

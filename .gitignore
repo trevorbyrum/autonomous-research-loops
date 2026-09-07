@@ -34,4 +34,4 @@ private/
 /gateway/sources.local.toml
 /gateway/deploy/gateway.env
 /gateway/deploy/snapshots/
-/gateway/deploy/vault-token
+/gateway/deploy/secrets/

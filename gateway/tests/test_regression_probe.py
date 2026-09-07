@@ -24,6 +24,10 @@ class Compare(unittest.TestCase):
         self.assertFalse(out["doaj"]["ok"], "a 25-point drop is outside the 5-point tolerance")
         self.assertNotIn("core", out, "a source with no expectation on record is not compared")
         self.assertIn("doaj", probe.render(out))
+        swapped = {**observed, ("10.1/a", "crossref"): False, ("10.1/c", "crossref"): True}
+        out = probe.compare(expected, swapped, 0.05)
+        self.assertEqual(out["crossref"]["now"], 0.75, "same share present ...")
+        self.assertFalse(out["crossref"]["ok"], "... but different works: paired agreement gates it")
 
     def test_present_asks_through_the_metered_client(self):
         t = FakeTransport()

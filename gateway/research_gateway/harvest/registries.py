@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import io
 import json
 import sys
@@ -17,7 +18,7 @@ from typing import Iterator
 from ..adapters.base import Client, check
 from ..core import db
 from ..core.canonical import make_record
-from ..core.identity import normalize_issn
+from ..core.identity import normalize_issn, normalize_title
 from . import index
 
 CROSSREF_JOURNALS = "https://api.crossref.org/journals"
@@ -25,32 +26,61 @@ DOAJ_CSV = "https://doaj.org/csv"
 DATACITE_REPOSITORIES = "https://api.datacite.org/repositories"
 
 
-def venue_identity(issns: list[str | None], fallback: str) -> tuple[str, list[str]]:
+def venue_identity(issns: list[str | None], registry: str, title: str | None, publisher: str | None,
+                   issn_map: index.IssnMap | None = None) -> tuple[str | None, list[str]]:
+    """One identity per journal: the identity already holding any of its ISSNs (print, electronic or
+    ISSN-L — registries disagree about which one comes first), else `issn:<first>`; a journal with no
+    ISSN is keyed by registry, full normalised title and publisher, so two different journals whose
+    names merely share a prefix stay apart. None when there is nothing to key on."""
     clean = [i for i in (normalize_issn(x) for x in issns if x) if i]
-    return (f"issn:{clean[0]}" if clean else fallback), clean
+    if clean:
+        preferred = f"issn:{clean[0]}"
+        return (issn_map.identity_for(clean, preferred) if issn_map is not None else preferred), clean
+    if not (title or "").strip():
+        return None, []
+    key = hashlib.sha1(f"{normalize_title(title)}|{normalize_title(publisher)}".encode()).hexdigest()[:16]
+    return f"venue:{registry}:{key}", []
+
+
+def _safe(fn, item, facts: list[str]):
+    """Build one record or explain why it was skipped; a malformed registry row never stops a load."""
+    try:
+        return fn(item)
+    except (TypeError, ValueError, KeyError, AttributeError) as e:
+        facts.append(f"{type(e).__name__}: {e}"[:120])
+        return None
 
 
 # ---------------------------------------------------------------- Crossref journals
-def crossref_journals(client: Client, *, limit: int | None = None, rows: int = 1000) -> Iterator[dict]:
-    cursor, seen = "*", 0
+def crossref_journals(client: Client, *, limit: int | None = None, rows: int = 1000, issn_map: index.IssnMap | None = None,
+                      skipped: list[str] | None = None) -> Iterator[dict]:
+    cursor, seen, skipped = "*", 0, skipped if skipped is not None else []
+
+    def build(j: dict) -> dict | None:
+        issns = [x.get("value") for x in j.get("issn-type") or []] or j.get("ISSN") or []
+        identity, clean = venue_identity(issns, "crossref", j.get("title"), j.get("publisher"), issn_map)
+        if identity is None:
+            return None
+        counts = j.get("counts") or {}
+        return make_record(identity=identity, kind="venue", source_id="crossref", title=j.get("title"), venue=j.get("publisher"),
+                           identifiers={"issn": clean[0]} if clean else {}, links=[],
+                           extra={"issns": clean, "subjects": [s.get("name") for s in j.get("subjects") or [] if s.get("name")],
+                                  "works_count": counts.get("total-dois"), "current_dois": counts.get("current-dois")},
+                           raw=j)
+
     while cursor:
         resp = client.get("crossref", "find", CROSSREF_JOURNALS,
                           params={"rows": rows, "cursor": cursor, "mailto": client.contact_email}, query="journals harvest")
         if not check("crossref", resp):
             return
         msg = (resp.json or {}).get("message") or {}
-        items = msg.get("items") or []
+        items = msg.get("items") if isinstance(msg, dict) else None
+        items = items if isinstance(items, list) else []
         for j in items:
-            issns = [x.get("value") for x in j.get("issn-type") or []] or j.get("ISSN") or []
-            identity, clean = venue_identity(issns, f"venue:crossref:{(j.get('title') or '').lower()[:80]}")
-            if not clean and not j.get("title"):
+            rec = _safe(build, j, skipped) if isinstance(j, dict) else None
+            if rec is None:
                 continue
-            counts = j.get("counts") or {}
-            yield make_record(identity=identity, kind="venue", source_id="crossref", title=j.get("title"), venue=j.get("publisher"),
-                              identifiers={"issn": clean[0]} if clean else {}, links=[],
-                              extra={"issns": clean, "subjects": [s.get("name") for s in j.get("subjects") or [] if s.get("name")],
-                                     "works_count": counts.get("total-dois"), "current_dois": counts.get("current-dois")},
-                              raw=j)
+            yield rec
             seen += 1
             if limit and seen >= limit:
                 return
@@ -58,7 +88,7 @@ def crossref_journals(client: Client, *, limit: int | None = None, rows: int = 1
 
 
 # ---------------------------------------------------------------- DOAJ journals (CSV)
-def doaj_journals(client: Client, *, limit: int | None = None) -> Iterator[dict]:
+def doaj_journals(client: Client, *, limit: int | None = None, issn_map: index.IssnMap | None = None) -> Iterator[dict]:
     resp = client.get("doaj", "find", DOAJ_CSV, headers={"Accept": "text/csv"}, query="journals csv")
     if not check("doaj", resp):
         return
@@ -66,8 +96,8 @@ def doaj_journals(client: Client, *, limit: int | None = None) -> Iterator[dict]
     for n, row in enumerate(reader, 1):
         title = row.get("Journal title")
         identity, clean = venue_identity([row.get("Journal ISSN (print version)"), row.get("Journal EISSN (online version)")],
-                                         f"venue:doaj:{(title or '').lower()[:80]}")
-        if not clean and not title:
+                                         "doaj", title, row.get("Publisher"), issn_map)
+        if identity is None:
             continue
         subjects = [s.strip() for s in (row.get("Subjects") or "").split("|") if s.strip()]
         yield make_record(identity=identity, kind="venue", source_id="doaj", title=title, venue=row.get("Publisher"),
@@ -88,20 +118,27 @@ def datacite_repositories(client: Client, *, limit: int | None = None, size: int
                           query="repositories harvest")
         if not check("datacite", resp):
             return
-        j = resp.json or {}
-        data = j.get("data") or []
-        for d in data:
+        j = resp.json if isinstance(resp.json, dict) else {}
+        data = j.get("data") if isinstance(j.get("data"), list) else []
+
+        def build(d: dict) -> dict | None:
             a = d.get("attributes") or {}
-            symbol = (a.get("symbol") or d.get("id") or "").lower()
+            symbol = str(a.get("symbol") or d.get("id") or "").lower()
             if not symbol:
+                return None
+            return make_record(identity=f"repository:datacite:{symbol}", kind="repository", source_id="datacite", title=a.get("name"),
+                               identifiers={"datacite_client": symbol, **({"re3data": a["re3data"]} if a.get("re3data") else {})},
+                               links=[u for u in (a.get("url"),) if u],
+                               extra={"description": (a.get("description") or "")[:1000], "client_type": a.get("clientType"),
+                                      "subjects": [s.get("name") if isinstance(s, dict) else str(s) for s in a.get("subjects") or []],
+                                      "active": a.get("isActive"), "language": a.get("language")},
+                               raw=d)
+
+        for d in data:
+            rec = _safe(build, d, []) if isinstance(d, dict) else None
+            if rec is None:
                 continue
-            yield make_record(identity=f"repository:datacite:{symbol}", kind="repository", source_id="datacite", title=a.get("name"),
-                              identifiers={"datacite_client": symbol, **({"re3data": a["re3data"]} if a.get("re3data") else {})},
-                              links=[u for u in (a.get("url"),) if u],
-                              extra={"description": (a.get("description") or "")[:1000], "client_type": a.get("clientType"),
-                                     "subjects": [s.get("name") if isinstance(s, dict) else str(s) for s in a.get("subjects") or []],
-                                     "active": a.get("isActive"), "language": a.get("language")},
-                              raw=d)
+            yield rec
             seen += 1
             if limit and seen >= limit:
                 return
@@ -118,7 +155,8 @@ LOADERS = {"crossref": (crossref_journals, "Metadata: no rights asserted (facts)
 
 def run(conn, client: Client, name: str, *, limit: int | None = None) -> int:
     fn, license = LOADERS[name]
-    return index.load(conn, fn(client, limit=limit), name, license=license)
+    kw = {"issn_map": index.IssnMap(conn)} if name in ("crossref", "doaj") else {}
+    return index.load(conn, fn(client, limit=limit, **kw), name, license=license)
 
 
 def main(argv: list[str] | None = None) -> int:

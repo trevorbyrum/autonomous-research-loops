@@ -24,14 +24,18 @@ SOURCE_ID = "openalex_snapshot"
 REPOSITORY_TYPES = {"repository"}
 
 
-def record_from(s: dict) -> dict | None:
-    oid = (s.get("id") or "").rsplit("/", 1)[-1]
+def record_from(s: dict, issn_map: index.IssnMap | None = None) -> dict | None:
+    if not isinstance(s, dict):
+        return None
+    oid = str(s.get("id") or "").rsplit("/", 1)[-1]
     if not oid:
         return None
-    issns = [i for i in (normalize_issn(x) for x in (s.get("issn") or []) + [s.get("issn_l")]) if i]
+    issns = [i for i in (normalize_issn(x) for x in list(s.get("issn") or []) + [s.get("issn_l")] if isinstance(x, str)) if i]
     issn_l = normalize_issn(s.get("issn_l")) or (issns[0] if issns else None)
     kind = "repository" if s.get("type") in REPOSITORY_TYPES else "venue"
     identity = f"issn:{issn_l}" if issn_l else f"{kind}:openalex:{oid.lower()}"
+    if issn_l and issn_map is not None:
+        identity = issn_map.identity_for(issns, identity)
     ids = {"openalex": oid}
     if issn_l:
         ids["issn"] = issn_l
@@ -47,7 +51,7 @@ def record_from(s: dict) -> dict | None:
                        raw=s)
 
 
-def read_snapshot(root: Path, *, limit: int | None = None) -> Iterator[dict]:
+def read_snapshot(root: Path, *, limit: int | None = None, issn_map: index.IssnMap | None = None) -> Iterator[dict]:
     """Every source object in the snapshot directory (part files under updated_date=* folders)."""
     n = 0
     files = sorted(root.rglob("*.gz")) + sorted(p for p in root.rglob("*.jsonl") if p.is_file()) + sorted(root.rglob("*.json"))
@@ -60,9 +64,9 @@ def read_snapshot(root: Path, *, limit: int | None = None) -> Iterator[dict]:
                     continue
                 try:
                     obj = json.loads(line)
-                except ValueError:
+                    rec = record_from(obj, issn_map)
+                except (ValueError, TypeError, AttributeError):
                     continue
-                rec = record_from(obj)
                 if rec is None:
                     continue
                 yield rec
@@ -72,7 +76,7 @@ def read_snapshot(root: Path, *, limit: int | None = None) -> Iterator[dict]:
 
 
 def run(conn, root: Path, *, limit: int | None = None) -> int:
-    return index.load(conn, read_snapshot(root, limit=limit), SOURCE_ID, license="CC0")
+    return index.load(conn, read_snapshot(root, limit=limit, issn_map=index.IssnMap(conn)), SOURCE_ID, license="CC0")
 
 
 def main(argv: list[str] | None = None) -> int:

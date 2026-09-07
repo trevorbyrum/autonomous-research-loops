@@ -120,7 +120,7 @@ class InlineGateway(unittest.TestCase):
             urllib.request.urlopen(req, timeout=10)
         self.assertEqual(cm.exception.code, 400)
         for bad in ({"query": "q", "params": [1]}, {"query": "q", "commercial": "yes"}, {"query": "q", "limit": "5"},
-                    {"query": "q", "unknown": 1}, {"query": 5}):
+                    {"query": "q", "limit": 0}, {"query": "q", "limit": -3}, {"query": "q", "unknown": 1}, {"query": 5}):
             status, body, _ = http(f"{self.url}/v1/find", "POST", bad, TOKENS["loops"])
             self.assertEqual(status, 400, bad)
             self.assertIn("error", body)

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import os
+import queue as queue_module
 import threading
 import time
 import urllib.error
@@ -40,18 +41,50 @@ def ntfy_sender(url: str, topic: str, *, username: str | None = None, password: 
 
 
 class Alerter:
-    def __init__(self, send: Sender | None, *, clock: Callable[[], float] = time.time, min_interval: float = 3600.0):
+    """Delivery runs on its own daemon thread from a bounded queue: the caller (a broker callback,
+    the watcher, a request thread) never waits on the network and never sees a sender error."""
+
+    def __init__(self, send: Sender | None, *, clock: Callable[[], float] = time.time, min_interval: float = 3600.0,
+                 queue_size: int = 100):
         self._send, self._clock, self.min_interval = send, clock, min_interval
         self._last: dict[str, float] = {}
         self.history: list[tuple[float, str, str]] = []   # (when, key, title) — the status page shows the tail
         self._lock = threading.Lock()
+        self._queue: queue_module.Queue = queue_module.Queue(maxsize=queue_size)
+        self.dropped = 0
+        self.delivered = 0
+        self._thread: threading.Thread | None = None
+        if send is not None:
+            self._thread = threading.Thread(target=self._pump, name="gateway-alerts", daemon=True)
+            self._thread.start()
 
     @property
     def enabled(self) -> bool:
         return self._send is not None
 
+    def _pump(self) -> None:
+        while True:
+            title, message, priority = self._queue.get()
+            try:
+                self._send(title, message, priority)
+                self.delivered += 1
+            except Exception:
+                pass  # a sender that fails must never take anything else down
+            finally:
+                self._queue.task_done()
+
+    def flush(self, timeout: float = 5.0) -> None:
+        """Wait until queued alerts are delivered (tests, shutdown)."""
+        if self._thread is None:
+            return
+        deadline = time.monotonic() + timeout
+        while not self._queue.empty() or self._queue.unfinished_tasks:
+            if time.monotonic() > deadline:
+                return
+            time.sleep(0.01)
+
     def alert(self, key: str, title: str, message: str, priority: str = "default") -> bool:
-        """Deliver unless the same key fired within min_interval. Returns True when sent."""
+        """Queue for delivery unless the same key fired within min_interval. Returns True when queued."""
         now = self._clock()
         with self._lock:
             last = self._last.get(key)
@@ -61,7 +94,10 @@ class Alerter:
             self.history.append((now, key, title))
             del self.history[:-50]
         if self._send is not None:
-            self._send(title, message, priority)
+            try:
+                self._queue.put_nowait((title, message, priority))
+            except queue_module.Full:
+                self.dropped += 1
         return True
 
     # ------------------------------------------------------------ the events §7 names
@@ -77,9 +113,10 @@ class Alerter:
         self.alert(f"{failure_class}:{source_id}", f"{source_id}: {count} {failure_class} failure(s) in {window_minutes} min",
                    "check the key or the source's terms; the lane keeps running until its breaker opens", "high")
 
-    def zero_results(self, source_id: str, recent: int, earlier_hits: int) -> None:
-        self.alert(f"zero:{source_id}", f"{source_id}: find returns nothing",
-                   f"{recent} find calls in the last hour returned 0 results; {earlier_hits} returned results in the past 7 days", "high")
+    def zero_results(self, source_id: str, pattern: str, recent: int, earlier_hits: int) -> None:
+        self.alert(f"zero:{source_id}:{pattern}", f"{source_id}: find returns nothing for a query that used to",
+                   f"query {pattern!r}: {recent} calls in the last hour returned 0 results; "
+                   f"{earlier_hits} call(s) returned results in the past 7 days (bot wall or index change?)", "high")
 
     def health(self, detail: str) -> None:
         self.alert("health", "research gateway unhealthy", detail, "urgent")
@@ -102,7 +139,9 @@ def from_env(secrets=None, environ: dict | None = None) -> Alerter:
 # ---------------------------------------------------------------- the periodic checks
 FAILURE_WINDOW_MIN = 10
 FAILURE_THRESHOLD = 3
-ZERO_MIN_CALLS = 5
+ZERO_MIN_CALLS = 3
+# a "query pattern" is the lower-cased first 80 characters of the logged query
+PATTERN_SQL = "lower(left(query, 80))"
 
 
 def check_calls(conn, alerter: Alerter) -> dict:
@@ -117,16 +156,17 @@ def check_calls(conn, alerter: Alerter) -> dict:
             seen["failures"].append((source_id, failure_class, count))
             alerter.failures(source_id, failure_class, count, FAILURE_WINDOW_MIN)
         cur.execute(
-            "WITH recent AS (SELECT source_id, count(*) AS n, max(result_count) AS best FROM gateway.calls "
-            "  WHERE request_type = 'find' AND status = 200 AND at > now() - interval '1 hour' GROUP BY source_id), "
-            "earlier AS (SELECT source_id, count(*) AS hits FROM gateway.calls "
-            "  WHERE request_type = 'find' AND status = 200 AND result_count > 0 "
-            "    AND at BETWEEN now() - interval '7 days' AND now() - interval '1 hour' GROUP BY source_id) "
-            "SELECT r.source_id, r.n, e.hits FROM recent r JOIN earlier e USING (source_id) "
+            f"WITH recent AS (SELECT source_id, {PATTERN_SQL} AS pattern, count(*) AS n, max(result_count) AS best FROM gateway.calls "
+            "  WHERE request_type = 'find' AND status = 200 AND query IS NOT NULL AND at > now() - interval '1 hour' "
+            "  GROUP BY source_id, pattern), "
+            f"earlier AS (SELECT source_id, {PATTERN_SQL} AS pattern, count(*) AS hits FROM gateway.calls "
+            "  WHERE request_type = 'find' AND status = 200 AND result_count > 0 AND query IS NOT NULL "
+            "    AND at BETWEEN now() - interval '7 days' AND now() - interval '1 hour' GROUP BY source_id, pattern) "
+            "SELECT r.source_id, r.pattern, r.n, e.hits FROM recent r JOIN earlier e USING (source_id, pattern) "
             "WHERE r.n >= %s AND coalesce(r.best, 0) = 0 AND e.hits > 0", (ZERO_MIN_CALLS,))
-        for source_id, n, hits in cur.fetchall():
-            seen["zero_results"].append((source_id, n, hits))
-            alerter.zero_results(source_id, n, hits)
+        for source_id, pattern, n, hits in cur.fetchall():
+            seen["zero_results"].append((source_id, pattern, n, hits))
+            alerter.zero_results(source_id, pattern, n, hits)
     conn.commit()
     return seen
 

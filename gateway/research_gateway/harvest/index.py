@@ -16,6 +16,34 @@ from ..core import db
 BATCH = 500
 
 
+class IssnMap:
+    """ISSN → the identity already holding it, so a journal known under several ISSNs (print,
+    electronic, ISSN-L) is one record whichever registry mentions it first. Loaded once per run
+    from the stored venues; new records register their ISSNs as they are written."""
+
+    def __init__(self, conn=None):
+        self._map: dict[str, str] = {}
+        if conn is not None:
+            with conn.cursor() as cur:
+                cur.execute("SELECT identity, canonical->'issns' FROM gateway.records WHERE kind = 'venue' AND canonical ? 'issns'")
+                for identity, issns in cur.fetchall():
+                    for i in issns or []:
+                        self._map.setdefault(str(i), identity)
+            conn.commit()
+
+    def identity_for(self, issns: list[str], preferred: str | None = None) -> str | None:
+        """The existing identity for any of these ISSNs, else `preferred`, else None; every ISSN
+        given is then known to belong to that identity (so a later row with only the other ISSN joins too)."""
+        found = next((self._map[i] for i in issns if i in self._map), preferred)
+        if found:
+            for i in issns:
+                self._map.setdefault(i, found)
+        return found
+
+    def __len__(self) -> int:
+        return len(self._map)
+
+
 def text_for(record: dict) -> str:
     """What the full-text index sees for a record: names, publisher, identifiers, subjects, country."""
     parts = [record.get("title"), record.get("venue"), record.get("description")]

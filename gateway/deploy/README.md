@@ -31,7 +31,9 @@ docker compose -f deploy/docker-compose.gateway.yml --profile harvest run --rm h
 ## Linux host from a checkout (systemd user units)
 
 ```bash
+python3 -m venv ~/.venvs/research-gateway && ~/.venvs/research-gateway/bin/pip install 'psycopg[binary]'
 mkdir -p ~/.config/systemd/user
+# edit WorkingDirectory in the units if your checkout is not at ~/work/research-loops-public
 cp deploy/research-gateway.service deploy/research-gateway-harvest.service deploy/research-gateway-harvest.timer ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now research-gateway research-gateway-harvest.timer

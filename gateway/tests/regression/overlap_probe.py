@@ -41,8 +41,14 @@ def present(adapters: dict, client, key: str, doi: str) -> bool | None:
         return None
 
 
-def compare(expected: list[dict], observed: dict[tuple[str, str], bool | None], tolerance: float) -> dict:
-    """Per source: presence rate then vs now over the DOIs that were actually probed."""
+MIN_AGREEMENT = 0.9   # paired: the same DOIs must answer the same way, not merely the same share of them
+
+
+def compare(expected: list[dict], observed: dict[tuple[str, str], bool | None], tolerance: float,
+            min_agreement: float = MIN_AGREEMENT) -> dict:
+    """Per source, over the DOIs actually probed: presence rate then vs now (within `tolerance`)
+    AND paired agreement (≥ `min_agreement`). At n=40 the rate tolerance alone is two works, so
+    the paired gate is the one that matters; use --sample 100 or more for a real verdict."""
     out = {}
     for key in PROBES:
         then, now = [], []
@@ -58,7 +64,7 @@ def compare(expected: list[dict], observed: dict[tuple[str, str], bool | None], 
         rate_then, rate_now = sum(then) / len(then), sum(now) / len(now)
         agreement = sum(1 for a, b in zip(then, now) if a == b) / len(then)
         out[key] = {"n": len(then), "then": round(rate_then, 3), "now": round(rate_now, 3), "agreement": round(agreement, 3),
-                    "ok": abs(rate_now - rate_then) <= tolerance}
+                    "ok": abs(rate_now - rate_then) <= tolerance and agreement >= min_agreement}
     return out
 
 

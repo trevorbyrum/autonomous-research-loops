@@ -19,10 +19,11 @@ routes, key instructions, rate limits and licence verdicts are documented in
 
 ## Status
 
-Phases 1–7 built: registry and seed, queue and broker, 26 adapters with a live
+Code for Phases 1–7 is in place: registry and seed, queue and broker, 26 adapters with a live
 smoke, router/cache/dedup/licence enforcement, HTTP + MCP front doors and the
 CLI, the Tier 0 venue/repository index (310k records from four registries),
-alerts, the regression replay and the deployment files (`deploy/`). Placing the
+alerts, the regression replay and the deployment files (`deploy/`). Phase 7's
+operational checks (a deployed service, the loops on the tool) are pending: placing the
 service and wiring the clients are operator steps — see `deploy/README.md`,
 `PLAN.md` §13 for the acceptance checks and §16 for decisions.
 

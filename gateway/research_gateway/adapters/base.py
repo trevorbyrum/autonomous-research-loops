@@ -57,6 +57,9 @@ class Response:
             return None
 
 
+MAX_BODY_BYTES = 256 * 1024 * 1024   # a response bigger than this is an error, not a memory event
+
+
 class Transport:
     """Real network transport."""
 
@@ -64,9 +67,13 @@ class Transport:
         req = urllib.request.Request(url, data=body, method=method, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return Response(resp.status, {k.lower(): v for k, v in resp.headers.items()}, resp.read(), url)
+                data = resp.read(MAX_BODY_BYTES + 1)
+                if len(data) > MAX_BODY_BYTES:
+                    return Response(None, {k.lower(): v for k, v in resp.headers.items()}, b"", url,
+                                    error=f"response exceeds {MAX_BODY_BYTES} bytes")
+                return Response(resp.status, {k.lower(): v for k, v in resp.headers.items()}, data, url)
         except urllib.error.HTTPError as e:
-            return Response(e.code, {k.lower(): v for k, v in e.headers.items()}, e.read() or b"", url)
+            return Response(e.code, {k.lower(): v for k, v in e.headers.items()}, e.read(MAX_BODY_BYTES) or b"", url)
         except (urllib.error.URLError, TimeoutError, OSError) as e:
             return Response(None, {}, b"", url, error=f"{type(e).__name__}: {e}")
 

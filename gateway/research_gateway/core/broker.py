@@ -11,6 +11,9 @@ Second/minute/hour windows are sliding: a request is allowed when fewer than
 no refill maths, and is easy to test with an injected clock. Daily budgets
 (`per_day`, `cost_cap_per_day`) are counters per UTC day (§5). A limit error
 without `Retry-After` backs the source off 10→80 s before the breaker opens.
+
+Callbacks (breaker changes, budget warnings) are invoked after the broker's
+lock is released, so a slow or faulty listener can never stall acquisitions.
 """
 from __future__ import annotations
 
@@ -116,6 +119,15 @@ class Broker:
             st.day, st.credits_today, st.dispatched_today = today, 0.0, 0
         return st
 
+    @staticmethod
+    def _fire(pending: list) -> None:
+        """Run listener callbacks outside the lock; a listener's failure is its own problem."""
+        for fn in pending:
+            try:
+                fn()
+            except Exception:
+                pass
+
     # ---------------------------------------------------------------- acquire
     def acquire(self, source_id: str, *, credits: float = 0.0) -> float:
         """Reserve one dispatch. Returns seconds to wait before sending (0 = now).
@@ -125,6 +137,7 @@ class Broker:
         """
         if not self.has_policy(source_id):
             raise NoPolicy(source_id)
+        pending: list = []
         with self._lock:
             st = self._state_for(source_id)
             now = self._clock()
@@ -148,14 +161,15 @@ class Broker:
             st.credits_today += credits
             st.dispatched_today += 1
             if self._on_budget:
-                self._budget_watch(source_id, pol, st)
-            return 0.0
+                self._budget_watch(source_id, pol, st, pending)
+        self._fire(pending)
+        return 0.0
 
-    def _budget_watch(self, source_id: str, pol: RatePolicy, st: _State) -> None:
+    def _budget_watch(self, source_id: str, pol: RatePolicy, st: _State, pending: list) -> None:
         for what, used, cap in (("requests", st.dispatched_today, pol.per_day), ("credits", st.credits_today, pol.cost_cap_per_day)):
             if cap and used >= self._budget_warn * cap and st.day not in st.budget_alerted.get(what, set()):
                 st.budget_alerted.setdefault(what, set()).add(st.day)
-                self._on_budget(source_id, what, float(used), float(cap))
+                pending.append(lambda s=source_id, w=what, u=float(used), c=float(cap): self._on_budget(s, w, u, c))
 
     def acquire_blocking(self, source_id: str, *, credits: float = 0.0, sleep: Callable[[float], None] = time.sleep,
                          max_wait: float = 120.0) -> None:
@@ -174,28 +188,32 @@ class Broker:
     def record(self, source_id: str, status: int | None, *, retry_after: float | None = None,
                network_error: bool = False) -> None:
         """Feed the outcome of a call back so breakers reflect reality (§5)."""
+        pending: list = []
         with self._lock:
             st = self._state_for(source_id)
             limited = (status in self.LIMIT_STATUSES) or network_error or (status is not None and status >= 500)
             if not limited:
                 st.consecutive_limit_errors, st.backoff_until = 0, 0.0
-                return
-            st.consecutive_limit_errors += 1
-            if retry_after is not None:
-                self._open(source_id, st, retry_after, f"retry-after {retry_after:.0f}s (status {status})")
-            elif st.consecutive_limit_errors >= self._errors_to_open:
-                self._open(source_id, st, self._breaker_window, f"{st.consecutive_limit_errors} consecutive limit/outage errors")
             else:
-                st.backoff_until = self._clock() + min(10.0 * 2 ** (st.consecutive_limit_errors - 1), 80.0)
+                st.consecutive_limit_errors += 1
+                if retry_after is not None:
+                    self._open(source_id, st, retry_after, f"retry-after {retry_after:.0f}s (status {status})", pending)
+                elif st.consecutive_limit_errors >= self._errors_to_open:
+                    self._open(source_id, st, self._breaker_window, f"{st.consecutive_limit_errors} consecutive limit/outage errors", pending)
+                else:
+                    st.backoff_until = self._clock() + min(10.0 * 2 ** (st.consecutive_limit_errors - 1), 80.0)
+        self._fire(pending)
 
-    def _open(self, source_id: str, st: _State, seconds: float, reason: str) -> None:
+    def _open(self, source_id: str, st: _State, seconds: float, reason: str, pending: list) -> None:
         st.breaker_until = self._clock() + seconds
         st.breaker_reason = reason
         st.consecutive_limit_errors, st.backoff_until = 0, 0.0
         if self._on_breaker_change:
-            self._on_breaker_change(source_id, "open", self._wall() + seconds, reason)
+            until = self._wall() + seconds
+            pending.append(lambda: self._on_breaker_change(source_id, "open", until, reason))
 
     def breaker_open(self, source_id: str) -> bool:
+        pending: list = []
         with self._lock:
             st = self._state.get(source_id)
             if st is None:
@@ -203,9 +221,12 @@ class Broker:
             if st.breaker_until and st.breaker_until <= self._clock():
                 st.breaker_until = 0.0
                 if self._on_breaker_change:
-                    self._on_breaker_change(source_id, "closed", None, "window elapsed")
-                return False
-            return st.breaker_until > self._clock()
+                    pending.append(lambda: self._on_breaker_change(source_id, "closed", None, "window elapsed"))
+                result = False
+            else:
+                result = st.breaker_until > self._clock()
+        self._fire(pending)
+        return result
 
     def close_breaker(self, source_id: str) -> None:
         with self._lock:
@@ -213,7 +234,7 @@ class Broker:
             if st:
                 st.breaker_until, st.breaker_reason, st.consecutive_limit_errors = 0.0, "", 0
         if self._on_breaker_change:
-            self._on_breaker_change(source_id, "closed", None, "operator")
+            self._fire([lambda: self._on_breaker_change(source_id, "closed", None, "operator")])
 
     # ---------------------------------------------------------------- status
     def status(self) -> dict[str, dict]:
