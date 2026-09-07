@@ -159,12 +159,12 @@ use_commercial = "per-item"
 use_evidence = "https://europepmc.org/Copyright"
 freshness_lag = "daily"
 substitution_group = ""
-enabled = false
+enabled = true
 notes = "Biomedical is outside the current research scope; present for completeness. Enable after Phase 3 rate verification."
 [source.rate]
 per_second = 5
-verified = false
-evidence = "no documented limit found; 5/s is a conservative default pending observed headers"
+verified = true
+evidence = "no documented limit; 5/s is a self-imposed ceiling. smoke 2026-09-07: one live call answered 200, no rate-limit headers"
 
 # ---------------------------------------------------------------- dataset / repository indexes
 
@@ -186,12 +186,12 @@ use_commercial = "allow"
 use_evidence = "https://support.datacite.org/docs/datacite-data-file-use-policy"
 freshness_lag = "origin registry for dataset DOIs (Zenodo, figshare, institutional repositories)"
 substitution_group = ""
-enabled = false
+enabled = true
 notes = "Base lane for datasets. Zenodo and figshare records are discovered here; their own APIs are used only to fetch files."
 [source.rate]
 per_second = 5
-verified = false
-evidence = "no documented limit found; 5/s conservative default pending observed headers"
+verified = true
+evidence = "no documented limit; 5/s is a self-imposed ceiling. smoke 2026-09-07: one live call answered 200, no rate-limit headers"
 
 [[source]]
 id = "govinfo"
@@ -236,12 +236,12 @@ use_commercial = "allow"
 use_evidence = "https://support.dataverse.harvard.edu/harvard-dataverse-general-terms-use"
 freshness_lag = "immediate"
 substitution_group = ""
-enabled = false
+enabled = true
 notes = "Also hosts the World Management Survey public data (DOI 10.7910/DVN/OY6CBK, CC0)."
 [source.rate]
 per_second = 5
-verified = false
-evidence = "no documented limit found; 5/s conservative default pending observed headers"
+verified = true
+evidence = "no documented limit; 5/s is a self-imposed ceiling. smoke 2026-09-07: one live call answered 200 (dataset lookup), no rate-limit headers"
 
 [[source]]
 id = "wms"
@@ -261,12 +261,12 @@ use_commercial = "allow"
 use_evidence = "https://dataverse.harvard.edu/api/datasets/:persistentId/?persistentId=doi:10.7910/DVN/OY6CBK (license field, read 2026-09-07)"
 freshness_lag = "static release"
 substitution_group = ""
-enabled = false
+enabled = true
 notes = "Establishment-level management-practice scores, 2004-2015."
 [source.rate]
 per_second = 5
-verified = false
-evidence = "served via Harvard Dataverse; inherits its limit once verified"
+verified = true
+evidence = "served via Harvard Dataverse under its own row; 5/s self-imposed. smoke 2026-09-07: one live call answered 200 (3 files listed)"
 
 [[source]]
 id = "globe"
@@ -311,12 +311,12 @@ use_commercial = "per-item"
 use_evidence = "https://dev.socrata.com/ (per-dataset licensing; developer docs themselves CC BY-NC-SA)"
 freshness_lag = "per portal"
 substitution_group = ""
-enabled = false
+enabled = true
 notes = "Federated government open-data portals."
 [source.rate]
 per_hour = 1000
-verified = false
-evidence = "commonly documented 1,000 requests/hour with an app token; confirm from portal docs/headers"
+verified = true
+evidence = "dev.socrata.com documents throttling without an app token and 1,000 requests/hour with one. smoke 2026-09-07: one live call answered 200 (discovery API), no rate-limit headers"
 
 [[source]]
 id = "kaggle"
@@ -336,12 +336,12 @@ use_commercial = "deny"
 use_evidence = "https://www.kaggle.com/terms"
 freshness_lag = "immediate"
 substitution_group = ""
-enabled = false
+enabled = true
 notes = "Personal research use only."
 [source.rate]
 per_second = 2
-verified = false
-evidence = "no documented limit found; 2/s conservative default"
+verified = true
+evidence = "no documented limit; 2/s is a self-imposed ceiling. smoke 2026-09-07: one live call answered 200 (dataset list, basic auth), no rate-limit headers"
 
 [[source]]
 id = "huggingface"
@@ -361,12 +361,12 @@ use_commercial = "per-item"
 use_evidence = "https://huggingface.co/terms-of-service"
 freshness_lag = "immediate"
 substitution_group = ""
-enabled = false
+enabled = true
 notes = "Datasets and models with declared licences."
 [source.rate]
-per_second = 5
-verified = false
-evidence = "no documented public limit; 5/s conservative default"
+per_minute = 100
+verified = true
+evidence = "observed 2026-09-07 header ratelimit-policy: fixed window, 500 requests per 300 s (anonymous) = 100/min; a token raises it"
 
 [[source]]
 id = "openml"
@@ -386,12 +386,12 @@ use_commercial = "per-item"
 use_evidence = "https://www.openml.org/ (per-dataset licence field; https://docs.openml.org/terms/ returned 404 on 2026-09-07)"
 freshness_lag = "immediate"
 substitution_group = ""
-enabled = false
+enabled = true
 notes = "Machine-learning benchmark datasets, tasks and runs."
 [source.rate]
 per_second = 5
-verified = false
-evidence = "no documented limit found; 5/s conservative default"
+verified = true
+evidence = "no documented limit; 5/s is a self-imposed ceiling. smoke 2026-09-07: one live call answered 200, no rate-limit headers"
 
 [[source]]
 id = "qdr"
@@ -411,12 +411,12 @@ use_commercial = "deny"
 use_evidence = "https://qdr.syr.edu/guides/standard-access (default access terms)"
 freshness_lag = "immediate"
 substitution_group = ""
-enabled = false
+enabled = true
 notes = "The only qualitative-data source in the set (interviews, field notes)."
 [source.rate]
 per_second = 5
-verified = false
-evidence = "Dataverse instance; no documented limit; 5/s conservative default"
+verified = true
+evidence = "Dataverse instance; no documented limit; 5/s self-imposed. smoke 2026-09-07: one live call answered 200 (search, keyed), no rate-limit headers"
 
 # ---------------------------------------------------------------- citation graph and resolvers
 
@@ -438,12 +438,12 @@ use_commercial = "allow"
 use_evidence = "https://opencitations.net/about"
 freshness_lag = "periodic index builds"
 substitution_group = ""
-enabled = false
+enabled = true
 notes = "Citation links only, never discovery. Fallback: Crossref reference lists."
 [source.rate]
 per_second = 5
-verified = false
-evidence = "no documented limit found; 5/s conservative default"
+verified = true
+evidence = "no documented limit; 5/s is a self-imposed ceiling. smoke 2026-09-07: one live call answered 200 (13 references, 6 s latency), no rate-limit headers"
 
 [[source]]
 id = "unpaywall"
@@ -494,7 +494,7 @@ notes = "Repository full text. Observed keyed quota blocks after ~50-250 request
 per_second = 0.5
 per_day = 200
 verified = true
-evidence = "observed 2026-09-06/07: 429s after 50-250 keyed requests; 0.5/s and 200/day are the operating limits, not documented ones"
+evidence = "observed 2026-09-06/07: 429s after 50-250 keyed requests; 0.5/s and 200/day are the operating limits, not documented ones. smoke 2026-09-07 headers: x-ratelimit-limit 150 with a retry-after about one minute out (window not stated)"
 
 [[source]]
 id = "doi_org"
@@ -541,12 +541,12 @@ use_commercial = "allow"
 use_evidence = "https://fred.stlouisfed.org/docs/api/terms_of_use.html"
 freshness_lag = "as published"
 substitution_group = ""
-enabled = false
+enabled = true
 notes = "Macro and financial time series."
 [source.rate]
 per_minute = 120
-verified = false
-evidence = "commonly documented 120 requests/minute; confirm from FRED docs/headers in Phase 3"
+verified = true
+evidence = "FRED documentation states 120 requests per minute per key. smoke 2026-09-07: one live call answered 200 (keyed), no rate-limit headers"
 
 [[source]]
 id = "bea"
@@ -566,12 +566,12 @@ use_commercial = "allow"
 use_evidence = "https://apps.bea.gov/api/signup/ (terms shown at signup)"
 freshness_lag = "as published"
 substitution_group = ""
-enabled = false
+enabled = true
 notes = "National accounts, GDP by industry and region."
 [source.rate]
 per_minute = 100
-verified = false
-evidence = "BEA user guide states per-minute request and volume limits; confirm exact figures in Phase 3"
+verified = true
+evidence = "BEA user guide: 100 requests per minute and 100 MB per minute per key; only the request count is broker-enforced (D-15). smoke 2026-09-07: one live call answered 200 (keyed GETDATASETLIST)"
 
 [[source]]
 id = "census"
@@ -591,12 +591,12 @@ use_commercial = "allow"
 use_evidence = "https://www.census.gov/data/developers/about/terms-of-service.html"
 freshness_lag = "as published"
 substitution_group = ""
-enabled = false
+enabled = true
 notes = "Economic Census, retail trade, American Community Survey."
 [source.rate]
 per_second = 5
-verified = false
-evidence = "500/day per IP is the documented keyless limit; with a key the documentation states no cap. 5/s is a conservative default until the Phase 3 smoke records observed behaviour"
+verified = true
+evidence = "500/day per IP is the documented keyless limit; keyed access documents no cap, so 5/s is a self-imposed ceiling. smoke 2026-09-07: one live call answered 200 (keyed ACS query, 3.9 s latency)"
 
 [[source]]
 id = "bls"
@@ -616,12 +616,12 @@ use_commercial = "allow"
 use_evidence = "https://www.bls.gov/bls/linksite.htm"
 freshness_lag = "as published"
 substitution_group = ""
-enabled = false
+enabled = true
 notes = "Consumer Expenditure Survey, CPI."
 [source.rate]
 per_day = 500
-verified = false
-evidence = "BLS API v2 FAQ: 25 queries/day unregistered, 500/day registered — confirm in Phase 3"
+verified = true
+evidence = "BLS API v2 FAQ: 25 queries/day unregistered, 500/day registered. smoke 2026-09-07: one live call answered 200 (unregistered POST), no rate-limit headers"
 
 [[source]]
 id = "bis"
@@ -641,12 +641,12 @@ use_commercial = "allow"
 use_evidence = "https://data.bis.org/help/export"
 freshness_lag = "as published"
 substitution_group = ""
-enabled = false
+enabled = true
 notes = "Cross-border banking and monetary statistics."
 [source.rate]
 per_second = 5
-verified = false
-evidence = "no documented limit found; 5/s conservative default"
+verified = true
+evidence = "no documented limit; 5/s is a self-imposed ceiling. smoke 2026-09-07: v2 API serves SDMX-ML XML only (JSON Accept variants return 406); adapter reads XML"
 
 [[source]]
 id = "ecb"
@@ -666,12 +666,12 @@ use_commercial = "allow"
 use_evidence = "https://data.ecb.europa.eu/help/api/overview"
 freshness_lag = "as published"
 substitution_group = ""
-enabled = false
+enabled = true
 notes = "Euro-area statistics."
 [source.rate]
 per_second = 5
-verified = false
-evidence = "no documented limit found; 5/s conservative default"
+verified = true
+evidence = "no documented limit; 5/s is a self-imposed ceiling. smoke 2026-09-07: one live call answered 200 (EXR daily USD/EUR), no rate-limit headers"
 
 # ---------------------------------------------------------------- manual only (documented, never scheduled)
 

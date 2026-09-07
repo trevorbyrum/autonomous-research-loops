@@ -78,7 +78,9 @@ def run(client: Client, only: set[str] | None = None) -> list[dict]:
         row = {"source": sid, "capability": cap, "outcome": "ok", "detail": None}
         try:
             result = call(mods[sid], client)
-            if isinstance(result, dict):
+            if isinstance(result, dict) and "records" not in result and "items" not in result:
+                row["detail"] = "1 record: " + str(result.get("identity") or result.get("agency"))
+            elif isinstance(result, dict):
                 row["detail"] = result.get("capability_fact") or f"records={len(result.get('records') or result.get('items') or [])}"
             elif result is None:
                 row["detail"] = "not found"

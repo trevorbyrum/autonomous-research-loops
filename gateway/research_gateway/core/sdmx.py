@@ -1,5 +1,37 @@
-"""Minimal SDMX-JSON reader for BIS and ECB series (1.0 `structure` and 2.0 `structures`)."""
+"""Minimal SDMX readers: SDMX-JSON (ECB; 1.0 `structure` and 2.0 `structures`) and
+SDMX-ML 2.1 structure-specific XML (BIS, which serves no JSON)."""
 from __future__ import annotations
+
+import xml.etree.ElementTree as ET
+
+
+def _local(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def series_xml(text: str) -> list[dict]:
+    """StructureSpecificData → same shape as series(): dimension attributes on each
+    <Series>, observations from its <Obs TIME_PERIOD OBS_VALUE> children."""
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return []
+    out = []
+    for el in root.iter():
+        if _local(el.tag) != "Series":
+            continue
+        observations = []
+        for obs in el:
+            if _local(obs.tag) != "Obs":
+                continue
+            raw = obs.get("OBS_VALUE")
+            try:
+                value = float(raw) if raw not in (None, "") else None
+            except ValueError:
+                value = raw
+            observations.append((obs.get("TIME_PERIOD"), value))
+        out.append({"key": dict(el.attrib), "observations": observations})
+    return out
 
 
 def _structure(j: dict) -> dict:

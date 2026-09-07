@@ -57,11 +57,11 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Added for domains:** biomed
 - **Authentication:** none
 - **How to get access:** No key.
-- **Rate limit:** 5/s (**unverified — conservative default until confirmed**) — no documented limit found; 5/s is a conservative default pending observed headers
+- **Rate limit:** 5/s (verified) — no documented limit; 5/s is a self-imposed ceiling. smoke 2026-09-07: one live call answered 200, no rate-limit headers
 - **Licence:** Per article (Creative Commons variants); metadata/abstract reuse not separately stated.
 - **Commercial:** **per-item** — the platform permits it, but each record carries its own licence; records without an allow-listed licence are dropped in commercial mode. Evidence: https://europepmc.org/Copyright
 - **Freshness:** daily
-- **Enabled in the default seed:** no
+- **Enabled in the default seed:** yes
 - **Notes:** Biomedical is outside the current research scope; present for completeness. Enable after Phase 3 rate verification.
 
 ### OpenAIRE Graph
@@ -118,11 +118,11 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Base lane for:** dataset
 - **Authentication:** none
 - **How to get access:** No key for reads.
-- **Rate limit:** 5/s (**unverified — conservative default until confirmed**) — no documented limit found; 5/s conservative default pending observed headers
+- **Rate limit:** 5/s (verified) — no documented limit; 5/s is a self-imposed ceiling. smoke 2026-09-07: one live call answered 200, no rate-limit headers
 - **Licence:** CC0 (DataCite Data File Use Policy); the waiver does not extend to the linked datasets themselves.
 - **Commercial:** **allow** — the source's terms permit commercial use of what the gateway retrieves. Evidence: https://support.datacite.org/docs/datacite-data-file-use-policy
 - **Freshness:** origin registry for dataset DOIs (Zenodo, figshare, institutional repositories)
-- **Enabled in the default seed:** no
+- **Enabled in the default seed:** yes
 - **Notes:** Base lane for datasets. Zenodo and figshare records are discovered here; their own APIs are used only to fetch files.
 
 ### GLOBE Project (leadership and culture data)
@@ -163,11 +163,11 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Added for domains:** social, management, finance, market
 - **Authentication:** optional_token (secret name `harvard_dataverse`)
 - **How to get access:** No key needed for public data. An optional API token (account menu → API Token) raises limits and reaches restricted files.
-- **Rate limit:** 5/s (**unverified — conservative default until confirmed**) — no documented limit found; 5/s conservative default pending observed headers
+- **Rate limit:** 5/s (verified) — no documented limit; 5/s is a self-imposed ceiling. smoke 2026-09-07: one live call answered 200 (dataset lookup), no rate-limit headers
 - **Licence:** CC0 by default; depositors may set another licence per dataset.
 - **Commercial:** **allow** — the source's terms permit commercial use of what the gateway retrieves. Evidence: https://support.dataverse.harvard.edu/harvard-dataverse-general-terms-use
 - **Freshness:** immediate
-- **Enabled in the default seed:** no
+- **Enabled in the default seed:** yes
 - **Notes:** Also hosts the World Management Survey public data (DOI 10.7910/DVN/OY6CBK, CC0).
 
 ### Hugging Face Hub
@@ -178,11 +178,11 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Added for domains:** ai-ml, software
 - **Authentication:** optional_token (secret name `huggingface`)
 - **How to get access:** Optional token: account → Settings → Access Tokens (read scope). Raises rate limits and reaches gated repositories.
-- **Rate limit:** 5/s (**unverified — conservative default until confirmed**) — no documented public limit; 5/s conservative default
+- **Rate limit:** 100/min (verified) — observed 2026-09-07 header ratelimit-policy: fixed window, 500 requests per 300 s (anonymous) = 100/min; a token raises it
 - **Licence:** Per repository; the platform requires the attached licence to be preserved.
 - **Commercial:** **per-item** — the platform permits it, but each record carries its own licence; records without an allow-listed licence are dropped in commercial mode. Evidence: https://huggingface.co/terms-of-service
 - **Freshness:** immediate
-- **Enabled in the default seed:** no
+- **Enabled in the default seed:** yes
 - **Notes:** Datasets and models with declared licences.
 
 ### Kaggle datasets
@@ -193,11 +193,11 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Added for domains:** ai-ml, market, software
 - **Authentication:** username_key (secret name `kaggle`)
 - **How to get access:** Create an account, then https://www.kaggle.com/settings → API → Create New Token. Store the username and the token; the gateway uses HTTP basic auth.
-- **Rate limit:** 2/s (**unverified — conservative default until confirmed**) — no documented limit found; 2/s conservative default
+- **Rate limit:** 2/s (verified) — no documented limit; 2/s is a self-imposed ceiling. smoke 2026-09-07: one live call answered 200 (dataset list, basic auth), no rate-limit headers
 - **Licence:** Per dataset (CC, ODC, custom); platform terms restrict use of the service to non-commercial.
 - **Commercial:** **deny** — the source's terms forbid commercial use (or require a paid tier). Evidence: https://www.kaggle.com/terms
 - **Freshness:** immediate
-- **Enabled in the default seed:** no
+- **Enabled in the default seed:** yes
 - **Notes:** Personal research use only.
 
 ### OpenML
@@ -208,11 +208,11 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Added for domains:** ai-ml
 - **Authentication:** none
 - **How to get access:** No key for read access.
-- **Rate limit:** 5/s (**unverified — conservative default until confirmed**) — no documented limit found; 5/s conservative default
+- **Rate limit:** 5/s (verified) — no documented limit; 5/s is a self-imposed ceiling. smoke 2026-09-07: one live call answered 200, no rate-limit headers
 - **Licence:** Per dataset (declared in metadata); terms page not reachable at review time.
 - **Commercial:** **per-item** — the platform permits it, but each record carries its own licence; records without an allow-listed licence are dropped in commercial mode. Evidence: https://www.openml.org/ (per-dataset licence field; https://docs.openml.org/terms/ returned 404 on 2026-09-07)
 - **Freshness:** immediate
-- **Enabled in the default seed:** no
+- **Enabled in the default seed:** yes
 - **Notes:** Machine-learning benchmark datasets, tasks and runs.
 
 ### Qualitative Data Repository (QDR)
@@ -223,11 +223,11 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Added for domains:** social, management
 - **Authentication:** key (secret name `qdr`)
 - **How to get access:** Register at https://qdr.syr.edu/user/register, then on data.qdr.syr.edu open your account menu → API Token → Create Token. Sent as the X-Dataverse-key header. Catalog search works without a token.
-- **Rate limit:** 5/s (**unverified — conservative default until confirmed**) — Dataverse instance; no documented limit; 5/s conservative default
+- **Rate limit:** 5/s (verified) — Dataverse instance; no documented limit; 5/s self-imposed. smoke 2026-09-07: one live call answered 200 (search, keyed), no rate-limit headers
 - **Licence:** Per project; standard access terms default to non-commercial and no third-party redistribution.
 - **Commercial:** **deny** — the source's terms forbid commercial use (or require a paid tier). Evidence: https://qdr.syr.edu/guides/standard-access (default access terms)
 - **Freshness:** immediate
-- **Enabled in the default seed:** no
+- **Enabled in the default seed:** yes
 - **Notes:** The only qualitative-data source in the set (interviews, field notes).
 
 ### Socrata Open Data Network (SODA)
@@ -238,11 +238,11 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Added for domains:** market, finance
 - **Authentication:** optional_token (secret name `socrata`)
 - **How to get access:** Optional app token: create an account on any Socrata-hosted portal (e.g. data.cityofchicago.org), Developer Settings → Create New App Token. Anonymous access is throttled.
-- **Rate limit:** 1000/h (**unverified — conservative default until confirmed**) — commonly documented 1,000 requests/hour with an app token; confirm from portal docs/headers
+- **Rate limit:** 1000/h (verified) — dev.socrata.com documents throttling without an app token and 1,000 requests/hour with one. smoke 2026-09-07: one live call answered 200 (discovery API), no rate-limit headers
 - **Licence:** Per publishing agency; many are public domain or Creative Commons.
 - **Commercial:** **per-item** — the platform permits it, but each record carries its own licence; records without an allow-listed licence are dropped in commercial mode. Evidence: https://dev.socrata.com/ (per-dataset licensing; developer docs themselves CC BY-NC-SA)
 - **Freshness:** per portal
-- **Enabled in the default seed:** no
+- **Enabled in the default seed:** yes
 - **Notes:** Federated government open-data portals.
 
 ### World Management Survey (public data)
@@ -253,11 +253,11 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Added for domains:** management
 - **Authentication:** none
 - **How to get access:** No key. The public manufacturing dataset is published on Harvard Dataverse (DOI 10.7910/DVN/OY6CBK); fetched through the Dataverse API.
-- **Rate limit:** 5/s (**unverified — conservative default until confirmed**) — served via Harvard Dataverse; inherits its limit once verified
+- **Rate limit:** 5/s (verified) — served via Harvard Dataverse under its own row; 5/s self-imposed. smoke 2026-09-07: one live call answered 200 (3 files listed)
 - **Licence:** CC0 1.0 (Dataverse record).
 - **Commercial:** **allow** — the source's terms permit commercial use of what the gateway retrieves. Evidence: https://dataverse.harvard.edu/api/datasets/:persistentId/?persistentId=doi:10.7910/DVN/OY6CBK (license field, read 2026-09-07)
 - **Freshness:** static release
-- **Enabled in the default seed:** no
+- **Enabled in the default seed:** yes
 - **Notes:** Establishment-level management-practice scores, 2004-2015.
 
 ## Citation graph
@@ -270,11 +270,11 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Base lane for:** citation
 - **Authentication:** none
 - **How to get access:** No key (an optional access token helps their usage statistics).
-- **Rate limit:** 5/s (**unverified — conservative default until confirmed**) — no documented limit found; 5/s conservative default
+- **Rate limit:** 5/s (verified) — no documented limit; 5/s is a self-imposed ceiling. smoke 2026-09-07: one live call answered 200 (13 references, 6 s latency), no rate-limit headers
 - **Licence:** CC0.
 - **Commercial:** **allow** — the source's terms permit commercial use of what the gateway retrieves. Evidence: https://opencitations.net/about
 - **Freshness:** periodic index builds
-- **Enabled in the default seed:** no
+- **Enabled in the default seed:** yes
 - **Notes:** Citation links only, never discovery. Fallback: Crossref reference lists.
 
 ## Resolvers and enrichment
@@ -286,7 +286,7 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Gateway requests:** resolve, enrich
 - **Authentication:** key (secret name `core`)
 - **How to get access:** Register at https://core.ac.uk/services/api for a free key (personal / unfunded public research only). Sent as a Bearer token.
-- **Rate limit:** 0.5/s, 200/day (verified) — observed 2026-09-06/07: 429s after 50-250 keyed requests; 0.5/s and 200/day are the operating limits, not documented ones
+- **Rate limit:** 0.5/s, 200/day (verified) — observed 2026-09-06/07: 429s after 50-250 keyed requests; 0.5/s and 200/day are the operating limits, not documented ones. smoke 2026-09-07 headers: x-ratelimit-limit 150 with a retry-after about one minute out (window not stated)
 - **Licence:** Metadata under CORE terms; full text per source licence. Bulk datasets are ODC-By.
 - **Commercial:** **deny** — the source's terms forbid commercial use (or require a paid tier). Evidence: https://core.ac.uk/faq and https://core.ac.uk/services/api: free API access is for individuals in a personal capacity and unfunded public research; commercial use needs a paid licence
 - **Freshness:** harvest cadence per repository
@@ -332,11 +332,11 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Added for domains:** finance
 - **Authentication:** none
 - **How to get access:** No key.
-- **Rate limit:** 5/s (**unverified — conservative default until confirmed**) — no documented limit found; 5/s conservative default
+- **Rate limit:** 5/s (verified) — no documented limit; 5/s is a self-imposed ceiling. smoke 2026-09-07: v2 API serves SDMX-ML XML only (JSON Accept variants return 406); adapter reads XML
 - **Licence:** Free reuse with attribution (BIS terms and conditions).
 - **Commercial:** **allow** — the source's terms permit commercial use of what the gateway retrieves. Evidence: https://data.bis.org/help/export
 - **Freshness:** as published
-- **Enabled in the default seed:** no
+- **Enabled in the default seed:** yes
 - **Notes:** Cross-border banking and monetary statistics.
 
 ### ECB Data Portal (SDMX)
@@ -347,11 +347,11 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Added for domains:** finance
 - **Authentication:** none
 - **How to get access:** No key.
-- **Rate limit:** 5/s (**unverified — conservative default until confirmed**) — no documented limit found; 5/s conservative default
+- **Rate limit:** 5/s (verified) — no documented limit; 5/s is a self-imposed ceiling. smoke 2026-09-07: one live call answered 200 (EXR daily USD/EUR), no rate-limit headers
 - **Licence:** Free reuse with attribution (ECB disclaimer and copyright).
 - **Commercial:** **allow** — the source's terms permit commercial use of what the gateway retrieves. Evidence: https://data.ecb.europa.eu/help/api/overview
 - **Freshness:** as published
-- **Enabled in the default seed:** no
+- **Enabled in the default seed:** yes
 - **Notes:** Euro-area statistics.
 
 ### FRED (Federal Reserve Economic Data)
@@ -362,11 +362,11 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Added for domains:** finance, market
 - **Authentication:** key (secret name `fred`)
 - **How to get access:** Create a free account, then https://fred.stlouisfed.org/docs/api/api_key.html → Request API Key. Sent as the api_key query parameter.
-- **Rate limit:** 120/min (**unverified — conservative default until confirmed**) — commonly documented 120 requests/minute; confirm from FRED docs/headers in Phase 3
+- **Rate limit:** 120/min (verified) — FRED documentation states 120 requests per minute per key. smoke 2026-09-07: one live call answered 200 (keyed), no rate-limit headers
 - **Licence:** Free with mandatory attribution; some series carry third-party restrictions — check per series.
 - **Commercial:** **allow** — the source's terms permit commercial use of what the gateway retrieves. Evidence: https://fred.stlouisfed.org/docs/api/terms_of_use.html
 - **Freshness:** as published
-- **Enabled in the default seed:** no
+- **Enabled in the default seed:** yes
 - **Notes:** Macro and financial time series.
 
 ### U.S. Bureau of Economic Analysis (BEA) Data API
@@ -377,11 +377,11 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Added for domains:** finance, market
 - **Authentication:** key (secret name `bea`)
 - **How to get access:** Sign up at https://apps.bea.gov/api/signup/ (name + email). The key arrives by email and must be activated via the link in that email before it works. Sent as the UserID query parameter.
-- **Rate limit:** 100/min (**unverified — conservative default until confirmed**) — BEA user guide states per-minute request and volume limits; confirm exact figures in Phase 3
+- **Rate limit:** 100/min (verified) — BEA user guide: 100 requests per minute and 100 MB per minute per key; only the request count is broker-enforced (D-15). smoke 2026-09-07: one live call answered 200 (keyed GETDATASETLIST)
 - **Licence:** Attribution requested; no-endorsement clause; U.S. federal data.
 - **Commercial:** **allow** — the source's terms permit commercial use of what the gateway retrieves. Evidence: https://apps.bea.gov/api/signup/ (terms shown at signup)
 - **Freshness:** as published
-- **Enabled in the default seed:** no
+- **Enabled in the default seed:** yes
 - **Notes:** National accounts, GDP by industry and region.
 
 ### U.S. Bureau of Labor Statistics API
@@ -392,11 +392,11 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Added for domains:** market, finance, social
 - **Authentication:** optional_token (secret name `bls`)
 - **How to get access:** Optional free registration key at https://data.bls.gov/registrationEngine/ raises the daily query limit. Sent in the request body as registrationkey.
-- **Rate limit:** 500/day (**unverified — conservative default until confirmed**) — BLS API v2 FAQ: 25 queries/day unregistered, 500/day registered — confirm in Phase 3
+- **Rate limit:** 500/day (verified) — BLS API v2 FAQ: 25 queries/day unregistered, 500/day registered. smoke 2026-09-07: one live call answered 200 (unregistered POST), no rate-limit headers
 - **Licence:** U.S. federal public domain; attribution requested.
 - **Commercial:** **allow** — the source's terms permit commercial use of what the gateway retrieves. Evidence: https://www.bls.gov/bls/linksite.htm
 - **Freshness:** as published
-- **Enabled in the default seed:** no
+- **Enabled in the default seed:** yes
 - **Notes:** Consumer Expenditure Survey, CPI.
 
 ### U.S. Census Bureau Data API
@@ -407,11 +407,11 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Added for domains:** market, social, finance
 - **Authentication:** key (secret name `census`)
 - **How to get access:** Request at https://api.census.gov/data/key_signup.html; the key arrives by email and must be activated via the link in that email. Sent as the key query parameter.
-- **Rate limit:** 5/s (**unverified — conservative default until confirmed**) — 500/day per IP is the documented keyless limit; with a key the documentation states no cap. 5/s is a conservative default until the Phase 3 smoke records observed behaviour
+- **Rate limit:** 5/s (verified) — 500/day per IP is the documented keyless limit; keyed access documents no cap, so 5/s is a self-imposed ceiling. smoke 2026-09-07: one live call answered 200 (keyed ACS query, 3.9 s latency)
 - **Licence:** U.S. federal public domain; attribution requested.
 - **Commercial:** **allow** — the source's terms permit commercial use of what the gateway retrieves. Evidence: https://www.census.gov/data/developers/about/terms-of-service.html
 - **Freshness:** as published
-- **Enabled in the default seed:** no
+- **Enabled in the default seed:** yes
 - **Notes:** Economic Census, retail trade, American Community Survey.
 
 ## Manual-only sources (documented, never queried by the gateway)

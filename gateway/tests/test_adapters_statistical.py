@@ -97,6 +97,20 @@ SDMX_20 = {"data": {"structures": [{"dimensions": {"series": [{"id": "FREQ", "va
                     "dataSets": [{"series": {"0": {"observations": {"0": [42.5]}}}}]}}
 
 
+BIS_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<message:StructureSpecificData xmlns:message="http://www.sdmx.org/resources/sdmxml/schemas/v2_1/message"
+ xmlns:ss="http://www.sdmx.org/resources/sdmxml/schemas/v2_1/data/structurespecific">
+ <message:Header><message:ID>x</message:ID></message:Header>
+ <message:DataSet ss:dataScope="DataStructure">
+  <Group EER_TYPE="N" EER_BASKET="B" REF_AREA="US"/>
+  <Series FREQ="M" EER_TYPE="N" EER_BASKET="B" REF_AREA="US" COLLECTION="A" TITLE_TS="United States - Nominal - Broad (64 economies)">
+   <Obs TIME_PERIOD="2026-01" OBS_VALUE="102.25" OBS_STATUS="A"/>
+   <Obs TIME_PERIOD="2026-02" OBS_VALUE="101.12" OBS_STATUS="A"/>
+  </Series>
+ </message:DataSet>
+</message:StructureSpecificData>"""
+
+
 class Sdmx(unittest.TestCase):
     def test_parser_both_versions(self):
         s10 = sdmx.series(SDMX_10)
@@ -118,11 +132,17 @@ class BisEcb(unittest.TestCase):
         self.assertIn("format=jsondata", t.calls[0][1])
         self.assertIn("startPeriod=2026-09-01", t.calls[0][1])
 
-    def test_bis(self):
+    def test_bis_reads_sdmx_ml(self):
         c, t = client()
-        t.add("GET", "https://stats.bis.org/api/v2/data/dataflow/BIS/WS_CBS_PUB/1.0/all?", body=SDMX_20)
-        out = bis.data(c, {"dataflow": "WS_CBS_PUB"})
-        self.assertEqual(out["records"][0]["dimensions"], {"FREQ": "Q"})
+        t.add("GET", "https://stats.bis.org/api/v2/data/dataflow/BIS/WS_EER/1.0/M.N.B.US?", body=BIS_XML, headers={"Content-Type": "application/xml"})
+        out = bis.data(c, {"dataflow": "WS_EER", "key": "M.N.B.US", "start": "2026-01"})
+        r = out["records"][0]
+        self.assertEqual(r["identity"], "series:bis:WS_EER:M.N.B.US.A")
+        self.assertEqual(r["title"], "United States - Nominal - Broad (64 economies)")
+        self.assertEqual(r["observations"], [("2026-01", 102.25), ("2026-02", 101.12)])
+        self.assertEqual(t.calls[0][2]["Accept"], "application/xml")
+        self.assertIn("startPeriod=2026-01", t.calls[0][1])
+        self.assertEqual(sdmx.series_xml("<not xml"), [])
         with self.assertRaises(AdapterError):
             bis.data(c, {})
 

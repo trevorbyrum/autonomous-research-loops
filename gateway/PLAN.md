@@ -403,6 +403,15 @@ normalisation and registration-agency routing. Check: `pytest tests/contract`
 passes offline; a live smoke (`--live`, operator-run) hits each adapter once
 and records observed rate-limit headers into `rate_policies.evidence`,
 resolving every "(verify)" in §3 before that source is `enabled`.
+Smoke run 2026-09-07 (`python3 -m research_gateway.smoke --live`, report in
+`private/reviews/smoke-2026-09-07.json`): 23 of 24 network sources answered 200
+on the first call with real credentials; BIS answered 406 because its v2 API
+serves SDMX-ML only, so the adapter now reads XML. Observed headers (OpenAIRE
+7,200/h, CORE 150, GovInfo 36,000/h, Hugging Face 500 per 300 s) and the smoke
+outcome are recorded in each seed row's `rate.evidence`; every "(verify)" row is
+now `verified=true, enabled=true`, with sources whose documentation states no
+limit carrying an explicit self-imposed ceiling. GLOBE stays disabled (static
+files, nothing to probe, commercial verdict unknown); Pew is manual.
 
 **Phase 4 — Router + cache + dedup + licence enforcement.**
 Checks: every rule R-1..R-10 has a passing test; commercial=true excludes
