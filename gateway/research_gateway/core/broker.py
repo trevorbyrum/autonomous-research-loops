@@ -6,9 +6,11 @@ refuses (no policy, open breaker, exhausted daily budget). `record()` is
 called after every call so limit errors can open the breaker and `Retry-After`
 is honoured.
 
-Windows are sliding: a request is allowed when fewer than `per_<window>`
-dispatches happened in the trailing window. That is exact, needs no refill
-maths, and is easy to test with an injected clock.
+Second/minute/hour windows are sliding: a request is allowed when fewer than
+`per_<window>` dispatches happened in the trailing window. That is exact, needs
+no refill maths, and is easy to test with an injected clock. Daily budgets
+(`per_day`, `cost_cap_per_day`) are counters per UTC day (§5). A limit error
+without `Retry-After` backs the source off 10→80 s before the breaker opens.
 """
 from __future__ import annotations
 
@@ -38,12 +40,10 @@ class RatePolicy:
             out.append((60.0, float(self.per_minute)))
         if self.per_hour:
             out.append((3600.0, float(self.per_hour)))
-        if self.per_day:
-            out.append((86400.0, float(self.per_day)))
         return out
 
     def is_empty(self) -> bool:
-        return not self.windows() and not self.cost_cap_per_day
+        return not self.windows() and not self.per_day and not self.cost_cap_per_day
 
 
 class NoPolicy(Exception):
@@ -66,6 +66,7 @@ class BudgetExhausted(Exception):
 class _State:
     windows: list[deque]
     consecutive_limit_errors: int = 0
+    backoff_until: float = 0.0
     breaker_until: float = 0.0
     breaker_reason: str = ""
     day: str = ""
@@ -128,13 +129,13 @@ class Broker:
             pol = self._policies[source_id]
             if pol.cost_cap_per_day and st.credits_today + credits > pol.cost_cap_per_day:
                 raise BudgetExhausted(source_id, "cost cap")
-            wait = 0.0
+            if pol.per_day and st.dispatched_today >= pol.per_day:
+                raise BudgetExhausted(source_id, "request budget")
+            wait = max(0.0, st.backoff_until - now)
             for (length, allowed), dq in zip(pol.windows(), st.windows):
                 while dq and dq[0] <= now - length:
                     dq.popleft()
                 if len(dq) >= allowed:
-                    if length >= 86400.0:
-                        raise BudgetExhausted(source_id, "request budget")
                     wait = max(wait, dq[0] + length - now)
             if wait > 0:
                 return wait
@@ -165,18 +166,20 @@ class Broker:
             st = self._state_for(source_id)
             limited = (status in self.LIMIT_STATUSES) or network_error or (status is not None and status >= 500)
             if not limited:
-                st.consecutive_limit_errors = 0
+                st.consecutive_limit_errors, st.backoff_until = 0, 0.0
                 return
             st.consecutive_limit_errors += 1
             if retry_after is not None:
                 self._open(source_id, st, retry_after, f"retry-after {retry_after:.0f}s (status {status})")
             elif st.consecutive_limit_errors >= self._errors_to_open:
                 self._open(source_id, st, self._breaker_window, f"{st.consecutive_limit_errors} consecutive limit/outage errors")
+            else:
+                st.backoff_until = self._clock() + min(10.0 * 2 ** (st.consecutive_limit_errors - 1), 80.0)
 
     def _open(self, source_id: str, st: _State, seconds: float, reason: str) -> None:
         st.breaker_until = self._clock() + seconds
         st.breaker_reason = reason
-        st.consecutive_limit_errors = 0
+        st.consecutive_limit_errors, st.backoff_until = 0, 0.0
         if self._on_breaker_change:
             self._on_breaker_change(source_id, "open", self._wall() + seconds, reason)
 
@@ -209,6 +212,7 @@ class Broker:
                 out[sid] = {
                     "breaker_open": st.breaker_until > self._clock(),
                     "breaker_reason": st.breaker_reason,
+                    "backoff_seconds": max(0.0, st.backoff_until - self._clock()),
                     "dispatched_today": st.dispatched_today,
                     "credits_today": st.credits_today,
                     "per_day": pol.per_day,

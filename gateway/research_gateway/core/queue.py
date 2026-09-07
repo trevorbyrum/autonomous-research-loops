@@ -4,6 +4,11 @@ A job is a request (find/resolve/enrich/fetch/data) with a payload. Both
 front doors enqueue; worker threads in the gateway process claim and run
 them through the handler registered for the request type. Identical
 in-flight requests collapse onto one job (unique index on payload hash).
+
+A handler receives `(client, job)`: the client is the metered HTTP client
+built for that job by `make_client(conn, job)` (bound to the worker's
+connection and the job id), so every outbound call a handler makes is
+brokered and lands in `gateway.calls` with its job id (I-1, I-6).
 """
 from __future__ import annotations
 
@@ -18,7 +23,8 @@ import psycopg
 REQUEST_TYPES = ("find", "resolve", "enrich", "fetch", "data")
 PRIORITY_INTERACTIVE, PRIORITY_ENRICH, PRIORITY_HARVEST = 1, 5, 9
 
-Handler = Callable[[dict], dict]
+Handler = Callable[[object, dict], dict]          # (client, job) -> result
+ClientFactory = Callable[[object, dict], object]  # (conn, job) -> metered client
 
 
 def payload_hash(request_type: str, payload: dict) -> str:
@@ -32,32 +38,28 @@ def enqueue(conn, request_type: str, payload: dict, *, client_id: str, priority:
     if request_type not in REQUEST_TYPES:
         raise ValueError(f"unknown request type {request_type!r}")
     h = payload_hash(request_type, payload)
-    with conn.cursor() as cur:
-        cur.execute(
-            "SELECT id FROM gateway.jobs WHERE request_type = %s AND payload_hash = %s AND status IN ('queued','running')",
-            (request_type, h),
-        )
-        row = cur.fetchone()
-        if row:
-            conn.commit()
-            return row[0], False
-        try:
-            cur.execute(
-                "INSERT INTO gateway.jobs (request_type, payload, payload_hash, priority, client_id, topic_id, commercial) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id",
-                (request_type, json.dumps(payload), h, priority, client_id, topic_id, commercial),
-            )
-            job_id = cur.fetchone()[0]
-        except psycopg.errors.UniqueViolation:
-            conn.rollback()
-            with conn.cursor() as cur2:
-                cur2.execute(
-                    "SELECT id FROM gateway.jobs WHERE request_type = %s AND payload_hash = %s AND status IN ('queued','running')",
-                    (request_type, h),
+    in_flight = "SELECT id FROM gateway.jobs WHERE request_type = %s AND payload_hash = %s AND status IN ('queued','running')"
+    # The in-flight twin can finish between our unique-violation and the re-read; then we simply insert again.
+    for _ in range(3):
+        with conn.cursor() as cur:
+            cur.execute(in_flight, (request_type, h))
+            row = cur.fetchone()
+            if row:
+                conn.commit()
+                return row[0], False
+            try:
+                cur.execute(
+                    "INSERT INTO gateway.jobs (request_type, payload, payload_hash, priority, client_id, topic_id, commercial) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id",
+                    (request_type, json.dumps(payload), h, priority, client_id, topic_id, commercial),
                 )
-                return cur2.fetchone()[0], False
-    conn.commit()
-    return job_id, True
+                job_id = cur.fetchone()[0]
+            except psycopg.errors.UniqueViolation:
+                conn.rollback()
+                continue
+        conn.commit()
+        return job_id, True
+    raise RuntimeError("enqueue: in-flight twin kept appearing and vanishing; giving up after 3 attempts")
 
 
 def claim(conn) -> dict | None:
@@ -105,7 +107,7 @@ def get(conn, job_id: int) -> dict | None:
     return dict(zip(cols, row))
 
 
-def run_once(conn, handlers: dict[str, Handler]) -> bool:
+def run_once(conn, handlers: dict[str, Handler], make_client: ClientFactory) -> bool:
     """Claim and execute one job. Returns False when the queue is empty."""
     job = claim(conn)
     if job is None:
@@ -115,7 +117,7 @@ def run_once(conn, handlers: dict[str, Handler]) -> bool:
         fail(conn, job["id"], "refused", {"reason": f"no handler for {job['request_type']}"})
         return True
     try:
-        result = handler(job)
+        result = handler(make_client(conn, job), job)
     except Exception as e:  # a handler bug must not take the worker down; the job records it
         fail(conn, job["id"], "outage", {"error": f"{type(e).__name__}: {e}"[:500]})
         return True
@@ -127,10 +129,11 @@ class Worker(threading.Thread):
     """A worker thread with its own connection; stops when `stop` is set."""
 
     def __init__(self, connect: Callable[[], psycopg.Connection], handlers: dict[str, Handler],
-                 stop: threading.Event, poll_seconds: float = 0.5, name: str = "gateway-worker"):
+                 stop: threading.Event, make_client: ClientFactory, poll_seconds: float = 0.5, name: str = "gateway-worker"):
         super().__init__(name=name, daemon=True)
         # Not `_stop`: threading.Thread owns that name internally.
         self._connect, self._handlers, self._stop_event, self._poll = connect, handlers, stop, poll_seconds
+        self._make_client = make_client
         self.processed = 0
         self.error: str | None = None
 
@@ -138,7 +141,7 @@ class Worker(threading.Thread):
         try:
             with self._connect() as conn:
                 while not self._stop_event.is_set():
-                    if run_once(conn, self._handlers):
+                    if run_once(conn, self._handlers, self._make_client):
                         self.processed += 1
                     else:
                         time.sleep(self._poll)

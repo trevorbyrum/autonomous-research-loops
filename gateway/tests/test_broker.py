@@ -85,6 +85,32 @@ class Windows(unittest.TestCase):
         wall.advance(86400.0)
         self.assertEqual(b.acquire("src", credits=0.1), 0.0)
 
+    def test_per_day_is_a_utc_day_counter_not_a_trailing_window(self):
+        b, clock, wall = make({"src": RatePolicy(per_day=2)})
+        b.acquire("src")
+        clock.advance(60.0)
+        b.acquire("src")
+        with self.assertRaises(BudgetExhausted):
+            b.acquire("src")
+        wall.advance(3600.0)  # same UTC day: still exhausted
+        with self.assertRaises(BudgetExhausted):
+            b.acquire("src")
+        wall.advance(86400.0)  # next UTC day: budget is back even though <24h passed since the second call
+        self.assertEqual(b.acquire("src"), 0.0)
+        self.assertEqual(b.status()["src"]["dispatched_today"], 1)
+
+    def test_limit_errors_without_retry_after_back_off_10_to_80_seconds(self):
+        b, clock, _ = make({"src": RatePolicy(per_second=100)}, errors_to_open=6)
+        for want in (10.0, 20.0, 40.0, 80.0, 80.0):
+            b.record("src", 429)
+            self.assertAlmostEqual(b.acquire("src"), want)
+            self.assertAlmostEqual(b.status()["src"]["backoff_seconds"], want)
+            clock.advance(want)
+            self.assertEqual(b.acquire("src"), 0.0)
+        b.record("src", 200)
+        self.assertEqual(b.acquire("src"), 0.0)
+        self.assertEqual(b.status()["src"]["backoff_seconds"], 0.0)
+
 
 class Refusals(unittest.TestCase):
     def test_source_without_policy_is_refused(self):

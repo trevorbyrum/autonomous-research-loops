@@ -27,19 +27,33 @@ class EnvBackend:
         return os.environ.get(key) or None
 
 
+def parse_aliases(text: str | None) -> dict[str, str]:
+    """'logical=vault-name,other=name' → {logical: vault-name}; deployments whose Vault
+    paths do not match the registry's logical names set RESEARCH_GATEWAY_VAULT_ALIASES."""
+    out = {}
+    for pair in (text or "").split(","):
+        if "=" in pair:
+            k, v = pair.split("=", 1)
+            if k.strip() and v.strip():
+                out[k.strip()] = v.strip()
+    return out
+
+
 class VaultBackend:
     """KV v2: GET {addr}/v1/{mount}/data/{prefix}/{name}; field defaults to a
     loose match on key/token/secret/api_key so hand-stored secrets work."""
 
     def __init__(self, addr: str | None = None, token_file: str | None = None, mount: str | None = None,
-                 prefix: str | None = None):
+                 prefix: str | None = None, aliases: dict[str, str] | None = None):
         self.addr = addr or os.environ.get("RESEARCH_GATEWAY_VAULT_ADDR") or ""
         self.token_file = token_file or os.environ.get("RESEARCH_GATEWAY_VAULT_TOKEN_FILE") or os.path.expanduser("~/.vault-token")
         self.mount = mount or os.environ.get("RESEARCH_GATEWAY_VAULT_MOUNT") or "secret"
         self.prefix = prefix or os.environ.get("RESEARCH_GATEWAY_VAULT_PREFIX") or "services"
+        self.aliases = aliases if aliases is not None else parse_aliases(os.environ.get("RESEARCH_GATEWAY_VAULT_ALIASES"))
         self._cache: dict[str, dict] = {}
 
     def _read(self, name: str) -> dict:
+        name = self.aliases.get(name, name)
         if name in self._cache:
             return self._cache[name]
         if not self.addr:

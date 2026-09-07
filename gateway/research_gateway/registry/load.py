@@ -70,6 +70,15 @@ def validate(sources: list[dict]) -> list[str]:
             problems.append(f"{sid}: unknown rate fields {sorted(extra)}")
         if "verified" not in rate or "evidence" not in rate:
             problems.append(f"{sid}: rate needs verified and evidence")
+        if "verified" in rate and not isinstance(rate["verified"], bool):
+            problems.append(f"{sid}: rate.verified must be true or false")
+        for k in ("per_second", "per_minute", "per_hour", "per_day", "cost_cap_per_day"):
+            v = rate.get(k)
+            if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0):
+                problems.append(f"{sid}: rate.{k} must be a positive number")
+        burst = rate.get("burst")
+        if burst is not None and (isinstance(burst, bool) or not isinstance(burst, int) or burst <= 0):
+            problems.append(f"{sid}: rate.burst must be a positive integer")
         if s.get("enabled") and not rate.get("verified"):
             problems.append(f"{sid}: enabled but rate not verified (PLAN §3)")
         if s.get("kind") not in {"manual", "article"} or sid != "openalex_snapshot":

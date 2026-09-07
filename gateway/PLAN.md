@@ -165,7 +165,7 @@ gateway.rate_policies  (source_id, per_second, per_minute, per_hour, per_day,
                         cost_cap_per_day, burst, evidence)
 gateway.jobs           (id, request_type, payload jsonb, priority, status,       -- queued|running|done|failed
                         client_id, topic_id, commercial bool, created_at,
-                        started_at, finished_at, result_ref, error_class)
+                        started_at, finished_at, result jsonb, error_class)      -- result inline (D-15)
 gateway.calls          (id, job_id, source_id, request_type, identity, query,
                         status, latency_ms, ratelimit jsonb, credits, cache_hit,
                         result_count, failure_class, at)                       -- I-6
@@ -204,8 +204,8 @@ and the evidence URL recorded before the source is enabled.**
 | OpenCitations | C | enrich | none | not stated → 5/s (verify) | allow |
 | Europe PMC | A | find, resolve | none | not stated → 5/s (verify) | per-item |
 | FRED | S | data | key (`fred`) | 120/min (verify) | allow (attribution; some series restricted) |
-| BEA | S | data | key (`bea`) | 100/min, 100 MB/min (verify) | allow |
-| US Census | S | data | key (`census`) | keyed: no stated cap (verify) | allow |
+| BEA | S | data | key (`bea`) | 100/min (verify); the 100 MB/min volume cap is not broker-enforced (D-15) | allow |
+| US Census | S | data | key (`census`) | keyed: no stated cap → 5/s conservative (verify) | allow |
 | BLS (CEX, CPI) | S | data | none / optional key | v2: 500 queries/day keyed (verify) | allow |
 | BIS SDMX | S | data | none | not stated → 5/s (verify) | allow |
 | ECB SDMX | S | data | none | not stated → 5/s (verify) | allow |
@@ -276,10 +276,11 @@ R-10 A source with an open breaker or exhausted budget is skipped and the job
 
 - Jobs table with `SELECT … FOR UPDATE SKIP LOCKED`; N worker coroutines in the
   gateway process; priorities: interactive (loop iteration) > enrichment > harvest.
-- Token bucket per `(source, credential)` seeded from `rate_policies`; refill on
-  the documented interval; shared across all workers and both front doors (I-1).
-- Daily budgets (`per_day`, `cost_cap_per_day`) reset at the source's stated
-  boundary (UTC midnight unless documented otherwise).
+- Sliding windows per source seeded from `rate_policies` (the registry holds one
+  credential per source, so `(source, credential)` collapses to source — D-15);
+  shared across all workers and both front doors (I-1).
+- Daily budgets (`per_day`, `cost_cap_per_day`) are counters per UTC day, not
+  trailing 24 h windows; they reset at UTC midnight.
 - On 429/503: honour `Retry-After` when present, else exponential backoff
   10→80 s; after 3 consecutive limit errors open the breaker for the source's
   documented window (default 15 min), route to substitution group, log
@@ -356,7 +357,7 @@ Plus README, ARCHITECTURE, OPERATIONS, PUBLIC-PRIVATE, LICENSING.
 
 ## 12. Public / private boundary checklist (run before every commit on this branch)
 
-- [ ] `git grep -nE '192\.168\.|10\.0\.|vault-token|X-Vault|postgresql://[^ ]+:[^ ]+@|api_key=[A-Za-z0-9]|KGAT_|hvs\.' -- gateway/ ':!gateway/PLAN.md'` returns nothing
+- [ ] `git grep -nE '192\.168\.|10\.0\.|vault-token|X-Vault|postgresql://[^ ]+:[^ ]+@|api_key=[A-Za-z0-9]|KGAT_|hvs\.' -- gateway/ ':!gateway/PLAN.md' ':!gateway/research_gateway/core/secrets.py'` returns nothing (`core/secrets.py` is the generic Vault KV client: it names the protocol header and the default token-file path, never an address or a value)
 - [ ] no file under `gateway/` references `private/`, Duke, Fuqua, WRDS, Elsevier keys
 - [ ] `sources.example.toml` contains no real credentials
 - [ ] no data files (CSV/JSONL/parquet) under `gateway/` except test fixtures ≤ 50 KB
@@ -388,6 +389,12 @@ Checks (tests/broker): bucket never exceeds policy under 100 concurrent
 requests; `Retry-After` honoured; breaker opens after 3 limit errors and
 closes after window; every dispatched call has a `gateway.calls` row; a source
 without a rate policy is refused (I-3).
+Review (Terra, 2026-09-07, `private/reviews/phase1-2-588c6f4.md`): Phase 1 PASS
+WITH FINDINGS, Phase 2 FAIL — 11 findings. Blockers fixed (handlers receive a
+job-bound metered client so every call is logged with its job id; `per_day` is a
+UTC-day counter); 10→80 s backoff and the enqueue re-read race fixed; seed
+numeric validation added; Census keyed rate corrected; README DSN example
+de-credentialed; the remainder resolved by D-15.
 
 **Phase 3 — Adapters (contract tests, recorded fixtures) + identity.**
 One adapter per §3 row that is not "manual only"; each with a fixture-based
@@ -482,8 +489,9 @@ public) and its commit hash recorded in the phase's acceptance note.
 - **D-7 (2026-09-07)** Gateway lives in this repo AND is registered on the homelab MCP gateway; Postgres is the queue and store; no Redis.
 - **D-8 (2026-09-07)** Harvest branch and registries stay unmerged/private; only the registry schema and seed carry over.
 - **D-9 (2026-09-07)** Links not papers; topic findings stay in topic results; open-licensed cited full texts may be cached at completion alongside the knowledge-graph ingest.
-- **D-10 (2026-09-07)** Working set fixed as §3 (28 sources) after operator approval of the loop's Part B batch.
+- **D-10 (2026-09-07)** Working set fixed as §3 (27 sources: 26 with adapters plus Pew, manual) after operator approval of the loop's Part B batch.
 - **D-11 (2026-09-07)** `private/` is the gitignored parking folder; SOURCES.md to be purged from public history by the operator.
 - **D-12 (2026-09-07)** Add a permissive catch-all domain `other` (= base + all domain lanes); absent/unknown domains resolve to it, so mis-tagging never loses coverage.
 - **D-13 (2026-09-07)** Engineering rules, hard: no placeholders in shipped code (I-10); ≤ 1,500 lines per file (I-11); simplest thing that works (I-12); independent Terra/Codex review each phase (I-13); tests and logs ship with every module (I-14).
 - **D-14 (2026-09-07)** Phase 0 approved by the operator ("approved"). Phase 1 begins.
+- **D-15 (2026-09-07)** Phase 1–2 review resolutions: broker state is keyed per source (one credential per source in the registry; revisit if a second credential is ever added); `jobs.result` is inline jsonb rather than a `result_ref`; BEA's 100 MB/min volume cap is not broker-enforced (the adapter requests single tables; the 100/min request cap is).

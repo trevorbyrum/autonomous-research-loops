@@ -6,9 +6,16 @@ import threading
 import unittest
 import uuid
 
+from research_gateway.adapters.base import Client, FakeTransport
 from research_gateway.core import calllog, db, queue
+from research_gateway.core.broker import Broker, RatePolicy
 
 HAVE_DB = db.configured()
+
+
+def plain_client(conn, job):
+    """A metered client with no policies: any outbound call would be refused and logged."""
+    return Client(broker=Broker({}), transport=FakeTransport(), conn=conn, job_id=job["id"])
 
 
 @unittest.skipUnless(HAVE_DB, "RESEARCH_GATEWAY_DSN not set")
@@ -90,9 +97,9 @@ class QueueTests(unittest.TestCase):
     def test_run_once_dispatches_and_records_failures(self):
         jid, _ = queue.enqueue(self.conn, "data", {"series": "GDP", "c": self.client}, client_id=self.client)
         handled = []
-        handlers = {"data": lambda job: handled.append(job["id"]) or {"rows": 1}}
+        handlers = {"data": lambda client, job: handled.append(job["id"]) or {"rows": 1}}
         for _ in range(60):
-            if not queue.run_once(self.conn, handlers):
+            if not queue.run_once(self.conn, handlers, plain_client):
                 break
             if jid in handled:
                 break
@@ -101,11 +108,11 @@ class QueueTests(unittest.TestCase):
 
         jid2, _ = queue.enqueue(self.conn, "find", {"q": self.client + "boom"}, client_id=self.client)
 
-        def boom(job):
+        def boom(client, job):
             raise ValueError("adapter exploded")
 
         for _ in range(60):
-            if not queue.run_once(self.conn, {"find": boom}):
+            if not queue.run_once(self.conn, {"find": boom}, plain_client):
                 break
             if queue.get(self.conn, jid2)["status"] != "queued":
                 break
@@ -114,6 +121,30 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(got["error_class"], "outage")
         self.assertIn("adapter exploded", got["result"]["error"])
 
+    def test_dispatched_call_gets_exactly_one_calls_row_with_job_id(self):
+        """Phase 2 check: every dispatched call has a gateway.calls row (I-6)."""
+        jid, _ = queue.enqueue(self.conn, "resolve", {"doi": self.client + "-logged"}, client_id=self.client)
+        transport = FakeTransport()
+        transport.add("GET", "https://api.crossref.org/works/", body={"message": {"DOI": "10.1000/x"}})
+        broker = Broker({"crossref": RatePolicy(per_second=100)})
+
+        def make_client(conn, job):
+            return Client(broker=broker, transport=transport, conn=conn, job_id=job["id"])
+
+        def handler(client, job):
+            client.get("crossref", "resolve", "https://api.crossref.org/works/10.1000/x", identity="doi:10.1000/x")
+            return {"ok": True}
+
+        for _ in range(60):
+            if not queue.run_once(self.conn, {"resolve": handler}, make_client):
+                break
+            if queue.get(self.conn, jid)["status"] != "queued":
+                break
+        self.assertEqual(queue.get(self.conn, jid)["status"], "done")
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT count(*), min(source_id), min(status) FROM gateway.calls WHERE job_id = %s", (jid,))
+            self.assertEqual(cur.fetchone(), (1, "crossref", 200))
+
     def test_unknown_request_type_rejected(self):
         with self.assertRaises(ValueError):
             queue.enqueue(self.conn, "delete_everything", {}, client_id=self.client)
@@ -121,7 +152,7 @@ class QueueTests(unittest.TestCase):
     def test_worker_thread_processes_and_stops(self):
         jid, _ = queue.enqueue(self.conn, "resolve", {"doi": self.client}, client_id=self.client)
         stop = threading.Event()
-        w = queue.Worker(db.connect, {"resolve": lambda job: {"doi": job["payload"]["doi"]}}, stop, poll_seconds=0.05)
+        w = queue.Worker(db.connect, {"resolve": lambda client, job: {"doi": job["payload"]["doi"]}}, stop, plain_client, poll_seconds=0.05)
         w.start()
         for _ in range(100):
             if queue.get(self.conn, jid)["status"] == "done":

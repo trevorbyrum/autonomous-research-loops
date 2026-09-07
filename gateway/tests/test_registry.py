@@ -95,5 +95,18 @@ class CliDryRun(unittest.TestCase):
         self.assertEqual(docs.main(["--check"]), 0)
 
 
+class Validation(unittest.TestCase):
+    def test_rejects_malformed_rate_values(self):
+        import copy
+        good = copy.deepcopy(load.read_seed()[0])
+        self.assertEqual(load.validate([good]), [])
+        for field, value in (("per_second", -1), ("per_day", 0), ("per_hour", "fast"), ("per_minute", True),
+                             ("burst", 2.5), ("verified", "yes")):
+            bad = copy.deepcopy(good)
+            bad["rate"][field] = value
+            problems = load.validate([bad])
+            self.assertTrue(any(field in p for p in problems), f"{field}={value!r} accepted: {problems}")
+
+
 if __name__ == "__main__":
     unittest.main()

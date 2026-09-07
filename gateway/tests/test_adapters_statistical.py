@@ -1,5 +1,6 @@
 """Contract tests: FRED, BEA, Census, BLS, BIS, ECB (recorded response shapes; no network)."""
 import unittest
+from urllib.parse import parse_qs, urlsplit
 
 from research_gateway.adapters import bea, bis, bls, census, ecb, fred
 from research_gateway.adapters.base import AdapterError, Client, FakeTransport
@@ -24,8 +25,9 @@ class Fred(unittest.TestCase):
         self.assertEqual(r["identity"], "series:fred:GDP")
         self.assertEqual(r["observations"][-1], ("2026-04-01", "32486.1"))
         self.assertEqual(r["title"], "Gross Domestic Product")
-        self.assertIn("api_key=K", t.calls[0][1])
-        self.assertIn("observation_start=2026-01-01", t.calls[0][1])
+        sent = parse_qs(urlsplit(t.calls[0][1]).query)
+        self.assertEqual(sent["api_key"], ["K"])
+        self.assertEqual(sent["observation_start"], ["2026-01-01"])
         self.assertEqual(r["attribution"], fred.ATTRIBUTION)
 
     def test_no_key_is_a_capability_fact(self):

@@ -407,7 +407,7 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Added for domains:** market, social, finance
 - **Authentication:** key (secret name `census`)
 - **How to get access:** Request at https://api.census.gov/data/key_signup.html; the key arrives by email and must be activated via the link in that email. Sent as the key query parameter.
-- **Rate limit:** 500/day (**unverified — conservative default until confirmed**) — 500/day is the documented keyless limit; keyed limit not stated — confirm in Phase 3
+- **Rate limit:** 5/s (**unverified — conservative default until confirmed**) — 500/day per IP is the documented keyless limit; with a key the documentation states no cap. 5/s is a conservative default until the Phase 3 smoke records observed behaviour
 - **Licence:** U.S. federal public domain; attribution requested.
 - **Commercial:** **allow** — the source's terms permit commercial use of what the gateway retrieves. Evidence: https://www.census.gov/data/developers/about/terms-of-service.html
 - **Freshness:** as published

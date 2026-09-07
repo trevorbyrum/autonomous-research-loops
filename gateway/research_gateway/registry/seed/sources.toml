@@ -594,9 +594,9 @@ substitution_group = ""
 enabled = false
 notes = "Economic Census, retail trade, American Community Survey."
 [source.rate]
-per_day = 500
+per_second = 5
 verified = false
-evidence = "500/day is the documented keyless limit; keyed limit not stated — confirm in Phase 3"
+evidence = "500/day per IP is the documented keyless limit; with a key the documentation states no cap. 5/s is a conservative default until the Phase 3 smoke records observed behaviour"
 
 [[source]]
 id = "bls"

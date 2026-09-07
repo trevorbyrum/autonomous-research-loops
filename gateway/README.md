@@ -41,7 +41,7 @@ cd gateway
 python3 -m unittest discover -s tests -t .            # validate seed, docs, limits
 python3 -m research_gateway.registry.load --dry-run    # seed summary
 python3 -m research_gateway.registry.docs --check      # docs match the seed
-export RESEARCH_GATEWAY_DSN='postgresql://user:pass@host:5432/research_loops'
+export RESEARCH_GATEWAY_DSN='postgresql://gateway@db-host:5432/research_loops'   # password via PGPASSWORD or ~/.pgpass
 python3 -m research_gateway.registry.load --schema --load
 ```
 
