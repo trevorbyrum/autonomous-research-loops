@@ -46,10 +46,16 @@ TOOLS = [
      {"identity": STR, **COMMON}, ["identity"]),
     ("research_enrich", "Citations, references, open-access location or full text link for an identity. " + INSTEAD,
      {"identity": STR, "what": {**STR, "description": "citations|references|oa_location|full_text|metadata"}, **COMMON}, ["identity", "what"]),
-    ("research_fetch", "List a dataset's or document's files (or download one) from a registry source: doi:, hf:, kaggle:, "
-     "openml:, socrata:, govinfo:, url:. " + INSTEAD + "Downloads are saved under the topic's downloads/ directory when one "
-     "is bound (the saved path is returned), never dumped into context.",
-     {"target": STR, "params": {**OBJ, "description": "adapter options, e.g. {\"download\": true, \"file_id\": 123}"}, **COMMON}, ["target"]),
+    ("research_fetch", "LIST a dataset's or document's files from a registry source: doi:, hf:, kaggle:, "
+     "openml:, socrata:, govinfo:, url:. " + INSTEAD + "This tool only lists; to retrieve one of the "
+     "listed files, call research_download with the same target and the file's identifying params.",
+     {"target": STR, "params": {**OBJ, "description": "adapter options (never download: that is research_download's job)"}, **COMMON}, ["target"]),
+    ("research_download", "DOWNLOAD one file from a registry source (the step after research_fetch listed it). "
+     "Same `target` as research_fetch; `params` identify the file, e.g. {\"file_id\": 123} or "
+     "{\"revision\": \"main\", \"path\": \"data/train.csv\"}. The bytes are saved into this iteration's "
+     "TEMPORARY download directory and the saved path is returned — copy anything you keep into the "
+     "topic's own files before the iteration ends; bytes are never dumped into context.",
+     {"target": STR, "params": {**OBJ, "description": "file-identifying adapter options, e.g. {\"file_id\": 123}"}, **COMMON}, ["target"]),
     ("research_data", "A statistical series/table from exactly one source: fred|bea|census|bls|bis|ecb, with source-native "
      "params. " + INSTEAD + "The answer echoes the request (source + params) so the cited table is reproducible.",
      {"source": STR, "params": OBJ, **COMMON}, ["source", "params"]),
@@ -292,8 +298,22 @@ def call_tool(client: GatewayClient, name: str, args: dict, *, policy: dict | No
             except Exception as e:  # one bad entry never sinks its neighbours
                 results.append({"tool": tool, "error": f"{type(e).__name__}: {e}"})
         return {"results": results}
+    if name == "research_download":
+        params = dict(args.get("params") or {})
+        params["download"] = True
+        bound = apply_policy({**args, "params": params}, policy or {})
+        try:
+            out = client.request("fetch", bound)
+        except Exception as e:
+            record_activity(activity, "research_fetch", bound, None, error=f"{type(e).__name__}: {e}")
+            raise
+        record_activity(activity, "research_fetch", bound, out)   # same request key as the listing step
+        return deliver_content(out, str(bound.get("target") or ""), bound, download_dir)
     if name not in REQUEST_TOOLS:
         raise LookupError(name)
+    if name == "research_fetch" and (args.get("params") or {}).get("download"):
+        raise ValueError("research_fetch lists files; downloading is research_download's job — "
+                         "call it with the same target and the file's identifying params")
     bound = apply_policy(args, policy or {})
     try:
         out = client.request(REQUEST_TOOLS[name], bound)

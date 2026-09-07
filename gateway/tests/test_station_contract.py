@@ -280,9 +280,14 @@ class DownloadHandoff(unittest.TestCase):
         return StubClient(result={"request_type": "fetch", "records": [], "facts": [], "lanes": [],
                                   "content": b"\xd0\xcf\x11payload", "content_type": "application/vnd.ms-excel"})
 
+    def test_fetch_lists_only_and_points_at_download(self):
+        with self.assertRaises(ValueError):
+            mcp_stdio.call_tool(self._client(), "research_fetch",
+                                {"target": "doi:x", "params": {"download": True}})
+
     def test_bytes_land_in_the_iteration_download_dir(self):
         with tempfile.TemporaryDirectory() as d:
-            out = mcp_stdio.call_tool(self._client(), "research_fetch",
+            out = mcp_stdio.call_tool(self._client(), "research_download",
                                       {"target": "https://globeproject.com/data/x.xls"}, download_dir=d)
             self.assertIsNone(out["content"])
             self.assertEqual(out["content_bytes"], 10)
@@ -294,11 +299,11 @@ class DownloadHandoff(unittest.TestCase):
     def test_same_second_downloads_never_overwrite_and_carry_identity(self):
         """Pass-1 finding 11: two files from one dataset in one second are two files."""
         with tempfile.TemporaryDirectory() as d:
-            first = mcp_stdio.call_tool(self._client(), "research_fetch",
-                                        {"target": "doi:10.7910/DVN/X", "params": {"download": True, "file_id": 1}},
+            first = mcp_stdio.call_tool(self._client(), "research_download",
+                                        {"target": "doi:10.7910/DVN/X", "params": {"file_id": 1}},
                                         download_dir=d)
-            second = mcp_stdio.call_tool(self._client(), "research_fetch",
-                                         {"target": "doi:10.7910/DVN/X", "params": {"download": True, "file_id": 1}},
+            second = mcp_stdio.call_tool(self._client(), "research_download",
+                                         {"target": "doi:10.7910/DVN/X", "params": {"file_id": 1}},
                                          download_dir=d)
             self.assertNotEqual(first["saved_to"], second["saved_to"])
             self.assertEqual(len(list(Path(d).iterdir())), 2)
@@ -307,7 +312,7 @@ class DownloadHandoff(unittest.TestCase):
     def test_without_a_download_dir_bytes_are_only_counted(self):
         client = StubClient(result={"request_type": "fetch", "records": [], "facts": [], "lanes": [],
                                     "content": b"abc"})
-        out = mcp_stdio.call_tool(client, "research_fetch", {"target": "url:x"}, download_dir=None)
+        out = mcp_stdio.call_tool(client, "research_download", {"target": "url:x"}, download_dir=None)
         self.assertEqual((out["content"], out["content_bytes"]), (None, 3))
         self.assertNotIn("saved_to", out)
 

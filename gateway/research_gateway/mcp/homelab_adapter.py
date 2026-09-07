@@ -45,10 +45,21 @@ def make_call(gateway: Gateway, client_id: str):
                 except Exception as e:  # one bad entry never sinks its neighbours
                     results.append({"tool": tool, "error": f"{type(e).__name__}: {e}"})
             return {"results": results}
+        if name == "research_download":
+            if args is not None and not isinstance(args, dict):
+                return {"capability_fact": "gateway_error_400", "error": "arguments must be an object"}
+            merged = {**(args or {}), "params": {**((args or {}).get("params") or {}), "download": True}}
+            problem = validate_payload(merged)
+            if problem:
+                return {"capability_fact": "gateway_error_400", "error": problem}
+            return strip_bytes(gateway.handle({**merged, "request_type": "fetch"}, client_id))
         if name not in REQUEST_TOOLS:
             raise LookupError(name)
         if args is not None and not isinstance(args, dict):
             return {"capability_fact": "gateway_error_400", "error": "arguments must be an object"}
+        if name == "research_fetch" and ((args or {}).get("params") or {}).get("download"):
+            return {"capability_fact": "gateway_error_400",
+                    "error": "research_fetch lists files; downloading is research_download's job"}
         problem = validate_payload(args or {})
         if problem:
             return {"capability_fact": "gateway_error_400", "error": problem}

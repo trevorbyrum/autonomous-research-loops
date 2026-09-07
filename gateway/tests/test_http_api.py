@@ -168,8 +168,8 @@ class InlineGateway(unittest.TestCase):
         status, body, _ = http(f"{self.url}/mcp", "POST", {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, TOKENS["mcp"])
         self.assertEqual(status, 200)
         self.assertEqual([t["name"] for t in body["result"]["tools"]],
-                         ["research_find", "research_resolve", "research_enrich", "research_fetch", "research_data",
-                          "research_status", "research_job", "research_batch"])
+                         ["research_find", "research_resolve", "research_enrich", "research_fetch", "research_download",
+                          "research_data", "research_status", "research_job", "research_batch"])
         call = {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "research_resolve", "arguments": {"identity": "doi:10.1234/abc"}}}
         status, body, _ = http(f"{self.url}/mcp", "POST", call, TOKENS["mcp"])
         result = json.loads(body["result"]["content"][0]["text"])
