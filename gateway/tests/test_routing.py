@@ -255,11 +255,13 @@ class LoggingByConstruction(unittest.TestCase):
         """I-6: every call is logged because the only network path is base.Client (adapters cannot import
         urllib — tested elsewhere) and Client objects are built only by the gateway's own factories."""
         import pathlib
+        import re
         import research_gateway
         root = pathlib.Path(research_gateway.__file__).parent
         allowed = {"adapters/base.py", "smoke.py", "app.py"}
+        builds = re.compile(r"(?<![A-Za-z_])Client\(")  # the metered client, not e.g. GatewayClient(
         offenders = [str(p.relative_to(root)) for p in root.rglob("*.py")
-                     if "Client(" in p.read_text() and str(p.relative_to(root)) not in allowed]
+                     if builds.search(p.read_text()) and str(p.relative_to(root)) not in allowed]
         self.assertEqual(offenders, [])
 
 

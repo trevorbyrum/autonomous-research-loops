@@ -29,3 +29,6 @@ dist/
 graphrag.env
 /SOURCES.md
 private/
+
+# Gateway deployment config (docs/OPERATIONS.md: copy sources.example.toml here and edit)
+/gateway/sources.local.toml
