@@ -14,8 +14,10 @@ ATTRIBUTION = "European Central Bank"
 
 # the agent-facing data contract (research_sources; validated before dispatch, D-31)
 DATA_PARAMS = {
-    "required": {"dataflow": "ECB dataflow id, e.g. EXR", "key": "SDMX series key, e.g. D.USD.EUR.SP00.A"},
-    "optional": {"start": "startPeriod", "end": "endPeriod"},
+    "required": {"dataflow": {"doc": "ECB dataflow id, e.g. EXR", "type": "string"},
+                 "key": {"doc": "SDMX series key, e.g. D.USD.EUR.SP00.A", "type": "string"}},
+    "optional": {"start": {"doc": "startPeriod, e.g. 2024-01-01", "type": "period"},
+                 "end": {"doc": "endPeriod", "type": "period"}},
     "open": False,
     "example": {"dataflow": "EXR", "key": "D.USD.EUR.SP00.A", "start": "2024-01-01"},
     "notes": "dimension order is the dataflow's own (ECB EXR: FREQ.CURRENCY.CURRENCY_DENOM.EXR_TYPE.EXR_SUFFIX)",

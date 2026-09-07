@@ -140,3 +140,11 @@ def resolve(client: Client, identity: str) -> dict | None:
 
 def fetch(client: Client, target: str, *, file_id=None, download: bool = False) -> dict:
     return fetch_in(client, BASE, SOURCE_ID, SOURCE_ID, target, file_id=file_id, download=download)
+
+
+def download_request(record: dict, target: str) -> dict | None:
+    """The COMPLETE research_download call for one listed file (D-31a): the PARENT dataset
+    target (never the #file fragment — the membership check resolves the dataset DOI)
+    plus the file's own id."""
+    file_id = record.get("file_id", (record.get("extra") or {}).get("file_id"))
+    return {"target": target, "params": {"file_id": file_id}} if file_id is not None else None

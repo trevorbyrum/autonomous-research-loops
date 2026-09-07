@@ -70,3 +70,9 @@ def fetch(client: Client, target: str, *, file_name: str | None = None, download
                            extra={"size": f.get("totalBytes") or f.get("size"), "created": f.get("creationDate")},
                            raw=f) for f in files]
     return {"identity": identity, "records": records}
+
+
+def download_request(record: dict, target: str) -> dict | None:
+    """The COMPLETE research_download call for one listed file (D-31a)."""
+    name = record.get("title")
+    return {"target": target, "params": {"file_name": name}} if name else None

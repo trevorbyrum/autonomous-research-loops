@@ -15,9 +15,10 @@ LABEL_ATTRS = ("TITLE_TS", "TITLE")  # series attributes that label rather than 
 
 # the agent-facing data contract (research_sources; validated before dispatch, D-31)
 DATA_PARAMS = {
-    "required": {"dataflow": "BIS dataflow id, e.g. WS_EER"},
-    "optional": {"key": "SDMX series key, dot-separated dimensions, e.g. M.N.B.US (default: all)",
-                 "start": "startPeriod", "end": "endPeriod"},
+    "required": {"dataflow": {"doc": "BIS dataflow id, e.g. WS_EER", "type": "string"}},
+    "optional": {"key": {"doc": "SDMX series key, dot-separated dimensions, e.g. M.N.B.US (default: all)", "type": "string"},
+                 "start": {"doc": "startPeriod, e.g. 2020 or 2020-01", "type": "period"},
+                 "end": {"doc": "endPeriod", "type": "period"}},
     "open": False,
     "example": {"dataflow": "WS_EER", "key": "M.N.B.US"},
     "notes": "dimension order is the dataflow's own; 'all' returns every series in the flow",

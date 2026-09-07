@@ -16,3 +16,7 @@ def fetch(client: Client, target: str | None = None, *, file_id=None, download: 
     if target and dv._doi(target) != DOI.lower():
         return {"identity": f"doi:{DOI.lower()}", "records": [], "capability_fact": f"wms only serves doi:{DOI}"}
     return dv.fetch_in(client, dv.BASE, SOURCE_ID, None, f"doi:{DOI}", file_id=file_id, download=download)
+
+
+def download_request(record: dict, target: str) -> dict | None:
+    return dv.download_request(record, target)

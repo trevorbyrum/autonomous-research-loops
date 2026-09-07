@@ -13,8 +13,11 @@ ATTRIBUTION = "U.S. Bureau of Labor Statistics"
 
 # the agent-facing data contract (research_sources; validated before dispatch, D-31)
 DATA_PARAMS = {
-    "required": {"series": "one BLS series id or a list of up to 50, e.g. LNS14000000"},
-    "optional": {"start_year": "first year", "end_year": "last year", "catalog": "true to include series catalog metadata"},
+    "required": {"series": {"doc": "one BLS series id or a list of up to 50, e.g. LNS14000000",
+                            "type": "string_or_list", "max_items": 50}},
+    "optional": {"start_year": {"doc": "first year", "type": "year"},
+                 "end_year": {"doc": "last year", "type": "year"},
+                 "catalog": {"doc": "true to include series catalog metadata", "type": "boolean"}},
     "open": False,
     "example": {"series": "LNS14000000", "start_year": 2020, "end_year": 2025},
     "notes": "at most 50 series ids per call; larger lists are rejected, never silently truncated",

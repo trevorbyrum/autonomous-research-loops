@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 
 from ..app import Gateway, validate_payload
-from ..clients.mcp_stdio import REQUEST_TOOLS, attach_download_requests, handle, strip_bytes
+from ..clients.mcp_stdio import REQUEST_TOOLS, handle, strip_bytes
 
 PEER_NAME = "research"
 
@@ -66,10 +66,7 @@ def make_call(gateway: Gateway, client_id: str):
         if problem:
             return {"capability_fact": "gateway_error_400", "error": problem}
         payload = {**(args or {}), "request_type": REQUEST_TOOLS[name]}
-        out = strip_bytes(gateway.handle(payload, client_id))
-        if name == "research_files":
-            out = attach_download_requests(out, str((args or {}).get("target") or ""))
-        return out
+        return strip_bytes(gateway.handle(payload, client_id))
     return call
 
 

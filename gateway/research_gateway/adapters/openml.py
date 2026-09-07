@@ -84,3 +84,11 @@ def fetch(client: Client, target: str, *, download: bool = False, prefer: str = 
         return {"identity": identity, "records": files}
     return {"identity": identity, "records": files, "content": resp.body,
             "content_type": resp.headers.get("content-type"), "license": rec["license"]}
+
+
+def download_request(record: dict, target: str) -> dict | None:
+    """The COMPLETE research_download call for one listed file (D-31a): openml downloads
+    select by format preference, and the target stays the bare numeric dataset id."""
+    title = str(record.get("title") or "")
+    prefer = "parquet" if title.endswith((".pq", ".parquet")) else "arff"
+    return {"target": f"openml:{_did(target)}", "params": {"prefer": prefer}}

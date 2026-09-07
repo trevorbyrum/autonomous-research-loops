@@ -18,3 +18,7 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1) -> dict:
 def resolve(client: Client, identity: str) -> dict | None:
     d = dv.get_dataset(client, BASE, SOURCE_ID, SOURCE_ID, identity, "resolve")
     return dv.dataset_record(BASE, SOURCE_ID, d) if d else None
+
+
+def download_request(record: dict, target: str) -> dict | None:
+    return dv.download_request(record, target)

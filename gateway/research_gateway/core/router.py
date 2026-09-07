@@ -456,6 +456,20 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
             out["facts"].append(f"{lane.source_id}: malformed response ({type(e).__name__}) — treated as unavailable (R-10)")
             out["lanes"].append(entry)
             continue
+        if rt == "fetch" and got:
+            # every listed file carries its COMPLETE research_download call, built by the
+            # ADAPTER that owns the fetch contract — parent target, native selector, listing
+            # revision (D-31a: generic client-side guessing produced calls five adapters
+            # rejected). A builder error never breaks the listing itself.
+            builder = getattr(router.adapters.get(lane.source_id), "download_request", None)
+            if builder is not None:
+                for rec in got:
+                    try:
+                        request = builder(rec, str(payload.get("target") or ""))
+                    except Exception:
+                        request = None
+                    if request:
+                        rec["download_request"] = {"tool": "research_download", "arguments": request}
         out["lanes"].append(entry)
         if entry.get("count") is not None and lane.source_id in (out.get("next") or {}):
             entry["next"] = out["next"][lane.source_id]

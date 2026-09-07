@@ -92,5 +92,17 @@ def fetch(client: Client, target: str, *, path: str | None = None, download: boo
     if rec is None:
         return {"identity": identity, "records": []}
     files = [make_record(identity=f"{identity}#{f}", kind="file", source_id=SOURCE_ID, title=f, license=rec["license"],
-                         links=[f"{BASE}/datasets/{repo}/resolve/{revision}/{f}"], extra={"path": f}, raw=None) for f in rec["files"]]
+                         links=[f"{BASE}/datasets/{repo}/resolve/{revision}/{f}"],
+                         extra={"path": f, "revision": revision}, raw=None) for f in rec["files"]]
     return {"identity": identity, "records": files, "gated": rec["gated"]}
+
+
+def download_request(record: dict, target: str) -> dict | None:
+    """The COMPLETE research_download call for one listed file (D-31a): parent repo target,
+    the file's path, and the REVISION the listing was taken at (the licence check is
+    revision-exact, D-24)."""
+    path = record.get("path") or (record.get("extra") or {}).get("path")
+    if not path:
+        return None
+    revision = record.get("revision") or (record.get("extra") or {}).get("revision") or "main"
+    return {"target": target, "params": {"path": path, "revision": revision}}

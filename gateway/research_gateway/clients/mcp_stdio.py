@@ -269,31 +269,6 @@ def deliver_content(out: dict, target: str, args: dict, download_dir: str | None
             "content_bytes": len(out["content"])}
 
 
-FILE_SELECTOR_KEYS = ("file_id", "path", "revision", "filename")
-
-
-def attach_download_requests(out: dict, target: str) -> dict:
-    """Every listed file carries the COMPLETE next call (D-31, per the agent-tool principle
-    of returning enough context to make the next call correctly): the agent passes
-    `download_request.arguments` straight to research_download instead of reassembling
-    selectors from record fields."""
-    records = out.get("records")
-    if not isinstance(records, list):
-        return out
-    enriched = []
-    for rec in records:
-        if isinstance(rec, dict):
-            selectors = {k: rec[k] for k in FILE_SELECTOR_KEYS if rec.get(k) is not None}
-            extra = rec.get("extra") if isinstance(rec.get("extra"), dict) else {}
-            selectors.update({k: extra[k] for k in FILE_SELECTOR_KEYS if extra.get(k) is not None and k not in selectors})
-            if rec.get("kind") == "file" or selectors:
-                rec = {**rec, "download_request": {"tool": "research_download",
-                                                   "arguments": {"target": rec.get("identity") or target,
-                                                                 "params": selectors}}}
-        enriched.append(rec)
-    return {**out, "records": enriched}
-
-
 def call_tool(client: GatewayClient, name: str, args: dict, *, policy: dict | None = None,
               activity: str | None = None, download_dir: str | None = None) -> dict:
     """Tool dispatch for the stdio server: everything goes over HTTP to the gateway."""
@@ -371,8 +346,7 @@ def call_tool(client: GatewayClient, name: str, args: dict, *, policy: dict | No
         raise
     record_activity(activity, name, bound, out)   # lanes, capability-fact dicts and failed jobs all land here
     if name == "research_files":
-        return attach_download_requests(deliver_content(out, str(bound.get("target") or ""), bound, download_dir),
-                                        str(bound.get("target") or ""))
+        return deliver_content(out, str(bound.get("target") or ""), bound, download_dir)
     return strip_bytes(out)
 
 

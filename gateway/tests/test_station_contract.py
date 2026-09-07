@@ -285,14 +285,6 @@ class DownloadHandoff(unittest.TestCase):
             mcp_stdio.call_tool(self._client(), "research_files",
                                 {"target": "doi:x", "params": {"download": True}})
 
-    def test_listed_files_carry_ready_made_download_requests(self):
-        client = StubClient(result={"request_type": "fetch", "facts": [], "lanes": [], "records": [
-            {"identity": "doi:10.7910/DVN/X", "kind": "file", "title": "data.csv",
-             "extra": {"file_id": 42}}]})
-        out = mcp_stdio.call_tool(client, "research_files", {"target": "doi:10.7910/DVN/X"})
-        req = out["records"][0]["download_request"]
-        self.assertEqual(req["tool"], "research_download")
-        self.assertEqual(req["arguments"], {"target": "doi:10.7910/DVN/X", "params": {"file_id": 42}})
 
     def test_bound_stations_do_not_advertise_operator_owned_fields(self):
         bound = {p for spec in mcp_stdio.tool_specs(bound=True) for p in spec["inputSchema"]["properties"]}
@@ -469,7 +461,8 @@ class DeclaredDataContracts(unittest.TestCase):
             self.assertEqual(len(listing["sources"]), len(SEED))
             self.assertNotIn("secret_ref", json.dumps(listing), "never a secret reference")
             fred = gw.source_descriptions("fred")
-            self.assertEqual(fred["data_params"]["required"], {"series": "FRED series id, e.g. GDP, UNRATE, CPIAUCSL"})
+            self.assertEqual(fred["data_params"]["required"]["series"]["type"], "string")
+            self.assertIn("FRED series id", fred["data_params"]["required"]["series"]["doc"])
             missing = gw.source_descriptions("nope")
             self.assertEqual(missing["capability_fact"], "gateway_error_404")
         finally:
@@ -480,3 +473,123 @@ class DeclaredDataContracts(unittest.TestCase):
         r, c, _ = make()
         with self.assertRaises(AdapterError):
             ADAPTERS["bls"].data(c, {"series": [f"S{i}" for i in range(51)]})
+
+
+class RoundTripDownloadRequests(unittest.TestCase):
+    """D-31a finding 1: the download_request attached to every listed file must be built by
+    the ADAPTER that owns the fetch contract, and must actually retrieve the file when
+    passed back — parent target, native selector, listing revision. Each case here runs
+    the real listing, takes the generated arguments, and executes the real download
+    exactly the way research_download does (params merged with download=True, filtered
+    to the fetch signature)."""
+
+    PAYLOAD = b"\x50\x4b\x03\x04fixture-bytes"
+
+    def _download(self, mod, arguments):
+        import inspect
+        params = {**arguments["params"], "download": True}
+        accepted = inspect.signature(mod.fetch).parameters
+        return mod.fetch(self.c, arguments["target"], **{k: v for k, v in params.items() if k in accepted})
+
+    def _client(self, secrets=None):
+        t = FakeTransport()
+        creds = secrets or {}
+        self.c = Client(broker=Broker({s["id"]: RatePolicy(per_second=100) for s in SEED}), transport=t,
+                        secrets=lambda n, f=None: creds.get((n, f) if f else n) or creds.get((n, f)))
+        return t
+
+    def _roundtrip(self, mod, target, listing_ok=None):
+        listing = mod.fetch(self.c, target)
+        files = [r for r in listing["records"] if r.get("kind") == "file"]
+        self.assertTrue(files, f"{mod.SOURCE_ID}: listing produced no files")
+        rec = files[0] if listing_ok is None else next(r for r in files if listing_ok(r))
+        arguments = mod.download_request(rec, target)
+        self.assertIsNotNone(arguments, f"{mod.SOURCE_ID}: no download_request built")
+        out = self._download(mod, arguments)
+        self.assertEqual(out.get("content"), self.PAYLOAD,
+                         f"{mod.SOURCE_ID}: generated arguments {arguments} did not retrieve the file")
+
+    def test_openml(self):
+        from tests.test_adapters_datasets import OPENML_DESC
+        t = self._client()
+        t.add("GET", "https://www.openml.org/api/v1/json/data/61", body=OPENML_DESC)
+        t.add("GET", "https://data.openml.org/datasets/0000/0061/dataset_61.pq", body=self.PAYLOAD)
+        self._roundtrip(ADAPTERS["openml"], "openml:61",
+                        listing_ok=lambda r: str(r.get("title", "")).endswith(".pq"))
+
+    def test_govinfo(self):
+        t = self._client(secrets={("api_data_gov", None): "k", "api_data_gov": "k"})
+        pkg = {"packageId": "CRPT-118hrpt1", "title": "Report on X", "collectionCode": "CRPT",
+               "dateIssued": "2023-02-01", "download": {"pdfLink": "x", "txtLink": "y"}}
+        t.add("GET", "https://api.govinfo.gov/packages/CRPT-118hrpt1/summary", body=pkg)
+        t.add("GET", "https://api.govinfo.gov/packages/CRPT-118hrpt1/txt", body=self.PAYLOAD)
+        self._roundtrip(ADAPTERS["govinfo"], "govinfo:CRPT-118hrpt1",
+                        listing_ok=lambda r: r.get("format") == "txt")
+
+    def test_kaggle(self):
+        t = self._client(secrets={("kaggle", "username"): "u", ("kaggle", "key"): "k"})
+        t.add("GET", "https://www.kaggle.com/api/v1/datasets/list/owner/set",
+              body={"datasetFiles": [{"name": "train.csv", "totalBytes": 10}]})
+        t.add("GET", "https://www.kaggle.com/api/v1/datasets/download/owner/set/train.csv", body=self.PAYLOAD)
+        self._roundtrip(ADAPTERS["kaggle"], "kaggle:owner/set")
+
+    def test_harvard_dataverse(self):
+        t = self._client()
+        dataset = {"id": 7, "persistentUrl": "https://doi.org/10.7910/DVN/X",
+                   "latestVersion": {"datasetPersistentId": "doi:10.7910/DVN/X",
+                                     "license": {"name": "CC0 1.0"},
+                                     "files": [{"label": "d.tab", "dataFile": {"id": 900, "filename": "d.tab"}}]}}
+        t.add("GET", "https://dataverse.harvard.edu/api/datasets/:persistentId/", body={"data": dataset})
+        t.add("GET", "https://dataverse.harvard.edu/api/access/datafile/900", body=self.PAYLOAD)
+        self._roundtrip(ADAPTERS["harvard_dataverse"], "doi:10.7910/DVN/X")
+
+    def test_huggingface(self):
+        t = self._client()
+        repo = {"id": "owner/corpus", "tags": ["license:cc-by-4.0"], "lastModified": "2026-02-01T00:00:00Z",
+                "siblings": [{"rfilename": "data/train.csv"}]}
+        t.add("GET", "https://huggingface.co/api/datasets/owner/corpus", body=repo)
+        t.add("GET", "https://huggingface.co/datasets/owner/corpus/resolve/main/data/train.csv", body=self.PAYLOAD)
+        self._roundtrip(ADAPTERS["huggingface"], "hf:owner/corpus")
+
+
+class ValueValidation(unittest.TestCase):
+    """D-31a finding 2: malformed VALUES fail preflight with the teaching contract too."""
+
+    def test_malformed_values_never_reach_upstream(self):
+        from research_gateway.adapters.base import validate_data_params
+        fred = ADAPTERS["fred"]
+        for params, expect in (({"series": "GDP", "limit": "many"}, "integer"),
+                               ({"series": "GDP", "start": "not-a-date"}, "date"),
+                               ({"series": {}}, "series"),
+                               ({"series": ["a", "b"]}, "string")):
+            problem = validate_data_params(fred, params)
+            self.assertIsNotNone(problem, params)
+            self.assertIn(expect, problem, params)
+        self.assertIsNone(validate_data_params(fred, {"series": "GDP", "start": "2020-01-01", "limit": 5}))
+
+    def test_bls_oversize_is_a_preflight_teaching_error_now(self):
+        from research_gateway.adapters.base import validate_data_params
+        problem = validate_data_params(ADAPTERS["bls"], {"series": [f"S{i}" for i in range(51)]})
+        self.assertIn("at most 50", problem or "")
+        self.assertIsNone(validate_data_params(ADAPTERS["bls"], {"series": ["S1"], "start_year": 2020, "catalog": True}))
+
+    def test_open_contracts_type_their_declared_keys_but_pass_extras(self):
+        from research_gateway.adapters.base import validate_data_params
+        bea = ADAPTERS["bea"]
+        self.assertIsNone(validate_data_params(bea, {"dataset": "NIPA", "year": "X", "TableID": "native"}))
+        self.assertIsNone(validate_data_params(bea, {"dataset": "NIPA", "year": 2024}))
+        self.assertIn("string", validate_data_params(bea, {"dataset": ["not", "a", "string"]}) or "")
+
+    def test_gateway_preflight_blocks_value_errors_before_budget(self):
+        from research_gateway import app as app_module
+        transport = FakeTransport()
+        gw = app_module.Gateway(app_module.Settings(tokens={"t": "t"}), use_db=False,
+                                sources=SEED, transport=transport)
+        try:
+            out = gw.handle({"request_type": "data", "source": "fred",
+                             "params": {"series": "GDP", "limit": "many"}}, "t")
+        finally:
+            gw.stop()
+        self.assertEqual(out["capability_fact"], "gateway_error_400")
+        self.assertIn("'limit' must be integer", out["error"])
+        self.assertEqual(transport.calls, [], "nothing reached the network, no budget spent")

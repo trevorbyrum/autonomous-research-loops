@@ -21,10 +21,14 @@ def _error(j: dict) -> str | None:
 # open=True: BEA methods take dataset-specific keys that pass through by design.
 DATA_PARAMS = {
     "required": {},
-    "optional": {"method": "GetData (default) | GetParameterList | GetParameterValues | GETDATASETLIST",
-                 "dataset": "BEA DataSetName, e.g. NIPA", "table": "TableName, e.g. T10101",
-                 "frequency": "A|Q|M", "year": "year or 'X' for all", "parameter": "ParameterName for metadata methods",
-                 "geo": "GeoFips", "line": "LineCode"},
+    "optional": {"method": {"doc": "GetData (default) | GetParameterList | GetParameterValues | GETDATASETLIST", "type": "string"},
+                 "dataset": {"doc": "BEA DataSetName, e.g. NIPA", "type": "string"},
+                 "table": {"doc": "TableName, e.g. T10101", "type": "string"},
+                 "frequency": {"doc": "A|Q|M", "type": "string"},
+                 "year": {"doc": "year, list of years, or 'X' for all", "type": "string_or_int"},
+                 "parameter": {"doc": "ParameterName for metadata methods", "type": "string"},
+                 "geo": {"doc": "GeoFips", "type": "string_or_int"},
+                 "line": {"doc": "LineCode", "type": "string_or_int"}},
     "open": True,
     "example": {"dataset": "NIPA", "table": "T10101", "frequency": "Q", "year": "2024"},
     "notes": "start with method=GETDATASETLIST then GetParameterList to discover a dataset's own keys; unknown keys pass through to BEA",

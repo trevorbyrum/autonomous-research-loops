@@ -83,3 +83,10 @@ def fetch(client: Client, target: str, *, fmt: str = "pdf", download: bool = Fal
         return {"identity": identity, "records": []}
     return {"identity": identity, "records": [], "content": resp.body, "content_type": resp.headers.get("content-type"),
             "format": fmt, "license": "US Government Work"}
+
+
+def download_request(record: dict, target: str) -> dict | None:
+    """The COMPLETE research_download call for one listed format (D-31a): the PARENT
+    target plus this adapter's own selector — never a fragment-mangled identity."""
+    fmt = record.get("format") or (record.get("extra") or {}).get("format")
+    return {"target": target, "params": {"fmt": fmt}} if fmt else None

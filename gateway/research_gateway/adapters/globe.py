@@ -29,3 +29,9 @@ def fetch(client: Client, target: str | None = None, *, download: bool = False) 
     if not check(SOURCE_ID, resp, allow_html=True):  # raw file download: an HTML document can be legitimate content here
         return {"identity": identity, "records": []}
     return {"identity": identity, "records": [], "content": resp.body, "content_type": resp.headers.get("content-type")}
+
+
+def download_request(record: dict, target: str) -> dict | None:
+    """The COMPLETE research_download call for one listed file (D-31a)."""
+    link = (record.get("links") or [None])[0]
+    return {"target": link, "params": {}} if link else None

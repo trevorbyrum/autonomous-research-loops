@@ -14,6 +14,7 @@ from __future__ import annotations
 import email.utils
 import ipaddress
 import json
+import re
 import socket
 import time
 import urllib.error
@@ -342,21 +343,63 @@ def data_contract(mod) -> dict | None:
             "notes": spec.get("notes") or ""}
 
 
+# declared value shapes (D-31a): a call with the right KEYS but a malformed VALUE must
+# also fail preflight with the teaching contract, never reach upstream and spend budget
+_VALUE_CHECKS = {
+    "string": lambda v, s: isinstance(v, str) and v.strip() != "",
+    "integer": lambda v, s: isinstance(v, int) and not isinstance(v, bool),
+    "boolean": lambda v, s: isinstance(v, bool),
+    "date": lambda v, s: isinstance(v, str) and bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", v)),
+    "period": lambda v, s: isinstance(v, str) and bool(re.fullmatch(r"\d{4}([-Q]\d{1,2})?(-\d{2})?", v)),
+    "year": lambda v, s: (isinstance(v, int) and not isinstance(v, bool) and 1500 <= v <= 2200)
+                         or (isinstance(v, str) and v.isdigit() and 1500 <= int(v) <= 2200),
+    "string_or_int": lambda v, s: (isinstance(v, str) and v.strip() != "")
+                                  or (isinstance(v, int) and not isinstance(v, bool)),
+    "string_or_list": lambda v, s: ((isinstance(v, str) and v.strip() != "")
+                                    or (isinstance(v, list) and v
+                                        and all(isinstance(x, str) and x.strip() for x in v)
+                                        and len(v) <= (s.get("max_items") or len(v)))),
+}
+
+
+def _value_problem(name: str, value, spec) -> str | None:
+    if not isinstance(spec, dict):
+        return None   # legacy plain-doc entry: presence-only
+    kind = spec.get("type") or "string"
+    checker = _VALUE_CHECKS.get(kind)
+    if checker is None or checker(value, spec):
+        return None
+    limit = f", at most {spec['max_items']} items" if spec.get("max_items") else ""
+    return f"'{name}' must be {kind}{limit} ({spec.get('doc', '')})"
+
+
 def validate_data_params(mod, params: dict | None) -> str | None:
     """Why these params violate the adapter's declared contract, or None. Runs BEFORE any
     dispatch or budget spend, so a blind call fails instantly with a teaching error
-    instead of burning an upstream request (D-31). `open` contracts accept extra keys
-    (BEA methods, Census predicates take source-specific pass-through fields)."""
+    instead of burning an upstream request (D-31); declared VALUE shapes are checked too
+    (D-31a). `open` contracts accept extra keys (BEA methods, Census predicates take
+    source-specific pass-through fields) but their declared keys are still typed."""
     spec = data_contract(mod)
     if spec is None:
         return None
     params = params or {}
-    problems = [f"missing required '{k}' ({desc})" for k, desc in spec["required"].items()
-                if params.get(k) in (None, "", [])]
+    problems = []
+    for k, entry in spec["required"].items():
+        doc = entry.get("doc", "") if isinstance(entry, dict) else entry
+        if params.get(k) in (None, "", []):
+            problems.append(f"missing required '{k}' ({doc})")
     if not spec["open"]:
         known = set(spec["required"]) | set(spec["optional"])
         problems += [f"unknown parameter '{k}' (accepted: {', '.join(sorted(known))})"
                      for k in params if k not in known]
+    for k, value in params.items():
+        if value is None:
+            continue
+        entry = spec["required"].get(k) or spec["optional"].get(k)
+        if entry is not None and params.get(k) not in (None, "", []):
+            problem = _value_problem(k, value, entry)
+            if problem:
+                problems.append(problem)
     return "; ".join(problems) or None
 
 

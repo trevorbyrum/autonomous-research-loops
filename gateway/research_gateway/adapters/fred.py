@@ -21,9 +21,10 @@ def _restricted(notes: str | None) -> bool:
 
 # the agent-facing data contract (research_sources; validated before dispatch, D-31)
 DATA_PARAMS = {
-    "required": {"series": "FRED series id, e.g. GDP, UNRATE, CPIAUCSL"},
-    "optional": {"start": "observation start, ISO date", "end": "observation end, ISO date",
-                 "limit": "max observations returned"},
+    "required": {"series": {"doc": "FRED series id, e.g. GDP, UNRATE, CPIAUCSL", "type": "string"}},
+    "optional": {"start": {"doc": "observation start, ISO date YYYY-MM-DD", "type": "date"},
+                 "end": {"doc": "observation end, ISO date YYYY-MM-DD", "type": "date"},
+                 "limit": {"doc": "max observations returned", "type": "integer"}},
     "open": False,
     "example": {"series": "GDP", "start": "2020-01-01"},
     "notes": "series metadata is always fetched; series FRED flags as third-party-restricted are withheld under commercial topics",
