@@ -96,5 +96,5 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                 "data_request": {"tool": "research_data",
                                  "arguments": {"source": SOURCE_ID, "params": {"series": s.get("id")}}}}
                for s in seriess if s.get("id")]
-    nxt = (int(cursor or 0) + limit) if (not within and len(entries) == limit) else None
+    nxt = str(int(cursor or 0) + limit) if (not within and len(entries) == limit) else None
     return {"entries": entries, "next": nxt}

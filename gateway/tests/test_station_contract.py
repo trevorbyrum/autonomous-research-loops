@@ -704,3 +704,124 @@ class CatalogDiscovery(unittest.TestCase):
                          "catalogue success is its own activity type — it can never clear a data blocker")
         empty = R.execute(r, {"request_type": "catalog", "source": "nope", "query": "x"}, c)
         self.assertIn("catalog needs 'source'", empty["facts"][0])
+
+
+class CatalogReviewPins(unittest.TestCase):
+    """D-32a: the nine combined-round findings, pinned."""
+
+    def _client(self, secrets=None):
+        t = FakeTransport()
+        creds = secrets or {}
+        c = Client(broker=Broker({s["id"]: RatePolicy(per_second=100) for s in SEED}), transport=t,
+                   secrets=lambda n, f=None: creds.get((n, f) if f else n) or creds.get((n, f)))
+        return c, t
+
+    def test_1_hf_listing_reads_the_requested_revision(self):
+        c, t = self._client()
+        t.add("GET", "https://huggingface.co/api/datasets/owner/corpus/revision/v1",
+              body={"id": "owner/corpus", "tags": [], "siblings": [{"rfilename": "old.csv"}]})
+        t.add("GET", "https://huggingface.co/api/datasets/owner/corpus",
+              body={"id": "owner/corpus", "tags": [], "siblings": [{"rfilename": "new.csv"}]})
+        out = ADAPTERS["huggingface"].fetch(c, "hf:owner/corpus", revision="v1")
+        self.assertEqual([r["title"] for r in out["records"]], ["old.csv"],
+                         "the v1 listing lists v1's files, never main's stamped as v1")
+        req = ADAPTERS["huggingface"].download_request(out["records"][0], "hf:owner/corpus")
+        self.assertEqual(req["params"], {"path": "old.csv", "revision": "v1"})
+
+    def test_2_value_validation_calendar_empty_and_sdmx_periods(self):
+        from research_gateway.adapters.base import validate_data_params
+        fred, ecb = ADAPTERS["fred"], ADAPTERS["ecb"]
+        self.assertIsNotNone(validate_data_params(fred, {"series": "GDP", "limit": ""}),
+                             "a SUPPLIED empty value is malformed, not absent")
+        self.assertIsNotNone(validate_data_params(fred, {"series": "GDP", "start": "2026-99-99"}),
+                             "a calendar, not a shape")
+        self.assertIsNone(validate_data_params(ecb, {"dataflow": "EXR", "key": "Q.USD.EUR.SP00.A",
+                                                     "start": "2020-Q1", "end": "2020-Q1"}),
+                          "valid SDMX quarters are valid periods")
+        self.assertIsNotNone(validate_data_params(ecb, {"dataflow": "EXR", "key": "k", "start": "2020-Q9"}))
+
+    SDMX_FLOWS = CatalogDiscovery.SDMX_FLOWS
+    SDMX_DSD = CatalogDiscovery.SDMX_DSD
+
+    def test_3_bis_names_the_xml_format_explicitly(self):
+        c, t = self._client()
+        t.add("GET", "https://stats.bis.org/api/v2/structure/dataflow/BIS", body=self.SDMX_FLOWS)
+        ADAPTERS["bis"].catalog(c)
+        self.assertIn("format=sdmx-2.1", t.calls[0][1], "the live endpoint answers JSON unless XML is named")
+
+    def test_4_bea_year_listings_are_table_ranges_never_fake_years(self):
+        c, t = self._client(secrets={("bea", None): "k", "bea": "k"})
+        t.add("GET", "https://apps.bea.gov/api/data",
+              body={"BEAAPI": {"Results": {"ParamValue": [
+                  {"TableName": "T10101", "FirstAnnualYear": "1929", "LastAnnualYear": "2025"}]}}})
+        out = ADAPTERS["bea"].catalog(c, within="NIPA/Year")
+        entry = out["entries"][0]
+        self.assertEqual(entry["kind"], "range")
+        self.assertEqual(entry["data_request"]["arguments"]["params"], {"dataset": "NIPA", "table": "T10101"},
+                         "a table name is never emitted as a year value")
+        self.assertIn("year within", entry["data_request"]["missing"])
+
+    def test_4b_bea_error_envelopes_are_capability_facts(self):
+        c, t = self._client(secrets={("bea", None): "k", "bea": "k"})
+        t.add("GET", "https://apps.bea.gov/api/data",
+              body={"BEAAPI": {"Results": {"Error": {"APIErrorCode": "3", "APIErrorDescription": "bad dataset"}}}})
+        out = ADAPTERS["bea"].catalog(c, within="NOPE")
+        self.assertEqual(out["entries"], [])
+        self.assertIn("BEA", out.get("capability_fact") or "")
+
+    def test_5_and_6_census_predicates_and_unvintaged_datasets(self):
+        c, t = self._client()
+        t.add("GET", "https://api.census.gov/data.json",
+              body={"dataset": [{"title": "Business Dynamics", "c_dataset": ["timeseries", "bds"]}]})
+        out = ADAPTERS["census"].catalog(c, query="business")
+        self.assertEqual(out["entries"][0]["id"], "timeseries/bds", "unvintaged paths are real datasets")
+        t.routes.clear()
+        t.add("GET", "https://api.census.gov/data/2022/acs/acs1/variables.json",
+              body={"variables": {"for": {"label": "Census API Geography", "predicateOnly": True},
+                                  "B01001_001E": {"label": "Estimate!!Total"}}})
+        out = ADAPTERS["census"].catalog(c, within="2022/acs/acs1")
+        kinds = {e["id"]: e["kind"] for e in out["entries"]}
+        self.assertEqual(kinds["for"], "predicate")
+        self.assertNotIn("data_request", next(e for e in out["entries"] if e["id"] == "for"),
+                         "a predicate never becomes a get-template")
+
+    def test_7_dependent_failures_are_never_successful_empty_catalogues(self):
+        c, t = self._client()
+        t.add("GET", "https://data-api.ecb.europa.eu/service/dataflow/ECB", body="<html>challenge</html>",
+              headers={"Content-Type": "text/html"})
+        from research_gateway.adapters.base import SourceUnavailable
+        with self.assertRaises(SourceUnavailable):
+            ADAPTERS["ecb"].catalog(c)
+        t.routes.clear()
+        t.add("GET", "https://data-api.ecb.europa.eu/service/dataflow/ECB/EXR", body=self.SDMX_FLOWS)
+        t.add("GET", "https://data-api.ecb.europa.eu/service/datastructure/ECB/ECB_EXR1", status=503)
+        with self.assertRaises(SourceUnavailable, msg="a failed datastructure lookup is never searched_ok"):
+            ADAPTERS["ecb"].catalog(c, within="EXR")
+        t.routes.clear()
+        t.add("GET", "https://data-api.ecb.europa.eu/service/dataflow/ECB", body="not xml at all")
+        out = ADAPTERS["ecb"].catalog(c)
+        self.assertIn("unparseable", out.get("capability_fact") or "")
+
+    def test_8_catalog_browses_have_distinct_activity_keys(self):
+        self.assertNotEqual(mcp_stdio._subject_of({"source": "ecb", "within": "EXR"}),
+                            mcp_stdio._subject_of({"source": "ecb", "within": "ICP"}),
+                            "an unrelated browse's success must never clear another browse's blocker")
+        self.assertNotEqual(mcp_stdio._subject_of({"source": "ecb", "query": "rates"}),
+                            mcp_stdio._subject_of({"source": "ecb"}))
+
+    def test_9_pagination_round_trips_with_string_cursors(self):
+        c, t = self._client(secrets={("bea", None): "k", "bea": "k"})
+        t.add("GET", "https://apps.bea.gov/api/data",
+              body={"BEAAPI": {"Results": {"Dataset": [
+                  {"DatasetName": "FIRST", "DatasetDescription": "1"},
+                  {"DatasetName": "SECOND", "DatasetDescription": "2"}]}}})
+        page1 = ADAPTERS["bea"].catalog(c, limit=1)
+        self.assertEqual([e["id"] for e in page1["entries"]], ["FIRST"])
+        self.assertEqual(page1["next"], "1")
+        page2 = ADAPTERS["bea"].catalog(c, cursor=page1["next"], limit=1)
+        self.assertEqual([e["id"] for e in page2["entries"]], ["SECOND"],
+                         "handing the cursor back returns the NEXT page, not the first again")
+        self.assertIsNone(page2["next"])
+        spec = next(s for s in mcp_stdio.tool_specs() if s["name"] == "research_catalog")
+        self.assertEqual(spec["inputSchema"]["properties"]["cursor"]["type"], ["string", "integer"],
+                         "the advertised schema accepts what the gateway returns")

@@ -76,7 +76,8 @@ TOOLS = [
      {"source": {**STR, "enum": ["fred", "bea", "census", "bls", "bis", "ecb"]},
       "query": {**STR, "description": "free-text filter/search"},
       "within": {**STR, "description": "browse a returned entry's `within` token"},
-      "cursor": {**STR, "description": "continue a listing: the previous answer's catalog_next"},
+      "cursor": {"type": ["string", "integer"],
+                 "description": "continue a listing: the previous answer's catalog_next, unchanged"},
       "limit": INT, **COMMON}, ["source"]),
     ("research_sources", "Describe the registered sources: with no arguments, every source's capabilities, domains and "
      "commercial verdict; with {\"source\": id}, that source's EXACT declared contract — required/optional data params, "
@@ -170,12 +171,15 @@ def apply_policy(args: dict, policy: dict) -> dict:
 
 def _subject_of(mapping: dict) -> str:
     """One subject rule for arguments AND stored job payloads: two different data series
-    from one source are two different requests (finding 4)."""
-    subject = mapping.get("query") or mapping.get("identity") or mapping.get("target") or ""
-    if not subject and mapping.get("source"):
-        subject = json.dumps({"source": mapping["source"], "params": mapping.get("params") or {}},
-                             sort_keys=True, separators=(",", ":"))
-    return subject
+    from one source are two different requests (finding 4), and two different catalogue
+    browses (within/query/cursor) are too — an unrelated catalogue success must never
+    clear a different browse's blocker (D-32a finding 8)."""
+    if mapping.get("source"):
+        distinguishing = {k: mapping[k] for k in ("params", "query", "within", "cursor")
+                          if mapping.get(k) not in (None, "", {})}
+        return json.dumps({"source": mapping["source"], **distinguishing},
+                          sort_keys=True, separators=(",", ":"), default=str)
+    return mapping.get("query") or mapping.get("identity") or mapping.get("target") or ""
 
 
 def record_activity(path: str | None, tool: str, args: dict, result: dict | None, error: str | None = None) -> None:

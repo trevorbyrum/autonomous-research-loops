@@ -345,12 +345,25 @@ def data_contract(mod) -> dict | None:
 
 # declared value shapes (D-31a): a call with the right KEYS but a malformed VALUE must
 # also fail preflight with the teaching contract, never reach upstream and spend budget
+def _real_date(v) -> bool:
+    if not isinstance(v, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+        return False
+    import datetime
+    try:  # a calendar, not a shape: 2026-99-99 must fail preflight (D-32a finding 2)
+        datetime.date.fromisoformat(v)
+        return True
+    except ValueError:
+        return False
+
+
 _VALUE_CHECKS = {
     "string": lambda v, s: isinstance(v, str) and v.strip() != "",
     "integer": lambda v, s: isinstance(v, int) and not isinstance(v, bool),
     "boolean": lambda v, s: isinstance(v, bool),
-    "date": lambda v, s: isinstance(v, str) and bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", v)),
-    "period": lambda v, s: isinstance(v, str) and bool(re.fullmatch(r"\d{4}([-Q]\d{1,2})?(-\d{2})?", v)),
+    "date": lambda v, s: _real_date(v),
+    # SDMX periods: a year, a real month (with optional day), a quarter, a half or a week
+    "period": lambda v, s: isinstance(v, str) and bool(
+        re.fullmatch(r"\d{4}(-(0[1-9]|1[0-2])(-\d{2})?|-Q[1-4]|-S[12]|-W\d{2})?", v)),
     "year": lambda v, s: (isinstance(v, int) and not isinstance(v, bool) and 1500 <= v <= 2200)
                          or (isinstance(v, str) and v.isdigit() and 1500 <= int(v) <= 2200),
     "string_or_int": lambda v, s: (isinstance(v, str) and v.strip() != "")
@@ -396,9 +409,11 @@ def validate_data_params(mod, params: dict | None) -> str | None:
         if value is None:
             continue
         entry = spec["required"].get(k) or spec["optional"].get(k)
-        if entry is not None and params.get(k) not in (None, "", []):
+        if entry is not None:
+            # a SUPPLIED empty value is malformed, not merely absent: limit:"" must fail
+            # preflight like limit:"many" does (D-32a finding 2)
             problem = _value_problem(k, value, entry)
-            if problem:
+            if problem and problem not in problems:
                 problems.append(problem)
     return "; ".join(problems) or None
 

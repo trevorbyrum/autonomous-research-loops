@@ -70,13 +70,15 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         for d in ((resp.json or {}).get("dataset") or []):
             path = "/".join(d.get("c_dataset") or [])
             vintage = d.get("c_vintage")
-            ds = f"{vintage}/{path}" if vintage and path else None
+            # unvintaged datasets (timeseries/bds and 87 friends) are real: their path IS
+            # the dataset id (D-32a finding 6)
+            ds = (f"{vintage}/{path}" if vintage else path) if path else None
             title = d.get("title") or ""
             if not ds or (q and q not in title.lower() and q not in ds.lower()):
                 continue
             entries.append({"id": ds, "label": title, "kind": "dataset", "children": True, "within": ds})
         page = entries[offset:offset + limit]
-        return {"entries": page, "next": offset + limit if len(entries) > offset + limit else None}
+        return {"entries": page, "next": str(offset + limit) if len(entries) > offset + limit else None}
     resp = client.get(SOURCE_ID, "catalog", f"https://api.census.gov/data/{within.strip('/')}/variables.json",
                       identity=f"table:census:{within}", query=query)
     if not check(SOURCE_ID, resp):
@@ -84,8 +86,15 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
     q = (query or "").lower()
     entries = []
     for name, meta in ((resp.json or {}).get("variables") or {}).items():
-        label = (meta or {}).get("label") or ""
+        meta = meta or {}
+        label = meta.get("label") or ""
         if q and q not in name.lower() and q not in label.lower():
+            continue
+        if meta.get("predicateOnly"):
+            # a predicate is a FILTER, never a selectable column: putting it in `get`
+            # produces an HTTP 400 (D-32a finding 5)
+            entries.append({"id": name, "label": label, "kind": "predicate",
+                            "usage": f'filter with "{name}": <value> (or the for/in geography keys) — never in `get`'})
             continue
         entries.append({"id": name, "label": label, "kind": "variable",
                         "data_request": {"tool": "research_data", "partial": True,
@@ -93,4 +102,4 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                                                        "params": {"dataset": within, "get": f"NAME,{name}"}},
                                          "missing": "a geography, e.g. \"for\": \"state:*\""}})
     page = sorted(entries, key=lambda e: e["id"])[offset:offset + limit]
-    return {"entries": page, "next": offset + limit if len(entries) > offset + limit else None}
+    return {"entries": page, "next": str(offset + limit) if len(entries) > offset + limit else None}

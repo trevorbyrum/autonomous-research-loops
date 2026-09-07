@@ -71,15 +71,28 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
             cursor=None, limit: int = 20) -> dict:
     """Identifier discovery (D-32) through BEA's own metadata methods: no `within` lists
     datasets; within=<dataset> lists its parameters; within=<dataset>/<parameter> lists
-    that parameter's values with a PARTIAL research_data template to complete."""
+    that parameter's values with a PARTIAL research_data template to complete. BEA's
+    HTTP-200 error envelopes are capability facts (D-32a finding 7), and value rows are
+    read PER PARAMETER — a Year listing returns per-table year RANGES, never a table
+    name masquerading as a year (finding 4)."""
     key = client.secret("bea")
     if not key:
         return {"entries": [], "capability_fact": "no BEA key configured"}
     base_q = {"UserID": key, "ResultFormat": "JSON"}
     dataset, _, parameter = (within or "").partition("/")
+    offset = int(cursor or 0)
 
-    def rows_of(resp, *keys):
-        results = ((resp.json or {}).get("BEAAPI") or {}).get("Results") or {}
+    def call(method, **extra):
+        resp = client.get(SOURCE_ID, "catalog", BASE, params={**base_q, "method": method, **extra}, query=query)
+        if not check(SOURCE_ID, resp):
+            return None, None
+        j = resp.json or {}
+        err = _error(j)
+        if err:
+            return None, f"BEA: {err}"
+        return (j.get("BEAAPI") or {}).get("Results") or {}, None
+
+    def rows_of(results, *keys):
         for k in keys:
             v = results.get(k)
             if isinstance(v, list):
@@ -89,36 +102,43 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         return []
 
     if not dataset:
-        resp = client.get(SOURCE_ID, "catalog", BASE, params={**base_q, "method": "GETDATASETLIST"}, query=query)
-        if not check(SOURCE_ID, resp):
-            return {"entries": []}
+        results, err = call("GETDATASETLIST")
+        if results is None:
+            return {"entries": [], **({"capability_fact": err} if err else {})}
         entries = [{"id": d.get("DatasetName"), "label": d.get("DatasetDescription"), "kind": "dataset",
                     "children": True, "within": d.get("DatasetName")}
-                   for d in rows_of(resp, "Dataset") if d.get("DatasetName")]
+                   for d in rows_of(results, "Dataset") if d.get("DatasetName")]
     elif not parameter:
-        resp = client.get(SOURCE_ID, "catalog", BASE,
-                          params={**base_q, "method": "GetParameterList", "DataSetName": dataset}, query=query)
-        if not check(SOURCE_ID, resp):
-            return {"entries": []}
+        results, err = call("GetParameterList", DataSetName=dataset)
+        if results is None:
+            return {"entries": [], **({"capability_fact": err} if err else {})}
         entries = [{"id": p.get("ParameterName"), "label": p.get("ParameterDescription"), "kind": "parameter",
                     "children": True, "within": f"{dataset}/{p.get('ParameterName')}"}
-                   for p in rows_of(resp, "Parameter") if p.get("ParameterName")]
+                   for p in rows_of(results, "Parameter") if p.get("ParameterName")]
     else:
-        resp = client.get(SOURCE_ID, "catalog", BASE,
-                          params={**base_q, "method": "GetParameterValues", "DataSetName": dataset,
-                                  "ParameterName": parameter}, query=query)
-        if not check(SOURCE_ID, resp):
-            return {"entries": []}
+        results, err = call("GetParameterValues", DataSetName=dataset, ParameterName=parameter)
+        if results is None:
+            return {"entries": [], **({"capability_fact": err} if err else {})}
         entries = []
-        for v in rows_of(resp, "ParamValue"):
-            value = v.get("Key") or v.get("TableName") or next(iter(v.values()), None)
-            label = v.get("Desc") or v.get("Description") or value
-            entries.append({"id": value, "label": label, "kind": "value",
-                            "data_request": {"tool": "research_data", "partial": True,
-                                             "arguments": {"source": SOURCE_ID,
-                                                           "params": {"dataset": dataset, parameter.lower(): value}},
-                                             "missing": "the dataset's other required parameters (browse them the same way)"}})
+        for v in rows_of(results, "ParamValue"):
+            range_keys = [k for k in v if k.startswith(("First", "Last"))]
+            exact = next((v[k] for k in (parameter, parameter.capitalize(), parameter.upper(), "Key") if v.get(k)), None)
+            if exact is not None and not range_keys:
+                entries.append({"id": exact, "label": v.get("Desc") or v.get("Description") or exact, "kind": "value",
+                                "data_request": {"tool": "research_data", "partial": True,
+                                                 "arguments": {"source": SOURCE_ID,
+                                                               "params": {"dataset": dataset, parameter.lower(): exact}},
+                                                 "missing": "the dataset's other required parameters (browse them the same way)"}})
+            elif range_keys and v.get("TableName"):
+                spans = ", ".join(f"{k}={v[k]}" for k in sorted(range_keys) if v.get(k))
+                entries.append({"id": v["TableName"], "label": f"{v['TableName']}: {spans}", "kind": "range",
+                                "data_request": {"tool": "research_data", "partial": True,
+                                                 "arguments": {"source": SOURCE_ID,
+                                                               "params": {"dataset": dataset, "table": v["TableName"]}},
+                                                 "missing": f"a {parameter.lower()} within the listed span (plus frequency)"}})
     if query:
         q = query.lower()
         entries = [e for e in entries if q in str(e.get("id", "")).lower() or q in str(e.get("label", "")).lower()]
-    return {"entries": entries[:limit], "next": None}
+    page = entries[offset:offset + limit]
+    return {"entries": page, "next": str(offset + limit) if len(entries) > offset + limit else None}
+

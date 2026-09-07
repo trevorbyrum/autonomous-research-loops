@@ -88,7 +88,17 @@ def fetch(client: Client, target: str, *, path: str | None = None, download: boo
             return {"identity": identity, "records": []}
         return {"identity": identity, "records": [], "content": resp.body,
                 "content_type": resp.headers.get("content-type"), "license": rec["license"], "gated": rec["gated"]}
-    rec = resolve(client, identity)
+    if revision != "main":
+        # the LISTING must come from the requested revision too — reading main and
+        # stamping the requested revision generated downloads of files that revision
+        # does not contain (D-32a finding 1)
+        rev_url = f"{BASE}/api/datasets/{quote(repo, safe='/')}/revision/{quote(revision, safe='')}"
+        meta = client.get(SOURCE_ID, "fetch", rev_url, headers=_headers(client), identity=f"hf:{repo}@{revision}")
+        if not check(SOURCE_ID, meta) or not isinstance(meta.json, dict) or not meta.json.get("id"):
+            return {"identity": identity, "records": [], "capability_fact": f"repository (revision {revision}) not found"}
+        rec = _record(meta.json)
+    else:
+        rec = resolve(client, identity)
     if rec is None:
         return {"identity": identity, "records": []}
     files = [make_record(identity=f"{identity}#{f}", kind="file", source_id=SOURCE_ID, title=f, license=rec["license"],

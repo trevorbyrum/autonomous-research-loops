@@ -78,7 +78,9 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                    if s.get("survey_abbreviation")
                    and (not q or q in str(s.get("survey_name", "")).lower()
                         or q in str(s.get("survey_abbreviation", "")).lower())]
-        return {"entries": entries[:limit], "next": None,
+        offset = int(cursor or 0)
+        page = entries[offset:offset + limit]
+        return {"entries": page, "next": str(offset + limit) if len(entries) > offset + limit else None,
                 "notes": "BLS has no series search API: browse a survey's popular series, or find ids at data.bls.gov"}
     resp = client.get(SOURCE_ID, "catalog", f"https://api.bls.gov/publicAPI/v2/timeseries/popular?survey={within}",
                       identity=f"series:bls:{within}")
@@ -89,5 +91,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                 "data_request": {"tool": "research_data",
                                  "arguments": {"source": SOURCE_ID, "params": {"series": s.get("seriesID")}}}}
                for s in series if s.get("seriesID")]
-    return {"entries": entries[:limit], "next": None,
+    offset = int(cursor or 0)
+    page = entries[offset:offset + limit]
+    return {"entries": page, "next": str(offset + limit) if len(entries) > offset + limit else None,
             "notes": f"the survey's POPULAR series only; other {within} series ids come from data.bls.gov"}
