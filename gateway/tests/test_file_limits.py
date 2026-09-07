@@ -15,7 +15,8 @@ def offenders() -> list[tuple[str, int]]:
             continue
         if path.suffix not in CODE_SUFFIXES:
             continue
-        lines = sum(1 for _ in path.open("rb"))
+        with path.open("rb") as fh:
+            lines = sum(1 for _ in fh)
         if lines > LIMIT:
             found.append((str(path.relative_to(ROOT)), lines))
     return found
