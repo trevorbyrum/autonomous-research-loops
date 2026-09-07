@@ -135,10 +135,10 @@ def identify(license: str | None) -> str | None:
             # and the only thing after it is a version segment the route ACTUALLY has
             if tail in ("", "/"):
                 return cid
-            if tail.startswith("/"):
-                segment = tail[1:].rstrip("/")
-                if segment in versions and "/" not in segment:
-                    return cid
+            # exactly '/<version>' or '/<version>/': rstrip would collapse '/1.0//'
+            # onto '/1.0' and re-open paths pass 6 rejected (pass-7 finding)
+            if any(tail in (f"/{v}", f"/{v}/") for v in versions):
+                return cid
             return None
         return None
     if any(ch in s for ch in "<>{}") or "http" in s.lower():

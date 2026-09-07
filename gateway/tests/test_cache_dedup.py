@@ -31,7 +31,9 @@ class Licenses(unittest.TestCase):
                           "https://opensource.org/licenses/MIT/1.../": False,
                           "https://opensource.org/license/ISC/1.0": False,
                           "https://opendatacommons.org/licenses/by/99.0/": False,
-                          "https://opendatacommons.org/licenses/by/1.0.0": False}.items():
+                          "https://opendatacommons.org/licenses/by/1.0.0": False,
+                          "https://opendatacommons.org/licenses/by/1.0//": False,
+                          "https://opendatacommons.org/licenses/pddl/1.0%2F%2F": False}.items():
             self.assertEqual(licenses.allow_listed(url), want, url)
         allow, per_item, deny = {"use_commercial": "allow"}, {"use_commercial": "per-item"}, {"use_commercial": "deny"}
         rec = {"license": "cc-by-4.0"}
