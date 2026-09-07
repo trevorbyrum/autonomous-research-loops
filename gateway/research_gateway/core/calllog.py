@@ -1,0 +1,70 @@
+"""Every outbound call is a row in gateway.calls (PLAN.md I-6)."""
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, asdict
+
+
+@dataclass
+class CallRecord:
+    source_id: str
+    request_type: str
+    status: int | None
+    latency_ms: int
+    job_id: int | None = None
+    identity: str | None = None
+    query: str | None = None
+    ratelimit: dict | None = None
+    credits: float | None = None
+    cache_hit: bool = False
+    result_count: int | None = None
+    failure_class: str = "ok"
+    domain_resolved: str | None = None
+
+
+def classify(status: int | None, *, network_error: bool = False, body: str = "") -> str:
+    """Map an outcome to the failure classes the plan names (§2 gateway.calls)."""
+    if network_error:
+        return "outage"
+    if status is None:
+        return "outage"
+    if status in (401, 403):
+        return "botwall" if ("challenge" in body.lower() or "cloudflare" in body.lower() or "anubis" in body.lower()) else "auth"
+    if status == 429:
+        return "quota"
+    if status == 404:
+        return "notfound"
+    if status >= 500:
+        return "outage"
+    if 200 <= status < 300:
+        return "ok"
+    return "refused"
+
+
+def ratelimit_headers(headers) -> dict:
+    """Keep only rate-limit-related headers, lower-cased, for the log."""
+    out = {}
+    for k, v in headers.items():
+        lk = k.lower()
+        if "ratelimit" in lk or lk == "retry-after":
+            out[lk] = v
+    return out
+
+
+def record(conn, rec: CallRecord) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO gateway.calls (job_id, source_id, request_type, identity, query, status, latency_ms, "
+            "ratelimit, credits, cache_hit, result_count, failure_class, domain_resolved) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+            (rec.job_id, rec.source_id, rec.request_type, rec.identity, rec.query, rec.status, rec.latency_ms,
+             json.dumps(rec.ratelimit) if rec.ratelimit is not None else None, rec.credits, rec.cache_hit,
+             rec.result_count, rec.failure_class, rec.domain_resolved),
+        )
+        row_id = cur.fetchone()[0]
+    conn.commit()
+    return row_id
+
+
+def to_dict(rec: CallRecord) -> dict:
+    return asdict(rec)

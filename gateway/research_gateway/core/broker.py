@@ -1,0 +1,259 @@
+"""Rate broker: the single owner of every source's limits (PLAN.md I-1, I-3, §5).
+
+One `Broker` per gateway process. `acquire()` is called before every outbound
+call; it either grants immediately, tells the caller how long to wait, or
+refuses (no policy, open breaker, exhausted daily budget). `record()` is
+called after every call so limit errors can open the breaker and `Retry-After`
+is honoured.
+
+Windows are sliding: a request is allowed when fewer than `per_<window>`
+dispatches happened in the trailing window. That is exact, needs no refill
+maths, and is easy to test with an injected clock.
+"""
+from __future__ import annotations
+
+import threading
+import time
+from collections import deque
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Callable
+
+
+@dataclass(frozen=True)
+class RatePolicy:
+    per_second: float | None = None
+    per_minute: float | None = None
+    per_hour: float | None = None
+    per_day: float | None = None
+    cost_cap_per_day: float | None = None
+    burst: int | None = None
+
+    def windows(self) -> list[tuple[float, float]]:
+        """(window length in seconds, allowed count) for each configured limit."""
+        out = []
+        if self.per_second:
+            out.append((1.0, float(self.burst) if self.burst else float(self.per_second)))
+        if self.per_minute:
+            out.append((60.0, float(self.per_minute)))
+        if self.per_hour:
+            out.append((3600.0, float(self.per_hour)))
+        if self.per_day:
+            out.append((86400.0, float(self.per_day)))
+        return out
+
+    def is_empty(self) -> bool:
+        return not self.windows() and not self.cost_cap_per_day
+
+
+class NoPolicy(Exception):
+    """The source has no rate policy: it must not be scheduled (I-3)."""
+
+
+class BreakerOpen(Exception):
+    def __init__(self, source_id: str, until: float, reason: str):
+        super().__init__(f"{source_id}: breaker open until {until:.0f} ({reason})")
+        self.source_id, self.until, self.reason = source_id, until, reason
+
+
+class BudgetExhausted(Exception):
+    def __init__(self, source_id: str, what: str):
+        super().__init__(f"{source_id}: daily {what} exhausted")
+        self.source_id, self.what = source_id, what
+
+
+@dataclass
+class _State:
+    windows: list[deque]
+    consecutive_limit_errors: int = 0
+    breaker_until: float = 0.0
+    breaker_reason: str = ""
+    day: str = ""
+    credits_today: float = 0.0
+    dispatched_today: int = 0
+
+
+class Broker:
+    LIMIT_STATUSES = {429, 503}
+
+    def __init__(
+        self,
+        policies: dict[str, RatePolicy],
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        wall: Callable[[], float] = time.time,
+        breaker_window: float = 900.0,
+        errors_to_open: int = 3,
+        on_breaker_change: Callable[[str, str, float | None, str], None] | None = None,
+    ):
+        self._policies = dict(policies)
+        self._clock, self._wall = clock, wall
+        self._breaker_window, self._errors_to_open = breaker_window, errors_to_open
+        self._on_breaker_change = on_breaker_change
+        self._lock = threading.Lock()
+        self._state: dict[str, _State] = {}
+
+    # ---------------------------------------------------------------- policies
+    def has_policy(self, source_id: str) -> bool:
+        p = self._policies.get(source_id)
+        return p is not None and not p.is_empty()
+
+    def policy(self, source_id: str) -> RatePolicy:
+        return self._policies[source_id]
+
+    def _state_for(self, source_id: str) -> _State:
+        st = self._state.get(source_id)
+        if st is None:
+            st = _State(windows=[deque() for _ in self._policies[source_id].windows()])
+            self._state[source_id] = st
+        today = datetime.fromtimestamp(self._wall(), timezone.utc).strftime("%Y-%m-%d")
+        if st.day != today:
+            st.day, st.credits_today, st.dispatched_today = today, 0.0, 0
+        return st
+
+    # ---------------------------------------------------------------- acquire
+    def acquire(self, source_id: str, *, credits: float = 0.0) -> float:
+        """Reserve one dispatch. Returns seconds to wait before sending (0 = now).
+
+        Raises NoPolicy, BreakerOpen, or BudgetExhausted. A positive wait means
+        the reservation is NOT taken; call again after waiting.
+        """
+        if not self.has_policy(source_id):
+            raise NoPolicy(source_id)
+        with self._lock:
+            st = self._state_for(source_id)
+            now = self._clock()
+            if st.breaker_until > now:
+                raise BreakerOpen(source_id, st.breaker_until, st.breaker_reason)
+            pol = self._policies[source_id]
+            if pol.cost_cap_per_day and st.credits_today + credits > pol.cost_cap_per_day:
+                raise BudgetExhausted(source_id, "cost cap")
+            wait = 0.0
+            for (length, allowed), dq in zip(pol.windows(), st.windows):
+                while dq and dq[0] <= now - length:
+                    dq.popleft()
+                if len(dq) >= allowed:
+                    if length >= 86400.0:
+                        raise BudgetExhausted(source_id, "request budget")
+                    wait = max(wait, dq[0] + length - now)
+            if wait > 0:
+                return wait
+            for dq in st.windows:
+                dq.append(now)
+            st.credits_today += credits
+            st.dispatched_today += 1
+            return 0.0
+
+    def acquire_blocking(self, source_id: str, *, credits: float = 0.0, sleep: Callable[[float], None] = time.sleep,
+                         max_wait: float = 120.0) -> None:
+        """Wait (bounded) until a reservation is granted; raises like acquire()."""
+        waited = 0.0
+        while True:
+            wait = self.acquire(source_id, credits=credits)
+            if wait <= 0:
+                return
+            if waited + wait > max_wait:
+                raise BudgetExhausted(source_id, f"wait exceeds {max_wait:.0f}s")
+            sleep(wait)
+            waited += wait
+
+    # ---------------------------------------------------------------- results
+    def record(self, source_id: str, status: int | None, *, retry_after: float | None = None,
+               network_error: bool = False) -> None:
+        """Feed the outcome of a call back so breakers reflect reality (§5)."""
+        with self._lock:
+            st = self._state_for(source_id)
+            limited = (status in self.LIMIT_STATUSES) or network_error or (status is not None and status >= 500)
+            if not limited:
+                st.consecutive_limit_errors = 0
+                return
+            st.consecutive_limit_errors += 1
+            if retry_after is not None:
+                self._open(source_id, st, retry_after, f"retry-after {retry_after:.0f}s (status {status})")
+            elif st.consecutive_limit_errors >= self._errors_to_open:
+                self._open(source_id, st, self._breaker_window, f"{st.consecutive_limit_errors} consecutive limit/outage errors")
+
+    def _open(self, source_id: str, st: _State, seconds: float, reason: str) -> None:
+        st.breaker_until = self._clock() + seconds
+        st.breaker_reason = reason
+        st.consecutive_limit_errors = 0
+        if self._on_breaker_change:
+            self._on_breaker_change(source_id, "open", self._wall() + seconds, reason)
+
+    def breaker_open(self, source_id: str) -> bool:
+        with self._lock:
+            st = self._state.get(source_id)
+            if st is None:
+                return False
+            if st.breaker_until and st.breaker_until <= self._clock():
+                st.breaker_until = 0.0
+                if self._on_breaker_change:
+                    self._on_breaker_change(source_id, "closed", None, "window elapsed")
+                return False
+            return st.breaker_until > self._clock()
+
+    def close_breaker(self, source_id: str) -> None:
+        with self._lock:
+            st = self._state.get(source_id)
+            if st:
+                st.breaker_until, st.breaker_reason, st.consecutive_limit_errors = 0.0, "", 0
+        if self._on_breaker_change:
+            self._on_breaker_change(source_id, "closed", None, "operator")
+
+    # ---------------------------------------------------------------- status
+    def status(self) -> dict[str, dict]:
+        with self._lock:
+            out = {}
+            for sid, st in self._state.items():
+                pol = self._policies[sid]
+                out[sid] = {
+                    "breaker_open": st.breaker_until > self._clock(),
+                    "breaker_reason": st.breaker_reason,
+                    "dispatched_today": st.dispatched_today,
+                    "credits_today": st.credits_today,
+                    "per_day": pol.per_day,
+                    "cost_cap_per_day": pol.cost_cap_per_day,
+                }
+            return out
+
+
+def policies_from_rows(rows: list[dict]) -> dict[str, RatePolicy]:
+    """Build policies from `gateway.rate_policies` rows (dicts keyed by column)."""
+    out = {}
+    for r in rows:
+        out[r["source_id"]] = RatePolicy(
+            per_second=float(r["per_second"]) if r.get("per_second") else None,
+            per_minute=float(r["per_minute"]) if r.get("per_minute") else None,
+            per_hour=float(r["per_hour"]) if r.get("per_hour") else None,
+            per_day=float(r["per_day"]) if r.get("per_day") else None,
+            cost_cap_per_day=float(r["cost_cap_per_day"]) if r.get("cost_cap_per_day") else None,
+            burst=int(r["burst"]) if r.get("burst") else None,
+        )
+    return out
+
+
+def load_policies(conn) -> dict[str, RatePolicy]:
+    """Policies for enabled, rate-verified sources only (PLAN §3)."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT p.source_id, p.per_second, p.per_minute, p.per_hour, p.per_day, p.cost_cap_per_day, p.burst "
+            "FROM gateway.rate_policies p JOIN gateway.sources s ON s.id = p.source_id "
+            "WHERE s.enabled AND p.verified"
+        )
+        cols = [d.name for d in cur.description]
+        return policies_from_rows([dict(zip(cols, row)) for row in cur.fetchall()])
+
+
+def persist_breaker(conn) -> Callable[[str, str, float | None, str], None]:
+    """on_breaker_change callback that mirrors state into gateway.breakers."""
+    def _cb(source_id: str, state: str, retry_after_wall: float | None, reason: str) -> None:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO gateway.breakers (source_id, state, opened_at, retry_after, reason) "
+                "VALUES (%s, %s, CASE WHEN %s = 'open' THEN now() END, to_timestamp(%s), %s) "
+                "ON CONFLICT (source_id) DO UPDATE SET state = EXCLUDED.state, opened_at = EXCLUDED.opened_at, "
+                "retry_after = EXCLUDED.retry_after, reason = EXCLUDED.reason",
+                (source_id, state, state, retry_after_wall, reason),
+            )
+        conn.commit()
+    return _cb
