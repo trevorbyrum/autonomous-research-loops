@@ -105,7 +105,7 @@ gateway/
   research_gateway/           Python package (3.12, stdlib + psycopg + a small HTTP framework)
     registry/
       schema.sql              gateway.* tables (§2)
-      seed/sources.yaml       the working set (§3) with kinds, capabilities, rate policy,
+      seed/sources.toml       the working set (§3) with kinds, capabilities, rate policy,
                               licence, commercial verdict, evidence URL
       load.py                 seed -> tables; validates that every seeded source has an adapter
     adapters/
@@ -146,7 +146,7 @@ gateway/
     regression/
       overlap_probe.py        replays a fixed DOI sample; asserts per-source presence
                               against recorded expectations (the 2026-09 probe)
-sources.example.yaml          public example config (env-var secrets), user-editable
+sources.example.toml          public example config (env-var secrets), user-editable
 ```
 
 Private material stays out of the tree: `private/` (gitignored), the
@@ -356,12 +356,12 @@ Plus README, ARCHITECTURE, OPERATIONS, PUBLIC-PRIVATE, LICENSING.
 
 ## 12. Public / private boundary checklist (run before every commit on this branch)
 
-- [ ] `git grep -nE '192\.168\.|vault-token|X-Vault|BluDevi|api_key=|KGAT_|hvs\.' -- gateway/` returns nothing
+- [ ] `git grep -nE '192\.168\.|10\.0\.|vault-token|X-Vault|postgresql://[^ ]+:[^ ]+@|api_key=[A-Za-z0-9]|KGAT_|hvs\.' -- gateway/ ':!gateway/PLAN.md'` returns nothing
 - [ ] no file under `gateway/` references `private/`, Duke, Fuqua, WRDS, Elsevier keys
-- [ ] `sources.example.yaml` contains no real credentials
+- [ ] `sources.example.toml` contains no real credentials
 - [ ] no data files (CSV/JSONL/parquet) under `gateway/` except test fixtures ≤ 50 KB
 - [ ] `gateway/docs/SOURCES.md` matches `registry/docs.py` output
-- [ ] no adapter exists for a source that is not in `seed/sources.yaml`
+- [ ] no adapter exists for a source that is not in `seed/sources.toml`
 - [ ] `git grep -nE 'TODO|FIXME|XXX|NotImplementedError|placeholder|lorem' -- gateway/ research_gateway/ tests/` returns nothing (I-10)
 - [ ] `pytest tests/test_file_limits.py` passes: no file > 1,500 lines (I-11)
 - [ ] `pytest -q` green, and every module touched in the commit has a test file touched or added (I-14)
@@ -376,7 +376,7 @@ after its checks pass and the operator has reviewed (two-bucket rule).
 **Phase 0 — Contract (this document).** Acceptance: operator approval logged in §16.
 
 **Phase 1 — Registry + schema + seed + docs stubs.**
-Deliverables: `registry/schema.sql`, `seed/sources.yaml` (§3 verbatim), `load.py`,
+Deliverables: `registry/schema.sql`, `seed/sources.toml` (§3 verbatim), `load.py`,
 `registry/docs.py`, stub docs. Checks:
 - `python -m research_gateway.registry.load --dry-run` validates every seeded
   source has kind, capabilities, rate policy, verdict + evidence
@@ -445,7 +445,7 @@ public) and its commit hash recorded in the phase's acceptance note.
 1. Re-read §0 invariants and §16 Decision log; note any operator ruling since.
 2. `git status` clean on `research-gateway`; on the right worktree.
 3. `pytest -q` green; if red, fix before new work.
-4. Registry vs code: every file in `adapters/` has a row in `seed/sources.yaml`
+4. Registry vs code: every file in `adapters/` has a row in `seed/sources.toml`
    and vice versa (`python -m research_gateway.registry.load --check-adapters`).
 5. Docs vs registry: `python -m research_gateway.registry.docs --check`.
 6. §12 boundary checklist.

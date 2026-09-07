@@ -1,0 +1,675 @@
+# Research gateway source registry — the public source of truth (PLAN.md §3).
+#
+# Field reference
+#   kind            article | dataset | citation | resolver | statistical | manual
+#   capabilities    subset of find, resolve, enrich, fetch, data
+#   base_for        kinds this source is a BASE lane for (queried for every request of that kind)
+#   domains         domain tags that ADD this lane (finance, market, social, management, ai-ml,
+#                   software, biomed); "other" always includes every domain lane (D-12)
+#   auth            none | email | key | optional_token | client_credentials | username_key | account
+#   secret_ref      logical name only; the deployment maps it to an env var or a secrets backend
+#   use_commercial  allow | per-item | deny | unknown  (personal research use is the baseline, D-5)
+#   rate.verified   false until the limit is confirmed from headers/docs in Phase 3; unverified
+#                   sources stay enabled = false (PLAN.md §3)
+# Every limit and verdict cites where it was read. Nothing here is from memory.
+
+# ---------------------------------------------------------------- article indexes
+
+[[source]]
+id = "crossref"
+name = "Crossref"
+kind = "article"
+homepage = "https://www.crossref.org/"
+docs_url = "https://api.crossref.org/swagger-ui/index.html"
+capabilities = ["find", "resolve", "enrich"]
+identifiers = ["doi", "issn", "title"]
+base_for = ["article"]
+domains = []
+auth = "email"
+secret_ref = ""
+key_instructions = "No key. Send a contact email in the User-Agent/mailto parameter to join the polite pool."
+license = "Metadata: no rights asserted (facts); reference lists as deposited by publishers."
+use_commercial = "allow"
+use_evidence = "https://www.crossref.org/documentation/retrieve-metadata/rest-api/"
+freshness_lag = "origin registry (publishers deposit here first)"
+substitution_group = "doi-metadata"
+enabled = true
+notes = "Base lane for articles. Also provides reference lists for citation enrichment fallback."
+[source.rate]
+per_second = 50
+burst = 50
+verified = true
+evidence = "Crossref REST API docs: polite pool, no daily cap (https://www.crossref.org/documentation/retrieve-metadata/rest-api/tips-for-using-the-crossref-rest-api/)"
+
+[[source]]
+id = "doaj"
+name = "Directory of Open Access Journals (DOAJ)"
+kind = "article"
+homepage = "https://doaj.org/"
+docs_url = "https://doaj.org/api/v3/docs"
+capabilities = ["find", "resolve"]
+identifiers = ["doi", "issn", "title"]
+base_for = ["article"]
+domains = []
+auth = "none"
+secret_ref = ""
+key_instructions = "No key for reads (keys are only issued to publishers writing data)."
+license = "CC0 for journal-level and article-level metadata."
+use_commercial = "allow"
+use_evidence = "https://doaj.org/terms/"
+freshness_lag = "hours to days"
+substitution_group = ""
+enabled = true
+notes = "Always added for article discovery: 9-14% of open-access journal articles are in no Crossref-derived index."
+[source.rate]
+per_second = 2
+burst = 5
+verified = true
+evidence = "DOAJ API docs: 2 requests/second, bursts of 5; search capped at 1,000 records per query (https://doaj.org/api/v3/docs)"
+
+[[source]]
+id = "openaire"
+name = "OpenAIRE Graph"
+kind = "article"
+homepage = "https://graph.openaire.eu/"
+docs_url = "https://graph.openaire.eu/docs/apis/graph-api/"
+capabilities = ["find", "resolve"]
+identifiers = ["doi", "title"]
+base_for = []
+domains = []
+auth = "client_credentials"
+secret_ref = "openaire"
+key_instructions = "Create an account at https://develop.openaire.eu, complete Personal Information, then Registered Services → + New Service → Basic → Create. Store the Client ID and Client Secret; the gateway exchanges them for hourly bearer tokens (POST https://aai.openaire.eu/oidc/token, grant_type=client_credentials)."
+license = "CC-BY; redistributable with attribution to OpenAIRE."
+use_commercial = "allow"
+use_evidence = "http://graph.openaire.eu/docs/apis/terms/"
+freshness_lag = "days to weeks behind Crossref/DataCite"
+substitution_group = "doi-metadata"
+enabled = true
+notes = "Not a discovery lane (96-99% overlap with Crossref). Fallback for DOI metadata and the only lane for identifier-less repository records."
+[source.rate]
+per_hour = 7200
+verified = true
+evidence = "OpenAIRE API terms: 60/hour unauthenticated, 7,200/hour authenticated (http://graph.openaire.eu/docs/apis/terms/); confirmed from x-ratelimit-limit header 2026-09-07"
+
+[[source]]
+id = "openalex_snapshot"
+name = "OpenAlex (local snapshot only)"
+kind = "article"
+homepage = "https://openalex.org/"
+docs_url = "https://help.openalex.org/access/snapshot/"
+capabilities = ["find"]
+identifiers = ["doi", "issn", "title"]
+base_for = ["article"]
+domains = []
+auth = "none"
+secret_ref = ""
+key_instructions = "No key. The gateway never calls the OpenAlex API (D-2); it loads the free quarterly S3 snapshot (s3://openalex, anonymous) into the local index."
+license = "CC0."
+use_commercial = "allow"
+use_evidence = "https://help.openalex.org/access/snapshot/"
+freshness_lag = "quarterly (snapshot)"
+substitution_group = ""
+enabled = true
+notes = "Served from gateway.index_docs, not from any live call. Holds ~10% of works Crossref lacks."
+[source.rate]
+verified = true
+evidence = "no live calls by decision D-2"
+
+[[source]]
+id = "semanticscholar"
+name = "Semantic Scholar"
+kind = "article"
+homepage = "https://www.semanticscholar.org/"
+docs_url = "https://api.semanticscholar.org/api-docs/"
+capabilities = ["find", "resolve", "enrich"]
+identifiers = ["doi", "arxiv", "title"]
+base_for = []
+domains = ["ai-ml", "software"]
+auth = "key"
+secret_ref = "semantic_scholar"
+key_instructions = "Request a free API key at https://www.semanticscholar.org/product/api (form; key arrives by email). Send it as the x-api-key header."
+license = "Mixed: CC BY-NC and ODC-BY depending on the data; third-party content included."
+use_commercial = "deny"
+use_evidence = "https://www.semanticscholar.org/product/api/license"
+freshness_lag = "daily per partner feed"
+substitution_group = ""
+enabled = true
+notes = "Full text (S2ORC) and crawl-discovered papers. Results are never persisted or redistributed (licence)."
+[source.rate]
+per_second = 1
+verified = true
+evidence = "API docs: 1 request/second per key (https://www.semanticscholar.org/product/api); keyless shared pool throttles to 429"
+
+[[source]]
+id = "europepmc"
+name = "Europe PMC"
+kind = "article"
+homepage = "https://europepmc.org/"
+docs_url = "https://europepmc.org/RestfulWebService"
+capabilities = ["find", "resolve"]
+identifiers = ["doi", "pmid", "title"]
+base_for = []
+domains = ["biomed"]
+auth = "none"
+secret_ref = ""
+key_instructions = "No key."
+license = "Per article (Creative Commons variants); metadata/abstract reuse not separately stated."
+use_commercial = "per-item"
+use_evidence = "https://europepmc.org/Copyright"
+freshness_lag = "daily"
+substitution_group = ""
+enabled = false
+notes = "Biomedical is outside the current research scope; present for completeness. Enable after Phase 3 rate verification."
+[source.rate]
+per_second = 5
+verified = false
+evidence = "no documented limit found; 5/s is a conservative default pending observed headers"
+
+# ---------------------------------------------------------------- dataset / repository indexes
+
+[[source]]
+id = "datacite"
+name = "DataCite"
+kind = "dataset"
+homepage = "https://datacite.org/"
+docs_url = "https://support.datacite.org/docs/api"
+capabilities = ["find", "resolve"]
+identifiers = ["doi", "title"]
+base_for = ["dataset"]
+domains = []
+auth = "none"
+secret_ref = ""
+key_instructions = "No key for reads."
+license = "CC0 (DataCite Data File Use Policy); the waiver does not extend to the linked datasets themselves."
+use_commercial = "allow"
+use_evidence = "https://support.datacite.org/docs/datacite-data-file-use-policy"
+freshness_lag = "origin registry for dataset DOIs (Zenodo, figshare, institutional repositories)"
+substitution_group = ""
+enabled = false
+notes = "Base lane for datasets. Zenodo and figshare records are discovered here; their own APIs are used only to fetch files."
+[source.rate]
+per_second = 5
+verified = false
+evidence = "no documented limit found; 5/s conservative default pending observed headers"
+
+[[source]]
+id = "govinfo"
+name = "GovInfo (U.S. Government Publishing Office)"
+kind = "dataset"
+homepage = "https://www.govinfo.gov/"
+docs_url = "https://api.govinfo.gov/docs/"
+capabilities = ["find", "resolve", "fetch"]
+identifiers = ["package_id", "title"]
+base_for = []
+domains = ["market", "finance", "management"]
+auth = "key"
+secret_ref = "api_data_gov"
+key_instructions = "Get a free key at https://api.data.gov/signup/ (one key works across api.data.gov-hosted APIs). Send it as the X-Api-Key header."
+license = "U.S. federal public domain (17 U.S.C. 105)."
+use_commercial = "allow"
+use_evidence = "https://www.govinfo.gov/about/policies"
+freshness_lag = "daily"
+substitution_group = ""
+enabled = true
+notes = "42 collections of primary federal documents (bills, budgets, reports, regulations)."
+[source.rate]
+per_hour = 36000
+verified = true
+evidence = "X-Ratelimit-Limit: 36000 observed on api.govinfo.gov 2026-09-07 (api.data.gov default is 1,000/hour; GovInfo grants more)"
+
+[[source]]
+id = "harvard_dataverse"
+name = "Harvard Dataverse"
+kind = "dataset"
+homepage = "https://dataverse.harvard.edu/"
+docs_url = "https://guides.dataverse.org/en/latest/api/"
+capabilities = ["find", "resolve", "fetch"]
+identifiers = ["doi", "title"]
+base_for = []
+domains = ["social", "management", "finance", "market"]
+auth = "optional_token"
+secret_ref = "harvard_dataverse"
+key_instructions = "No key needed for public data. An optional API token (account menu → API Token) raises limits and reaches restricted files."
+license = "CC0 by default; depositors may set another licence per dataset."
+use_commercial = "allow"
+use_evidence = "https://support.dataverse.harvard.edu/harvard-dataverse-general-terms-use"
+freshness_lag = "immediate"
+substitution_group = ""
+enabled = false
+notes = "Also hosts the World Management Survey public data (DOI 10.7910/DVN/OY6CBK, CC0)."
+[source.rate]
+per_second = 5
+verified = false
+evidence = "no documented limit found; 5/s conservative default pending observed headers"
+
+[[source]]
+id = "wms"
+name = "World Management Survey (public data)"
+kind = "dataset"
+homepage = "https://worldmanagementsurvey.org/"
+docs_url = "https://doi.org/10.7910/DVN/OY6CBK"
+capabilities = ["fetch"]
+identifiers = ["doi"]
+base_for = []
+domains = ["management"]
+auth = "none"
+secret_ref = ""
+key_instructions = "No key. The public manufacturing dataset is published on Harvard Dataverse (DOI 10.7910/DVN/OY6CBK); fetched through the Dataverse API."
+license = "CC0 1.0 (Dataverse record)."
+use_commercial = "allow"
+use_evidence = "https://dataverse.harvard.edu/api/datasets/:persistentId/?persistentId=doi:10.7910/DVN/OY6CBK (license field, read 2026-09-07)"
+freshness_lag = "static release"
+substitution_group = ""
+enabled = false
+notes = "Establishment-level management-practice scores, 2004-2015."
+[source.rate]
+per_second = 5
+verified = false
+evidence = "served via Harvard Dataverse; inherits its limit once verified"
+
+[[source]]
+id = "globe"
+name = "GLOBE Project (leadership and culture data)"
+kind = "dataset"
+homepage = "https://globeproject.com/"
+docs_url = "https://globeproject.com/data/"
+capabilities = ["fetch"]
+identifiers = ["url"]
+base_for = []
+domains = ["management"]
+auth = "none"
+secret_ref = ""
+key_instructions = "No key; static downloadable files on the data page."
+license = "No licence text found on the data page."
+use_commercial = "unknown"
+use_evidence = "https://globeproject.com/data/ (no terms located, 2026-09-07)"
+freshness_lag = "static release"
+substitution_group = ""
+enabled = false
+notes = "Phase 2 (2004) aggregated societal/leadership scales. Unknown commercial verdict fails closed."
+[source.rate]
+per_second = 1
+verified = false
+evidence = "static files; 1/s courtesy default"
+
+[[source]]
+id = "socrata"
+name = "Socrata Open Data Network (SODA)"
+kind = "dataset"
+homepage = "https://dev.socrata.com/"
+docs_url = "https://dev.socrata.com/docs/endpoints"
+capabilities = ["find", "resolve", "fetch"]
+identifiers = ["dataset_id", "title"]
+base_for = []
+domains = ["market", "finance"]
+auth = "optional_token"
+secret_ref = "socrata"
+key_instructions = "Optional app token: create an account on any Socrata-hosted portal (e.g. data.cityofchicago.org), Developer Settings → Create New App Token. Anonymous access is throttled."
+license = "Per publishing agency; many are public domain or Creative Commons."
+use_commercial = "per-item"
+use_evidence = "https://dev.socrata.com/ (per-dataset licensing; developer docs themselves CC BY-NC-SA)"
+freshness_lag = "per portal"
+substitution_group = ""
+enabled = false
+notes = "Federated government open-data portals."
+[source.rate]
+per_hour = 1000
+verified = false
+evidence = "commonly documented 1,000 requests/hour with an app token; confirm from portal docs/headers"
+
+[[source]]
+id = "kaggle"
+name = "Kaggle datasets"
+kind = "dataset"
+homepage = "https://www.kaggle.com/datasets"
+docs_url = "https://www.kaggle.com/docs/api"
+capabilities = ["find", "fetch"]
+identifiers = ["dataset_ref", "title"]
+base_for = []
+domains = ["ai-ml", "market", "software"]
+auth = "username_key"
+secret_ref = "kaggle"
+key_instructions = "Create an account, then https://www.kaggle.com/settings → API → Create New Token. Store the username and the token; the gateway uses HTTP basic auth."
+license = "Per dataset (CC, ODC, custom); platform terms restrict use of the service to non-commercial."
+use_commercial = "deny"
+use_evidence = "https://www.kaggle.com/terms"
+freshness_lag = "immediate"
+substitution_group = ""
+enabled = false
+notes = "Personal research use only."
+[source.rate]
+per_second = 2
+verified = false
+evidence = "no documented limit found; 2/s conservative default"
+
+[[source]]
+id = "huggingface"
+name = "Hugging Face Hub"
+kind = "dataset"
+homepage = "https://huggingface.co/"
+docs_url = "https://huggingface.co/docs/hub/api"
+capabilities = ["find", "resolve", "fetch"]
+identifiers = ["repo_id", "title"]
+base_for = []
+domains = ["ai-ml", "software"]
+auth = "optional_token"
+secret_ref = "huggingface"
+key_instructions = "Optional token: account → Settings → Access Tokens (read scope). Raises rate limits and reaches gated repositories."
+license = "Per repository; the platform requires the attached licence to be preserved."
+use_commercial = "per-item"
+use_evidence = "https://huggingface.co/terms-of-service"
+freshness_lag = "immediate"
+substitution_group = ""
+enabled = false
+notes = "Datasets and models with declared licences."
+[source.rate]
+per_second = 5
+verified = false
+evidence = "no documented public limit; 5/s conservative default"
+
+[[source]]
+id = "openml"
+name = "OpenML"
+kind = "dataset"
+homepage = "https://www.openml.org/"
+docs_url = "https://www.openml.org/apis"
+capabilities = ["find", "resolve", "fetch"]
+identifiers = ["dataset_id", "title"]
+base_for = []
+domains = ["ai-ml"]
+auth = "none"
+secret_ref = ""
+key_instructions = "No key for read access."
+license = "Per dataset (declared in metadata); terms page not reachable at review time."
+use_commercial = "per-item"
+use_evidence = "https://www.openml.org/ (per-dataset licence field; https://docs.openml.org/terms/ returned 404 on 2026-09-07)"
+freshness_lag = "immediate"
+substitution_group = ""
+enabled = false
+notes = "Machine-learning benchmark datasets, tasks and runs."
+[source.rate]
+per_second = 5
+verified = false
+evidence = "no documented limit found; 5/s conservative default"
+
+[[source]]
+id = "qdr"
+name = "Qualitative Data Repository (QDR)"
+kind = "dataset"
+homepage = "https://qdr.syr.edu/"
+docs_url = "https://guides.dataverse.org/en/latest/api/"
+capabilities = ["find", "resolve"]
+identifiers = ["doi", "title"]
+base_for = []
+domains = ["social", "management"]
+auth = "key"
+secret_ref = "qdr"
+key_instructions = "Register at https://qdr.syr.edu/user/register, then on data.qdr.syr.edu open your account menu → API Token → Create Token. Sent as the X-Dataverse-key header. Catalog search works without a token."
+license = "Per project; standard access terms default to non-commercial and no third-party redistribution."
+use_commercial = "deny"
+use_evidence = "https://qdr.syr.edu/guides/standard-access (default access terms)"
+freshness_lag = "immediate"
+substitution_group = ""
+enabled = false
+notes = "The only qualitative-data source in the set (interviews, field notes)."
+[source.rate]
+per_second = 5
+verified = false
+evidence = "Dataverse instance; no documented limit; 5/s conservative default"
+
+# ---------------------------------------------------------------- citation graph and resolvers
+
+[[source]]
+id = "opencitations"
+name = "OpenCitations"
+kind = "citation"
+homepage = "https://opencitations.net/"
+docs_url = "https://api.opencitations.net/"
+capabilities = ["enrich"]
+identifiers = ["doi"]
+base_for = ["citation"]
+domains = []
+auth = "none"
+secret_ref = ""
+key_instructions = "No key (an optional access token helps their usage statistics)."
+license = "CC0."
+use_commercial = "allow"
+use_evidence = "https://opencitations.net/about"
+freshness_lag = "periodic index builds"
+substitution_group = ""
+enabled = false
+notes = "Citation links only, never discovery. Fallback: Crossref reference lists."
+[source.rate]
+per_second = 5
+verified = false
+evidence = "no documented limit found; 5/s conservative default"
+
+[[source]]
+id = "unpaywall"
+name = "Unpaywall"
+kind = "resolver"
+homepage = "https://unpaywall.org/"
+docs_url = "https://unpaywall.org/products/api"
+capabilities = ["enrich"]
+identifiers = ["doi"]
+base_for = ["oa-location"]
+domains = []
+auth = "email"
+secret_ref = ""
+key_instructions = "No key; pass a contact email as the email query parameter."
+license = "CC0."
+use_commercial = "allow"
+use_evidence = "Unpaywall FAQ (CC0), as mirrored by https://libguides.ucalgary.ca/c.php?g=732144&p=5260801 and CASRAI; unpaywall.org does not render to automated fetch"
+freshness_lag = "continuous"
+substitution_group = "doi-metadata"
+enabled = true
+notes = "Open-access location resolution after discovery. Never a discovery lane (0 unique works measured)."
+[source.rate]
+per_day = 100000
+verified = true
+evidence = "100,000 requests/day with an email parameter (Unpaywall API docs, mirrored by library guides)"
+
+[[source]]
+id = "core"
+name = "CORE"
+kind = "resolver"
+homepage = "https://core.ac.uk/"
+docs_url = "https://api.core.ac.uk/docs/v3"
+capabilities = ["resolve", "enrich"]
+identifiers = ["doi", "title"]
+base_for = []
+domains = []
+auth = "key"
+secret_ref = "core"
+key_instructions = "Register at https://core.ac.uk/services/api for a free key (personal / unfunded public research only). Sent as a Bearer token."
+license = "Metadata under CORE terms; full text per source licence. Bulk datasets are ODC-By."
+use_commercial = "deny"
+use_evidence = "https://core.ac.uk/faq and https://core.ac.uk/services/api: free API access is for individuals in a personal capacity and unfunded public research; commercial use needs a paid licence"
+freshness_lag = "harvest cadence per repository"
+substitution_group = ""
+enabled = true
+notes = "Repository full text. Observed keyed quota blocks after ~50-250 requests; kept as a low-volume personal-only lane (Q-3)."
+[source.rate]
+per_second = 0.5
+per_day = 200
+verified = true
+evidence = "observed 2026-09-06/07: 429s after 50-250 keyed requests; 0.5/s and 200/day are the operating limits, not documented ones"
+
+# ---------------------------------------------------------------- statistical data APIs
+
+[[source]]
+id = "fred"
+name = "FRED (Federal Reserve Economic Data)"
+kind = "statistical"
+homepage = "https://fred.stlouisfed.org/"
+docs_url = "https://fred.stlouisfed.org/docs/api/fred/"
+capabilities = ["data"]
+identifiers = ["series"]
+base_for = []
+domains = ["finance", "market"]
+auth = "key"
+secret_ref = "fred"
+key_instructions = "Create a free account, then https://fred.stlouisfed.org/docs/api/api_key.html → Request API Key. Sent as the api_key query parameter."
+license = "Free with mandatory attribution; some series carry third-party restrictions — check per series."
+use_commercial = "allow"
+use_evidence = "https://fred.stlouisfed.org/docs/api/terms_of_use.html"
+freshness_lag = "as published"
+substitution_group = ""
+enabled = false
+notes = "Macro and financial time series."
+[source.rate]
+per_minute = 120
+verified = false
+evidence = "commonly documented 120 requests/minute; confirm from FRED docs/headers in Phase 3"
+
+[[source]]
+id = "bea"
+name = "U.S. Bureau of Economic Analysis (BEA) Data API"
+kind = "statistical"
+homepage = "https://www.bea.gov/"
+docs_url = "https://apps.bea.gov/api/_pdf/bea_web_service_api_user_guide.pdf"
+capabilities = ["data"]
+identifiers = ["dataset", "table"]
+base_for = []
+domains = ["finance", "market"]
+auth = "key"
+secret_ref = "bea"
+key_instructions = "Sign up at https://apps.bea.gov/api/signup/ (name + email). The key arrives by email and must be activated via the link in that email before it works. Sent as the UserID query parameter."
+license = "Attribution requested; no-endorsement clause; U.S. federal data."
+use_commercial = "allow"
+use_evidence = "https://apps.bea.gov/api/signup/ (terms shown at signup)"
+freshness_lag = "as published"
+substitution_group = ""
+enabled = false
+notes = "National accounts, GDP by industry and region."
+[source.rate]
+per_minute = 100
+verified = false
+evidence = "BEA user guide states per-minute request and volume limits; confirm exact figures in Phase 3"
+
+[[source]]
+id = "census"
+name = "U.S. Census Bureau Data API"
+kind = "statistical"
+homepage = "https://www.census.gov/data/developers.html"
+docs_url = "https://www.census.gov/data/developers/guidance/api-user-guide.html"
+capabilities = ["data"]
+identifiers = ["dataset", "variable"]
+base_for = []
+domains = ["market", "social", "finance"]
+auth = "key"
+secret_ref = "census"
+key_instructions = "Request at https://api.census.gov/data/key_signup.html; the key arrives by email and must be activated via the link in that email. Sent as the key query parameter."
+license = "U.S. federal public domain; attribution requested."
+use_commercial = "allow"
+use_evidence = "https://www.census.gov/data/developers/about/terms-of-service.html"
+freshness_lag = "as published"
+substitution_group = ""
+enabled = false
+notes = "Economic Census, retail trade, American Community Survey."
+[source.rate]
+per_day = 500
+verified = false
+evidence = "500/day is the documented keyless limit; keyed limit not stated — confirm in Phase 3"
+
+[[source]]
+id = "bls"
+name = "U.S. Bureau of Labor Statistics API"
+kind = "statistical"
+homepage = "https://www.bls.gov/developers/"
+docs_url = "https://www.bls.gov/developers/api_faqs.htm"
+capabilities = ["data"]
+identifiers = ["series"]
+base_for = []
+domains = ["market", "finance", "social"]
+auth = "optional_token"
+secret_ref = "bls"
+key_instructions = "Optional free registration key at https://data.bls.gov/registrationEngine/ raises the daily query limit. Sent in the request body as registrationkey."
+license = "U.S. federal public domain; attribution requested."
+use_commercial = "allow"
+use_evidence = "https://www.bls.gov/bls/linksite.htm"
+freshness_lag = "as published"
+substitution_group = ""
+enabled = false
+notes = "Consumer Expenditure Survey, CPI."
+[source.rate]
+per_day = 500
+verified = false
+evidence = "BLS API v2 FAQ: 25 queries/day unregistered, 500/day registered — confirm in Phase 3"
+
+[[source]]
+id = "bis"
+name = "BIS Data Portal (SDMX)"
+kind = "statistical"
+homepage = "https://data.bis.org/"
+docs_url = "https://stats.bis.org/api-doc/v2/"
+capabilities = ["data"]
+identifiers = ["dataflow", "series"]
+base_for = []
+domains = ["finance"]
+auth = "none"
+secret_ref = ""
+key_instructions = "No key."
+license = "Free reuse with attribution (BIS terms and conditions)."
+use_commercial = "allow"
+use_evidence = "https://data.bis.org/help/export"
+freshness_lag = "as published"
+substitution_group = ""
+enabled = false
+notes = "Cross-border banking and monetary statistics."
+[source.rate]
+per_second = 5
+verified = false
+evidence = "no documented limit found; 5/s conservative default"
+
+[[source]]
+id = "ecb"
+name = "ECB Data Portal (SDMX)"
+kind = "statistical"
+homepage = "https://data.ecb.europa.eu/"
+docs_url = "https://data.ecb.europa.eu/help/api/overview"
+capabilities = ["data"]
+identifiers = ["dataflow", "series"]
+base_for = []
+domains = ["finance"]
+auth = "none"
+secret_ref = ""
+key_instructions = "No key."
+license = "Free reuse with attribution (ECB disclaimer and copyright)."
+use_commercial = "allow"
+use_evidence = "https://data.ecb.europa.eu/help/api/overview"
+freshness_lag = "as published"
+substitution_group = ""
+enabled = false
+notes = "Euro-area statistics."
+[source.rate]
+per_second = 5
+verified = false
+evidence = "no documented limit found; 5/s conservative default"
+
+# ---------------------------------------------------------------- manual only (documented, never scheduled)
+
+[[source]]
+id = "pew"
+name = "Pew Research Center datasets"
+kind = "manual"
+homepage = "https://www.pewresearch.org/datasets/"
+docs_url = "https://www.pewresearch.org/datasets/"
+capabilities = []
+identifiers = []
+base_for = []
+domains = ["market", "social"]
+auth = "account"
+secret_ref = ""
+key_instructions = "No API. Create a free account on the datasets page to download files (SPSS/CSV) by hand."
+license = "Public-domain dedication for datasets."
+use_commercial = "allow"
+use_evidence = "https://www.pewresearch.org/datasets/ (terms shown at download)"
+freshness_lag = "static releases"
+substitution_group = ""
+enabled = false
+notes = "Manual download only; listed so the documentation is complete."
+[source.rate]
+verified = true
+evidence = "no programmatic access exists"
