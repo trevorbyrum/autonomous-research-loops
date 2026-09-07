@@ -1,0 +1,75 @@
+"""Staged dedup (PLAN.md §6): identity normalise → exact identity → fuzzy
+(title + year + first author) ≥ 0.92 → clusters with full provenance."""
+from __future__ import annotations
+
+from difflib import SequenceMatcher
+
+from . import identity as ident
+
+THRESHOLD = 0.92
+
+
+def _surname(author: str | None) -> str:
+    if not author:
+        return ""
+    a = author.strip()
+    if "," in a:
+        return ident.normalize_title(a.split(",", 1)[0])
+    parts = ident.normalize_title(a).split()
+    return parts[-1] if parts else ""
+
+
+def _fuzzy_same(a: dict, b: dict, threshold: float) -> bool:
+    ta, tb = ident.normalize_title(a.get("title")), ident.normalize_title(b.get("title"))
+    if not ta or not tb:
+        return False
+    if a.get("year") and b.get("year") and a["year"] != b["year"]:
+        return False
+    sa, sb = _surname((a.get("authors") or [None])[0]), _surname((b.get("authors") or [None])[0])
+    if sa and sb and sa != sb:
+        return False
+    return SequenceMatcher(None, ta, tb).ratio() >= threshold
+
+
+def _merge(into: dict, other: dict) -> None:
+    into["sources"].append(other["source_id"])
+    into["provenance"].append({"source_id": other["source_id"], "identity": other["identity"], "raw": other.get("raw")})
+    for k, v in (other.get("identifiers") or {}).items():
+        into["identifiers"].setdefault(k, v)
+    for link in other.get("links") or []:
+        if link not in into["links"]:
+            into["links"].append(link)
+    for k in ("title", "year", "venue", "license", "attribution"):
+        if not into.get(k) and other.get(k):
+            into[k] = other[k]
+    if not into.get("authors") and other.get("authors"):
+        into["authors"] = list(other["authors"])
+
+
+def cluster(records: list[dict], threshold: float = THRESHOLD) -> list[dict]:
+    """Merge duplicates in lane order: the first record of a cluster is canonical,
+    later members contribute identifiers/links/missing fields and provenance."""
+    out: list[dict] = []
+    by_identity: dict[str, dict] = {}
+    for rec in records:
+        key = ident.canonical(rec["identity"])
+        hit = by_identity.get(key)
+        if hit is None:
+            for cand in out:
+                if cand["kind"] == rec.get("kind") and _fuzzy_same(cand, rec, threshold):
+                    hit = cand
+                    break
+        if hit is None:
+            merged = dict(rec)
+            merged["identity"] = key
+            merged["identifiers"] = dict(rec.get("identifiers") or {})
+            merged["links"] = list(rec.get("links") or [])
+            merged["sources"] = [rec["source_id"]]
+            merged["provenance"] = [{"source_id": rec["source_id"], "identity": rec["identity"], "raw": rec.get("raw")}]
+            merged.pop("raw", None)
+            out.append(merged)
+            by_identity[key] = merged
+        else:
+            _merge(hit, rec)
+            by_identity.setdefault(key, hit)
+    return out

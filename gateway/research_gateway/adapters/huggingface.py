@@ -6,6 +6,7 @@ from .base import AdapterError, Client, check, quote
 
 SOURCE_ID = "huggingface"
 CAPABILITIES = ("find", "resolve", "fetch")
+SCHEMES = ("hf",)
 BASE = "https://huggingface.co"
 
 

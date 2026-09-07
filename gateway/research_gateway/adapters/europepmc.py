@@ -7,6 +7,7 @@ from .base import Client, check
 
 SOURCE_ID = "europepmc"
 CAPABILITIES = ("find", "resolve")
+SCHEMES = ("doi", "pmid")
 BASE = "https://www.ebi.ac.uk/europepmc/webservices/rest"
 
 

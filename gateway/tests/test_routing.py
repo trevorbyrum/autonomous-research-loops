@@ -1,0 +1,234 @@
+"""Phase 4 acceptance: every routing rule R-1..R-10 (PLAN.md §4) has a test, planned against the real seed."""
+import copy
+import datetime as dt
+import unittest
+
+from research_gateway import adapters
+from research_gateway.adapters.base import Client, FakeTransport
+from research_gateway.core import router as R
+from research_gateway.core.broker import Broker, RatePolicy
+from research_gateway.core.cache import Cache
+from research_gateway.registry.load import read_seed
+from tests.test_adapters_articles import CROSSREF_WORK
+from tests.test_adapters_datasets import HF_DATASET
+from tests.test_adapters_platforms import OPENAIRE_PUB
+
+SEED = read_seed()
+ADAPTERS = adapters.load_all()
+
+
+def make(seed=None):
+    t = FakeTransport()
+    b = Broker({s["id"]: RatePolicy(per_second=100) for s in SEED})
+    return R.Router(seed or SEED, ADAPTERS), Client(broker=b, transport=t), t
+
+
+def lanes(plan):
+    return [ln.source_id for ln in plan.lanes]
+
+
+class R1_ResolveByAgency(unittest.TestCase):
+    def test_primary_by_registration_agency_then_substitution_group(self):
+        r, _, _ = make()
+        p = {"request_type": "resolve", "identity": "doi:10.1000/x"}
+        self.assertEqual(lanes(r.plan(p, agency="Crossref")), ["crossref", "openaire", "unpaywall"])
+        self.assertEqual(lanes(r.plan(p, agency="DataCite")), ["datacite", "crossref", "openaire", "unpaywall"])
+        self.assertEqual(lanes(r.plan(p, agency="mEDRA")), ["openaire", "crossref", "unpaywall"])
+        self.assertEqual(lanes(r.plan(p, agency=None))[0], "openaire")
+
+    def test_execute_falls_back_when_primary_is_down(self):
+        r, c, t = make()
+        t.add("GET", "https://doi.org/ra/", body=[{"DOI": "10.1000/x", "RA": "Crossref"}])
+        t.add("GET", "https://api.crossref.org/works/", status=503)
+        t.add("GET", "https://api.openaire.eu/graph/v1/researchProducts", body={"results": [OPENAIRE_PUB], "header": {"numFound": 1}})
+        out = R.execute(r, {"request_type": "resolve", "identity": "10.1000/x"}, c)
+        self.assertEqual([ln["source"] for ln in out["lanes"]], ["crossref", "openaire"])
+        self.assertTrue(any("crossref: unavailable" in f and "R-10" in f for f in out["facts"]))
+        self.assertEqual(out["records"][0]["source_id"], "openaire")
+        self.assertEqual([rec.source_id for rec in c.log], ["doi_org", "crossref", "openaire"], "every hop is logged")
+
+    def test_non_doi_schemes_route_by_adapter_schemes(self):
+        r, _, _ = make()
+        self.assertEqual(lanes(r.plan({"request_type": "resolve", "identity": "arxiv:2301.10140"})), ["semanticscholar"])
+        self.assertEqual(lanes(r.plan({"request_type": "resolve", "identity": "issn:1234-5678"})), ["doaj"])
+        self.assertEqual(lanes(r.plan({"request_type": "resolve", "identity": "hf:owner/corpus"})), ["huggingface"])
+        self.assertEqual(lanes(r.plan({"request_type": "resolve", "identity": "openml:61"})), ["openml"])
+        plan = r.plan({"request_type": "resolve", "identity": "handle:1234/5678"})
+        self.assertEqual(lanes(plan), [])
+        self.assertTrue(plan.facts)
+
+
+class R2_FindArticles(unittest.TestCase):
+    def test_base_lanes_plus_domain_lanes(self):
+        r, _, _ = make()
+        base = ["crossref", "doaj", "openalex_snapshot"]
+        self.assertEqual(lanes(r.plan({"request_type": "find", "kind": "article", "domain": "finance"})), base)
+        self.assertEqual(lanes(r.plan({"request_type": "find", "kind": "article", "domain": "ai-ml"})), base + ["semanticscholar"])
+        self.assertEqual(lanes(r.plan({"request_type": "find", "kind": "article", "domain": "biomed"})), base + ["europepmc"])
+        for sid in ("openaire", "unpaywall"):
+            self.assertNotIn(sid, lanes(r.plan({"request_type": "find", "kind": "article", "domain": "other"})), "never discovery lanes")
+
+
+class R3_FindDatasets(unittest.TestCase):
+    def test_datacite_base_plus_registry_domain_lanes(self):
+        r, _, _ = make()
+        self.assertEqual(lanes(r.plan({"request_type": "find", "kind": "dataset", "domain": "social"})), ["datacite", "harvard_dataverse", "qdr"])
+        self.assertEqual(lanes(r.plan({"request_type": "find", "kind": "dataset", "domain": "ai-ml"})), ["datacite", "kaggle", "huggingface", "openml"])
+        self.assertEqual(lanes(r.plan({"request_type": "find", "kind": "dataset", "domain": "market"})), ["datacite", "govinfo", "harvard_dataverse", "socrata", "kaggle"])
+        both = lanes(r.plan({"request_type": "find", "domain": "finance"}))
+        self.assertEqual(both[:3], ["crossref", "doaj", "openalex_snapshot"], "no kind → article lanes then dataset lanes")
+        self.assertIn("datacite", both)
+
+
+class R4_Enrich(unittest.TestCase):
+    def test_enrich_lanes_by_declared_kinds(self):
+        r, _, _ = make()
+        self.assertEqual(lanes(r.plan({"request_type": "enrich", "what": "citations"})), ["opencitations", "semanticscholar"])
+        self.assertEqual(lanes(r.plan({"request_type": "enrich", "what": "references"})), ["opencitations", "crossref", "semanticscholar"])
+        self.assertEqual(lanes(r.plan({"request_type": "enrich", "what": "oa_location"})), ["unpaywall"])
+        self.assertEqual(lanes(r.plan({"request_type": "enrich", "what": "full_text"})), ["semanticscholar", "core"])
+        plan = r.plan({"request_type": "enrich", "what": "full_text", "commercial": True})
+        self.assertEqual(lanes(plan), [], "full text lanes are personal-only")
+        self.assertEqual(sum("skipped, commercial verdict deny" in f for f in plan.facts), 2)
+        self.assertIn("no source enriches 'full_text'", plan.facts)
+
+    def test_first_lane_with_items_wins(self):
+        r, c, t = make()
+        t.add("GET", "https://api.opencitations.net/index/v2/references/doi:10.1000/x", body=[])
+        t.add("GET", "https://api.crossref.org/works/10.1000/x", body={"message": {"reference": [{"DOI": "10.1000/ref1"}]}})
+        out = R.execute(r, {"request_type": "enrich", "identity": "doi:10.1000/x", "what": "references"}, c)
+        self.assertEqual([ln["source"] for ln in out["lanes"]], ["opencitations", "crossref"])
+        self.assertEqual(out["records"][0]["identity"], "doi:10.1000/ref1")
+
+
+class R5_Data(unittest.TestCase):
+    def test_exactly_one_statistical_source(self):
+        r, _, _ = make()
+        self.assertEqual(lanes(r.plan({"request_type": "data", "source": "fred"})), ["fred"])
+        for bad in ({"request_type": "data"}, {"request_type": "data", "source": "crossref"}, {"request_type": "data", "source": "nope"}):
+            plan = r.plan(bad)
+            self.assertEqual(lanes(plan), [])
+            self.assertTrue(plan.facts)
+
+
+class R6_Fetch(unittest.TestCase):
+    def test_hosts_and_schemes(self):
+        seed = copy.deepcopy(SEED)
+        next(s for s in seed if s["id"] == "globe")["enabled"] = True
+        r, _, _ = make(seed)
+        self.assertEqual(lanes(r.plan({"request_type": "fetch", "target": "https://globeproject.com/data/x.xls"})), ["globe"])
+        self.assertEqual(lanes(r.plan({"request_type": "fetch", "target": "url:https://globeproject.com/data/x.xls"})), ["globe"])
+        refused = r.plan({"request_type": "fetch", "target": "https://evil.example/x.xls"})
+        self.assertEqual(lanes(refused), [])
+        self.assertIn("R-6", refused.facts[0])
+        self.assertEqual(lanes(r.plan({"request_type": "fetch", "target": "https://api.govinfo.gov/packages/X/pdf"})), [],
+                         "a registry host is not enough: the adapter must accept URLs")
+        self.assertEqual(lanes(r.plan({"request_type": "fetch", "target": "hf:owner/corpus"})), ["huggingface"])
+        self.assertEqual(lanes(r.plan({"request_type": "fetch", "target": "doi:10.7910/DVN/OY6CBK"})), ["wms", "harvard_dataverse"])
+        self.assertEqual(lanes(r.plan({"request_type": "fetch", "target": "doi:10.1000/other"})), ["harvard_dataverse"])
+        self.assertEqual(lanes(r.plan({"request_type": "fetch", "target": "kaggle:owner/ds"})), ["kaggle"])
+
+
+class R7_Freshness(unittest.TestCase):
+    def test_recent_requests_skip_the_local_index(self):
+        r, _, _ = make()
+        recent = (dt.date.today() - dt.timedelta(days=5)).isoformat()
+        plan = r.plan({"request_type": "find", "kind": "article", "published_after": recent})
+        self.assertNotIn("openalex_snapshot", lanes(plan))
+        self.assertTrue(any("R-7" in f for f in plan.facts))
+        self.assertIn("openalex_snapshot", lanes(r.plan({"request_type": "find", "kind": "article", "published_after": "2020-01-01"})))
+        self.assertFalse(R.is_recent({"published_after": "not a date"}))
+
+
+class R8_Commercial(unittest.TestCase):
+    def test_deny_and_unknown_dropped_per_item_needs_opt_in(self):
+        r, _, _ = make()
+        plan = r.plan({"request_type": "find", "kind": "dataset", "domain": "ai-ml", "commercial": True})
+        self.assertEqual(lanes(plan), ["datacite"])
+        self.assertTrue(any(f.startswith("kaggle: skipped, commercial verdict deny") for f in plan.facts))
+        self.assertTrue(any("accept_per_item" in f for f in plan.facts))
+        plan = r.plan({"request_type": "find", "kind": "dataset", "domain": "ai-ml", "commercial": True, "accept_per_item": True})
+        self.assertEqual(lanes(plan), ["datacite", "huggingface", "openml"])
+
+    def test_per_item_records_without_allow_listed_licence_are_dropped(self):
+        r, c, t = make()
+        t.add("GET", "https://api.datacite.org/dois?", body={"data": [], "meta": {"total": 0}})
+        unlicensed = {**HF_DATASET, "id": "owner/mystery", "tags": ["task:text"], "cardData": {}}
+        t.add("GET", "https://huggingface.co/api/datasets?", body=[HF_DATASET, unlicensed])
+        p = {"request_type": "find", "kind": "dataset", "domain": "ai-ml", "query": "corpus", "commercial": True, "accept_per_item": True}
+        out = R.execute(r, p, c)
+        self.assertEqual([rec["identity"] for rec in out["records"]], ["hf:owner/corpus"])
+        self.assertTrue(any("1 per-item record(s) dropped" in f for f in out["facts"]))
+        out = R.execute(r, {**p, "commercial": False}, c)
+        self.assertEqual(len(out["records"]), 2, "personal baseline keeps everything")
+
+
+class R9_Domains(unittest.TestCase):
+    def test_domain_lanes_add_and_other_is_permissive(self):
+        r, c, _ = make()
+        every = lanes(r.plan({"request_type": "find", "kind": "article", "domain": "other"}))
+        self.assertEqual(every[:3], ["crossref", "doaj", "openalex_snapshot"], "R-9: nothing suppresses a base lane")
+        self.assertEqual(set(every[3:]), {"semanticscholar", "europepmc"})
+        unknown = r.plan({"request_type": "find", "kind": "article", "domain": "astrology"})
+        self.assertEqual(unknown.domain_resolved, "other")
+        self.assertEqual(lanes(unknown), every)
+        self.assertEqual(r.plan({"request_type": "find", "kind": "article"}).domain_resolved, "other")
+        R.execute(r, {"request_type": "find", "kind": "dataset", "query": "x", "domain": "astrology"}, c)
+        self.assertTrue(c.log and all(rec.domain_resolved == "other" for rec in c.log), "R-9a: visible in the call log")
+
+
+class R10_Facts(unittest.TestCase):
+    def test_open_breaker_becomes_a_fact_and_the_job_completes(self):
+        r, c, t = make()
+        c.broker.record("crossref", 429, retry_after=600)
+        t.add("GET", "https://doaj.org/api/search/articles/", body={"results": [], "total": 0})
+        out = R.execute(r, {"request_type": "find", "kind": "article", "query": "q", "domain": "finance"}, c)
+        self.assertTrue(any(f.startswith("crossref: unavailable") for f in out["facts"]))
+        self.assertIn("doaj", [ln["source"] for ln in out["lanes"]])
+        self.assertEqual(c.log[0].failure_class, "refused")
+
+
+class ExecuteMergeAndCache(unittest.TestCase):
+    def test_find_dedups_across_lanes_and_caches(self):
+        r, c, t = make()
+        t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [CROSSREF_WORK], "total-results": 1}})
+        doaj_hit = {"id": "abc", "bibjson": {"title": CROSSREF_WORK["title"][0], "year": "2021", "identifier": [{"type": "doi", "id": "10.1234/abc"}],
+                                             "author": [{"name": "Ada Lovelace"}], "journal": {"title": "J", "issns": ["1234-5678"]}, "link": [{"url": "https://doaj.org/x"}]}}
+        t.add("GET", "https://doaj.org/api/search/articles/", body={"results": [doaj_hit], "total": 1})
+        cache = Cache(None)
+        p = {"request_type": "find", "kind": "article", "query": "reranking", "domain": "finance"}
+        out = R.execute(r, p, c, cache)
+        self.assertEqual(len(out["records"]), 1)
+        self.assertEqual(out["records"][0]["sources"], ["crossref", "doaj"])
+        self.assertEqual(len(out["records"][0]["provenance"]), 2)
+        again = R.execute(r, p, c, cache)
+        self.assertTrue(again.get("cache_hit"))
+        self.assertEqual(c.log[-1].source_id, "cache")
+        self.assertTrue(c.log[-1].cache_hit)
+
+    def test_resolve_serves_from_cache_and_never_persists_non_redistributable(self):
+        r, c, t = make()
+        cache = Cache(None)
+        t.add("GET", "https://doi.org/ra/", body=[{"DOI": "10.1234/abc", "RA": "Crossref"}])
+        t.add("GET", "https://api.crossref.org/works/10.1234/abc", body={"message": CROSSREF_WORK})
+        p = {"request_type": "resolve", "identity": "doi:10.1234/abc"}
+        first = R.execute(r, p, c, cache)
+        self.assertEqual(first["records"][0]["source_id"], "crossref")
+        calls = len(c.log)
+        second = R.execute(r, p, c, cache)
+        self.assertTrue(second["cache_hit"])
+        self.assertEqual(len(c.log), calls + 1)
+        self.assertEqual(c.log[-1].source_id, "cache")
+
+    def test_make_handlers_use_job_fields(self):
+        r, c, t = make()
+        t.add("GET", "https://api.datacite.org/dois?", body={"data": [], "meta": {"total": 0}})
+        handlers = R.make_handlers(r)
+        job = {"id": 1, "request_type": "find", "payload": {"kind": "dataset", "query": "q", "domain": "ai-ml"}, "commercial": True}
+        out = handlers["find"](c, job)
+        self.assertEqual(out["request_type"], "find")
+        self.assertTrue(any("kaggle" in f for f in out["facts"]), "the job's commercial flag reaches the router")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -7,6 +7,7 @@ from .base import AdapterError, Client, check
 
 SOURCE_ID = "harvard_dataverse"
 CAPABILITIES = ("find", "resolve", "fetch")
+SCHEMES = ("doi",)
 BASE = "https://dataverse.harvard.edu"
 
 

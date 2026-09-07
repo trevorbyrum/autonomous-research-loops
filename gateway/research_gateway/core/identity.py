@@ -12,6 +12,8 @@ _DOI_RE = re.compile(r"10\.\d{4,9}/\S+", re.I)
 _ISSN_RE = re.compile(r"^\d{4}-?\d{3}[\dXx]$")
 _ARXIV_NEW = re.compile(r"^\d{4}\.\d{4,5}(v\d+)?$")
 _ARXIV_OLD = re.compile(r"^[a-z\-]+(\.[A-Z]{2})?/\d{7}(v\d+)?$")
+_SCHEME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,15}$")
+_KNOWN_SCHEMES = {"doi", "issn", "arxiv", "handle", "series", "url", "title", "pmid", "dataset", "repo"}
 _DOI_PREFIXES = ("https://doi.org/", "http://doi.org/", "https://dx.doi.org/", "http://dx.doi.org/", "doi:", "DOI:")
 
 
@@ -66,8 +68,12 @@ def parse(identity: str) -> tuple[str, str]:
     if ":" in s:
         scheme, _, value = s.partition(":")
         scheme = scheme.lower()
-        if scheme in {"doi", "issn", "arxiv", "handle", "series", "url", "title", "pmid", "dataset", "repo"}:
-            return scheme, value.strip()
+        value = value.strip()
+        # known schemes always; other short word-like schemes (hf, openml, kaggle, ...) only when the
+        # value has no whitespace, so a title such as "Reranking: a survey" is not mistaken for one
+        if scheme in _KNOWN_SCHEMES or (_SCHEME_RE.match(scheme) and scheme not in {"http", "https", "ftp"}
+                                        and value and not any(ch.isspace() for ch in value)):
+            return scheme, value
     if normalize_doi(s):
         return "doi", normalize_doi(s)
     if normalize_issn(s):

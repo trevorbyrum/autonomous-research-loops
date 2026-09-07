@@ -7,6 +7,8 @@ from .base import Client, check, quote
 
 SOURCE_ID = "core"
 CAPABILITIES = ("resolve", "enrich")
+ENRICHES = ("full_text",)
+SCHEMES = ("doi",)
 BASE = "https://api.core.ac.uk/v3"
 
 

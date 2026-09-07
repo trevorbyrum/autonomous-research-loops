@@ -12,6 +12,8 @@ from .base import Client, check
 
 SOURCE_ID = "semanticscholar"
 CAPABILITIES = ("find", "resolve", "enrich")
+ENRICHES = ("citations", "references", "full_text")
+SCHEMES = ("doi", "arxiv", "s2")
 BASE = "https://api.semanticscholar.org/graph/v1"
 FIELDS = "externalIds,title,year,venue,authors,openAccessPdf,citationCount,referenceCount,publicationTypes"
 

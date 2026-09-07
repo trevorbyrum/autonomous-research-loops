@@ -7,6 +7,7 @@ from .base import Client, check
 
 SOURCE_ID = "opencitations"
 CAPABILITIES = ("enrich",)
+ENRICHES = ("citations", "references", "metadata")
 INDEX = "https://api.opencitations.net/index/v2"
 META = "https://api.opencitations.net/meta/v1"
 

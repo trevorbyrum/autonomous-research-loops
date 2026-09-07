@@ -7,6 +7,7 @@ from .base import Client
 SOURCE_ID = "wms"
 CAPABILITIES = ("fetch",)
 DOI = "10.7910/DVN/OY6CBK"
+SCHEMES = (f"doi:{DOI.lower()}",)  # only this one dataset; the router prefers the most specific match
 
 
 def fetch(client: Client, target: str | None = None, *, file_id=None, download: bool = False) -> dict:

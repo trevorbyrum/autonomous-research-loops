@@ -6,6 +6,7 @@ from .base import AdapterError, Client, check
 
 SOURCE_ID = "globe"
 CAPABILITIES = ("fetch",)
+SCHEMES = ("url",)
 HOST = "https://globeproject.com/"
 DATA_PAGE = HOST + "data/"
 

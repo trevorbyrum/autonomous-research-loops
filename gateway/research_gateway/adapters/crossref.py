@@ -7,6 +7,8 @@ from .base import Client, check
 
 SOURCE_ID = "crossref"
 CAPABILITIES = ("find", "resolve", "enrich")
+ENRICHES = ("references",)
+SCHEMES = ("doi",)
 BASE = "https://api.crossref.org"
 
 

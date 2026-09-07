@@ -246,14 +246,23 @@ R-2  `find` kind=article → Crossref + local OpenAlex index; add DOAJ always
      {ai-ml, software}; add Europe PMC only when `domain` ∈ {biomed} (out of
      scope today, present for completeness). OpenAIRE and Unpaywall are NOT
      discovery lanes (measured 96–99% overlap with Crossref).
-R-3  `find` kind=dataset → DataCite (base) + domain lanes by tag:
-     finance/economics → none extra (data requests go to S sources);
+R-3  `find` kind=dataset → DataCite (base) + every registry source of kind
+     dataset whose `domains` list contains the request domain (D-16: the seed,
+     not this text, is the routing table). With the 2026-09-07 seed:
      social → Harvard Dataverse, QDR (personal only);
-     ai-ml/software → Hugging Face, OpenML, Kaggle (personal only);
-     market/consumer → Socrata, GovInfo, Kaggle (personal only).
-R-4  `enrich` is opt-in per request: citations → OpenCitations (fallback Crossref
-     references); oa_location → Unpaywall; full_text → Semantic Scholar then CORE
-     (both personal-only; results never persisted).
+     ai-ml → Kaggle (personal only), Hugging Face, OpenML;
+     software → Kaggle (personal only), Hugging Face;
+     market → GovInfo, Harvard Dataverse, Socrata, Kaggle (personal only);
+     finance → GovInfo, Harvard Dataverse, Socrata; management → GovInfo,
+     Harvard Dataverse, QDR (personal only). A source with no `domains` and no
+     `base_for` is never a discovery lane (OpenAIRE, Unpaywall).
+R-4  `enrich` is opt-in per request; lanes are the enabled sources whose adapter
+     declares the requested kind in `ENRICHES`, dedicated bases first (D-16):
+     citations → OpenCitations, then Semantic Scholar (personal only);
+     references → OpenCitations, then Crossref, then Semantic Scholar;
+     oa_location → Unpaywall; full_text → Semantic Scholar then CORE (both
+     personal-only; results never persisted). The first lane that answers wins;
+     later lanes are for failure only.
 R-5  `data` → exactly one S source chosen by the caller's `source` parameter
      (FRED/BEA/Census/BLS/BIS/ECB); no fan-out; series identifiers are source-native.
 R-6  `fetch` → the URL's host must belong to a registry source with `fetch`
@@ -503,4 +512,5 @@ public) and its commit hash recorded in the phase's acceptance note.
 - **D-12 (2026-09-07)** Add a permissive catch-all domain `other` (= base + all domain lanes); absent/unknown domains resolve to it, so mis-tagging never loses coverage.
 - **D-13 (2026-09-07)** Engineering rules, hard: no placeholders in shipped code (I-10); ≤ 1,500 lines per file (I-11); simplest thing that works (I-12); independent Terra/Codex review each phase (I-13); tests and logs ship with every module (I-14).
 - **D-14 (2026-09-07)** Phase 0 approved by the operator ("approved"). Phase 1 begins.
+- **D-16 (2026-09-07)** Routing is derived, not written: domain lanes come from each seed row's `domains`, enrich lanes from each adapter's `ENRICHES`, resolve/fetch targets from each adapter's `SCHEMES`/`HOSTS`. §4's per-domain lists are the 2026-09-07 rendering of the seed; a new source is a seed row plus an adapter, never a router edit (I-2).
 - **D-15 (2026-09-07)** Phase 1–2 review resolutions: broker state is keyed per source (one credential per source in the registry; revisit if a second credential is ever added); `jobs.result` is inline jsonb rather than a `result_ref`; BEA's 100 MB/min volume cap is not broker-enforced (the adapter requests single tables; the 100/min request cap is).

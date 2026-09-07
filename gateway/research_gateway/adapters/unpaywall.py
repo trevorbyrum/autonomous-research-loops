@@ -7,6 +7,7 @@ from .base import Client, check
 
 SOURCE_ID = "unpaywall"
 CAPABILITIES = ("enrich",)
+ENRICHES = ("oa_location",)
 BASE = "https://api.unpaywall.org/v2"
 
 

@@ -7,6 +7,7 @@ from .base import Client, check, quote
 
 SOURCE_ID = "doaj"
 CAPABILITIES = ("find", "resolve")
+SCHEMES = ("doi", "issn")
 BASE = "https://doaj.org/api"
 MAX_RECORDS_PER_QUERY = 1000  # DOAJ refuses results beyond record 1,000
 

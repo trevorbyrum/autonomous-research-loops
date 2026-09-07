@@ -6,6 +6,7 @@ from .base import Client
 
 SOURCE_ID = "qdr"
 CAPABILITIES = ("find", "resolve")
+SCHEMES = ("doi",)
 BASE = "https://data.qdr.syr.edu"
 
 
