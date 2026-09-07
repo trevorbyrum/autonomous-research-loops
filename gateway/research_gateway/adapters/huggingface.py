@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
+from ..core.licenses import allow_listed
 from .base import AdapterError, Client, check, quote
 
 SOURCE_ID = "huggingface"
@@ -59,7 +60,10 @@ def resolve(client: Client, identity: str) -> dict | None:
     resp = client.get(SOURCE_ID, "resolve", f"{BASE}/api/datasets/{quote(repo, safe='/')}", headers=_headers(client), identity=f"hf:{repo}")
     if not check(SOURCE_ID, resp):
         return None
-    return _record(resp.json or {})
+    j = resp.json
+    if not isinstance(j, dict) or not j.get("id"):
+        return None  # an HTTP 200 that is not a dataset envelope (HTML challenge) is not a record (D-24)
+    return _record(j)
 
 
 def fetch(client: Client, target: str, *, path: str | None = None, download: bool = False, revision: str = "main") -> dict:
@@ -69,9 +73,15 @@ def fetch(client: Client, target: str, *, path: str | None = None, download: boo
     if download:
         if not path:
             raise AdapterError("huggingface.fetch download needs path")
-        rec = resolve(client, identity)  # the repository's licence travels with the bytes (R-8, D-23)
-        if rec is None:
-            return {"identity": identity, "records": [], "capability_fact": "repository not found"}
+        # the licence of the EXACT revision being downloaded, not the default branch's (D-24)
+        rev_url = f"{BASE}/api/datasets/{quote(repo, safe='/')}" + (f"/revision/{quote(revision, safe='')}" if revision != "main" else "")
+        meta = client.get(SOURCE_ID, "fetch", rev_url, headers=_headers(client), identity=f"hf:{repo}@{revision}")
+        if not check(SOURCE_ID, meta) or not isinstance(meta.json, dict) or not meta.json.get("id"):
+            return {"identity": identity, "records": [], "capability_fact": f"repository (revision {revision}) not found"}
+        rec = _record(meta.json)
+        if client.commercial and not allow_listed(rec["license"]):
+            return {"identity": identity, "records": [],
+                    "capability_fact": f"download refused before fetching: licence {rec['license'] or 'unknown'} is not usable commercially (R-8)"}
         url = f"{BASE}/datasets/{quote(repo, safe='/')}/resolve/{quote(revision, safe='')}/{quote(path, safe='/')}"
         resp = client.get(SOURCE_ID, "fetch", url, headers={**_headers(client), "Accept": "*/*"}, identity=f"{identity}#{path}")
         if not check(SOURCE_ID, resp):

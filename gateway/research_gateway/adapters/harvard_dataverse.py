@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi
+from ..core.licenses import allow_listed
 from .base import AdapterError, Client, check
 
 SOURCE_ID = "harvard_dataverse"
@@ -104,6 +105,9 @@ def fetch_in(client: Client, base: str, source_id: str, secret_name: str | None,
         member_ids = {(f.get("dataFile") or {}).get("id") for f in (d.get("latestVersion") or {}).get("files") or []}
         if int(file_id) not in member_ids:
             raise AdapterError(f"{source_id}: file {file_id} does not belong to {ds['identity']}")
+        if client.commercial and not allow_listed(ds.get("license")):
+            return {"identity": ds["identity"], "records": [],
+                    "capability_fact": f"download refused before fetching: dataset licence {ds.get('license') or 'unknown'} is not usable commercially (R-8)"}
         resp = client.get(source_id, "fetch", f"{base}/api/access/datafile/{int(file_id)}", headers={**headers(client, secret_name), "Accept": "*/*"},
                           identity=f"{ds['identity']}#{file_id}")
         if not check(source_id, resp):

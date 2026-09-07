@@ -28,13 +28,16 @@ def data(client: Client, params: dict) -> dict:
     if not check(SOURCE_ID, resp):
         return {"identity": f"series:fred:{series_id}", "records": []}
     obs = [(o.get("date"), o.get("value")) for o in (resp.json or {}).get("observations", [])]
-    meta, series_payload = {}, None
     m = client.get(SOURCE_ID, "data", f"{BASE}/series", params={**common, "series_id": series_id},
                    identity=f"series:fred:{series_id}")
-    if m.ok:
-        series_payload = m.json
-        s = ((m.json or {}).get("seriess") or [{}])[0]
-        meta = {k: s.get(k) for k in ("title", "units", "frequency", "seasonal_adjustment", "last_updated", "notes")}
+    seriess = ((m.json or {}).get("seriess") or []) if m.ok else []
+    if not seriess:
+        # without the metadata there is no restriction check, so there is no answer (fail closed, D-24)
+        return {"identity": f"series:fred:{series_id}", "records": [],
+                "capability_fact": "series metadata unavailable; observations withheld because the third-party-restriction check could not run"}
+    series_payload = m.json
+    s = seriess[0]
+    meta = {k: s.get(k) for k in ("title", "units", "frequency", "seasonal_adjustment", "last_updated", "notes")}
     rec = make_record(identity=f"series:fred:{series_id}", kind="series", source_id=SOURCE_ID, title=meta.get("title"),
                       links=[f"https://fred.stlouisfed.org/series/{series_id}"], attribution=ATTRIBUTION,
                       extra={"units": meta.get("units"), "frequency": meta.get("frequency"), "observations": obs,

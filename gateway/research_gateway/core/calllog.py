@@ -39,6 +39,8 @@ def classify(status: int | None, *, network_error: bool = False, body: str = "")
         return "outage"
     if 200 <= status < 300:
         return "ok"
+    if 300 <= status < 400:
+        return "redirect"   # a real dispatch (it counts against budgets), followed by a validated hop (D-24)
     return "refused"
 
 

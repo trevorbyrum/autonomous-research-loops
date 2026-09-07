@@ -44,11 +44,14 @@ class RatePolicy:
         out = []
         if self.per_second:
             ps = float(self.per_second)
-            if self.burst and float(self.burst) > ps:
-                out.append((1.0, float(self.burst)))
-                out.append((float(self.burst) / ps, float(self.burst)))   # sustained average stays ps
+            if self.burst:
+                # one window says it all: at most `burst` in any burst/rate seconds — that is an
+                # instantaneous cap of `burst` AND a sustained average of `rate`, whether the
+                # burst is larger or smaller than the per-second figure (D-24)
+                bp = float(self.burst)
+                out.append((bp / ps, bp))
             elif ps >= 1.0:
-                out.append((1.0, ps))
+                out.append((1.0, float(int(ps))))   # 1.5/s floors to 1/s: conservative, never above the limit
             else:
                 out.append((1.0 / ps, 1.0))
         if self.per_minute:
@@ -150,6 +153,12 @@ class Broker:
         if not self.has_policy(source_id):
             raise NoPolicy(source_id)
         pending: list = []
+        try:
+            return self._acquire_locked(source_id, credits, pending)
+        finally:
+            self._fire(pending)   # a raise between state change and callbacks never swallows them (D-24)
+
+    def _acquire_locked(self, source_id: str, credits: float, pending: list) -> float:
         with self._lock:
             st = self._state_for(source_id)
             now = self._clock()
@@ -178,8 +187,7 @@ class Broker:
             st.dispatched_today += 1
             if self._on_budget:
                 self._budget_watch(source_id, pol, st, pending)
-        self._fire(pending)
-        return 0.0
+            return 0.0
 
     def _budget_watch(self, source_id: str, pol: RatePolicy, st: _State, pending: list) -> None:
         for what, used, cap in (("requests", st.dispatched_today, pol.per_day), ("credits", st.credits_today, pol.cost_cap_per_day)):

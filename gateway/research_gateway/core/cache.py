@@ -57,11 +57,18 @@ class Cache:
                 del self._records[key]
             if self.conn is None:
                 return None
-            with self.conn.cursor() as cur:
-                cur.execute("SELECT canonical FROM gateway.records WHERE identity = %s AND last_seen > now() - make_interval(secs => %s)",
-                            (key, self.metadata_ttl))
-                row = cur.fetchone()
-            self.conn.commit()
+            try:
+                with self.conn.cursor() as cur:
+                    cur.execute("SELECT canonical FROM gateway.records WHERE identity = %s AND last_seen > now() - make_interval(secs => %s)",
+                                (key, self.metadata_ttl))
+                    row = cur.fetchone()
+                self.conn.commit()
+            except Exception:
+                try:
+                    self.conn.rollback()   # never leave the cache connection in an aborted transaction (D-24)
+                except Exception:
+                    pass
+                raise
             return row[0] if row else None
 
     def put_record(self, record: dict, *, redistributable: bool, persist_sources: set[str] | None = None) -> None:
@@ -76,8 +83,15 @@ class Cache:
             self._bound(self._records, self.max_records)
             self._records[key] = (self._clock() + ttl, record)
             if self.conn is not None:
-                self._persist(key, record, persist_sources if persist_sources is not None
-                              else ({record.get("source_id")} if redistributable else set()))
+                try:
+                    self._persist(key, record, persist_sources if persist_sources is not None
+                                  else ({record.get("source_id")} if redistributable else set()))
+                except Exception:
+                    try:
+                        self.conn.rollback()   # a failed persist never poisons the next one (D-24)
+                    except Exception:
+                        pass
+                    raise
 
     def _persist(self, key: str, record: dict, persist_sources: set[str]) -> None:
         members = [p for p in (record.get("provenance") or [{"source_id": record.get("source_id"), "raw": record.get("raw"),

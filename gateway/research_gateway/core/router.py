@@ -18,7 +18,7 @@ from . import calllog, dedup, licenses
 from . import identity as ident
 from .cache import Cache
 
-DOMAINS = {"finance", "market", "social", "management", "ai-ml", "software", "biomed"}
+from ..registry.load import DOMAINS  # one domain vocabulary: the registry's (I-2, D-24)
 OTHER = "other"
 RECENT_DAYS = 30
 FIND_KINDS = ("article", "dataset", "venue", "repository")   # venue/repository come from the local index (§8)
@@ -350,6 +350,7 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
     """Run a request end to end. Never raises for source trouble: those become facts (R-10)."""
     rt = payload.get("request_type")
     client.domain_resolved = resolve_domain(payload.get("domain"))
+    client.commercial = bool(payload.get("commercial"))
     out = {"request_type": rt, "records": [], "facts": [], "lanes": [], "domain_resolved": client.domain_resolved}
     agency = None
     if rt == "resolve" and ident.parse(payload.get("identity") or "")[0] == "doi":
@@ -363,6 +364,8 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
         if "doi_org" in router.adapters and router._usable("doi_org", "resolve"):
             try:
                 agency = (router.adapters["doi_org"].resolve(client, payload["identity"]) or {}).get("agency")
+            except calllog.AuditError:
+                raise  # a broken call log stops the job here too, before any more dispatch (I-6)
             except Exception as e:  # the lookup is metered like any call; its failure is a fact, not a crash
                 out["facts"].append(f"doi_org: registration-agency lookup failed ({type(e).__name__}) — routing as unknown")
     if rt == "find" and cache is not None:
@@ -403,6 +406,10 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
             break  # primary answered; fallbacks are for failure only
         if rt == "fetch" and (got or out.get("content") is not None):
             break  # a fetch that answered never runs again on a fallback lane (D-23)
+    # redaction happens BEFORE anything is merged, cached or persisted, so an echoed secret never
+    # survives in a stored copy that a later request could serve back (D-24)
+    records = redact_secrets(records, client.secret_values)
+    out["facts"] = redact_secrets(out["facts"], client.secret_values)
     records = _drop_unlicensed(records, router, payload, out["facts"])
     if rt == "find":
         records = dedup.cluster(records)
@@ -425,9 +432,16 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
 STORAGE_STRIPPED = ("raw", "text", "rows", "content", "provenance")
 
 
+MIN_SECRET_LENGTH = 8   # a shorter "secret" is indistinguishable from ordinary text; replacing it would mangle results
+
+
 def redact_secrets(obj, values: set):
     """Replace any occurrence of a secret value the client handed out inside strings of the
-    result — some sources echo request parameters back (D-23). Bytes (downloads) are untouched."""
+    result — some sources echo request parameters back (D-23). Applied before caching, so no
+    stored copy carries a secret either (D-24). Dictionary keys and tuples are covered; bytes
+    (downloads) are untouched. Values shorter than MIN_SECRET_LENGTH are skipped: real keys are
+    long, and replacing a short one would corrupt unrelated words (found the hard way, D-24)."""
+    values = {v for v in values if v and len(v) >= MIN_SECRET_LENGTH}
     if not values:
         return obj
     if isinstance(obj, str):
@@ -436,9 +450,11 @@ def redact_secrets(obj, values: set):
                 obj = obj.replace(v, "[redacted]")
         return obj
     if isinstance(obj, dict):
-        return {k: redact_secrets(v, values) for k, v in obj.items()}
+        return {redact_secrets(k, values): redact_secrets(v, values) for k, v in obj.items()}
     if isinstance(obj, list):
         return [redact_secrets(v, values) for v in obj]
+    if isinstance(obj, tuple):
+        return tuple(redact_secrets(v, values) for v in obj)
     return obj
 
 
@@ -451,15 +467,28 @@ def redact_for_storage(result: dict) -> dict:
     if "content" in out:
         out["content_bytes"] = len(out["content"] or b"")
         out["content"] = None
-    records = []
-    for r in out.get("records") or []:
-        slim = {k: v for k, v in r.items() if k not in STORAGE_STRIPPED}
-        for key in ("text", "rows"):
-            if r.get(key) is not None:
-                slim[f"{key}_dropped"] = True
-        slim["sources"] = r.get("sources") or [r.get("source_id")]
-        records.append(slim)
-    out["records"] = records
+
+    def slim_record(r):
+        if not isinstance(r, dict):
+            return r
+        slim = {}
+        for k, v in r.items():
+            if k in STORAGE_STRIPPED:
+                if k in ("text", "rows") and v is not None:
+                    slim[f"{k}_dropped"] = True
+                continue
+            # a record nested anywhere (extra fields, lane payloads) is slimmed too (D-24)
+            if isinstance(v, dict):
+                slim[k] = slim_record(v)
+            elif isinstance(v, list):
+                slim[k] = [slim_record(x) for x in v]
+            else:
+                slim[k] = v
+        if "source_id" in r or "sources" in r:
+            slim["sources"] = r.get("sources") or [r.get("source_id")]
+        return slim
+
+    out["records"] = [slim_record(r) for r in out.get("records") or []]
     return out
 
 

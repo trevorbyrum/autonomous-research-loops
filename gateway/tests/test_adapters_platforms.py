@@ -1,5 +1,6 @@
 """Contract tests: OpenAIRE, Semantic Scholar, CORE, Europe PMC, OpenAlex local index."""
 import json
+import os
 import unittest
 import uuid
 
@@ -128,7 +129,8 @@ class EuropePmc(unittest.TestCase):
         self.assertIn("query=EXT_ID%3A111", t.calls[-1][1])
 
 
-@unittest.skipUnless(db.configured(), "RESEARCH_GATEWAY_DSN not set")
+@unittest.skipUnless(db.configured() and os.environ.get("RESEARCH_GATEWAY_TEST_OK") == "1",
+                     "needs RESEARCH_GATEWAY_DSN and RESEARCH_GATEWAY_TEST_OK=1 (DB tests exercise the real store)")
 class OpenAlexLocalIndex(unittest.TestCase):
     def setUp(self):
         self.conn = db.connect()

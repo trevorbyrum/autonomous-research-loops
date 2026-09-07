@@ -26,6 +26,7 @@ _KIND = {"publication": "article", "dataset": "dataset", "software": "software",
 def _headers(client: Client) -> dict:
     """Bearer header when credentials exist; empty (keyless, 60/h) otherwise."""
     if _TOKEN.get("value") and float(_TOKEN.get("exp", 0)) > time.time() + 60:
+        client.secret_values.add(_TOKEN["value"])   # a fresh Client reusing the process token learns it too (D-24)
         return {"Authorization": f"Bearer {_TOKEN['value']}"}
     cid, sec = client.secret("openaire", "client_id"), client.secret("openaire", "client_secret")
     if not (cid and sec):
@@ -42,6 +43,7 @@ def _headers(client: Client) -> dict:
     except (TypeError, ValueError):
         ttl = 3600.0
     _TOKEN["value"], _TOKEN["exp"] = str(j["access_token"]), time.time() + ttl
+    client.secret_values.add(_TOKEN["value"])   # an exchanged bearer token is a secret too (D-24)
     return {"Authorization": f"Bearer {_TOKEN['value']}"}
 
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
+from ..core.licenses import allow_listed
 from .base import AdapterError, Client, check, quote
 
 SOURCE_ID = "openml"
@@ -72,6 +73,9 @@ def fetch(client: Client, target: str, *, download: bool = False, prefer: str = 
                          license=rec["license"], links=[u], raw=None) for u in urls]
     if not download:
         return {"identity": identity, "records": files}
+    if client.commercial and not allow_listed(rec["license"]):
+        return {"identity": identity, "records": files,
+                "capability_fact": f"download refused before fetching: licence {rec['license'] or 'unknown'} is not usable commercially (R-8)"}
     if not urls or not urls[0].startswith(HOSTS):
         return {"identity": identity, "records": files, "capability_fact": "no OpenML-hosted data file to download"}
     resp = client.get(SOURCE_ID, "fetch", urls[0], headers={"Accept": "*/*"}, identity=files[0]["identity"])

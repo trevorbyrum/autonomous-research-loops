@@ -206,7 +206,9 @@ class Classification(unittest.TestCase):
         self.assertEqual(calllog.classify(None, network_error=True), "outage")
         self.assertEqual(calllog.classify(401), "auth")
         self.assertEqual(calllog.classify(403, body="<html>Cloudflare challenge</html>"), "botwall")
-        self.assertEqual(calllog.classify(302), "refused")
+        self.assertEqual(calllog.classify(302), "redirect")
+        self.assertEqual(calllog.classify(303), "redirect")
+        self.assertEqual(calllog.classify(305), "redirect")
 
     def test_ratelimit_headers_filtered(self):
         h = {"Content-Type": "json", "X-RateLimit-Limit": "50", "Retry-After": "30", "x-ratelimit-remaining": "49"}

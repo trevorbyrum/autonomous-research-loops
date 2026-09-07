@@ -10,6 +10,7 @@ nothing but the seed and environment secrets.
 from __future__ import annotations
 
 import hmac
+import json
 import os
 import threading
 import time
@@ -61,6 +62,16 @@ def validate_payload(body: dict) -> str | None:
     """The reason a body is unacceptable, or None."""
     if not isinstance(body, dict):
         return "payload must be an object"
+    try:
+        json.dumps(body, allow_nan=False)   # NaN/Infinity and non-JSON values end here, not in a job row
+    except (TypeError, ValueError):
+        return "payload must be plain JSON (no NaN/Infinity or non-JSON values)"
+    download = (body.get("params") or {}).get("download") if isinstance(body.get("params"), dict) else None
+    if download is not None and not isinstance(download, bool):
+        return "params.download must be a boolean"
+    for k, v in (body.get("cursors") or {}).items() if isinstance(body.get("cursors"), dict) else ():
+        if not isinstance(v, (str, int)) or isinstance(v, bool):
+            return f"cursors[{k!r}] must be a string or integer"
     for key, value in body.items():
         want = FIELD_TYPES.get(key)
         if want is None:
@@ -119,7 +130,9 @@ def todays_usage(conn) -> dict[str, tuple[int, float]]:
         cur.execute(
             "SELECT source_id, count(*), coalesce(sum(credits), 0) FROM gateway.calls "
             "WHERE at >= date_trunc('day', now() AT TIME ZONE 'utc') AT TIME ZONE 'utc' "
-            "AND failure_class <> 'refused' AND NOT cache_hit GROUP BY source_id")
+            "AND failure_class NOT IN ('refused') AND NOT cache_hit GROUP BY source_id")
+        # 'redirect' rows count: each validated hop was a real dispatch; credits appear once per
+        # request (only the first hop's row carries them), so the sum matches what was charged (D-24)
         usage = {sid: (int(n), float(c)) for sid, n, c in cur.fetchall()}
     conn.commit()
     return usage
@@ -208,8 +221,12 @@ class Gateway:
     # ------------------------------------------------------------ requests
     @staticmethod
     def is_inline_only(payload: dict) -> bool:
-        """File bytes and full text never go through the queue (D-17)."""
-        return bool((payload.get("params") or {}).get("download")) or payload.get("what") == "full_text"
+        """`fetch` and `data` requests are ALWAYS inline: their results are rows, files and text —
+        things that are delivered and discarded, never stored in a job result (D-17, D-24). So is a
+        full-text enrichment. The queue serves find/resolve/enrich, whose results are metadata."""
+        return (payload.get("request_type") in ("fetch", "data")
+                or bool((payload.get("params") or {}).get("download"))
+                or payload.get("what") == "full_text")
 
     def run_inline(self, payload: dict, client_id: str) -> dict:
         """Inline requests carry the client id into every call-log row; with a database they are as
@@ -243,11 +260,11 @@ class Gateway:
             time.sleep(0.1)
 
     def handle(self, payload: dict, client_id: str, *, timeout: float | None = None, priority: str = "interactive") -> dict:
-        """One request end to end: inline when there is no queue or the payload must not be stored;
-        otherwise queued, deduplicated and awaited (a timeout returns the job id to poll)."""
+        """One request end to end. Inline requests (no queue, or a fetch/data/full-text payload)
+        return the FULL result — redaction is a storage rule, not a delivery rule (D-24); queued
+        requests store and return canonical metadata (a timeout returns the job id to poll)."""
         if self.conn is None or self.is_inline_only(payload):
-            out = self.run_inline(payload, client_id)
-            return out if self.is_inline_only(payload) else redact_for_storage(out)
+            return self.run_inline(payload, client_id)
         job_id, created = self.submit(payload, client_id, priority=priority)
         j = self.wait(job_id, self.settings.sync_timeout if timeout is None else timeout)
         if j is None or j["status"] not in ("done", "failed"):

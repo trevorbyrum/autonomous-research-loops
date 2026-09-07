@@ -38,8 +38,14 @@ class R1_ResolveByAgency(unittest.TestCase):
         self.assertEqual(lanes(r.plan(p, agency=None))[0], "openaire")
 
     def test_execute_falls_back_when_primary_is_down(self):
-        r, c, t = make()
+        from research_gateway.adapters import openaire as openaire_adapter
+        r, _, t = make()
         R.ident.RegistrationAgencies._shared.clear()
+        openaire_adapter.reset_token()   # order-independence: never lean on a token another test left behind
+        creds = {("openaire", "client_id"): "id", ("openaire", "client_secret"): "sec"}
+        c = Client(broker=Broker({s["id"]: RatePolicy(per_second=100) for s in SEED}), transport=t,
+                   secrets=lambda n, f=None: creds.get((n, f)))
+        t.add("POST", "https://aai.openaire.eu/oidc/token", body={"access_token": "tok", "expires_in": 3600})
         t.add("GET", "https://doi.org/ra/", body=[{"DOI": "10.1000/x", "RA": "Crossref"}])
         t.add("GET", "https://api.crossref.org/works/", status=503)
         t.add("GET", "https://api.openaire.eu/graph/v1/researchProducts", body={"results": [OPENAIRE_PUB], "header": {"numFound": 1}})
@@ -47,7 +53,8 @@ class R1_ResolveByAgency(unittest.TestCase):
         self.assertEqual([ln["source"] for ln in out["lanes"]], ["crossref", "openaire"])
         self.assertTrue(any("crossref: unavailable" in f and "R-10" in f for f in out["facts"]))
         self.assertEqual(out["records"][0]["source_id"], "openaire")
-        self.assertEqual([rec.source_id for rec in c.log], ["doi_org", "crossref", "openaire"], "every hop is logged")
+        self.assertEqual([rec.source_id for rec in c.log], ["doi_org", "crossref", "openaire", "openaire"],
+                         "every dispatch is logged, the token exchange included")
 
     def test_non_doi_schemes_route_by_adapter_schemes(self):
         r, _, _ = make()
@@ -351,7 +358,9 @@ class ExecuteMergeAndCache(unittest.TestCase):
              "commercial": True, "accept_per_item": True}
         out = R.execute(r, p, c)
         self.assertIsNone(out.get("content"), "a non-commercial licence keeps the bytes inside the gateway")
-        self.assertTrue(any("download withheld" in f for f in out["facts"]))
+        self.assertTrue(any("download refused before fetching" in f for f in out["facts"]))
+        self.assertEqual([u for _, u, *_ in t.calls if "resolve/main/data.csv" in u], [],
+                         "the refusal happens BEFORE any bytes move (D-24)")
         personal = R.execute(r, {**p, "commercial": False}, c)
         self.assertEqual(personal["content"], b"secret,rows\n", "the personal baseline still downloads")
         echoed = R.execute(r, {"request_type": "resolve", "identity": "hf:owner/nc-corpus"}, c)

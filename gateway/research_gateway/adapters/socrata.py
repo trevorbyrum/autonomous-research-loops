@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 
 from ..core.canonical import make_record, year_from
+from ..core.licenses import allow_listed
 from .base import AdapterError, Client, check
 
 SOURCE_ID = "socrata"
@@ -101,6 +102,9 @@ def fetch(client: Client, target: str, *, limit: int = 1000, offset: int = 0, wh
     meta = resolve(client, target)   # vouches the portal and carries the dataset licence
     if meta is None:
         return {"identity": target, "records": [], "capability_fact": "dataset not found"}
+    if client.commercial and not allow_listed(meta.get("license")):
+        return {"identity": target, "records": [],
+                "capability_fact": f"rows refused before fetching: dataset licence {meta.get('license') or 'unknown'} is not usable commercially (R-8)"}
     params = {"$limit": min(limit, 50000), "$offset": offset, "$where": where}
     resp = client.get(SOURCE_ID, "fetch", f"https://{domain}/resource/{did}.json", params=params, headers=_headers(client), identity=target)
     if not check(SOURCE_ID, resp):

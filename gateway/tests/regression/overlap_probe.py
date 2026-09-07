@@ -84,6 +84,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--live", action="store_true")
     ap.add_argument("--report", type=Path, default=None)
     ap.add_argument("--sources", default="", help="comma-separated found-keys to probe (default: all)")
+    ap.add_argument("--min-n", type=int, default=10, help="fewest comparable observations a source needs to count as verified")
     args = ap.parse_args(argv)
     keys = [k for k in PROBES if not args.sources or k in args.sources.split(",")]
     expected = json.loads(args.expectations.read_text())
@@ -118,9 +119,10 @@ def main(argv: list[str] | None = None) -> int:
         args.report.write_text(json.dumps({"sample": len(rows), "result": result}, indent=1))
     # coverage gate: a source that produced nothing comparable was NOT verified — that is a
     # failure of the run, never a silent pass (D-23)
-    uncompared = [k for k in keys if k not in result]
+    uncompared = [k for k in keys if k not in result or result[k]["n"] < args.min_n]
     if uncompared:
-        print(f"FAIL: no comparable observations for {', '.join(uncompared)} — sources unavailable or expectations empty", file=sys.stderr)
+        print(f"FAIL: fewer than {args.min_n} comparable observations for {', '.join(uncompared)} — "
+              "sources unavailable or expectations too thin; nothing was verified for them (D-24)", file=sys.stderr)
         return 1
     return 0 if all(v["ok"] for v in result.values()) else 1
 

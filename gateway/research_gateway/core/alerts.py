@@ -147,7 +147,7 @@ PATTERN_SQL = "lower(left(query, 80))"
 def check_calls(conn, alerter: Alerter) -> dict:
     """One pass over gateway.calls for the patterns §7 names; returns what it saw (for tests/status).
     Also enforces call-log retention (RESEARCH_GATEWAY_CALLS_RETENTION_DAYS, default 180)."""
-    retention = int(os.environ.get("RESEARCH_GATEWAY_CALLS_RETENTION_DAYS", "180"))
+    retention = max(1, int(os.environ.get("RESEARCH_GATEWAY_CALLS_RETENTION_DAYS", "180") or 180))
     with conn.cursor() as cur:
         cur.execute("DELETE FROM gateway.calls WHERE at < now() - make_interval(days => %s)", (retention,))
     conn.commit()

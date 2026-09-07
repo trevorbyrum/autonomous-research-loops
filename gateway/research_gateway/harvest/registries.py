@@ -73,9 +73,12 @@ def crossref_journals(client: Client, *, limit: int | None = None, rows: int = 1
         resp = client.get("crossref", "find", CROSSREF_JOURNALS,
                           params={"rows": rows, "cursor": cursor, "mailto": client.contact_email}, query="journals harvest")
         check("crossref", resp, allow_404=False)   # a failed page fails the load (D-23)
-        msg = (resp.json or {}).get("message") or {}
-        items = msg.get("items") if isinstance(msg, dict) else None
-        items = items if isinstance(items, list) else []
+        j = resp.json
+        msg = j.get("message") if isinstance(j, dict) else None
+        if not isinstance(msg, dict) or "items" not in msg:
+            raise ValueError(f"Crossref journals answered 200 but not with a message envelope "
+                             f"(content-type {resp.headers.get('content-type')!r}) — load failed, not empty (D-24)")
+        items = msg.get("items") if isinstance(msg.get("items"), list) else []
         for j in items:
             rec = _safe(build, j, skipped) if isinstance(j, dict) else None
             if rec is None:
@@ -118,7 +121,10 @@ def datacite_repositories(client: Client, *, limit: int | None = None, size: int
         resp = client.get("datacite", "find", DATACITE_REPOSITORIES, params={"page[size]": size, "page[number]": page},
                           query="repositories harvest")
         check("datacite", resp, allow_404=False)   # a failed page fails the load (D-23)
-        j = resp.json if isinstance(resp.json, dict) else {}
+        j = resp.json
+        if not isinstance(j, dict) or "data" not in j:
+            raise ValueError(f"DataCite repositories answered 200 but not with a data envelope "
+                             f"(content-type {resp.headers.get('content-type')!r}) — load failed, not empty (D-24)")
         data = j.get("data") if isinstance(j.get("data"), list) else []
 
         def build(d: dict) -> dict | None:

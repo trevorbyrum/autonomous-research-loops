@@ -83,19 +83,26 @@ _OPENER = urllib.request.build_opener(_NoRedirect)
 
 def redirect_target(current_url: str, location: str) -> tuple[str | None, str | None]:
     """(next url, None) when the hop is permitted; (None, reason) otherwise. Permitted means:
-    http/https only, no https→http downgrade, and no loopback/private/link-local destination —
-    every address the hostname resolves to must be global (SSRF guard, D-23)."""
-    nxt = urllib.parse.urljoin(current_url, location)
-    old, new = urllib.parse.urlsplit(current_url), urllib.parse.urlsplit(nxt)
-    if new.scheme not in ("http", "https"):
-        return None, f"redirect to scheme {new.scheme!r} refused"
-    if old.scheme == "https" and new.scheme == "http":
-        return None, "redirect downgrades https to http"
-    host = new.hostname or ""
+    http/https only, no https→http downgrade, and no destination outside global address space —
+    every address the hostname resolves to must be global (SSRF guard, D-23). Known residual
+    (D-24): the connect after the check re-resolves, so a DNS answer that changes between the
+    two lookups could still land elsewhere — pinning the vetted address under stdlib TLS would
+    break certificate verification, so the residual is documented instead of half-fixed."""
+    try:
+        nxt = urllib.parse.urljoin(current_url, location)
+        old, new = urllib.parse.urlsplit(current_url), urllib.parse.urlsplit(nxt)
+        scheme = (new.scheme or "").lower()
+        if scheme not in ("http", "https"):
+            return None, f"redirect to scheme {new.scheme!r} refused"
+        if old.scheme.lower() == "https" and scheme == "http":
+            return None, "redirect downgrades https to http"
+        host, port = new.hostname or "", new.port  # .port raises ValueError on a malformed port
+    except ValueError as e:
+        return None, f"unparseable redirect location ({e})"
     if not host:
         return None, "redirect without a host"
     try:
-        addresses = [info[4][0] for info in socket.getaddrinfo(host, new.port or (443 if new.scheme == "https" else 80),
+        addresses = [info[4][0] for info in socket.getaddrinfo(host, port or (443 if scheme == "https" else 80),
                                                                proto=socket.IPPROTO_TCP)]
     except OSError as e:
         return None, f"redirect host does not resolve ({e})"
@@ -120,7 +127,10 @@ class Transport:
     caller's accounting and logging always run (I-6)."""
 
     def request(self, method: str, url: str, headers: dict, body: bytes | None, timeout: float) -> Response:
-        req = urllib.request.Request(url, data=body, method=method, headers=headers)
+        try:
+            req = urllib.request.Request(url, data=body, method=method, headers=headers)
+        except Exception as e:  # a URL the stdlib refuses to even build is an error Response too
+            return Response(None, {}, b"", url, error=f"{type(e).__name__}: {e}")
         try:
             with _OPENER.open(req, timeout=timeout) as resp:
                 data = resp.read(MAX_BODY_BYTES + 1)
@@ -177,6 +187,7 @@ class Client:
     job_id: int | None = None
     client_id: str | None = None
     domain_resolved: str | None = None
+    commercial: bool = False   # set by the executor; download-capable adapters refuse restricted fetches up front (D-24)
 
     def secret(self, name: str, field: str | None = None) -> str | None:
         value = self.secrets(name, field)
@@ -216,7 +227,9 @@ class Client:
             latency = int((time.monotonic() - t0) * 1000)
             self.broker.record(source_id, resp.status, retry_after=resp.retry_after_seconds(),
                                network_error=resp.status is None)
-            self._record(source_id, request_type, identity, query, resp, latency, credits)
+            # credits are charged once per request (the broker charged them on the first acquire);
+            # each hop still gets its own call row, but only the first carries the credit figure (D-24)
+            self._record(source_id, request_type, identity, query, resp, latency, credits if hop == 0 else 0.0)
             if resp.status not in REDIRECT_STATUSES:
                 return resp
             location = resp.headers.get("location")
@@ -228,9 +241,13 @@ class Client:
                 refused = Response(None, resp.headers, b"", url, error=reason)
                 self._record(source_id, request_type, identity, query, refused, 0, 0.0, refused=True)
                 return refused
-            if not same_origin(url, nxt):  # credentials never travel to another origin (D-23)
+            if not same_origin(url, nxt):
+                # nothing sensitive travels to another origin: no credentials, and no request
+                # body either — a cross-origin hop always degrades to a bare GET (D-23)
                 hdrs = {k: v for k, v in hdrs.items() if k.lower() not in CREDENTIAL_HEADERS}
-            if resp.status == 303 or (resp.status in (301, 302) and method == "POST"):
+                method, body = "GET", None
+                hdrs.pop("Content-Type", None)
+            elif resp.status == 303 or (resp.status in (301, 302) and method == "POST"):
                 method, body = "GET", None
                 hdrs.pop("Content-Type", None)
             url = nxt

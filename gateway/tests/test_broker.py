@@ -199,8 +199,12 @@ class FromRows(unittest.TestCase):
         self.assertEqual(pol["a"].per_second, 2.0)
         self.assertEqual(pol["a"].burst, 5)
         self.assertEqual(pol["b"].per_hour, 7200.0)
-        self.assertEqual(pol["a"].windows(), [(1.0, 5.0), (2.5, 5.0)],
-                         "burst is capacity over a sustained 2/s average, not a 5/s replacement (D-23)")
+        self.assertEqual(pol["a"].windows(), [(2.5, 5.0)],
+                         "burst is capacity over a sustained 2/s average, not a 5/s replacement (D-23/D-24)")
+        self.assertEqual(RatePolicy(per_second=10, burst=2).windows(), [(0.2, 2.0)],
+                         "a burst smaller than the rate caps the instantaneous count at the burst (D-24)")
+        self.assertEqual(RatePolicy(per_second=1.5).windows(), [(1.0, 1.0)],
+                         "a fractional rate above one floors: conservative, never above the limit")
         self.assertEqual(RatePolicy(per_second=0.5).windows(), [(2.0, 1.0)],
                          "a fractional rate is spacing: one call every two seconds")
 

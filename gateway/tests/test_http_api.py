@@ -207,7 +207,11 @@ class Wiring(unittest.TestCase):
     def test_inline_only_rule(self):
         self.assertTrue(app.Gateway.is_inline_only({"request_type": "enrich", "what": "full_text"}))
         self.assertTrue(app.Gateway.is_inline_only({"request_type": "fetch", "params": {"download": True}}))
-        self.assertFalse(app.Gateway.is_inline_only({"request_type": "fetch", "params": {}}))
+        self.assertTrue(app.Gateway.is_inline_only({"request_type": "fetch", "params": {}}),
+                        "fetch and data are always inline: rows and files are delivered, never stored (D-24)")
+        self.assertTrue(app.Gateway.is_inline_only({"request_type": "data", "source": "census"}))
+        self.assertFalse(app.Gateway.is_inline_only({"request_type": "find", "query": "q"}))
+        self.assertFalse(app.Gateway.is_inline_only({"request_type": "resolve", "identity": "doi:x"}))
 
 
 @unittest.skipUnless(db.configured() and os.environ.get("RESEARCH_GATEWAY_TEST_OK") == "1",

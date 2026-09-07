@@ -95,6 +95,8 @@ def run(client: Client, only: set[str] | None = None) -> list[dict]:
         row["seconds"] = round(time.monotonic() - t0, 2)
         row["calls"] = [{"status": r.status, "class": r.failure_class, "latency_ms": r.latency_ms, "ratelimit": r.ratelimit}
                         for r in client.log[before:]]
+        if row["outcome"] == "ok" and not row["calls"]:
+            row["outcome"] = "unverified"   # a refusal without a network call verified nothing (D-24)
         out.append(row)
     for sid, why in local.items():
         if not only or sid in only:
@@ -114,10 +116,19 @@ def render(rows: list[dict]) -> str:
 
 
 def service_is_running() -> bool:
-    """True when a gateway service answers on RESEARCH_GATEWAY_URL — its broker owns the limits then (I-1)."""
+    """True unless the gateway URL is positively ABSENT (connection refused / no route). Any
+    answer — healthy, unhealthy, 401, 503 — and any timeout means something may own the limits,
+    and the guard fails safe (I-1, D-24)."""
     from .clients.http_client import from_env
-    health = from_env().health()
-    return bool(health.get("ok")) and "capability_fact" not in health
+    client = from_env()
+    client.timeout = 3.0
+    health = client.health()
+    fact = str(health.get("capability_fact") or "")
+    if not fact:
+        return True                      # it answered: it is running
+    if fact != "gateway_unavailable":
+        return True                      # it answered with an error status: still running
+    return "timed out" in str(health.get("error") or "").lower()   # a hang is not proof of absence
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -151,10 +162,11 @@ def main(argv: list[str] | None = None) -> int:
             json.dump(rows, f, indent=1)
         print(f"report: {args.report}")
     bad = [r for r in rows if r["outcome"] in ("crash", "adapter-error")]
-    unavailable = [r for r in rows if r["outcome"] == "unavailable"]
-    if unavailable:
-        print(f"note: {len(unavailable)} source(s) unavailable — their limits were NOT verified by this run", file=sys.stderr)
-    return 1 if bad or (args.strict and unavailable) else 0
+    unverified = [r for r in rows if r["outcome"] in ("unavailable", "unverified")]
+    if unverified:
+        print(f"note: {len(unverified)} source(s) unavailable or unverified — their limits were NOT verified by this run: "
+              + ", ".join(r["source"] for r in unverified), file=sys.stderr)
+    return 1 if bad or (args.strict and unverified) else 0
 
 
 if __name__ == "__main__":

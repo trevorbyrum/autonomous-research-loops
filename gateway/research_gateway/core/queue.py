@@ -16,6 +16,7 @@ import hashlib
 import json
 import threading
 import time
+import uuid
 from typing import Callable
 
 import psycopg
@@ -75,15 +76,18 @@ def enqueue(conn, request_type: str, payload: dict, *, client_id: str, priority:
 
 
 def claim(conn) -> dict | None:
-    """Claim the highest-priority oldest queued job, or None. Commits."""
+    """Claim the highest-priority oldest queued job, or None. Commits. The claim carries a fencing
+    token: only the execution holding the CURRENT token may finish or fail the job, so a stale
+    worker whose job was reclaimed cannot overwrite the retry's result (D-24)."""
+    token = uuid.uuid4().hex
     with conn.cursor() as cur:
         cur.execute(
             """
-            UPDATE gateway.jobs SET status = 'running', started_at = now()
+            UPDATE gateway.jobs SET status = 'running', started_at = now(), claim_token = %s
              WHERE id = (SELECT id FROM gateway.jobs WHERE status = 'queued'
                           ORDER BY priority, created_at FOR UPDATE SKIP LOCKED LIMIT 1)
             RETURNING id, request_type, payload, priority, client_id, topic_id, commercial
-            """
+            """, (token,)
         )
         row = cur.fetchone()
     conn.commit()
@@ -91,21 +95,28 @@ def claim(conn) -> dict | None:
         return None
     job_id, request_type, payload, priority, client_id, topic_id, commercial = row
     return {"id": job_id, "request_type": request_type, "payload": payload, "priority": priority,
-            "client_id": client_id, "topic_id": topic_id, "commercial": commercial}
+            "client_id": client_id, "topic_id": topic_id, "commercial": commercial, "claim_token": token}
 
 
-def finish(conn, job_id: int, result: dict) -> None:
+def finish(conn, job_id: int, result: dict, claim_token: str | None = None) -> bool:
+    """False when the claim was fenced off (the job was reclaimed while this worker ran it)."""
     with conn.cursor() as cur:
-        cur.execute("UPDATE gateway.jobs SET status = 'done', finished_at = now(), result = %s WHERE id = %s",
-                    (json.dumps(result), job_id))
+        cur.execute("UPDATE gateway.jobs SET status = 'done', finished_at = now(), result = %s "
+                    "WHERE id = %s AND (%s::text IS NULL OR claim_token = %s) RETURNING id",
+                    (json.dumps(result), job_id, claim_token, claim_token))
+        won = cur.fetchone() is not None
     conn.commit()
+    return won
 
 
-def fail(conn, job_id: int, error_class: str, detail: dict | None = None) -> None:
+def fail(conn, job_id: int, error_class: str, detail: dict | None = None, claim_token: str | None = None) -> bool:
     with conn.cursor() as cur:
-        cur.execute("UPDATE gateway.jobs SET status = 'failed', finished_at = now(), error_class = %s, result = %s WHERE id = %s",
-                    (error_class, json.dumps(detail or {}), job_id))
+        cur.execute("UPDATE gateway.jobs SET status = 'failed', finished_at = now(), error_class = %s, result = %s "
+                    "WHERE id = %s AND (%s::text IS NULL OR claim_token = %s) RETURNING id",
+                    (error_class, json.dumps(detail or {}), job_id, claim_token, claim_token))
+        won = cur.fetchone() is not None
     conn.commit()
+    return won
 
 
 def get(conn, job_id: int) -> dict | None:
@@ -125,15 +136,16 @@ def run_once(conn, handlers: dict[str, Handler], make_client: ClientFactory) -> 
     if job is None:
         return False
     handler = handlers.get(job["request_type"])
+    token = job.get("claim_token")
     if handler is None:
-        fail(conn, job["id"], "refused", {"reason": f"no handler for {job['request_type']}"})
+        fail(conn, job["id"], "refused", {"reason": f"no handler for {job['request_type']}"}, claim_token=token)
         return True
     try:
         result = handler(make_client(conn, job), job)
     except Exception as e:  # a handler bug must not take the worker down; the job records it
-        fail(conn, job["id"], "outage", {"error": f"{type(e).__name__}: {e}"[:500]})
+        fail(conn, job["id"], "outage", {"error": f"{type(e).__name__}: {e}"[:500]}, claim_token=token)
         return True
-    finish(conn, job["id"], result if isinstance(result, dict) else {"result": result})
+    finish(conn, job["id"], result if isinstance(result, dict) else {"result": result}, claim_token=token)
     return True
 
 
@@ -179,7 +191,7 @@ def reclaim_stale(conn, *, after_minutes: int = RECLAIM_AFTER_MINUTES) -> tuple[
     MAX_ATTEMPTS; beyond that they fail with a visible reason. Returns (requeued, failed) (D-23)."""
     with conn.cursor() as cur:
         cur.execute(
-            "UPDATE gateway.jobs SET status = 'queued', started_at = NULL, attempts = attempts + 1 "
+            "UPDATE gateway.jobs SET status = 'queued', started_at = NULL, claim_token = NULL, attempts = attempts + 1 "
             "WHERE status = 'running' AND started_at < now() - make_interval(mins => %s) AND attempts < %s "
             "RETURNING id", (after_minutes, MAX_ATTEMPTS - 1))
         requeued = len(cur.fetchall())

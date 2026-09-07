@@ -27,6 +27,8 @@ def make_call(gateway: Gateway, client_id: str):
             return gateway.status()
         if name not in REQUEST_TOOLS:
             raise LookupError(name)
+        if args is not None and not isinstance(args, dict):
+            return {"capability_fact": "gateway_error_400", "error": "arguments must be an object"}
         problem = validate_payload(args or {})
         if problem:
             return {"capability_fact": "gateway_error_400", "error": problem}

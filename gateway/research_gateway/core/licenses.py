@@ -54,27 +54,32 @@ _ALIASES: dict[str, str] = {
     "gpl": "gpl", "gnu general public license": "gpl", "lgpl": "lgpl", "agpl": "agpl",
 }
 
-# canonical URL path fragments (matched against a lone URL only) -> canonical id
-_URL_PATTERNS: list[tuple[re.Pattern, str]] = [
-    (re.compile(r"creativecommons\.org/publicdomain/zero/"), "cc0"),
-    (re.compile(r"creativecommons\.org/publicdomain/mark/"), "public-domain"),
-    (re.compile(r"creativecommons\.org/licenses/by/"), "cc-by"),
-    (re.compile(r"creativecommons\.org/licenses/by-sa/"), "cc-by-sa"),
-    (re.compile(r"creativecommons\.org/licenses/by-nc/"), "cc-by-nc"),
-    (re.compile(r"creativecommons\.org/licenses/by-nd/"), "cc-by-nd"),
-    (re.compile(r"creativecommons\.org/licenses/by-nc-sa/"), "cc-by-nc-sa"),
-    (re.compile(r"creativecommons\.org/licenses/by-nc-nd/"), "cc-by-nc-nd"),
-    (re.compile(r"opendatacommons\.org/licenses/by\b"), "odc-by"),
-    (re.compile(r"opendatacommons\.org/licenses/odbl\b"), "odbl"),
-    (re.compile(r"opendatacommons\.org/licenses/pddl\b"), "pddl"),
-    (re.compile(r"opensource\.org/licenses?/mit\b"), "mit"),
-    (re.compile(r"opensource\.org/licenses?/isc\b"), "isc"),
-    (re.compile(r"apache\.org/licenses/"), "apache"),
-    (re.compile(r"unlicense\.org"), "unlicense"),
-    (re.compile(r"gnu\.org/licenses/(gpl|lgpl|agpl)"), "gpl"),
+# canonical URL routes: (exact host, path prefix) -> canonical id. The HOST must match exactly
+# (or with a www. prefix) — a canonical path on someone else's domain identifies nothing (D-24).
+_URL_ROUTES: list[tuple[str, str, str]] = [
+    ("creativecommons.org", "/publicdomain/zero/", "cc0"),
+    ("creativecommons.org", "/publicdomain/mark/", "public-domain"),
+    ("creativecommons.org", "/licenses/by/", "cc-by"),
+    ("creativecommons.org", "/licenses/by-sa/", "cc-by-sa"),
+    ("creativecommons.org", "/licenses/by-nc/", "cc-by-nc"),
+    ("creativecommons.org", "/licenses/by-nd/", "cc-by-nd"),
+    ("creativecommons.org", "/licenses/by-nc-sa/", "cc-by-nc-sa"),
+    ("creativecommons.org", "/licenses/by-nc-nd/", "cc-by-nc-nd"),
+    ("opendatacommons.org", "/licenses/by", "odc-by"),
+    ("opendatacommons.org", "/licenses/odbl", "odbl"),
+    ("opendatacommons.org", "/licenses/pddl", "pddl"),
+    ("opensource.org", "/licenses/mit", "mit"),
+    ("opensource.org", "/license/mit", "mit"),
+    ("opensource.org", "/licenses/isc", "isc"),
+    ("opensource.org", "/license/isc", "isc"),
+    ("apache.org", "/licenses/", "apache"),
+    ("www.apache.org", "/licenses/", "apache"),
+    ("unlicense.org", "", "unlicense"),
+    ("gnu.org", "/licenses/", "gpl"),
 ]
 
-_VERSION_RE = re.compile(r"\b(v\.?\s?)?\d+(\.\d+)*\b|\binternational\b|\buniversal\b|\bgeneric\b|\bonly\b|\bor later\b|\blicense\b$")
+# only versions these licences actually have are stripped: "CC-BY-99.0" identifies nothing (D-24)
+_VERSION_RE = re.compile(r"\b(v\.?\s?)?([1-4](\s[05])?|2\s5)\b|\binternational\b|\buniversal\b|\bgeneric\b|\bonly\b|\bor later\b|\blicense\b$")
 _SPDX_SHAPE = re.compile(r"^[a-z0-9][a-z0-9 ]*$")
 
 
@@ -99,10 +104,12 @@ def identify(license: str | None) -> str | None:
     s = license.strip()
     if not s:
         return None
-    if re.fullmatch(r"https?://\S+", s):
-        low = s.lower()
-        for pat, cid in _URL_PATTERNS:
-            if pat.search(low):
+    if re.fullmatch(r"https?://\S+", s, re.IGNORECASE):
+        parts = re.match(r"(?i)https?://([^/?#]+)([^?#]*)", s)
+        host = (parts.group(1) or "").lower().split(":")[0]
+        path = (parts.group(2) or "/").lower()
+        for want_host, prefix, cid in _URL_ROUTES:
+            if host in (want_host, f"www.{want_host}") and path.startswith(prefix or "/"):
                 return cid
         return None
     if any(ch in s for ch in "<>{}") or "http" in s.lower():
