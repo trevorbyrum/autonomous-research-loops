@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from typing import Any
 
-KINDS = ("article", "dataset", "software", "document", "series", "citation", "oa_location", "full_text", "file")
+KINDS = ("article", "dataset", "software", "document", "series", "citation", "oa_location", "full_text", "file",
+         "venue", "repository")  # venue = journal/conference/book series; repository = data or publication repository
 
 
 def make_record(*, identity: str, kind: str, source_id: str, title: str | None = None,

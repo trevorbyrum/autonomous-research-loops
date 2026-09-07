@@ -10,6 +10,7 @@ from .base import Client
 
 SOURCE_ID = "openalex_snapshot"
 CAPABILITIES = ("find",)
+LOCAL = True   # answers from the local index; the router runs it before any live lane (§8)
 
 
 def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None, domain: str | None = None,
@@ -31,7 +32,8 @@ def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None
     sql = (
         "SELECT r.identity, r.canonical, ts_rank(d.tsv, websearch_to_tsquery('english', %s)) AS rank "
         "FROM gateway.index_docs d JOIN gateway.records r ON r.identity = d.identity "
-        f"WHERE {' AND '.join(where)} ORDER BY rank DESC, d.year DESC NULLS LAST LIMIT %s"
+        f"WHERE {' AND '.join(where)} "
+        "ORDER BY rank DESC, (r.canonical->>'works_count')::bigint DESC NULLS LAST, d.year DESC NULLS LAST LIMIT %s"
     )
     with conn.cursor() as cur:
         cur.execute(sql, [query, *args, min(limit, 100)])

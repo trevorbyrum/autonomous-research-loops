@@ -83,7 +83,7 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Website:** https://openalex.org/
 - **API documentation:** https://help.openalex.org/access/snapshot/
 - **Gateway requests:** find
-- **Base lane for:** article
+- **Base lane for:** article, venue, repository
 - **Authentication:** none
 - **How to get access:** No key. The gateway never calls the OpenAlex API (D-2); it loads the free quarterly S3 snapshot (s3://openalex, anonymous) into the local index.
 - **Rate limit:** no live calls (verified) — no live calls by decision D-2

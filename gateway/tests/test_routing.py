@@ -62,12 +62,18 @@ class R1_ResolveByAgency(unittest.TestCase):
 class R2_FindArticles(unittest.TestCase):
     def test_base_lanes_plus_domain_lanes(self):
         r, _, _ = make()
-        base = ["crossref", "doaj", "openalex_snapshot"]
+        base = ["openalex_snapshot", "crossref", "doaj"]
         self.assertEqual(lanes(r.plan({"request_type": "find", "kind": "article", "domain": "finance"})), base)
         self.assertEqual(lanes(r.plan({"request_type": "find", "kind": "article", "domain": "ai-ml"})), base + ["semanticscholar"])
         self.assertEqual(lanes(r.plan({"request_type": "find", "kind": "article", "domain": "biomed"})), base + ["europepmc"])
         for sid in ("openaire", "unpaywall"):
             self.assertNotIn(sid, lanes(r.plan({"request_type": "find", "kind": "article", "domain": "other"})), "never discovery lanes")
+
+    def test_local_index_runs_first_and_serves_venues_and_repositories(self):
+        r, _, _ = make()
+        self.assertEqual(lanes(r.plan({"request_type": "find", "kind": "venue", "query": "operations management"})), ["openalex_snapshot"])
+        self.assertEqual(lanes(r.plan({"request_type": "find", "kind": "repository", "query": "survey data"})), ["openalex_snapshot"])
+        self.assertEqual(lanes(r.plan({"request_type": "find", "kind": "article"}))[0], "openalex_snapshot", "index before any live lane (§8)")
 
 
 class R3_FindDatasets(unittest.TestCase):
@@ -77,7 +83,7 @@ class R3_FindDatasets(unittest.TestCase):
         self.assertEqual(lanes(r.plan({"request_type": "find", "kind": "dataset", "domain": "ai-ml"})), ["datacite", "kaggle", "huggingface", "openml"])
         self.assertEqual(lanes(r.plan({"request_type": "find", "kind": "dataset", "domain": "market"})), ["datacite", "govinfo", "harvard_dataverse", "socrata", "kaggle"])
         both = lanes(r.plan({"request_type": "find", "domain": "finance"}))
-        self.assertEqual(both[:3], ["crossref", "doaj", "openalex_snapshot"], "no kind → article lanes then dataset lanes")
+        self.assertEqual(both[:3], ["openalex_snapshot", "crossref", "doaj"], "no kind → article lanes then dataset lanes")
         self.assertIn("datacite", both)
 
 
@@ -191,7 +197,7 @@ class R9_Domains(unittest.TestCase):
     def test_domain_lanes_add_and_other_is_permissive(self):
         r, c, _ = make()
         every = lanes(r.plan({"request_type": "find", "kind": "article", "domain": "other"}))
-        self.assertEqual(every[:3], ["crossref", "doaj", "openalex_snapshot"], "R-9: nothing suppresses a base lane")
+        self.assertEqual(every[:3], ["openalex_snapshot", "crossref", "doaj"], "R-9: nothing suppresses a base lane")
         self.assertEqual(set(every[3:]), {"semanticscholar", "europepmc"})
         unknown = r.plan({"request_type": "find", "kind": "article", "domain": "astrology"})
         self.assertEqual(unknown.domain_resolved, "other")
@@ -219,7 +225,7 @@ class R10_Facts(unittest.TestCase):
         b.acquire("crossref")  # today's single call is spent
         out = R.execute(R.Router(SEED, ADAPTERS), {"request_type": "find", "kind": "article", "query": "q", "domain": "finance"}, c)
         self.assertTrue(any(f.startswith("crossref: unavailable (BudgetExhausted") for f in out["facts"]))
-        self.assertEqual([ln["source"] for ln in out["lanes"] if "error" not in ln][0], "doaj")
+        self.assertIn("doaj", [ln["source"] for ln in out["lanes"] if "error" not in ln], "the job completes on the other lanes")
 
     def test_registry_declared_agencies_pick_the_primary(self):
         r, _, _ = make()

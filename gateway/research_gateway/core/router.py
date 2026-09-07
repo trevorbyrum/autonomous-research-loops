@@ -21,6 +21,7 @@ from .cache import Cache
 DOMAINS = {"finance", "market", "social", "management", "ai-ml", "software", "biomed"}
 OTHER = "other"
 RECENT_DAYS = 30
+FIND_KINDS = ("article", "dataset", "venue", "repository")   # venue/repository come from the local index (§8)
 FIND_KWARGS = ("limit", "year_from_", "kind", "domain")
 
 
@@ -142,12 +143,13 @@ class Router:
         return plan
 
     def _plan_find(self, payload: dict, plan: Plan, _agency) -> None:
-        kinds = [payload["kind"]] if payload.get("kind") in ("article", "dataset") else ["article", "dataset"]
+        kinds = [payload["kind"]] if payload.get("kind") in FIND_KINDS else ["article", "dataset"]
         recent = is_recent(payload)
         for kind in kinds:
             base = [sid for sid in self._ordered("find") if kind in (self.sources[sid].get("base_for") or [])]
+            base.sort(key=lambda sid: 0 if getattr(self.adapters[sid], "LOCAL", False) else 1)  # local index first (§8)
             for sid in base:
-                if recent and self.adapters[sid].__name__.endswith("openalex_snapshot"):
+                if recent and getattr(self.adapters[sid], "LOCAL", False):
                     plan.facts.append(f"{sid}: skipped, request is for the last {RECENT_DAYS} days (R-7)")
                     continue
                 if self._commercial_gate(sid, payload, plan):
