@@ -902,7 +902,16 @@ class QueueStore:
                     and f.get("coverage") in BLOCKING_COVERAGE}
         with self._locked() as state:
             item = self._find(state, item_id)
-            current = {b["key"]: b for b in item.get("research_blockers") or [] if isinstance(b, dict) and b.get("key")}
+            current: dict[str, dict] = {}
+            for b in item.get("research_blockers") or []:
+                if isinstance(b, str):
+                    # a legacy per-source entry MIGRATES instead of silently vanishing on the
+                    # first keyed update (re-verify finding 4); it clears via resolve-research
+                    key = json.dumps([b, "", ""], separators=(",", ":"))
+                    current[key] = {"key": key, "source": b, "request_type": "", "subject": "",
+                                    "coverage": "provider_unavailable", "at": utc_now()}
+                elif isinstance(b, dict) and b.get("key"):
+                    current[b["key"]] = b
             for key in cleared or []:
                 current.pop(key, None)
             for key, blocker in blocking.items():

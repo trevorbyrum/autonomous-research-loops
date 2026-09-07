@@ -179,3 +179,18 @@ class ActivitySummarizer(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LegacyMigration(unittest.TestCase):
+    def test_string_blockers_migrate_instead_of_vanishing(self):
+        """Re-verify finding 4: a pre-keyed 'crossref' string entry must survive the
+        first keyed update and keep holding completion until explicitly resolved."""
+        with tempfile.TemporaryDirectory() as d:
+            s = store(d)
+            item = add_item(s)
+            with s._locked() as state:
+                s._find(state, item["id"])["research_blockers"] = ["crossref"]
+            out = s.update_research_blockers(item["id"], failures=[], cleared=[])
+            self.assertEqual([b["source"] for b in out], ["crossref"])
+            resolved = s.resolve_research_blockers(item["id"], reason="legacy entry reviewed")
+            self.assertEqual(resolved["research_blockers"], [])
