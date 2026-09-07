@@ -29,3 +29,6 @@ dist/
 graphrag.env
 SOURCES.md
 private/
+
+# Operator-side roadmap (future adds/considerations) -- never in the public repo
+/ROADMAP.md
