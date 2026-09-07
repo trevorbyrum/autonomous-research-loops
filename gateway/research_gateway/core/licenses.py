@@ -59,28 +59,30 @@ _ALIASES: dict[str, str] = {
     "gpl": "gpl", "gnu general public license": "gpl", "lgpl": "lgpl", "agpl": "agpl",
 }
 
-# canonical URL routes: (exact host, path prefix) -> canonical id. The HOST must match exactly
-# (or with a www. prefix) — a canonical path on someone else's domain identifies nothing (D-24).
-_URL_ROUTES: list[tuple[str, str, str]] = [
-    ("creativecommons.org", "/publicdomain/zero/", "cc0"),
-    ("creativecommons.org", "/publicdomain/mark/", "public-domain"),
-    ("creativecommons.org", "/licenses/by/", "cc-by"),
-    ("creativecommons.org", "/licenses/by-sa/", "cc-by-sa"),
-    ("creativecommons.org", "/licenses/by-nc/", "cc-by-nc"),
-    ("creativecommons.org", "/licenses/by-nd/", "cc-by-nd"),
-    ("creativecommons.org", "/licenses/by-nc-sa/", "cc-by-nc-sa"),
-    ("creativecommons.org", "/licenses/by-nc-nd/", "cc-by-nc-nd"),
-    ("opendatacommons.org", "/licenses/by", "odc-by"),
-    ("opendatacommons.org", "/licenses/odbl", "odbl"),
-    ("opendatacommons.org", "/licenses/pddl", "pddl"),
-    ("opensource.org", "/licenses/mit", "mit"),
-    ("opensource.org", "/license/mit", "mit"),
-    ("opensource.org", "/licenses/isc", "isc"),
-    ("opensource.org", "/license/isc", "isc"),
-    ("apache.org", "/licenses/", "apache"),
-    ("www.apache.org", "/licenses/", "apache"),
-    ("unlicense.org", "", "unlicense"),
-    ("gnu.org", "/licenses/", "gpl"),
+# canonical URL routes: (exact host, path prefix, id, version segments the route ACTUALLY has).
+# The HOST must match exactly (or with a www. prefix) — a canonical path on someone else's domain
+# identifies nothing (D-24). Versions are an explicit whitelist per route: MIT has none, the Open
+# Data Commons deeds have 1.0, and an invented '/9.9/' identifies nothing (D-27 pass-6 fix).
+_URL_ROUTES: list[tuple[str, str, str, tuple[str, ...]]] = [
+    ("creativecommons.org", "/publicdomain/zero/", "cc0", ()),          # CC tails handled by their own regexes
+    ("creativecommons.org", "/publicdomain/mark/", "public-domain", ()),
+    ("creativecommons.org", "/licenses/by/", "cc-by", ()),
+    ("creativecommons.org", "/licenses/by-sa/", "cc-by-sa", ()),
+    ("creativecommons.org", "/licenses/by-nc/", "cc-by-nc", ()),
+    ("creativecommons.org", "/licenses/by-nd/", "cc-by-nd", ()),
+    ("creativecommons.org", "/licenses/by-nc-sa/", "cc-by-nc-sa", ()),
+    ("creativecommons.org", "/licenses/by-nc-nd/", "cc-by-nc-nd", ()),
+    ("opendatacommons.org", "/licenses/by", "odc-by", ("1.0",)),
+    ("opendatacommons.org", "/licenses/odbl", "odbl", ("1.0",)),
+    ("opendatacommons.org", "/licenses/pddl", "pddl", ("1.0",)),
+    ("opensource.org", "/licenses/mit", "mit", ()),
+    ("opensource.org", "/license/mit", "mit", ()),
+    ("opensource.org", "/licenses/isc", "isc", ()),
+    ("opensource.org", "/license/isc", "isc", ()),
+    ("apache.org", "/licenses/", "apache", ()),
+    ("www.apache.org", "/licenses/", "apache", ()),
+    ("unlicense.org", "", "unlicense", ()),
+    ("gnu.org", "/licenses/", "gpl", ()),
 ]
 
 # only versions these licences actually have are stripped: "CC-BY-99.0" identifies nothing (D-24)
@@ -118,7 +120,7 @@ def identify(license: str | None) -> str | None:
         path = urllib.parse.unquote(parts.path or "/").lower()   # %2e-encoded traversal decodes before checks (D-26)
         if parts.query or parts.fragment or "/../" in path or path.endswith("/..") or "\\" in path:
             return None   # annotated, parameterised or traversal-shaped URLs identify nothing (D-25)
-        for want_host, prefix, cid in _URL_ROUTES:
+        for want_host, prefix, cid, versions in _URL_ROUTES:
             if host not in (want_host, f"www.{want_host}") or not path.startswith(prefix or "/"):
                 continue
             tail = path[len(prefix):] if prefix else path.lstrip("/")
@@ -129,10 +131,15 @@ def identify(license: str | None) -> str | None:
                 # directory routes (apache /licenses/, gnu /licenses/, the unlicense root):
                 # exactly one filename segment (LICENSE-2.0, gpl-3.0.html), never a sub-path
                 return cid if re.fullmatch(r"[-a-z0-9._+]*/?", tail) else None
-            # exact-id routes (/licenses/mit, /licenses/by, ...): the id must END here —
-            # 'mit-noncommercial' is a different id, not MIT with a suffix (D-27) — and the only
-            # thing allowed after it is a version segment like /1.0/ (the ODC deeds use those)
-            return cid if re.fullmatch(r"(/(\d[\d.]*/?)?)?", tail) else None
+            # exact-id routes: the id must END here ('mit-noncommercial' is a different id, D-27)
+            # and the only thing after it is a version segment the route ACTUALLY has
+            if tail in ("", "/"):
+                return cid
+            if tail.startswith("/"):
+                segment = tail[1:].rstrip("/")
+                if segment in versions and "/" not in segment:
+                    return cid
+            return None
         return None
     if any(ch in s for ch in "<>{}") or "http" in s.lower():
         return None  # markup or embedded URLs alongside text: not a bare licence name

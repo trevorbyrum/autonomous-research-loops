@@ -27,7 +27,11 @@ class Licenses(unittest.TestCase):
                           "https://creativecommons.org/publicdomain/zero/4.0/": False,
                           "https://creativecommons.org/publicdomain/zero/1.0/": True,
                           "https://creativecommons.org:pw@evil.example/licenses/by/4.0/": False,
-                          "https://opensource.org/licenses/MIT/%2e%2e/restricted": False}.items():
+                          "https://opensource.org/licenses/MIT/%2e%2e/restricted": False,
+                          "https://opensource.org/licenses/MIT/1.../": False,
+                          "https://opensource.org/license/ISC/1.0": False,
+                          "https://opendatacommons.org/licenses/by/99.0/": False,
+                          "https://opendatacommons.org/licenses/by/1.0.0": False}.items():
             self.assertEqual(licenses.allow_listed(url), want, url)
         allow, per_item, deny = {"use_commercial": "allow"}, {"use_commercial": "per-item"}, {"use_commercial": "deny"}
         rec = {"license": "cc-by-4.0"}
