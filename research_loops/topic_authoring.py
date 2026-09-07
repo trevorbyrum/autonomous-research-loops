@@ -438,7 +438,8 @@ def approve_topic(topic_id: str, *, dest: Path) -> dict[str, Any]:
         "research-loops add --id "
         f"{topic_id} --title \"...\" --cwd {topic_dir} "
         f"--stop-file STOP --max-attempts 8 --repeat-seconds 900 "
-        f"--lock-sha256 {lock} -- "
+        f"--lock-sha256 {lock} "
+        "--research-policy '{\"commercial\": false}' -- "
         f"{run_topic_sh} {topic_dir} generic"
     )
 

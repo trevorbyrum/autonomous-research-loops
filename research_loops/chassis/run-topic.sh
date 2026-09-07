@@ -137,6 +137,11 @@ python3 "$CHASSIS/render-prompt.py" "$CHASSIS/ITERATION-PROMPT.md" \
 export RESEARCH_LOOP_TOPIC_DIR="$TOPIC_DIR"
 export RESEARCH_LOOP_USAGE_FILE="$usage"
 export RESEARCH_LOOP_LOG="$log"
+# The research tool (gateway docs/STATION-CONTRACT.md §2) appends coverage states
+# here; write_result reduces the file into the iteration result for the queue's
+# saturation gate. Per-iteration file: a stale one never speaks for a fresh pass.
+activity_file="$LOG_DIR/research-activity-$stamp.jsonl"
+export RESEARCH_LOOP_RESEARCH_ACTIVITY="$activity_file"
 # RESEARCH_LOOP_PROFILE, RESEARCH_LOOP_AGENT_SECONDARY, RESEARCH_LOOP_GAP_POLICY,
 # RESEARCH_LOOP_GAP_AUTO_LIMIT, RESEARCH_LOOP_COMPLETION_LOCK, RESEARCH_LOOP_INTERNAL_CITATIONS,
 # and RESEARCH_LOOP_TOPICS_ROOT are deliberately NOT set here unless already present in
@@ -182,10 +187,14 @@ write_result() {
   RESULT_RUNNER="$RUNNER_NAME" RESULT_TOPIC_DIR="$TOPIC_DIR" \
   RESULT_DEGRADED_FILE="${degraded_file:-}" \
   RESULT_SEMANTIC_VALID="$semantic_valid" \
+  RESULT_ACTIVITY_FILE="${activity_file:-}" RESULT_CHASSIS="$CHASSIS" \
   python3 - "$LOG_DIR" <<'PY' || echo "warning: could not write iteration result record" >&2
 import json, os, sys
 
 log_dir = sys.argv[1]
+sys.path.insert(0, os.environ.get("RESULT_CHASSIS") or ".")
+from research_activity import summarize
+research_failures, research_ok = summarize(os.environ.get("RESULT_ACTIVITY_FILE"))
 degraded = []
 degraded_path = os.environ.get("RESULT_DEGRADED_FILE") or ""
 if degraded_path and os.path.isfile(degraded_path):
@@ -211,6 +220,8 @@ result = {
     "stop_first_line": stop_first,
     "semantic_valid": os.environ.get("RESULT_SEMANTIC_VALID") == "true",
     "degraded_capabilities": degraded,
+    "research_failures": research_failures,
+    "research_ok": research_ok,
     "log": os.environ["RESULT_LOG"],
 }
 error_class = os.environ.get("RESULT_ERROR_CLASS") or ""

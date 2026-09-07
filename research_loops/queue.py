@@ -102,6 +102,28 @@ def _validate_completion_lock(value: str | None) -> str | None:
     return value
 
 
+RESEARCH_POLICY_FIELDS = {"commercial": bool, "accept_per_item": bool, "domain": str}
+BLOCKING_COVERAGE = ("provider_unavailable", "auth_failed")
+
+
+def _validate_research_policy(value: dict | None) -> dict | None:
+    """Topic research policy (gateway docs/STATION-CONTRACT.md §1): operator-owned,
+    injected into every research-tool call by the runner; the tool's dispatcher
+    rejects conflicting agent arguments. Only the contract's fields, typed."""
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise QueueError("research_policy must be an object")
+    for key, val in value.items():
+        want = RESEARCH_POLICY_FIELDS.get(key)
+        if want is None:
+            raise QueueError(f"research_policy: unknown field {key!r} "
+                             f"(allowed: {', '.join(sorted(RESEARCH_POLICY_FIELDS))})")
+        if not isinstance(val, want) or (want is str and isinstance(val, bool)):
+            raise QueueError(f"research_policy.{key} must be {want.__name__}")
+    return dict(value)
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -240,6 +262,7 @@ class QueueStore:
         topic_refresh: str = "off",
         topic_refresh_mode: str = "continue",
         lane: str = "research",
+        research_policy: dict | None = None,
     ) -> dict[str, Any]:
         if not title.strip() or not command:
             raise QueueError("title and command are required")
@@ -261,6 +284,7 @@ class QueueStore:
         _validate_topic_refresh(topic_refresh)
         _validate_topic_refresh_mode(topic_refresh_mode)
         _validate_lane(lane)
+        research_policy = _validate_research_policy(research_policy)
         resolved_item_id = validate_item_id(
             item_id if item_id is not None else f"loop-{uuid.uuid4().hex[:10]}"
         )
@@ -296,6 +320,8 @@ class QueueStore:
             "topic_refresh": topic_refresh,
             "topic_refresh_mode": topic_refresh_mode,
             "lane": lane,
+            "research_policy": research_policy,
+            "research_blockers": [],
             "refresh_due_at": None,
             "refresh_count": 0,
             "progress_signature": None,
@@ -857,6 +883,44 @@ class QueueStore:
             item["updated_at"] = utc_now()
             return copy.deepcopy(item)
 
+    def update_research_blockers(self, item_id: str, *, failures: list[dict],
+                                 cleared: list[str]) -> list[str]:
+        """Per-item research blockers (gateway docs/STATION-CONTRACT.md §2): a source
+        that failed with a BLOCKING coverage state during actual research stays a
+        blocker until the same source answers again (`cleared`) or the operator
+        resumes the item. Returns the set after this iteration's signals."""
+        blocking = {f["source"] for f in (failures or [])
+                    if isinstance(f, dict) and f.get("source") and f.get("coverage") in BLOCKING_COVERAGE}
+        with self._locked() as state:
+            item = self._find(state, item_id)
+            current = set(item.get("research_blockers") or [])
+            updated = (current - set(cleared or [])) | blocking
+            if updated != current:
+                item["research_blockers"] = sorted(updated)
+                item["updated_at"] = utc_now()
+            return sorted(updated)
+
+    def record_completion_coverage(self, item_id: str, coverage: dict) -> dict[str, Any]:
+        """Stamp what completion was achieved UNDER (STATION-CONTRACT.md §2): the
+        sources that answered on the completing pass and the (empty) blocker set.
+        A later gateway source-family addition can compare against this and trigger
+        a targeted refresh without implying the earlier research was invalid."""
+        with self._locked() as state:
+            item = self._find(state, item_id)
+            item["completion_coverage"] = dict(coverage)
+            item["updated_at"] = utc_now()
+            return copy.deepcopy(item)
+
+    def set_research_policy(self, item_id: str, policy: dict | None) -> dict[str, Any]:
+        """Operator migration path for existing items: bind (or clear, with None) the
+        topic's research policy. Takes effect on the item's next iteration."""
+        policy = _validate_research_policy(policy)
+        with self._locked() as state:
+            item = self._find(state, item_id)
+            item["research_policy"] = policy
+            item["updated_at"] = utc_now()
+            return copy.deepcopy(item)
+
     @staticmethod
     def _accepted_workers(item: dict[str, Any]) -> list[str]:
         accepted = item.get("accepted_by_workers", [])
@@ -1223,6 +1287,10 @@ class QueueStore:
             item["last_error"] = None
             item["last_error_kind"] = None
             item["claimed_by"] = None
+            # An operator resume is the sanctioned "sufficient alternative evidence"
+            # override for research blockers (STATION-CONTRACT.md §2): historical
+            # failures never become permanent queue vetoes.
+            item["research_blockers"] = []
             item["updated_at"] = utc_now()
         return copy.deepcopy(item)
 
