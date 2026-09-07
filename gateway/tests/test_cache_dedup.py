@@ -15,6 +15,20 @@ class Licenses(unittest.TestCase):
         for bad in (None, "", "CC-BY-NC-4.0", "cc by nc sa", "CC-BY-ND-4.0", "CC-BY-SA-4.0", "Creative Commons Attribution-ShareAlike 4.0",
                     "GPL-3.0", "Proprietary", "restricted", "custom"):
             self.assertFalse(licenses.allow_listed(bad), bad)
+        # URL identification is host-pinned and id-exact (D-24..D-27): the encoded-prefix and
+        # suffix bypasses and the version whitelist are pinned here so they cannot regress
+        for url, want in {"https://opensource.org/licenses/%4dIT-noncommercial": False,
+                          "https://opensource.org/licenses/MIT-noncommercial": False,
+                          "https://opensource.org/licenses/MIT": True,
+                          "https://opendatacommons.org/licenses/by/1.0/": True,
+                          "https://opendatacommons.org/licenses/pddl/1.0/": True,
+                          "https://creativecommons.org/licenses/by/4.0/": True,
+                          "https://creativecommons.org/licenses/by/1.5/": False,
+                          "https://creativecommons.org/publicdomain/zero/4.0/": False,
+                          "https://creativecommons.org/publicdomain/zero/1.0/": True,
+                          "https://creativecommons.org:pw@evil.example/licenses/by/4.0/": False,
+                          "https://opensource.org/licenses/MIT/%2e%2e/restricted": False}.items():
+            self.assertEqual(licenses.allow_listed(url), want, url)
         allow, per_item, deny = {"use_commercial": "allow"}, {"use_commercial": "per-item"}, {"use_commercial": "deny"}
         rec = {"license": "cc-by-4.0"}
         self.assertTrue(licenses.commercially_usable(deny, rec, {"commercial": False}), "personal baseline")

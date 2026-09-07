@@ -185,9 +185,8 @@ def main(argv: list[str] | None = None) -> int:
     from ..core.broker import Broker, load_policies
     with db.connect() as conn:
         client = gw.make_client(conn, client_id="harvest")
-        deployed = load_policies(conn)   # deployed policies over the seed's when a database exists (D-26)
-        if deployed:
-            client.broker = Broker(deployed)
+        # deployed policies are authoritative whenever a database exists — even an EMPTY set (D-27)
+        client.broker = Broker(load_policies(conn))
         client.broker.seed_usage(todays_usage(conn))       # the loader shares the day's budgets (I-1, D-25)
         client.broker.seed_breakers(open_breakers(conn))
         n = run(conn, client, args.loader, limit=args.limit)

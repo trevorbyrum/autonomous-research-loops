@@ -125,9 +125,14 @@ def identify(license: str | None) -> str | None:
             if want_host == "creativecommons.org":
                 tail_re = _CC_ZERO_TAIL if "/publicdomain/" in prefix else _CC_LICENSE_TAIL
                 return cid if tail_re.fullmatch(tail) else None
-            # every other route: at most ONE further path segment (a version file like
-            # LICENSE-2.0 or gpl-3.0.html), never a sub-path — 'MIT/anything' is not the MIT page (D-26)
-            return cid if re.fullmatch(r"(/|[-a-z0-9._+]+/?)?", tail) else None
+            if prefix.endswith("/") or not prefix:
+                # directory routes (apache /licenses/, gnu /licenses/, the unlicense root):
+                # exactly one filename segment (LICENSE-2.0, gpl-3.0.html), never a sub-path
+                return cid if re.fullmatch(r"[-a-z0-9._+]*/?", tail) else None
+            # exact-id routes (/licenses/mit, /licenses/by, ...): the id must END here —
+            # 'mit-noncommercial' is a different id, not MIT with a suffix (D-27) — and the only
+            # thing allowed after it is a version segment like /1.0/ (the ODC deeds use those)
+            return cid if re.fullmatch(r"(/(\d[\d.]*/?)?)?", tail) else None
         return None
     if any(ch in s for ch in "<>{}") or "http" in s.lower():
         return None  # markup or embedded URLs alongside text: not a bare licence name

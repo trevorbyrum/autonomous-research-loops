@@ -163,9 +163,9 @@ def main(argv: list[str] | None = None) -> int:
         if conn is not None:
             from .app import open_breakers, todays_usage
             from .core.broker import load_policies
-            deployed = load_policies(conn)   # the DEPLOYED policies, not the seed's, when a database exists (D-26)
-            if deployed:
-                client.broker = Broker(deployed)
+            # the DEPLOYED policies are authoritative whenever a database exists — even an
+            # EMPTY set (a deployment that enabled nothing dispatches nothing, D-27)
+            client.broker = Broker(load_policies(conn))
             client.broker.seed_usage(todays_usage(conn))       # the smoke shares the day's budgets (I-1, D-25)
             client.broker.seed_breakers(open_breakers(conn))
         rows = run(client, only)

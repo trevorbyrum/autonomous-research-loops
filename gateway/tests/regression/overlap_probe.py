@@ -112,9 +112,8 @@ def main(argv: list[str] | None = None) -> int:
         from research_gateway.app import open_breakers, todays_usage
         from research_gateway.core.broker import Broker, load_policies
         client = gw.make_client(conn, client_id="regression")
-        deployed = load_policies(conn)
-        if deployed:
-            client.broker = Broker(deployed)
+        # deployed policies are authoritative whenever a database exists — even an EMPTY set (D-27)
+        client.broker = Broker(load_policies(conn))
         client.broker.seed_usage(todays_usage(conn))       # the replay shares the day's budgets too (I-1, D-26)
         client.broker.seed_breakers(open_breakers(conn))
         for row in rows:
