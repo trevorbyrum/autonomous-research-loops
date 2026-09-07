@@ -129,11 +129,13 @@ def service_is_running() -> bool:
     if fact != "gateway_unavailable":
         return True                      # it answered with an error status: still running
     # only positive evidence of ABSENCE counts: a refused connection or an unresolvable name.
-    # Resets, closed connections, timeouts, TLS failures — something is there; fail safe (D-25)
+    # Resets, closed connections, timeouts, TLS failures — something is there; fail safe (D-25).
+    # (Pass 4 caught this predicate INVERTED — the test below now pins the truth table, D-26.)
     error = str(health.get("error") or "").lower()
-    return any(marker in error for marker in ("connection refused", "econnrefused",
-                                              "name or service not known", "nodename nor servname",
-                                              "no address associated"))
+    absent = any(marker in error for marker in ("connection refused", "econnrefused",
+                                                "name or service not known", "nodename nor servname",
+                                                "no address associated"))
+    return not absent
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -160,6 +162,10 @@ def main(argv: list[str] | None = None) -> int:
         client = build_client(read_seed(), conn=conn)
         if conn is not None:
             from .app import open_breakers, todays_usage
+            from .core.broker import load_policies
+            deployed = load_policies(conn)   # the DEPLOYED policies, not the seed's, when a database exists (D-26)
+            if deployed:
+                client.broker = Broker(deployed)
             client.broker.seed_usage(todays_usage(conn))       # the smoke shares the day's budgets (I-1, D-25)
             client.broker.seed_breakers(open_breakers(conn))
         rows = run(client, only)

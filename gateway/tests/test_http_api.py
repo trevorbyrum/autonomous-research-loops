@@ -141,6 +141,21 @@ class InlineGateway(unittest.TestCase):
         self.assertEqual(resp.status, 400)
         conn.close()
 
+    def test_duplicate_transfer_encoding_headers_are_refused(self):
+        """D-26: a padded empty first Transfer-Encoding header must not hide a second real one."""
+        import http.client
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=10)
+        conn.putrequest("POST", "/v1/find", skip_accept_encoding=True)
+        conn.putheader("Authorization", f"Bearer {TOKENS['loops']}")
+        conn.putheader("Transfer-Encoding", " ")
+        conn.putheader("Transfer-Encoding", "chunked")
+        conn.putheader("Content-Length", "2")
+        conn.endheaders()
+        conn.send(b"{}")
+        resp = conn.getresponse()
+        self.assertEqual(resp.status, 400)
+        conn.close()
+
     def test_client_never_relays_non_json_error_bodies(self):
         client = http_client.GatewayClient(self.url, TOKENS["loops"])
         out = client._call("GET", "/definitely/not/a/route")

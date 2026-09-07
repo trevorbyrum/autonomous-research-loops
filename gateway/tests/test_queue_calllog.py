@@ -179,6 +179,23 @@ class CallLogTests(unittest.TestCase):
         self.conn.commit()
         self.conn.close()
 
+    def test_attempt_row_carries_credits_and_completion_fills_it(self):
+        """D-25/D-26: the pre-dispatch row exists with the credits charged at acquire; a crash
+        leaves it, and restart accounting restores what was actually spent."""
+        pre = calllog.CallRecord(source_id="crossref", request_type="resolve", status=None, latency_ms=0,
+                                 identity="doi:10.1/attempt", credits=2.0, client_id="test")
+        rid = calllog.attempt(self.conn, pre)
+        self.ids.append(rid)
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT failure_class, status, credits FROM gateway.calls WHERE id = %s", (rid,))
+            self.assertEqual(cur.fetchone(), ("attempt", None, 2.0))
+        done = calllog.CallRecord(source_id="crossref", request_type="resolve", status=200, latency_ms=42,
+                                  identity="doi:10.1/attempt", credits=2.0, result_count=1, failure_class="ok")
+        calllog.complete(self.conn, rid, done)
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT failure_class, status, credits, count(*) OVER () FROM gateway.calls WHERE id = %s", (rid,))
+            self.assertEqual(cur.fetchone(), ("ok", 200, 2.0, 1), "same row completed; never a duplicate")
+
     def test_record_and_read_back(self):
         rec = calllog.CallRecord(source_id="crossref", request_type="resolve", status=200, latency_ms=42,
                                  identity="doi:10.1/x", ratelimit={"x-ratelimit-limit": "50"}, result_count=1)

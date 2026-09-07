@@ -23,7 +23,8 @@ def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None
         return {"records": [], "total": 0, "capability_fact": "local index needs a database connection"}
     # only the index's contracted population is ever served (D-19): rows of any other kind —
     # e.g. left behind by an older loader — can neither surface nor borrow this source's identity (D-25)
-    where = ["d.tsv @@ websearch_to_tsquery('english', %s)", "d.kind IN ('venue', 'repository')"]
+    where = ["d.tsv @@ websearch_to_tsquery('english', %s)",
+             "d.kind IN ('venue', 'repository')", "r.kind = d.kind"]  # a mislabelled index row cannot borrow a record of another kind (D-26)
     args: list = [query]
     if kind:
         where.append("d.kind = %s")
@@ -46,7 +47,8 @@ def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None
     with conn.cursor() as cur:
         cur.execute(sql, [query, *args, max(1, min(int(limit or 20), 100))])
         rows = cur.fetchall()
-        cur.execute(f"SELECT count(*) FROM gateway.index_docs d WHERE {' AND '.join(where)}", args)
+        cur.execute("SELECT count(*) FROM gateway.index_docs d JOIN gateway.records r ON r.identity = d.identity "
+                    f"WHERE {' AND '.join(where)}", args)
         total = cur.fetchone()[0]
     conn.commit()
     client.local(SOURCE_ID, "find", query=query, result_count=len(rows), latency_ms=int((time.monotonic() - t0) * 1000))

@@ -76,7 +76,7 @@ def attempt(conn, rec: CallRecord) -> int:
     If this cannot be written, nothing is dispatched at all — auditing precedes the call, so a
     crash mid-request still leaves its row (I-6, D-25). Raises AuditError on failure."""
     pre = CallRecord(**{**asdict(rec), "status": None, "latency_ms": 0, "ratelimit": None,
-                        "result_count": None, "failure_class": "attempt"})
+                        "result_count": None, "failure_class": "attempt"})   # credits stay: charged at acquire (D-26)
     return record(conn, pre)
 
 

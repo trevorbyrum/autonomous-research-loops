@@ -223,8 +223,10 @@ class Client:
         hdrs.update(headers or {})
         for hop in range(MAX_REDIRECTS + 1):
             # the audit row exists BEFORE the request leaves: if writing it fails nothing is sent,
-            # and a crash mid-request still leaves its row to complete later (I-6, D-25)
-            attempt_id = self._attempt(source_id, request_type, identity, query)
+            # and a crash mid-request still leaves its row — CREDITS INCLUDED, so restart
+            # accounting restores what was actually charged (I-6, D-25, D-26)
+            attempt_id = self._attempt(source_id, request_type, identity, query,
+                                       credits=credits if hop == 0 else 0.0)
             t0 = time.monotonic()
             resp = self.transport.request(method, url, hdrs, body, self.timeout)
             latency = int((time.monotonic() - t0) * 1000)
@@ -275,13 +277,13 @@ class Client:
         if self.conn is not None:
             calllog.record(self.conn, rec)
 
-    def _attempt(self, source_id, request_type, identity, query) -> int | None:
+    def _attempt(self, source_id, request_type, identity, query, credits: float = 0.0) -> int | None:
         """The pre-dispatch audit row (D-25). None when there is no database (laptop mode)."""
         if self.conn is None:
             return None
         rec = calllog.CallRecord(source_id=source_id, request_type=request_type, status=None, latency_ms=0,
                                  job_id=self.job_id, identity=identity, query=(query or "")[:500] or None,
-                                 domain_resolved=self.domain_resolved, client_id=self.client_id)
+                                 credits=credits or None, domain_resolved=self.domain_resolved, client_id=self.client_id)
         return calllog.attempt(self.conn, rec)
 
     def _record(self, source_id, request_type, identity, query, resp: Response, latency: int, credits: float,

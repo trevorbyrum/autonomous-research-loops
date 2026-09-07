@@ -101,8 +101,10 @@ def claim(conn) -> dict | None:
 def finish(conn, job_id: int, result: dict, claim_token: str | None = None) -> bool:
     """False when the claim was fenced off (the job was reclaimed while this worker ran it)."""
     with conn.cursor() as cur:
+        # done requires a live CLAIM ('running'); only fail() may also target a queued job (an
+        # operator refusing work that never ran) — a result nobody computed cannot exist (D-26)
         cur.execute("UPDATE gateway.jobs SET status = 'done', finished_at = now(), result = %s "
-                    "WHERE id = %s AND status IN ('queued', 'running') AND (%s::text IS NULL OR claim_token = %s) RETURNING id",
+                    "WHERE id = %s AND status = 'running' AND (%s::text IS NULL OR claim_token = %s) RETURNING id",
                     (json.dumps(result), job_id, claim_token, claim_token))
         won = cur.fetchone() is not None
     conn.commit()

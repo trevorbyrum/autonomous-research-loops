@@ -56,7 +56,8 @@ class Handler(BaseHTTPRequestHandler):
         return name
 
     def _body(self) -> dict | None:
-        if self.headers.get("Transfer-Encoding"):
+        if any(v.strip() for v in self.headers.get_all("Transfer-Encoding") or []):
+            # get_all: a padded empty first header must not hide a second real one (D-26)
             self._send(400, {"error": "chunked bodies are not accepted; send Content-Length"})
             return None  # and never both framing headers on one request (smuggling ambiguity, D-25)
         try:

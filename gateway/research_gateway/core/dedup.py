@@ -35,11 +35,16 @@ def _fuzzy_same(a: dict, b: dict, threshold: float) -> bool:
 
 def _provenance_of(rec: dict) -> list[dict]:
     """A record already carrying provenance (a prior merge, a cache hit) contributes ALL its
-    members, never a single collapsed entry that would forget one of them (D-25)."""
+    members, never a single collapsed entry that would forget one of them (D-25). A record with
+    only a `sources` list expands to one member per source, mirroring the router's member view,
+    so a denied source named there is never lost in a re-merge (D-26)."""
     if rec.get("provenance"):
         return [dict(p) for p in rec["provenance"]]
-    return [{"source_id": rec["source_id"], "identity": rec["identity"], "raw": rec.get("raw"),
-             "license": rec.get("license")}]
+    own = rec.get("source_id")
+    return [{"source_id": s, "identity": rec["identity"],
+             "raw": rec.get("raw") if s == own else None,
+             "license": rec.get("license") if s == own else None}
+            for s in rec.get("sources") or [own]]
 
 
 def _merge(into: dict, other: dict) -> None:

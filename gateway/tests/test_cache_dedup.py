@@ -62,6 +62,17 @@ class Dedup(unittest.TestCase):
         self.assertEqual(len(out), 5, "same title+year+author merges; a different or missing year/author never does")
         self.assertEqual(out[0]["sources"], ["crossref", "openaire"])
 
+    def test_sources_only_records_expand_to_all_members(self):
+        """D-26: a record carrying only a `sources` list contributes one member per source in a
+        re-merge, aligned with the router's member view — the denied source is never lost."""
+        a = rec("doi:10.1000/so", "crossref", "Sources only")
+        b = {**rec("doi:10.1000/so", "semanticscholar", "Sources only"), "sources": ["semanticscholar", "europepmc"]}
+        out = dedup.cluster([a, b])
+        self.assertEqual(len(out), 1)
+        self.assertEqual([m["source_id"] for m in out[0]["provenance"]], ["crossref", "semanticscholar", "europepmc"])
+        self.assertIsNone(out[0]["provenance"][2]["raw"], "only the record's own source carries its raw")
+        self.assertEqual(out[0]["sources"], ["crossref", "semanticscholar", "europepmc"])
+
     def test_different_kinds_never_merge(self):
         out = dedup.cluster([rec("title:t", "crossref", "Panel data"), rec("title:t2", "datacite", "Panel data", kind="dataset")])
         self.assertEqual(len(out), 2)
@@ -140,6 +151,19 @@ class PersistentCache(unittest.TestCase):
         self.assertEqual(served["title"], "Kept", "served from the database after a restart")
         self.assertEqual(served["sources"], ["crossref", "doaj"])
         self.assertIsNone(fresh.get_record(f"doi:10.1000/{self.tag}-mem"))
+
+    def test_sources_only_persistence_indexes_align_with_the_router(self):
+        """D-26: the cache's synthesized member list mirrors the router's, so an index authorized
+        for the crossref member never persists the Semantic Scholar lead's raw payload."""
+        c = C.Cache(self.conn)
+        s2_lead = {**rec(f"doi:10.1000/{self.tag}-lead", "semanticscholar", "S2 lead"),
+                   "sources": ["crossref", "semanticscholar"]}
+        # the router authorizes index 0 (crossref, allow); index 0 in the synthesized list is
+        # crossref with raw=None — nothing persists, instead of the S2 raw slipping through
+        c.put_record(s2_lead, redistributable=False, persist_members=[0])
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM gateway.record_sources WHERE identity = %s", (s2_lead["identity"].lower(),))
+            self.assertEqual(cur.fetchone()[0], 0)
 
 
 if __name__ == "__main__":

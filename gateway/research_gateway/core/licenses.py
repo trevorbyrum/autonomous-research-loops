@@ -12,7 +12,9 @@ from __future__ import annotations
 import re
 import urllib.parse
 
-_CC_TAIL = re.compile(r"([1-4]\.[05]|2\.5)?/?(deed(\.[a-z_]+)?|legalcode(\.[a-z_]+)?)?/?")
+# only versions the deeds actually have: 1.0/2.0/2.5/3.0/4.0 for licences, 1.0 alone for CC0/mark (D-26)
+_CC_LICENSE_TAIL = re.compile(r"(1\.0|2\.0|2\.5|3\.0|4\.0)?/?(deed(\.[a-z_]+)?|legalcode(\.[a-z_]+)?)?/?")
+_CC_ZERO_TAIL = re.compile(r"(1\.0)?/?(deed(\.[a-z_]+)?|legalcode(\.[a-z_]+)?)?/?")
 
 # canonical id -> allow-listed? (commercial reuse, attribution at most)
 KNOWN: dict[str, bool] = {
@@ -113,15 +115,19 @@ def identify(license: str | None) -> str | None:
             host = (parts.hostname or "").lower()   # urlsplit handles userinfo: creativecommons.org:x@evil is evil
         except ValueError:
             return None
-        path = (parts.path or "/").lower()
-        if parts.query or parts.fragment or "/../" in path or path.endswith("/.."):
+        path = urllib.parse.unquote(parts.path or "/").lower()   # %2e-encoded traversal decodes before checks (D-26)
+        if parts.query or parts.fragment or "/../" in path or path.endswith("/..") or "\\" in path:
             return None   # annotated, parameterised or traversal-shaped URLs identify nothing (D-25)
         for want_host, prefix, cid in _URL_ROUTES:
-            if host in (want_host, f"www.{want_host}") and path.startswith(prefix or "/"):
-                tail = path[len(prefix):] if prefix else path.lstrip("/")
-                if want_host == "creativecommons.org" and not _CC_TAIL.fullmatch(tail):
-                    return None   # only versions the deed actually has, then deed/legalcode pages
-                return cid
+            if host not in (want_host, f"www.{want_host}") or not path.startswith(prefix or "/"):
+                continue
+            tail = path[len(prefix):] if prefix else path.lstrip("/")
+            if want_host == "creativecommons.org":
+                tail_re = _CC_ZERO_TAIL if "/publicdomain/" in prefix else _CC_LICENSE_TAIL
+                return cid if tail_re.fullmatch(tail) else None
+            # every other route: at most ONE further path segment (a version file like
+            # LICENSE-2.0 or gpl-3.0.html), never a sub-path — 'MIT/anything' is not the MIT page (D-26)
+            return cid if re.fullmatch(r"(/|[-a-z0-9._+]+/?)?", tail) else None
         return None
     if any(ch in s for ch in "<>{}") or "http" in s.lower():
         return None  # markup or embedded URLs alongside text: not a bare licence name

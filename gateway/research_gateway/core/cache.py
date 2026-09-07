@@ -94,8 +94,15 @@ class Cache:
                     raise
 
     def _persist(self, key: str, record: dict, persist_members: list[int]) -> None:
-        provenance = record.get("provenance") or [{"source_id": record.get("source_id"), "raw": record.get("raw"),
-                                                   "license": record.get("license")}]
+        # without explicit provenance the synthesized member list mirrors the router's exactly —
+        # one entry per source in `sources` order, only the record's OWN source carrying its raw —
+        # so a member index authorized there never lands on a different member here (D-26)
+        provenance = record.get("provenance")
+        if not provenance:
+            own = record.get("source_id")
+            provenance = [{"source_id": s, "raw": record.get("raw") if s == own else None,
+                           "license": record.get("license") if s == own else None}
+                          for s in record.get("sources") or [own]]
         members = [provenance[i] for i in persist_members if 0 <= i < len(provenance) and provenance[i].get("raw") is not None]
         if not members:
             return
