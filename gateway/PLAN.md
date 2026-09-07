@@ -484,13 +484,14 @@ resolved by D-20 and its tests.
 Checks: index row counts ≥ snapshot record counts − dedup; `find` on a known
 title hits the index before any live lane (call log proves it); all §11 docs
 present; §12 checklist clean.
-Built and loaded 2026-09-07 (D-19): 310,499 records — 299,562 venues and
-10,929 repositories — with provenance from Crossref journals (153,113 rows),
-OpenAlex sources (257,998 rows from the 283,772-source export; ISSN twins
-merge), DOAJ (23,296) and DataCite repositories (4,483). Loaders run one at a
-time under an advisory lock (concurrent first runs deadlocked). `find
-kind=venue "supply chain management"` answered from the index alone, and for
-articles the call log reads `openalex_snapshot, crossref, doaj` in that order.
+Built and loaded 2026-09-07, rebuilt after the D-22 identity fixes: 306,794
+records — 294,942 venues and 11,839 repositories — with provenance from
+OpenAlex sources (283,688 rows), Crossref journals (151,493), DOAJ (23,286)
+and DataCite repositories (4,483); the ISSN map joins print/electronic/ISSN-L
+twins into one record. Loaders run one at a time under an advisory lock
+(concurrent first runs deadlocked). `find kind=venue "supply chain
+management"` answered from the index alone, and for articles the call log
+reads `openalex_snapshot, crossref, doaj` in that order.
 
 **Phase 7 — Regression + deploy.**
 Checks: `tests/regression/overlap_probe.py` reproduces the 2026-09 per-source
