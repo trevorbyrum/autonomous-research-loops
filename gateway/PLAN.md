@@ -338,10 +338,22 @@ zero results for a query pattern that returned results in the last 7 days
 
 Loaders run on a schedule (tower systemd timers): OpenAlex sources snapshot
 (quarterly), Crossref journals (monthly), DOAJ journals CSV (monthly), DataCite
-repositories (monthly), re3data (monthly). Loaded into `gateway.index_docs`
-with Postgres full-text search. `find` consults the index first, live lanes
-for freshness/long tail (R-7). Embedding/reranking tiers are optional later
+repositories (monthly). Loaded into `gateway.index_docs` with Postgres
+full-text search. `find` consults the index first, live lanes for
+freshness/long tail (R-7). Embedding/reranking tiers are optional later
 phases and degrade to Tier 0 (no GPU, no vector DB required).
+
+What the index holds (D-19): **venues and repositories** — journals,
+conference series, book series, ebook platforms, data and publication
+repositories — one record per identity (`issn:<ISSN-L>` when there is one,
+else `venue:`/`repository:<registry>:<id>`), merged across the four registries
+with a provenance row per registry and the fields of later loaders filling in
+(never erasing). Works are not indexed: there is no works snapshot and the
+gateway returns links, not papers (I-7). `find kind=venue|repository` is served
+by the index alone; `find kind=article|dataset` runs the index lane first
+(adapters declare `LOCAL = True`), then the live lanes. re3data is not loaded:
+it is not a registry source (no row, no adapter) and its repositories reach the
+index through DataCite's `re3data` identifiers.
 
 ---
 
@@ -465,17 +477,37 @@ workstation: health green in queued mode (2 workers), stdio client listed the
 six tools and resolved a DOI through a queued job, the CLI ran a live `find`
 (Crossref + DOAJ + local index), bad token → 401. Station mounting waits for
 the tower deployment (Phase 7).
+Review (Terra, `private/reviews/phase5-43fef3e.md`): FAIL — 7 findings, all
+resolved by D-20 and its tests.
 
 **Phase 6 — Harvest loaders + Tier 0 index + docs complete.**
 Checks: index row counts ≥ snapshot record counts − dedup; `find` on a known
 title hits the index before any live lane (call log proves it); all §11 docs
 present; §12 checklist clean.
+Built and loaded 2026-09-07 (D-19): 310,499 records — 299,562 venues and
+10,929 repositories — with provenance from Crossref journals (153,113 rows),
+OpenAlex sources (257,998 rows from the 283,772-source export; ISSN twins
+merge), DOAJ (23,296) and DataCite repositories (4,483). Loaders run one at a
+time under an advisory lock (concurrent first runs deadlocked). `find
+kind=venue "supply chain management"` answered from the index alone, and for
+articles the call log reads `openalex_snapshot, crossref, doaj` in that order.
 
 **Phase 7 — Regression + deploy.**
 Checks: `tests/regression/overlap_probe.py` reproduces the 2026-09 per-source
 presence expectations within ±5 %; container deployed on the tower; ntfy alert
 fires on a forced breaker; loops switched from direct web access to the tool
 for one topic, iteration completes, call log shows only gateway-routed calls.
+Status 2026-09-07: regression replay of 40 sampled works against 7 sources
+(`private/regression/replay-2026-09-07.json`) — every source within
+tolerance (Crossref 80/80 %, DOAJ 32/32, OpenAIRE 85/85, Unpaywall 80/80,
+Semantic Scholar 67/69, CORE 35/35, Europe PMC 20/20; agreement ≥ 97 %).
+Alerts (§7) built in `core/alerts.py` with the watcher thread; a forced
+breaker alert was delivered to the operator's ntfy topic. Deployment files in
+`deploy/` (Dockerfile, compose, systemd units + monthly harvest timer,
+README with the operator steps). **Not done, operator decisions (D-21):**
+where the gateway runs (tower container vs. this workstation), the Vault
+bundle for its tokens, the homelab gateway peer entry, and switching a loop
+topic to the tool.
 
 ### 13a. Independent review gate (every phase; I-13)
 
@@ -545,6 +577,9 @@ public) and its commit hash recorded in the phase's acceptance note.
 - **D-12 (2026-09-07)** Add a permissive catch-all domain `other` (= base + all domain lanes); absent/unknown domains resolve to it, so mis-tagging never loses coverage.
 - **D-13 (2026-09-07)** Engineering rules, hard: no placeholders in shipped code (I-10); ≤ 1,500 lines per file (I-11); simplest thing that works (I-12); independent Terra/Codex review each phase (I-13); tests and logs ship with every module (I-14).
 - **D-14 (2026-09-07)** Phase 0 approved by the operator ("approved"). Phase 1 begins.
+- **D-21 (2026-09-07)** Alerts are an `Alerter` (once per key per hour, ntfy) fed by broker callbacks (breaker open, 80 % of a daily budget) and a watcher thread over `gateway.calls` (auth/bot-wall failures, zero-results pattern, health). Deployment is handed to the operator with `deploy/`: the tower gate cannot build images or write files, so placing the service (tower vs. workstation), storing its client tokens in Vault, adding the homelab peer entry and switching a loop topic to the tool are operator steps, listed in `deploy/README.md`.
+- **D-20 (2026-09-07)** Phase 5 review resolutions: every call-log row carries `client_id` (queued jobs pass theirs to the metered client; inline requests set it directly, with their own connection and `job_id` NULL); inline mode *without* a database keeps the log in process only and is a laptop mode, not a deployment; clients see only their own jobs; the unauthenticated health answer is ok/version/mode only; front-door payload fields are type-checked (400 otherwise) and `/v1/jobs/<id>` is digits only; the cache has its own connection and lock; the shared client never relays non-JSON error bodies.
+- **D-19 (2026-09-07)** The Tier 0 index is a venue/repository index (§8), not a works index; `venue` and `repository` are record kinds; the OpenAlex loader reads snapshot part files from disk only (the operator syncs the public `data/sources/` snapshot); re3data is reached through DataCite identifiers rather than loaded directly.
 - **D-18 (2026-09-07)** Phase 4 review resolutions: a merged record persists only redistributable provenance members; the `commercial` flag is part of a job's identity and cache hits are re-gated by R-8; memory caches are bounded; fuzzy dedup requires title, year and first author all present and equal; share-alike licences are not allow-listed (attribution at most), ISC/zlib/Unlicense are; identity schemes are only those built in or registered by adapters (a title like "AI:ML" is a title); DOI registration-agency routing is declared by adapters (`AGENCIES`) and the fallback chain comes from the registry's substitution group; any exception a lane raises is a capability fact.
 - **D-17 (2026-09-07)** Phase 3 review resolutions: `raw` is the source's own object for the record (I-8), minus only CORE's `fullText` field (I-7); file bytes and full text never enter `jobs.result` (`router.redact_for_storage`) — they are delivered only on the inline path and discarded; Socrata portals must be vouched for by the discovery catalog before they are called (R-6); a response an adapter cannot read becomes a capability fact, not a job failure (R-10); call logging is guaranteed by construction (adapters cannot reach the network except through `base.Client`, and only the gateway's own factories build clients — both tested) rather than by a transport-level interceptor.
 - **D-16 (2026-09-07)** Routing is derived, not written: domain lanes come from each seed row's `domains`, enrich lanes from each adapter's `ENRICHES`, resolve/fetch targets from each adapter's `SCHEMES`/`HOSTS`. §4's per-domain lists are the 2026-09-07 rendering of the seed; a new source is a seed row plus an adapter, never a router edit (I-2).

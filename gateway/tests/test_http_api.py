@@ -74,8 +74,9 @@ class InlineGateway(unittest.TestCase):
     def test_health_is_open_and_green(self):
         status, body, _ = http(f"{self.url}/v1/health")
         self.assertEqual(status, 200)
-        self.assertTrue(body["ok"])
-        self.assertEqual(body["workers"], {"alive": 0, "expected": 0})
+        self.assertEqual(body, {"ok": True, "version": app.VERSION, "mode": "inline"}, "no internals without a token")
+        status, body, _ = http(f"{self.url}/v1/status", token=TOKENS["loops"])
+        self.assertEqual(body["health"]["workers"], {"alive": 0, "expected": 0})
 
     def test_bad_token_is_refused(self):
         for token in (None, "wrong", TOKENS["loops"] + "x"):
@@ -118,6 +119,34 @@ class InlineGateway(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as cm:
             urllib.request.urlopen(req, timeout=10)
         self.assertEqual(cm.exception.code, 400)
+        for bad in ({"query": "q", "params": [1]}, {"query": "q", "commercial": "yes"}, {"query": "q", "limit": "5"},
+                    {"query": "q", "unknown": 1}, {"query": 5}):
+            status, body, _ = http(f"{self.url}/v1/find", "POST", bad, TOKENS["loops"])
+            self.assertEqual(status, 400, bad)
+            self.assertIn("error", body)
+        status, _, _ = http(f"{self.url}/v1/jobs/1/2", token=TOKENS["loops"])
+        self.assertEqual(status, 404, "only /v1/jobs/<digits>")
+        status, _, _ = http(f"{self.url}/v1/jobs/abc", token=TOKENS["loops"])
+        self.assertEqual(status, 404)
+
+    def test_malformed_content_length_is_a_400(self):
+        import http.client
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=10)
+        conn.putrequest("POST", "/v1/find")
+        conn.putheader("Authorization", f"Bearer {TOKENS['loops']}")
+        conn.putheader("Content-Length", "abc")
+        conn.endheaders()
+        resp = conn.getresponse()
+        self.assertEqual(resp.status, 400)
+        conn.close()
+
+    def test_client_never_relays_non_json_error_bodies(self):
+        client = http_client.GatewayClient(self.url, TOKENS["loops"])
+        out = client._call("GET", "/definitely/not/a/route")
+        self.assertEqual(out["capability_fact"], "gateway_error_404")
+        self.assertEqual(out.get("error"), "no such route", "JSON error bodies are relayed")
+        out = client._call("GET", "/v1/jobs/1/2")
+        self.assertNotIn("<", json.dumps(out), "an HTML/binary error body is never relayed")
 
     def test_mcp_endpoint_lists_and_calls_tools(self):
         status, body, _ = http(f"{self.url}/mcp", "POST", {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, TOKENS["mcp"])
@@ -200,13 +229,30 @@ class QueuedGateway(unittest.TestCase):
         self.assertEqual(body["status"], "done")
         self.assertEqual(body["records"][0]["identity"], "doi:10.1234/abc")
         with db.connect() as conn, conn.cursor() as cur:
-            cur.execute("SELECT source_id, domain_resolved FROM gateway.calls WHERE job_id = %s ORDER BY id", (body["job_id"],))
+            cur.execute("SELECT source_id, domain_resolved, client_id FROM gateway.calls WHERE job_id = %s ORDER BY id", (body["job_id"],))
             rows = cur.fetchall()
-        self.assertEqual({r[0] for r in rows}, {"crossref", "doaj"})
-        self.assertTrue(all(r[1] == "finance" for r in rows))
+        self.assertEqual({r[0] for r in rows}, {"openalex_snapshot", "crossref", "doaj"})
+        self.assertTrue(all(r[1] == "finance" and r[2] == "loops" for r in rows), "every call carries the client id (I-6)")
         status, job, _ = http(f"{self.url}/v1/jobs/{body['job_id']}", token=TOKENS["loops"])
         self.assertEqual(job["status"], "done")
         self.assertEqual(job["client_id"], "loops")
+        status, _, _ = http(f"{self.url}/v1/jobs/{body['job_id']}", token=TOKENS["mcp"])
+        self.assertEqual(status, 404, "another client cannot read this client's job")
+
+    def test_inline_download_is_logged_with_the_client_id(self):
+        seed = [dict(s, enabled=True, rate={**s["rate"], "verified": True}) if s["id"] == "globe" else s for s in read_seed()]
+        gw, server, url = start(use_db=True, sources=seed)
+        try:
+            status, body, _ = http(f"{url}/v1/fetch", "POST", {"target": "https://globeproject.com/data/x.xls", "params": {"download": True}, "topic_id": "test-http-api"}, TOKENS["mcp"])
+            self.assertEqual(status, 200)
+            with db.connect() as conn, conn.cursor() as cur:
+                cur.execute("SELECT client_id, job_id FROM gateway.calls WHERE source_id = 'globe' ORDER BY id DESC LIMIT 1")
+                row = cur.fetchone()
+                cur.execute("DELETE FROM gateway.calls WHERE source_id = 'globe' AND client_id = 'mcp'")
+                conn.commit()
+            self.assertEqual(row, ("mcp", None), "inline requests are durably logged, attributed, and have no job")
+        finally:
+            stop(gw, server)
 
     def test_async_returns_job_id_then_result(self):
         status, body, _ = http(f"{self.url}/v1/resolve?async=1", "POST", {"identity": "doi:10.1234/abc", "topic_id": "test-http-api"}, TOKENS["mcp"])

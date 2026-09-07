@@ -32,14 +32,14 @@ DOAJ_CSV = ('Journal title,Journal URL,Journal ISSN (print version),Journal EISS
             'Journal of Harvest Testing,https://example.org/jht,9999-9991,,Test Press,Norway,CC BY,Business | Management,No,English\n'
             'Open Data Quarterly,https://example.org/odq,,9999-9983,ODQ Press,Kenya,CC BY-NC,Statistics,Yes,English\n')
 DATACITE_PAGE = {"data": [{"id": "harvest.test", "type": "repositories", "attributes": {
-    "name": "Harvest Test Repository", "symbol": "HARVEST.TEST", "re3data": "r3d100000001", "url": "https://repo.example.org",
+    "name": "Harvestology Test Repository", "symbol": "HARVEST.TEST", "re3data": "r3d100000001", "url": "https://repo.example.org",
     "description": "A repository for testing", "clientType": "repository", "isActive": True, "subjects": [{"name": "Social sciences"}]}}],
     "meta": {"totalPages": 1, "total": 1}}
 OPENALEX_SOURCES = [
     {"id": "https://openalex.org/S999999901", "display_name": "Journal of Harvest Testing", "issn_l": "9999-9991", "issn": ["9999-9991"],
      "host_organization_name": "Test Press", "works_count": 1500, "cited_by_count": 9000, "is_oa": True, "is_in_doaj": True,
-     "homepage_url": "https://example.org/jht", "type": "journal", "country_code": "NO", "topics": [{"display_name": "Operations Management"}]},
-    {"id": "https://openalex.org/S999999902", "display_name": "Harvest Data Archive", "issn_l": None, "issn": [], "type": "repository",
+     "homepage_url": "https://example.org/jht", "type": "journal", "country_code": "NO", "topics": [{"display_name": "Harvestology Operations"}]},
+    {"id": "https://openalex.org/S999999902", "display_name": "Harvestology Data Archive", "issn_l": None, "issn": [], "type": "repository",
      "works_count": 20, "is_oa": True, "homepage_url": "https://archive.example.org", "country_code": "US"},
     {"display_name": "no id, skipped"},
 ]
@@ -82,7 +82,7 @@ class Shapes(unittest.TestCase):
         recs = [openalex_snapshot.record_from(s) for s in OPENALEX_SOURCES]
         self.assertEqual(recs[0]["identity"], "issn:9999-9991")
         self.assertEqual(recs[0]["identifiers"], {"openalex": "S999999901", "issn": "9999-9991"})
-        self.assertEqual(recs[0]["subjects"], ["Operations Management"])
+        self.assertEqual(recs[0]["subjects"], ["Harvestology Operations"])
         self.assertEqual(recs[1]["identity"], "repository:openalex:s999999902")
         self.assertEqual(recs[1]["kind"], "repository")
         self.assertIsNone(recs[2])
@@ -100,7 +100,7 @@ class Shapes(unittest.TestCase):
     def test_index_text(self):
         rec = openalex_snapshot.record_from(OPENALEX_SOURCES[0])
         text = index.text_for(rec)
-        for needle in ("Journal of Harvest Testing", "Test Press", "9999-9991", "Operations Management", "NO"):
+        for needle in ("Journal of Harvest Testing", "Test Press", "9999-9991", "Harvestology Operations", "NO"):
             self.assertIn(needle, text)
 
 
@@ -152,13 +152,15 @@ class IndexRoundTrip(unittest.TestCase):
         out = local_index.find(lc, "harvest testing journal", kind="venue")
         self.assertEqual(out["records"][0]["identity"], "issn:9999-9991")
         self.assertEqual(out["records"][0]["source_id"], "openalex_snapshot")
-        self.assertEqual(local_index.find(lc, "operations management", kind="venue")["records"][0]["identity"], "issn:9999-9991")
-        self.assertEqual([r["identity"] for r in local_index.find(lc, "harvest", kind="repository")["records"]],
+        self.assertEqual(local_index.find(lc, "harvestology operations", kind="venue")["records"][0]["identity"], "issn:9999-9991")
+        self.assertEqual([r["identity"] for r in local_index.find(lc, "harvestology", kind="repository")["records"]],
                          ["repository:openalex:s999999902", "repository:datacite:harvest.test"])
-        self.assertEqual(lc.log, [], "index lookups are not outbound calls")
+        self.assertEqual(lc.transport.calls, [], "index lookups never touch the network")
+        self.assertEqual({(r.source_id, r.status, r.failure_class) for r in lc.log}, {("openalex_snapshot", 200, "ok")},
+                         "but they are in the call log, so the log shows the index answering first (§8)")
         counts = index.counts(self.conn)
         self.assertGreaterEqual(counts["index_by_kind"].get("venue", 0), 3)
-        self.assertGreaterEqual(index.reindex(self.conn), 5)
+        self.assertEqual(index.reindex(self.conn, list(self.IDS)), 5)
 
 
 if __name__ == "__main__":

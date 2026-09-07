@@ -107,6 +107,7 @@ class Client:
     sleep: Callable[[float], None] = time.sleep   # injected in tests so backoff waits are not real
     log: list[calllog.CallRecord] = field(default_factory=list)  # in-memory mirror (tests, status)
     job_id: int | None = None
+    client_id: str | None = None
     domain_resolved: str | None = None
 
     def secret(self, name: str, field: str | None = None) -> str | None:
@@ -146,6 +147,18 @@ class Client:
         self._record(source_id, request_type, identity, query, resp, latency, credits)
         return resp
 
+    def local(self, source_id: str, request_type: str, *, query: str | None = None, identity: str | None = None,
+              result_count: int | None = None, latency_ms: int = 0) -> None:
+        """Log a lookup that never left the process (the local index): no broker, no transport,
+        but a call row all the same, so the log shows what answered before any live lane (§8)."""
+        rec = calllog.CallRecord(source_id=source_id, request_type=request_type, status=200, latency_ms=latency_ms,
+                                 job_id=self.job_id, identity=identity, query=(query or "")[:500] or None,
+                                 result_count=result_count, failure_class="ok", domain_resolved=self.domain_resolved,
+                                 client_id=self.client_id)
+        self.log.append(rec)
+        if self.conn is not None:
+            calllog.record(self.conn, rec)
+
     def _record(self, source_id, request_type, identity, query, resp: Response, latency: int, credits: float,
                 refused: bool = False) -> None:
         count = None
@@ -165,7 +178,7 @@ class Client:
             source_id=source_id, request_type=request_type, status=resp.status, latency_ms=latency,
             job_id=self.job_id, identity=identity, query=(query or "")[:500] or None,
             ratelimit=calllog.ratelimit_headers(resp.headers), credits=credits or None,
-            result_count=count, domain_resolved=self.domain_resolved,
+            result_count=count, domain_resolved=self.domain_resolved, client_id=self.client_id,
             failure_class="refused" if refused else calllog.classify(resp.status, network_error=resp.status is None,
                                                                      body=resp.text[:2000] if resp.status in (401, 403) else ""),
         )

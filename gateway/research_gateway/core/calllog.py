@@ -20,6 +20,7 @@ class CallRecord:
     result_count: int | None = None
     failure_class: str = "ok"
     domain_resolved: str | None = None
+    client_id: str | None = None   # which front-door client asked (queued jobs carry it; inline requests set it directly)
 
 
 def classify(status: int | None, *, network_error: bool = False, body: str = "") -> str:
@@ -55,11 +56,11 @@ def record(conn, rec: CallRecord) -> int:
     with conn.cursor() as cur:
         cur.execute(
             "INSERT INTO gateway.calls (job_id, source_id, request_type, identity, query, status, latency_ms, "
-            "ratelimit, credits, cache_hit, result_count, failure_class, domain_resolved) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+            "ratelimit, credits, cache_hit, result_count, failure_class, domain_resolved, client_id) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
             (rec.job_id, rec.source_id, rec.request_type, rec.identity, rec.query, rec.status, rec.latency_ms,
              json.dumps(rec.ratelimit) if rec.ratelimit is not None else None, rec.credits, rec.cache_hit,
-             rec.result_count, rec.failure_class, rec.domain_resolved),
+             rec.result_count, rec.failure_class, rec.domain_resolved, rec.client_id),
         )
         row_id = cur.fetchone()[0]
     conn.commit()

@@ -242,7 +242,8 @@ def _call_find(mod, client: Client, payload: dict) -> dict:
 
 def _log_cache_hit(client: Client, request_type: str, identity: str | None, query: str | None) -> None:
     rec = calllog.CallRecord(source_id="cache", request_type=request_type, status=200, latency_ms=0, job_id=client.job_id,
-                             identity=identity, query=query, cache_hit=True, result_count=1, domain_resolved=client.domain_resolved)
+                             identity=identity, query=query, cache_hit=True, result_count=1, domain_resolved=client.domain_resolved,
+                             client_id=client.client_id)
     client.log.append(rec)
     if client.conn is not None:
         calllog.record(client.conn, rec)

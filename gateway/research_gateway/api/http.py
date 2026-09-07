@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
@@ -21,6 +22,26 @@ from ..mcp import homelab_adapter
 
 MAX_TIMEOUT = 120.0
 MAX_BODY = 1 << 20
+JOB_ROUTE = re.compile(r"^/v1/jobs/(\d{1,18})$")
+# payload fields the front door accepts, with the type each must have; anything else is a 400
+FIELD_TYPES = {"query": str, "identity": str, "target": str, "what": str, "source": str, "kind": str, "domain": str,
+               "topic_id": str, "published_after": str, "priority": str, "params": dict, "commercial": bool,
+               "accept_per_item": bool, "limit": int, "year_from": int, "timeout": (int, float)}
+
+
+def validate_payload(body: dict) -> str | None:
+    """The reason a body is unacceptable, or None."""
+    for key, value in body.items():
+        want = FIELD_TYPES.get(key)
+        if want is None:
+            return f"unknown field {key!r}"
+        if value is None:
+            continue
+        if isinstance(value, bool) and want is not bool:
+            return f"{key} must be {getattr(want, '__name__', 'a number')}"
+        if not isinstance(value, want):
+            return f"{key} must be {getattr(want, '__name__', 'a number')}"
+    return None
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -46,9 +67,13 @@ class Handler(BaseHTTPRequestHandler):
         return name
 
     def _body(self) -> dict | None:
-        length = int(self.headers.get("Content-Length") or 0)
-        if length > MAX_BODY:
-            self._send(413, {"error": "body too large"})
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            self._send(400, {"error": "Content-Length must be an integer"})
+            return None
+        if length < 0 or length > MAX_BODY:
+            self._send(413 if length > MAX_BODY else 400, {"error": "body too large" if length > MAX_BODY else "bad Content-Length"})
             return None
         raw = self.rfile.read(length) if length else b"{}"
         try:
@@ -68,17 +93,16 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/v1/health":
             h = gw.health()
             return self._send(200 if h["ok"] else 503, h)
-        if self._client() is None:
+        client = self._client()
+        if client is None:
             return
         if path == "/v1/status":
             return self._send(200, gw.status())
-        if path.startswith("/v1/jobs/"):
+        m = JOB_ROUTE.match(path)
+        if m:
             if gw.conn is None:
                 return self._send(404, {"error": "no queue: this gateway runs inline"})
-            try:
-                job = gw.job(int(path.rsplit("/", 1)[1]))
-            except ValueError:
-                return self._send(400, {"error": "job id must be an integer"})
+            job = gw.job(int(m.group(1)), client_id=client)
             return self._send(200, job) if job else self._send(404, {"error": "no such job"})
         self._send(404, {"error": "no such route"})
 
@@ -95,6 +119,9 @@ class Handler(BaseHTTPRequestHandler):
         body = self._body()
         if body is None:
             return
+        problem = validate_payload(body)
+        if problem:
+            return self._send(400, {"error": problem})
         payload = {**body, "request_type": rt}
         gw = self.server.gateway
         query = parse_qs(parts.query)

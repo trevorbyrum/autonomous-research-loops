@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 import time
 from typing import Callable
 
@@ -17,6 +18,9 @@ from . import identity as ident
 
 
 class Cache:
+    """Thread-safe: worker threads and front-door threads share one instance; the lock covers
+    the memory stores and the cache's own database connection (never a worker's or the control one)."""
+
     def __init__(self, conn=None, *, clock: Callable[[], float] = time.time, memory_ttl: float = 3600.0,
                  metadata_ttl: float = 7 * 86400.0, search_ttl: float = 3600.0,
                  max_records: int = 10_000, max_searches: int = 2_000):
@@ -25,6 +29,7 @@ class Cache:
         self.max_records, self.max_searches = max_records, max_searches
         self._records: dict[str, tuple[float, dict]] = {}
         self._searches: dict[str, tuple[float, dict]] = {}
+        self._lock = threading.RLock()
         self.persisted = 0
         self.evicted = 0
 
@@ -44,29 +49,31 @@ class Cache:
     # ------------------------------------------------------------ records
     def get_record(self, identity: str) -> dict | None:
         key = ident.canonical(identity)
-        hit = self._records.get(key)
-        if hit and hit[0] > self._clock():
-            return hit[1]
-        if hit:
-            del self._records[key]
-        if self.conn is None:
-            return None
-        with self.conn.cursor() as cur:
-            cur.execute("SELECT canonical FROM gateway.records WHERE identity = %s AND last_seen > now() - make_interval(secs => %s)",
-                        (key, self.metadata_ttl))
-            row = cur.fetchone()
-        self.conn.commit()
-        return row[0] if row else None
+        with self._lock:
+            hit = self._records.get(key)
+            if hit and hit[0] > self._clock():
+                return hit[1]
+            if hit:
+                del self._records[key]
+            if self.conn is None:
+                return None
+            with self.conn.cursor() as cur:
+                cur.execute("SELECT canonical FROM gateway.records WHERE identity = %s AND last_seen > now() - make_interval(secs => %s)",
+                            (key, self.metadata_ttl))
+                row = cur.fetchone()
+            self.conn.commit()
+            return row[0] if row else None
 
     def put_record(self, record: dict, *, redistributable: bool, persist_sources: set[str] | None = None) -> None:
         """Keep the record in memory; persist it (and only the provenance members whose source
         is in `persist_sources`, default: the record's own source) when redistributable."""
         key = ident.canonical(record["identity"])
         ttl = self.metadata_ttl if redistributable else self.memory_ttl
-        self._bound(self._records, self.max_records)
-        self._records[key] = (self._clock() + ttl, record)
-        if redistributable and self.conn is not None:
-            self._persist(key, record, persist_sources if persist_sources is not None else {record.get("source_id")})
+        with self._lock:
+            self._bound(self._records, self.max_records)
+            self._records[key] = (self._clock() + ttl, record)
+            if redistributable and self.conn is not None:
+                self._persist(key, record, persist_sources if persist_sources is not None else {record.get("source_id")})
 
     def _persist(self, key: str, record: dict, persist_sources: set[str]) -> None:
         members = [p for p in (record.get("provenance") or [{"source_id": record.get("source_id"), "raw": record.get("raw")}])
@@ -98,19 +105,22 @@ class Cache:
         return hashlib.sha256(canon.encode()).hexdigest()
 
     def get_search(self, key: str) -> dict | None:
-        hit = self._searches.get(key)
-        if hit and hit[0] > self._clock():
-            return hit[1]
-        if hit:
-            del self._searches[key]
-        return None
+        with self._lock:
+            hit = self._searches.get(key)
+            if hit and hit[0] > self._clock():
+                return hit[1]
+            if hit:
+                del self._searches[key]
+            return None
 
     def put_search(self, key: str, result: dict) -> None:
-        self._bound(self._searches, self.max_searches)
-        self._searches[key] = (self._clock() + self.search_ttl, result)
+        with self._lock:
+            self._bound(self._searches, self.max_searches)
+            self._searches[key] = (self._clock() + self.search_ttl, result)
 
     def stats(self) -> dict:
         now = self._clock()
-        return {"records_in_memory": sum(1 for exp, _ in self._records.values() if exp > now),
-                "searches_in_memory": sum(1 for exp, _ in self._searches.values() if exp > now),
-                "persisted": self.persisted, "evicted": self.evicted}
+        with self._lock:
+            return {"records_in_memory": sum(1 for exp, _ in self._records.values() if exp > now),
+                    "searches_in_memory": sum(1 for exp, _ in self._searches.values() if exp > now),
+                    "persisted": self.persisted, "evicted": self.evicted}

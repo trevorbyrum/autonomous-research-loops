@@ -19,7 +19,7 @@ from pathlib import Path
 
 from . import adapters
 from .adapters.base import Client
-from .core import db, queue
+from .core import alerts, db, queue
 from .core.broker import Broker, load_policies, persist_breaker, policies_from_rows
 from .core.cache import Cache
 from .core.router import Router, execute, make_handlers, redact_for_storage
@@ -38,6 +38,7 @@ class Settings:
     secrets_backend: str = "env"
     workers: int = 2
     sync_timeout: float = 60.0
+    watch_interval: float = 300.0
     tokens: dict[str, str] = field(default_factory=dict)   # client name -> bearer token
 
     @property
@@ -74,6 +75,7 @@ def load_settings(path: Path | None = None, environ: dict | None = None) -> Sett
         s.secrets_backend = g.get("secrets_backend", s.secrets_backend)
         s.workers = int(g.get("workers", s.workers))
         s.sync_timeout = float(g.get("sync_timeout", s.sync_timeout))
+        s.watch_interval = float(g.get("watch_interval", s.watch_interval))
     s.listen = env.get("RESEARCH_GATEWAY_LISTEN", s.listen)
     s.contact_email = env.get("RESEARCH_GATEWAY_CONTACT_EMAIL", s.contact_email)
     s.secrets_backend = env.get("RESEARCH_GATEWAY_SECRETS", s.secrets_backend)
@@ -98,35 +100,45 @@ def sources_from_db(conn) -> list[dict]:
 
 class Gateway:
     def __init__(self, settings: Settings, *, use_db: bool | None = None, sources: list[dict] | None = None,
-                 transport=None, secrets=None):
+                 transport=None, secrets=None, alerter: alerts.Alerter | None = None):
         self.settings = settings
         self.use_db = db.configured() if use_db is None else use_db
         self.conn = db.connect() if self.use_db else None
+        self._lock = threading.Lock()   # the control connection is shared by HTTP threads and callbacks
         self.sources = sources or (sources_from_db(self.conn) if self.conn is not None else read_seed())
+        self.secrets = secrets if secrets is not None else from_config(settings.secrets_backend)
+        self.alerter = alerter if alerter is not None else alerts.from_env(self.secrets)
         if self.conn is not None:
             policies = load_policies(self.conn)
-            on_change = persist_breaker(self.conn)
+            persist = persist_breaker(self.conn)
         else:
             rows = [{"source_id": s["id"], **(s.get("rate") or {})} for s in self.sources
                     if s.get("enabled") and (s.get("rate") or {}).get("verified")]
-            policies, on_change = policies_from_rows(rows), None
-        self.broker = Broker(policies, on_breaker_change=on_change)
-        self.secrets = secrets if secrets is not None else from_config(settings.secrets_backend)
+            policies, persist = policies_from_rows(rows), None
+
+        def on_breaker(source_id, state, retry_after_wall, reason):
+            if persist is not None:
+                with self._lock:
+                    persist(source_id, state, retry_after_wall, reason)
+            self.alerter.breaker(source_id, state, retry_after_wall, reason)
+
+        self.broker = Broker(policies, on_breaker_change=on_breaker, on_budget=self.alerter.budget)
         self.transport = transport
-        self.cache = Cache(self.conn)
+        # the cache persists from worker threads and HTTP threads alike: it gets its own connection and lock
+        self.cache = Cache(db.connect() if self.conn is not None else None)
         self.router = Router(self.sources, adapters.load_all())
         self.handlers = make_handlers(self.router, self.cache)
         self.stop_event = threading.Event()
         self.workers: list[queue.Worker] = []
+        self.watcher: alerts.Watcher | None = None
         self.started_at = time.time()
-        self._lock = threading.Lock()   # the control connection is shared by HTTP threads
 
     # ------------------------------------------------------------ clients
-    def make_client(self, conn, job: dict | None = None) -> Client:
+    def make_client(self, conn, job: dict | None = None, client_id: str | None = None) -> Client:
         kw = {"transport": self.transport} if self.transport is not None else {}
         return Client(broker=self.broker, secrets=self.secrets.get, contact_email=self.settings.contact_email,
                       user_agent=f"research-gateway/{VERSION} (mailto:{self.settings.contact_email})",
-                      conn=conn, job_id=(job or {}).get("id"), **kw)
+                      conn=conn, job_id=(job or {}).get("id"), client_id=(job or {}).get("client_id") or client_id, **kw)
 
     # ------------------------------------------------------------ lifecycle
     def start(self) -> None:
@@ -136,13 +148,20 @@ class Gateway:
             w = queue.Worker(db.connect, self.handlers, self.stop_event, self.make_client, name=f"gateway-worker-{i}")
             w.start()
             self.workers.append(w)
+        self.watcher = alerts.Watcher(db.connect, self.alerter, lambda: self.health(detailed=True), self.stop_event,
+                                      interval=self.settings.watch_interval)
+        self.watcher.start()
 
     def stop(self) -> None:
         self.stop_event.set()
         for w in self.workers:
             w.join(timeout=5)
+        if self.watcher is not None:
+            self.watcher.join(timeout=5)
         if self.conn is not None:
             self.conn.close()
+        if self.cache.conn is not None:
+            self.cache.conn.close()
 
     # ------------------------------------------------------------ requests
     @staticmethod
@@ -151,10 +170,13 @@ class Gateway:
         return bool((payload.get("params") or {}).get("download")) or payload.get("what") == "full_text"
 
     def run_inline(self, payload: dict, client_id: str) -> dict:
+        """Inline requests carry the client id into every call-log row; with a database they are as
+        durable as queued ones (own connection, job_id NULL). Without a database the log is in-process
+        only — that mode is for a laptop, not a deployment (docs/OPERATIONS.md)."""
         if self.conn is None:
-            return execute(self.router, payload, self.make_client(None), self.cache)
-        with db.connect() as conn:  # own connection: the call log commits independently of the HTTP thread
-            return execute(self.router, payload, self.make_client(conn), self.cache)
+            return execute(self.router, payload, self.make_client(None, client_id=client_id), self.cache)
+        with db.connect() as conn:
+            return execute(self.router, payload, self.make_client(conn, client_id=client_id), self.cache)
 
     def submit(self, payload: dict, client_id: str, *, priority: str = "interactive") -> tuple[int, bool]:
         with self._lock:
@@ -162,9 +184,13 @@ class Gateway:
                                  client_id=client_id, priority=PRIORITIES.get(priority, queue.PRIORITY_INTERACTIVE),
                                  topic_id=payload.get("topic_id"), commercial=bool(payload.get("commercial")))
 
-    def job(self, job_id: int) -> dict | None:
+    def job(self, job_id: int, client_id: str | None = None) -> dict | None:
+        """A job, or None; with client_id, only that client's own job (clients never see each other's)."""
         with self._lock:
-            return queue.get(self.conn, job_id)
+            j = queue.get(self.conn, job_id)
+        if j is not None and client_id is not None and j.get("client_id") != client_id:
+            return None
+        return j
 
     def wait(self, job_id: int, timeout: float) -> dict | None:
         deadline = time.monotonic() + timeout
@@ -200,7 +226,8 @@ class Gateway:
                 return name
         return None
 
-    def health(self) -> dict:
+    def health(self, detailed: bool = False) -> dict:
+        """Unauthenticated callers get ok/version only; the authenticated status carries the detail."""
         db_ok = None
         if self.conn is not None:
             try:
@@ -213,12 +240,17 @@ class Gateway:
                 db_ok = f"{type(e).__name__}: {e}"[:200]
         alive = sum(1 for w in self.workers if w.is_alive())
         ok = (db_ok in (None, True)) and (self.conn is None or alive == len(self.workers))
-        return {"ok": ok, "version": VERSION, "db": db_ok, "workers": {"alive": alive, "expected": len(self.workers)},
+        if not detailed:
+            return {"ok": ok, "version": VERSION, "mode": "queued" if self.conn is not None else "inline"}
+        return {"ok": ok, "version": VERSION, "mode": "queued" if self.conn is not None else "inline", "db": db_ok,
+                "workers": {"alive": alive, "expected": len(self.workers)},
                 "sources": sum(1 for s in self.sources if s.get("enabled")), "uptime_s": int(time.time() - self.started_at)}
 
     def status(self) -> dict:
-        out = {"health": self.health(), "broker": self.broker.status(), "cache": self.cache.stats(),
-               "workers": [{"name": w.name, "alive": w.is_alive(), "processed": w.processed, "error": w.error} for w in self.workers]}
+        out = {"health": self.health(detailed=True), "broker": self.broker.status(), "cache": self.cache.stats(),
+               "workers": [{"name": w.name, "alive": w.is_alive(), "processed": w.processed, "error": w.error} for w in self.workers],
+               "alerts": {"enabled": self.alerter.enabled, "recent": [{"at": t, "key": k, "title": ti} for t, k, ti in self.alerter.history[-10:]],
+                          "watcher": {"passes": self.watcher.passes, "error": self.watcher.error} if self.watcher else None}}
         if self.conn is not None:
             with self._lock:
                 out["jobs"] = queue.stats(self.conn)

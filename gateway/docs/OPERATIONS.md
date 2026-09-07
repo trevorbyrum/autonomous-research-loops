@@ -43,8 +43,11 @@ With a database the gateway runs **queued mode**: requests become jobs
 with `SKIP LOCKED`) and the HTTP call waits for the result (or returns a job id
 with `?async=1`). Without one it runs **inline mode**: the same metered client,
 the same limits, no queue — enough for a laptop with the seed and environment
-secrets. File downloads and full text are always served inline and never
-stored (`PLAN.md` D-17).
+secrets, but the call log then lives only in the process, so a deployment
+always has a database. File downloads and full text are always served inline
+and never stored (`PLAN.md` D-17); with a database those calls are logged too,
+with the client's id and no job id. Every call-log row names the client that
+asked; a client can read only its own jobs.
 
 Client tokens come from `RESEARCH_GATEWAY_TOKENS` or, with the vault backend,
 from the secret `research_gateway`, field `tokens`, in the same
@@ -93,6 +96,10 @@ result count, failure class). Alerts are raised — never automatic routing
 changes — when a breaker opens, a daily budget passes 80 %, a source starts
 failing authentication, a source that used to return results starts
 returning none for the same query pattern, or the health endpoint fails.
+Alerts go to an ntfy topic (`RESEARCH_GATEWAY_NTFY_URL`/`_TOPIC`, or the
+secrets backend's `ntfy` entry); each (source, kind) fires at most once an
+hour; the last ten are listed on `/v1/status`. Without ntfy settings the
+gateway stays silent and `/v1/status` says so.
 Retention for `gateway.calls` is a deployment setting (default 180 days).
 
 ## Adding a source

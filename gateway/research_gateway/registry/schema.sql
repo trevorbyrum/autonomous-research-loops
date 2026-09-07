@@ -76,8 +76,10 @@ CREATE TABLE IF NOT EXISTS gateway.calls (
   result_count   integer,
   failure_class  text,                        -- auth | quota | outage | botwall | notfound | refused | ok
   domain_resolved text,
+  client_id      text,                        -- which front-door client asked (I-6)
   at             timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE gateway.calls ADD COLUMN IF NOT EXISTS client_id text;   -- databases created before Phase 5
 CREATE INDEX IF NOT EXISTS calls_source_at_idx ON gateway.calls (source_id, at DESC);
 
 CREATE TABLE IF NOT EXISTS gateway.breakers (

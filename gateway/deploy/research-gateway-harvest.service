@@ -1,0 +1,12 @@
+# Monthly registry refresh (paired with research-gateway-harvest.timer). Loaders take an advisory lock,
+# so they can never run concurrently with each other; each finishes before the next starts.
+[Unit]
+Description=Research gateway registry harvest (Crossref journals, DOAJ journals, DataCite repositories)
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/work/research-loops-public/gateway
+EnvironmentFile=%h/.config/research-loops/gateway.env
+ExecStart=/usr/bin/python3 -m research_gateway.harvest.registries datacite
+ExecStart=/usr/bin/python3 -m research_gateway.harvest.registries doaj
+ExecStart=/usr/bin/python3 -m research_gateway.harvest.registries crossref

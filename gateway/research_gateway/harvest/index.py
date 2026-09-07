@@ -50,23 +50,55 @@ def upsert(cur, record: dict, source_id: str, *, license: str | None = None) -> 
     )
 
 
+LOADER_LOCK = 7_310_001   # advisory lock key: loaders run one at a time (they upsert overlapping identities)
+
+
 def load(conn, records: Iterable[dict], source_id: str, *, license: str | None = None, batch: int = BATCH) -> int:
-    """Upsert a stream of records in batches; returns how many were written."""
+    """Upsert a stream of records in batches under the loader lock; returns how many were written.
+    A batch that still deadlocks (another writer on the same rows) is retried a few times."""
     n = 0
     with conn.cursor() as cur:
-        for rec in records:
-            upsert(cur, rec, source_id, license=license)
-            n += 1
-            if n % batch == 0:
-                conn.commit()
+        cur.execute("SELECT pg_advisory_lock(%s)", (LOADER_LOCK,))
     conn.commit()
+    try:
+        pending: list[dict] = []
+        for rec in records:
+            pending.append(rec)
+            if len(pending) >= batch:
+                n += _write_batch(conn, pending, source_id, license)
+                pending = []
+        if pending:
+            n += _write_batch(conn, pending, source_id, license)
+    finally:
+        with conn.cursor() as cur:
+            cur.execute("SELECT pg_advisory_unlock(%s)", (LOADER_LOCK,))
+        conn.commit()
     return n
 
 
-def reindex(conn) -> int:
-    """Rebuild every index document from the stored canonical records."""
+def _write_batch(conn, batch: list[dict], source_id: str, license: str | None, attempts: int = 3) -> int:
+    import psycopg
+    for attempt in range(attempts):
+        try:
+            with conn.cursor() as cur:
+                for rec in batch:
+                    upsert(cur, rec, source_id, license=license)
+            conn.commit()
+            return len(batch)
+        except psycopg.errors.DeadlockDetected:
+            conn.rollback()
+            if attempt == attempts - 1:
+                raise
+    return 0
+
+
+def reindex(conn, identities: list[str] | None = None) -> int:
+    """Rebuild index documents from the stored canonical records (all of them, or the given identities)."""
     with conn.cursor() as cur:
-        cur.execute("SELECT identity, kind, canonical FROM gateway.records")
+        if identities is None:
+            cur.execute("SELECT identity, kind, canonical FROM gateway.records")
+        else:
+            cur.execute("SELECT identity, kind, canonical FROM gateway.records WHERE identity = ANY(%s)", (list(identities),))
         rows = cur.fetchall()
         for identity, kind, canonical in rows:
             rec = dict(canonical)

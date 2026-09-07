@@ -32,3 +32,6 @@ private/
 
 # Gateway deployment config (docs/OPERATIONS.md: copy sources.example.toml here and edit)
 /gateway/sources.local.toml
+/gateway/deploy/gateway.env
+/gateway/deploy/snapshots/
+/gateway/deploy/vault-token

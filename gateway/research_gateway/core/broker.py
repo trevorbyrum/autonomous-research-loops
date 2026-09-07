@@ -17,7 +17,7 @@ from __future__ import annotations
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable
 
@@ -72,6 +72,7 @@ class _State:
     day: str = ""
     credits_today: float = 0.0
     dispatched_today: int = 0
+    budget_alerted: dict = field(default_factory=dict)   # what -> set of UTC days already reported at 80 %
 
 
 class Broker:
@@ -86,11 +87,14 @@ class Broker:
         breaker_window: float = 900.0,
         errors_to_open: int = 3,
         on_breaker_change: Callable[[str, str, float | None, str], None] | None = None,
+        on_budget: Callable[[str, str, float, float], None] | None = None,
+        budget_warn: float = 0.8,
     ):
         self._policies = dict(policies)
         self._clock, self._wall = clock, wall
         self._breaker_window, self._errors_to_open = breaker_window, errors_to_open
         self._on_breaker_change = on_breaker_change
+        self._on_budget, self._budget_warn = on_budget, budget_warn   # (source, what, used, cap) once per UTC day (§7)
         self._lock = threading.Lock()
         self._state: dict[str, _State] = {}
 
@@ -143,7 +147,15 @@ class Broker:
                 dq.append(now)
             st.credits_today += credits
             st.dispatched_today += 1
+            if self._on_budget:
+                self._budget_watch(source_id, pol, st)
             return 0.0
+
+    def _budget_watch(self, source_id: str, pol: RatePolicy, st: _State) -> None:
+        for what, used, cap in (("requests", st.dispatched_today, pol.per_day), ("credits", st.credits_today, pol.cost_cap_per_day)):
+            if cap and used >= self._budget_warn * cap and st.day not in st.budget_alerted.get(what, set()):
+                st.budget_alerted.setdefault(what, set()).add(st.day)
+                self._on_budget(source_id, what, float(used), float(cap))
 
     def acquire_blocking(self, source_id: str, *, credits: float = 0.0, sleep: Callable[[float], None] = time.sleep,
                          max_wait: float = 120.0) -> None:

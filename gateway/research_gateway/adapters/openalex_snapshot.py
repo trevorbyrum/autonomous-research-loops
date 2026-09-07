@@ -6,6 +6,8 @@ until then the index is simply empty and `find` returns nothing, truthfully.
 """
 from __future__ import annotations
 
+import time
+
 from .base import Client
 
 SOURCE_ID = "openalex_snapshot"
@@ -35,12 +37,14 @@ def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None
         f"WHERE {' AND '.join(where)} "
         "ORDER BY rank DESC, (r.canonical->>'works_count')::bigint DESC NULLS LAST, d.year DESC NULLS LAST LIMIT %s"
     )
+    t0 = time.monotonic()
     with conn.cursor() as cur:
         cur.execute(sql, [query, *args, min(limit, 100)])
         rows = cur.fetchall()
         cur.execute(f"SELECT count(*) FROM gateway.index_docs d WHERE {' AND '.join(where)}", args)
         total = cur.fetchone()[0]
     conn.commit()
+    client.local(SOURCE_ID, "find", query=query, result_count=len(rows), latency_ms=int((time.monotonic() - t0) * 1000))
     records = []
     for identity, canonical, rank in rows:
         rec = dict(canonical)

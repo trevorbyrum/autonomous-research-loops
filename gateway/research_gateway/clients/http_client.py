@@ -42,11 +42,16 @@ class GatewayClient:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 raw, ctype = resp.read(), resp.headers.get("Content-Type", "")
         except urllib.error.HTTPError as e:
-            raw = e.read()
-            try:
-                detail = json.loads(raw)
-            except ValueError:
-                detail = {"error": raw.decode("utf-8", "replace")[:500]}
+            raw, ctype = e.read(), e.headers.get("Content-Type", "")
+            detail = {}
+            if "application/json" in ctype:
+                try:
+                    detail = json.loads(raw)
+                except ValueError:
+                    detail = {}
+            if not isinstance(detail, dict):
+                detail = {}
+            # non-JSON error bodies are never relayed: a model context gets the status, not raw bytes
             return {"capability_fact": f"gateway_error_{e.code}", "status": e.code, **detail}
         except (urllib.error.URLError, TimeoutError, OSError) as e:
             return {"capability_fact": "gateway_unavailable", "error": f"{type(e).__name__}: {e}", "url": self.url}
