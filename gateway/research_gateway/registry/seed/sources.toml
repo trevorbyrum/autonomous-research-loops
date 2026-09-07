@@ -496,6 +496,31 @@ per_day = 200
 verified = true
 evidence = "observed 2026-09-06/07: 429s after 50-250 keyed requests; 0.5/s and 200/day are the operating limits, not documented ones"
 
+[[source]]
+id = "doi_org"
+name = "DOI registration-agency lookup (doi.org)"
+kind = "resolver"
+homepage = "https://www.doi.org/"
+docs_url = "https://www.doi.org/the-identifier/resources/factsheets/doi-resolution-documentation"
+capabilities = ["resolve"]
+identifiers = ["doi"]
+base_for = []
+domains = []
+auth = "none"
+secret_ref = ""
+key_instructions = "No key. GET https://doi.org/ra/<doi> returns which agency (Crossref, DataCite, mEDRA, ...) issued the DOI; the gateway caches the answer per DOI prefix."
+license = "Resolution service; response is a fact (agency name), no content licence applies."
+use_commercial = "allow"
+use_evidence = "https://www.doi.org/the-identifier/resources/factsheets/doi-resolution-documentation (public resolution service)"
+freshness_lag = "immediate"
+substitution_group = ""
+enabled = true
+notes = "Used only to route resolve requests to the registry that issued a DOI (R-1). Not a content source."
+[source.rate]
+per_second = 5
+verified = true
+evidence = "public resolver with no published limit; 5/s is a courtesy ceiling and lookups are cached by prefix"
+
 # ---------------------------------------------------------------- statistical data APIs
 
 [[source]]

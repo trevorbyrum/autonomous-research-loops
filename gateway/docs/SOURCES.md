@@ -13,7 +13,7 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - Article indexes: Crossref, Directory of Open Access Journals (DOAJ), Europe PMC, OpenAIRE Graph, OpenAlex (local snapshot only), Semantic Scholar
 - Dataset and repository indexes: DataCite, GLOBE Project (leadership and culture data), GovInfo (U.S. Government Publishing Office), Harvard Dataverse, Hugging Face Hub, Kaggle datasets, OpenML, Qualitative Data Repository (QDR), Socrata Open Data Network (SODA), World Management Survey (public data)
 - Citation graph: OpenCitations
-- Resolvers and enrichment: CORE, Unpaywall
+- Resolvers and enrichment: CORE, DOI registration-agency lookup (doi.org), Unpaywall
 - Statistical data APIs: BIS Data Portal (SDMX), ECB Data Portal (SDMX), FRED (Federal Reserve Economic Data), U.S. Bureau of Economic Analysis (BEA) Data API, U.S. Bureau of Labor Statistics API, U.S. Census Bureau Data API
 - Manual-only sources (documented, never queried by the gateway): Pew Research Center datasets
 
@@ -292,6 +292,20 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Freshness:** harvest cadence per repository
 - **Enabled in the default seed:** yes
 - **Notes:** Repository full text. Observed keyed quota blocks after ~50-250 requests; kept as a low-volume personal-only lane (Q-3).
+
+### DOI registration-agency lookup (doi.org)
+
+- **Website:** https://www.doi.org/
+- **API documentation:** https://www.doi.org/the-identifier/resources/factsheets/doi-resolution-documentation
+- **Gateway requests:** resolve
+- **Authentication:** none
+- **How to get access:** No key. GET https://doi.org/ra/<doi> returns which agency (Crossref, DataCite, mEDRA, ...) issued the DOI; the gateway caches the answer per DOI prefix.
+- **Rate limit:** 5/s (verified) — public resolver with no published limit; 5/s is a courtesy ceiling and lookups are cached by prefix
+- **Licence:** Resolution service; response is a fact (agency name), no content licence applies.
+- **Commercial:** **allow** — the source's terms permit commercial use of what the gateway retrieves. Evidence: https://www.doi.org/the-identifier/resources/factsheets/doi-resolution-documentation (public resolution service)
+- **Freshness:** immediate
+- **Enabled in the default seed:** yes
+- **Notes:** Used only to route resolve requests to the registry that issued a DOI (R-1). Not a content source.
 
 ### Unpaywall
 
