@@ -32,7 +32,7 @@ def search_record(base: str, source_id: str, item: dict) -> dict:
                        links=[item.get("url") or f"{base}/dataset.xhtml?persistentId=doi:{doi}"],
                        extra={"description": (item.get("description") or "")[:1000], "subjects": item.get("subjects") or [],
                               "file_count": item.get("fileCount")},
-                       raw={k: item.get(k) for k in ("global_id", "name", "authors", "published_at", "subjects", "fileCount", "url")})
+                       raw=item)
 
 
 def dataset_record(base: str, source_id: str, d: dict) -> dict:
@@ -49,8 +49,7 @@ def dataset_record(base: str, source_id: str, d: dict) -> dict:
                        links=[d.get("persistentUrl") or f"{base}/dataset.xhtml?persistentId=doi:{doi}"], license=lic_name,
                        extra={"version": f"{v.get('versionNumber')}.{v.get('versionMinorNumber')}", "file_count": len(files),
                               "terms_of_use": v.get("termsOfUse")},
-                       raw={"id": d.get("id"), "persistentUrl": d.get("persistentUrl"), "license": lic, "versionState": v.get("versionState"),
-                            "files": [{"id": (f.get("dataFile") or {}).get("id"), "label": f.get("label")} for f in files]})
+                       raw=d)
 
 
 def file_records(base: str, source_id: str, dataset: dict, d: dict) -> list[dict]:
@@ -62,7 +61,7 @@ def file_records(base: str, source_id: str, dataset: dict, d: dict) -> list[dict
                                links=[f"{base}/api/access/datafile/{df.get('id')}"],
                                extra={"file_id": df.get("id"), "content_type": df.get("contentType"), "size": df.get("filesize"),
                                       "restricted": f.get("restricted", False), "description": df.get("description")},
-                               raw={k: df.get(k) for k in ("id", "filename", "contentType", "filesize", "persistentId", "md5")}))
+                               raw=df))
     return out
 
 

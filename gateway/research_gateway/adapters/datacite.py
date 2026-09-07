@@ -29,8 +29,7 @@ def _record(d: dict) -> dict:
         identifiers={"doi": doi} if doi else {},
         links=[u for u in (a.get("url"),) if u], license=lic,
         extra={"resource_type": rtype, "client_id": (d.get("relationships") or {}).get("client", {}).get("data", {}).get("id")},
-        raw={"id": d.get("id"), "attributes": {k: a.get(k) for k in ("doi", "titles", "creators", "publicationYear", "publisher",
-                                                                         "types", "url", "rightsList", "subjects")}},
+        raw=d,
     )
 
 

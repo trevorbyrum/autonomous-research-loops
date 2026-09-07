@@ -421,6 +421,12 @@ outcome are recorded in each seed row's `rate.evidence`; every "(verify)" row is
 now `verified=true, enabled=true`, with sources whose documentation states no
 limit carrying an explicit self-imposed ceiling. GLOBE stays disabled (static
 files, nothing to probe, commercial verdict unknown); Pew is manual.
+Review (Terra, 2026-09-07, `private/reviews/phase3-44efdc2.md`): FAIL — 7
+findings, all resolved: raw payloads are now the source objects (I-8); file
+bytes/full text never reach `jobs.result`; Socrata portals are catalog-vouched
+(R-6); GovInfo fetch lists real formats; enqueue contention is bounded with a
+retryable error; unreadable responses become capability facts; logging is
+guaranteed by construction (D-17). Test backoff waits now run on a fake clock.
 
 **Phase 4 — Router + cache + dedup + licence enforcement.**
 Checks: every rule R-1..R-10 has a passing test; commercial=true excludes
@@ -512,5 +518,6 @@ public) and its commit hash recorded in the phase's acceptance note.
 - **D-12 (2026-09-07)** Add a permissive catch-all domain `other` (= base + all domain lanes); absent/unknown domains resolve to it, so mis-tagging never loses coverage.
 - **D-13 (2026-09-07)** Engineering rules, hard: no placeholders in shipped code (I-10); ≤ 1,500 lines per file (I-11); simplest thing that works (I-12); independent Terra/Codex review each phase (I-13); tests and logs ship with every module (I-14).
 - **D-14 (2026-09-07)** Phase 0 approved by the operator ("approved"). Phase 1 begins.
+- **D-17 (2026-09-07)** Phase 3 review resolutions: `raw` is the source's own object for the record (I-8), minus only CORE's `fullText` field (I-7); file bytes and full text never enter `jobs.result` (`router.redact_for_storage`) — they are delivered only on the inline path and discarded; Socrata portals must be vouched for by the discovery catalog before they are called (R-6); a response an adapter cannot read becomes a capability fact, not a job failure (R-10); call logging is guaranteed by construction (adapters cannot reach the network except through `base.Client`, and only the gateway's own factories build clients — both tested) rather than by a transport-level interceptor.
 - **D-16 (2026-09-07)** Routing is derived, not written: domain lanes come from each seed row's `domains`, enrich lanes from each adapter's `ENRICHES`, resolve/fetch targets from each adapter's `SCHEMES`/`HOSTS`. §4's per-domain lists are the 2026-09-07 rendering of the seed; a new source is a seed row plus an adapter, never a router edit (I-2).
 - **D-15 (2026-09-07)** Phase 1–2 review resolutions: broker state is keyed per source (one credential per source in the registry; revisit if a second credential is ever added); `jobs.result` is inline jsonb rather than a `result_ref`; BEA's 100 MB/min volume cap is not broker-enforced (the adapter requests single tables; the 100/min request cap is).

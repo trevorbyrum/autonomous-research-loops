@@ -27,7 +27,7 @@ def _record(w: dict, *, with_text: bool = False) -> dict:
         venue=(w.get("publisher") or None), identifiers={"doi": doi} if doi else {"core": str(w.get("id"))},
         links=links, license=None, attribution="CORE",
         extra={"core_id": w.get("id"), "redistributable": False, "has_full_text": bool(w.get("fullText"))},
-        raw={k: w.get(k) for k in ("id", "doi", "title", "yearPublished", "downloadUrl", "sourceFulltextUrls", "publisher")},
+        raw={k: v for k, v in w.items() if k != "fullText"},  # the payload minus the text itself (I-7)
     )
     if with_text and w.get("fullText"):
         rec["text"] = w["fullText"]  # returned to the caller, never stored (I-7)

@@ -24,7 +24,7 @@ def _list_record(d: dict) -> dict:
                        identifiers={"dataset_id": did}, links=[f"https://www.openml.org/d/{did}"],
                        extra={"version": d.get("version"), "status": d.get("status"), "format": d.get("format"),
                               "instances": quality.get("NumberOfInstances"), "features": quality.get("NumberOfFeatures")},
-                       raw={k: d.get(k) for k in ("did", "name", "version", "status", "format", "file_id")})
+                       raw=d)
 
 
 def _desc_record(d: dict) -> dict:
@@ -37,7 +37,7 @@ def _desc_record(d: dict) -> dict:
                        extra={"version": d.get("version"), "format": d.get("format"), "description": (d.get("description") or "")[:1000],
                               "default_target": d.get("default_target_attribute"), "file_id": d.get("file_id"), "url": d.get("url"),
                               "parquet_url": d.get("parquet_url")},
-                       raw={k: d.get(k) for k in ("id", "name", "version", "format", "licence", "url", "parquet_url", "upload_date", "file_id", "status")})
+                       raw=d)
 
 
 def find(client: Client, query: str, *, limit: int = 20, offset: int = 0) -> dict:

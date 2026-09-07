@@ -220,6 +220,26 @@ class ExecuteMergeAndCache(unittest.TestCase):
         self.assertEqual(len(c.log), calls + 1)
         self.assertEqual(c.log[-1].source_id, "cache")
 
+    def test_malformed_response_is_a_fact_not_a_crash(self):
+        r, c, t = make()
+        t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": ["not a work"], "total-results": 1}})
+        t.add("GET", "https://doaj.org/api/search/articles/", body={"results": [], "total": 0})
+        out = R.execute(r, {"request_type": "find", "kind": "article", "query": "q", "domain": "finance"}, c)
+        self.assertTrue(any(f.startswith("crossref: malformed response") for f in out["facts"]))
+        self.assertEqual(out["records"], [])
+        self.assertIn("doaj", [ln["source"] for ln in out["lanes"]], "the job still completes on the other lanes")
+
+    def test_stored_job_results_never_carry_bytes_or_full_text(self):
+        result = {"request_type": "fetch", "records": [{"kind": "full_text", "identity": "doi:x", "text": "the whole paper"}],
+                  "content": b"\x00pdf", "content_type": "application/pdf", "facts": []}
+        stored = R.redact_for_storage(result)
+        self.assertIsNone(stored["content"])
+        self.assertEqual(stored["content_bytes"], 4)
+        self.assertIsNone(stored["records"][0]["text"])
+        self.assertEqual(stored["records"][0]["text_chars"], 15)
+        self.assertEqual(result["content"], b"\x00pdf", "the inline result is untouched")
+        self.assertEqual(result["records"][0]["text"], "the whole paper")
+
     def test_make_handlers_use_job_fields(self):
         r, c, t = make()
         t.add("GET", "https://api.datacite.org/dois?", body={"data": [], "meta": {"total": 0}})
@@ -228,6 +248,19 @@ class ExecuteMergeAndCache(unittest.TestCase):
         out = handlers["find"](c, job)
         self.assertEqual(out["request_type"], "find")
         self.assertTrue(any("kaggle" in f for f in out["facts"]), "the job's commercial flag reaches the router")
+
+
+class LoggingByConstruction(unittest.TestCase):
+    def test_only_the_gateway_builds_clients(self):
+        """I-6: every call is logged because the only network path is base.Client (adapters cannot import
+        urllib — tested elsewhere) and Client objects are built only by the gateway's own factories."""
+        import pathlib
+        import research_gateway
+        root = pathlib.Path(research_gateway.__file__).parent
+        allowed = {"adapters/base.py", "smoke.py", "app.py"}
+        offenders = [str(p.relative_to(root)) for p in root.rglob("*.py")
+                     if "Client(" in p.read_text() and str(p.relative_to(root)) not in allowed]
+        self.assertEqual(offenders, [])
 
 
 if __name__ == "__main__":

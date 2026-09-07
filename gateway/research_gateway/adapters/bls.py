@@ -40,5 +40,5 @@ def data(client: Client, params: dict) -> dict:
                                    title=cat.get("series_title") or s.get("seriesID"),
                                    links=[f"https://data.bls.gov/timeseries/{s.get('seriesID')}"], attribution=ATTRIBUTION,
                                    extra={"observations": obs, "survey": cat.get("survey_name"), "seasonality": cat.get("seasonality")},
-                                   raw={"seriesID": s.get("seriesID"), "count": len(obs), "catalog": cat}))
+                                   raw=s))
     return {"identity": identity, "records": records, "messages": j.get("message") or []}

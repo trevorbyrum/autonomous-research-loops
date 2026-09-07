@@ -104,6 +104,7 @@ class Client:
     conn: object | None = None                 # psycopg connection for the call log, or None
     timeout: float = 30.0
     max_wait: float = 120.0
+    sleep: Callable[[float], None] = time.sleep   # injected in tests so backoff waits are not real
     log: list[calllog.CallRecord] = field(default_factory=list)  # in-memory mirror (tests, status)
     job_id: int | None = None
     domain_resolved: str | None = None
@@ -130,7 +131,7 @@ class Client:
             clean = {k: v for k, v in params.items() if v is not None}
             url = url + ("&" if "?" in url else "?") + urllib.parse.urlencode(clean, doseq=True)
         try:
-            self.broker.acquire_blocking(source_id, credits=credits, max_wait=self.max_wait)
+            self.broker.acquire_blocking(source_id, credits=credits, max_wait=self.max_wait, sleep=self.sleep)
         except (NoPolicy, BreakerOpen, BudgetExhausted) as e:
             resp = Response(None, {}, b"", url, error=f"{type(e).__name__}: {e}")
             self._record(source_id, request_type, identity, query, resp, 0, credits, refused=True)

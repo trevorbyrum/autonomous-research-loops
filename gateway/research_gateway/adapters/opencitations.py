@@ -26,7 +26,7 @@ def _links(rows: list[dict], key: str) -> list[dict]:
                                          source_id=SOURCE_ID, year=year_from(r.get("creation")),
                                          identifiers={"doi": normalize_doi(part[4:]) or part[4:]},
                                          extra={"oci": r.get("oci"), "timespan": r.get("timespan")},
-                                         raw={k: r.get(k) for k in ("oci", "citing", "cited", "creation", "timespan")}))
+                                         raw=r))
                 break
     return items
 

@@ -28,7 +28,7 @@ def _record(a: dict) -> dict:
         year=year_from(b.get("year")), venue=journal.get("title"), identifiers=ids, links=links,
         license=(journal.get("license") or [{}])[0].get("type") if journal.get("license") else None,
         extra={"open_access": True, "doaj_id": a.get("id")},
-        raw={"id": a.get("id"), "bibjson": {k: b.get(k) for k in ("title", "year", "journal", "identifier", "author", "link", "subject")}},
+        raw=a,
     )
 
 

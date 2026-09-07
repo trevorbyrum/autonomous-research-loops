@@ -25,6 +25,11 @@ PRIORITY_INTERACTIVE, PRIORITY_ENRICH, PRIORITY_HARVEST = 1, 5, 9
 
 Handler = Callable[[object, dict], dict]          # (client, job) -> result
 ClientFactory = Callable[[object, dict], object]  # (conn, job) -> metered client
+ENQUEUE_ATTEMPTS = 10
+
+
+class EnqueueContention(RuntimeError):
+    """Retryable: an identical job kept racing this one to completion."""
 
 
 def payload_hash(request_type: str, payload: dict) -> str:
@@ -39,8 +44,11 @@ def enqueue(conn, request_type: str, payload: dict, *, client_id: str, priority:
         raise ValueError(f"unknown request type {request_type!r}")
     h = payload_hash(request_type, payload)
     in_flight = "SELECT id FROM gateway.jobs WHERE request_type = %s AND payload_hash = %s AND status IN ('queued','running')"
-    # The in-flight twin can finish between our unique-violation and the re-read; then we simply insert again.
-    for _ in range(3):
+    # The in-flight twin can finish between our unique-violation and the re-read; then we simply insert again,
+    # backing off a little each time, and give up with a retryable error only after a bounded run of flaps.
+    for attempt in range(ENQUEUE_ATTEMPTS):
+        if attempt:
+            time.sleep(0.01 * attempt)
         with conn.cursor() as cur:
             cur.execute(in_flight, (request_type, h))
             row = cur.fetchone()
@@ -59,7 +67,7 @@ def enqueue(conn, request_type: str, payload: dict, *, client_id: str, priority:
                 continue
         conn.commit()
         return job_id, True
-    raise RuntimeError("enqueue: in-flight twin kept appearing and vanishing; giving up after 3 attempts")
+    raise EnqueueContention(f"enqueue: an identical job kept appearing and finishing; retry (gave up after {ENQUEUE_ATTEMPTS} attempts)")
 
 
 def claim(conn) -> dict | None:

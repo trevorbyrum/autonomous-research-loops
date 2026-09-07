@@ -52,7 +52,7 @@ def _record(p: dict) -> dict:
         attribution="Semantic Scholar",
         extra={"cited_by_count": p.get("citationCount"), "reference_count": p.get("referenceCount"),
                "publication_types": p.get("publicationTypes"), "redistributable": False},
-        raw={k: p.get(k) for k in ("paperId", "externalIds", "title", "year", "venue", "openAccessPdf", "citationCount")},
+        raw=p,
     )
 
 

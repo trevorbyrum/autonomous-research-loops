@@ -76,7 +76,7 @@ class Canonical(unittest.TestCase):
 
 def make_client(policies=None, transport=None):
     broker = Broker(policies or {"src": RatePolicy(per_second=100)})
-    return Client(broker=broker, transport=transport or FakeTransport(), contact_email="t@example.org")
+    return Client(broker=broker, transport=transport or FakeTransport(), contact_email="t@example.org", sleep=lambda s: None)
 
 
 class MeteredClient(unittest.TestCase):
@@ -107,10 +107,14 @@ class MeteredClient(unittest.TestCase):
     def test_429_storm_opens_breaker_and_subsequent_calls_are_refused(self):
         t = FakeTransport()
         t.add("GET", "https://api.example/x", status=429)
-        c = make_client(transport=t)
+        clock = [1000.0]
+        broker = Broker({"src": RatePolicy(per_second=100)}, clock=lambda: clock[0])
+        c = Client(broker=broker, transport=t, contact_email="t@example.org",
+                   sleep=lambda s: clock.__setitem__(0, clock[0] + s))  # backoff waits advance the fake clock
         for _ in range(3):
             c.get("src", "find", "https://api.example/x")
         self.assertEqual(len(t.calls), 3)
+        self.assertEqual(clock[0], 1030.0, "10 s then 20 s backoff before the second and third attempts")
         r = c.get("src", "find", "https://api.example/x")
         self.assertIn("BreakerOpen", r.error)
         self.assertEqual(len(t.calls), 3, "breaker open: no network call")

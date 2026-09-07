@@ -313,6 +313,12 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
             out["facts"].append(f"{lane.source_id}: refused ({e})")
             out["lanes"].append(entry)
             continue
+        except (TypeError, ValueError, KeyError, AttributeError, IndexError) as e:
+            # a response the adapter did not expect is a source fact, not a crash of the job
+            entry["error"] = f"malformed response: {type(e).__name__}: {e}"[:300]
+            out["facts"].append(f"{lane.source_id}: malformed response ({type(e).__name__}) — treated as unavailable (R-10)")
+            out["lanes"].append(entry)
+            continue
         out["lanes"].append(entry)
         records.extend(r for r in got if isinstance(r, dict))
         if rt in ("resolve", "enrich") and got:
@@ -331,11 +337,27 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
     return out
 
 
+def redact_for_storage(result: dict) -> dict:
+    """What a persisted job result may hold: never file bytes or full text (I-7).
+    Those are delivered only on the inline path and discarded afterwards."""
+    out = dict(result)
+    if "content" in out:
+        out["content_bytes"] = len(out["content"] or b"")
+        out["content"] = None
+    records = []
+    for r in out.get("records") or []:
+        if r.get("kind") == "full_text" and r.get("text") is not None:
+            r = {**r, "text": None, "text_chars": len(r["text"])}
+        records.append(r)
+    out["records"] = records
+    return out
+
+
 def make_handlers(router: Router, cache: Cache | None = None) -> dict[str, Callable]:
-    """Queue handlers: (client, job) → result, one per request type."""
+    """Queue handlers: (client, job) → result, one per request type. The stored result is redacted."""
     def handler(client: Client, job: dict) -> dict:
         payload = dict(job["payload"])
         payload.setdefault("request_type", job["request_type"])
         payload.setdefault("commercial", bool(job.get("commercial")))
-        return execute(router, payload, client, cache)
+        return redact_for_storage(execute(router, payload, client, cache))
     return {rt: handler for rt in ("find", "resolve", "enrich", "fetch", "data")}

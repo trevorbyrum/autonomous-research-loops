@@ -23,7 +23,7 @@ def _record(r: dict) -> dict:
         identifiers=ids, links=links, license=None,
         extra={"open_access": (r.get("isOpenAccess") == "Y"), "has_full_text": (r.get("hasTextMinedTerms") == "Y") or (r.get("inEPMC") == "Y"),
                "redistributable": False},
-        raw={k: r.get(k) for k in ("id", "source", "doi", "pmid", "pmcid", "title", "authorString", "pubYear", "journalTitle", "isOpenAccess")},
+        raw=r,
     )
 
 

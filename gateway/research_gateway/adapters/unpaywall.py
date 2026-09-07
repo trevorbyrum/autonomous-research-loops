@@ -33,7 +33,7 @@ def enrich(client: Client, identity: str, what: str = "oa_location") -> dict:
             license=loc.get("license"),
             extra={"is_oa": j.get("is_oa"), "oa_status": j.get("oa_status"), "host_type": loc.get("host_type"),
                    "version": loc.get("version"), "is_best": loc is best or loc == best},
-            raw={k: loc.get(k) for k in ("url", "url_for_pdf", "license", "host_type", "version", "evidence")},
+            raw=loc,
         ))
     return {"identity": f"doi:{doi}", "what": what, "items": items,
             "is_oa": j.get("is_oa"), "oa_status": j.get("oa_status")}

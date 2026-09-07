@@ -44,5 +44,6 @@ def data(client: Client, params: dict) -> dict:
     rec = make_record(identity=identity, kind="series", source_id=SOURCE_ID,
                       title=(rows[0].get("TableName") or rows[0].get("LineDescription")) if rows and isinstance(rows[0], dict) else method,
                       links=["https://apps.bea.gov/iTable/"], attribution=ATTRIBUTION,
-                      extra={"rows": rows, "row_count": len(rows), "notes": notes}, raw={"method": method, "query": {k: v for k, v in query.items() if k != "UserID"}})
+                      extra={"rows": rows, "row_count": len(rows), "notes": notes, "method": method,
+                             "query": {k: v for k, v in query.items() if k != "UserID"}}, raw=j)
     return {"identity": identity, "records": [rec]}

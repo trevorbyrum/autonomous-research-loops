@@ -33,7 +33,7 @@ def _record(d: dict) -> dict:
                        license=d.get("licenseName"),
                        extra={"subtitle": d.get("subtitle"), "total_bytes": d.get("totalBytes"), "last_updated": d.get("lastUpdated"),
                               "download_count": d.get("downloadCount"), "usability": d.get("usabilityRating")},
-                       raw={k: d.get(k) for k in ("ref", "title", "subtitle", "url", "licenseName", "totalBytes", "lastUpdated", "ownerName")})
+                       raw=d)
 
 
 def find(client: Client, query: str, *, limit: int = 20, page: int = 1) -> dict:
@@ -67,5 +67,5 @@ def fetch(client: Client, target: str, *, file_name: str | None = None, download
     records = [make_record(identity=f"{identity}#{f.get('name')}", kind="file", source_id=SOURCE_ID, title=f.get("name"),
                            links=[f"{BASE}/datasets/download/{ref}/{quote(f.get('name') or '', safe='')}"],
                            extra={"size": f.get("totalBytes") or f.get("size"), "created": f.get("creationDate")},
-                           raw={k: f.get(k) for k in ("name", "size", "totalBytes", "creationDate", "columns")}) for f in files]
+                           raw=f) for f in files]
     return {"identity": identity, "records": records}

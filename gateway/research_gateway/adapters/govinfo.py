@@ -28,8 +28,9 @@ def _record(p: dict) -> dict:
                        year=year_from(p.get("dateIssued")), venue=p.get("collectionCode"),
                        identifiers={"package_id": pid}, links=links, license="US Government work (public domain)",
                        extra={"date_issued": p.get("dateIssued"), "last_modified": p.get("lastModified"),
-                              "doc_class": p.get("docClass"), "formats": sorted(dl)},
-                       raw={k: p.get(k) for k in ("packageId", "title", "collectionCode", "dateIssued", "lastModified", "download", "docClass")})
+                              "doc_class": p.get("docClass"),
+                              "formats": sorted(k[:-4] for k in dl if k.endswith("Link") and k[:-4] in FORMATS)},
+                       raw=p)
 
 
 def find(client: Client, query: str, *, limit: int = 20, offset_mark: str = "*", collection: str | None = None) -> dict:

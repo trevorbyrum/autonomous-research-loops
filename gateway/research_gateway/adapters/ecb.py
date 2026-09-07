@@ -28,5 +28,5 @@ def data(client: Client, params: dict) -> dict:
         records.append(make_record(identity=f"series:ecb:{flow}:{skey}", kind="series", source_id=SOURCE_ID, title=f"{flow} {skey}",
                                    links=[f"https://data.ecb.europa.eu/data/datasets/{flow}"], attribution=ATTRIBUTION,
                                    extra={"dimensions": s["key"], "observations": s["observations"]},
-                                   raw={"dataflow": flow, "count": len(s["observations"])}))
+                                   raw=s))
     return {"identity": identity, "records": records}

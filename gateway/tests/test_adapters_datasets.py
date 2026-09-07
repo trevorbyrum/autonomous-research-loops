@@ -48,9 +48,11 @@ class GovInfo(unittest.TestCase):
         self.assertEqual(json.loads(t.calls[0][3])["query"], "supply chain")
         t.add("GET", "https://api.govinfo.gov/packages/CRPT-118hrpt1/summary", body=GOVINFO_PKG)
         rec = govinfo.resolve(c, "govinfo:CRPT-118hrpt1")
-        self.assertEqual(rec["formats"], ["pdfLink", "txtLink"])
+        self.assertEqual(rec["formats"], ["pdf", "txt"])
+        self.assertEqual(rec["raw"], GOVINFO_PKG, "the whole source object is kept (I-8)")
         files = govinfo.fetch(c, "govinfo:CRPT-118hrpt1")
-        self.assertEqual(files["records"], [])  # link keys are not bare formats; download links stay on the document record
+        self.assertEqual([f["format"] for f in files["records"]], ["pdf", "txt"])
+        self.assertEqual(files["records"][0]["links"], ["https://api.govinfo.gov/packages/CRPT-118hrpt1/pdf"])
         self.assertIn("https://api.govinfo.gov/packages/CRPT-118hrpt1/pdf", rec["links"])
         t.add("GET", "https://api.govinfo.gov/packages/CRPT-118hrpt1/txt", body="plain text", headers={"Content-Type": "text/plain"})
         got = govinfo.fetch(c, "CRPT-118hrpt1", fmt="txt", download=True)
@@ -165,6 +167,21 @@ class Socrata(unittest.TestCase):
         self.assertIn("%24where=license_id+%3E+0", t.calls[-1][1])
         with self.assertRaises(AdapterError):
             socrata.resolve(c, "abcd-1234")
+
+    def test_only_catalog_vouched_portals_are_called(self):
+        socrata.reset_known_domains()
+        c, t = client()
+        t.add("GET", "https://api.us.socrata.com/api/catalog/v1?domains=evil.example", body={"resultSetSize": 0, "results": []})
+        with self.assertRaises(AdapterError):
+            socrata.resolve(c, "socrata:evil.example:abcd-1234")
+        self.assertEqual(len(t.calls), 1, "the catalog was asked; the portal was never contacted")
+        t.add("GET", "https://api.us.socrata.com/api/catalog/v1?domains=data.example.gov", body={"resultSetSize": 3, "results": []})
+        t.add("GET", "https://data.example.gov/resource/xy12-3456.json?", body=[{"a": 1}])
+        out = socrata.fetch(c, "socrata:data.example.gov:xy12-3456", limit=5)
+        self.assertEqual(out["records"][0]["row_count"], 1)
+        socrata.fetch(c, "socrata:DATA.example.gov:xy12-3456", limit=5)
+        self.assertEqual(sum("catalog/v1" in call[1] for call in t.calls), 2, "vouching is remembered per portal")
+        socrata.reset_known_domains()
 
 
 class Kaggle(unittest.TestCase):

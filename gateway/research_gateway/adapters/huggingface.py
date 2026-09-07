@@ -40,7 +40,7 @@ def _record(d: dict) -> dict:
                        extra={"tags": d.get("tags") or [], "downloads": d.get("downloads"), "likes": d.get("likes"), "gated": d.get("gated", False),
                               "private": d.get("private", False), "description": (d.get("description") or "")[:1000],
                               "files": [s.get("rfilename") for s in d.get("siblings") or []]},
-                       raw={k: d.get(k) for k in ("id", "author", "sha", "lastModified", "tags", "cardData", "gated", "private", "downloads")})
+                       raw=d)
 
 
 def find(client: Client, query: str, *, limit: int = 20, offset: int = 0) -> dict:

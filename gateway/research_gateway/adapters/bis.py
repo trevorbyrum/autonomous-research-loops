@@ -31,5 +31,5 @@ def data(client: Client, params: dict) -> dict:
         records.append(make_record(identity=f"series:bis:{flow}:{skey}", kind="series", source_id=SOURCE_ID,
                                    title=s["key"].get("TITLE_TS") or f"{flow} {skey}", links=["https://data.bis.org/topics"],
                                    attribution=ATTRIBUTION, extra={"dimensions": dims, "observations": s["observations"]},
-                                   raw={"dataflow": flow, "attributes": s["key"], "count": len(s["observations"])}))
+                                   raw=s))
     return {"identity": identity, "records": records}

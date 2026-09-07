@@ -32,8 +32,7 @@ def _record(client: Client, w: dict) -> dict:
         attribution=None,
         extra={"type": w.get("type"), "cited_by_count": w.get("is-referenced-by-count"),
                "reference_count": w.get("reference-count"), "publisher": w.get("publisher")},
-        raw={k: w.get(k) for k in ("DOI", "type", "title", "author", "issued", "container-title", "ISSN", "URL",
-                                   "license", "publisher", "is-referenced-by-count", "reference-count", "subject")},
+        raw=w,
     )
 
 

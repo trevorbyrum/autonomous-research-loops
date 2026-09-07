@@ -35,7 +35,11 @@ def _headers(client: Client) -> dict:
     j = resp.json if resp.ok else None
     if not j or not j.get("access_token"):
         return {}
-    _TOKEN["value"], _TOKEN["exp"] = j["access_token"], time.time() + float(j.get("expires_in", 3600))
+    try:
+        ttl = float(j.get("expires_in") or 3600)
+    except (TypeError, ValueError):
+        ttl = 3600.0
+    _TOKEN["value"], _TOKEN["exp"] = str(j["access_token"]), time.time() + ttl
     return {"Authorization": f"Bearer {_TOKEN['value']}"}
 
 
@@ -64,7 +68,7 @@ def _record(r: dict) -> dict:
         identifiers=ids, links=links, license=licenses[0] if licenses else None,
         extra={"openaire_id": r.get("id"), "access_right": (r.get("bestAccessRight") or {}).get("label"),
                "has_doi": bool(doi)},
-        raw={k: r.get(k) for k in ("id", "mainTitle", "type", "publicationDate", "pids", "instances", "originalIds", "authors")},
+        raw=r,
     )
 
 

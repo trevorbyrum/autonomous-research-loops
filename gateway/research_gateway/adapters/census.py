@@ -32,6 +32,6 @@ def data(client: Client, params: dict) -> dict:
     header, rows = j[0], [dict(zip(j[0], r)) for r in j[1:]]
     rec = make_record(identity=identity, kind="series", source_id=SOURCE_ID, title=f"{dataset}: {query['get']}",
                       links=[f"https://api.census.gov/data/{dataset.strip('/')}.html"], attribution=ATTRIBUTION,
-                      extra={"columns": header, "rows": rows, "row_count": len(rows)},
-                      raw={"dataset": dataset, "query": {k: v for k, v in query.items() if k != "key"}})
+                      extra={"columns": header, "rows": rows, "row_count": len(rows), "dataset": dataset,
+                             "query": {k: v for k, v in query.items() if k != "key"}}, raw=j)
     return {"identity": identity, "records": [rec]}
