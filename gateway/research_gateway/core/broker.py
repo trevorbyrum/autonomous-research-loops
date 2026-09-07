@@ -263,6 +263,18 @@ class Broker:
         if self._on_breaker_change:
             self._fire([lambda: self._on_breaker_change(source_id, "closed", None, "operator")])
 
+    def seed_breakers(self, rows: list[tuple[str, float]]) -> None:
+        """Restore persisted open breakers: (source_id, seconds still to run). A breaker a crash
+        forgot does not silently reopen the tap on restart (D-25)."""
+        with self._lock:
+            now = self._clock()
+            for source_id, remaining in rows:
+                if source_id not in self._policies or remaining <= 0:
+                    continue
+                st = self._state_for(source_id)
+                st.breaker_until = max(st.breaker_until, now + float(remaining))
+                st.breaker_reason = st.breaker_reason or "restored from gateway.breakers at startup"
+
     def seed_usage(self, usage: dict[str, tuple[int, float]]) -> None:
         """Restore today's dispatched/credit counters (from gateway.calls) so a restart never
         resets a daily budget (D-23). Only counts for the current UTC day should be passed."""

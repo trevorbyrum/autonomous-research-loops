@@ -10,6 +10,9 @@ the identified licence permits commercial reuse with attribution at most
 from __future__ import annotations
 
 import re
+import urllib.parse
+
+_CC_TAIL = re.compile(r"([1-4]\.[05]|2\.5)?/?(deed(\.[a-z_]+)?|legalcode(\.[a-z_]+)?)?/?")
 
 # canonical id -> allow-listed? (commercial reuse, attribution at most)
 KNOWN: dict[str, bool] = {
@@ -105,11 +108,19 @@ def identify(license: str | None) -> str | None:
     if not s:
         return None
     if re.fullmatch(r"https?://\S+", s, re.IGNORECASE):
-        parts = re.match(r"(?i)https?://([^/?#]+)([^?#]*)", s)
-        host = (parts.group(1) or "").lower().split(":")[0]
-        path = (parts.group(2) or "/").lower()
+        try:
+            parts = urllib.parse.urlsplit(s)
+            host = (parts.hostname or "").lower()   # urlsplit handles userinfo: creativecommons.org:x@evil is evil
+        except ValueError:
+            return None
+        path = (parts.path or "/").lower()
+        if parts.query or parts.fragment or "/../" in path or path.endswith("/.."):
+            return None   # annotated, parameterised or traversal-shaped URLs identify nothing (D-25)
         for want_host, prefix, cid in _URL_ROUTES:
             if host in (want_host, f"www.{want_host}") and path.startswith(prefix or "/"):
+                tail = path[len(prefix):] if prefix else path.lstrip("/")
+                if want_host == "creativecommons.org" and not _CC_TAIL.fullmatch(tail):
+                    return None   # only versions the deed actually has, then deed/legalcode pages
                 return cid
         return None
     if any(ch in s for ch in "<>{}") or "http" in s.lower():

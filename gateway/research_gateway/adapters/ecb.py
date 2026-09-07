@@ -24,10 +24,11 @@ def data(client: Client, params: dict) -> dict:
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "records": []}
     records = []
+    ctx = sdmx.context(resp.json or {})
     for s in sdmx.series(resp.json or {}):
         skey = ".".join(str(v) for v in s["key"].values()) or key
         records.append(make_record(identity=f"series:ecb:{flow}:{skey}", kind="series", source_id=SOURCE_ID, title=f"{flow} {skey}",
                                    links=[f"https://data.ecb.europa.eu/data/datasets/{flow}"], attribution=ATTRIBUTION,
                                    extra={"dimensions": s["key"], "observations": s["observations"]},
-                                   raw=s))
+                                   raw={"series": s, "context": ctx}))
     return {"identity": identity, "records": records}

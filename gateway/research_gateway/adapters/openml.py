@@ -24,6 +24,7 @@ def _list_record(d: dict) -> dict:
     quality = {q.get("name"): q.get("value") for q in d.get("quality") or [] if q.get("name")}
     return make_record(identity=f"openml:{did}", kind="dataset", source_id=SOURCE_ID, title=d.get("name"), venue="OpenML",
                        identifiers={"dataset_id": did}, links=[f"https://www.openml.org/d/{did}"],
+                       license=d.get("licence") or d.get("license"),   # captured whenever the listing carries it (D-25)
                        extra={"version": d.get("version"), "status": d.get("status"), "format": d.get("format"),
                               "instances": quality.get("NumberOfInstances"), "features": quality.get("NumberOfFeatures")},
                        raw=d)

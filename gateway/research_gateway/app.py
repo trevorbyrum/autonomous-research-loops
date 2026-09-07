@@ -138,6 +138,16 @@ def todays_usage(conn) -> dict[str, tuple[int, float]]:
     return usage
 
 
+def open_breakers(conn) -> list[tuple[str, float]]:
+    """(source_id, seconds remaining) for breakers persisted open with time still on the clock."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT source_id, greatest(0, extract(epoch FROM retry_after - now())) FROM gateway.breakers "
+                    "WHERE state = 'open' AND retry_after > now()")
+        rows = [(sid, float(secs)) for sid, secs in cur.fetchall()]
+    conn.commit()
+    return rows
+
+
 def sources_from_db(conn) -> list[dict]:
     cols = ("id", "name", "kind", "capabilities", "identifiers", "base_for", "domains", "auth", "secret_ref",
             "use_commercial", "substitution_group", "enabled")
@@ -176,7 +186,8 @@ class Gateway:
 
         self.broker = Broker(policies, on_breaker_change=on_breaker, on_budget=self.alerter.budget)
         if self.conn is not None:
-            self.broker.seed_usage(todays_usage(self.conn))  # budgets survive restarts (D-23)
+            self.broker.seed_usage(todays_usage(self.conn))       # budgets survive restarts (D-23)
+            self.broker.seed_breakers(open_breakers(self.conn))   # so do open breakers (D-25)
         self.transport = transport
         # the cache persists from worker threads and HTTP threads alike: it gets its own connection and lock
         self.cache = Cache(db.connect() if self.conn is not None else None)

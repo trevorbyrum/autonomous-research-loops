@@ -71,6 +71,33 @@ def record(conn, rec: CallRecord) -> int:
         raise AuditError(f"call log write failed: {type(e).__name__}: {e}") from e
 
 
+def attempt(conn, rec: CallRecord) -> int:
+    """Write the dispatch row BEFORE the request leaves (failure_class 'attempt', no status).
+    If this cannot be written, nothing is dispatched at all — auditing precedes the call, so a
+    crash mid-request still leaves its row (I-6, D-25). Raises AuditError on failure."""
+    pre = CallRecord(**{**asdict(rec), "status": None, "latency_ms": 0, "ratelimit": None,
+                        "result_count": None, "failure_class": "attempt"})
+    return record(conn, pre)
+
+
+def complete(conn, attempt_id: int, rec: CallRecord) -> None:
+    """Fill the attempt row in with the outcome. Raises AuditError on failure."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE gateway.calls SET status = %s, latency_ms = %s, ratelimit = %s, credits = %s, "
+                "result_count = %s, failure_class = %s WHERE id = %s",
+                (rec.status, rec.latency_ms, json.dumps(rec.ratelimit) if rec.ratelimit is not None else None,
+                 rec.credits, rec.result_count, rec.failure_class, attempt_id))
+        conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise AuditError(f"call log completion failed: {type(e).__name__}: {e}") from e
+
+
 def _record(conn, rec: CallRecord) -> int:
     with conn.cursor() as cur:
         cur.execute(

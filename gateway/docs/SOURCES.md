@@ -123,7 +123,7 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 - **Commercial:** **allow** — the source's terms permit commercial use of what the gateway retrieves. Evidence: https://support.datacite.org/docs/datacite-data-file-use-policy
 - **Freshness:** origin registry for dataset DOIs (Zenodo, figshare, institutional repositories)
 - **Enabled in the default seed:** yes
-- **Notes:** Base lane for datasets. Zenodo and figshare records are discovered here; following their download links is a fetch against the registry row that owns the host (no dedicated Zenodo/figshare adapter exists).
+- **Notes:** Base lane for datasets. Zenodo and figshare records are discovered here with their file links; the gateway returns those links but does not fetch from Zenodo/figshare hosts itself (no registry row owns them; links, not files — I-7).
 
 ### GLOBE Project (leadership and culture data)
 

@@ -102,7 +102,7 @@ def finish(conn, job_id: int, result: dict, claim_token: str | None = None) -> b
     """False when the claim was fenced off (the job was reclaimed while this worker ran it)."""
     with conn.cursor() as cur:
         cur.execute("UPDATE gateway.jobs SET status = 'done', finished_at = now(), result = %s "
-                    "WHERE id = %s AND (%s::text IS NULL OR claim_token = %s) RETURNING id",
+                    "WHERE id = %s AND status IN ('queued', 'running') AND (%s::text IS NULL OR claim_token = %s) RETURNING id",
                     (json.dumps(result), job_id, claim_token, claim_token))
         won = cur.fetchone() is not None
     conn.commit()
@@ -112,7 +112,7 @@ def finish(conn, job_id: int, result: dict, claim_token: str | None = None) -> b
 def fail(conn, job_id: int, error_class: str, detail: dict | None = None, claim_token: str | None = None) -> bool:
     with conn.cursor() as cur:
         cur.execute("UPDATE gateway.jobs SET status = 'failed', finished_at = now(), error_class = %s, result = %s "
-                    "WHERE id = %s AND (%s::text IS NULL OR claim_token = %s) RETURNING id",
+                    "WHERE id = %s AND status IN ('queued', 'running') AND (%s::text IS NULL OR claim_token = %s) RETURNING id",
                     (error_class, json.dumps(detail or {}), job_id, claim_token, claim_token))
         won = cur.fetchone() is not None
     conn.commit()
@@ -197,6 +197,7 @@ def reclaim_stale(conn, *, after_minutes: int = RECLAIM_AFTER_MINUTES) -> tuple[
         requeued = len(cur.fetchall())
         cur.execute(
             "UPDATE gateway.jobs SET status = 'failed', finished_at = now(), error_class = 'outage', "
+            "claim_token = NULL, "   # the stale worker's token dies with the lease: it can never overwrite this (D-25)
             "result = %s WHERE status = 'running' AND started_at < now() - make_interval(mins => %s) "
             "AND attempts >= %s RETURNING id",
             (json.dumps({"error": f"abandoned by a dead worker {MAX_ATTEMPTS} times"}), after_minutes, MAX_ATTEMPTS - 1))

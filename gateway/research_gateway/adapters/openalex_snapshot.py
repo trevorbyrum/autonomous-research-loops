@@ -21,7 +21,9 @@ def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None
     conn = client.conn
     if conn is None:
         return {"records": [], "total": 0, "capability_fact": "local index needs a database connection"}
-    where = ["d.tsv @@ websearch_to_tsquery('english', %s)"]
+    # only the index's contracted population is ever served (D-19): rows of any other kind —
+    # e.g. left behind by an older loader — can neither surface nor borrow this source's identity (D-25)
+    where = ["d.tsv @@ websearch_to_tsquery('english', %s)", "d.kind IN ('venue', 'repository')"]
     args: list = [query]
     if kind:
         where.append("d.kind = %s")

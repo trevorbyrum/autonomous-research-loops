@@ -162,6 +162,8 @@ def reindex(conn, identities: list[str] | None = None) -> int:
     the index never grows to cover works or datasets the cache happens to hold, which would
     also relabel their answers with the index's identity."""
     with conn.cursor() as cur:
+        # rows of any other kind are removed outright: they should never have been indexed (D-19, D-25)
+        cur.execute("DELETE FROM gateway.index_docs WHERE kind NOT IN ('venue', 'repository')")
         if identities is None:
             cur.execute("SELECT identity, kind, canonical FROM gateway.records WHERE kind IN ('venue', 'repository')")
         else:

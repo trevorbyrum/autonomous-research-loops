@@ -33,10 +33,19 @@ def _fuzzy_same(a: dict, b: dict, threshold: float) -> bool:
     return SequenceMatcher(None, ta, tb).ratio() >= threshold
 
 
+def _provenance_of(rec: dict) -> list[dict]:
+    """A record already carrying provenance (a prior merge, a cache hit) contributes ALL its
+    members, never a single collapsed entry that would forget one of them (D-25)."""
+    if rec.get("provenance"):
+        return [dict(p) for p in rec["provenance"]]
+    return [{"source_id": rec["source_id"], "identity": rec["identity"], "raw": rec.get("raw"),
+             "license": rec.get("license")}]
+
+
 def _merge(into: dict, other: dict) -> None:
-    into["sources"].append(other["source_id"])
-    into["provenance"].append({"source_id": other["source_id"], "identity": other["identity"], "raw": other.get("raw"),
-                               "license": other.get("license")})
+    members = _provenance_of(other)
+    into["sources"].extend(m["source_id"] for m in members if m["source_id"] not in into["sources"])
+    into["provenance"].extend(members)
     for k, v in (other.get("identifiers") or {}).items():
         into["identifiers"].setdefault(k, v)
     for link in other.get("links") or []:
@@ -67,9 +76,8 @@ def cluster(records: list[dict], threshold: float = THRESHOLD) -> list[dict]:
             merged["identity"] = key
             merged["identifiers"] = dict(rec.get("identifiers") or {})
             merged["links"] = list(rec.get("links") or [])
-            merged["sources"] = [rec["source_id"]]
-            merged["provenance"] = [{"source_id": rec["source_id"], "identity": rec["identity"], "raw": rec.get("raw"),
-                                     "license": rec.get("license")}]
+            merged["provenance"] = _provenance_of(rec)
+            merged["sources"] = list(dict.fromkeys(m["source_id"] for m in merged["provenance"]))
             merged.pop("raw", None)
             out.append(merged)
             by_identity[key] = merged

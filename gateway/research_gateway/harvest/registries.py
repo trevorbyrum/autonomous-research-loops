@@ -75,10 +75,10 @@ def crossref_journals(client: Client, *, limit: int | None = None, rows: int = 1
         check("crossref", resp, allow_404=False)   # a failed page fails the load (D-23)
         j = resp.json
         msg = j.get("message") if isinstance(j, dict) else None
-        if not isinstance(msg, dict) or "items" not in msg:
-            raise ValueError(f"Crossref journals answered 200 but not with a message envelope "
-                             f"(content-type {resp.headers.get('content-type')!r}) — load failed, not empty (D-24)")
-        items = msg.get("items") if isinstance(msg.get("items"), list) else []
+        if not isinstance(msg, dict) or not isinstance(msg.get("items"), list):
+            raise ValueError(f"Crossref journals answered 200 but not with an items list "
+                             f"(content-type {resp.headers.get('content-type')!r}) — load failed, not empty (D-24/D-25)")
+        items = msg["items"]
         for j in items:
             rec = _safe(build, j, skipped) if isinstance(j, dict) else None
             if rec is None:
@@ -122,10 +122,10 @@ def datacite_repositories(client: Client, *, limit: int | None = None, size: int
                           query="repositories harvest")
         check("datacite", resp, allow_404=False)   # a failed page fails the load (D-23)
         j = resp.json
-        if not isinstance(j, dict) or "data" not in j:
-            raise ValueError(f"DataCite repositories answered 200 but not with a data envelope "
-                             f"(content-type {resp.headers.get('content-type')!r}) — load failed, not empty (D-24)")
-        data = j.get("data") if isinstance(j.get("data"), list) else []
+        if not isinstance(j, dict) or not isinstance(j.get("data"), list):
+            raise ValueError(f"DataCite repositories answered 200 but not with a data list "
+                             f"(content-type {resp.headers.get('content-type')!r}) — load failed, not empty (D-24/D-25)")
+        data = j["data"]
 
         def build(d: dict) -> dict | None:
             a = d.get("attributes") or {}
@@ -180,9 +180,13 @@ def main(argv: list[str] | None = None) -> int:
         print("refusing: a gateway service is running and owns these sources' limits (I-1). "
               "Stop it, or set RESEARCH_GATEWAY_ALLOW_CONCURRENT=1 knowingly.", file=sys.stderr)
         return 2
+    from ..app import open_breakers, todays_usage
     gw = Gateway(load_settings(), use_db=False)
     with db.connect() as conn:
-        n = run(conn, gw.make_client(conn, client_id="harvest"), args.loader, limit=args.limit)
+        client = gw.make_client(conn, client_id="harvest")
+        client.broker.seed_usage(todays_usage(conn))       # the loader shares the day's budgets (I-1, D-25)
+        client.broker.seed_breakers(open_breakers(conn))
+        n = run(conn, client, args.loader, limit=args.limit)
         print(json.dumps({"loader": args.loader, "loaded": n, **index.counts(conn)}, indent=1))
     return 0
 

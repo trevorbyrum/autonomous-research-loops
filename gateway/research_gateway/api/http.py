@@ -56,6 +56,9 @@ class Handler(BaseHTTPRequestHandler):
         return name
 
     def _body(self) -> dict | None:
+        if self.headers.get("Transfer-Encoding"):
+            self._send(400, {"error": "chunked bodies are not accepted; send Content-Length"})
+            return None  # and never both framing headers on one request (smuggling ambiguity, D-25)
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
@@ -115,7 +118,11 @@ class Handler(BaseHTTPRequestHandler):
         gw = self.server.gateway
         query = parse_qs(parts.query)
         try:
-            if query.get("async", ["0"])[0] in ("1", "true") and gw.conn is not None and not gw.is_inline_only(payload):
+            wants_async = query.get("async", ["0"])[0] in ("1", "true")
+            if wants_async and gw.is_inline_only(payload):
+                return self._send(400, {"error": f"{rt} requests are inline-only (their results are "
+                                                 "delivered, never stored); there is no job to poll (D-24)"})
+            if wants_async and gw.conn is not None:
                 job_id, created = gw.submit(payload, client, priority=str(body.get("priority") or "interactive"))
                 return self._send(202, {"job_id": job_id, "created": created, "status": "queued"})
             timeout = min(float(body.get("timeout") or gw.settings.sync_timeout), MAX_TIMEOUT)

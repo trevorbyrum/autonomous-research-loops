@@ -269,13 +269,26 @@ class ExecuteMergeAndCache(unittest.TestCase):
                   "provenance": [{"source_id": "crossref", "license": "cc-by-4.0"},
                                  {"source_id": "semanticscholar", "license": None},
                                  {"source_id": "europepmc", "license": None}]}
-        self.assertEqual(r.persistable_sources(merged), {"crossref"},
+        self.assertEqual(r.persistable_members(merged), [0],
                          "the CC-BY lead does not launder the unlicensed Europe PMC member into record_sources")
         self.assertFalse(r.redistributable_all(merged), "one restricted member caps the whole record at memory TTL")
         self.assertFalse(r.record_allowed(merged, {"commercial": True, "accept_per_item": True}),
                          "a commercial answer may not include the denied member either")
         merged["provenance"][2]["license"] = "cc-by-4.0"
-        self.assertEqual(r.persistable_sources(merged), {"crossref", "europepmc"})
+        self.assertEqual(r.persistable_members(merged), [0, 2])
+        # two members from the SAME source with different licences are judged separately (D-25)
+        twice = {"identity": "doi:10.1000/t", "kind": "article", "source_id": "europepmc", "license": None,
+                 "provenance": [{"source_id": "europepmc", "license": "cc-by-4.0"},
+                                {"source_id": "europepmc", "license": "cc-by-nc-4.0"}]}
+        self.assertEqual(r.persistable_members(twice), [0], "the NC copy from the same source stays out")
+        # a member with NO licence key never inherits the lead's (fail closed, D-25)
+        legacy = {"identity": "doi:10.1000/l", "kind": "article", "source_id": "europepmc", "license": "cc0",
+                  "provenance": [{"source_id": "europepmc"}]}
+        self.assertEqual(r.persistable_members(legacy), [])
+        # a sources list without provenance: denied members still count (D-25)
+        bare = {"identity": "doi:10.1000/b", "kind": "article", "source_id": "crossref", "license": "cc0",
+                "sources": ["crossref", "semanticscholar"]}
+        self.assertFalse(r.record_allowed(bare, {"commercial": True}))
         clean = {"identity": "doi:10.1000/c", "kind": "article", "source_id": "crossref", "license": "cc0",
                  "provenance": [{"source_id": "crossref", "license": "cc0"}]}
         self.assertTrue(r.record_allowed(clean, {"commercial": True}))

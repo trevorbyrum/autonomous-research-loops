@@ -84,8 +84,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--live", action="store_true")
     ap.add_argument("--report", type=Path, default=None)
     ap.add_argument("--sources", default="", help="comma-separated found-keys to probe (default: all)")
-    ap.add_argument("--min-n", type=int, default=10, help="fewest comparable observations a source needs to count as verified")
+    ap.add_argument("--min-n", type=int, default=10,
+                    help="fewest comparable observations a source needs (floor 10: fewer verifies nothing)")
     args = ap.parse_args(argv)
+    args.min_n = max(10, args.min_n)   # the floor is the gate, not a suggestion (D-25)
     keys = [k for k in PROBES if not args.sources or k in args.sources.split(",")]
     expected = json.loads(args.expectations.read_text())
     rng = random.Random(args.seed)

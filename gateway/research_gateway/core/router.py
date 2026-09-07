@@ -8,6 +8,7 @@ adding a source is a seed row and an adapter file, never an edit here (I-2).
 from __future__ import annotations
 
 import inspect
+import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Callable
@@ -123,13 +124,16 @@ class Router:
 
     def _members(self, record: dict) -> list[dict]:
         """Every provenance member of a (possibly merged) record, with its OWN licence — the lead
-        record's licence never speaks for a member's (D-23)."""
+        record's licence never speaks for a member's, and a member whose licence is simply absent
+        counts as unlicensed, never as inheriting the lead's (fail closed, D-25). A record with a
+        `sources` list but no provenance gets one member per named source, only the record's own
+        source carrying the record's licence."""
         provenance = record.get("provenance")
-        if not provenance:
-            return [{"source_id": record.get("source_id"), "license": record.get("license"), "raw": record.get("raw")}]
-        return [{"source_id": p.get("source_id"),
-                 "license": p.get("license") if "license" in p else record.get("license"),
-                 "raw": p.get("raw")} for p in provenance]
+        if provenance:
+            return [{"source_id": p.get("source_id"), "license": p.get("license"), "raw": p.get("raw")} for p in provenance]
+        sources = record.get("sources") or [record.get("source_id")]
+        return [{"source_id": s, "license": record.get("license") if s == record.get("source_id") else None,
+                 "raw": record.get("raw") if s == record.get("source_id") else None} for s in sources]
 
     def record_allowed(self, record: dict, payload: dict) -> bool:
         """R-8 for one record: EVERY member must pass (used for cache hits too, so a
@@ -143,11 +147,13 @@ class Router:
                                                 {"kind": record.get("kind"), "license": m["license"]}, payload)
                    for m in self._members(record))
 
-    def persistable_sources(self, record: dict) -> set[str]:
-        """Provenance members whose source and OWN licence let the gateway keep their raw payload (§6)."""
-        return {m["source_id"] for m in self._members(record)
+    def persistable_members(self, record: dict) -> list[int]:
+        """INDEXES of the provenance members whose source and OWN licence let the gateway keep
+        their raw payload (§6). Indexes, not source ids: two members from the same source with
+        different licences are judged separately (D-25)."""
+        return [i for i, m in enumerate(self._members(record))
                 if licenses.redistributable(self.sources.get(m["source_id"], {}),
-                                            {"kind": record.get("kind"), "license": m["license"]})}
+                                            {"kind": record.get("kind"), "license": m["license"]})]
 
     def redistributable_all(self, record: dict) -> bool:
         """True only when every member may be kept: anything less caches in memory for ≤ 1 hour (§6)."""
@@ -406,14 +412,14 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
             break  # primary answered; fallbacks are for failure only
         if rt == "fetch" and (got or out.get("content") is not None):
             break  # a fetch that answered never runs again on a fallback lane (D-23)
-    # redaction happens BEFORE anything is merged, cached or persisted, so an echoed secret never
-    # survives in a stored copy that a later request could serve back (D-24)
-    records = redact_secrets(records, client.secret_values)
-    out["facts"] = redact_secrets(out["facts"], client.secret_values)
     records = _drop_unlicensed(records, router, payload, out["facts"])
     if rt == "find":
         records = dedup.cluster(records)
     out["records"] = records
+    # redaction covers the WHOLE result — records, facts, lane errors — and runs BEFORE anything
+    # is cached, so no stored copy a later request could serve back carries a secret (D-24, D-25)
+    out = redact_secrets(out, client.secret_values)
+    records = out["records"]
     if cache is not None:
         try:
             for r in records:
@@ -421,41 +427,50 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
                     continue
                 if any(getattr(router.adapters.get(m["source_id"]), "LOCAL", False) for m in router._members(r)):
                     continue  # index answers came FROM the store; writing them back would erase harvested payloads (D-23)
-                cache.put_record(r, redistributable=router.redistributable_all(r), persist_sources=router.persistable_sources(r))
+                cache.put_record(r, redistributable=router.redistributable_all(r), persist_members=router.persistable_members(r))
             if rt == "find":
                 cache.put_search(cache.search_key(rt, _search_payload(payload)), out)
         except Exception as e:  # a broken cache degrades to no cache, never a failed request
             out["facts"].append(f"cache unavailable ({type(e).__name__})")
-    return redact_secrets(out, client.secret_values)
+    return out
 
 
 STORAGE_STRIPPED = ("raw", "text", "rows", "content", "provenance")
 
 
-MIN_SECRET_LENGTH = 8   # a shorter "secret" is indistinguishable from ordinary text; replacing it would mangle results
+MIN_SUBSTRING_SECRET = 8   # below this, only whole-token matches are replaced: substring replacement of
+                           # a short value would mangle ordinary words ("id" inside "identity", D-24/D-25)
 
 
 def redact_secrets(obj, values: set):
     """Replace any occurrence of a secret value the client handed out inside strings of the
     result — some sources echo request parameters back (D-23). Applied before caching, so no
     stored copy carries a secret either (D-24). Dictionary keys and tuples are covered; bytes
-    (downloads) are untouched. Values shorter than MIN_SECRET_LENGTH are skipped: real keys are
-    long, and replacing a short one would corrupt unrelated words (found the hard way, D-24)."""
-    values = {v for v in values if v and len(v) >= MIN_SECRET_LENGTH}
-    if not values:
+    (downloads) are untouched. Long secrets are replaced anywhere; short ones only where they
+    stand alone between non-word characters."""
+    long_vals = {v for v in values if v and len(v) >= MIN_SUBSTRING_SECRET}
+    short_res = [re.compile(r"(?<![A-Za-z0-9_])" + re.escape(v) + r"(?![A-Za-z0-9_])")
+                 for v in values if v and 0 < len(v) < MIN_SUBSTRING_SECRET]
+    if not long_vals and not short_res:
         return obj
-    if isinstance(obj, str):
-        for v in values:
-            if v and v in obj:
-                obj = obj.replace(v, "[redacted]")
-        return obj
-    if isinstance(obj, dict):
-        return {redact_secrets(k, values): redact_secrets(v, values) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [redact_secrets(v, values) for v in obj]
-    if isinstance(obj, tuple):
-        return tuple(redact_secrets(v, values) for v in obj)
-    return obj
+
+    def redact(x):
+        if isinstance(x, str):
+            for v in long_vals:
+                if v in x:
+                    x = x.replace(v, "[redacted]")
+            for pat in short_res:
+                x = pat.sub("[redacted]", x)
+            return x
+        if isinstance(x, dict):
+            return {redact(k): redact(v) for k, v in x.items()}
+        if isinstance(x, list):
+            return [redact(v) for v in x]
+        if isinstance(x, tuple):
+            return tuple(redact(v) for v in x)
+        return x
+
+    return redact(obj)
 
 
 def redact_for_storage(result: dict) -> dict:
@@ -468,27 +483,26 @@ def redact_for_storage(result: dict) -> dict:
         out["content_bytes"] = len(out["content"] or b"")
         out["content"] = None
 
-    def slim_record(r):
-        if not isinstance(r, dict):
-            return r
-        slim = {}
-        for k, v in r.items():
-            if k in STORAGE_STRIPPED:
-                if k in ("text", "rows") and v is not None:
-                    slim[f"{k}_dropped"] = True
-                continue
-            # a record nested anywhere (extra fields, lane payloads) is slimmed too (D-24)
-            if isinstance(v, dict):
-                slim[k] = slim_record(v)
-            elif isinstance(v, list):
-                slim[k] = [slim_record(x) for x in v]
-            else:
-                slim[k] = v
-        if "source_id" in r or "sources" in r:
-            slim["sources"] = r.get("sources") or [r.get("source_id")]
-        return slim
+    def slim(v):
+        """Any dict at any depth loses the storage-stripped fields; lists (however nested) recurse (D-25)."""
+        if isinstance(v, dict):
+            cleaned = {}
+            for k, inner in v.items():
+                if k in STORAGE_STRIPPED:
+                    if k in ("text", "rows") and inner is not None:
+                        cleaned[f"{k}_dropped"] = True
+                    continue
+                cleaned[k] = slim(inner)
+            if "source_id" in v or "sources" in v:
+                cleaned["sources"] = v.get("sources") or [v.get("source_id")]
+            return cleaned
+        if isinstance(v, list):
+            return [slim(x) for x in v]
+        if isinstance(v, tuple):
+            return tuple(slim(x) for x in v)
+        return v
 
-    out["records"] = [slim_record(r) for r in out.get("records") or []]
+    out["records"] = [slim(r) for r in out.get("records") or []]
     return out
 
 

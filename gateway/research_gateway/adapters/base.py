@@ -222,6 +222,9 @@ class Client:
         hdrs = {"User-Agent": self.user_agent, "Accept": "application/json"}
         hdrs.update(headers or {})
         for hop in range(MAX_REDIRECTS + 1):
+            # the audit row exists BEFORE the request leaves: if writing it fails nothing is sent,
+            # and a crash mid-request still leaves its row to complete later (I-6, D-25)
+            attempt_id = self._attempt(source_id, request_type, identity, query)
             t0 = time.monotonic()
             resp = self.transport.request(method, url, hdrs, body, self.timeout)
             latency = int((time.monotonic() - t0) * 1000)
@@ -229,7 +232,8 @@ class Client:
                                network_error=resp.status is None)
             # credits are charged once per request (the broker charged them on the first acquire);
             # each hop still gets its own call row, but only the first carries the credit figure (D-24)
-            self._record(source_id, request_type, identity, query, resp, latency, credits if hop == 0 else 0.0)
+            self._record(source_id, request_type, identity, query, resp, latency,
+                         credits if hop == 0 else 0.0, attempt_id=attempt_id)
             if resp.status not in REDIRECT_STATUSES:
                 return resp
             location = resp.headers.get("location")
@@ -271,8 +275,17 @@ class Client:
         if self.conn is not None:
             calllog.record(self.conn, rec)
 
+    def _attempt(self, source_id, request_type, identity, query) -> int | None:
+        """The pre-dispatch audit row (D-25). None when there is no database (laptop mode)."""
+        if self.conn is None:
+            return None
+        rec = calllog.CallRecord(source_id=source_id, request_type=request_type, status=None, latency_ms=0,
+                                 job_id=self.job_id, identity=identity, query=(query or "")[:500] or None,
+                                 domain_resolved=self.domain_resolved, client_id=self.client_id)
+        return calllog.attempt(self.conn, rec)
+
     def _record(self, source_id, request_type, identity, query, resp: Response, latency: int, credits: float,
-                refused: bool = False) -> None:
+                refused: bool = False, attempt_id: int | None = None) -> None:
         count = None
         j = resp.json if resp.ok else None
         if isinstance(j, list):
@@ -296,7 +309,10 @@ class Client:
         )
         self.log.append(rec)
         if self.conn is not None:
-            calllog.record(self.conn, rec)
+            if attempt_id is not None:
+                calllog.complete(self.conn, attempt_id, rec)   # fill the pre-dispatch row in (D-25)
+            else:
+                calllog.record(self.conn, rec)
 
 
 class AdapterError(Exception):

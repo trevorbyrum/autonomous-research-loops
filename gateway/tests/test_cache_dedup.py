@@ -127,7 +127,7 @@ class PersistentCache(unittest.TestCase):
         keep["provenance"] = [{"source_id": "crossref", "identity": keep["identity"], "raw": {"a": 1}},
                               {"source_id": "doaj", "identity": keep["identity"], "raw": {"b": 2}},
                               {"source_id": "semanticscholar", "identity": keep["identity"], "raw": {"never": "persisted"}}]
-        c.put_record(keep, redistributable=True, persist_sources={"crossref", "doaj"})
+        c.put_record(keep, redistributable=True, persist_members=[0, 1])
         c.put_record(rec(f"doi:10.1000/{self.tag}-mem", "semanticscholar", "Memory only"), redistributable=False)
         with self.conn.cursor() as cur:
             cur.execute("SELECT identity, kind FROM gateway.records WHERE identity LIKE %s ORDER BY identity", (f"doi:10.1000/{self.tag}%",))

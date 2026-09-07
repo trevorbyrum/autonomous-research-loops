@@ -128,7 +128,12 @@ def service_is_running() -> bool:
         return True                      # it answered: it is running
     if fact != "gateway_unavailable":
         return True                      # it answered with an error status: still running
-    return "timed out" in str(health.get("error") or "").lower()   # a hang is not proof of absence
+    # only positive evidence of ABSENCE counts: a refused connection or an unresolvable name.
+    # Resets, closed connections, timeouts, TLS failures — something is there; fail safe (D-25)
+    error = str(health.get("error") or "").lower()
+    return any(marker in error for marker in ("connection refused", "econnrefused",
+                                              "name or service not known", "nodename nor servname",
+                                              "no address associated"))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -152,7 +157,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     conn = db.connect() if db.configured() else None
     try:
-        rows = run(build_client(read_seed(), conn=conn), only)
+        client = build_client(read_seed(), conn=conn)
+        if conn is not None:
+            from .app import open_breakers, todays_usage
+            client.broker.seed_usage(todays_usage(conn))       # the smoke shares the day's budgets (I-1, D-25)
+            client.broker.seed_breakers(open_breakers(conn))
+        rows = run(client, only)
     finally:
         if conn is not None:
             conn.close()

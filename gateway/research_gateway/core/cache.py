@@ -71,12 +71,12 @@ class Cache:
                 raise
             return row[0] if row else None
 
-    def put_record(self, record: dict, *, redistributable: bool, persist_sources: set[str] | None = None) -> None:
+    def put_record(self, record: dict, *, redistributable: bool, persist_members: list[int] | None = None) -> None:
         """Keep the record in memory — for `metadata_ttl` only when EVERY member is redistributable,
         else `memory_ttl` (§6: a restricted member never outlives an hour) — and persist only the
-        provenance members whose source is in `persist_sources` (default: the record's own source),
-        skipping members that carry no raw payload so a stored payload is never overwritten with
-        nothing (D-23)."""
+        provenance members at the given INDEXES (each judged with its own licence; two entries
+        from one source are separate, D-25), skipping members that carry no raw payload so a
+        stored payload is never overwritten with nothing (D-23)."""
         key = ident.canonical(record["identity"])
         ttl = self.metadata_ttl if redistributable else self.memory_ttl
         with self._lock:
@@ -84,8 +84,8 @@ class Cache:
             self._records[key] = (self._clock() + ttl, record)
             if self.conn is not None:
                 try:
-                    self._persist(key, record, persist_sources if persist_sources is not None
-                                  else ({record.get("source_id")} if redistributable else set()))
+                    self._persist(key, record, persist_members if persist_members is not None
+                                  else ([0] if redistributable else []))
                 except Exception:
                     try:
                         self.conn.rollback()   # a failed persist never poisons the next one (D-24)
@@ -93,10 +93,10 @@ class Cache:
                         pass
                     raise
 
-    def _persist(self, key: str, record: dict, persist_sources: set[str]) -> None:
-        members = [p for p in (record.get("provenance") or [{"source_id": record.get("source_id"), "raw": record.get("raw"),
-                                                             "license": record.get("license")}])
-                   if p.get("source_id") in persist_sources and p.get("raw") is not None]
+    def _persist(self, key: str, record: dict, persist_members: list[int]) -> None:
+        provenance = record.get("provenance") or [{"source_id": record.get("source_id"), "raw": record.get("raw"),
+                                                   "license": record.get("license")}]
+        members = [provenance[i] for i in persist_members if 0 <= i < len(provenance) and provenance[i].get("raw") is not None]
         if not members:
             return
         canonical = {k: v for k, v in record.items() if k not in ("raw", "provenance")}

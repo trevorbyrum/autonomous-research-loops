@@ -32,6 +32,7 @@ def search_record(base: str, source_id: str, item: dict) -> dict:
                        title=item.get("name"), authors=item.get("authors") or [], year=year_from(item.get("published_at")),
                        venue=item.get("name_of_dataverse"), identifiers={"doi": doi} if doi else {},
                        links=[item.get("url") or f"{base}/dataset.xhtml?persistentId=doi:{doi}"],
+                       license=item.get("license"),   # some Dataverse search hits state it; commercial use of the rest needs a resolve (D-25)
                        extra={"description": (item.get("description") or "")[:1000], "subjects": item.get("subjects") or [],
                               "file_count": item.get("fileCount")},
                        raw=item)
@@ -105,9 +106,16 @@ def fetch_in(client: Client, base: str, source_id: str, secret_name: str | None,
         member_ids = {(f.get("dataFile") or {}).get("id") for f in (d.get("latestVersion") or {}).get("files") or []}
         if int(file_id) not in member_ids:
             raise AdapterError(f"{source_id}: file {file_id} does not belong to {ds['identity']}")
-        if client.commercial and not allow_listed(ds.get("license")):
-            return {"identity": ds["identity"], "records": [],
-                    "capability_fact": f"download refused before fetching: dataset licence {ds.get('license') or 'unknown'} is not usable commercially (R-8)"}
+        if client.commercial:
+            file_restricted = any((f.get("dataFile") or {}).get("id") == int(file_id) and f.get("restricted")
+                                  for f in (d.get("latestVersion") or {}).get("files") or [])
+            if not allow_listed(ds.get("license")) or ds.get("terms_of_use") or file_restricted:
+                # a CC0 label with extra terms of use, or a restricted member file, is not CC0 (D-25)
+                why = ("restricted file" if file_restricted else
+                       "additional terms of use" if ds.get("terms_of_use") else
+                       f"licence {ds.get('license') or 'unknown'}")
+                return {"identity": ds["identity"], "records": [],
+                        "capability_fact": f"download refused before fetching: {why} is not usable commercially (R-8)"}
         resp = client.get(source_id, "fetch", f"{base}/api/access/datafile/{int(file_id)}", headers={**headers(client, secret_name), "Accept": "*/*"},
                           identity=f"{ds['identity']}#{file_id}")
         if not check(source_id, resp):

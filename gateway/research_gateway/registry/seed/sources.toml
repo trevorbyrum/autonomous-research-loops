@@ -187,7 +187,7 @@ use_evidence = "https://support.datacite.org/docs/datacite-data-file-use-policy"
 freshness_lag = "origin registry for dataset DOIs (Zenodo, figshare, institutional repositories)"
 substitution_group = ""
 enabled = true
-notes = "Base lane for datasets. Zenodo and figshare records are discovered here; following their download links is a fetch against the registry row that owns the host (no dedicated Zenodo/figshare adapter exists)."
+notes = "Base lane for datasets. Zenodo and figshare records are discovered here with their file links; the gateway returns those links but does not fetch from Zenodo/figshare hosts itself (no registry row owns them; links, not files — I-7)."
 [source.rate]
 per_second = 5
 verified = true

@@ -136,16 +136,22 @@ class OpenAlexLocalIndex(unittest.TestCase):
         self.conn = db.connect()
         self.identity = f"doi:10.9999/test-{uuid.uuid4().hex[:8]}"
         with self.conn.cursor() as cur:
+            # the index holds venues/repositories only (D-19/D-25); an article row planted here must NOT surface
+            cur.execute("INSERT INTO gateway.records (identity, kind, canonical) VALUES (%s, 'venue', %s)",
+                        (self.identity, json.dumps({"identity": self.identity, "kind": "venue", "title": "Journal of Cross-Encoder Reranking", "year": 2024})))
+            cur.execute("INSERT INTO gateway.index_docs (identity, kind, domain, year, tsv) VALUES (%s, 'venue', 'ai-ml', 2024, to_tsvector('english', %s))",
+                        (self.identity, "Journal of Cross-Encoder Reranking retrieval"))
+            self.article = self.identity + "-art"
             cur.execute("INSERT INTO gateway.records (identity, kind, canonical) VALUES (%s, 'article', %s)",
-                        (self.identity, json.dumps({"identity": self.identity, "kind": "article", "title": "Cross-encoder reranking survey", "year": 2024})))
+                        (self.article, json.dumps({"identity": self.article, "kind": "article", "title": "Cross-encoder reranking survey"})))
             cur.execute("INSERT INTO gateway.index_docs (identity, kind, domain, year, tsv) VALUES (%s, 'article', 'ai-ml', 2024, to_tsvector('english', %s))",
-                        (self.identity, "Cross-encoder reranking survey for retrieval"))
+                        (self.article, "cross-encoder reranking article that must never surface"))
         self.conn.commit()
 
     def tearDown(self):
         with self.conn.cursor() as cur:
-            cur.execute("DELETE FROM gateway.index_docs WHERE identity = %s", (self.identity,))
-            cur.execute("DELETE FROM gateway.records WHERE identity = %s", (self.identity,))
+            cur.execute("DELETE FROM gateway.index_docs WHERE identity IN (%s, %s)", (self.identity, self.article))
+            cur.execute("DELETE FROM gateway.records WHERE identity IN (%s, %s)", (self.identity, self.article))
         self.conn.commit()
         self.conn.close()
 
@@ -155,6 +161,8 @@ class OpenAlexLocalIndex(unittest.TestCase):
         out = openalex_snapshot.find(c, "cross-encoder reranking", domain="ai-ml", year_from_=2020)
         self.assertEqual(t.calls, [], "no network call (D-2)")
         self.assertTrue(any(r["identity"] == self.identity for r in out["records"]))
+        self.assertFalse(any(r["identity"] == self.article for r in out["records"]),
+                         "a wrong-kind row left in the index can never surface under this source's identity (D-25)")
         self.assertEqual(out["records"][0]["source_id"], "openalex_snapshot")
         self.assertEqual(openalex_snapshot.find(c, "zzz-no-such-term-qq")["records"], [])
 

@@ -53,6 +53,29 @@ def _datasets(j: dict) -> list:
     return []
 
 
+def context(j: dict) -> dict:
+    """The SDMX-JSON structural context (dimension and attribute definitions) without the data —
+    kept with each record's raw so nothing needed to reread the observations is lost (I-8, D-25)."""
+    st = _structure(j)
+    return {k: st.get(k) for k in ("dimensions", "attributes", "annotations", "name", "names") if st.get(k) is not None}
+
+
+def context_xml(text: str) -> dict:
+    """The SDMX-ML message context: header fields and the structure reference (I-8, D-25)."""
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return {}
+    out: dict = {"root_attributes": dict(root.attrib)}
+    for el in root.iter():
+        name = _local(el.tag)
+        if name == "Header":
+            out["header"] = {_local(c.tag): (c.text or "").strip() or dict(c.attrib) for c in el}
+        elif name == "Structure":
+            out["structure"] = dict(el.attrib)
+    return out
+
+
 def series(j: dict) -> list[dict]:
     """Flatten SDMX-JSON into [{key: {dim: value}, observations: [(period, value)]}]."""
     st = _structure(j)
