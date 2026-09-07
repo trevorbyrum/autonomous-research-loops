@@ -264,6 +264,15 @@ class Router:
         if self._commercial_gate(sid, payload, plan):
             plan.lanes.append(Lane(sid, "single"))
 
+    def _plan_catalog(self, payload: dict, plan: Plan, _agency) -> None:
+        sid = payload.get("source")
+        if not sid or not self._usable(sid, "catalog"):
+            plan.facts.append(f"catalog needs 'source' naming an enabled source with catalog support (got {sid!r})")
+            return
+        # no commercial gate: a catalogue answers WHICH identifiers exist — metadata about
+        # the source, not records from it; the data call itself stays fully gated (D-32)
+        plan.lanes.append(Lane(sid, "single"))
+
     def _plan_fetch(self, payload: dict, plan: Plan, _agency) -> None:
         target = payload.get("target") or ""
         if not target:
@@ -340,6 +349,15 @@ def _run_lane(router: Router, rt: str, lane: Lane, payload: dict, client: Client
         res = {"records": res.get("items"), **{k: v for k, v in res.items() if k != "items"}}
     elif rt == "data":
         res = mod.data(client, payload.get("params") or {})
+    elif rt == "catalog":
+        res = mod.catalog(client, query=payload.get("query"), within=payload.get("within"),
+                          cursor=payload.get("cursor"), limit=payload.get("limit") or 20)
+        out["entries"] = res.get("entries") or []
+        if res.get("next") is not None:
+            out["catalog_next"] = res["next"]
+        if res.get("notes"):
+            out["notes"] = res["notes"]
+        res = {"records": [], **{k: v for k, v in res.items() if k == "capability_fact"}}
     else:  # fetch
         fparams = {k: v for k, v in (payload.get("params") or {}).items() if k in inspect.signature(mod.fetch).parameters}
         res = mod.fetch(client, payload["target"], **fparams)
@@ -421,7 +439,9 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
         try:
             got, fact = _run_lane(router, rt, lane, payload, client, out)
             entry["count"] = len(got)
-            if got:
+            if rt == "catalog":
+                entry["count"] = len(out.get("entries") or [])
+            if got or (rt == "catalog" and out.get("entries")):
                 entry["coverage"] = COVERAGE_OK
             elif fact:  # answered nothing AND explained why: that is not a successful empty search
                 entry["coverage"] = _fact_coverage(fact)

@@ -21,7 +21,7 @@ SCHEMA = HERE / "schema.sql"
 ADAPTERS = HERE.parent / "adapters"
 
 KINDS = {"article", "dataset", "citation", "resolver", "statistical", "manual"}
-CAPABILITIES = {"find", "resolve", "enrich", "fetch", "data"}
+CAPABILITIES = {"find", "resolve", "enrich", "fetch", "data", "catalog"}
 AUTH = {"none", "email", "key", "optional_token", "client_credentials", "username_key", "account"}
 VERDICTS = {"allow", "per-item", "deny", "unknown"}
 DOMAINS = {"finance", "market", "social", "management", "ai-ml", "software", "biomed"}

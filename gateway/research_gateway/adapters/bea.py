@@ -6,7 +6,7 @@ from .base import AdapterError, Client, check
 
 SOURCE_ID = "bea"
 SMOKE = {'capability': 'data', 'params': {'method': 'GETDATASETLIST'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
-CAPABILITIES = ("data",)
+CAPABILITIES = ("data", "catalog",)
 BASE = "https://apps.bea.gov/api/data/"
 ATTRIBUTION = "U.S. Bureau of Economic Analysis"
 
@@ -65,3 +65,60 @@ def data(client: Client, params: dict) -> dict:
                       extra={"rows": rows, "row_count": len(rows), "notes": notes, "method": method,
                              "query": {k: v for k, v in query.items() if k != "UserID"}}, raw=j)
     return {"identity": identity, "records": [rec]}
+
+
+def catalog(client: Client, *, query: str | None = None, within: str | None = None,
+            cursor=None, limit: int = 20) -> dict:
+    """Identifier discovery (D-32) through BEA's own metadata methods: no `within` lists
+    datasets; within=<dataset> lists its parameters; within=<dataset>/<parameter> lists
+    that parameter's values with a PARTIAL research_data template to complete."""
+    key = client.secret("bea")
+    if not key:
+        return {"entries": [], "capability_fact": "no BEA key configured"}
+    base_q = {"UserID": key, "ResultFormat": "JSON"}
+    dataset, _, parameter = (within or "").partition("/")
+
+    def rows_of(resp, *keys):
+        results = ((resp.json or {}).get("BEAAPI") or {}).get("Results") or {}
+        for k in keys:
+            v = results.get(k)
+            if isinstance(v, list):
+                return v
+            if isinstance(v, dict):
+                return [v]
+        return []
+
+    if not dataset:
+        resp = client.get(SOURCE_ID, "catalog", BASE, params={**base_q, "method": "GETDATASETLIST"}, query=query)
+        if not check(SOURCE_ID, resp):
+            return {"entries": []}
+        entries = [{"id": d.get("DatasetName"), "label": d.get("DatasetDescription"), "kind": "dataset",
+                    "children": True, "within": d.get("DatasetName")}
+                   for d in rows_of(resp, "Dataset") if d.get("DatasetName")]
+    elif not parameter:
+        resp = client.get(SOURCE_ID, "catalog", BASE,
+                          params={**base_q, "method": "GetParameterList", "DataSetName": dataset}, query=query)
+        if not check(SOURCE_ID, resp):
+            return {"entries": []}
+        entries = [{"id": p.get("ParameterName"), "label": p.get("ParameterDescription"), "kind": "parameter",
+                    "children": True, "within": f"{dataset}/{p.get('ParameterName')}"}
+                   for p in rows_of(resp, "Parameter") if p.get("ParameterName")]
+    else:
+        resp = client.get(SOURCE_ID, "catalog", BASE,
+                          params={**base_q, "method": "GetParameterValues", "DataSetName": dataset,
+                                  "ParameterName": parameter}, query=query)
+        if not check(SOURCE_ID, resp):
+            return {"entries": []}
+        entries = []
+        for v in rows_of(resp, "ParamValue"):
+            value = v.get("Key") or v.get("TableName") or next(iter(v.values()), None)
+            label = v.get("Desc") or v.get("Description") or value
+            entries.append({"id": value, "label": label, "kind": "value",
+                            "data_request": {"tool": "research_data", "partial": True,
+                                             "arguments": {"source": SOURCE_ID,
+                                                           "params": {"dataset": dataset, parameter.lower(): value}},
+                                             "missing": "the dataset's other required parameters (browse them the same way)"}})
+    if query:
+        q = query.lower()
+        entries = [e for e in entries if q in str(e.get("id", "")).lower() or q in str(e.get("label", "")).lower()]
+    return {"entries": entries[:limit], "next": None}

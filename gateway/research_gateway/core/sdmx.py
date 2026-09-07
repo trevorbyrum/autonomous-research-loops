@@ -100,3 +100,41 @@ def series(j: dict) -> list[dict]:
             out.append({"key": dim_values, "observations": observations,
                         "observations_raw": s.get("observations")})   # full per-observation arrays survive (I-8)
     return out
+
+
+def dataflows_xml(text: str) -> list[dict]:
+    """SDMX structure XML → [{id, label, structure_ref}] for every Dataflow element.
+    Namespace-agnostic like the rest of this module; the structure ref is the DSD id
+    the flow's key browsing needs (D-32)."""
+    import xml.etree.ElementTree as ET
+    flows = []
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return flows
+    for el in root.iter():
+        if _local(el.tag) != "Dataflow":
+            continue
+        label = next((c.text for c in el.iter() if _local(c.tag) == "Name" and c.text), None)
+        ref = next((c.attrib.get("id") for c in el.iter() if _local(c.tag) == "Ref" and c.attrib.get("id")), None)
+        flows.append({"id": el.attrib.get("id"), "label": label or el.attrib.get("id"), "structure_ref": ref})
+    return flows
+
+
+def dimensions_xml(text: str) -> list[str]:
+    """SDMX datastructure XML → dimension ids IN KEY ORDER (position attribute when
+    present, document order otherwise) — the order an agent needs to build a series key."""
+    import xml.etree.ElementTree as ET
+    dims = []
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return dims
+    for el in root.iter():
+        if _local(el.tag) == "Dimension" and el.attrib.get("id"):
+            try:
+                position = int(el.attrib.get("position", len(dims)))
+            except ValueError:
+                position = len(dims)
+            dims.append((position, el.attrib["id"]))
+    return [d for _, d in sorted(dims)]

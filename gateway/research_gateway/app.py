@@ -55,6 +55,7 @@ class Settings:
 # MCP) validate through this one table before anything reaches the router or the queue (D-23)
 FIELD_TYPES = {"query": str, "identity": str, "target": str, "what": str, "source": str, "kind": str, "domain": str,
                "topic_id": str, "published_after": str, "priority": str, "params": dict, "cursors": dict,
+               "within": str, "cursor": (str, int),
                "commercial": bool, "accept_per_item": bool, "limit": int, "year_from": int, "timeout": (int, float)}
 
 
@@ -235,7 +236,7 @@ class Gateway:
         """`fetch` and `data` requests are ALWAYS inline: their results are rows, files and text —
         things that are delivered and discarded, never stored in a job result (D-17, D-24). So is a
         full-text enrichment. The queue serves find/resolve/enrich, whose results are metadata."""
-        return (payload.get("request_type") in ("fetch", "data")
+        return (payload.get("request_type") in ("fetch", "data", "catalog")
                 or bool((payload.get("params") or {}).get("download"))
                 or payload.get("what") == "full_text")
 

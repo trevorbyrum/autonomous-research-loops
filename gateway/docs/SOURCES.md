@@ -328,7 +328,7 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 
 - **Website:** https://data.bis.org/
 - **API documentation:** https://stats.bis.org/api-doc/v2/
-- **Gateway requests:** data
+- **Gateway requests:** data, catalog
 - **Added for domains:** finance
 - **Authentication:** none
 - **How to get access:** No key.
@@ -343,7 +343,7 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 
 - **Website:** https://data.ecb.europa.eu/
 - **API documentation:** https://data.ecb.europa.eu/help/api/overview
-- **Gateway requests:** data
+- **Gateway requests:** data, catalog
 - **Added for domains:** finance
 - **Authentication:** none
 - **How to get access:** No key.
@@ -358,7 +358,7 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 
 - **Website:** https://fred.stlouisfed.org/
 - **API documentation:** https://fred.stlouisfed.org/docs/api/fred/
-- **Gateway requests:** data
+- **Gateway requests:** data, catalog
 - **Added for domains:** finance, market
 - **Authentication:** key (secret name `fred`)
 - **How to get access:** Create a free account, then https://fred.stlouisfed.org/docs/api/api_key.html → Request API Key. Sent as the api_key query parameter.
@@ -373,7 +373,7 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 
 - **Website:** https://www.bea.gov/
 - **API documentation:** https://apps.bea.gov/api/_pdf/bea_web_service_api_user_guide.pdf
-- **Gateway requests:** data
+- **Gateway requests:** data, catalog
 - **Added for domains:** finance, market
 - **Authentication:** key (secret name `bea`)
 - **How to get access:** Sign up at https://apps.bea.gov/api/signup/ (name + email). The key arrives by email and must be activated via the link in that email before it works. Sent as the UserID query parameter.
@@ -388,7 +388,7 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 
 - **Website:** https://www.bls.gov/developers/
 - **API documentation:** https://www.bls.gov/developers/api_faqs.htm
-- **Gateway requests:** data
+- **Gateway requests:** data, catalog
 - **Added for domains:** market, finance, social
 - **Authentication:** optional_token (secret name `bls`)
 - **How to get access:** Optional free registration key at https://data.bls.gov/registrationEngine/ raises the daily query limit. Sent in the request body as registrationkey.
@@ -403,7 +403,7 @@ Keys are never stored in this repository. Each deployment maps the *secret name*
 
 - **Website:** https://www.census.gov/data/developers.html
 - **API documentation:** https://www.census.gov/data/developers/guidance/api-user-guide.html
-- **Gateway requests:** data
+- **Gateway requests:** data, catalog
 - **Added for domains:** market, social, finance
 - **Authentication:** key (secret name `census`)
 - **How to get access:** Request at https://api.census.gov/data/key_signup.html; the key arrives by email and must be activated via the link in that email. Sent as the key query parameter.

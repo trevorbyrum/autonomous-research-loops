@@ -21,7 +21,7 @@ from typing import Callable
 
 import psycopg
 
-REQUEST_TYPES = ("find", "resolve", "enrich", "fetch", "data")
+REQUEST_TYPES = ("find", "resolve", "enrich", "fetch", "data", "catalog")
 PRIORITY_INTERACTIVE, PRIORITY_ENRICH, PRIORITY_HARVEST = 1, 5, 9
 
 Handler = Callable[[object, dict], dict]          # (client, job) -> result

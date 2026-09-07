@@ -593,3 +593,114 @@ class ValueValidation(unittest.TestCase):
         self.assertEqual(out["capability_fact"], "gateway_error_400")
         self.assertIn("'limit' must be integer", out["error"])
         self.assertEqual(transport.calls, [], "nothing reached the network, no budget spent")
+
+
+class CatalogDiscovery(unittest.TestCase):
+    """D-32: research_catalog — identifier discovery per statistical source, each entry
+    carrying a ready-made (or explicitly partial) research_data call, metered like any
+    other request and keyed as its OWN activity type."""
+
+    def _client(self, secrets=None):
+        t = FakeTransport()
+        creds = secrets or {}
+        c = Client(broker=Broker({s["id"]: RatePolicy(per_second=100) for s in SEED}), transport=t,
+                   secrets=lambda n, f=None: creds.get((n, f) if f else n) or creds.get((n, f)))
+        return c, t
+
+    def test_fred_search_yields_complete_data_requests(self):
+        c, t = self._client(secrets={("fred", None): "k", "fred": "k"})
+        t.add("GET", "https://api.stlouisfed.org/fred/series/search",
+              body={"seriess": [{"id": "GDP", "title": "Gross Domestic Product", "units": "Billions",
+                                 "frequency": "Quarterly", "observation_start": "1947-01-01",
+                                 "observation_end": "2026-04-01"}]})
+        out = ADAPTERS["fred"].catalog(c, query="gross domestic product")
+        entry = out["entries"][0]
+        self.assertEqual(entry["id"], "GDP")
+        self.assertEqual(entry["data_request"]["arguments"], {"source": "fred", "params": {"series": "GDP"}})
+        from research_gateway.adapters.base import validate_data_params
+        self.assertIsNone(validate_data_params(ADAPTERS["fred"], entry["data_request"]["arguments"]["params"]),
+                          "a catalogue entry's data call must satisfy the declared contract")
+
+    def test_bea_browses_datasets_parameters_values(self):
+        c, t = self._client(secrets={("bea", None): "k", "bea": "k"})
+        t.add("GET", "https://apps.bea.gov/api/data",
+              body={"BEAAPI": {"Results": {"Dataset": [{"DatasetName": "NIPA", "DatasetDescription": "National accounts"}]}}})
+        out = ADAPTERS["bea"].catalog(c)
+        self.assertEqual(out["entries"][0], {"id": "NIPA", "label": "National accounts", "kind": "dataset",
+                                             "children": True, "within": "NIPA"})
+        t.routes.clear()
+        t.add("GET", "https://apps.bea.gov/api/data",
+              body={"BEAAPI": {"Results": {"ParamValue": [{"TableName": "T10101", "Description": "GDP percent change"}]}}})
+        out = ADAPTERS["bea"].catalog(c, within="NIPA/TableName")
+        req = out["entries"][0]["data_request"]
+        self.assertTrue(req["partial"])
+        self.assertEqual(req["arguments"]["params"], {"dataset": "NIPA", "tablename": "T10101"})
+
+    def test_census_datasets_then_variables_are_partial_until_geography(self):
+        c, t = self._client()
+        t.add("GET", "https://api.census.gov/data.json",
+              body={"dataset": [{"title": "ACS 1-Year", "c_vintage": 2022, "c_dataset": ["acs", "acs1"]}]})
+        out = ADAPTERS["census"].catalog(c, query="acs")
+        self.assertEqual(out["entries"][0]["within"], "2022/acs/acs1")
+        t.routes.clear()
+        t.add("GET", "https://api.census.gov/data/2022/acs/acs1/variables.json",
+              body={"variables": {"B01001_001E": {"label": "Estimate!!Total"}}})
+        out = ADAPTERS["census"].catalog(c, within="2022/acs/acs1")
+        req = out["entries"][0]["data_request"]
+        self.assertTrue(req["partial"])
+        self.assertIn("geography", req["missing"])
+
+    def test_bls_surveys_then_popular_series(self):
+        c, t = self._client()
+        t.add("GET", "https://api.bls.gov/publicAPI/v2/surveys",
+              body={"Results": {"survey": [{"survey_abbreviation": "LN", "survey_name": "Labor Force Statistics"}]}})
+        out = ADAPTERS["bls"].catalog(c)
+        self.assertEqual(out["entries"][0]["within"], "LN")
+        self.assertIn("no series search API", out["notes"])
+        t.routes.clear()
+        t.add("GET", "https://api.bls.gov/publicAPI/v2/timeseries/popular",
+              body={"Results": {"series": [{"seriesID": "LNS14000000"}]}})
+        out = ADAPTERS["bls"].catalog(c, within="LN")
+        self.assertEqual(out["entries"][0]["data_request"]["arguments"]["params"], {"series": "LNS14000000"})
+
+    SDMX_FLOWS = ('<mes:Structure xmlns:mes="x" xmlns:str="y"><str:Dataflow id="EXR">'
+                  '<str:Name>Exchange Rates</str:Name><str:Structure><Ref id="ECB_EXR1"/></str:Structure>'
+                  '</str:Dataflow></mes:Structure>')
+    SDMX_DSD = ('<mes:Structure xmlns:mes="x" xmlns:str="y"><str:DimensionList>'
+                '<str:Dimension id="FREQ" position="1"/><str:Dimension id="CURRENCY" position="2"/>'
+                '</str:DimensionList></mes:Structure>')
+
+    def test_ecb_dataflows_then_dimensions_in_key_order(self):
+        c, t = self._client()
+        t.add("GET", "https://data-api.ecb.europa.eu/service/dataflow/ECB", body=self.SDMX_FLOWS)
+        out = ADAPTERS["ecb"].catalog(c)
+        self.assertEqual(out["entries"][0], {"id": "EXR", "label": "Exchange Rates", "kind": "dataflow",
+                                             "children": True, "within": "EXR"})
+        t.routes.clear()
+        t.add("GET", "https://data-api.ecb.europa.eu/service/dataflow/ECB/EXR", body=self.SDMX_FLOWS)
+        t.add("GET", "https://data-api.ecb.europa.eu/service/datastructure/ECB/ECB_EXR1", body=self.SDMX_DSD)
+        out = ADAPTERS["ecb"].catalog(c, within="EXR")
+        entry = out["entries"][0]
+        self.assertEqual(entry["dimensions_in_key_order"], ["FREQ", "CURRENCY"])
+        self.assertTrue(entry["data_request"]["partial"])
+        self.assertEqual(entry["data_request"]["arguments"]["params"]["key"], "?.?")
+
+    def test_bis_dataflow_listing(self):
+        c, t = self._client()
+        t.add("GET", "https://stats.bis.org/api/v2/structure/dataflow/BIS", body=self.SDMX_FLOWS)
+        out = ADAPTERS["bis"].catalog(c, query="exchange")
+        self.assertEqual(out["entries"][0]["id"], "EXR")
+
+    def test_catalog_routes_through_the_gateway_as_its_own_request_type(self):
+        r, c, t = make()
+        t.add("GET", "https://api.stlouisfed.org/fred/series/search",
+              body={"seriess": [{"id": "GDP", "title": "Gross Domestic Product"}]})
+        creds = {("fred", None): "k"}
+        c.secrets = lambda n, f=None: creds.get((n, f))
+        out = R.execute(r, {"request_type": "catalog", "source": "fred", "query": "gdp"}, c)
+        self.assertEqual(out["entries"][0]["id"], "GDP")
+        self.assertEqual(out["lanes"][0]["coverage"], "searched_ok")
+        self.assertEqual([rec.request_type for rec in c.log if rec.source_id == "fred"], ["catalog"],
+                         "catalogue success is its own activity type — it can never clear a data blocker")
+        empty = R.execute(r, {"request_type": "catalog", "source": "nope", "query": "x"}, c)
+        self.assertIn("catalog needs 'source'", empty["facts"][0])

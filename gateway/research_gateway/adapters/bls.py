@@ -6,7 +6,7 @@ from .base import AdapterError, Client, check
 
 SOURCE_ID = "bls"
 SMOKE = {'capability': 'data', 'params': {'series': 'CUUR0000SA0', 'start_year': 2025, 'end_year': 2025}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
-CAPABILITIES = ("data",)
+CAPABILITIES = ("data", "catalog",)
 BASE = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
 ATTRIBUTION = "U.S. Bureau of Labor Statistics"
 
@@ -60,3 +60,34 @@ def data(client: Client, params: dict) -> dict:
                                    extra={"observations": obs, "survey": cat.get("survey_name"), "seasonality": cat.get("seasonality")},
                                    raw=s))
     return {"identity": identity, "records": records, "messages": j.get("message") or []}
+
+
+def catalog(client: Client, *, query: str | None = None, within: str | None = None,
+            cursor=None, limit: int = 20) -> dict:
+    """Identifier discovery (D-32), deliberately SCOPED: BLS publishes no full-text series
+    search API, so this lists surveys and each survey's popular series — anything beyond
+    that still needs the BLS data finder by hand (documented residual)."""
+    if not within:
+        resp = client.get(SOURCE_ID, "catalog", "https://api.bls.gov/publicAPI/v2/surveys", query=query)
+        if not check(SOURCE_ID, resp):
+            return {"entries": []}
+        q = (query or "").lower()
+        entries = [{"id": s.get("survey_abbreviation"), "label": s.get("survey_name"), "kind": "survey",
+                    "children": True, "within": s.get("survey_abbreviation")}
+                   for s in (((resp.json or {}).get("Results") or {}).get("survey") or [])
+                   if s.get("survey_abbreviation")
+                   and (not q or q in str(s.get("survey_name", "")).lower()
+                        or q in str(s.get("survey_abbreviation", "")).lower())]
+        return {"entries": entries[:limit], "next": None,
+                "notes": "BLS has no series search API: browse a survey's popular series, or find ids at data.bls.gov"}
+    resp = client.get(SOURCE_ID, "catalog", f"https://api.bls.gov/publicAPI/v2/timeseries/popular?survey={within}",
+                      identity=f"series:bls:{within}")
+    if not check(SOURCE_ID, resp):
+        return {"entries": []}
+    series = (((resp.json or {}).get("Results") or {}).get("series") or [])
+    entries = [{"id": s.get("seriesID"), "label": s.get("seriesID"), "kind": "series",
+                "data_request": {"tool": "research_data",
+                                 "arguments": {"source": SOURCE_ID, "params": {"series": s.get("seriesID")}}}}
+               for s in series if s.get("seriesID")]
+    return {"entries": entries[:limit], "next": None,
+            "notes": f"the survey's POPULAR series only; other {within} series ids come from data.bls.gov"}

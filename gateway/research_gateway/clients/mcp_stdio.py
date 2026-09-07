@@ -65,6 +65,19 @@ TOOLS = [
      + INSTEAD + "The answer echoes the request (source + params) so the cited table is reproducible.",
      {"source": {**STR, "enum": ["fred", "bea", "census", "bls", "bis", "ecb"]}, "params": OBJ, **COMMON},
      ["source", "params"]),
+    ("research_catalog", "Find the IDENTIFIERS a statistical query needs — knowing FRED wants `series` does not tell "
+     "you that GDP's id is 'GDP'. fred: search series by text (query) or inspect one (within=<series id>); "
+     "bea: browse datasets → parameters → values (within=<dataset> or <dataset>/<parameter>); "
+     "census: search datasets (query) then variables (within=<dataset>, query filters); "
+     "bls: surveys then each survey's popular series (within=<survey>); "
+     "bis/ecb: dataflows, then within=<flow> for its dimension ids in key order. "
+     "Entries carry a ready-made (sometimes partial, explicitly marked) research_data call. "
+     "Catalogue success is its own activity — it never clears a failed data request.",
+     {"source": {**STR, "enum": ["fred", "bea", "census", "bls", "bis", "ecb"]},
+      "query": {**STR, "description": "free-text filter/search"},
+      "within": {**STR, "description": "browse a returned entry's `within` token"},
+      "cursor": {**STR, "description": "continue a listing: the previous answer's catalog_next"},
+      "limit": INT, **COMMON}, ["source"]),
     ("research_sources", "Describe the registered sources: with no arguments, every source's capabilities, domains and "
      "commercial verdict; with {\"source\": id}, that source's EXACT declared contract — required/optional data params, "
      "a working example, enrichment kinds, schemes. Call this before your first research_data call to a source.",
@@ -96,7 +109,7 @@ def tool_specs(bound: bool = False) -> list[dict]:
 
 
 REQUEST_TOOLS = {"research_find": "find", "research_resolve": "resolve", "research_enrich": "enrich",
-                 "research_files": "fetch", "research_data": "data"}
+                 "research_files": "fetch", "research_data": "data", "research_catalog": "catalog"}
 BOUND_HIDDEN = ("topic_id", "commercial", "accept_per_item")   # operator-owned under a bound topic: enforced
                                                                # internally, not advertised as arguments (D-31)
 BATCH_TOOLS = ("research_resolve", "research_enrich")
