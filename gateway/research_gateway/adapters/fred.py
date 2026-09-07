@@ -19,6 +19,16 @@ def _restricted(notes: str | None) -> bool:
     return any(m in low for m in _RESTRICTION_MARKERS)
 
 
+# the agent-facing data contract (research_sources; validated before dispatch, D-31)
+DATA_PARAMS = {
+    "required": {"series": "FRED series id, e.g. GDP, UNRATE, CPIAUCSL"},
+    "optional": {"start": "observation start, ISO date", "end": "observation end, ISO date",
+                 "limit": "max observations returned"},
+    "open": False,
+    "example": {"series": "GDP", "start": "2020-01-01"},
+    "notes": "series metadata is always fetched; series FRED flags as third-party-restricted are withheld under commercial topics",
+}
+
 def data(client: Client, params: dict) -> dict:
     """params: series (required), start, end, limit. Series metadata is ALWAYS fetched: its notes
     are where FRED flags third-party restrictions, and skipping that check is not an option (D-23)."""

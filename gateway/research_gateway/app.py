@@ -270,10 +270,46 @@ class Gateway:
                 return j
             time.sleep(0.1)
 
+    def source_descriptions(self, source: str | None = None) -> dict:
+        """The registry, projected for agents (research_sources, D-31): public-safe fields only —
+        never a secret reference or a key. With `source`, that source's exact declared data
+        contract and capabilities; without, concise summaries of every registered source."""
+        from .adapters.base import data_contract
+        public = ("id", "name", "kind", "homepage", "capabilities", "identifiers", "base_for",
+                  "domains", "use_commercial", "license", "freshness_lag", "enabled")
+        if source is None:
+            return {"sources": [{k: s.get(k) for k in public} for s in self.sources]}
+        row = next((s for s in self.sources if s.get("id") == source), None)
+        if row is None:
+            return {"capability_fact": "gateway_error_404",
+                    "error": f"unknown source {source!r} — call research_sources with no arguments for the list"}
+        out = {k: row.get(k) for k in public}
+        mod = self.router.adapters.get(source)
+        if mod is not None:
+            contract = data_contract(mod)
+            if contract:
+                out["data_params"] = contract
+            for attr, key in (("ENRICHES", "enriches"), ("SCHEMES", "schemes"), ("HOSTS", "hosts")):
+                value = getattr(mod, attr, None)
+                if value:
+                    out[key] = list(value)
+        return out
+
     def handle(self, payload: dict, client_id: str, *, timeout: float | None = None, priority: str = "interactive") -> dict:
         """One request end to end. Inline requests (no queue, or a fetch/data/full-text payload)
         return the FULL result — redaction is a storage rule, not a delivery rule (D-24); queued
         requests store and return canonical metadata (a timeout returns the job id to poll)."""
+        if payload.get("request_type") == "data":
+            # validate against the adapter's DECLARED contract before any budget or dispatch:
+            # a blind call fails instantly WITH the contract, so the first mistake teaches (D-31)
+            from .adapters.base import data_contract, validate_data_params
+            mod = self.router.adapters.get(payload.get("source") or "")
+            if mod is not None:
+                problem = validate_data_params(mod, payload.get("params"))
+                if problem:
+                    return {"capability_fact": "gateway_error_400",
+                            "error": f"{payload.get('source')}: {problem}",
+                            "contract": data_contract(mod)}
         if self.conn is None or self.is_inline_only(payload):
             return self.run_inline(payload, client_id)
         job_id, created = self.submit(payload, client_id, priority=priority)

@@ -46,9 +46,9 @@ TOOLS = [
      {"identity": STR, **COMMON}, ["identity"]),
     ("research_enrich", "Citations, references, open-access location or full text link for an identity. " + INSTEAD,
      {"identity": STR, "what": {**STR, "description": "citations|references|oa_location|full_text|metadata"}, **COMMON}, ["identity", "what"]),
-    ("research_fetch", "LIST a dataset's or document's files from a registry source: doi:, hf:, kaggle:, "
-     "openml:, socrata:, govinfo:, url:. " + INSTEAD + "This tool only lists; to retrieve one of the "
-     "listed files, call research_download with the same target and the file's identifying params.",
+    ("research_files", "LIST a dataset's or document's files from a registry source: doi:, hf:, kaggle:, "
+     "openml:, socrata:, govinfo:, url:. " + INSTEAD + "This tool only lists; each listed file carries a "
+     "ready-made `download_request` — pass its arguments straight to research_download.",
      {"target": STR, "params": {**OBJ, "description": "adapter options (never download: that is research_download's job)"}, **COMMON}, ["target"]),
     ("research_download", "DOWNLOAD one file from a registry source (the step after research_fetch listed it). "
      "Same `target` as research_fetch; `params` identify the file, e.g. {\"file_id\": 123} or "
@@ -56,27 +56,49 @@ TOOLS = [
      "TEMPORARY download directory and the saved path is returned — copy anything you keep into the "
      "topic's own files before the iteration ends; bytes are never dumped into context.",
      {"target": STR, "params": {**OBJ, "description": "file-identifying adapter options, e.g. {\"file_id\": 123}"}, **COMMON}, ["target"]),
-    ("research_data", "A statistical series/table from exactly one source: fred|bea|census|bls|bis|ecb, with source-native "
-     "params. " + INSTEAD + "The answer echoes the request (source + params) so the cited table is reproducible.",
-     {"source": STR, "params": OBJ, **COMMON}, ["source", "params"]),
+    ("research_data", "A statistical series/table from exactly one source, with that source's native params. Key shapes — "
+     "fred: series(+start,end,limit); bea: method/dataset/table/frequency/year(+BEA-native keys); "
+     "census: dataset+get(+for,in,predicates); bls: series ≤50(+start_year,end_year); "
+     "bis: dataflow(+key,start,end); ecb: dataflow+key(+start,end). "
+     "Full contract with a working example: research_sources({\"source\": ...}). Params are validated against the "
+     "declared contract BEFORE any budget is spent — a bad call returns the contract, not an upstream error. "
+     + INSTEAD + "The answer echoes the request (source + params) so the cited table is reproducible.",
+     {"source": {**STR, "enum": ["fred", "bea", "census", "bls", "bis", "ecb"]}, "params": OBJ, **COMMON},
+     ["source", "params"]),
+    ("research_sources", "Describe the registered sources: with no arguments, every source's capabilities, domains and "
+     "commercial verdict; with {\"source\": id}, that source's EXACT declared contract — required/optional data params, "
+     "a working example, enrichment kinds, schemes. Call this before your first research_data call to a source.",
+     {"source": {**STR, "description": "a source id from the no-argument listing, e.g. fred"}}, []),
     ("research_status", "Gateway health, breaker states, budgets, cache and queue counts.", {}, []),
     ("research_job", "Fetch a previously returned pending/async job by its job_id (jobs are visible only to the client that created them).",
      {"job_id": INT}, ["job_id"]),
     ("research_batch", "Run up to 20 independent research_resolve / research_enrich calls in one request. Each entry is "
      "{\"tool\": name, \"arguments\": {...}}; results and failures come back per entry, in order. Prefer this over "
      "sequential single calls for identifier lists.",
-     {"calls": {"type": "array", "items": {"type": "object"},
+     {"calls": {"type": "array", "maxItems": 20,
+                "items": {"type": "object", "required": ["tool", "arguments"], "properties": {
+                    "tool": {"type": "string", "enum": ["research_resolve", "research_enrich"]},
+                    "arguments": {"type": "object"}}},
                 "description": "up to 20 entries of {\"tool\": \"research_resolve\"|\"research_enrich\", \"arguments\": {...}}"}},
      ["calls"]),
 ]
 
 
-def tool_specs() -> list[dict]:
-    return [{"name": n, "description": d, "inputSchema": {"type": "object", "properties": p, "required": r}} for n, d, p, r in TOOLS]
+def tool_specs(bound: bool = False) -> list[dict]:
+    """The advertised surface. Under a bound topic the operator-owned policy fields are
+    NOT advertised — the dispatcher injects them and rejects conflicts anyway, and an
+    argument an agent must never set does not belong in its schema (D-31)."""
+    specs = []
+    for n, d, p, r in TOOLS:
+        props = {k: v for k, v in p.items() if not (bound and k in BOUND_HIDDEN)}
+        specs.append({"name": n, "description": d, "inputSchema": {"type": "object", "properties": props, "required": r}})
+    return specs
 
 
 REQUEST_TOOLS = {"research_find": "find", "research_resolve": "resolve", "research_enrich": "enrich",
-                 "research_fetch": "fetch", "research_data": "data"}
+                 "research_files": "fetch", "research_data": "data"}
+BOUND_HIDDEN = ("topic_id", "commercial", "accept_per_item")   # operator-owned under a bound topic: enforced
+                                                               # internally, not advertised as arguments (D-31)
 BATCH_TOOLS = ("research_resolve", "research_enrich")
 BATCH_LIMIT = 20
 
@@ -247,6 +269,31 @@ def deliver_content(out: dict, target: str, args: dict, download_dir: str | None
             "content_bytes": len(out["content"])}
 
 
+FILE_SELECTOR_KEYS = ("file_id", "path", "revision", "filename")
+
+
+def attach_download_requests(out: dict, target: str) -> dict:
+    """Every listed file carries the COMPLETE next call (D-31, per the agent-tool principle
+    of returning enough context to make the next call correctly): the agent passes
+    `download_request.arguments` straight to research_download instead of reassembling
+    selectors from record fields."""
+    records = out.get("records")
+    if not isinstance(records, list):
+        return out
+    enriched = []
+    for rec in records:
+        if isinstance(rec, dict):
+            selectors = {k: rec[k] for k in FILE_SELECTOR_KEYS if rec.get(k) is not None}
+            extra = rec.get("extra") if isinstance(rec.get("extra"), dict) else {}
+            selectors.update({k: extra[k] for k in FILE_SELECTOR_KEYS if extra.get(k) is not None and k not in selectors})
+            if rec.get("kind") == "file" or selectors:
+                rec = {**rec, "download_request": {"tool": "research_download",
+                                                   "arguments": {"target": rec.get("identity") or target,
+                                                                 "params": selectors}}}
+        enriched.append(rec)
+    return {**out, "records": enriched}
+
+
 def call_tool(client: GatewayClient, name: str, args: dict, *, policy: dict | None = None,
               activity: str | None = None, download_dir: str | None = None) -> dict:
     """Tool dispatch for the stdio server: everything goes over HTTP to the gateway."""
@@ -305,13 +352,15 @@ def call_tool(client: GatewayClient, name: str, args: dict, *, policy: dict | No
         try:
             out = client.request("fetch", bound)
         except Exception as e:
-            record_activity(activity, "research_fetch", bound, None, error=f"{type(e).__name__}: {e}")
+            record_activity(activity, "research_files", bound, None, error=f"{type(e).__name__}: {e}")
             raise
-        record_activity(activity, "research_fetch", bound, out)   # same request key as the listing step
+        record_activity(activity, "research_files", bound, out)   # same request key as the listing step
         return deliver_content(out, str(bound.get("target") or ""), bound, download_dir)
+    if name == "research_sources":
+        return client.sources(args.get("source") or None)
     if name not in REQUEST_TOOLS:
         raise LookupError(name)
-    if name == "research_fetch" and (args.get("params") or {}).get("download"):
+    if name == "research_files" and (args.get("params") or {}).get("download"):
         raise ValueError("research_fetch lists files; downloading is research_download's job — "
                          "call it with the same target and the file's identifying params")
     bound = apply_policy(args, policy or {})
@@ -321,12 +370,13 @@ def call_tool(client: GatewayClient, name: str, args: dict, *, policy: dict | No
         record_activity(activity, name, bound, None, error=f"{type(e).__name__}: {e}")
         raise
     record_activity(activity, name, bound, out)   # lanes, capability-fact dicts and failed jobs all land here
-    if name == "research_fetch":
-        return deliver_content(out, str(bound.get("target") or ""), bound, download_dir)
+    if name == "research_files":
+        return attach_download_requests(deliver_content(out, str(bound.get("target") or ""), bound, download_dir),
+                                        str(bound.get("target") or ""))
     return strip_bytes(out)
 
 
-def handle(msg: dict, call) -> dict:
+def handle(msg: dict, call, specs: list | None = None) -> dict:
     """One JSON-RPC request → result. `call(name, args)` performs the tool; shared by the
     stdio server (HTTP-backed) and the gateway's own MCP endpoint (in-process)."""
     method = msg.get("method")
@@ -336,7 +386,7 @@ def handle(msg: dict, call) -> dict:
     if method == "ping":
         return {}
     if method == "tools/list":
-        return {"tools": tool_specs()}
+        return {"tools": specs if specs is not None else tool_specs()}
     if method == "tools/call":
         params = msg.get("params") or {}
         try:
@@ -370,7 +420,7 @@ def main() -> int:
         if "id" not in msg:  # notification
             continue
         try:
-            reply = {"jsonrpc": "2.0", "id": msg["id"], "result": handle(msg, call)}
+            reply = {"jsonrpc": "2.0", "id": msg["id"], "result": handle(msg, call, specs=tool_specs(bound=bool(policy)))}
         except LookupError:
             reply = {"jsonrpc": "2.0", "id": msg["id"], "error": {"code": -32601, "message": f"method not found: {msg.get('method')}"}}
         sys.stdout.write(json.dumps(reply) + "\n")

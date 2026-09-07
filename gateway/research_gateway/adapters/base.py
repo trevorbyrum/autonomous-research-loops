@@ -331,6 +331,35 @@ class SourceUnavailable(Exception):
         self.source_id, self.response = source_id, response
 
 
+def data_contract(mod) -> dict | None:
+    """The adapter's declared, agent-facing data contract (DATA_PARAMS), or None. The
+    declaration is the authority — signature introspection cannot express these (D-31)."""
+    spec = getattr(mod, "DATA_PARAMS", None)
+    if not isinstance(spec, dict):
+        return None
+    return {"required": dict(spec.get("required") or {}), "optional": dict(spec.get("optional") or {}),
+            "open": bool(spec.get("open")), "example": dict(spec.get("example") or {}),
+            "notes": spec.get("notes") or ""}
+
+
+def validate_data_params(mod, params: dict | None) -> str | None:
+    """Why these params violate the adapter's declared contract, or None. Runs BEFORE any
+    dispatch or budget spend, so a blind call fails instantly with a teaching error
+    instead of burning an upstream request (D-31). `open` contracts accept extra keys
+    (BEA methods, Census predicates take source-specific pass-through fields)."""
+    spec = data_contract(mod)
+    if spec is None:
+        return None
+    params = params or {}
+    problems = [f"missing required '{k}' ({desc})" for k, desc in spec["required"].items()
+                if params.get(k) in (None, "", [])]
+    if not spec["open"]:
+        known = set(spec["required"]) | set(spec["optional"])
+        problems += [f"unknown parameter '{k}' (accepted: {', '.join(sorted(known))})"
+                     for k in params if k not in known]
+    return "; ".join(problems) or None
+
+
 def check(source_id: str, resp: Response, *, allow_404: bool = True, allow_html: bool = False) -> bool:
     """True when usable; False on 404 (when allowed); raises SourceUnavailable otherwise.
     An HTTP-200 answer whose body is an HTML page is a bot-wall or an error page wearing

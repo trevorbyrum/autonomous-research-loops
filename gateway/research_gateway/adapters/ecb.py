@@ -12,6 +12,15 @@ BASE = "https://data-api.ecb.europa.eu/service/data"
 ATTRIBUTION = "European Central Bank"
 
 
+# the agent-facing data contract (research_sources; validated before dispatch, D-31)
+DATA_PARAMS = {
+    "required": {"dataflow": "ECB dataflow id, e.g. EXR", "key": "SDMX series key, e.g. D.USD.EUR.SP00.A"},
+    "optional": {"start": "startPeriod", "end": "endPeriod"},
+    "open": False,
+    "example": {"dataflow": "EXR", "key": "D.USD.EUR.SP00.A", "start": "2024-01-01"},
+    "notes": "dimension order is the dataflow's own (ECB EXR: FREQ.CURRENCY.CURRENCY_DENOM.EXR_TYPE.EXR_SUFFIX)",
+}
+
 def data(client: Client, params: dict) -> dict:
     """params: dataflow (e.g. EXR), key (e.g. D.USD.EUR.SP00.A), start, end."""
     flow, key = (params or {}).get("dataflow"), (params or {}).get("key")

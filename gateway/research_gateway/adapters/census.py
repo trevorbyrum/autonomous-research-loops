@@ -11,6 +11,16 @@ BASE = "https://api.census.gov/data"
 ATTRIBUTION = "U.S. Census Bureau"
 
 
+# the agent-facing data contract (research_sources; validated before dispatch, D-31).
+# open=True: Census predicates (e.g. NAICS2017=72) pass through by design.
+DATA_PARAMS = {
+    "required": {"dataset": "dataset path with vintage, e.g. 2022/acs/acs1", "get": "variable list or comma string, e.g. NAME,B01001_001E"},
+    "optional": {"for": "geography, e.g. state:* or county:037", "in": "containing geography, e.g. state:06"},
+    "open": True,
+    "example": {"dataset": "2022/acs/acs1", "get": "NAME,B01001_001E", "for": "state:*"},
+    "notes": "additional keys are passed through as Census predicates",
+}
+
 def data(client: Client, params: dict) -> dict:
     """params: dataset (e.g. '2022/acs/acs1'), get (list or comma string), for (geography), in (optional), plus predicates."""
     p = dict(params or {})

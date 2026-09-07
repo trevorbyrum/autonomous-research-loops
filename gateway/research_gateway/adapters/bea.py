@@ -17,6 +17,19 @@ def _error(j: dict) -> str | None:
     return err.get("APIErrorDescription") if isinstance(err, dict) else None
 
 
+# the agent-facing data contract (research_sources; validated before dispatch, D-31).
+# open=True: BEA methods take dataset-specific keys that pass through by design.
+DATA_PARAMS = {
+    "required": {},
+    "optional": {"method": "GetData (default) | GetParameterList | GetParameterValues | GETDATASETLIST",
+                 "dataset": "BEA DataSetName, e.g. NIPA", "table": "TableName, e.g. T10101",
+                 "frequency": "A|Q|M", "year": "year or 'X' for all", "parameter": "ParameterName for metadata methods",
+                 "geo": "GeoFips", "line": "LineCode"},
+    "open": True,
+    "example": {"dataset": "NIPA", "table": "T10101", "frequency": "Q", "year": "2024"},
+    "notes": "start with method=GETDATASETLIST then GetParameterList to discover a dataset's own keys; unknown keys pass through to BEA",
+}
+
 def data(client: Client, params: dict) -> dict:
     """params: method (GetData|GetParameterList|GetParameterValues|GETDATASETLIST), dataset, table, frequency, year, plus any BEA-specific keys."""
     p = dict(params or {})

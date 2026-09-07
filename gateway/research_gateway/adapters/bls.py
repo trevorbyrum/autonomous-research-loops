@@ -11,13 +11,24 @@ BASE = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
 ATTRIBUTION = "U.S. Bureau of Labor Statistics"
 
 
+# the agent-facing data contract (research_sources; validated before dispatch, D-31)
+DATA_PARAMS = {
+    "required": {"series": "one BLS series id or a list of up to 50, e.g. LNS14000000"},
+    "optional": {"start_year": "first year", "end_year": "last year", "catalog": "true to include series catalog metadata"},
+    "open": False,
+    "example": {"series": "LNS14000000", "start_year": 2020, "end_year": 2025},
+    "notes": "at most 50 series ids per call; larger lists are rejected, never silently truncated",
+}
+
 def data(client: Client, params: dict) -> dict:
     """params: series (id or list of ids), start_year, end_year, catalog (bool)."""
     ids = (params or {}).get("series")
     if not ids:
         raise AdapterError("bls.data needs 'series'")
     ids = [ids] if isinstance(ids, str) else list(ids)
-    body = {"seriesid": ids[:50]}
+    if len(ids) > 50:
+        raise AdapterError(f"bls.data accepts at most 50 series ids per call, got {len(ids)} — split the list")
+    body = {"seriesid": ids}
     for k, bk in (("start_year", "startyear"), ("end_year", "endyear")):
         if params.get(k):
             body[bk] = str(params[k])

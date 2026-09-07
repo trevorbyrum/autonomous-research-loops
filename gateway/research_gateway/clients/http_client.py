@@ -69,6 +69,9 @@ class GatewayClient:
     def job(self, job_id: int) -> dict:
         return self._call("GET", f"/v1/jobs/{int(job_id)}")
 
+    def sources(self, source: str | None = None) -> dict:
+        return self._call("GET", f"/v1/sources/{source}" if source else "/v1/sources")
+
     def status(self) -> dict:
         return self._call("GET", "/v1/status")
 

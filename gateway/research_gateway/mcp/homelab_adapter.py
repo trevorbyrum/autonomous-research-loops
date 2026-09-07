@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 
 from ..app import Gateway, validate_payload
-from ..clients.mcp_stdio import REQUEST_TOOLS, handle, strip_bytes
+from ..clients.mcp_stdio import REQUEST_TOOLS, attach_download_requests, handle, strip_bytes
 
 PEER_NAME = "research"
 
@@ -25,6 +25,8 @@ def make_call(gateway: Gateway, client_id: str):
     def call(name: str, args: dict) -> dict:
         if name == "research_status":
             return gateway.status()
+        if name == "research_sources":
+            return gateway.source_descriptions((args or {}).get("source") or None)
         if name == "research_job":
             job = gateway.job(int((args or {}).get("job_id") or 0), client_id)
             return job if job is not None else {"capability_fact": "gateway_error_404", "error": "no such job for this client"}
@@ -57,14 +59,17 @@ def make_call(gateway: Gateway, client_id: str):
             raise LookupError(name)
         if args is not None and not isinstance(args, dict):
             return {"capability_fact": "gateway_error_400", "error": "arguments must be an object"}
-        if name == "research_fetch" and ((args or {}).get("params") or {}).get("download"):
+        if name == "research_files" and ((args or {}).get("params") or {}).get("download"):
             return {"capability_fact": "gateway_error_400",
-                    "error": "research_fetch lists files; downloading is research_download's job"}
+                    "error": "research_files lists files; downloading is research_download's job"}
         problem = validate_payload(args or {})
         if problem:
             return {"capability_fact": "gateway_error_400", "error": problem}
         payload = {**(args or {}), "request_type": REQUEST_TOOLS[name]}
-        return strip_bytes(gateway.handle(payload, client_id))
+        out = strip_bytes(gateway.handle(payload, client_id))
+        if name == "research_files":
+            out = attach_download_requests(out, str((args or {}).get("target") or ""))
+        return out
     return call
 
 

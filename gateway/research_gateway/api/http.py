@@ -25,6 +25,7 @@ from ..mcp import homelab_adapter
 MAX_TIMEOUT = 120.0
 MAX_BODY = 1 << 20
 JOB_ROUTE = re.compile(r"^/v1/jobs/(\d{1,18})$")
+SOURCE_ROUTE = re.compile(r"^/v1/sources/([a-z0-9_-]{1,64})$")
 MAX_CONCURRENT = 64
 validate_payload = app_module.validate_payload   # one parser for both front doors (D-23)
 
@@ -91,6 +92,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/v1/status":
             return self._send(200, gw.status())
+        if path == "/v1/sources":
+            return self._send(200, gw.source_descriptions())
+        m = SOURCE_ROUTE.match(path)
+        if m:
+            described = gw.source_descriptions(m.group(1))
+            return self._send(404 if described.get("capability_fact") == "gateway_error_404" else 200, described)
         m = JOB_ROUTE.match(path)
         if m:
             if gw.conn is None:

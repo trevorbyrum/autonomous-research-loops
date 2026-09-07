@@ -280,10 +280,26 @@ class DownloadHandoff(unittest.TestCase):
         return StubClient(result={"request_type": "fetch", "records": [], "facts": [], "lanes": [],
                                   "content": b"\xd0\xcf\x11payload", "content_type": "application/vnd.ms-excel"})
 
-    def test_fetch_lists_only_and_points_at_download(self):
+    def test_files_lists_only_and_points_at_download(self):
         with self.assertRaises(ValueError):
-            mcp_stdio.call_tool(self._client(), "research_fetch",
+            mcp_stdio.call_tool(self._client(), "research_files",
                                 {"target": "doi:x", "params": {"download": True}})
+
+    def test_listed_files_carry_ready_made_download_requests(self):
+        client = StubClient(result={"request_type": "fetch", "facts": [], "lanes": [], "records": [
+            {"identity": "doi:10.7910/DVN/X", "kind": "file", "title": "data.csv",
+             "extra": {"file_id": 42}}]})
+        out = mcp_stdio.call_tool(client, "research_files", {"target": "doi:10.7910/DVN/X"})
+        req = out["records"][0]["download_request"]
+        self.assertEqual(req["tool"], "research_download")
+        self.assertEqual(req["arguments"], {"target": "doi:10.7910/DVN/X", "params": {"file_id": 42}})
+
+    def test_bound_stations_do_not_advertise_operator_owned_fields(self):
+        bound = {p for spec in mcp_stdio.tool_specs(bound=True) for p in spec["inputSchema"]["properties"]}
+        self.assertFalse(bound & {"topic_id", "commercial", "accept_per_item"},
+                         "policy fields are enforced, never advertised, under a bound topic")
+        unbound = {p for spec in mcp_stdio.tool_specs() for p in spec["inputSchema"]["properties"]}
+        self.assertTrue({"topic_id", "commercial"} <= unbound, "operator sessions keep the full surface")
 
     def test_bytes_land_in_the_iteration_download_dir(self):
         with tempfile.TemporaryDirectory() as d:
@@ -404,3 +420,63 @@ class ReverifyRoundPins(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DeclaredDataContracts(unittest.TestCase):
+    """D-31: every statistical adapter declares its agent-facing contract, the validator
+    enforces it BEFORE dispatch, and the surface teaches instead of failing blind."""
+
+    STATISTICAL = ("fred", "bea", "census", "bls", "bis", "ecb")
+
+    def test_every_statistical_adapter_declares_a_valid_contract(self):
+        from research_gateway.adapters.base import data_contract, validate_data_params
+        for sid in self.STATISTICAL:
+            mod = ADAPTERS[sid]
+            contract = data_contract(mod)
+            self.assertIsNotNone(contract, f"{sid} must declare DATA_PARAMS")
+            self.assertTrue(contract["example"], f"{sid} needs a working example")
+            self.assertIsNone(validate_data_params(mod, contract["example"]),
+                              f"{sid}'s own example must satisfy its own contract")
+            for key in contract["required"]:
+                self.assertIn(key, contract["example"], f"{sid}: example must show required '{key}'")
+
+    def test_strict_contracts_reject_unknown_keys_open_ones_pass_them(self):
+        from research_gateway.adapters.base import validate_data_params
+        self.assertIn("unknown parameter", validate_data_params(ADAPTERS["fred"], {"series": "GDP", "seires": "typo"}) or "")
+        self.assertIsNone(validate_data_params(ADAPTERS["bea"], {"dataset": "NIPA", "TableID": "native-passthrough"}),
+                          "open contracts (BEA/Census) accept source-native extra keys by design")
+        self.assertIn("missing required", validate_data_params(ADAPTERS["ecb"], {"dataflow": "EXR"}) or "")
+
+    def test_a_blind_data_call_fails_with_the_contract_before_any_dispatch(self):
+        from research_gateway import app as app_module
+        gw = app_module.Gateway(app_module.Settings(tokens={"t": "t"}), use_db=False,
+                                sources=SEED, transport=FakeTransport())
+        try:
+            out = gw.handle({"request_type": "data", "source": "fred", "params": {"sreies": "GDP"}}, "t")
+        finally:
+            gw.stop()
+        self.assertEqual(out["capability_fact"], "gateway_error_400")
+        self.assertIn("missing required 'series'", out["error"])
+        self.assertEqual(out["contract"]["example"]["series"], "GDP",
+                         "the teaching error carries the contract and a working example")
+
+    def test_source_descriptions_are_public_safe_and_carry_the_contract(self):
+        from research_gateway import app as app_module
+        gw = app_module.Gateway(app_module.Settings(tokens={"t": "t"}), use_db=False,
+                                sources=SEED, transport=FakeTransport())
+        try:
+            listing = gw.source_descriptions()
+            self.assertEqual(len(listing["sources"]), len(SEED))
+            self.assertNotIn("secret_ref", json.dumps(listing), "never a secret reference")
+            fred = gw.source_descriptions("fred")
+            self.assertEqual(fred["data_params"]["required"], {"series": "FRED series id, e.g. GDP, UNRATE, CPIAUCSL"})
+            missing = gw.source_descriptions("nope")
+            self.assertEqual(missing["capability_fact"], "gateway_error_404")
+        finally:
+            gw.stop()
+
+    def test_bls_rejects_oversized_series_lists(self):
+        from research_gateway.adapters.base import AdapterError
+        r, c, _ = make()
+        with self.assertRaises(AdapterError):
+            ADAPTERS["bls"].data(c, {"series": [f"S{i}" for i in range(51)]})

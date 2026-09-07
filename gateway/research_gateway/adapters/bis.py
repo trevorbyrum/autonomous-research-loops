@@ -13,6 +13,16 @@ ATTRIBUTION = "Bank for International Settlements"
 LABEL_ATTRS = ("TITLE_TS", "TITLE")  # series attributes that label rather than key the series
 
 
+# the agent-facing data contract (research_sources; validated before dispatch, D-31)
+DATA_PARAMS = {
+    "required": {"dataflow": "BIS dataflow id, e.g. WS_EER"},
+    "optional": {"key": "SDMX series key, dot-separated dimensions, e.g. M.N.B.US (default: all)",
+                 "start": "startPeriod", "end": "endPeriod"},
+    "open": False,
+    "example": {"dataflow": "WS_EER", "key": "M.N.B.US"},
+    "notes": "dimension order is the dataflow's own; 'all' returns every series in the flow",
+}
+
 def data(client: Client, params: dict) -> dict:
     """params: dataflow (e.g. WS_EER), key (SDMX series key such as M.N.B.US; default 'all'), start, end."""
     flow = (params or {}).get("dataflow")

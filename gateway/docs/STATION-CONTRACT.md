@@ -76,3 +76,17 @@ is never conflated with "not searched" or "unavailable":
   (`RESEARCH_LOOP_DOWNLOAD_DIR`) and removes it on every exit path; the agent copies
   what it keeps into the topic's own files during the iteration. Names carry the
   file/revision identity and are created exclusively — never overwritten.
+
+## 3. Discoverability (D-31)
+
+The surface teaches; an agent never has to guess a source's shape:
+
+- `research_sources` is the registry projected for agents — capabilities, domains,
+  commercial verdicts, and each statistical source's EXACT declared data contract
+  (adapter-owned `DATA_PARAMS`, pinned by tests). Public-safe fields only.
+- `research_data` validates against the declared contract BEFORE any budget is spent;
+  a bad call returns the contract and a working example instead of an upstream error.
+- `research_files` listings carry a ready-made `download_request` per file — the
+  arguments pass straight to `research_download`.
+- Under a bound topic, the operator-owned policy fields are enforced but not
+  advertised in tool schemas.
