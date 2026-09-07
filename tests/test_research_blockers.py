@@ -1,6 +1,7 @@
 """Phase 8c/8d acceptance (gateway docs/STATION-CONTRACT.md): topic research policy on
-the queue item, research blockers from iteration coverage, the one saturation/DONE
-condition, and the activity-file summarizer the chassis result writer uses."""
+the queue item, REQUEST-KEYED research blockers from ordered coverage transitions, the
+one saturation/DONE condition, explicit blocker resolution, and the activity-file
+summarizer the chassis result writer uses."""
 import importlib.util
 import json
 import tempfile
@@ -25,6 +26,11 @@ def add_item(s, item_id="topic-a", **kw):
                  repeat_seconds=900, **kw)
 
 
+def failure(source, coverage, request_type="find", subject="q"):
+    return {"key": research_activity.request_key(source, request_type, subject),
+            "source": source, "request_type": request_type, "subject": subject, "coverage": coverage}
+
+
 class ResearchPolicy(unittest.TestCase):
     def test_policy_is_validated_and_stored(self):
         with tempfile.TemporaryDirectory() as d:
@@ -42,38 +48,72 @@ class ResearchPolicy(unittest.TestCase):
 
 
 class Blockers(unittest.TestCase):
-    def test_blocking_states_add_and_successes_clear(self):
+    def test_blocking_states_add_and_only_the_same_request_clears(self):
         with tempfile.TemporaryDirectory() as d:
             s = store(d)
             item = add_item(s)
             out = s.update_research_blockers(item["id"], failures=[
-                {"source": "crossref", "coverage": "provider_unavailable"},
-                {"source": "semanticscholar", "coverage": "auth_failed"},
-                {"source": "fred", "coverage": "not_searched"},       # policy skip, never a blocker
-                {"source": "hf", "coverage": "metadata_only"},        # partial, never a blocker
+                failure("crossref", "provider_unavailable", subject="query A"),
+                failure("semanticscholar", "auth_failed", subject="query A"),
+                failure("fred", "not_searched"),       # policy skip, never a blocker
+                failure("hf", "metadata_only"),        # partial, never a blocker
             ], cleared=[])
-            self.assertEqual(out, ["crossref", "semanticscholar"])
-            out = s.update_research_blockers(item["id"], failures=[], cleared=["crossref"])
-            self.assertEqual(out, ["semanticscholar"], "a source that answers again clears itself")
+            self.assertEqual(sorted(b["source"] for b in out), ["crossref", "semanticscholar"])
+            unrelated = research_activity.request_key("crossref", "find", "a DIFFERENT query")
+            out = s.update_research_blockers(item["id"], failures=[], cleared=[unrelated])
+            self.assertEqual(sorted(b["source"] for b in out), ["crossref", "semanticscholar"],
+                             "a success on an unrelated query never clears a blocker (finding 4)")
+            same = research_activity.request_key("crossref", "find", "query A")
+            out = s.update_research_blockers(item["id"], failures=[], cleared=[same])
+            self.assertEqual([b["source"] for b in out], ["semanticscholar"],
+                             "the SAME request succeeding clears its blocker")
 
-    def test_operator_resume_clears_blockers(self):
+    def test_ordinary_resume_preserves_blockers_and_resolution_is_explicit(self):
+        with tempfile.TemporaryDirectory() as d:
+            s = store(d)
+            item = add_item(s)
+            s.update_research_blockers(item["id"], failures=[failure("crossref", "auth_failed")], cleared=[])
+            s.pause_item(item["id"])
+            resumed = s.resume_item(item["id"])
+            self.assertEqual(len(resumed["research_blockers"]), 1,
+                             "pause/resume is not an evidence decision (finding 18)")
+            with self.assertRaises(QueueError):
+                s.resolve_research_blockers(item["id"], reason="   ")
+            resolved = s.resolve_research_blockers(item["id"], reason="covered by DOAJ + OpenAlex for this claim")
+            self.assertEqual(resolved["research_blockers"], [])
+            self.assertEqual(len(resolved["research_resolutions"]), 1)
+            self.assertIn("covered by", resolved["research_resolutions"][0]["reason"])
+
+    def test_source_scoped_resolution(self):
         with tempfile.TemporaryDirectory() as d:
             s = store(d)
             item = add_item(s)
             s.update_research_blockers(item["id"], failures=[
-                {"source": "crossref", "coverage": "auth_failed"}], cleared=[])
-            s.pause_item(item["id"])
-            resumed = s.resume_item(item["id"])
-            self.assertEqual(resumed["research_blockers"], [],
-                             "resume is the sanctioned alternative-evidence override")
+                failure("crossref", "auth_failed"), failure("fred", "provider_unavailable")], cleared=[])
+            resolved = s.resolve_research_blockers(item["id"], reason="fred series reproduced from BEA", sources=["fred"])
+            self.assertEqual([b["source"] for b in resolved["research_blockers"]], ["crossref"])
+
+    def test_coverage_accumulates_for_the_completion_stamp(self):
+        with tempfile.TemporaryDirectory() as d:
+            s = store(d)
+            item = add_item(s)
+            s.update_research_blockers(item["id"], failures=[], cleared=[],
+                                       coverage={"crossref": "searched_ok", "semanticscholar": "provider_unavailable"})
+            s.update_research_blockers(item["id"], failures=[], cleared=[],
+                                       coverage={"semanticscholar": "searched_ok"})
+            got = s.get(item["id"])["research_coverage"]
+            self.assertEqual({k: v["coverage"] for k, v in got.items()},
+                             {"crossref": "searched_ok", "semanticscholar": "searched_ok"},
+                             "the stamp accumulates across iterations, last state per source (finding 10)")
 
     def test_completion_coverage_stamp(self):
         with tempfile.TemporaryDirectory() as d:
             s = store(d)
             item = add_item(s)
-            stamped = s.record_completion_coverage(item["id"], {"at": "x", "blockers": [],
-                                                                "sources_ok_final_pass": ["crossref"]})
-            self.assertEqual(stamped["completion_coverage"]["sources_ok_final_pass"], ["crossref"])
+            stamped = s.record_completion_coverage(item["id"], {"at": "x", "policy": None,
+                                                                "coverage": {"crossref": {"coverage": "searched_ok"}},
+                                                                "blockers": []})
+            self.assertEqual(stamped["completion_coverage"]["coverage"]["crossref"]["coverage"], "searched_ok")
 
 
 class SaturationDecision(unittest.TestCase):
@@ -81,7 +121,7 @@ class SaturationDecision(unittest.TestCase):
         """Plan 8d: one pass short of saturation, required-source failure, no semantic
         change → the topic does NOT complete."""
         streak, verdict = saturation_decision(signature_changed=False, previous_streak=2, limit=3,
-                                              blocked_this_pass=True, blockers=["crossref"])
+                                              blocked_this_pass=True, blockers=[failure("crossref", "auth_failed")])
         self.assertEqual((streak, verdict), (2, "continue"),
                          "a blocked pass pauses the streak instead of advancing it")
 
@@ -93,37 +133,48 @@ class SaturationDecision(unittest.TestCase):
 
     def test_semantic_change_resets_even_when_blocked(self):
         self.assertEqual(saturation_decision(signature_changed=True, previous_streak=2, limit=3,
-                                             blocked_this_pass=True, blockers=["x"]), (0, "continue"))
+                                             blocked_this_pass=True, blockers=[failure("x", "auth_failed")]),
+                         (0, "continue"))
 
     def test_lingering_blockers_hold_completion_at_the_limit(self):
         streak, verdict = saturation_decision(signature_changed=False, previous_streak=3, limit=3,
-                                              blocked_this_pass=False, blockers=["semanticscholar"])
+                                              blocked_this_pass=False,
+                                              blockers=[failure("semanticscholar", "provider_unavailable")])
         self.assertEqual(verdict, "held",
-                         "an unresolved blocker holds DONE until it clears or the operator resumes")
+                         "an unresolved blocker holds DONE until it clears or is explicitly resolved")
 
 
 class ActivitySummarizer(unittest.TestCase):
-    def test_reduces_to_distinct_failures_and_ok_sources(self):
+    def _write(self, d, lines):
+        path = Path(d) / "activity.jsonl"
+        path.write_text("\n".join(l if isinstance(l, str) else json.dumps(l) for l in lines) + "\n")
+        return str(path)
+
+    def test_final_state_per_request_in_file_order(self):
+        """Pass-1 finding 6: fail → ok recovery for the same request ends CLEARED; the
+        reverse ends blocked; unrelated requests never interact."""
         with tempfile.TemporaryDirectory() as d:
-            path = Path(d) / "activity.jsonl"
-            lines = [
-                {"source": "crossref", "coverage": "provider_unavailable"},
-                {"source": "crossref", "coverage": "provider_unavailable"},   # duplicate collapses
-                {"source": "doaj", "coverage": "searched_empty"},
-                {"source": "openalex_snapshot", "coverage": "searched_ok"},
-                {"source": "fred", "coverage": "not_searched"},
+            path = self._write(d, [
+                {"source": "crossref", "request_type": "find", "query_or_identity": "A", "coverage": "provider_unavailable"},
+                {"source": "crossref", "request_type": "find", "query_or_identity": "A", "coverage": "searched_ok"},
+                {"source": "doaj", "request_type": "find", "query_or_identity": "B", "coverage": "searched_ok"},
+                {"source": "doaj", "request_type": "find", "query_or_identity": "B", "coverage": "auth_failed"},
+                {"source": "fred", "request_type": "data", "query_or_identity": "GDP", "coverage": "not_searched"},
                 "not json at all",
-                {"coverage": "searched_ok"},                                   # no source: ignored
-            ]
-            path.write_text("\n".join(l if isinstance(l, str) else json.dumps(l) for l in lines) + "\n")
-            failures, ok = research_activity.summarize(str(path))
-        self.assertEqual(failures, [{"source": "crossref", "coverage": "provider_unavailable"},
-                                    {"source": "fred", "coverage": "not_searched"}])
-        self.assertEqual(ok, ["doaj", "openalex_snapshot"])
+                {"coverage": "searched_ok"},
+            ])
+            out = research_activity.summarize(path)
+        self.assertEqual([(f["source"], f["coverage"]) for f in out["failures"]],
+                         [("doaj", "auth_failed"), ("fred", "not_searched")])
+        self.assertEqual(out["ok_keys"], [research_activity.request_key("crossref", "find", "A")])
+        self.assertEqual(out["coverage_by_source"],
+                         {"crossref": "searched_ok", "doaj": "auth_failed", "fred": "not_searched"})
 
     def test_missing_file_is_no_signal_never_an_error(self):
-        self.assertEqual(research_activity.summarize("/nope/nothing.jsonl"), ([], []))
-        self.assertEqual(research_activity.summarize(None), ([], []))
+        self.assertEqual(research_activity.summarize("/nope/nothing.jsonl"),
+                         {"failures": [], "ok_keys": [], "coverage_by_source": {}})
+        self.assertEqual(research_activity.summarize(None),
+                         {"failures": [], "ok_keys": [], "coverage_by_source": {}})
 
 
 if __name__ == "__main__":

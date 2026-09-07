@@ -1,35 +1,45 @@
 """Summarize an iteration's research-activity file (gateway STATION-CONTRACT.md §2).
 
-The station's research tool appends one JSON line per distinct (source, coverage)
-state it observed — successes included, so the queue can clear a blocker when a
-previously failed source answers again. This module reduces that file to the two
-fields the iteration result carries; it never raises on a missing or mangled file,
-because a broken activity channel must degrade to "no signal", not a failed run.
+The station's research tool appends one JSON line per coverage-state TRANSITION, in
+order, keyed by the exact request (source + request type + query/identity) — so a
+success on an unrelated query never clears a different request's failure, and a
+fail → ok recovery is visible as the key's LAST state (pass-1 findings 4 and 6).
+This module reduces the file to per-key FINAL states; it never raises on a missing or
+mangled file, because a broken activity channel must degrade to "no signal", not a
+failed run.
 """
 from __future__ import annotations
 
 import json
 
-# coverage states that mark a source as blocked for required research; policy skips
+# coverage states that mark a request as blocked for required research; policy skips
 # (not_searched) and partial retrievability (metadata_only) are reported but do not
-# block completion on their own
+# block completion on their own; exhausted is a healthy channel with nothing more
 BLOCKING = ("provider_unavailable", "auth_failed")
 DEGRADED = BLOCKING + ("not_searched", "metadata_only")
-CLEARING = ("searched_ok", "searched_empty")
+CLEARING = ("searched_ok", "searched_empty", "exhausted")
 
 
-def summarize(path: str | None) -> tuple[list[dict], list[str]]:
-    """(research_failures, research_ok): distinct degraded (source, coverage) pairs and
-    the distinct sources that answered successfully during the iteration."""
-    failures: dict[tuple[str, str], dict] = {}
-    ok: set[str] = set()
+def request_key(source: str, request_type: str, subject: str) -> str:
+    """The blocker key: unambiguous for any subject text (it is a JSON array)."""
+    return json.dumps([source, request_type, subject], separators=(",", ":"))
+
+
+def summarize(path: str | None) -> dict:
+    """{"failures": [...], "ok_keys": [...], "coverage_by_source": {...}} — failures are
+    the requests whose FINAL state is degraded (each with its key), ok_keys the keys
+    whose final state cleared, coverage_by_source each source's last state of any kind
+    (the completion-coverage stamp's raw material)."""
+    final: dict[str, dict] = {}
+    by_source: dict[str, str] = {}
+    empty = {"failures": [], "ok_keys": [], "coverage_by_source": {}}
     if not path:
-        return [], []
+        return empty
     try:
         with open(path, encoding="utf-8") as fh:
             lines = fh.readlines()
     except OSError:
-        return [], []
+        return empty
     for line in lines:
         line = line.strip()
         if not line:
@@ -41,8 +51,13 @@ def summarize(path: str | None) -> tuple[list[dict], list[str]]:
         source, coverage = entry.get("source"), entry.get("coverage")
         if not source or not coverage:
             continue
-        if coverage in DEGRADED:
-            failures.setdefault((source, coverage), {"source": source, "coverage": coverage})
-        elif coverage in CLEARING:
-            ok.add(source)
-    return sorted(failures.values(), key=lambda f: (f["source"], f["coverage"])), sorted(ok)
+        request_type = str(entry.get("request_type") or "")
+        subject = str(entry.get("query_or_identity") or "")
+        key = request_key(source, request_type, subject)
+        final[key] = {"key": key, "source": source, "request_type": request_type,
+                      "subject": subject, "coverage": coverage}
+        by_source[source] = coverage   # file order = observation order: last one speaks
+    failures = sorted((f for f in final.values() if f["coverage"] in DEGRADED),
+                      key=lambda f: (f["source"], f["request_type"], f["subject"]))
+    ok_keys = sorted(k for k, f in final.items() if f["coverage"] in CLEARING)
+    return {"failures": failures, "ok_keys": ok_keys, "coverage_by_source": by_source}

@@ -142,6 +142,12 @@ export RESEARCH_LOOP_LOG="$log"
 # saturation gate. Per-iteration file: a stale one never speaks for a fresh pass.
 activity_file="$LOG_DIR/research-activity-$stamp.jsonl"
 export RESEARCH_LOOP_RESEARCH_ACTIVITY="$activity_file"
+# Downloads are TEMPORARY extraction space (8a): a per-iteration directory, removed on
+# every exit path — normal or interrupted. What the agent keeps, it copies into the
+# topic's own files during the iteration; retained source bytes never accumulate.
+download_dir="$TOPIC_DIR/downloads/iter-$stamp"
+export RESEARCH_LOOP_DOWNLOAD_DIR="$download_dir"
+trap 'rm -rf "$download_dir"' EXIT
 # RESEARCH_LOOP_PROFILE, RESEARCH_LOOP_AGENT_SECONDARY, RESEARCH_LOOP_GAP_POLICY,
 # RESEARCH_LOOP_GAP_AUTO_LIMIT, RESEARCH_LOOP_COMPLETION_LOCK, RESEARCH_LOOP_INTERNAL_CITATIONS,
 # and RESEARCH_LOOP_TOPICS_ROOT are deliberately NOT set here unless already present in
@@ -194,7 +200,7 @@ import json, os, sys
 log_dir = sys.argv[1]
 sys.path.insert(0, os.environ.get("RESULT_CHASSIS") or ".")
 from research_activity import summarize
-research_failures, research_ok = summarize(os.environ.get("RESULT_ACTIVITY_FILE"))
+activity = summarize(os.environ.get("RESULT_ACTIVITY_FILE"))
 degraded = []
 degraded_path = os.environ.get("RESULT_DEGRADED_FILE") or ""
 if degraded_path and os.path.isfile(degraded_path):
@@ -220,8 +226,9 @@ result = {
     "stop_first_line": stop_first,
     "semantic_valid": os.environ.get("RESULT_SEMANTIC_VALID") == "true",
     "degraded_capabilities": degraded,
-    "research_failures": research_failures,
-    "research_ok": research_ok,
+    "research_failures": activity["failures"],
+    "research_ok": activity["ok_keys"],
+    "research_coverage": activity["coverage_by_source"],
     "log": os.environ["RESULT_LOG"],
 }
 error_class = os.environ.get("RESULT_ERROR_CLASS") or ""

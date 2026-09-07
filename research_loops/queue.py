@@ -884,21 +884,60 @@ class QueueStore:
             return copy.deepcopy(item)
 
     def update_research_blockers(self, item_id: str, *, failures: list[dict],
-                                 cleared: list[str]) -> list[str]:
-        """Per-item research blockers (gateway docs/STATION-CONTRACT.md §2): a source
-        that failed with a BLOCKING coverage state during actual research stays a
-        blocker until the same source answers again (`cleared`) or the operator
-        resumes the item. Returns the set after this iteration's signals."""
-        blocking = {f["source"] for f in (failures or [])
-                    if isinstance(f, dict) and f.get("source") and f.get("coverage") in BLOCKING_COVERAGE}
+                                 cleared: list[str], coverage: dict | None = None) -> list[dict]:
+        """Per-item research blockers (gateway docs/STATION-CONTRACT.md §2), keyed by the
+        EXACT request (source + request type + query/identity): a request that ended an
+        iteration in a BLOCKING coverage state stays a blocker until the SAME request
+        succeeds (`cleared` carries the keys whose final state cleared) or the operator
+        resolves it explicitly with a recorded reason — a success on an unrelated query
+        never clears it, and an ordinary resume never touches it (pass-1 findings 4, 18).
+        Also folds each source's last-seen coverage into the item's accumulated
+        `research_coverage` map (the completion stamp's raw material, finding 10).
+        Returns the blocker list after this iteration's signals."""
+        blocking = {f["key"]: {"key": f["key"], "source": f["source"],
+                               "request_type": f.get("request_type"), "subject": f.get("subject"),
+                               "coverage": f["coverage"], "at": utc_now()}
+                    for f in (failures or [])
+                    if isinstance(f, dict) and f.get("key") and f.get("source")
+                    and f.get("coverage") in BLOCKING_COVERAGE}
         with self._locked() as state:
             item = self._find(state, item_id)
-            current = set(item.get("research_blockers") or [])
-            updated = (current - set(cleared or [])) | blocking
-            if updated != current:
-                item["research_blockers"] = sorted(updated)
-                item["updated_at"] = utc_now()
-            return sorted(updated)
+            current = {b["key"]: b for b in item.get("research_blockers") or [] if isinstance(b, dict) and b.get("key")}
+            for key in cleared or []:
+                current.pop(key, None)
+            for key, blocker in blocking.items():
+                current.setdefault(key, blocker)   # keep the FIRST observation's timestamp
+            updated = sorted(current.values(), key=lambda b: b["key"])
+            accumulated = dict(item.get("research_coverage") or {})
+            for source, cov in (coverage or {}).items():
+                accumulated[source] = {"coverage": cov, "at": utc_now()}
+            item["research_blockers"] = updated
+            item["research_coverage"] = accumulated
+            item["updated_at"] = utc_now()
+            return [dict(b) for b in updated]
+
+    def resolve_research_blockers(self, item_id: str, *, reason: str,
+                                  sources: list[str] | None = None) -> dict[str, Any]:
+        """The EXPLICIT operator action that releases blockers on sufficient-alternative
+        grounds — recorded with its reason, never implicit in pause/resume (finding 18).
+        With `sources`, only those sources' blockers; without, all of them."""
+        if not (reason or "").strip():
+            raise QueueError("a resolution reason is required — this is an evidence decision")
+        with self._locked() as state:
+            item = self._find(state, item_id)
+            blockers = [b for b in item.get("research_blockers") or [] if isinstance(b, dict)]
+            if sources:
+                released = [b for b in blockers if b.get("source") in set(sources)]
+                remaining = [b for b in blockers if b.get("source") not in set(sources)]
+            else:
+                released, remaining = blockers, []
+            resolutions = list(item.get("research_resolutions") or [])
+            resolutions.append({"at": utc_now(), "reason": reason.strip(),
+                                "released": [b.get("key") for b in released]})
+            item["research_blockers"] = remaining
+            item["research_resolutions"] = resolutions
+            item["updated_at"] = utc_now()
+            return copy.deepcopy(item)
 
     def record_completion_coverage(self, item_id: str, coverage: dict) -> dict[str, Any]:
         """Stamp what completion was achieved UNDER (STATION-CONTRACT.md §2): the
@@ -1287,10 +1326,10 @@ class QueueStore:
             item["last_error"] = None
             item["last_error_kind"] = None
             item["claimed_by"] = None
-            # An operator resume is the sanctioned "sufficient alternative evidence"
-            # override for research blockers (STATION-CONTRACT.md §2): historical
-            # failures never become permanent queue vetoes.
-            item["research_blockers"] = []
+            # Research blockers are deliberately PRESERVED here: an ordinary maintenance
+            # pause/resume is not an evidence decision. Releasing a blocker takes either a
+            # later success of the same request or the explicit, reasoned
+            # `resolve_research_blockers` action (pass-1 finding 18).
             item["updated_at"] = utc_now()
         return copy.deepcopy(item)
 

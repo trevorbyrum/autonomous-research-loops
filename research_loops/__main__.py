@@ -269,6 +269,18 @@ def build_parser() -> argparse.ArgumentParser:
         "literal 'clear' to unbind",
     )
 
+    resolve_research = sub.add_parser(
+        "resolve-research",
+        help="explicitly release an item's research blockers on sufficient-alternative "
+        "grounds — an evidence decision recorded with its reason (an ordinary resume "
+        "never clears blockers)",
+    )
+    resolve_research.add_argument("item_id")
+    resolve_research.add_argument("--reason", required=True,
+                                  help="why the blocked research is satisfied without that retrieval")
+    resolve_research.add_argument("--source", action="append", dest="sources",
+                                  help="release only this source's blockers (repeatable; default: all)")
+
     swap_active = sub.add_parser(
         "swap-active",
         help="move a worker from whatever it currently owns to a specific queued "
@@ -585,6 +597,8 @@ def main(argv: list[str] | None = None) -> int:
             emit(store.set_completion_lock(args.item_id, lock))
         elif args.action == "research-policy":
             emit(store.set_research_policy(args.item_id, _parse_research_policy(args.policy)))
+        elif args.action == "resolve-research":
+            emit(store.resolve_research_blockers(args.item_id, reason=args.reason, sources=args.sources))
         elif args.action == "swap-active":
             emit(store.reassign_worker(args.worker, args.target_item_id))
         elif args.action == "refresh":
