@@ -21,6 +21,9 @@ class CallRecord:
     failure_class: str = "ok"
     domain_resolved: str | None = None
     client_id: str | None = None   # which front-door client asked (queued jobs carry it; inline requests set it directly)
+    wait_ms: int | None = None     # broker wait before this dispatch (9·0 spans; provider time is latency_ms)
+    iteration: str | None = None   # chassis iteration stamp — tracing only, never part of request identity (D-33)
+    batch_entry: int | None = None
 
 
 def classify(status: int | None, *, network_error: bool = False, body: str = "") -> str:
@@ -86,9 +89,9 @@ def complete(conn, attempt_id: int, rec: CallRecord) -> None:
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE gateway.calls SET status = %s, latency_ms = %s, ratelimit = %s, credits = %s, "
-                "result_count = %s, failure_class = %s WHERE id = %s",
+                "result_count = %s, failure_class = %s, wait_ms = coalesce(%s, wait_ms) WHERE id = %s",
                 (rec.status, rec.latency_ms, json.dumps(rec.ratelimit) if rec.ratelimit is not None else None,
-                 rec.credits, rec.result_count, rec.failure_class, attempt_id))
+                 rec.credits, rec.result_count, rec.failure_class, rec.wait_ms, attempt_id))
         conn.commit()
     except Exception as e:
         try:
@@ -102,11 +105,13 @@ def _record(conn, rec: CallRecord) -> int:
     with conn.cursor() as cur:
         cur.execute(
             "INSERT INTO gateway.calls (job_id, source_id, request_type, identity, query, status, latency_ms, "
-            "ratelimit, credits, cache_hit, result_count, failure_class, domain_resolved, client_id) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+            "ratelimit, credits, cache_hit, result_count, failure_class, domain_resolved, client_id, "
+            "wait_ms, iteration, batch_entry) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
             (rec.job_id, rec.source_id, rec.request_type, rec.identity, rec.query, rec.status, rec.latency_ms,
              json.dumps(rec.ratelimit) if rec.ratelimit is not None else None, rec.credits, rec.cache_hit,
-             rec.result_count, rec.failure_class, rec.domain_resolved, rec.client_id),
+             rec.result_count, rec.failure_class, rec.domain_resolved, rec.client_id,
+             rec.wait_ms, rec.iteration, rec.batch_entry),
         )
         row_id = cur.fetchone()[0]
     conn.commit()

@@ -200,11 +200,13 @@ class Gateway:
         self.started_at = time.time()
 
     # ------------------------------------------------------------ clients
-    def make_client(self, conn, job: dict | None = None, client_id: str | None = None) -> Client:
+    def make_client(self, conn, job: dict | None = None, client_id: str | None = None,
+                    iteration: str | None = None, batch_entry: int | None = None) -> Client:
         kw = {"transport": self.transport} if self.transport is not None else {}
         return Client(broker=self.broker, secrets=self.secrets.get, contact_email=self.settings.contact_email,
                       user_agent=f"research-gateway/{VERSION} (mailto:{self.settings.contact_email})",
-                      conn=conn, job_id=(job or {}).get("id"), client_id=(job or {}).get("client_id") or client_id, **kw)
+                      conn=conn, job_id=(job or {}).get("id"), client_id=(job or {}).get("client_id") or client_id,
+                      iteration=(job or {}).get("iteration") or iteration, batch_entry=batch_entry, **kw)
 
     # ------------------------------------------------------------ lifecycle
     def start(self) -> None:
@@ -240,20 +242,23 @@ class Gateway:
                 or bool((payload.get("params") or {}).get("download"))
                 or payload.get("what") == "full_text")
 
-    def run_inline(self, payload: dict, client_id: str) -> dict:
+    def run_inline(self, payload: dict, client_id: str, trace: dict | None = None) -> dict:
         """Inline requests carry the client id into every call-log row; with a database they are as
         durable as queued ones (own connection, job_id NULL). Without a database the log is in-process
         only — that mode is for a laptop, not a deployment (docs/OPERATIONS.md)."""
+        trace = trace or {}
         if self.conn is None:
-            return execute(self.router, payload, self.make_client(None, client_id=client_id), self.cache)
+            return execute(self.router, payload, self.make_client(None, client_id=client_id, **trace), self.cache)
         with db.connect() as conn:
-            return execute(self.router, payload, self.make_client(conn, client_id=client_id), self.cache)
+            return execute(self.router, payload, self.make_client(conn, client_id=client_id, **trace), self.cache)
 
-    def submit(self, payload: dict, client_id: str, *, priority: str = "interactive") -> tuple[int, bool]:
+    def submit(self, payload: dict, client_id: str, *, priority: str = "interactive",
+               iteration: str | None = None) -> tuple[int, bool]:
         with self._lock:
             return queue.enqueue(self.conn, payload["request_type"], {k: v for k, v in payload.items() if k != "request_type"},
                                  client_id=client_id, priority=PRIORITIES.get(priority, queue.PRIORITY_INTERACTIVE),
-                                 topic_id=payload.get("topic_id"), commercial=bool(payload.get("commercial")))
+                                 topic_id=payload.get("topic_id"), commercial=bool(payload.get("commercial")),
+                                 iteration=iteration)
 
     def job(self, job_id: int, client_id: str | None = None) -> dict | None:
         """A job, or None; with client_id, only that client's own job (clients never see each other's)."""
@@ -296,7 +301,8 @@ class Gateway:
                     out[key] = list(value)
         return out
 
-    def handle(self, payload: dict, client_id: str, *, timeout: float | None = None, priority: str = "interactive") -> dict:
+    def handle(self, payload: dict, client_id: str, *, timeout: float | None = None, priority: str = "interactive",
+               trace: dict | None = None) -> dict:
         """One request end to end. Inline requests (no queue, or a fetch/data/full-text payload)
         return the FULL result — redaction is a storage rule, not a delivery rule (D-24); queued
         requests store and return canonical metadata (a timeout returns the job id to poll)."""
@@ -312,8 +318,9 @@ class Gateway:
                             "error": f"{payload.get('source')}: {problem}",
                             "contract": data_contract(mod)}
         if self.conn is None or self.is_inline_only(payload):
-            return self.run_inline(payload, client_id)
-        job_id, created = self.submit(payload, client_id, priority=priority)
+            return self.run_inline(payload, client_id, trace=trace)
+        job_id, created = self.submit(payload, client_id, priority=priority,
+                                      iteration=(trace or {}).get("iteration"))
         j = self.wait(job_id, self.settings.sync_timeout if timeout is None else timeout)
         if j is None or j["status"] not in ("done", "failed"):
             return {"job_id": job_id, "status": "queued" if j is None else j["status"], "created": created}

@@ -331,11 +331,14 @@ def call_tool(client: GatewayClient, name: str, args: dict, *, policy: dict | No
                 results.append({"tool": tool, "error": f"batch entries may only be {' or '.join(BATCH_TOOLS)}"})
                 continue
             try:
+                client.batch_entry = i   # tracing header only — never in the payload (D-33)
                 results.append({"tool": tool,
                                 "result": call_tool(client, tool, sub_args, policy=policy,
                                                     activity=activity, download_dir=download_dir)})
             except Exception as e:  # one bad entry never sinks its neighbours
                 results.append({"tool": tool, "error": f"{type(e).__name__}: {e}"})
+            finally:
+                client.batch_entry = None
         return {"results": results}
     if name == "research_download":
         params = dict(args.get("params") or {})

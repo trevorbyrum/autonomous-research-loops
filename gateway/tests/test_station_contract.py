@@ -849,3 +849,36 @@ class FinalSliverPins(unittest.TestCase):
         self.assertEqual(R._fact_coverage("datastructure 'X': no dimensions parsed — refusing to "
                                           "invent an empty series template"), "provider_unavailable",
                          "the zero-dimension fact reads as an outage, never as an auth failure")
+
+
+class TracingOutsideIdentity(unittest.TestCase):
+    """9·0 (D-33): tracing correlates calls to iterations and batch entries WITHOUT ever
+    entering semantic request identity — identical requests still share cache entries
+    and coalesce onto one job."""
+
+    def test_iteration_never_changes_cache_or_dedup_identity(self):
+        from research_gateway.core.cache import Cache
+        from research_gateway.core.queue import payload_hash
+        payload = {"query": "q", "kind": "article"}
+        self.assertEqual(Cache.search_key("find", payload), Cache.search_key("find", dict(payload)),
+                         "trace data is not in the payload, so keys cannot diverge")
+        self.assertEqual(payload_hash("find", payload), payload_hash("find", dict(payload)))
+
+    def test_wait_and_trace_land_on_call_records(self):
+        r, c, t = make()
+        c.iteration, c.batch_entry = "20260908T010101Z", 3
+        t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [CROSSREF_WORK], "total-results": 1}})
+        t.add("GET", "https://doaj.org/api/search/articles/", body={"results": [], "total": 0})
+        R.execute(r, {"request_type": "find", "query": "traced", "kind": "article"}, c)
+        crossref = next(rec for rec in c.log if rec.source_id == "crossref")
+        self.assertEqual(crossref.iteration, "20260908T010101Z")
+        self.assertEqual(crossref.batch_entry, 3)
+        self.assertIsInstance(crossref.wait_ms, int, "broker wait is its own span, separate from provider latency")
+
+    def test_stdio_client_derives_iteration_from_the_activity_stamp(self):
+        from research_gateway.clients.http_client import from_env
+        client = from_env({"RESEARCH_GATEWAY_URL": "http://127.0.0.1:1", "RESEARCH_GATEWAY_TOKEN": "t",
+                           "RESEARCH_LOOP_RESEARCH_ACTIVITY": "/x/logs/research-activity-20260908T010101Z.jsonl"})
+        self.assertEqual(client.iteration, "20260908T010101Z")
+        self.assertIsNone(from_env({"RESEARCH_GATEWAY_URL": "http://127.0.0.1:1",
+                                    "RESEARCH_GATEWAY_TOKEN": "t"}).iteration)

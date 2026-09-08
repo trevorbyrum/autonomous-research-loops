@@ -189,6 +189,8 @@ class Client:
     client_id: str | None = None
     domain_resolved: str | None = None
     commercial: bool = False   # set by the executor; download-capable adapters refuse restricted fetches up front (D-24)
+    iteration: str | None = None    # 9·0 tracing (D-33): chassis iteration stamp — travels beside requests,
+    batch_entry: int | None = None  # never inside them (cache keys and job dedup hash the payload)
 
     def secret(self, name: str, field: str | None = None) -> str | None:
         value = self.secrets(name, field)
@@ -214,12 +216,15 @@ class Client:
         if params:
             clean = {k: v for k, v in params.items() if v is not None}
             url = url + ("&" if "?" in url else "?") + urllib.parse.urlencode(clean, doseq=True)
+        wait_t0 = time.monotonic()
         try:
             self.broker.acquire_blocking(source_id, credits=credits, max_wait=self.max_wait, sleep=self.sleep)
         except (NoPolicy, BreakerOpen, BudgetExhausted) as e:
             resp = Response(None, {}, b"", url, error=f"{type(e).__name__}: {e}")
-            self._record(source_id, request_type, identity, query, resp, 0, credits, refused=True)
+            self._record(source_id, request_type, identity, query, resp, 0, credits, refused=True,
+                         wait_ms=int((time.monotonic() - wait_t0) * 1000))
             return resp
+        wait_ms = int((time.monotonic() - wait_t0) * 1000)   # broker wait, separated from provider latency (9·0)
         hdrs = {"User-Agent": self.user_agent, "Accept": "application/json"}
         hdrs.update(headers or {})
         for hop in range(MAX_REDIRECTS + 1):
@@ -236,7 +241,8 @@ class Client:
             # credits are charged once per request (the broker charged them on the first acquire);
             # each hop still gets its own call row, but only the first carries the credit figure (D-24)
             self._record(source_id, request_type, identity, query, resp, latency,
-                         credits if hop == 0 else 0.0, attempt_id=attempt_id)
+                         credits if hop == 0 else 0.0, attempt_id=attempt_id,
+                         wait_ms=wait_ms if hop == 0 else None)
             if resp.status not in REDIRECT_STATUSES:
                 return resp
             location = resp.headers.get("location")
@@ -284,11 +290,12 @@ class Client:
             return None
         rec = calllog.CallRecord(source_id=source_id, request_type=request_type, status=None, latency_ms=0,
                                  job_id=self.job_id, identity=identity, query=(query or "")[:500] or None,
-                                 credits=credits or None, domain_resolved=self.domain_resolved, client_id=self.client_id)
+                                 credits=credits or None, domain_resolved=self.domain_resolved, client_id=self.client_id,
+                                 iteration=self.iteration, batch_entry=self.batch_entry)
         return calllog.attempt(self.conn, rec)
 
     def _record(self, source_id, request_type, identity, query, resp: Response, latency: int, credits: float,
-                refused: bool = False, attempt_id: int | None = None) -> None:
+                refused: bool = False, attempt_id: int | None = None, wait_ms: int | None = None) -> None:
         count = None
         j = resp.json if resp.ok else None
         if isinstance(j, list):
@@ -307,6 +314,7 @@ class Client:
             job_id=self.job_id, identity=identity, query=(query or "")[:500] or None,
             ratelimit=calllog.ratelimit_headers(resp.headers), credits=credits or None,
             result_count=count, domain_resolved=self.domain_resolved, client_id=self.client_id,
+            iteration=self.iteration, batch_entry=self.batch_entry, wait_ms=wait_ms,
             failure_class="refused" if refused else calllog.classify(resp.status, network_error=resp.status is None,
                                                                      body=resp.text[:2000] if resp.status in (401, 403) else ""),
         )

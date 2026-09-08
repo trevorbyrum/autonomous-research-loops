@@ -27,14 +27,21 @@ def settings_from_env(environ: dict | None = None) -> tuple[str, str | None]:
 
 
 class GatewayClient:
-    def __init__(self, url: str = DEFAULT_URL, token: str | None = None, timeout: float = 130.0):
+    def __init__(self, url: str = DEFAULT_URL, token: str | None = None, timeout: float = 130.0,
+                 iteration: str | None = None):
         self.url, self.token, self.timeout = url.rstrip("/"), token, timeout
+        self.iteration = iteration      # 9·0 tracing: rides a HEADER, never the payload (D-33)
+        self.batch_entry: int | None = None
 
     def _call(self, method: str, path: str, body: dict | None = None) -> dict:
         data = json.dumps(body).encode() if body is not None else None
         headers = {"Accept": "application/json", "User-Agent": "research-gateway-client/0.1"}
         if data is not None:
             headers["Content-Type"] = "application/json"
+        if self.iteration:
+            headers["X-Research-Iteration"] = self.iteration
+        if self.batch_entry is not None:
+            headers["X-Research-Batch-Entry"] = str(self.batch_entry)
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         req = urllib.request.Request(self.url + path, data=data, method=method, headers=headers)
@@ -80,5 +87,11 @@ class GatewayClient:
 
 
 def from_env(environ: dict | None = None) -> GatewayClient:
+    import os
     url, token = settings_from_env(environ)
-    return GatewayClient(url, token)
+    env = os.environ if environ is None else environ
+    stamp = (env.get("RESEARCH_LOOP_RESEARCH_ACTIVITY") or "")
+    iteration = None
+    if "research-activity-" in stamp:   # the chassis names the file with the iteration stamp
+        iteration = stamp.rsplit("research-activity-", 1)[1].removesuffix(".jsonl") or None
+    return GatewayClient(url, token, iteration=iteration)
