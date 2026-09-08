@@ -99,11 +99,22 @@ it carries:
 
 `verified: true` means: someone actually visited the cited location and confirmed it
 supports the claim it's attached to. **It must be set by a different agent than the one
-that wrote the citation** — the same discipline `CONTRACT-CORE.md` already applies to
-pending-first evidence review, extended to citations specifically (map it onto
-`agent_secondary`'s existing role if a topic already delegates that way). Until
-`verified: true` is present, `validate` rejects the citation with "not yet independently
-verified," the same rejection family as a missing required field.
+that wrote the citation** — where "different agent" means a DISTINCT INVOCATION, not a
+different model: a fresh invocation of the configured secondary (gpt-5.6-luna)
+qualifies, while renaming or reprompting the producing invocation does not. The
+verifier receives the fixed citation ID, exact claim, and location, but independently
+obtains the cited content rather than certifying the producer's extract; it returns
+its own supporting or conflicting passage, locator, and retrieval outcome, checks
+that the claim and location still match before applying any verdict, and may update
+only the assigned citation's verification/flag fields — the primary owns all
+semantic-state writes and final acceptance. A material change to the claim or cited
+location requires a fresh check. The later verification pass may occur within the
+same station iteration. Applicable existing verification is retained: a
+model-allocation change, or another topic citing the same checked claim, does not by
+itself require another verification invocation — historical checks by a formerly
+assigned model keep their standing. Until `verified: true` is present, `validate`
+rejects the citation with "not yet independently verified," the same rejection family
+as a missing required field.
 
 If verification finds the citation is wrong — wrong page, dead link, content that
 doesn't actually say what's claimed — set `flagged: hallucination` instead:
@@ -131,9 +142,13 @@ resolve.
 cited location* supports the claim — nothing more. It must not expand into searching for
 a "correct" replacement source if the given one turns out to be wrong (a broken link, a
 right-domain-wrong-slug typo, a moved page). Finding the right source on the citer's
-behalf is a separate, later capability, not part of this check. When the cited location
-doesn't hold up, the correct action is `flagged: hallucination` and nothing else — not a
-substitution, not a silent fix, not a wider search.
+behalf is a separate, later capability, not part of this check. Distinguish the two
+failure kinds: a timeout, quota refusal, temporary service failure, or access
+restriction is CAPABILITY trouble — leave the claim unverified and record the
+failure; it is never a hallucination finding. For an ESTABLISHED wrong/dead location
+or a claim the visited content does not support, set `flagged: hallucination` and
+nothing else — not a substitution, not a silent fix, not a wider search. Only the
+operator clears a hallucination flag.
 
 ## Source counts
 
@@ -163,7 +178,11 @@ entirely optional — see `docs/operations.md`), a hit there tells you a source 
 *already used somewhere in the portfolio*. It does not tell you the underlying claim
 meets *this* topic's own evidence-quality bar — `AUTHORITY.md`'s tiers are topic-specific
 by design (see `chassis/CONTRACT-CORE.md`'s evidence handling section). Treat an index
-hit exactly like any other unverified lead: go read the original citation, verify it
-independently, and cite it in the current topic (as `local`, `external`, or an
-`internal` pointer to it) before it backs any disposition. An index miss is a capability
+hit as a lead: examine the target record and its relevant passage, judge
+applicability under this topic's own rules, and cite it in the current topic (as
+`local`, `external`, or an `internal` pointer to it) before it backs any
+disposition. Applicable existing verification is retained — an unchanged,
+already-independently-verified claim does not need another verification invocation
+merely because this topic now cites it; a materially different claim needs its own
+independently verified record. An index miss is a capability
 fact, not proof no other topic has relevant evidence.

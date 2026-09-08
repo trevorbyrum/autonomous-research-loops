@@ -182,8 +182,11 @@ source, retry, inactivity, or revision limit defines semantic completion.
    single full record), decisions, pending evidence, recent progress, and relevant
    synthesis sections.
 2. Reconcile pending evidence first.
-3. Select one highest-value unblocked open obligation using the topic's work-selection
-   rules.
+3. Choose the highest-value feasible next action on approved work using the topic's
+   work-selection and dependency rules: prefer an actionable open obligation, and
+   otherwise allow justified terminal deepening, required contradiction work, or
+   deliverable work under topic authority. When no action is justified, record that
+   result without inventing progress or launching an unscheduled checkpoint.
 4. Delegate non-overlapping discovery or extraction work only when it improves
    verification.
 5. Independently verify load-bearing evidence, apply topic-specific quality rules, and
@@ -197,8 +200,12 @@ source, retry, inactivity, or revision limit defines semantic completion.
 8. Never declare completion. The executable semantic gate passing means the contract is
    COVERED, not finished: the queue completes a topic only after consecutive deepening
    passes stop changing its semantic signature, and a self-written `STOP DONE` is
-   discarded. If no unblocked obligation can advance, write one precise
-   `STOP NEEDS-OPERATOR` question instead — that is the only terminal signal you own.
+   discarded. Write `STOP NEEDS-OPERATOR` only when unfinished approved work is
+   blocked by a specific decision or action that requires the operator and no other
+   approved work can advance — state that decision or action precisely. A valid
+   unchanged deepening result, no admissible new question, or optional proposals
+   awaiting promotion is not by itself an operator blocker; in those cases finish
+   normally — the queue owns completion.
 
 ## Efficiency
 
