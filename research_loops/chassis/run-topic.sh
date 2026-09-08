@@ -127,19 +127,35 @@ sources_before=$(python3 "$CHASSIS/semantic-state.py" source-count "$TOPIC_DIR" 
 # docs/citations.md), so a hallucination-flagged addition never counts as verified evidence.
 # Flagged blocks are counted separately: their delta is the rejection signal.
 ledger_counts() {
-  python3 - "$TOPIC_DIR/SOURCE-LEDGER.md" <<'PYEOF'
-import re, sys
+  python3 - "$CHASSIS" "$TOPIC_DIR" <<'PYEOF'
+import importlib.util
+import sys
+from pathlib import Path
+
+chassis, topic_dir = Path(sys.argv[1]), Path(sys.argv[2])
+spec = importlib.util.spec_from_file_location("semantic_state", chassis / "semantic-state.py")
+ss = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(ss)
 try:
-    text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+    text = (topic_dir / "SOURCE-LEDGER.md").read_text(encoding="utf-8", errors="replace")
 except OSError:
     print("0 0"); raise SystemExit
 accepted = flagged = 0
-for block in re.split(r"^## \[SRC-", text, flags=re.M)[1:]:
-    has_verified = re.search(r"^- verified: true\b", block, re.M) is not None
-    has_flag = re.search(r"^- flagged:", block, re.M) is not None
-    if has_flag:
+# the SAME parser and acceptance rules the DONE gate uses (docs/citations.md): one
+# identity per SRC id, blocks end at ANY next heading, a flagged block is refused
+# unconditionally, and a verified block failing its type's required fields is NOT
+# accepted evidence. Internal citations inherit their target's verification and add
+# no own verified evidence, so they are counted in neither number by design.
+for bid, block in ss.parse_source_ledger(text).items():
+    fields = block.get("fields", {})
+    if "flagged" in fields:
         flagged += 1
-    elif has_verified:
+        continue
+    if fields.get("verified") != "true" or block.get("type") == "internal":
+        continue
+    errs = ss.citation_errors_for_block(bid, block, topic_dir=topic_dir,
+                                        topics_root=topic_dir.parent, allow_internal=True)
+    if not errs:
         accepted += 1
 print(accepted, flagged)
 PYEOF
@@ -166,6 +182,10 @@ export RESEARCH_LOOP_LOG="$log"
 # here; write_result reduces the file into the iteration result for the queue's
 # saturation gate. Per-iteration file: a stale one never speaks for a fresh pass.
 activity_file="$LOG_DIR/research-activity-$stamp.jsonl"
+# 9·0 delegation coverage: the runner marks each iteration in the delegate ledger, so a
+# marked window with zero launch events is EVIDENCE of zero delegation (the wrapper logs
+# a launch line per invocation; launches without a usage line are unobserved outcomes)
+printf '{"ts":"%s","event":"iteration","stamp":"%s"}\n' "$(date -u +%FT%TZ)" "$stamp" >> "$LOG_DIR/delegate-usage.jsonl" 2>/dev/null || true
 export RESEARCH_LOOP_RESEARCH_ACTIVITY="$activity_file"
 # 9·0 phase timings: the agent appends "<iso> <phase>" markers here; the throughput
 # report turns them into per-phase durations (missing = unknown, never imputed)
@@ -249,6 +269,8 @@ write_result() {
   RESULT_PENDING_COUNT="$pending_count" \
   RESULT_PENDING_REFS="$pending_refs" \
   RESULT_GATEWAY_HEALTH="$gateway_health" \
+  RESULT_WORKER="${RESEARCH_LOOP_WORKER:-}" \
+  RESULT_SECONDARY="${RESEARCH_LOOP_AGENT_SECONDARY:-}" \
   RESULT_RUNNER="$RUNNER_NAME" RESULT_TOPIC_DIR="$TOPIC_DIR" \
   RESULT_DEGRADED_FILE="${degraded_file:-}" \
   RESULT_SEMANTIC_VALID="$semantic_valid" \
@@ -289,6 +311,8 @@ result = {
                      if (os.environ.get("RESULT_PENDING_REFS") or "").startswith("[") else None),
     "gateway_health": (json.loads(os.environ["RESULT_GATEWAY_HEALTH"])
                        if (os.environ.get("RESULT_GATEWAY_HEALTH") or "").startswith("{") else None),
+    "worker": os.environ.get("RESULT_WORKER") or None,
+    "agent_secondary": os.environ.get("RESULT_SECONDARY") or None,
     "stop_written": stop_written,
     "stop_first_line": stop_first,
     "semantic_valid": os.environ.get("RESULT_SEMANTIC_VALID") == "true",
