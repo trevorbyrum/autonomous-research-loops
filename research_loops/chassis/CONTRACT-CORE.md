@@ -104,6 +104,16 @@ source, retry, inactivity, or revision limit defines semantic completion.
   whatever evidence-quality dimensions actually fit the domain.
 - Seek counterevidence, preserve contradictions, deduplicate without erasing dated
   supersession or genuine disagreement, and retain provenance plus temporal metadata.
+- Overlap is never by itself grounds to discard a source. Finding X first does not make
+  X the better source: an overlapping-but-distinct candidate Y must be COMPARED before
+  it is passed over — is Y methodologically stronger, broader, more recent, a
+  counterpoint, or does it open gaps X does not? Cite Y (as superseding, complementary,
+  or contradicting) or record the comparison that justified passing, in the ledgers.
+  "Already covered" without that recorded logic is not a decision, it is a default.
+- No candidate is rejected on a delegate's characterization alone. Before a candidate
+  is passed over, either the primary examines it, or an extraction packet with the
+  exact relevant passages (locators included) supports the rejection. A delegate's
+  one-line verdict is a lead-sorting aid, never a disposal record.
 - New records remain pending until a later verification pass approves, corrects,
   contradicts, or rejects them.
 - On a `schema_version >= 2` topic, every `evidence_ref` an obligation cites must
@@ -149,7 +159,16 @@ source, retry, inactivity, or revision limit defines semantic completion.
 3. Select one highest-value unblocked open obligation using the topic's work-selection
    rules.
 4. Delegate non-overlapping discovery or extraction work only when it improves
-   verification.
+   verification. Two standing delegate roles beyond discovery: the LIBRARIAN pass
+   (before discovery, a delegate reconciles candidate identities against the topic's
+   own ledgers — exact DOIs/URLs/titles, prior failed routes and their dates, stale
+   leads, current pending items — so the primary never re-researches what the topic
+   already holds) and the EXTRACTION packet (a delegate acquires and extracts a
+   selected source: exact passages with page/section locators, methods and limitations
+   context, provenance and retrieval facts — the primary reads the load-bearing
+   passages and judges; it does not re-run the mechanical acquisition). Neither role
+   decides relevance, exhaustion, or confidence; packets are evidence preparation,
+   and everything in them stays pending until independent verification.
 5. Independently verify load-bearing evidence, apply topic-specific quality rules, and
    seek counterevidence.
 6. Update research ledgers and synthesis while preserving provenance and contradictions.
@@ -157,7 +176,12 @@ source, retry, inactivity, or revision limit defines semantic completion.
    only through the state CLI (`transition`/`pending`/`deliverable`/`contradiction`) —
    never by reading or rewriting `SEMANTIC-STATE.json` directly. The CLI enforces the
    DONE gate's own per-record rules at write time and refuses incomplete terminal
-   transitions atomically.
+   transitions atomically. Semantic fields hold the CURRENT assessment only:
+   `confidence`, `gap_state`, and the summaries are rewritten when belief changes and
+   left BYTE-UNCHANGED when it does not — pass-by-pass narrative belongs in
+   PROGRESS.md/NEEDS-SOURCE.md, never appended to semantic fields. An iteration that
+   truly changes no belief must leave the semantic state untouched: that stability IS
+   the saturation signal the queue is waiting for, not a failure to disguise.
 8. Never declare completion. The executable semantic gate passing means the contract is
    COVERED, not finished: the queue completes a topic only after consecutive deepening
    passes stop changing its semantic signature, and a self-written `STOP DONE` is
