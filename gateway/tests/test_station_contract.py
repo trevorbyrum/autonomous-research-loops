@@ -864,6 +864,26 @@ class TracingOutsideIdentity(unittest.TestCase):
                          "trace data is not in the payload, so keys cannot diverge")
         self.assertEqual(payload_hash("find", payload), payload_hash("find", dict(payload)))
 
+    def test_two_iterations_share_one_cached_search_and_the_hit_is_traced(self):
+        from research_gateway.core.cache import Cache
+        r, c1, t = make()
+        t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [CROSSREF_WORK], "total-results": 1}})
+        t.add("GET", "https://doaj.org/api/search/articles/", body={"results": [], "total": 0})
+        cache = Cache(None)
+        p = {"request_type": "find", "kind": "article", "query": "shared", "domain": "finance"}
+        c1.iteration, c1.topic = "iterA", "topic-one"
+        first = R.execute(r, p, c1, cache)
+        self.assertFalse(first.get("cache_hit"))
+        c2 = Client(broker=c1.broker, transport=t)
+        c2.iteration, c2.batch_entry, c2.topic = "iterB", 0, "topic-two"
+        second = R.execute(r, p, c2, cache)
+        self.assertTrue(second.get("cache_hit"),
+                        "a DIFFERENT iteration's identical request shares the cached answer (D-33)")
+        hit = c2.log[-1]
+        self.assertEqual((hit.source_id, hit.cache_hit, hit.iteration, hit.batch_entry, hit.topic),
+                         ("cache", True, "iterB", 0, "topic-two"),
+                         "warm-cache work is attributed to ITS caller, not dropped (9·0 amendment)")
+
     def test_wait_and_trace_land_on_call_records(self):
         r, c, t = make()
         c.iteration, c.batch_entry = "20260908T010101Z", 3
@@ -892,7 +912,10 @@ class ParallelBatch(unittest.TestCase):
 
         class SlowStub(StubClient):
             def request(self, rt, payload):
-                _time.sleep(0.05 if payload.get("identity") == "doi:10.1/slow" else 0.0)
+                # EVERY resolve entry sleeps: serial execution would take >= 0.36 s, so the
+                # elapsed assertion below discriminates parallel from serial (it is not a
+                # threshold a serial run could also satisfy)
+                _time.sleep(0.12 if rt == "resolve" else 0.0)
                 self.seen.append((rt, dict(payload)))
                 return {"request_type": rt, "records": [], "facts": [], "lanes": [],
                         "echo": payload.get("identity")}
@@ -909,4 +932,4 @@ class ParallelBatch(unittest.TestCase):
         self.assertEqual([r.get("result", {}).get("echo", r.get("error", ""))[:12] if isinstance(r.get("result", r), dict) else "" for r in out["results"]][0],
                          "doi:10.1/slo", "the slow entry still comes back FIRST in the list")
         self.assertIn("error", out["results"][2], "per-entry failures stay per-entry")
-        self.assertLess(elapsed, 0.15, "entries overlapped instead of summing their waits")
+        self.assertLess(elapsed, 0.30, "three 0.12 s entries overlapped (serial would be >= 0.36 s)")

@@ -131,13 +131,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(400, {"error": f"{rt} requests are inline-only (their results are "
                                                  "delivered, never stored); there is no job to poll (D-24)"})
             # tracing travels in headers, never in the payload the cache and dedup hash (D-33)
-            trace = {"iteration": (self.headers.get("X-Research-Iteration") or "")[:64] or None}
+            trace = {"iteration": (self.headers.get("X-Research-Iteration") or "")[:64] or None,
+                     "topic": (self.headers.get("X-Research-Topic") or "")[:64] or None}
             entry_header = self.headers.get("X-Research-Batch-Entry")
             if entry_header and entry_header.isdigit():
                 trace["batch_entry"] = int(entry_header)
             if wants_async and gw.conn is not None:
                 job_id, created = gw.submit(payload, client, priority=str(body.get("priority") or "interactive"),
-                                            iteration=trace["iteration"], batch_entry=trace.get("batch_entry"))
+                                            iteration=trace["iteration"], batch_entry=trace.get("batch_entry"),
+                                            topic=trace.get("topic"))
                 return self._send(202, {"job_id": job_id, "created": created, "status": "queued"})
             timeout = min(float(body.get("timeout") or gw.settings.sync_timeout), MAX_TIMEOUT)
             out = gw.handle(payload, client, timeout=timeout, priority=str(body.get("priority") or "interactive"),

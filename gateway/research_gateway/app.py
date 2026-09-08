@@ -13,6 +13,7 @@ import hmac
 import json
 import os
 import threading
+import sys
 import time
 import tomllib
 from dataclasses import dataclass, field
@@ -20,7 +21,7 @@ from pathlib import Path
 
 from . import adapters
 from .adapters.base import Client
-from .core import alerts, db, queue
+from .core import alerts, calllog, db, queue
 from .core.broker import Broker, load_policies, persist_breaker, policies_from_rows
 from .core.cache import Cache
 from .core.router import Router, execute, make_handlers, redact_for_storage
@@ -210,13 +211,15 @@ class Gateway:
 
     # ------------------------------------------------------------ clients
     def make_client(self, conn, job: dict | None = None, client_id: str | None = None,
-                    iteration: str | None = None, batch_entry: int | None = None) -> Client:
+                    iteration: str | None = None, batch_entry: int | None = None,
+                    topic: str | None = None) -> Client:
         kw = {"transport": self.transport} if self.transport is not None else {}
         return Client(broker=self.broker, secrets=self.secrets.get, contact_email=self.settings.contact_email,
                       user_agent=f"research-gateway/{VERSION} (mailto:{self.settings.contact_email})",
                       conn=conn, job_id=(job or {}).get("id"), client_id=(job or {}).get("client_id") or client_id,
                       iteration=(job or {}).get("iteration") or iteration,
                       batch_entry=(job or {}).get("batch_entry") if (job or {}).get("batch_entry") is not None else batch_entry,
+                      topic=(job or {}).get("topic_id") or topic,
                       **kw)
 
     # ------------------------------------------------------------ lifecycle
@@ -233,11 +236,23 @@ class Gateway:
         self.watcher.start()
 
     def stop(self) -> None:
+        """Drain before closing (9-2b): workers and the watcher are JOINED - a lane can sit in
+        a legitimate broker wait or provider request far past any polite timeout, and its
+        eventual broker callback or cache write must never land on a closed connection. If a
+        thread will not finish inside RESEARCH_GATEWAY_STOP_TIMEOUT (default 300 s), shared
+        connections are LEFT OPEN (the process is exiting anyway): a leak on the way out is
+        safe; a use-after-close is not."""
         self.stop_event.set()
-        for w in self.workers:
-            w.join(timeout=5)
-        if self.watcher is not None:
-            self.watcher.join(timeout=5)
+        deadline = time.monotonic() + max(1.0, float(os.environ.get("RESEARCH_GATEWAY_STOP_TIMEOUT", "300") or 300))
+        stragglers = []
+        for w in [*self.workers, *([self.watcher] if self.watcher is not None else [])]:
+            w.join(timeout=max(0.1, deadline - time.monotonic()))
+            if w.is_alive():
+                stragglers.append(w.name)
+        if stragglers:
+            print(f"gateway stop: {len(stragglers)} thread(s) still running after the drain timeout "
+                  f"({', '.join(stragglers)}); shared connections left open for process exit", file=sys.stderr)
+            return
         if self.conn is not None:
             self.conn.close()
         if self.cache.conn is not None:
@@ -264,12 +279,27 @@ class Gateway:
             return execute(self.router, payload, self.make_client(conn, client_id=client_id, **trace), self.cache)
 
     def submit(self, payload: dict, client_id: str, *, priority: str = "interactive",
-               iteration: str | None = None, batch_entry: int | None = None) -> tuple[int, bool]:
+               iteration: str | None = None, batch_entry: int | None = None,
+               topic: str | None = None) -> tuple[int, bool]:
         with self._lock:
-            return queue.enqueue(self.conn, payload["request_type"], {k: v for k, v in payload.items() if k != "request_type"},
-                                 client_id=client_id, priority=PRIORITIES.get(priority, queue.PRIORITY_INTERACTIVE),
-                                 topic_id=payload.get("topic_id"), commercial=bool(payload.get("commercial")),
-                                 iteration=iteration, batch_entry=batch_entry)
+            job_id, created = queue.enqueue(self.conn, payload["request_type"], {k: v for k, v in payload.items() if k != "request_type"},
+                                            client_id=client_id, priority=PRIORITIES.get(priority, queue.PRIORITY_INTERACTIVE),
+                                            topic_id=payload.get("topic_id"), commercial=bool(payload.get("commercial")),
+                                            iteration=iteration, batch_entry=batch_entry)
+            if not created:
+                # the coalesced WAITER's request observation (9·0 amendment): the shared dispatch
+                # stays the creator's; each later caller still leaves a durable row under its own
+                # tracing. Telemetry only — its failure never blocks the request itself.
+                try:
+                    calllog.record(self.conn, calllog.CallRecord(
+                        source_id="coalesce", request_type=payload["request_type"], status=200, latency_ms=0,
+                        job_id=job_id, identity=payload.get("identity") or payload.get("target"),
+                        query=(payload.get("query") or "")[:500] or None, failure_class="ok",
+                        client_id=client_id, iteration=iteration, batch_entry=batch_entry,
+                        topic=payload.get("topic_id") or topic))
+                except Exception:
+                    pass
+            return job_id, created
 
     def job(self, job_id: int, client_id: str | None = None) -> dict | None:
         """A job, or None; with client_id, only that client's own job (clients never see each other's)."""
@@ -332,7 +362,8 @@ class Gateway:
             return self.run_inline(payload, client_id, trace=trace)
         job_id, created = self.submit(payload, client_id, priority=priority,
                                       iteration=(trace or {}).get("iteration"),
-                                      batch_entry=(trace or {}).get("batch_entry"))
+                                      batch_entry=(trace or {}).get("batch_entry"),
+                                      topic=(trace or {}).get("topic"))
         j = self.wait(job_id, self.settings.sync_timeout if timeout is None else timeout)
         if j is None or j["status"] not in ("done", "failed"):
             return {"job_id": job_id, "status": "queued" if j is None else j["status"], "created": created}

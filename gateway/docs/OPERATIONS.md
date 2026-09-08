@@ -57,8 +57,10 @@ Concurrency knobs (Phase 9·2 — each has a serial rollback):
   serial loop. Only find lanes overlap: resolve/enrich/fetch/data/catalog plans
   are fallback chains and stay serial.
 - `RESEARCH_GATEWAY_LANE_TOTAL` (default 16, gateway process) — aggregate bound
-  on lane dispatches in flight across ALL concurrent requests, the inline path
-  (which bypasses the worker pool) included. Read once at first use.
+  on lane dispatches in flight across ALL concurrent requests and ALL request
+  types: parallel find lanes, serial resolve/enrich/fetch/data/catalog lanes,
+  and the DOI registration-agency lookup — the inline path (which bypasses the
+  worker pool) included. Read once at first use.
 - `RESEARCH_GATEWAY_BATCH_CONCURRENCY` (default 5, **station MCP process**) —
   parallel `research_batch` entries in the stdio client. Setting the gateway's
   lane knobs does not configure this one; it lives in the station's environment.

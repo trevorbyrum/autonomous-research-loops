@@ -263,15 +263,19 @@ class Broker:
         return result
 
     def close_breaker(self, source_id: str) -> None:
+        pending: list = []
         with self._lock:
+            # the sequence is allocated in the SAME critical section as the state mutation:
+            # a reopen racing this close must get the LATER sequence, or persistence would
+            # accept the obsolete close as newer and a restart would forget the live breaker
             st = self._state.get(source_id)
             if st:
                 st.breaker_until, st.breaker_reason, st.consecutive_limit_errors = 0.0, "", 0
-        if self._on_breaker_change:
-            with self._lock:
-                self._breaker_seq += 1
-                q = self._breaker_seq
-            self._fire([lambda: self._on_breaker_change(source_id, "closed", None, "operator", q)])
+                if self._on_breaker_change:
+                    self._breaker_seq += 1
+                    pending.append(lambda q=self._breaker_seq:
+                                   self._on_breaker_change(source_id, "closed", None, "operator", q))
+        self._fire(pending)
 
     def seed_breakers(self, rows: list[tuple[str, float]]) -> None:
         """Restore persisted open breakers: (source_id, seconds still to run). A breaker a crash

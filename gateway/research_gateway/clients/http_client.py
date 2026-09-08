@@ -28,9 +28,10 @@ def settings_from_env(environ: dict | None = None) -> tuple[str, str | None]:
 
 class GatewayClient:
     def __init__(self, url: str = DEFAULT_URL, token: str | None = None, timeout: float = 130.0,
-                 iteration: str | None = None):
+                 iteration: str | None = None, topic: str | None = None):
         self.url, self.token, self.timeout = url.rstrip("/"), token, timeout
         self.iteration = iteration      # 9·0 tracing: rides a HEADER, never the payload (D-33)
+        self.topic = topic              # caller's topic id — same rule (two topics can share a second)
         self.batch_entry: int | None = None
 
     def _call(self, method: str, path: str, body: dict | None = None) -> dict:
@@ -40,6 +41,8 @@ class GatewayClient:
             headers["Content-Type"] = "application/json"
         if self.iteration:
             headers["X-Research-Iteration"] = self.iteration
+        if self.topic:
+            headers["X-Research-Topic"] = self.topic
         if self.batch_entry is not None:
             headers["X-Research-Batch-Entry"] = str(self.batch_entry)
         if self.token:
@@ -94,4 +97,6 @@ def from_env(environ: dict | None = None) -> GatewayClient:
     iteration = None
     if "research-activity-" in stamp:   # the chassis names the file with the iteration stamp
         iteration = stamp.rsplit("research-activity-", 1)[1].removesuffix(".jsonl") or None
-    return GatewayClient(url, token, iteration=iteration)
+    topic_dir = env.get("RESEARCH_LOOP_TOPIC_DIR") or ""
+    topic = topic_dir.rstrip("/").rsplit("/", 1)[-1] or None if topic_dir else None
+    return GatewayClient(url, token, iteration=iteration, topic=topic)

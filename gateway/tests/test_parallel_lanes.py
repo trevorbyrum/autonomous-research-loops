@@ -75,37 +75,44 @@ class MergeDeterminism(unittest.TestCase):
             return R.execute(r, payload, make_client())
 
     def test_parallel_answer_is_byte_identical_to_serial_under_reversed_completion(self):
-        a = rec("crossref", "10.1234/abc", "Reranking at scale")      # same work, two lanes:
-        b = rec("doaj", "10.1234/abc", "Reranking at scale")          # the canonical winner is
-        c = rec("doaj", "10.9999/solo", "An unrelated result")        # the PLAN-order first
+        with frozen_clock():   # stamps are frozen AT FIXTURE CONSTRUCTION, not merely at run time
+            a = rec("crossref", "10.1234/abc", "Reranking at scale (crossref)")   # same work, two lanes,
+            b = rec("doaj", "10.1234/abc", "Reranking at scale (doaj copy)")      # DIFFERENT titles: the
+            c = rec("doaj", "10.9999/solo", "First independent doaj result")      # winner is discriminable
+            d = rec("doaj", "10.9999/second", "Second independent doaj result")
+        self.assertEqual(a["retrieved_at"], "2026-09-08T00:00:00+00:00", "fixture stamps ARE the frozen value")
         payload = {"request_type": "find", "kind": "article", "query": "reranking", "domain": "finance"}
-        serial = self.run_find(payload, find_fn([a]), find_fn([b, c]), find_fn([]), width=1)
+        serial = self.run_find(payload, find_fn([a]), find_fn([b, c, d]), find_fn([]), width=1)
 
         # parallel, with completion order REVERSED: doaj answers before crossref may finish
         doaj_done = threading.Event()
         parallel = self.run_find(payload, find_fn([a], before=doaj_done),
-                                 find_fn([b, c], after=doaj_done), find_fn([]), width=4)
+                                 find_fn([b, c, d], after=doaj_done), find_fn([]), width=4)
         self.assertEqual(json.dumps(serial, sort_keys=True, default=str),
                          json.dumps(parallel, sort_keys=True, default=str),
                          "shuffled completion must not change one byte of the answer")
-        self.assertEqual(parallel["records"][0]["sources"], ["crossref", "doaj"],
-                         "dedup winner and member order follow PLAN order, not completion order")
-        self.assertEqual([m["source_id"] for m in parallel["records"][0]["provenance"]],
-                         ["crossref", "doaj"])
+        winner = parallel["records"][0]
+        self.assertEqual((winner["source_id"], winner["title"], winner["sources"]),
+                         ("crossref", "Reranking at scale (crossref)", ["crossref", "doaj"]),
+                         "the canonical winner is the PLAN-order first member — fields included, "
+                         "not just the sources list")
+        self.assertEqual([m["source_id"] for m in winner["provenance"]], ["crossref", "doaj"])
         self.assertEqual([ln["source"] for ln in parallel["lanes"]],
                          ["openalex_snapshot", "crossref", "doaj"])
         self.assertEqual([r["identity"] for r in parallel["records"]],
-                         ["doi:10.1234/abc", "doi:10.9999/solo"], "within-lane order preserved")
+                         ["doi:10.1234/abc", "doi:10.9999/solo", "doi:10.9999/second"],
+                         "TWO nonduplicate results from one lane keep their within-lane order")
         for ln in parallel["lanes"][1:]:
             self.assertIn("exhausted", ln, "a completed find lane without a cursor says so")
 
     def test_licence_filtering_holds_under_reversed_completion(self):
         # dataset plan (datacite, huggingface, openml): huggingface is a PER-ITEM source, so
         # its unlicensed record must drop no matter which lane finishes first
-        allowed = canonical.make_record(identity="hf:owner/corpus", kind="dataset", source_id="huggingface",
-                                        title="Licensed corpus", license="cc-by-4.0")
-        denied = canonical.make_record(identity="hf:owner/mystery", kind="dataset", source_id="huggingface",
-                                       title="Mystery corpus", license=None)
+        with frozen_clock():
+            allowed = canonical.make_record(identity="hf:owner/corpus", kind="dataset", source_id="huggingface",
+                                            title="Licensed corpus", license="cc-by-4.0")
+            denied = canonical.make_record(identity="hf:owner/mystery", kind="dataset", source_id="huggingface",
+                                           title="Mystery corpus", license=None)
         payload = {"request_type": "find", "kind": "dataset", "query": "corpus", "domain": "ai-ml",
                    "commercial": True, "accept_per_item": True}
         hf_done = threading.Event()
@@ -231,6 +238,231 @@ class AggregateBound(unittest.TestCase):
                              "12 wanted lanes across 3 concurrent requests, never more than "
                              "RESEARCH_GATEWAY_LANE_TOTAL=2 dispatches in flight")
         self.assertGreaterEqual(in_flight["max"], 2, "the bound throttles; it does not serialize")
+
+
+
+
+class AuditAdmission(unittest.TestCase):
+    """9·2b: fatal-state publication and dispatch admission share ONE lock (client.db_lock),
+    so no lane can pass admission between an audit failure and its discovery."""
+
+    def test_calllog_failure_sets_abort_under_the_admission_lock(self):
+        class BrokenConn:
+            def cursor(self):
+                raise RuntimeError("db down")
+            def rollback(self):
+                pass
+        c = make_client()
+        c.conn = BrokenConn()
+        with self.assertRaises(calllog.AuditError):
+            c.local("crossref", "find", query="q")
+        self.assertTrue(c.abort.is_set(), "the FAILING write publishes the fatal state itself")
+
+    def test_admission_refuses_dispatch_before_any_write_once_abort_is_set(self):
+        writes: list = []
+
+        class HealthyConn:
+            def cursor(self):
+                writes.append(1)
+                raise AssertionError("a write was attempted after abort")
+            def rollback(self):
+                pass
+        c = make_client()
+        c.conn = HealthyConn()
+        c.abort.set()
+        with self.assertRaises(calllog.AuditError):
+            c._attempt("crossref", "find", None, "q")
+        self.assertEqual(writes, [], "an aborted client never writes another attempt row — "
+                                     "and therefore never dispatches (the attempt row precedes transport)")
+
+
+class InlineSerialBound(unittest.TestCase):
+    """The aggregate bound covers the SERIAL/INLINE lane paths too — data/catalog/fetch
+    requests bypass both the worker pool and the find-lane pool."""
+
+    def setUp(self):
+        R._LANE_SLOTS = None
+
+    def tearDown(self):
+        R._LANE_SLOTS = None
+
+    def test_concurrent_inline_data_requests_respect_lane_total(self):
+        gate = threading.Lock()
+        in_flight = {"now": 0, "max": 0}
+
+        def tracked_data(client, params):
+            with gate:
+                in_flight["now"] += 1
+                in_flight["max"] = max(in_flight["max"], in_flight["now"])
+            threading.Event().wait(0.15)
+            with gate:
+                in_flight["now"] -= 1
+            return {"records": []}
+
+        r = R.Router(SEED, ADAPTERS)
+        sources = ("fred", "bls", "bea")
+        with mock.patch.dict(os.environ, {"RESEARCH_GATEWAY_LANE_TOTAL": "1"}), \
+             mock.patch.object(ADAPTERS["fred"], "data", tracked_data), \
+             mock.patch.object(ADAPTERS["bls"], "data", tracked_data), \
+             mock.patch.object(ADAPTERS["bea"], "data", tracked_data):
+            threads = [threading.Thread(target=R.execute,
+                                        args=(r, {"request_type": "data", "source": sid, "params": {}},
+                                              make_client()))
+                       for sid in sources]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(30)
+        self.assertEqual(in_flight["now"], 0)
+        self.assertEqual(in_flight["max"], 1,
+                         "three concurrent inline data requests, RESEARCH_GATEWAY_LANE_TOTAL=1: "
+                         "one adapter dispatch in flight at a time")
+
+
+class BreakerSequenceOrdering(unittest.TestCase):
+    """A close racing a reopen can never persist as newer than the reopen: every transition's
+    sequence is allocated in the same critical section as its state mutation."""
+
+    def test_persisted_state_never_regresses_live_state_under_close_open_races(self):
+        events: list = []
+        b = Broker({"src": RatePolicy(per_second=100000)},
+                   on_breaker_change=lambda s, st, ra, r, q: events.append((q, st)))
+        rounds = 200
+        barrier = threading.Barrier(2)
+
+        def closer():
+            for _ in range(rounds):
+                barrier.wait(10)
+                b.close_breaker("src")
+
+        def opener():
+            for _ in range(rounds):
+                barrier.wait(10)
+                b.record("src", 429, retry_after=3600)
+
+        threads = [threading.Thread(target=closer), threading.Thread(target=opener)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(60)
+        # a persister that applies only newer-than-applied sequences must end at the live state
+        applied_seq, applied_state = -1, None
+        for q, st in events:
+            if q > applied_seq:
+                applied_seq, applied_state = q, st
+        self.assertEqual(applied_state == "open", b.breaker_open("src"),
+                         "the highest-sequence event IS the live state — a delayed callback can "
+                         "never leave persistence behind the broker")
+
+    def test_closing_a_nonexistent_breaker_emits_nothing(self):
+        events: list = []
+        b = Broker({"src": RatePolicy(per_second=100)},
+                   on_breaker_change=lambda s, st, ra, r, q: events.append((q, st)))
+        b.close_breaker("src")
+        self.assertEqual(events, [], "no state was cleared, so no transition is announced")
+
+
+class OpenAireSingleFlight(unittest.TestCase):
+    def test_concurrent_mint_is_single_flight_and_registers_per_client(self):
+        from research_gateway.adapters import openaire
+        openaire.reset_token()
+        creds = {("openaire", "client_id"): "id", ("openaire", "client_secret"): "sec"}
+        t = FakeTransport()
+        t.add("POST", "https://aai.openaire.eu/oidc/token", body={"access_token": "tok-single", "expires_in": 3600})
+        clients = [Client(broker=Broker({"openaire": RatePolicy(per_second=100000)}), transport=t,
+                          secrets=lambda n, f=None: creds.get((n, f))) for _ in range(8)]
+        errors: list = []
+
+        def go(i):
+            try:
+                openaire._headers(clients[i])
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=go, args=(i,)) for i in range(8)]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join(30)
+        self.assertEqual(errors, [])
+        mints = [c for c in t.calls if c[0] == "POST" and "oidc/token" in c[1]]
+        self.assertEqual(len(mints), 1, "eight concurrent callers, ONE token exchange")
+        for i, c in enumerate(clients):
+            self.assertIn("tok-single", c.secret_values,
+                          f"client {i} registered the shared token for redaction despite not minting it")
+
+
+class SameSourceContention(unittest.TestCase):
+    """9·2b broker-under-contention: parallel same-source entries — rate reservations,
+    credits, a 429 Retry-After opening the breaker, refusals for late arrivals, and
+    restart reconstruction of usage AND the open breaker from what was recorded."""
+
+    def test_parallel_entries_credits_breaker_and_restart_reconstruction(self):
+        from research_gateway.core.broker import BreakerOpen
+        t = FakeTransport()
+        t.add("GET", "https://api.example.org/limited", status=429, headers={"Retry-After": "3600"})
+        t.add("GET", "https://api.example.org/ok", body={"items": []})
+        broker = Broker({"src": RatePolicy(per_second=1000, per_day=100)})
+        c = Client(broker=broker, transport=t)
+        results: list = []
+
+        def ok_call(i):
+            results.append(("ok", c.get("src", "data", "https://api.example.org/ok", credits=1.0).status))
+
+        threads = [threading.Thread(target=ok_call, args=(i,)) for i in range(6)]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join(30)
+        self.assertEqual([r for r in results if r == ("ok", 200)], [("ok", 200)] * 6)
+        # one call hits the limiter: Retry-After opens the breaker for everyone
+        resp = c.get("src", "data", "https://api.example.org/limited", credits=1.0)
+        self.assertEqual(resp.status, 429)
+        self.assertTrue(broker.breaker_open("src"))
+        refused = c.get("src", "data", "https://api.example.org/ok", credits=1.0)
+        self.assertIsNone(refused.status, "a parallel sibling is REFUSED while the breaker is open")
+        self.assertIn("BreakerOpen", refused.error or "")
+        # accounting: dispatched calls and credits are consistent between broker and log
+        st = broker.status()["src"]
+        dispatched_rows = [r for r in c.log if r.failure_class not in ("attempt",) and not r.cache_hit
+                           and r.failure_class != "refused"]
+        self.assertEqual(st["dispatched_today"], len(dispatched_rows))
+        self.assertEqual(st["credits_today"], sum(r.credits or 0 for r in dispatched_rows))
+        # restart: a fresh broker seeded from the recorded usage and persisted breaker
+        # deadline carries BOTH the counters and the open restriction forward
+        reborn = Broker({"src": RatePolicy(per_second=1000, per_day=100)})
+        reborn.seed_usage({"src": (st["dispatched_today"], st["credits_today"])})
+        reborn.seed_breakers([("src", 3600.0)])
+        self.assertTrue(reborn.breaker_open("src"), "restart never forgets a live restriction")
+        self.assertEqual(reborn.status()["src"]["dispatched_today"], st["dispatched_today"])
+        self.assertEqual(reborn.status()["src"]["credits_today"], st["credits_today"])
+
+
+class CrossProcessActivity(unittest.TestCase):
+    def test_fail_then_recover_across_two_processes_keeps_order_and_recovery(self):
+        import subprocess
+        import sys as _sys
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "research-activity-test.jsonl")
+            script = ("import sys, json; from research_gateway.clients import mcp_stdio as m; "
+                      "m.record_activity(sys.argv[1], 'research_find', {'query': 'q'}, "
+                      "None if sys.argv[2] == 'fail' else "
+                      "{'payload': {'request_type': 'find', 'lanes': [{'source': 'crossref', 'coverage': 'searched_ok'}]}}, "
+                      "error=('gateway_unavailable' if sys.argv[2] == 'fail' else None))")
+            env = dict(os.environ, PYTHONPATH=os.getcwd())
+            for phase in ("fail", "recover"):   # two INDEPENDENT processes, no shared state map
+                r = subprocess.run([_sys.executable, "-c", script, path, phase],
+                                   env=env, capture_output=True, text=True, timeout=60)
+                self.assertEqual(r.returncode, 0, r.stderr)
+            lines = [json.loads(ln) for ln in open(path).read().splitlines() if ln.strip()]
+            gateway_cov = [ln["coverage"] for ln in lines if ln.get("source") == "gateway"]
+            self.assertEqual(gateway_cov[0], "provider_unavailable",
+                             "append-all: the first process's failure observation survives")
+            self.assertEqual(gateway_cov[-1], "searched_ok",
+                             "the second (INDEPENDENT) process's recovery is the LAST state in "
+                             "file order — exactly what the chassis summarizer reads, so the "
+                             "blocker clears despite no shared in-process state map")
 
 
 if __name__ == "__main__":

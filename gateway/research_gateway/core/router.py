@@ -7,7 +7,9 @@ adding a source is a seed row and an adapter file, never an edit here (I-2).
 """
 from __future__ import annotations
 
+import hashlib
 import inspect
+import json
 import os
 import re
 import threading
@@ -320,12 +322,34 @@ def _lane_next(res: dict):
 
 
 def _log_cache_hit(client: Client, request_type: str, identity: str | None, query: str | None) -> None:
+    # a cache hit is REAL retrieval activity: it carries the same tracing as a dispatch,
+    # or warm-cache iterations vanish from the throughput report exactly when cache state
+    # matters for attribution (9·0 amendment)
     rec = calllog.CallRecord(source_id="cache", request_type=request_type, status=200, latency_ms=0, job_id=client.job_id,
                              identity=identity, query=query, cache_hit=True, result_count=1, domain_resolved=client.domain_resolved,
-                             client_id=client.client_id)
+                             client_id=client.client_id, iteration=client.iteration, batch_entry=client.batch_entry,
+                             topic=client.topic, params_fp=client.request_fingerprint)
     client.log.append(rec)
     if client.conn is not None:
-        calllog.record(client.conn, rec)
+        with client.db_lock:
+            try:
+                calllog.record(client.conn, rec)
+            except calllog.AuditError:
+                client.abort.set()
+                raise
+
+
+_FP_KEYS = ("params", "cursors", "cursor", "what", "kind", "domain", "limit", "year_from", "within", "target", "source")
+
+
+def _payload_fingerprint(payload: dict) -> str | None:
+    """Tracing-only fingerprint of the request's semantic parameters, so the throughput
+    report can tell pagination and parameter changes apart from true repeats. NEVER part
+    of cache keys or the dedup hash (D-33)."""
+    sub = {k: payload[k] for k in _FP_KEYS if payload.get(k) is not None}
+    if not sub:
+        return None
+    return hashlib.sha256(json.dumps(sub, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()[:16]
 
 
 def _valid_records(items, facts: list[str], source_id: str) -> list[dict]:
@@ -469,8 +493,8 @@ def _run_find_lanes(router: Router, payload: dict, client: Client, plan: Plan, o
             slots.append(None)
             runnable.append((idx, lane))
     width = max(1, int(os.environ.get("RESEARCH_GATEWAY_LANE_CONCURRENCY", "4") or 4))
-    abort = threading.Event()
-    if len(runnable) > 1 and width > 1:
+    abort = client.abort   # the AUDIT layer publishes failure under db_lock (base.py):
+    if len(runnable) > 1 and width > 1:   # router checks are a fast path, not the guarantee
         with ThreadPoolExecutor(max_workers=min(width, len(runnable))) as pool:
             futures = [(idx, pool.submit(_find_lane_result, router, lane, payload, client, abort))
                        for idx, lane in runnable]
@@ -502,7 +526,8 @@ def _run_serial_lanes(router: Router, payload: dict, client: Client, plan: Plan,
     for lane in plan.lanes:
         entry = {"source": lane.source_id, "role": lane.role}
         try:
-            got, fact = _run_lane(router, rt, lane, payload, client, out)
+            with _lane_slots():   # the aggregate bound covers EVERY lane dispatch path —
+                got, fact = _run_lane(router, rt, lane, payload, client, out)   # serial and inline included (9·2b)
             entry["count"] = len(got)
             if rt == "catalog":
                 entry["count"] = len(out.get("entries") or [])
@@ -585,6 +610,7 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
     rt = payload.get("request_type")
     client.domain_resolved = resolve_domain(payload.get("domain"))
     client.commercial = bool(payload.get("commercial"))
+    client.request_fingerprint = _payload_fingerprint(payload)
     out = {"request_type": rt, "records": [], "facts": [], "lanes": [], "domain_resolved": client.domain_resolved}
     agency = None
     if rt == "resolve" and ident.parse(payload.get("identity") or "")[0] == "doi":
@@ -597,7 +623,8 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
             return {**out, "records": [hit], "cache_hit": True}
         if "doi_org" in router.adapters and router._usable("doi_org", "resolve"):
             try:
-                agency = (router.adapters["doi_org"].resolve(client, payload["identity"]) or {}).get("agency")
+                with _lane_slots():   # metered like any lane: the aggregate bound has no side door
+                    agency = (router.adapters["doi_org"].resolve(client, payload["identity"]) or {}).get("agency")
             except calllog.AuditError:
                 raise  # a broken call log stops the job here too, before any more dispatch (I-6)
             except Exception as e:  # the lookup is metered like any call; its failure is a fact, not a crash

@@ -339,7 +339,8 @@ def call_tool(client: GatewayClient, name: str, args: dict, *, policy: dict | No
             if tool not in BATCH_TOOLS:
                 return {"tool": tool, "error": f"batch entries may only be {' or '.join(BATCH_TOOLS)}"}
             if isinstance(client, GatewayClient):
-                entry_client = GatewayClient(client.url, client.token, client.timeout, iteration=client.iteration)
+                entry_client = GatewayClient(client.url, client.token, client.timeout,
+                                             iteration=client.iteration, topic=getattr(client, "topic", None))
                 entry_client.batch_entry = index
             else:
                 entry_client = client   # test stubs: shared, tracing-indifferent
