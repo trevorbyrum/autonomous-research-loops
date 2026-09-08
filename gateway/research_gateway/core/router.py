@@ -8,7 +8,10 @@ adding a source is a seed row and an adapter file, never an edit here (I-2).
 from __future__ import annotations
 
 import inspect
+import os
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Callable
@@ -381,61 +384,123 @@ def _run_lane(router: Router, rt: str, lane: Lane, payload: dict, client: Client
     return _valid_records(res.get("records"), out["facts"], lane.source_id), (str(fact) if fact else None)
 
 
-def _drop_unlicensed(records: list[dict], router: Router, payload: dict, facts: list[str]) -> list[dict]:
-    """R-8 second half: under commercial=true every returned record must pass the per-record gate."""
-    if not payload.get("commercial"):
-        return records
-    kept = [r for r in records if router.record_allowed(r, payload)]
-    if len(kept) != len(records):
-        facts.append(f"{len(records) - len(kept)} record(s) dropped: not usable commercially (R-8)")
-    return kept
+
+# 9·2b aggregate bound: each request's pool bounds ONE request's fan-out; this semaphore
+# bounds the PROCESS — queued workers and the inline path (which bypasses the worker pool
+# entirely) together never hold more than RESEARCH_GATEWAY_LANE_TOTAL lane dispatches.
+_LANE_SLOTS: threading.BoundedSemaphore | None = None
+_LANE_SLOTS_LOCK = threading.Lock()
 
 
-def _search_payload(payload: dict) -> dict:
-    return {k: v for k, v in payload.items() if k != "request_type"}
+def _lane_slots() -> threading.BoundedSemaphore:
+    global _LANE_SLOTS
+    with _LANE_SLOTS_LOCK:
+        if _LANE_SLOTS is None:
+            _LANE_SLOTS = threading.BoundedSemaphore(
+                max(1, int(os.environ.get("RESEARCH_GATEWAY_LANE_TOTAL", "16") or 16)))
+        return _LANE_SLOTS
 
 
-def execute(router: Router, payload: dict, client: Client, cache: Cache | None = None) -> dict:
-    """Run a request end to end. Never raises for source trouble: those become facts (R-10)."""
-    rt = payload.get("request_type")
-    client.domain_resolved = resolve_domain(payload.get("domain"))
-    client.commercial = bool(payload.get("commercial"))
-    out = {"request_type": rt, "records": [], "facts": [], "lanes": [], "domain_resolved": client.domain_resolved}
-    agency = None
-    if rt == "resolve" and ident.parse(payload.get("identity") or "")[0] == "doi":
+def _find_lane_result(router: Router, lane: Lane, payload: dict, client: Client,
+                      abort: threading.Event | None = None) -> dict:
+    """One find lane, LANE-LOCALLY (9·2b): facts, records, coverage, continuation — nothing
+    shared is touched, so lanes may run concurrently and merge deterministically in plan
+    order afterward. AuditError propagates AND trips `abort`, so a lane that has not yet
+    dispatched when the call log breaks never dispatches (I-6). The process-wide slot
+    semaphore bounds total in-flight lane dispatches across queued AND inline requests."""
+    if abort is not None and abort.is_set():
+        raise calllog.AuditError("not dispatched: a parallel lane's call log write failed first (I-6)")
+    entry: dict = {"source": lane.source_id, "role": lane.role}
+    lane_out: dict = {"facts": []}
+    with _lane_slots():
+        if abort is not None and abort.is_set():
+            raise calllog.AuditError("not dispatched: a parallel lane's call log write failed first (I-6)")
         try:
-            hit = cache.get_record(payload["identity"]) if cache is not None else None
-        except Exception:
-            hit = None
-        if hit and router.record_allowed(hit, payload):
-            _log_cache_hit(client, rt, payload["identity"], None)
-            return {**out, "records": [hit], "cache_hit": True}
-        if "doi_org" in router.adapters and router._usable("doi_org", "resolve"):
+            got, fact = _run_lane(router, "find", lane, payload, client, lane_out)
+            entry["count"] = len(got)
+            if got:
+                entry["coverage"] = COVERAGE_OK
+            elif fact:
+                entry["coverage"] = _fact_coverage(fact)
+            else:
+                entry["coverage"] = COVERAGE_EMPTY
+        except SourceUnavailable as e:
+            entry["error"] = str(e)
+            entry["coverage"] = COVERAGE_AUTH if e.response.status in (401, 403) else COVERAGE_DOWN
+            lane_out["facts"].append(f"{lane.source_id}: unavailable ({e.response.error or e.response.status}) — R-10")
+            return {"entry": entry, "records": [], "facts": lane_out["facts"], "next": None}
+        except AdapterError as e:
+            entry["error"] = str(e)
+            entry["coverage"] = COVERAGE_SKIPPED
+            lane_out["facts"].append(f"{lane.source_id}: refused ({e})")
+            return {"entry": entry, "records": [], "facts": lane_out["facts"], "next": None}
+        except calllog.AuditError:
+            if abort is not None:
+                abort.set()   # set by the FAILING lane, not the merge loop: no window where
+            raise             # a queued lane dispatches between the failure and its discovery
+        except Exception as e:
+            entry["error"] = f"{type(e).__name__}: {e}"[:300]
+            entry["coverage"] = COVERAGE_DOWN
+            lane_out["facts"].append(f"{lane.source_id}: malformed response ({type(e).__name__}) — treated as unavailable (R-10)")
+            return {"entry": entry, "records": [], "facts": lane_out["facts"], "next": None}
+    nxt = (lane_out.get("next") or {}).get(lane.source_id)
+    if nxt is not None:
+        entry["next"] = nxt
+    elif entry.get("coverage") in (COVERAGE_OK, COVERAGE_EMPTY):
+        entry["exhausted"] = True
+        nxt = EXHAUSTED_CURSOR
+    return {"entry": entry, "records": got, "facts": lane_out["facts"], "next": nxt}
+
+
+def _run_find_lanes(router: Router, payload: dict, client: Client, plan: Plan, out: dict, rt: str = "find") -> list[dict]:
+    """All find lanes, overlapped up to RESEARCH_GATEWAY_LANE_CONCURRENCY (default 4) and
+    merged IN PLAN ORDER — the answer is byte-identical to serial execution for the same
+    responses. AuditError cancels unstarted lanes, JOINS running ones (a future's timeout
+    does not stop its thread; the pool context waits), then fails the whole request —
+    never a degraded lane plus a cached partial success (plan v3)."""
+    slots: list = []
+    runnable: list[tuple[int, Lane]] = []
+    for idx, lane in enumerate(plan.lanes):
+        if (payload.get("cursors") or {}).get(lane.source_id) == EXHAUSTED_CURSOR:
+            entry = {"source": lane.source_id, "role": lane.role, "count": 0,
+                     "coverage": COVERAGE_EXHAUSTED, "exhausted": True}
+            slots.append({"entry": entry, "records": [], "facts": [], "next": EXHAUSTED_CURSOR})
+        else:
+            slots.append(None)
+            runnable.append((idx, lane))
+    width = max(1, int(os.environ.get("RESEARCH_GATEWAY_LANE_CONCURRENCY", "4") or 4))
+    abort = threading.Event()
+    if len(runnable) > 1 and width > 1:
+        with ThreadPoolExecutor(max_workers=min(width, len(runnable))) as pool:
+            futures = [(idx, pool.submit(_find_lane_result, router, lane, payload, client, abort))
+                       for idx, lane in runnable]
             try:
-                agency = (router.adapters["doi_org"].resolve(client, payload["identity"]) or {}).get("agency")
+                for idx, future in futures:
+                    slots[idx] = future.result()
             except calllog.AuditError:
-                raise  # a broken call log stops the job here too, before any more dispatch (I-6)
-            except Exception as e:  # the lookup is metered like any call; its failure is a fact, not a crash
-                out["facts"].append(f"doi_org: registration-agency lookup failed ({type(e).__name__}) — routing as unknown")
-    if rt == "find" and cache is not None:
-        hit = cache.get_search(cache.search_key(rt, _search_payload(payload)))
-        if hit:
-            _log_cache_hit(client, rt, None, payload.get("query"))
-            return {**hit, "cache_hit": True}
-    plan = router.plan(payload, agency=agency)
-    out["facts"].extend(plan.facts)
-    if rt == "data":  # a cited table must be reproducible: echo what was asked of which source (8a)
-        out["request"] = {"source": payload.get("source"), "params": payload.get("params") or {}}
+                for _, f in futures:
+                    f.cancel()          # unstarted lanes never start
+                raise                   # the pool context joins running lanes before this propagates
+    else:
+        for idx, lane in runnable:
+            slots[idx] = _find_lane_result(router, lane, payload, client, abort)
+    records: list[dict] = []
+    for slot, lane in zip(slots, plan.lanes):
+        out["facts"].extend(slot["facts"])
+        out["lanes"].append(slot["entry"])
+        if slot["next"] is not None:
+            out.setdefault("next", {})[lane.source_id] = slot["next"]
+        records.extend(slot["records"])
+    return records
+
+
+def _run_serial_lanes(router: Router, payload: dict, client: Client, plan: Plan, out: dict, rt: str) -> list[dict]:
+    """resolve/enrich/fetch/data/catalog lanes stay serial (9·2b): these plans are fallback
+    chains — a later lane runs only because the earlier one did not answer — so overlapping
+    them would spend provider budget on answers the merge then throws away."""
     records: list[dict] = []
     for lane in plan.lanes:
         entry = {"source": lane.source_id, "role": lane.role}
-        if rt == "find" and (payload.get("cursors") or {}).get(lane.source_id) == EXHAUSTED_CURSOR:
-            # the caller handed back this lane's exhaustion marker: honour it instead of
-            # restarting the lane from page one (pass-1 finding 9)
-            entry.update(count=0, coverage=COVERAGE_EXHAUSTED, exhausted=True)
-            out["lanes"].append(entry)
-            out.setdefault("next", {})[lane.source_id] = EXHAUSTED_CURSOR
-            continue
         try:
             got, fact = _run_lane(router, rt, lane, payload, client, out)
             entry["count"] = len(got)
@@ -493,19 +558,60 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
         out["lanes"].append(entry)
         if entry.get("count") is not None and lane.source_id in (out.get("next") or {}):
             entry["next"] = out["next"][lane.source_id]
-        elif rt == "find" and entry.get("coverage") in (COVERAGE_OK, COVERAGE_EMPTY):
-            # a lane that SUCCESSFULLY answered without a continuation is EXHAUSTED — an
-            # empty answer included: say so explicitly, so handing the whole `next` map
-            # back never restarts it from page one. A FAILED lane is never exhausted —
-            # marking it so would let a continuation clear its blocker without any
-            # successful research (finding 9, all three rounds).
-            entry["exhausted"] = True
-            out.setdefault("next", {})[lane.source_id] = EXHAUSTED_CURSOR
         records.extend(got)
         if rt in ("resolve", "enrich") and got:
             break  # primary answered; fallbacks are for failure only
         if rt == "fetch" and (got or out.get("content") is not None):
             break  # a fetch that answered never runs again on a fallback lane (D-23)
+    return records
+
+
+def _drop_unlicensed(records: list[dict], router: Router, payload: dict, facts: list[str]) -> list[dict]:
+    """R-8 second half: under commercial=true every returned record must pass the per-record gate."""
+    if not payload.get("commercial"):
+        return records
+    kept = [r for r in records if router.record_allowed(r, payload)]
+    if len(kept) != len(records):
+        facts.append(f"{len(records) - len(kept)} record(s) dropped: not usable commercially (R-8)")
+    return kept
+
+
+def _search_payload(payload: dict) -> dict:
+    return {k: v for k, v in payload.items() if k != "request_type"}
+
+
+def execute(router: Router, payload: dict, client: Client, cache: Cache | None = None) -> dict:
+    """Run a request end to end. Never raises for source trouble: those become facts (R-10)."""
+    rt = payload.get("request_type")
+    client.domain_resolved = resolve_domain(payload.get("domain"))
+    client.commercial = bool(payload.get("commercial"))
+    out = {"request_type": rt, "records": [], "facts": [], "lanes": [], "domain_resolved": client.domain_resolved}
+    agency = None
+    if rt == "resolve" and ident.parse(payload.get("identity") or "")[0] == "doi":
+        try:
+            hit = cache.get_record(payload["identity"]) if cache is not None else None
+        except Exception:
+            hit = None
+        if hit and router.record_allowed(hit, payload):
+            _log_cache_hit(client, rt, payload["identity"], None)
+            return {**out, "records": [hit], "cache_hit": True}
+        if "doi_org" in router.adapters and router._usable("doi_org", "resolve"):
+            try:
+                agency = (router.adapters["doi_org"].resolve(client, payload["identity"]) or {}).get("agency")
+            except calllog.AuditError:
+                raise  # a broken call log stops the job here too, before any more dispatch (I-6)
+            except Exception as e:  # the lookup is metered like any call; its failure is a fact, not a crash
+                out["facts"].append(f"doi_org: registration-agency lookup failed ({type(e).__name__}) — routing as unknown")
+    if rt == "find" and cache is not None:
+        hit = cache.get_search(cache.search_key(rt, _search_payload(payload)))
+        if hit:
+            _log_cache_hit(client, rt, None, payload.get("query"))
+            return {**hit, "cache_hit": True}
+    plan = router.plan(payload, agency=agency)
+    out["facts"].extend(plan.facts)
+    if rt == "data":  # a cited table must be reproducible: echo what was asked of which source (8a)
+        out["request"] = {"source": payload.get("source"), "params": payload.get("params") or {}}
+    records = (_run_find_lanes if rt == "find" else _run_serial_lanes)(router, payload, client, plan, out, rt=rt)
     for sid in plan.skipped:  # lanes that exist for this request but were never dispatched
         out["lanes"].append({"source": sid, "role": "skipped", "coverage": COVERAGE_SKIPPED})
     records = _drop_unlicensed(records, router, payload, out["facts"])

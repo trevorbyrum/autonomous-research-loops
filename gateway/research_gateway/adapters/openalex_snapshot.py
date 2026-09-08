@@ -44,13 +44,14 @@ def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None
         "d.year DESC NULLS LAST LIMIT %s"
     )
     t0 = time.monotonic()
-    with conn.cursor() as cur:
-        cur.execute(sql, [query, *args, max(1, min(int(limit or 20), 100))])
-        rows = cur.fetchall()
-        cur.execute("SELECT count(*) FROM gateway.index_docs d JOIN gateway.records r ON r.identity = d.identity "
-                    f"WHERE {' AND '.join(where)}", args)
-        total = cur.fetchone()[0]
-    conn.commit()
+    with client.db_lock:   # the shared connection's TRANSACTION is the hazard under parallel lanes (9·2b)
+        with conn.cursor() as cur:
+            cur.execute(sql, [query, *args, max(1, min(int(limit or 20), 100))])
+            rows = cur.fetchall()
+            cur.execute("SELECT count(*) FROM gateway.index_docs d JOIN gateway.records r ON r.identity = d.identity "
+                        f"WHERE {' AND '.join(where)}", args)
+            total = cur.fetchone()[0]
+        conn.commit()
     client.local(SOURCE_ID, "find", query=query, result_count=len(rows), latency_ms=int((time.monotonic() - t0) * 1000))
     records = []
     for identity, canonical, rank in rows:

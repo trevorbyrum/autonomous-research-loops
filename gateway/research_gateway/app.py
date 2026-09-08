@@ -179,9 +179,18 @@ class Gateway:
                     if s.get("enabled") and (s.get("rate") or {}).get("verified")]
             policies, persist = policies_from_rows(rows), None
 
-        def on_breaker(source_id, state, retry_after_wall, reason):
-            if persist is not None:
-                with self._lock:
+        applied_breaker_seq: dict[str, int] = {}
+
+        def on_breaker(source_id, state, retry_after_wall, reason, seq=0):
+            # callbacks deliver OUTSIDE the broker lock and can reorder under concurrency:
+            # only monotonically newer events reach persistence, so a delayed older deadline
+            # can never regress the live broker's state (9·2b, plan v3)
+            with self._lock:
+                if seq and seq <= applied_breaker_seq.get(source_id, 0):
+                    return
+                if seq:
+                    applied_breaker_seq[source_id] = seq
+                if persist is not None:
                     persist(source_id, state, retry_after_wall, reason)
             self.alerter.breaker(source_id, state, retry_after_wall, reason)
 

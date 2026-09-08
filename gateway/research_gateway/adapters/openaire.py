@@ -20,11 +20,21 @@ AGENCIES = ("*",)   # primary for DOIs from any other registration agency (mEDRA
 BASE = "https://api.openaire.eu/graph/v1"
 TOKEN_URL = "https://aai.openaire.eu/oidc/token"
 _TOKEN: dict[str, object] = {}   # {"value": str, "exp": float}; one per process
+_TOKEN_LOCK = __import__("threading").Lock()   # single-flight mint under parallel lanes: a concurrent
+                                               # refresh must never hand out a token the requesting
+                                               # client did not register for redaction (9·2b)
 _KIND = {"publication": "article", "dataset": "dataset", "software": "software", "other": "document"}
 
 
 def _headers(client: Client) -> dict:
-    """Bearer header when credentials exist; empty (keyless, 60/h) otherwise."""
+    """Bearer header when credentials exist; empty (keyless, 60/h) otherwise. Minting is
+    single-flight: the lock covers check-and-mint, and EVERY caller registers the token it
+    is about to send for redaction — including one minted by a sibling lane (9·2b)."""
+    with _TOKEN_LOCK:
+        return _headers_locked(client)
+
+
+def _headers_locked(client: Client) -> dict:
     if _TOKEN.get("value") and float(_TOKEN.get("exp", 0)) > time.time() + 60:
         client.secret_values.add(_TOKEN["value"])   # a fresh Client reusing the process token learns it too (D-24)
         return {"Authorization": f"Bearer {_TOKEN['value']}"}

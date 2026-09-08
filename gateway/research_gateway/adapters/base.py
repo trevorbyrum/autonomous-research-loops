@@ -16,6 +16,7 @@ import ipaddress
 import json
 import re
 import socket
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -191,6 +192,11 @@ class Client:
     commercial: bool = False   # set by the executor; download-capable adapters refuse restricted fetches up front (D-24)
     iteration: str | None = None    # 9·0 tracing (D-33): chassis iteration stamp — travels beside requests,
     batch_entry: int | None = None  # never inside them (cache keys and job dedup hash the payload)
+    db_lock: threading.Lock = field(default_factory=threading.Lock)
+    # 9·2b: parallel lanes share this client and its ONE psycopg connection. The driver
+    # object is thread-safe; the shared TRANSACTION is not — so every operation-through-
+    # commit on client.conn (call-log writes here, direct adapter use like the local
+    # index lane) holds this lock. Transports overlap; database work serializes.
 
     def secret(self, name: str, field: str | None = None) -> str | None:
         value = self.secrets(name, field)
@@ -279,10 +285,11 @@ class Client:
         rec = calllog.CallRecord(source_id=source_id, request_type=request_type, status=200, latency_ms=latency_ms,
                                  job_id=self.job_id, identity=identity, query=(query or "")[:500] or None,
                                  result_count=result_count, failure_class="ok", domain_resolved=self.domain_resolved,
-                                 client_id=self.client_id)
+                                 client_id=self.client_id, iteration=self.iteration, batch_entry=self.batch_entry)
         self.log.append(rec)
         if self.conn is not None:
-            calllog.record(self.conn, rec)
+            with self.db_lock:
+                calllog.record(self.conn, rec)
 
     def _attempt(self, source_id, request_type, identity, query, credits: float = 0.0) -> int | None:
         """The pre-dispatch audit row (D-25). None when there is no database (laptop mode)."""
@@ -292,7 +299,8 @@ class Client:
                                  job_id=self.job_id, identity=identity, query=(query or "")[:500] or None,
                                  credits=credits or None, domain_resolved=self.domain_resolved, client_id=self.client_id,
                                  iteration=self.iteration, batch_entry=self.batch_entry)
-        return calllog.attempt(self.conn, rec)
+        with self.db_lock:   # committed BEFORE dispatch, and never interleaved with a sibling lane's transaction (9·2b)
+            return calllog.attempt(self.conn, rec)
 
     def _record(self, source_id, request_type, identity, query, resp: Response, latency: int, credits: float,
                 refused: bool = False, attempt_id: int | None = None, wait_ms: int | None = None) -> None:
@@ -320,10 +328,11 @@ class Client:
         )
         self.log.append(rec)
         if self.conn is not None:
-            if attempt_id is not None:
-                calllog.complete(self.conn, attempt_id, rec)   # fill the pre-dispatch row in (D-25)
-            else:
-                calllog.record(self.conn, rec)
+            with self.db_lock:
+                if attempt_id is not None:
+                    calllog.complete(self.conn, attempt_id, rec)   # fill the pre-dispatch row in (D-25)
+                else:
+                    calllog.record(self.conn, rec)
 
 
 class AdapterError(Exception):
