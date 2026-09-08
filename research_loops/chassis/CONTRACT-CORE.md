@@ -168,7 +168,13 @@ source, retry, inactivity, or revision limit defines semantic completion.
    context, provenance and retrieval facts — the primary reads the load-bearing
    passages and judges; it does not re-run the mechanical acquisition). Neither role
    decides relevance, exhaustion, or confidence; packets are evidence preparation,
-   and everything in them stays pending until independent verification.
+   and everything in them stays pending until independent verification. Obligation
+   scouting adds a DEBATE pair: an ADVOCATE delegate drafts candidate next questions
+   and a COUNTER-ARGUMENT delegate (a different model family by design) argues the
+   alternative directions the topic's underlying question supports; three recorded
+   rounds per point, then the PRIMARY adjudicates and writes any PROPOSAL rows itself.
+   Debate output is argument, never evidence: nothing from it enters a ledger or a
+   semantic field without the ordinary sourcing and verification rules.
 5. Independently verify load-bearing evidence, apply topic-specific quality rules, and
    seek counterevidence.
 6. Update research ledgers and synthesis while preserving provenance and contradictions.
