@@ -491,8 +491,9 @@ class Gateway:
                     "cache_memory": mem.get("records_in_memory", 0) + mem.get("searches_in_memory", 0),
                     "cache_searches_memory": mem.get("searches_in_memory", 0),
                     "cache_records_estimate": cache_records,
-                    "lane_concurrency": int(os.environ.get("RESEARCH_GATEWAY_LANE_CONCURRENCY", "4") or 4),
-                    "lane_total": int(os.environ.get("RESEARCH_GATEWAY_LANE_TOTAL", "16") or 16)}
+                    # EFFECTIVE values, clamped exactly as execution clamps them (router max(1, ...))
+                    "lane_concurrency": max(1, int(os.environ.get("RESEARCH_GATEWAY_LANE_CONCURRENCY", "4") or 4)),
+                    "lane_total": max(1, int(os.environ.get("RESEARCH_GATEWAY_LANE_TOTAL", "16") or 16))}
         return {"ok": ok, "version": VERSION, "mode": "queued" if self.conn is not None else "inline", "db": db_ok,
                 "workers": {"alive": alive, "expected": len(self.workers)},
                 "sources": sum(1 for s in self.sources if s.get("enabled")), "uptime_s": int(time.time() - self.started_at)}

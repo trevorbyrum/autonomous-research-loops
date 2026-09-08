@@ -598,11 +598,11 @@ class AbortPublicationOrdering(unittest.TestCase):
 
         def redirecting():
             barrier.wait(10)
-            errors.append(("redir", c.get("src", "fetch", "https://93.184.216.34/hop").status))
+            errors.append(("redir", c.get("src", "fetch", "https://93.184.216.34/hop", query="redir-q").status))
 
         def plain():
             barrier.wait(10)
-            errors.append(("plain", c.get("src", "data", "https://93.184.216.34/ok").status))
+            errors.append(("plain", c.get("src", "data", "https://93.184.216.34/ok", query="plain-q").status))
         threads = [threading.Thread(target=redirecting), threading.Thread(target=plain)]
         with mock.patch.object(calllog, "attempt", spy_attempt), \
              mock.patch.object(calllog, "complete", spy_complete):
@@ -610,12 +610,23 @@ class AbortPublicationOrdering(unittest.TestCase):
                 th.start()
             for th in threads:
                 th.join(30)
-            self.assertEqual(c.get("src", "data", "https://api.example.org/limited").status, 429)
+            self.assertEqual(c.get("src", "data", "https://api.example.org/limited", query="limited-q").status, 429)
         self.assertIn(("redir", 200), errors)
         self.assertIn(("plain", 200), errors)
         self.assertEqual(ownership_errors, [],
                          "every transport ran with ITS OWN attempt row already committed, and "
                          "every completion targeted the attempt its own thread opened")
+        # OWNERSHIP AT THE ROW BOUNDARY: each durable row's completion outcome must match
+        # ITS OWN attempt's (query, hop) — a completion forwarded to a sibling row (1↔2 or
+        # 3↔4 swaps, applied around ANY spy) writes the wrong status onto the wrong row
+        # and fails here regardless of where the mutation wraps calllog.complete.
+        expected_status = {("redir-q", 0): 302, ("redir-q", 1): 200,
+                          ("plain-q", 0): 200, ("limited-q", 0): 429}
+        for target_id, upd in c.conn.update_params.items():
+            ins = c.conn.insert_params[target_id]
+            key = (ins[4], ins[-3])           # the row's OWN attempt query and hop
+            self.assertEqual(upd[0], expected_status[key],
+                             f"row {target_id} ({key}) completed with a sibling's outcome")
         hops = [rec.hop for rec in c.log if rec.request_type == "fetch"]
         self.assertEqual(hops, [0, 1], "redirect hops carry their index — hop rows are transport "
                                        "legs of ONE logical dispatch, never repeated lookups")
