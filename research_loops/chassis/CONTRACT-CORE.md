@@ -24,11 +24,18 @@ binding until the operator promotes it (see `docs/topic-authoring.md` for the pr
 command) and the topic's hashes are rehashed accordingly. Silently expanding scope to
 cover a gap, without proposing it first, is exactly what this rule exists to prevent.
 
-The one exception is a topic explicitly configured with `gap_policy = "auto"` (see
-`docs/governance.md#the-operator-owns-scope`): there, the agent may self-promote a gap
-with `research_loops/chassis/gap-policy.py promote --auto`, but only up to that topic's `gap_auto_limit`
-times since the operator's last review — the tool itself enforces the cap and tags every
-self-promotion `AUTO-PROMOTED`, never silently. Default policy is always `review`.
+A topic configured with `gap_policy = "auto"` may self-promote an ordinary research
+gap through the documented promotion tool (`research_loops/chassis/gap-policy.py
+promote --auto`) within its remaining `gap_auto_limit`; the tool enforces the cap and
+tags every self-promotion `AUTO-PROMOTED`. This exception does not apply to any
+proposal originating in obligation scouting, a framing checkpoint, or their
+subsequent revisions, and never authorizes an amendment to existing scope,
+obligations, acceptance criteria, or deliverables — those changes require explicit
+operator promotion regardless of gap_policy. Preserve proposal origin across retries
+and revisions; relabeling a scout proposal does not make it eligible for
+auto-promotion. The auto-promotion budget and the proposal-review allowance are
+separate limits. Default policy is always `review`. Do not start research to answer
+an unpromoted scout question; existing-corpus inspection for admission is permitted.
 
 Do not edit or erase archived state. Prior completion marks or taxonomies inherited from
 an earlier process are historical evidence, not authority — never treat them as proof
@@ -53,6 +60,17 @@ that a current obligation is satisfied.
   direct-research question required by the topic contract.
 
 ## Semantic progress and completion
+
+Keep `confidence`, `gap_state`, `acceptance_summary`, and `counterevidence_summary`
+as concise current assessments. Change an assessment when the evidence changes its
+substance — confidence increases or decreases, material qualifications, corrected
+errors, or a changed gap or search assessment — even if the disposition is unchanged.
+Leave an individual field byte-unchanged when its meaning is unchanged. Record
+legitimate evidence-reference, pending-evidence, adequate-search, contradiction, and
+deliverable updates through the state CLI even when the conclusion is unchanged. Put
+pass dates, repeated attempts, and activity narratives in the research logs; neither
+extra prose nor a changed signature alone proves progress. Preserve required
+rationale and provenance, and never rewrite historical state to manufacture stability.
 
 A source counts as progress only when it materially changes a named obligation's
 disposition, confidence, or gap; sharpens or dispositions a contradiction; completes a
@@ -104,6 +122,14 @@ source, retry, inactivity, or revision limit defines semantic completion.
   whatever evidence-quality dimensions actually fit the domain.
 - Seek counterevidence, preserve contradictions, deduplicate without erasing dated
   supersession or genuine disagreement, and retain provenance plus temporal metadata.
+- Overlap alone does not justify rejecting an in-scope distinct source. Before a
+  substantive exclusion, the primary examines the relevant material or an exact,
+  located extraction packet and records the decisive comparison under the topic's
+  quality rules. A delegate's unsupported characterization is not a rejection
+  record. Confirmed duplicates and explicit screening exclusions use bounded triage;
+  unexamined plausible leads remain queued and do not establish exhaustion. First
+  discovery gives no priority; recency or breadth alone does not establish
+  superiority.
 - New records remain pending until a later verification pass approves, corrects,
   contradicts, or rejects them.
 - On a `schema_version >= 2` topic, every `evidence_ref` an obligation cites must
@@ -125,11 +151,16 @@ source, retry, inactivity, or revision limit defines semantic completion.
   an agent that actually visited the cited location and confirmed it — **never the same
   agent that wrote the citation** (map onto `agent_secondary`'s role where a topic
   already delegates that way). A "different agent" is a distinct producing/verifying
-  INVOCATION — a fresh call of the same delegate model qualifies. The delegate pool
-  itself is operator-fixed (the named secondary's default model for legwork, plus
-  `--model claude-haiku-4-5` through the same wrapper for verification); invoking any
-  other model is a policy violation that spends the operator's usage windows, not
-  extra rigor. An `internal` citation inherits its target's verification
+  INVOCATION — a fresh call of the same delegate model qualifies. The delegate model rule:
+  delegate through the topic's configured secondary wrapper. Use its default
+  gpt-5.6-luna for discovery, librarian work, extraction, proposal advocacy, and
+  citation verification. Each verification runs in a fresh invocation distinct from
+  the invocation that produced the citation. The sole additional assignment is a
+  fresh gpt-5.6-terra invocation, through the same wrapper with --model
+  gpt-5.6-terra, for the authorized counter-argument seat, including its permitted
+  repair assessment. Terra is a primary-class counter assignment, not a second
+  secondary model. The primary retains final judgment. Use no other delegate model
+  or native Agent/Task intermediary. An `internal` citation inherits its target's verification
   status rather than needing its own. If the cited location turns out not to support the
   claim, set `flagged: hallucination` instead of `verified: true`; a flagged block is
   refused unconditionally, even alongside `verified: true`, until an operator clears it.
