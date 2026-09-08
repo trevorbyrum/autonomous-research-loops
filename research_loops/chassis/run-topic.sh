@@ -123,7 +123,10 @@ before=$("$CHASSIS/progress-signature.sh" "$TOPIC_DIR")
 sources_before=$(python3 "$CHASSIS/semantic-state.py" source-count "$TOPIC_DIR" 2>/dev/null || echo 0)
 # 9·0 outcome metrics, measured AT SOURCE (the report never re-derives them): ledger
 # entries carrying verified:true, and the pending-evidence backlog, before vs after
-verified_before=$(grep -c '^- verified: true' "$TOPIC_DIR/SOURCE-LEDGER.md" 2>/dev/null || echo 0)
+# grep -c PRINTS the count even when it exits 1 (zero matches) — `|| echo 0` would
+# capture "0\n0"; `|| true` keeps the printed count and the default covers a missing file
+verified_before=$(grep -c '^- verified: true' "$TOPIC_DIR/SOURCE-LEDGER.md" 2>/dev/null || true)
+verified_before=${verified_before:-0}
 
 # Literal substitution (render-prompt.py): sed's `&`/delimiter
 # metacharacters corrupted prompts when values carried them (e.g. an
@@ -175,7 +178,8 @@ rm -f "$prompt_file"
 after=$("$CHASSIS/progress-signature.sh" "$TOPIC_DIR")
 sources_after=$(python3 "$CHASSIS/semantic-state.py" source-count "$TOPIC_DIR" 2>/dev/null || echo 0)
 sources_cited=$((sources_after - sources_before))
-verified_after=$(grep -c '^- verified: true' "$TOPIC_DIR/SOURCE-LEDGER.md" 2>/dev/null || echo 0)
+verified_after=$(grep -c '^- verified: true' "$TOPIC_DIR/SOURCE-LEDGER.md" 2>/dev/null || true)
+verified_after=${verified_after:-0}
 pending_count=$(python3 -c "
 import json, sys
 try:
