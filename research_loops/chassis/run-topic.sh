@@ -121,6 +121,49 @@ prompt_file="$LOG_DIR/.iteration-$stamp-prompt.txt"
 touch "$TOPIC_DIR/PROGRESS.md"
 before=$("$CHASSIS/progress-signature.sh" "$TOPIC_DIR")
 sources_before=$(python3 "$CHASSIS/semantic-state.py" source-count "$TOPIC_DIR" 2>/dev/null || echo 0)
+# 9·0 outcome metrics, measured AT SOURCE (the report never re-derives them), with the
+# CITATION ACCEPTANCE RULES applied: a block is accepted only when it carries
+# `verified: true` AND no `flagged:` mark (a flagged block is refused unconditionally —
+# docs/citations.md), so a hallucination-flagged addition never counts as verified evidence.
+# Flagged blocks are counted separately: their delta is the rejection signal.
+ledger_counts() {
+  python3 - "$CHASSIS" "$TOPIC_DIR" <<'PYEOF'
+import importlib.util
+import sys
+from pathlib import Path
+
+chassis, topic_dir = Path(sys.argv[1]), Path(sys.argv[2])
+spec = importlib.util.spec_from_file_location("semantic_state", chassis / "semantic-state.py")
+ss = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(ss)
+try:
+    text = (topic_dir / "SOURCE-LEDGER.md").read_text(encoding="utf-8", errors="replace")
+except OSError:
+    print("0 0"); raise SystemExit
+accepted = flagged = 0
+# the SAME parser and acceptance rules the DONE gate uses (docs/citations.md): one
+# identity per SRC id, blocks end at ANY next heading, a flagged block is refused
+# unconditionally, and a verified block failing its type's required fields is NOT
+# accepted evidence. Internal citations inherit their target's verification and add
+# no own verified evidence, so they are counted in neither number by design.
+for bid, block in ss.parse_source_ledger(text).items():
+    fields = block.get("fields", {})
+    if block.get("type") == "internal":
+        continue   # internal citations inherit their target's state: in NEITHER counter
+    if "flagged" in fields:
+        flagged += 1
+        continue
+    if fields.get("verified") != "true":
+        continue
+    errs = ss.citation_errors_for_block(bid, block, topic_dir=topic_dir,
+                                        topics_root=topic_dir.parent, allow_internal=True)
+    if not errs:
+        accepted += 1
+print(accepted, flagged)
+PYEOF
+}
+read -r verified_before flagged_before <<<"$(ledger_counts)"
+verified_before=${verified_before:-0}; flagged_before=${flagged_before:-0}
 
 # Literal substitution (render-prompt.py): sed's `&`/delimiter
 # metacharacters corrupted prompts when values carried them (e.g. an
@@ -141,7 +184,14 @@ export RESEARCH_LOOP_LOG="$log"
 # here; write_result reduces the file into the iteration result for the queue's
 # saturation gate. Per-iteration file: a stale one never speaks for a fresh pass.
 activity_file="$LOG_DIR/research-activity-$stamp.jsonl"
+# 9·0 delegation coverage: the runner marks each iteration in the delegate ledger, so a
+# marked window with zero launch events is EVIDENCE of zero delegation (the wrapper logs
+# a launch line per invocation; launches without a usage line are unobserved outcomes)
+printf '{"ts":"%s","event":"iteration","stamp":"%s"}\n' "$(date -u +%FT%TZ)" "$stamp" >> "$LOG_DIR/delegate-usage.jsonl" 2>/dev/null || true
 export RESEARCH_LOOP_RESEARCH_ACTIVITY="$activity_file"
+# 9·0 phase timings: the agent appends "<iso> <phase>" markers here; the throughput
+# report turns them into per-phase durations (missing = unknown, never imputed)
+export RESEARCH_LOOP_PHASE_LOG="$LOG_DIR/phases-$stamp.log"
 # Downloads are TEMPORARY extraction space (8a): a per-iteration directory, removed on
 # every exit path — normal or interrupted. What the agent keeps, it copies into the
 # topic's own files during the iteration; retained source bytes never accumulate.
@@ -169,6 +219,32 @@ rm -f "$prompt_file"
 after=$("$CHASSIS/progress-signature.sh" "$TOPIC_DIR")
 sources_after=$(python3 "$CHASSIS/semantic-state.py" source-count "$TOPIC_DIR" 2>/dev/null || echo 0)
 sources_cited=$((sources_after - sources_before))
+read -r verified_after flagged_after <<<"$(ledger_counts)"
+verified_after=${verified_after:-0}; flagged_after=${flagged_after:-0}
+# per-iteration provider-health context (9·0): the gateway's tokenless health aggregate,
+# stamped at iteration end — counts only, and 'unavailable' is itself an observation
+gateway_health=$(curl -s --max-time 5 "${RESEARCH_GATEWAY_URL:-http://127.0.0.1:8765}/v1/health" 2>/dev/null || true)
+pending_refs=$(python3 -c "
+import json
+try:
+    s = json.load(open('$TOPIC_DIR/SEMANTIC-STATE.json'))
+    refs = s.get('pending_evidence_refs') or []
+    print(json.dumps(refs if isinstance(refs, list) else []))
+except Exception:
+    print('null')" 2>/dev/null || echo null)
+pending_count=$(python3 -c "
+import json, sys
+try:
+    s = json.load(open('$TOPIC_DIR/SEMANTIC-STATE.json'))
+    refs = s.get('pending_evidence_refs') or []
+    print(len(refs) if isinstance(refs, list) else 'unknown')
+except Exception:
+    print('unknown')" 2>/dev/null || echo unknown)
+# 9·0 phase timings need an END boundary or the last phase can never be measured;
+# the runner owns iteration end, so the runner writes it (only when the agent wrote markers)
+if [[ -n "${RESEARCH_LOOP_PHASE_LOG:-}" && -f "$RESEARCH_LOOP_PHASE_LOG" ]]; then
+  echo "$(date -u +%FT%TZ) end" >> "$RESEARCH_LOOP_PHASE_LOG"
+fi
 
 # Chassis-measured DONE-gate probe (no lock — the queue re-validates with the
 # pinned lock before acting). A loop that finishes its contract but fumbles
@@ -190,6 +266,13 @@ write_result() {
   RESULT_OUTCOME="$1" RESULT_EXIT="$2" RESULT_ERROR_CLASS="${3:-}" RESULT_STAMP="$stamp" \
   RESULT_BEFORE="$before" RESULT_AFTER="$after" \
   RESULT_SOURCES_CITED="$sources_cited" RESULT_LOG="$log" \
+  RESULT_VERIFIED_ADDED="$((verified_after - verified_before))" \
+  RESULT_FLAGGED_ADDED="$((flagged_after - flagged_before))" \
+  RESULT_PENDING_COUNT="$pending_count" \
+  RESULT_PENDING_REFS="$pending_refs" \
+  RESULT_GATEWAY_HEALTH="$gateway_health" \
+  RESULT_WORKER="${RESEARCH_LOOP_WORKER:-}" \
+  RESULT_SECONDARY="${RESEARCH_LOOP_AGENT_SECONDARY:-}" \
   RESULT_RUNNER="$RUNNER_NAME" RESULT_TOPIC_DIR="$TOPIC_DIR" \
   RESULT_DEGRADED_FILE="${degraded_file:-}" \
   RESULT_SEMANTIC_VALID="$semantic_valid" \
@@ -222,6 +305,16 @@ result = {
     "signature_after": os.environ["RESULT_AFTER"],
     "signature_changed": os.environ["RESULT_BEFORE"] != os.environ["RESULT_AFTER"],
     "sources_cited": int(os.environ["RESULT_SOURCES_CITED"]),
+    "verified_added": int(os.environ.get("RESULT_VERIFIED_ADDED") or 0),
+    "flagged_added": int(os.environ.get("RESULT_FLAGGED_ADDED") or 0),
+    "pending_count": (int(os.environ["RESULT_PENDING_COUNT"])
+                      if (os.environ.get("RESULT_PENDING_COUNT") or "").isdigit() else None),
+    "pending_refs": (json.loads(os.environ["RESULT_PENDING_REFS"])
+                     if (os.environ.get("RESULT_PENDING_REFS") or "").startswith("[") else None),
+    "gateway_health": (json.loads(os.environ["RESULT_GATEWAY_HEALTH"])
+                       if (os.environ.get("RESULT_GATEWAY_HEALTH") or "").startswith("{") else None),
+    "worker": os.environ.get("RESULT_WORKER") or None,
+    "agent_secondary": os.environ.get("RESULT_SECONDARY") or None,
     "stop_written": stop_written,
     "stop_first_line": stop_first,
     "semantic_valid": os.environ.get("RESULT_SEMANTIC_VALID") == "true",

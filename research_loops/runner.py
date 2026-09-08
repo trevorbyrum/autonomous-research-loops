@@ -1126,6 +1126,7 @@ class LoopRunner:
             child_env["RESEARCH_LOOP_AGENT_SECONDARY"] = agent_secondary
         else:
             child_env.pop("RESEARCH_LOOP_AGENT_SECONDARY", None)
+        child_env["RESEARCH_LOOP_WORKER"] = self.worker   # 9·0: iteration context names its worker
         # Model/flags are per-adapter env vars (RESEARCH_LOOP_<RUNNER>_MODEL /
         # _FLAGS); the profile sets them for whichever adapter it names.
         runner_key = (agent_main or "").upper().replace("-", "_")

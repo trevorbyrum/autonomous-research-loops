@@ -294,3 +294,13 @@ This recomputes the lock from the topic's current `SEMANTIC-STATE.json` and reco
 the previous lock in its output. `sync` deliberately refuses `completion_lock` changes
 so a manifest edit can never re-pin what DONE means silently; `relock` is the explicit
 per-item operator action that may.
+
+## Obligations checkpoints (staged)
+
+Framing-review checkpoints follow `docs/obligations-checkpoint.md`: recommended
+cadence is every 25th completed iteration plus the first entry into deepening per
+approved-inventory version, with pending-first reconciliation, reuse rules, and a
+strict fallback — until the queue supplies iteration type, ordinal, episode ID, and
+allowances, stations run NO checkpoint without an explicit operator assignment that
+supplies its limits, and checkpoint-only work must not run as an ordinary
+completion-accounted pass (saturation exclusion is pending queue support).
