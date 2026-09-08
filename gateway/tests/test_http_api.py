@@ -92,7 +92,8 @@ class InlineGateway(unittest.TestCase):
         status, body, _ = http(f"{self.url}/v1/health")
         self.assertEqual(status, 200)
         self.assertEqual(body, {"ok": True, "version": app.VERSION, "mode": "inline",
-                                "workers_alive": 0, "breakers_open": 0},
+                                "workers_alive": 0, "breakers_open": 0,
+                                "cache_memory": 0, "cache_records_estimate": None},
                          "aggregate COUNTS only without a token — never source names, deadlines, "
                          "or per-source detail (those need the bearer token on /v1/status)")
         status, body, _ = http(f"{self.url}/v1/status", token=TOKENS["loops"])

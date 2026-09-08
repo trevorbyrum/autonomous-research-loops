@@ -29,6 +29,8 @@ class CallRecord:
     backdate_ms: int | None = None  # local-index rows are written AFTER the work; `at` is backdated to its start
     hop: int | None = None          # redirect-hop index within ONE logical dispatch (0 = the request itself):
                                     # transport hops are never counted as repeated lookups
+    at_utc: object = None           # explicit row timestamp (datetime): request-span rows record their TRUE
+                                    # start, immune to lock-wait between measuring and writing
 
 
 def classify(status: int | None, *, network_error: bool = False, body: str = "") -> str:
@@ -94,9 +96,10 @@ def complete(conn, attempt_id: int, rec: CallRecord) -> None:
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE gateway.calls SET status = %s, latency_ms = %s, ratelimit = %s, credits = %s, "
-                "result_count = %s, failure_class = %s, wait_ms = coalesce(%s, wait_ms) WHERE id = %s",
+                "result_count = %s, failure_class = %s, wait_ms = coalesce(%s, wait_ms), "
+                "hop = coalesce(%s, hop) WHERE id = %s",
                 (rec.status, rec.latency_ms, json.dumps(rec.ratelimit) if rec.ratelimit is not None else None,
-                 rec.credits, rec.result_count, rec.failure_class, rec.wait_ms, attempt_id))
+                 rec.credits, rec.result_count, rec.failure_class, rec.wait_ms, rec.hop, attempt_id))
         conn.commit()
     except Exception as e:
         try:
@@ -113,11 +116,11 @@ def _record(conn, rec: CallRecord) -> int:
             "ratelimit, credits, cache_hit, result_count, failure_class, domain_resolved, client_id, "
             "wait_ms, iteration, batch_entry, topic, params_fp, hop, at) "
             "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, "
-            "now() - make_interval(secs => coalesce(%s, 0) / 1000.0)) RETURNING id",
+            "coalesce(%s, now() - make_interval(secs => coalesce(%s, 0) / 1000.0))) RETURNING id",
             (rec.job_id, rec.source_id, rec.request_type, rec.identity, rec.query, rec.status, rec.latency_ms,
              json.dumps(rec.ratelimit) if rec.ratelimit is not None else None, rec.credits, rec.cache_hit,
              rec.result_count, rec.failure_class, rec.domain_resolved, rec.client_id,
-             rec.wait_ms, rec.iteration, rec.batch_entry, rec.topic, rec.params_fp, rec.hop, rec.backdate_ms),
+             rec.wait_ms, rec.iteration, rec.batch_entry, rec.topic, rec.params_fp, rec.hop, rec.at_utc, rec.backdate_ms),
         )
         row_id = cur.fetchone()[0]
     conn.commit()

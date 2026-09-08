@@ -16,6 +16,7 @@ import threading
 import sys
 import time
 import tomllib
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -215,6 +216,17 @@ class Gateway:
         self._inline_active = 0
         self._draining = False
 
+    def _enter_request(self) -> None:
+        with self._inline_lock:
+            if self._draining:
+                raise RuntimeError("gateway is stopping; no new requests")
+            self._inline_active += 1
+
+    def _exit_request(self) -> None:
+        with self._inline_lock:
+            self._inline_active -= 1
+            self._inline_cv.notify_all()
+
     # ------------------------------------------------------------ clients
     def make_client(self, conn, job: dict | None = None, client_id: str | None = None,
                     iteration: str | None = None, batch_entry: int | None = None,
@@ -286,16 +298,11 @@ class Gateway:
         durable as queued ones (own connection, job_id NULL). Without a database the log is in-process
         only — that mode is for a laptop, not a deployment (docs/OPERATIONS.md)."""
         trace = trace or {}
-        with self._inline_lock:
-            if self._draining:
-                raise RuntimeError("gateway is stopping; no new inline requests")
-            self._inline_active += 1
+        self._enter_request()
         try:
             return self._run_inline_locked(payload, client_id, trace)
         finally:
-            with self._inline_lock:
-                self._inline_active -= 1
-                self._inline_cv.notify_all()
+            self._exit_request()
 
     def _run_inline_locked(self, payload: dict, client_id: str, trace: dict) -> dict:
         if self.conn is None:
@@ -372,27 +379,34 @@ class Gateway:
         """One request end to end. Inline requests (no queue, or a fetch/data/full-text payload)
         return the FULL result — redaction is a storage rule, not a delivery rule (D-24); queued
         requests store and return canonical metadata (a timeout returns the job id to poll)."""
+        # the request — its telemetry tail INCLUDED — is a counted lifecycle user of the
+        # shared connections: stop() cannot close them between the work and the span write
+        self._enter_request()
         t0 = time.monotonic()
+        started_at = datetime.now(timezone.utc)
         try:
             out = self._handle(payload, client_id, timeout=timeout, priority=priority, trace=trace)
         finally:
             # the CALLER's request span (9·0 amendment): one `request` row per handled request —
-            # coalesced waiters and cache-served callers included — backdated to its start, so
-            # elapsed unions are computable per caller. Telemetry: its failure blocks nothing.
-            if self.conn is not None:
-                elapsed_ms = int((time.monotonic() - t0) * 1000)
-                try:
+            # coalesced waiters and cache-served callers included. `at` is the TRUE recorded
+            # start (immune to lock wait before the write); the duration is measured AT WRITE
+            # TIME, so time the caller spent waiting on the control lock is part of the span.
+            try:
+                if self.conn is not None:
                     with self._lock:
                         calllog.record(self.conn, calllog.CallRecord(
                             source_id="request", request_type=payload.get("request_type") or "?",
-                            status=200, latency_ms=elapsed_ms, backdate_ms=elapsed_ms,
+                            status=200, latency_ms=int((time.monotonic() - t0) * 1000),
+                            at_utc=started_at,
                             identity=payload.get("identity") or payload.get("target"),
                             query=(payload.get("query") or "")[:500] or None, failure_class="ok",
                             client_id=client_id, iteration=(trace or {}).get("iteration"),
                             batch_entry=(trace or {}).get("batch_entry"),
                             topic=payload.get("topic_id") or (trace or {}).get("topic")))
-                except Exception:
-                    pass
+            except Exception:
+                pass
+            finally:
+                self._exit_request()
         return out
 
     def _handle(self, payload: dict, client_id: str, *, timeout: float | None = None, priority: str = "interactive",
@@ -455,8 +469,22 @@ class Gateway:
                 breakers_open = sum(1 for st in self.broker.status().values() if st.get("breaker_open"))
             except Exception:
                 breakers_open = None
+            cache_records = None
+            if self.cache.conn is not None:
+                try:  # planner ESTIMATE — instant, never a live count over a large table;
+                    # the CACHE's own lock guards its connection (the control lock guards self.conn)
+                    with self.cache._lock, self.cache.conn.cursor() as cur:
+                        cur.execute("SELECT reltuples::bigint FROM pg_class "
+                                    "WHERE oid = 'gateway.records'::regclass")
+                        row = cur.fetchone()
+                        self.cache.conn.commit()
+                    cache_records = int(row[0]) if row else None
+                except Exception:
+                    cache_records = None
             return {"ok": ok, "version": VERSION, "mode": "queued" if self.conn is not None else "inline",
-                    "workers_alive": alive, "breakers_open": breakers_open}
+                    "workers_alive": alive, "breakers_open": breakers_open,
+                    "cache_memory": len(getattr(self.cache, "memory", {}) or {}),
+                    "cache_records_estimate": cache_records}
         return {"ok": ok, "version": VERSION, "mode": "queued" if self.conn is not None else "inline", "db": db_ok,
                 "workers": {"alive": alive, "expected": len(self.workers)},
                 "sources": sum(1 for s in self.sources if s.get("enabled")), "uptime_s": int(time.time() - self.started_at)}

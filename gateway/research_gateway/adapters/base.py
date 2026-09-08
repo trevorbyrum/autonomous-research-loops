@@ -244,7 +244,7 @@ class Client:
             # and a crash mid-request still leaves its row — CREDITS INCLUDED, so restart
             # accounting restores what was actually charged (I-6, D-25, D-26)
             attempt_id = self._attempt(source_id, request_type, identity, query,
-                                       credits=credits if hop == 0 else 0.0)
+                                       credits=credits if hop == 0 else 0.0, hop=hop)
             t0 = time.monotonic()
             resp = self.transport.request(method, url, hdrs, body, self.timeout)
             latency = int((time.monotonic() - t0) * 1000)
@@ -305,7 +305,8 @@ class Client:
                     self.abort.set()
                     raise
 
-    def _attempt(self, source_id, request_type, identity, query, credits: float = 0.0) -> int | None:
+    def _attempt(self, source_id, request_type, identity, query, credits: float = 0.0,
+                 hop: int | None = None) -> int | None:
         """The pre-dispatch audit row (D-25). None when there is no database (laptop mode)."""
         if self.conn is None:
             return None
@@ -313,7 +314,7 @@ class Client:
                                  job_id=self.job_id, identity=identity, query=(query or "")[:500] or None,
                                  credits=credits or None, domain_resolved=self.domain_resolved, client_id=self.client_id,
                                  iteration=self.iteration, batch_entry=self.batch_entry,
-                                 topic=self.topic, params_fp=self.request_fingerprint)
+                                 topic=self.topic, params_fp=self.request_fingerprint, hop=hop)
         with self.db_lock:   # committed BEFORE dispatch, and never interleaved with a sibling lane's transaction (9·2b)
             if self.abort.is_set():
                 raise calllog.AuditError("not dispatched: this request's call log already failed (I-6)")

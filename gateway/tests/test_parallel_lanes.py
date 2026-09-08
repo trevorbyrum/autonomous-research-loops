@@ -439,12 +439,19 @@ class SameSourceContention(unittest.TestCase):
 
 
 class _ScriptedConn:
-    """DB stand-in with real-enough cursor semantics for calllog: INSERTs return ids,
-    UPDATEs can be scripted to fail. Thread-safe; counts every write."""
+    """DB stand-in with row-preserving cursor semantics for calllog: INSERTs allocate ids
+    and keep their parameter tuples, UPDATEs record WHICH row id they target and can be
+    scripted to fail, and commits enter a shared ordered event list — so a test can
+    assert durable-row identity and commit-before-transport ordering, not just counts."""
 
-    def __init__(self, fail_update_n: int | None = None, fail_first_use: bool = False):
+    def __init__(self, fail_update_n: int | None = None, fail_first_use: bool = False,
+                 events: list | None = None):
         self._lock = threading.Lock()
         self.inserts = self.updates = self.rollbacks = 0
+        self.insert_params: dict[int, tuple] = {}     # id -> INSERT parameter tuple
+        self.update_target_ids: list = []             # WHERE id = %s of every completion
+        self.update_params: dict[int, tuple] = {}     # target id -> UPDATE parameter tuple
+        self.events = events if events is not None else []
         self._fail_update_n = fail_update_n
         self._fail_first_use = fail_first_use
         outer = self
@@ -463,10 +470,14 @@ class _ScriptedConn:
                         raise RuntimeError("db down")
                     if sql.lstrip().upper().startswith("INSERT"):
                         outer.inserts += 1
+                        outer.insert_params[outer.inserts] = tuple(params or ())
                         self._last = (outer.inserts,)
                     else:
                         outer.updates += 1
                         self._last = None
+                        if params:
+                            outer.update_target_ids.append(params[-1])
+                            outer.update_params[params[-1]] = tuple(params)
                         if outer._fail_update_n is not None and outer.updates == outer._fail_update_n:
                             raise RuntimeError("completion write refused")
 
@@ -478,7 +489,8 @@ class _ScriptedConn:
         return self._cur()
 
     def commit(self):
-        pass
+        with self._lock:
+            self.events.append("commit")
 
     def rollback(self):
         with self._lock:
@@ -549,8 +561,15 @@ class AbortPublicationOrdering(unittest.TestCase):
         t.add("GET", "https://93.184.216.34/ok", body={"items": []})
         t.add("GET", "https://api.example.org/limited", status=429, headers={"Retry-After": "1"})
         broker = Broker({"src": RatePolicy(per_second=100000)})
-        c = Client(broker=broker, transport=t)
-        c.conn = _ScriptedConn()
+        conn = _ScriptedConn()
+
+        class OrderedTransport:
+            def request(self, *a, **kw):
+                with conn._lock:
+                    conn.events.append("transport")
+                return t.request(*a, **kw)
+        c = Client(broker=broker, transport=OrderedTransport())
+        c.conn = conn
         barrier = threading.Barrier(2)
         errors: list = []
 
@@ -575,7 +594,27 @@ class AbortPublicationOrdering(unittest.TestCase):
         self.assertEqual(hops, [0, 1], "redirect hops carry their index — hop rows are transport "
                                        "legs of ONE logical dispatch, never repeated lookups")
         self.assertEqual(c.conn.inserts, 4, "every dispatch leg wrote its attempt row (2 hops + plain + limited)")
-        self.assertEqual(c.conn.updates, 4, "and each attempt row was completed")
+        # DURABLE-ROW identity: each completion targeted exactly its own attempt row —
+        # completing a wrong id (e.g. attempt_id + 1000000) fails here at the DB layer
+        self.assertEqual(sorted(c.conn.update_target_ids), [1, 2, 3, 4],
+                         "every attempt row received ITS OWN completion")
+        # DURABLE hop: the redirect legs' attempt INSERTs carried hop 0 and 1, and their
+        # completions carried the hop too (calllog INSERT params: hop is 3rd-from-last;
+        # UPDATE params: hop is 2nd-from-last — a schema change should break this pin)
+        insert_hops = sorted(p[-3] for p in c.conn.insert_params.values() if p[-3] is not None)
+        self.assertEqual(insert_hops, [0, 0, 0, 1], "every leg's ATTEMPT row carries its hop")
+        update_hops = sorted(p[-2] for p in c.conn.update_params.values() if p[-2] is not None)
+        self.assertEqual(update_hops, [0, 0, 0, 1], "hop survives to the DURABLE completed row, not just Client.log")
+        # ORDERING: every transport was preceded by at least as many attempt COMMITS —
+        # a dispatch that leaves before its attempt row committed breaks this prefix invariant
+        commits = transports = 0
+        for ev in c.conn.events:
+            if ev == "commit":
+                commits += 1
+            else:
+                transports += 1
+                self.assertGreaterEqual(commits, transports,
+                                        "a transport ran before its attempt row was committed")
         self.assertFalse(c.abort.is_set())
 
 
