@@ -2,8 +2,11 @@
 
 Read this when the queue or operator assigns a checkpoint, or when a ready
 ordinary-research proposal needs its bounded challenge. It is not per-iteration
-reading. Nothing here changes binding scope: only the operator promotes proposals,
-regardless of gap_policy. (Adopted from the operator-accepted design in
+reading. Nothing here changes binding scope: scout/checkpoint-origin proposals, their
+revisions, and ALL amendments require operator promotion regardless of gap_policy.
+An eligible ORDINARY research gap retains the contract's documented `gap_policy=auto`
+exception within its remaining allowance; using this document's admission/challenge
+procedure does not erase or change a proposal's origin. (Adopted from the operator-accepted design in
 `private/reviews/scout-debate-design-astra.md`, as amended by the 2026-09-08 prompt
 review; model seats per the operator's final assignment — gpt-5.6-luna sole
 secondary, gpt-5.6-terra fresh primary-class counter.)
@@ -185,10 +188,15 @@ proposals visible for operator review without making their approval a new comple
 requirement.
 
 A checkpoint/scout review is not a qualifying deepening pass merely because the
-semantic state is valid and unchanged. Report its iteration type accurately. Such a
-review neither advances nor resets the deepening-saturation streak solely because it
-wrote review prose or made no semantic change. Actual evidence changes and research
-blockers retain their ordinary effects under the queue's rules. Only the queue
-applies those rules; a model's self-reported progress flag cannot certify
-saturation. If a checkpoint also reconciles material evidence, report that work
-separately; do not relabel the whole pass "deepening" to make it eligible.
+semantic state is valid and unchanged. Report its iteration type accurately. The
+saturation exclusion — such a review neither advancing nor resetting the
+deepening-saturation streak — is REQUIRED BEHAVIOR PENDING QUEUE SUPPORT: today's
+queue does not carry iteration type in the result record or exclude checkpoints from
+its saturation decision. Until the queue carries and honors iteration type, do not
+run checkpoint-only work as an ordinary completion-accounted station pass; an
+operator-assigned review with explicit limits must use an execution path outside
+that accounting, or await the queue support. Self-reported type or progress flags
+cannot supply the exclusion. Actual evidence changes and research blockers retain
+their ordinary effects under the queue's rules. If a checkpoint also reconciles
+material evidence, report that work separately; do not relabel the whole pass
+"deepening" to make it eligible.

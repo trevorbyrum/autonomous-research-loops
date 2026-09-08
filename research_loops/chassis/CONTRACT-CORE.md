@@ -107,9 +107,11 @@ DECISIONS-LOG.md as decision provenance, citing the underlying corpus records
 separately for factual premises. Keep pending proposals visible for operator review
 without making their approval a new completion requirement. A checkpoint/scout review
 is not a qualifying deepening pass merely because the semantic state is valid and
-unchanged: report its iteration type accurately; it neither advances nor resets the
-deepening-saturation streak solely because it wrote review prose or made no semantic
-change. Only the queue applies those rules.
+unchanged: report its iteration type accurately; the required exclusion (neither
+advancing nor resetting the deepening-saturation streak) is PENDING QUEUE SUPPORT —
+until the queue carries and honors iteration type, checkpoint-only work must not run
+as an ordinary completion-accounted station pass (see
+`docs/obligations-checkpoint.md`). Only the queue applies those rules.
 
 ## Evidence handling
 
@@ -196,8 +198,11 @@ change. Only the queue applies those rules.
    single full record), decisions, pending evidence, recent progress, and relevant
    synthesis sections.
 2. Reconcile pending evidence first.
-3. Select one highest-value unblocked open obligation using the topic's work-selection
-   rules.
+3. Choose the highest-value feasible next action on approved work using the topic's
+   work-selection and dependency rules: prefer an actionable open obligation, and
+   otherwise allow justified terminal deepening, required contradiction work, or
+   deliverable work under topic authority. When no action is justified, record that
+   result without inventing progress or launching an unscheduled checkpoint.
 4. Delegate bounded evidence preparation through the configured wrapper under the
    delegate model rule above. Reconcile candidate identities and prior attempts
    before discovery, reusing a current packet where adequate. Prefer extraction
@@ -229,8 +234,12 @@ change. Only the queue applies those rules.
 8. Never declare completion. The executable semantic gate passing means the contract is
    COVERED, not finished: the queue completes a topic only after consecutive deepening
    passes stop changing its semantic signature, and a self-written `STOP DONE` is
-   discarded. If no unblocked obligation can advance, write one precise
-   `STOP NEEDS-OPERATOR` question instead — that is the only terminal signal you own.
+   discarded. Write `STOP NEEDS-OPERATOR` only when unfinished approved work is
+   blocked by a specific decision or action that requires the operator and no other
+   approved work can advance — state that decision or action precisely. A valid
+   unchanged deepening result, no admissible new question, or optional proposals
+   awaiting promotion is not by itself an operator blocker; in those cases finish
+   normally — the queue owns completion.
 
 ## Efficiency
 

@@ -82,7 +82,7 @@ done
 # docs/governance.md#the-operator-owns-scope.
 AGENT_NOTE=""
 if [[ -n "${RESEARCH_LOOP_AGENT_SECONDARY:-}" ]]; then
-  AGENT_NOTE=" DELEGATION: delegate through ${RESEARCH_LOOP_AGENT_SECONDARY}. Use its default gpt-5.6-luna for discovery, librarian work, extraction, proposal advocacy, and citation verification. Each verification runs in a fresh invocation distinct from the invocation that produced the citation. The sole additional assignment is a fresh gpt-5.6-terra invocation, through the same wrapper with --model gpt-5.6-terra, for the authorized counter-argument seat, including its permitted repair assessment. Terra is a primary-class counter assignment, not a second secondary model. The primary retains final judgment (discovery/extraction/preparation only, never final judgment — see CONTRACT-CORE.md step 4). Use no other delegate model or native Agent/Task intermediary."
+  AGENT_NOTE=" DELEGATION: delegate through ${RESEARCH_LOOP_AGENT_SECONDARY}. Use its default gpt-5.6-luna for discovery, librarian work, extraction, proposal advocacy, and citation verification. Each verification runs in a fresh invocation distinct from the invocation that produced the citation. The sole additional assignment is a fresh gpt-5.6-terra invocation, through the same wrapper with --model gpt-5.6-terra, for the authorized counter-argument seat, including its permitted repair assessment. Terra is a primary-class counter assignment, not a second secondary model. The primary retains final judgment (see CONTRACT-CORE.md step 4). Use no other delegate model or native Agent/Task intermediary."
 fi
 
 GAP_POLICY="${RESEARCH_LOOP_GAP_POLICY:-review}"
