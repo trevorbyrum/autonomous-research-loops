@@ -95,6 +95,29 @@ def validate_profile_name(profile: str) -> str:
     return profile
 
 
+def saturation_decision(*, signature_changed: bool, previous_streak: int, limit: int,
+                        blocked_this_pass: bool, blockers: list) -> tuple[int, str]:
+    """The one saturation/completion condition (gateway docs/STATION-CONTRACT.md §2).
+
+    Returns (new_streak, verdict) with verdict 'complete' | 'held' | 'continue'.
+    A semantic change resets the streak (deepening still changes things). A pass that
+    hit a blocking research-coverage failure PAUSES the streak — no semantic change
+    while required research is unavailable is not evidence of stability — and can
+    never be the completing pass. Reaching the limit with unresolved blockers holds
+    completion (verdict 'held') until the same request succeeds or the operator
+    releases the blocker explicitly with `resolve-research` (a recorded
+    evidence decision — an ordinary resume never clears blockers)."""
+    if signature_changed:
+        streak = 0
+    elif blocked_this_pass:
+        streak = previous_streak
+    else:
+        streak = previous_streak + 1
+    if streak >= limit:
+        return streak, "held" if (blocked_this_pass or blockers) else "complete"
+    return streak, "continue"
+
+
 def classify_failure(exit_code: int, output: str) -> FailureKind:
     if exit_code == 0:
         return FailureKind.NONE
@@ -1121,6 +1144,22 @@ class LoopRunner:
         child_env["RESEARCH_LOOP_INTERNAL_CITATIONS"] = (
             "1" if item.get("internal_citations") else "0"
         )
+        # Topic research policy (gateway docs/STATION-CONTRACT.md §1): the queue item is
+        # the single writer; the research tool's dispatcher injects these into every call
+        # and rejects conflicting agent arguments. Items without a policy bind only the
+        # topic id — the gateway's personal baseline applies.
+        child_env["RESEARCH_TOPIC_ID"] = item["id"]
+        research_policy = item.get("research_policy") or {}
+        for env_name, key, as_bool in (
+            ("RESEARCH_TOPIC_COMMERCIAL", "commercial", True),
+            ("RESEARCH_TOPIC_ACCEPT_PER_ITEM", "accept_per_item", True),
+            ("RESEARCH_TOPIC_DOMAIN", "domain", False),
+        ):
+            if key in research_policy:
+                value = research_policy[key]
+                child_env[env_name] = ("1" if value else "0") if as_bool else str(value)
+            else:
+                child_env.pop(env_name, None)
         try:
             with log_path.open("w", encoding="utf-8") as log:
                 process = subprocess.Popen(
@@ -1214,8 +1253,31 @@ class LoopRunner:
                     "sources_cited",
                     "stop_written",
                     "degraded_capabilities",
+                    "research_failures",
+                    "research_ok",
                 )
             }
+
+        # Research coverage from the iteration (STATION-CONTRACT.md §2): blockers are
+        # per-item queue state keyed by the exact request; a request that ended blocked
+        # stays a blocker until the same request succeeds or the operator resolves it
+        # with a recorded reason (`resolve-research`).
+        research_failures: list[dict] = []
+        research_ok: list[str] = []
+        research_coverage: dict = {}
+        if isinstance(iteration_result, dict):
+            research_failures = [f for f in (iteration_result.get("research_failures") or [])
+                                 if isinstance(f, dict) and f.get("key") and f.get("source")]
+            research_ok = [k for k in (iteration_result.get("research_ok") or []) if isinstance(k, str)]
+            research_coverage = {s: c for s, c in (iteration_result.get("research_coverage") or {}).items()
+                                 if isinstance(s, str) and isinstance(c, str)}
+        research_blockers = self.store.update_research_blockers(
+            item_id, failures=research_failures, cleared=research_ok, coverage=research_coverage
+        )
+        blocker_sources = sorted({b["source"] for b in research_blockers if b.get("source")})
+        blocked_this_pass = any(
+            f.get("coverage") in ("provider_unavailable", "auth_failed") for f in research_failures
+        )
 
         error_kind = None
         message = None
@@ -1259,8 +1321,20 @@ class LoopRunner:
                 # carries the operator's terminal intent.
                 if stop_signal == "done":
                     completion_error = self._completion_error(item)
+                    if completion_error is None and research_blockers:
+                        # Same condition as the saturation gate: unresolved required-research
+                        # blockers prevent EVERY automatic completion branch, not just one.
+                        completion_error = ("research blocked on " + ", ".join(blocker_sources)
+                                            + " (unresolved capability failure; the same request "
+                                            "succeeding or `resolve-research` clears it)")
                     if completion_error is None:
                         intended_outcome = "completed"
+                        self.store.record_completion_coverage(item_id, {
+                            "at": utc_now(),
+                            "policy": item.get("research_policy"),
+                            "coverage": self.store.get(item_id).get("research_coverage") or {},
+                            "blockers": [],
+                        })
                     else:
                         intended_outcome = "needs_attention"
                         error_kind = FailureKind.CONFIGURATION.value
@@ -1270,7 +1344,21 @@ class LoopRunner:
                     error_kind = FailureKind.CONFIGURATION.value
                     message = stop_signal
             elif repeat_seconds is None:
-                intended_outcome = "completed"
+                if research_blockers:
+                    intended_outcome = "needs_attention"
+                    error_kind = FailureKind.CONFIGURATION.value
+                    message = ("research blocked on " + ", ".join(blocker_sources)
+                               + " (unresolved capability failure; the same request "
+                               "succeeding or `resolve-research` clears it)")
+                else:
+                    intended_outcome = "completed"
+                    if research_failures or research_ok or research_coverage:
+                        self.store.record_completion_coverage(item_id, {
+                            "at": utc_now(),
+                            "policy": item.get("research_policy"),
+                            "coverage": self.store.get(item_id).get("research_coverage") or {},
+                            "blockers": [],
+                        })
             elif (
                 isinstance(iteration_result, dict)
                 and iteration_result.get("semantic_valid") is True
@@ -1286,19 +1374,27 @@ class LoopRunner:
                 # positive evidence that deepening no longer changes anything
                 # — completes the topic. The chassis measures; the queue
                 # decides — re-validate with the pinned lock before acting.
-                signature_changed = bool(iteration_result.get("signature_changed"))
-                previous_streak = int(item.get("saturation_streak") or 0)
-                streak = 0 if signature_changed else previous_streak + 1
-                saturation_limit = int(
-                    item.get("saturation_limit") or self.DEFAULT_SATURATION_LIMIT
+                streak, verdict = saturation_decision(
+                    signature_changed=bool(iteration_result.get("signature_changed")),
+                    previous_streak=int(item.get("saturation_streak") or 0),
+                    limit=int(item.get("saturation_limit") or self.DEFAULT_SATURATION_LIMIT),
+                    blocked_this_pass=blocked_this_pass,
+                    blockers=research_blockers,
                 )
-                if streak >= saturation_limit:
+                if verdict == "complete":
                     completion_error = self._completion_error(item)
                     if completion_error is None:
                         intended_outcome = "completed"
+                        self.store.record_completion_coverage(item_id, {
+                            "at": utc_now(),
+                            "policy": item.get("research_policy"),
+                            "coverage": self.store.get(item_id).get("research_coverage") or {},
+                            "blockers": [],
+                        })
                         message = (
                             f"saturated: {streak} consecutive semantically-valid "
-                            "deepening passes with an unchanged semantic signature"
+                            "deepening passes with an unchanged semantic signature "
+                            "and no unresolved research blockers"
                         )
                     else:
                         intended_outcome = "needs_attention"
@@ -1307,6 +1403,19 @@ class LoopRunner:
                             "chassis reports the semantic gate passing but the "
                             f"lock-pinned validation disagrees: {completion_error}"
                         )
+                elif verdict == "held":
+                    # Saturation reached but required research is blocked: completion is
+                    # HELD, never granted on evidence gathered under a degraded channel
+                    # (STATION-CONTRACT.md §2; the acceptance case of plan phase 8d).
+                    self.store.record_saturation_streak(item_id, streak)
+                    held_on = blocker_sources or sorted(
+                        {f["source"] for f in research_failures if f.get("source")}
+                    )
+                    message = ("saturation held: research blocked on " + ", ".join(held_on)
+                               + " — clears when the same request succeeds, or via `resolve-research`")
+                    intended_outcome = "scheduled"
+                    next_at = datetime.now(timezone.utc) + timedelta(seconds=repeat_seconds)
+                    next_eligible_at = next_at.isoformat().replace("+00:00", "Z")
                 else:
                     self.store.record_saturation_streak(item_id, streak)
                     intended_outcome = "scheduled"

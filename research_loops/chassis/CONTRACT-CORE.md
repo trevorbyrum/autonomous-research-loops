@@ -80,9 +80,17 @@ to be reconciled, counterevidence to have been reviewed, contradictions to be
 dispositioned, and every named deliverable to exist. `semantic-state.py validate` is the
 executable completion gate — not a description of the gate, the gate itself.
 
-An unchanged semantic signature is a liveness attention state only. It may pause or
-escalate the topic; it can never produce `DONE`. No fixed iteration, token, source,
-retry, inactivity, or revision limit defines semantic completion.
+An unchanged semantic signature alone — without a passing semantic gate — is a
+liveness attention state only: it may pause or escalate the topic, never produce
+`DONE`. Completion is conditional saturation, and the queue (not this contract's
+prose, and never the agent) rules on it: consecutive semantically-VALID deepening
+passes with an unchanged signature, re-validated against the pinned completion lock,
+with no unresolved research blocker (a source that failed during actual research and
+has not answered since — an iteration that hit one neither advances the saturation
+streak nor completes the topic; see the gateway's `docs/STATION-CONTRACT.md`). A
+completed topic records the source-coverage state it completed under, so completion
+always means covered-and-stable UNDER THAT COVERAGE. No fixed iteration, token,
+source, retry, inactivity, or revision limit defines semantic completion.
 
 ## Evidence handling
 

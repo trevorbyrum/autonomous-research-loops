@@ -21,6 +21,22 @@ def emit(value: Any) -> None:
     print(json.dumps(value, indent=2, sort_keys=True))
 
 
+def _parse_research_policy(raw: str | None) -> dict | None:
+    """CLI string → research_policy dict (validated again by the store). 'clear'
+    unbinds; None passes through for items that never set one."""
+    if raw is None or raw == "":
+        return None
+    if raw.strip().lower() == "clear":
+        return None
+    try:
+        value = json.loads(raw)
+    except ValueError as exc:
+        raise QueueError(f"research policy must be a JSON object: {exc}") from None
+    if not isinstance(value, dict):
+        raise QueueError("research policy must be a JSON object")
+    return value
+
+
 def _default_root() -> Path:
     """The queue root to use when --root is omitted.
 
@@ -173,6 +189,13 @@ def build_parser() -> argparse.ArgumentParser:
         "Disabled by default",
     )
     add.add_argument(
+        "--research-policy",
+        help="JSON object binding the topic's research posture for the gateway tool, "
+        "e.g. '{\"commercial\": true, \"domain\": \"finance\"}' (fields: commercial, "
+        "accept_per_item, domain). Injected into every research call; conflicting "
+        "agent arguments are rejected (gateway docs/STATION-CONTRACT.md)",
+    )
+    add.add_argument(
         "--topic-refresh",
         choices=("off", "weekly", "monthly"),
         default="off",
@@ -232,6 +255,31 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     relock.add_argument("item_id")
+
+    research_policy = sub.add_parser(
+        "research-policy",
+        help="bind (or clear) an item's research policy — the operator migration "
+        "path for items that predate --research-policy on add. Takes effect on the "
+        "item's next iteration",
+    )
+    research_policy.add_argument("item_id")
+    research_policy.add_argument(
+        "policy",
+        help="JSON object (fields: commercial, accept_per_item, domain) or the "
+        "literal 'clear' to unbind",
+    )
+
+    resolve_research = sub.add_parser(
+        "resolve-research",
+        help="explicitly release an item's research blockers on sufficient-alternative "
+        "grounds — an evidence decision recorded with its reason (an ordinary resume "
+        "never clears blockers)",
+    )
+    resolve_research.add_argument("item_id")
+    resolve_research.add_argument("--reason", required=True,
+                                  help="why the blocked research is satisfied without that retrieval")
+    resolve_research.add_argument("--source", action="append", dest="sources",
+                                  help="release only this source's blockers (repeatable; default: all)")
 
     swap_active = sub.add_parser(
         "swap-active",
@@ -523,6 +571,7 @@ def main(argv: list[str] | None = None) -> int:
                     internal_citations=args.internal_citations,
                     topic_refresh=args.topic_refresh,
                     topic_refresh_mode=args.topic_refresh_mode,
+                    research_policy=_parse_research_policy(args.research_policy),
                 )
             )
         elif args.action in {"list", "status"}:
@@ -546,6 +595,10 @@ def main(argv: list[str] | None = None) -> int:
             item = store.get(args.item_id)
             lock = topic_authoring.compute_lock(Path(item["cwd"]))
             emit(store.set_completion_lock(args.item_id, lock))
+        elif args.action == "research-policy":
+            emit(store.set_research_policy(args.item_id, _parse_research_policy(args.policy)))
+        elif args.action == "resolve-research":
+            emit(store.resolve_research_blockers(args.item_id, reason=args.reason, sources=args.sources))
         elif args.action == "swap-active":
             emit(store.reassign_worker(args.worker, args.target_item_id))
         elif args.action == "refresh":
