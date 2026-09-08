@@ -121,6 +121,9 @@ prompt_file="$LOG_DIR/.iteration-$stamp-prompt.txt"
 touch "$TOPIC_DIR/PROGRESS.md"
 before=$("$CHASSIS/progress-signature.sh" "$TOPIC_DIR")
 sources_before=$(python3 "$CHASSIS/semantic-state.py" source-count "$TOPIC_DIR" 2>/dev/null || echo 0)
+# 9·0 outcome metrics, measured AT SOURCE (the report never re-derives them): ledger
+# entries carrying verified:true, and the pending-evidence backlog, before vs after
+verified_before=$(grep -c '^- verified: true' "$TOPIC_DIR/SOURCE-LEDGER.md" 2>/dev/null || echo 0)
 
 # Literal substitution (render-prompt.py): sed's `&`/delimiter
 # metacharacters corrupted prompts when values carried them (e.g. an
@@ -172,6 +175,20 @@ rm -f "$prompt_file"
 after=$("$CHASSIS/progress-signature.sh" "$TOPIC_DIR")
 sources_after=$(python3 "$CHASSIS/semantic-state.py" source-count "$TOPIC_DIR" 2>/dev/null || echo 0)
 sources_cited=$((sources_after - sources_before))
+verified_after=$(grep -c '^- verified: true' "$TOPIC_DIR/SOURCE-LEDGER.md" 2>/dev/null || echo 0)
+pending_count=$(python3 -c "
+import json, sys
+try:
+    s = json.load(open('$TOPIC_DIR/SEMANTIC-STATE.json'))
+    refs = s.get('pending_evidence_refs') or []
+    print(len(refs) if isinstance(refs, list) else 'unknown')
+except Exception:
+    print('unknown')" 2>/dev/null || echo unknown)
+# 9·0 phase timings need an END boundary or the last phase can never be measured;
+# the runner owns iteration end, so the runner writes it (only when the agent wrote markers)
+if [[ -n "${RESEARCH_LOOP_PHASE_LOG:-}" && -f "$RESEARCH_LOOP_PHASE_LOG" ]]; then
+  echo "$(date -u +%FT%TZ) end" >> "$RESEARCH_LOOP_PHASE_LOG"
+fi
 
 # Chassis-measured DONE-gate probe (no lock — the queue re-validates with the
 # pinned lock before acting). A loop that finishes its contract but fumbles
@@ -193,6 +210,8 @@ write_result() {
   RESULT_OUTCOME="$1" RESULT_EXIT="$2" RESULT_ERROR_CLASS="${3:-}" RESULT_STAMP="$stamp" \
   RESULT_BEFORE="$before" RESULT_AFTER="$after" \
   RESULT_SOURCES_CITED="$sources_cited" RESULT_LOG="$log" \
+  RESULT_VERIFIED_ADDED="$((verified_after - verified_before))" \
+  RESULT_PENDING_COUNT="$pending_count" \
   RESULT_RUNNER="$RUNNER_NAME" RESULT_TOPIC_DIR="$TOPIC_DIR" \
   RESULT_DEGRADED_FILE="${degraded_file:-}" \
   RESULT_SEMANTIC_VALID="$semantic_valid" \
@@ -225,6 +244,9 @@ result = {
     "signature_after": os.environ["RESULT_AFTER"],
     "signature_changed": os.environ["RESULT_BEFORE"] != os.environ["RESULT_AFTER"],
     "sources_cited": int(os.environ["RESULT_SOURCES_CITED"]),
+    "verified_added": int(os.environ.get("RESULT_VERIFIED_ADDED") or 0),
+    "pending_count": (int(os.environ["RESULT_PENDING_COUNT"])
+                      if (os.environ.get("RESULT_PENDING_COUNT") or "").isdigit() else None),
     "stop_written": stop_written,
     "stop_first_line": stop_first,
     "semantic_valid": os.environ.get("RESULT_SEMANTIC_VALID") == "true",
