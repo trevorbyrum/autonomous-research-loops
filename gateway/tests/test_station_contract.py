@@ -265,11 +265,11 @@ class ActivityFile(unittest.TestCase):
             lines = [json.loads(l) for l in Path(path).read_text().splitlines()]
         crossref = [(l["coverage"], l["query_or_identity"]) for l in lines if l["source"] == "crossref"]
         self.assertEqual(crossref,
-                         [("searched_ok", "q"), ("provider_unavailable", "q"), ("searched_ok", "q"),
-                          ("searched_ok", "other")],
-                         "one line per transition, per exact request, in order")
-        self.assertEqual([l["query_or_identity"] for l in lines if l["source"] == "gateway"], ["q", "other"],
-                         "each answered request also logs the gateway ok, once per request")
+                         [("searched_ok", "q"), ("searched_ok", "q"), ("provider_unavailable", "q"),
+                          ("searched_ok", "q"), ("searched_ok", "other")],
+                         "EVERY observation appends in order — no suppression, so two processes can "
+                         "never hide a recovery from each other (9·2a); the summarizer takes last state")
+        self.assertEqual(crossref[-2], ("searched_ok", "q"), "the recovery is the key's last q-state")
         out = mcp_stdio.call_tool(StubClient(), "research_find", {"query": "q"},
                                   activity="/nonexistent-dir/activity.jsonl")
         self.assertIn("lanes", out, "an unwritable activity file never breaks the answer")
@@ -882,3 +882,31 @@ class TracingOutsideIdentity(unittest.TestCase):
         self.assertEqual(client.iteration, "20260908T010101Z")
         self.assertIsNone(from_env({"RESEARCH_GATEWAY_URL": "http://127.0.0.1:1",
                                     "RESEARCH_GATEWAY_TOKEN": "t"}).iteration)
+
+
+class ParallelBatch(unittest.TestCase):
+    """9·2a: batch entries overlap, results stay in entry order, failures stay per-entry."""
+
+    def test_entry_order_survives_shuffled_completion(self):
+        import time as _time
+
+        class SlowStub(StubClient):
+            def request(self, rt, payload):
+                _time.sleep(0.05 if payload.get("identity") == "doi:10.1/slow" else 0.0)
+                self.seen.append((rt, dict(payload)))
+                return {"request_type": rt, "records": [], "facts": [], "lanes": [],
+                        "echo": payload.get("identity")}
+
+        client = SlowStub()
+        t0 = __import__("time").monotonic()
+        out = mcp_stdio.call_tool(client, "research_batch", {"calls": [
+            {"tool": "research_resolve", "arguments": {"identity": "doi:10.1/slow"}},
+            {"tool": "research_resolve", "arguments": {"identity": "doi:10.1/fast"}},
+            {"tool": "research_find", "arguments": {"query": "rejected"}},
+            {"tool": "research_resolve", "arguments": {"identity": "doi:10.1/fast2"}},
+        ]})
+        elapsed = __import__("time").monotonic() - t0
+        self.assertEqual([r.get("result", {}).get("echo", r.get("error", ""))[:12] if isinstance(r.get("result", r), dict) else "" for r in out["results"]][0],
+                         "doi:10.1/slo", "the slow entry still comes back FIRST in the list")
+        self.assertIn("error", out["results"][2], "per-entry failures stay per-entry")
+        self.assertLess(elapsed, 0.15, "entries overlapped instead of summing their waits")

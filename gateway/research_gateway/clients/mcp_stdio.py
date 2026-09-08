@@ -122,9 +122,11 @@ BATCH_LIMIT = 20
 # included — recovery (fail → ok) is a transition and is never deduplicated away, so the
 # chassis can apply each source's LAST outcome (pass-1 finding 6).
 DEGRADED_COVERAGE = ("not_searched", "provider_unavailable", "auth_failed", "metadata_only")
-_LAST_STATE: dict[tuple[str, str, str, str], str] = {}   # (path, source, request_type, subject) -> last coverage written
-# keyed per REQUEST (source + type + query/identity), matching the chassis's blocker key:
-# a success on an unrelated query must never mask or clear a different request's failure (finding 4)
+# The activity file records EVERY observation, appended in order under an OS file lock —
+# no in-process suppression: two MCP processes (a backgrounded delegate is one) with
+# independent memories could suppress the recovery line that clears a blocker (9·2a,
+# plan v3). The chassis summarizer takes each request key's LAST state in file order,
+# so volume is the only cost and it is bounded by calls per iteration.
 
 POLICY_ENV = {"topic_id": "RESEARCH_TOPIC_ID", "commercial": "RESEARCH_TOPIC_COMMERCIAL",
               "accept_per_item": "RESEARCH_TOPIC_ACCEPT_PER_ITEM", "domain": "RESEARCH_TOPIC_DOMAIN"}
@@ -228,10 +230,6 @@ def record_activity(path: str | None, tool: str, args: dict, result: dict | None
         # otherwise a transport blip's blocker could never resolve (finding 6)
         observed.append(("gateway", "searched_ok", None, request_type, subject))
     for source, coverage, detail, rt, subj in observed:
-        state_key = (path, source, rt, subj)
-        if _LAST_STATE.get(state_key) == coverage:
-            continue   # unchanged state for this exact request: every TRANSITION (either direction) gets a line
-        _LAST_STATE[state_key] = coverage
         line = {"at": at, "source": source, "request_type": rt,
                 "coverage": coverage, "query_or_identity": subj}
         if detail:
@@ -240,9 +238,14 @@ def record_activity(path: str | None, tool: str, args: dict, result: dict | None
     if not lines:
         return
     try:
+        import fcntl
         with open(path, "a", encoding="utf-8") as fh:
-            for line in lines:
-                fh.write(json.dumps(line, separators=(",", ":")) + "\n")
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)   # process-safe: delegates run their own MCP processes
+            try:
+                fh.write("".join(json.dumps(line, separators=(",", ":")) + "\n" for line in lines))
+                fh.flush()
+            finally:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
     except OSError:
         pass
 
@@ -323,22 +326,31 @@ def call_tool(client: GatewayClient, name: str, args: dict, *, policy: dict | No
             raise ValueError("calls must be a non-empty array")
         if len(calls) > BATCH_LIMIT:
             raise ValueError(f"at most {BATCH_LIMIT} calls per batch")
-        results = []
-        for i, entry in enumerate(calls):
+        # bounded PARALLEL execution (9·2a): entries overlap their provider waits through the
+        # gateway (which meters them); results return in ENTRY ORDER regardless of completion
+        # order, failures stay per-entry, and each entry gets its OWN client so the tracing
+        # header can never race a neighbour's request
+        from concurrent.futures import ThreadPoolExecutor
+        width = max(1, int(os.environ.get("RESEARCH_GATEWAY_BATCH_CONCURRENCY", "5") or 5))
+
+        def run_entry(index: int, entry) -> dict:
             tool = (entry or {}).get("tool")
             sub_args = (entry or {}).get("arguments") or {}
             if tool not in BATCH_TOOLS:
-                results.append({"tool": tool, "error": f"batch entries may only be {' or '.join(BATCH_TOOLS)}"})
-                continue
+                return {"tool": tool, "error": f"batch entries may only be {' or '.join(BATCH_TOOLS)}"}
+            if isinstance(client, GatewayClient):
+                entry_client = GatewayClient(client.url, client.token, client.timeout, iteration=client.iteration)
+                entry_client.batch_entry = index
+            else:
+                entry_client = client   # test stubs: shared, tracing-indifferent
             try:
-                client.batch_entry = i   # tracing header only — never in the payload (D-33)
-                results.append({"tool": tool,
-                                "result": call_tool(client, tool, sub_args, policy=policy,
-                                                    activity=activity, download_dir=download_dir)})
+                return {"tool": tool, "result": call_tool(entry_client, tool, sub_args, policy=policy,
+                                                          activity=activity, download_dir=download_dir)}
             except Exception as e:  # one bad entry never sinks its neighbours
-                results.append({"tool": tool, "error": f"{type(e).__name__}: {e}"})
-            finally:
-                client.batch_entry = None
+                return {"tool": tool, "error": f"{type(e).__name__}: {e}"}
+
+        with ThreadPoolExecutor(max_workers=min(width, len(calls))) as pool:
+            results = list(pool.map(lambda pair: run_entry(*pair), enumerate(calls)))
         return {"results": results}
     if name == "research_download":
         params = dict(args.get("params") or {})
