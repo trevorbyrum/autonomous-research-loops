@@ -391,7 +391,7 @@ class IterationPromptProtocolTests(unittest.TestCase):
         # The agent's ONE terminal signal is being blocked, never being done
         # (operator ruling 2026-09-04): completion belongs to the saturation
         # gate, so the prompt must not hand back a DONE command.
-        self.assertIn("printf 'NEEDS-OPERATOR\\nflag: <what to look at>\\n' > ${TOPIC_DIR}/STOP", prompt)
+        self.assertIn("printf 'NEEDS-OPERATOR\\nflag: <precise operator question>\\n' > ${TOPIC_DIR}/STOP", prompt)
         self.assertNotIn("printf 'DONE", prompt)
         self.assertIn("only the file counts", prompt)
         # The protocol is the terminal block: nothing rule-like after step 4.
