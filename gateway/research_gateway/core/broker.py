@@ -104,7 +104,7 @@ class Broker:
         wall: Callable[[], float] = time.time,
         breaker_window: float = 900.0,
         errors_to_open: int = 3,
-        on_breaker_change: Callable[[str, str, float | None, str], None] | None = None,
+        on_breaker_change: Callable[[str, str, float | None, str, int], None] | None = None,
         on_budget: Callable[[str, str, float, float], None] | None = None,
         budget_warn: float = 0.8,
     ):
@@ -112,6 +112,8 @@ class Broker:
         self._clock, self._wall = clock, wall
         self._breaker_window, self._errors_to_open = breaker_window, errors_to_open
         self._on_breaker_change = on_breaker_change
+        self._breaker_seq = 0   # assigned under the lock; callbacks deliver outside it and can
+                                # reorder — the consumer applies only monotonically newer events (9·2b)
         self._on_budget, self._budget_warn = on_budget, budget_warn   # (source, what, used, cap) once per UTC day (§7)
         self._lock = threading.Lock()
         self._state: dict[str, _State] = {}
@@ -167,7 +169,9 @@ class Broker:
             if st.breaker_until:  # the window elapsed: the breaker closes on the next acquisition, observably
                 st.breaker_until, st.breaker_reason = 0.0, ""
                 if self._on_breaker_change:
-                    pending.append(lambda s=source_id: self._on_breaker_change(s, "closed", None, "window elapsed"))
+                    self._breaker_seq += 1
+                    pending.append(lambda s=source_id, q=self._breaker_seq:
+                                   self._on_breaker_change(s, "closed", None, "window elapsed", q))
             pol = self._policies[source_id]
             if pol.cost_cap_per_day and st.credits_today + credits > pol.cost_cap_per_day:
                 raise BudgetExhausted(source_id, "cost cap")
@@ -237,7 +241,8 @@ class Broker:
         st.consecutive_limit_errors, st.backoff_until = 0, 0.0
         if self._on_breaker_change:
             wall_until = self._wall() + seconds
-            pending.append(lambda: self._on_breaker_change(source_id, "open", wall_until, reason))
+            self._breaker_seq += 1
+            pending.append(lambda q=self._breaker_seq: self._on_breaker_change(source_id, "open", wall_until, reason, q))
 
     def breaker_open(self, source_id: str) -> bool:
         pending: list = []
@@ -248,7 +253,9 @@ class Broker:
             if st.breaker_until and st.breaker_until <= self._clock():
                 st.breaker_until = 0.0
                 if self._on_breaker_change:
-                    pending.append(lambda: self._on_breaker_change(source_id, "closed", None, "window elapsed"))
+                    self._breaker_seq += 1
+                    pending.append(lambda q=self._breaker_seq:
+                                   self._on_breaker_change(source_id, "closed", None, "window elapsed", q))
                 result = False
             else:
                 result = st.breaker_until > self._clock()
@@ -256,12 +263,19 @@ class Broker:
         return result
 
     def close_breaker(self, source_id: str) -> None:
+        pending: list = []
         with self._lock:
+            # the sequence is allocated in the SAME critical section as the state mutation:
+            # a reopen racing this close must get the LATER sequence, or persistence would
+            # accept the obsolete close as newer and a restart would forget the live breaker
             st = self._state.get(source_id)
             if st:
                 st.breaker_until, st.breaker_reason, st.consecutive_limit_errors = 0.0, "", 0
-        if self._on_breaker_change:
-            self._fire([lambda: self._on_breaker_change(source_id, "closed", None, "operator")])
+                if self._on_breaker_change:
+                    self._breaker_seq += 1
+                    pending.append(lambda q=self._breaker_seq:
+                                   self._on_breaker_change(source_id, "closed", None, "operator", q))
+        self._fire(pending)
 
     def seed_breakers(self, rows: list[tuple[str, float]]) -> None:
         """Restore persisted open breakers: (source_id, seconds still to run). A breaker a crash

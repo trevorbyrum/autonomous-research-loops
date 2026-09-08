@@ -128,7 +128,7 @@ class Breakers(unittest.TestCase):
     def test_opens_after_three_limit_errors_and_closes_after_window(self):
         events = []
         b, clock, _ = make({"src": RatePolicy(per_second=100)}, breaker_window=600,
-                           on_breaker_change=lambda s, st, ra, r: events.append((s, st)))
+                           on_breaker_change=lambda s, st, ra, r, q=0: events.append((s, st)))
         b.record("src", 429)
         b.record("src", 429)
         self.assertFalse(b.breaker_open("src"))
@@ -241,7 +241,7 @@ class FromRows(unittest.TestCase):
     def test_elapsed_breaker_closes_on_acquire_with_callback(self):
         events = []
         b, clock, _ = make({"src": RatePolicy(per_second=100)},
-                           on_breaker_change=lambda s, state, until, reason: events.append((s, state)))
+                           on_breaker_change=lambda s, state, until, reason, q=0: events.append((s, state)))
         b.record("src", 429, retry_after=5)
         clock.advance(6)
         self.assertEqual(b.acquire("src"), 0.0)

@@ -49,6 +49,22 @@ and never stored (`PLAN.md` D-17); with a database those calls are logged too,
 with the client's id and no job id. Every call-log row names the client that
 asked; a client can read only its own jobs.
 
+Concurrency knobs (Phase 9·2 — each has a serial rollback):
+
+- `RESEARCH_GATEWAY_LANE_CONCURRENCY` (default 4, **gateway process**) — a find
+  plan's base+domain lanes run through a bounded pool; results merge in plan
+  order, so the answer is byte-identical to serial execution. `1` restores the
+  serial loop. Only find lanes overlap: resolve/enrich/fetch/data/catalog plans
+  are fallback chains and stay serial.
+- `RESEARCH_GATEWAY_LANE_TOTAL` (default 16, gateway process) — aggregate bound
+  on lane dispatches in flight across ALL concurrent requests and ALL request
+  types: parallel find lanes, serial resolve/enrich/fetch/data/catalog lanes,
+  and the DOI registration-agency lookup — the inline path (which bypasses the
+  worker pool) included. Read once at first use.
+- `RESEARCH_GATEWAY_BATCH_CONCURRENCY` (default 5, **station MCP process**) —
+  parallel `research_batch` entries in the stdio client. Setting the gateway's
+  lane knobs does not configure this one; it lives in the station's environment.
+
 Client tokens come from `RESEARCH_GATEWAY_TOKENS` or, with the vault backend,
 from the secret `research_gateway`, field `tokens`, in the same
 `name=token,name=token` form. The gateway refuses to start without any.

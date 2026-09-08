@@ -16,6 +16,7 @@ import ipaddress
 import json
 import re
 import socket
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -189,6 +190,19 @@ class Client:
     client_id: str | None = None
     domain_resolved: str | None = None
     commercial: bool = False   # set by the executor; download-capable adapters refuse restricted fetches up front (D-24)
+    iteration: str | None = None    # 9·0 tracing (D-33): chassis iteration stamp — travels beside requests,
+    batch_entry: int | None = None  # never inside them (cache keys and job dedup hash the payload)
+    topic: str | None = None            # caller's topic id — tracing beside requests, like iteration
+    request_fingerprint: str | None = None  # payload params/cursors fingerprint set by the executor (repeat classification)
+    db_lock: threading.Lock = field(default_factory=threading.Lock)
+    abort: threading.Event = field(default_factory=threading.Event)
+    # set the moment ANY audit write on this client fails, under db_lock itself — the same
+    # lock that admits every dispatch — so "a lane not yet dispatched when the call log
+    # breaks never dispatches" holds without a window between failure and publication (9·2b)
+    # 9·2b: parallel lanes share this client and its ONE psycopg connection. The driver
+    # object is thread-safe; the shared TRANSACTION is not — so every operation-through-
+    # commit on client.conn (call-log writes here, direct adapter use like the local
+    # index lane) holds this lock. Transports overlap; database work serializes.
 
     def secret(self, name: str, field: str | None = None) -> str | None:
         value = self.secrets(name, field)
@@ -214,12 +228,15 @@ class Client:
         if params:
             clean = {k: v for k, v in params.items() if v is not None}
             url = url + ("&" if "?" in url else "?") + urllib.parse.urlencode(clean, doseq=True)
+        wait_t0 = time.monotonic()
         try:
             self.broker.acquire_blocking(source_id, credits=credits, max_wait=self.max_wait, sleep=self.sleep)
         except (NoPolicy, BreakerOpen, BudgetExhausted) as e:
             resp = Response(None, {}, b"", url, error=f"{type(e).__name__}: {e}")
-            self._record(source_id, request_type, identity, query, resp, 0, credits, refused=True)
+            self._record(source_id, request_type, identity, query, resp, 0, credits, refused=True,
+                         wait_ms=int((time.monotonic() - wait_t0) * 1000))
             return resp
+        wait_ms = int((time.monotonic() - wait_t0) * 1000)   # broker wait, separated from provider latency (9·0)
         hdrs = {"User-Agent": self.user_agent, "Accept": "application/json"}
         hdrs.update(headers or {})
         for hop in range(MAX_REDIRECTS + 1):
@@ -227,7 +244,7 @@ class Client:
             # and a crash mid-request still leaves its row — CREDITS INCLUDED, so restart
             # accounting restores what was actually charged (I-6, D-25, D-26)
             attempt_id = self._attempt(source_id, request_type, identity, query,
-                                       credits=credits if hop == 0 else 0.0)
+                                       credits=credits if hop == 0 else 0.0, hop=hop)
             t0 = time.monotonic()
             resp = self.transport.request(method, url, hdrs, body, self.timeout)
             latency = int((time.monotonic() - t0) * 1000)
@@ -236,7 +253,8 @@ class Client:
             # credits are charged once per request (the broker charged them on the first acquire);
             # each hop still gets its own call row, but only the first carries the credit figure (D-24)
             self._record(source_id, request_type, identity, query, resp, latency,
-                         credits if hop == 0 else 0.0, attempt_id=attempt_id)
+                         credits if hop == 0 else 0.0, attempt_id=attempt_id,
+                         wait_ms=wait_ms, hop=hop)   # each hop reports ITS OWN broker wait (9·0: waits are never dropped)
             if resp.status not in REDIRECT_STATUSES:
                 return resp
             location = resp.headers.get("location")
@@ -258,12 +276,15 @@ class Client:
                 method, body = "GET", None
                 hdrs.pop("Content-Type", None)
             url = nxt
+            hop_t0 = time.monotonic()
             try:  # each hop is its own metered dispatch under the same source (I-1)
                 self.broker.acquire_blocking(source_id, credits=0.0, max_wait=self.max_wait, sleep=self.sleep)
             except (NoPolicy, BreakerOpen, BudgetExhausted) as e:
                 refused = Response(None, {}, b"", url, error=f"{type(e).__name__}: {e}")
-                self._record(source_id, request_type, identity, query, refused, 0, 0.0, refused=True)
+                self._record(source_id, request_type, identity, query, refused, 0, 0.0, refused=True,
+                             wait_ms=int((time.monotonic() - hop_t0) * 1000))
                 return refused
+            wait_ms = int((time.monotonic() - hop_t0) * 1000)
         return resp
 
     def local(self, source_id: str, request_type: str, *, query: str | None = None, identity: str | None = None,
@@ -273,22 +294,39 @@ class Client:
         rec = calllog.CallRecord(source_id=source_id, request_type=request_type, status=200, latency_ms=latency_ms,
                                  job_id=self.job_id, identity=identity, query=(query or "")[:500] or None,
                                  result_count=result_count, failure_class="ok", domain_resolved=self.domain_resolved,
-                                 client_id=self.client_id)
+                                 client_id=self.client_id, iteration=self.iteration, batch_entry=self.batch_entry,
+                                 topic=self.topic, params_fp=self.request_fingerprint, backdate_ms=latency_ms)
         self.log.append(rec)
         if self.conn is not None:
-            calllog.record(self.conn, rec)
+            with self.db_lock:
+                try:
+                    calllog.record(self.conn, rec)
+                except calllog.AuditError:
+                    self.abort.set()
+                    raise
 
-    def _attempt(self, source_id, request_type, identity, query, credits: float = 0.0) -> int | None:
+    def _attempt(self, source_id, request_type, identity, query, credits: float = 0.0,
+                 hop: int | None = None) -> int | None:
         """The pre-dispatch audit row (D-25). None when there is no database (laptop mode)."""
         if self.conn is None:
             return None
         rec = calllog.CallRecord(source_id=source_id, request_type=request_type, status=None, latency_ms=0,
                                  job_id=self.job_id, identity=identity, query=(query or "")[:500] or None,
-                                 credits=credits or None, domain_resolved=self.domain_resolved, client_id=self.client_id)
-        return calllog.attempt(self.conn, rec)
+                                 credits=credits or None, domain_resolved=self.domain_resolved, client_id=self.client_id,
+                                 iteration=self.iteration, batch_entry=self.batch_entry,
+                                 topic=self.topic, params_fp=self.request_fingerprint, hop=hop)
+        with self.db_lock:   # committed BEFORE dispatch, and never interleaved with a sibling lane's transaction (9·2b)
+            if self.abort.is_set():
+                raise calllog.AuditError("not dispatched: this request's call log already failed (I-6)")
+            try:
+                return calllog.attempt(self.conn, rec)
+            except calllog.AuditError:
+                self.abort.set()   # published under the SAME lock that admits dispatches
+                raise
 
     def _record(self, source_id, request_type, identity, query, resp: Response, latency: int, credits: float,
-                refused: bool = False, attempt_id: int | None = None) -> None:
+                refused: bool = False, attempt_id: int | None = None, wait_ms: int | None = None,
+                hop: int | None = None) -> None:
         count = None
         j = resp.json if resp.ok else None
         if isinstance(j, list):
@@ -307,15 +345,22 @@ class Client:
             job_id=self.job_id, identity=identity, query=(query or "")[:500] or None,
             ratelimit=calllog.ratelimit_headers(resp.headers), credits=credits or None,
             result_count=count, domain_resolved=self.domain_resolved, client_id=self.client_id,
+            iteration=self.iteration, batch_entry=self.batch_entry, wait_ms=wait_ms,
+            topic=self.topic, params_fp=self.request_fingerprint, hop=hop,
             failure_class="refused" if refused else calllog.classify(resp.status, network_error=resp.status is None,
                                                                      body=resp.text[:2000] if resp.status in (401, 403) else ""),
         )
         self.log.append(rec)
         if self.conn is not None:
-            if attempt_id is not None:
-                calllog.complete(self.conn, attempt_id, rec)   # fill the pre-dispatch row in (D-25)
-            else:
-                calllog.record(self.conn, rec)
+            with self.db_lock:
+                try:
+                    if attempt_id is not None:
+                        calllog.complete(self.conn, attempt_id, rec)   # fill the pre-dispatch row in (D-25)
+                    else:
+                        calllog.record(self.conn, rec)
+                except calllog.AuditError:
+                    self.abort.set()
+                    raise
 
 
 class AdapterError(Exception):

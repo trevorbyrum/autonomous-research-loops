@@ -265,11 +265,11 @@ class ActivityFile(unittest.TestCase):
             lines = [json.loads(l) for l in Path(path).read_text().splitlines()]
         crossref = [(l["coverage"], l["query_or_identity"]) for l in lines if l["source"] == "crossref"]
         self.assertEqual(crossref,
-                         [("searched_ok", "q"), ("provider_unavailable", "q"), ("searched_ok", "q"),
-                          ("searched_ok", "other")],
-                         "one line per transition, per exact request, in order")
-        self.assertEqual([l["query_or_identity"] for l in lines if l["source"] == "gateway"], ["q", "other"],
-                         "each answered request also logs the gateway ok, once per request")
+                         [("searched_ok", "q"), ("searched_ok", "q"), ("provider_unavailable", "q"),
+                          ("searched_ok", "q"), ("searched_ok", "other")],
+                         "EVERY observation appends in order — no suppression, so two processes can "
+                         "never hide a recovery from each other (9·2a); the summarizer takes last state")
+        self.assertEqual(crossref[-2], ("searched_ok", "q"), "the recovery is the key's last q-state")
         out = mcp_stdio.call_tool(StubClient(), "research_find", {"query": "q"},
                                   activity="/nonexistent-dir/activity.jsonl")
         self.assertIn("lanes", out, "an unwritable activity file never breaks the answer")
@@ -849,3 +849,87 @@ class FinalSliverPins(unittest.TestCase):
         self.assertEqual(R._fact_coverage("datastructure 'X': no dimensions parsed — refusing to "
                                           "invent an empty series template"), "provider_unavailable",
                          "the zero-dimension fact reads as an outage, never as an auth failure")
+
+
+class TracingOutsideIdentity(unittest.TestCase):
+    """9·0 (D-33): tracing correlates calls to iterations and batch entries WITHOUT ever
+    entering semantic request identity — identical requests still share cache entries
+    and coalesce onto one job."""
+
+    def test_iteration_never_changes_cache_or_dedup_identity(self):
+        from research_gateway.core.cache import Cache
+        from research_gateway.core.queue import payload_hash
+        payload = {"query": "q", "kind": "article"}
+        self.assertEqual(Cache.search_key("find", payload), Cache.search_key("find", dict(payload)),
+                         "trace data is not in the payload, so keys cannot diverge")
+        self.assertEqual(payload_hash("find", payload), payload_hash("find", dict(payload)))
+
+    def test_two_iterations_share_one_cached_search_and_the_hit_is_traced(self):
+        from research_gateway.core.cache import Cache
+        r, c1, t = make()
+        t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [CROSSREF_WORK], "total-results": 1}})
+        t.add("GET", "https://doaj.org/api/search/articles/", body={"results": [], "total": 0})
+        cache = Cache(None)
+        p = {"request_type": "find", "kind": "article", "query": "shared", "domain": "finance"}
+        c1.iteration, c1.topic = "iterA", "topic-one"
+        first = R.execute(r, p, c1, cache)
+        self.assertFalse(first.get("cache_hit"))
+        c2 = Client(broker=c1.broker, transport=t)
+        c2.iteration, c2.batch_entry, c2.topic = "iterB", 0, "topic-two"
+        second = R.execute(r, p, c2, cache)
+        self.assertTrue(second.get("cache_hit"),
+                        "a DIFFERENT iteration's identical request shares the cached answer (D-33)")
+        hit = c2.log[-1]
+        self.assertEqual((hit.source_id, hit.cache_hit, hit.iteration, hit.batch_entry, hit.topic),
+                         ("cache", True, "iterB", 0, "topic-two"),
+                         "warm-cache work is attributed to ITS caller, not dropped (9·0 amendment)")
+
+    def test_wait_and_trace_land_on_call_records(self):
+        r, c, t = make()
+        c.iteration, c.batch_entry = "20260908T010101Z", 3
+        t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [CROSSREF_WORK], "total-results": 1}})
+        t.add("GET", "https://doaj.org/api/search/articles/", body={"results": [], "total": 0})
+        R.execute(r, {"request_type": "find", "query": "traced", "kind": "article"}, c)
+        crossref = next(rec for rec in c.log if rec.source_id == "crossref")
+        self.assertEqual(crossref.iteration, "20260908T010101Z")
+        self.assertEqual(crossref.batch_entry, 3)
+        self.assertIsInstance(crossref.wait_ms, int, "broker wait is its own span, separate from provider latency")
+
+    def test_stdio_client_derives_iteration_from_the_activity_stamp(self):
+        from research_gateway.clients.http_client import from_env
+        client = from_env({"RESEARCH_GATEWAY_URL": "http://127.0.0.1:1", "RESEARCH_GATEWAY_TOKEN": "t",
+                           "RESEARCH_LOOP_RESEARCH_ACTIVITY": "/x/logs/research-activity-20260908T010101Z.jsonl"})
+        self.assertEqual(client.iteration, "20260908T010101Z")
+        self.assertIsNone(from_env({"RESEARCH_GATEWAY_URL": "http://127.0.0.1:1",
+                                    "RESEARCH_GATEWAY_TOKEN": "t"}).iteration)
+
+
+class ParallelBatch(unittest.TestCase):
+    """9·2a: batch entries overlap, results stay in entry order, failures stay per-entry."""
+
+    def test_entry_order_survives_shuffled_completion(self):
+        import time as _time
+
+        class SlowStub(StubClient):
+            def request(self, rt, payload):
+                # EVERY resolve entry sleeps: serial execution would take >= 0.36 s, so the
+                # elapsed assertion below discriminates parallel from serial (it is not a
+                # threshold a serial run could also satisfy)
+                _time.sleep(0.12 if rt == "resolve" else 0.0)
+                self.seen.append((rt, dict(payload)))
+                return {"request_type": rt, "records": [], "facts": [], "lanes": [],
+                        "echo": payload.get("identity")}
+
+        client = SlowStub()
+        t0 = __import__("time").monotonic()
+        out = mcp_stdio.call_tool(client, "research_batch", {"calls": [
+            {"tool": "research_resolve", "arguments": {"identity": "doi:10.1/slow"}},
+            {"tool": "research_resolve", "arguments": {"identity": "doi:10.1/fast"}},
+            {"tool": "research_find", "arguments": {"query": "rejected"}},
+            {"tool": "research_resolve", "arguments": {"identity": "doi:10.1/fast2"}},
+        ]})
+        elapsed = __import__("time").monotonic() - t0
+        self.assertEqual([r.get("result", {}).get("echo", r.get("error", ""))[:12] if isinstance(r.get("result", r), dict) else "" for r in out["results"]][0],
+                         "doi:10.1/slo", "the slow entry still comes back FIRST in the list")
+        self.assertIn("error", out["results"][2], "per-entry failures stay per-entry")
+        self.assertLess(elapsed, 0.30, "three 0.12 s entries overlapped (serial would be >= 0.36 s)")

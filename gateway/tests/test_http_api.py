@@ -63,6 +63,22 @@ def http(url, method="GET", body=None, token=None):
     return status, (json.loads(raw) if "json" in (ctype or "") and raw else raw), ctype
 
 
+class TracingPlumbing(unittest.TestCase):
+    def test_make_client_prefers_the_jobs_stored_tracing_and_zero_is_real(self):
+        gw = app.Gateway(app.Settings(tokens=TOKENS, workers=1, sync_timeout=1),
+                         use_db=False, transport=FakeTransport(), secrets=NoSecrets())
+        job = {"id": 1, "client_id": "loops", "iteration": "iterA", "batch_entry": 0, "topic": "hdr-topic"}
+        c = gw.make_client(None, job=job, batch_entry=9)
+        self.assertEqual((c.iteration, c.batch_entry, c.topic), ("iterA", 0, "hdr-topic"),
+                         "a claimed job's stored (creator) tracing wins, entry 0 is a real index, "
+                         "and a header-only creator's topic reaches the worker client")
+        bound = {"id": 2, "client_id": "loops", "topic_id": "policy-topic", "topic": "hdr-topic"}
+        self.assertEqual(gw.make_client(None, job=bound).topic, "policy-topic",
+                         "the POLICY binding outranks the tracing header when both exist")
+        c2 = gw.make_client(None, client_id="loops", iteration="iterB", batch_entry=2)
+        self.assertEqual((c2.iteration, c2.batch_entry), ("iterB", 2))
+
+
 class InlineGateway(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -75,7 +91,15 @@ class InlineGateway(unittest.TestCase):
     def test_health_is_open_and_green(self):
         status, body, _ = http(f"{self.url}/v1/health")
         self.assertEqual(status, 200)
-        self.assertEqual(body, {"ok": True, "version": app.VERSION, "mode": "inline"}, "no internals without a token")
+        self.assertEqual(sorted(body), ["breakers_open", "cache_memory", "cache_records_estimate",
+                                        "cache_searches_memory", "lane_concurrency", "lane_total",
+                                        "mode", "ok", "version", "workers_alive"],
+                         "aggregate COUNTS only without a token — never source names, deadlines, "
+                         "or per-source detail (those need the bearer token on /v1/status)")
+        self.assertEqual((body["ok"], body["version"], body["mode"], body["workers_alive"],
+                          body["breakers_open"], body["cache_records_estimate"]),
+                         (True, app.VERSION, "inline", 0, 0, None))
+        self.assertIsInstance(body["cache_memory"], int)   # LIVE expiry-aware aggregate, not a constant
         status, body, _ = http(f"{self.url}/v1/status", token=TOKENS["loops"])
         self.assertEqual(body["health"]["workers"], {"alive": 0, "expected": 0})
 

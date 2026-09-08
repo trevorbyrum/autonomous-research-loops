@@ -13,14 +13,16 @@ import hmac
 import json
 import os
 import threading
+import sys
 import time
 import tomllib
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import adapters
 from .adapters.base import Client
-from .core import alerts, db, queue
+from .core import alerts, calllog, db, queue
 from .core.broker import Broker, load_policies, persist_breaker, policies_from_rows
 from .core.cache import Cache
 from .core.router import Router, execute, make_handlers, redact_for_storage
@@ -179,9 +181,18 @@ class Gateway:
                     if s.get("enabled") and (s.get("rate") or {}).get("verified")]
             policies, persist = policies_from_rows(rows), None
 
-        def on_breaker(source_id, state, retry_after_wall, reason):
-            if persist is not None:
-                with self._lock:
+        applied_breaker_seq: dict[str, int] = {}
+
+        def on_breaker(source_id, state, retry_after_wall, reason, seq=0):
+            # callbacks deliver OUTSIDE the broker lock and can reorder under concurrency:
+            # only monotonically newer events reach persistence, so a delayed older deadline
+            # can never regress the live broker's state (9·2b, plan v3)
+            with self._lock:
+                if seq and seq <= applied_breaker_seq.get(source_id, 0):
+                    return
+                if seq:
+                    applied_breaker_seq[source_id] = seq
+                if persist is not None:
                     persist(source_id, state, retry_after_wall, reason)
             self.alerter.breaker(source_id, state, retry_after_wall, reason)
 
@@ -198,13 +209,36 @@ class Gateway:
         self.workers: list[queue.Worker] = []
         self.watcher: alerts.Watcher | None = None
         self.started_at = time.time()
+        # 9·2b lifecycle: inline requests are USERS of the shared connections too — they are
+        # counted in, refused during drain, and waited for before anything shared is closed
+        self._inline_lock = threading.Lock()
+        self._inline_cv = threading.Condition(self._inline_lock)
+        self._inline_active = 0
+        self._draining = False
+
+    def _enter_request(self) -> None:
+        with self._inline_lock:
+            if self._draining:
+                raise RuntimeError("gateway is stopping; no new requests")
+            self._inline_active += 1
+
+    def _exit_request(self) -> None:
+        with self._inline_lock:
+            self._inline_active -= 1
+            self._inline_cv.notify_all()
 
     # ------------------------------------------------------------ clients
-    def make_client(self, conn, job: dict | None = None, client_id: str | None = None) -> Client:
+    def make_client(self, conn, job: dict | None = None, client_id: str | None = None,
+                    iteration: str | None = None, batch_entry: int | None = None,
+                    topic: str | None = None) -> Client:
         kw = {"transport": self.transport} if self.transport is not None else {}
         return Client(broker=self.broker, secrets=self.secrets.get, contact_email=self.settings.contact_email,
                       user_agent=f"research-gateway/{VERSION} (mailto:{self.settings.contact_email})",
-                      conn=conn, job_id=(job or {}).get("id"), client_id=(job or {}).get("client_id") or client_id, **kw)
+                      conn=conn, job_id=(job or {}).get("id"), client_id=(job or {}).get("client_id") or client_id,
+                      iteration=(job or {}).get("iteration") or iteration,
+                      batch_entry=(job or {}).get("batch_entry") if (job or {}).get("batch_entry") is not None else batch_entry,
+                      topic=(job or {}).get("topic_id") or (job or {}).get("topic") or topic,
+                      **kw)
 
     # ------------------------------------------------------------ lifecycle
     def start(self) -> None:
@@ -220,11 +254,30 @@ class Gateway:
         self.watcher.start()
 
     def stop(self) -> None:
+        """Drain before closing (9-2b): workers and the watcher are JOINED - a lane can sit in
+        a legitimate broker wait or provider request far past any polite timeout, and its
+        eventual broker callback or cache write must never land on a closed connection. If a
+        thread will not finish inside RESEARCH_GATEWAY_STOP_TIMEOUT (default 300 s), shared
+        connections are LEFT OPEN (the process is exiting anyway): a leak on the way out is
+        safe; a use-after-close is not."""
         self.stop_event.set()
-        for w in self.workers:
-            w.join(timeout=5)
-        if self.watcher is not None:
-            self.watcher.join(timeout=5)
+        with self._inline_lock:
+            self._draining = True   # no NEW inline users from here; existing ones are waited for below
+        deadline = time.monotonic() + max(1.0, float(os.environ.get("RESEARCH_GATEWAY_STOP_TIMEOUT", "300") or 300))
+        stragglers = []
+        for w in [*self.workers, *([self.watcher] if self.watcher is not None else [])]:
+            w.join(timeout=max(0.1, deadline - time.monotonic()))
+            if w.is_alive():
+                stragglers.append(w.name)
+        with self._inline_cv:
+            while self._inline_active and time.monotonic() < deadline:
+                self._inline_cv.wait(timeout=max(0.1, deadline - time.monotonic()))
+            if self._inline_active:
+                stragglers.append(f"{self._inline_active} inline request(s)")
+        if stragglers:
+            print(f"gateway stop: {len(stragglers)} thread(s) still running after the drain timeout "
+                  f"({', '.join(stragglers)}); shared connections left open for process exit", file=sys.stderr)
+            return
         if self.conn is not None:
             self.conn.close()
         if self.cache.conn is not None:
@@ -240,20 +293,45 @@ class Gateway:
                 or bool((payload.get("params") or {}).get("download"))
                 or payload.get("what") == "full_text")
 
-    def run_inline(self, payload: dict, client_id: str) -> dict:
+    def run_inline(self, payload: dict, client_id: str, trace: dict | None = None) -> dict:
         """Inline requests carry the client id into every call-log row; with a database they are as
         durable as queued ones (own connection, job_id NULL). Without a database the log is in-process
         only — that mode is for a laptop, not a deployment (docs/OPERATIONS.md)."""
-        if self.conn is None:
-            return execute(self.router, payload, self.make_client(None, client_id=client_id), self.cache)
-        with db.connect() as conn:
-            return execute(self.router, payload, self.make_client(conn, client_id=client_id), self.cache)
+        trace = trace or {}
+        self._enter_request()
+        try:
+            return self._run_inline_locked(payload, client_id, trace)
+        finally:
+            self._exit_request()
 
-    def submit(self, payload: dict, client_id: str, *, priority: str = "interactive") -> tuple[int, bool]:
+    def _run_inline_locked(self, payload: dict, client_id: str, trace: dict) -> dict:
+        if self.conn is None:
+            return execute(self.router, payload, self.make_client(None, client_id=client_id, **trace), self.cache)
+        with db.connect() as conn:
+            return execute(self.router, payload, self.make_client(conn, client_id=client_id, **trace), self.cache)
+
+    def submit(self, payload: dict, client_id: str, *, priority: str = "interactive",
+               iteration: str | None = None, batch_entry: int | None = None,
+               topic: str | None = None) -> tuple[int, bool]:
         with self._lock:
-            return queue.enqueue(self.conn, payload["request_type"], {k: v for k, v in payload.items() if k != "request_type"},
-                                 client_id=client_id, priority=PRIORITIES.get(priority, queue.PRIORITY_INTERACTIVE),
-                                 topic_id=payload.get("topic_id"), commercial=bool(payload.get("commercial")))
+            job_id, created = queue.enqueue(self.conn, payload["request_type"], {k: v for k, v in payload.items() if k != "request_type"},
+                                            client_id=client_id, priority=PRIORITIES.get(priority, queue.PRIORITY_INTERACTIVE),
+                                            topic_id=payload.get("topic_id"), commercial=bool(payload.get("commercial")),
+                                            iteration=iteration, batch_entry=batch_entry, topic=topic)
+            if not created:
+                # the coalesced WAITER's request observation (9·0 amendment): the shared dispatch
+                # stays the creator's; each later caller still leaves a durable row under its own
+                # tracing. Telemetry only — its failure never blocks the request itself.
+                try:
+                    calllog.record(self.conn, calllog.CallRecord(
+                        source_id="coalesce", request_type=payload["request_type"], status=200, latency_ms=0,
+                        job_id=job_id, identity=payload.get("identity") or payload.get("target"),
+                        query=(payload.get("query") or "")[:500] or None, failure_class="ok",
+                        client_id=client_id, iteration=iteration, batch_entry=batch_entry,
+                        topic=payload.get("topic_id") or topic))
+                except Exception:
+                    pass
+            return job_id, created
 
     def job(self, job_id: int, client_id: str | None = None) -> dict | None:
         """A job, or None; with client_id, only that client's own job (clients never see each other's)."""
@@ -296,10 +374,43 @@ class Gateway:
                     out[key] = list(value)
         return out
 
-    def handle(self, payload: dict, client_id: str, *, timeout: float | None = None, priority: str = "interactive") -> dict:
+    def handle(self, payload: dict, client_id: str, *, timeout: float | None = None, priority: str = "interactive",
+               trace: dict | None = None) -> dict:
         """One request end to end. Inline requests (no queue, or a fetch/data/full-text payload)
         return the FULL result — redaction is a storage rule, not a delivery rule (D-24); queued
         requests store and return canonical metadata (a timeout returns the job id to poll)."""
+        # the request — its telemetry tail INCLUDED — is a counted lifecycle user of the
+        # shared connections: stop() cannot close them between the work and the span write
+        self._enter_request()
+        t0 = time.monotonic()
+        started_at = datetime.now(timezone.utc)
+        try:
+            out = self._handle(payload, client_id, timeout=timeout, priority=priority, trace=trace)
+        finally:
+            # the CALLER's request span (9·0 amendment): one `request` row per handled request —
+            # coalesced waiters and cache-served callers included. `at` is the TRUE recorded
+            # start (immune to lock wait before the write); the duration is measured AT WRITE
+            # TIME, so time the caller spent waiting on the control lock is part of the span.
+            try:
+                if self.conn is not None:
+                    with self._lock:
+                        calllog.record(self.conn, calllog.CallRecord(
+                            source_id="request", request_type=payload.get("request_type") or "?",
+                            status=200, latency_ms=int((time.monotonic() - t0) * 1000),
+                            at_utc=started_at,
+                            identity=payload.get("identity") or payload.get("target"),
+                            query=(payload.get("query") or "")[:500] or None, failure_class="ok",
+                            client_id=client_id, iteration=(trace or {}).get("iteration"),
+                            batch_entry=(trace or {}).get("batch_entry"),
+                            topic=payload.get("topic_id") or (trace or {}).get("topic")))
+            except Exception:
+                pass
+            finally:
+                self._exit_request()
+        return out
+
+    def _handle(self, payload: dict, client_id: str, *, timeout: float | None = None, priority: str = "interactive",
+                trace: dict | None = None) -> dict:
         if payload.get("request_type") == "data":
             # validate against the adapter's DECLARED contract before any budget or dispatch:
             # a blind call fails instantly WITH the contract, so the first mistake teaches (D-31)
@@ -312,8 +423,11 @@ class Gateway:
                             "error": f"{payload.get('source')}: {problem}",
                             "contract": data_contract(mod)}
         if self.conn is None or self.is_inline_only(payload):
-            return self.run_inline(payload, client_id)
-        job_id, created = self.submit(payload, client_id, priority=priority)
+            return self.run_inline(payload, client_id, trace=trace)
+        job_id, created = self.submit(payload, client_id, priority=priority,
+                                      iteration=(trace or {}).get("iteration"),
+                                      batch_entry=(trace or {}).get("batch_entry"),
+                                      topic=(trace or {}).get("topic"))
         j = self.wait(job_id, self.settings.sync_timeout if timeout is None else timeout)
         if j is None or j["status"] not in ("done", "failed"):
             return {"job_id": job_id, "status": "queued" if j is None else j["status"], "created": created}
@@ -348,7 +462,38 @@ class Gateway:
         alive = sum(1 for w in self.workers if w.is_alive())
         ok = (db_ok in (None, True)) and (self.conn is None or alive == len(self.workers))
         if not detailed:
-            return {"ok": ok, "version": VERSION, "mode": "queued" if self.conn is not None else "inline"}
+            # non-sensitive in-memory aggregates so a station can stamp PER-ITERATION provider
+            # health into its measurement record without a bearer token (9·0 amendment): counts
+            # only — never source names, deadlines, or anything a token-holder gets from /v1/status
+            try:
+                breakers_open = sum(1 for st in self.broker.status().values() if st.get("breaker_open"))
+            except Exception:
+                breakers_open = None
+            cache_records = None
+            if self.cache.conn is not None:
+                with self.cache._lock:   # the CACHE's own lock guards its connection AND transaction
+                    try:  # planner ESTIMATE — instant, never a live count over a large table
+                        with self.cache.conn.cursor() as cur:
+                            cur.execute("SELECT reltuples::bigint FROM pg_class "
+                                        "WHERE oid = 'gateway.records'::regclass")
+                            row = cur.fetchone()
+                        self.cache.conn.commit()
+                        cache_records = int(row[0]) if row else None
+                    except Exception:
+                        try:   # telemetry must NEVER leave the shared transaction aborted for
+                            self.cache.conn.rollback()   # the next real cache lookup
+                        except Exception:
+                            pass
+                        cache_records = None
+            mem = self.cache.stats()   # the cache's OWN synchronized, expiry-aware aggregates
+            return {"ok": ok, "version": VERSION, "mode": "queued" if self.conn is not None else "inline",
+                    "workers_alive": alive, "breakers_open": breakers_open,
+                    "cache_memory": mem.get("records_in_memory", 0) + mem.get("searches_in_memory", 0),
+                    "cache_searches_memory": mem.get("searches_in_memory", 0),
+                    "cache_records_estimate": cache_records,
+                    # EFFECTIVE values, clamped exactly as execution clamps them (router max(1, ...))
+                    "lane_concurrency": max(1, int(os.environ.get("RESEARCH_GATEWAY_LANE_CONCURRENCY", "4") or 4)),
+                    "lane_total": max(1, int(os.environ.get("RESEARCH_GATEWAY_LANE_TOTAL", "16") or 16))}
         return {"ok": ok, "version": VERSION, "mode": "queued" if self.conn is not None else "inline", "db": db_ok,
                 "workers": {"alive": alive, "expected": len(self.workers)},
                 "sources": sum(1 for s in self.sources if s.get("enabled")), "uptime_s": int(time.time() - self.started_at)}
