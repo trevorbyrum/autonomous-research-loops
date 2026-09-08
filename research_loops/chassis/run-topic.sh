@@ -82,7 +82,7 @@ done
 # docs/governance.md#the-operator-owns-scope.
 AGENT_NOTE=""
 if [[ -n "${RESEARCH_LOOP_AGENT_SECONDARY:-}" ]]; then
-  AGENT_NOTE=" DELEGATION: for independent, well-scoped legwork (discovery or extraction only, never final judgment — see CONTRACT-CORE.md step 4), delegate to: ${RESEARCH_LOOP_AGENT_SECONDARY}."
+  AGENT_NOTE=" DELEGATION: for independent, well-scoped legwork (discovery or extraction only, never final judgment — see CONTRACT-CORE.md step 4), delegate to: ${RESEARCH_LOOP_AGENT_SECONDARY}. The delegate model pool is OPERATOR-FIXED: that command's default (gpt-5.6-luna) for legwork and the same wrapper with --model claude-haiku-4-5 for independent citation verification. Producer/verifier independence means a DISTINCT INVOCATION, never a different model — a fresh call of the same delegate qualifies. Never invoke codex/claude/ollama/paseo/hermes with any other model (sol, terra, opus, astra, ...): off-list models are refused by hook and spend the operator's usage windows for zero extra rigor."
 fi
 
 GAP_POLICY="${RESEARCH_LOOP_GAP_POLICY:-review}"

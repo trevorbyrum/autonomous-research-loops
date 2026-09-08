@@ -124,7 +124,12 @@ source, retry, inactivity, or revision limit defines semantic completion.
   `supported`/`contradicted` disposition once it also carries `verified: true`, set by
   an agent that actually visited the cited location and confirmed it — **never the same
   agent that wrote the citation** (map onto `agent_secondary`'s role where a topic
-  already delegates that way). An `internal` citation inherits its target's verification
+  already delegates that way). A "different agent" is a distinct producing/verifying
+  INVOCATION — a fresh call of the same delegate model qualifies. The delegate pool
+  itself is operator-fixed (the named secondary's default model for legwork, plus
+  `--model claude-haiku-4-5` through the same wrapper for verification); invoking any
+  other model is a policy violation that spends the operator's usage windows, not
+  extra rigor. An `internal` citation inherits its target's verification
   status rather than needing its own. If the cited location turns out not to support the
   claim, set `flagged: hallucination` instead of `verified: true`; a flagged block is
   refused unconditionally, even alongside `verified: true`, until an operator clears it.
