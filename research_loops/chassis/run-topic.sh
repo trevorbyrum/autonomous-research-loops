@@ -121,12 +121,31 @@ prompt_file="$LOG_DIR/.iteration-$stamp-prompt.txt"
 touch "$TOPIC_DIR/PROGRESS.md"
 before=$("$CHASSIS/progress-signature.sh" "$TOPIC_DIR")
 sources_before=$(python3 "$CHASSIS/semantic-state.py" source-count "$TOPIC_DIR" 2>/dev/null || echo 0)
-# 9·0 outcome metrics, measured AT SOURCE (the report never re-derives them): ledger
-# entries carrying verified:true, and the pending-evidence backlog, before vs after
-# grep -c PRINTS the count even when it exits 1 (zero matches) — `|| echo 0` would
-# capture "0\n0"; `|| true` keeps the printed count and the default covers a missing file
-verified_before=$(grep -c '^- verified: true' "$TOPIC_DIR/SOURCE-LEDGER.md" 2>/dev/null || true)
-verified_before=${verified_before:-0}
+# 9·0 outcome metrics, measured AT SOURCE (the report never re-derives them), with the
+# CITATION ACCEPTANCE RULES applied: a block is accepted only when it carries
+# `verified: true` AND no `flagged:` mark (a flagged block is refused unconditionally —
+# docs/citations.md), so a hallucination-flagged addition never counts as verified evidence.
+# Flagged blocks are counted separately: their delta is the rejection signal.
+ledger_counts() {
+  python3 - "$TOPIC_DIR/SOURCE-LEDGER.md" <<'PYEOF'
+import re, sys
+try:
+    text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+except OSError:
+    print("0 0"); raise SystemExit
+accepted = flagged = 0
+for block in re.split(r"^## \[SRC-", text, flags=re.M)[1:]:
+    has_verified = re.search(r"^- verified: true\b", block, re.M) is not None
+    has_flag = re.search(r"^- flagged:", block, re.M) is not None
+    if has_flag:
+        flagged += 1
+    elif has_verified:
+        accepted += 1
+print(accepted, flagged)
+PYEOF
+}
+read -r verified_before flagged_before <<<"$(ledger_counts)"
+verified_before=${verified_before:-0}; flagged_before=${flagged_before:-0}
 
 # Literal substitution (render-prompt.py): sed's `&`/delimiter
 # metacharacters corrupted prompts when values carried them (e.g. an
@@ -178,8 +197,19 @@ rm -f "$prompt_file"
 after=$("$CHASSIS/progress-signature.sh" "$TOPIC_DIR")
 sources_after=$(python3 "$CHASSIS/semantic-state.py" source-count "$TOPIC_DIR" 2>/dev/null || echo 0)
 sources_cited=$((sources_after - sources_before))
-verified_after=$(grep -c '^- verified: true' "$TOPIC_DIR/SOURCE-LEDGER.md" 2>/dev/null || true)
-verified_after=${verified_after:-0}
+read -r verified_after flagged_after <<<"$(ledger_counts)"
+verified_after=${verified_after:-0}; flagged_after=${flagged_after:-0}
+# per-iteration provider-health context (9·0): the gateway's tokenless health aggregate,
+# stamped at iteration end — counts only, and 'unavailable' is itself an observation
+gateway_health=$(curl -s --max-time 5 "${RESEARCH_GATEWAY_URL:-http://127.0.0.1:8765}/v1/health" 2>/dev/null || true)
+pending_refs=$(python3 -c "
+import json
+try:
+    s = json.load(open('$TOPIC_DIR/SEMANTIC-STATE.json'))
+    refs = s.get('pending_evidence_refs') or []
+    print(json.dumps(refs if isinstance(refs, list) else []))
+except Exception:
+    print('null')" 2>/dev/null || echo null)
 pending_count=$(python3 -c "
 import json, sys
 try:
@@ -215,7 +245,10 @@ write_result() {
   RESULT_BEFORE="$before" RESULT_AFTER="$after" \
   RESULT_SOURCES_CITED="$sources_cited" RESULT_LOG="$log" \
   RESULT_VERIFIED_ADDED="$((verified_after - verified_before))" \
+  RESULT_FLAGGED_ADDED="$((flagged_after - flagged_before))" \
   RESULT_PENDING_COUNT="$pending_count" \
+  RESULT_PENDING_REFS="$pending_refs" \
+  RESULT_GATEWAY_HEALTH="$gateway_health" \
   RESULT_RUNNER="$RUNNER_NAME" RESULT_TOPIC_DIR="$TOPIC_DIR" \
   RESULT_DEGRADED_FILE="${degraded_file:-}" \
   RESULT_SEMANTIC_VALID="$semantic_valid" \
@@ -249,8 +282,13 @@ result = {
     "signature_changed": os.environ["RESULT_BEFORE"] != os.environ["RESULT_AFTER"],
     "sources_cited": int(os.environ["RESULT_SOURCES_CITED"]),
     "verified_added": int(os.environ.get("RESULT_VERIFIED_ADDED") or 0),
+    "flagged_added": int(os.environ.get("RESULT_FLAGGED_ADDED") or 0),
     "pending_count": (int(os.environ["RESULT_PENDING_COUNT"])
                       if (os.environ.get("RESULT_PENDING_COUNT") or "").isdigit() else None),
+    "pending_refs": (json.loads(os.environ["RESULT_PENDING_REFS"])
+                     if (os.environ.get("RESULT_PENDING_REFS") or "").startswith("[") else None),
+    "gateway_health": (json.loads(os.environ["RESULT_GATEWAY_HEALTH"])
+                       if (os.environ.get("RESULT_GATEWAY_HEALTH") or "").startswith("{") else None),
     "stop_written": stop_written,
     "stop_first_line": stop_first,
     "semantic_valid": os.environ.get("RESULT_SEMANTIC_VALID") == "true",
