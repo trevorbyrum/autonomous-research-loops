@@ -148,10 +148,12 @@ accepted = flagged = 0
 # no own verified evidence, so they are counted in neither number by design.
 for bid, block in ss.parse_source_ledger(text).items():
     fields = block.get("fields", {})
+    if block.get("type") == "internal":
+        continue   # internal citations inherit their target's state: in NEITHER counter
     if "flagged" in fields:
         flagged += 1
         continue
-    if fields.get("verified") != "true" or block.get("type") == "internal":
+    if fields.get("verified") != "true":
         continue
     errs = ss.citation_errors_for_block(bid, block, topic_dir=topic_dir,
                                         topics_root=topic_dir.parent, allow_internal=True)

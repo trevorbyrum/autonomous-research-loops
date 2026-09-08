@@ -90,27 +90,46 @@ def _phases(topic_dir: Path, stamp: str) -> tuple[dict[str, float], list[str]]:
     return out, unmeasured
 
 
-def _delegate_tokens(topic_dir: Path, start: datetime | None, end: datetime | None):
-    """(known_sum, unobserved_count, covered) inside [start, end). Coverage is EVIDENCE,
-    not file existence: the runner writes an iteration marker and the wrapper writes a
-    launch line per allowed invocation, so a marked window with zero launches is a true
-    zero, a launch without a usage line is an unobserved outcome, and a window with no
-    markers at all (pre-instrument) stays unknown."""
+def _delegate_tokens(topic_dir: Path, stamp: str, start: datetime | None, end: datetime | None):
+    """(known_sum, unobserved_count, coverage) for one iteration's delegation.
+
+    Attribution is by FILE ORDER between iteration markers (the runner appends a marker
+    per iteration; the file is append-only under flock), so same-second boundary events
+    are never lost to timestamp truncation. Coverage is EVIDENCE: 'complete' only inside
+    a marked segment (marked + zero launches = true zero; a launch without a usage line
+    is an unobserved outcome). Without a marker, timestamps attribute events but a
+    success-only history proves a SUBTOTAL, never coverage."""
     path = topic_dir / "logs" / "delegate-usage.jsonl"
     if not path.exists() or start is None:
-        return UNKNOWN, 0, False
-    total, usage_events, unobserved, launches, markers = 0, 0, 0, 0, 0
+        return UNKNOWN, 0, "none"
+    events = []
     for line in path.read_text(errors="replace").splitlines():
         try:
-            e = json.loads(line)
+            events.append(json.loads(line))
         except ValueError:
             continue
-        ts = _iso(str(e.get("ts") or ""))
-        if ts is None or ts < start or (end is not None and ts >= end):
-            continue
-        if e.get("event") == "iteration":
-            markers += 1
-            continue
+    marker_idx = [i for i, e in enumerate(events) if e.get("event") == "iteration"]
+    seg = None
+    for pos, i in enumerate(marker_idx):
+        if events[i].get("stamp") == stamp:
+            j = marker_idx[pos + 1] if pos + 1 < len(marker_idx) else len(events)
+            seg = events[i + 1:j]
+            break
+    if seg is not None:
+        window, coverage = seg, "complete"
+    else:
+        window = []
+        for e in events:
+            if e.get("event") == "iteration":
+                continue
+            t = _iso(str(e.get("ts") or ""))
+            if t is not None and t >= start and (end is None or t <= end):
+                window.append(e)
+        if not window:
+            return UNKNOWN, 0, "none"
+        coverage = "partial"   # timestamp-attributed history: subtotal evidence only
+    total, usage_events, unobserved, launches = 0, 0, 0, 0
+    for e in window:
         if e.get("event") == "launch":
             launches += 1
             continue
@@ -121,10 +140,7 @@ def _delegate_tokens(topic_dir: Path, start: datetime | None, end: datetime | No
         else:
             unobserved += 1
     unobserved += max(0, launches - usage_events)
-    covered = markers > 0 or launches > 0 or usage_events > 0
-    if not covered:
-        return UNKNOWN, 0, False
-    return total, unobserved, True
+    return total, unobserved, coverage
 
 
 def _primary_usage(topic_dir: Path, stamp: str):
@@ -181,26 +197,31 @@ def _calls(conn, stamp: str, topic_id: str) -> dict:
         # provider (its credit figure was never charged); CREDITS were charged at acquire,
         # so crashed still-'attempt' rows keep theirs while refusals contribute none.
         tele = "('cache','coalesce','request')"
-        dispatch = f"source_id NOT IN {tele} AND failure_class NOT IN ('attempt','refused')"
+        # a BROKER refusal never dispatched and never charged: failure_class 'refused' AND
+        # status IS NULL. An HTTP 400/405/422 also classifies 'refused' but WAS a charged
+        # provider dispatch (it has a status) - it stays in calls/credits/repeats.
+        broker_refusal = "(failure_class = 'refused' AND status IS NULL)"
+        dispatch = f"source_id NOT IN {tele} AND failure_class <> 'attempt' AND NOT {broker_refusal}"
         base = ("FROM gateway.calls WHERE iteration = %s "
                 "AND (topic IS NULL OR topic = %s)")
         cur.execute(f"SELECT count(*) FILTER (WHERE {dispatch}), "
                     f"count(*) FILTER (WHERE cache_hit), "
                     f"count(*) FILTER (WHERE source_id = 'coalesce'), "
-                    f"count(*) FILTER (WHERE source_id NOT IN {tele} AND failure_class = 'refused'), "
+                    f"count(*) FILTER (WHERE source_id NOT IN {tele} AND {broker_refusal}), "
                     f"coalesce(sum(latency_ms) FILTER (WHERE {dispatch}), 0), "
                     f"coalesce(sum(wait_ms) FILTER (WHERE failure_class <> 'attempt'), 0), "
                     f"count(*) FILTER (WHERE {dispatch} AND wait_ms IS NULL), "
                     f"count(batch_entry) FILTER (WHERE failure_class <> 'attempt'), "
                     f"count(*) FILTER (WHERE topic IS NULL), "
                     f"coalesce(sum(credits) FILTER (WHERE source_id NOT IN {tele} "
-                    f"                              AND failure_class <> 'refused'), 0), "
+                    f"                              AND NOT {broker_refusal}), 0), "
+                    f"count(*) FILTER (WHERE source_id NOT IN {tele} AND failure_class = 'attempt'), "
                     f"min(at) FILTER (WHERE {dispatch}), "
                     f"max(at + make_interval(secs => coalesce(latency_ms,0)/1000.0)) "
                     f"  FILTER (WHERE {dispatch}) {base}",
                     (stamp, topic_id))
         (n, cache_hits, coalesced, refused, provider_ms, wait_ms, wait_unmeasured, batched, untopic,
-         credits, first, last) = cur.fetchone()
+         credits, attempts_open, first, last) = cur.fetchone()
         cur.execute(
             "SELECT count(*), coalesce(sum(reps) - count(*), 0) FROM ("
             "  SELECT count(*) AS reps FROM gateway.calls "
@@ -224,7 +245,7 @@ def _calls(conn, stamp: str, topic_id: str) -> dict:
         spans = [(at, float(ms or 0)) for at, ms in cur.fetchall()]
     conn.commit()
     return {"calls": int(n), "cache_hits": int(cache_hits), "coalesced": int(coalesced),
-            "refused": int(refused),
+            "refused": int(refused), "attempts_open": int(attempts_open),
             "provider_s": round(int(provider_ms) / 1000.0, 1),
             "wait_s": round(int(wait_ms) / 1000.0, 1), "wait_unmeasured": int(wait_unmeasured),
             "queue_wait_s": round(float(queue_wait_s), 1), "jobs": int(jobs_n),
@@ -275,9 +296,11 @@ def _report_time_context(root: Path, topic_id: str) -> list[str]:
     except Exception:
         lines.append("- worker configuration: unknown (state/queue.json unreadable)")
     lines += ["", "Recorded per iteration (from when each instrument began): model identity and token "
-              "cost (runner usage capture, `model`/tokens columns), gateway health incl. open-breaker "
-              "count (`gw health` column), verified/flagged ledger deltas, pending refs. Cache state "
-              "per iteration remains unrecorded — unknown, not assumed.", ""]
+              "cost (runner usage capture), worker + delegate command, gateway health incl. open "
+              "breakers, in-memory cache aggregates and lane-concurrency knobs (`gw health` column), "
+              "verified/flagged ledger deltas, pending refs. Iterations predating an instrument show "
+              "unknown for it. Batch concurrency is a station-process setting not yet stamped per "
+              "iteration; worker-profile history beyond the recorded fields remains unknown.", ""]
     return lines
 
 
@@ -324,10 +347,11 @@ def report(topic_dir: Path, conn) -> str:
                      + "".join(f" {u}:unmeasured" for u in unmeasured)).strip() or UNKNOWN
         window_s = f"{(end - start).total_seconds():.0f}{'~' if approx else ''}" if start and end else UNKNOWN
         tokens, cost, cost_partial, model = _primary_usage(topic_dir, stamp)
-        delegate, delegate_unobs, _delegate_covered = _delegate_tokens(topic_dir, start, end)
+        delegate, delegate_unobs, delegate_cov = _delegate_tokens(topic_dir, stamp, start, end)
         spans_present = bool(calls) and calls.get("elapsed_union_s") != UNKNOWN
         no_rows = (calls and calls["calls"] == 0 and calls["cache_hits"] == 0
-                   and calls["coalesced"] == 0 and calls.get("refused", 0) == 0 and not spans_present)
+                   and calls["coalesced"] == 0 and calls.get("refused", 0) == 0
+                   and calls.get("attempts_open", 0) == 0 and not spans_present)
         qual = res.get("signature_changed")
         if qual is not None:
             totals["qual_obs"] += 1
@@ -349,7 +373,7 @@ def report(topic_dir: Path, conn) -> str:
         if isinstance(delegate, int):
             totals["delegate"] += delegate
             totals["delegate_obs"] += 1
-            totals["delegate_partial"] += bool(delegate_unobs)
+            totals["delegate_partial"] += bool(delegate_unobs) or delegate_cov != "complete"
         pending = res.get("pending_count")
         if pending is not None and isinstance(res.get("pending_refs"), list) and res["pending_refs"]:
             observed_at = _result_mtime(topic_dir, stamp)
@@ -359,7 +383,8 @@ def report(topic_dir: Path, conn) -> str:
                 pending = f"{pending} (oldest ≥{(observed_at - oldest).total_seconds() / 3600.0:.1f}h)"
         gh = res.get("gateway_health")
         gh_txt = (f"ok={gh.get('ok')} wrk={gh.get('workers_alive')} brk={gh.get('breakers_open')} "
-                  f"cmem={gh.get('cache_memory')} crec={gh.get('cache_records_estimate')}"
+                  f"cmem={gh.get('cache_memory')} crec={gh.get('cache_records_estimate')} "
+                  f"lanes={gh.get('lane_concurrency')}/{gh.get('lane_total')}"
                   if isinstance(gh, dict) else UNKNOWN)
         wait_txt = UNKNOWN if not calls else (
             f"{calls['wait_s']}" + (f" ({calls['wait_unmeasured']} unmeasured)" if calls["wait_unmeasured"] else ""))
@@ -386,10 +411,12 @@ def report(topic_dir: Path, conn) -> str:
                  and "flagged_added" in res else UNKNOWN),
             rej=(res.get("flagged_added") if "flagged_added" in res else UNKNOWN),
             pend=pending if pending is not None else UNKNOWN,
-            worker=res.get("worker") or UNKNOWN,
+            worker=(f"{res.get('worker')} ({(res.get('agent_secondary') or '?').rsplit('/', 1)[-1][:40]})"
+                    if res.get("worker") else UNKNOWN),
             model=model,
             ptok=tokens, cost=(f"≥{cost} (partial)" if cost_partial and isinstance(cost, float) else cost),
-            dtok=_fmt_bound(delegate, delegate_unobs),
+            dtok=(_fmt_bound(delegate, delegate_unobs) if delegate_cov == "complete"
+                  else (UNKNOWN if delegate == UNKNOWN else f"≥{delegate} (coverage unknown)")),
             gh=gh_txt, phases=phase_txt))
     lines += ["", "## Rates and coverage", ""]
     if span_start and span_end and span_end > span_start and n_iter:
