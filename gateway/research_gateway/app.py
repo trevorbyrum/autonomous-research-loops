@@ -471,20 +471,28 @@ class Gateway:
                 breakers_open = None
             cache_records = None
             if self.cache.conn is not None:
-                try:  # planner ESTIMATE — instant, never a live count over a large table;
-                    # the CACHE's own lock guards its connection (the control lock guards self.conn)
-                    with self.cache._lock, self.cache.conn.cursor() as cur:
-                        cur.execute("SELECT reltuples::bigint FROM pg_class "
-                                    "WHERE oid = 'gateway.records'::regclass")
-                        row = cur.fetchone()
+                with self.cache._lock:   # the CACHE's own lock guards its connection AND transaction
+                    try:  # planner ESTIMATE — instant, never a live count over a large table
+                        with self.cache.conn.cursor() as cur:
+                            cur.execute("SELECT reltuples::bigint FROM pg_class "
+                                        "WHERE oid = 'gateway.records'::regclass")
+                            row = cur.fetchone()
                         self.cache.conn.commit()
-                    cache_records = int(row[0]) if row else None
-                except Exception:
-                    cache_records = None
+                        cache_records = int(row[0]) if row else None
+                    except Exception:
+                        try:   # telemetry must NEVER leave the shared transaction aborted for
+                            self.cache.conn.rollback()   # the next real cache lookup
+                        except Exception:
+                            pass
+                        cache_records = None
+            mem = self.cache.stats()   # the cache's OWN synchronized, expiry-aware aggregates
             return {"ok": ok, "version": VERSION, "mode": "queued" if self.conn is not None else "inline",
                     "workers_alive": alive, "breakers_open": breakers_open,
-                    "cache_memory": len(getattr(self.cache, "memory", {}) or {}),
-                    "cache_records_estimate": cache_records}
+                    "cache_memory": mem.get("records_in_memory", 0) + mem.get("searches_in_memory", 0),
+                    "cache_searches_memory": mem.get("searches_in_memory", 0),
+                    "cache_records_estimate": cache_records,
+                    "lane_concurrency": int(os.environ.get("RESEARCH_GATEWAY_LANE_CONCURRENCY", "4") or 4),
+                    "lane_total": int(os.environ.get("RESEARCH_GATEWAY_LANE_TOTAL", "16") or 16)}
         return {"ok": ok, "version": VERSION, "mode": "queued" if self.conn is not None else "inline", "db": db_ok,
                 "workers": {"alive": alive, "expected": len(self.workers)},
                 "sources": sum(1 for s in self.sources if s.get("enabled")), "uptime_s": int(time.time() - self.started_at)}

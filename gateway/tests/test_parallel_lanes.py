@@ -451,6 +451,8 @@ class _ScriptedConn:
         self.insert_params: dict[int, tuple] = {}     # id -> INSERT parameter tuple
         self.update_target_ids: list = []             # WHERE id = %s of every completion
         self.update_params: dict[int, tuple] = {}     # target id -> UPDATE parameter tuple
+        self.committed_ids: set = set()               # rows whose INSERT transaction committed
+        self._pending_ids: set = set()
         self.events = events if events is not None else []
         self._fail_update_n = fail_update_n
         self._fail_first_use = fail_first_use
@@ -471,6 +473,7 @@ class _ScriptedConn:
                     if sql.lstrip().upper().startswith("INSERT"):
                         outer.inserts += 1
                         outer.insert_params[outer.inserts] = tuple(params or ())
+                        outer._pending_ids.add(outer.inserts)
                         self._last = (outer.inserts,)
                     else:
                         outer.updates += 1
@@ -491,6 +494,8 @@ class _ScriptedConn:
     def commit(self):
         with self._lock:
             self.events.append("commit")
+            self.committed_ids |= self._pending_ids
+            self._pending_ids = set()
 
     def rollback(self):
         with self._lock:
@@ -562,11 +567,29 @@ class AbortPublicationOrdering(unittest.TestCase):
         t.add("GET", "https://api.example.org/limited", status=429, headers={"Retry-After": "1"})
         broker = Broker({"src": RatePolicy(per_second=100000)})
         conn = _ScriptedConn()
+        tls = threading.local()
+        ownership_errors: list = []
+        real_attempt, real_complete = calllog.attempt, calllog.complete
+
+        def spy_attempt(cn, rec):
+            rid = real_attempt(cn, rec)
+            tls.last_attempt = rid
+            return rid
+
+        def spy_complete(cn, attempt_id, rec):
+            # COMPLETION OWNERSHIP: each thread completes exactly the attempt IT opened —
+            # forwarding completions to a sibling's row (1↔2 swap) fails here
+            if getattr(tls, "last_attempt", None) != attempt_id:
+                ownership_errors.append((getattr(tls, "last_attempt", None), attempt_id))
+            return real_complete(cn, attempt_id, rec)
 
         class OrderedTransport:
             def request(self, *a, **kw):
                 with conn._lock:
                     conn.events.append("transport")
+                    rid = getattr(tls, "last_attempt", None)
+                    if rid not in conn.committed_ids:
+                        ownership_errors.append(("uncommitted-at-transport", rid))
                 return t.request(*a, **kw)
         c = Client(broker=broker, transport=OrderedTransport())
         c.conn = conn
@@ -581,15 +604,18 @@ class AbortPublicationOrdering(unittest.TestCase):
             barrier.wait(10)
             errors.append(("plain", c.get("src", "data", "https://93.184.216.34/ok").status))
         threads = [threading.Thread(target=redirecting), threading.Thread(target=plain)]
-        for th in threads:
-            th.start()
-        for th in threads:
-            th.join(30)
+        with mock.patch.object(calllog, "attempt", spy_attempt), \
+             mock.patch.object(calllog, "complete", spy_complete):
+            for th in threads:
+                th.start()
+            for th in threads:
+                th.join(30)
+            self.assertEqual(c.get("src", "data", "https://api.example.org/limited").status, 429)
         self.assertIn(("redir", 200), errors)
         self.assertIn(("plain", 200), errors)
-        # the limiter case runs AFTER the joins: its Retry-After legitimately opens the
-        # breaker for the whole source, which would otherwise race the redirect's own hops
-        self.assertEqual(c.get("src", "data", "https://api.example.org/limited").status, 429)
+        self.assertEqual(ownership_errors, [],
+                         "every transport ran with ITS OWN attempt row already committed, and "
+                         "every completion targeted the attempt its own thread opened")
         hops = [rec.hop for rec in c.log if rec.request_type == "fetch"]
         self.assertEqual(hops, [0, 1], "redirect hops carry their index — hop rows are transport "
                                        "legs of ONE logical dispatch, never repeated lookups")
@@ -605,16 +631,6 @@ class AbortPublicationOrdering(unittest.TestCase):
         self.assertEqual(insert_hops, [0, 0, 0, 1], "every leg's ATTEMPT row carries its hop")
         update_hops = sorted(p[-2] for p in c.conn.update_params.values() if p[-2] is not None)
         self.assertEqual(update_hops, [0, 0, 0, 1], "hop survives to the DURABLE completed row, not just Client.log")
-        # ORDERING: every transport was preceded by at least as many attempt COMMITS —
-        # a dispatch that leaves before its attempt row committed breaks this prefix invariant
-        commits = transports = 0
-        for ev in c.conn.events:
-            if ev == "commit":
-                commits += 1
-            else:
-                transports += 1
-                self.assertGreaterEqual(commits, transports,
-                                        "a transport ran before its attempt row was committed")
         self.assertFalse(c.abort.is_set())
 
 

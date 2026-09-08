@@ -91,11 +91,15 @@ class InlineGateway(unittest.TestCase):
     def test_health_is_open_and_green(self):
         status, body, _ = http(f"{self.url}/v1/health")
         self.assertEqual(status, 200)
-        self.assertEqual(body, {"ok": True, "version": app.VERSION, "mode": "inline",
-                                "workers_alive": 0, "breakers_open": 0,
-                                "cache_memory": 0, "cache_records_estimate": None},
+        self.assertEqual(sorted(body), ["breakers_open", "cache_memory", "cache_records_estimate",
+                                        "cache_searches_memory", "lane_concurrency", "lane_total",
+                                        "mode", "ok", "version", "workers_alive"],
                          "aggregate COUNTS only without a token — never source names, deadlines, "
                          "or per-source detail (those need the bearer token on /v1/status)")
+        self.assertEqual((body["ok"], body["version"], body["mode"], body["workers_alive"],
+                          body["breakers_open"], body["cache_records_estimate"]),
+                         (True, app.VERSION, "inline", 0, 0, None))
+        self.assertIsInstance(body["cache_memory"], int)   # LIVE expiry-aware aggregate, not a constant
         status, body, _ = http(f"{self.url}/v1/status", token=TOKENS["loops"])
         self.assertEqual(body["health"]["workers"], {"alive": 0, "expected": 0})
 
