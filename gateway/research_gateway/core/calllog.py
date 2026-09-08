@@ -27,6 +27,8 @@ class CallRecord:
     topic: str | None = None        # caller's topic id — tracing only (9·0 amendment: two topics can share a second)
     params_fp: str | None = None    # request-payload fingerprint (params/cursors/what) — repeat classification, never identity
     backdate_ms: int | None = None  # local-index rows are written AFTER the work; `at` is backdated to its start
+    hop: int | None = None          # redirect-hop index within ONE logical dispatch (0 = the request itself):
+                                    # transport hops are never counted as repeated lookups
 
 
 def classify(status: int | None, *, network_error: bool = False, body: str = "") -> str:
@@ -109,13 +111,13 @@ def _record(conn, rec: CallRecord) -> int:
         cur.execute(
             "INSERT INTO gateway.calls (job_id, source_id, request_type, identity, query, status, latency_ms, "
             "ratelimit, credits, cache_hit, result_count, failure_class, domain_resolved, client_id, "
-            "wait_ms, iteration, batch_entry, topic, params_fp, at) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, "
+            "wait_ms, iteration, batch_entry, topic, params_fp, hop, at) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, "
             "now() - make_interval(secs => coalesce(%s, 0) / 1000.0)) RETURNING id",
             (rec.job_id, rec.source_id, rec.request_type, rec.identity, rec.query, rec.status, rec.latency_ms,
              json.dumps(rec.ratelimit) if rec.ratelimit is not None else None, rec.credits, rec.cache_hit,
              rec.result_count, rec.failure_class, rec.domain_resolved, rec.client_id,
-             rec.wait_ms, rec.iteration, rec.batch_entry, rec.topic, rec.params_fp, rec.backdate_ms),
+             rec.wait_ms, rec.iteration, rec.batch_entry, rec.topic, rec.params_fp, rec.hop, rec.backdate_ms),
         )
         row_id = cur.fetchone()[0]
     conn.commit()

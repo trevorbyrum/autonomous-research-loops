@@ -254,7 +254,7 @@ class Client:
             # each hop still gets its own call row, but only the first carries the credit figure (D-24)
             self._record(source_id, request_type, identity, query, resp, latency,
                          credits if hop == 0 else 0.0, attempt_id=attempt_id,
-                         wait_ms=wait_ms)   # each hop reports ITS OWN broker wait (9·0: waits are never dropped)
+                         wait_ms=wait_ms, hop=hop)   # each hop reports ITS OWN broker wait (9·0: waits are never dropped)
             if resp.status not in REDIRECT_STATUSES:
                 return resp
             location = resp.headers.get("location")
@@ -324,7 +324,8 @@ class Client:
                 raise
 
     def _record(self, source_id, request_type, identity, query, resp: Response, latency: int, credits: float,
-                refused: bool = False, attempt_id: int | None = None, wait_ms: int | None = None) -> None:
+                refused: bool = False, attempt_id: int | None = None, wait_ms: int | None = None,
+                hop: int | None = None) -> None:
         count = None
         j = resp.json if resp.ok else None
         if isinstance(j, list):
@@ -344,7 +345,7 @@ class Client:
             ratelimit=calllog.ratelimit_headers(resp.headers), credits=credits or None,
             result_count=count, domain_resolved=self.domain_resolved, client_id=self.client_id,
             iteration=self.iteration, batch_entry=self.batch_entry, wait_ms=wait_ms,
-            topic=self.topic, params_fp=self.request_fingerprint,
+            topic=self.topic, params_fp=self.request_fingerprint, hop=hop,
             failure_class="refused" if refused else calllog.classify(resp.status, network_error=resp.status is None,
                                                                      body=resp.text[:2000] if resp.status in (401, 403) else ""),
         )

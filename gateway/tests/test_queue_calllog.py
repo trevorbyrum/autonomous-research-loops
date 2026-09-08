@@ -30,6 +30,7 @@ class QueueTests(unittest.TestCase):
     def tearDown(self):
         with self.conn.cursor() as cur:
             cur.execute("DELETE FROM gateway.calls WHERE job_id IN (SELECT id FROM gateway.jobs WHERE client_id = %s)", (self.client,))
+            cur.execute("DELETE FROM gateway.calls WHERE client_id = %s", (self.client,))
             cur.execute("DELETE FROM gateway.jobs WHERE client_id = %s", (self.client,))
         self.conn.commit()
         self.conn.close()
@@ -78,7 +79,7 @@ class QueueTests(unittest.TestCase):
         stored attribution is the CREATOR's, and batch entry 0 is an index, not a missing value."""
         payload = {"doi": self.client + "-traced"}
         jid, created = queue.enqueue(self.conn, "resolve", payload, client_id=self.client,
-                                     iteration="iterA", batch_entry=0)
+                                     iteration="iterA", batch_entry=0, topic="topic-hdr")
         self.assertTrue(created)
         twin, twin_created = queue.enqueue(self.conn, "resolve", payload, client_id=self.client,
                                            iteration="iterB", batch_entry=7)
@@ -91,6 +92,7 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(job["id"], jid)
         self.assertEqual(job["iteration"], "iterA")
         self.assertEqual(job["batch_entry"], 0)
+        self.assertEqual(job["topic"], "topic-hdr", "a header-only caller's topic survives the queue (tracing channel)")
         queue.fail(self.conn, jid, "refused", {"reason": "test done"})
 
     def test_skip_locked_two_connections_never_share_a_job(self):

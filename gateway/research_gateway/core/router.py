@@ -339,7 +339,8 @@ def _log_cache_hit(client: Client, request_type: str, identity: str | None, quer
                 raise
 
 
-_FP_KEYS = ("params", "cursors", "cursor", "what", "kind", "domain", "limit", "year_from", "within", "target", "source")
+_FP_KEYS = ("params", "cursors", "cursor", "what", "kind", "domain", "limit", "year_from",
+            "published_after", "commercial", "accept_per_item", "within", "target", "source")
 
 
 def _payload_fingerprint(payload: dict) -> str | None:

@@ -438,6 +438,182 @@ class SameSourceContention(unittest.TestCase):
         self.assertEqual(reborn.status()["src"]["credits_today"], st["credits_today"])
 
 
+class _ScriptedConn:
+    """DB stand-in with real-enough cursor semantics for calllog: INSERTs return ids,
+    UPDATEs can be scripted to fail. Thread-safe; counts every write."""
+
+    def __init__(self, fail_update_n: int | None = None, fail_first_use: bool = False):
+        self._lock = threading.Lock()
+        self.inserts = self.updates = self.rollbacks = 0
+        self._fail_update_n = fail_update_n
+        self._fail_first_use = fail_first_use
+        outer = self
+
+        class Cur:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def execute(self, sql, params=None):
+                with outer._lock:
+                    if outer._fail_first_use:
+                        outer._fail_first_use = False
+                        raise RuntimeError("db down")
+                    if sql.lstrip().upper().startswith("INSERT"):
+                        outer.inserts += 1
+                        self._last = (outer.inserts,)
+                    else:
+                        outer.updates += 1
+                        self._last = None
+                        if outer._fail_update_n is not None and outer.updates == outer._fail_update_n:
+                            raise RuntimeError("completion write refused")
+
+            def fetchone(self):
+                return self._last
+        self._cur = Cur
+
+    def cursor(self):
+        return self._cur()
+
+    def commit(self):
+        pass
+
+    def rollback(self):
+        with self._lock:
+            self.rollbacks += 1
+
+
+class _SpyEvent(threading.Event):
+    """Records whether db_lock was HELD at the moment set() ran — the exact ordering
+    property the abort design promises (publication under the admission lock)."""
+
+    def __init__(self, lock):
+        super().__init__()
+        self._spied_lock = lock
+        self.set_while_locked: bool | None = None
+
+    def set(self):
+        self.set_while_locked = self._spied_lock.locked()
+        super().set()
+
+
+class AbortPublicationOrdering(unittest.TestCase):
+    def test_publication_holds_the_admission_lock_and_a_racing_sibling_never_writes(self):
+        c = make_client()
+        c.abort = _SpyEvent(c.db_lock)
+        c.conn = _ScriptedConn(fail_first_use=True)
+        with self.assertRaises(calllog.AuditError):
+            c.local("crossref", "find", query="q")
+        self.assertTrue(c.abort.is_set())
+        self.assertIs(c.abort.set_while_locked, True,
+                      "abort is published while db_lock is HELD — publishing after release "
+                      "reopens the admission window and must fail this pin")
+        got: dict = {}
+
+        def sibling():
+            try:
+                c._attempt("doaj", "find", None, "q")
+            except calllog.AuditError as e:
+                got["e"] = e
+        t = threading.Thread(target=sibling)
+        t.start()
+        t.join(10)
+        self.assertIsInstance(got.get("e"), calllog.AuditError)
+        self.assertEqual(c.conn.inserts, 0, "the refused sibling never wrote an attempt row")
+
+    def test_completion_write_failure_publishes_under_lock_and_blocks_the_next_dispatch(self):
+        t = FakeTransport()
+        t.add("GET", "https://api.example.org/ok", body={"items": []})
+        c = Client(broker=Broker({"src": RatePolicy(per_second=100000)}), transport=t)
+        c.abort = _SpyEvent(c.db_lock)
+        c.conn = _ScriptedConn(fail_update_n=1)   # the attempt INSERT succeeds; its completion fails
+        with self.assertRaises(calllog.AuditError):
+            c.get("src", "data", "https://api.example.org/ok")
+        self.assertIs(c.abort.set_while_locked, True)
+        inserts_before = c.conn.inserts
+        with self.assertRaises(calllog.AuditError):
+            c.get("src", "data", "https://api.example.org/ok")
+        self.assertEqual(c.conn.inserts, inserts_before,
+                         "after a completion-write failure, the next dispatch is refused at "
+                         "admission — no new attempt row, nothing sent")
+
+    def test_concurrent_shared_connection_dispatches_with_redirect_and_limiter(self):
+        """Two threads dispatch CONCURRENTLY over one shared connection (redirect chain and
+        a 429 included); every hop's attempt commits before transport and completes; a later
+        completion failure aborts the client for everyone."""
+        t = FakeTransport()
+        t.add("GET", "https://93.184.216.34/hop", status=302,   # literal IPs: the redirect guard
+              headers={"Location": "https://93.184.216.34/ok"})  # needs no DNS in tests
+        t.add("GET", "https://93.184.216.34/ok", body={"items": []})
+        t.add("GET", "https://api.example.org/limited", status=429, headers={"Retry-After": "1"})
+        broker = Broker({"src": RatePolicy(per_second=100000)})
+        c = Client(broker=broker, transport=t)
+        c.conn = _ScriptedConn()
+        barrier = threading.Barrier(2)
+        errors: list = []
+
+        def redirecting():
+            barrier.wait(10)
+            errors.append(("redir", c.get("src", "fetch", "https://93.184.216.34/hop").status))
+
+        def plain():
+            barrier.wait(10)
+            errors.append(("plain", c.get("src", "data", "https://93.184.216.34/ok").status))
+        threads = [threading.Thread(target=redirecting), threading.Thread(target=plain)]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join(30)
+        self.assertIn(("redir", 200), errors)
+        self.assertIn(("plain", 200), errors)
+        # the limiter case runs AFTER the joins: its Retry-After legitimately opens the
+        # breaker for the whole source, which would otherwise race the redirect's own hops
+        self.assertEqual(c.get("src", "data", "https://api.example.org/limited").status, 429)
+        hops = [rec.hop for rec in c.log if rec.request_type == "fetch"]
+        self.assertEqual(hops, [0, 1], "redirect hops carry their index — hop rows are transport "
+                                       "legs of ONE logical dispatch, never repeated lookups")
+        self.assertEqual(c.conn.inserts, 4, "every dispatch leg wrote its attempt row (2 hops + plain + limited)")
+        self.assertEqual(c.conn.updates, 4, "and each attempt row was completed")
+        self.assertFalse(c.abort.is_set())
+
+
+class StopDrainsInline(unittest.TestCase):
+    def test_stop_leaves_connections_open_while_an_inline_request_runs_and_refuses_new_ones(self):
+        from research_gateway import app as app_module
+
+        class CloseRecordingConn:
+            def __init__(self):
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+        gw = app_module.Gateway(app_module.Settings(tokens={"t": "t"}, workers=1, sync_timeout=1),
+                                use_db=False, transport=FakeTransport())
+        gw.cache.conn = CloseRecordingConn()    # the shared resource stop() would close
+        release = threading.Event()
+        started = threading.Event()
+
+        def blocked_data(client, params):
+            started.set()
+            assert release.wait(30)
+            return {"records": []}
+        with mock.patch.dict(os.environ, {"RESEARCH_GATEWAY_STOP_TIMEOUT": "1"}), \
+             mock.patch.object(ADAPTERS["fred"], "data", blocked_data):
+            t = threading.Thread(target=gw.run_inline,
+                                 args=({"request_type": "data", "source": "fred", "params": {}}, "t"))
+            t.start()
+            self.assertTrue(started.wait(10))
+            gw.stop()
+            self.assertFalse(gw.cache.conn.closed, "an ACTIVE inline request keeps shared connections open")
+            with self.assertRaises(RuntimeError):
+                gw.run_inline({"request_type": "data", "source": "fred", "params": {}}, "t")
+            release.set()
+            t.join(10)
+        self.assertFalse(t.is_alive())
+
+
 class CrossProcessActivity(unittest.TestCase):
     def test_fail_then_recover_across_two_processes_keeps_order_and_recovery(self):
         import subprocess

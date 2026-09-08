@@ -89,6 +89,8 @@ ALTER TABLE gateway.calls ADD COLUMN IF NOT EXISTS iteration text;       -- chas
 ALTER TABLE gateway.calls ADD COLUMN IF NOT EXISTS batch_entry integer;  -- research_batch entry index, when applicable
 ALTER TABLE gateway.calls ADD COLUMN IF NOT EXISTS topic text;           -- caller's topic id (tracing; two topics can share an iteration second)
 ALTER TABLE gateway.calls ADD COLUMN IF NOT EXISTS params_fp text;       -- request-payload fingerprint for repeat classification (never identity)
+ALTER TABLE gateway.calls ADD COLUMN IF NOT EXISTS hop smallint;         -- redirect-hop index within one logical dispatch (0 = the request)
+ALTER TABLE gateway.jobs  ADD COLUMN IF NOT EXISTS topic text;           -- creator's TRACING topic (header channel); topic_id stays the POLICY binding
 ALTER TABLE gateway.jobs  ADD COLUMN IF NOT EXISTS iteration text;       -- creator's iteration (per-caller attribution on coalesce is the creator's; a coalesced waiter made no calls)
 ALTER TABLE gateway.jobs  ADD COLUMN IF NOT EXISTS batch_entry integer;  -- creator's research_batch entry index (same creator's-attribution rule)
 ALTER TABLE gateway.jobs ADD COLUMN IF NOT EXISTS attempts integer NOT NULL DEFAULT 0;  -- lease reclaim (D-23)

@@ -208,6 +208,12 @@ class Gateway:
         self.workers: list[queue.Worker] = []
         self.watcher: alerts.Watcher | None = None
         self.started_at = time.time()
+        # 9·2b lifecycle: inline requests are USERS of the shared connections too — they are
+        # counted in, refused during drain, and waited for before anything shared is closed
+        self._inline_lock = threading.Lock()
+        self._inline_cv = threading.Condition(self._inline_lock)
+        self._inline_active = 0
+        self._draining = False
 
     # ------------------------------------------------------------ clients
     def make_client(self, conn, job: dict | None = None, client_id: str | None = None,
@@ -219,7 +225,7 @@ class Gateway:
                       conn=conn, job_id=(job or {}).get("id"), client_id=(job or {}).get("client_id") or client_id,
                       iteration=(job or {}).get("iteration") or iteration,
                       batch_entry=(job or {}).get("batch_entry") if (job or {}).get("batch_entry") is not None else batch_entry,
-                      topic=(job or {}).get("topic_id") or topic,
+                      topic=(job or {}).get("topic_id") or (job or {}).get("topic") or topic,
                       **kw)
 
     # ------------------------------------------------------------ lifecycle
@@ -243,12 +249,19 @@ class Gateway:
         connections are LEFT OPEN (the process is exiting anyway): a leak on the way out is
         safe; a use-after-close is not."""
         self.stop_event.set()
+        with self._inline_lock:
+            self._draining = True   # no NEW inline users from here; existing ones are waited for below
         deadline = time.monotonic() + max(1.0, float(os.environ.get("RESEARCH_GATEWAY_STOP_TIMEOUT", "300") or 300))
         stragglers = []
         for w in [*self.workers, *([self.watcher] if self.watcher is not None else [])]:
             w.join(timeout=max(0.1, deadline - time.monotonic()))
             if w.is_alive():
                 stragglers.append(w.name)
+        with self._inline_cv:
+            while self._inline_active and time.monotonic() < deadline:
+                self._inline_cv.wait(timeout=max(0.1, deadline - time.monotonic()))
+            if self._inline_active:
+                stragglers.append(f"{self._inline_active} inline request(s)")
         if stragglers:
             print(f"gateway stop: {len(stragglers)} thread(s) still running after the drain timeout "
                   f"({', '.join(stragglers)}); shared connections left open for process exit", file=sys.stderr)
@@ -273,6 +286,18 @@ class Gateway:
         durable as queued ones (own connection, job_id NULL). Without a database the log is in-process
         only — that mode is for a laptop, not a deployment (docs/OPERATIONS.md)."""
         trace = trace or {}
+        with self._inline_lock:
+            if self._draining:
+                raise RuntimeError("gateway is stopping; no new inline requests")
+            self._inline_active += 1
+        try:
+            return self._run_inline_locked(payload, client_id, trace)
+        finally:
+            with self._inline_lock:
+                self._inline_active -= 1
+                self._inline_cv.notify_all()
+
+    def _run_inline_locked(self, payload: dict, client_id: str, trace: dict) -> dict:
         if self.conn is None:
             return execute(self.router, payload, self.make_client(None, client_id=client_id, **trace), self.cache)
         with db.connect() as conn:
@@ -285,7 +310,7 @@ class Gateway:
             job_id, created = queue.enqueue(self.conn, payload["request_type"], {k: v for k, v in payload.items() if k != "request_type"},
                                             client_id=client_id, priority=PRIORITIES.get(priority, queue.PRIORITY_INTERACTIVE),
                                             topic_id=payload.get("topic_id"), commercial=bool(payload.get("commercial")),
-                                            iteration=iteration, batch_entry=batch_entry)
+                                            iteration=iteration, batch_entry=batch_entry, topic=topic)
             if not created:
                 # the coalesced WAITER's request observation (9·0 amendment): the shared dispatch
                 # stays the creator's; each later caller still leaves a durable row under its own
@@ -347,6 +372,31 @@ class Gateway:
         """One request end to end. Inline requests (no queue, or a fetch/data/full-text payload)
         return the FULL result — redaction is a storage rule, not a delivery rule (D-24); queued
         requests store and return canonical metadata (a timeout returns the job id to poll)."""
+        t0 = time.monotonic()
+        try:
+            out = self._handle(payload, client_id, timeout=timeout, priority=priority, trace=trace)
+        finally:
+            # the CALLER's request span (9·0 amendment): one `request` row per handled request —
+            # coalesced waiters and cache-served callers included — backdated to its start, so
+            # elapsed unions are computable per caller. Telemetry: its failure blocks nothing.
+            if self.conn is not None:
+                elapsed_ms = int((time.monotonic() - t0) * 1000)
+                try:
+                    with self._lock:
+                        calllog.record(self.conn, calllog.CallRecord(
+                            source_id="request", request_type=payload.get("request_type") or "?",
+                            status=200, latency_ms=elapsed_ms, backdate_ms=elapsed_ms,
+                            identity=payload.get("identity") or payload.get("target"),
+                            query=(payload.get("query") or "")[:500] or None, failure_class="ok",
+                            client_id=client_id, iteration=(trace or {}).get("iteration"),
+                            batch_entry=(trace or {}).get("batch_entry"),
+                            topic=payload.get("topic_id") or (trace or {}).get("topic")))
+                except Exception:
+                    pass
+        return out
+
+    def _handle(self, payload: dict, client_id: str, *, timeout: float | None = None, priority: str = "interactive",
+                trace: dict | None = None) -> dict:
         if payload.get("request_type") == "data":
             # validate against the adapter's DECLARED contract before any budget or dispatch:
             # a blind call fails instantly WITH the contract, so the first mistake teaches (D-31)
@@ -398,7 +448,15 @@ class Gateway:
         alive = sum(1 for w in self.workers if w.is_alive())
         ok = (db_ok in (None, True)) and (self.conn is None or alive == len(self.workers))
         if not detailed:
-            return {"ok": ok, "version": VERSION, "mode": "queued" if self.conn is not None else "inline"}
+            # non-sensitive in-memory aggregates so a station can stamp PER-ITERATION provider
+            # health into its measurement record without a bearer token (9·0 amendment): counts
+            # only — never source names, deadlines, or anything a token-holder gets from /v1/status
+            try:
+                breakers_open = sum(1 for st in self.broker.status().values() if st.get("breaker_open"))
+            except Exception:
+                breakers_open = None
+            return {"ok": ok, "version": VERSION, "mode": "queued" if self.conn is not None else "inline",
+                    "workers_alive": alive, "breakers_open": breakers_open}
         return {"ok": ok, "version": VERSION, "mode": "queued" if self.conn is not None else "inline", "db": db_ok,
                 "workers": {"alive": alive, "expected": len(self.workers)},
                 "sources": sum(1 for s in self.sources if s.get("enabled")), "uptime_s": int(time.time() - self.started_at)}
