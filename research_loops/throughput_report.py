@@ -118,12 +118,20 @@ def _delegate_tokens(topic_dir: Path, stamp: str, start: datetime | None, end: d
     if seg is not None:
         window, coverage = seg, "complete"
     else:
+        # events inside ANY marked segment are OWNED by that iteration: a historical
+        # (unmarked) window may never consume them, or one invocation counts twice.
+        owned: set = set()
+        for pos, i in enumerate(marker_idx):
+            j = marker_idx[pos + 1] if pos + 1 < len(marker_idx) else len(events)
+            owned.update(range(i, j))
         window = []
-        for e in events:
-            if e.get("event") == "iteration":
+        for idx, e in enumerate(events):
+            if idx in owned or e.get("event") == "iteration":
                 continue
             t = _iso(str(e.get("ts") or ""))
-            if t is not None and t >= start and (end is None or t <= end):
+            # end is EXCLUSIVE here: a same-second boundary event is ambiguous for a
+            # timestamp-attributed window, and an unknown allocation beats double counting
+            if t is not None and t >= start and (end is None or t < end):
                 window.append(e)
         if not window:
             return UNKNOWN, 0, "none"
@@ -225,7 +233,8 @@ def _calls(conn, stamp: str, topic_id: str) -> dict:
         cur.execute(
             "SELECT count(*), coalesce(sum(reps) - count(*), 0) FROM ("
             "  SELECT count(*) AS reps FROM gateway.calls "
-            "  WHERE iteration = %s AND failure_class NOT IN ('attempt', 'refused') "
+            "  WHERE iteration = %s AND failure_class <> 'attempt' "
+            "  AND NOT (failure_class = 'refused' AND status IS NULL) "
             "  AND (topic IS NULL OR topic = %s) "
             "  AND source_id NOT IN ('cache', 'coalesce', 'request') "
             "  AND coalesce(hop, 0) = 0 AND coalesce(query, identity) IS NOT NULL "
@@ -383,7 +392,8 @@ def report(topic_dir: Path, conn) -> str:
                 pending = f"{pending} (oldest ≥{(observed_at - oldest).total_seconds() / 3600.0:.1f}h)"
         gh = res.get("gateway_health")
         gh_txt = (f"ok={gh.get('ok')} wrk={gh.get('workers_alive')} brk={gh.get('breakers_open')} "
-                  f"cmem={gh.get('cache_memory')} crec={gh.get('cache_records_estimate')} "
+                  f"cmem={gh.get('cache_memory')} csrch={gh.get('cache_searches_memory')} "
+                  f"crec={gh.get('cache_records_estimate')} "
                   f"lanes={gh.get('lane_concurrency')}/{gh.get('lane_total')}"
                   if isinstance(gh, dict) else UNKNOWN)
         wait_txt = UNKNOWN if not calls else (
