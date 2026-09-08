@@ -73,6 +73,26 @@ class QueueTests(unittest.TestCase):
                 break
         self.assertEqual(order, [high, low])
 
+    def test_tracing_attribution_is_the_creators_and_entry_zero_is_real(self):
+        """D-33: tracing rides beside the payload — identical requests still coalesce, the
+        stored attribution is the CREATOR's, and batch entry 0 is an index, not a missing value."""
+        payload = {"doi": self.client + "-traced"}
+        jid, created = queue.enqueue(self.conn, "resolve", payload, client_id=self.client,
+                                     iteration="iterA", batch_entry=0)
+        self.assertTrue(created)
+        twin, twin_created = queue.enqueue(self.conn, "resolve", payload, client_id=self.client,
+                                           iteration="iterB", batch_entry=7)
+        self.assertEqual((twin, twin_created), (jid, False), "different tracing never breaks coalescing")
+        job = queue.claim(self.conn)
+        seen: list[int] = []
+        while job is not None and job["id"] != jid and len(seen) < 50:
+            seen.append(job["id"]); queue.fail(self.conn, job["id"], "refused", {"reason": "not mine"}); job = queue.claim(self.conn)
+        self.assertIsNotNone(job)
+        self.assertEqual(job["id"], jid)
+        self.assertEqual(job["iteration"], "iterA")
+        self.assertEqual(job["batch_entry"], 0)
+        queue.fail(self.conn, jid, "refused", {"reason": "test done"})
+
     def test_skip_locked_two_connections_never_share_a_job(self):
         ids = {queue.enqueue(self.conn, "enrich", {"k": f"{self.client}-{i}"}, client_id=self.client)[0] for i in range(6)}
         claimed: list[int] = []

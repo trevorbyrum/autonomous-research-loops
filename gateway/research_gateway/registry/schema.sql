@@ -88,6 +88,7 @@ ALTER TABLE gateway.calls ADD COLUMN IF NOT EXISTS wait_ms integer;      -- brok
 ALTER TABLE gateway.calls ADD COLUMN IF NOT EXISTS iteration text;       -- chassis iteration stamp of the dispatching context
 ALTER TABLE gateway.calls ADD COLUMN IF NOT EXISTS batch_entry integer;  -- research_batch entry index, when applicable
 ALTER TABLE gateway.jobs  ADD COLUMN IF NOT EXISTS iteration text;       -- creator's iteration (per-caller attribution on coalesce is the creator's; a coalesced waiter made no calls)
+ALTER TABLE gateway.jobs  ADD COLUMN IF NOT EXISTS batch_entry integer;  -- creator's research_batch entry index (same creator's-attribution rule)
 ALTER TABLE gateway.jobs ADD COLUMN IF NOT EXISTS attempts integer NOT NULL DEFAULT 0;  -- lease reclaim (D-23)
 ALTER TABLE gateway.jobs ADD COLUMN IF NOT EXISTS claim_token text;  -- claim fencing (D-24)
 CREATE INDEX IF NOT EXISTS calls_source_at_idx ON gateway.calls (source_id, at DESC);

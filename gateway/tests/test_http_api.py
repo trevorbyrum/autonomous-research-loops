@@ -63,6 +63,18 @@ def http(url, method="GET", body=None, token=None):
     return status, (json.loads(raw) if "json" in (ctype or "") and raw else raw), ctype
 
 
+class TracingPlumbing(unittest.TestCase):
+    def test_make_client_prefers_the_jobs_stored_tracing_and_zero_is_real(self):
+        gw = app.Gateway(app.Settings(tokens=TOKENS, workers=1, sync_timeout=1),
+                         use_db=False, transport=FakeTransport(), secrets=NoSecrets())
+        job = {"id": 1, "client_id": "loops", "iteration": "iterA", "batch_entry": 0}
+        c = gw.make_client(None, job=job, batch_entry=9)
+        self.assertEqual((c.iteration, c.batch_entry), ("iterA", 0),
+                         "a claimed job's stored (creator) tracing wins, and entry 0 is a real index")
+        c2 = gw.make_client(None, client_id="loops", iteration="iterB", batch_entry=2)
+        self.assertEqual((c2.iteration, c2.batch_entry), ("iterB", 2))
+
+
 class InlineGateway(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

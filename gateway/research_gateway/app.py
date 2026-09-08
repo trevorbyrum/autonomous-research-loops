@@ -215,7 +215,9 @@ class Gateway:
         return Client(broker=self.broker, secrets=self.secrets.get, contact_email=self.settings.contact_email,
                       user_agent=f"research-gateway/{VERSION} (mailto:{self.settings.contact_email})",
                       conn=conn, job_id=(job or {}).get("id"), client_id=(job or {}).get("client_id") or client_id,
-                      iteration=(job or {}).get("iteration") or iteration, batch_entry=batch_entry, **kw)
+                      iteration=(job or {}).get("iteration") or iteration,
+                      batch_entry=(job or {}).get("batch_entry") if (job or {}).get("batch_entry") is not None else batch_entry,
+                      **kw)
 
     # ------------------------------------------------------------ lifecycle
     def start(self) -> None:
@@ -262,12 +264,12 @@ class Gateway:
             return execute(self.router, payload, self.make_client(conn, client_id=client_id, **trace), self.cache)
 
     def submit(self, payload: dict, client_id: str, *, priority: str = "interactive",
-               iteration: str | None = None) -> tuple[int, bool]:
+               iteration: str | None = None, batch_entry: int | None = None) -> tuple[int, bool]:
         with self._lock:
             return queue.enqueue(self.conn, payload["request_type"], {k: v for k, v in payload.items() if k != "request_type"},
                                  client_id=client_id, priority=PRIORITIES.get(priority, queue.PRIORITY_INTERACTIVE),
                                  topic_id=payload.get("topic_id"), commercial=bool(payload.get("commercial")),
-                                 iteration=iteration)
+                                 iteration=iteration, batch_entry=batch_entry)
 
     def job(self, job_id: int, client_id: str | None = None) -> dict | None:
         """A job, or None; with client_id, only that client's own job (clients never see each other's)."""
@@ -329,7 +331,8 @@ class Gateway:
         if self.conn is None or self.is_inline_only(payload):
             return self.run_inline(payload, client_id, trace=trace)
         job_id, created = self.submit(payload, client_id, priority=priority,
-                                      iteration=(trace or {}).get("iteration"))
+                                      iteration=(trace or {}).get("iteration"),
+                                      batch_entry=(trace or {}).get("batch_entry"))
         j = self.wait(job_id, self.settings.sync_timeout if timeout is None else timeout)
         if j is None or j["status"] not in ("done", "failed"):
             return {"job_id": job_id, "status": "queued" if j is None else j["status"], "created": created}
