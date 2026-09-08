@@ -142,6 +142,9 @@ export RESEARCH_LOOP_LOG="$log"
 # saturation gate. Per-iteration file: a stale one never speaks for a fresh pass.
 activity_file="$LOG_DIR/research-activity-$stamp.jsonl"
 export RESEARCH_LOOP_RESEARCH_ACTIVITY="$activity_file"
+# 9·0 phase timings: the agent appends "<iso> <phase>" markers here; the throughput
+# report turns them into per-phase durations (missing = unknown, never imputed)
+export RESEARCH_LOOP_PHASE_LOG="$LOG_DIR/phases-$stamp.log"
 # Downloads are TEMPORARY extraction space (8a): a per-iteration directory, removed on
 # every exit path — normal or interrupted. What the agent keeps, it copies into the
 # topic's own files during the iteration; retained source bytes never accumulate.
