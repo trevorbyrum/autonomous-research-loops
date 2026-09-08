@@ -1,0 +1,13 @@
+# Monthly registry refresh (paired with research-gateway-harvest.timer). Loaders take an advisory lock,
+# so they can never run concurrently with each other; each finishes before the next starts.
+[Unit]
+Description=Research gateway registry harvest (Crossref journals, DOAJ journals, DataCite repositories)
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/work/research-loops-public/gateway
+EnvironmentFile=%h/.config/research-loops/gateway.env
+# The maintenance window stops the service, harvests, and ALWAYS restores the prior
+# state (8f) — the loaders' running-service guard is satisfied by the window itself.
+Environment=RESEARCH_GATEWAY_PYTHON=%h/.venvs/research-gateway/bin/python3
+ExecStart=/usr/bin/bash deploy/research-gateway-maintenance.sh

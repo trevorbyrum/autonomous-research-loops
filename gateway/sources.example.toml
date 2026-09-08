@@ -1,0 +1,24 @@
+# Example deployment configuration for the research gateway.
+# Copy to sources.local.toml (gitignored) and fill in. No secrets go in this file:
+# each secret name below is read from the environment variable
+# RESEARCH_GATEWAY_SECRET_<NAME_UPPERCASED> (e.g. RESEARCH_GATEWAY_SECRET_FRED),
+# or from a secrets backend if you configure one (see docs/OPERATIONS.md).
+
+[gateway]
+contact_email = "you@example.org"        # sent to Crossref/Unpaywall polite pools and in User-Agent
+listen = "127.0.0.1:8765"
+secrets_backend = "env"                  # env | vault (vault settings live outside the public tree)
+workers = 2                              # queue worker threads (queued mode)
+sync_timeout = 60                        # seconds a synchronous request waits for its job
+watch_interval = 300                     # seconds between alert/lease-sweep passes
+# Which sources are enabled is the registry decision: edit the seed, re-run
+# python3 -m research_gateway.registry.load --load, and restart the gateway
+# (source rows and rate policies are read at startup).
+
+# Secret names expected by the enabled sources (values come from the environment):
+#   openaire         -> RESEARCH_GATEWAY_SECRET_OPENAIRE_CLIENT_ID / _CLIENT_SECRET
+#   semantic_scholar -> RESEARCH_GATEWAY_SECRET_SEMANTIC_SCHOLAR
+#   core             -> RESEARCH_GATEWAY_SECRET_CORE
+#   api_data_gov     -> RESEARCH_GATEWAY_SECRET_API_DATA_GOV
+#   fred / bea / census / bls / qdr / socrata / huggingface -> same pattern
+#   kaggle           -> RESEARCH_GATEWAY_SECRET_KAGGLE_USERNAME / _KAGGLE_KEY

@@ -1,0 +1,32 @@
+# Research gateway on a Docker host. Build from the repository's gateway/ directory:
+#   docker compose -f deploy/docker-compose.gateway.yml build
+#   docker compose -f deploy/docker-compose.gateway.yml up -d
+# Secrets and the database URI come from gateway.env (never committed; see deploy/README.md).
+services:
+  research-gateway:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: research-gateway:0.1
+    container_name: research-gateway
+    restart: unless-stopped
+    env_file:
+      - gateway.env                            # deploy/gateway.env, from gateway.env.example
+    ports:
+      - "8765:8765"
+    volumes:
+      - ../sources.local.toml:/app/sources.local.toml:ro
+      - ./snapshots:/snapshots:ro            # OpenAlex sources snapshot part files for the harvest loader
+      - ./secrets:/run/secrets:ro             # token file for RESEARCH_GATEWAY_SECRETS=vault, if used
+
+  # One-shot harvest runs (profile "harvest"): docker compose ... --profile harvest run --rm harvest crossref
+  harvest:
+    image: research-gateway:0.1
+    profiles: ["harvest"]
+    env_file:
+      - gateway.env
+    volumes:
+      - ../sources.local.toml:/app/sources.local.toml:ro
+      - ./snapshots:/snapshots:ro
+      - ./secrets:/run/secrets:ro
+    entrypoint: ["python3", "-m", "research_gateway.harvest.registries"]

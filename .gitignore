@@ -27,8 +27,14 @@ dist/
 # endpoints file) — must never enter the public repo, tracked or not
 *.env
 graphrag.env
-SOURCES.md
+/SOURCES.md
 private/
 
 # Operator-side roadmap (future adds/considerations) -- never in the public repo
 /ROADMAP.md
+
+# Gateway deployment config (docs/OPERATIONS.md: copy sources.example.toml here and edit)
+/gateway/sources.local.toml
+/gateway/deploy/gateway.env
+/gateway/deploy/snapshots/
+/gateway/deploy/secrets/
