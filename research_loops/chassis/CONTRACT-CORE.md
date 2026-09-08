@@ -24,11 +24,18 @@ binding until the operator promotes it (see `docs/topic-authoring.md` for the pr
 command) and the topic's hashes are rehashed accordingly. Silently expanding scope to
 cover a gap, without proposing it first, is exactly what this rule exists to prevent.
 
-The one exception is a topic explicitly configured with `gap_policy = "auto"` (see
-`docs/governance.md#the-operator-owns-scope`): there, the agent may self-promote a gap
-with `research_loops/chassis/gap-policy.py promote --auto`, but only up to that topic's `gap_auto_limit`
-times since the operator's last review — the tool itself enforces the cap and tags every
-self-promotion `AUTO-PROMOTED`, never silently. Default policy is always `review`.
+A topic configured with `gap_policy = "auto"` may self-promote an ordinary research
+gap through the documented promotion tool (`research_loops/chassis/gap-policy.py
+promote --auto`) within its remaining `gap_auto_limit`; the tool enforces the cap and
+tags every self-promotion `AUTO-PROMOTED`. This exception does not apply to any
+proposal originating in obligation scouting, a framing checkpoint, or their
+subsequent revisions, and never authorizes an amendment to existing scope,
+obligations, acceptance criteria, or deliverables — those changes require explicit
+operator promotion regardless of gap_policy. Preserve proposal origin across retries
+and revisions; relabeling a scout proposal does not make it eligible for
+auto-promotion. The auto-promotion budget and the proposal-review allowance are
+separate limits. Default policy is always `review`. Do not start research to answer
+an unpromoted scout question; existing-corpus inspection for admission is permitted.
 
 Do not edit or erase archived state. Prior completion marks or taxonomies inherited from
 an earlier process are historical evidence, not authority — never treat them as proof
@@ -92,6 +99,18 @@ completed topic records the source-coverage state it completed under, so complet
 always means covered-and-stable UNDER THAT COVERAGE. No fixed iteration, token,
 source, retry, inactivity, or revision limit defines semantic completion.
 
+Question signals, debate, and pending proposals are decision records, not scientific
+evidence or semantic progress by themselves. Do not add them to
+`pending_evidence_refs` or use debate transcripts as `evidence_refs`; the primary may
+record candidate dispositions, objections, and a reference to the bounded exchange in
+DECISIONS-LOG.md as decision provenance, citing the underlying corpus records
+separately for factual premises. Keep pending proposals visible for operator review
+without making their approval a new completion requirement. A checkpoint/scout review
+is not a qualifying deepening pass merely because the semantic state is valid and
+unchanged: report its iteration type accurately; it neither advances nor resets the
+deepening-saturation streak solely because it wrote review prose or made no semantic
+change. Only the queue applies those rules.
+
 ## Evidence handling
 
 - Review pending evidence before new discovery.
@@ -104,16 +123,14 @@ source, retry, inactivity, or revision limit defines semantic completion.
   whatever evidence-quality dimensions actually fit the domain.
 - Seek counterevidence, preserve contradictions, deduplicate without erasing dated
   supersession or genuine disagreement, and retain provenance plus temporal metadata.
-- Overlap is never by itself grounds to discard a source. Finding X first does not make
-  X the better source: an overlapping-but-distinct candidate Y must be COMPARED before
-  it is passed over — is Y methodologically stronger, broader, more recent, a
-  counterpoint, or does it open gaps X does not? Cite Y (as superseding, complementary,
-  or contradicting) or record the comparison that justified passing, in the ledgers.
-  "Already covered" without that recorded logic is not a decision, it is a default.
-- No candidate is rejected on a delegate's characterization alone. Before a candidate
-  is passed over, either the primary examines it, or an extraction packet with the
-  exact relevant passages (locators included) supports the rejection. A delegate's
-  one-line verdict is a lead-sorting aid, never a disposal record.
+- Overlap alone does not justify rejecting an in-scope distinct source. Before a
+  substantive exclusion, the primary examines the relevant material or an exact,
+  located extraction packet and records the decisive comparison under the topic's
+  quality rules. A delegate's unsupported characterization is not a rejection
+  record. Confirmed duplicates and explicit screening exclusions use the bounded
+  triage procedure in `docs/research-workflow.md`; unexamined plausible leads remain
+  queued and do not establish exhaustion. First discovery gives no priority; recency
+  or breadth alone does not establish superiority.
 - New records remain pending until a later verification pass approves, corrects,
   contradicts, or rejects them.
 - On a `schema_version >= 2` topic, every `evidence_ref` an obligation cites must
@@ -131,18 +148,41 @@ source, retry, inactivity, or revision limit defines semantic completion.
   capability fact, not proof no other topic has relevant evidence.
 - A well-formed citation only proves the cited location exists, not that it actually
   supports the claim. An `external`/`local` citation only backs a
-  `supported`/`contradicted` disposition once it also carries `verified: true`, set by
-  an agent that actually visited the cited location and confirmed it — **never the same
-  agent that wrote the citation** (map onto `agent_secondary`'s role where a topic
-  already delegates that way). An `internal` citation inherits its target's verification
-  status rather than needing its own. If the cited location turns out not to support the
-  claim, set `flagged: hallucination` instead of `verified: true`; a flagged block is
-  refused unconditionally, even alongside `verified: true`, until an operator clears it.
-  This check is bounded: confirm only the exact cited location. It must never expand
-  into searching for a correct replacement source when the given one is wrong (broken
-  link, wrong slug, moved page) — that is separate, later work; the correct response
-  here is `flagged: hallucination`, not a substitution. See `docs/citations.md`'s
-  "Independent verification" section.
+  `supported`/`contradicted` disposition once it also carries `verified: true`.
+  Producer/verifier separation means distinct invocations, including when both use
+  gpt-5.6-luna; renaming or reprompting the producing invocation does not qualify.
+  The verifier receives a fixed citation ID, exact claim and location, and relevant
+  context, but independently obtains the cited content rather than certifying the
+  producer's extract alone. It returns its own supporting or conflicting passage,
+  locator, retrieval outcome, and the identity of the claim/location checked.
+  Agreement between invocations is not a guarantee of independent errors. Establish
+  the citation as pending/unverified before the later check, which may occur within
+  the same station iteration. The verifier may update only the assigned citation's
+  verification/flag fields after checking that its claim and location still match;
+  the primary owns all semantic-state writes, pending reconciliation,
+  interpretation, and final acceptance. A material change to the claim or cited
+  location requires a fresh relevant check; do not apply a late verdict to a changed
+  citation. Distinguish an established invalid or non-supporting citation from
+  inability to determine support: a timeout, quota refusal, temporary service
+  failure, or access restriction is capability trouble, not a hallucination finding
+  — leave the affected claim unverified and record the failure. Flag an established
+  wrong/dead location or unsupported claim as `hallucination`; only the operator
+  clears that flag, and flagged blocks stay refused until clearance.
+  Replacement-source discovery is separate later work. An `internal` citation
+  inherits its target's verification status, but the primary still judges
+  applicability: reuse it only when the checked passage supports the current claim
+  with the required scope, qualifications, and freshness — a materially different
+  claim needs its own independently verified record, and an unverified or flagged
+  target cannot support a disposition. See `docs/citations.md`.
+- The delegate model rule: delegate through the topic's configured secondary
+  wrapper. Use its default gpt-5.6-luna for discovery, librarian work, extraction,
+  proposal advocacy, and citation verification. Each verification runs in a fresh
+  invocation distinct from the invocation that produced the citation. The sole
+  additional assignment is a fresh gpt-5.6-terra invocation, through the same
+  wrapper with `--model gpt-5.6-terra`, for the authorized counter-argument seat,
+  including its permitted repair assessment. Terra is a primary-class counter
+  assignment, not a second secondary model. The primary retains final judgment. Use
+  no other delegate model or native Agent/Task intermediary.
 - An obligation reopened or added by a scheduled/manual refresh (`topic_refresh`, see
   `docs/operations.md#topic_refresh`) is not special-cased — it's a normal obligation
   in `SEMANTIC-STATE.json` and is subject to every rule above, including pending-first
@@ -158,23 +198,16 @@ source, retry, inactivity, or revision limit defines semantic completion.
 2. Reconcile pending evidence first.
 3. Select one highest-value unblocked open obligation using the topic's work-selection
    rules.
-4. Delegate non-overlapping discovery or extraction work only when it improves
-   verification. Two standing delegate roles beyond discovery: the LIBRARIAN pass
-   (before discovery, a delegate reconciles candidate identities against the topic's
-   own ledgers — exact DOIs/URLs/titles, prior failed routes and their dates, stale
-   leads, current pending items — so the primary never re-researches what the topic
-   already holds) and the EXTRACTION packet (a delegate acquires and extracts a
-   selected source: exact passages with page/section locators, methods and limitations
-   context, provenance and retrieval facts — the primary reads the load-bearing
-   passages and judges; it does not re-run the mechanical acquisition). Neither role
-   decides relevance, exhaustion, or confidence; packets are evidence preparation,
-   and everything in them stays pending until independent verification. Obligation
-   scouting adds a DEBATE pair: an ADVOCATE delegate drafts candidate next questions
-   and a COUNTER-ARGUMENT delegate (a different model family by design) argues the
-   alternative directions the topic's underlying question supports; three recorded
-   rounds per point, then the PRIMARY adjudicates and writes any PROPOSAL rows itself.
-   Debate output is argument, never evidence: nothing from it enters a ledger or a
-   semantic field without the ordinary sourcing and verification rules.
+4. Delegate bounded evidence preparation through the configured wrapper under the
+   delegate model rule above. Reconcile candidate identities and prior attempts
+   before discovery, reusing a current packet where adequate. Prefer extraction
+   packets for acquisition; the primary reads load-bearing passages and necessary
+   context, decides relevance and confidence, and owns live integration and
+   semantic-state writes. Packets and consequential exclusions must be auditable
+   under `docs/research-workflow.md`. Workers return proposed changes; only the
+   assigned fresh verifier may make the narrow citation-field updates specified in
+   `docs/citations.md`. Join or terminate outstanding work before final validation.
+   Checkpoint roles, budgets, and scheduling follow `docs/obligations-checkpoint.md`.
 5. Independently verify load-bearing evidence, apply topic-specific quality rules, and
    seek counterevidence.
 6. Update research ledgers and synthesis while preserving provenance and contradictions.
@@ -182,12 +215,17 @@ source, retry, inactivity, or revision limit defines semantic completion.
    only through the state CLI (`transition`/`pending`/`deliverable`/`contradiction`) —
    never by reading or rewriting `SEMANTIC-STATE.json` directly. The CLI enforces the
    DONE gate's own per-record rules at write time and refuses incomplete terminal
-   transitions atomically. Semantic fields hold the CURRENT assessment only:
-   `confidence`, `gap_state`, and the summaries are rewritten when belief changes and
-   left BYTE-UNCHANGED when it does not — pass-by-pass narrative belongs in
-   PROGRESS.md/NEEDS-SOURCE.md, never appended to semantic fields. An iteration that
-   truly changes no belief must leave the semantic state untouched: that stability IS
-   the saturation signal the queue is waiting for, not a failure to disguise.
+   transitions atomically. Keep `confidence`, `gap_state`, `acceptance_summary`, and
+   `counterevidence_summary` as concise current assessments. Change an assessment
+   when the evidence changes its substance — confidence increases or decreases,
+   material qualifications, corrected errors, or a changed gap or search assessment —
+   even if the disposition is unchanged. Leave an individual field byte-unchanged
+   when its meaning is unchanged. Record legitimate evidence-reference,
+   pending-evidence, adequate-search, contradiction, and deliverable updates through
+   the state CLI even when the conclusion is unchanged. Put pass dates, repeated
+   attempts, and activity narratives in the research logs; neither extra prose nor a
+   changed signature alone proves progress. Preserve required rationale and
+   provenance, and never rewrite historical state to manufacture stability.
 8. Never declare completion. The executable semantic gate passing means the contract is
    COVERED, not finished: the queue completes a topic only after consecutive deepening
    passes stop changing its semantic signature, and a self-written `STOP DONE` is
