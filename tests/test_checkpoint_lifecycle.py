@@ -15,6 +15,7 @@ from research_loops.checkpoints.service import (
     finish_checkpoint,
     reserve_delegate_launch,
     record_delegate_result,
+    execute_delegate,
     start_checkpoint,
 )
 from research_loops.control_store import ControlScheduler, ControlStore, default_configuration
@@ -86,6 +87,25 @@ def complete_counter(control, episode):
 
 
 class CheckpointLifecycleTests(unittest.TestCase):
+    def test_checkpoint_retry_replays_successful_counter_without_spending_budget(self):
+        control = FakeControl()
+        due = accept_research_completion(control, topic_id="A", run_id="ordinary-1",
+                                        station_id=1, inventory_version="v1", accepted=True, deepening_entry=True)
+        first = start_checkpoint(control, episode_id=due["episode_id"], station_id=1, run_id="first")
+        complete_counter(control, first)
+        episode = control.state["work"]["episodes"][due["episode_id"]]
+        episode["state"] = "retry_wait"
+        budget = copy.deepcopy(episode["remaining_budgets"])
+        retry = start_checkpoint(control, episode_id=due["episode_id"], station_id=2, run_id="retry")
+        self.assertEqual(retry["delegate_invocation_ids"]["counter"], "counter-complete")
+        replay = execute_delegate(control, episode_id=due["episode_id"], lease_id="retry",
+                                  invocation_id=retry["delegate_invocation_ids"]["counter"],
+                                  role="counter", prompt="Read the recorded counter.")
+        self.assertEqual(replay["result"]["status"], "complete")
+        self.assertEqual(episode["remaining_budgets"], budget)
+        self.assertEqual(finish_checkpoint(control, checkpoint_result(retry, "retry"))["state"], "complete_without_proposals")
+        self.assertEqual(control.state["work"]["topics"]["A"]["next_research_ordinal"], 2)
+
     def test_real_control_store_dispatches_checkpoint_lease(self):
         with tempfile.TemporaryDirectory() as tmp:
             configuration = default_configuration()

@@ -91,6 +91,11 @@ result explicitly uses `reuse_of`. Preparation is optional when no candidate
 slate needs it. Set the shell command timeout to at least 930 seconds so the
 broker can finish its bounded delegate call. Broker output is JSON and includes
 the recorded invocation and its output reference; inspect the complete report.
+On a retry of this same episode, inspect the supplied `invocations` first.
+A finished successful role already satisfies that role's invocation requirement:
+read its recorded report and findings, and continue the review. Its supplied
+delegate ID replays the recorded response without launching or spending another
+slot. Do not request a second successful counter for the same episode.
 
 Preserve the existing proposal discipline: no more than two pending proposals; no
 issuance refill on retry, revision, withdrawal, or individual promotion; and no

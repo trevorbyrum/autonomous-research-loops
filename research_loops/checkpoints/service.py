@@ -249,6 +249,12 @@ def start_checkpoint(control: Any, *, episode_id: str, station_id: int, run_id: 
         episode["delegate_invocation_ids"] = {
             role: f"{episode_id}-{role}-{len(episode['attempt_history'])}"
             for role in ("preparation", "counter", "repair_response", "repair_assessment")}
+        # A supervisor retry continues the same bounded review. Successful
+        # role calls already consumed their slot; expose their replayable IDs
+        # rather than directing the primary toward a forbidden second call.
+        for invocation_id, record in episode.get("invocations", {}).items():
+            if record.get("status") == "finished" and record.get("exit_code") == 0:
+                episode["delegate_invocation_ids"][record["role"]] = invocation_id
         return copy.deepcopy(episode)
 
 

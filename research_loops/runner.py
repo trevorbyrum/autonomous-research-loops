@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
@@ -418,6 +419,33 @@ class LoopRunner:
     @classmethod
     def _notify_watchdog(cls) -> bool:
         return cls._notify("WATCHDOG=1")
+
+    # WatchdogSec is 120 seconds in the managed worker service.  A blocking
+    # provider adapter does not expose a poll handle like an ordinary child,
+    # so retain a conservative heartbeat while it owns this worker thread.
+    WATCHDOG_HEARTBEAT_SECONDS = 30.0
+
+    def _run_blocking_with_watchdog(self, operation):
+        """Run one managed adapter call while a daemon feeds systemd.
+
+        The event is always set and the helper thread joined before an adapter
+        exception propagates, so a failed checkpoint cannot leave a background
+        notifier tied to a later lease.
+        """
+        stop = threading.Event()
+
+        def heartbeat() -> None:
+            while not stop.wait(self.WATCHDOG_HEARTBEAT_SECONDS):
+                self._notify_watchdog()
+
+        self._notify_watchdog()
+        worker = threading.Thread(target=heartbeat, name="research-loops-watchdog", daemon=True)
+        worker.start()
+        try:
+            return operation()
+        finally:
+            stop.set()
+            worker.join(timeout=self.WATCHDOG_HEARTBEAT_SECONDS + 1)
 
     # --- log retention ---
     # Per-attempt logs accumulate without bound: a recurring 15-minute item
@@ -1685,7 +1713,7 @@ class LoopRunner:
                 prompt = (Path(__file__).parent / "chassis" / "DISCOVERY-PROMPT.md").read_text(encoding="utf-8").replace("${TOPIC_DIR}", str(self.store.root / "topics" / context["topic_id"])).replace("${QA_MODE}", context["mode"]).replace("${AGENT_NOTE}", "")
                 context.update({"_launch_env": additions, "_popen_identity": identity,
                                 "_cwd": str(self.store.root / "topics" / context["topic_id"]), "_prompt_text": prompt})
-            result = adapter(dict(context))
+            result = self._run_blocking_with_watchdog(lambda: adapter(dict(context)))
             if not isinstance(result, dict): raise QueueError("discovery adapter must return an object")
             allowed = {"pass_kind", "restated_intent", "criteria", "traceability", "questions", "topic_space_findings", "proposed_obligations", "proposed_exclusions"}
             if set(result) - allowed: raise QueueError("discovery adapter returned unknown fields")
@@ -1727,7 +1755,7 @@ class LoopRunner:
             additions, identity = prepare_agent_launch(self.store.root, item["id"], lease["lease_id"])
             context.update({"_launch_env": additions, "_popen_identity": identity, "_cwd": item["cwd"]})
         try:
-            result = CheckpointRunner(adapter).run(context)
+            result = self._run_blocking_with_watchdog(lambda: CheckpointRunner(adapter).run(context))
             final = finish_checkpoint(self.store.control, result)
             self.store.scheduler.finalize(lease["station_id"], lease["lease_id"])
             return {"item_id": item["id"], "outcome": final["state"], "exit_code": 0, "execution_kind": "checkpoint"}

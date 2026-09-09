@@ -5,6 +5,7 @@ import os
 import sys
 import tempfile
 import time
+import threading
 import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -492,6 +493,38 @@ class WatchdogNotifyTests(unittest.TestCase):
             runner.run_once()
         # ~0.5s of supervision at 0.05s poll => several pings.
         self.assertGreaterEqual(ping.call_count, 2)
+
+    def test_blocking_managed_adapter_heartbeats_and_stops_after_success(self):
+        tempdir = tempfile.TemporaryDirectory()
+        self.addCleanup(tempdir.cleanup)
+        runner = LoopRunner(QueueStore(Path(tempdir.name)), UsageLedger(Path(tempdir.name) / "state" / "events.jsonl"))
+        entered, release = threading.Event(), threading.Event()
+        def adapter():
+            entered.set()
+            self.assertTrue(release.wait(1))
+            return "complete"
+        with mock.patch.object(runner, "WATCHDOG_HEARTBEAT_SECONDS", .02), mock.patch.object(runner, "_notify_watchdog") as ping:
+            result = []
+            call = threading.Thread(target=lambda: result.append(runner._run_blocking_with_watchdog(adapter)))
+            call.start(); self.assertTrue(entered.wait(1)); time.sleep(.07)
+            release.set(); call.join(1)
+            self.assertFalse(call.is_alive())
+            self.assertEqual(result, ["complete"])
+            count_after_return = ping.call_count
+            time.sleep(.05)
+        self.assertGreaterEqual(count_after_return, 3)
+        self.assertEqual(ping.call_count, count_after_return)
+
+    def test_blocking_managed_adapter_stops_heartbeat_on_exception(self):
+        tempdir = tempfile.TemporaryDirectory()
+        self.addCleanup(tempdir.cleanup)
+        runner = LoopRunner(QueueStore(Path(tempdir.name)), UsageLedger(Path(tempdir.name) / "state" / "events.jsonl"))
+        with mock.patch.object(runner, "WATCHDOG_HEARTBEAT_SECONDS", .02), mock.patch.object(runner, "_notify_watchdog") as ping:
+            with self.assertRaisesRegex(RuntimeError, "adapter failure"):
+                runner._run_blocking_with_watchdog(lambda: (_ for _ in ()).throw(RuntimeError("adapter failure")))
+            count_after_exception = ping.call_count
+            time.sleep(.05)
+        self.assertEqual(ping.call_count, count_after_exception)
 
 
 if __name__ == "__main__":
