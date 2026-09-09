@@ -81,6 +81,18 @@ duties. Unexamined plausible leads remain queued; do not count them as rejected 
 adequately searched. Neither a delegate's one-line verdict nor a processing budget
 proves exhaustion.
 
+## Delegate invocation timeouts
+
+Delegate invocations are long-running: discovery and extraction packets routinely
+take several minutes end to end. Set the shell tool's per-command timeout to AT
+LEAST 900 seconds (900000 ms) for every `research-loops-luna-delegate` call; the
+short default on some harnesses kills the invocation mid-flight, which surfaces as
+a launch with no delivered report. A killed or timed-out invocation is a CAPABILITY
+failure to record (the wrapper's ledger shows a launch with no usage line) — never
+a searched-empty result, and never grounds for an absence claim. If a call is
+killed twice at a generous timeout, record the capability failure and move on;
+do not shrink the task to fit the timeout by dropping required coverage.
+
 ## Lookup packaging
 
 Plan the selected obligation's lookups FIRST, then execute them GROUPED:
