@@ -357,33 +357,27 @@ def render_dashboard(
     if isinstance(managed, dict):
         config = managed.get("configuration") if isinstance(managed.get("configuration"), dict) else {}
         work = managed.get("work") if isinstance(managed.get("work"), dict) else {}
-        assignments = work.get("assignments") if isinstance(work.get("assignments"), dict) else {}
-        topics = work.get("topics") if isinstance(work.get("topics"), dict) else {}
-        station_rows = []
-        for station in sorted(config.get("stations", []), key=lambda row: row["id"]):
-            station_id = str(station["id"])
-            record = assignments.get(station_id) or {}
-            current, desired = record.get("current") or {}, record.get("desired") or {}
-            station_rows.append([station_id, "yes", "yes" if station["id"] <= config.get("active_count", 0) else "no",
-                station.get("primary_profile", "—"), station.get("secondary_profile", "—"), station.get("interval_seconds", "—"),
-                current.get("topic_id", "—"), desired.get("topic_id", "—"),
-                "unknown" if current.get("topic_id") else "—", "yes" if record.get("draining") else "no"])
-        episodes = work.get("episodes") or {}
-        topic_rows = []
-        for topic_id, value in sorted(topics.items()):
-            if not isinstance(value, dict):
-                continue
-            episode = episodes.get(value.get("active_episode_id")) or {}
-            topic_rows.append([topic_id, value.get("research_iterations_completed", "—"),
-                value.get("next_research_ordinal", "—"), value.get("review_state", "—"),
-                episode.get("failure_reason") or episode.get("state") or "—"])
         policy = config.get("checkpoints") or {}
         pair = next((row for row in config.get("stations", []) if row.get("id") == 1), {}) if policy.get("agent_source") == "station_1" else policy
-        lines.extend(["", "## Managed stations", "", f"Configured active count: **{_cell(config.get('active_count', 'unavailable'))}**",
-            "", f"Shared checkpoint pair: **{_cell(pair.get('primary_profile', 'unavailable'))} / {_cell(pair.get('secondary_profile', 'unavailable'))}** ({_cell(policy.get('agent_source', 'unavailable'))}). Existing episodes retain their recorded pair.",
-            "", _table(["Station", "Configured", "Enabled", "Primary", "Secondary", "Interval (seconds)", "Current", "Desired", "Alive", "Draining"], station_rows),
-            "", "Alive is unknown when this snapshot has no verified process observation; an assignment alone does not prove a running process.",
-            "", _table(["Topic", "Completed", "Next", "Review hold", "Episode detail"], topic_rows)])
+        checkpoint_summary = "off"
+        if policy.get("enabled"):
+            checkpoint_summary = f"every {policy.get('every_research_iterations', '—')} completed iterations"
+            if policy.get("on_deepening_entry"):
+                checkpoint_summary += " + deepening"
+        lines.extend(["", f"**Stations:** {_cell(config.get('active_count', '—'))}/5 enabled · "
+            f"**Checkpoints:** {_cell(checkpoint_summary)} · "
+            f"**Review agents:** {_cell(pair.get('primary_profile', '—'))} / {_cell(pair.get('secondary_profile', '—'))}"])
+        # Keep actionable review holds visible without dumping the work ledger.
+        topics = work.get("topics") or {}
+        episodes = work.get("episodes") or {}
+        for item in items:
+            if not isinstance(item, dict) or item.get("lane") == "intake" or item.get("status") in {"paused", "completed"}:
+                continue
+            topic = topics.get(item.get("id")) or {}
+            episode = episodes.get(topic.get("active_episode_id")) or {}
+            if episode.get("state") in {"awaiting_operator", "needs_attention", "publishing_decision"}:
+                label = {"awaiting_operator": "checkpoint decision needed", "needs_attention": "checkpoint needs attention", "publishing_decision": "checkpoint decision applying"}[episode["state"]]
+                lines.extend(["", f"**{_cell(item.get('title', item.get('id')))}:** {label}."])
     lines.extend(
         [
             "",
