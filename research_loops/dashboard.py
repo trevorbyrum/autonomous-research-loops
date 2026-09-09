@@ -378,8 +378,7 @@ def render_dashboard(
             if episode.get("state") in {"awaiting_operator", "needs_attention", "publishing_decision"}:
                 label = {"awaiting_operator": "checkpoint decision needed", "needs_attention": "checkpoint needs attention", "publishing_decision": "checkpoint decision applying"}[episode["state"]]
                 lines.extend(["", f"**{_cell(item.get('title', item.get('id')))}:** {label}."])
-    lines.extend(
-        [
+    overview_lines = [
             "",
             "> Queue state and event metrics are read under separate locks and are eventually consistent. "
             "Metrics are observations from the retained event ledger, not synchronized lifetime totals.",
@@ -391,7 +390,6 @@ def render_dashboard(
                 [[name.replace("_", " ").title(), len(categories[name])] for name in ("active", "queued", "completed", "needs_attention", "paused", "intake", "unclassified")],
             ),
         ]
-    )
 
     active_rows = []
     managed_topics = (managed.get("work", {}).get("topics", {}) if isinstance(managed, dict) and isinstance(managed.get("work"), dict) else {})
@@ -402,23 +400,36 @@ def render_dashboard(
             episode_id = ledger.get("active_episode_id")
             episode = (managed.get("work", {}).get("episodes", {}).get(episode_id) if isinstance(managed, dict) and episode_id else None)
             if isinstance(episode, dict) and episode.get("state") in {"due", "checkpoint_running", "retry_wait", "awaiting_operator", "publishing_decision"}:
-                iteration = f"checkpoint ({episode.get('state')}); research completed {ledger.get('research_iterations_completed','—')}; next {ledger.get('next_research_ordinal','—')}"
+                iteration = f"Checkpoint after {ledger.get('research_iterations_completed', '—')}"
             else:
-                ordinal_label = "current" if item.get("status") == "running" else "next"
-                iteration = f"research {ordinal_label} {ledger.get('next_research_ordinal','—')}; completed {ledger.get('research_iterations_completed','—')}"
+                suffix = "" if item.get("status") == "running" else " (next)"
+                iteration = f"{ledger.get('next_research_ordinal', '—')}{suffix}"
         elif isinstance(managed, dict):
             iteration = "research accounting unavailable"
         else:
             iteration = f"current {attempts}" if item.get("status") == "running" else (f"last {attempts}; next {attempts + 1}" if isinstance(attempts, int) else "unavailable")
         worker = item.get("claimed_by")
-        active_rows.append([
+        active_row = [
             item.get("title", item.get("id")),
             worker,
             iteration,
-            _station_models(state, worker, item, events),
-        ])
-    active_label = "Research ordinal / execution" if isinstance(managed, dict) else "Queue iteration"
-    lines.extend(["", "## Active topics", "", _table(["Topic", "Worker", active_label, "Models"], active_rows)])
+        ]
+        if isinstance(managed, dict):
+            reviewed = [episode.get("triggered_after_research_iteration")
+                        for episode in managed.get("work", {}).get("episodes", {}).values()
+                        if episode.get("topic_id") == item.get("id")
+                        and episode.get("state") in {"complete_without_proposals", "complete_with_decisions"}
+                        and isinstance(episode.get("triggered_after_research_iteration"), int)]
+            active_row.append(max(reviewed) if reviewed else "—")
+        active_row.append(_station_models(state, worker, item, events))
+        active_rows.append(active_row)
+    active_label = "Iteration" if isinstance(managed, dict) else "Queue iteration"
+    active_headers = ["Topic", "Station" if isinstance(managed, dict) else "Worker", active_label]
+    if isinstance(managed, dict):
+        active_headers.append("Last checkpoint")
+    active_headers.append("Models")
+    lines.extend(["", "## Active topics", "", _table(active_headers, active_rows)])
+    lines.extend(overview_lines)
 
     def _attention_flags(item: dict[str, Any]) -> str:
         # Structured `flag:` lines (e.g. from a deferred-obligation STOP)
