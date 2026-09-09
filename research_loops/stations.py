@@ -30,6 +30,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
+from .control_store import ControlStore, ControlScheduler
 
 MAX_STATIONS = 5  # operator ruling 2026-09-04: "up to 5 stations, for now"
 DEFAULT_CHECKPOINT_EVERY = 25  # operator ruling 2026-09-08: 25th/50th/75th...
@@ -59,8 +60,9 @@ def station_prefix(worker: str) -> str | None:
 class StationsStore:
     """Durable fleet configuration, separate from the queue's state file."""
 
-    def __init__(self, state_dir: str | Path):
+    def __init__(self, state_dir: str | Path, *, control: ControlStore | None = None):
         self.state_dir = Path(state_dir)
+        self.control = control
         self.path = self.state_dir / "stations.json"
         self.lock_path = self.state_dir / "stations.lock"
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -110,6 +112,9 @@ class StationsStore:
         return {k: dict(v) for k, v in legacy.items() if isinstance(v, dict)}
 
     def snapshot(self) -> dict[str, Any]:
+        if self.control:
+            config = self.control.snapshot()["configuration"]
+            return {"revision": self.control.snapshot()["revision"], "fleet": config["checkpoints"], "stations": {f"station-{s['id']}": {"agent_main": s["primary_profile"], "agent_secondary": s["secondary_profile"], "interval_seconds": s["interval_seconds"]} for s in config["stations"]}}
         with self._locked() as state:  # locked so a fresh migration persists
             return copy.deepcopy(state)
 
@@ -142,6 +147,21 @@ class StationsStore:
     ) -> dict[str, Any]:
         """Set fleet-wide mechanics. checkpoint_every=0 disables the cadence
         trigger (deepening entry still fires unless also disabled)."""
+        if self.control:
+            if checkpoint_every is None and checkpoint_on_deepening is None:
+                raise StationsError("fleet: pass at least one setting")
+            try:
+                with self.control.transaction(actor="operator") as state:
+                    policy = state["configuration"]["checkpoints"]
+                    if checkpoint_every is not None:
+                        if not isinstance(checkpoint_every, int) or isinstance(checkpoint_every, bool) or checkpoint_every <= 0:
+                            raise StationsError("checkpoint_every must be a positive integer")
+                        policy["every_research_iterations"] = checkpoint_every
+                    if checkpoint_on_deepening is not None:
+                        policy["on_deepening_entry"] = bool(checkpoint_on_deepening)
+                    return dict(policy)
+            except StationsError:
+                raise
         if checkpoint_every is not None and (
             not isinstance(checkpoint_every, int)
             or isinstance(checkpoint_every, bool)
@@ -175,6 +195,23 @@ class StationsStore:
         unset it; clear=True drops the whole profile. Takes effect at the
         station's next iteration launch — never disrupts one already in
         flight. Enforces the cascade: intervals non-decreasing by number."""
+        if self.control:
+            if clear or agent_model is not None or agent_flags is not None:
+                raise StationsError("managed stations require explicit primary and secondary profiles; clear/model/flags are unsupported")
+            try:
+                number = ControlScheduler.station_id(worker)
+                scheduler = ControlScheduler(self.control)
+                if interval_seconds is not None:
+                    state = self.control.snapshot()
+                    values = [s["interval_seconds"] for s in state["configuration"]["stations"]]
+                    values[number - 1] = interval_seconds
+                    config = scheduler.update_stations(all_stations=True, intervals=values)
+                else:
+                    config = scheduler.update_stations(station_ids=[number], primary_profile=agent_main, secondary_profile=agent_secondary)
+                station = next(s for s in config["stations"] if s["id"] == number)
+                return {"worker": worker, "profile": {"agent_main": station["primary_profile"], "agent_secondary": station["secondary_profile"], "interval_seconds": station["interval_seconds"]}}
+            except Exception as exc:
+                raise StationsError(str(exc)) from exc
         if not _VALID_NAME.match(worker or ""):
             raise StationsError(f"invalid station name: {worker!r}")
         updates = {

@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections import Counter
 from pathlib import Path
@@ -37,7 +38,12 @@ from typing import Any
 
 from . import doctor as doctor_mod, refresh as refresh_mod, topic_authoring
 from .queue import QueueError, QueueStore
+from .control_store import ControlStore
+from .intake import IntakeService
+from .control_store import ControlScheduler
 from .runner import UsageLedger
+from .access import load_access
+from .controller_client import call as controller_call, ControllerClientError
 
 # Defaults applied when approve_and_queue registers a new item. Runtime agent
 # assignment and cadence are STATION mechanics (state/stations.json via
@@ -74,15 +80,32 @@ class EngineTools:
 
     def __init__(self, root: Path):
         self.root = Path(root).expanduser().resolve()
-        self.store = QueueStore(self.root)
-        self.ledger = UsageLedger(self.root / "state" / "events.jsonl")
+        self.remote_socket = os.environ.get("RESEARCH_LOOP_CONTROLLER_SOCKET")
+        # A remote operator must not probe or open the protected state root.
+        self._store = None if self.remote_socket else QueueStore(self.root)
+        self.control = None if self.remote_socket else (ControlStore(self.root) if (self.root / "state" / "control.sqlite3").exists() else None)
+        self._ledger = None if self.remote_socket else UsageLedger(self.root / "state" / "events.jsonl")
         self.topics_root = self.root / "topics"
+
+    @property
+    def store(self):
+        if self._store is None:
+            raise QueueError("this legacy tool cannot access a managed remote workspace; use queue_status, stations_show, strict intake/decision operations, or reorder_queue")
+        return self._store
+
+    @property
+    def ledger(self):
+        if self._ledger is None:
+            raise QueueError("legacy usage logs are not exposed by the managed remote controller; use queue_status or stations_show for authoritative work counts")
+        return self._ledger
 
     # ------------------------------------------------------------------
     # Read-only tier
     # ------------------------------------------------------------------
 
     def queue_status(self) -> dict[str, Any]:
+        if self.remote_socket:
+            return controller_call(self.remote_socket, "queue.status", {})
         state = self.store.snapshot()
         items = [
             {field: item.get(field) for field in _STATUS_FIELDS}
@@ -170,17 +193,21 @@ class EngineTools:
     def pause_topic(
         self, topic_id: str, reason: str | None = None, graceful: bool = True
     ) -> dict[str, Any]:
+        if self.remote_socket: return controller_call(self.remote_socket, "queue.pause", {"topic_id": topic_id, "reason": reason, "graceful": graceful})
         return self.store.pause_item(topic_id, reason, graceful=graceful)
 
     def resume_topic(self, topic_id: str) -> dict[str, Any]:
+        if self.remote_socket: return controller_call(self.remote_socket, "queue.resume", {"topic_id": topic_id})
         return self.store.resume_item(topic_id)
 
     def pause_all(
         self, reason: str | None = None, graceful: bool = True
     ) -> dict[str, Any]:
+        if self.remote_socket: return controller_call(self.remote_socket, "queue.pause_all", {"reason": reason, "graceful": graceful})
         return self.store.pause_all(reason, graceful=graceful)
 
     def resume_all(self) -> dict[str, Any]:
+        if self.remote_socket: return controller_call(self.remote_socket, "queue.resume_all", {})
         return self.store.resume_all()
 
     def move_topic(self, topic_id: str, position: int) -> dict[str, Any]:
@@ -231,6 +258,8 @@ class EngineTools:
         return refresh_mod.apply_refresh(self.store, topic_id, mode)
 
     def relock_topic(self, topic_id: str) -> dict[str, Any]:
+        if self.remote_socket or self.control is not None:
+            raise QueueError("managed inventory changes require a structured approved intake or checkpoint decision")
         item = self.store.get(topic_id)
         lock = topic_authoring.compute_lock(Path(item["cwd"]))
         return self.store.set_completion_lock(topic_id, lock)
@@ -248,6 +277,8 @@ class EngineTools:
         Nothing is binding until approve_and_queue, which is gated on a
         completed QA record either way.
         """
+        if self.remote_socket or self.control is not None:
+            raise QueueError("managed drafts require submit_intake with the exact brief schema")
         result = topic_authoring.new_topic(
             topic_id, title=title, brief_text=brief, dest=self.topics_root, mode=mode
         )
@@ -284,6 +315,8 @@ class EngineTools:
         their passes one at a time. Output: SCOPE-PROPOSAL.md plus surfaced
         assumptions appended to QA-RECORD.md, awaiting the operator's ruling.
         """
+        if self.remote_socket or self.control is not None:
+            raise QueueError("managed discovery is registered automatically by submit_intake")
         draft_dir = self.topics_root / topic_id
         if not (draft_dir / "DRAFT-TOPIC.md").is_file():
             raise QueueError(
@@ -336,6 +369,8 @@ class EngineTools:
         'Operator confirmation' (and, broad mode, 'Scope decision') carry a
         real answer, so this is how a phone session unblocks approval.
         """
+        if self.remote_socket or self.control is not None:
+            raise QueueError("managed QA decisions require decide_intake with an exact result reference")
         if heading not in self._QA_HEADINGS:
             raise QueueError(
                 f"heading must be one of {list(self._QA_HEADINGS)}"
@@ -373,6 +408,8 @@ class EngineTools:
         must repeat the topic id exactly. Registration applies the fleet
         defaults; `position` (0-based) optionally moves it in the queue.
         """
+        if self.remote_socket or self.control is not None:
+            raise QueueError("managed approval requires decide_intake with the exact draft/result decision schema")
         if confirm != topic_id:
             raise QueueError(
                 "approve_and_queue mints binding scope: pass confirm equal to "
@@ -409,6 +446,72 @@ class EngineTools:
             "position": position,
         }
 
+    def _intake(self) -> IntakeService:
+        if self.control is None:
+            raise QueueError("managed intake requires initialized controller state; legacy roots remain explicitly unmanaged")
+        return IntakeService(self.control, self.topics_root, actor="mcp-operator")
+
+    def submit_intake(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if self.remote_socket: return controller_call(self.remote_socket, "intake.submit_brief", payload)
+        return dict(self._intake().submit_brief(payload))
+
+    def record_discovery_result(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if self.remote_socket: return controller_call(self.remote_socket, "intake.record_discovery_result", payload)
+        return dict(self._intake().record_discovery_result(payload))
+
+    def decide_intake(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if self.remote_socket: return controller_call(self.remote_socket, "intake.approve", payload)
+        return dict(self._intake().approve(payload))
+
+    def decide_checkpoint(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if self.remote_socket: return controller_call(self.remote_socket, "checkpoint.decide", payload)
+        from .checkpoints.service import apply_decision
+        from .input_schema import validate_checkpoint_decision
+        from .contract_publication import checkpoint_publisher
+        if self.control is None:
+            raise QueueError("managed checkpoint decisions require initialized controller state")
+        return apply_decision(self.control, validate_checkpoint_decision(payload), actor="mcp-operator", publisher=checkpoint_publisher(self.root))
+
+    def reset_checkpoint_allowance(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if self.remote_socket:
+            return controller_call(self.remote_socket, "checkpoint.reset_allowance", payload)
+        if self.control is None:
+            raise QueueError("checkpoint allowance reset requires a managed controller")
+        return controller_call(load_access(self.root)["socket_path"], "checkpoint.reset_allowance", payload)
+
+    def stations_show(self) -> dict[str, Any]:
+        if self.remote_socket: return controller_call(self.remote_socket, "stations.show", {})
+        if self.control is None: raise QueueError("station controller state is not initialized")
+        try:
+            return controller_call(load_access(self.root)["socket_path"], "stations.show", {})
+        except Exception as exc:
+            raise QueueError(f"managed station operation requires controller socket: {exc}") from exc
+
+    def stations_update(self, station_ids: list[int] | None = None, all_stations: bool = False, primary_profile: str | None = None, secondary_profile: str | None = None, intervals: list[int] | None = None, active_count: int | None = None, checkpoints: dict[str, Any] | None = None) -> dict[str, Any]:
+        if self.remote_socket: return controller_call(self.remote_socket, "stations.update", {"station_ids": station_ids, "all_stations": all_stations, "primary_profile": primary_profile, "secondary_profile": secondary_profile, "intervals": intervals, "active_count": active_count, "checkpoints": checkpoints})
+        if self.control is None: raise QueueError("station controller state is not initialized")
+        payload = {"station_ids": station_ids, "all_stations": all_stations, "primary_profile": primary_profile, "secondary_profile": secondary_profile, "intervals": intervals, "active_count": active_count, "checkpoints": checkpoints}
+        try:
+            return controller_call(load_access(self.root)["socket_path"], "stations.update", payload)
+        except Exception as exc:
+            raise QueueError(f"managed station operation requires controller socket: {exc}") from exc
+
+    def register_profile(self, profile_id: str, adapter: str, model: str, executable: str, argv: list[str]) -> dict[str, Any]:
+        if self.remote_socket: return controller_call(self.remote_socket, "profiles.register", {"profile_id": profile_id, "adapter": adapter, "model": model, "executable": executable, "argv": argv})
+        if self.control is None: raise QueueError("profile registry requires initialized controller state")
+        try:
+            return controller_call(load_access(self.root)["socket_path"], "profiles.register", {"profile_id": profile_id, "adapter": adapter, "model": model, "executable": executable, "argv": argv})
+        except Exception as exc:
+            raise QueueError(f"managed profile operation requires controller socket: {exc}") from exc
+
+    def reorder_queue(self, expected_queue_revision: int, ordered_ids: list[str]) -> dict[str, Any]:
+        if self.remote_socket: return controller_call(self.remote_socket, "queue.reorder", {"expected_queue_revision": expected_queue_revision, "ordered_ids": ordered_ids})
+        if self.control is None: raise QueueError("queue reorder requires initialized controller state")
+        try:
+            return controller_call(load_access(self.root)["socket_path"], "queue.reorder", {"expected_queue_revision": expected_queue_revision, "ordered_ids": ordered_ids})
+        except Exception as exc:
+            raise QueueError(f"managed queue operation requires controller socket: {exc}") from exc
+
 
 _READ_ONLY_TOOLS = (
     "queue_status",
@@ -435,6 +538,15 @@ _OPERATOR_TOOLS = (
     "read_scope_proposal",
     "record_qa",
     "approve_and_queue",
+    "submit_intake",
+    "record_discovery_result",
+    "decide_intake",
+    "decide_checkpoint",
+    "reset_checkpoint_allowance",
+    "stations_show",
+    "stations_update",
+    "register_profile",
+    "reorder_queue",
 )
 
 

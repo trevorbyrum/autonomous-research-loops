@@ -24,3 +24,13 @@ Do, in order:
 6. APPEND to ${TOPIC_DIR}/QA-RECORD.md: a "## Restated intent" body (your own words, one short paragraph), a "## Traceability review" body (criteria summary; in broad mode also step 3's summary), and your questions under "## Questions for the operator" (numbered).
 
 Finish with compact JSON: {"criteria_flags": N, "traceability_flags": N, "proposed_obligations": N, "questions": N}.
+
+When returning the controller discovery-result JSON, use six `criteria` records
+only, with IDs `1` through `6` exactly once and fields `id`, `status`
+(`pass`/`flagged`), and `explanation`. Use arrays for traceability and questions;
+do not add fields outside the checked-in intake discovery schema.
+
+The exact packaged contract is `research_loops/schema/intake-discovery-result.schema.json`.
+Each topic-space finding and proposed exclusion is `{ "finding": "...", "source_ref": "..." }`;
+each proposed obligation is `{ "text": "...", "source_ref": "..." }`. Keep traceability
+records and questions in the exact schema shape; unknown nested fields are errors.

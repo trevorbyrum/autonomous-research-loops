@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .stations import StationsStore
+from .control_store import ControlStore, ControlScheduler, ControlStoreError
 
 
 class QueueError(RuntimeError):
@@ -165,6 +166,14 @@ class QueueStore:
         self.path = self.state_dir / "queue.json"
         self.lock_path = self.state_dir / "queue.lock"
         self.state_dir.mkdir(parents=True, exist_ok=True)
+        # A managed deployment has exactly one writer: control.sqlite3.  Do
+        # not create/read-migrate the legacy JSON stores merely by opening it.
+        self.control: ControlStore | None = ControlStore(self.root) if (self.state_dir / "control.sqlite3").exists() else None
+        self.scheduler: ControlScheduler | None = ControlScheduler(self.control) if self.control else None
+        self._managed_leases: dict[str, dict[str, Any]] = {}
+        if self.control:
+            self.stations = StationsStore(self.state_dir, control=self.control)
+            return
         # Mechanics (agent profiles, cadence, fleet policy) live on the
         # STATIONS, in their own collective config — never in queue state
         # (operator ruling 2026-09-09). Materializing the stations store here
@@ -195,6 +204,14 @@ class QueueStore:
 
     @contextmanager
     def _locked(self) -> Iterator[dict[str, Any]]:
+        if self.control:
+            # Legacy queue operations remain compatible in managed mode, but
+            # their state is the queue logical record inside the one SQLite
+            # transaction.  They can never reopen queue.json as a shadow
+            # authority.
+            with self.control.transaction(actor="worker") as logical:
+                yield logical["queue"]
+            return
         self.state_dir.mkdir(parents=True, exist_ok=True)
         with self.lock_path.open("a+", encoding="utf-8") as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
@@ -231,6 +248,8 @@ class QueueStore:
                 os.unlink(tmp)
 
     def snapshot(self) -> dict[str, Any]:
+        if self.control:
+            return copy.deepcopy(self.control.snapshot()["queue"])
         with self.lock_path.open("a+", encoding="utf-8") as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_SH)
             state = json.loads(self.path.read_text(encoding="utf-8"))
@@ -751,12 +770,37 @@ class QueueStore:
     WORKER_AGENT_FIELDS = ("agent_main", "agent_secondary", "agent_model", "agent_flags", "interval_seconds")
 
     def station_interval(self, worker: str) -> int:
+        if self.control:
+            number = ControlScheduler.station_id(worker)
+            state = self.control.snapshot()
+            return next(s for s in state["configuration"]["stations"] if s["id"] == number)["interval_seconds"]
         return self.stations.interval(worker)
 
     def worker_agents(self, worker: str) -> dict[str, Any]:
+        if self.control:
+            number = ControlScheduler.station_id(worker)
+            state = self.control.snapshot()
+            station = next(s for s in state["configuration"]["stations"] if s["id"] == number)
+            pair = self.control.resolve_station_pair(number, state)
+            primary, secondary = pair["primary"], pair["secondary"]
+            # Preserve the runner's legacy keys while exposing the complete,
+            # authoritative launch records.  No profile ID is treated as a
+            # guessed executable or model.
+            return {"agent_main": primary["adapter"], "agent_secondary": secondary["adapter"], "agent_model": primary["model"], "agent_flags": " ".join(primary["argv"]), "agent_executable": primary["executable"], "agent_argv": list(primary["argv"]), "secondary_model": secondary["model"], "secondary_executable": secondary["executable"], "secondary_argv": list(secondary["argv"]), "primary_profile": primary["id"], "secondary_profile": secondary["id"], "interval_seconds": station["interval_seconds"]}
         return self.stations.station(worker)
 
     def configure_worker_agents(self, worker: str, **kwargs: Any) -> dict[str, Any]:
+        if self.control and self.scheduler:
+            number = ControlScheduler.station_id(worker)
+            try:
+                return self.scheduler.update_stations(
+                    station_ids=[number],
+                    primary_profile=kwargs.get("agent_main"),
+                    secondary_profile=kwargs.get("agent_secondary"),
+                    intervals=None,
+                )
+            except Exception as exc:
+                raise QueueError(str(exc)) from exc
         from .stations import StationsError
 
         validate_item_id(worker)
@@ -782,6 +826,13 @@ class QueueStore:
         that the semantic gate validated this pass — the first such pass arms
         the on-deepening checkpoint. History, not a schedule: the stations'
         fleet config decides when a checkpoint is due."""
+        if self.control:
+            with self.control.transaction(actor="worker", affected_ids=[item_id]) as state:
+                topic = self.control.ensure_topic_work(state, item_id)
+                if iteration_type == "ordinary":
+                    topic["research_iterations_completed"] += 1
+                    topic["next_research_ordinal"] = topic["research_iterations_completed"] + 1
+                return copy.deepcopy(topic)
         with self._locked() as state:
             item = self._find(state, item_id)
             if iteration_type == "checkpoint":
@@ -969,6 +1020,33 @@ class QueueStore:
         dedicated intake worker can never be starved by — or starve — the
         research fleet. Items predating the field count as "research".
         """
+        if self.control and self.scheduler:
+            if lanes != ("research",):
+                raise QueueError("managed research stations only claim the research lane")
+            try:
+                lease = self.scheduler.claim(worker)
+            except Exception as exc:
+                raise QueueError(str(exc)) from exc
+            if lease is None:
+                return None
+            resumed = lease.pop("_resumed", False) is True
+            with self.control.transaction(actor="worker", affected_ids=[lease["topic_id"]]) as state:
+                item = next((i for i in state["queue"].get("items", []) if i.get("id") == lease["topic_id"]), None)
+                if item is None:
+                    raise QueueError("controller lease references missing queue item")
+                if not resumed:
+                    item["status"] = "running"
+                    item["claimed_by"] = worker
+                    item["attempts"] = int(item.get("attempts", 0)) + 1
+                    item["started_at"] = utc_now()
+                    item["finished_at"] = None
+                    item["updated_at"] = item["started_at"]
+                result = copy.deepcopy(item)
+            result["_control_lease"] = lease
+            result["claimed_by"] = worker
+            result["resumed"] = resumed
+            self._managed_leases[item["id"]] = lease
+            return result
         for lane in lanes:
             _validate_lane(lane)
 
@@ -1692,7 +1770,7 @@ class QueueStore:
                 actual_outcome = "global_paused"
             elif item["desired_state"] == "paused":
                 actual_outcome = "paused"
-            elif item["restart_generation"] != expected_restart_generation:
+            elif item.get("restart_generation", 0) != expected_restart_generation:
                 actual_outcome = "restarted"
             elif requested_control == "paused":
                 # The child was stopped for an item pause, but the operator resumed
@@ -1794,4 +1872,17 @@ class QueueStore:
                 )
             item["finished_at"] = now
             item["updated_at"] = now
-        return actual_outcome, copy.deepcopy(item)
+        result = copy.deepcopy(item)
+        if self.control and self.scheduler:
+            lease = self._managed_leases.pop(item_id, None)
+            if lease is None:
+                raise QueueConflict("managed finalization requires the current process lease")
+            try:
+                self.scheduler.finalize(
+                    lease["station_id"], lease["lease_id"],
+                    pacing_ready_at=next_eligible_at if actual_outcome == "scheduled" else None,
+                    retry_not_before=next_eligible_at if actual_outcome == "backoff" else None,
+                )
+            except Exception as exc:
+                raise QueueConflict(str(exc)) from exc
+        return actual_outcome, result

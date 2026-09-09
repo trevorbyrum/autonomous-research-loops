@@ -26,6 +26,18 @@ prompt="$(cat "$prompt_file")"
 
 model_flag=()
 [[ -n "${RESEARCH_LOOP_CODEX_MODEL:-}" ]] && model_flag=(-m "$RESEARCH_LOOP_CODEX_MODEL")
+extra_args=()
+if [[ -n "${RESEARCH_LOOP_CODEX_ARGV_JSON:-}" ]]; then
+  mapfile -d '' extra_args < <(python3 - "$RESEARCH_LOOP_CODEX_ARGV_JSON" <<'PY'
+import json, sys
+value = json.loads(sys.argv[1])
+if not isinstance(value, list) or any(not isinstance(x, str) for x in value):
+    raise SystemExit("managed Codex argv must be a JSON string array")
+for arg in value:
+    sys.stdout.buffer.write(arg.encode() + b"\0")
+PY
+)
+fi
 
 # OpenAI's documented headless pattern: `--json` turns stdout into a JSONL
 # event stream (turn.completed carries token usage), `-o` captures the
@@ -36,8 +48,7 @@ model_flag=()
 events="$(mktemp)"
 last_message="$(mktemp)"
 set +e
-# shellcheck disable=SC2086
-"$bin" exec "${model_flag[@]}" --json -o "$last_message" ${RESEARCH_LOOP_CODEX_FLAGS:-} "$prompt" \
+"$bin" exec "${model_flag[@]}" --json -o "$last_message" "${extra_args[@]}" ${RESEARCH_LOOP_CODEX_FLAGS:-} "$prompt" \
   </dev/null | tee "$events"
 rc=${PIPESTATUS[0]}
 set -e

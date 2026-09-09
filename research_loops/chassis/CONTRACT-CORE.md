@@ -178,13 +178,13 @@ only the queue applies those rules.
   with the required scope, qualifications, and freshness — a materially different
   claim needs its own independently verified record, and an unverified or flagged
   target cannot support a disposition. See `docs/citations.md`.
-- The delegate model rule: delegate through the topic's configured secondary
-  wrapper. Use its default gpt-5.6-luna for discovery, librarian work, extraction,
+- The delegate model rule: delegate through the station's configured secondary
+  wrapper and model for discovery, librarian work, extraction,
   proposal advocacy, and citation verification. Each verification runs in a fresh
   invocation distinct from the invocation that produced the citation. The sole
-  additional assignment is a fresh gpt-5.6-terra invocation, through the same
-  wrapper with `--model gpt-5.6-terra`, for the authorized counter-argument seat,
-  including its permitted repair assessment. Terra is a primary-class counter
+  additional assignment is a fresh configured-primary invocation, through its
+  wrapper, for the authorized counter-argument seat,
+  including its permitted repair assessment. This is a primary-class counter
   assignment, not a second secondary model. The primary retains final judgment. Use
   no other delegate model or native Agent/Task intermediary.
 - An obligation reopened or added by a scheduled/manual refresh (`topic_refresh`, see

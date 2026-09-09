@@ -1,5 +1,11 @@
 # Agent operations
 
+For a managed workspace, use [Managed stations](managed-stations.md) and the
+versioned JSON intake/decision schemas shipped in `research_loops/schema/`.
+Submit through the controller socket; never edit queue, station, or ledger files.
+The legacy commands below apply only to explicitly unmanaged workspaces. Managed
+admission rejects generic `add`, `sync`, relock, and legacy station mutations.
+
 For an agent with zero prior context on this system. Not a tutorial — a reference:
 exact commands, exact flags, the mistakes that actually happen. If you're a human,
 `docs/topic-authoring.md`/`docs/operations.md` explain the *why*; this page is the

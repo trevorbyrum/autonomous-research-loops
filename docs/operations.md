@@ -1,5 +1,10 @@
 # Operations
 
+Managed deployments use [Managed stations](managed-stations.md) and
+[deployment and recovery](managed-deployment.md). Their controller owns queue,
+profiles, active capacity and checkpoint accounting. The standalone JSON/TOML
+operations below are retained for explicitly unmanaged workspaces.
+
 ## Installing on PATH
 
 Everything under `research_loops/` — the queue engine, `chassis/`, `runners/`,
@@ -302,23 +307,18 @@ the previous lock in its output. `sync` deliberately refuses `completion_lock` c
 so a manifest edit can never re-pin what DONE means silently; `relock` is the explicit
 per-item operator action that may.
 
-## Obligations checkpoints (station-triggered)
+## Obligations checkpoints (managed stations)
 
-Framing-review checkpoints follow `docs/obligations-checkpoint.md` and are STATION
-mechanics: the fleet section of the stations' collective config schedules them, and
-the worker assigns them from each topic's recorded history — every
-`checkpoint_every`-th completed ordinary iteration (default 25) and once on the
-topic's first entry into deepening (the semantic gate first validating). Inspect or
-change the fleet policy with:
+Framing-review checkpoints follow [the checkpoint procedure](obligations-checkpoint.md).
+Managed station configuration and the topic-keyed work ledger live in
+`state/control.sqlite3`. After completed research 25 (default cadence), a separate
+checkpoint runs; the next research ordinal remains 26. Deepening entry adds an
+independent trigger and coincident triggers coalesce. The shared checkpoint pair
+inherits station 1 or uses an explicit pair, regardless of its hosting station.
 
-```bash
-bin/research-loops fleet                              # show current policy
-bin/research-loops fleet --checkpoint-every 25 --checkpoint-on-deepening on
-```
-
-An assigned checkpoint launches with `RESEARCH_LOOP_ITERATION_TYPE=checkpoint`,
-carries the assignment note in its prompt, records `iteration_type` in its result,
-and is excluded from saturation accounting (the streak neither advances nor
-resets) with its ordinal pinned against double-firing. Topics never schedule
-their own checkpoints, and checkpoint-only work must not run inside an ordinary
-self-initiated pass.
+Use `stations --show` and `stations --file` through the controller. See
+[Managed stations](managed-stations.md) for exact configuration and decision inputs.
+Checkpoints leave ordinary saturation/stall accounting unchanged. Waiting for an
+operator decision releases capacity while retaining the same queue identity/order.
+The standalone `fleet`/`stations.json` interface elsewhere in this document is
+legacy unmanaged configuration and cannot control a managed workspace.

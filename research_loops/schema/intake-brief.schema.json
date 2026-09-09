@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Intake brief submission", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "request_id", "topic_id", "title", "operator_brief", "mode"],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1, "description": "required; caller-owned protocol version"},
+    "request_id": {"type": "string", "minLength": 1, "description": "required; caller-owned idempotency key"},
+    "topic_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$", "description": "required; caller-owned stable topic identity"},
+    "title": {"type": "string", "minLength": 1, "description": "required; operator-supplied title"},
+    "operator_brief": {"type": "string", "minLength": 1, "description": "required; verbatim operator brief"},
+    "mode": {"type": "string", "enum": ["focused", "broad"], "description": "required; focused preserves frame, broad includes space findings"}
+  },
+  "examples": [{"schema_version":1,"request_id":"brief-20260909-01","topic_id":"labeling","title":"Labeling","operator_brief":"Compare labeling methods.","mode":"focused"}],
+  "x-ownership": {"controller_generated": ["draft_id", "draft_revision", "draft_hash", "created_at", "discovery_task_id"]},
+  "x-errors": {"unknown_fields":"VALIDATION_ERROR", "duplicate_request_different_payload":"DUPLICATE_REQUEST_CONFLICT"}
+}
