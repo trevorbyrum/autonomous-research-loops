@@ -209,9 +209,20 @@ class RunnerResultConsumptionTests(unittest.TestCase):
 
 
 class DefaultCompletionValidationTests(unittest.TestCase):
-    """A research topic's self-declared DONE is validated even with no
+    """A research topic's completion is validated even with no
     completion_command configured — completion integrity must never depend on
-    optional per-item configuration."""
+    optional per-item configuration.
+
+    Pre-refactor, this was reachable by an agent's self-declared DONE on a
+    *bounded* item that happened to live in a semantic-contract directory.
+    That combination is gone now: recurrence is intrinsic to the contract
+    (any cwd with SEMANTIC-STATE.json is a contract topic, full stop -- see
+    LoopRunner._contract_topic), so a contract topic's self-declared DONE is
+    unconditionally discarded (AgentDoneHasNoCompletionAuthorityTests) and
+    default validation instead gates the SATURATION path: reaching the gate's
+    "complete" verdict with no completion_command configured must still run
+    the chassis's own validator, which must still reject open obligations.
+    """
 
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()
@@ -221,25 +232,40 @@ class DefaultCompletionValidationTests(unittest.TestCase):
         self.store = QueueStore(self.root)
         self.ledger = UsageLedger(self.root / "state" / "events.jsonl")
         self.runner = LoopRunner(self.store, self.ledger, poll_seconds=0.05)
+        # This class exercises exact saturation-pass counting; the fleet's
+        # obligations-checkpoint (assigned on first entering deepening by
+        # default) would otherwise consume one of those passes as a
+        # non-accounted review iteration. Off here so the count stays exact.
+        self.store.stations.configure_fleet(checkpoint_every=0, checkpoint_on_deepening=False)
 
     def tearDown(self):
         self.tempdir.cleanup()
 
-    def _add_done_writer(self):
-        stop_writer = (
-            "from pathlib import Path; "
-            f"Path({str(self.topic_dir / 'STOP')!r}).write_text('DONE\\n')"
+    def _add_valid_pass_writer(self):
+        """A command that reports a semantically-valid, unchanged pass via
+        the chassis result record -- no completion_command configured, so
+        completion validation on the saturating pass falls back to the
+        chassis default validator against the real (open-obligation) topic."""
+        record = {"outcome": "ok", "semantic_valid": True,
+                  "signature_changed": False, "stop_written": False}
+        script = (
+            "import json, pathlib\n"
+            f"record = {record!r}\n"
+            f"path = pathlib.Path({str(self.topic_dir / 'logs' / 'latest-result.json')!r})\n"
+            "path.write_text(json.dumps(record) + '\\n')\n"
         )
         self.store.add(
             title="t",
             cwd=str(self.topic_dir),
-            command=[sys.executable, "-c", stop_writer],
+            command=[sys.executable, "-c", script],
             item_id="t",
-            stop_file=str(self.topic_dir / "STOP"),
         )
 
     def test_done_with_open_obligations_is_rejected_by_default(self):
-        self._add_done_writer()
+        self._add_valid_pass_writer()
+        for _ in range(LoopRunner.DEFAULT_SATURATION_LIMIT - 1):
+            result = self.runner.run_once()
+            self.assertEqual(result["outcome"], "scheduled")
         result = self.runner.run_once()
         self.assertEqual(result["outcome"], "needs_attention")
         item = self.store.get("t")
@@ -286,6 +312,11 @@ class ChassisMeasuredDoneTests(unittest.TestCase):
         self.runner = LoopRunner(self.store, self.ledger, poll_seconds=0.05)
         self.cwd = self.root / "item-cwd"
         (self.cwd / "logs").mkdir(parents=True)
+        # This class exercises exact saturation-pass counting; the fleet's
+        # obligations-checkpoint (assigned on first entering deepening by
+        # default) would otherwise consume one of those passes as a
+        # non-accounted review iteration. Off here so the count stays exact.
+        self.store.stations.configure_fleet(checkpoint_every=0, checkpoint_on_deepening=False)
 
     def tearDown(self):
         self.tempdir.cleanup()
@@ -301,9 +332,13 @@ class ChassisMeasuredDoneTests(unittest.TestCase):
         return [sys.executable, "-c", script]
 
     def _add(self, record, completion):
+        # Recurrence is intrinsic to the cwd's contract now (operator ruling
+        # 2026-09-09): a SEMANTIC-STATE.json marker is what makes this item
+        # recur under the saturation gate, not a repeat_seconds kwarg.
+        (self.cwd / "SEMANTIC-STATE.json").write_text("{}", encoding="utf-8")
         self.store.add(
             title="t", cwd=str(self.cwd), command=self._writer_command(record),
-            item_id="t", repeat_seconds=0, completion_command=completion,
+            item_id="t", completion_command=completion,
         )
 
     def test_saturation_completes_after_consecutive_unchanged_valid_passes(self):
@@ -429,6 +464,11 @@ class AgentDoneHasNoCompletionAuthorityTests(unittest.TestCase):
         self.cwd = self.root / "item-cwd"
         (self.cwd / "logs").mkdir(parents=True)
         self.stop = self.cwd / "STOP"
+        # This class exercises exact saturation-pass counting; the fleet's
+        # obligations-checkpoint (assigned on first entering deepening by
+        # default) would otherwise consume one of those passes as a
+        # non-accounted review iteration. Off here so the count stays exact.
+        self.store.stations.configure_fleet(checkpoint_every=0, checkpoint_on_deepening=False)
 
     def tearDown(self):
         self.tempdir.cleanup()
@@ -451,15 +491,17 @@ class AgentDoneHasNoCompletionAuthorityTests(unittest.TestCase):
         script += "sys.exit(0)\n"
         return [sys.executable, "-c", script]
 
-    def _add(self, *, stop_body, contract=True, repeat_seconds=0,
-             signature_changed=False):
+    def _add(self, *, stop_body, contract=True, signature_changed=False):
+        # Recurrence is intrinsic to the contract (SEMANTIC-STATE.json in
+        # cwd) now, not a repeat_seconds kwarg -- contract=True/False is the
+        # whole knob.
         if contract:
             self._contract()
         record = {"outcome": "ok", "semantic_valid": True,
                   "signature_changed": signature_changed, "stop_written": True}
         self.store.add(
             title="t", cwd=str(self.cwd), command=self._command(record, stop_body),
-            item_id="t", repeat_seconds=repeat_seconds,
+            item_id="t",
             completion_command=["true"], stop_file="STOP",
         )
 
@@ -503,13 +545,10 @@ class AgentDoneHasNoCompletionAuthorityTests(unittest.TestCase):
         self.assertIn("NEEDS-OPERATOR", self.store.get("t")["last_error"])
 
     def test_done_still_completes_a_loop_with_no_semantic_contract(self):
-        # Generic loop commands have no saturation signal at all; removing
-        # their DONE would leave them no way to finish.
+        # Generic loop commands (no SEMANTIC-STATE.json -- a bounded item,
+        # e.g. a discovery pass) have no saturation signal at all; removing
+        # their DONE would leave them no way to finish. Recurrence and
+        # "bounded" are now the same axis (contract topic or not), so this
+        # covers what was previously also tested via repeat_seconds=None.
         self._add(stop_body="DONE\n", contract=False)
-        self.assertEqual(self.runner.run_once()["outcome"], "completed")
-
-    def test_done_still_completes_a_bounded_item(self):
-        # repeat_seconds=None is a one-shot (discovery passes): nothing
-        # recurring to saturate.
-        self._add(stop_body="DONE\n", repeat_seconds=None)
         self.assertEqual(self.runner.run_once()["outcome"], "completed")

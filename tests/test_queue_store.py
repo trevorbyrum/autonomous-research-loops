@@ -140,22 +140,27 @@ class QueueStoreTests(unittest.TestCase):
                     title="Unsafe", cwd="/tmp", command=["true"], item_id=item_id
                 )
 
-    def test_add_validates_retry_and_repeat_bounds(self):
+    def test_add_validates_retry_bounds(self):
         for max_attempts in (0, -1):
             with self.subTest(max_attempts=max_attempts), self.assertRaises(QueueError):
                 self.store.add(
                     title="Invalid", cwd="/tmp", command=["true"], max_attempts=max_attempts
                 )
-        # 0 is legal: continuous cadence (re-eligible the moment an iteration
-        # finishes). Only negatives are rejected; None stays "bounded, run once".
-        with self.assertRaises(QueueError):
-            self.store.add(
-                title="Invalid", cwd="/tmp", command=["true"], repeat_seconds=-1
-            )
-        continuous = self.store.add(
-            title="Continuous", cwd="/tmp", command=["true"], repeat_seconds=0
-        )
-        self.assertEqual(continuous["repeat_seconds"], 0)
+
+    def test_add_no_longer_accepts_scheduling_or_agent_kwargs(self):
+        # Cadence and agent binding are station configuration now (operator
+        # ruling 2026-09-09) -- add() has no knobs for them at all, so a
+        # caller still passing the old kwargs must fail loudly, not silently
+        # get ignored.
+        for kwarg, value in (
+            ("repeat_seconds", 0),
+            ("agent_main", "claude"),
+            ("agent_secondary", "codex exec"),
+        ):
+            with self.subTest(kwarg=kwarg), self.assertRaises(TypeError):
+                self.store.add(
+                    title="Invalid", cwd="/tmp", command=["true"], **{kwarg: value}
+                )
 
 
 if __name__ == "__main__":

@@ -100,7 +100,7 @@ def _station_models(state: dict[str, Any], worker: Any, item: dict[str, Any],
     model is extracted from the --model/-m flag; a delegate with no model flag
     falls back to its first token (the bare CLI name).
     """
-    profile = (state.get("worker_agents") or {}).get(str(worker)) or {}
+    profile = (state.get("station_profiles") or {}).get(str(worker)) or {}
     primary = profile.get("agent_model") or profile.get("agent_main") or _profile_for(
         item, str(worker) if worker else None, events
     )

@@ -42,10 +42,10 @@ class CompletionHookTests(unittest.TestCase):
         )
         return [sys.executable, "-c", script]
 
-    def _add(self, *, hook, repeat_seconds=None, command=None):
+    def _add(self, *, hook, command=None):
         self.store.add(
             title="t", cwd=str(self.cwd), command=command or ["true"],
-            item_id="t", repeat_seconds=repeat_seconds,
+            item_id="t",
             on_completed_command=hook,
         )
 
@@ -90,7 +90,7 @@ class CompletionHookTests(unittest.TestCase):
             f"pathlib.Path({str(self.cwd / 'logs' / 'latest-result.json')!r})"
             f".write_text(json.dumps({record!r}))\n"
         )]
-        self._add(hook=self._hook(), repeat_seconds=0, command=writer)
+        self._add(hook=self._hook(), command=writer)
         self.assertEqual(self.runner.run_once()["outcome"], "scheduled")
         self.assertFalse(self.marker.exists())
         self.assertEqual(self._events("completion_hook"), [])
@@ -106,9 +106,13 @@ class CompletionHookTests(unittest.TestCase):
             f"pathlib.Path({str(self.cwd / 'logs' / 'latest-result.json')!r})"
             f".write_text(json.dumps({record!r}))\n"
         )]
+        # The fleet's obligations-checkpoint (assigned on first entering
+        # deepening by default) would otherwise consume one of these passes
+        # as a non-accounted review iteration, throwing off the exact count.
+        self.store.stations.configure_fleet(checkpoint_every=0, checkpoint_on_deepening=False)
         self.store.add(
             title="t", cwd=str(self.cwd), command=writer, item_id="t",
-            repeat_seconds=0, completion_command=["true"],
+            completion_command=["true"],
             on_completed_command=self._hook(),
         )
         for _ in range(LoopRunner.DEFAULT_SATURATION_LIMIT - 1):

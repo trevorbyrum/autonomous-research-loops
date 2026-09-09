@@ -231,6 +231,11 @@ class RunnerRefreshIntegrationTests(unittest.TestCase):
         self.store = QueueStore(self.root)
         self.ledger = UsageLedger(self.root / "state" / "events.jsonl")
         self.runner = LoopRunner(self.store, self.ledger, poll_seconds=0.05)
+        # This test drives completion via exact saturation-streak counting;
+        # the fleet's obligations-checkpoint (assigned on first entering
+        # deepening by default) would otherwise intercept the completing
+        # pass as a non-accounted review iteration instead.
+        self.store.stations.configure_fleet(checkpoint_every=0, checkpoint_on_deepening=False)
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -240,34 +245,52 @@ class RunnerRefreshIntegrationTests(unittest.TestCase):
         return len(state["obligations"])
 
     def test_a_real_tick_reopens_a_due_topic_and_it_becomes_claimable_again(self):
-        # The command writes a real STOP DONE, like an actual completed topic
-        # has on disk. The refresh must clear it -- a surviving stale STOP
-        # would make run-topic.sh refuse the reopened topic's next iteration
-        # outright (exit 3 -> needs_attention).
-        stop_writer = (
-            "from pathlib import Path; "
-            f"Path({str(self.topic_dir / 'STOP')!r}).write_text('DONE\\n')"
+        # Recurrence is intrinsic to the contract now (operator ruling
+        # 2026-09-09): this topic dir carries SEMANTIC-STATE.json, so it is
+        # unconditionally a contract topic, and a contract topic's
+        # self-declared DONE stop file has no completion authority at all --
+        # it is discarded regardless of completion_command (see
+        # AgentDoneHasNoCompletionAuthorityTests in test_iteration_result.py).
+        # Completion is driven through the measured saturation gate instead;
+        # pre-seeding the streak one pass short of the limit makes a single
+        # real tick complete it, matching the original test's shape.
+        record = {"outcome": "ok", "semantic_valid": True,
+                  "signature_changed": False, "stop_written": False}
+        writer = (
+            "import json, pathlib\n"
+            f"record = {record!r}\n"
+            f"pathlib.Path({str(self.topic_dir / 'logs' / 'latest-result.json')!r})"
+            ".write_text(json.dumps(record) + '\\n')\n"
         )
         self.store.add(
             title="a",
             cwd=str(self.topic_dir),
-            command=[sys.executable, "-c", stop_writer],
+            command=[sys.executable, "-c", writer],
             item_id="a",
             stop_file=str(self.topic_dir / "STOP"),
             topic_refresh="weekly",
             topic_refresh_mode="light",
             # This test exercises refresh mechanics, not completion
             # validation; the example topic is all-open, so the default
-            # chassis validation would (correctly) reject its bare DONE.
-            # An explicitly configured completion_command stays
-            # authoritative, which is the sanctioned way to opt a test
-            # fixture out.
+            # chassis validation would (correctly) reject it. An explicitly
+            # configured completion_command stays authoritative, which is
+            # the sanctioned way to opt a test fixture out.
             completion_command=["true"],
         )
+        self.store.record_saturation_streak("a", LoopRunner.DEFAULT_SATURATION_LIMIT - 1)
+
         first = self.runner.run_once()
         self.assertEqual(first["outcome"], "completed")
-        self.assertTrue((self.topic_dir / "STOP").exists())
         before_obligations = self._obligation_count()
+
+        # Simulate a stale terminal STOP surviving on disk into the
+        # completed state (residue from an operator session, an older
+        # chassis run, etc. -- a contract topic's OWN completion never
+        # leaves one, since a self-declared DONE is discarded and removed).
+        # Reopening must still clear it, or the reopened topic's very first
+        # iteration would be refused outright (chassis exits 3 on any STOP
+        # present).
+        (self.topic_dir / "STOP").write_text("DONE\n", encoding="utf-8")
 
         # Simulate the schedule coming due (backdate on disk -- there's no
         # operator-facing way to do this, same technique used elsewhere in
@@ -280,8 +303,7 @@ class RunnerRefreshIntegrationTests(unittest.TestCase):
         # _process_due_refreshes() reopened "a" for real (refresh-policy.py
         # ran against the actual topic dir on disk, clearing the stale STOP)
         # and claim_next() picked it straight back up within the same tick,
-        # running the command again to a fresh completion (a fresh STOP DONE
-        # written by the second run itself).
+        # running the command again to a fresh saturating completion.
         self.assertEqual(second["outcome"], "completed")
         after_obligations = self._obligation_count()
         self.assertEqual(after_obligations, before_obligations + 1)
@@ -290,6 +312,7 @@ class RunnerRefreshIntegrationTests(unittest.TestCase):
         self.assertEqual(final_item["status"], "completed")
         self.assertEqual(final_item["refresh_count"], 1)
         self.assertIsNotNone(final_item["refresh_due_at"])
+        self.assertFalse((self.topic_dir / "STOP").exists())
 
 
 class RefreshCLITests(unittest.TestCase):
@@ -384,7 +407,7 @@ class ReactivationClearsStopFileTests(unittest.TestCase):
     def _add(self, item_id="t"):
         self.store.add(
             title="t", cwd=str(self.cwd), command=["true"], item_id=item_id,
-            repeat_seconds=0, stop_file="STOP",
+            stop_file="STOP",
         )
 
     def _complete(self, item_id="t"):
@@ -427,7 +450,6 @@ class ReactivationClearsStopFileTests(unittest.TestCase):
     def test_item_without_a_declared_stop_file_is_untouched(self):
         self.store.add(
             title="n", cwd=str(self.cwd), command=["true"], item_id="n",
-            repeat_seconds=0,
         )
         stray = self.cwd / "STOP"
         stray.write_text("DONE\n", encoding="utf-8")

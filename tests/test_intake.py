@@ -258,7 +258,9 @@ class DiscoverCliTests(unittest.TestCase):
             item = json.loads(result.stdout)
             self.assertEqual(item["lane"], "intake")
             self.assertEqual(item["id"], "discovery.c-topic")
-            self.assertIsNone(item["repeat_seconds"])  # bounded: one pass
+            # Bounded: recurrence is intrinsic to cwd (SEMANTIC-STATE.json
+            # presence), and a discovery draft dir has none.
+            self.assertFalse((dest / "c-topic" / "SEMANTIC-STATE.json").is_file())
 
     def test_discover_reviews_approved_topics_and_requeues(self):
         with tempfile.TemporaryDirectory() as tmp:

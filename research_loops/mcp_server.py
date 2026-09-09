@@ -39,11 +39,11 @@ from . import doctor as doctor_mod, refresh as refresh_mod, topic_authoring
 from .queue import QueueError, QueueStore
 from .runner import UsageLedger
 
-# Fleet defaults applied when approve_and_queue registers a new item; they
-# mirror the deployed portfolio's standard configuration.
+# Defaults applied when approve_and_queue registers a new item. Runtime agent
+# assignment and cadence are STATION mechanics (state/stations.json via
+# worker-agents/fleet), never item properties; DEFAULT_AGENT_MAIN survives only
+# as the discovery command's positional runner argument.
 DEFAULT_AGENT_MAIN = "claude"
-DEFAULT_AGENT_SECONDARY = "codex exec -m gpt-5.6-luna"
-DEFAULT_REPEAT_SECONDS = 900
 DEFAULT_STALL_LIMIT = 6
 DEFAULT_MAX_ATTEMPTS = 8
 
@@ -61,8 +61,6 @@ _STATUS_FIELDS = (
     "last_error_kind",
     "last_exit_code",
     "next_eligible_at",
-    "agent_main",
-    "agent_secondary",
 )
 
 
@@ -228,14 +226,6 @@ class EngineTools:
             "set_agents is deprecated: agents are a worker (station) property, "
             "not a topic property -- use set_worker_agents(worker, ...)"
         )
-        settings: dict[str, Any] = {}
-        if agent_main is not None:
-            settings["agent_main"] = agent_main or None
-        if agent_secondary is not None:
-            settings["agent_secondary"] = agent_secondary or None
-        if not settings:
-            raise QueueError("set_agents: pass agent_main and/or agent_secondary")
-        return self.store.configure_topic(topic_id, **settings)
 
     def refresh_topic(self, topic_id: str, mode: str) -> dict[str, Any]:
         return refresh_mod.apply_refresh(self.store, topic_id, mode)
@@ -285,7 +275,6 @@ class EngineTools:
 
     def start_discovery(
         self, topic_id: str, agent_main: str = DEFAULT_AGENT_MAIN,
-        agent_secondary: str = DEFAULT_AGENT_SECONDARY,
     ) -> dict[str, Any]:
         """Queue a bounded discovery pass for a DRAFT topic on the intake lane.
 
@@ -311,8 +300,6 @@ class EngineTools:
             item_id=f"discovery.{topic_id}",
             usage_file="logs/latest-usage.json",
             max_attempts=3,
-            agent_main=agent_main,
-            agent_secondary=agent_secondary,
             lane="intake",
         )
 
@@ -378,7 +365,6 @@ class EngineTools:
         confirm: str,
         position: int | None = None,
         agent_main: str = DEFAULT_AGENT_MAIN,
-        agent_secondary: str = DEFAULT_AGENT_SECONDARY,
     ) -> dict[str, Any]:
         """Promote a reviewed draft into a binding topic AND register it.
 
@@ -411,11 +397,8 @@ class EngineTools:
             item_id=topic_id,
             usage_file="logs/latest-usage.json",
             stop_file="STOP",
-            repeat_seconds=DEFAULT_REPEAT_SECONDS,
             stall_limit=DEFAULT_STALL_LIMIT,
             max_attempts=DEFAULT_MAX_ATTEMPTS,
-            agent_main=agent_main,
-            agent_secondary=agent_secondary,
             completion_lock=approved["lock"],
         )
         if position is not None:

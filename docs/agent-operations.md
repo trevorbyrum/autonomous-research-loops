@@ -125,19 +125,21 @@ in flight to protect. `--now` is for when you genuinely need the process gone ri
 away; the default is almost always what you want, since it never discards in-progress
 work or risks a half-written ledger from a mid-write kill.
 
-## Swapping an item's agents
+## Swapping a station's agents
+
+Agents are a station property, never an item's — the old `agents <item-id>`
+command is gone, and items carry no agent binding:
 
 ```bash
-research-loops agents <item-id> --main hermes --secondary codex   # set both
-research-loops agents <item-id> --main hermes                     # only main, leave secondary
-research-loops agents <item-id> --secondary ""                    # clear secondary
+research-loops worker-agents worker-1 --main hermes --secondary 'codex ...'
+research-loops worker-agents worker-1 --secondary ""      # clear one field
+research-loops worker-agents worker-2 --interval 1800     # station cadence
+research-loops fleet                                      # fleet-wide policy
 ```
 
-Thin wrapper over `configure_topic()` — same "next iteration only, never touches
-in-flight" guarantee `config apply`/`add --agent-main` already have (see
-`docs/operations.md#declarative-config`). Swapping an item's agents while it's
-actively running changes what launches *next*; the current iteration keeps running
-under whichever agent it already started with.
+Profiles live in the stations' collective config (`state/stations.json`) and are
+re-read at every iteration spawn: a change applies at the next launch; the
+current iteration keeps running under whatever it already started with.
 
 ## Moving a worker to a different topic
 

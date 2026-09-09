@@ -189,14 +189,19 @@ requirement.
 
 A checkpoint/scout review is not a qualifying deepening pass merely because the
 semantic state is valid and unchanged. Report its iteration type accurately. The
-saturation exclusion — such a review neither advancing nor resetting the
-deepening-saturation streak — is REQUIRED BEHAVIOR PENDING QUEUE SUPPORT: today's
-queue does not carry iteration type in the result record or exclude checkpoints from
-its saturation decision. Until the queue carries and honors iteration type, do not
-run checkpoint-only work as an ordinary completion-accounted station pass; an
-operator-assigned review with explicit limits must use an execution path outside
-that accounting, or await the queue support. Self-reported type or progress flags
-cannot supply the exclusion. Actual evidence changes and research blockers retain
-their ordinary effects under the queue's rules. If a checkpoint also reconciles
-material evidence, report that work separately; do not relabel the whole pass
-"deepening" to make it eligible.
+saturation exclusion is now STATION MECHANICS, implemented end to end: the worker
+monitors each topic's recorded history (`iterations_completed`, deepening entry)
+against the fleet configuration in the stations' collective config
+(`state/stations.json`, defaults: `checkpoint_every = 25`,
+`checkpoint_on_deepening = on`; adjust with `python3 -m research_loops fleet`),
+assigns a due checkpoint by launching the iteration with
+`RESEARCH_LOOP_ITERATION_TYPE=checkpoint`, and the chassis relays the assignment
+into the prompt and records `iteration_type` in the result. The queue excludes an
+assigned checkpoint pass from the saturation decision — the streak neither
+advances nor resets — and pins the checkpoint ordinal so the trigger cannot
+double-fire. Only a STATION-ASSIGNED checkpoint receives this exclusion:
+self-reported type or progress flags cannot supply it, and checkpoint-only work
+must never run inside an ordinary self-initiated pass. Actual evidence changes
+and research blockers retain their ordinary effects under the queue's rules. If a
+checkpoint also reconciles material evidence, report that work separately; do not
+relabel the whole pass "deepening" to make it eligible.

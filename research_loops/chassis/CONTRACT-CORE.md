@@ -107,11 +107,13 @@ DECISIONS-LOG.md as decision provenance, citing the underlying corpus records
 separately for factual premises. Keep pending proposals visible for operator review
 without making their approval a new completion requirement. A checkpoint/scout review
 is not a qualifying deepening pass merely because the semantic state is valid and
-unchanged: report its iteration type accurately; the required exclusion (neither
-advancing nor resetting the deepening-saturation streak) is PENDING QUEUE SUPPORT —
-until the queue carries and honors iteration type, checkpoint-only work must not run
-as an ordinary completion-accounted station pass (see
-`docs/obligations-checkpoint.md`). Only the queue applies those rules.
+unchanged: report its iteration type accurately. The station assigns checkpoints
+(the fleet configuration schedules them from the topic's iteration count and
+deepening entry; the assignment arrives in this prompt) and the queue excludes an
+assigned checkpoint pass from saturation accounting — neither advancing nor
+resetting the deepening-saturation streak (see `docs/obligations-checkpoint.md`).
+Never run checkpoint-only work in an ordinary iteration on your own initiative;
+only the queue applies those rules.
 
 ## Evidence handling
 

@@ -22,12 +22,21 @@ class StallGuardTests(unittest.TestCase):
     def tearDown(self):
         self.tempdir.cleanup()
 
+    def _contract_dir(self, name: str) -> Path:
+        """A fresh cwd carrying SEMANTIC-STATE.json -- recurrence is
+        intrinsic to the contract now (operator ruling 2026-09-09), not a
+        repeat_seconds kwarg, so a "recurring" test needs its own dir rather
+        than a marker in a shared one."""
+        topic_dir = self.root / name
+        topic_dir.mkdir()
+        (topic_dir / "SEMANTIC-STATE.json").write_text("{}", encoding="utf-8")
+        return topic_dir
+
     def _add_recurring(self, **kwargs):
         return self.store.add(
             title="Recurring loop",
-            cwd=str(self.root),
+            cwd=str(self._contract_dir("recurring")),
             command=[sys.executable, "-c", "print('iteration ok')"],
-            repeat_seconds=900,
             progress_command=["cat", str(self.marker)],
             stall_limit=3,
             **kwargs,
@@ -77,9 +86,8 @@ class StallGuardTests(unittest.TestCase):
     def test_failed_probe_does_not_accuse(self):
         item = self.store.add(
             title="Probe fails",
-            cwd=str(self.root),
+            cwd=str(self._contract_dir("probe-fails")),
             command=[sys.executable, "-c", "print('ok')"],
-            repeat_seconds=900,
             progress_command=["/nonexistent/probe"],
             stall_limit=2,
         )
@@ -88,22 +96,23 @@ class StallGuardTests(unittest.TestCase):
             self.assertEqual(result["outcome"], "scheduled")
         self.assertEqual(self.store.get(item["id"])["stall_count"], 0)
 
-    def test_items_without_guard_are_untouched(self):
-        self.store.add(
-            title="No guard",
-            cwd=str(self.root),
-            command=[sys.executable, "-c", "print('ok')"],
-            repeat_seconds=900,
-        )
-        for _ in range(4):
-            self.assertEqual(self._run_and_requeue()["outcome"], "scheduled")
-        self.assertEqual(
-            [e for e in self.ledger.events() if e["type"] == "stall_guard"], []
-        )
+    # test_items_without_guard_are_untouched removed: its premise (a
+    # RECURRING item with NO stall guard at all, across many reschedule
+    # cycles) is now impossible. Recurrence is intrinsic to the contract
+    # (SEMANTIC-STATE.json in cwd -- operator ruling 2026-09-09), and any
+    # such contract topic gets the chassis default progress probe/guard
+    # whether or not it configures its own (DefaultStallGuardTests below) --
+    # so a recurring-yet-unguarded item can no longer be constructed. The
+    # "stays unguarded" invariant now applies only to a truly generic
+    # (non-contract, therefore bounded, single-shot) item, which is exactly
+    # what DefaultStallGuardTests.test_generic_item_without_semantic_state_stays_unguarded
+    # covers.
 
     def test_bounded_item_records_but_never_escalates_via_guard(self):
         # completed (non-recurring) items get signature bookkeeping but the
-        # guard never flips a completed outcome.
+        # guard never flips a completed outcome. Bounded == no
+        # SEMANTIC-STATE.json in cwd, so self.root (never marked as a
+        # contract dir) is correct here.
         item = self.store.add(
             title="Bounded",
             cwd=str(self.root),
@@ -192,7 +201,6 @@ class DefaultStallGuardTests(unittest.TestCase):
             cwd=str(self.topic_dir),
             command=[sys.executable, "-c", "print('no progress made')"],
             item_id="t",
-            repeat_seconds=900,
         )
         outcomes = [
             self._run_and_requeue()["outcome"]
@@ -209,6 +217,12 @@ class DefaultStallGuardTests(unittest.TestCase):
         self.assertEqual(item["consecutive_failures"], 0)
 
     def test_generic_item_without_semantic_state_stays_unguarded(self):
+        # A generic item (no SEMANTIC-STATE.json) is bounded by definition
+        # now (recurrence is intrinsic to the contract -- operator ruling
+        # 2026-09-09), so it can no longer be forced to recur via a
+        # repeat_seconds kwarg: it completes on its first success. What's
+        # still true, and still worth pinning, is that no default progress
+        # probe/stall guard ever touches it.
         cwd = Path(self.tempdir.name) / "generic"
         cwd.mkdir()
         self.store.add(
@@ -216,7 +230,9 @@ class DefaultStallGuardTests(unittest.TestCase):
             cwd=str(cwd),
             command=[sys.executable, "-c", "print('ok')"],
             item_id="g",
-            repeat_seconds=900,
         )
-        for _ in range(LoopRunner.DEFAULT_STALL_LIMIT + 2):
-            self.assertEqual(self._run_and_requeue()["outcome"], "scheduled")
+        result = self.runner.run_once()
+        self.assertEqual(result["outcome"], "completed")
+        self.assertEqual(
+            [e for e in self.ledger.events() if e["type"] == "stall_guard"], []
+        )

@@ -104,8 +104,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     discover.add_argument("topic_id")
     discover.add_argument("--dest", help="drafts directory (default: <root>/topics)")
-    discover.add_argument("--agent-main", default="claude")
-    discover.add_argument("--agent-secondary", default=None)
+    discover.add_argument(
+        "--agent-main", default="claude",
+        help="runner adapter for the discovery pass (a command argument, not an "
+        "item binding — stations own all runtime agent mechanics)",
+    )
 
     approve_topic = sub.add_parser(
         "approve-topic",
@@ -138,17 +141,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add.add_argument("--stall-limit", type=int)
     add.add_argument("--max-attempts", type=int, default=5)
-    add.add_argument("--repeat-seconds", type=int)
-    add.add_argument(
-        "--agent-main",
-        help="sets RESEARCH_LOOP_RUNNER for this item, overriding the command's "
-        "positional runner-name argument for this item only",
-    )
-    add.add_argument(
-        "--agent-secondary",
-        help="named delegate agent surfaced to the runner as "
-        "RESEARCH_LOOP_AGENT_SECONDARY, for legwork delegation only",
-    )
     add.add_argument(
         "--gap-policy",
         choices=("review", "auto"),
@@ -353,6 +345,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="station cadence: seconds to pause between iterations (0 = continuous)",
     )
     worker_agents.add_argument("--clear", action="store_true", help="drop the profile")
+    fleet = sub.add_parser(
+        "fleet",
+        help="show or set fleet-wide station mechanics (the stations' collective "
+        "config in state/stations.json): the obligations-checkpoint schedule "
+        "every station applies to whatever topic it holds",
+    )
+    fleet.add_argument(
+        "--checkpoint-every", dest="checkpoint_every", type=int,
+        help="assign an obligations checkpoint every N ordinary iterations "
+        "(0 disables the cadence trigger)",
+    )
+    fleet.add_argument(
+        "--checkpoint-on-deepening", dest="checkpoint_on_deepening",
+        choices=("on", "off"),
+        help="assign a checkpoint once a topic first enters deepening",
+    )
     sync = sub.add_parser(
         "sync",
         help=(
@@ -523,8 +531,6 @@ def main(argv: list[str] | None = None) -> int:
                     item_id=f"discovery.{args.topic_id}",
                     usage_file="logs/latest-usage.json",
                     max_attempts=3,
-                    agent_main=args.agent_main,
-                    agent_secondary=args.agent_secondary,
                     lane="intake",
                 )
             )
@@ -561,9 +567,6 @@ def main(argv: list[str] | None = None) -> int:
                     on_completed_command=on_completed_command,
                     stall_limit=args.stall_limit,
                     max_attempts=args.max_attempts,
-                    repeat_seconds=args.repeat_seconds,
-                    agent_main=args.agent_main,
-                    agent_secondary=args.agent_secondary,
                     gap_policy=args.gap_policy,
                     gap_auto_limit=args.gap_auto_limit,
                     completion_lock=args.lock_sha256,
@@ -628,6 +631,25 @@ def main(argv: list[str] | None = None) -> int:
                     clear=args.clear,
                 )
             )
+        elif args.action == "fleet":
+            from .stations import StationsError
+
+            try:
+                if args.checkpoint_every is None and args.checkpoint_on_deepening is None:
+                    emit(store.stations.fleet())
+                else:
+                    emit(
+                        store.stations.configure_fleet(
+                            checkpoint_every=args.checkpoint_every,
+                            checkpoint_on_deepening=(
+                                None
+                                if args.checkpoint_on_deepening is None
+                                else args.checkpoint_on_deepening == "on"
+                            ),
+                        )
+                    )
+            except StationsError as exc:
+                raise QueueError(str(exc)) from exc
         elif args.action == "sync":
             manifest_path = Path(args.manifest).expanduser()
             try:
@@ -657,11 +679,8 @@ def main(argv: list[str] | None = None) -> int:
                     settings = config.for_topic(topic_id)
                     store.configure_topic(
                         topic_id,
-                        repeat_seconds=settings.repeat_seconds,
                         max_attempts=settings.max_attempts,
                         stall_limit=settings.stall_limit,
-                        agent_main=settings.agent_main,
-                        agent_secondary=settings.agent_secondary,
                         gap_policy=settings.gap_policy,
                         gap_auto_limit=settings.gap_auto_limit,
                         on_completed_command=settings.on_completed_command,
@@ -716,7 +735,11 @@ def main(argv: list[str] | None = None) -> int:
                 if args.output
                 else root.parent / "STATUS.md"
             )
-            content = render_dashboard(store.snapshot(), ledger.events())
+            dashboard_state = store.snapshot()
+            # Station profiles live in the stations' own collective config,
+            # not in queue state — attach them for the Models column.
+            dashboard_state["station_profiles"] = store.stations.snapshot()["stations"]
+            content = render_dashboard(dashboard_state, ledger.events())
             written = write_dashboard(output, content)
             emit({"output": str(written)})
         elif args.action == "doctor":

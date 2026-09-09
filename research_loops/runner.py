@@ -603,18 +603,53 @@ class LoopRunner:
         return body
 
     @staticmethod
-    def _saturation_eligible(item: dict[str, Any], repeat_seconds: Any) -> bool:
-        """True when the SATURATION GATE — not the agent — decides completion.
+    def _contract_topic(item: dict[str, Any]) -> bool:
+        """True for a contract-bearing research topic — recurring by nature,
+        and the SATURATION GATE (not the agent) decides its completion.
 
-        Any recurring item carrying a semantic contract. Coverage (every
-        obligation terminal, validator green) is what an agent can see and
-        self-certify; saturation is a property of consecutive iterations that
-        only the queue can observe. Where both exist, the measured signal
-        wins and the self-declared one is discarded.
+        Recurrence is intrinsic to the contract, never a per-item setting:
+        a topic with SEMANTIC-STATE.json iterates until saturated, paced
+        solely by its station's interval; anything else is a bounded command
+        that completes on success (operator ruling 2026-09-09 — mechanics
+        live on stations, the queue holds only order/contracts/substance).
+        Coverage (every obligation terminal, validator green) is what an
+        agent can see and self-certify; saturation is a property of
+        consecutive iterations that only the queue can observe. Where both
+        exist, the measured signal wins and the self-declared one is
+        discarded.
         """
-        if repeat_seconds is None:
-            return False
         return (Path(item["cwd"]) / "SEMANTIC-STATE.json").is_file()
+
+    def _checkpoint_due(self, item: dict[str, Any]) -> str | None:
+        """Fleet obligations-checkpoint trigger — STATION mechanics.
+
+        The station monitors the topic's recorded history (ordinary
+        iterations completed, deepening entry) against the fleet policy in
+        the stations' collective config and assigns the checkpoint iteration;
+        a topic never schedules its own (operator design 2026-09-08/09:
+        every 25th iteration, or once it first enters deepening). Returns the
+        assignment reason, or None when no checkpoint is due.
+        """
+        if not self._contract_topic(item):
+            return None
+        fleet = self.store.stations.fleet()
+        if (
+            fleet.get("checkpoint_on_deepening")
+            and item.get("deepening_seen")
+            and not item.get("deepening_checkpoint_done")
+        ):
+            return "deepening"
+        every = int(fleet.get("checkpoint_every") or 0)
+        done = int(item.get("iterations_completed") or 0)
+        last = item.get("last_checkpoint_iteration")
+        # ">= every since the last checkpoint" rather than a modulo match:
+        # a topic whose counter was backfilled from history (or whose fleet
+        # cadence changed) must owe at most one checkpoint, immediately —
+        # never wait for the next exact multiple.
+        base = last if isinstance(last, int) and not isinstance(last, bool) else 0
+        if every > 0 and done - base >= every:
+            return f"iteration-{done}"
+        return None
 
     @classmethod
     def _discard_stop_file(cls, item: dict[str, Any]) -> None:
@@ -1105,23 +1140,19 @@ class LoopRunner:
         else:
             child_env.pop("RESEARCH_LOOP_PROFILE", None)
         # Station configuration: the WORKER's agent profile decides which
-        # harness/model pair runs this iteration. Items carry no binding --
-        # their legacy agent_main/agent_secondary fields are consulted only
-        # when the worker has no profile at all (backward compatibility for
-        # fleets that never configured one).
+        # harness/model pair runs this iteration. Items carry no binding at
+        # all — mechanics live exclusively in the stations' collective config
+        # (operator ruling 2026-09-09); with no profile, the chassis defaults
+        # apply.
         profile = self.store.worker_agents(self.worker)
-        agent_main = profile.get("agent_main") or item.get("agent_main")
+        agent_main = profile.get("agent_main")
         if agent_main:
             # chassis/run-topic.sh already resolves this same variable to pick
             # a runner adapter.
             child_env["RESEARCH_LOOP_RUNNER"] = agent_main
         else:
             child_env.pop("RESEARCH_LOOP_RUNNER", None)
-        agent_secondary = (
-            profile.get("agent_secondary")
-            if profile.get("agent_main")
-            else item.get("agent_secondary")
-        )
+        agent_secondary = profile.get("agent_secondary")
         if agent_secondary:
             child_env["RESEARCH_LOOP_AGENT_SECONDARY"] = agent_secondary
         else:
@@ -1137,6 +1168,16 @@ class LoopRunner:
                 child_env[f"RESEARCH_LOOP_{runner_key}_FLAGS"] = profile["agent_flags"]
         child_env["RESEARCH_LOOP_GAP_POLICY"] = item.get("gap_policy") or "review"
         child_env["RESEARCH_LOOP_GAP_AUTO_LIMIT"] = str(item.get("gap_auto_limit") or 0)
+        # Fleet checkpoint assignment: the station decides, the chassis
+        # relays it into the prompt, and the finalize path below excludes the
+        # pass from saturation accounting.
+        checkpoint_reason = self._checkpoint_due(item)
+        if checkpoint_reason:
+            child_env["RESEARCH_LOOP_ITERATION_TYPE"] = "checkpoint"
+            child_env["RESEARCH_LOOP_CHECKPOINT_REASON"] = checkpoint_reason
+        else:
+            child_env.pop("RESEARCH_LOOP_ITERATION_TYPE", None)
+            child_env.pop("RESEARCH_LOOP_CHECKPOINT_REASON", None)
         completion_lock = item.get("completion_lock")
         if completion_lock:
             child_env["RESEARCH_LOOP_COMPLETION_LOCK"] = completion_lock
@@ -1291,18 +1332,22 @@ class LoopRunner:
             # must not be classified or recorded as one.
             intended_outcome = control_outcome
         elif exit_code == 0:
-            repeat_seconds = item.get("repeat_seconds")
-            if repeat_seconds is not None:
-                # Cadence is a station property: the pause between iterations
-                # is the WORKER's interval (a legacy positive item value is
-                # honored as a floor). 0/0 = continuous.
-                repeat_seconds = max(
-                    int(repeat_seconds), self.store.station_interval(self.worker)
-                )
+            # Cadence is a station property, full stop: the pause between
+            # iterations is the WORKER's interval (0 = continuous). Whether
+            # the item recurs at all is intrinsic to its contract.
+            recurring = self._contract_topic(item)
+            pause_seconds = self.store.station_interval(self.worker)
+            self.store.record_iteration_accounting(
+                item_id,
+                iteration_type="checkpoint" if checkpoint_reason else "ordinary",
+                deepening=bool(
+                    isinstance(iteration_result, dict)
+                    and iteration_result.get("semantic_valid") is True
+                ),
+                checkpoint_reason=checkpoint_reason,
+            )
             stop_signal = self._check_stop_file(item, stop_signature_before)
-            if stop_signal == "done" and self._saturation_eligible(
-                item, repeat_seconds
-            ):
+            if stop_signal == "done" and recurring:
                 # A contract-bearing research topic does not get to declare
                 # itself finished (operator ruling 2026-09-04). The agent can
                 # only observe coverage, and coverage is explicitly NOT
@@ -1344,7 +1389,7 @@ class LoopRunner:
                     intended_outcome = "needs_attention"
                     error_kind = FailureKind.CONFIGURATION.value
                     message = stop_signal
-            elif repeat_seconds is None:
+            elif not recurring:
                 if research_blockers:
                     intended_outcome = "needs_attention"
                     error_kind = FailureKind.CONFIGURATION.value
@@ -1360,6 +1405,17 @@ class LoopRunner:
                             "coverage": self.store.get(item_id).get("research_coverage") or {},
                             "blockers": [],
                         })
+            elif checkpoint_reason:
+                # An assigned obligations checkpoint is NEVER an ordinary
+                # completion-accounted pass (CONTRACT-CORE / checkpoint
+                # reference): its review work must neither advance the
+                # saturation streak (a valid unchanged checkpoint is not
+                # deepening evidence) nor void it (checkpoint card/proposal
+                # writes are not reopened research). Leave the streak exactly
+                # as it stands and schedule the next ordinary iteration.
+                intended_outcome = "scheduled"
+                next_at = datetime.now(timezone.utc) + timedelta(seconds=pause_seconds)
+                next_eligible_at = next_at.isoformat().replace("+00:00", "Z")
             elif (
                 isinstance(iteration_result, dict)
                 and iteration_result.get("semantic_valid") is True
@@ -1415,12 +1471,12 @@ class LoopRunner:
                     message = ("saturation held: research blocked on " + ", ".join(held_on)
                                + " — clears when the same request succeeds, or via `resolve-research`")
                     intended_outcome = "scheduled"
-                    next_at = datetime.now(timezone.utc) + timedelta(seconds=repeat_seconds)
+                    next_at = datetime.now(timezone.utc) + timedelta(seconds=pause_seconds)
                     next_eligible_at = next_at.isoformat().replace("+00:00", "Z")
                 else:
                     self.store.record_saturation_streak(item_id, streak)
                     intended_outcome = "scheduled"
-                    next_at = datetime.now(timezone.utc) + timedelta(seconds=repeat_seconds)
+                    next_at = datetime.now(timezone.utc) + timedelta(seconds=pause_seconds)
                     next_eligible_at = next_at.isoformat().replace("+00:00", "Z")
             else:
                 if int(item.get("saturation_streak") or 0):
@@ -1428,7 +1484,7 @@ class LoopRunner:
                     # saturation evidence is void.
                     self.store.record_saturation_streak(item_id, 0)
                 intended_outcome = "scheduled"
-                next_at = datetime.now(timezone.utc) + timedelta(seconds=repeat_seconds)
+                next_at = datetime.now(timezone.utc) + timedelta(seconds=pause_seconds)
                 next_eligible_at = next_at.isoformat().replace("+00:00", "Z")
         else:
             kind = self._structured_failure_kind(iteration_result)
@@ -1463,7 +1519,13 @@ class LoopRunner:
             next_eligible_at=next_eligible_at,
             consume_failure=consume_failure,
         )
-        outcome, stall_event = self._apply_stall_guard(item, outcome)
+        if checkpoint_reason and exit_code == 0:
+            # An assigned checkpoint legitimately leaves the progress
+            # signature unchanged; ticking the stall guard for it would let
+            # review passes accuse a healthy topic.
+            stall_event = None
+        else:
+            outcome, stall_event = self._apply_stall_guard(item, outcome)
         event = {**base_event, "outcome": outcome}
         if ignored_stop_done:
             event["ignored_stop_done"] = True

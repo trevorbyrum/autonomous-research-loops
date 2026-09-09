@@ -44,7 +44,6 @@ class EngineToolsTests(unittest.TestCase):
             cwd=str(topic_dir),
             command=["true"],
             item_id=topic_id,
-            repeat_seconds=900,
         )
         return topic_dir
 
@@ -153,7 +152,11 @@ class EngineToolsTests(unittest.TestCase):
         self.assertEqual(status["items"][0]["id"], "phone-topic")
         item = self.tools.store.get("phone-topic")
         self.assertRegex(item["completion_lock"], r"^[0-9a-f]{64}$")
-        self.assertEqual(item["agent_main"], "claude")
+        # Items carry no agent binding at all now (operator ruling
+        # 2026-09-09) -- approve_and_queue's default runner survives only as
+        # the launch command's positional argument.
+        self.assertNotIn("agent_main", item)
+        self.assertEqual(item["command"][-1], "claude")
         # Approved: the draft is gone, the contract is binding.
         with self.assertRaises(QueueError):
             self.tools.read_draft("phone-topic")

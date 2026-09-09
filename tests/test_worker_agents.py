@@ -54,8 +54,11 @@ class WorkerAgentProfileTests(unittest.TestCase):
 
 
 class RunnerUsesStationProfileTests(unittest.TestCase):
-    """The runner launches iterations with the WORKER's profile; the item's
-    legacy agent fields only apply when the worker has no profile at all."""
+    """The runner launches iterations using ONLY the WORKER's station
+    profile. Items carry no agent binding at all now (operator ruling
+    2026-09-09): mechanics live exclusively in the stations' collective
+    config -- with no profile configured, the agent env vars are simply
+    absent, never falling back to anything on the item."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -82,10 +85,9 @@ class RunnerUsesStationProfileTests(unittest.TestCase):
         self.runner.run_once()
         return json.loads(self.capture.read_text())
 
-    def test_worker_profile_overrides_item_fields(self):
+    def test_worker_profile_drives_the_launch_env(self):
         self.store.add(
             title="t", cwd=str(self.cwd), command=self._env_dump_command(), item_id="t",
-            agent_main="claude", agent_secondary="codex exec -m gpt-5.6-luna",
         )
         self.store.configure_worker_agents(
             "worker-1", agent_main="codex", agent_model="gpt-5.6-terra",
@@ -98,14 +100,17 @@ class RunnerUsesStationProfileTests(unittest.TestCase):
         self.assertEqual(env["RESEARCH_LOOP_CODEX_FLAGS"], "--dangerously-bypass-approvals-and-sandbox")
         self.assertEqual(env["RESEARCH_LOOP_AGENT_SECONDARY"], "claude -p --model claude-haiku-4-5-20251001")
 
-    def test_without_a_profile_item_fields_still_apply(self):
+    def test_without_a_profile_the_agent_env_vars_are_absent(self):
+        # No item-level fallback exists any more: items carry no agent
+        # binding at all, so an unconfigured worker launches with none of
+        # the RESEARCH_LOOP_RUNNER/_AGENT_SECONDARY/_<RUNNER>_MODEL/_FLAGS
+        # env vars set.
         self.store.add(
             title="t", cwd=str(self.cwd), command=self._env_dump_command(), item_id="t",
-            agent_main="hermes", agent_secondary="qwen3.8-27b",
         )
         env = self._run_and_capture()
-        self.assertEqual(env["RESEARCH_LOOP_RUNNER"], "hermes")
-        self.assertEqual(env["RESEARCH_LOOP_AGENT_SECONDARY"], "qwen3.8-27b")
+        self.assertNotIn("RESEARCH_LOOP_RUNNER", env)
+        self.assertNotIn("RESEARCH_LOOP_AGENT_SECONDARY", env)
 
 
 if __name__ == "__main__":
@@ -124,6 +129,10 @@ class StationIntervalTests(unittest.TestCase):
         self.runner = LoopRunner(self.store, self.ledger, poll_seconds=0.05)
         self.cwd = self.root / "item-cwd"
         (self.cwd / "logs").mkdir(parents=True)
+        # Recurrence is intrinsic to the contract now (operator ruling
+        # 2026-09-09); both tests below need a recurring item to observe
+        # cadence, not a repeat_seconds kwarg.
+        (self.cwd / "SEMANTIC-STATE.json").write_text("{}", encoding="utf-8")
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -137,7 +146,7 @@ class StationIntervalTests(unittest.TestCase):
 
     def test_runner_pauses_by_station_interval_not_item(self):
         self.store.add(
-            title="t", cwd=str(self.cwd), command=["true"], item_id="t", repeat_seconds=0,
+            title="t", cwd=str(self.cwd), command=["true"], item_id="t",
         )
         self.store.configure_worker_agents("worker-1", interval_seconds=1800)
         result = self.runner.run_once()
@@ -147,7 +156,7 @@ class StationIntervalTests(unittest.TestCase):
 
     def test_continuous_station_keeps_continuous_item_immediate(self):
         self.store.add(
-            title="t", cwd=str(self.cwd), command=["true"], item_id="t", repeat_seconds=0,
+            title="t", cwd=str(self.cwd), command=["true"], item_id="t",
         )
         self.store.configure_worker_agents("worker-1", agent_main="claude", interval_seconds=0)
         self.runner.run_once()

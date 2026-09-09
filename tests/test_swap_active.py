@@ -71,10 +71,17 @@ class ReassignWorkerLiveTests(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_swap_lets_the_active_iteration_finish_then_releases_it_unpaused(self):
+        # Recurrence is intrinsic to the contract now (operator ruling
+        # 2026-09-09), not a repeat_seconds kwarg -- this test expects the
+        # released item to land on "backoff" (rescheduled), so its cwd needs
+        # a SEMANTIC-STATE.json marker (an isolated dir, never the real /tmp).
+        active_cwd = self.root / "active-topic"
+        active_cwd.mkdir()
+        (active_cwd / "SEMANTIC-STATE.json").write_text("{}", encoding="utf-8")
         self.store.add(
-            title="Active", cwd="/tmp",
+            title="Active", cwd=str(active_cwd),
             command=[sys.executable, "-c", "import time; time.sleep(1)"],
-            item_id="active", repeat_seconds=900,
+            item_id="active",
         )
         self.store.add(title="Target", cwd="/tmp", command=["true"], item_id="target")
 
@@ -103,10 +110,12 @@ class ReassignWorkerLiveTests(unittest.TestCase):
         self.assertEqual(claimed["id"], "target")
 
     def test_swap_target_stays_claimed_by_another_worker_check_even_mid_release(self):
+        active_cwd = self.root / "active-topic"
+        active_cwd.mkdir()
         self.store.add(
-            title="Active", cwd="/tmp",
+            title="Active", cwd=str(active_cwd),
             command=[sys.executable, "-c", "import time; time.sleep(1)"],
-            item_id="active", repeat_seconds=900,
+            item_id="active",
         )
         self.store.add(title="Target", cwd="/tmp", command=["true"], item_id="target")
         with self.store._locked() as state:
