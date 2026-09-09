@@ -144,6 +144,21 @@ for explicit new-authority work; the obligation publisher rejects attempts to us
 an obligation approval as a mission rewrite. Addition/amendment publication validates
 the complete bundle before changing approved files.
 
+## Checkpoint recovery
+
+After repairing a checkpoint capability or interface failure, use
+`research-loops checkpoint-retry --file retry.json`. The exact envelope is:
+
+```json
+{"schema_version":1,"request_id":"retry-1","expected_revision":44,"topic_id":"topic-a","episode_id":"checkpoint-example","reason":"The reported capability is repaired; retry this same episode."}
+```
+
+This operator-only operation accepts `needs_attention` or `retry_wait` episodes
+without live leases, reserved delegate calls, or unresolved proposals. It preserves
+the episode, research count, priority, invocation history, remaining budgets, and
+any independent operator pause. Duplicate identical requests return the same
+result. It does not refill budgets or approve proposals.
+
 ## Intake and exact schemas
 
 ```sh

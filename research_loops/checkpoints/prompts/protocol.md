@@ -83,6 +83,15 @@ uses the current lease capability from the environment, selects the matching sna
 profile, and records the launch before it starts. Do not run delegate provider CLIs
 directly or invent an invocation ID/role outside this interface.
 
+Use the exact ID at `delegate_invocation_ids[role]` in the supplied context.
+`--lease-id` is the supplied `run_id`; `--episode-id` is `episode_id`.
+The `counter` invocation is required even for a zero-candidate/no-change review,
+unless the controller supplies a valid `prior_review_reference` and the final
+result explicitly uses `reuse_of`. Preparation is optional when no candidate
+slate needs it. Set the shell command timeout to at least 930 seconds so the
+broker can finish its bounded delegate call. Broker output is JSON and includes
+the recorded invocation and its output reference; inspect the complete report.
+
 Preserve the existing proposal discipline: no more than two pending proposals; no
 issuance refill on retry, revision, withdrawal, or individual promotion; and no
 resubmission of a rejected idea without named material change in evidence, capability,

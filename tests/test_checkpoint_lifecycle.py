@@ -124,6 +124,9 @@ class CheckpointLifecycleTests(unittest.TestCase):
             self.assertEqual((outcome["execution_kind"], outcome["outcome"]), ("checkpoint", "complete_without_proposals"))
             self.assertEqual(len(seen), 1)
             self.assertEqual(control.snapshot()["work"]["topics"]["A"]["next_research_ordinal"], 2)
+            released = control.snapshot()["queue"]["items"][0]
+            self.assertEqual(released["status"], "queued")
+            self.assertIsNone(released["claimed_by"])
 
     def test_25_checkpoint_26_and_duplicate_completion(self):
         control = FakeControl()

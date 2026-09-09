@@ -7,6 +7,7 @@ it never opens the SQLite store as an agent process.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from typing import Any, Mapping
 
@@ -29,8 +30,8 @@ def main(argv: list[str] | None = None) -> int:
     if not socket_path or not token: parser.exit(2, "checkpoint delegate requires a managed controller capability\n")
     from ..controller_client import call
     result = call(socket_path, "checkpoint.delegate", {"episode_id": args.episode_id, "lease_id": args.lease_id,
-                  "invocation_id": args.invocation_id, "role": args.role, "prompt": args.prompt}, token=token)
-    print(result)
+                  "invocation_id": args.invocation_id, "role": args.role, "prompt": args.prompt}, token=token, timeout=930)
+    print(json.dumps(result, sort_keys=True))
     return 0
 
 

@@ -1720,7 +1720,7 @@ class LoopRunner:
             primary = episode.get("resolved_agent_pair", {}).get("primary")
             if not isinstance(primary, dict) or not isinstance(primary.get("executable"), str) or not isinstance(primary.get("argv"), list):
                 raise QueueError("checkpoint primary profile is not a runnable registered adapter")
-            adapter = RegisteredCheckpointAdapter(primary)
+            adapter = RegisteredCheckpointAdapter(primary, timeout_seconds=3600)
         context = {**episode, "run_id": lease["lease_id"], "topic": dict(item)}
         if isinstance(adapter, (SubprocessCheckpointAdapter, RegisteredCheckpointAdapter)):
             from .access import prepare_agent_launch

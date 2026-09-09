@@ -129,6 +129,8 @@ def build_parser() -> argparse.ArgumentParser:
     checkpoint_decide.add_argument("--file", required=True)
     checkpoint_reset = sub.add_parser("checkpoint-reset", help="explicitly reset a topic's proposal issuance allowance")
     checkpoint_reset.add_argument("--file", required=True)
+    checkpoint_retry = sub.add_parser("checkpoint-retry", help="return a failed checkpoint episode to its bounded retry state")
+    checkpoint_retry.add_argument("--file", required=True)
     reorder = sub.add_parser("queue-reorder", help="replace managed queue order atomically")
     reorder.add_argument("--file", required=True, help="{expected_queue_revision, ordered_ids}")
     stations = sub.add_parser("stations", help="managed station configuration")
@@ -508,7 +510,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     root = Path(args.root).expanduser().resolve()
     remote_socket = os.environ.get("RESEARCH_LOOP_CONTROLLER_SOCKET")
-    protected_actions = {"intake-submit", "intake-result", "intake-approve", "checkpoint-decide", "checkpoint-reset", "queue-reorder", "stations", "profile-register"}
+    protected_actions = {"intake-submit", "intake-result", "intake-approve", "checkpoint-decide", "checkpoint-reset", "checkpoint-retry", "queue-reorder", "stations", "profile-register"}
     # An operator may intentionally lack permission even to stat the protected
     # root.  An explicitly supplied controller socket is therefore checked
     # before any ControlStore/QueueStore construction or filesystem probe.
@@ -522,7 +524,7 @@ def main(argv: list[str] | None = None) -> int:
             elif args.action == "profile-register":
                 result = controller_call(remote_socket, "profiles.register", load_json(Path(args.file)))
             else:
-                method = {"intake-submit": "intake.submit_brief", "intake-result": "intake.record_discovery_result", "intake-approve": "intake.approve", "checkpoint-decide": "checkpoint.decide", "checkpoint-reset": "checkpoint.reset_allowance"}[args.action]
+                method = {"intake-submit": "intake.submit_brief", "intake-result": "intake.record_discovery_result", "intake-approve": "intake.approve", "checkpoint-decide": "checkpoint.decide", "checkpoint-reset": "checkpoint.reset_allowance", "checkpoint-retry": "checkpoint.retry"}[args.action]
                 result = controller_call(remote_socket, method, load_json(Path(args.file)))
             emit(result); return 0
         except (OSError, ControllerClientError, QueueError) as exc:
@@ -560,7 +562,7 @@ def main(argv: list[str] | None = None) -> int:
             elif args.action == "profile-register":
                 result = controller_call(socket_path, "profiles.register", load_json(Path(args.file)))
             else:
-                method = {"intake-submit": "intake.submit_brief", "intake-result": "intake.record_discovery_result", "intake-approve": "intake.approve", "checkpoint-decide": "checkpoint.decide", "checkpoint-reset": "checkpoint.reset_allowance"}[args.action]
+                method = {"intake-submit": "intake.submit_brief", "intake-result": "intake.record_discovery_result", "intake-approve": "intake.approve", "checkpoint-decide": "checkpoint.decide", "checkpoint-reset": "checkpoint.reset_allowance", "checkpoint-retry": "checkpoint.retry"}[args.action]
                 result = controller_call(socket_path, method, load_json(Path(args.file)))
             emit(result)
             return 0

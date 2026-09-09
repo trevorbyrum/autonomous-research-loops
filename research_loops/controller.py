@@ -40,6 +40,7 @@ class Controller:
         routes = operator_dispatch(self.control, self.root / "topics", actor=f"operator-uid:{peer_uid}")
         routes["control.snapshot"] = lambda params: self.control.snapshot() if not params else _reject("snapshot takes no parameters")
         routes["checkpoint.reset_allowance"] = lambda params: self.reset_allowance(params, peer_uid)
+        routes["checkpoint.retry"] = lambda params: self.retry_checkpoint(params, peer_uid)
         return routes
 
     def reset_allowance(self, params: dict, peer_uid: int) -> dict:
@@ -66,6 +67,68 @@ class Controller:
             topic.setdefault("proposal_allowance_resets", []).append({"request_id": params["request_id"], "reason": params["reason"], "operator_uid": peer_uid})
             result = {"topic_id": params["topic_id"], "proposal_allowance_remaining": 2}
             requests[params["request_id"]] = {"payload": dict(params), "result": result}
+            return result
+
+    def retry_checkpoint(self, params: dict, peer_uid: int) -> dict:
+        """Return one failed checkpoint episode to the scheduler's retry state.
+
+        Recovery deliberately preserves every research, delegate, and proposal
+        record.  It is an operator disposition, never a new checkpoint run or
+        a way to refill a spent budget.
+        """
+        from .input_schema import strict_object, integer, nonempty_string
+
+        required = {"schema_version", "request_id", "expected_revision", "topic_id", "episode_id", "reason"}
+        strict_object(params, path="$", required=required)
+        if integer(params["schema_version"], "$.schema_version") != 1:
+            raise AccessError("unsupported schema_version")
+        for name in ("request_id", "topic_id", "episode_id", "reason"):
+            nonempty_string(params[name], "$." + name)
+        integer(params["expected_revision"], "$.expected_revision", minimum=0)
+        payload = dict(params)
+        with self.control.transaction(actor=f"operator-uid:{peer_uid}", operation_id=f"checkpoint-retry:{params['request_id']}", affected_ids=[params["topic_id"], params["episode_id"]]) as state:
+            work = state["work"]
+            requests = work.setdefault("checkpoint_recovery_requests", {})
+            prior = requests.get(params["request_id"])
+            if prior:
+                if prior.get("payload") != payload:
+                    raise AccessError("request_id was already used with different checkpoint recovery content")
+                return prior["result"]
+            if state["revision"] != params["expected_revision"]:
+                raise AccessError("stale expected_revision; refresh checkpoint status before retrying")
+            topic = work.get("topics", {}).get(params["topic_id"])
+            episode = work.get("episodes", {}).get(params["episode_id"])
+            if not isinstance(topic, dict) or not isinstance(episode, dict):
+                raise AccessError("unknown managed topic or checkpoint episode")
+            if episode.get("topic_id") != params["topic_id"] or topic.get("active_episode_id") != params["episode_id"]:
+                raise AccessError("checkpoint episode does not belong to the topic's active review")
+            if episode.get("state") not in {"needs_attention", "retry_wait"}:
+                raise AccessError("checkpoint retry requires an episode in needs_attention or retry_wait")
+            pending = [proposal_id for proposal_id, proposal in work.get("proposals", {}).items()
+                       if isinstance(proposal, dict) and proposal.get("episode_id") == params["episode_id"]
+                       and proposal.get("status") == "pending"]
+            if pending:
+                raise AccessError("checkpoint retry cannot replace unresolved proposals")
+            currents = [record.get("current") for record in work.get("assignments", {}).values()
+                        if isinstance(record, dict)]
+            intake_current = work.get("intake_assignment", {}).get("current") if isinstance(work.get("intake_assignment"), dict) else None
+            if any(isinstance(current, dict) and current.get("topic_id") == params["topic_id"] for current in [*currents, intake_current]):
+                raise AccessError("checkpoint retry requires no current execution lease for the topic")
+            if any(isinstance(record, dict) and record.get("status") == "reserved"
+                   for record in episode.get("invocations", {}).values()):
+                raise AccessError("checkpoint retry requires all delegate invocations to finish")
+            old_failure = episode.pop("failure_reason", None)
+            episode.setdefault("recovery_audit", []).append({
+                "request_id": params["request_id"], "reason": params["reason"],
+                "operator_uid": peer_uid, "previous_state": episode.get("state"),
+                "previous_failure_reason": old_failure,
+            })
+            episode["state"] = "retry_wait"
+            topic["review_state"] = "checkpoint_due"
+            result = {"topic_id": params["topic_id"], "episode_id": params["episode_id"],
+                      "state": "retry_wait", "review_state": "checkpoint_due",
+                      "revision": state["revision"] + 1}
+            requests[params["request_id"]] = {"payload": payload, "result": result}
             return result
 
     def dispatch(self, request: Any, *, peer_uid: int, peer_pid: int) -> Any:

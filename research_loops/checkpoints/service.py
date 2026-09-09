@@ -246,6 +246,9 @@ def start_checkpoint(control: Any, *, episode_id: str, station_id: int, run_id: 
         episode["prior_review_reference"] = prior.get("episode_id") if prior else None
         episode["state"] = "checkpoint_running"; episode["run_id"] = run_id; episode["station_id"] = station_id
         episode["attempt_history"].append({"run_id": run_id, "station_id": station_id, "started_at": _now()})
+        episode["delegate_invocation_ids"] = {
+            role: f"{episode_id}-{role}-{len(episode['attempt_history'])}"
+            for role in ("preparation", "counter", "repair_response", "repair_assessment")}
         return copy.deepcopy(episode)
 
 
@@ -359,7 +362,10 @@ def execute_delegate(control: Any, *, episode_id: str, lease_id: str, invocation
         env.update({"RESEARCH_LOOP_CHECKPOINT_EPISODE": episode_id, "RESEARCH_LOOP_CHECKPOINT_INVOCATION": invocation_id, "RESEARCH_LOOP_CHECKPOINT_ROLE": role, "RESEARCH_LOOP_PROFILE": str(profile.get("id") or "")})
         task = {"schema_version": 1, "episode_id": episode_id, "invocation_id": invocation_id,
                 "role": role, "profile": profile, "prompt": prompt,
-                "protocol_path": str((Path(__file__).parent / "prompts" / "protocol.md").resolve())}
+                "protocol_path": str((Path(__file__).parent / "prompts" / "protocol.md").resolve()),
+                "instructions": "Perform only this bounded delegate role, not the primary checkpoint. Return only a JSON object with exactly the fields shown in required_result. Replace findings and limitations with arrays of strings containing your substantive review. Do not issue a checkpoint-result object or launch other delegates.",
+                "required_result": {"schema_version": 1, "invocation_id": invocation_id, "role": role,
+                                    "status": "complete", "findings": [], "limitations": []}}
         prompt_text = json.dumps(task, sort_keys=True)
         adapter, model = profile.get("adapter"), profile.get("model")
         if adapter == "codex":
@@ -368,16 +374,16 @@ def execute_delegate(control: Any, *, episode_id: str, lease_id: str, invocation
                 os.chown(final_path, identity["user"], identity["group"])
                 os.chmod(final_path, 0o600)
             try:
-                completed = subprocess.run([executable, "exec", "-m", model, "-o", final_path, *argv, prompt_text], cwd=str(item["cwd"]), text=True, capture_output=True, timeout=180, check=False, env=env, **identity)
+                completed = subprocess.run([executable, "exec", "-m", model, "-o", final_path, *argv, prompt_text], cwd=str(item["cwd"]), text=True, capture_output=True, timeout=900, check=False, env=env, **identity)
                 output = Path(final_path).read_text(encoding="utf-8") if completed.returncode == 0 else completed.stderr
             finally: Path(final_path).unlink(missing_ok=True)
         elif adapter == "claude":
-            completed = subprocess.run([executable, "-p", prompt_text, "--model", model, "--output-format", "json", *argv], cwd=str(item["cwd"]), text=True, capture_output=True, timeout=180, check=False, env=env, **identity)
+            completed = subprocess.run([executable, "-p", prompt_text, "--model", model, "--output-format", "json", *argv], cwd=str(item["cwd"]), text=True, capture_output=True, timeout=900, check=False, env=env, **identity)
             if completed.returncode == 0:
                 envelope = json.loads(completed.stdout); output = envelope.get("result") if isinstance(envelope, dict) else ""
             else: output = completed.stderr
         elif adapter == "hermes":
-            completed = subprocess.run([executable, "-p", profile.get("id", "default"), "-z", prompt_text, *argv], cwd=str(item["cwd"]), text=True, capture_output=True, timeout=180, check=False, env=env, **identity)
+            completed = subprocess.run([executable, "-p", profile.get("id", "default"), "-z", prompt_text, *argv], cwd=str(item["cwd"]), text=True, capture_output=True, timeout=900, check=False, env=env, **identity)
             output = completed.stdout if completed.returncode == 0 else completed.stderr
         else:
             raise CheckpointError("VALIDATION_ERROR", "checkpoint delegate profile adapter is unsupported")
@@ -387,7 +393,7 @@ def execute_delegate(control: Any, *, episode_id: str, lease_id: str, invocation
     topic_root = Path(str(item["cwd"])).resolve()
     report_dir = topic_root / ".checkpoint-reports"
     try:
-        report_dir.mkdir(mode=0o750)
+        report_dir.mkdir(mode=0o750, exist_ok=True)
         if report_dir.is_symlink() or not report_dir.is_dir():
             raise CheckpointError("VALIDATION_ERROR", "checkpoint report directory is unsafe")
         if isinstance(identity.get("group"), int):
@@ -403,10 +409,12 @@ def execute_delegate(control: Any, *, episode_id: str, lease_id: str, invocation
     if exit_code == 0:
         try:
             candidate = json.loads(output)
-            if (not isinstance(candidate, dict) or candidate.get("schema_version") != 1
+            if (not isinstance(candidate, dict) or set(candidate) != {"schema_version", "invocation_id", "role", "status", "findings", "limitations"}
+                    or type(candidate.get("schema_version")) is not int or candidate.get("schema_version") != 1
                     or candidate.get("invocation_id") != invocation_id or candidate.get("role") != role
                     or candidate.get("status") != "complete"
-                    or not isinstance(candidate.get("findings"), list) or not isinstance(candidate.get("limitations"), list)):
+                    or not isinstance(candidate.get("findings"), list) or not isinstance(candidate.get("limitations"), list)
+                    or any(not isinstance(value, str) for field in ("findings", "limitations") for value in candidate[field])):
                 raise ValueError("invalid structured delegate result")
             delegate_result = candidate
         except (ValueError, json.JSONDecodeError):
@@ -442,6 +450,7 @@ def finish_checkpoint(control: Any, result: Mapping[str, Any]) -> dict[str, Any]
         if episode.get("state") != "checkpoint_running" or episode.get("run_id") != parsed["run_id"]: raise CheckpointError("REVISION_CONFLICT", "checkpoint result does not match active run", "run_id")
         if parsed["inventory_version"] != episode.get("inventory_version") or set(parsed["trigger_ids"]) != set(episode["trigger_ids"]):
             raise CheckpointError("REVISION_CONFLICT", "checkpoint result context is stale")
+        episode.setdefault("results", {})[parsed["run_id"]] = copy.deepcopy(parsed)
         topic = _topic(work, episode["topic_id"])
         if not parsed["complete"]:
             episode["state"] = "needs_attention"; episode["failure_reason"] = parsed["limitations"]

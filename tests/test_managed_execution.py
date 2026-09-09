@@ -45,14 +45,21 @@ prompt = args[-1]
 output = args[args.index('-o') + 1]
 if os.environ.get('RESEARCH_LOOP_CHECKPOINT_ROLE'):
     task = json.loads(prompt)
+    assert task['required_result']['invocation_id'] == task['invocation_id']
+    assert task['required_result']['role'] == task['role']
     result = {'schema_version': 1, 'invocation_id': task['invocation_id'],
               'role': task['role'], 'status': 'complete', 'findings': ['counter complete'], 'limitations': []}
 elif 'STRUCTURED CONTEXT:' in prompt:
     context = json.JSONDecoder().raw_decode(prompt.split('STRUCTURED CONTEXT:', 1)[1].lstrip())[0]
     from research_loops.controller_client import call
+    preparation = call(os.environ['RESEARCH_LOOP_CONTROLLER_SOCKET'], 'checkpoint.delegate', {
+        'episode_id': context['episode_id'], 'lease_id': context['run_id'],
+        'invocation_id': context['delegate_invocation_ids']['preparation'], 'role': 'preparation', 'prompt': 'Prepare a bounded candidate slate.'
+    }, token=os.environ['RESEARCH_LOOP_EXECUTION_CAPABILITY'])
+    assert preparation['invocation']['exit_code'] == 0, preparation
     counter = call(os.environ['RESEARCH_LOOP_CONTROLLER_SOCKET'], 'checkpoint.delegate', {
         'episode_id': context['episode_id'], 'lease_id': context['run_id'],
-        'invocation_id': 'fresh-counter', 'role': 'counter', 'prompt': 'Independently review this checkpoint.'
+        'invocation_id': context['delegate_invocation_ids']['counter'], 'role': 'counter', 'prompt': 'Independently review this checkpoint.'
     }, token=os.environ['RESEARCH_LOOP_EXECUTION_CAPABILITY'])
     assert counter['invocation']['exit_code'] == 0, counter
     result = {key: context[key] for key in ('episode_id', 'run_id', 'inventory_version', 'trigger_ids')}

@@ -407,7 +407,7 @@ class ControlScheduler:
     def update_stations(self, *, station_ids: list[int] | None = None, all_stations: bool = False, primary_profile: str | None = None, secondary_profile: str | None = None, intervals: list[int] | None = None, active_count: int | None = None, checkpoints: dict[str, Any] | None = None) -> dict[str, Any]:
         if type(all_stations) is not bool or (station_ids is not None and not isinstance(station_ids, list)):
             raise ControlValidationError("all_stations must be boolean and station_ids must be an array")
-        if checkpoints is not None and not all_stations and station_ids is None:
+        if not all_stations and station_ids is None and (checkpoints is not None or active_count is not None or intervals is not None) and primary_profile is None and secondary_profile is None:
             all_stations = True
         if all_stations == (station_ids is not None):
             raise ControlValidationError("choose exactly one of all_stations or station_ids")
@@ -580,6 +580,13 @@ class ControlScheduler:
                 topic["pacing_ready_at"] = pacing_ready_at
             elif record.get("handoff_reason"):
                 topic.pop("pacing_ready_at", None)
+            if current.get("execution_kind") == "checkpoint":
+                item = next(i for i in state["queue"]["items"] if i["id"] == current["topic_id"])
+                paused = item.get("desired_state") in {"paused", "stopping"}
+                item.update(status="paused" if paused else "queued", claimed_by=None,
+                            last_pid=None, last_pid_fingerprint=None, updated_at=utc_now())
+                if paused:
+                    item["desired_state"] = "paused"
             record["current"] = None
             record["handoff_reason"] = None
             record["draining"] = False

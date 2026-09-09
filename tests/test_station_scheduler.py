@@ -55,6 +55,10 @@ class SchedulerTests(unittest.TestCase):
         self.assertTrue(assignments["3"]["draining"])
 
     def test_group_updates_are_atomic_and_full_chain_validated(self):
+        self.scheduler.update_stations(active_count=2)
+        self.assertEqual(self.store.snapshot()["configuration"]["active_count"], 2)
+        original_intervals = [s["interval_seconds"] for s in self.store.snapshot()["configuration"]["stations"]]
+        self.scheduler.update_stations(intervals=original_intervals)
         self.store.register_profile("terra", adapter="fake", model="terra", executable="fake-agent", argv=[])
         result = self.scheduler.update_stations(station_ids=[1, 3], primary_profile="terra")
         self.assertEqual(result["stations"][0]["primary_profile"], "terra")

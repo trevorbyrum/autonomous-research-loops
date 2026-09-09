@@ -479,6 +479,13 @@ class EngineTools:
             raise QueueError("checkpoint allowance reset requires a managed controller")
         return controller_call(load_access(self.root)["socket_path"], "checkpoint.reset_allowance", payload)
 
+    def retry_checkpoint(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if self.remote_socket:
+            return controller_call(self.remote_socket, "checkpoint.retry", payload)
+        if self.control is None:
+            raise QueueError("checkpoint retry requires a managed controller")
+        return controller_call(load_access(self.root)["socket_path"], "checkpoint.retry", payload)
+
     def stations_show(self) -> dict[str, Any]:
         if self.remote_socket: return controller_call(self.remote_socket, "stations.show", {})
         if self.control is None: raise QueueError("station controller state is not initialized")
@@ -576,6 +583,11 @@ def build_server(root: Path, *, operator: bool = False):
         ),
     )
     registered = _READ_ONLY_TOOLS + (_OPERATOR_TOOLS if operator else ())
+    # Recovery exists only for initialized managed controllers. Keeping it
+    # absent from an unmanaged server avoids advertising a legacy operation
+    # that cannot be performed there.
+    if operator and (tools.control is not None or tools.remote_socket):
+        registered += ("retry_checkpoint",)
     for tool_name in registered:
         server.tool()(getattr(tools, tool_name))
     return server
