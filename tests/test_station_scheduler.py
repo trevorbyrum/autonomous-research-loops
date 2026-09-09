@@ -158,11 +158,13 @@ class SchedulerTests(unittest.TestCase):
         self.assertIsNone(self.scheduler.claim(1))
         self.assertEqual(self.scheduler.claim(2)["topic_id"], "B")
 
-    def test_incomplete_dependency_and_research_blocker_are_not_assignable(self):
+    def test_incomplete_dependency_is_not_assignable_but_coverage_blocker_is(self):
         with self.store.transaction() as state:
             state["queue"]["items"][0]["depends_on"] = ["B"]
             state["queue"]["items"][1]["research_blockers"] = [{"key": "blocked"}]
-        self.assertEqual(self.scheduler.claim(1)["topic_id"], "C")
+        claim = self.scheduler.claim(1)
+        self.assertEqual(claim["topic_id"], "B")
+        self.assertEqual(self.store.snapshot()["queue"]["items"][1]["research_blockers"], [{"key": "blocked"}])
 
 
 if __name__ == "__main__":

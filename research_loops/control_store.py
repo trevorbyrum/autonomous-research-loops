@@ -465,8 +465,6 @@ class ControlScheduler:
             return False
         if topic.get("review_state") in {"awaiting_operator", "publishing_decision", "checkpoint_running", "retry_wait", "needs_attention"}:
             return False
-        if item.get("research_blockers"):
-            return False
         for field in ("retry_not_before", "pacing_ready_at"):
             value = topic.get(field)
             if isinstance(value, str) and value > now:
@@ -500,7 +498,7 @@ class ControlScheduler:
                 continue
             # Keep a paced head in rank calculation. Claim later gates only
             # its assigned station, allowing lower stations their own ranks.
-            if item.get("status", "queued") in {"queued", "backoff", "running"} and item.get("desired_state", "running") == "running" and topic.get("review_state") not in {"awaiting_operator", "publishing_decision", "checkpoint_running", "retry_wait", "needs_attention"} and not item.get("research_blockers"):
+            if item.get("status", "queued") in {"queued", "backoff", "running"} and item.get("desired_state", "running") == "running" and topic.get("review_state") not in {"awaiting_operator", "publishing_decision", "checkpoint_running", "retry_wait", "needs_attention"}:
                 candidates.append(item)
         desired_topics: set[str] = set()
         iterator = iter(candidates)
