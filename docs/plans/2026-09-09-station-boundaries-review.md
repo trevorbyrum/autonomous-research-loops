@@ -6,6 +6,8 @@ and reconciled those changes with Fable's `85db4a1` handoff, corrected integrati
 and recovery defects, and ran the checks below. The scope contract is
 [the implementation plan](2026-09-09-station-boundaries-implementation-plan.md).
 This record describes code and disposable-environment validation, not a live cutover.
+The subsequent operator-authorized live migration and recovery are recorded in
+[the cutover receipt](2026-09-09-managed-cutover.md).
 
 ## Final architecture and scope
 

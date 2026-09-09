@@ -13,7 +13,7 @@ stations. See [deployment and recovery](managed-deployment.md) before cutover.
 | Station configuration | active count, five station profiles/intervals, shared checkpoint policy | configuration revision and effective profiles |
 | Profile registry | stable profile ID, adapter, model, executable, argv | validated registry entry |
 | Queue | full ordered ID list with expected queue revision, pause/resume | stable IDs, admission/eligibility, current and desired assignments |
-| Work ledger | standardized decisions and explicit allowance reset only | completed research count, next ordinal, trigger/episode history, budgets, proposals, capabilities |
+| Work ledger | standardized decisions, failed-checkpoint retry, explicit allowance reset | completed research count, next ordinal, trigger/episode history, budgets, proposals, capabilities |
 | Intake | brief, reviewed discovery result, standardized decision | draft revision/hash, discovery task, publication intent, approved queue registration |
 
 Integers never accept booleans. Unknown fields reject. Profile IDs are registry

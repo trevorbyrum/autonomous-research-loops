@@ -400,9 +400,22 @@ def render_dashboard(
     )
 
     active_rows = []
+    managed_topics = (managed.get("work", {}).get("topics", {}) if isinstance(managed, dict) and isinstance(managed.get("work"), dict) else {})
     for _, item in categories["active"]:
         attempts = item.get("attempts") if isinstance(item.get("attempts"), int) and not isinstance(item.get("attempts"), bool) else "unavailable"
-        iteration = f"current {attempts}" if item.get("status") == "running" else (f"last {attempts}; next {attempts + 1}" if isinstance(attempts, int) else "unavailable")
+        ledger = managed_topics.get(item.get("id")) if isinstance(managed_topics, dict) else None
+        if isinstance(ledger, dict):
+            episode_id = ledger.get("active_episode_id")
+            episode = (managed.get("work", {}).get("episodes", {}).get(episode_id) if isinstance(managed, dict) and episode_id else None)
+            if isinstance(episode, dict) and episode.get("state") in {"due", "checkpoint_running", "retry_wait", "awaiting_operator", "publishing_decision"}:
+                iteration = f"checkpoint ({episode.get('state')}); research completed {ledger.get('research_iterations_completed','—')}; next {ledger.get('next_research_ordinal','—')}"
+            else:
+                ordinal_label = "current" if item.get("status") == "running" else "next"
+                iteration = f"research {ordinal_label} {ledger.get('next_research_ordinal','—')}; completed {ledger.get('research_iterations_completed','—')}"
+        elif isinstance(managed, dict):
+            iteration = "research accounting unavailable"
+        else:
+            iteration = f"current {attempts}" if item.get("status") == "running" else (f"last {attempts}; next {attempts + 1}" if isinstance(attempts, int) else "unavailable")
         worker = item.get("claimed_by")
         active_rows.append([
             item.get("title", item.get("id")),
@@ -410,7 +423,8 @@ def render_dashboard(
             iteration,
             _station_models(state, worker, item, events),
         ])
-    lines.extend(["", "## Active topics", "", _table(["Topic", "Worker", "Queue iteration", "Models"], active_rows)])
+    active_label = "Research ordinal / execution" if isinstance(managed, dict) else "Queue iteration"
+    lines.extend(["", "## Active topics", "", _table(["Topic", "Worker", active_label, "Models"], active_rows)])
 
     def _attention_flags(item: dict[str, Any]) -> str:
         # Structured `flag:` lines (e.g. from a deferred-obligation STOP)
