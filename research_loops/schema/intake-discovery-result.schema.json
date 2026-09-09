@@ -1,0 +1,330 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Discovery result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "request_id",
+    "expected_revision",
+    "topic_id",
+    "draft_revision",
+    "draft_hash",
+    "pass_kind",
+    "restated_intent",
+    "criteria",
+    "traceability",
+    "questions"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expected_revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "topic_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "draft_revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "draft_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "pass_kind": {
+      "type": "string",
+      "enum": [
+        "criteria",
+        "discovery",
+        "contract_review"
+      ]
+    },
+    "restated_intent": {
+      "type": "string",
+      "minLength": 1
+    },
+    "criteria": {
+      "type": "array",
+      "minItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "status",
+          "explanation"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "1",
+              "2",
+              "3",
+              "4",
+              "5",
+              "6"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "flagged"
+            ]
+          },
+          "explanation": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "maxItems": 6,
+      "allOf": [
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "1"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "2"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "3"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "4"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "5"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "6"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        }
+      ]
+    },
+    "traceability": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "intent_ref",
+          "contract_ref",
+          "status",
+          "explanation"
+        ],
+        "properties": {
+          "intent_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "contract_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "flagged"
+            ]
+          },
+          "explanation": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "topic_space_findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "finding": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "finding",
+          "source_ref"
+        ]
+      }
+    },
+    "proposed_obligations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "text",
+          "source_ref"
+        ]
+      }
+    },
+    "proposed_exclusions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "pass_kind": {
+            "const": "discovery"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "topic_space_findings",
+          "proposed_obligations",
+          "proposed_exclusions"
+        ]
+      }
+    }
+  ],
+  "examples": [
+    {
+      "schema_version": 1,
+      "request_id": "discovery-1",
+      "expected_revision": 2,
+      "topic_id": "labeling",
+      "draft_revision": 1,
+      "draft_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "pass_kind": "criteria",
+      "restated_intent": "Compare labeling methods.",
+      "criteria": [
+        {
+          "id": "1",
+          "status": "pass",
+          "explanation": "The corresponding existing intake criterion was reviewed."
+        },
+        {
+          "id": "2",
+          "status": "pass",
+          "explanation": "The corresponding existing intake criterion was reviewed."
+        },
+        {
+          "id": "3",
+          "status": "pass",
+          "explanation": "The corresponding existing intake criterion was reviewed."
+        },
+        {
+          "id": "4",
+          "status": "pass",
+          "explanation": "The corresponding existing intake criterion was reviewed."
+        },
+        {
+          "id": "5",
+          "status": "pass",
+          "explanation": "The corresponding existing intake criterion was reviewed."
+        },
+        {
+          "id": "6",
+          "status": "pass",
+          "explanation": "The corresponding existing intake criterion was reviewed."
+        }
+      ],
+      "traceability": [],
+      "questions": []
+    }
+  ],
+  "x-ownership": {
+    "controller_generated": [
+      "result_id",
+      "execution_id",
+      "accepted_at"
+    ],
+    "stale_result": "DRAFT_RESULT_STALE"
+  }
+}

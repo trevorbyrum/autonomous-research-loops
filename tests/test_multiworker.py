@@ -178,7 +178,6 @@ class MultiWorkerTests(unittest.TestCase):
         # another worker, and the owner does not start a second topic.
         self.store.add(
             title="recurring", cwd="/tmp", command=["true"], item_id="r",
-            repeat_seconds=900,
         )
         self._add("b")
         one = self.store.claim_next(worker="worker-1")
@@ -202,7 +201,6 @@ class MultiWorkerTests(unittest.TestCase):
         self.store.configure_worker_policy("worker-3", claim_limit=1)
         self.store.add(
             title="recurring", cwd="/tmp", command=["true"], item_id="r",
-            repeat_seconds=900,
         )
         self._add("next")
         claimed = self.store.claim_next(worker="worker-3")
@@ -263,7 +261,6 @@ class MultiWorkerTests(unittest.TestCase):
         # head item, never run ahead of it.
         self.store.add(
             title="head", cwd="/tmp", command=["true"], item_id="head",
-            repeat_seconds=900,
         )
         self._add("second")
         one = self.store.claim_next(worker="worker-1")

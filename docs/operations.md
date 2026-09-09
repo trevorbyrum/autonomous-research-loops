@@ -1,5 +1,10 @@
 # Operations
 
+Managed deployments use [Managed stations](managed-stations.md) and
+[deployment and recovery](managed-deployment.md). Their controller owns queue,
+profiles, active capacity and checkpoint accounting. The standalone JSON/TOML
+operations below are retained for explicitly unmanaged workspaces.
+
 ## Installing on PATH
 
 Everything under `research_loops/` — the queue engine, `chassis/`, `runners/`,
@@ -50,8 +55,13 @@ bin/research-loops worker-policy worker-2 --claim-limit 0
 
 ## Station profiles (worker-agents)
 
-Cadence and agent assignment belong to the worker (the *station*), not to queue items.
-Configure each station once:
+ALL mechanics belong to the stations, never to queue items: the queue holds order,
+contracts, and topic substance only. Per-station profiles (agents + cadence) and
+fleet-wide policy live together in the stations' collective config,
+`state/stations.json` — legacy `worker_agents` blocks inside `state/queue.json`
+are migrated there automatically and stripped, along with any topic-held
+`repeat_seconds`/`agent_main`/`agent_secondary` fields. Configure each station
+once:
 
 ```bash
 bin/research-loops worker-agents worker-1 \
@@ -94,14 +104,16 @@ bin/research-loops config apply --config research-loops.toml              # push
 
 `config apply` only touches topic ids explicitly listed under `[topics.*]` in the file —
 it never reconfigures a queue item just because it exists. Fields it can set
-(`repeat_seconds`, `max_attempts`, `stall_limit`, `agent_main`, `agent_secondary`,
-`gap_policy`, `gap_auto_limit`, `internal_citations`, `topic_refresh`,
-`topic_refresh_mode`) all take effect on the item's *next* iteration only; none of them
-touch an iteration already in flight, so `config apply` is always safe to run against a
-running queue.
+(`max_attempts`, `stall_limit`, `gap_policy`, `gap_auto_limit`,
+`internal_citations`, `topic_refresh`, `topic_refresh_mode`) all take effect on the
+item's *next* iteration only; none of them touch an iteration already in flight, so
+`config apply` is always safe to run against a running queue. Mechanics keys
+(`repeat_seconds`, `agent_main`, `agent_secondary`) are REJECTED with an error —
+they are station configuration (`worker-agents`/`fleet`), and a config file that
+still carries them fails loudly instead of silently misleading.
 
-`agent_main`/`agent_secondary`, `gap_policy`/`gap_auto_limit`, and `internal_citations`
-can also be set per-item directly with `add --agent-main ... --gap-policy auto
+`gap_policy`/`gap_auto_limit` and `internal_citations`
+can also be set per-item directly with `add --gap-policy auto
 --gap-auto-limit 3 --internal-citations` without a config file at all — the config is
 purely a convenience for managing many topics' settings in one reviewable place. See
 `docs/governance.md#the-operator-owns-scope` for what `auto` gap policy actually does
@@ -295,12 +307,18 @@ the previous lock in its output. `sync` deliberately refuses `completion_lock` c
 so a manifest edit can never re-pin what DONE means silently; `relock` is the explicit
 per-item operator action that may.
 
-## Obligations checkpoints (staged)
+## Obligations checkpoints (managed stations)
 
-Framing-review checkpoints follow `docs/obligations-checkpoint.md`: recommended
-cadence is every 25th completed iteration plus the first entry into deepening per
-approved-inventory version, with pending-first reconciliation, reuse rules, and a
-strict fallback — until the queue supplies iteration type, ordinal, episode ID, and
-allowances, stations run NO checkpoint without an explicit operator assignment that
-supplies its limits, and checkpoint-only work must not run as an ordinary
-completion-accounted pass (saturation exclusion is pending queue support).
+Framing-review checkpoints follow [the checkpoint procedure](obligations-checkpoint.md).
+Managed station configuration and the topic-keyed work ledger live in
+`state/control.sqlite3`. After completed research 25 (default cadence), a separate
+checkpoint runs; the next research ordinal remains 26. Deepening entry adds an
+independent trigger and coincident triggers coalesce. The shared checkpoint pair
+inherits station 1 or uses an explicit pair, regardless of its hosting station.
+
+Use `stations --show` and `stations --file` through the controller. See
+[Managed stations](managed-stations.md) for exact configuration and decision inputs.
+Checkpoints leave ordinary saturation/stall accounting unchanged. Waiting for an
+operator decision releases capacity while retaining the same queue identity/order.
+The standalone `fleet`/`stations.json` interface elsewhere in this document is
+legacy unmanaged configuration and cannot control a managed workspace.

@@ -26,6 +26,18 @@ command -v "$bin" >/dev/null 2>&1 || {
 
 cd "$topic_dir"
 prompt="$(cat "$prompt_file")"
+extra_args=()
+if [[ -n "${RESEARCH_LOOP_CLAUDE_ARGV_JSON:-}" ]]; then
+  mapfile -d '' extra_args < <(python3 - "$RESEARCH_LOOP_CLAUDE_ARGV_JSON" <<'PY'
+import json, sys
+value = json.loads(sys.argv[1])
+if not isinstance(value, list) or any(not isinstance(x, str) for x in value):
+    raise SystemExit("managed Claude argv must be a JSON string array")
+for arg in value:
+    sys.stdout.buffer.write(arg.encode() + b"\0")
+PY
+)
+fi
 
 # A nonzero claude exit must still surface its output: the queue's failure
 # classifier regex-scans the log tail to distinguish subscription-limit /
@@ -35,7 +47,7 @@ prompt="$(cat "$prompt_file")"
 # that text -- so capture the exit code explicitly instead.
 rc=0
 # shellcheck disable=SC2086
-output="$("$bin" -p "$prompt" --model "$model" --output-format json ${RESEARCH_LOOP_CLAUDE_FLAGS:-} 2>&1)" || rc=$?
+output="$("$bin" -p "$prompt" --model "$model" --output-format json "${extra_args[@]}" ${RESEARCH_LOOP_CLAUDE_FLAGS:-} 2>&1)" || rc=$?
 echo "$output"
 
 if [[ -n "${RESEARCH_LOOP_USAGE_FILE:-}" ]]; then

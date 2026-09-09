@@ -50,7 +50,6 @@ class WireTests(unittest.TestCase):
             cwd=str(completed_dir),
             command=["true"],
             item_id="done-topic",
-            repeat_seconds=900,
             topic_refresh="weekly",
             topic_refresh_mode="light",
         )
@@ -180,6 +179,18 @@ class WireTests(unittest.TestCase):
                     )
                     await call("pause_all", {"reason": "wire test", "graceful": False})
                     await call("resume_all")
+                    # Managed controller routes are intentionally unavailable
+                    # on this legacy fixture, but every exposed wire tool must
+                    # still be exercised and fail closed.
+                    await call("stations_show", expect_error=True)
+                    await call("stations_update", {"all_stations": True, "active_count": 1}, expect_error=True)
+                    await call("register_profile", {"profile_id": "x", "adapter": "x", "model": "x", "executable": "x", "argv": []}, expect_error=True)
+                    await call("reorder_queue", {"expected_queue_revision": 0, "ordered_ids": []}, expect_error=True)
+                    await call("reset_checkpoint_allowance", {"payload": {}}, expect_error=True)
+                    await call("submit_intake", {"schema_version": 1}, expect_error=True)
+                    await call("record_discovery_result", {"schema_version": 1}, expect_error=True)
+                    await call("decide_intake", {"schema_version": 1}, expect_error=True)
+                    await call("decide_checkpoint", {"schema_version": 1}, expect_error=True)
 
             self.assertEqual(
                 calls_made,

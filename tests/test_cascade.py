@@ -21,7 +21,7 @@ class CascadeTests(unittest.TestCase):
         for item_id in ("A", "B", "C"):
             self.store.add(
                 title=item_id, cwd=self._tmp.name, command=["true"],
-                item_id=item_id, repeat_seconds=0,
+                item_id=item_id,
             )
         # station-2 pauses 30 min between iterations; station-1 is continuous.
         self.store.configure_worker_agents("station-2", agent_main="codex", interval_seconds=1800)
@@ -96,7 +96,7 @@ class MultiStationCascadeTests(unittest.TestCase):
         for item_id in ("A", "B", "C", "D", "E", "F"):
             self.store.add(
                 title=item_id, cwd=self._tmp.name, command=["true"],
-                item_id=item_id, repeat_seconds=0,
+                item_id=item_id,
             )
         for n, interval in ((1, 0), (2, 900), (3, 1800)):
             self.store.configure_worker_agents(f"station-{n}", agent_main="codex", interval_seconds=interval)

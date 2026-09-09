@@ -19,6 +19,8 @@ mcp = ["mcp>=2"]
 [project.scripts]
 research-loops = "research_loops.__main__:main"
 research-loops-mcp = "research_loops.mcp_server:main"
+research-loops-controller = "research_loops.controller:main"
+research-loops-deployment = "research_loops.deployment:main"
 
 [tool.setuptools.packages.find]
 include = ["research_loops*"]
@@ -43,4 +45,5 @@ research_loops = [
     "templates/topic/*.md",
     "templates/topic/*.example",
     "schema/*.json",
+    "checkpoints/prompts/*.md",
 ]

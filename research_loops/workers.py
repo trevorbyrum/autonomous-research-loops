@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from .queue import QueueError
+from .control_store import ControlStore
 
 _STATE_FILENAME = "workers.json"
 # The queue root (`root` below) and the directory containing the research_loops
@@ -39,6 +40,11 @@ def start(
     worker_prefix: str = "worker-",
     extra_run_args: list[str] | None = None,
 ) -> dict[str, int]:
+    control = ControlStore(root)
+    if control.exists:
+        active = control.snapshot()["configuration"]["active_count"]
+        if count > active:
+            raise QueueError(f"managed active_count is {active}; refusing to launch {count} stations")
     if count < 1:
         raise QueueError("workers count must be at least 1")
     state_path = _state_path(root)

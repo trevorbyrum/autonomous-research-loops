@@ -29,12 +29,10 @@ class ConfigTests(unittest.TestCase):
                 workers = 3
 
                 [defaults]
-                repeat_seconds = 900
                 gap_policy = "review"
 
                 [topics.my-topic]
-                repeat_seconds = 300
-                agent_main = "claude"
+                max_attempts = 3
                 gap_policy = "auto"
                 gap_auto_limit = 5
                 """,
@@ -42,15 +40,29 @@ class ConfigTests(unittest.TestCase):
             config = load_config(path)
             self.assertEqual(config.workers, 3)
             resolved = config.for_topic("my-topic")
-            self.assertEqual(resolved.repeat_seconds, 300)
-            self.assertEqual(resolved.agent_main, "claude")
+            self.assertEqual(resolved.max_attempts, 3)
             self.assertEqual(resolved.gap_policy, "auto")
             self.assertEqual(resolved.gap_auto_limit, 5)
             # A topic not named under [topics.*] falls back to [defaults] only.
             fallback = config.for_topic("untouched-topic")
-            self.assertEqual(fallback.repeat_seconds, 900)
+            self.assertEqual(fallback.max_attempts, 5)
             self.assertEqual(fallback.gap_policy, "review")
-            self.assertIsNone(fallback.agent_main)
+
+    def test_repeat_seconds_and_agent_fields_are_rejected_as_station_config(self):
+        # These were topic-config fields pre-refactor; mechanics now live
+        # exclusively on stations (state/stations.json), so a TOML config
+        # still carrying them must fail loudly rather than be silently
+        # ignored (operator ruling 2026-09-09).
+        for mechanics_key, value in (
+            ("repeat_seconds", 900),
+            ("agent_main", "claude"),
+            ("agent_secondary", "codex exec"),
+        ):
+            with tempfile.TemporaryDirectory() as tmp:
+                path = self._write(tmp, f'[defaults]\n{mechanics_key} = {value!r}\n')
+                with self.assertRaises(QueueError) as ctx:
+                    load_config(path)
+                self.assertIn("station configuration", str(ctx.exception))
 
     def test_invalid_gap_policy_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

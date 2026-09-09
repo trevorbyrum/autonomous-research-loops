@@ -25,5 +25,17 @@ prompt="$(cat "$prompt_file")"
 
 usage_args=()
 [[ -n "${RESEARCH_LOOP_USAGE_FILE:-}" ]] && usage_args=(--usage-file "$RESEARCH_LOOP_USAGE_FILE")
+extra_args=()
+if [[ -n "${RESEARCH_LOOP_HERMES_ARGV_JSON:-}" ]]; then
+  mapfile -d '' extra_args < <(python3 - "$RESEARCH_LOOP_HERMES_ARGV_JSON" <<'PY'
+import json, sys
+value = json.loads(sys.argv[1])
+if not isinstance(value, list) or any(not isinstance(x, str) for x in value):
+    raise SystemExit("managed Hermes argv must be a JSON string array")
+for arg in value:
+    sys.stdout.buffer.write(arg.encode() + b"\0")
+PY
+)
+fi
 
-"$bin" -p "$profile" -z "$prompt" "${usage_args[@]}"
+"$bin" -p "$profile" -z "$prompt" "${usage_args[@]}" "${extra_args[@]}"

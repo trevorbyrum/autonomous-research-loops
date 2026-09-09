@@ -8,16 +8,17 @@ An eligible ORDINARY research gap retains the contract's documented `gap_policy=
 exception within its remaining allowance; using this document's admission/challenge
 procedure does not erase or change a proposal's origin. (Adopted from the operator-accepted design in
 `private/reviews/scout-debate-design-astra.md`, as amended by the 2026-09-08 prompt
-review; model seats per the operator's final assignment — gpt-5.6-luna sole
-secondary, gpt-5.6-terra fresh primary-class counter.)
+review; model seats now resolve from the shared checkpoint primary/secondary
+configuration, with fresh invocation identities preserved.)
 
-## Scheduling (queue-owned)
+## Scheduling (station-owned)
 
-Recommended initial schedule: the queue reserves completed-iteration ordinals 25, 50,
-75, and so on for checkpoints, replacing those normal passes. After 24 accepted
-completed iterations, the next reserved ordinal is 25; do not run a 25th normal pass
-first. Checkpoints count as completed iterations. Failed or interrupted attempts do
-not advance the counter or consume the reserved ordinal.
+The central station work ledger records completed research iterations per topic.
+With the default cadence, research 25 completes first, then a separate checkpoint
+runs, and research resumes at 26. Checkpoints, decisions, discovery and failed or
+interrupted research attempts never increment that count. The next cadence
+checkpoint follows completed research 50. A queued topic retains its identity and
+priority while proposals await a standardized operator decision.
 
 Also schedule the first entry into deepening for each approved-inventory version.
 Persist that entry marker; ordinary status churn does not reset it. Coalesce
@@ -32,7 +33,7 @@ evidence/coverage, discipline, and operator feedback are unchanged. Growing logs
 timestamps are not changed research context; incomplete coverage cannot be reused as
 a complete review.
 
-The queue supplies the iteration type, completed ordinal, triggers, inventory
+The station controller supplies the execution kind, completed research ordinal, triggers, inventory
 version, checkpoint episode ID, prior review reference, remaining proposal
 allowance, and remaining episode budget. Until those inputs are supplied, do not
 invent a cadence, allowance, or reset from model memory. Continue authorized
@@ -73,7 +74,7 @@ decisions, and material negative searches or near-misses. Include directions abs
 from the advocate's shortlist; zero advocate cards still warrants a framing check at
 a due full checkpoint.
 
-The fresh Terra counter reconstructs each candidate's strongest rationale, gives its
+The fresh configured-primary counter reconstructs each candidate's strongest rationale, gives its
 strongest substantive objection with a locator or explicit inference, and compares
 the slate with amendment, existing work, and no change. Label objections EVIDENCE,
 INFERENCE, SCOPE, DUPLICATE, CAPABILITY, or PRIORITY. It may offer one overlooked
@@ -89,8 +90,8 @@ changed from the provisional assessment and why.
 
 A counter-originated alternative or materially new primary rewrite/merge is a new
 candidate version, not an independently reviewed result. If it is to become a final
-proposal, use the single remaining repair exchange, if available: a fresh Luna
-invocation prepares that fixed version and its strongest case; a fresh Terra
+proposal, use the single remaining repair exchange, if available: a fresh configured-secondary
+invocation prepares that fixed version and its strongest case; a fresh configured-primary
 invocation, distinct from any invocation that originated it, challenges that
 version. Apply the same budget and admission rules. If that review cannot fit or a
 further material change remains unchallenged, retain a signal instead of issuing an
@@ -133,11 +134,11 @@ revision, withdrawal, or individual promotion does not by itself refill the issu
 allowance. Do not resubmit a rejected idea without a named material change in
 evidence, capability, approved framing, or operator feedback.
 
-A normal full checkpoint uses one Luna preparation/advocacy invocation, if needed,
-and one fresh Terra counter invocation over the entire slate. Reuse an adequate
-preparation packet instead of requiring a new Luna call. After that counter pass,
-the primary may name one decisive dispute for one repair exchange: one fresh Luna
-response followed by one fresh Terra assessment. There is no per-card debate loop,
+A normal full checkpoint uses one configured-secondary preparation/advocacy invocation, if needed,
+and one fresh configured-primary counter invocation over the entire slate. Reuse an adequate
+preparation packet instead of requiring a new secondary call. After that counter pass,
+the primary may name one decisive dispute for one repair exchange: one fresh secondary
+response followed by one fresh primary assessment. There is no per-card debate loop,
 second repair exchange, or consensus requirement.
 
 Allow at most four delegate launches for the checkpoint/associated proposal episode,
@@ -189,14 +190,15 @@ requirement.
 
 A checkpoint/scout review is not a qualifying deepening pass merely because the
 semantic state is valid and unchanged. Report its iteration type accurately. The
-saturation exclusion — such a review neither advancing nor resetting the
-deepening-saturation streak — is REQUIRED BEHAVIOR PENDING QUEUE SUPPORT: today's
-queue does not carry iteration type in the result record or exclude checkpoints from
-its saturation decision. Until the queue carries and honors iteration type, do not
-run checkpoint-only work as an ordinary completion-accounted station pass; an
-operator-assigned review with explicit limits must use an execution path outside
-that accounting, or await the queue support. Self-reported type or progress flags
-cannot supply the exclusion. Actual evidence changes and research blockers retain
-their ordinary effects under the queue's rules. If a checkpoint also reconciles
-material evidence, report that work separately; do not relabel the whole pass
-"deepening" to make it eligible.
+saturation exclusion belongs to station mechanics. The controller records a
+separate checkpoint lease and durable episode in `state/control.sqlite3`, then
+invokes the packaged `checkpoints/prompts/protocol.md` through the shared resolved
+pair. It does not launch an ordinary research iteration or increment/reset its
+saturation/stall streak. Defaults are cadence 25 and deepening-entry enabled;
+configure them through `stations --file` (see [managed stations](managed-stations.md)).
+Only a station-assigned separate checkpoint receives this exclusion:
+self-reported type or progress flags cannot supply it, and checkpoint-only work
+must never run inside an ordinary self-initiated pass. Actual evidence changes
+and research blockers retain their ordinary effects under the queue's rules. If a
+checkpoint also reconciles material evidence, report that work separately; do not
+relabel the whole pass "deepening" to make it eligible.

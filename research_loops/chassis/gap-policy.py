@@ -191,6 +191,16 @@ def main(argv: list[str] | None = None) -> int:
     reset_p.add_argument("--note", required=True)
 
     args = parser.parse_args(argv)
+    if args.action == "promote" and __import__("os").environ.get("RESEARCH_LOOP_CONTROLLER_SOCKET"):
+        if not args.auto or args.force or args.limit is None:
+            parser.error("managed promotion requires --auto and --limit; --force is not permitted")
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+            from research_loops.controller_client import call
+            result = call(__import__("os").environ["RESEARCH_LOOP_CONTROLLER_SOCKET"], "gap.promote", {"topic_id": __import__("os").environ.get("RESEARCH_LOOP_MANAGED_TOPIC_ID", ""), "obligation_id": args.obligation_id, "text": args.text, "source_ref": args.source_ref}, token=__import__("os").environ.get("RESEARCH_LOOP_EXECUTION_CAPABILITY"))
+            print(json.dumps(result, sort_keys=True)); return 0
+        except Exception as exc:
+            print(str(exc), file=sys.stderr); return 2
     if args.action == "status":
         print(json.dumps(status(args.topic_dir, args.policy, args.limit), indent=2, sort_keys=True))
         return 0

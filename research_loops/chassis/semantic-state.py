@@ -842,12 +842,23 @@ def _flag_needs_operator(topic_dir: Path, flag: str, detail: str) -> None:
 
 def _write_state(topic_dir: Path, state: dict[str, Any]) -> None:
     """The single atomic write path for every mutating subcommand."""
+    import tempfile
     path = topic_dir / STATE_FILE
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(
-        json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    os.replace(tmp, path)
+    # The controller writes inside a worker-writable evidence directory. Never
+    # follow a predictable temporary filename planted by that worker.
+    fd, temporary = tempfile.mkstemp(prefix=".semantic-state-", dir=topic_dir)
+    tmp = Path(temporary)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            metadata = path.stat()
+            os.fchmod(handle.fileno(), metadata.st_mode & 0o777)
+            os.fchown(handle.fileno(), metadata.st_uid, metadata.st_gid)
+            handle.write(json.dumps(state, indent=2, sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def work_selection_view(state: dict[str, Any]) -> dict[str, Any]:
@@ -1019,6 +1030,29 @@ def apply_obligation_transition(
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Managed workers preserve this CLI, but a protected controller performs
+    # writes to mixed inventory/assessment state. The worker cannot edit the
+    # controller-owned file or grant itself an operator capability.
+    if os.environ.get("RESEARCH_LOOP_CONTROLLER_SOCKET"):
+        raw = list(sys.argv[1:] if argv is None else argv)
+        if len(raw) >= 2 and raw[0] not in {"-h", "--help"}:
+            sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+            from research_loops.controller_client import ControllerClientError, call
+            topic_id = os.environ.get("RESEARCH_LOOP_MANAGED_TOPIC_ID", "")
+            expected_dir = os.environ.get("RESEARCH_LOOP_MANAGED_TOPIC_DIR", "")
+            if not expected_dir or Path(raw[1]).resolve() != Path(expected_dir).resolve():
+                print("managed state operation must name the assigned topic directory", file=sys.stderr)
+                return 2
+            try:
+                result = call(os.environ["RESEARCH_LOOP_CONTROLLER_SOCKET"], "state.cli",
+                              {"topic_id": topic_id, "action": raw[0], "arguments": raw[2:]},
+                              token=os.environ.get("RESEARCH_LOOP_EXECUTION_CAPABILITY"))
+            except ControllerClientError as exc:
+                print(str(exc), file=sys.stderr)
+                return 2
+            sys.stdout.write(result["stdout"])
+            sys.stderr.write(result["stderr"])
+            return int(result["exit_code"])
     parser = argparse.ArgumentParser(
         description=(
             "Validate, fingerprint, and access one topic's executable completion "
@@ -1031,6 +1065,9 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="action", required=True)
 
     def _topic(p: argparse.ArgumentParser) -> argparse.ArgumentParser:
+        # Exact interface names prevent abbreviated policy flags bypassing the
+        # managed controller's authorization checks.
+        p.allow_abbrev = False
         p.add_argument("topic_dir", type=Path, help="path to the topic's directory")
         return p
 

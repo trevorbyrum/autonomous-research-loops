@@ -16,8 +16,9 @@
 workers = 1
 
 # How often an idle worker checks the queue for newly-eligible work, and how
-# long it sleeps between empty polls. Distinct from a topic's repeat_seconds
-# below, which paces a single item's own retry/backoff cadence.
+# long it sleeps between empty polls. Iteration cadence is NOT set here or on
+# topics: it is a station property (`research-loops worker-agents <worker>
+# --interval N`, stored in state/stations.json).
 poll_seconds = 1.0
 idle_sleep = 5.0
 
@@ -25,9 +26,11 @@ idle_sleep = 5.0
 # override a given key. Omit a key entirely to use the engine's own default
 # (see `research-loops add --help`).
 [defaults]
-# Minimum seconds between the end of one iteration and the start of the next
-# for a given topic (a repeating topic never runs back-to-back with no gap).
-repeat_seconds = 900
+# NOTE: mechanics keys (repeat_seconds, agent_main, agent_secondary) are
+# REJECTED here — cadence and agent assignment are station configuration
+# (`worker-agents` / `fleet`, stored in state/stations.json), never topic
+# config. A topic recurs because it carries a semantic contract
+# (SEMANTIC-STATE.json), paced solely by its station's interval.
 # How many consecutive failures before an item is flagged needs_attention
 # instead of retried again.
 max_attempts = 8
@@ -55,22 +58,10 @@ gap_auto_limit = 0
 # Optional: argv run exactly once when this topic lands completed (e.g. index the
 # finished corpus into your own store). Ledgered on failure, never un-completes.
 # on_completed_command = ["/home/you/bin/my-corpus-ingest"]
-repeat_seconds = 600
 max_attempts = 5
 
-# agent_main sets RESEARCH_LOOP_RUNNER for this item, i.e. which runners/*
-# adapter actually runs the iteration (claude, codex, hermes, generic, or
-# your own) — overriding whatever runner name the item's command was
-# originally queued with.
-agent_main = "claude"
-
-# agent_secondary names a second agent the primary one may delegate
-# independent, well-scoped legwork to (discovery/extraction only, per
-# CONTRACT-CORE.md step 4 — it never gets final judgment). Surfaced to the
-# runner as RESEARCH_LOOP_AGENT_SECONDARY and folded into the iteration
-# prompt; what delegation actually looks like depends on the primary
-# runner/CLI you chose above.
-agent_secondary = "codex"
+# Which harness/model pair runs an iteration is the STATION's profile
+# (worker-agents --main/--secondary/--model/--flags), never a topic key.
 
 # This topic is allowed to self-promote up to 3 real gaps before an operator
 # has to look at it.

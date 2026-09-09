@@ -347,6 +347,15 @@ def new_topic(
 
 def approve_topic(topic_id: str, *, dest: Path) -> dict[str, Any]:
     topic_dir = dest / topic_id
+    publication = topic_dir / ".intake-publication.json"
+    # A previous process may have stopped between individual filesystem renames.
+    # The manifest is durable before the first rename, so retry completes the
+    # same publication instead of treating a half-published directory as a new
+    # approved contract or asking an operator to edit files by hand.
+    if publication.is_file():
+        _recover_publication(topic_dir, publication)
+        lock = compute_lock(topic_dir)
+        return {"topic_dir": str(topic_dir), "check_output": "recovered staged publication", "lock": lock, "publication_state": "recovered"}
     draft_authority = topic_dir / "DRAFT-AUTHORITY.md"
     draft_topic = topic_dir / "DRAFT-TOPIC.md"
     draft_state = topic_dir / "DRAFT-SEMANTIC-STATE.json"
@@ -412,12 +421,8 @@ def approve_topic(topic_id: str, *, dest: Path) -> dict[str, Any]:
     state["contract_sha256"] = hashlib.sha256(draft_topic.read_bytes()).hexdigest()
     state["authority_sha256"] = hashlib.sha256(draft_authority.read_bytes()).hexdigest()
 
-    draft_authority.rename(topic_dir / "AUTHORITY.md")
-    draft_topic.rename(topic_dir / "TOPIC.md")
-    (topic_dir / "SEMANTIC-STATE.json").write_text(
-        json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    draft_state.unlink()
+    publication.write_text(json.dumps({"schema_version": 1, "state": state}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _recover_publication(topic_dir, publication)
 
     semantic_state_py = _PACKAGE_DIR / "chassis" / "semantic-state.py"
     run_topic_sh = _PACKAGE_DIR / "chassis" / "run-topic.sh"
@@ -449,3 +454,24 @@ def approve_topic(topic_id: str, *, dest: Path) -> dict[str, Any]:
         "lock": lock,
         "suggested_command": suggested_command,
     }
+
+
+def _recover_publication(topic_dir: Path, manifest: Path) -> None:
+    """Finish an already-staged draft promotion; each step is idempotent."""
+    try:
+        state = json.loads(manifest.read_text(encoding="utf-8"))["state"]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise QueueError(f"publication manifest for {topic_dir} is invalid: {exc}") from exc
+    for source, target in (("DRAFT-AUTHORITY.md", "AUTHORITY.md"), ("DRAFT-TOPIC.md", "TOPIC.md")):
+        src, dst = topic_dir / source, topic_dir / target
+        if not dst.exists():
+            if not src.exists():
+                raise QueueError(f"publication pending: both {source} and {target} are missing; restore the staged draft then retry")
+            src.rename(dst)
+    semantic = topic_dir / "SEMANTIC-STATE.json"
+    if not semantic.exists():
+        semantic.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    draft_state = topic_dir / "DRAFT-SEMANTIC-STATE.json"
+    if draft_state.exists():
+        draft_state.unlink()
+    manifest.unlink()

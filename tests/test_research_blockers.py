@@ -22,8 +22,7 @@ def store(tmp):
 
 
 def add_item(s, item_id="topic-a", **kw):
-    return s.add(title="T", cwd="/tmp", command=["true"], item_id=item_id,
-                 repeat_seconds=900, **kw)
+    return s.add(title="T", cwd="/tmp", command=["true"], item_id=item_id, **kw)
 
 
 def failure(source, coverage, request_type="find", subject="q"):

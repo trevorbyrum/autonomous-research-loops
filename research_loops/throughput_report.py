@@ -295,13 +295,17 @@ def _report_time_context(root: Path, topic_id: str) -> list[str]:
              "Captured at report time (mutable state; it does not describe past iterations):"]
     try:
         q = json.loads((root / "state" / "queue.json").read_text())
+        try:
+            stations = json.loads((root / "state" / "stations.json").read_text()).get("stations") or {}
+        except Exception:
+            stations = q.get("worker_agents") or {}
         workers = {name: {k: cfg.get(k) for k in ("agent_main", "agent_model", "interval_seconds")}
-                   for name, cfg in (q.get("worker_agents") or {}).items()}
-        lines.append(f"- worker configuration now: `{json.dumps(workers, sort_keys=True)}`")
+                   for name, cfg in stations.items()}
+        lines.append(f"- station configuration now: `{json.dumps(workers, sort_keys=True)}`")
         it = next((i for i in q.get("items", []) if i.get("id") == topic_id), None)
         if it:
-            lines.append(f"- topic now: status={it.get('status')} repeat_seconds={it.get('repeat_seconds')} "
-                         f"secondary=`{it.get('agent_secondary')}`")
+            lines.append(f"- topic now: status={it.get('status')} "
+                         f"iterations_completed={it.get('iterations_completed')}")
     except Exception:
         lines.append("- worker configuration: unknown (state/queue.json unreadable)")
     lines += ["", "Recorded per iteration (from when each instrument began): model identity and token "

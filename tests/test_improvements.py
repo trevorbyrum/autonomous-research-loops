@@ -33,59 +33,50 @@ class StopFileTests(unittest.TestCase):
     def tearDown(self):
         self.tempdir.cleanup()
 
-    def test_recurring_done_stop_completes_instead_of_rescheduling(self):
-        stop_file = self.root / "STOP"
-        # Simulate: the loop runs successfully (exit 0) and writes DONE.
+    def _topic_dir(self, name: str, *, contract: bool) -> Path:
+        """A per-test cwd (recurrence is intrinsic to the cwd's contract now
+        -- operator ruling 2026-09-09 -- so "recurring" vs. "bounded" tests
+        each need their own dir, not a repeat_seconds kwarg on a shared one)."""
+        topic_dir = self.root / name
+        topic_dir.mkdir()
+        if contract:
+            (topic_dir / "SEMANTIC-STATE.json").write_text("{}", encoding="utf-8")
+        return topic_dir
+
+    def test_recurring_done_stop_is_discarded_and_reschedules(self):
+        # Recurrence is intrinsic to the contract now (operator ruling
+        # 2026-09-09): a contract topic's self-declared DONE has NO
+        # completion authority at all, regardless of completion_command --
+        # it is unconditionally discarded and the loop reschedules
+        # (AgentDoneHasNoCompletionAuthorityTests in test_iteration_result.py
+        # covers the same discard with a chassis result record present;
+        # this covers it with no result record at all).
+        topic_dir = self._topic_dir("recurring-done", contract=True)
+        stop_file = topic_dir / "STOP"
         command = (
             f"import pathlib; pathlib.Path({str(stop_file)!r}).write_text('DONE\\n')"
         )
         item = self.store.add(
             title="Recurring with stop",
-            cwd=str(self.root),
+            cwd=str(topic_dir),
             command=[sys.executable, "-c", command],
-            repeat_seconds=900,
             stop_file="STOP",
         )
         result = self.runner.run_once()
-        self.assertEqual(result["outcome"], "completed")
-        self.assertEqual(self.store.get(item["id"])["status"], "completed")
-
-    def test_done_stop_fails_closed_when_completion_command_rejects_it(self):
-        stop_file = self.root / "STOP"
-        command = (
-            f"import pathlib; pathlib.Path({str(stop_file)!r}).write_text('DONE\\n')"
-        )
-        item = self.store.add(
-            title="Semantically incomplete",
-            cwd=str(self.root),
-            command=[sys.executable, "-c", command],
-            repeat_seconds=900,
-            stop_file="STOP",
-            completion_command=[
-                sys.executable,
-                "-c",
-                "import sys; print('open obligations remain'); sys.exit(1)",
-            ],
-        )
-
-        result = self.runner.run_once()
-
-        self.assertEqual(result["outcome"], "needs_attention")
-        state = self.store.get(item["id"])
-        self.assertEqual(state["status"], "needs_attention")
-        self.assertEqual(state["last_error_kind"], "configuration")
-        self.assertIn("open obligations remain", state["last_error"])
+        self.assertEqual(result["outcome"], "scheduled")
+        self.assertFalse(stop_file.exists())  # discarded, not honored
+        self.assertEqual(self.store.get(item["id"])["status"], "backoff")
 
     def test_recurring_needs_operator_stop_goes_to_attention(self):
-        stop_file = self.root / "STOP"
+        topic_dir = self._topic_dir("recurring-attention", contract=True)
+        stop_file = topic_dir / "STOP"
         command = (
             f"import pathlib; pathlib.Path({str(stop_file)!r}).write_text('NEEDS-OPERATOR: manual review')"
         )
         item = self.store.add(
             title="Recurring attention",
-            cwd=str(self.root),
+            cwd=str(topic_dir),
             command=[sys.executable, "-c", command],
-            repeat_seconds=900,
             stop_file="STOP",
         )
         result = self.runner.run_once()
@@ -95,35 +86,36 @@ class StopFileTests(unittest.TestCase):
         self.assertEqual(state["last_error_kind"], "configuration")
 
     def test_no_stop_file_still_reschedules(self):
+        topic_dir = self._topic_dir("no-stop-file", contract=True)
         item = self.store.add(
             title="Normal recurring",
-            cwd=str(self.root),
+            cwd=str(topic_dir),
             command=[sys.executable, "-c", "pass"],
-            repeat_seconds=60,
         )
         result = self.runner.run_once()
         self.assertEqual(result["outcome"], "scheduled")
         self.assertEqual(self.store.get(item["id"])["status"], "backoff")
 
     def test_missing_stop_file_falls_through(self):
+        topic_dir = self._topic_dir("missing-stop-file", contract=True)
         self.store.add(
             title="Stop file absent",
-            cwd=str(self.root),
+            cwd=str(topic_dir),
             command=[sys.executable, "-c", "pass"],
-            repeat_seconds=60,
             stop_file="NONEXISTENT",
         )
         result = self.runner.run_once()
         self.assertEqual(result["outcome"], "scheduled")
 
     def test_bounded_item_done_stop_completes(self):
-        stop_file = self.root / "STOP"
+        topic_dir = self._topic_dir("bounded-done", contract=False)
+        stop_file = topic_dir / "STOP"
         command = (
             f"import pathlib; pathlib.Path({str(stop_file)!r}).write_text('DONE')"
         )
         item = self.store.add(
             title="Bounded with stop",
-            cwd=str(self.root),
+            cwd=str(topic_dir),
             command=[sys.executable, "-c", command],
             stop_file="STOP",
         )
@@ -135,13 +127,13 @@ class StopFileTests(unittest.TestCase):
         # A STOP written before the run starts (leftover from a previous
         # attempt the operator forgot to clear) must NOT re-trigger a terminal
         # transition: only a file this run created/modified counts.
-        stop_file = self.root / "STOP"
+        topic_dir = self._topic_dir("stale-stop", contract=True)
+        stop_file = topic_dir / "STOP"
         stop_file.write_text("NEEDS-OPERATOR: old, operator resumed without deleting")
         item = self.store.add(
             title="Stale stop",
-            cwd=str(self.root),
+            cwd=str(topic_dir),
             command=[sys.executable, "-c", "pass"],  # run does NOT touch STOP
-            repeat_seconds=60,
             stop_file="STOP",
         )
         result = self.runner.run_once()
@@ -149,8 +141,13 @@ class StopFileTests(unittest.TestCase):
         self.assertEqual(self.store.get(item["id"])["status"], "backoff")
 
     def test_stop_file_modified_by_run_counts_even_if_preexisting(self):
-        # The file existed before, but THIS run overwrote it with DONE.
-        stop_file = self.root / "STOP"
+        # The file existed before, but THIS run overwrote it with DONE --
+        # freshness must still be detected (distinguishing it from the stale
+        # case above) even though a contract topic's DONE is discarded
+        # rather than honored: only a run-modified DONE is recognized and
+        # cleared (ignored_stop_done), a stale one is left untouched.
+        topic_dir = self._topic_dir("overwritten-stop", contract=True)
+        stop_file = topic_dir / "STOP"
         stop_file.write_text("NEEDS-OPERATOR: old state")
         command = (
             "import pathlib, time; time.sleep(0.01); "
@@ -158,14 +155,16 @@ class StopFileTests(unittest.TestCase):
         )
         item = self.store.add(
             title="Overwritten stop",
-            cwd=str(self.root),
+            cwd=str(topic_dir),
             command=[sys.executable, "-c", command],
-            repeat_seconds=60,
             stop_file="STOP",
         )
         result = self.runner.run_once()
-        self.assertEqual(result["outcome"], "completed")
-        self.assertEqual(self.store.get(item["id"])["status"], "completed")
+        self.assertEqual(result["outcome"], "scheduled")
+        self.assertEqual(self.store.get(item["id"])["status"], "backoff")
+        self.assertFalse(stop_file.exists())  # recognized as fresh DONE, discarded
+        finished = [e for e in self.ledger.events() if e["type"] == "process_finished"]
+        self.assertTrue(finished[-1].get("ignored_stop_done"))
 
 
 class ScanTailCharsTests(unittest.TestCase):

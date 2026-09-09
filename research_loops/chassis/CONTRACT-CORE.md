@@ -107,11 +107,13 @@ DECISIONS-LOG.md as decision provenance, citing the underlying corpus records
 separately for factual premises. Keep pending proposals visible for operator review
 without making their approval a new completion requirement. A checkpoint/scout review
 is not a qualifying deepening pass merely because the semantic state is valid and
-unchanged: report its iteration type accurately; the required exclusion (neither
-advancing nor resetting the deepening-saturation streak) is PENDING QUEUE SUPPORT —
-until the queue carries and honors iteration type, checkpoint-only work must not run
-as an ordinary completion-accounted station pass (see
-`docs/obligations-checkpoint.md`). Only the queue applies those rules.
+unchanged: report its iteration type accurately. The station assigns checkpoints
+(the fleet configuration schedules them from the topic's iteration count and
+deepening entry; the assignment arrives in this prompt) and the queue excludes an
+assigned checkpoint pass from saturation accounting — neither advancing nor
+resetting the deepening-saturation streak (see `docs/obligations-checkpoint.md`).
+Never run checkpoint-only work in an ordinary iteration on your own initiative;
+only the queue applies those rules.
 
 ## Evidence handling
 
@@ -176,13 +178,13 @@ as an ordinary completion-accounted station pass (see
   with the required scope, qualifications, and freshness — a materially different
   claim needs its own independently verified record, and an unverified or flagged
   target cannot support a disposition. See `docs/citations.md`.
-- The delegate model rule: delegate through the topic's configured secondary
-  wrapper. Use its default gpt-5.6-luna for discovery, librarian work, extraction,
+- The delegate model rule: delegate through the station's configured secondary
+  wrapper and model for discovery, librarian work, extraction,
   proposal advocacy, and citation verification. Each verification runs in a fresh
   invocation distinct from the invocation that produced the citation. The sole
-  additional assignment is a fresh gpt-5.6-terra invocation, through the same
-  wrapper with `--model gpt-5.6-terra`, for the authorized counter-argument seat,
-  including its permitted repair assessment. Terra is a primary-class counter
+  additional assignment is a fresh configured-primary invocation, through its
+  wrapper, for the authorized counter-argument seat,
+  including its permitted repair assessment. This is a primary-class counter
   assignment, not a second secondary model. The primary retains final judgment. Use
   no other delegate model or native Agent/Task intermediary.
 - An obligation reopened or added by a scheduled/manual refresh (`topic_refresh`, see

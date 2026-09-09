@@ -1,0 +1,8 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema", "title":"Intake operator decision", "type":"object", "additionalProperties":false,
+  "required":["schema_version","request_id","expected_revision","topic_id","draft_revision","result_id","action","rationale"],
+  "properties":{"schema_version":{"type":"integer","const":1},"request_id":{"type":"string","minLength":1},"expected_revision":{"type":"integer","minimum":0},"topic_id":{"type":"string","minLength":1},"draft_revision":{"type":"integer","minimum":1},"result_id":{"type":"string","minLength":1},"action":{"type":"string","enum":["approve","approve_with_edits","reject"]},"rationale":{"type":"string","minLength":1},"edits":{"type":"object","additionalProperties":false,"required":["draft_authority","draft_topic","draft_semantic_state"],"properties":{"draft_authority":{"type":"string","minLength":1},"draft_topic":{"type":"string","minLength":1},"draft_semantic_state":{"type":"string","minLength":1}}},"position":{"type":"integer","minimum":0}},
+  "allOf":[{"if":{"properties":{"action":{"const":"approve_with_edits"}}},"then":{"required":["edits"]},"else":{"not":{"required":["edits"]}}}],
+  "examples":[{"schema_version":1,"request_id":"decision-1","expected_revision":4,"topic_id":"labeling","draft_revision":1,"result_id":"result-1","action":"approve","rationale":"The reviewed draft matches the brief."}],
+  "x-ownership":{"authenticated_identity":"control transport only; payload has no actor","controller_generated":["decision_id","inventory_version","completion_lock","publication_id","queue_registration"]}
+}

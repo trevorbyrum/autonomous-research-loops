@@ -215,21 +215,44 @@ class StateCliTests(unittest.TestCase):
         self.assertEqual(record["record"]["status"], "resolved")
 
 
-class ContinuousCadenceTests(unittest.TestCase):
-    def test_repeat_seconds_zero_means_continuous_not_bounded(self):
-        from research_loops.queue import QueueError, QueueStore
+class ContractTopicRecurrenceTests(unittest.TestCase):
+    """Recurrence is intrinsic to the cwd's contract now (operator ruling
+    2026-09-09), not a per-item repeat_seconds field: a topic directory
+    carrying SEMANTIC-STATE.json recurs under the station's cadence; anything
+    else is a bounded command that completes on exit 0. add() has no
+    scheduling kwarg to accept or reject any more -- passing the old one is a
+    TypeError, not a QueueError."""
+
+    def test_semantic_state_presence_decides_recurrence_not_a_field(self):
+        from research_loops.queue import QueueStore
+        from research_loops.runner import LoopRunner
 
         with tempfile.TemporaryDirectory() as tmp:
             store = QueueStore(Path(tmp))
-            item = store.add(
-                title="continuous", cwd=tmp, command=["true"],
-                item_id="c", repeat_seconds=0,
+            contract_dir = Path(tmp) / "contract-topic"
+            contract_dir.mkdir()
+            (contract_dir / "SEMANTIC-STATE.json").write_text("{}", encoding="utf-8")
+            bounded_dir = Path(tmp) / "bounded-topic"
+            bounded_dir.mkdir()
+
+            contract_item = store.add(
+                title="contract", cwd=str(contract_dir), command=["true"], item_id="c",
             )
-            self.assertEqual(item["repeat_seconds"], 0)
-            with self.assertRaises(QueueError):
+            bounded_item = store.add(
+                title="bounded", cwd=str(bounded_dir), command=["true"], item_id="b",
+            )
+            self.assertTrue(LoopRunner._contract_topic(contract_item))
+            self.assertFalse(LoopRunner._contract_topic(bounded_item))
+
+    def test_add_no_longer_accepts_repeat_seconds(self):
+        from research_loops.queue import QueueStore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = QueueStore(Path(tmp))
+            with self.assertRaises(TypeError):
                 store.add(
                     title="bad", cwd=tmp, command=["true"],
-                    item_id="bad", repeat_seconds=-1,
+                    item_id="bad", repeat_seconds=0,
                 )
 
 

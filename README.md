@@ -2,6 +2,11 @@
 
 **A durable engine for running autonomous research topics to genuine completion.**
 
+Managed station deployments use a protected controller, strict intake, and a
+central work ledger. Start with [managed stations](docs/managed-stations.md) and
+[deployment and recovery](docs/managed-deployment.md). The standalone JSON queue
+instructions below describe explicitly unmanaged workspaces.
+
 Not a fixed iteration count, not a token budget — an actual executable check that every
 question you asked has a real answer, or an honest "unresolved, and here's why."
 

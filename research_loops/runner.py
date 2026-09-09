@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 from pathlib import Path
@@ -18,6 +19,13 @@ from typing import Any
 
 from . import refresh as refresh_mod
 from .queue import QueueError, QueueStore, utc_now, validate_item_id
+from .checkpoints.runner import CheckpointRunner, RegisteredCheckpointAdapter, SubprocessCheckpointAdapter
+from .checkpoints.service import (
+    CheckpointError,
+    accept_research_completion,
+    finish_checkpoint,
+    start_checkpoint,
+)
 
 
 class FailureKind(StrEnum):
@@ -355,6 +363,8 @@ class LoopRunner:
         profile: str | None = None,
         auto_resume_cooldown_seconds: int | None = None,
         lanes: tuple[str, ...] = ("research",),
+        checkpoint_adapter: Any | None = None,
+        discovery_adapter: Any | None = None,
     ):
         self.store = store
         self.ledger = ledger
@@ -376,6 +386,10 @@ class LoopRunner:
         if not lanes:
             raise QueueError("a worker needs at least one lane")
         self.lanes = tuple(lanes)
+        # Checkpoints have a separate structured adapter entry point.  It is
+        # intentionally not synthesized from the ordinary topic command.
+        self.checkpoint_adapter = checkpoint_adapter
+        self.discovery_adapter = discovery_adapter
         self.log_dir = store.root / "logs"
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -603,18 +617,53 @@ class LoopRunner:
         return body
 
     @staticmethod
-    def _saturation_eligible(item: dict[str, Any], repeat_seconds: Any) -> bool:
-        """True when the SATURATION GATE — not the agent — decides completion.
+    def _contract_topic(item: dict[str, Any]) -> bool:
+        """True for a contract-bearing research topic — recurring by nature,
+        and the SATURATION GATE (not the agent) decides its completion.
 
-        Any recurring item carrying a semantic contract. Coverage (every
-        obligation terminal, validator green) is what an agent can see and
-        self-certify; saturation is a property of consecutive iterations that
-        only the queue can observe. Where both exist, the measured signal
-        wins and the self-declared one is discarded.
+        Recurrence is intrinsic to the contract, never a per-item setting:
+        a topic with SEMANTIC-STATE.json iterates until saturated, paced
+        solely by its station's interval; anything else is a bounded command
+        that completes on success (operator ruling 2026-09-09 — mechanics
+        live on stations, the queue holds only order/contracts/substance).
+        Coverage (every obligation terminal, validator green) is what an
+        agent can see and self-certify; saturation is a property of
+        consecutive iterations that only the queue can observe. Where both
+        exist, the measured signal wins and the self-declared one is
+        discarded.
         """
-        if repeat_seconds is None:
-            return False
         return (Path(item["cwd"]) / "SEMANTIC-STATE.json").is_file()
+
+    def _checkpoint_due(self, item: dict[str, Any]) -> str | None:
+        """Fleet obligations-checkpoint trigger — STATION mechanics.
+
+        The station monitors the topic's recorded history (ordinary
+        iterations completed, deepening entry) against the fleet policy in
+        the stations' collective config and assigns the checkpoint iteration;
+        a topic never schedules its own (operator design 2026-09-08/09:
+        every 25th iteration, or once it first enters deepening). Returns the
+        assignment reason, or None when no checkpoint is due.
+        """
+        if not self._contract_topic(item):
+            return None
+        fleet = self.store.stations.fleet()
+        if (
+            fleet.get("checkpoint_on_deepening")
+            and item.get("deepening_seen")
+            and not item.get("deepening_checkpoint_done")
+        ):
+            return "deepening"
+        every = int(fleet.get("checkpoint_every") or 0)
+        done = int(item.get("iterations_completed") or 0)
+        last = item.get("last_checkpoint_iteration")
+        # ">= every since the last checkpoint" rather than a modulo match:
+        # a topic whose counter was backfilled from history (or whose fleet
+        # cadence changed) must owe at most one checkpoint, immediately —
+        # never wait for the next exact multiple.
+        base = last if isinstance(last, int) and not isinstance(last, bool) else 0
+        if every > 0 and done - base >= every:
+            return f"iteration-{done}"
+        return None
 
     @classmethod
     def _discard_stop_file(cls, item: dict[str, Any]) -> None:
@@ -856,6 +905,39 @@ class LoopRunner:
         )
         return {"item_id": item_id, "outcome": outcome, "exit_code": exit_code}
 
+    def _park_managed_orphan(self, item: dict[str, Any], lease: dict[str, Any]) -> dict[str, Any]:
+        """Fail closed for a restarted non-ordinary lease.
+
+        Checkpoint and discovery adapters do not expose a durable child PID to
+        a new supervisor.  Treating their durable lease as permission to run
+        another adapter could duplicate an operator-facing review, so atomically
+        park the item and release the assignment instead.
+        """
+        assert self.store.control is not None and self.store.scheduler is not None
+        item_id, kind = item["id"], lease.get("execution_kind")
+        reason = f"supervisor restarted with unknown {kind} child; operator review required"
+        with self.store.control.transaction(actor="runner", operation_id=f"managed-orphan:{lease['lease_id']}") as state:
+            entry = next((entry for entry in state["queue"].get("items", []) if entry.get("id") == item_id), None)
+            if isinstance(entry, dict):
+                entry.update({"status": "needs_attention", "desired_state": "paused", "last_error": reason, "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")})
+            if kind == "checkpoint":
+                topic = state["work"].get("topics", {}).get(item_id)
+                if isinstance(topic, dict):
+                    topic["review_state"] = "needs_attention"
+                    episode = state["work"].get("episodes", {}).get(topic.get("active_episode_id"))
+                    if isinstance(episode, dict):
+                        episode.update({"state": "needs_attention", "failure_reason": reason})
+            record = state["work"].setdefault("assignments", {}).get(str(lease.get("station_id")))
+            if isinstance(record, dict) and isinstance(record.get("current"), dict) and record["current"].get("lease_id") == lease.get("lease_id"):
+                record["current"] = None
+                record["handoff_reason"] = None
+                record["draining"] = False
+                self.store.scheduler.reconcile_state(state)
+        self.store._managed_leases.pop(item_id, None)
+        self.ledger.append({"type": "managed_orphan_parked", "item_id": item_id, "worker": self.worker,
+                            "execution_kind": kind, "lease_id": lease.get("lease_id"), "note": reason})
+        return {"item_id": item_id, "outcome": "needs_attention", "exit_code": None, "execution_kind": kind}
+
     @staticmethod
     def _read_iteration_result(
         result_path: Path, signature_before: tuple[int, int] | None
@@ -1047,14 +1129,21 @@ class LoopRunner:
             )
 
     def run_once(self) -> dict[str, Any] | None:
+        if self.store.control is not None and self.lanes == ("intake",):
+            return self._run_managed_discovery_once()
         self._process_due_refreshes()
         self._process_auto_resumes()
         item = self.store.claim_next(worker=self.worker, lanes=self.lanes)
         if item is None:
             return None
+        managed_lease = item.get("_control_lease") if self.store.control is not None else None
         if item.get("resumed"):
+            if isinstance(managed_lease, dict) and managed_lease.get("execution_kind") != "research":
+                return self._park_managed_orphan(item, managed_lease)
             return self._resume_running_item(item)
         item_id = item["id"]
+        if isinstance(managed_lease, dict) and managed_lease.get("execution_kind") == "checkpoint":
+            return self._run_managed_checkpoint(item, managed_lease)
         generation = item["restart_generation"]
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         log_path = self._log_path(item_id, item["attempts"], stamp)
@@ -1099,29 +1188,40 @@ class LoopRunner:
             }
         )
         startup_error = None
+        checkpoint_boundary_episode: str | None = None
         child_env = os.environ.copy()
         if self.profile is not None:
             child_env["RESEARCH_LOOP_PROFILE"] = self.profile
         else:
             child_env.pop("RESEARCH_LOOP_PROFILE", None)
         # Station configuration: the WORKER's agent profile decides which
-        # harness/model pair runs this iteration. Items carry no binding --
-        # their legacy agent_main/agent_secondary fields are consulted only
-        # when the worker has no profile at all (backward compatibility for
-        # fleets that never configured one).
+        # harness/model pair runs this iteration. Items carry no binding at
+        # all — mechanics live exclusively in the stations' collective config
+        # (operator ruling 2026-09-09); with no profile, the chassis defaults
+        # apply.
         profile = self.store.worker_agents(self.worker)
-        agent_main = profile.get("agent_main") or item.get("agent_main")
+        if self.store.control is not None:
+            station_id = self.store.scheduler.station_id(self.worker) if self.store.scheduler else None
+            pair = self.store.control.resolve_station_pair(station_id)
+            primary, secondary = pair["primary"], pair["secondary"]
+            # A registered profile, not a friendly profile ID or agent payload,
+            # is the only managed launch authority. The chassis accepts this
+            # JSON envelope only for its packaged adapters.
+            child_env["RESEARCH_LOOP_MANAGED_PRIMARY_PROFILE"] = json.dumps(primary, sort_keys=True)
+            child_env["RESEARCH_LOOP_MANAGED_SECONDARY_PROFILE"] = json.dumps(secondary, sort_keys=True)
+            profile = {"agent_main": primary["adapter"], "agent_secondary": secondary["id"],
+                       "agent_model": primary["model"], "agent_executable": primary["executable"],
+                       "agent_argv": primary["argv"]}
+            if primary["adapter"] not in {"codex", "claude", "hermes"}:
+                raise QueueError(f"managed profile adapter {primary['adapter']!r} has no packaged trusted runner")
+        agent_main = profile.get("agent_main")
         if agent_main:
             # chassis/run-topic.sh already resolves this same variable to pick
             # a runner adapter.
             child_env["RESEARCH_LOOP_RUNNER"] = agent_main
         else:
             child_env.pop("RESEARCH_LOOP_RUNNER", None)
-        agent_secondary = (
-            profile.get("agent_secondary")
-            if profile.get("agent_main")
-            else item.get("agent_secondary")
-        )
+        agent_secondary = profile.get("agent_secondary")
         if agent_secondary:
             child_env["RESEARCH_LOOP_AGENT_SECONDARY"] = agent_secondary
         else:
@@ -1133,10 +1233,26 @@ class LoopRunner:
         if runner_key:
             if profile.get("agent_model"):
                 child_env[f"RESEARCH_LOOP_{runner_key}_MODEL"] = profile["agent_model"]
+            if profile.get("agent_executable"):
+                child_env[f"RESEARCH_LOOP_{runner_key}_BIN"] = profile["agent_executable"]
+            if isinstance(profile.get("agent_argv"), list):
+                child_env[f"RESEARCH_LOOP_{runner_key}_ARGV_JSON"] = json.dumps(profile["agent_argv"])
             if profile.get("agent_flags"):
                 child_env[f"RESEARCH_LOOP_{runner_key}_FLAGS"] = profile["agent_flags"]
         child_env["RESEARCH_LOOP_GAP_POLICY"] = item.get("gap_policy") or "review"
         child_env["RESEARCH_LOOP_GAP_AUTO_LIMIT"] = str(item.get("gap_auto_limit") or 0)
+        # Fleet checkpoint assignment: the station decides, the chassis
+        # relays it into the prompt, and the finalize path below excludes the
+        # pass from saturation accounting.
+        # Controller state is the sole checkpoint scheduler.  Legacy queues
+        # retain their historical behavior until explicitly migrated.
+        checkpoint_reason = None if self.store.control is not None else self._checkpoint_due(item)
+        if checkpoint_reason:
+            child_env["RESEARCH_LOOP_ITERATION_TYPE"] = "checkpoint"
+            child_env["RESEARCH_LOOP_CHECKPOINT_REASON"] = checkpoint_reason
+        else:
+            child_env.pop("RESEARCH_LOOP_ITERATION_TYPE", None)
+            child_env.pop("RESEARCH_LOOP_CHECKPOINT_REASON", None)
         completion_lock = item.get("completion_lock")
         if completion_lock:
             child_env["RESEARCH_LOOP_COMPLETION_LOCK"] = completion_lock
@@ -1163,6 +1279,13 @@ class LoopRunner:
                 child_env.pop(env_name, None)
         try:
             with log_path.open("w", encoding="utf-8") as log:
+                popen_identity: dict[str, Any] = {}
+                if isinstance(managed_lease, dict):
+                    from .access import prepare_agent_launch
+                    additions, popen_identity = prepare_agent_launch(
+                        self.store.root, item_id, managed_lease["lease_id"]
+                    )
+                    child_env.update(additions)
                 process = subprocess.Popen(
                     item["command"],
                     cwd=item["cwd"],
@@ -1171,6 +1294,7 @@ class LoopRunner:
                     text=True,
                     start_new_session=True,
                     env=child_env,
+                    **popen_identity,
                 )
                 self.store.mark_pid(
                     item_id, process.pid, fingerprint=self._fingerprint(process.pid)
@@ -1291,18 +1415,27 @@ class LoopRunner:
             # must not be classified or recorded as one.
             intended_outcome = control_outcome
         elif exit_code == 0:
-            repeat_seconds = item.get("repeat_seconds")
-            if repeat_seconds is not None:
-                # Cadence is a station property: the pause between iterations
-                # is the WORKER's interval (a legacy positive item value is
-                # honored as a floor). 0/0 = continuous.
-                repeat_seconds = max(
-                    int(repeat_seconds), self.store.station_interval(self.worker)
+            # Cadence is a station property, full stop: the pause between
+            # iterations is the WORKER's interval (0 = continuous). Whether
+            # the item recurs at all is intrinsic to its contract.
+            recurring = self._contract_topic(item)
+            pause_seconds = self.store.station_interval(self.worker)
+            if isinstance(managed_lease, dict):
+                accounting = accept_research_completion(
+                    self.store.control, topic_id=item_id, run_id=managed_lease["lease_id"],
+                    station_id=managed_lease["station_id"],
+                    inventory_version=str(item.get("completion_lock") or item.get("inventory_version") or "unknown"), accepted=True,
+                    deepening_entry=bool(isinstance(iteration_result, dict) and iteration_result.get("semantic_valid") is True),
+                )
+                checkpoint_boundary_episode = accounting.get("episode_id")
+            else:
+                self.store.record_iteration_accounting(
+                    item_id, iteration_type="checkpoint" if checkpoint_reason else "ordinary",
+                    deepening=bool(isinstance(iteration_result, dict) and iteration_result.get("semantic_valid") is True),
+                    checkpoint_reason=checkpoint_reason,
                 )
             stop_signal = self._check_stop_file(item, stop_signature_before)
-            if stop_signal == "done" and self._saturation_eligible(
-                item, repeat_seconds
-            ):
+            if stop_signal == "done" and recurring:
                 # A contract-bearing research topic does not get to declare
                 # itself finished (operator ruling 2026-09-04). The agent can
                 # only observe coverage, and coverage is explicitly NOT
@@ -1344,7 +1477,7 @@ class LoopRunner:
                     intended_outcome = "needs_attention"
                     error_kind = FailureKind.CONFIGURATION.value
                     message = stop_signal
-            elif repeat_seconds is None:
+            elif not recurring:
                 if research_blockers:
                     intended_outcome = "needs_attention"
                     error_kind = FailureKind.CONFIGURATION.value
@@ -1360,6 +1493,17 @@ class LoopRunner:
                             "coverage": self.store.get(item_id).get("research_coverage") or {},
                             "blockers": [],
                         })
+            elif checkpoint_reason:
+                # An assigned obligations checkpoint is NEVER an ordinary
+                # completion-accounted pass (CONTRACT-CORE / checkpoint
+                # reference): its review work must neither advance the
+                # saturation streak (a valid unchanged checkpoint is not
+                # deepening evidence) nor void it (checkpoint card/proposal
+                # writes are not reopened research). Leave the streak exactly
+                # as it stands and schedule the next ordinary iteration.
+                intended_outcome = "scheduled"
+                next_at = datetime.now(timezone.utc) + timedelta(seconds=pause_seconds)
+                next_eligible_at = next_at.isoformat().replace("+00:00", "Z")
             elif (
                 isinstance(iteration_result, dict)
                 and iteration_result.get("semantic_valid") is True
@@ -1415,12 +1559,12 @@ class LoopRunner:
                     message = ("saturation held: research blocked on " + ", ".join(held_on)
                                + " — clears when the same request succeeds, or via `resolve-research`")
                     intended_outcome = "scheduled"
-                    next_at = datetime.now(timezone.utc) + timedelta(seconds=repeat_seconds)
+                    next_at = datetime.now(timezone.utc) + timedelta(seconds=pause_seconds)
                     next_eligible_at = next_at.isoformat().replace("+00:00", "Z")
                 else:
                     self.store.record_saturation_streak(item_id, streak)
                     intended_outcome = "scheduled"
-                    next_at = datetime.now(timezone.utc) + timedelta(seconds=repeat_seconds)
+                    next_at = datetime.now(timezone.utc) + timedelta(seconds=pause_seconds)
                     next_eligible_at = next_at.isoformat().replace("+00:00", "Z")
             else:
                 if int(item.get("saturation_streak") or 0):
@@ -1428,7 +1572,7 @@ class LoopRunner:
                     # saturation evidence is void.
                     self.store.record_saturation_streak(item_id, 0)
                 intended_outcome = "scheduled"
-                next_at = datetime.now(timezone.utc) + timedelta(seconds=repeat_seconds)
+                next_at = datetime.now(timezone.utc) + timedelta(seconds=pause_seconds)
                 next_eligible_at = next_at.isoformat().replace("+00:00", "Z")
         else:
             kind = self._structured_failure_kind(iteration_result)
@@ -1452,6 +1596,12 @@ class LoopRunner:
             else:
                 intended_outcome = "needs_attention"
 
+        if checkpoint_boundary_episode and intended_outcome == "completed":
+            # A same-boundary completion disposition is held until the due
+            # separate checkpoint runs; research completion criteria itself is
+            # unchanged and will be re-evaluated at the next ordinary ordinal.
+            intended_outcome = "scheduled"
+            next_eligible_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         outcome, _ = self.store.finalize_run(
             item_id,
             expected_restart_generation=generation,
@@ -1463,7 +1613,13 @@ class LoopRunner:
             next_eligible_at=next_eligible_at,
             consume_failure=consume_failure,
         )
-        outcome, stall_event = self._apply_stall_guard(item, outcome)
+        if checkpoint_reason and exit_code == 0:
+            # An assigned checkpoint legitimately leaves the progress
+            # signature unchanged; ticking the stall guard for it would let
+            # review passes accuse a healthy topic.
+            stall_event = None
+        else:
+            outcome, stall_event = self._apply_stall_guard(item, outcome)
         event = {**base_event, "outcome": outcome}
         if ignored_stop_done:
             event["ignored_stop_done"] = True
@@ -1477,6 +1633,101 @@ class LoopRunner:
             if hook_event is not None:
                 self.ledger.append(hook_event)
         return {"item_id": item_id, "outcome": outcome, "exit_code": exit_code}
+
+    def _run_managed_discovery_once(self) -> dict[str, Any] | None:
+        """Capped, independent managed intake lane; never research accounting."""
+        assert self.store.control is not None
+        control = self.store.control
+        with control.transaction(actor="intake-worker") as state:
+            work = state["work"]; current = work.setdefault("intake_assignment", {}).get("current")
+            if current:
+                # A prior intake worker may still own an unobservable provider
+                # child.  Do not mint a second discovery pass from its lease.
+                item_id = current.get("item_id") if isinstance(current, dict) else None
+                entry = next((entry for entry in state["queue"].get("items", []) if entry.get("id") == item_id), None)
+                if isinstance(entry, dict):
+                    entry.update({"status": "needs_attention", "desired_state": "paused",
+                                  "last_error": "supervisor restarted with unknown intake discovery child", "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")})
+                if isinstance(item_id, str):
+                    draft = work.get("intake_drafts", {}).get(item_id.removeprefix("discovery."))
+                    if isinstance(draft, dict):
+                        draft["status"] = "needs_attention"
+                work["intake_assignment"].pop("current", None)
+                return {"item_id": item_id, "outcome": "needs_attention", "execution_kind": "intake_discovery"}
+            item = next((entry for entry in state["queue"].get("items", []) if entry.get("lane") == "intake" and entry.get("status") == "queued" and entry.get("desired_state", "queued") in {"queued", "running"}), None)
+            if item is None: return None
+            draft = work.get("intake_drafts", {}).get(item["id"].removeprefix("discovery."))
+            if not isinstance(draft, dict) or draft.get("status") != "discovery_queued": return None
+            lease_id = f"intake-{uuid.uuid4()}"
+            work["intake_assignment"]["current"] = {"lease_id": lease_id, "lease_generation": 1,
+                                                       "item_id": item["id"], "topic_id": item["id"],
+                                                       "execution_kind": "intake_discovery"}
+            item["status"] = "running"
+            context = {"topic_id": draft["topic_id"], "draft_revision": draft["draft_revision"], "draft_hash": draft["draft_hash"], "mode": draft["mode"], "request_id": lease_id}
+        try:
+            adapter = self.discovery_adapter
+            if adapter is None:
+                from .access import prepare_agent_launch
+                pair = control.resolve_station_pair(1)
+                adapter = RegisteredCheckpointAdapter(pair["primary"])
+                additions, identity = prepare_agent_launch(self.store.root, f"discovery.{context['topic_id']}", lease_id)
+                prompt = (Path(__file__).parent / "chassis" / "DISCOVERY-PROMPT.md").read_text(encoding="utf-8").replace("${TOPIC_DIR}", str(self.store.root / "topics" / context["topic_id"])).replace("${QA_MODE}", context["mode"]).replace("${AGENT_NOTE}", "")
+                context.update({"_launch_env": additions, "_popen_identity": identity,
+                                "_cwd": str(self.store.root / "topics" / context["topic_id"]), "_prompt_text": prompt})
+            result = adapter(dict(context))
+            if not isinstance(result, dict): raise QueueError("discovery adapter must return an object")
+            allowed = {"pass_kind", "restated_intent", "criteria", "traceability", "questions", "topic_space_findings", "proposed_obligations", "proposed_exclusions"}
+            if set(result) - allowed: raise QueueError("discovery adapter returned unknown fields")
+            payload = {"schema_version": 1, "request_id": context["request_id"], "expected_revision": control.snapshot()["revision"], "topic_id": context["topic_id"], "draft_revision": context["draft_revision"], "draft_hash": context["draft_hash"], **result}
+            from .intake import IntakeService
+            IntakeService(control, self.store.root / "topics", actor="intake-worker").record_discovery_result(payload)
+            outcome = "awaiting_operator"
+        except Exception as exc:
+            outcome = "needs_attention"; error = str(exc)
+        with control.transaction(actor="intake-worker") as state:
+            work = state["work"]; work.setdefault("intake_assignment", {}).pop("current", None)
+            entry = next(item for item in state["queue"]["items"] if item["id"] == f"discovery.{context['topic_id']}" )
+            entry["status"] = "completed" if outcome == "awaiting_operator" else "needs_attention"
+            if outcome != "awaiting_operator": entry["last_error"] = error
+        return {"item_id": "discovery." + context["topic_id"], "outcome": outcome, "execution_kind": "intake_discovery"}
+
+    def _run_managed_checkpoint(self, item: dict[str, Any], lease: dict[str, Any]) -> dict[str, Any]:
+        assert self.store.control is not None and self.store.scheduler is not None
+        topic = self.store.control.snapshot()["work"]["topics"].get(item["id"], {})
+        episode_id = topic.get("active_episode_id")
+        if not isinstance(episode_id, str):
+            self.store.scheduler.finalize(lease["station_id"], lease["lease_id"])
+            raise QueueError("checkpoint lease has no active episode")
+        episode = start_checkpoint(self.store.control, episode_id=episode_id,
+                                   station_id=lease["station_id"], run_id=lease["lease_id"])
+        adapter = self.checkpoint_adapter
+        if adapter is None:
+            # The resolved primary profile is the production checkpoint
+            # adapter authority.  It receives the structured task over stdin;
+            # no ordinary topic command or user-supplied JSON executable is
+            # consulted.
+            primary = episode.get("resolved_agent_pair", {}).get("primary")
+            if not isinstance(primary, dict) or not isinstance(primary.get("executable"), str) or not isinstance(primary.get("argv"), list):
+                raise QueueError("checkpoint primary profile is not a runnable registered adapter")
+            adapter = RegisteredCheckpointAdapter(primary)
+        context = {**episode, "run_id": lease["lease_id"], "topic": dict(item)}
+        if isinstance(adapter, (SubprocessCheckpointAdapter, RegisteredCheckpointAdapter)):
+            from .access import prepare_agent_launch
+            additions, identity = prepare_agent_launch(self.store.root, item["id"], lease["lease_id"])
+            context.update({"_launch_env": additions, "_popen_identity": identity, "_cwd": item["cwd"]})
+        try:
+            result = CheckpointRunner(adapter).run(context)
+            final = finish_checkpoint(self.store.control, result)
+            self.store.scheduler.finalize(lease["station_id"], lease["lease_id"])
+            return {"item_id": item["id"], "outcome": final["state"], "exit_code": 0, "execution_kind": "checkpoint"}
+        except (CheckpointError, ValueError) as exc:
+            with self.store.control.transaction(actor="runner", operation_id=f"checkpoint-failed:{lease['lease_id']}") as state:
+                current = state["work"]["episodes"].get(episode_id)
+                if isinstance(current, dict):
+                    current["state"] = "needs_attention"; current["failure_reason"] = str(exc)
+                    state["work"]["topics"][item["id"]]["review_state"] = "needs_attention"
+            self.store.scheduler.finalize(lease["station_id"], lease["lease_id"])
+            return {"item_id": item["id"], "outcome": "needs_attention", "exit_code": 78, "execution_kind": "checkpoint"}
 
     # Completion hooks are given generous room (a corpus ingest embeds every
     # record) but never unbounded: a hung hook must not wedge the worker.

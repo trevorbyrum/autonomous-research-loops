@@ -61,11 +61,13 @@ class LoopRunnerTests(unittest.TestCase):
         self.assertEqual(provider["cache_creation_input_tokens"], 3)
 
     def test_repeating_success_is_scheduled_for_next_cadence(self):
+        # Recurrence is intrinsic to the contract now (operator ruling
+        # 2026-09-09), not a repeat_seconds kwarg.
+        (self.root / "SEMANTIC-STATE.json").write_text("{}", encoding="utf-8")
         item = self.store.add(
             title="Recurring",
             cwd=str(self.root),
             command=[sys.executable, "-c", "print('iteration complete')"],
-            repeat_seconds=900,
         )
 
         result = self.runner.run_once()
@@ -226,12 +228,14 @@ class LoopRunnerTests(unittest.TestCase):
     def test_graceful_pause_on_a_recurring_item_lets_the_child_finish_then_lands_paused(self):
         # The core new behavior: a recurring item that would normally be
         # rescheduled ("scheduled"/backoff) instead lands on paused, without
-        # ever killing the in-flight child.
+        # ever killing the in-flight child. Recurrence is intrinsic to the
+        # contract now (operator ruling 2026-09-09), not a repeat_seconds
+        # kwarg.
+        (self.root / "SEMANTIC-STATE.json").write_text("{}", encoding="utf-8")
         item = self.store.add(
             title="Recurring",
             cwd=str(self.root),
             command=[sys.executable, "-c", "import time; time.sleep(1)"],
-            repeat_seconds=900,
         )
         result = {}
         thread = threading.Thread(target=lambda: result.update(self.runner.run_once() or {}))
@@ -254,11 +258,13 @@ class LoopRunnerTests(unittest.TestCase):
         self.assertIsNone(self.store.claim_next())
 
     def test_graceful_pause_all_does_not_kill_running_children_but_blocks_new_claims(self):
+        # Recurrence is intrinsic to the contract now (operator ruling
+        # 2026-09-09), not a repeat_seconds kwarg.
+        (self.root / "SEMANTIC-STATE.json").write_text("{}", encoding="utf-8")
         item = self.store.add(
             title="Recurring",
             cwd=str(self.root),
             command=[sys.executable, "-c", "import time; time.sleep(1)"],
-            repeat_seconds=900,
         )
         result = {}
         thread = threading.Thread(target=lambda: result.update(self.runner.run_once() or {}))
@@ -287,11 +293,13 @@ class LoopRunnerTests(unittest.TestCase):
         self.assertEqual(self.store.get(item["id"])["desired_state"], "paused")
 
     def test_resuming_a_graceful_stop_in_flight_cancels_it(self):
+        # Recurrence is intrinsic to the contract now (operator ruling
+        # 2026-09-09), not a repeat_seconds kwarg.
+        (self.root / "SEMANTIC-STATE.json").write_text("{}", encoding="utf-8")
         item = self.store.add(
             title="Recurring",
             cwd=str(self.root),
             command=[sys.executable, "-c", "import time; time.sleep(1)"],
-            repeat_seconds=900,
         )
         result = {}
         thread = threading.Thread(target=lambda: result.update(self.runner.run_once() or {}))

@@ -23,11 +23,8 @@ TOPIC_REFRESH_MODES = ("light", "continue", "full")
 
 @dataclass(frozen=True)
 class TopicSettings:
-    repeat_seconds: int | None = None
     max_attempts: int = 5
     stall_limit: int | None = None
-    agent_main: str | None = None
-    agent_secondary: str | None = None
     gap_policy: str = "review"
     on_completed_command: list[str] | None = None
     gap_auto_limit: int = 0
@@ -106,21 +103,21 @@ def _optional_choice(table: dict[str, Any], key: str, choices: tuple[str, ...]) 
 
 def _settings_from(table: dict[str, Any], base: TopicSettings) -> TopicSettings:
     updates: dict[str, Any] = {}
-    repeat_seconds = _positive_int(table, "repeat_seconds")
-    if repeat_seconds is not None:
-        updates["repeat_seconds"] = repeat_seconds
+    # Mechanics are station configuration (state/stations.json via
+    # `worker-agents`/`fleet`), never topic config — reject loudly rather than
+    # silently ignore, so an old TOML fails before it misleads anyone.
+    for mechanics_key in ("repeat_seconds", "agent_main", "agent_secondary"):
+        if mechanics_key in table:
+            raise QueueError(
+                f"{mechanics_key} is station configuration, not topic config — "
+                "use `worker-agents <worker> ...` (stations hold all mechanics)"
+            )
     max_attempts = _positive_int(table, "max_attempts")
     if max_attempts is not None:
         updates["max_attempts"] = max_attempts
     stall_limit = _positive_int(table, "stall_limit")
     if stall_limit is not None:
         updates["stall_limit"] = stall_limit
-    agent_main = _optional_str(table, "agent_main")
-    if agent_main is not None:
-        updates["agent_main"] = agent_main
-    agent_secondary = _optional_str(table, "agent_secondary")
-    if agent_secondary is not None:
-        updates["agent_secondary"] = agent_secondary
     if "gap_policy" in table:
         value = table["gap_policy"]
         if value not in GAP_POLICIES:

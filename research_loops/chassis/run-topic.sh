@@ -82,7 +82,10 @@ done
 # docs/governance.md#the-operator-owns-scope.
 AGENT_NOTE=""
 if [[ -n "${RESEARCH_LOOP_AGENT_SECONDARY:-}" ]]; then
-  AGENT_NOTE=" DELEGATION: delegate through ${RESEARCH_LOOP_AGENT_SECONDARY}. Use its default gpt-5.6-luna for discovery, librarian work, extraction, proposal advocacy, and citation verification. Each verification runs in a fresh invocation distinct from the invocation that produced the citation. The sole additional assignment is a fresh gpt-5.6-terra invocation, through the same wrapper with --model gpt-5.6-terra, for the authorized counter-argument seat, including its permitted repair assessment. Terra is a primary-class counter assignment, not a second secondary model. The primary retains final judgment (see CONTRACT-CORE.md step 4). Use no other delegate model or native Agent/Task intermediary. Delegate invocations run for MINUTES: set your shell tool's per-command timeout to at least 900 seconds (900000 ms) for every wrapper call — a harness-killed invocation returns nothing and is a capability failure to record, never a searched-empty result."
+  AGENT_NOTE=" DELEGATION: use the packaged managed wrapper: python3 ${CHASSIS}/managed-delegate.py secondary ${TOPIC_DIR} '<task>' for discovery, librarian work, extraction, proposal advocacy, and citation verification. Each verification is a fresh invocation distinct from the citation-producing invocation. Use python3 ${CHASSIS}/managed-delegate.py primary ${TOPIC_DIR} '<task>' for the authorized fresh counter-argument seat and its permitted repair assessment. These commands use the configured station secondary and primary records; do not add model flags or invoke a profile ID as a command. The primary retains final judgment (see CONTRACT-CORE.md step 4). Use no other delegate model or native Agent/Task intermediary. Delegate invocations run for MINUTES: set shell timeout to at least 900 seconds (900000 ms); a harness-killed invocation is a capability failure, never searched-empty."
+  if [[ -z "${RESEARCH_LOOP_MANAGED_SECONDARY_PROFILE:-}" ]]; then
+    AGENT_NOTE=" DELEGATION: invoke ${RESEARCH_LOOP_AGENT_SECONDARY} with its configured default for discovery, librarian work, extraction, proposal advocacy, and citation verification. Each verification is a fresh invocation distinct from the citation-producing invocation. The authorized counter seat and permitted repair assessment use a fresh primary-class invocation through the wrapper with --model gpt-5.6-terra. The primary retains final judgment. Use no other delegate model or native Agent/Task intermediary. Set shell timeout to at least 900 seconds (900000 ms); a harness-killed invocation is a capability failure, never searched-empty."
+  fi
 fi
 
 GAP_POLICY="${RESEARCH_LOOP_GAP_POLICY:-review}"
@@ -98,11 +101,21 @@ if [[ "$GAP_POLICY" == "auto" ]]; then
   fi
 fi
 
+# Checkpoint assignment is STATION mechanics: the queue worker monitors the
+# topic's iteration count and deepening entry against the fleet config and sets
+# RESEARCH_LOOP_ITERATION_TYPE=checkpoint when one is due. The chassis only
+# relays the assignment into the prompt — a topic never schedules its own.
+ITERATION_TYPE="${RESEARCH_LOOP_ITERATION_TYPE:-ordinary}"
+CHECKPOINT_NOTE=""
+if [[ "$ITERATION_TYPE" == "checkpoint" ]]; then
+  CHECKPOINT_NOTE=" ASSIGNED CHECKPOINT: this iteration is an assigned obligations checkpoint (trigger: ${RESEARCH_LOOP_CHECKPOINT_REASON:-scheduled}). Instead of ordinary deepening, run the corpus review in docs/obligations-checkpoint.md under its admission, allowance, and episode limits: at most three cards, one fresh configured-primary counter pass, at most one permitted repair exchange, and zero to two PROPOSAL-only outcomes that require operator promotion. The queue excludes this pass from saturation accounting, so an unchanged signature here is expected and carries no completion meaning."
+fi
+
 # Citation policy (docs/citations.md) — internal citations are disabled by default;
 # see RESEARCH_LOOP_INTERNAL_CITATIONS below for how a topic opts in.
-CITATION_NOTE=" CITATIONS: for schema_version >= 2 topics, every evidence_ref must resolve to a typed [SRC-NNN] citation block in SOURCE-LEDGER.md (external or local — see docs/citations.md). Internal citations are not enabled for this topic. For a new or materially changed external/local citation claim, obtain verification through a fresh Luna invocation distinct from the citation-producing invocation: it independently visits the exact location and checks that claim (the later verification pass may occur in this same iteration). Use verified: true for confirmed support; use flagged: hallucination for an established wrong/dead location or unsupported claim. Temporary retrieval or quota failure leaves the affected claim unverified and records a capability problem — it is never a hallucination finding. The verifier checks the fixed citation and never searches for a replacement. See CONTRACT-CORE and docs/citations.md for role ownership and changed-claim handling."
+CITATION_NOTE=" CITATIONS: for schema_version >= 2 topics, every evidence_ref must resolve to a typed [SRC-NNN] citation block in SOURCE-LEDGER.md (external or local — see docs/citations.md). Internal citations are not enabled for this topic. For a new or materially changed external/local citation claim, obtain verification through a fresh configured-secondary invocation distinct from the citation-producing invocation: it independently visits the exact location and checks that claim (the later verification pass may occur in this same iteration). Use verified: true for confirmed support; use flagged: hallucination for an established wrong/dead location or unsupported claim. Temporary retrieval or quota failure leaves the affected claim unverified and records a capability problem — it is never a hallucination finding. The verifier checks the fixed citation and never searches for a replacement. See CONTRACT-CORE and docs/citations.md for role ownership and changed-claim handling."
 if [[ "${RESEARCH_LOOP_INTERNAL_CITATIONS:-0}" == "1" ]]; then
-  CITATION_NOTE=" CITATIONS: for schema_version >= 2 topics, every evidence_ref must resolve to a typed [SRC-NNN] citation block in SOURCE-LEDGER.md (external, local, or internal — see docs/citations.md). Internal citations are enabled for this topic: reuse an existing verified target when its checked passage supports the current claim with the required scope, qualifications, and freshness — examine the target record and relevant passage; matching the source identity alone is insufficient. The internal block inherits the target's verification status, but you still judge applicability; a materially different claim needs its own independently verified source record, and an unverified or flagged target cannot support a disposition. For a new or materially changed external/local citation claim, obtain verification through a fresh Luna invocation distinct from the citation-producing invocation: it independently visits the exact location and checks that claim (the later verification pass may occur in this same iteration). Use verified: true for confirmed support; flagged: hallucination for an established wrong/dead location or unsupported claim. Temporary retrieval or quota failure leaves the claim unverified as a capability problem — never a hallucination finding. The verifier checks the fixed citation and never searches for a replacement."
+  CITATION_NOTE=" CITATIONS: for schema_version >= 2 topics, every evidence_ref must resolve to a typed [SRC-NNN] citation block in SOURCE-LEDGER.md (external, local, or internal — see docs/citations.md). Internal citations are enabled for this topic: reuse an existing verified target when its checked passage supports the current claim with the required scope, qualifications, and freshness — examine the target record and relevant passage; matching the source identity alone is insufficient. The internal block inherits the target's verification status, but you still judge applicability; a materially different claim needs its own independently verified source record, and an unverified or flagged target cannot support a disposition. For a new or materially changed external/local citation claim, obtain verification through a fresh configured-secondary invocation distinct from the citation-producing invocation: it independently visits the exact location and checks that claim (the later verification pass may occur in this same iteration). Use verified: true for confirmed support; flagged: hallucination for an established wrong/dead location or unsupported claim. Temporary retrieval or quota failure leaves the claim unverified as a capability problem — never a hallucination finding. The verifier checks the fixed citation and never searches for a replacement."
 fi
 
 if [[ -f "$TOPIC_DIR/STOP" ]]; then
@@ -175,6 +188,7 @@ python3 "$CHASSIS/render-prompt.py" "$CHASSIS/ITERATION-PROMPT.md" \
   "AGENT_NOTE=$AGENT_NOTE" \
   "GAP_POLICY_NOTE=$GAP_POLICY_NOTE" \
   "CITATION_NOTE=$CITATION_NOTE" \
+  "CHECKPOINT_NOTE=$CHECKPOINT_NOTE" \
   >"$prompt_file"
 
 export RESEARCH_LOOP_TOPIC_DIR="$TOPIC_DIR"
@@ -272,6 +286,7 @@ write_result() {
   RESULT_PENDING_REFS="$pending_refs" \
   RESULT_GATEWAY_HEALTH="$gateway_health" \
   RESULT_WORKER="${RESEARCH_LOOP_WORKER:-}" \
+  RESULT_ITERATION_TYPE="$ITERATION_TYPE" \
   RESULT_SECONDARY="${RESEARCH_LOOP_AGENT_SECONDARY:-}" \
   RESULT_RUNNER="$RUNNER_NAME" RESULT_TOPIC_DIR="$TOPIC_DIR" \
   RESULT_DEGRADED_FILE="${degraded_file:-}" \
@@ -314,6 +329,7 @@ result = {
     "gateway_health": (json.loads(os.environ["RESULT_GATEWAY_HEALTH"])
                        if (os.environ.get("RESULT_GATEWAY_HEALTH") or "").startswith("{") else None),
     "worker": os.environ.get("RESULT_WORKER") or None,
+    "iteration_type": os.environ.get("RESULT_ITERATION_TYPE") or "ordinary",
     "agent_secondary": os.environ.get("RESULT_SECONDARY") or None,
     "stop_written": stop_written,
     "stop_first_line": stop_first,

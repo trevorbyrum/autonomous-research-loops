@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import fcntl
 import json
+import os
 import shutil
 import sys
 from dataclasses import asdict
@@ -15,6 +16,10 @@ from .config import load_config
 from .dashboard import render_dashboard, write_dashboard
 from .queue import QueueError, QueueStore
 from .runner import LoopRunner, UsageLedger
+from .control_store import ControlStore
+from .intake import IntakeService, load_json
+from .access import load_access
+from .controller_client import call as controller_call, ControllerClientError
 
 
 def emit(value: Any) -> None:
@@ -104,8 +109,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     discover.add_argument("topic_id")
     discover.add_argument("--dest", help="drafts directory (default: <root>/topics)")
-    discover.add_argument("--agent-main", default="claude")
-    discover.add_argument("--agent-secondary", default=None)
+    discover.add_argument(
+        "--agent-main", default="claude",
+        help="runner adapter for the discovery pass (a command argument, not an "
+        "item binding — stations own all runtime agent mechanics)",
+    )
 
     approve_topic = sub.add_parser(
         "approve-topic",
@@ -113,6 +121,30 @@ def build_parser() -> argparse.ArgumentParser:
     )
     approve_topic.add_argument("topic_id")
     approve_topic.add_argument("--dest", help="default: <root>/topics")
+
+    for action, help_text in (("intake-submit", "submit a strict intake brief JSON"), ("intake-result", "record a strict discovery result JSON"), ("intake-approve", "apply a strict intake operator decision JSON")):
+        command = sub.add_parser(action, help=help_text)
+        command.add_argument("--file", required=True, help="schema-versioned JSON payload")
+    checkpoint_decide = sub.add_parser("checkpoint-decide", help="apply a strict checkpoint decision JSON")
+    checkpoint_decide.add_argument("--file", required=True)
+    checkpoint_reset = sub.add_parser("checkpoint-reset", help="explicitly reset a topic's proposal issuance allowance")
+    checkpoint_reset.add_argument("--file", required=True)
+    reorder = sub.add_parser("queue-reorder", help="replace managed queue order atomically")
+    reorder.add_argument("--file", required=True, help="{expected_queue_revision, ordered_ids}")
+    stations = sub.add_parser("stations", help="managed station configuration")
+    stations.add_argument("--show", action="store_true")
+    stations.add_argument("--all", action="store_true")
+    stations.add_argument("--ids", help="comma-separated station IDs")
+    stations.add_argument("--primary")
+    stations.add_argument("--secondary")
+    stations.add_argument("--active-count", type=int)
+    stations.add_argument("--intervals", help="five comma-separated nondecreasing seconds")
+    stations.add_argument("--file", help="full station/checkpoint update JSON")
+    profile_register = sub.add_parser("profile-register", help="register a managed executable profile")
+    profile_register.add_argument("--file", required=True)
+    migrate = sub.add_parser("control-migrate", help="explicitly validate or apply legacy queue migration")
+    migrate.add_argument("--file", required=True, help="{configuration,agent_profiles,baseline_counts,checkpoint_history?}")
+    migrate.add_argument("--apply", action="store_true", help="create state/control.sqlite3 after validation; default is dry run")
 
     add = sub.add_parser("add", help="add a loop command")
     add.add_argument("--id")
@@ -138,17 +170,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add.add_argument("--stall-limit", type=int)
     add.add_argument("--max-attempts", type=int, default=5)
-    add.add_argument("--repeat-seconds", type=int)
-    add.add_argument(
-        "--agent-main",
-        help="sets RESEARCH_LOOP_RUNNER for this item, overriding the command's "
-        "positional runner-name argument for this item only",
-    )
-    add.add_argument(
-        "--agent-secondary",
-        help="named delegate agent surfaced to the runner as "
-        "RESEARCH_LOOP_AGENT_SECONDARY, for legwork delegation only",
-    )
     add.add_argument(
         "--gap-policy",
         choices=("review", "auto"),
@@ -353,6 +374,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="station cadence: seconds to pause between iterations (0 = continuous)",
     )
     worker_agents.add_argument("--clear", action="store_true", help="drop the profile")
+    fleet = sub.add_parser(
+        "fleet",
+        help="show or set fleet-wide station mechanics (the stations' collective "
+        "config in state/stations.json): the obligations-checkpoint schedule "
+        "every station applies to whatever topic it holds",
+    )
+    fleet.add_argument(
+        "--checkpoint-every", dest="checkpoint_every", type=int,
+        help="assign an obligations checkpoint every N ordinary iterations "
+        "(0 disables the cadence trigger)",
+    )
+    fleet.add_argument(
+        "--checkpoint-on-deepening", dest="checkpoint_on_deepening",
+        choices=("on", "off"),
+        help="assign a checkpoint once a topic first enters deepening",
+    )
     sync = sub.add_parser(
         "sync",
         help=(
@@ -470,10 +507,103 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     root = Path(args.root).expanduser().resolve()
+    remote_socket = os.environ.get("RESEARCH_LOOP_CONTROLLER_SOCKET")
+    protected_actions = {"intake-submit", "intake-result", "intake-approve", "checkpoint-decide", "checkpoint-reset", "queue-reorder", "stations", "profile-register"}
+    # An operator may intentionally lack permission even to stat the protected
+    # root.  An explicitly supplied controller socket is therefore checked
+    # before any ControlStore/QueueStore construction or filesystem probe.
+    if remote_socket and args.action in protected_actions:
+        try:
+            if args.action == "queue-reorder":
+                result = controller_call(remote_socket, "queue.reorder", load_json(Path(args.file)))
+            elif args.action == "stations":
+                payload = {} if args.show else (load_json(Path(args.file)) if args.file else {"station_ids": [int(x) for x in args.ids.split(",")] if args.ids else None, "all_stations": args.all, "primary_profile": args.primary, "secondary_profile": args.secondary, "intervals": [int(x) for x in args.intervals.split(",")] if args.intervals else None, "active_count": args.active_count})
+                result = controller_call(remote_socket, "stations.show" if args.show else "stations.update", payload)
+            elif args.action == "profile-register":
+                result = controller_call(remote_socket, "profiles.register", load_json(Path(args.file)))
+            else:
+                method = {"intake-submit": "intake.submit_brief", "intake-result": "intake.record_discovery_result", "intake-approve": "intake.approve", "checkpoint-decide": "checkpoint.decide", "checkpoint-reset": "checkpoint.reset_allowance"}[args.action]
+                result = controller_call(remote_socket, method, load_json(Path(args.file)))
+            emit(result); return 0
+        except (OSError, ControllerClientError, QueueError) as exc:
+            print(f"error: {exc}", file=sys.stderr); return 2
+    if remote_socket and args.action in {"status", "pause", "resume"}:
+        try:
+            if args.action == "status": result = controller_call(remote_socket, "queue.status", {})
+            elif args.action == "pause": result = controller_call(remote_socket, "queue.pause" if args.item_id else "queue.pause_all", ({"topic_id": args.item_id, "reason": args.reason} if args.item_id else {"reason": args.reason}))
+            else: result = controller_call(remote_socket, "queue.resume" if args.item_id else "queue.resume_all", ({"topic_id": args.item_id} if args.item_id else {}))
+            emit(result); return 0
+        except (OSError, ControllerClientError) as exc:
+            print(f"error: {exc}", file=sys.stderr); return 2
+    managed = ControlStore(root).exists
+    if args.action == "control-migrate":
+        try:
+            payload = load_json(Path(args.file))
+            allowed = {"configuration", "agent_profiles", "baseline_counts", "checkpoint_history"}
+            if set(payload) - allowed or not {"configuration", "agent_profiles", "baseline_counts"} <= set(payload):
+                raise QueueError("migration file requires configuration, agent_profiles, baseline_counts and optional checkpoint_history only")
+            emit(ControlStore.apply_legacy_migration(root, configuration=payload["configuration"], agent_profiles=payload["agent_profiles"], baseline_counts=payload["baseline_counts"], checkpoint_history=payload.get("checkpoint_history"), dry_run=not args.apply))
+            return 0
+        except (OSError, QueueError, RuntimeError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+    # Operator mutations in a managed deployment travel through the trusted
+    # controller before a QueueStore is constructed.
+    if args.action in protected_actions and managed:
+        try:
+            socket_path = load_access(root)["socket_path"]
+            if args.action == "queue-reorder":
+                result = controller_call(socket_path, "queue.reorder", load_json(Path(args.file)))
+            elif args.action == "stations":
+                payload = load_json(Path(args.file)) if args.file else ({} if args.show else {"station_ids": [int(x) for x in args.ids.split(",")] if args.ids else None, "all_stations": args.all, "primary_profile": args.primary, "secondary_profile": args.secondary, "intervals": [int(x) for x in args.intervals.split(",")] if args.intervals else None, "active_count": args.active_count})
+                result = controller_call(socket_path, "stations.show" if args.show else "stations.update", payload)
+            elif args.action == "profile-register":
+                result = controller_call(socket_path, "profiles.register", load_json(Path(args.file)))
+            else:
+                method = {"intake-submit": "intake.submit_brief", "intake-result": "intake.record_discovery_result", "intake-approve": "intake.approve", "checkpoint-decide": "checkpoint.decide", "checkpoint-reset": "checkpoint.reset_allowance"}[args.action]
+                result = controller_call(socket_path, method, load_json(Path(args.file)))
+            emit(result)
+            return 0
+        except (OSError, ControllerClientError, QueueError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
     store = QueueStore(root)
     ledger = UsageLedger(root / "state" / "events.jsonl")
     try:
-        if args.action == "new-topic":
+        if managed and args.action in {"add", "sync", "relock", "move", "remove", "swap-active", "worker-agents", "fleet", "config"}:
+            raise QueueError(f"managed roots require controller operations; legacy {args.action} cannot bypass managed admission/configuration")
+        if args.action in protected_actions:
+            control = ControlStore(root)
+            if not control.exists:
+                raise QueueError("managed intake requires initialized controller state; this root is explicitly unmanaged")
+            service = IntakeService(control, root / "topics", actor="cli-operator")
+            if args.action == "queue-reorder":
+                from .control_store import ControlScheduler
+                payload = load_json(Path(args.file))
+                if set(payload) != {"expected_queue_revision", "ordered_ids"} or not isinstance(payload["ordered_ids"], list):
+                    raise QueueError("queue reorder requires exactly expected_queue_revision and ordered_ids")
+                emit(ControlScheduler(control).reorder(payload["ordered_ids"], expected_queue_revision=payload["expected_queue_revision"]))
+            elif args.action == "stations":
+                from .control_store import ControlScheduler
+                if args.show:
+                    state = control.snapshot(); emit({"revision": state["revision"], "configuration": state["configuration"], "effective_checkpoint_profiles": control.effective_checkpoint_profiles(state), "assignments": state["work"].get("assignments", {})})
+                else:
+                    ids = [int(x) for x in args.ids.split(",")] if args.ids else None
+                    intervals = [int(x) for x in args.intervals.split(",")] if args.intervals else None
+                    emit(ControlScheduler(control).update_stations(station_ids=ids, all_stations=args.all, primary_profile=args.primary, secondary_profile=args.secondary, intervals=intervals, active_count=args.active_count))
+            else:
+                payload = load_json(Path(args.file))
+                if args.action == "intake-submit": emit(service.submit_brief(payload))
+                elif args.action == "intake-result": emit(service.record_discovery_result(payload))
+                elif args.action == "intake-approve": emit(service.approve(payload))
+                else:
+                    from .checkpoints.service import apply_decision
+                    from .input_schema import validate_checkpoint_decision
+                    from .contract_publication import checkpoint_publisher
+                    emit(apply_decision(control, validate_checkpoint_decision(payload), actor="cli-operator", publisher=checkpoint_publisher(root)))
+        elif args.action == "new-topic":
+            if ControlStore(root).exists:
+                raise QueueError("managed roots require intake-submit; legacy new-topic cannot bypass controller admission")
             dest = Path(args.dest).expanduser().resolve() if args.dest else root / "topics"
             brief_text = (
                 sys.stdin.read()
@@ -489,6 +619,8 @@ def main(argv: list[str] | None = None) -> int:
             )
             emit(result)
         elif args.action == "discover":
+            if ControlStore(root).exists:
+                raise QueueError("managed roots require controller discovery registration; legacy discover cannot bypass admission")
             dest = Path(args.dest).expanduser().resolve() if args.dest else root / "topics"
             draft_dir = dest / args.topic_id
             if (draft_dir / "DRAFT-TOPIC.md").is_file():
@@ -523,15 +655,17 @@ def main(argv: list[str] | None = None) -> int:
                     item_id=f"discovery.{args.topic_id}",
                     usage_file="logs/latest-usage.json",
                     max_attempts=3,
-                    agent_main=args.agent_main,
-                    agent_secondary=args.agent_secondary,
                     lane="intake",
                 )
             )
         elif args.action == "approve-topic":
+            if ControlStore(root).exists:
+                raise QueueError("managed roots require intake-approve; legacy approve-topic cannot bypass registration")
             dest = Path(args.dest).expanduser().resolve() if args.dest else root / "topics"
             emit(topic_authoring.approve_topic(args.topic_id, dest=dest))
         elif args.action == "add":
+            if ControlStore(root).exists:
+                raise QueueError("managed roots do not accept generic research add; submit an intake brief")
             command = args.command[1:] if args.command[:1] == ["--"] else args.command
             progress_command = None
             if args.progress_command:
@@ -561,9 +695,6 @@ def main(argv: list[str] | None = None) -> int:
                     on_completed_command=on_completed_command,
                     stall_limit=args.stall_limit,
                     max_attempts=args.max_attempts,
-                    repeat_seconds=args.repeat_seconds,
-                    agent_main=args.agent_main,
-                    agent_secondary=args.agent_secondary,
                     gap_policy=args.gap_policy,
                     gap_auto_limit=args.gap_auto_limit,
                     completion_lock=args.lock_sha256,
@@ -628,6 +759,25 @@ def main(argv: list[str] | None = None) -> int:
                     clear=args.clear,
                 )
             )
+        elif args.action == "fleet":
+            from .stations import StationsError
+
+            try:
+                if args.checkpoint_every is None and args.checkpoint_on_deepening is None:
+                    emit(store.stations.fleet())
+                else:
+                    emit(
+                        store.stations.configure_fleet(
+                            checkpoint_every=args.checkpoint_every,
+                            checkpoint_on_deepening=(
+                                None
+                                if args.checkpoint_on_deepening is None
+                                else args.checkpoint_on_deepening == "on"
+                            ),
+                        )
+                    )
+            except StationsError as exc:
+                raise QueueError(str(exc)) from exc
         elif args.action == "sync":
             manifest_path = Path(args.manifest).expanduser()
             try:
@@ -657,11 +807,8 @@ def main(argv: list[str] | None = None) -> int:
                     settings = config.for_topic(topic_id)
                     store.configure_topic(
                         topic_id,
-                        repeat_seconds=settings.repeat_seconds,
                         max_attempts=settings.max_attempts,
                         stall_limit=settings.stall_limit,
-                        agent_main=settings.agent_main,
-                        agent_secondary=settings.agent_secondary,
                         gap_policy=settings.gap_policy,
                         gap_auto_limit=settings.gap_auto_limit,
                         on_completed_command=settings.on_completed_command,
@@ -716,7 +863,13 @@ def main(argv: list[str] | None = None) -> int:
                 if args.output
                 else root.parent / "STATUS.md"
             )
-            content = render_dashboard(store.snapshot(), ledger.events())
+            dashboard_state = store.snapshot()
+            # Station profiles live in the stations' own collective config,
+            # not in queue state — attach them for the Models column.
+            dashboard_state["station_profiles"] = store.stations.snapshot()["stations"]
+            if store.control is not None:
+                dashboard_state["managed_control"] = store.control.snapshot()
+            content = render_dashboard(dashboard_state, ledger.events())
             written = write_dashboard(output, content)
             emit({"output": str(written)})
         elif args.action == "doctor":

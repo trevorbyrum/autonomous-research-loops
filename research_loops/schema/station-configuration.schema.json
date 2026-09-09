@@ -1,0 +1,126 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "active_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5
+    },
+    "stations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "primary_profile": {
+            "type": "string",
+            "minLength": 1
+          },
+          "secondary_profile": {
+            "type": "string",
+            "minLength": 1
+          },
+          "interval_seconds": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "id",
+          "primary_profile",
+          "secondary_profile",
+          "interval_seconds"
+        ]
+      },
+      "minItems": 5,
+      "maxItems": 5
+    },
+    "checkpoints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "every_research_iterations": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "on_deepening_entry": {
+          "type": "boolean"
+        },
+        "agent_source": {
+          "enum": [
+            "station_1",
+            "explicit"
+          ]
+        },
+        "primary_profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "secondary_profile": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "enabled",
+        "every_research_iterations",
+        "on_deepening_entry",
+        "agent_source"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "agent_source": {
+                "const": "explicit"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "primary_profile",
+              "secondary_profile"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "primary_profile"
+                  ]
+                },
+                {
+                  "required": [
+                    "secondary_profile"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "active_count",
+    "stations",
+    "checkpoints"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-runtime-validation": "Exactly stations 1..5; registered profile references; nondecreasing interval chain."
+}

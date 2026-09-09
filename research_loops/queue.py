@@ -12,6 +12,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
+from .stations import StationsStore
+from .control_store import ControlStore, ControlScheduler, ControlStoreError
+
 
 class QueueError(RuntimeError):
     pass
@@ -40,12 +43,6 @@ def validate_item_id(item_id: str) -> str:
             "and must start with a letter or number"
         )
     return item_id
-
-
-def _validate_agent_name(value: str | None, field: str) -> str | None:
-    if value is not None and (not isinstance(value, str) or not value.strip()):
-        raise QueueError(f"{field} must be a non-empty string")
-    return value
 
 
 def _validate_gap_policy(value: str) -> str:
@@ -169,6 +166,21 @@ class QueueStore:
         self.path = self.state_dir / "queue.json"
         self.lock_path = self.state_dir / "queue.lock"
         self.state_dir.mkdir(parents=True, exist_ok=True)
+        # A managed deployment has exactly one writer: control.sqlite3.  Do
+        # not create/read-migrate the legacy JSON stores merely by opening it.
+        self.control: ControlStore | None = ControlStore(self.root) if (self.state_dir / "control.sqlite3").exists() else None
+        self.scheduler: ControlScheduler | None = ControlScheduler(self.control) if self.control else None
+        self._managed_leases: dict[str, dict[str, Any]] = {}
+        if self.control:
+            self.stations = StationsStore(self.state_dir, control=self.control)
+            return
+        # Mechanics (agent profiles, cadence, fleet policy) live on the
+        # STATIONS, in their own collective config — never in queue state
+        # (operator ruling 2026-09-09). Materializing the stations store here
+        # runs its one-time migration of any legacy worker_agents block, so
+        # the strip in _locked() below can never race the migration.
+        self.stations = StationsStore(self.state_dir)
+        self.stations.snapshot()
         with self.lock_path.open("a+", encoding="utf-8") as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
             if not self.path.exists():
@@ -187,17 +199,33 @@ class QueueStore:
             "created_at": now,
             "updated_at": now,
             "worker_policies": {},
-            "worker_agents": {},
             "items": [],
         }
 
     @contextmanager
     def _locked(self) -> Iterator[dict[str, Any]]:
+        if self.control:
+            # Legacy queue operations remain compatible in managed mode, but
+            # their state is the queue logical record inside the one SQLite
+            # transaction.  They can never reopen queue.json as a shadow
+            # authority.
+            with self.control.transaction(actor="worker") as logical:
+                yield logical["queue"]
+            return
         self.state_dir.mkdir(parents=True, exist_ok=True)
         with self.lock_path.open("a+", encoding="utf-8") as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
             state = json.loads(self.path.read_text(encoding="utf-8"))
             before = copy.deepcopy(state)
+            # The queue is JUST the queue: order + contracts + topic substance.
+            # Strip the legacy worker_agents block (once migrated to
+            # state/stations.json) and any topic-held mechanics fields so they
+            # can never override station configuration again.
+            if "worker_agents" in state and self.stations.path.exists():
+                state.pop("worker_agents", None)
+            for item in state.get("items", []):
+                for legacy in ("repeat_seconds", "agent_main", "agent_secondary"):
+                    item.pop(legacy, None)
             yield state
             if state != before:
                 state["revision"] += 1
@@ -220,6 +248,8 @@ class QueueStore:
                 os.unlink(tmp)
 
     def snapshot(self) -> dict[str, Any]:
+        if self.control:
+            return copy.deepcopy(self.control.snapshot()["queue"])
         with self.lock_path.open("a+", encoding="utf-8") as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_SH)
             state = json.loads(self.path.read_text(encoding="utf-8"))
@@ -246,15 +276,12 @@ class QueueStore:
         provider: str | None = None,
         usage_file: str | None = None,
         max_attempts: int = 5,
-        repeat_seconds: int | None = None,
         stop_file: str | None = None,
         completion_command: list[str] | None = None,
         progress_command: list[str] | None = None,
         on_completed_command: list[str] | None = None,
         stall_limit: int | None = None,
         depends_on: list[str] | None = None,
-        agent_main: str | None = None,
-        agent_secondary: str | None = None,
         gap_policy: str = "review",
         gap_auto_limit: int = 0,
         completion_lock: str | None = None,
@@ -268,15 +295,8 @@ class QueueStore:
             raise QueueError("title and command are required")
         if max_attempts < 1:
             raise QueueError("max_attempts must be at least 1")
-        if repeat_seconds is not None and repeat_seconds < 0:
-            # 0 is deliberate: continuous cadence — the item is re-eligible the
-            # moment an iteration finishes (no rest interval). None still means
-            # a bounded, run-once item; the two are different contracts.
-            raise QueueError("repeat_seconds must be zero or positive")
         if stall_limit is not None and stall_limit < 1:
             raise QueueError("stall_limit must be at least 1")
-        _validate_agent_name(agent_main, "agent_main")
-        _validate_agent_name(agent_secondary, "agent_secondary")
         _validate_gap_policy(gap_policy)
         _validate_gap_auto_limit(gap_auto_limit)
         _validate_completion_lock(completion_lock)
@@ -311,8 +331,6 @@ class QueueStore:
                 list(on_completed_command) if on_completed_command else None
             ),
             "stall_limit": stall_limit,
-            "agent_main": agent_main,
-            "agent_secondary": agent_secondary,
             "gap_policy": gap_policy,
             "gap_auto_limit": gap_auto_limit,
             "completion_lock": completion_lock,
@@ -326,13 +344,18 @@ class QueueStore:
             "refresh_count": 0,
             "progress_signature": None,
             "stall_count": 0,
+            # Station-observed topic history for the fleet checkpoint trigger:
+            # counts of the topic's own iterations, never a schedule setting.
+            "iterations_completed": 0,
+            "deepening_seen": False,
+            "last_checkpoint_iteration": None,
+            "deepening_checkpoint_done": False,
             "status": "queued",
             "desired_state": "running",
             "attempts": 0,
             "consecutive_failures": 0,
             "subscription_limit_failures": 0,
             "max_attempts": max_attempts,
-            "repeat_seconds": repeat_seconds,
             "next_eligible_at": None,
             "last_error": None,
             "last_error_kind": None,
@@ -370,15 +393,12 @@ class QueueStore:
         "provider",
         "usage_file",
         "max_attempts",
-        "repeat_seconds",
         "stop_file",
         "completion_command",
         "depends_on",
         "progress_command",
         "on_completed_command",
         "stall_limit",
-        "agent_main",
-        "agent_secondary",
         "gap_policy",
         "gap_auto_limit",
         "completion_lock",
@@ -400,11 +420,8 @@ class QueueStore:
     # iteration's environment, never an in-flight subprocess, so they're safe
     # to change regardless of the item's current status.
     _TOPIC_CONFIG_FIELDS = (
-        "repeat_seconds",
         "max_attempts",
         "stall_limit",
-        "agent_main",
-        "agent_secondary",
         "gap_policy",
         "gap_auto_limit",
         "internal_citations",
@@ -599,13 +616,14 @@ class QueueStore:
         max_attempts = entry.get("max_attempts", 5)
         if not isinstance(max_attempts, int) or isinstance(max_attempts, bool) or max_attempts < 1:
             raise QueueError("max_attempts must be an integer of at least 1")
-        repeat_seconds = entry.get("repeat_seconds")
-        if repeat_seconds is not None and (
-            not isinstance(repeat_seconds, int)
-            or isinstance(repeat_seconds, bool)
-            or repeat_seconds < 0
-        ):
-            raise QueueError("repeat_seconds must be a non-negative integer")
+        for mechanics_field in ("repeat_seconds", "agent_main", "agent_secondary"):
+            if entry.get(mechanics_field) not in (None, 0, ""):
+                raise QueueError(
+                    f"{mechanics_field} is station configuration, not an item "
+                    "property — use `worker-agents <worker> ...` (stations hold "
+                    "all mechanics; the queue holds order, contracts, and topic "
+                    "substance only)"
+                )
         lane = _validate_lane(entry.get("lane") or "research")
         on_completed_command = entry.get("on_completed_command")
         if on_completed_command is not None and (
@@ -657,10 +675,6 @@ class QueueStore:
             or stall_limit < 1
         ):
             raise QueueError("stall_limit must be an integer of at least 1")
-        agent_main = _validate_agent_name(entry.get("agent_main"), "agent_main")
-        agent_secondary = _validate_agent_name(
-            entry.get("agent_secondary"), "agent_secondary"
-        )
         gap_policy = _validate_gap_policy(entry.get("gap_policy", "review"))
         gap_auto_limit = _validate_gap_auto_limit(entry.get("gap_auto_limit", 0))
         completion_lock = _validate_completion_lock(entry.get("completion_lock"))
@@ -678,7 +692,6 @@ class QueueStore:
             "provider": entry.get("provider"),
             "usage_file": entry.get("usage_file"),
             "max_attempts": max_attempts,
-            "repeat_seconds": repeat_seconds,
             "stop_file": entry.get("stop_file"),
             "completion_command": (
                 list(completion_command) if completion_command else None
@@ -689,8 +702,6 @@ class QueueStore:
                 list(on_completed_command) if on_completed_command else None
             ),
             "stall_limit": stall_limit,
-            "agent_main": agent_main,
-            "agent_secondary": agent_secondary,
             "gap_policy": gap_policy,
             "gap_auto_limit": gap_auto_limit,
             "completion_lock": completion_lock,
@@ -746,131 +757,94 @@ class QueueStore:
             return item["stall_count"], copy.deepcopy(item)
 
     # ------------------------------------------------------------------
-    # Worker agent profiles (station configuration)
+    # Station configuration (delegated)
     #
     # The queue is the production line: it knows WHAT work exists and in what
-    # order. A worker is a station: WHICH harness/model pair processes an item
-    # is the station's property, never the item's. Swapping a worker's agents
-    # is one durable change here; items carry no agent binding (their legacy
-    # agent_main/agent_secondary fields are inert -- operator ruling 2026-09-04).
+    # order. EVERY mechanic — which harness/model pair a station runs, its
+    # cadence, fleet policy like the checkpoint schedule — lives in the
+    # stations' own collective config (state/stations.json), never here
+    # (operator ruling 2026-09-09). These delegates exist so existing callers
+    # keep one entry point; the queue state file carries no copy.
     # ------------------------------------------------------------------
 
     WORKER_AGENT_FIELDS = ("agent_main", "agent_secondary", "agent_model", "agent_flags", "interval_seconds")
-    MAX_STATIONS = 5  # operator ruling 2026-09-04: "up to 5 stations, for now"
-    _STATION_NAME = re.compile(r"^(?P<prefix>.*)-(?P<number>\d+)$")
-
-    @classmethod
-    def _station_number(cls, worker: str) -> int | None:
-        m = cls._STATION_NAME.match(worker)
-        return int(m.group("number")) if m else None
-
-    @classmethod
-    def _station_prefix(cls, worker: str) -> str | None:
-        m = cls._STATION_NAME.match(worker)
-        return m.group("prefix") if m else None
-
-    @staticmethod
-    def _station_interval(state: dict[str, Any], worker: str) -> int:
-        """Seconds a station pauses between iterations (0 = continuous).
-        Cadence is a STATION property: the gap belongs to the worker that
-        ran the iteration, never to the topic (operator ruling 2026-09-04)."""
-        profiles = state.get("worker_agents") or {}
-        profile = profiles.get(worker) if isinstance(profiles, dict) else None
-        value = profile.get("interval_seconds") if isinstance(profile, dict) else None
-        return int(value) if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
 
     def station_interval(self, worker: str) -> int:
-        return self._station_interval(self.snapshot(), worker)
+        if self.control:
+            number = ControlScheduler.station_id(worker)
+            state = self.control.snapshot()
+            return next(s for s in state["configuration"]["stations"] if s["id"] == number)["interval_seconds"]
+        return self.stations.interval(worker)
 
     def worker_agents(self, worker: str) -> dict[str, Any]:
-        state = self.snapshot()
-        profiles = state.get("worker_agents") or {}
-        profile = profiles.get(worker) if isinstance(profiles, dict) else None
-        return dict(profile) if isinstance(profile, dict) else {}
+        if self.control:
+            number = ControlScheduler.station_id(worker)
+            state = self.control.snapshot()
+            station = next(s for s in state["configuration"]["stations"] if s["id"] == number)
+            pair = self.control.resolve_station_pair(number, state)
+            primary, secondary = pair["primary"], pair["secondary"]
+            # Preserve the runner's legacy keys while exposing the complete,
+            # authoritative launch records.  No profile ID is treated as a
+            # guessed executable or model.
+            return {"agent_main": primary["adapter"], "agent_secondary": secondary["adapter"], "agent_model": primary["model"], "agent_flags": " ".join(primary["argv"]), "agent_executable": primary["executable"], "agent_argv": list(primary["argv"]), "secondary_model": secondary["model"], "secondary_executable": secondary["executable"], "secondary_argv": list(secondary["argv"]), "primary_profile": primary["id"], "secondary_profile": secondary["id"], "interval_seconds": station["interval_seconds"]}
+        return self.stations.station(worker)
 
-    def configure_worker_agents(
-        self,
-        worker: str,
-        *,
-        agent_main: str | None = None,
-        agent_secondary: str | None = None,
-        agent_model: str | None = None,
-        agent_flags: str | None = None,
-        interval_seconds: int | None = None,
-        clear: bool = False,
-    ) -> dict[str, Any]:
-        """Set (merge) a worker's station profile. Pass "" for a string
-        field to unset it; clear=True drops the whole profile. Takes effect
-        at the worker's next iteration launch -- never disrupts one already
-        in flight. interval_seconds is the station's pause between
-        iterations (0 = continuous)."""
+    def configure_worker_agents(self, worker: str, **kwargs: Any) -> dict[str, Any]:
+        if self.control and self.scheduler:
+            number = ControlScheduler.station_id(worker)
+            try:
+                return self.scheduler.update_stations(
+                    station_ids=[number],
+                    primary_profile=kwargs.get("agent_main"),
+                    secondary_profile=kwargs.get("agent_secondary"),
+                    intervals=None,
+                )
+            except Exception as exc:
+                raise QueueError(str(exc)) from exc
+        from .stations import StationsError
+
         validate_item_id(worker)
-        updates = {
-            "agent_main": agent_main,
-            "agent_secondary": agent_secondary,
-            "agent_model": agent_model,
-            "agent_flags": agent_flags,
-        }
-        if interval_seconds is not None and (
-            not isinstance(interval_seconds, int) or isinstance(interval_seconds, bool)
-            or interval_seconds < 0
-        ):
-            raise QueueError("interval_seconds must be a non-negative integer")
-        if not clear and all(v is None for v in updates.values()) and interval_seconds is None:
-            raise QueueError("worker-agents: pass at least one field, or --clear")
-        number = self._station_number(worker)
-        if number is not None and number > self.MAX_STATIONS:
-            raise QueueError(
-                f"at most {self.MAX_STATIONS} stations are supported for now "
-                f"({worker} is numbered {number})"
-            )
+        try:
+            return self.stations.configure(worker, **kwargs)
+        except StationsError as exc:
+            raise QueueError(str(exc)) from exc
+
+    def record_iteration_accounting(
+        self,
+        item_id: str,
+        *,
+        iteration_type: str,
+        deepening: bool,
+        checkpoint_reason: str | None = None,
+    ) -> dict[str, Any]:
+        """Station-observed topic history behind the fleet checkpoint trigger.
+
+        Ordinary successful iterations advance `iterations_completed` (the
+        25/50/75 cadence counts these); an assigned checkpoint instead pins
+        `last_checkpoint_iteration` so the cadence trigger cannot double-fire,
+        and a deepening-entry checkpoint marks itself done. `deepening` records
+        that the semantic gate validated this pass — the first such pass arms
+        the on-deepening checkpoint. History, not a schedule: the stations'
+        fleet config decides when a checkpoint is due."""
+        if self.control:
+            with self.control.transaction(actor="worker", affected_ids=[item_id]) as state:
+                topic = self.control.ensure_topic_work(state, item_id)
+                if iteration_type == "ordinary":
+                    topic["research_iterations_completed"] += 1
+                    topic["next_research_ordinal"] = topic["research_iterations_completed"] + 1
+                return copy.deepcopy(topic)
         with self._locked() as state:
-            profiles = state.setdefault("worker_agents", {})
-            if not isinstance(profiles, dict):
-                raise QueueError("worker_agents must be an object")
-            if clear:
-                profiles.pop(worker, None)
-                return {"worker": worker, "profile": {}}
-            profile = dict(profiles.get(worker) or {})
-            for field, value in updates.items():
-                if value is None:
-                    continue
-                if not isinstance(value, str):
-                    raise QueueError(f"{field} must be a string")
-                if value.strip():
-                    profile[field] = value.strip()
-                else:
-                    profile.pop(field, None)
-            if interval_seconds is not None:
-                # Invariant: station N+1 can never be faster than station N
-                # (intervals non-decreasing by station number), so station
-                # number is the priority tier and cascade order is total.
-                if number is not None:
-                    for other, other_profile in profiles.items():
-                        if other == worker or not isinstance(other_profile, dict):
-                            continue
-                        other_number = self._station_number(other)
-                        if other_number is None or self._station_prefix(other) != self._station_prefix(worker):
-                            continue
-                        other_interval = other_profile.get("interval_seconds", 0) or 0
-                        if other_number < number and interval_seconds < other_interval:
-                            raise QueueError(
-                                f"{worker} cannot be faster than {other} "
-                                f"({interval_seconds}s < {other_interval}s): station "
-                                "intervals must be non-decreasing by station number"
-                            )
-                        if other_number > number and interval_seconds > other_interval:
-                            raise QueueError(
-                                f"{worker} cannot be slower than {other} "
-                                f"({interval_seconds}s > {other_interval}s): station "
-                                "intervals must be non-decreasing by station number"
-                            )
-                profile["interval_seconds"] = interval_seconds
-            if profile:
-                profiles[worker] = profile
+            item = self._find(state, item_id)
+            if iteration_type == "checkpoint":
+                item["last_checkpoint_iteration"] = int(item.get("iterations_completed") or 0)
+                if checkpoint_reason == "deepening":
+                    item["deepening_checkpoint_done"] = True
             else:
-                profiles.pop(worker, None)
-            return {"worker": worker, "profile": dict(profile)}
+                item["iterations_completed"] = int(item.get("iterations_completed") or 0) + 1
+            if deepening and not item.get("deepening_seen"):
+                item["deepening_seen"] = True
+            item["updated_at"] = utc_now()
+            return copy.deepcopy(item)
 
     def record_saturation_streak(self, item_id: str, streak: int) -> dict[str, Any]:
         """Persist the saturation counter (consecutive semantically-valid runs
@@ -1046,6 +1020,33 @@ class QueueStore:
         dedicated intake worker can never be starved by — or starve — the
         research fleet. Items predating the field count as "research".
         """
+        if self.control and self.scheduler:
+            if lanes != ("research",):
+                raise QueueError("managed research stations only claim the research lane")
+            try:
+                lease = self.scheduler.claim(worker)
+            except Exception as exc:
+                raise QueueError(str(exc)) from exc
+            if lease is None:
+                return None
+            resumed = lease.pop("_resumed", False) is True
+            with self.control.transaction(actor="worker", affected_ids=[lease["topic_id"]]) as state:
+                item = next((i for i in state["queue"].get("items", []) if i.get("id") == lease["topic_id"]), None)
+                if item is None:
+                    raise QueueError("controller lease references missing queue item")
+                if not resumed:
+                    item["status"] = "running"
+                    item["claimed_by"] = worker
+                    item["attempts"] = int(item.get("attempts", 0)) + 1
+                    item["started_at"] = utc_now()
+                    item["finished_at"] = None
+                    item["updated_at"] = item["started_at"]
+                result = copy.deepcopy(item)
+            result["_control_lease"] = lease
+            result["claimed_by"] = worker
+            result["resumed"] = resumed
+            self._managed_leases[item["id"]] = lease
+            return result
         for lane in lanes:
             _validate_lane(lane)
 
@@ -1181,7 +1182,22 @@ class QueueStore:
                 # by grabbing a lower topic); a topic held by an equal-or-
                 # faster station is skipped. Priority thus fills in from the
                 # fastest stations downward through every tier.
-                my_interval = self._station_interval(state, worker)
+                # Intervals live in the stations' collective config; snapshot
+                # once per claim so the walk below never re-reads the file.
+                station_profiles = self.stations.snapshot()["stations"]
+
+                def station_interval_of(name: str) -> int:
+                    profile = station_profiles.get(name)
+                    value = (
+                        profile.get("interval_seconds")
+                        if isinstance(profile, dict)
+                        else None
+                    )
+                    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                        return value
+                    return 0
+
+                my_interval = station_interval_of(worker)
                 if any(
                     i.get("reserved_for") == worker and i["status"] == "running"
                     for i in state["items"]
@@ -1204,7 +1220,7 @@ class QueueStore:
                         break  # unclaimed head: the strict-order candidate path takes it
                     if holder == worker:
                         continue
-                    if my_interval < self._station_interval(state, holder):
+                    if my_interval < station_interval_of(holder):
                         if i["status"] == "running":
                             i["reserved_for"] = worker
                             i["updated_at"] = utc_now()
@@ -1754,7 +1770,7 @@ class QueueStore:
                 actual_outcome = "global_paused"
             elif item["desired_state"] == "paused":
                 actual_outcome = "paused"
-            elif item["restart_generation"] != expected_restart_generation:
+            elif item.get("restart_generation", 0) != expected_restart_generation:
                 actual_outcome = "restarted"
             elif requested_control == "paused":
                 # The child was stopped for an item pause, but the operator resumed
@@ -1856,4 +1872,17 @@ class QueueStore:
                 )
             item["finished_at"] = now
             item["updated_at"] = now
-        return actual_outcome, copy.deepcopy(item)
+        result = copy.deepcopy(item)
+        if self.control and self.scheduler:
+            lease = self._managed_leases.pop(item_id, None)
+            if lease is None:
+                raise QueueConflict("managed finalization requires the current process lease")
+            try:
+                self.scheduler.finalize(
+                    lease["station_id"], lease["lease_id"],
+                    pacing_ready_at=next_eligible_at if actual_outcome == "scheduled" else None,
+                    retry_not_before=next_eligible_at if actual_outcome == "backoff" else None,
+                )
+            except Exception as exc:
+                raise QueueConflict(str(exc)) from exc
+        return actual_outcome, result
