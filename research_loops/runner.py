@@ -1420,20 +1420,9 @@ class LoopRunner:
             # the item recurs at all is intrinsic to its contract.
             recurring = self._contract_topic(item)
             pause_seconds = self.store.station_interval(self.worker)
-            if isinstance(managed_lease, dict):
-                accounting = accept_research_completion(
-                    self.store.control, topic_id=item_id, run_id=managed_lease["lease_id"],
-                    station_id=managed_lease["station_id"],
-                    inventory_version=str(item.get("completion_lock") or item.get("inventory_version") or "unknown"), accepted=True,
-                    deepening_entry=bool(isinstance(iteration_result, dict) and iteration_result.get("semantic_valid") is True),
-                )
-                checkpoint_boundary_episode = accounting.get("episode_id")
-            else:
-                self.store.record_iteration_accounting(
-                    item_id, iteration_type="checkpoint" if checkpoint_reason else "ordinary",
-                    deepening=bool(isinstance(iteration_result, dict) and iteration_result.get("semantic_valid") is True),
-                    checkpoint_reason=checkpoint_reason,
-                )
+            # Read the terminal signal before ledger accounting.  A zero exit
+            # only means the subprocess returned normally; it does not make a
+            # NEEDS-OPERATOR/configuration outcome successful research.
             stop_signal = self._check_stop_file(item, stop_signature_before)
             if stop_signal == "done" and recurring:
                 # A contract-bearing research topic does not get to declare
@@ -1447,6 +1436,28 @@ class LoopRunner:
                 self._discard_stop_file(item)
                 stop_signal = None
                 ignored_stop_done = True
+            degraded_result = bool(
+                isinstance(iteration_result, dict)
+                and (
+                    iteration_result.get("degraded_capabilities")
+                    or iteration_result.get("outcome") in {"degraded_capability", "degraded_capabilities"}
+                )
+            )
+            accepted_research = stop_signal is None and not blocked_this_pass and not degraded_result
+            if isinstance(managed_lease, dict):
+                accounting = accept_research_completion(
+                    self.store.control, topic_id=item_id, run_id=managed_lease["lease_id"],
+                    station_id=managed_lease["station_id"],
+                    inventory_version=str(item.get("completion_lock") or item.get("inventory_version") or "unknown"), accepted=accepted_research,
+                    deepening_entry=bool(accepted_research and isinstance(iteration_result, dict) and iteration_result.get("semantic_valid") is True),
+                )
+                checkpoint_boundary_episode = accounting.get("episode_id")
+            else:
+                self.store.record_iteration_accounting(
+                    item_id, iteration_type="checkpoint" if checkpoint_reason else "ordinary",
+                    deepening=bool(isinstance(iteration_result, dict) and iteration_result.get("semantic_valid") is True),
+                    checkpoint_reason=checkpoint_reason,
+                )
             if stop_signal is not None:
                 # The loop wrote its own terminal STOP file during this
                 # iteration (e.g. "DONE" or "NEEDS-OPERATOR: …").  For recurring
