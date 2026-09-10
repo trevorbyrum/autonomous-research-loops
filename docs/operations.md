@@ -55,6 +55,14 @@ bin/research-loops worker-policy worker-2 --claim-limit 0
 
 ## Station profiles (worker-agents)
 
+> **MANAGED deployments: skip this section.** When `state/control.sqlite3`
+> exists, ALL mechanics — profiles, intervals, active capacity, checkpoint
+> scheduling — live in the controller and are configured with
+> `stations`/`profile-register`/`fleet`-free controller verbs (see
+> [Managed stations](managed-stations.md)). Everything below, including the
+> `worker-agents` and `fleet` verbs and `state/stations.json`, applies ONLY to
+> unmanaged clones and is rejected on a managed root.
+
 ALL mechanics belong to the stations, never to queue items: the queue holds order,
 contracts, and topic substance only. Per-station profiles (agents + cadence) and
 fleet-wide policy live together in the stations' collective config,

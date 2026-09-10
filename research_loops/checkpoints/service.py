@@ -31,6 +31,13 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+# Serializes decision publication for stores without a filesystem root (test
+# doubles); real stores use the state/publication.lock flock, which also
+# covers multiple processes.
+import threading
+_PUBLICATION_PROCESS_LOCK = threading.Lock()
+
+
 def _require_string(value: Any, field: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise CheckpointError("VALIDATION_ERROR", f"{field} must be a non-empty string", field)
@@ -55,22 +62,11 @@ def _work(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def _topic(work: dict[str, Any], topic_id: str, inventory_version: str | None = None) -> dict[str, Any]:
+    from ..control_store import default_topic_record
     topics = work["topics"]
     topic = topics.get(topic_id)
     if topic is None:
-        topic = {
-            "topic_id": topic_id,
-            "research_iterations_completed": 0,
-            "next_research_ordinal": 1,
-            "inventory_version": inventory_version or "unknown",
-            "lifecycle_generation": 0,
-            "review_state": "eligible",
-            "active_episode_id": None,
-            "last_accepted_run_id": None,
-            "deepening_entries": {},
-            "proposal_allowance_remaining": 2,
-            "row_revision": 0,
-        }
+        topic = default_topic_record(topic_id, inventory_version or "unknown")
         topics[topic_id] = topic
     if inventory_version is not None:
         topic["inventory_version"] = inventory_version
@@ -107,7 +103,7 @@ def _new_episode(work: dict[str, Any], topic: dict[str, Any], trigger_ids: list[
         "configuration_revision": None,
         "prompt_protocol_version": "checkpoint-protocol-v1",
         "attempt_history": [],
-        "remaining_budgets": {"delegate_launches": 4, "final_proposals": min(2, int(topic.get("proposal_allowance_remaining", 2))), "repair_exchanges": 1},
+        "remaining_budgets": {"delegate_launches": 4, "final_proposals": min(2, int(topic.get("proposal_allowance_remaining", 2))), "repair_exchanges": 1, "infra_refunds_remaining": 2},
         "prior_review_reference": None,
         "result_reference": None,
     }
@@ -150,11 +146,29 @@ def accept_research_completion(
         if prior is not None:
             if prior.get("topic_id") != topic_id:
                 raise CheckpointError("DUPLICATE_REQUEST_CONFLICT", "run_id belongs to another topic", "run_id")
-            return copy.deepcopy(prior["accounting_result"])
+            if "accounting_result" in prior:
+                return copy.deepcopy(prior["accounting_result"])
+            if prior.get("state") not in (None, "started"):
+                # Finished-without-accounting is an inconsistent record, not
+                # an in-progress run — never recount it (Astra qualification
+                # on the missing-accounting_result branch).
+                raise CheckpointError("REVISION_CONFLICT", "run record already finished without accounting; refusing to recount", "run_id")
+            # A claim-time "started" record (written in the lease-minting
+            # transaction) is this same run in progress, not a replay.
+        elif int(work.get("pruned_runs", {}).get(topic_id, 0)):
+            # Once compaction has pruned ANY of this topic's runs, an unknown
+            # run_id could be a pruned historical run replaying (Astra F10):
+            # counting requires the run's own current lease as authority.
+            from ..access import current_lease
+            if current_lease(state, topic_id=topic_id, lease_id=run_id) is None:
+                raise CheckpointError("REVISION_CONFLICT",
+                                      "run_id has no record and no current lease; a pruned historical run cannot be recounted", "run_id")
         topic = _topic(work, topic_id, inventory_version)
-        run = {"run_id": run_id, "topic_id": topic_id, "station_id": station_id,
-               "lease_generation": lease_generation, "accepted": accepted, "ended_at": _now(),
-               "ordinal": None, "completion_accounted": False}
+        run = dict(prior) if prior is not None else {}
+        run.update({"run_id": run_id, "topic_id": topic_id, "station_id": station_id,
+                    "lease_generation": lease_generation if lease_generation is not None else run.get("lease_generation"),
+                    "accepted": accepted, "state": "finished", "ended_at": _now(),
+                    "ordinal": None, "completion_accounted": False})
         if not accepted:
             result = {"topic_id": topic_id, "run_id": run_id, "accepted": False,
                       "research_iterations_completed": topic["research_iterations_completed"],
@@ -168,21 +182,22 @@ def accept_research_completion(
         topic["row_revision"] = int(topic.get("row_revision", 0)) + 1
         run.update({"ordinal": ordinal, "completion_accounted": True})
         policy = _checkpoint_policy(state)
-        trigger_ids: list[str] = []
+        # Each trigger carries its kind from creation; the stable hashed ID is
+        # replay-safe and stays opaque (the review-flagged no-op reconstruction
+        # ternary is gone).
+        triggers: list[tuple[str, str]] = []
         if _enabled(policy):
             every = policy.get("every_research_iterations", 25)
             if isinstance(every, int) and not isinstance(every, bool) and every > 0 and ordinal % every == 0:
-                trigger_ids.append(_trigger_id(topic_id, "cadence", ordinal, inventory_version))
+                triggers.append((_trigger_id(topic_id, "cadence", ordinal, inventory_version), "cadence"))
             entries = topic.setdefault("deepening_entries", {})
             first_deepening = deepening_entry and inventory_version not in entries
             if first_deepening and policy.get("on_deepening_entry", True) is True:
-                trigger_ids.append(_trigger_id(topic_id, "deepening_entry", ordinal, inventory_version))
+                triggers.append((_trigger_id(topic_id, "deepening_entry", ordinal, inventory_version), "deepening_entry"))
             if deepening_entry:
                 entries.setdefault(inventory_version, {"entered_after_ordinal": ordinal, "triggered": False})
-        for trigger_id in trigger_ids:
-            kind = "cadence" if ":" not in trigger_id else "cadence"  # ID is opaque; kind below is reconstructed.
-            # Stable IDs ensure replay safety.  Determine kind from requested positions.
-            if trigger_id == _trigger_id(topic_id, "deepening_entry", ordinal, inventory_version): kind = "deepening_entry"
+        trigger_ids = [trigger_id for trigger_id, _ in triggers]
+        for trigger_id, kind in triggers:
             work["triggers"].setdefault(trigger_id, {"trigger_id": trigger_id, "topic_id": topic_id, "kind": kind,
                 "research_ordinal": ordinal, "inventory_version": inventory_version, "episode_id": None, "handled": False})
         if trigger_ids:
@@ -190,7 +205,7 @@ def accept_research_completion(
             for trigger_id in trigger_ids:
                 work["triggers"][trigger_id]["episode_id"] = episode["episode_id"]
             entry = topic.get("deepening_entries", {}).get(inventory_version)
-            if isinstance(entry, dict) and any(work["triggers"][x]["kind"] == "deepening_entry" for x in trigger_ids): entry["triggered"] = True
+            if isinstance(entry, dict) and any(kind == "deepening_entry" for _, kind in triggers): entry["triggered"] = True
         result = {"topic_id": topic_id, "run_id": run_id, "accepted": True, "ordinal": ordinal,
                   "research_iterations_completed": ordinal, "next_research_ordinal": ordinal + 1,
                   "episode_id": topic.get("active_episode_id"), "review_state": topic["review_state"]}
@@ -234,6 +249,9 @@ def start_checkpoint(control: Any, *, episode_id: str, station_id: int, run_id: 
         if not isinstance(episode, dict): raise CheckpointError("VALIDATION_ERROR", "unknown episode_id", "episode_id")
         if episode.get("state") == "checkpoint_running" and episode.get("run_id") == run_id: return copy.deepcopy(episode)
         if episode.get("state") not in {"due", "retry_wait"}: raise CheckpointError("AWAITING_OPERATOR", f"episode is {episode.get('state')}", "episode_id")
+        # Episodes created before the refund budget existed get the documented
+        # cap on their next start instead of silently having none.
+        episode.setdefault("remaining_budgets", {}).setdefault("infra_refunds_remaining", 2)
         resolver = getattr(control, "resolve_checkpoint_pair", None)
         if episode.get("resolved_agent_pair") is None:
             if not callable(resolver):
@@ -259,7 +277,8 @@ def start_checkpoint(control: Any, *, episode_id: str, station_id: int, run_id: 
 
 
 def reserve_delegate_launch(control: Any, *, episode_id: str, lease_id: str,
-                            invocation_id: str, role: str) -> dict[str, Any]:
+                            invocation_id: str, role: str,
+                            capability_digest: str | None = None) -> dict[str, Any]:
     """Atomically reserve one bounded checkpoint delegate invocation.
 
     The controller calls this after authenticating the lease capability.  An
@@ -279,6 +298,18 @@ def reserve_delegate_launch(control: Any, *, episode_id: str, lease_id: str,
         if not isinstance(episode, dict) or episode.get("state") != "checkpoint_running":
             raise CheckpointError("AWAITING_OPERATOR", "episode is not running", "episode_id")
         if episode.get("run_id") != lease_id: raise CheckpointError("REVISION_CONFLICT", "lease does not own this episode", "lease_id")
+        if capability_digest is not None:
+            # Close the auth-to-spend window: the controller authenticated a
+            # snapshot; re-validate the same capability and lease currency in
+            # the transaction that actually spends the slot.
+            from ..access import current_lease
+            capability = state.get("work", {}).get("capabilities", {}).get(capability_digest)
+            if (not isinstance(capability, Mapping) or capability.get("revoked")
+                    or capability.get("lease_id") != lease_id):
+                raise CheckpointError("REVISION_CONFLICT", "execution capability was revoked before this delegate launch")
+            lease = current_lease(state, topic_id=str(episode.get("topic_id")), lease_id=lease_id)
+            if lease is None or lease.get("lease_generation") != capability.get("lease_generation"):
+                raise CheckpointError("REVISION_CONFLICT", "checkpoint lease was released before this delegate launch")
         invocations = episode.setdefault("invocations", {})
         prior = invocations.get(invocation_id)
         if isinstance(prior, dict):
@@ -316,10 +347,22 @@ def reserve_delegate_launch(control: Any, *, episode_id: str, lease_id: str,
         return created
 
 
+# Exit codes that mean the INFRASTRUCTURE failed (timeout/spawn error/empty
+# response), not that the model produced an invalid result. These may refund
+# a launch slot under the episode's bounded infra-refund allowance; exit 78
+# (a well-formed run returning garbage) deliberately stays spent.
+_INFRA_EXIT_CODES = frozenset({70, 124})
+
+
 def record_delegate_result(control: Any, *, episode_id: str, invocation_id: str,
                            exit_code: int, output_reference: str | None = None,
                            delegate_result: Mapping[str, Any] | None = None) -> dict[str, Any]:
-    """Durably close a previously reserved invocation; failed slots stay spent."""
+    """Durably close a previously reserved invocation.
+
+    Semantically failed slots stay spent; infrastructure failures refund the
+    launch slot up to the episode's infra_refunds_remaining cap (operator
+    decision 2026-09-09: flaky providers must not force a retry cycle, but the
+    anti-abuse launch bound stays hard)."""
     with control.transaction(actor="checkpoint-broker", operation_id=f"checkpoint-delegate-result:{invocation_id}") as state:
         episode = _work(state)["episodes"].get(episode_id)
         if not isinstance(episode, dict) or not isinstance(episode.get("invocations", {}).get(invocation_id), dict):
@@ -331,15 +374,92 @@ def record_delegate_result(control: Any, *, episode_id: str, invocation_id: str,
             record["delegate_result"] = copy.deepcopy(dict(delegate_result))
         if record.get("role") == "repair_response": episode["repair_phase"] = "response_finished" if exit_code == 0 else "response_failed"
         elif record.get("role") == "repair_assessment": episode["repair_phase"] = "assessment_finished" if exit_code == 0 else "assessment_failed"
+        if exit_code in _INFRA_EXIT_CODES:
+            budgets = episode.setdefault("remaining_budgets", {})
+            refunds = int(budgets.get("infra_refunds_remaining", 0))
+            if refunds > 0:
+                budgets["infra_refunds_remaining"] = refunds - 1
+                budgets["delegate_launches"] = int(budgets.get("delegate_launches", 0)) + 1
+                record["infra_refund"] = True
+                # An infrastructure failure never obtained the exchange it
+                # reserved (Astra F7): restore the repair state machine so
+                # the SAME uncompleted exchange/assessment can retry — this
+                # authorizes a retry, never a second successful exchange.
+                if record.get("role") == "repair_response":
+                    budgets["repair_exchanges"] = int(budgets.get("repair_exchanges", 0)) + 1
+                    episode["repair_phase"] = None
+                elif record.get("role") == "repair_assessment":
+                    episode["repair_phase"] = "response_finished"
         return copy.deepcopy(record)
 
 
-def execute_delegate(control: Any, *, episode_id: str, lease_id: str, invocation_id: str, role: str, prompt: str) -> dict[str, Any]:
+def _delegate_ledger_append(topic_root: Path, identity: Mapping[str, Any], record: dict[str, Any]) -> None:
+    """Best-effort 9·0 delegation-coverage line in the topic's delegate ledger.
+
+    Written after the provider call returns (the durable pre-launch evidence
+    is the reserved invocation record in the controller store); a launch line
+    with no usage line reads as an unobserved outcome, which is accurate here
+    — checkpoint delegate calls have no usage capture. Never fails the call.
+
+    SECURITY (Astra F1, 2026-09-10): this append runs under the SUPERVISOR
+    identity inside an agent-owned logs directory. Every path component is
+    opened O_NOFOLLOW via directory descriptors and ownership is transferred
+    on the opened inode (fchown), so an agent-planted symlink — for the file,
+    its parent, or a swap between create and chown — can never redirect a
+    supervisor write or ownership change to a protected file.
+    """
+    import stat as stat_module
+
+    root_fd = logs_fd = file_fd = None
+    try:
+        root_fd = os.open(topic_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            logs_fd = os.open("logs", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root_fd)
+        except FileNotFoundError:
+            return
+        try:
+            # O_NONBLOCK (Astra R2-2): opening an agent-planted FIFO for
+            # writing with no reader would otherwise block the controller
+            # BEFORE the regular-file check can run; nonblocking, it fails
+            # with ENXIO immediately, and for the regular file we expect it
+            # is a write-path no-op.
+            file_fd = os.open("delegate-usage.jsonl",
+                              os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW | os.O_NONBLOCK,
+                              dir_fd=logs_fd)
+            created = False
+        except FileNotFoundError:
+            file_fd = os.open("delegate-usage.jsonl",
+                              os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_NONBLOCK,
+                              0o644, dir_fd=logs_fd)
+            created = True
+        info = os.fstat(file_fd)
+        if not stat_module.S_ISREG(info.st_mode):
+            return
+        os.write(file_fd, (json.dumps(record, separators=(",", ":")) + "\n").encode("utf-8"))
+        if created and isinstance(identity.get("user"), int) and isinstance(identity.get("group"), int):
+            # On the INODE we hold open — the agent's own delegate wrapper
+            # must be able to keep appending, and a pathname chown could be
+            # redirected by a post-create swap.
+            os.fchown(file_fd, identity["user"], identity["group"])
+    except OSError:
+        pass
+    finally:
+        for fd in (file_fd, logs_fd, root_fd):
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+
+
+def execute_delegate(control: Any, *, episode_id: str, lease_id: str, invocation_id: str, role: str, prompt: str,
+                     capability_digest: str | None = None) -> dict[str, Any]:
     """Reserve then run one resolved delegate under the lease OS identity."""
     _require_string(prompt, "prompt")
     if len(prompt.encode("utf-8")) > 64 * 1024:
         raise CheckpointError("VALIDATION_ERROR", "checkpoint delegate prompt exceeds 64 KiB", "prompt")
-    launch = reserve_delegate_launch(control, episode_id=episode_id, lease_id=lease_id, invocation_id=invocation_id, role=role)
+    launch = reserve_delegate_launch(control, episode_id=episode_id, lease_id=lease_id, invocation_id=invocation_id, role=role,
+                                     capability_digest=capability_digest)
     new_reservation = launch.pop("_new_reservation", False)
     if launch.get("status") == "finished":
         # The idempotency key identifies one bounded provider call.  Replaying
@@ -373,30 +493,32 @@ def execute_delegate(control: Any, *, episode_id: str, lease_id: str, invocation
                 "required_result": {"schema_version": 1, "invocation_id": invocation_id, "role": role,
                                     "status": "complete", "findings": [], "limitations": []}}
         prompt_text = json.dumps(task, sort_keys=True)
-        adapter, model = profile.get("adapter"), profile.get("model")
-        if adapter == "codex":
-            with tempfile.NamedTemporaryFile(prefix="checkpoint-delegate-", delete=False) as handle: final_path = handle.name
-            if isinstance(identity.get("user"), int) and isinstance(identity.get("group"), int):
-                os.chown(final_path, identity["user"], identity["group"])
-                os.chmod(final_path, 0o600)
-            try:
-                completed = subprocess.run([executable, "exec", "-m", model, "-o", final_path, *argv, prompt_text], cwd=str(item["cwd"]), text=True, capture_output=True, timeout=900, check=False, env=env, **identity)
-                output = Path(final_path).read_text(encoding="utf-8") if completed.returncode == 0 else completed.stderr
-            finally: Path(final_path).unlink(missing_ok=True)
-        elif adapter == "claude":
-            completed = subprocess.run([executable, "-p", prompt_text, "--model", model, "--output-format", "json", *argv], cwd=str(item["cwd"]), text=True, capture_output=True, timeout=900, check=False, env=env, **identity)
-            if completed.returncode == 0:
-                envelope = json.loads(completed.stdout); output = envelope.get("result") if isinstance(envelope, dict) else ""
-            else: output = completed.stderr
-        elif adapter == "hermes":
-            completed = subprocess.run([executable, "-p", profile.get("id", "default"), "-z", prompt_text, *argv], cwd=str(item["cwd"]), text=True, capture_output=True, timeout=900, check=False, env=env, **identity)
-            output = completed.stdout if completed.returncode == 0 else completed.stderr
-        else:
-            raise CheckpointError("VALIDATION_ERROR", "checkpoint delegate profile adapter is unsupported")
-        exit_code = completed.returncode
+        from .runner import launch_registered_profile
+        try:
+            exit_code, output = launch_registered_profile(profile, prompt_text, cwd=str(item["cwd"]),
+                                                          env=env, identity=identity, timeout_seconds=900)
+        except ValueError as exc:
+            raise CheckpointError("VALIDATION_ERROR", str(exc)) from exc
     except (OSError, subprocess.TimeoutExpired) as exc:
-        output, exit_code = str(exc), 124
+        # Keep the provider's own stderr when a timeout captured one — "auth
+        # error from the provider" and "binary missing" must stay
+        # distinguishable in the recorded report.
+        stderr_tail = ""
+        if isinstance(exc, subprocess.TimeoutExpired) and exc.stderr:
+            raw = exc.stderr if isinstance(exc.stderr, str) else exc.stderr.decode(errors="replace")
+            stderr_tail = raw[-1000:]
+        output = str(exc) + (f"\nprovider stderr tail:\n{stderr_tail}" if stderr_tail else "")
+        exit_code = 124
+    if exit_code == 0 and not output.strip():
+        # An empty response on a zero exit is a capability failure, never a
+        # valid (or even parseable) result — classify as infrastructure.
+        output, exit_code = "delegate produced no output", 70
     topic_root = Path(str(item["cwd"])).resolve()
+    _delegate_ledger_append(topic_root, identity, {
+        "ts": _now(), "event": "launch",
+        "model": str(profile.get("model") or "unknown"), "role": role,
+        "checkpoint_episode": episode_id,
+    })
     report_dir = topic_root / ".checkpoint-reports"
     try:
         report_dir.mkdir(mode=0o750, exist_ok=True)
@@ -499,16 +621,6 @@ def finish_checkpoint(control: Any, result: Mapping[str, Any]) -> dict[str, Any]
         return {"episode_id": episode["episode_id"], "state": episode["state"], "proposal_ids": [p["proposal_id"] for p in proposals], "next_research_ordinal": topic["next_research_ordinal"]}
 
 
-def reset_topic_proposal_allowance(control: Any, *, topic_id: str, actor: str = "operator") -> dict[str, Any]:
-    """Explicit operator reset; decisions deliberately never refill this cap."""
-    _require_string(topic_id, "topic_id")
-    with control.transaction(actor=actor, operation_id=f"checkpoint-proposal-reset:{topic_id}") as state:
-        topic = _topic(_work(state), topic_id)
-        topic["proposal_allowance_remaining"] = 2
-        topic.setdefault("proposal_allowance_resets", []).append({"actor": actor, "at": _now()})
-        return {"topic_id": topic_id, "proposal_allowance_remaining": 2}
-
-
 def apply_decision(control: Any, payload: Mapping[str, Any], *, actor: str = "operator", publisher: Callable[[Mapping[str, Any], Mapping[str, Any] | None], None] | None = None) -> dict[str, Any]:
     """Apply an idempotent operator decision bundle for one checkpoint episode."""
     if not isinstance(payload, Mapping): raise CheckpointError("VALIDATION_ERROR", "decision payload must be an object")
@@ -529,7 +641,12 @@ def apply_decision(control: Any, payload: Mapping[str, Any], *, actor: str = "op
         if prior.get("payload") != canonical:
             raise CheckpointError("DUPLICATE_REQUEST_CONFLICT", "request_id was used with different content", "request_id")
         if publisher is not None and intent and intent.get("publications"):
-            publisher.finalize(intent["publications"])
+            # Cleanup on a replay obeys the same serialization as publication
+            # itself (Astra R2-1): identity-checked finalize under the
+            # publication lock, so a stale replay can never race — or
+            # remove — a newer publication's journal.
+            _with_publication_lock(
+                control, lambda: publisher.finalize(_publications_for_cleanup(intent)))
         return copy.deepcopy(prior["result"])
     if intent is not None:
         if intent.get("payload") != canonical:
@@ -584,23 +701,86 @@ def apply_decision(control: Any, payload: Mapping[str, Any], *, actor: str = "op
 
 
 def _complete_decision_publication(control: Any, request_id: str, actor: str, publisher: Any) -> dict[str, Any]:
-    # Hold a transaction while publishing to serialize duplicate callers. The
-    # intent above is already committed; rollback here keeps the topic blocked.
+    # Publication runs OUTSIDE any store transaction (2026-09-09 review:
+    # holding BEGIN IMMEDIATE across contract-file fsyncs stalled every other
+    # controller operation — claims, finalize, operator queries) but INSIDE a
+    # dedicated publication lock (Astra F2, 2026-09-10): without it, a
+    # delayed duplicate caller could re-apply an already-committed prepared
+    # bundle over evidence written AFTER the winner released the topic, and
+    # pathname cleanup could remove a later publication's journal. Under the
+    # lock, the snapshot below always sees the winner's committed decision
+    # and returns without touching the filesystem.
+    return _with_publication_lock(
+        control, lambda: _complete_decision_publication_locked(control, request_id, actor, publisher))
+
+
+def _publications_for_cleanup(intent: Mapping[str, Any]) -> list:
+    """Saved publication results enriched for identity-checked cleanup.
+
+    Publication results committed BEFORE the identity-checked finalizer
+    existed lack `publication_identity` even though the intent's own prepared
+    bundle — the trusted origin of the journal — records it (Astra R3-1:
+    without this, a valid pre-upgrade committed publication could never clean
+    its own journal and would block the topic's next publication). The
+    conservative standalone rule is untouched: with no ownership proof from
+    the intent either, cleanup still refuses to guess.
+    """
+    publications = intent.get("publications") or []
+    prepared = intent.get("prepared")
+    identity = (prepared.get("identity") or prepared.get("key")) if isinstance(prepared, Mapping) else None
+    enriched = []
+    for record in publications:
+        if isinstance(record, Mapping) and not record.get("publication_identity") and identity:
+            record = {**record, "publication_identity": str(identity)}
+        enriched.append(record)
+    return enriched
+
+
+def _with_publication_lock(control: Any, operation: Callable[[], Any]) -> Any:
+    """Run `operation` holding the store's publication lock.
+
+    Real stores flock `state/publication.lock` (covers every process);
+    in-memory doubles have no filesystem root, so a process-wide lock
+    serializes every caller they can have.
+    """
+    import fcntl
+
+    root = getattr(control, "root", None)
+    if root is None:
+        with _PUBLICATION_PROCESS_LOCK:
+            return operation()
+    lock_path = Path(root) / "state" / "publication.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "a+", encoding="utf-8") as publication_lock:
+        fcntl.flock(publication_lock.fileno(), fcntl.LOCK_EX)
+        return operation()
+
+
+def _complete_decision_publication_locked(control: Any, request_id: str, actor: str, publisher: Any) -> dict[str, Any]:
+    snapshot = control.snapshot()
+    intent = snapshot["work"].get("decision_publications", {}).get(request_id)
+    if not isinstance(intent, dict):
+        raise CheckpointError("VALIDATION_ERROR", "unknown decision publication intent")
+    existing = snapshot["work"].get("decisions", {}).get(request_id)
+    if existing is not None:
+        publications = _publications_for_cleanup(intent)
+        if publications:
+            publisher.finalize(publications)
+        return copy.deepcopy(existing["result"])
+    prepared = intent.get("prepared")
+    if prepared is not None and publisher is None:
+        raise CheckpointError("PUBLICATION_PENDING", "recovery requires the contract publisher")
+    publications = publisher.publish_prepared(prepared) if prepared is not None else []
+    for published in publications:
+        if not isinstance(published, Mapping) or not isinstance(published.get("completion_lock"), str):
+            raise CheckpointError("PUBLICATION_PENDING", "publisher did not return a completion lock")
     with control.transaction(actor=actor, operation_id=f"checkpoint-decision:{request_id}") as state:
         work = _work(state)
         intent = work["decision_publications"][request_id]
         existing = work["decisions"].get(request_id)
         if existing is not None:
             result = copy.deepcopy(existing["result"])
-            publications = intent.get("publications", [])
         else:
-            prepared = intent["prepared"]
-            if prepared is not None and publisher is None:
-                raise CheckpointError("PUBLICATION_PENDING", "recovery requires the contract publisher")
-            publications = publisher.publish_prepared(prepared) if prepared is not None else []
-            for published in publications:
-                if not isinstance(published, Mapping) or not isinstance(published.get("completion_lock"), str):
-                    raise CheckpointError("PUBLICATION_PENDING", "publisher did not return a completion lock")
             result = _commit_decision(state, intent, request_id, publications)
             intent["state"] = "published"
             intent["publications"] = copy.deepcopy(publications)

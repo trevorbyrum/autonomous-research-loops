@@ -7,6 +7,7 @@ grants authority. The service itself is the protected database/file writer.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import socket
@@ -15,6 +16,7 @@ import stat
 import struct
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 from typing import Any, Callable
 
@@ -159,7 +161,11 @@ class Controller:
             if capability["execution_kind"] != "checkpoint" or capability["lease_id"] != params.get("lease_id"):
                 raise AccessError("delegate request must use its own active checkpoint lease")
             from .checkpoints.delegate import dispatch
-            return dispatch(self.control, params)
+            # The digest lets the reservation transaction re-validate this
+            # capability at spend time — authentication above reads a
+            # snapshot, and a lease can be released/revoked in between.
+            digest = hashlib.sha256(str(request.get("token")).encode()).hexdigest()
+            return dispatch(self.control, params, capability_digest=digest)
         if method != "state.cli":
             raise AccessError("execution callers cannot invoke operator operations")
         if set(params) != {"topic_id", "action", "arguments"}:
@@ -195,18 +201,22 @@ class Controller:
                         arguments[index + 1] if index + 1 < len(arguments) else "")
                     if not value or Path(value).resolve() != (self.root / "topics").resolve():
                         raise AccessError("topics-root must be the managed portfolio")
-            env = os.environ.copy()
-            for key in ("RESEARCH_LOOP_CONTROLLER_SOCKET", "RESEARCH_LOOP_EXECUTION_CAPABILITY",
-                        "RESEARCH_LOOP_MANAGED_TOPIC_ID", "RESEARCH_LOOP_MANAGED_TOPIC_DIR"):
-                env.pop(key, None)
+            # A minimal environment, not the controller's own: this bridge
+            # runs with the supervisor's identity, and semantic-state.py needs
+            # nothing beyond an interpreter path (2026-09-09 review —
+            # confused-deputy hardening; a dedicated execution identity for
+            # the bridge is a recorded follow-up in docs/managed-stations.md).
+            env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                   "LANG": os.environ.get("LANG", "C.UTF-8")}
             command = [sys.executable, str(Path(__file__).parent / "chassis" / "semantic-state.py"),
                        action, str(topic_dir), *arguments]
             result = subprocess.run(command, capture_output=True, text=True, env=env, timeout=60)
             # A file operation's audit is explicit even though the controller's
             # main queue/work counters intentionally do not change.
             history = state["work"].setdefault("state_operations", {})
-            import uuid
-            history[str(uuid.uuid4())] = {"topic_id": topic_id, "lease_id": lease["lease_id"],
+            from .control_store import utc_now
+            history[str(uuid.uuid4())] = {"at": utc_now(), "topic_id": topic_id,
+                "lease_id": lease["lease_id"],
                 "action": action, "caller_uid": peer_uid, "caller_pid": peer_pid,
                 "exit_code": result.returncode}
             return {"exit_code": result.returncode, "stdout": result.stdout, "stderr": result.stderr}
@@ -230,8 +240,17 @@ class _Handler(socketserver.StreamRequestHandler):
             if hasattr(exc, "as_dict"):
                 error = exc.as_dict()
                 error.setdefault("message", str(exc))
+            elif isinstance(exc, AccessError):
+                error = {"code": "ACCESS_DENIED", "message": str(exc)}
             else:
-                error = {"code": "ACCESS_DENIED" if isinstance(exc, AccessError) else "OPERATION_FAILED", "message": str(exc)}
+                # Unstructured internals go to the journal, not the peer: an
+                # authenticated caller is not entitled to raw tracebacks or
+                # filesystem paths from arbitrary exceptions.
+                import traceback
+                print(f"controller: unhandled {type(exc).__name__}: {exc}\n{traceback.format_exc()}",
+                      file=sys.stderr, flush=True)
+                error = {"code": "OPERATION_FAILED",
+                         "message": f"{type(exc).__name__}: see the controller journal"}
             response = {"ok": False, "error": error}
         encoded = json.dumps(response, ensure_ascii=False).encode() + b"\n"
         if len(encoded) > MAX_MESSAGE_BYTES:
@@ -255,7 +274,19 @@ class ControllerServer(socketserver.ThreadingUnixStreamServer):
         # Refuse to replace an existing socket: that could disconnect a live
         # controller. Explicit recovery removes a verified stale socket.
         super().__init__(str(self.socket_path), _Handler)
-        os.chmod(self.socket_path, 0o666)
+        # Peer-credential auth is the real gate, but do not throw away
+        # defense-in-depth: only the supervisor's group (which deployment
+        # gives to the agent account and to operators) may even connect.
+        try:
+            os.chown(self.socket_path, os.geteuid(), controller.access["agent_gid"])
+            os.chmod(self.socket_path, 0o660)
+        except PermissionError:
+            # A non-root supervisor cannot give the socket to the agent
+            # group, and 0660 under its own group would lock the agent
+            # account out entirely — peer-credential auth remains the sole
+            # gate there (the pre-hardening behavior). Root deployments get
+            # the group-scoped socket above.
+            os.chmod(self.socket_path, 0o666)
 
     def server_close(self) -> None:
         super().server_close()

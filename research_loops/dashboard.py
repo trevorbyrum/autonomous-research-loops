@@ -284,7 +284,13 @@ def render_dashboard(
     events: list[dict[str, Any]],
     *,
     generated_at: datetime | None = None,
+    full: bool = False,
 ) -> str:
+    """Default output is an operator STATUS page: what runs, what awaits a
+    decision, what owes a checkpoint, what needs attention. History and
+    telemetry (paused/completed enumerations, economics, ledger aggregates,
+    metric definitions) render only with full=True — the 2026-09-09 operator
+    ruling: the per-minute page must lead with the actionable sections."""
     now = generated_at or datetime.now(UTC)
     if now.tzinfo is None:
         now = now.replace(tzinfo=UTC)
@@ -354,9 +360,44 @@ def render_dashboard(
     if state.get("paused") is True or state.get("stopping") is True:
         lines.append(f"Pause reason: **{_cell(state.get('pause_reason') or 'not recorded')}**")
     managed = state.get("managed_control")
+    # ONE normalization point for managed control data (Astra F11/R2-4):
+    # every consumer below reads these validated maps, and any malformed
+    # piece degrades to a visible notice instead of an AttributeError that
+    # stops the refresh exactly when control state needs inspection.
+    managed_malformed: list[str] = []
+
+    def _note_malformed(label: str) -> None:
+        if label not in managed_malformed:
+            managed_malformed.append(label)
+
+    def _managed_map(container: Any, name: str) -> dict[str, Any]:
+        # A key that is PRESENT but not a mapping — including an explicit
+        # null — is malformed and noticed; a genuinely absent key is quiet.
+        if not isinstance(container, dict) or name not in container:
+            return {}
+        value = container[name]
+        if not isinstance(value, dict):
+            _note_malformed(name)
+            return {}
+        if any(not isinstance(row, dict) for row in value.values()):
+            # Row consumers skip non-dict rows; a corrupt proposal or episode
+            # must not silently vanish from an actionable section (R3-2).
+            _note_malformed(f"{name} rows")
+        return value
+
+    if isinstance(managed, dict):
+        work_raw = managed.get("work")
+        if "work" in managed and not isinstance(work_raw, dict):
+            _note_malformed("work")
+        managed_work: dict[str, Any] = work_raw if isinstance(work_raw, dict) else {}
+        managed_topics_map = _managed_map(managed_work, "topics")
+        managed_episodes_map = _managed_map(managed_work, "episodes")
+        managed_proposals_map = _managed_map(managed_work, "proposals")
+    else:
+        managed_work = {}
+        managed_topics_map = managed_episodes_map = managed_proposals_map = {}
     if isinstance(managed, dict):
         config = managed.get("configuration") if isinstance(managed.get("configuration"), dict) else {}
-        work = managed.get("work") if isinstance(managed.get("work"), dict) else {}
         policy = config.get("checkpoints") or {}
         pair = next((row for row in config.get("stations", []) if row.get("id") == 1), {}) if policy.get("agent_source") == "station_1" else policy
         checkpoint_summary = "off"
@@ -368,13 +409,15 @@ def render_dashboard(
             f"**Checkpoints:** {_cell(checkpoint_summary)} · "
             f"**Review agents:** {_cell(pair.get('primary_profile', '—'))} / {_cell(pair.get('secondary_profile', '—'))}"])
         # Keep actionable review holds visible without dumping the work ledger.
-        topics = work.get("topics") or {}
-        episodes = work.get("episodes") or {}
+        topics = managed_topics_map
+        episodes = managed_episodes_map
         for item in items:
             if not isinstance(item, dict) or item.get("lane") == "intake" or item.get("status") in {"paused", "completed"}:
                 continue
-            topic = topics.get(item.get("id")) or {}
-            episode = episodes.get(topic.get("active_episode_id")) or {}
+            topic = topics.get(item.get("id"))
+            topic = topic if isinstance(topic, dict) else {}
+            episode = episodes.get(topic.get("active_episode_id"))
+            episode = episode if isinstance(episode, dict) else {}
             if episode.get("state") in {"awaiting_operator", "needs_attention", "publishing_decision"}:
                 label = {"awaiting_operator": "checkpoint decision needed", "needs_attention": "checkpoint needs attention", "publishing_decision": "checkpoint decision applying"}[episode["state"]]
                 lines.extend(["", f"**{_cell(item.get('title', item.get('id')))}:** {label}."])
@@ -392,13 +435,14 @@ def render_dashboard(
         ]
 
     active_rows = []
-    managed_topics = (managed.get("work", {}).get("topics", {}) if isinstance(managed, dict) and isinstance(managed.get("work"), dict) else {})
+    managed_topics = managed_topics_map
     for _, item in categories["active"]:
         attempts = item.get("attempts") if isinstance(item.get("attempts"), int) and not isinstance(item.get("attempts"), bool) else "unavailable"
         ledger = managed_topics.get(item.get("id")) if isinstance(managed_topics, dict) else None
         if isinstance(ledger, dict):
             episode_id = ledger.get("active_episode_id")
-            episode = (managed.get("work", {}).get("episodes", {}).get(episode_id) if isinstance(managed, dict) and episode_id else None)
+            episode = managed_episodes_map.get(episode_id) if episode_id else None
+            episode = episode if isinstance(episode, dict) else None
             if isinstance(episode, dict) and episode.get("state") in {"due", "checkpoint_running", "retry_wait", "awaiting_operator", "publishing_decision"}:
                 iteration = f"Checkpoint after {ledger.get('research_iterations_completed', '—')}"
             else:
@@ -416,8 +460,9 @@ def render_dashboard(
         ]
         if isinstance(managed, dict):
             reviewed = [episode.get("triggered_after_research_iteration")
-                        for episode in managed.get("work", {}).get("episodes", {}).values()
-                        if episode.get("topic_id") == item.get("id")
+                        for episode in managed_episodes_map.values()
+                        if isinstance(episode, dict)
+                        and episode.get("topic_id") == item.get("id")
                         and episode.get("state") in {"complete_without_proposals", "complete_with_decisions"}
                         and isinstance(episode.get("triggered_after_research_iteration"), int)]
             active_row.append(max(reviewed) if reviewed else "—")
@@ -429,6 +474,42 @@ def render_dashboard(
         active_headers.append("Last checkpoint")
     active_headers.append("Models")
     lines.extend(["", "## Active topics", "", _table(active_headers, active_rows)])
+    if isinstance(managed, dict):
+        # The status page must render precisely when control state most needs
+        # inspection (Astra F11/R2-4): every malformed piece collected by the
+        # one normalization point becomes a visible notice, never a crash.
+        if managed_malformed:
+            lines.extend(["", "> **Managed work data malformed/unavailable** "
+                              f"({', '.join(managed_malformed)}): the sections below may be incomplete; "
+                              "inspect the controller state directly."])
+        proposals_map = managed_proposals_map
+        topics_map = managed_topics_map
+        titles = {str(item.get("id")): str(item.get("title") or item.get("id"))
+                  for item in items if isinstance(item, dict)}
+        # THE actionable section: proposals a checkpoint issued that only the
+        # operator can resolve. Always rendered, even when empty.
+        pending_rows = [[titles.get(str(p.get("topic_id")), str(p.get("topic_id"))),
+                         p.get("proposal_id"), p.get("kind"), p.get("proposal_version"),
+                         p.get("episode_id")]
+                        for p in proposals_map.values()
+                        if isinstance(p, dict) and p.get("status") == "pending"]
+        lines.extend(["", "## Pending checkpoint proposals (awaiting your decision)", "",
+                      _table(["Topic", "Proposal", "Kind", "Version", "Episode"], pending_rows)])
+        if pending_rows:
+            lines.append("Resolve with `research-loops checkpoint-decide --file decision.json` "
+                         "(see docs/managed-stations.md).")
+        # Catch-up debt: topics whose next execution is a checkpoint —
+        # including paused ones, whose checkpoint fires on resume.
+        by_id = {str(item.get("id")): item for item in items if isinstance(item, dict)}
+        debt_rows = [[titles.get(topic_id, topic_id),
+                      (by_id.get(topic_id) or {}).get("status") or "unknown",
+                      record.get("research_iterations_completed", "unavailable")]
+                     for topic_id, record in topics_map.items()
+                     if isinstance(record, dict) and record.get("review_state") == "checkpoint_due"]
+        if debt_rows:
+            lines.extend(["", f"## Checkpoint debt ({len(debt_rows)} topic(s) owe a review)", "",
+                          _table(["Topic", "Queue status", "Iterations completed"], debt_rows),
+                          "A paused topic's checkpoint runs when it is resumed."])
     lines.extend(overview_lines)
 
     def _attention_flags(item: dict[str, Any]) -> str:
@@ -478,15 +559,18 @@ def render_dashboard(
             run_count,
             item.get("finished_at") or "unavailable",
         ])
-    lines.extend(["", "## Completed topics", "", _table(["Topic", "Queue attempts", "Retained runs", "Finished"], completed_rows)])
-
-    lines.extend(["", "## Paused topics", "", _table(["Topic", "Stale/current owner", "Attempts", "Reason class"], paused_rows)])
+    if full:
+        lines.extend(["", "## Completed topics", "", _table(["Topic", "Queue attempts", "Retained runs", "Finished"], completed_rows)])
+        lines.extend(["", "## Paused topics", "", _table(["Topic", "Stale/current owner", "Attempts", "Reason class"], paused_rows)])
+    else:
+        lines.extend(["", f"_History elided: {len(completed_rows)} completed and {len(paused_rows)} paused topics, "
+                          "plus economics/ledger telemetry — regenerate with `dashboard --full` to include them._"])
     if unclassified_rows:
         # A catch-all for malformed/unexpected queue states -- rendered only
         # when it actually caught something; an always-empty table is noise.
         lines.extend(["", "## Unclassified items", "", _table(["Queue position", "ID", "Title", "Status", "Desired state", "Owner"], unclassified_rows)])
 
-    economics_rows = _iteration_economics(items, by_item)
+    economics_rows = _iteration_economics(items, by_item) if full else []
     if economics_rows:
         lines.extend([
             "",
@@ -501,7 +585,8 @@ def render_dashboard(
     timestamps = sorted(str(event["ts"]) for event in finished if isinstance(event.get("ts"), str))
     current_ids = {str(item.get("id")) for item in items if isinstance(item, dict)}
     historical_only = sum(1 for event in finished if event["item_id"] not in current_ids)
-    lines.extend(
+    if full:
+        lines.extend(
         [
             "",
             "## Retained-ledger aggregate",
@@ -538,9 +623,11 @@ def render_dashboard(
             "- **Retention:** the event ledger has a maximum retention age of 90 days; the actual oldest/newest timestamps above define this dashboard's observed window.",
             "- **Identity limitation:** retained events are grouped by current `item_id`; IDs and attempt numbers are not immutable run-incarnation keys and can be reused or reset.",
             "- **Consistency limitation:** queue state is finalized before the corresponding event is appended. A refresh may temporarily show newer queue state or newer event data than the other source.",
-            "",
-            "_Generated file. Manual edits are replaced by the next dashboard refresh._",
-            "",
         ]
-    )
+        )
+    lines.extend([
+        "",
+        "_Generated file. Manual edits are replaced by the next dashboard refresh._",
+        "",
+    ])
     return "\n".join(lines)

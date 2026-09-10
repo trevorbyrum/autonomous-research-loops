@@ -492,7 +492,10 @@ class EngineTools:
         try:
             return controller_call(load_access(self.root)["socket_path"], "stations.show", {})
         except Exception as exc:
-            raise QueueError(f"managed station operation requires controller socket: {exc}") from exc
+            # Preserve structured error payloads (code/path/recovery hint)
+            # instead of flattening them to prose.
+            detail = json.dumps(exc.as_dict(), sort_keys=True) if hasattr(exc, "as_dict") else str(exc)
+            raise QueueError(f"managed station operation requires controller socket: {detail}") from exc
 
     def stations_update(self, station_ids: list[int] | None = None, all_stations: bool = False, primary_profile: str | None = None, secondary_profile: str | None = None, intervals: list[int] | None = None, active_count: int | None = None, checkpoints: dict[str, Any] | None = None) -> dict[str, Any]:
         if self.remote_socket: return controller_call(self.remote_socket, "stations.update", {"station_ids": station_ids, "all_stations": all_stations, "primary_profile": primary_profile, "secondary_profile": secondary_profile, "intervals": intervals, "active_count": active_count, "checkpoints": checkpoints})
@@ -501,7 +504,10 @@ class EngineTools:
         try:
             return controller_call(load_access(self.root)["socket_path"], "stations.update", payload)
         except Exception as exc:
-            raise QueueError(f"managed station operation requires controller socket: {exc}") from exc
+            # Preserve structured error payloads (code/path/recovery hint)
+            # instead of flattening them to prose.
+            detail = json.dumps(exc.as_dict(), sort_keys=True) if hasattr(exc, "as_dict") else str(exc)
+            raise QueueError(f"managed station operation requires controller socket: {detail}") from exc
 
     def register_profile(self, profile_id: str, adapter: str, model: str, executable: str, argv: list[str]) -> dict[str, Any]:
         if self.remote_socket: return controller_call(self.remote_socket, "profiles.register", {"profile_id": profile_id, "adapter": adapter, "model": model, "executable": executable, "argv": argv})
@@ -509,7 +515,10 @@ class EngineTools:
         try:
             return controller_call(load_access(self.root)["socket_path"], "profiles.register", {"profile_id": profile_id, "adapter": adapter, "model": model, "executable": executable, "argv": argv})
         except Exception as exc:
-            raise QueueError(f"managed profile operation requires controller socket: {exc}") from exc
+            # Preserve structured error payloads (code/path/recovery hint)
+            # instead of flattening them to prose.
+            detail = json.dumps(exc.as_dict(), sort_keys=True) if hasattr(exc, "as_dict") else str(exc)
+            raise QueueError(f"managed profile operation requires controller socket: {detail}") from exc
 
     def reorder_queue(self, expected_queue_revision: int, ordered_ids: list[str]) -> dict[str, Any]:
         if self.remote_socket: return controller_call(self.remote_socket, "queue.reorder", {"expected_queue_revision": expected_queue_revision, "ordered_ids": ordered_ids})
@@ -517,7 +526,10 @@ class EngineTools:
         try:
             return controller_call(load_access(self.root)["socket_path"], "queue.reorder", {"expected_queue_revision": expected_queue_revision, "ordered_ids": ordered_ids})
         except Exception as exc:
-            raise QueueError(f"managed queue operation requires controller socket: {exc}") from exc
+            # Preserve structured error payloads (code/path/recovery hint)
+            # instead of flattening them to prose.
+            detail = json.dumps(exc.as_dict(), sort_keys=True) if hasattr(exc, "as_dict") else str(exc)
+            raise QueueError(f"managed queue operation requires controller socket: {detail}") from exc
 
 
 _READ_ONLY_TOOLS = (

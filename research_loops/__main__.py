@@ -42,6 +42,21 @@ def _parse_research_policy(raw: str | None) -> dict | None:
     return value
 
 
+def _stations_topic_view(result: Any, topic_id: str | None) -> Any:
+    """Reduce a stations --show result to one topic's work-ledger record.
+
+    Client-side so it works identically over the socket and against a local
+    supervisor read; the operator's routine per-topic inspection then never
+    needs raw access to the protected state directory."""
+    if not topic_id:
+        return result
+    work = (result or {}).get("topic_work") if isinstance(result, dict) else None
+    record = (work or {}).get(topic_id)
+    if record is None:
+        raise QueueError(f"stations view has no work record for topic: {topic_id}")
+    return {"revision": result.get("revision"), "topic_id": topic_id, "topic_work": record}
+
+
 def _default_root() -> Path:
     """The queue root to use when --root is omitted.
 
@@ -142,6 +157,10 @@ def build_parser() -> argparse.ArgumentParser:
     stations.add_argument("--active-count", type=int)
     stations.add_argument("--intervals", help="five comma-separated nondecreasing seconds")
     stations.add_argument("--file", help="full station/checkpoint update JSON")
+    stations.add_argument(
+        "--topic", dest="topic_filter",
+        help="with --show: reduce the view to one topic's work-ledger record "
+        "(counts, ordinals, review state, active episode)")
     profile_register = sub.add_parser("profile-register", help="register a managed executable profile")
     profile_register.add_argument("--file", required=True)
     migrate = sub.add_parser("control-migrate", help="explicitly validate or apply legacy queue migration")
@@ -447,6 +466,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--output",
         help="output Markdown path (default: parent of queue root/STATUS.md)",
     )
+    dashboard.add_argument(
+        "--full", action="store_true",
+        help="include history/telemetry (paused/completed enumerations, "
+        "economics, ledger aggregates, metric definitions); the default is "
+        "the compact actionable status page",
+    )
 
     doctor = sub.add_parser(
         "doctor",
@@ -521,6 +546,8 @@ def main(argv: list[str] | None = None) -> int:
             elif args.action == "stations":
                 payload = {} if args.show else (load_json(Path(args.file)) if args.file else {"station_ids": [int(x) for x in args.ids.split(",")] if args.ids else None, "all_stations": args.all, "primary_profile": args.primary, "secondary_profile": args.secondary, "intervals": [int(x) for x in args.intervals.split(",")] if args.intervals else None, "active_count": args.active_count})
                 result = controller_call(remote_socket, "stations.show" if args.show else "stations.update", payload)
+                if args.show:
+                    result = _stations_topic_view(result, args.topic_filter)
             elif args.action == "profile-register":
                 result = controller_call(remote_socket, "profiles.register", load_json(Path(args.file)))
             else:
@@ -559,6 +586,8 @@ def main(argv: list[str] | None = None) -> int:
             elif args.action == "stations":
                 payload = load_json(Path(args.file)) if args.file else ({} if args.show else {"station_ids": [int(x) for x in args.ids.split(",")] if args.ids else None, "all_stations": args.all, "primary_profile": args.primary, "secondary_profile": args.secondary, "intervals": [int(x) for x in args.intervals.split(",")] if args.intervals else None, "active_count": args.active_count})
                 result = controller_call(socket_path, "stations.show" if args.show else "stations.update", payload)
+                if args.show:
+                    result = _stations_topic_view(result, args.topic_filter)
             elif args.action == "profile-register":
                 result = controller_call(socket_path, "profiles.register", load_json(Path(args.file)))
             else:
@@ -588,7 +617,11 @@ def main(argv: list[str] | None = None) -> int:
             elif args.action == "stations":
                 from .control_store import ControlScheduler
                 if args.show:
-                    state = control.snapshot(); emit({"revision": state["revision"], "configuration": state["configuration"], "effective_checkpoint_profiles": control.effective_checkpoint_profiles(state), "assignments": state["work"].get("assignments", {})})
+                    # Same shape as the socket route (topic_work included) so
+                    # the documented view is transport-independent.
+                    state = control.snapshot()
+                    view = {"revision": state["revision"], "configuration": state["configuration"], "effective_checkpoint_profiles": control.effective_checkpoint_profiles(state), "assignments": state["work"].get("assignments", {}), "topic_work": state["work"].get("topics", {})}
+                    emit(_stations_topic_view(view, args.topic_filter))
                 else:
                     ids = [int(x) for x in args.ids.split(",")] if args.ids else None
                     intervals = [int(x) for x in args.intervals.split(",")] if args.intervals else None
@@ -871,7 +904,7 @@ def main(argv: list[str] | None = None) -> int:
             dashboard_state["station_profiles"] = store.stations.snapshot()["stations"]
             if store.control is not None:
                 dashboard_state["managed_control"] = store.control.snapshot()
-            content = render_dashboard(dashboard_state, ledger.events())
+            content = render_dashboard(dashboard_state, ledger.events(), full=args.full)
             written = write_dashboard(output, content)
             emit({"output": str(written)})
         elif args.action == "doctor":

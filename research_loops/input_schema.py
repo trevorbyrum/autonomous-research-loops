@@ -73,19 +73,6 @@ def integer(value: Any, path: str, *, minimum: int | None = None) -> int:
     return value
 
 
-def validate_envelope(value: Any, *, editable: bool) -> Mapping[str, Any]:
-    required = {"schema_version", "request_id"}
-    if editable:
-        required.add("expected_revision")
-    obj = strict_object(value, path="$", required=required, optional=set(value.keys()) - required if isinstance(value, Mapping) else set())
-    if integer(obj["schema_version"], "$.schema_version") != 1:
-        _error("$.schema_version", "supported schema version 1", obj["schema_version"], "schema version is unsupported", "use schema_version 1")
-    nonempty_string(obj["request_id"], "$.request_id")
-    if editable:
-        integer(obj["expected_revision"], "$.expected_revision", minimum=0)
-    return obj
-
-
 DECISION_ACTIONS = frozenset(("approve", "approve_with_edits", "reject"))
 
 

@@ -149,7 +149,13 @@ def validate_control_protection(root: Path, *, agent_uid: int, agent_gid: int) -
     """Check replacement as well as file-write permissions before granting a lease."""
     state_dir = root / "state"
     if state_dir.is_symlink() or stat.S_IMODE(state_dir.stat().st_mode) & 0o077:
-        raise AccessError("managed state directory must be a real supervisor-owned directory with mode 0700")
+        # POSIX ACL grants surface here as unexpected group bits (a directory
+        # shows e.g. 0750 with a "+" flag). Operators read through the
+        # controller socket instead — never widen this directory.
+        raise AccessError(
+            "managed state directory must be a real supervisor-owned directory with mode 0700 "
+            f"(found {stat.S_IMODE(state_dir.stat().st_mode):04o}; an ACL grant also causes this — "
+            "fix with: setfacl -b state/ && chmod 0700 state/)")
     paths = [root, state_dir, Path(__file__).resolve()]
     for path in paths:
         if path.is_symlink():

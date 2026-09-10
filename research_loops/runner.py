@@ -961,6 +961,20 @@ class LoopRunner:
                 record["handoff_reason"] = None
                 record["draining"] = False
                 self.store.scheduler.reconcile_state(state)
+            # The unobservable child may still be alive: kill its control
+            # authority now rather than waiting for the lease record to be
+            # naturally superseded (the revocation gap from the 2026-09-09
+            # review — revoke_lease_capabilities was written but never wired).
+            for capability in state["work"].get("capabilities", {}).values():
+                if isinstance(capability, dict) and capability.get("lease_id") == lease.get("lease_id"):
+                    capability["revoked"] = True
+            run = state["work"].get("runs", {}).get(lease.get("lease_id"))
+            if isinstance(run, dict) and run.get("state") == "started":
+                # An orphaned lease is an OBSERVED terminal outcome for the
+                # ledger; a run stays "started" only for genuine losses.
+                run.update(state="finished", ended_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                           finalized_without_accounting=True, orphaned=True)
+                run.setdefault("accepted", False)
         self.store._managed_leases.pop(item_id, None)
         self.ledger.append({"type": "managed_orphan_parked", "item_id": item_id, "worker": self.worker,
                             "execution_kind": kind, "lease_id": lease.get("lease_id"), "note": reason})
@@ -1305,6 +1319,7 @@ class LoopRunner:
                 child_env[env_name] = ("1" if value else "0") if as_bool else str(value)
             else:
                 child_env.pop(env_name, None)
+        spawned_process: subprocess.Popen[Any] | None = None
         try:
             with log_path.open("w", encoding="utf-8") as log:
                 popen_identity: dict[str, Any] = {}
@@ -1314,7 +1329,7 @@ class LoopRunner:
                         self.store.root, item_id, managed_lease["lease_id"]
                     )
                     child_env.update(additions)
-                process = subprocess.Popen(
+                process = spawned_process = subprocess.Popen(
                     item["command"],
                     cwd=item["cwd"],
                     stdout=log,
@@ -1359,6 +1374,33 @@ class LoopRunner:
             except OSError:
                 pass
             control_outcome = None
+        except Exception as exc:
+            # prepare_agent_launch (managed identity/permission preconditions)
+            # raises ControlStoreError/AccessError, which the OSError clause
+            # above never caught — the run then crashed out of run_once with a
+            # claimed lease (2026-09-09 review). The conversion is scoped to
+            # the PRE-SPAWN boundary (Astra F5): a store error after a
+            # successful spawn must never release the lease with the child
+            # still alive, so the child is terminated first and the run is
+            # classified from its real exit like any other failure.
+            from .control_store import ControlStoreError
+            if not isinstance(exc, ControlStoreError):
+                raise
+            control_outcome = None
+            if spawned_process is not None:
+                self._terminate(spawned_process)
+                exit_code = spawned_process.wait()
+                startup_error = None
+                self.ledger.append({"type": "managed_store_error_mid_run", "item_id": item_id,
+                                    "worker": self.worker, "error_class": type(exc).__name__,
+                                    "error": str(exc)[:2000]})
+            else:
+                exit_code = 127
+                startup_error = f"managed launch precondition failed: {exc}"
+                try:
+                    log_path.write_text(startup_error + "\n", encoding="utf-8")
+                except OSError:
+                    pass
 
         duration = time.monotonic() - started
         try:
@@ -1703,6 +1745,7 @@ class LoopRunner:
                                                        "execution_kind": "intake_discovery"}
             item["status"] = "running"
             context = {"topic_id": draft["topic_id"], "draft_revision": draft["draft_revision"], "draft_hash": draft["draft_hash"], "mode": draft["mode"], "request_id": lease_id}
+        error = None
         try:
             adapter = self.discovery_adapter
             if adapter is None:
@@ -1722,7 +1765,10 @@ class LoopRunner:
             IntakeService(control, self.store.root / "topics", actor="intake-worker").record_discovery_result(payload)
             outcome = "awaiting_operator"
         except Exception as exc:
-            outcome = "needs_attention"; error = str(exc)
+            outcome = "needs_attention"
+            # Keep the structured diagnostic (code/path/recovery hint) when
+            # the failure carries one instead of flattening it to prose.
+            error = json.dumps(exc.as_dict(), sort_keys=True) if hasattr(exc, "as_dict") else str(exc)
         with control.transaction(actor="intake-worker") as state:
             work = state["work"]; work.setdefault("intake_assignment", {}).pop("current", None)
             entry = next(item for item in state["queue"]["items"] if item["id"] == f"discovery.{context['topic_id']}" )
@@ -1730,43 +1776,124 @@ class LoopRunner:
             if outcome != "awaiting_operator": entry["last_error"] = error
         return {"item_id": "discovery." + context["topic_id"], "outcome": outcome, "execution_kind": "intake_discovery"}
 
+    # Bounded automatic recovery for checkpoint INFRASTRUCTURE failures:
+    # each failure schedules the topic's next claim this far out, and after
+    # this many consecutive infra failures the episode parks needs_attention
+    # for the operator instead of retrying (Astra F4 — retry_wait with no
+    # pacing spun continuously on persistent permission failures).
+    CHECKPOINT_INFRA_RETRY_SECONDS = 600
+    CHECKPOINT_INFRA_RETRY_LIMIT = 3
+
     def _run_managed_checkpoint(self, item: dict[str, Any], lease: dict[str, Any]) -> dict[str, Any]:
         assert self.store.control is not None and self.store.scheduler is not None
-        topic = self.store.control.snapshot()["work"]["topics"].get(item["id"], {})
-        episode_id = topic.get("active_episode_id")
-        if not isinstance(episode_id, str):
-            self.store.scheduler.finalize(lease["station_id"], lease["lease_id"])
-            raise QueueError("checkpoint lease has no active episode")
-        episode = start_checkpoint(self.store.control, episode_id=episode_id,
-                                   station_id=lease["station_id"], run_id=lease["lease_id"])
-        adapter = self.checkpoint_adapter
-        if adapter is None:
-            # The resolved primary profile is the production checkpoint
-            # adapter authority.  It receives the structured task over stdin;
-            # no ordinary topic command or user-supplied JSON executable is
-            # consulted.
-            primary = episode.get("resolved_agent_pair", {}).get("primary")
-            if not isinstance(primary, dict) or not isinstance(primary.get("executable"), str) or not isinstance(primary.get("argv"), list):
-                raise QueueError("checkpoint primary profile is not a runnable registered adapter")
-            adapter = RegisteredCheckpointAdapter(primary, timeout_seconds=3600)
-        context = {**episode, "run_id": lease["lease_id"], "topic": dict(item)}
-        if isinstance(adapter, (SubprocessCheckpointAdapter, RegisteredCheckpointAdapter)):
-            from .access import prepare_agent_launch
-            additions, identity = prepare_agent_launch(self.store.root, item["id"], lease["lease_id"])
-            context.update({"_launch_env": additions, "_popen_identity": identity, "_cwd": item["cwd"]})
+        from .control_store import ControlRevisionConflict, ControlStoreError
+
+        outcome: dict[str, Any] | None = None
+        episode_id: str | None = None
+        finalize_error: Exception | None = None
         try:
-            result = self._run_blocking_with_watchdog(lambda: CheckpointRunner(adapter).run(context))
-            final = finish_checkpoint(self.store.control, result)
-            self.store.scheduler.finalize(lease["station_id"], lease["lease_id"])
-            return {"item_id": item["id"], "outcome": final["state"], "exit_code": 0, "execution_kind": "checkpoint"}
-        except (CheckpointError, ValueError) as exc:
+            try:
+                # Inside the guarded region (Astra F3): a transient snapshot
+                # failure must still finalize the already-claimed lease.
+                topic = self.store.control.snapshot()["work"]["topics"].get(item["id"], {})
+                episode_id = topic.get("active_episode_id")
+                if not isinstance(episode_id, str):
+                    raise QueueError("checkpoint lease has no active episode")
+                episode = start_checkpoint(self.store.control, episode_id=episode_id,
+                                           station_id=lease["station_id"], run_id=lease["lease_id"])
+                adapter = self.checkpoint_adapter
+                if adapter is None:
+                    # The resolved primary profile is the production checkpoint
+                    # adapter authority.  It receives the structured task over
+                    # stdin; no ordinary topic command or user-supplied JSON
+                    # executable is consulted.
+                    primary = episode.get("resolved_agent_pair", {}).get("primary")
+                    if not isinstance(primary, dict) or not isinstance(primary.get("executable"), str) or not isinstance(primary.get("argv"), list):
+                        raise QueueError("checkpoint primary profile is not a runnable registered adapter")
+                    adapter = RegisteredCheckpointAdapter(primary, timeout_seconds=3600)
+                context = {**episode, "run_id": lease["lease_id"], "topic": dict(item)}
+                if isinstance(adapter, (SubprocessCheckpointAdapter, RegisteredCheckpointAdapter)):
+                    from .access import prepare_agent_launch
+                    additions, identity = prepare_agent_launch(self.store.root, item["id"], lease["lease_id"])
+                    context.update({"_launch_env": additions, "_popen_identity": identity, "_cwd": item["cwd"]})
+                result = self._run_blocking_with_watchdog(lambda: CheckpointRunner(adapter).run(context))
+                final = finish_checkpoint(self.store.control, result)
+                outcome = {"item_id": item["id"], "outcome": final["state"], "exit_code": 0, "execution_kind": "checkpoint"}
+            except Exception as exc:
+                outcome = self._park_failed_checkpoint(item, lease, episode_id, exc)
+        finally:
+            # Unconditional station release (Astra F3): only a stale-lease
+            # conflict may be ignored — it PROVES this lease is no longer
+            # current. Any other failure is recorded and reported below;
+            # claiming a clean release that did not verifiably happen is how
+            # wedged stations hide.
+            try:
+                self.store.scheduler.finalize(lease["station_id"], lease["lease_id"])
+            except ControlRevisionConflict:
+                pass
+            except Exception as exc:  # ControlStoreError, raw sqlite3 errors
+                finalize_error = exc
+        if finalize_error is not None:
+            self.ledger.append({"type": "checkpoint_finalize_failed", "item_id": item["id"],
+                                "worker": self.worker, "lease_id": lease["lease_id"],
+                                "error_class": type(finalize_error).__name__,
+                                "error": str(finalize_error)[:2000]})
+            outcome = {**(outcome or {"item_id": item["id"], "execution_kind": "checkpoint"}),
+                       "outcome": "needs_attention", "exit_code": 78,
+                       "finalize_error": str(finalize_error)[:500]}
+        assert outcome is not None
+        return outcome
+
+    def _park_failed_checkpoint(self, item: dict[str, Any], lease: dict[str, Any],
+                                episode_id: str | None, exc: Exception) -> dict[str, Any]:
+        """Park a failed checkpoint run; the caller's finally frees the station.
+
+        Infra-class failures (store/filesystem permissions, provider spawn or
+        timeout — including causes wrapped by adapters as CheckpointResultError,
+        Astra F6) return to retry_wait with a retry deadline and a bounded
+        consecutive-failure count; semantic failures and exhausted retries park
+        needs_attention for the operator.
+        """
+        import sqlite3
+        from .control_store import ControlStoreError
+
+        infra_types = (ControlStoreError, OSError, subprocess.TimeoutExpired, sqlite3.Error)
+        infra = isinstance(exc, infra_types) or isinstance(exc.__cause__, infra_types)
+        state_name = "retry_wait" if infra else "needs_attention"
+        try:
             with self.store.control.transaction(actor="runner", operation_id=f"checkpoint-failed:{lease['lease_id']}") as state:
-                current = state["work"]["episodes"].get(episode_id)
+                if episode_id is None:
+                    # The entry snapshot failed before the episode was
+                    # resolved (Astra R2-3): resolve it from THIS working
+                    # transaction so the parked state and failure count are
+                    # real, not just a topic-level pacing deadline.
+                    topic_probe = state["work"].get("topics", {}).get(item["id"])
+                    if isinstance(topic_probe, dict) and isinstance(topic_probe.get("active_episode_id"), str):
+                        episode_id = topic_probe["active_episode_id"]
+                current = state["work"].get("episodes", {}).get(episode_id) if episode_id else None
                 if isinstance(current, dict):
-                    current["state"] = "needs_attention"; current["failure_reason"] = str(exc)
-                    state["work"]["topics"][item["id"]]["review_state"] = "needs_attention"
-            self.store.scheduler.finalize(lease["station_id"], lease["lease_id"])
-            return {"item_id": item["id"], "outcome": "needs_attention", "exit_code": 78, "execution_kind": "checkpoint"}
+                    if infra:
+                        failures = int(current.get("infra_failure_count", 0)) + 1
+                        current["infra_failure_count"] = failures
+                        if failures >= self.CHECKPOINT_INFRA_RETRY_LIMIT:
+                            state_name = "needs_attention"
+                    current["state"] = state_name
+                    current["failure_reason"] = str(exc)
+                topic_record = state["work"].get("topics", {}).get(item["id"])
+                if isinstance(topic_record, dict):
+                    topic_record["review_state"] = "checkpoint_due" if state_name == "retry_wait" else "needs_attention"
+                    if state_name == "retry_wait":
+                        next_at = datetime.now(timezone.utc) + timedelta(seconds=self.CHECKPOINT_INFRA_RETRY_SECONDS)
+                        topic_record["retry_not_before"] = next_at.isoformat().replace("+00:00", "Z")
+        except Exception:
+            # Parking is best-effort (a raw store error must not replace the
+            # original diagnosis); the caller's finally still frees the station.
+            pass
+        self.ledger.append({"type": "checkpoint_failed", "item_id": item["id"],
+                            "worker": self.worker, "episode_id": episode_id,
+                            "episode_state": state_name,
+                            "error_class": type(exc).__name__, "error": str(exc)[:2000]})
+        return {"item_id": item["id"], "outcome": state_name, "exit_code": 78, "execution_kind": "checkpoint"}
 
     # Completion hooks are given generous room (a corpus ingest embeds every
     # record) but never unbounded: a hung hook must not wedge the worker.
@@ -1852,6 +1979,16 @@ class LoopRunner:
                 try:
                     self._sweep_old_logs()
                     self.ledger.sweep_old_events()
+                    if self.store.control is not None:
+                        # Bounded audit history mirrors the events-ledger
+                        # retention; runtime-map compaction happens inside
+                        # finalize transactions, this covers the DB table.
+                        self.store.control.sweep_audit()
                 except OSError:
+                    pass
+                except Exception:
+                    # Housekeeping must never take the worker down; the
+                    # audit sweep failing (locked/corrupt DB) surfaces
+                    # through ordinary operations, not here.
                     pass
                 next_sweep = time.monotonic() + self.SWEEP_INTERVAL_SECONDS
