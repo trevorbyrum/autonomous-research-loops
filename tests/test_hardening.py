@@ -116,8 +116,78 @@ class CheckpointFailureTests(HardeningFixture):
         state = self.control.snapshot()
         episode = next(iter(state["work"]["episodes"].values()))
         self.assertEqual(episode["state"], "retry_wait")
-        self.assertEqual(state["work"]["topics"]["example"]["review_state"], "checkpoint_due")
+        self.assertEqual(episode["infra_failure_count"], 1)
+        topic = state["work"]["topics"]["example"]
+        self.assertEqual(topic["review_state"], "checkpoint_due")
+        # Bounded pacing (Astra F4): the topic cannot spin-reclaim instantly.
+        self.assertIsInstance(topic.get("retry_not_before"), str)
         self.assertIsNone(state["work"]["assignments"]["1"]["current"])  # lease freed
+        self.assertIsNone(self.scheduler.claim(1))  # paced, not immediately reclaimable
+        # The claim-time run record is finished, not falsely in-progress.
+        run = state["work"]["runs"][lease["lease_id"]]
+        self.assertEqual(run["state"], "finished")
+        self.assertTrue(run["finalized_without_accounting"])
+
+    def test_persistent_infra_failures_park_needs_attention_after_the_limit(self):
+        def adapter(_context):
+            raise ControlStoreError("still broken")
+
+        runner = self._runner(adapter)
+        for attempt in range(LoopRunner.CHECKPOINT_INFRA_RETRY_LIMIT):
+            with self.control.transaction() as state:
+                state["work"]["topics"].get("example", {}).pop("retry_not_before", None)
+            lease = self.scheduler.claim(1) if attempt else self._checkpoint_lease()
+            self.assertIsNotNone(lease, attempt)
+            runner._run_managed_checkpoint(self._item(), lease)
+        state = self.control.snapshot()
+        episode = next(iter(state["work"]["episodes"].values()))
+        self.assertEqual(episode["state"], "needs_attention")
+        self.assertEqual(state["work"]["topics"]["example"]["review_state"], "needs_attention")
+
+    def test_missing_episode_parks_instead_of_raising_with_a_claimed_lease(self):
+        lease = self._checkpoint_lease()
+        with self.control.transaction() as state:
+            state["work"]["topics"]["example"]["active_episode_id"] = None
+        outcome = self._runner(lambda _c: {})._run_managed_checkpoint(self._item(), lease)
+        self.assertEqual(outcome["outcome"], "needs_attention")
+        self.assertIsNone(self.control.snapshot()["work"]["assignments"]["1"]["current"])
+
+    def test_wrapped_infrastructure_causes_classify_as_infra(self):
+        lease = self._checkpoint_lease()
+
+        def adapter(_context):
+            # Production adapters wrap provider timeouts as
+            # CheckpointResultError (a ValueError); the cause must decide.
+            raise CheckpointResultError("checkpoint provider launch failed") from subprocess.TimeoutExpired("codex", 900)
+
+        outcome = self._runner(adapter)._run_managed_checkpoint(self._item(), lease)
+        self.assertEqual(outcome["outcome"], "retry_wait")
+
+    def test_unverified_finalize_never_reports_clean_success(self):
+        lease = self._checkpoint_lease()
+
+        def adapter(context):
+            return {"episode_id": context["episode_id"], "run_id": context["run_id"],
+                    "inventory_version": context["inventory_version"],
+                    "trigger_ids": context["trigger_ids"], "complete": False,
+                    "findings": [], "limitations": ["stub"],
+                    "protocol_evidence_refs": [], "proposals": []}
+
+        runner = self._runner(adapter)
+        original = self.scheduler.finalize
+        from research_loops.control_store import ControlValidationError
+
+        def broken_finalize(*_args, **_kwargs):
+            raise ControlValidationError("finalize validation failed")
+
+        self.store_scheduler_patch = runner.store.scheduler.finalize = broken_finalize
+        try:
+            outcome = runner._run_managed_checkpoint(self._item(), lease)
+        finally:
+            runner.store.scheduler.finalize = original
+        self.assertEqual(outcome["outcome"], "needs_attention")
+        self.assertEqual(outcome["exit_code"], 78)
+        self.assertIn("finalize_error", outcome)
 
     def test_semantic_failure_parks_needs_attention_and_still_frees_the_station(self):
         lease = self._checkpoint_lease()
@@ -193,6 +263,74 @@ class InfraRefundTests(HardeningFixture):
         self.assertEqual(self._budgets(episode_id)["delegate_launches"], before)
 
 
+class RepairRetryTests(HardeningFixture):
+    def test_infra_failed_repair_exchange_is_retryable_semantic_is_not(self):
+        lease = self._checkpoint_lease()
+        episode_id = self.control.snapshot()["work"]["topics"]["example"]["active_episode_id"]
+        from research_loops.checkpoints.service import start_checkpoint
+        start_checkpoint(self.control, episode_id=episode_id, station_id=1, run_id=lease["lease_id"])
+        reserve_delegate_launch(self.control, episode_id=episode_id, lease_id=lease["lease_id"],
+                                invocation_id="counter-1", role="counter")
+        record_delegate_result(self.control, episode_id=episode_id, invocation_id="counter-1", exit_code=0)
+        reserve_delegate_launch(self.control, episode_id=episode_id, lease_id=lease["lease_id"],
+                                invocation_id="repair-1", role="repair_response")
+        record_delegate_result(self.control, episode_id=episode_id, invocation_id="repair-1", exit_code=124)
+        episode = self.control.snapshot()["work"]["episodes"][episode_id]
+        self.assertEqual(episode["remaining_budgets"]["repair_exchanges"], 1)  # restored
+        self.assertIsNone(episode.get("repair_phase"))
+        # The same uncompleted exchange retries with a fresh id...
+        reserve_delegate_launch(self.control, episode_id=episode_id, lease_id=lease["lease_id"],
+                                invocation_id="repair-1-retry", role="repair_response")
+        # ...and a SEMANTIC failure ends it for good.
+        record_delegate_result(self.control, episode_id=episode_id, invocation_id="repair-1-retry", exit_code=78)
+        episode = self.control.snapshot()["work"]["episodes"][episode_id]
+        self.assertEqual(episode["remaining_budgets"]["repair_exchanges"], 0)
+        self.assertEqual(episode["repair_phase"], "response_failed")
+        with self.assertRaises(CheckpointError):
+            reserve_delegate_launch(self.control, episode_id=episode_id, lease_id=lease["lease_id"],
+                                    invocation_id="repair-2", role="repair_response")
+
+    def test_legacy_episode_without_refund_budget_is_backfilled_at_start(self):
+        lease = self._checkpoint_lease()
+        episode_id = self.control.snapshot()["work"]["topics"]["example"]["active_episode_id"]
+        with self.control.transaction() as state:
+            state["work"]["episodes"][episode_id]["remaining_budgets"].pop("infra_refunds_remaining")
+        from research_loops.checkpoints.service import start_checkpoint
+        episode = start_checkpoint(self.control, episode_id=episode_id, station_id=1, run_id=lease["lease_id"])
+        self.assertEqual(episode["remaining_budgets"]["infra_refunds_remaining"], 2)
+
+
+class ClaudeLauncherTests(unittest.TestCase):
+    def _launch(self, stdout_body: str):
+        import sys
+        with tempfile.TemporaryDirectory() as temporary:
+            stub = Path(temporary) / "fake-claude"
+            stub.write_text(f"#!{sys.executable}\nimport sys\nsys.stdout.write({stdout_body!r})\n")
+            stub.chmod(0o755)
+            from research_loops.checkpoints.runner import launch_registered_profile
+            profile = {"id": "c", "adapter": "claude", "model": "m", "executable": str(stub), "argv": []}
+            return launch_registered_profile(profile, "prompt", cwd=temporary, env=None,
+                                             identity=None, timeout_seconds=30)
+
+    def test_malformed_output_is_semantic_78_with_diagnostic(self):
+        code, text = self._launch("not json")
+        self.assertEqual(code, 78)
+        self.assertIn("not json", text)
+        code, text = self._launch('{"result": 42}')
+        self.assertEqual(code, 78)
+        self.assertIn("result", text)
+
+    def test_truly_empty_output_stays_empty_for_infra_classification(self):
+        code, text = self._launch("")
+        self.assertEqual(code, 0)
+        self.assertEqual(text, "")
+
+    def test_valid_result_text_passes_through(self):
+        code, text = self._launch('{"result": "{\\"ok\\": true}"}')
+        self.assertEqual(code, 0)
+        self.assertEqual(text, '{"ok": true}')
+
+
 class LedgerBoundsTests(HardeningFixture):
     def test_compaction_bounds_runs_and_preserves_started_and_referenced(self):
         with self.control.transaction() as state:
@@ -204,9 +342,34 @@ class LedgerBoundsTests(HardeningFixture):
                                    "state": "started", "started_at": "2025-01-01T00:00:00Z"}
             removed = self.control.compact(state)
         self.assertGreaterEqual(removed["runs"], 24)
-        runs = self.control.snapshot()["work"]["runs"]
+        state = self.control.snapshot()
+        runs = state["work"]["runs"]
         self.assertIn("run-started", runs)  # a lost attempt is never silently pruned
         self.assertNotIn("run-0000", runs)
+        self.assertGreaterEqual(state["work"]["pruned_runs"]["example"], 24)
+
+    def test_pruned_run_replay_cannot_recount_but_fresh_claims_still_account(self):
+        with self.control.transaction() as state:
+            state["work"]["runs"]["run-old"] = {"run_id": "run-old", "topic_id": "example",
+                                                "state": "finished", "started_at": "2026-01-01T00:00:00Z"}
+            state["work"].setdefault("pruned_runs", {})["example"] = 1
+            del state["work"]["runs"]["run-old"]
+        # Replay of a pruned historical id: no record, no current lease.
+        with self.assertRaisesRegex(CheckpointError, "pruned historical"):
+            accept_research_completion(self.control, topic_id="example", run_id="run-old",
+                                       station_id=1, inventory_version="inventory-1", accepted=True)
+        # A genuine fresh claim still accounts normally after pruning.
+        lease = self.scheduler.claim(1)
+        result = accept_research_completion(self.control, topic_id="example", run_id=lease["lease_id"],
+                                            station_id=1, inventory_version="inventory-1", accepted=True)
+        self.assertEqual(result["ordinal"], 1)
+
+    def test_finished_record_without_accounting_is_never_recounted(self):
+        lease = self.scheduler.claim(1)
+        self.scheduler.finalize(1, lease["lease_id"])  # finished, no accounting
+        with self.assertRaisesRegex(CheckpointError, "refusing to recount"):
+            accept_research_completion(self.control, topic_id="example", run_id=lease["lease_id"],
+                                       station_id=1, inventory_version="inventory-1", accepted=True)
 
     def test_validate_state_rejects_corrupted_runtime_maps(self):
         for name in ("intake_drafts", "decision_publications", "state_operations", "capabilities"):

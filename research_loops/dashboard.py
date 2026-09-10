@@ -374,8 +374,9 @@ def render_dashboard(
             f"**Checkpoints:** {_cell(checkpoint_summary)} · "
             f"**Review agents:** {_cell(pair.get('primary_profile', '—'))} / {_cell(pair.get('secondary_profile', '—'))}"])
         # Keep actionable review holds visible without dumping the work ledger.
-        topics = work.get("topics") or {}
-        episodes = work.get("episodes") or {}
+        # Type-guarded (Astra F11): a malformed map must degrade, not crash.
+        topics = work.get("topics") if isinstance(work.get("topics"), dict) else {}
+        episodes = work.get("episodes") if isinstance(work.get("episodes"), dict) else {}
         for item in items:
             if not isinstance(item, dict) or item.get("lane") == "intake" or item.get("status") in {"paused", "completed"}:
                 continue
@@ -404,7 +405,8 @@ def render_dashboard(
         ledger = managed_topics.get(item.get("id")) if isinstance(managed_topics, dict) else None
         if isinstance(ledger, dict):
             episode_id = ledger.get("active_episode_id")
-            episode = (managed.get("work", {}).get("episodes", {}).get(episode_id) if isinstance(managed, dict) and episode_id else None)
+            episodes_map = managed.get("work", {}).get("episodes") if isinstance(managed, dict) and isinstance(managed.get("work"), dict) else None
+            episode = episodes_map.get(episode_id) if isinstance(episodes_map, dict) and episode_id else None
             if isinstance(episode, dict) and episode.get("state") in {"due", "checkpoint_running", "retry_wait", "awaiting_operator", "publishing_decision"}:
                 iteration = f"Checkpoint after {ledger.get('research_iterations_completed', '—')}"
             else:
@@ -437,6 +439,19 @@ def render_dashboard(
     lines.extend(["", "## Active topics", "", _table(active_headers, active_rows)])
     if isinstance(managed, dict):
         work = managed.get("work") if isinstance(managed.get("work"), dict) else {}
+        proposals_map = work.get("proposals")
+        topics_map = work.get("topics")
+        # The status page must render precisely when control state most needs
+        # inspection (Astra F11): malformed maps become a visible notice, not
+        # an AttributeError that stops the refresh.
+        malformed = [name for name, value in (("proposals", proposals_map), ("topics", topics_map))
+                     if value is not None and not isinstance(value, dict)]
+        if malformed:
+            lines.extend(["", "> **Managed work data malformed/unavailable** "
+                              f"({', '.join(malformed)}): the sections below may be incomplete; "
+                              "inspect the controller state directly."])
+        proposals_map = proposals_map if isinstance(proposals_map, dict) else {}
+        topics_map = topics_map if isinstance(topics_map, dict) else {}
         titles = {str(item.get("id")): str(item.get("title") or item.get("id"))
                   for item in items if isinstance(item, dict)}
         # THE actionable section: proposals a checkpoint issued that only the
@@ -444,7 +459,7 @@ def render_dashboard(
         pending_rows = [[titles.get(str(p.get("topic_id")), str(p.get("topic_id"))),
                          p.get("proposal_id"), p.get("kind"), p.get("proposal_version"),
                          p.get("episode_id")]
-                        for p in (work.get("proposals") or {}).values()
+                        for p in proposals_map.values()
                         if isinstance(p, dict) and p.get("status") == "pending"]
         lines.extend(["", "## Pending checkpoint proposals (awaiting your decision)", "",
                       _table(["Topic", "Proposal", "Kind", "Version", "Episode"], pending_rows)])
@@ -457,7 +472,7 @@ def render_dashboard(
         debt_rows = [[titles.get(topic_id, topic_id),
                       (by_id.get(topic_id) or {}).get("status") or "unknown",
                       record.get("research_iterations_completed", "unavailable")]
-                     for topic_id, record in (work.get("topics") or {}).items()
+                     for topic_id, record in topics_map.items()
                      if isinstance(record, dict) and record.get("review_state") == "checkpoint_due"]
         if debt_rows:
             lines.extend(["", f"## Checkpoint debt ({len(debt_rows)} topic(s) owe a review)", "",

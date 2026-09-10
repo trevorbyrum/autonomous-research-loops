@@ -31,6 +31,13 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+# Serializes decision publication for stores without a filesystem root (test
+# doubles); real stores use the state/publication.lock flock, which also
+# covers multiple processes.
+import threading
+_PUBLICATION_PROCESS_LOCK = threading.Lock()
+
+
 def _require_string(value: Any, field: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise CheckpointError("VALIDATION_ERROR", f"{field} must be a non-empty string", field)
@@ -141,8 +148,21 @@ def accept_research_completion(
                 raise CheckpointError("DUPLICATE_REQUEST_CONFLICT", "run_id belongs to another topic", "run_id")
             if "accounting_result" in prior:
                 return copy.deepcopy(prior["accounting_result"])
+            if prior.get("state") not in (None, "started"):
+                # Finished-without-accounting is an inconsistent record, not
+                # an in-progress run — never recount it (Astra qualification
+                # on the missing-accounting_result branch).
+                raise CheckpointError("REVISION_CONFLICT", "run record already finished without accounting; refusing to recount", "run_id")
             # A claim-time "started" record (written in the lease-minting
             # transaction) is this same run in progress, not a replay.
+        elif int(work.get("pruned_runs", {}).get(topic_id, 0)):
+            # Once compaction has pruned ANY of this topic's runs, an unknown
+            # run_id could be a pruned historical run replaying (Astra F10):
+            # counting requires the run's own current lease as authority.
+            from ..access import current_lease
+            if current_lease(state, topic_id=topic_id, lease_id=run_id) is None:
+                raise CheckpointError("REVISION_CONFLICT",
+                                      "run_id has no record and no current lease; a pruned historical run cannot be recounted", "run_id")
         topic = _topic(work, topic_id, inventory_version)
         run = dict(prior) if prior is not None else {}
         run.update({"run_id": run_id, "topic_id": topic_id, "station_id": station_id,
@@ -229,6 +249,9 @@ def start_checkpoint(control: Any, *, episode_id: str, station_id: int, run_id: 
         if not isinstance(episode, dict): raise CheckpointError("VALIDATION_ERROR", "unknown episode_id", "episode_id")
         if episode.get("state") == "checkpoint_running" and episode.get("run_id") == run_id: return copy.deepcopy(episode)
         if episode.get("state") not in {"due", "retry_wait"}: raise CheckpointError("AWAITING_OPERATOR", f"episode is {episode.get('state')}", "episode_id")
+        # Episodes created before the refund budget existed get the documented
+        # cap on their next start instead of silently having none.
+        episode.setdefault("remaining_budgets", {}).setdefault("infra_refunds_remaining", 2)
         resolver = getattr(control, "resolve_checkpoint_pair", None)
         if episode.get("resolved_agent_pair") is None:
             if not callable(resolver):
@@ -347,6 +370,10 @@ def record_delegate_result(control: Any, *, episode_id: str, invocation_id: str,
         record = episode["invocations"][invocation_id]
         if record.get("status") != "reserved": return copy.deepcopy(record)
         record.update({"status": "finished", "exit_code": _require_int(exit_code, "exit_code"), "output_reference": output_reference, "finished_at": _now()})
+        if delegate_result is not None:
+            record["delegate_result"] = copy.deepcopy(dict(delegate_result))
+        if record.get("role") == "repair_response": episode["repair_phase"] = "response_finished" if exit_code == 0 else "response_failed"
+        elif record.get("role") == "repair_assessment": episode["repair_phase"] = "assessment_finished" if exit_code == 0 else "assessment_failed"
         if exit_code in _INFRA_EXIT_CODES:
             budgets = episode.setdefault("remaining_budgets", {})
             refunds = int(budgets.get("infra_refunds_remaining", 0))
@@ -354,10 +381,15 @@ def record_delegate_result(control: Any, *, episode_id: str, invocation_id: str,
                 budgets["infra_refunds_remaining"] = refunds - 1
                 budgets["delegate_launches"] = int(budgets.get("delegate_launches", 0)) + 1
                 record["infra_refund"] = True
-        if delegate_result is not None:
-            record["delegate_result"] = copy.deepcopy(dict(delegate_result))
-        if record.get("role") == "repair_response": episode["repair_phase"] = "response_finished" if exit_code == 0 else "response_failed"
-        elif record.get("role") == "repair_assessment": episode["repair_phase"] = "assessment_finished" if exit_code == 0 else "assessment_failed"
+                # An infrastructure failure never obtained the exchange it
+                # reserved (Astra F7): restore the repair state machine so
+                # the SAME uncompleted exchange/assessment can retry — this
+                # authorizes a retry, never a second successful exchange.
+                if record.get("role") == "repair_response":
+                    budgets["repair_exchanges"] = int(budgets.get("repair_exchanges", 0)) + 1
+                    episode["repair_phase"] = None
+                elif record.get("role") == "repair_assessment":
+                    episode["repair_phase"] = "response_finished"
         return copy.deepcopy(record)
 
 
@@ -368,20 +400,50 @@ def _delegate_ledger_append(topic_root: Path, identity: Mapping[str, Any], recor
     is the reserved invocation record in the controller store); a launch line
     with no usage line reads as an unobserved outcome, which is accurate here
     — checkpoint delegate calls have no usage capture. Never fails the call.
+
+    SECURITY (Astra F1, 2026-09-10): this append runs under the SUPERVISOR
+    identity inside an agent-owned logs directory. Every path component is
+    opened O_NOFOLLOW via directory descriptors and ownership is transferred
+    on the opened inode (fchown), so an agent-planted symlink — for the file,
+    its parent, or a swap between create and chown — can never redirect a
+    supervisor write or ownership change to a protected file.
     """
-    path = topic_root / "logs" / "delegate-usage.jsonl"
+    import stat as stat_module
+
+    root_fd = logs_fd = file_fd = None
     try:
-        if not path.parent.is_dir():
+        root_fd = os.open(topic_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            logs_fd = os.open("logs", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root_fd)
+        except FileNotFoundError:
             return
-        existed = path.exists()
-        with open(path, "a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record, separators=(",", ":")) + "\n")
-        if not existed and isinstance(identity.get("user"), int) and isinstance(identity.get("group"), int):
-            # The controller must not leave a root-owned ledger the agent's
-            # own delegate wrapper can no longer append to.
-            os.chown(path, identity["user"], identity["group"])
+        try:
+            file_fd = os.open("delegate-usage.jsonl", os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW,
+                              dir_fd=logs_fd)
+            created = False
+        except FileNotFoundError:
+            file_fd = os.open("delegate-usage.jsonl",
+                              os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                              0o644, dir_fd=logs_fd)
+            created = True
+        info = os.fstat(file_fd)
+        if not stat_module.S_ISREG(info.st_mode):
+            return
+        os.write(file_fd, (json.dumps(record, separators=(",", ":")) + "\n").encode("utf-8"))
+        if created and isinstance(identity.get("user"), int) and isinstance(identity.get("group"), int):
+            # On the INODE we hold open — the agent's own delegate wrapper
+            # must be able to keep appending, and a pathname chown could be
+            # redirected by a post-create swap.
+            os.fchown(file_fd, identity["user"], identity["group"])
     except OSError:
         pass
+    finally:
+        for fd in (file_fd, logs_fd, root_fd):
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
 
 
 def execute_delegate(control: Any, *, episode_id: str, lease_id: str, invocation_id: str, role: str, prompt: str,
@@ -630,11 +692,29 @@ def apply_decision(control: Any, payload: Mapping[str, Any], *, actor: str = "op
 def _complete_decision_publication(control: Any, request_id: str, actor: str, publisher: Any) -> dict[str, Any]:
     # Publication runs OUTSIDE any store transaction (2026-09-09 review:
     # holding BEGIN IMMEDIATE across contract-file fsyncs stalled every other
-    # controller operation — claims, finalize, operator queries). Concurrent
-    # duplicate callers stay safe without the lock: the prepared bundle is
-    # deterministic, _atomic_write replaces with identical content, the
-    # durable journal covers crashes, and the commit transaction below
-    # re-checks for an earlier winner before writing the decision.
+    # controller operation — claims, finalize, operator queries) but INSIDE a
+    # dedicated publication lock (Astra F2, 2026-09-10): without it, a
+    # delayed duplicate caller could re-apply an already-committed prepared
+    # bundle over evidence written AFTER the winner released the topic, and
+    # pathname cleanup could remove a later publication's journal. Under the
+    # lock, the snapshot below always sees the winner's committed decision
+    # and returns without touching the filesystem.
+    import fcntl
+
+    root = getattr(control, "root", None)
+    if root is None:
+        # In-memory doubles have no filesystem root; a process-wide lock
+        # still serializes every caller they can have.
+        with _PUBLICATION_PROCESS_LOCK:
+            return _complete_decision_publication_locked(control, request_id, actor, publisher)
+    lock_path = Path(root) / "state" / "publication.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "a+", encoding="utf-8") as publication_lock:
+        fcntl.flock(publication_lock.fileno(), fcntl.LOCK_EX)
+        return _complete_decision_publication_locked(control, request_id, actor, publisher)
+
+
+def _complete_decision_publication_locked(control: Any, request_id: str, actor: str, publisher: Any) -> dict[str, Any]:
     snapshot = control.snapshot()
     intent = snapshot["work"].get("decision_publications", {}).get(request_id)
     if not isinstance(intent, dict):

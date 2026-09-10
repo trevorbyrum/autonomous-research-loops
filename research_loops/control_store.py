@@ -89,7 +89,7 @@ RUNTIME_WORK_MAPS = (
     "intake_requests", "intake_publications", "intake_assignment",
     "decision_publications", "auto_gap_intents", "auto_gap_promotions",
     "state_operations", "checkpoint_recovery_requests",
-    "proposal_reset_requests",
+    "proposal_reset_requests", "pruned_runs",
 )
 
 # Retention bounds applied by ControlStore.compact(). Governance records
@@ -347,19 +347,33 @@ class ControlStore:
         removed = {"runs": 0, "state_operations": 0, "capabilities": 0}
         runs = work.get("runs")
         if isinstance(runs, dict):
-            referenced = {episode.get("run_id") for episode in work.get("episodes", {}).values()
-                          if isinstance(episode, dict)}
+            referenced: set = set()
+            for episode in work.get("episodes", {}).values():
+                if not isinstance(episode, dict):
+                    continue
+                referenced.add(episode.get("run_id"))
+                # The full reference graph, not just the live run pointer:
+                # historical attempts and recorded results stay resolvable.
+                for attempt in episode.get("attempt_history", []) or []:
+                    if isinstance(attempt, dict):
+                        referenced.add(attempt.get("run_id"))
+                referenced.update((episode.get("results") or {}).keys())
             by_topic: dict[str, list[str]] = {}
             for run_id, run in runs.items():
                 if isinstance(run, dict):
                     by_topic.setdefault(str(run.get("topic_id")), []).append(run_id)
-            for run_ids in by_topic.values():
+            pruned_counts = work.setdefault("pruned_runs", {})
+            for topic_id, run_ids in by_topic.items():
                 run_ids.sort(key=lambda rid: str(runs[rid].get("started_at") or runs[rid].get("ended_at") or ""))
                 for run_id in run_ids[:-RUNS_RETAINED_PER_TOPIC]:
                     run = runs[run_id]
                     if run.get("state") != "started" and run_id not in referenced:
                         del runs[run_id]
                         removed["runs"] += 1
+                        # The durable tombstone: once any run is pruned, an
+                        # unknown run_id needs a current lease to be counted
+                        # (checkpoints.service.accept_research_completion).
+                        pruned_counts[topic_id] = int(pruned_counts.get(topic_id, 0)) + 1
         operations = work.get("state_operations")
         if isinstance(operations, dict) and len(operations) > STATE_OPERATIONS_RETAINED:
             # Oldest first by recorded timestamp (legacy records without one
@@ -373,14 +387,17 @@ class ControlStore:
             removed["state_operations"] = len(excess)
         capabilities = work.get("capabilities")
         if isinstance(capabilities, dict):
-            current_lease_ids = set()
+            # (lease_id, generation) pairs, not IDs alone: a stale record for
+            # a superseded generation of a still-current lease id is dead too.
+            current_leases = set()
             for record in [*work.get("assignments", {}).values(), work.get("intake_assignment", {})]:
                 lease = record.get("current") if isinstance(record, dict) else None
                 if isinstance(lease, dict) and lease.get("lease_id"):
-                    current_lease_ids.add(lease["lease_id"])
+                    current_leases.add((lease["lease_id"], lease.get("lease_generation")))
             for digest in [d for d, c in capabilities.items()
                            if isinstance(c, dict)
-                           and (c.get("revoked") or c.get("lease_id") not in current_lease_ids)]:
+                           and (c.get("revoked")
+                                or (c.get("lease_id"), c.get("lease_generation")) not in current_leases)]:
                 del capabilities[digest]
                 removed["capabilities"] += 1
         return removed
@@ -690,6 +707,17 @@ class ControlScheduler:
             record["current"] = None
             record["handoff_reason"] = None
             record["draining"] = False
+            # Every finalized execution finishes its claim-time run record
+            # (Astra F9): checkpoints and failed attempts are OBSERVED
+            # terminal outcomes, not lost ones — only a genuinely unobserved
+            # crash leaves a run "started", and compaction preserves exactly
+            # those. Scientific acceptance stays the accounting call's job.
+            run = state["work"].get("runs", {}).get(lease_id)
+            if isinstance(run, dict) and run.get("state") == "started":
+                run["state"] = "finished"
+                run["ended_at"] = utc_now()
+                run.setdefault("accepted", False)
+                run["finalized_without_accounting"] = "accounting_result" not in run
             # A finalized lease's capabilities die with it, proactively —
             # authenticate_capability would fail closed anyway once the lease
             # is gone, but revocation removes even the residual window and

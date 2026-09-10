@@ -68,6 +68,15 @@ class StatusPageTests(unittest.TestCase):
             self.assertIn(section, full)
         self.assertIn("_Generated file.", full)
 
+    def test_malformed_work_maps_render_a_notice_instead_of_crashing(self):
+        state = managed_state()
+        state["managed_control"]["work"]["proposals"] = ["bad"]
+        state["managed_control"]["work"]["topics"] = ["also bad"]
+        page = render_dashboard(state, [])
+        self.assertIn("Managed work data malformed/unavailable", page)
+        self.assertIn("proposals, topics", page)
+        self.assertIn("## Pending checkpoint proposals", page)
+
     def test_empty_pending_section_still_renders(self):
         state = managed_state()
         state["managed_control"]["work"]["proposals"] = {}

@@ -62,8 +62,10 @@ def _usage_record(usage_path: Path, model: str) -> dict | None:
     detail = models.get(model) if isinstance(models, dict) else None
     if isinstance(detail, dict):
         for key, value in detail.items():
-            if isinstance(value, (int, float)):
-                record[key] = int(value)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                # Keep fractional values (e.g. a cost field) exact; only
+                # integral counts collapse to int.
+                record[key] = int(value) if float(value).is_integer() else float(value)
     return record
 
 
@@ -103,6 +105,7 @@ def main(argv: list[str]) -> int:
         completed = subprocess.run(
             [str(runner), str(topic_path), prompt_path],
             env=env, capture_output=True, text=True,
+            encoding="utf-8", errors="replace",
         )
         rc = completed.returncode
         # Preserve the adapter's stdout/stderr contract verbatim for the caller.

@@ -146,13 +146,21 @@ def launch_registered_profile(profile: Mapping[str, Any], prompt: str, *, cwd: A
                                  check=False, cwd=cwd, env=env, **identity)
         if process.returncode != 0:
             text = process.stderr
+        elif not process.stdout.strip():
+            text = ""  # a truly empty response — callers classify infrastructure
         else:
+            # NONEMPTY malformed output is a semantic failure and must keep
+            # its diagnostic (Astra F8): mapping it to an empty response
+            # would misclassify it as refundable infrastructure and destroy
+            # the evidence needed to tell garbage from absence.
             try:
                 envelope = json.loads(process.stdout)
             except json.JSONDecodeError:
-                envelope = None
+                return 78, "claude response is not a JSON envelope: " + process.stdout[-1000:]
             result = envelope.get("result") if isinstance(envelope, dict) else None
-            text = result if isinstance(result, str) else ""
+            if not isinstance(result, str) or not result.strip():
+                return 78, "claude envelope lacks result text: " + process.stdout[-1000:]
+            text = result
     elif adapter == "hermes":
         process = subprocess.run([executable, "-p", str(profile.get("id") or "default"), "-z", prompt, *argv],
                                  text=True, capture_output=True, timeout=timeout_seconds,

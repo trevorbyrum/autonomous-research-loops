@@ -84,6 +84,11 @@ profile, and records the launch before it starts. Do not run delegate provider C
 directly or invent an invocation ID/role outside this interface.
 
 Use the exact ID at `delegate_invocation_ids[role]` in the supplied context.
+One exception: if a role's call just failed for INFRASTRUCTURE reasons (broker
+exit 70 or 124 — timeout, spawn failure, or empty response) and the broker
+reports a refunded launch slot, you may retry that same uncompleted role once
+with the same ID plus a `-retry` suffix; the broker enforces every budget, and
+a semantically invalid result (exit 78) is never retryable this way.
 `--lease-id` is the supplied `run_id`; `--episode-id` is `episode_id`.
 The `counter` invocation is required even for a zero-candidate/no-change review,
 unless the controller supplies a valid `prior_review_reference` and the final
