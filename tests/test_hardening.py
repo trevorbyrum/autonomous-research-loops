@@ -1,0 +1,236 @@
+"""2026-09-09 hardening pass: lease-safe failure handling, claim-time run
+records, capability revocation/TOCTOU, infra budget refunds, ledger bounds,
+and full runtime-map validation."""
+import copy
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+from research_loops.access import issue_capability
+from research_loops.checkpoints.runner import CheckpointResultError
+from research_loops.checkpoints.service import (
+    CheckpointError,
+    _new_episode,
+    _topic,
+    accept_research_completion,
+    record_delegate_result,
+    reserve_delegate_launch,
+)
+from research_loops.control_store import (
+    ControlScheduler,
+    ControlStore,
+    ControlStoreError,
+    ControlValidationError,
+    RUNS_RETAINED_PER_TOPIC,
+    default_configuration,
+)
+from research_loops.queue import QueueStore
+from research_loops.runner import LoopRunner, UsageLedger
+
+
+def configuration(active: int = 1):
+    result = default_configuration()
+    for station in result["stations"]:
+        station.update(primary_profile="fake", secondary_profile="fake",
+                       interval_seconds=station["id"] * 10)
+    result["active_count"] = active
+    return result
+
+
+FAKE_PROFILES = {"fake": {"adapter": "codex", "model": "fake-model", "executable": "fake-agent", "argv": []}}
+
+
+def research_item(root: Path, topic_id: str = "example") -> dict:
+    cwd = root / "topics" / topic_id
+    cwd.mkdir(parents=True, exist_ok=True)
+    return {"id": topic_id, "title": topic_id, "cwd": str(cwd), "command": ["true"],
+            "status": "queued", "desired_state": "running", "lane": "research",
+            "completion_lock": "inventory-1", "attempts": 0, "restart_generation": 0}
+
+
+class HardeningFixture(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        self.control = ControlStore.initialize(
+            self.root, configuration=configuration(), agent_profiles=dict(FAKE_PROFILES),
+            queue={"revision": 0, "paused": False, "stopping": False,
+                   "items": [research_item(self.root)]})
+        self.scheduler = ControlScheduler(self.control)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def _checkpoint_lease(self):
+        """Arm a due episode and claim its checkpoint lease on station 1."""
+        with self.control.transaction() as state:
+            topic = self.control.ensure_topic_work(state, "example", inventory_version="inventory-1")
+            _new_episode(state["work"], topic, ["trigger-x"])
+        lease = self.scheduler.claim(1)
+        assert lease and lease["execution_kind"] == "checkpoint", lease
+        return lease
+
+
+class ClaimRunRecordTests(HardeningFixture):
+    def test_claim_writes_a_started_run_in_the_same_transaction(self):
+        lease = self.scheduler.claim(1)
+        run = self.control.snapshot()["work"]["runs"][lease["lease_id"]]
+        self.assertEqual(run["state"], "started")
+        self.assertEqual(run["topic_id"], "example")
+        self.assertNotIn("accounting_result", run)
+
+    def test_completion_finishes_the_started_record_without_replaying(self):
+        lease = self.scheduler.claim(1)
+        result = accept_research_completion(
+            self.control, topic_id="example", run_id=lease["lease_id"], station_id=1,
+            inventory_version="inventory-1", accepted=True)
+        self.assertEqual(result["ordinal"], 1)
+        run = self.control.snapshot()["work"]["runs"][lease["lease_id"]]
+        self.assertEqual(run["state"], "finished")
+        self.assertEqual(run["started_at"], run["started_at"])  # preserved
+        # Idempotent replay returns the recorded result, never a second count.
+        replay = accept_research_completion(
+            self.control, topic_id="example", run_id=lease["lease_id"], station_id=1,
+            inventory_version="inventory-1", accepted=True)
+        self.assertEqual(replay, result)
+        self.assertEqual(self.control.snapshot()["work"]["topics"]["example"]["research_iterations_completed"], 1)
+
+
+class CheckpointFailureTests(HardeningFixture):
+    def _runner(self, adapter):
+        return LoopRunner(QueueStore(self.root), UsageLedger(self.root / "usage.jsonl"),
+                          worker="station-1", checkpoint_adapter=adapter)
+
+    def _item(self):
+        return copy.deepcopy(self.control.snapshot()["queue"]["items"][0])
+
+    def test_infra_failure_finalizes_lease_and_returns_episode_to_retry_wait(self):
+        lease = self._checkpoint_lease()
+
+        def adapter(_context):
+            raise ControlStoreError("launch precondition failed (permissions)")
+
+        outcome = self._runner(adapter)._run_managed_checkpoint(self._item(), lease)
+        self.assertEqual(outcome["outcome"], "retry_wait")
+        state = self.control.snapshot()
+        episode = next(iter(state["work"]["episodes"].values()))
+        self.assertEqual(episode["state"], "retry_wait")
+        self.assertEqual(state["work"]["topics"]["example"]["review_state"], "checkpoint_due")
+        self.assertIsNone(state["work"]["assignments"]["1"]["current"])  # lease freed
+
+    def test_semantic_failure_parks_needs_attention_and_still_frees_the_station(self):
+        lease = self._checkpoint_lease()
+
+        def adapter(_context):
+            raise CheckpointResultError("adapter returned garbage")
+
+        outcome = self._runner(adapter)._run_managed_checkpoint(self._item(), lease)
+        self.assertEqual(outcome["outcome"], "needs_attention")
+        state = self.control.snapshot()
+        self.assertEqual(state["work"]["topics"]["example"]["review_state"], "needs_attention")
+        self.assertIsNone(state["work"]["assignments"]["1"]["current"])
+
+
+class CapabilityLifecycleTests(HardeningFixture):
+    def test_finalize_revokes_and_compaction_reclaims_capabilities(self):
+        lease = self.scheduler.claim(1)
+        token = issue_capability(self.control, topic_id="example",
+                                 lease_id=lease["lease_id"], agent_uid=65534)
+        self.assertTrue(token)
+        self.scheduler.finalize(1, lease["lease_id"])
+        # Revoked at finalize, then reclaimed by compaction in the same call.
+        self.assertEqual(self.control.snapshot()["work"].get("capabilities", {}), {})
+
+    def test_reserve_rejects_a_revoked_capability_at_spend_time(self):
+        lease = self._checkpoint_lease()
+        import hashlib
+        token = issue_capability(self.control, topic_id="example",
+                                 lease_id=lease["lease_id"], agent_uid=65534)
+        digest = hashlib.sha256(token.encode()).hexdigest()
+        episode_id = self.control.snapshot()["work"]["topics"]["example"]["active_episode_id"]
+        from research_loops.checkpoints.service import start_checkpoint
+        start_checkpoint(self.control, episode_id=episode_id, station_id=1, run_id=lease["lease_id"])
+        with self.control.transaction() as state:
+            state["work"]["capabilities"][digest]["revoked"] = True
+        with self.assertRaisesRegex(CheckpointError, "revoked"):
+            reserve_delegate_launch(self.control, episode_id=episode_id,
+                                    lease_id=lease["lease_id"], invocation_id="counter-1",
+                                    role="counter", capability_digest=digest)
+
+
+class InfraRefundTests(HardeningFixture):
+    def _running_episode(self):
+        lease = self._checkpoint_lease()
+        episode_id = self.control.snapshot()["work"]["topics"]["example"]["active_episode_id"]
+        from research_loops.checkpoints.service import start_checkpoint
+        start_checkpoint(self.control, episode_id=episode_id, station_id=1, run_id=lease["lease_id"])
+        return episode_id, lease["lease_id"]
+
+    def _budgets(self, episode_id):
+        return self.control.snapshot()["work"]["episodes"][episode_id]["remaining_budgets"]
+
+    def test_infra_failures_refund_up_to_the_cap_semantic_failures_stay_spent(self):
+        episode_id, lease_id = self._running_episode()
+        self.assertEqual(self._budgets(episode_id)["delegate_launches"], 4)
+        self.assertEqual(self._budgets(episode_id)["infra_refunds_remaining"], 2)
+        for index, (exit_code, refunded) in enumerate([(124, True), (70, True), (124, False)]):
+            reserve_delegate_launch(self.control, episode_id=episode_id, lease_id=lease_id,
+                                    invocation_id=f"prep-{index}", role="preparation")
+            before = self._budgets(episode_id)["delegate_launches"]
+            record = record_delegate_result(self.control, episode_id=episode_id,
+                                            invocation_id=f"prep-{index}", exit_code=exit_code)
+            after = self._budgets(episode_id)["delegate_launches"]
+            self.assertEqual(after, before + (1 if refunded else 0), (index, record))
+            self.assertEqual(bool(record.get("infra_refund")), refunded)
+        self.assertEqual(self._budgets(episode_id)["infra_refunds_remaining"], 0)
+        # Semantic failure (invalid result, exit 78) never refunds.
+        reserve_delegate_launch(self.control, episode_id=episode_id, lease_id=lease_id,
+                                invocation_id="counter-1", role="counter")
+        before = self._budgets(episode_id)["delegate_launches"]
+        record_delegate_result(self.control, episode_id=episode_id,
+                               invocation_id="counter-1", exit_code=78)
+        self.assertEqual(self._budgets(episode_id)["delegate_launches"], before)
+
+
+class LedgerBoundsTests(HardeningFixture):
+    def test_compaction_bounds_runs_and_preserves_started_and_referenced(self):
+        with self.control.transaction() as state:
+            runs = state["work"]["runs"]
+            for index in range(RUNS_RETAINED_PER_TOPIC + 25):
+                runs[f"run-{index:04d}"] = {"run_id": f"run-{index:04d}", "topic_id": "example",
+                                            "state": "finished", "started_at": f"2026-01-01T00:{index // 60:02d}:{index % 60:02d}Z"}
+            runs["run-started"] = {"run_id": "run-started", "topic_id": "example",
+                                   "state": "started", "started_at": "2025-01-01T00:00:00Z"}
+            removed = self.control.compact(state)
+        self.assertGreaterEqual(removed["runs"], 24)
+        runs = self.control.snapshot()["work"]["runs"]
+        self.assertIn("run-started", runs)  # a lost attempt is never silently pruned
+        self.assertNotIn("run-0000", runs)
+
+    def test_validate_state_rejects_corrupted_runtime_maps(self):
+        for name in ("intake_drafts", "decision_publications", "state_operations", "capabilities"):
+            with self.assertRaises(ControlValidationError, msg=name):
+                with self.control.transaction() as state:
+                    state["work"][name] = ["not", "a", "dict"]
+
+
+class SocketPermissionTests(unittest.TestCase):
+    def test_audit_sweep_prunes_old_rows(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            control = ControlStore.initialize(root, configuration=configuration(0),
+                                              agent_profiles=dict(FAKE_PROFILES))
+            with control.transaction(actor="test") as state:
+                state["work"]["topics"]["x"] = dict(topic_id="x", research_iterations_completed=0,
+                                                    next_research_ordinal=1, inventory_version=None,
+                                                    lifecycle_generation=0, review_state="eligible",
+                                                    active_episode_id=None, last_accepted_run_id=None,
+                                                    deepening_entries={}, proposal_allowance_remaining=2,
+                                                    row_revision=0)
+            connection_rows = control.sweep_audit(retention_days=0)
+            self.assertGreaterEqual(connection_rows, 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

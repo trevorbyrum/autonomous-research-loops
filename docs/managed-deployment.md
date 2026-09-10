@@ -56,7 +56,15 @@ superseded leases cannot authorize another state write.
    The IDs above are examples; use the actual provisioned accounts. Operators and
    execution UID must differ, and the execution UID cannot be root. The socket's
    parent directory must belong to the controller and be traversable by clients,
-   without group/world write access.
+   without group/world write access. A root controller sets the socket itself to
+   mode 0660 owned by `agent_gid` — add operator accounts to that group so they
+   can connect (peer-credential auth still decides what they may do).
+
+   **Stale-socket recovery:** the controller refuses to replace an existing
+   socket file (bind fails with "address already in use"). If the controller is
+   verifiably inactive (`systemctl status research-loops-controller`) and the
+   socket file remains, remove exactly that file and start the service; never
+   remove it while a controller is running.
 5. As the trusted supervisor, run:
 
    ```sh

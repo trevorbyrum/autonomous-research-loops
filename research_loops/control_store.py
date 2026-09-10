@@ -15,7 +15,7 @@ import os
 import tempfile
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -60,6 +60,44 @@ def default_configuration() -> dict[str, Any]:
 
 def default_work() -> dict[str, Any]:
     return {"topics": {}, "runs": {}, "triggers": {}, "episodes": {}, "proposals": {}, "decisions": {}, "assignments": {}, "capabilities": {}}
+
+
+def default_topic_record(topic_id: str, inventory_version: str | None = None) -> dict[str, Any]:
+    """The ONE topic work-record shape (2026-09-09 review: two creators had
+    drifted — the checkpoint service's copy carried fields this one lacked)."""
+    return {
+        "topic_id": topic_id,
+        "research_iterations_completed": 0,
+        "next_research_ordinal": 1,
+        "inventory_version": inventory_version,
+        "lifecycle_generation": 0,
+        "review_state": "eligible",
+        "active_episode_id": None,
+        "last_accepted_run_id": None,
+        "deepening_entries": {},
+        "proposal_allowance_remaining": 2,
+        "row_revision": 0,
+    }
+
+
+# Every work-ledger map any runtime path setdefault()s. _validate_state checks
+# them all: a corrupted non-dict must fail the transaction, not the next
+# reader (2026-09-09 review — only the default_work() keys were validated).
+RUNTIME_WORK_MAPS = (
+    "topics", "runs", "triggers", "episodes", "proposals", "decisions",
+    "assignments", "capabilities", "agent_profiles", "intake_drafts",
+    "intake_requests", "intake_publications", "intake_assignment",
+    "decision_publications", "auto_gap_intents", "auto_gap_promotions",
+    "state_operations", "checkpoint_recovery_requests",
+    "proposal_reset_requests",
+)
+
+# Retention bounds applied by ControlStore.compact(). Governance records
+# (topics, episodes, proposals, decisions, publications, intake history) are
+# deliberately never pruned.
+RUNS_RETAINED_PER_TOPIC = 200
+STATE_OPERATIONS_RETAINED = 500
+AUDIT_RETENTION_DAYS = 90
 
 
 def _is_int(value: Any) -> bool:
@@ -225,7 +263,7 @@ class ControlStore:
             raise ControlValidationError("queue.items must be a list")
         if not isinstance(state["work"], dict):
             raise ControlValidationError("work must be an object")
-        for key in default_work():
+        for key in RUNTIME_WORK_MAPS:
             if not isinstance(state["work"].get(key, {}), dict):
                 raise ControlValidationError(f"work.{key} must be an object")
         profiles = state["work"].get("agent_profiles", {})
@@ -292,8 +330,71 @@ class ControlStore:
     def ensure_topic_work(state: dict[str, Any], topic_id: str, *, inventory_version: str | None = None) -> dict[str, Any]:
         topics = state["work"].setdefault("topics", {})
         if topic_id not in topics:
-            topics[topic_id] = {"topic_id": topic_id, "research_iterations_completed": 0, "next_research_ordinal": 1, "inventory_version": inventory_version, "lifecycle_generation": 0, "review_state": "eligible", "active_episode_id": None, "last_accepted_run_id": None, "row_revision": 0}
+            topics[topic_id] = default_topic_record(topic_id, inventory_version)
         return topics[topic_id]
+
+    def compact(self, state: dict[str, Any]) -> dict[str, int]:
+        """Bound the runtime ledgers inside an already-open transaction.
+
+        Every transaction rewrites the whole logical state, so unbounded
+        per-run/per-operation records degrade every future operation
+        (2026-09-09 review). Only mechanical runtime records are pruned;
+        governance records are never touched. run_ids are lease UUIDs and are
+        never reused, so dropping an old finished run cannot enable an
+        idempotent-replay path.
+        """
+        work = state.get("work") or {}
+        removed = {"runs": 0, "state_operations": 0, "capabilities": 0}
+        runs = work.get("runs")
+        if isinstance(runs, dict):
+            referenced = {episode.get("run_id") for episode in work.get("episodes", {}).values()
+                          if isinstance(episode, dict)}
+            by_topic: dict[str, list[str]] = {}
+            for run_id, run in runs.items():
+                if isinstance(run, dict):
+                    by_topic.setdefault(str(run.get("topic_id")), []).append(run_id)
+            for run_ids in by_topic.values():
+                run_ids.sort(key=lambda rid: str(runs[rid].get("started_at") or runs[rid].get("ended_at") or ""))
+                for run_id in run_ids[:-RUNS_RETAINED_PER_TOPIC]:
+                    run = runs[run_id]
+                    if run.get("state") != "started" and run_id not in referenced:
+                        del runs[run_id]
+                        removed["runs"] += 1
+        operations = work.get("state_operations")
+        if isinstance(operations, dict) and len(operations) > STATE_OPERATIONS_RETAINED:
+            # Oldest first by recorded timestamp (legacy records without one
+            # sort first and are pruned before anything dated).
+            def _recorded_at(key: str) -> str:
+                value = operations[key]
+                return str(value.get("at") or "") if isinstance(value, dict) else ""
+            excess = sorted(operations, key=_recorded_at)[: len(operations) - STATE_OPERATIONS_RETAINED]
+            for key in excess:
+                del operations[key]
+            removed["state_operations"] = len(excess)
+        capabilities = work.get("capabilities")
+        if isinstance(capabilities, dict):
+            current_lease_ids = set()
+            for record in [*work.get("assignments", {}).values(), work.get("intake_assignment", {})]:
+                lease = record.get("current") if isinstance(record, dict) else None
+                if isinstance(lease, dict) and lease.get("lease_id"):
+                    current_lease_ids.add(lease["lease_id"])
+            for digest in [d for d, c in capabilities.items()
+                           if isinstance(c, dict)
+                           and (c.get("revoked") or c.get("lease_id") not in current_lease_ids)]:
+                del capabilities[digest]
+                removed["capabilities"] += 1
+        return removed
+
+    def sweep_audit(self, *, retention_days: int = AUDIT_RETENTION_DAYS) -> int:
+        """Prune audit rows older than the retention window (own connection)."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat().replace("+00:00", "Z")
+        connection = self._connect()
+        try:
+            cursor = connection.execute("DELETE FROM control_audit WHERE timestamp < ?", (cutoff,))
+            connection.commit()
+            return cursor.rowcount
+        finally:
+            connection.close()
 
     @classmethod
     def migration_report(cls, root: str | Path) -> dict[str, Any]:
@@ -459,18 +560,6 @@ class ControlScheduler:
             self.reconcile_state(state)
             return {"order": list(ordered_ids), "queue_revision": queue["revision"], "assignments": copy.deepcopy(state["work"].get("assignments", {}))}
 
-    @staticmethod
-    def _eligible(item: dict[str, Any], topic: dict[str, Any], now: str) -> bool:
-        if item.get("status", "queued") not in {"queued", "backoff", "running"} or item.get("desired_state", "running") != "running":
-            return False
-        if topic.get("review_state") in {"awaiting_operator", "publishing_decision", "checkpoint_running", "retry_wait", "needs_attention"}:
-            return False
-        for field in ("retry_not_before", "pacing_ready_at"):
-            value = topic.get(field)
-            if isinstance(value, str) and value > now:
-                return False
-        return True
-
     def reconcile_state(self, state: dict[str, Any], *, now: str | None = None) -> dict[str, Any]:
         now = now or utc_now()
         configuration, queue, work = state["configuration"], state["queue"], state["work"]
@@ -500,7 +589,6 @@ class ControlScheduler:
             # its assigned station, allowing lower stations their own ranks.
             if item.get("status", "queued") in {"queued", "backoff", "running"} and item.get("desired_state", "running") == "running" and topic.get("review_state") not in {"awaiting_operator", "publishing_decision", "checkpoint_running", "retry_wait", "needs_attention"}:
                 candidates.append(item)
-        desired_topics: set[str] = set()
         iterator = iter(candidates)
         for station_id in range(1, MAX_STATIONS + 1):
             record = assignments.setdefault(str(station_id), {})
@@ -518,7 +606,6 @@ class ControlScheduler:
             topic = topics[item["id"]]
             kind = "checkpoint" if topic.get("review_state") == "checkpoint_due" else "research"
             record["desired"] = {"topic_id": item["id"], "execution_kind": kind}
-            desired_topics.add(item["id"])
             if current and current.get("topic_id") != item["id"]:
                 record["handoff_reason"] = "priority_reconciliation"
         return assignments
@@ -560,6 +647,19 @@ class ControlScheduler:
             record["lease_generation"] = lease["lease_generation"]
             record["current"] = lease
             record["draining"] = False
+            # The run exists in the work ledger from the same transaction that
+            # mints its lease: a crash between claim and completion accounting
+            # previously left queue-visible state with no ledger counterpart
+            # (2026-09-09 review). accept_research_completion finishes this
+            # record; a permanently "started" run is visible evidence of a
+            # lost attempt, never silence.
+            state["work"].setdefault("runs", {})[lease["lease_id"]] = {
+                "run_id": lease["lease_id"], "topic_id": topic_id,
+                "station_id": station_id, "lease_generation": lease["lease_generation"],
+                "execution_kind": lease["execution_kind"], "state": "started",
+                "started_at": now, "accepted": None, "ordinal": None,
+                "completion_accounted": False,
+            }
             claimed = copy.deepcopy(lease)
             claimed["_resumed"] = False
             return claimed
@@ -590,6 +690,14 @@ class ControlScheduler:
             record["current"] = None
             record["handoff_reason"] = None
             record["draining"] = False
+            # A finalized lease's capabilities die with it, proactively —
+            # authenticate_capability would fail closed anyway once the lease
+            # is gone, but revocation removes even the residual window and
+            # lets compaction reclaim the records.
+            for capability in state["work"].get("capabilities", {}).values():
+                if isinstance(capability, dict) and capability.get("lease_id") == lease_id:
+                    capability["revoked"] = True
+            self.control.compact(state)
             self.reconcile_state(state)
             return copy.deepcopy(state["work"]["assignments"].get(str(station_id), {}))
 

@@ -14,10 +14,10 @@ from typing import Any, Mapping
 from .service import execute_delegate
 
 
-def dispatch(control: Any, params: Mapping[str, Any]) -> dict[str, Any]:
+def dispatch(control: Any, params: Mapping[str, Any], *, capability_digest: str | None = None) -> dict[str, Any]:
     if not isinstance(params, Mapping) or set(params) != {"episode_id", "lease_id", "invocation_id", "role", "prompt"}:
         raise ValueError("checkpoint.delegate requires episode_id, lease_id, invocation_id, role, prompt")
-    return execute_delegate(control, **dict(params))
+    return execute_delegate(control, **dict(params), capability_digest=capability_digest)
 
 
 def main(argv: list[str] | None = None) -> int:

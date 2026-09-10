@@ -56,7 +56,20 @@ class IntakeService:
             requests[brief["request_id"]] = {"fingerprint": fingerprint, "result": None}
         if not draft_dir.exists(): topic_authoring.new_topic(brief["topic_id"], title=brief["title"], brief_text=brief["operator_brief"], dest=self.topics_root, mode=brief["mode"])
         digest = draft_hash(draft_dir)
-        if (self.topics_root.parent / "state" / "access.json").exists():
+        # A permission-restricted probe must fail loudly, never silently
+        # downgrade a managed intake to an unprotected draft: Path.exists()
+        # returns False on EACCES, so stat and re-raise instead.
+        import os as _os
+        try:
+            _os.stat(self.topics_root.parent / "state" / "access.json")
+            protected = True
+        except FileNotFoundError:
+            protected = False
+        except PermissionError as exc:
+            raise InterfaceError("VALIDATION_ERROR", "$", "readable managed access configuration",
+                                 "permission denied", "cannot determine managed protection state",
+                                 "run intake through the controller (socket) or as the supervisor") from exc
+        if protected:
             from .access import load_access
             from .deployment import protect_topic
             access = load_access(self.topics_root.parent)

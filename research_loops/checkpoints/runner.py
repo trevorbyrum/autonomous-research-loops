@@ -113,6 +113,56 @@ class SubprocessCheckpointAdapter:
             raise CheckpointResultError("checkpoint adapter did not emit a JSON result") from exc
 
 
+def launch_registered_profile(profile: Mapping[str, Any], prompt: str, *, cwd: Any, env: Any,
+                              identity: Mapping[str, Any] | None, timeout_seconds: int) -> tuple[int, str]:
+    """Run one registered provider profile to completion: (exit_code, text).
+
+    The single launch implementation for every consumer of a registered
+    profile (the checkpoint adapter below and the controller's delegate
+    broker) — the 2026-09-09 review found two divergent copies. OSError and
+    TimeoutExpired propagate: callers classify infrastructure failures
+    differently. ValueError means an unsupported adapter name.
+    """
+    import os
+    adapter, executable, model = profile["adapter"], profile["executable"], profile["model"]
+    argv = list(profile.get("argv") or [])
+    identity = dict(identity or {})
+    if adapter == "codex":
+        with tempfile.NamedTemporaryFile(prefix="checkpoint-provider-", delete=False) as output:
+            output_path = output.name
+        if isinstance(identity.get("user"), int) and isinstance(identity.get("group"), int):
+            os.chown(output_path, identity["user"], identity["group"])
+            os.chmod(output_path, 0o600)
+        try:
+            process = subprocess.run([executable, "exec", "-m", model, "-o", output_path, *argv, prompt],
+                                     text=True, capture_output=True, timeout=timeout_seconds,
+                                     check=False, cwd=cwd, env=env, **identity)
+            text = Path(output_path).read_text(encoding="utf-8") if process.returncode == 0 else process.stderr
+        finally:
+            Path(output_path).unlink(missing_ok=True)
+    elif adapter == "claude":
+        process = subprocess.run([executable, "-p", prompt, "--model", model, "--output-format", "json", *argv],
+                                 text=True, capture_output=True, timeout=timeout_seconds,
+                                 check=False, cwd=cwd, env=env, **identity)
+        if process.returncode != 0:
+            text = process.stderr
+        else:
+            try:
+                envelope = json.loads(process.stdout)
+            except json.JSONDecodeError:
+                envelope = None
+            result = envelope.get("result") if isinstance(envelope, dict) else None
+            text = result if isinstance(result, str) else ""
+    elif adapter == "hermes":
+        process = subprocess.run([executable, "-p", str(profile.get("id") or "default"), "-z", prompt, *argv],
+                                 text=True, capture_output=True, timeout=timeout_seconds,
+                                 check=False, cwd=cwd, env=env, **identity)
+        text = process.stdout if process.returncode == 0 else process.stderr
+    else:
+        raise ValueError(f"registered profile adapter has no packaged provider launcher: {adapter}")
+    return process.returncode, text if isinstance(text, str) else ""
+
+
 class RegisteredCheckpointAdapter:
     """Provider-aware checkpoint launcher for a resolved registered profile."""
     def __init__(self, profile: Mapping[str, Any], *, timeout_seconds: int = 900):
@@ -135,29 +185,12 @@ class RegisteredCheckpointAdapter:
             import os
             env = os.environ.copy(); env.update({str(k): str(v) for k, v in context["_launch_env"].items()})
         identity = context.get("_popen_identity") if isinstance(context.get("_popen_identity"), Mapping) else {}
-        adapter, executable, model, argv = self.profile["adapter"], self.profile["executable"], self.profile["model"], self.profile["argv"]
         try:
-            if adapter == "codex":
-                with tempfile.NamedTemporaryFile(prefix="checkpoint-final-", delete=False) as output: output_path = output.name
-                if isinstance(identity.get("user"), int) and isinstance(identity.get("group"), int):
-                    import os
-                    os.chown(output_path, identity["user"], identity["group"])
-                    os.chmod(output_path, 0o600)
-                try:
-                    process = subprocess.run([executable, "exec", "-m", model, "-o", output_path, *argv, prompt], text=True, capture_output=True, timeout=self.timeout_seconds, check=False, cwd=context.get("_cwd"), env=env, **identity)
-                    text = Path(output_path).read_text(encoding="utf-8") if process.returncode == 0 else process.stderr
-                finally: Path(output_path).unlink(missing_ok=True)
-            elif adapter == "claude":
-                process = subprocess.run([executable, "-p", prompt, "--model", model, "--output-format", "json", *argv], text=True, capture_output=True, timeout=self.timeout_seconds, check=False, cwd=context.get("_cwd"), env=env, **identity)
-                if process.returncode != 0: text = process.stderr
-                else:
-                    envelope = json.loads(process.stdout); text = envelope.get("result") if isinstance(envelope, dict) else None
-                    if not isinstance(text, str): raise CheckpointResultError("Claude checkpoint response lacks result text")
-            else:
-                process = subprocess.run([executable, "-p", self.profile["id"], "-z", prompt, *argv], text=True, capture_output=True, timeout=self.timeout_seconds, check=False, cwd=context.get("_cwd"), env=env, **identity)
-                text = process.stdout if process.returncode == 0 else process.stderr
-        except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+            code, text = launch_registered_profile(self.profile, prompt, cwd=context.get("_cwd"),
+                                                   env=env, identity=identity,
+                                                   timeout_seconds=self.timeout_seconds)
+        except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
             raise CheckpointResultError(f"checkpoint provider launch failed: {exc}") from exc
-        if process.returncode != 0: raise CheckpointResultError(f"checkpoint provider exited {process.returncode}: {text[-1000:]}")
+        if code != 0: raise CheckpointResultError(f"checkpoint provider exited {code}: {text[-1000:]}")
         try: return json.loads(text)
         except (TypeError, json.JSONDecodeError) as exc: raise CheckpointResultError("checkpoint provider did not return checkpoint-result JSON") from exc

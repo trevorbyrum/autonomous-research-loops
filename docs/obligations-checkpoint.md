@@ -144,7 +144,10 @@ second repair exchange, or consensus requirement.
 Allow at most four delegate launches for the checkpoint/associated proposal episode,
 including its preparation, counter, repair, retries, and any citation checks needed
 solely to admit its proposals. Preserve the episode identity and spent budget across
-retries. If fewer than two launches remain, omit the two-call repair exchange. Keep
+retries. A launch that fails for INFRASTRUCTURE reasons — provider timeout, spawn
+error, or an empty response — refunds its slot automatically, at most twice per
+episode; a well-formed launch that returns an invalid result stays spent (the
+refund exists for flaky providers, never for retrying a model's answer). If fewer than two launches remain, omit the two-call repair exchange. Keep
 unresolved admission prerequisites as signals; budget exhaustion does not make a
 proposal ready. Required work on already approved obligations remains governed by
 its ordinary duties, not by this optional proposal budget.

@@ -84,7 +84,7 @@ class DashboardRenderingTests(unittest.TestCase):
         result = render_dashboard(
             state,
             events,
-            generated_at=datetime(2026, 8, 28, 12, 1, tzinfo=UTC),
+            full=True, generated_at=datetime(2026, 8, 28, 12, 1, tzinfo=UTC),
         )
 
         self.assertIn("# Research Loops Status", result)
@@ -119,7 +119,7 @@ class DashboardRenderingTests(unittest.TestCase):
             ],
         }
 
-        result = render_dashboard(state, [], generated_at=datetime(2026, 8, 28, tzinfo=UTC))
+        result = render_dashboard(state, [], full=True, generated_at=datetime(2026, 8, 28, tzinfo=UTC))
 
         self.assertIn("Queue globally paused: **yes**", result)
         self.assertIn("operator maintenance", result)
@@ -148,7 +148,7 @@ class DashboardRenderingTests(unittest.TestCase):
             for index, value in enumerate(invalid, start=1)
         ]
 
-        result = render_dashboard(state, events, generated_at=datetime(2026, 8, 28, tzinfo=UTC))
+        result = render_dashboard(state, events, full=True, generated_at=datetime(2026, 8, 28, tzinfo=UTC))
 
         # Completed rows carry identity only (operator ruling 2026-09-04:
         # metric detail moves to STATS.md), so the coverage-disclosing cells
@@ -169,7 +169,7 @@ class DashboardRenderingTests(unittest.TestCase):
             {"type": "process_finished", "item_id": "removed", "attempt": 9, "duration_seconds": 3, "usage": {"api_calls": 3, "total_tokens": 30}},
         ]
 
-        result = render_dashboard(state, events, generated_at=datetime(2026, 8, 28, tzinfo=UTC))
+        result = render_dashboard(state, events, full=True, generated_at=datetime(2026, 8, 28, tzinfo=UTC))
 
         self.assertIn("| Reused | 1 | 2 |", result)
         self.assertIn("Events for IDs absent from current queue | 1", result)
@@ -184,7 +184,7 @@ class DashboardRenderingTests(unittest.TestCase):
             "items": [{"id": "bad", "title": payload, "status": "queued", "desired_state": "running", "claimed_by": None, "attempts": 0}],
         }
 
-        result = render_dashboard(state, [], generated_at=datetime(2026, 8, 28, tzinfo=UTC))
+        result = render_dashboard(state, [], full=True, generated_at=datetime(2026, 8, 28, tzinfo=UTC))
 
         self.assertNotIn("<script>", result)
         self.assertNotIn("![img](x)", result)
@@ -196,8 +196,8 @@ class DashboardRenderingTests(unittest.TestCase):
     def test_empty_and_cross_source_skew_render_deterministically(self):
         generated = datetime(2026, 8, 28, tzinfo=UTC)
         empty = {"revision": 0, "paused": False, "worker_policies": {}, "items": []}
-        first = render_dashboard(empty, [], generated_at=generated)
-        self.assertEqual(first, render_dashboard(empty, [], generated_at=generated))
+        first = render_dashboard(empty, [], full=True, generated_at=generated)
+        self.assertEqual(first, render_dashboard(empty, [], full=True, generated_at=generated))
         self.assertIn("unavailable \\(coverage 0/0\\)", first)
 
         terminal_without_event = {
@@ -206,12 +206,13 @@ class DashboardRenderingTests(unittest.TestCase):
             "worker_policies": {},
             "items": [{"id": "terminal", "title": "Terminal", "status": "completed", "desired_state": "paused", "attempts": 1}],
         }
-        older_events = render_dashboard(terminal_without_event, [], generated_at=generated)
+        older_events = render_dashboard(terminal_without_event, [], full=True, generated_at=generated)
         self.assertIn("| Terminal | 1 | 0 | unavailable |", older_events)
 
         newer_events = render_dashboard(
             empty,
             [{"type": "process_finished", "item_id": "not-in-snapshot", "attempt": 1, "duration_seconds": 1, "usage": None}],
+            full=True,
             generated_at=generated,
         )
         self.assertIn("Events for IDs absent from current queue | 1", newer_events)
@@ -228,7 +229,7 @@ class DashboardRenderingTests(unittest.TestCase):
             result = render_dashboard(
                 {"revision": 1, "paused": False, "worker_policies": {}, "items": []},
                 events,
-                generated_at=datetime(2026, 8, 28, tzinfo=UTC),
+                full=True, generated_at=datetime(2026, 8, 28, tzinfo=UTC),
             )
             self.assertIn("Retained process\\_finished records | 1", result)
 
@@ -309,7 +310,7 @@ class DashboardIntakeLaneTests(unittest.TestCase):
                 },
             ],
         }
-        return render_dashboard(state, [], generated_at=datetime(2026, 9, 3, tzinfo=UTC))
+        return render_dashboard(state, [], full=True, generated_at=datetime(2026, 9, 3, tzinfo=UTC))
 
     def _section(self, output, heading):
         body = output.split(f"## {heading}\n")[1]
@@ -336,7 +337,7 @@ class DashboardIntakeLaneTests(unittest.TestCase):
                     "cwd": tmp, "finished_at": "2026-09-03T00:00:00Z",
                 }],
             }
-            output = render_dashboard(state, [], generated_at=datetime(2026, 9, 3, tzinfo=UTC))
+            output = render_dashboard(state, [], full=True, generated_at=datetime(2026, 9, 3, tzinfo=UTC))
             self.assertIn("Discovery: some", self._section(output, "Intake (awaiting the operator)"))
             self.assertNotIn("Discovery: some", self._section(output, "Completed intakes"))
 
@@ -376,7 +377,7 @@ class NeedsAttentionFlagTests(unittest.TestCase):
                 "last_error": last_error, "last_error_kind": "configuration",
             }],
         }
-        return render_dashboard(state, [], generated_at=datetime(2026, 9, 3, tzinfo=UTC))
+        return render_dashboard(state, [], full=True, generated_at=datetime(2026, 9, 3, tzinfo=UTC))
 
     def test_structured_flags_surface_in_their_own_column(self):
         output = self._render(
@@ -396,12 +397,12 @@ class NeedsAttentionFlagTests(unittest.TestCase):
 class UnclassifiedVisibilityTests(unittest.TestCase):
     def test_empty_unclassified_section_is_omitted(self):
         state = {"revision": 1, "paused": False, "items": []}
-        output = render_dashboard(state, [], generated_at=datetime(2026, 9, 3, tzinfo=UTC))
+        output = render_dashboard(state, [], full=True, generated_at=datetime(2026, 9, 3, tzinfo=UTC))
         self.assertNotIn("## Unclassified items", output)
 
     def test_malformed_item_still_surfaces_the_section(self):
         state = {"revision": 1, "paused": False, "items": ["not-a-dict"]}
-        output = render_dashboard(state, [], generated_at=datetime(2026, 9, 3, tzinfo=UTC))
+        output = render_dashboard(state, [], full=True, generated_at=datetime(2026, 9, 3, tzinfo=UTC))
         self.assertIn("## Unclassified items", output)
         self.assertIn("malformed item", output)
 
@@ -446,7 +447,7 @@ class IterationEconomicsTests(unittest.TestCase):
             {"type": "process_finished", "item_id": "m", "ts": post, "duration_seconds": 120,
              "iteration_result": {"signature_changed": True}},
         ]
-        return render_dashboard(state, events, generated_at=datetime(2026, 9, 4, tzinfo=UTC))
+        return render_dashboard(state, events, full=True, generated_at=datetime(2026, 9, 4, tzinfo=UTC))
 
     def test_epoch_scoping_and_ratio_strictness(self):
         import tempfile as _tf
@@ -462,5 +463,5 @@ class IterationEconomicsTests(unittest.TestCase):
 
     def test_no_data_means_no_section(self):
         state = {"revision": 1, "paused": False, "items": []}
-        output = render_dashboard(state, [], generated_at=datetime(2026, 9, 4, tzinfo=UTC))
+        output = render_dashboard(state, [], full=True, generated_at=datetime(2026, 9, 4, tzinfo=UTC))
         self.assertNotIn("## Iteration economics", output)

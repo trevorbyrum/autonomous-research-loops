@@ -284,7 +284,13 @@ def render_dashboard(
     events: list[dict[str, Any]],
     *,
     generated_at: datetime | None = None,
+    full: bool = False,
 ) -> str:
+    """Default output is an operator STATUS page: what runs, what awaits a
+    decision, what owes a checkpoint, what needs attention. History and
+    telemetry (paused/completed enumerations, economics, ledger aggregates,
+    metric definitions) render only with full=True — the 2026-09-09 operator
+    ruling: the per-minute page must lead with the actionable sections."""
     now = generated_at or datetime.now(UTC)
     if now.tzinfo is None:
         now = now.replace(tzinfo=UTC)
@@ -429,6 +435,34 @@ def render_dashboard(
         active_headers.append("Last checkpoint")
     active_headers.append("Models")
     lines.extend(["", "## Active topics", "", _table(active_headers, active_rows)])
+    if isinstance(managed, dict):
+        work = managed.get("work") if isinstance(managed.get("work"), dict) else {}
+        titles = {str(item.get("id")): str(item.get("title") or item.get("id"))
+                  for item in items if isinstance(item, dict)}
+        # THE actionable section: proposals a checkpoint issued that only the
+        # operator can resolve. Always rendered, even when empty.
+        pending_rows = [[titles.get(str(p.get("topic_id")), str(p.get("topic_id"))),
+                         p.get("proposal_id"), p.get("kind"), p.get("proposal_version"),
+                         p.get("episode_id")]
+                        for p in (work.get("proposals") or {}).values()
+                        if isinstance(p, dict) and p.get("status") == "pending"]
+        lines.extend(["", "## Pending checkpoint proposals (awaiting your decision)", "",
+                      _table(["Topic", "Proposal", "Kind", "Version", "Episode"], pending_rows)])
+        if pending_rows:
+            lines.append("Resolve with `research-loops checkpoint-decide --file decision.json` "
+                         "(see docs/managed-stations.md).")
+        # Catch-up debt: topics whose next execution is a checkpoint —
+        # including paused ones, whose checkpoint fires on resume.
+        by_id = {str(item.get("id")): item for item in items if isinstance(item, dict)}
+        debt_rows = [[titles.get(topic_id, topic_id),
+                      (by_id.get(topic_id) or {}).get("status") or "unknown",
+                      record.get("research_iterations_completed", "unavailable")]
+                     for topic_id, record in (work.get("topics") or {}).items()
+                     if isinstance(record, dict) and record.get("review_state") == "checkpoint_due"]
+        if debt_rows:
+            lines.extend(["", f"## Checkpoint debt ({len(debt_rows)} topic(s) owe a review)", "",
+                          _table(["Topic", "Queue status", "Iterations completed"], debt_rows),
+                          "A paused topic's checkpoint runs when it is resumed."])
     lines.extend(overview_lines)
 
     def _attention_flags(item: dict[str, Any]) -> str:
@@ -478,15 +512,18 @@ def render_dashboard(
             run_count,
             item.get("finished_at") or "unavailable",
         ])
-    lines.extend(["", "## Completed topics", "", _table(["Topic", "Queue attempts", "Retained runs", "Finished"], completed_rows)])
-
-    lines.extend(["", "## Paused topics", "", _table(["Topic", "Stale/current owner", "Attempts", "Reason class"], paused_rows)])
+    if full:
+        lines.extend(["", "## Completed topics", "", _table(["Topic", "Queue attempts", "Retained runs", "Finished"], completed_rows)])
+        lines.extend(["", "## Paused topics", "", _table(["Topic", "Stale/current owner", "Attempts", "Reason class"], paused_rows)])
+    else:
+        lines.extend(["", f"_History elided: {len(completed_rows)} completed and {len(paused_rows)} paused topics, "
+                          "plus economics/ledger telemetry — regenerate with `dashboard --full` to include them._"])
     if unclassified_rows:
         # A catch-all for malformed/unexpected queue states -- rendered only
         # when it actually caught something; an always-empty table is noise.
         lines.extend(["", "## Unclassified items", "", _table(["Queue position", "ID", "Title", "Status", "Desired state", "Owner"], unclassified_rows)])
 
-    economics_rows = _iteration_economics(items, by_item)
+    economics_rows = _iteration_economics(items, by_item) if full else []
     if economics_rows:
         lines.extend([
             "",
@@ -501,7 +538,8 @@ def render_dashboard(
     timestamps = sorted(str(event["ts"]) for event in finished if isinstance(event.get("ts"), str))
     current_ids = {str(item.get("id")) for item in items if isinstance(item, dict)}
     historical_only = sum(1 for event in finished if event["item_id"] not in current_ids)
-    lines.extend(
+    if full:
+        lines.extend(
         [
             "",
             "## Retained-ledger aggregate",
@@ -538,9 +576,11 @@ def render_dashboard(
             "- **Retention:** the event ledger has a maximum retention age of 90 days; the actual oldest/newest timestamps above define this dashboard's observed window.",
             "- **Identity limitation:** retained events are grouped by current `item_id`; IDs and attempt numbers are not immutable run-incarnation keys and can be reused or reset.",
             "- **Consistency limitation:** queue state is finalized before the corresponding event is appended. A refresh may temporarily show newer queue state or newer event data than the other source.",
-            "",
-            "_Generated file. Manual edits are replaced by the next dashboard refresh._",
-            "",
         ]
-    )
+        )
+    lines.extend([
+        "",
+        "_Generated file. Manual edits are replaced by the next dashboard refresh._",
+        "",
+    ])
     return "\n".join(lines)

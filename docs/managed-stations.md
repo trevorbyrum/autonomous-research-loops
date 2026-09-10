@@ -39,7 +39,7 @@ research-loops profile-register --file profile.json
 research-loops stations --show
 research-loops stations --ids 1,3 --primary terra --secondary luna
 research-loops stations --all --primary terra --secondary luna
-research-loops stations --ids 2 --secondary haiku
+research-loops stations --ids 2 --secondary luna
 research-loops stations --active-count 2
 research-loops stations --intervals 60,120,180,240,300
 ```
@@ -47,7 +47,11 @@ research-loops stations --intervals 60,120,180,240,300
 Set `RESEARCH_LOOP_CONTROLLER_SOCKET` for CLI or MCP clients running as an
 operator account. Socket operations do not open the protected database locally.
 `stations --show` returns the current controller revision, configuration, effective
-shared checkpoint pair, assignments, completed counts, next ordinals, and holds.
+shared checkpoint pair, assignments, completed counts, next ordinals, and holds —
+the same shape over the socket and for a local supervisor read. Add
+`--topic <id>` to reduce the view to one topic's work-ledger record; routine
+per-topic inspection never needs raw access to the protected state directory
+(which must stay exactly mode 0700 — an ACL grant breaks launch preconditions).
 
 `stations --file update.json` accepts an **update object**, not the complete
 configuration snapshot. Its allowed fields are `station_ids` (integer array),
@@ -143,6 +147,13 @@ and changes neither research count nor queue priority. Scope requests are record
 for explicit new-authority work; the obligation publisher rejects attempts to use
 an obligation approval as a mission rewrite. Addition/amendment publication validates
 the complete bundle before changing approved files.
+
+Delegate launch budgets distinguish failure classes: an infrastructure failure
+(provider timeout, spawn error, or an empty response) refunds its launch slot,
+at most twice per episode (`infra_refunds_remaining`); a well-formed run that
+returns an invalid result stays spent. The `state.cli` bridge executes the
+semantic-state tool with a minimal sanitized environment under the supervisor
+identity; moving it to a dedicated execution identity is a recorded follow-up.
 
 ## Checkpoint recovery
 
