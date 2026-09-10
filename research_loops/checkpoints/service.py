@@ -645,7 +645,8 @@ def apply_decision(control: Any, payload: Mapping[str, Any], *, actor: str = "op
             # itself (Astra R2-1): identity-checked finalize under the
             # publication lock, so a stale replay can never race — or
             # remove — a newer publication's journal.
-            _with_publication_lock(control, lambda: publisher.finalize(intent["publications"]))
+            _with_publication_lock(
+                control, lambda: publisher.finalize(_publications_for_cleanup(intent)))
         return copy.deepcopy(prior["result"])
     if intent is not None:
         if intent.get("payload") != canonical:
@@ -713,6 +714,28 @@ def _complete_decision_publication(control: Any, request_id: str, actor: str, pu
         control, lambda: _complete_decision_publication_locked(control, request_id, actor, publisher))
 
 
+def _publications_for_cleanup(intent: Mapping[str, Any]) -> list:
+    """Saved publication results enriched for identity-checked cleanup.
+
+    Publication results committed BEFORE the identity-checked finalizer
+    existed lack `publication_identity` even though the intent's own prepared
+    bundle — the trusted origin of the journal — records it (Astra R3-1:
+    without this, a valid pre-upgrade committed publication could never clean
+    its own journal and would block the topic's next publication). The
+    conservative standalone rule is untouched: with no ownership proof from
+    the intent either, cleanup still refuses to guess.
+    """
+    publications = intent.get("publications") or []
+    prepared = intent.get("prepared")
+    identity = (prepared.get("identity") or prepared.get("key")) if isinstance(prepared, Mapping) else None
+    enriched = []
+    for record in publications:
+        if isinstance(record, Mapping) and not record.get("publication_identity") and identity:
+            record = {**record, "publication_identity": str(identity)}
+        enriched.append(record)
+    return enriched
+
+
 def _with_publication_lock(control: Any, operation: Callable[[], Any]) -> Any:
     """Run `operation` holding the store's publication lock.
 
@@ -740,7 +763,7 @@ def _complete_decision_publication_locked(control: Any, request_id: str, actor: 
         raise CheckpointError("VALIDATION_ERROR", "unknown decision publication intent")
     existing = snapshot["work"].get("decisions", {}).get(request_id)
     if existing is not None:
-        publications = intent.get("publications", [])
+        publications = _publications_for_cleanup(intent)
         if publications:
             publisher.finalize(publications)
         return copy.deepcopy(existing["result"])

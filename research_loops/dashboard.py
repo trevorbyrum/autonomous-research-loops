@@ -366,20 +366,29 @@ def render_dashboard(
     # stops the refresh exactly when control state needs inspection.
     managed_malformed: list[str] = []
 
+    def _note_malformed(label: str) -> None:
+        if label not in managed_malformed:
+            managed_malformed.append(label)
+
     def _managed_map(container: Any, name: str) -> dict[str, Any]:
-        value = container.get(name) if isinstance(container, dict) else None
-        if value is None:
+        # A key that is PRESENT but not a mapping — including an explicit
+        # null — is malformed and noticed; a genuinely absent key is quiet.
+        if not isinstance(container, dict) or name not in container:
             return {}
+        value = container[name]
         if not isinstance(value, dict):
-            if name not in managed_malformed:
-                managed_malformed.append(name)
+            _note_malformed(name)
             return {}
+        if any(not isinstance(row, dict) for row in value.values()):
+            # Row consumers skip non-dict rows; a corrupt proposal or episode
+            # must not silently vanish from an actionable section (R3-2).
+            _note_malformed(f"{name} rows")
         return value
 
     if isinstance(managed, dict):
         work_raw = managed.get("work")
-        if work_raw is not None and not isinstance(work_raw, dict):
-            managed_malformed.append("work")
+        if "work" in managed and not isinstance(work_raw, dict):
+            _note_malformed("work")
         managed_work: dict[str, Any] = work_raw if isinstance(work_raw, dict) else {}
         managed_topics_map = _managed_map(managed_work, "topics")
         managed_episodes_map = _managed_map(managed_work, "episodes")

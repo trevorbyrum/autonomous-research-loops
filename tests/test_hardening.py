@@ -378,6 +378,46 @@ class LedgerBoundsTests(HardeningFixture):
                     state["work"][name] = ["not", "a", "dict"]
 
 
+class PublicationCleanupTests(unittest.TestCase):
+    def test_non_object_json_journal_is_left_untouched_without_raising(self):
+        from research_loops.contract_publication import finalize_checkpoint_publication
+        with tempfile.TemporaryDirectory() as temporary:
+            for body in ("[]", "null"):
+                journal = Path(temporary) / "journal.json"
+                journal.write_text(body)
+                finalize_checkpoint_publication({"publication_journal": str(journal),
+                                                 "publication_identity": "A"})
+                self.assertTrue(journal.exists(), body)  # never guessed ownership
+
+    def test_pre_upgrade_committed_publication_cleans_its_own_journal(self):
+        # A decision committed BEFORE identity-checked cleanup saved results
+        # without publication_identity while its journal carries the bundle
+        # identity; the intent's prepared record supplies the trusted proof.
+        import json as json_module
+        from research_loops.checkpoints.service import _publications_for_cleanup
+        from research_loops.contract_publication import finalize_checkpoint_publication
+        with tempfile.TemporaryDirectory() as temporary:
+            journal = Path(temporary) / ".checkpoint-contract-publication.json"
+            journal.write_text(json_module.dumps({"identity": "bundle-A", "count": 1}))
+            intent = {"prepared": {"identity": "bundle-A", "count": 1},
+                      "publications": [{"completion_lock": "lock",
+                                        "publication_journal": str(journal)}]}
+            enriched = _publications_for_cleanup(intent)
+            self.assertEqual(enriched[0]["publication_identity"], "bundle-A")
+            finalize_checkpoint_publication(enriched[0])
+            self.assertFalse(journal.exists())
+
+    def test_enrichment_never_overrides_a_recorded_identity_or_invents_one(self):
+        from research_loops.checkpoints.service import _publications_for_cleanup
+        keeps = _publications_for_cleanup({"prepared": {"identity": "other"},
+                                           "publications": [{"publication_identity": "own",
+                                                             "publication_journal": "x"}]})
+        self.assertEqual(keeps[0]["publication_identity"], "own")
+        bare = _publications_for_cleanup({"prepared": None,
+                                          "publications": [{"publication_journal": "x"}]})
+        self.assertNotIn("publication_identity", bare[0])
+
+
 class SocketPermissionTests(unittest.TestCase):
     def test_audit_sweep_prunes_old_rows(self):
         with tempfile.TemporaryDirectory() as temporary:

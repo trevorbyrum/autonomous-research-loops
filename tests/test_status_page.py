@@ -92,12 +92,15 @@ class StatusPageTests(unittest.TestCase):
         state["managed_control"]["work"] = None
         page = render_dashboard(state, [])
         self.assertIn("## Active topics", page)
+        # An explicitly null work map is malformed, not merely absent (R3-2).
+        self.assertIn("Managed work data malformed/unavailable", page)
+        self.assertIn("work", page.split("malformed/unavailable")[1][:40])
         state = managed_state()
         state["managed_control"]["work"] = "garbage"
         page = render_dashboard(state, [])
         self.assertIn("Managed work data malformed/unavailable", page)
 
-    def test_malformed_rows_inside_valid_maps_are_skipped(self):
+    def test_malformed_rows_inside_valid_maps_are_skipped_with_notice(self):
         state = managed_state()
         state["managed_control"]["work"]["topics"]["alpha"] = "not a dict"
         state["managed_control"]["work"]["episodes"] = {"checkpoint-beta": "not a dict"}
@@ -105,6 +108,11 @@ class StatusPageTests(unittest.TestCase):
         page = render_dashboard(state, [])
         self.assertIn("## Pending checkpoint proposals", page)
         self.assertIn("## Active topics", page)
+        # A corrupt row must not vanish silently into an empty section (R3-2).
+        self.assertIn("Managed work data malformed/unavailable", page)
+        notice = page.split("malformed/unavailable")[1][:120]
+        for label in ("topics rows", "episodes rows", "proposals rows"):
+            self.assertIn(label, notice)
 
     def test_empty_pending_section_still_renders(self):
         state = managed_state()

@@ -132,6 +132,8 @@ def finalize_checkpoint_publication(result: Mapping[str, Any]) -> None:
         return
     except (OSError, ValueError):
         return  # unreadable: never guess ownership
+    if not isinstance(current, dict):
+        return  # decodable but non-object: no usable identity, leave it
     journal_identity = str(current.get("identity") or current.get("key") or "")
     result_identity = str(result.get("publication_identity") or "")
     if journal_identity == result_identity:
