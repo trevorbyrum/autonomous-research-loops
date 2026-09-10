@@ -162,6 +162,27 @@ class SchedulerTests(unittest.TestCase):
         # Back in the pool, the head goes to the first available station.
         self.assertEqual(self.scheduler.claim(2)["topic_id"], "B")
 
+    def test_due_reviews_deal_before_ordinary_research(self):
+        # "There shouldn't be any checkpoint queue — they should just be
+        # handled" (operator ruling 2026-09-10): a due review is served by
+        # the next free station even from deep in the queue.
+        with self.store.transaction() as state:
+            from research_loops.checkpoints.service import _new_episode
+            topic = self.store.ensure_topic_work(state, "D")
+            _new_episode(state["work"], topic, ["trigger-review"])
+        claim = self.scheduler.claim(1)
+        self.assertEqual((claim["topic_id"], claim["execution_kind"]), ("D", "checkpoint"))
+
+    def test_executing_station_resolves_the_claiming_stations_pair(self):
+        with self.store.transaction() as state:
+            state["configuration"]["checkpoints"]["agent_source"] = "executing_station"
+        pair = self.store.resolve_checkpoint_pair(station_id=3)
+        self.assertEqual(pair["primary"]["id"], "p-3")
+        self.assertEqual(pair["secondary"]["id"], "s-3")
+        # Without a station context, station 1 is the representative default.
+        display = self.store.effective_checkpoint_profiles()
+        self.assertEqual(display["primary_profile"], "p-1")
+
     def test_station_rest_never_blocks_its_topic_or_lower_stations(self):
         # The interval throttles the SEAT, never the topic: a resting
         # station claims nothing, while the topic it just ran is immediately

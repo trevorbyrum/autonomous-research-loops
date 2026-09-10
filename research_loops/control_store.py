@@ -148,8 +148,8 @@ def validate_configuration(configuration: dict[str, Any], *, require_profiles: b
     if not _is_int(checkpoints.get("every_research_iterations")) or checkpoints["every_research_iterations"] <= 0:
         raise ControlValidationError("configuration.checkpoints.every_research_iterations must be a positive integer")
     source = checkpoints.get("agent_source")
-    if source not in {"station_1", "explicit"}:
-        raise ControlValidationError("configuration.checkpoints.agent_source must be station_1 or explicit")
+    if source not in {"station_1", "executing_station", "explicit"}:
+        raise ControlValidationError("configuration.checkpoints.agent_source must be executing_station, station_1 or explicit")
     explicit = {"primary_profile", "secondary_profile"}
     present = explicit & set(checkpoints)
     if source == "explicit":
@@ -313,18 +313,31 @@ class ControlStore:
             raise ControlValidationError(f"unknown station: {station_id}")
         return {"primary": self.resolve_profile(station["primary_profile"], state), "secondary": self.resolve_profile(station["secondary_profile"], state)}
 
-    def resolve_checkpoint_pair(self, state: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
+    def resolve_checkpoint_pair(self, state: dict[str, Any] | None = None, *, station_id: int | None = None) -> dict[str, dict[str, Any]]:
         state = state or self.snapshot()
-        profiles = self.effective_checkpoint_profiles(state)
+        profiles = self.effective_checkpoint_profiles(state, station_id=station_id)
         return {"primary": self.resolve_profile(profiles["primary_profile"], state), "secondary": self.resolve_profile(profiles["secondary_profile"], state)}
 
-    def effective_checkpoint_profiles(self, state: dict[str, Any] | None = None) -> dict[str, str]:
+    def effective_checkpoint_profiles(self, state: dict[str, Any] | None = None, *, station_id: int | None = None) -> dict[str, str]:
+        """The model pair a checkpoint uses. `agent_source` values:
+
+        - "executing_station" (operator ruling 2026-09-10): the pair of the
+          station that actually claims the review — models are managed in
+          exactly one place, each station's profile, and NOTHING routes
+          checkpoint execution anywhere (any station serves any due review).
+          Without a station context (status displays), station 1's pair is
+          shown as the representative default.
+        - "station_1": legacy fixed pair borrowed from station 1's profile
+          (a MODEL source only; it never routed execution).
+        - "explicit": a dedicated pair named in the policy itself.
+        """
         configuration = (state or self.snapshot())["configuration"]
         policy = configuration["checkpoints"]
         if policy["agent_source"] == "explicit":
             return {"primary_profile": policy["primary_profile"], "secondary_profile": policy["secondary_profile"]}
-        first = next(station for station in configuration["stations"] if station["id"] == 1)
-        return {"primary_profile": first["primary_profile"], "secondary_profile": first["secondary_profile"]}
+        source_id = station_id if (policy["agent_source"] == "executing_station" and station_id is not None) else 1
+        station = next(station for station in configuration["stations"] if station["id"] == source_id)
+        return {"primary_profile": station["primary_profile"], "secondary_profile": station["secondary_profile"]}
 
     @staticmethod
     def ensure_topic_work(state: dict[str, Any], topic_id: str, *, inventory_version: str | None = None) -> dict[str, Any]:
@@ -619,6 +632,11 @@ class ControlScheduler:
                 continue  # failure backoff is a topic restriction; skip, never block the station
             if item.get("status", "queued") in {"queued", "backoff", "running"} and item.get("desired_state", "running") == "running" and topic.get("review_state") not in {"awaiting_operator", "publishing_decision", "checkpoint_running", "retry_wait", "needs_attention"}:
                 candidates.append(item)
+        # A due REVIEW is never allowed to starve behind ordinary research
+        # (operator ruling 2026-09-10: "there shouldn't be any checkpoint
+        # queue — they should just be handled"). Reviews deal first, in queue
+        # order; each is one bounded episode, then the topic rejoins its rank.
+        candidates.sort(key=lambda item: 0 if topics.get(item["id"], {}).get("review_state") == "checkpoint_due" else 1)
         iterator = iter(candidates)
         for station_id in range(1, MAX_STATIONS + 1):
             record = assignments.setdefault(str(station_id), {})

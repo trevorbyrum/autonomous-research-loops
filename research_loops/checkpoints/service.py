@@ -256,7 +256,13 @@ def start_checkpoint(control: Any, *, episode_id: str, station_id: int, run_id: 
         if episode.get("resolved_agent_pair") is None:
             if not callable(resolver):
                 raise CheckpointError("VALIDATION_ERROR", "controller does not expose resolved checkpoint profiles")
-            episode["resolved_agent_pair"] = resolver(state)
+            # Under executing_station, the pair is the CLAIMING station's own
+            # (operator ruling 2026-09-10: models are managed per station,
+            # and reviews are served by whichever station picks them up).
+            try:
+                episode["resolved_agent_pair"] = resolver(state, station_id=station_id)
+            except TypeError:
+                episode["resolved_agent_pair"] = resolver(state)
         episode["configuration_revision"] = state.get("revision")
         digest = _material_context_digest(state, episode["topic_id"])
         episode["material_context_digest"] = digest
