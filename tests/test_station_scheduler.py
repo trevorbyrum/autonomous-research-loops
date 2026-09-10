@@ -148,19 +148,28 @@ class SchedulerTests(unittest.TestCase):
         with self.assertRaises(ControlRevisionConflict):
             self.scheduler.confirm_launch(3, lease["lease_id"])
 
-    def test_reorder_waits_for_other_station_current_lease(self):
+    def test_reorder_deals_head_to_first_available_station(self):
+        # PURE PRIORITY (operator ruling 2026-09-10): nothing waits for a
+        # specific station and no station waits for a specific topic.
         a = self.scheduler.claim(1); b = self.scheduler.claim(2)
         self.scheduler.reorder(["B", "A", "C", "D"], expected_queue_revision=4)
         self.scheduler.finalize(1, a["lease_id"])
-        self.assertIsNone(self.scheduler.claim(1))
+        # B (the new head) is mid-iteration on station 2 and stays pinned
+        # there until its iteration ends; freed station 1 takes the best
+        # NON-executing topic instead of idling in reservation.
+        self.assertEqual(self.scheduler.claim(1)["topic_id"], "A")
         self.scheduler.finalize(2, b["lease_id"])
-        self.assertEqual(self.scheduler.claim(1)["topic_id"], "B")
+        # Back in the pool, the head goes to the first available station.
+        self.assertEqual(self.scheduler.claim(2)["topic_id"], "B")
 
-    def test_pacing_reserves_its_station_without_blocking_lower_station(self):
+    def test_station_rest_never_blocks_its_topic_or_lower_stations(self):
+        # The interval throttles the SEAT, never the topic: a resting
+        # station claims nothing, while the topic it just ran is immediately
+        # claimable by any other station in priority order.
         a = self.scheduler.claim(1)
         self.scheduler.finalize(1, a["lease_id"], pacing_ready_at="2999-01-01T00:00:00Z")
         self.assertIsNone(self.scheduler.claim(1))
-        self.assertEqual(self.scheduler.claim(2)["topic_id"], "B")
+        self.assertEqual(self.scheduler.claim(2)["topic_id"], a["topic_id"])
 
     def test_incomplete_dependency_is_not_assignable_but_coverage_blocker_is(self):
         with self.store.transaction() as state:
