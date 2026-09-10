@@ -339,9 +339,11 @@ class ControlStore:
         Every transaction rewrites the whole logical state, so unbounded
         per-run/per-operation records degrade every future operation
         (2026-09-09 review). Only mechanical runtime records are pruned;
-        governance records are never touched. run_ids are lease UUIDs and are
-        never reused, so dropping an old finished run cannot enable an
-        idempotent-replay path.
+        governance records are never touched. Replay-after-prune safety comes
+        from the per-topic pruned_runs tombstone recorded below: once a topic
+        has pruned anything, accounting for an unknown run_id requires that
+        run's own current lease (checkpoints.service.accept_research_completion,
+        trusted in-process callers only — this is not global UUID dedup).
         """
         work = state.get("work") or {}
         removed = {"runs": 0, "state_operations": 0, "capabilities": 0}

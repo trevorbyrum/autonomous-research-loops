@@ -418,12 +418,18 @@ def _delegate_ledger_append(topic_root: Path, identity: Mapping[str, Any], recor
         except FileNotFoundError:
             return
         try:
-            file_fd = os.open("delegate-usage.jsonl", os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW,
+            # O_NONBLOCK (Astra R2-2): opening an agent-planted FIFO for
+            # writing with no reader would otherwise block the controller
+            # BEFORE the regular-file check can run; nonblocking, it fails
+            # with ENXIO immediately, and for the regular file we expect it
+            # is a write-path no-op.
+            file_fd = os.open("delegate-usage.jsonl",
+                              os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW | os.O_NONBLOCK,
                               dir_fd=logs_fd)
             created = False
         except FileNotFoundError:
             file_fd = os.open("delegate-usage.jsonl",
-                              os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                              os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_NONBLOCK,
                               0o644, dir_fd=logs_fd)
             created = True
         info = os.fstat(file_fd)
@@ -635,7 +641,11 @@ def apply_decision(control: Any, payload: Mapping[str, Any], *, actor: str = "op
         if prior.get("payload") != canonical:
             raise CheckpointError("DUPLICATE_REQUEST_CONFLICT", "request_id was used with different content", "request_id")
         if publisher is not None and intent and intent.get("publications"):
-            publisher.finalize(intent["publications"])
+            # Cleanup on a replay obeys the same serialization as publication
+            # itself (Astra R2-1): identity-checked finalize under the
+            # publication lock, so a stale replay can never race — or
+            # remove — a newer publication's journal.
+            _with_publication_lock(control, lambda: publisher.finalize(intent["publications"]))
         return copy.deepcopy(prior["result"])
     if intent is not None:
         if intent.get("payload") != canonical:
@@ -699,19 +709,28 @@ def _complete_decision_publication(control: Any, request_id: str, actor: str, pu
     # pathname cleanup could remove a later publication's journal. Under the
     # lock, the snapshot below always sees the winner's committed decision
     # and returns without touching the filesystem.
+    return _with_publication_lock(
+        control, lambda: _complete_decision_publication_locked(control, request_id, actor, publisher))
+
+
+def _with_publication_lock(control: Any, operation: Callable[[], Any]) -> Any:
+    """Run `operation` holding the store's publication lock.
+
+    Real stores flock `state/publication.lock` (covers every process);
+    in-memory doubles have no filesystem root, so a process-wide lock
+    serializes every caller they can have.
+    """
     import fcntl
 
     root = getattr(control, "root", None)
     if root is None:
-        # In-memory doubles have no filesystem root; a process-wide lock
-        # still serializes every caller they can have.
         with _PUBLICATION_PROCESS_LOCK:
-            return _complete_decision_publication_locked(control, request_id, actor, publisher)
+            return operation()
     lock_path = Path(root) / "state" / "publication.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with open(lock_path, "a+", encoding="utf-8") as publication_lock:
         fcntl.flock(publication_lock.fileno(), fcntl.LOCK_EX)
-        return _complete_decision_publication_locked(control, request_id, actor, publisher)
+        return operation()
 
 
 def _complete_decision_publication_locked(control: Any, request_id: str, actor: str, publisher: Any) -> dict[str, Any]:

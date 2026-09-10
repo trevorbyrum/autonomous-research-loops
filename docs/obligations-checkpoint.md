@@ -150,8 +150,8 @@ episode, and restores the repair state machine so the same uncompleted exchange
 or assessment may retry; a well-formed launch that returns an invalid result
 stays spent (the refund exists for flaky providers, never for retrying a
 model's answer). Episode-level infrastructure failures likewise retry
-automatically with a 10-minute pause, at most three consecutive times, before
-parking for the operator. If fewer than two launches remain, omit the two-call repair exchange. Keep
+automatically with a 10-minute pause; the third consecutive failure (i.e.
+after two automatic retries) parks the episode for the operator. If fewer than two launches remain, omit the two-call repair exchange. Keep
 unresolved admission prerequisites as signals; budget exhaustion does not make a
 proposal ready. Required work on already approved obligations remains governed by
 its ordinary duties, not by this optional proposal budget.

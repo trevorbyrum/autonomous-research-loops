@@ -105,11 +105,37 @@ def _finish(topic: Path, record: Mapping[str, Any], journal: Path, *, finalize: 
     # journal only after persisting the returned lock/inventory in controller
     # state; keeping it makes a post-filesystem crash recoverable.
     if finalize: journal.unlink()
-    return {"completion_lock": lock, "inventory_version": lock, "publication_journal": str(journal)}
+    return {"completion_lock": lock, "inventory_version": lock,
+            "publication_journal": str(journal),
+            # Cleanup verifies this before unlinking: the journal PATH is
+            # reused across the topic's publications, so a stale pathname
+            # must never delete a LATER publication's recovery marker
+            # (Astra R2-1, 2026-09-10).
+            "publication_identity": str(record.get("identity") or record.get("key") or "")}
 
 def finalize_checkpoint_publication(result: Mapping[str, Any]) -> None:
+    """Remove a committed publication's journal — and ONLY its own.
+
+    A replayed old decision carries the winner's saved result; by the time it
+    replays, the same journal path may belong to a newer in-flight or
+    committed publication. Identity mismatch or an unreadable journal leaves
+    the file for its owner. A legacy result without a recorded identity only
+    removes a journal that also lacks one.
+    """
     journal = result.get("publication_journal")
-    if isinstance(journal, str): Path(journal).unlink(missing_ok=True)
+    if not isinstance(journal, str):
+        return
+    path = Path(journal)
+    try:
+        current = json.loads(path.read_text())
+    except FileNotFoundError:
+        return
+    except (OSError, ValueError):
+        return  # unreadable: never guess ownership
+    journal_identity = str(current.get("identity") or current.get("key") or "")
+    result_identity = str(result.get("publication_identity") or "")
+    if journal_identity == result_identity:
+        path.unlink(missing_ok=True)
 
 def _atomic_write(path: Path, content: str) -> None:
     """Replace a regular file without following attacker-controlled links."""

@@ -1862,6 +1862,14 @@ class LoopRunner:
         state_name = "retry_wait" if infra else "needs_attention"
         try:
             with self.store.control.transaction(actor="runner", operation_id=f"checkpoint-failed:{lease['lease_id']}") as state:
+                if episode_id is None:
+                    # The entry snapshot failed before the episode was
+                    # resolved (Astra R2-3): resolve it from THIS working
+                    # transaction so the parked state and failure count are
+                    # real, not just a topic-level pacing deadline.
+                    topic_probe = state["work"].get("topics", {}).get(item["id"])
+                    if isinstance(topic_probe, dict) and isinstance(topic_probe.get("active_episode_id"), str):
+                        episode_id = topic_probe["active_episode_id"]
                 current = state["work"].get("episodes", {}).get(episode_id) if episode_id else None
                 if isinstance(current, dict):
                     if infra:

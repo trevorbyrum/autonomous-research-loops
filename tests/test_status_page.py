@@ -74,8 +74,37 @@ class StatusPageTests(unittest.TestCase):
         state["managed_control"]["work"]["topics"] = ["also bad"]
         page = render_dashboard(state, [])
         self.assertIn("Managed work data malformed/unavailable", page)
-        self.assertIn("proposals, topics", page)
+        notice = page.split("malformed/unavailable")[1][:80]
+        self.assertIn("proposals", notice)
+        self.assertIn("topics", notice)
         self.assertIn("## Pending checkpoint proposals", page)
+
+    def test_malformed_episodes_and_work_degrade_with_notice(self):
+        # Malformed episodes with a valid active topic previously crashed the
+        # Last-checkpoint column (Astra R2-4); work=None crashed the header.
+        state = managed_state()
+        state["managed_control"]["work"]["episodes"] = ["bad"]
+        page = render_dashboard(state, [])
+        self.assertIn("Managed work data malformed/unavailable", page)
+        self.assertIn("episodes", page.split("malformed/unavailable")[1][:60])
+        self.assertIn("Alpha Topic", page)
+        state = managed_state()
+        state["managed_control"]["work"] = None
+        page = render_dashboard(state, [])
+        self.assertIn("## Active topics", page)
+        state = managed_state()
+        state["managed_control"]["work"] = "garbage"
+        page = render_dashboard(state, [])
+        self.assertIn("Managed work data malformed/unavailable", page)
+
+    def test_malformed_rows_inside_valid_maps_are_skipped(self):
+        state = managed_state()
+        state["managed_control"]["work"]["topics"]["alpha"] = "not a dict"
+        state["managed_control"]["work"]["episodes"] = {"checkpoint-beta": "not a dict"}
+        state["managed_control"]["work"]["proposals"]["proposal-1"] = ["bad row"]
+        page = render_dashboard(state, [])
+        self.assertIn("## Pending checkpoint proposals", page)
+        self.assertIn("## Active topics", page)
 
     def test_empty_pending_section_still_renders(self):
         state = managed_state()

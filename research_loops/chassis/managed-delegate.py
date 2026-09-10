@@ -108,7 +108,10 @@ def main(argv: list[str]) -> int:
             encoding="utf-8", errors="replace",
         )
         rc = completed.returncode
-        # Preserve the adapter's stdout/stderr contract verbatim for the caller.
+        # Re-emit the adapter's captured stdout/stderr for the caller. Capture
+        # buffers until completion: content is preserved, but streaming/
+        # interleaving timing is not, and a killed shim loses buffered
+        # partial output (documented limit of the observability rewrite).
         sys.stdout.write(completed.stdout)
         sys.stderr.write(completed.stderr)
         usage = _usage_record(Path(usage_path), profile["model"])

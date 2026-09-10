@@ -360,9 +360,35 @@ def render_dashboard(
     if state.get("paused") is True or state.get("stopping") is True:
         lines.append(f"Pause reason: **{_cell(state.get('pause_reason') or 'not recorded')}**")
     managed = state.get("managed_control")
+    # ONE normalization point for managed control data (Astra F11/R2-4):
+    # every consumer below reads these validated maps, and any malformed
+    # piece degrades to a visible notice instead of an AttributeError that
+    # stops the refresh exactly when control state needs inspection.
+    managed_malformed: list[str] = []
+
+    def _managed_map(container: Any, name: str) -> dict[str, Any]:
+        value = container.get(name) if isinstance(container, dict) else None
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            if name not in managed_malformed:
+                managed_malformed.append(name)
+            return {}
+        return value
+
+    if isinstance(managed, dict):
+        work_raw = managed.get("work")
+        if work_raw is not None and not isinstance(work_raw, dict):
+            managed_malformed.append("work")
+        managed_work: dict[str, Any] = work_raw if isinstance(work_raw, dict) else {}
+        managed_topics_map = _managed_map(managed_work, "topics")
+        managed_episodes_map = _managed_map(managed_work, "episodes")
+        managed_proposals_map = _managed_map(managed_work, "proposals")
+    else:
+        managed_work = {}
+        managed_topics_map = managed_episodes_map = managed_proposals_map = {}
     if isinstance(managed, dict):
         config = managed.get("configuration") if isinstance(managed.get("configuration"), dict) else {}
-        work = managed.get("work") if isinstance(managed.get("work"), dict) else {}
         policy = config.get("checkpoints") or {}
         pair = next((row for row in config.get("stations", []) if row.get("id") == 1), {}) if policy.get("agent_source") == "station_1" else policy
         checkpoint_summary = "off"
@@ -374,14 +400,15 @@ def render_dashboard(
             f"**Checkpoints:** {_cell(checkpoint_summary)} · "
             f"**Review agents:** {_cell(pair.get('primary_profile', '—'))} / {_cell(pair.get('secondary_profile', '—'))}"])
         # Keep actionable review holds visible without dumping the work ledger.
-        # Type-guarded (Astra F11): a malformed map must degrade, not crash.
-        topics = work.get("topics") if isinstance(work.get("topics"), dict) else {}
-        episodes = work.get("episodes") if isinstance(work.get("episodes"), dict) else {}
+        topics = managed_topics_map
+        episodes = managed_episodes_map
         for item in items:
             if not isinstance(item, dict) or item.get("lane") == "intake" or item.get("status") in {"paused", "completed"}:
                 continue
-            topic = topics.get(item.get("id")) or {}
-            episode = episodes.get(topic.get("active_episode_id")) or {}
+            topic = topics.get(item.get("id"))
+            topic = topic if isinstance(topic, dict) else {}
+            episode = episodes.get(topic.get("active_episode_id"))
+            episode = episode if isinstance(episode, dict) else {}
             if episode.get("state") in {"awaiting_operator", "needs_attention", "publishing_decision"}:
                 label = {"awaiting_operator": "checkpoint decision needed", "needs_attention": "checkpoint needs attention", "publishing_decision": "checkpoint decision applying"}[episode["state"]]
                 lines.extend(["", f"**{_cell(item.get('title', item.get('id')))}:** {label}."])
@@ -399,14 +426,14 @@ def render_dashboard(
         ]
 
     active_rows = []
-    managed_topics = (managed.get("work", {}).get("topics", {}) if isinstance(managed, dict) and isinstance(managed.get("work"), dict) else {})
+    managed_topics = managed_topics_map
     for _, item in categories["active"]:
         attempts = item.get("attempts") if isinstance(item.get("attempts"), int) and not isinstance(item.get("attempts"), bool) else "unavailable"
         ledger = managed_topics.get(item.get("id")) if isinstance(managed_topics, dict) else None
         if isinstance(ledger, dict):
             episode_id = ledger.get("active_episode_id")
-            episodes_map = managed.get("work", {}).get("episodes") if isinstance(managed, dict) and isinstance(managed.get("work"), dict) else None
-            episode = episodes_map.get(episode_id) if isinstance(episodes_map, dict) and episode_id else None
+            episode = managed_episodes_map.get(episode_id) if episode_id else None
+            episode = episode if isinstance(episode, dict) else None
             if isinstance(episode, dict) and episode.get("state") in {"due", "checkpoint_running", "retry_wait", "awaiting_operator", "publishing_decision"}:
                 iteration = f"Checkpoint after {ledger.get('research_iterations_completed', '—')}"
             else:
@@ -424,8 +451,9 @@ def render_dashboard(
         ]
         if isinstance(managed, dict):
             reviewed = [episode.get("triggered_after_research_iteration")
-                        for episode in managed.get("work", {}).get("episodes", {}).values()
-                        if episode.get("topic_id") == item.get("id")
+                        for episode in managed_episodes_map.values()
+                        if isinstance(episode, dict)
+                        and episode.get("topic_id") == item.get("id")
                         and episode.get("state") in {"complete_without_proposals", "complete_with_decisions"}
                         and isinstance(episode.get("triggered_after_research_iteration"), int)]
             active_row.append(max(reviewed) if reviewed else "—")
@@ -438,20 +466,15 @@ def render_dashboard(
     active_headers.append("Models")
     lines.extend(["", "## Active topics", "", _table(active_headers, active_rows)])
     if isinstance(managed, dict):
-        work = managed.get("work") if isinstance(managed.get("work"), dict) else {}
-        proposals_map = work.get("proposals")
-        topics_map = work.get("topics")
         # The status page must render precisely when control state most needs
-        # inspection (Astra F11): malformed maps become a visible notice, not
-        # an AttributeError that stops the refresh.
-        malformed = [name for name, value in (("proposals", proposals_map), ("topics", topics_map))
-                     if value is not None and not isinstance(value, dict)]
-        if malformed:
+        # inspection (Astra F11/R2-4): every malformed piece collected by the
+        # one normalization point becomes a visible notice, never a crash.
+        if managed_malformed:
             lines.extend(["", "> **Managed work data malformed/unavailable** "
-                              f"({', '.join(malformed)}): the sections below may be incomplete; "
+                              f"({', '.join(managed_malformed)}): the sections below may be incomplete; "
                               "inspect the controller state directly."])
-        proposals_map = proposals_map if isinstance(proposals_map, dict) else {}
-        topics_map = topics_map if isinstance(topics_map, dict) else {}
+        proposals_map = managed_proposals_map
+        topics_map = managed_topics_map
         titles = {str(item.get("id")): str(item.get("title") or item.get("id"))
                   for item in items if isinstance(item, dict)}
         # THE actionable section: proposals a checkpoint issued that only the
