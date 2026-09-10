@@ -399,7 +399,10 @@ def render_dashboard(
     if isinstance(managed, dict):
         config = managed.get("configuration") if isinstance(managed.get("configuration"), dict) else {}
         policy = config.get("checkpoints") or {}
-        pair = next((row for row in config.get("stations", []) if row.get("id") == 1), {}) if policy.get("agent_source") == "station_1" else policy
+        # executing_station: reviews use the claiming station's own pair;
+        # station 1's is shown as the representative default.
+        pair = (next((row for row in config.get("stations", []) if row.get("id") == 1), {})
+                if policy.get("agent_source") in {"station_1", "executing_station"} else policy)
         checkpoint_summary = "off"
         if policy.get("enabled"):
             checkpoint_summary = f"every {policy.get('every_research_iterations', '—')} completed iterations"
