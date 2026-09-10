@@ -592,20 +592,31 @@ class ControlScheduler:
         active = configuration["active_count"]
         # Existing leases retain ownership until their safe finalization point;
         # a lowered active count marks them draining instead of revoking them.
+        # PURE PRIORITY (operator ruling 2026-09-10): queue order is the ONE
+        # assignment input. No topic belongs to a station between iterations —
+        # a station executing keeps serving exactly its current lease; every
+        # AVAILABLE (non-resting, non-executing) station is dealt the highest
+        # runnable topic not already being executed, in station order. Rest is
+        # a STATION property (rest_until on the assignment record, set at
+        # finalize from the station's interval); topics never carry pacing.
+        executing = {record["current"]["topic_id"]
+                     for record in assignments.values()
+                     if isinstance(record, dict) and isinstance(record.get("current"), dict)}
         candidates: list[dict[str, Any]] = []
         items_by_id = {item.get("id"): item for item in queue.get("items", []) if isinstance(item, dict)}
         for item in queue.get("items", []):
             item_id = item.get("id")
             if not isinstance(item_id, str):
                 continue
-            if item.get("lane", "research") != "research":
+            if item.get("lane", "research") != "research" or item_id in executing:
                 continue
             topic = self.control.ensure_topic_work(state, item_id)
             dependencies = item.get("depends_on") or []
             if any(items_by_id.get(dep, {}).get("status") != "completed" for dep in dependencies):
                 continue
-            # Keep a paced head in rank calculation. Claim later gates only
-            # its assigned station, allowing lower stations their own ranks.
+            retry = topic.get("retry_not_before")
+            if isinstance(retry, str) and retry > now:
+                continue  # failure backoff is a topic restriction; skip, never block the station
             if item.get("status", "queued") in {"queued", "backoff", "running"} and item.get("desired_state", "running") == "running" and topic.get("review_state") not in {"awaiting_operator", "publishing_decision", "checkpoint_running", "retry_wait", "needs_attention"}:
                 candidates.append(item)
         iterator = iter(candidates)
@@ -618,6 +629,19 @@ class ControlScheduler:
                     record["draining"] = True
                     record["handoff_reason"] = "active_count_decreased"
                 continue
+            if isinstance(current, dict):
+                # Executing: keep serving this lease (restart adoption relies
+                # on desired matching current); no new topic is dealt to it
+                # and no other station is dealt its topic (excluded above).
+                record["desired"] = {"topic_id": current["topic_id"], "execution_kind": current["execution_kind"]}
+                continue
+            rest = record.get("rest_until")
+            if isinstance(rest, str) and rest > now:
+                # The STATION is resting between its own iterations; the
+                # topics it might have taken fall to the next station in
+                # order — nothing waits for a specific station.
+                record["desired"] = None
+                continue
             item = next(iterator, None)
             if item is None:
                 record["desired"] = None
@@ -625,8 +649,6 @@ class ControlScheduler:
             topic = topics[item["id"]]
             kind = "checkpoint" if topic.get("review_state") == "checkpoint_due" else "research"
             record["desired"] = {"topic_id": item["id"], "execution_kind": kind}
-            if current and current.get("topic_id") != item["id"]:
-                record["handoff_reason"] = "priority_reconciliation"
         return assignments
 
     def claim(self, station: int | str, *, now: str | None = None) -> dict[str, Any] | None:
@@ -635,6 +657,9 @@ class ControlScheduler:
         with self.control.transaction(actor="worker", affected_ids=[str(station_id)]) as state:
             if station_id > state["configuration"]["active_count"]:
                 return None
+            resting = state["work"].setdefault("assignments", {}).setdefault(str(station_id), {}).get("rest_until")
+            if isinstance(resting, str) and resting > now:
+                return None  # the station's own interval; topics stay claimable by others
             assignments = self.reconcile_state(state, now=now)
             record = assignments[str(station_id)]
             current = record.get("current")
@@ -653,10 +678,9 @@ class ControlScheduler:
             if not desired:
                 return None
             topic = self.control.ensure_topic_work(state, desired["topic_id"])
-            for field in ("retry_not_before", "pacing_ready_at"):
-                value = topic.get(field)
-                if isinstance(value, str) and value > now:
-                    return None
+            retry = topic.get("retry_not_before")
+            if isinstance(retry, str) and retry > now:
+                return None
             for other_id, other in assignments.items():
                 other_current = other.get("current") if isinstance(other, dict) else None
                 if other_id != str(station_id) and isinstance(other_current, dict) and other_current.get("topic_id") == desired["topic_id"]:
@@ -691,21 +715,26 @@ class ControlScheduler:
             if not current or current.get("lease_id") != lease_id:
                 raise ControlRevisionConflict("stale or unknown station lease")
             topic = self.control.ensure_topic_work(state, current["topic_id"])
-            # Handoff clears only pacing.  Failure retry remains a topic
-            # restriction regardless of which station receives it next.
+            # Failure retry remains a topic restriction regardless of which
+            # station receives it next; ordinary pacing is the STATION's rest
+            # (operator ruling 2026-09-10 — the interval throttles the seat,
+            # never the topic, which stays claimable by any other station).
             if retry_not_before is not None:
                 topic["retry_not_before"] = retry_not_before
-            if pacing_ready_at is not None and not record.get("handoff_reason"):
-                topic["pacing_ready_at"] = pacing_ready_at
-            elif record.get("handoff_reason"):
-                topic.pop("pacing_ready_at", None)
-            if current.get("execution_kind") == "checkpoint":
-                item = next(i for i in state["queue"]["items"] if i["id"] == current["topic_id"])
-                paused = item.get("desired_state") in {"paused", "stopping"}
-                item.update(status="paused" if paused else "queued", claimed_by=None,
-                            last_pid=None, last_pid_fingerprint=None, updated_at=utc_now())
-                if paused:
-                    item["desired_state"] = "paused"
+            if pacing_ready_at is not None:
+                record["rest_until"] = pacing_ready_at
+            topic.pop("pacing_ready_at", None)  # retire any stale topic pacing
+            item = next((i for i in state["queue"]["items"] if i["id"] == current["topic_id"]), None)
+            if isinstance(item, dict):
+                if current.get("execution_kind") == "checkpoint":
+                    paused = item.get("desired_state") in {"paused", "stopping"}
+                    item.update(status="paused" if paused else "queued", updated_at=utc_now())
+                    if paused:
+                        item["desired_state"] = "paused"
+                # Ownership ends with the iteration, for every kind: a topic
+                # between iterations belongs to the queue, not a station.
+                item.update(claimed_by=None, last_pid=None,
+                            last_pid_fingerprint=None, updated_at=utc_now())
             record["current"] = None
             record["handoff_reason"] = None
             record["draining"] = False
