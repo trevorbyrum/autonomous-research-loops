@@ -213,6 +213,36 @@ def accept_research_completion(
         return copy.deepcopy(result)
 
 
+def trigger_stall_checkpoint(control: Any, *, topic_id: str, inventory_version: str) -> dict[str, Any]:
+    """Force a bounded checkpoint review instead of an inert stall park.
+
+    Operator ruling 2026-09-11: a topic that keeps "succeeding" without
+    converging must resolve into EITHER a proposed obligation/amendment or a
+    genuine completion — never a dead end that only a human digging through
+    logs can unstick, and "resume" must actually mean resume. This is the
+    exact same checkpoint machinery cadence/deepening triggers use (budgets,
+    refunds, the one counter pass) — a third trigger kind, not a new review
+    process. Idempotent per (topic, iteration count): replaying this call at
+    the same completed-count coalesces into the same episode rather than
+    minting a duplicate.
+    """
+    _require_string(topic_id, "topic_id")
+    _require_string(inventory_version, "inventory_version")
+    with control.transaction(actor="runner", operation_id=f"stall-checkpoint:{topic_id}") as state:
+        work = _work(state)
+        topic = _topic(work, topic_id, inventory_version)
+        ordinal = int(topic.get("research_iterations_completed", 0))
+        trigger_id = _trigger_id(topic_id, "stall", ordinal, inventory_version)
+        work["triggers"].setdefault(trigger_id, {
+            "trigger_id": trigger_id, "topic_id": topic_id, "kind": "stall",
+            "research_ordinal": ordinal, "inventory_version": inventory_version,
+            "episode_id": None, "handled": False,
+        })
+        episode = _coalesce_episode(work, topic, [trigger_id])
+        work["triggers"][trigger_id]["episode_id"] = episode["episode_id"]
+        return {"episode_id": episode["episode_id"], "review_state": topic["review_state"]}
+
+
 def resolve_checkpoint_agents(state: Mapping[str, Any]) -> dict[str, str]:
     config = state.get("configuration")
     if not isinstance(config, Mapping): raise CheckpointError("VALIDATION_ERROR", "configuration is missing")

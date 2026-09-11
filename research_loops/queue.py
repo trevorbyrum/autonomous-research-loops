@@ -736,6 +736,23 @@ class QueueStore:
                 item["updated_at"] = utc_now()
             return copy.deepcopy(item)
 
+    def reset_stall_guard(self, item_id: str) -> dict[str, Any]:
+        """Clear the stall counter and its progress signature.
+
+        Called when a stall is being resolved by forcing a checkpoint
+        (operator ruling 2026-09-11) rather than a plain resume — a plain
+        resume must never silently carry the old count forward into
+        one-more-doomed-iteration-then-instant-re-park. Post-checkpoint, the
+        topic gets a full fresh run at convergence before the guard can
+        fire again.
+        """
+        with self._locked() as state:
+            item = self._find(state, item_id)
+            item["stall_count"] = 0
+            item["progress_signature"] = None
+            item["updated_at"] = utc_now()
+            return copy.deepcopy(item)
+
     def record_progress_signature(
         self, item_id: str, signature: str | None
     ) -> tuple[int, dict[str, Any]]:

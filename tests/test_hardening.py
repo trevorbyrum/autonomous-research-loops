@@ -5,6 +5,7 @@ import copy
 import subprocess
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 from research_loops.access import issue_capability
@@ -261,6 +262,60 @@ class InfraRefundTests(HardeningFixture):
         record_delegate_result(self.control, episode_id=episode_id,
                                invocation_id="counter-1", exit_code=78)
         self.assertEqual(self._budgets(episode_id)["delegate_launches"], before)
+
+
+class StallForcesCheckpointTests(HardeningFixture):
+    """A stall must resolve into a real decision, never an inert park
+    (operator ruling 2026-09-11): 'resume' has to actually mean resume."""
+
+    def test_stalled_topic_gets_a_checkpoint_instead_of_needs_attention(self):
+        store = self.root_store()
+        runner = LoopRunner(store, UsageLedger(self.root / "usage.jsonl"), worker="station-1")
+        item_id = self.control.snapshot()["queue"]["items"][0]["id"]
+        limit = LoopRunner.DEFAULT_STALL_LIMIT
+        # Land the item exactly one unchanged-signature pass short of the
+        # limit, matching how the real guard accumulates it over iterations.
+        # The first call always resets (no prior signature to match), so it
+        # takes `limit` calls to reach stall_count == limit - 1.
+        for _ in range(limit):
+            store.record_progress_signature(item_id, "same-digest")
+        with unittest.mock.patch.object(LoopRunner, "_progress_signature", return_value="same-digest"), \
+             unittest.mock.patch.object(LoopRunner, "_default_progress_command", return_value=["true"]):
+            item = store.get(item_id)
+            outcome, event = runner._apply_stall_guard(item, "scheduled")
+        self.assertEqual(outcome, "scheduled")  # never needs_attention
+        self.assertTrue(event["escalated"])
+        self.assertTrue(event["stall_checkpoint_episode"])
+        topic = self.control.snapshot()["work"]["topics"]["example"]
+        self.assertEqual(topic["review_state"], "checkpoint_due")
+        # Reset, so the topic gets a genuine fresh run once the review clears.
+        self.assertEqual(store.get(item_id)["stall_count"], 0)
+        self.assertIsNone(store.get(item_id)["progress_signature"])
+
+    def test_reset_stall_guard_clears_both_fields(self):
+        from research_loops.queue import QueueStore
+        store = QueueStore(self.root)
+        item = store.add(title="t", cwd=str(self.root), command=["true"])
+        with store._locked() as state:
+            state["items"][0]["stall_count"] = 5
+            state["items"][0]["progress_signature"] = "abc"
+        cleared = store.reset_stall_guard(item["id"])
+        self.assertEqual(cleared["stall_count"], 0)
+        self.assertIsNone(cleared["progress_signature"])
+
+    def test_repeated_stall_coalesces_into_one_episode_not_duplicates(self):
+        from research_loops.checkpoints.service import trigger_stall_checkpoint
+        first = trigger_stall_checkpoint(self.control, topic_id="example", inventory_version="inventory-1")
+        second = trigger_stall_checkpoint(self.control, topic_id="example", inventory_version="inventory-1")
+        self.assertEqual(first["episode_id"], second["episode_id"])
+        self.assertEqual(len(self.control.snapshot()["work"]["episodes"]), 1)
+
+    def root_store(self):
+        from research_loops.queue import QueueStore
+        return QueueStore(self.root)
+
+    def _item(self):
+        return copy.deepcopy(self.control.snapshot()["queue"]["items"][0])
 
 
 class RepairRetryTests(HardeningFixture):

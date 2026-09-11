@@ -26,6 +26,7 @@ from .checkpoints.service import (
     accept_research_completion,
     finish_checkpoint,
     start_checkpoint,
+    trigger_stall_checkpoint,
 )
 
 
@@ -1112,6 +1113,25 @@ class LoopRunner:
         }
         if stall_count < stall_limit or outcome != "scheduled":
             return outcome, event
+        if self.store.control is not None:
+            # A stall must resolve into a real decision — a proposed
+            # obligation/amendment or a genuine completion — never an inert
+            # park that only a human digging through logs can unstick, and
+            # a later "resume" must actually mean resume (operator ruling
+            # 2026-09-11). Force the SAME bounded checkpoint review cadence/
+            # deepening already use, and reset the counter so the topic gets
+            # a full fresh run at convergence once the review resolves.
+            inventory_version = str(item.get("completion_lock") or item.get("inventory_version") or "unknown")
+            try:
+                result = trigger_stall_checkpoint(self.store.control, topic_id=item["id"],
+                                                  inventory_version=inventory_version)
+            except CheckpointError as exc:
+                event["stall_checkpoint_error"] = str(exc)
+            else:
+                self.store.reset_stall_guard(item["id"])
+                event["escalated"] = True
+                event["stall_checkpoint_episode"] = result["episode_id"]
+                return outcome, event
         message = (
             f"stall guard: {stall_count} consecutive successful runs with no "
             "qualifying ledger progress (progress_command signature unchanged). "

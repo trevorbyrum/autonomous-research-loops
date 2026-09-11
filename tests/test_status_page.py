@@ -44,14 +44,16 @@ def managed_state():
 
 
 class StatusPageTests(unittest.TestCase):
-    def test_default_page_leads_with_pending_proposals_and_debt(self):
+    def test_default_page_leads_with_pending_proposals(self):
         page = render_dashboard(managed_state(), [])
         self.assertIn("## Pending checkpoint proposals (awaiting your decision)", page)
         self.assertIn("proposal\\-1", page)
         self.assertNotIn("proposal\\-0", page)  # resolved proposals are history
         self.assertIn("checkpoint-decide", page)
-        self.assertIn("## Checkpoint debt (1 topic(s) owe a review)", page)
-        self.assertIn("Beta Topic", page.split("## Checkpoint debt")[1].split("##")[0])
+        # Checkpoint debt is deliberately absent (operator request 2026-09-11):
+        # a topic owing a routine, self-resolving review is not an operator
+        # decision and reading it as a to-do was confusing.
+        self.assertNotIn("Checkpoint debt", page)
 
     def test_default_page_elides_history_but_full_includes_it(self):
         state = managed_state()

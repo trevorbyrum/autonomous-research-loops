@@ -501,18 +501,10 @@ def render_dashboard(
         if pending_rows:
             lines.append("Resolve with `research-loops checkpoint-decide --file decision.json` "
                          "(see docs/managed-stations.md).")
-        # Catch-up debt: topics whose next execution is a checkpoint —
-        # including paused ones, whose checkpoint fires on resume.
-        by_id = {str(item.get("id")): item for item in items if isinstance(item, dict)}
-        debt_rows = [[titles.get(topic_id, topic_id),
-                      (by_id.get(topic_id) or {}).get("status") or "unknown",
-                      record.get("research_iterations_completed", "unavailable")]
-                     for topic_id, record in topics_map.items()
-                     if isinstance(record, dict) and record.get("review_state") == "checkpoint_due"]
-        if debt_rows:
-            lines.extend(["", f"## Checkpoint debt ({len(debt_rows)} topic(s) owe a review)", "",
-                          _table(["Topic", "Queue status", "Iterations completed"], debt_rows),
-                          "A paused topic's checkpoint runs when it is resumed."])
+        # Deliberately no "checkpoint debt" table (operator request 2026-09-11):
+        # a topic owing a review is routine, automatic, and self-resolving —
+        # not an operator decision, and listing it here read as one. The only
+        # actionable checkpoint state is a pending proposal, above.
     lines.extend(overview_lines)
 
     def _attention_flags(item: dict[str, Any]) -> str:
