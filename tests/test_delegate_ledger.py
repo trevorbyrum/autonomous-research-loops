@@ -13,6 +13,11 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 SHIM = REPO / "research_loops" / "chassis" / "managed-delegate.py"
 
+
+def _now_helper() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
 STUB_OK = """#!/usr/bin/env python3
 import json, sys
 args = sys.argv[1:]
@@ -82,6 +87,66 @@ class DelegateLedgerTests(unittest.TestCase):
                                 env={**os.environ}, capture_output=True, text=True, timeout=30)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("not configured", result.stderr)
+
+    def _ledger_dicts(self):
+        return self._ledger()
+
+    def test_marker_is_removed_on_a_normal_return(self):
+        self._run(STUB_OK)
+        markers = list((self.topic / "logs").glob(".delegate-inflight-*.json"))
+        self.assertEqual(markers, [], "a completed call must leave no inflight marker")
+
+    def test_marker_is_removed_even_on_a_failed_call(self):
+        self._run(STUB_EMPTY)
+        markers = list((self.topic / "logs").glob(".delegate-inflight-*.json"))
+        self.assertEqual(markers, [], "an ordinary (non-vanished) failure still returns normally")
+
+    def test_stale_marker_from_a_dead_process_is_reported_as_vanished(self):
+        import json as json_module
+        import time
+        # Simulate a prior invocation that never reached its own finally block
+        # (killed from outside): plant a marker for a PID that is certainly dead.
+        dead_pid = 999999
+        while True:
+            try:
+                os.kill(dead_pid, 0)
+                dead_pid -= 1
+            except ProcessLookupError:
+                break
+            except PermissionError:
+                dead_pid -= 1
+        marker = self.topic / "logs" / f".delegate-inflight-{dead_pid}.json"
+        launched_at = "2026-09-11T04:19:41Z"
+        marker.write_text(json_module.dumps({"pid": dead_pid, "role": "secondary",
+                                             "model": "gpt-5.6-luna", "launched_at": launched_at}))
+        result = self._run(STUB_OK)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(marker.exists(), "a reported stale marker must be cleaned up")
+        vanished = [e for e in self._ledger() if e.get("event") == "vanished"]
+        self.assertEqual(len(vanished), 1)
+        self.assertEqual(vanished[0]["pid"], dead_pid)
+        self.assertEqual(vanished[0]["role"], "secondary")
+        self.assertEqual(vanished[0]["launched_at"], launched_at)
+        self.assertIsInstance(vanished[0]["elapsed_seconds"], (int, float))
+
+    def test_a_still_alive_process_marker_is_never_reported(self):
+        import json as json_module
+        marker = self.topic / "logs" / f".delegate-inflight-{os.getpid()}.json"
+        marker.write_text(json_module.dumps({"pid": os.getpid(), "role": "secondary",
+                                             "model": "gpt-5.6-luna", "launched_at": _now_helper()}))
+        self._run(STUB_OK)
+        vanished = [e for e in self._ledger() if e.get("event") == "vanished"]
+        self.assertEqual(vanished, [])
+        # Our own PID's marker is untouched by the sweep (it belongs to THIS test process, not the child).
+        self.assertTrue(marker.exists())
+        marker.unlink()
+
+    def test_corrupt_marker_is_discarded_without_crashing_the_launch(self):
+        marker = self.topic / "logs" / ".delegate-inflight-12345.json"
+        marker.write_text("not json")
+        result = self._run(STUB_OK)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(marker.exists())
 
     def test_throughput_report_reader_sees_the_delegation(self):
         self._run(STUB_OK)
