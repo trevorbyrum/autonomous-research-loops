@@ -116,7 +116,7 @@ class DelegateLedgerTests(unittest.TestCase):
             except PermissionError:
                 dead_pid -= 1
         marker = self.topic / "logs" / f".delegate-inflight-{dead_pid}.json"
-        launched_at = "2026-09-11T04:19:41Z"
+        launched_at = "2026-01-01T00:00:00Z"
         marker.write_text(json_module.dumps({"pid": dead_pid, "role": "secondary",
                                              "model": "gpt-5.6-luna", "launched_at": launched_at}))
         result = self._run(STUB_OK)
