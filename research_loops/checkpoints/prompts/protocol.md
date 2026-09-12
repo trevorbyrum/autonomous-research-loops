@@ -93,9 +93,15 @@ a semantically invalid result (exit 78) is never retryable this way.
 The `counter` invocation is required even for a zero-candidate/no-change review,
 unless the controller supplies a valid `prior_review_reference` and the final
 result explicitly uses `reuse_of`. Preparation is optional when no candidate
-slate needs it. Set the shell command timeout to at least 930 seconds so the
-broker can finish its bounded delegate call. Broker output is JSON and includes
-the recorded invocation and its output reference; inspect the complete report.
+slate needs it. Issue the broker call as ONE single foreground command with its
+own shell timeout set to at least 930 seconds -- never launch it with `&`, nohup,
+disown, or any other backgrounding, and never split it into a launch step
+followed by separate polling/sleep/check commands. A harness tears down a
+backgrounded child's session the moment the visible command returns, silently
+killing it with no output and no error -- this is a confirmed platform
+limitation, not a timeout to work around by polling. Broker output is JSON and
+includes the recorded invocation and its output reference; inspect the
+complete report.
 On a retry of this same episode, inspect the supplied `invocations` first.
 A finished successful role already satisfies that role's invocation requirement:
 read its recorded report and findings, and continue the review. Its supplied
