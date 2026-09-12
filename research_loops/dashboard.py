@@ -554,11 +554,11 @@ def render_dashboard(
             run_count,
             item.get("finished_at") or "unavailable",
         ])
+    lines.extend(["", "## Completed topics", "", _table(["Topic", "Queue attempts", "Retained runs", "Finished"], completed_rows)])
     if full:
-        lines.extend(["", "## Completed topics", "", _table(["Topic", "Queue attempts", "Retained runs", "Finished"], completed_rows)])
         lines.extend(["", "## Paused topics", "", _table(["Topic", "Stale/current owner", "Attempts", "Reason class"], paused_rows)])
     else:
-        lines.extend(["", f"_History elided: {len(completed_rows)} completed and {len(paused_rows)} paused topics, "
+        lines.extend(["", f"_History elided: {len(paused_rows)} paused topics, "
                           "plus economics/ledger telemetry — regenerate with `dashboard --full` to include them._"])
     if unclassified_rows:
         # A catch-all for malformed/unexpected queue states -- rendered only

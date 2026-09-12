@@ -59,7 +59,7 @@ class StatusPageTests(unittest.TestCase):
         state = managed_state()
         default = render_dashboard(state, [])
         self.assertNotIn("## Paused topics", default)
-        self.assertNotIn("## Completed topics", default)
+        self.assertIn("## Completed topics", default)
         self.assertNotIn("## Retained-ledger aggregate", default)
         self.assertNotIn("## Metric definitions and coverage", default)
         self.assertIn("History elided", default)
