@@ -88,6 +88,30 @@ class QueueStoreTests(unittest.TestCase):
         self.assertIsNone(resumed["last_error"])
         self.assertIsNone(resumed["last_error_kind"])
 
+    def test_resume_clears_a_stale_stop_file_left_by_the_park(self):
+        # A topic that self-parks by writing NEEDS-OPERATOR to its STOP file
+        # would otherwise have the chassis exit 3 on the very next attempt
+        # (a stale terminal STOP present at iteration start), re-parking it
+        # before it ever runs -- resume must actually let it retry.
+        cwd = Path(self.tempdir.name) / "topic"
+        cwd.mkdir()
+        stop_path = cwd / "STOP"
+        stop_path.write_text("NEEDS-OPERATOR\nflag: something needs a human", encoding="utf-8")
+        item = self.store.add(
+            title="Stopped", cwd=str(cwd), command=["true"], stop_file="STOP",
+        )
+        self.store.claim_next()
+        self.store.mark_needs_attention(
+            item["id"], exit_code=0, error_kind="configuration",
+            message="NEEDS-OPERATOR\nflag: something needs a human",
+        )
+        self.assertTrue(stop_path.exists())
+
+        resumed = self.store.resume_item(item["id"])
+
+        self.assertEqual(resumed["status"], "queued")
+        self.assertFalse(stop_path.exists())
+
     def test_empty_claim_does_not_rewrite_state(self):
         before = self.store.snapshot()
         self.assertIsNone(self.store.claim_next())

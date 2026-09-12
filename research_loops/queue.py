@@ -1363,6 +1363,12 @@ class QueueStore:
             item["desired_state"] = "running"
             if item["status"] in {"paused", "needs_attention", "backoff"}:
                 item["status"] = "queued"
+                # A stale terminal STOP left from the pass that parked this
+                # item would otherwise make the chassis exit 3 on the very
+                # next attempt, re-parking it before it runs at all (the same
+                # "resume doesn't resume" failure as the stall guard, just via
+                # the self-declared STOP path instead of stall_count).
+                self._clear_stop_file(item)
             item["next_eligible_at"] = None
             item["consecutive_failures"] = 0
             item["last_error"] = None
