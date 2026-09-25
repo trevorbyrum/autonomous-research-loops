@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "invocation.schema.json",
+    "expect": "invalid",
+    "tests": "C-12: pre-contract admission is for discovery/delegate/research_pass only",
+    "base": "valid-pre-contract-discovery.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/kind",
+        "value": "verification"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "enum",
+        "path": "/kind"
+      }
+    ]
+  }
+}

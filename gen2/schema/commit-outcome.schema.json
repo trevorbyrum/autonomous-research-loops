@@ -13,7 +13,7 @@
     "invocation_id",
     "capability_id",
     "topic_id",
-    "contract",
+    "admission",
     "config_bundle_hash",
     "lease",
     "expected_state_revision",
@@ -32,7 +32,10 @@
     "invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
     "capability_id": {"$ref": "common.schema.json#/$defs/capability_id"},
     "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
-    "contract": {"$ref": "common.schema.json#/$defs/contract_ref"},
+    "admission": {
+      "description": "The invocation's pinned admission context (A4): an approved contract revision, or a confirmed brief for pre-contract scoping/drafting. The router rejects any mismatch with the invocation's pins (DDL operation_receipts_admission_pinned).",
+      "$ref": "common.schema.json#/$defs/admission_context"
+    },
     "config_bundle_hash": {
       "description": "The mounted engine policy bundle the invocation was pinned to (design review §6: in-flight work retains its pinned bundle).",
       "$ref": "common.schema.json#/$defs/sha256"
@@ -72,6 +75,7 @@
         "topic_id",
         "request_fingerprint",
         "payload_digest",
+        "admission",
         "committed_at",
         "state_revision_before",
         "state_revision_after",
@@ -90,6 +94,7 @@
           "$ref": "common.schema.json#/$defs/sha256"
         },
         "payload_digest": {"$ref": "common.schema.json#/$defs/sha256"},
+        "admission": {"$ref": "common.schema.json#/$defs/admission_context"},
         "committed_at": {"$ref": "common.schema.json#/$defs/timestamp"},
         "state_revision_before": {"$ref": "common.schema.json#/$defs/state_revision"},
         "state_revision_after": {"$ref": "common.schema.json#/$defs/state_revision"},

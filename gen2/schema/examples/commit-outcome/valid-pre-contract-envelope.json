@@ -2,7 +2,7 @@
   "fixture": {
     "schema": "commit-outcome.schema.json",
     "expect": "valid",
-    "tests": "C-2: envelope carries every identity field of design review §5 step 1"
+    "tests": "A4/C-12: a pre-contract scoping discovery submits under a confirmed brief, with no Contract v2 reference"
   },
   "instance": {
     "envelope_version": "commit-outcome/1",
@@ -12,15 +12,17 @@
     "capability_id": "cap_01J8ZQ3W2X",
     "topic_id": "fleet-a:intake-latency",
     "admission": {
-      "context": "contract/1",
-      "contract": {
-        "revision": 2,
-        "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-      }
+      "context": "pre-contract/1",
+      "brief": {
+        "brief_id": "brief-latency",
+        "version": 3,
+        "content_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "brief_confirmation_decision_id": "opd_01J8BRIEF1"
     },
     "config_bundle_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
     "lease": {
-      "lease_id": "lease_01J8ZQ3V9T",
+      "lease_id": "lease_01J8SCOPE1",
       "generation": 7
     },
     "expected_state_revision": 41,

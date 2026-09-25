@@ -49,7 +49,7 @@ class WithoutRecursiveTriggersTest(StoreTestCase):
         self.lease("lease_aaaaaaaa", 1)
         self.invocation("inv_pppppppp")
         self.receipt("op_00000001", "inv_pppppppp", digest="d")
-        self.x("INSERT OR REPLACE INTO operation_receipts SELECT operation_id, receipt_id, operation_kind, invocation_id, topic_id, request_fingerprint, ?, lease_id, lease_generation, contract_revision, config_bundle_hash, state_revision_before, state_revision_after, validator_version, policy_version, json_set(receipt, '$.payload_digest', ?), committed_at FROM operation_receipts WHERE operation_id = 'op_00000001'", h("0"), h("0"))
+        self.x("INSERT OR REPLACE INTO operation_receipts SELECT operation_id, receipt_id, operation_kind, invocation_id, topic_id, request_fingerprint, ?, lease_id, lease_generation, admission_context, contract_revision, brief_hash, config_bundle_hash, state_revision_before, state_revision_after, validator_version, policy_version, json_set(receipt, '$.payload_digest', ?), committed_at FROM operation_receipts WHERE operation_id = 'op_00000001'", h("0"), h("0"))
         self.assertEqual(self.rows("SELECT payload_digest FROM operation_receipts"), [(h("0"),)])
 
 
@@ -69,11 +69,11 @@ class ReplaceAndDeleteTest(StoreTestCase):
 
     def test_replace_cannot_rewrite_a_receipt_on_any_key(self) -> None:
         self.receipt("op_00000001", "inv_pppppppp", kind="final_outcome", before=0, digest="d")
-        cols = "operation_id, receipt_id, operation_kind, invocation_id, topic_id, request_fingerprint, payload_digest, lease_id, lease_generation, contract_revision, config_bundle_hash, state_revision_before, state_revision_after, validator_version, policy_version, receipt, committed_at"
-        ins = f"INSERT OR REPLACE INTO operation_receipts ({cols}) VALUES (?, ?, ?, 'inv_pppppppp', ?, ?, ?, 'lease_aaaaaaaa', 1, 1, ?, ?, ?, 'v1', 'p1', ?, ?)"
+        cols = "operation_id, receipt_id, operation_kind, invocation_id, topic_id, request_fingerprint, payload_digest, lease_id, lease_generation, admission_context, contract_revision, config_bundle_hash, state_revision_before, state_revision_after, validator_version, policy_version, receipt, committed_at"
+        ins = f"INSERT OR REPLACE INTO operation_receipts ({cols}) VALUES (?, ?, ?, 'inv_pppppppp', ?, ?, ?, 'lease_aaaaaaaa', 1, 'contract/1', 1, ?, ?, ?, 'v1', 'p1', ?, ?)"
 
         def body(op, rid, digest):
-            return json.dumps({"operation_id": op, "receipt_id": rid, "payload_digest": digest})
+            return json.dumps({"operation_id": op, "receipt_id": rid, "payload_digest": digest, "admission": {"context": "contract/1", "contract": {"revision": 1}, "brief": None}})
         guard = DELETE_GUARD["operation_receipts"]
         # primary key: same operation_id, different fingerprint/digest (the review's probe)
         self.assertRewriteRefused("operation_receipts", ins, "op_00000001", "rcpt_00000001", "final_outcome", TOPIC, h("9"), h("0"), h("c"), 0, 1, body("op_00000001", "rcpt_00000001", h("0")), T, fragment=guard)
@@ -116,7 +116,7 @@ class ReplaceAndDeleteTest(StoreTestCase):
         self.assertEqual(self.rows("SELECT closed_at FROM review_episodes"), [(T,)])
 
     def test_update_or_replace_cannot_delete_the_approved_contract(self) -> None:
-        self.approve_contract(TOPIC, 1)
+        self.approved_revision(TOPIC)  # revision 1 (already approved for the invocation in setUp)
         self.contract(TOPIC, 2)
         self.decision("opd_00000002", "amendment_approval", rev=2, hsh=self.content_hash_of(TOPIC, 2))
         # approving revision 2 collides with revision 1 on the one-approved index;

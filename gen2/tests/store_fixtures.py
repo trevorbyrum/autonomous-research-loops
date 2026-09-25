@@ -160,15 +160,69 @@ class StoreTestCase(unittest.TestCase):
     def lease(self, lid: str, gen: int, tid: str = TOPIC, scope: str = "research") -> None:
         self.x("INSERT INTO leases (lease_id, topic_id, scope, generation, station_id, granted_at, expires_at) VALUES (?, ?, ?, ?, 'st1', ?, ?)", lid, tid, scope, gen, T, T)
 
-    def invocation(self, iid: str, kind: str = "research_pass", lease: str | None = "lease_aaaaaaaa", tid: str = TOPIC, parent: str | None = None) -> None:
-        self.x("INSERT INTO invocations (invocation_id, kind, topic_id, parent_invocation_id, lease_id, capability_id, config_bundle_hash, state, admitted_at, deadline_at, state_changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'admitted', ?, ?, ?)",
-               iid, kind, tid, parent, lease, "cap_" + iid[4:], h("c"), T, T, T)
+    def approved_revision(self, tid: str) -> int:
+        """The topic's approved contract revision, approving draft revision 1 if
+        none is approved yet (contract/1 admission needs one)."""
+        rows = self.rows("SELECT revision FROM contract_revisions WHERE topic_id = ? AND status = 'approved'", tid)
+        if rows:
+            return rows[0][0]
+        self.approve_contract(tid, 1)
+        return 1
 
-    def receipt(self, op: str, inv: str, lease: str = "lease_aaaaaaaa", gen: int = 1, before: int = 0, kind: str = "final_outcome", tid: str = TOPIC, rid: str | None = None, digest: str = "d") -> None:
+    def confirm_brief(self, tid: str = TOPIC, brief: str = "brief-1", version: int = 1, did: str | None = None) -> tuple:
+        did = did or f"opd_brief{tid[-2:]}{version:02d}"
+        if not self.rows("SELECT 1 FROM operator_decisions WHERE decision_id = ?", did):
+            self.decision(did, "brief_confirmation", tid, ref=brief, rev=version, hsh=h("b"))
+        return brief, version, h("b"), did
+
+    def invocation(self, iid: str, kind: str = "research_pass", lease: str | None = "lease_aaaaaaaa", tid: str = TOPIC, parent: str | None = None,
+                   *, pre_contract: bool = False, contract_rev: int | None = None, requested_by: str | None = None) -> None:
+        if kind == "delegate":
+            pins = self.rows("SELECT admission_context, contract_revision, brief_ref, brief_version, brief_hash, brief_confirmation_decision_id FROM invocations WHERE invocation_id = ?", parent)
+            pins = pins[0] if pins else ("contract/1", self.approved_revision(tid), None, None, None, None)
+        elif pre_contract:
+            pins = ("pre-contract/1", None, *self.confirm_brief(tid))
+        else:
+            pins = ("contract/1", contract_rev or self.approved_revision(tid), None, None, None, None)
+        self.x("INSERT INTO invocations (invocation_id, kind, topic_id, parent_invocation_id, requested_by_invocation_id, lease_id, capability_id, config_bundle_hash, "
+               "admission_context, contract_revision, brief_ref, brief_version, brief_hash, brief_confirmation_decision_id, state, admitted_at, deadline_at, state_changed_at) "
+               "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'admitted', ?, ?, ?)",
+               iid, kind, tid, parent, requested_by, lease, "cap_" + iid[4:], h("c"), *pins, T, T, T)
+
+    def raw_invocation(self, **cols) -> tuple:
+        """INSERT for an invocation row with every column explicit: defaults are a
+        contract-admitted research pass on lease_aaaaaaaa (the topic's contract
+        is approved first); pass column=value to override. Returns (sql, *params)
+        so it can be splatted into x()/rejects()."""
+        tid = cols.get("topic_id", TOPIC)
+        row = {"invocation_id": "inv_rawrawra", "kind": "research_pass", "topic_id": tid, "parent_invocation_id": None,
+               "requested_by_invocation_id": None, "lease_id": "lease_aaaaaaaa", "capability_id": None, "config_bundle_hash": h("c"),
+               "admission_context": "contract/1", "contract_revision": None, "brief_ref": None, "brief_version": None, "brief_hash": None,
+               "brief_confirmation_decision_id": None, "state": "admitted", "admitted_at": T, "deadline_at": T, "state_changed_at": T}
+        row.update(cols)
+        if row["capability_id"] is None:
+            row["capability_id"] = "cap_" + row["invocation_id"][4:]
+        if row["admission_context"] == "contract/1" and "contract_revision" not in cols:
+            row["contract_revision"] = self.approved_revision(tid)
+        names = ", ".join(row)
+        return (f"INSERT INTO invocations ({names}) VALUES ({', '.join('?' * len(row))})", *row.values())
+
+    def receipt(self, op: str, inv: str, lease: str = "lease_aaaaaaaa", gen: int = 1, before: int = 0, kind: str = "final_outcome", tid: str = TOPIC,
+                rid: str | None = None, digest: str = "d", admission: tuple | None = None) -> None:
+        """A commit receipt carrying the invocation's own admission pins (pass
+        `admission=(context, contract_revision, brief_hash)` to probe a mismatch)."""
         rid = rid or "rcpt_" + op[3:]
-        body = json.dumps({"operation_id": op, "receipt_id": rid, "payload_digest": h(digest)})
-        self.x("INSERT INTO operation_receipts (operation_id, receipt_id, operation_kind, invocation_id, topic_id, request_fingerprint, payload_digest, lease_id, lease_generation, contract_revision, config_bundle_hash, state_revision_before, state_revision_after, validator_version, policy_version, receipt, committed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 'v1', 'p1', ?, ?)",
-               op, rid, kind, inv, tid, h("f"), h(digest), lease, gen, h("c"), before, before + 1, body, T)
+        if admission is None:
+            found = self.rows("SELECT admission_context, contract_revision, brief_hash FROM invocations WHERE invocation_id = ?", inv)
+            admission = found[0] if found else ("contract/1", 1, None)
+        context, contract_rev, brief_hash = admission
+        adm = {"context": context, "contract": None if contract_rev is None else {"revision": contract_rev},
+               "brief": None if brief_hash is None else {"content_hash": brief_hash}}
+        body = json.dumps({"operation_id": op, "receipt_id": rid, "payload_digest": h(digest), "admission": adm})
+        self.x("INSERT INTO operation_receipts (operation_id, receipt_id, operation_kind, invocation_id, topic_id, request_fingerprint, payload_digest, lease_id, lease_generation, "
+               "admission_context, contract_revision, brief_hash, config_bundle_hash, state_revision_before, state_revision_after, validator_version, policy_version, receipt, committed_at) "
+               "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'v1', 'p1', ?, ?)",
+               op, rid, kind, inv, tid, h("f"), h(digest), lease, gen, context, contract_rev, brief_hash, h("c"), before, before + 1, body, T)
 
     def spec(self, spec_id: str = "dspec_screen01", provider: str = "jev", cls: str = "screening") -> str:
         sh = "sha256:" + (spec_id.encode().hex() + "0" * 64)[:64]

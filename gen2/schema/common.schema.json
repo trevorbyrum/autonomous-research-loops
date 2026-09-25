@@ -65,6 +65,38 @@
         "content_hash": {"$ref": "#/$defs/sha256"}
       }
     },
+    "brief_ref": {
+      "description": "An operator-confirmed Intake Brief version (flow S1: confirmation is an explicit, versioned act). Durable brief rows arrive in task 0b (ruling R3); until then the store binds this triple to the operator's brief_confirmation decision.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["brief_id", "version", "content_hash"],
+      "properties": {
+        "brief_id": {"$ref": "#/$defs/local_id"},
+        "version": {"$ref": "#/$defs/revision"},
+        "content_hash": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "admission_context": {
+      "description": "What an invocation was admitted under, pinned for its whole life (Astra 0a review A4; INVARIANTS C-12). contract/1: scientific work under an approved Contract v2 revision. pre-contract/1: S2 scoping / S3 contract drafting (invocation kinds discovery, delegate, research_pass only) under an operator-confirmed brief, admissible only while the topic has never had an approved contract; it can finalize, but it can never earn a research ordinal or write rows that require the approved protocol. Versioned so a later context is a new const, never a reinterpretation.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["context", "contract"],
+          "properties": {"context": {"const": "contract/1"}, "contract": {"$ref": "#/$defs/contract_ref"}}
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["context", "brief", "brief_confirmation_decision_id"],
+          "properties": {
+            "context": {"const": "pre-contract/1"},
+            "brief": {"$ref": "#/$defs/brief_ref"},
+            "brief_confirmation_decision_id": {"$ref": "#/$defs/operator_decision_id"}
+          }
+        }
+      ]
+    },
     "observed_count": {
       "description": "A count that may be unobserved. Unknown is a distinct state with a reason, never 0 (invariant RG-U; flow §4.3).",
       "oneOf": [

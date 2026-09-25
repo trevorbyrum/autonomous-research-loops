@@ -1,0 +1,25 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json",
+    "expect": "invalid",
+    "base": "valid-final-outcome-envelope.json",
+    "tests": "A4: a contract-admitted envelope cannot also claim a brief (one context, not a union of both)",
+    "patch": [
+      {
+        "op": "add",
+        "path": "/admission/brief",
+        "value": {
+          "brief_id": "brief-latency",
+          "version": 3,
+          "content_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "oneOf",
+        "path": "/admission"
+      }
+    ]
+  }
+}

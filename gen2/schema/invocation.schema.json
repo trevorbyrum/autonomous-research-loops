@@ -12,8 +12,10 @@
     "kind",
     "topic_id",
     "parent_invocation_id",
+    "requested_by_invocation_id",
     "lease",
     "capability_id",
+    "admission",
     "state",
     "admitted_at",
     "deadline_at",
@@ -30,7 +32,11 @@
     "kind": {"$ref": "common.schema.json#/$defs/invocation_kind"},
     "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
     "parent_invocation_id": {
-      "description": "Delegates run under their parent's reservation and always name it.",
+      "description": "CONTROL/RESERVATION parentage only (ruling R2.2): the invocation whose lease and reservation a delegate runs under. Exactly the delegates have one; a verifier never does, so a producer cannot launch or control its verifier.",
+      "oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/invocation_id"}]
+    },
+    "requested_by_invocation_id": {
+      "description": "Causal link only (ruling R2.2): the invocation that asked for this work. Carries no authority; a verification requested by the producing pass is legitimate.",
       "oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/invocation_id"}]
     },
     "lease": {
@@ -46,6 +52,7 @@
       "description": "Each invocation has its own capability; a verifier never shares its producer's (BOUNDARIES.md Verifier).",
       "$ref": "common.schema.json#/$defs/capability_id"
     },
+    "admission": {"$ref": "common.schema.json#/$defs/admission_context"},
     "state": {"$ref": "common.schema.json#/$defs/invocation_state"},
     "admitted_at": {"$ref": "common.schema.json#/$defs/timestamp"},
     "deadline_at": {"$ref": "common.schema.json#/$defs/timestamp"},
@@ -123,8 +130,15 @@
   },
   "allOf": [
     {
+      "description": "Ruling R2.1/R2.2: a delegate names its controlling parent and inherits its lease; every other kind owns a lease and has no controlling parent.",
       "if": {"properties": {"kind": {"const": "delegate"}}},
-      "then": {"properties": {"parent_invocation_id": {"type": "string"}}}
+      "then": {"properties": {"parent_invocation_id": {"type": "string"}, "lease": {"type": "null"}}},
+      "else": {"properties": {"parent_invocation_id": {"type": "null"}, "lease": {"type": "object"}}}
+    },
+    {
+      "description": "Pre-contract admission is for scoping/drafting kinds only (C-12).",
+      "if": {"properties": {"admission": {"properties": {"context": {"const": "pre-contract/1"}}, "required": ["context"]}}},
+      "then": {"properties": {"kind": {"enum": ["discovery", "delegate", "research_pass"]}}}
     },
     {
       "if": {"properties": {"state": {"enum": ["launching", "running", "result_ready", "committed", "outcome_unknown"]}}},

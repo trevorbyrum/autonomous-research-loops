@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json",
+    "expect": "invalid",
+    "base": "valid-pre-contract-envelope.json",
+    "tests": "A4/G-4: pre-contract admission names the operator's brief confirmation (unconfirmed briefs cannot advance)",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/admission/brief_confirmation_decision_id"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "oneOf",
+        "path": "/admission"
+      }
+    ]
+  }
+}

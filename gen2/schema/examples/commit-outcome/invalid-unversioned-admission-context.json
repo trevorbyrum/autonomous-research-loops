@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json",
+    "expect": "invalid",
+    "base": "valid-final-outcome-envelope.json",
+    "tests": "A4: the admission context is a closed, versioned discriminator",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/admission/context",
+        "value": "contract"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "oneOf",
+        "path": "/admission"
+      }
+    ]
+  }
+}

@@ -15,6 +15,13 @@
       "topic_id": "fleet-a:intake-latency",
       "request_fingerprint": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
       "payload_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "admission": {
+        "context": "contract/1",
+        "contract": {
+          "revision": 2,
+          "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
       "committed_at": "2026-09-25T11:02:03.402Z",
       "state_revision_before": 41,
       "state_revision_after": 42,

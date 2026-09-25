@@ -476,17 +476,37 @@ END;
 -- trace: design review §5 (launch intent before spawn; job handle + host/
 -- container + boot identity + start fingerprint, never a bare PID), §6 (one
 -- lifecycle for every kind); BOUNDARIES.md Station supervisor; schema
--- invocation.schema.json; INVARIANTS L-1, L-2, L-3, L-8, RG-2.
--- There is no PID column. Delegates run under their parent's reservation.
+-- invocation.schema.json; INVARIANTS L-1, L-2, L-3, L-8, RG-2, C-12.
+-- There is no PID column.
+-- Parentage (Astra ruling R2.2): parent_invocation_id is CONTROL/RESERVATION
+-- parentage only — the invocation whose lease and reservation a delegate runs
+-- under. Only delegates have one; a verifier never has a controlling parent
+-- (the supervisor owns it). requested_by_invocation_id is the separate
+-- causal link ("which invocation asked for this work") and carries no
+-- authority: a verification requested by the producing pass is legitimate.
+-- Leases (R2.1): every non-delegate owns exactly one lease, of the scope its
+-- kind requires, live and of its topic when admitted; delegates inherit the
+-- parent's lease and admission pins.
+-- Admission (Astra A4; INVARIANTS C-12): contract/1 work is pinned to an
+-- approved contract revision; pre-contract/1 work (S2 scoping, S3 drafting:
+-- kinds discovery, delegate, research_pass) is pinned to a confirmed intake
+-- brief (id, version, hash and the operator's brief_confirmation) and is
+-- admissible only while the topic has never had an approved contract.
 CREATE TABLE invocations (
   invocation_id TEXT PRIMARY KEY CHECK (invocation_id GLOB 'inv_*'),
   kind TEXT NOT NULL CHECK (kind IN ('research_pass', 'discovery', 'delegate', 'verification', 'checkpoint')),
   topic_id TEXT NOT NULL REFERENCES queue_entries (topic_id),
   parent_invocation_id TEXT REFERENCES invocations (invocation_id),
+  requested_by_invocation_id TEXT REFERENCES invocations (invocation_id),
   lease_id TEXT REFERENCES leases (lease_id),
   capability_id TEXT NOT NULL UNIQUE CHECK (capability_id GLOB 'cap_*'),
   config_bundle_hash TEXT NOT NULL,
+  admission_context TEXT NOT NULL CHECK (admission_context IN ('contract/1', 'pre-contract/1')),
   contract_revision INTEGER,
+  brief_ref TEXT,
+  brief_version INTEGER CHECK (brief_version >= 1),
+  brief_hash TEXT CHECK (brief_hash IS NULL OR (brief_hash GLOB 'sha256:*' AND length(brief_hash) = 71)),
+  brief_confirmation_decision_id TEXT REFERENCES operator_decisions (decision_id),
   state TEXT NOT NULL CHECK (state IN ('admitted', 'launching', 'running', 'result_ready', 'committed', 'cancelled', 'failed', 'outcome_unknown')),
   admitted_at TEXT NOT NULL,
   deadline_at TEXT NOT NULL,
@@ -504,8 +524,13 @@ CREATE TABLE invocations (
   outcome_unknown_since TEXT,
   state_changed_at TEXT NOT NULL,
   FOREIGN KEY (topic_id, contract_revision) REFERENCES contract_revisions (topic_id, revision),
-  CHECK (kind != 'delegate' OR parent_invocation_id IS NOT NULL),
-  CHECK (kind = 'delegate' OR lease_id IS NOT NULL),
+  CHECK ((kind = 'delegate') = (parent_invocation_id IS NOT NULL)),
+  CHECK ((kind = 'delegate') = (lease_id IS NULL)),
+  CHECK ((admission_context = 'contract/1') = (contract_revision IS NOT NULL)),
+  CHECK (CASE admission_context
+           WHEN 'pre-contract/1' THEN brief_ref IS NOT NULL AND brief_version IS NOT NULL AND brief_hash IS NOT NULL AND brief_confirmation_decision_id IS NOT NULL
+           ELSE brief_ref IS NULL AND brief_version IS NULL AND brief_hash IS NULL AND brief_confirmation_decision_id IS NULL END),
+  CHECK (admission_context = 'contract/1' OR kind IN ('discovery', 'delegate', 'research_pass')),
   CHECK (launch_intent_at IS NOT NULL OR state IN ('admitted', 'cancelled')),
   CHECK (state != 'running' OR (job_handle IS NOT NULL AND host_id IS NOT NULL AND boot_id IS NOT NULL AND start_fingerprint IS NOT NULL)),
   CHECK (state NOT IN ('result_ready', 'committed') OR (result_payload_digest IS NOT NULL AND result_staged_at IS NOT NULL)),
@@ -513,6 +538,68 @@ CREATE TABLE invocations (
   CHECK (state != 'outcome_unknown' OR outcome_unknown_since IS NOT NULL),
   CHECK ((cancel_requested_at IS NULL) = (cancel_requested_by IS NULL))
 ) STRICT;
+
+CREATE UNIQUE INDEX invocations_one_owner_per_lease ON invocations (lease_id) WHERE lease_id IS NOT NULL;
+
+-- R2.1: a non-delegate's lease is live, of its topic, and of the scope its
+-- kind requires. ("Live" here means unreleased: expiry is a runtime check.)
+CREATE TRIGGER invocations_lease_matches_kind
+BEFORE INSERT ON invocations
+WHEN NEW.kind != 'delegate' AND NOT EXISTS (
+  SELECT 1 FROM leases l
+  WHERE l.lease_id = NEW.lease_id AND l.topic_id = NEW.topic_id AND l.released_at IS NULL
+    AND l.scope = CASE NEW.kind WHEN 'research_pass' THEN 'research' WHEN 'discovery' THEN 'discovery'
+                                WHEN 'verification' THEN 'verification' WHEN 'checkpoint' THEN 'checkpoint' END)
+BEGIN
+  SELECT RAISE(ABORT, 'an invocation owns a live lease of its topic and of its kind''s scope (R2.1)');
+END;
+
+-- R2.1/R2.2: a delegate runs under a running non-delegate parent of its topic
+-- and inherits that parent's admission pins (no delegate chains, so no cycles).
+CREATE TRIGGER invocations_delegate_inherits_parent
+BEFORE INSERT ON invocations
+WHEN NEW.kind = 'delegate' AND NOT EXISTS (
+  SELECT 1 FROM invocations p
+  WHERE p.invocation_id = NEW.parent_invocation_id AND p.topic_id = NEW.topic_id
+    AND p.kind != 'delegate' AND p.state IN ('launching', 'running')
+    AND p.admission_context IS NEW.admission_context AND p.contract_revision IS NEW.contract_revision
+    AND p.brief_ref IS NEW.brief_ref AND p.brief_version IS NEW.brief_version AND p.brief_hash IS NEW.brief_hash
+    AND p.brief_confirmation_decision_id IS NEW.brief_confirmation_decision_id)
+BEGIN
+  SELECT RAISE(ABORT, 'a delegate runs under a launching/running non-delegate parent of its topic with the same admission pins (R2.1)');
+END;
+
+-- (The requester must already exist, so an invocation cannot name itself.)
+CREATE TRIGGER invocations_requested_by_same_topic
+BEFORE INSERT ON invocations
+WHEN NEW.requested_by_invocation_id IS NOT NULL
+  AND (SELECT topic_id FROM invocations WHERE invocation_id = NEW.requested_by_invocation_id) IS NOT NEW.topic_id
+BEGIN
+  SELECT RAISE(ABORT, 'the requesting invocation must be of the same topic');
+END;
+
+-- A4 / C-12: contract/1 admission pins an approved contract revision;
+-- pre-contract/1 admission pins an operator-confirmed brief and is open only
+-- while the topic has never had an approved contract. Checked when a
+-- non-delegate is admitted; a delegate inherits its parent's already-checked
+-- pins even if an amendment has since superseded them (in-flight work keeps
+-- its pins; amendment invalidation is explicit router work, ruling R2.1).
+CREATE TRIGGER invocations_admission_context
+BEFORE INSERT ON invocations
+WHEN NEW.kind != 'delegate' AND ((NEW.admission_context = 'contract/1' AND NOT EXISTS (
+        SELECT 1 FROM contract_revisions c
+        WHERE c.topic_id = NEW.topic_id AND c.revision = NEW.contract_revision AND c.status = 'approved'))
+  OR (NEW.admission_context = 'pre-contract/1' AND (
+        EXISTS (SELECT 1 FROM contract_revisions c WHERE c.topic_id = NEW.topic_id AND c.status != 'draft')
+     OR NOT EXISTS (
+        SELECT 1 FROM operator_decisions d
+        WHERE d.decision_id = NEW.brief_confirmation_decision_id
+          AND d.kind = 'brief_confirmation' AND d.disposition = 'approved'
+          AND d.topic_id = NEW.topic_id
+          AND d.subject_ref = NEW.brief_ref AND d.subject_revision = NEW.brief_version AND d.subject_hash = NEW.brief_hash))))
+BEGIN
+  SELECT RAISE(ABORT, 'admission: contract work needs an approved contract revision; pre-contract work needs a confirmed brief and no approved contract (A4, C-12)');
+END;
 
 CREATE TRIGGER invocations_start_admitted
 BEFORE INSERT ON invocations
@@ -539,9 +626,14 @@ WHEN NEW.invocation_id IS NOT OLD.invocation_id
   OR NEW.kind IS NOT OLD.kind
   OR NEW.topic_id IS NOT OLD.topic_id
   OR NEW.parent_invocation_id IS NOT OLD.parent_invocation_id
+  OR NEW.requested_by_invocation_id IS NOT OLD.requested_by_invocation_id
   OR NEW.lease_id IS NOT OLD.lease_id
   OR NEW.capability_id IS NOT OLD.capability_id
   OR NEW.config_bundle_hash IS NOT OLD.config_bundle_hash
+  OR NEW.admission_context IS NOT OLD.admission_context
+  OR NEW.contract_revision IS NOT OLD.contract_revision
+  OR NEW.brief_ref IS NOT OLD.brief_ref OR NEW.brief_version IS NOT OLD.brief_version
+  OR NEW.brief_hash IS NOT OLD.brief_hash OR NEW.brief_confirmation_decision_id IS NOT OLD.brief_confirmation_decision_id
   OR (OLD.launch_intent_at IS NOT NULL AND NEW.launch_intent_at IS NOT OLD.launch_intent_at)
   OR (OLD.job_handle IS NOT NULL AND NEW.job_handle IS NOT OLD.job_handle)
   OR (OLD.boot_id IS NOT NULL AND NEW.boot_id IS NOT OLD.boot_id)
@@ -719,7 +811,9 @@ END;
 -- operation_id is the idempotency key; the router compares
 -- request_fingerprint on reuse. One final outcome per invocation; one commit
 -- per produced state revision; the lease must be the invocation's (or, for a
--- delegate, its parent's), live, same topic and same generation.
+-- delegate, its parent's), live, same topic and same generation; and the
+-- receipt carries the invocation's own admission pins (contract revision or
+-- confirmed brief) and config bundle — a stale contract/config is refused.
 CREATE TABLE operation_receipts (
   operation_id TEXT PRIMARY KEY CHECK (operation_id GLOB 'op_*'),
   receipt_id TEXT NOT NULL UNIQUE CHECK (receipt_id GLOB 'rcpt_*'),
@@ -730,7 +824,9 @@ CREATE TABLE operation_receipts (
   payload_digest TEXT NOT NULL CHECK (payload_digest GLOB 'sha256:*'),
   lease_id TEXT NOT NULL REFERENCES leases (lease_id),
   lease_generation INTEGER NOT NULL,
-  contract_revision INTEGER NOT NULL,
+  admission_context TEXT NOT NULL CHECK (admission_context IN ('contract/1', 'pre-contract/1')),
+  contract_revision INTEGER,
+  brief_hash TEXT,
   config_bundle_hash TEXT NOT NULL,
   state_revision_before INTEGER NOT NULL CHECK (state_revision_before >= 0),
   state_revision_after INTEGER NOT NULL,
@@ -742,7 +838,10 @@ CREATE TABLE operation_receipts (
   CHECK (state_revision_after = state_revision_before + 1),
   CHECK (json_extract(receipt, '$.operation_id') IS operation_id
      AND json_extract(receipt, '$.receipt_id') IS receipt_id
-     AND json_extract(receipt, '$.payload_digest') IS payload_digest)
+     AND json_extract(receipt, '$.payload_digest') IS payload_digest
+     AND json_extract(receipt, '$.admission.context') IS admission_context
+     AND json_extract(receipt, '$.admission.contract.revision') IS contract_revision
+     AND json_extract(receipt, '$.admission.brief.content_hash') IS brief_hash)
 ) STRICT;
 
 CREATE UNIQUE INDEX operation_receipts_one_final_outcome_per_invocation
@@ -763,6 +862,19 @@ WHEN (SELECT topic_id FROM invocations WHERE invocation_id = NEW.invocation_id) 
        WHERE i.invocation_id = NEW.invocation_id)
 BEGIN
   SELECT RAISE(ABORT, 'commit rejected: cross-topic, foreign lease, stale generation or released lease (RG-1b, RG-5)');
+END;
+
+CREATE TRIGGER operation_receipts_admission_pinned
+BEFORE INSERT ON operation_receipts
+WHEN NOT EXISTS (
+  SELECT 1 FROM invocations i
+  WHERE i.invocation_id = NEW.invocation_id
+    AND i.admission_context IS NEW.admission_context
+    AND i.contract_revision IS NEW.contract_revision
+    AND i.brief_hash IS NEW.brief_hash
+    AND i.config_bundle_hash IS NEW.config_bundle_hash)
+BEGIN
+  SELECT RAISE(ABORT, 'commit rejected: admission pins or config bundle differ from the invocation''s (stale contract/config, RG-1b(c))');
 END;
 
 CREATE TRIGGER operation_receipts_immutable_u BEFORE UPDATE ON operation_receipts
@@ -791,11 +903,12 @@ CREATE TRIGGER research_ordinals_only_research_final_outcomes
 BEFORE INSERT ON research_ordinals
 WHEN (SELECT kind FROM invocations WHERE invocation_id = NEW.invocation_id) IS NOT 'research_pass'
   OR (SELECT operation_kind FROM operation_receipts WHERE operation_id = NEW.operation_id) IS NOT 'final_outcome'
+  OR (SELECT admission_context FROM operation_receipts WHERE operation_id = NEW.operation_id) IS NOT 'contract/1'
   OR (SELECT invocation_id FROM operation_receipts WHERE operation_id = NEW.operation_id) IS NOT NEW.invocation_id
   OR (SELECT topic_id FROM invocations WHERE invocation_id = NEW.invocation_id) IS NOT NEW.topic_id
   OR NEW.ordinal IS NOT (SELECT coalesce(max(ordinal), 0) + 1 FROM research_ordinals WHERE topic_id = NEW.topic_id)
 BEGIN
-  SELECT RAISE(ABORT, 'ordinals go only to research_pass final outcomes, densely, one per invocation (C-7)');
+  SELECT RAISE(ABORT, 'ordinals go only to contract-admitted research_pass final outcomes, densely, one per invocation (C-7, C-12)');
 END;
 
 CREATE TRIGGER research_ordinals_immutable_u BEFORE UPDATE ON research_ordinals
@@ -1278,7 +1391,9 @@ END;
 -- BOUNDARIES.md Verifier; schema verification-receipt.schema.json;
 -- adjudication (a)K-A2, (b)5; INVARIANTS V-1, V-2, V-3, RG-5.
 -- The verifier must be a separate verification-kind invocation of the same
--- topic, not launched by the producer, checking the claim's actual producer.
+-- topic checking the claim's actual producer. A verification invocation never
+-- has a controlling parent (invocations CHECK, ruling R2.2), so a producer
+-- cannot launch/control it; being *requested by* the producer is allowed.
 CREATE TABLE verification_receipts (
   verification_receipt_id TEXT PRIMARY KEY CHECK (verification_receipt_id GLOB 'ver_*'),
   topic_id TEXT NOT NULL REFERENCES queue_entries (topic_id),
@@ -1313,7 +1428,6 @@ CREATE TRIGGER verification_receipts_role_separation
 BEFORE INSERT ON verification_receipts
 WHEN (SELECT kind FROM invocations WHERE invocation_id = NEW.verifier_invocation_id) IS NOT 'verification'
   OR (SELECT topic_id FROM invocations WHERE invocation_id = NEW.verifier_invocation_id) IS NOT NEW.topic_id
-  OR (SELECT parent_invocation_id FROM invocations WHERE invocation_id = NEW.verifier_invocation_id) IS NEW.producer_invocation_id
   OR (SELECT producer_invocation_id FROM claims WHERE claim_id = NEW.claim_id AND revision = NEW.claim_revision) IS NOT NEW.producer_invocation_id
   OR (SELECT topic_id FROM claims WHERE claim_id = NEW.claim_id AND revision = NEW.claim_revision) IS NOT NEW.topic_id
 BEGIN

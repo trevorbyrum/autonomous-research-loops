@@ -52,9 +52,8 @@ class InvocationLifecycleTest(StoreTestCase):
         self.lease("lease_aaaaaaaa", 1)
 
     def test_invocations_start_admitted(self) -> None:
-        self.rejects("invocations are created admitted",
-                     "INSERT INTO invocations (invocation_id, kind, topic_id, lease_id, capability_id, config_bundle_hash, state, admitted_at, deadline_at, launch_intent_at, result_payload_digest, result_staged_at, state_changed_at) VALUES ('inv_pppppppp', 'research_pass', ?, 'lease_aaaaaaaa', 'cap_pppppppp', ?, 'committed', ?, ?, ?, ?, ?, ?)",
-                     TOPIC, h("c"), T, T, T, h("d"), T, T)
+        self.rejects("invocations are created admitted", *self.raw_invocation(invocation_id="inv_pppppppp", state="committed", launch_intent_at=T, job_handle="job-1",
+                                                                              result_payload_digest=h("d"), result_staged_at=T))
         self.invocation("inv_pppppppp")
 
     def test_full_chain_allowed_but_skips_rejected(self) -> None:
@@ -98,13 +97,36 @@ class InvocationLifecycleTest(StoreTestCase):
 
     def test_delegate_names_its_parent(self) -> None:
         self.invocation("inv_pppppppp")
-        self.rejects("CHECK constraint failed", "INSERT INTO invocations (invocation_id, kind, topic_id, lease_id, capability_id, config_bundle_hash, state, admitted_at, deadline_at, state_changed_at) VALUES ('inv_dddddddd', 'delegate', ?, NULL, 'cap_dddddddd', ?, 'admitted', ?, ?, ?)", TOPIC, h("c"), T, T, T)
+        self.to_running("inv_pppppppp")
+        self.rejects("a delegate runs under", *self.raw_invocation(invocation_id="inv_dddddddd", kind="delegate", lease_id=None))
         self.invocation("inv_dddddddd", kind="delegate", lease=None, parent="inv_pppppppp")
+
+    def test_delegate_inherits_a_running_parent_of_its_topic(self) -> None:
+        """R2.1/R2.2: a delegate runs under a launching/running non-delegate parent
+        of its topic, with the parent's admission pins and no lease of its own."""
+        rev = self.approved_revision(TOPIC)
+        self.invocation("inv_pppppppp")
+        refused = "a delegate runs under"
+        self.rejects(refused, *self.raw_invocation(invocation_id="inv_d0000001", kind="delegate", lease_id=None, parent_invocation_id="inv_pppppppp", contract_revision=rev))  # parent not started
+        self.to_running("inv_pppppppp")
+        self.rejects("CHECK constraint failed", *self.raw_invocation(invocation_id="inv_d0000001", kind="delegate", lease_id="lease_aaaaaaaa", parent_invocation_id="inv_pppppppp", contract_revision=rev))  # own lease
+        self.lease("lease_zzzzzzzz", 1, tid=OTHER)
+        self.invocation("inv_oooooooo", tid=OTHER, lease="lease_zzzzzzzz")
+        self.to_running("inv_oooooooo")
+        self.rejects(refused, *self.raw_invocation(invocation_id="inv_d0000001", kind="delegate", lease_id=None, parent_invocation_id="inv_oooooooo", contract_revision=rev))  # other topic's parent
+        # different pins: revision 2 is approved by amendment after the parent was admitted under revision 1
+        self.contract(TOPIC, 2)
+        self.x("UPDATE contract_revisions SET status = 'superseded' WHERE topic_id = ? AND revision = 1", TOPIC)
+        self.approve_contract(TOPIC, 2, kind="amendment_approval")
+        self.rejects(refused, *self.raw_invocation(invocation_id="inv_d0000001", kind="delegate", lease_id=None, parent_invocation_id="inv_pppppppp", contract_revision=2))
+        self.invocation("inv_d0000001", kind="delegate", lease=None, parent="inv_pppppppp")
+        self.to_running("inv_d0000001")
+        self.rejects(refused, *self.raw_invocation(invocation_id="inv_d0000002", kind="delegate", lease_id=None, parent_invocation_id="inv_d0000001", contract_revision=rev))  # no delegate chains
 
     def test_capability_is_unique_per_invocation(self) -> None:
         self.invocation("inv_pppppppp")
-        self.rejects("UNIQUE constraint failed: invocations.capability_id",
-                     "INSERT INTO invocations (invocation_id, kind, topic_id, lease_id, capability_id, config_bundle_hash, state, admitted_at, deadline_at, state_changed_at) VALUES ('inv_vvvvvvvv', 'research_pass', ?, 'lease_aaaaaaaa', 'cap_pppppppp', ?, 'admitted', ?, ?, ?)", TOPIC, h("c"), T, T, T)
+        self.lease("lease_dddddddd", 2, scope="discovery")
+        self.rejects("UNIQUE constraint failed: invocations.capability_id", *self.raw_invocation(invocation_id="inv_vvvvvvvv", kind="discovery", lease_id="lease_dddddddd", capability_id="cap_pppppppp"))
 
 
 class CommitFencingTest(StoreTestCase):
@@ -123,7 +145,7 @@ class CommitFencingTest(StoreTestCase):
         self.rejects("never deleted", "DELETE FROM operation_receipts WHERE operation_id = 'op_00000001'")
         # REPLACE on the primary key and on the alternate receipt_id key (A1);
         # every key is attacked in test_store_history.py.
-        replace = ("INSERT OR REPLACE INTO operation_receipts SELECT ?, ?, operation_kind, invocation_id, topic_id, ?, ?, lease_id, lease_generation, contract_revision, config_bundle_hash, state_revision_before + ?, state_revision_after + ?, validator_version, policy_version, "
+        replace = ("INSERT OR REPLACE INTO operation_receipts SELECT ?, ?, operation_kind, invocation_id, topic_id, ?, ?, lease_id, lease_generation, admission_context, contract_revision, brief_hash, config_bundle_hash, state_revision_before + ?, state_revision_after + ?, validator_version, policy_version, "
                    "json_set(receipt, '$.operation_id', ?, '$.receipt_id', ?, '$.payload_digest', ?), committed_at FROM operation_receipts WHERE operation_id = 'op_00000001'")
         self.rejects("replay protection depends on them", replace, "op_00000001", "rcpt_00000001", h("9"), h("0"), 0, 0, "op_00000001", "rcpt_00000001", h("0"))
         self.rejects("replay protection depends on them", replace, "op_00000002", "rcpt_00000001", h("9"), h("0"), 5, 5, "op_00000002", "rcpt_00000001", h("0"))
@@ -138,10 +160,11 @@ class CommitFencingTest(StoreTestCase):
         self.assertIn("UNIQUE constraint failed: operation_receipts.invocation_id", str(ctx.exception))
 
     def test_one_commit_per_state_revision(self) -> None:
-        self.invocation("inv_qqqqqqqq")
+        self.lease("lease_dddddddd", 2, scope="discovery")
+        self.invocation("inv_qqqqqqqq", kind="discovery", lease="lease_dddddddd")
         self.receipt("op_00000001", "inv_pppppppp", before=4)
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.receipt("op_00000002", "inv_qqqqqqqq", before=4)
+            self.receipt("op_00000002", "inv_qqqqqqqq", lease="lease_dddddddd", gen=2, before=4)
         self.assertIn("UNIQUE constraint failed: operation_receipts.topic_id, operation_receipts.state_revision_after", str(ctx.exception))
 
     def test_stale_generation_rejected(self) -> None:
@@ -168,6 +191,7 @@ class CommitFencingTest(StoreTestCase):
         self.assertIn("foreign lease", str(ctx.exception))
 
     def test_delegate_commits_under_parent_lease(self) -> None:
+        self.to_running("inv_pppppppp")
         self.invocation("inv_dddddddd", kind="delegate", lease=None, parent="inv_pppppppp")
         self.receipt("op_00000001", "inv_dddddddd")
 
@@ -187,9 +211,9 @@ class OrdinalAndTriggerTest(StoreTestCase):
 
     def test_only_research_pass_final_outcomes_get_ordinals(self) -> None:
         self.receipt("op_00000001", "inv_kkkkkkkk", lease="lease_cccccccc", gen=2, before=0)
-        self.rejects("ordinals go only to research_pass", "INSERT INTO research_ordinals VALUES (?, 1, 'inv_kkkkkkkk', 'op_00000001')", TOPIC)
+        self.rejects("ordinals go only to", "INSERT INTO research_ordinals VALUES (?, 1, 'inv_kkkkkkkk', 'op_00000001')", TOPIC)
         self.receipt("op_00000002", "inv_pppppppp", kind="interim_transition", before=1)
-        self.rejects("ordinals go only to research_pass", "INSERT INTO research_ordinals VALUES (?, 1, 'inv_pppppppp', 'op_00000002')", TOPIC)
+        self.rejects("ordinals go only to", "INSERT INTO research_ordinals VALUES (?, 1, 'inv_pppppppp', 'op_00000002')", TOPIC)
         self.receipt("op_00000003", "inv_pppppppp", before=2)
         self.x("INSERT INTO research_ordinals VALUES (?, 1, 'inv_pppppppp', 'op_00000003')", TOPIC)
 
@@ -234,6 +258,15 @@ class VerificationTest(StoreTestCase):
                validation: str | None = None, producer: str = "inv_pppppppp", verifier: str = "inv_vvvvvvvv", verdict: str = "supports") -> None:
         self.x(self.VER, rid, TOPIC, h("2"), tier, required, method, extraction, validation, producer, verifier, verdict, T)
 
+    def test_requested_by_is_same_topic_and_never_self(self) -> None:
+        self.lease("lease_zzzzzzzz", 1, tid=OTHER)
+        self.invocation("inv_oooooooo", tid=OTHER, lease="lease_zzzzzzzz")
+        self.x("UPDATE leases SET released_at = ?, release_reason = 'finalized' WHERE lease_id = 'lease_vvvvvvvv'", T)
+        self.lease("lease_wwwwwwww", 4, scope="verification")
+        self.rejects("same topic", *self.raw_invocation(invocation_id="inv_reqdver1", kind="verification", lease_id="lease_wwwwwwww", requested_by_invocation_id="inv_oooooooo"))
+        self.rejects("same topic", *self.raw_invocation(invocation_id="inv_reqdver1", kind="verification", lease_id="lease_wwwwwwww", requested_by_invocation_id="inv_reqdver1"))
+        self.invocation("inv_reqdver1", kind="verification", lease="lease_wwwwwwww", requested_by="inv_pppppppp")
+
     def test_producer_cannot_verify_itself(self) -> None:
         # Realistic case: the research-pass producer names itself as verifier (the role trigger fires first).
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
@@ -247,19 +280,30 @@ class VerificationTest(StoreTestCase):
         self.assertIn("CHECK constraint failed", str(ctx.exception))
         self.verify("ver_00000001")
 
+    def second_research_pass(self) -> None:
+        self.x("UPDATE leases SET released_at = ?, release_reason = 'finalized' WHERE lease_id = 'lease_aaaaaaaa'", T)
+        self.lease("lease_bbbbbbbb", 3)
+        self.invocation("inv_qqqqqqqq", lease="lease_bbbbbbbb")
+
     def test_verifier_must_be_separate_verification_invocation(self) -> None:
-        self.invocation("inv_qqqqqqqq")  # a second research_pass, not a verifier
+        """D26 rewrite (ruling R2.2): keep the kind rule; replace blanket parent
+        rejection with the control/causal distinction. A verifier can never have
+        a controlling parent (so the producer cannot launch or control it); a
+        verifier *requested by* the producing pass is legitimate."""
+        self.second_research_pass()  # a second research_pass, not a verifier
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
             self.verify("ver_00000001", verifier="inv_qqqqqqqq", extraction="inv_qqqqqqqq")
         self.assertIn("separate verification invocation", str(ctx.exception))
-        # A verification invocation launched by the producer is not independent.
-        self.x("INSERT INTO invocations (invocation_id, kind, topic_id, parent_invocation_id, lease_id, capability_id, config_bundle_hash, state, admitted_at, deadline_at, state_changed_at) VALUES ('inv_childver', 'verification', ?, 'inv_pppppppp', 'lease_vvvvvvvv', 'cap_childver', ?, 'admitted', ?, ?, ?)", TOPIC, h("c"), T, T, T)
-        with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.verify("ver_00000002", verifier="inv_childver", extraction="inv_childver")
-        self.assertIn("independent of the claim producer", str(ctx.exception))
+        # control parentage: refused when the verification invocation is admitted
+        self.x("UPDATE leases SET released_at = ?, release_reason = 'finalized' WHERE lease_id = 'lease_vvvvvvvv'", T)
+        self.lease("lease_wwwwwwww", 4, scope="verification")
+        self.rejects("CHECK constraint failed", *self.raw_invocation(invocation_id="inv_childver", kind="verification", lease_id="lease_wwwwwwww", parent_invocation_id="inv_pppppppp"))
+        # causal request by the producer: admitted, and its receipt is accepted
+        self.invocation("inv_reqdver1", kind="verification", lease="lease_wwwwwwww", requested_by="inv_pppppppp")
+        self.verify("ver_00000002", verifier="inv_reqdver1", extraction="inv_reqdver1")
 
     def test_receipt_must_name_the_claims_real_producer(self) -> None:
-        self.invocation("inv_qqqqqqqq")
+        self.second_research_pass()
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
             self.verify("ver_00000001", producer="inv_qqqqqqqq")
         self.assertIn("independent of the claim producer", str(ctx.exception))
@@ -792,6 +836,148 @@ class ContractGovernanceTest(StoreTestCase):
         self.set_status(TOPIC, "retired", "opd_00000001")
         self.rejects("CHECK constraint failed", "UPDATE queue_entries SET status = 'active', state_revision = state_revision + 1 WHERE topic_id = ?", TOPIC)
         self.set_status(TOPIC, "active")
+
+
+class AdmissionAndLeaseTest(StoreTestCase):
+    """A4 (typed admission context; pre-contract work can finalize without a
+    Contract v2 FK, scientific commits still need the approved protocol) and
+    ruling R2.1 (per-scope leases, one owning invocation, kind/scope match)."""
+
+    def discovery(self, iid: str = "inv_scope001", lease: str = "lease_dddddddd", gen: int = 1, **kw) -> None:
+        self.lease(lease, gen, scope="discovery")
+        self.invocation(iid, kind="discovery", lease=lease, pre_contract=True, **kw)
+
+    def test_pre_contract_discovery_can_finalize(self) -> None:
+        """The review's probe: a scoping discovery on a topic with no contract
+        commits its final receipt (it hit an FK failure before)."""
+        self.discovery()
+        self.receipt("op_00000001", "inv_scope001", lease="lease_dddddddd", kind="final_outcome")
+        self.assertEqual(self.rows("SELECT admission_context, contract_revision, brief_hash FROM operation_receipts"), [("pre-contract/1", None, h("b"))])
+
+    def test_pre_contract_admission_needs_the_confirmed_brief(self) -> None:
+        brief, version, bhash, _ = self.confirm_brief(TOPIC)  # a valid confirmation exists throughout (naming)
+        self.lease("lease_dddddddd", 1, scope="discovery")
+        self.decision("opd_rejected", "brief_confirmation", disposition="rejected", ref=brief, rev=version, hsh=bhash)
+        self.decision("opd_otherbrf", "brief_confirmation", ref="brief-2", rev=version, hsh=bhash)
+        self.decision("opd_otherver", "brief_confirmation", ref=brief, rev=2, hsh=bhash)
+        self.decision("opd_otherhsh", "brief_confirmation", ref=brief, rev=version, hsh=h("9"))
+        self.decision("opd_othertop", "brief_confirmation", tid=OTHER, ref=brief, rev=version, hsh=bhash)
+        self.decision("opd_wrongknd", "scope_approval", ref=brief, rev=version, hsh=bhash)
+        pins = dict(kind="discovery", lease_id="lease_dddddddd", admission_context="pre-contract/1", contract_revision=None,
+                    brief_ref=brief, brief_version=version, brief_hash=bhash)
+        for did in ("opd_rejected", "opd_otherbrf", "opd_otherver", "opd_otherhsh", "opd_othertop", "opd_wrongknd"):
+            with self.subTest(decision=did):
+                self.rejects("pre-contract work needs a confirmed brief", *self.raw_invocation(invocation_id="inv_scope001", brief_confirmation_decision_id=did, **pins))
+        self.x(*self.raw_invocation(invocation_id="inv_scope001", brief_confirmation_decision_id=self.confirm_brief(TOPIC)[3], **pins))
+
+    def test_pre_contract_admission_closes_once_a_contract_is_approved(self) -> None:
+        self.approve_contract(TOPIC, 1)
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.discovery()
+        self.assertIn("no approved contract", str(ctx.exception))
+        self.invocation("inv_disc0001", kind="discovery", lease="lease_dddddddd")  # contract-admitted discovery on the same lease is fine
+
+    def test_pre_contract_admission_only_for_scoping_kinds(self) -> None:
+        brief, version, bhash, did = self.confirm_brief(TOPIC)
+        for kind, scope in (("verification", "verification"), ("checkpoint", "checkpoint")):
+            with self.subTest(kind=kind):
+                lid = f"lease_{kind[:8]:0<8}"
+                self.lease(lid, 1 if kind == "verification" else 2, scope=scope)
+                self.rejects("CHECK constraint failed", *self.raw_invocation(invocation_id=f"inv_{kind[:8]:0<8}", kind=kind, lease_id=lid, admission_context="pre-contract/1", contract_revision=None,
+                                                                             brief_ref=brief, brief_version=version, brief_hash=bhash, brief_confirmation_decision_id=did))
+        self.lease("lease_rrrrrrrr", 3)
+        self.invocation("inv_draft001", lease="lease_rrrrrrrr", pre_contract=True)  # the primary drafting the contract (S3)
+
+    def test_contract_admission_needs_an_approved_revision(self) -> None:
+        self.lease("lease_aaaaaaaa", 1)
+        self.rejects("contract work needs an approved contract revision", *self.raw_invocation(invocation_id="inv_pppppppp", contract_revision=1))
+        self.approve_contract(TOPIC, 1)
+        self.invocation("inv_pppppppp")
+
+    def test_receipt_carries_the_invocations_admission_and_config(self) -> None:
+        self.lease("lease_aaaaaaaa", 1)
+        self.invocation("inv_pppppppp")  # pinned to approved revision 1
+        self.contract(TOPIC, 2)
+        self.x("UPDATE contract_revisions SET status = 'superseded' WHERE topic_id = ? AND revision = 1", TOPIC)
+        self.approve_contract(TOPIC, 2, kind="amendment_approval")
+        pinned = "admission pins or config bundle differ"
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.receipt("op_00000001", "inv_pppppppp", admission=("contract/1", 2, None))  # the now-current revision is not the invocation's
+        self.assertIn(pinned, str(ctx.exception))
+        for admission in (("pre-contract/1", None, h("b")), ("pre-contract/1", 1, None)):  # the second differs in context alone
+            with self.subTest(admission=admission):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.receipt("op_00000001", "inv_pppppppp", admission=admission)
+                self.assertIn(pinned, str(ctx.exception))
+        self.rejects(pinned, "INSERT INTO operation_receipts (operation_id, receipt_id, operation_kind, invocation_id, topic_id, request_fingerprint, payload_digest, lease_id, lease_generation, admission_context, contract_revision, config_bundle_hash, state_revision_before, state_revision_after, validator_version, policy_version, receipt, committed_at) "
+                     "VALUES ('op_00000001', 'rcpt_00000001', 'final_outcome', 'inv_pppppppp', ?, ?, ?, 'lease_aaaaaaaa', 1, 'contract/1', 1, ?, 0, 1, 'v1', 'p1', ?, ?)",
+                     TOPIC, h("f"), h("d"), h("0"), json.dumps({"operation_id": "op_00000001", "receipt_id": "rcpt_00000001", "payload_digest": h("d"), "admission": {"context": "contract/1", "contract": {"revision": 1}, "brief": None}}), T)
+        self.receipt("op_00000001", "inv_pppppppp")
+
+    def test_receipt_json_admission_matches_its_columns(self) -> None:
+        self.lease("lease_aaaaaaaa", 1)
+        self.invocation("inv_pppppppp")
+        body = {"operation_id": "op_00000001", "receipt_id": "rcpt_00000001", "payload_digest": h("d"), "admission": {"context": "contract/1", "contract": {"revision": 1}, "brief": None}}
+        ins = ("INSERT INTO operation_receipts (operation_id, receipt_id, operation_kind, invocation_id, topic_id, request_fingerprint, payload_digest, lease_id, lease_generation, admission_context, contract_revision, config_bundle_hash, state_revision_before, state_revision_after, validator_version, policy_version, receipt, committed_at) "
+               "VALUES ('op_00000001', 'rcpt_00000001', 'final_outcome', 'inv_pppppppp', ?, ?, ?, 'lease_aaaaaaaa', 1, 'contract/1', 1, ?, 0, 1, 'v1', 'p1', ?, ?)")
+        for key, value in (("context", "pre-contract/1"), ("contract", {"revision": 2}), ("brief", {"content_hash": h("b")})):
+            with self.subTest(field=key):
+                self.rejects("CHECK constraint failed", ins, TOPIC, h("f"), h("d"), h("c"), json.dumps({**body, "admission": {**body["admission"], key: value}}), T)
+        self.x(ins, TOPIC, h("f"), h("d"), h("c"), json.dumps(body), T)
+
+    def test_pre_contract_receipt_carries_the_brief_pinned_at_admission(self) -> None:
+        self.discovery()
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.receipt("op_00000001", "inv_scope001", lease="lease_dddddddd", admission=("pre-contract/1", None, h("9")))
+        self.assertIn("admission pins or config bundle differ", str(ctx.exception))
+        self.receipt("op_00000001", "inv_scope001", lease="lease_dddddddd")
+
+    def test_admission_pins_are_exclusive(self) -> None:
+        """A contract-admitted row carries no brief pins; a pre-contract row no
+        contract revision (probes chosen so the admission trigger passes)."""
+        brief, version, bhash, did = self.confirm_brief(TOPIC)
+        self.lease("lease_dddddddd", 1, scope="discovery")
+        self.rejects("CHECK constraint failed", *self.raw_invocation(invocation_id="inv_scope001", kind="discovery", lease_id="lease_dddddddd", admission_context="pre-contract/1", contract_revision=1,
+                                                                     brief_ref=brief, brief_version=version, brief_hash=bhash, brief_confirmation_decision_id=did))
+        self.approve_contract(TOPIC, 1)
+        self.rejects("CHECK constraint failed", *self.raw_invocation(invocation_id="inv_disc0001", kind="discovery", lease_id="lease_dddddddd", contract_revision=1,
+                                                                     brief_ref=brief, brief_version=version, brief_hash=bhash, brief_confirmation_decision_id=did))
+        self.x(*self.raw_invocation(invocation_id="inv_disc0001", kind="discovery", lease_id="lease_dddddddd", contract_revision=1))
+
+    def test_pre_contract_research_pass_earns_no_ordinal(self) -> None:
+        """C-12 / C-7: a scientific counter needs the approved protocol."""
+        self.lease("lease_rrrrrrrr", 1)
+        self.invocation("inv_draft001", lease="lease_rrrrrrrr", pre_contract=True)
+        self.receipt("op_00000001", "inv_draft001", lease="lease_rrrrrrrr", kind="final_outcome")
+        self.rejects("ordinals go only to", "INSERT INTO research_ordinals VALUES (?, 1, 'inv_draft001', 'op_00000001')", TOPIC)
+
+    def test_invocation_owns_a_live_lease_of_its_kind_and_topic(self) -> None:
+        self.approve_contract(TOPIC, 1)
+        self.lease("lease_aaaaaaaa", 1)
+        self.lease("lease_vvvvvvvv", 2, scope="verification")
+        self.lease("lease_zzzzzzzz", 1, tid=OTHER)
+        refused = "owns a live lease of its topic"
+        self.rejects(refused, *self.raw_invocation(invocation_id="inv_pppppppp", lease_id="lease_vvvvvvvv"))  # wrong scope
+        self.rejects(refused, *self.raw_invocation(invocation_id="inv_pppppppp", lease_id="lease_zzzzzzzz"))  # other topic's lease
+        self.invocation("inv_pppppppp")
+        self.rejects("UNIQUE constraint failed: invocations.lease_id", *self.raw_invocation(invocation_id="inv_qqqqqqqq"))  # a second owner
+        self.x("UPDATE leases SET released_at = ?, release_reason = 'finalized' WHERE lease_id = 'lease_aaaaaaaa'", T)
+        self.lease("lease_bbbbbbbb", 3)
+        self.x("UPDATE leases SET released_at = ?, release_reason = 'expired' WHERE lease_id = 'lease_bbbbbbbb'", T)
+        self.rejects(refused, *self.raw_invocation(invocation_id="inv_qqqqqqqq", lease_id="lease_bbbbbbbb"))  # released
+        self.lease("lease_cccccccc", 4)
+        self.invocation("inv_qqqqqqqq", lease="lease_cccccccc")
+
+    def test_newer_verification_generation_does_not_fence_research(self) -> None:
+        """R2.1: a verification lease granted after the research lease has a larger
+        generation; the research pass still commits at its own generation."""
+        self.lease("lease_aaaaaaaa", 1)
+        self.invocation("inv_pppppppp")
+        self.lease("lease_vvvvvvvv", 2, scope="verification")
+        self.invocation("inv_vvvvvvvv", kind="verification", lease="lease_vvvvvvvv")
+        self.receipt("op_00000002", "inv_vvvvvvvv", lease="lease_vvvvvvvv", gen=2, before=0, kind="final_outcome")
+        self.receipt("op_00000001", "inv_pppppppp", lease="lease_aaaaaaaa", gen=1, before=1, kind="final_outcome")
+        self.assertEqual(self.rows("SELECT operation_id FROM operation_receipts ORDER BY state_revision_after"), [("op_00000002",), ("op_00000001",)])
 
 
 class FacetImportanceTest(StoreTestCase):

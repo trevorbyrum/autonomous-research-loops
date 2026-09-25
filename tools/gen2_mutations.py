@@ -57,6 +57,9 @@ class Mutation:
 H = "test_store_history."
 D = "test_store_ddl."
 FI = "test_store_ddl.FacetImportanceTest."
+AD = "test_store_ddl.AdmissionAndLeaseTest."
+IL = "test_store_ddl.InvocationLifecycleTest."
+VT = "test_store_ddl.VerificationTest."
 
 MUTATIONS: list[Mutation] = [
     # --- A1: history cannot be rewritten ------------------------------------
@@ -257,6 +260,75 @@ MUTATIONS: list[Mutation] = [
              scope="contract_approval_needs_rated_covered_facets", old="  OR EXISTS (SELECT 1 FROM uncovered_critical_facets u WHERE u.topic_id = NEW.topic_id AND u.contract_revision = NEW.revision))", new=")"),
     Mutation("A3-facets-delete-guard", "A3", "drop facets delete guard", (H + "EveryTableSweepTest.test_no_table_can_be_deleted_from_or_replaced_into",), drop_trigger="facets_no_delete"),
     Mutation("A3-facets-update-guard", "A3", "drop facets update guard", (H + "EveryTableSweepTest.test_append_only_tables_reject_every_update", FI + "test_facet_rating_bound_to_a_rating_decision"), drop_trigger="facets_immutable"),
+    # --- A4 / R2.1 / R2.2: admission context, leases, parentage ------------------
+    Mutation("R2.2-parent-only-for-delegates", "R2.2", "non-delegates (verifiers) may have a controlling parent",
+             (VT + "test_verifier_must_be_separate_verification_invocation",), old="  CHECK ((kind = 'delegate') = (parent_invocation_id IS NOT NULL)),\n", new="  CHECK (kind != 'delegate' OR parent_invocation_id IS NOT NULL),\n"),
+    Mutation("R2.2-blanket-requested-by-rule", "R2.2", "over-restriction: a verifier requested by the producer is refused (the rejected blanket rule)",
+             (VT + "test_verifier_must_be_separate_verification_invocation",), scope="verification_receipts_role_separation",
+             old="  OR (SELECT producer_invocation_id FROM claims", new="  OR (SELECT requested_by_invocation_id FROM invocations WHERE invocation_id = NEW.verifier_invocation_id) IS NEW.producer_invocation_id\n  OR (SELECT producer_invocation_id FROM claims"),
+    Mutation("R2.1-delegate-has-no-lease", "R2.1", "delegates may hold their own lease",
+             (IL + "test_delegate_inherits_a_running_parent_of_its_topic",), old="  CHECK ((kind = 'delegate') = (lease_id IS NULL)),\n", new="  CHECK (kind = 'delegate' OR lease_id IS NOT NULL),\n"),
+    Mutation("R2.1-one-owner-per-lease", "R2.1", "two invocations may own one lease",
+             (AD + "test_invocation_owns_a_live_lease_of_its_kind_and_topic",), old="CREATE UNIQUE INDEX invocations_one_owner_per_lease ON invocations (lease_id) WHERE lease_id IS NOT NULL;\n", new=""),
+    Mutation("R2.1-lease-scope", "R2.1", "an invocation may own a lease of another scope",
+             (AD + "test_invocation_owns_a_live_lease_of_its_kind_and_topic",), scope="invocations_lease_matches_kind",
+             old="    AND l.scope = CASE NEW.kind", new="    AND 1 OR l.scope = CASE NEW.kind"),
+    Mutation("R2.1-lease-topic", "R2.1", "an invocation may own another topic's lease",
+             (AD + "test_invocation_owns_a_live_lease_of_its_kind_and_topic",), scope="invocations_lease_matches_kind",
+             old="l.topic_id = NEW.topic_id AND ", new=""),
+    Mutation("R2.1-lease-live", "R2.1", "an invocation may be admitted on a released lease",
+             (AD + "test_invocation_owns_a_live_lease_of_its_kind_and_topic",), scope="invocations_lease_matches_kind",
+             old=" AND l.released_at IS NULL", new=""),
+    Mutation("R2.1-delegate-parent-topic", "R2.1", "a delegate may run under another topic's parent",
+             (IL + "test_delegate_inherits_a_running_parent_of_its_topic",), scope="invocations_delegate_inherits_parent",
+             old=" AND p.topic_id = NEW.topic_id", new=""),
+    Mutation("R2.1-delegate-parent-not-delegate", "R2.1", "delegate chains allowed",
+             (IL + "test_delegate_inherits_a_running_parent_of_its_topic",), scope="invocations_delegate_inherits_parent",
+             old="    AND p.kind != 'delegate' AND p.state", new="    AND p.state"),
+    Mutation("R2.1-delegate-parent-running", "R2.1", "a delegate may start under a parent that is not running",
+             (IL + "test_delegate_inherits_a_running_parent_of_its_topic",), scope="invocations_delegate_inherits_parent",
+             old=" AND p.state IN ('launching', 'running')", new=""),
+    Mutation("R2.1-delegate-inherits-pins", "R2.1", "a delegate may carry other admission pins than its parent",
+             (IL + "test_delegate_inherits_a_running_parent_of_its_topic",), scope="invocations_delegate_inherits_parent",
+             old="    AND p.admission_context IS NEW.admission_context AND p.contract_revision IS NEW.contract_revision\n", new=""),
+    Mutation("R2.2-requested-by-same-topic", "R2.2", "a causal requester may be of another topic (or the invocation itself)",
+             (VT + "test_requested_by_is_same_topic_and_never_self",), drop_trigger="invocations_requested_by_same_topic"),
+    Mutation("A4-contract-admission-approved", "A4", "contract/1 admission accepts a draft revision",
+             (AD + "test_contract_admission_needs_an_approved_revision",), scope="invocations_admission_context",
+             old=" AND c.status = 'approved'))", new="))"),
+    Mutation("A4-pre-contract-closes-on-approval", "A4", "pre-contract admission stays open after a contract is approved",
+             (AD + "test_pre_contract_admission_closes_once_a_contract_is_approved",), scope="invocations_admission_context",
+             old="        EXISTS (SELECT 1 FROM contract_revisions c WHERE c.topic_id = NEW.topic_id AND c.status != 'draft')\n     OR NOT EXISTS (", new="        NOT EXISTS ("),
+    *(Mutation(f"A4-brief-confirmation-{key}", "A4", f"pre-contract admission ignores the brief confirmation's {key}",
+               (AD + "test_pre_contract_admission_needs_the_confirmed_brief",), scope="invocations_admission_context", old=old, new=new)
+      for key, old, new in (
+          ("naming", "        WHERE d.decision_id = NEW.brief_confirmation_decision_id\n", "        WHERE 1\n"),
+          ("kind", "          AND d.kind = 'brief_confirmation' AND d.disposition = 'approved'", "          AND d.disposition = 'approved'"),
+          ("disposition", "          AND d.kind = 'brief_confirmation' AND d.disposition = 'approved'", "          AND d.kind = 'brief_confirmation'"),
+          ("topic", "          AND d.topic_id = NEW.topic_id\n", ""),
+          ("brief-id", "d.subject_ref = NEW.brief_ref AND ", ""),
+          ("brief-version", " AND d.subject_revision = NEW.brief_version", ""),
+          ("brief-hash", " AND d.subject_hash = NEW.brief_hash", ""))),
+    Mutation("A4-pre-contract-kinds", "A4", "any kind may be admitted pre-contract",
+             (AD + "test_pre_contract_admission_only_for_scoping_kinds",), old="  CHECK (admission_context = 'contract/1' OR kind IN ('discovery', 'delegate', 'research_pass')),\n", new=""),
+    Mutation("A4-contract-pins-exclusive", "A4", "a pre-contract row may carry a contract revision",
+             (AD + "test_admission_pins_are_exclusive",), old="  CHECK ((admission_context = 'contract/1') = (contract_revision IS NOT NULL)),\n  CHECK (CASE", new="  CHECK (CASE"),
+    Mutation("A4-brief-pins-exclusive", "A4", "a contract row may carry brief pins",
+             (AD + "test_admission_pins_are_exclusive",), old="           ELSE brief_ref IS NULL AND brief_version IS NULL AND brief_hash IS NULL AND brief_confirmation_decision_id IS NULL END),", new="           ELSE 1 END),"),
+    *(Mutation(f"A4-receipt-pinned-{key}", "A4", f"a receipt may carry another {key} than its invocation",
+               (AD + test,), scope="operation_receipts_admission_pinned", old=old, new="")
+      for key, test, old in (
+          ("contract-revision", "test_receipt_carries_the_invocations_admission_and_config", "    AND i.contract_revision IS NEW.contract_revision\n"),
+          ("context", "test_receipt_carries_the_invocations_admission_and_config", "    AND i.admission_context IS NEW.admission_context\n"),
+          ("brief", "test_pre_contract_receipt_carries_the_brief_pinned_at_admission", "    AND i.brief_hash IS NEW.brief_hash\n"),
+          ("config", "test_receipt_carries_the_invocations_admission_and_config", "\n    AND i.config_bundle_hash IS NEW.config_bundle_hash"))),
+    *(Mutation(f"A4-receipt-json-{key}", "A4", f"receipt JSON admission.{key} no longer bound",
+               (AD + "test_receipt_json_admission_matches_its_columns",), old=old, new="")
+      for key, old in (("context", "\n     AND json_extract(receipt, '$.admission.context') IS admission_context"),
+                       ("contract", "\n     AND json_extract(receipt, '$.admission.contract.revision') IS contract_revision"),
+                       ("brief", "\n     AND json_extract(receipt, '$.admission.brief.content_hash') IS brief_hash"))),
+    Mutation("A4-ordinal-needs-contract", "A4", "a pre-contract research pass may earn an ordinal",
+             (AD + "test_pre_contract_research_pass_earns_no_ordinal",), old="  OR (SELECT admission_context FROM operation_receipts WHERE operation_id = NEW.operation_id) IS NOT 'contract/1'\n", new=""),
     # --- A9: capability supersession --------------------------------------
     Mutation("A9-successor-fk-immediate", "A9", "successor FK checked immediately (the documented transaction cannot run)",
              (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",),

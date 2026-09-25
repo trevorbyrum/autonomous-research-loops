@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "invocation.schema.json",
+    "expect": "invalid",
+    "tests": "A5/R2.1: a running non-delegate holds an effective lease (the review's lease:null probe)",
+    "base": "valid-research-pass-running.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/lease",
+        "value": null
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/lease"
+      }
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "fixture": {
+    "schema": "invocation.schema.json",
+    "expect": "invalid",
+    "tests": "R2.2: a verification invocation has no controlling parent (the producer may request it, never launch/control it)",
+    "base": "valid-research-pass-running.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/kind",
+        "value": "verification"
+      },
+      {
+        "op": "replace",
+        "path": "/parent_invocation_id",
+        "value": "inv_01J8PRODUCE"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/parent_invocation_id"
+      }
+    ]
+  }
+}

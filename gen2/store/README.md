@@ -41,6 +41,8 @@
   - one live lease per (topic, scope), generations strictly increasing per topic, release write-once
   - ordinals only for research-pass final outcomes, dense, one per invocation
   - review-trigger identities unique, never deleted, handled-is-final
+- **Admission** (C-12, A4): every invocation pins `contract/1` (an approved revision) or `pre-contract/1` (a confirmed brief; discovery/delegate/research_pass; only before any approved contract); receipts carry exactly their invocation's pins and config; pre-contract receipts earn no ordinal.
+- **Leases and parentage** (L-8, R2.1, R2.2): a non-delegate owns one live lease of its topic and kind's scope; one owner per lease; delegates run under a running non-delegate parent of their topic with its pins; only delegates have a controlling parent; a causal requester is of the same topic.
 - **Lifecycle** (L-1–L-3):
   - invocations are inserted `admitted` and move only along the L-1 transitions
   - launch intent is required from `launching` on
@@ -52,7 +54,7 @@
   - retrieval events come only from successful searches
 - **Verification** (RG-5, V-2, V-4):
   - producer ≠ verifier
-  - the verifier is a `verification` invocation of the same topic, not launched by the producer, and names the claim's real producer
+  - the verifier is a `verification` invocation of the same topic with no controlling parent (it may be *requested by* the producer — R2.2) and names the claim's real producer
   - no reliance on the producer's unvalidated extraction
   - `supports` never exceeds the obtained tier
   - load-bearing claims reach `accepted_support` only with a supporting receipt at the required tier
@@ -106,8 +108,8 @@
 
 These are choices this draft made where the sources leave room. Each is easy to reverse.
 
-1. **Lease scopes.** Research, discovery, verification and checkpoint leases are separate, with one live lease per (topic, scope), so verification can run beside research. The sources say "fenced lease" per pass but do not settle concurrency across kinds.
-2. **A verification invocation launched by the producer is refused.** This is a stricter reading of "never the producer's invocation" (BOUNDARIES.md *Verifier*).
+1. **Lease scopes — ruled (R2.1, MODIFY/ACCEPT).** Research, discovery, verification and checkpoint leases coexist, one live lease per (topic, scope). Each non-delegate owns exactly one lease of its kind's scope, live and of its topic when admitted; delegates inherit the parent's lease. A commit is fenced by *its own* lease's generation, so a newer verification lease never invalidates an unreleased research lease. "Live" in this DDL means unreleased — expiry, deadlines, station/resource accounting, conservative scheduling and amendment invalidation are Phase 1 router work, proven there with stale-result/cancel/reservation tests.
+2. **Verifier independence — ruled (R2.2, blanket parent rule REJECTED).** `parent_invocation_id` is control/reservation parentage only (delegates); a verifier never has one, so a producer cannot launch or control it. `requested_by_invocation_id` is the causal link and may name the producer: supervisor-created verification requested by the producing pass is accepted.
 3. **An exact-quote mismatch quarantines the quote.** The sources state quarantine for NLI alarms; this draft applies it to byte mismatches too.
 4. **Process identity is required only while `running`.** A job reconciled from `outcome_unknown` may already have exited; later states require the retained result.
 5. **Queue status, claim status, reason-code and error-class vocabularies are drafts.**

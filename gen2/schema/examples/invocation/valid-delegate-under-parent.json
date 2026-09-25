@@ -10,8 +10,16 @@
     "kind": "delegate",
     "topic_id": "fleet-a:intake-latency",
     "parent_invocation_id": "inv_01J8ZQ3W2X",
+    "requested_by_invocation_id": null,
     "lease": null,
     "capability_id": "cap_01J8ZQ5DEL",
+    "admission": {
+      "context": "contract/1",
+      "contract": {
+        "revision": 2,
+        "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
     "state": "running",
     "admitted_at": "2026-09-25T10:40:00Z",
     "deadline_at": "2026-09-25T11:40:00Z",

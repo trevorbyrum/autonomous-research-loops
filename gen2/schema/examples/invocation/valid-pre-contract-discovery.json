@@ -2,12 +2,12 @@
   "fixture": {
     "schema": "invocation.schema.json",
     "expect": "valid",
-    "tests": "L-4: outcome_unknown carries a pending reconciliation"
+    "tests": "A4/C-12: a scoping discovery admitted pre-contract under a confirmed brief, with its own lease"
   },
   "instance": {
     "record_version": "invocation/1",
     "invocation_id": "inv_01J8ZQ3W2X",
-    "kind": "research_pass",
+    "kind": "discovery",
     "topic_id": "fleet-a:intake-latency",
     "parent_invocation_id": null,
     "requested_by_invocation_id": null,
@@ -17,13 +17,15 @@
     },
     "capability_id": "cap_01J8ZQ3W2X",
     "admission": {
-      "context": "contract/1",
-      "contract": {
-        "revision": 2,
-        "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-      }
+      "context": "pre-contract/1",
+      "brief": {
+        "brief_id": "brief-latency",
+        "version": 3,
+        "content_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "brief_confirmation_decision_id": "opd_01J8BRIEF1"
     },
-    "state": "outcome_unknown",
+    "state": "running",
     "admitted_at": "2026-09-25T10:40:00Z",
     "deadline_at": "2026-09-25T11:40:00Z",
     "launch_intent": {
@@ -39,11 +41,7 @@
     },
     "cancellation": null,
     "result": null,
-    "reconciliation": {
-      "unknown_since": "2026-09-25T10:41:00Z",
-      "resolved_at": null,
-      "resolution": "pending"
-    },
+    "reconciliation": null,
     "transitions": [
       {
         "seq": 1,
@@ -65,13 +63,6 @@
         "to": "running",
         "at": "2026-09-25T10:40:02Z",
         "cause": "identity_recorded"
-      },
-      {
-        "seq": 4,
-        "from": "running",
-        "to": "outcome_unknown",
-        "at": "2026-09-25T10:41:00Z",
-        "cause": "supervisor_restart"
       }
     ]
   }

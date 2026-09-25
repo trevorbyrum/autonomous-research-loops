@@ -1,0 +1,24 @@
+{
+  "fixture": {
+    "schema": "invocation.schema.json",
+    "expect": "invalid",
+    "tests": "R2.1: a delegate inherits its parent's lease; it holds none of its own",
+    "base": "valid-delegate-under-parent.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/lease",
+        "value": {
+          "lease_id": "lease_01J8ZQ3V9T",
+          "generation": 7
+        }
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/lease"
+      }
+    ]
+  }
+}
