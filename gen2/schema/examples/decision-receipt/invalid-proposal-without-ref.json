@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "decision-receipt.schema.json",
+    "expect": "invalid",
+    "tests": "A7: attach_proposal names its proposal",
+    "base": "valid-fallback-method-advisory.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/outcome/proposal_ref",
+        "value": null
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/outcome/proposal_ref"
+      }
+    ]
+  }
+}

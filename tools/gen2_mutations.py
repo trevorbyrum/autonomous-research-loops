@@ -66,6 +66,9 @@ AD = "test_store_ddl.AdmissionAndLeaseTest."
 IL = "test_store_ddl.InvocationLifecycleTest."
 VT = "test_store_ddl.VerificationTest."
 LT = "test_store_ddl.InvocationLifecycleTest."
+DC = "test_store_ddl.DecisionReceiptConsistencyTest."
+SD = "test_store_ddl.ScreeningAndDecisionTest."
+OB = "test_store_ddl.ObservationTest."
 
 MUTATIONS: list[Mutation] = [
     # --- A1: history cannot be rewritten ------------------------------------
@@ -407,7 +410,7 @@ MUTATIONS: list[Mutation] = [
              old="  CHECK (extraction_method != 'verifier_extraction' OR extraction_invocation_id = verifier_invocation_id),\n",
              new="  CHECK (extraction_method != 'verifier_extraction' OR extraction_invocation_id = verifier_invocation_id),\n  CHECK (extraction_invocation_id != producer_invocation_id OR extraction_validation_ref IS NOT NULL),\n"),
     Mutation("A6-quote-check-iff-status", "A6", "a matched/mismatched quote need not name its quote check",
-             (VT + "test_quote_check_binding",), old="  CHECK ((json_extract(receipt, '$.checks.exact_quote.status') IN ('matched', 'mismatch')) = (quote_check_id IS NOT NULL)),\n", new=""),
+             (VT + "test_quote_check_binding",), old="  CHECK ((coalesce(json_extract(receipt, '$.checks.exact_quote.status'), 'missing') IN ('matched', 'mismatch')) = (quote_check_id IS NOT NULL)),\n", new=""),
     *(Mutation(f"A6-support-needs-{name.replace('_', '-')}", "A6", f"'supports' accepted with an adverse/unperformed {name} check",
                (VT + "test_support_needs_successful_checks_or_adjudication",), scope="verification_receipts",
                old=f"coalesce(json_extract(receipt, '$.checks.{name}'), 'missing') IN ('checked_ok', 'not_applicable')", new="1")
@@ -415,7 +418,7 @@ MUTATIONS: list[Mutation] = [
     Mutation("A6-support-needs-no-tier0-alarm", "A6", "'supports' accepted over an unadjudicated tier-0 alarm",
              (VT + "test_support_needs_successful_checks_or_adjudication",), old="\n     AND json_extract(receipt, '$.checks.tier0.signal') IS NOT 'alarm'))", new="))"),
     Mutation("A6-support-adjudication-escape", "A6", "over-restriction: an explicit adjudication no longer resolves an adverse check",
-             (VT + "test_support_needs_successful_checks_or_adjudication",), old="  CHECK (verdict != 'supports' OR json_type(receipt, '$.adjudication') = 'object' OR (", new="  CHECK (verdict != 'supports' OR ("),
+             (VT + "test_support_needs_successful_checks_or_adjudication",), old="  CHECK (verdict != 'supports' OR json_type(receipt, '$.adjudication') IS 'object' OR (", new="  CHECK (verdict != 'supports' OR ("),
     Mutation("A6-load-bearing-support-checks-performed", "A6", "a load-bearing partial support may skip its checks",
              (VT + "test_truthful_unsuccessful_verdicts_may_record_unperformed_checks",), old="  CHECK (use != 'load_bearing' OR verdict NOT IN ('supports', 'partially_supports') OR (", new="  CHECK (1 OR ("),
     Mutation("A6-truthful-cannot-assess-over-restriction", "A6", "over-restriction restored: load-bearing checks required for every verdict (the review's rejected truthful receipt)",
@@ -428,8 +431,8 @@ MUTATIONS: list[Mutation] = [
           ("claim", "          AND q.claim_id = NEW.claim_id AND q.claim_revision = NEW.claim_revision\n", ""),
           ("source", "          AND q.source_artifact_hash IS json_extract(NEW.receipt, '$.checks.exact_quote.source_artifact_hash')\n", ""),
           ("status", "          AND q.exact_match IS json_extract(NEW.receipt, '$.checks.exact_quote.status')\n", ""),
-          ("quarantine", "          AND (NEW.verdict != 'supports' OR q.quote_quarantined = 0\n               OR (q.exact_match = 'matched' AND q.nli_signal = 'alarm' AND json_type(NEW.receipt, '$.adjudication') = 'object'))))", "))"),
-          ("adjudication-escape", "\n               OR (q.exact_match = 'matched' AND q.nli_signal = 'alarm' AND json_type(NEW.receipt, '$.adjudication') = 'object'))))", ")))"))),
+          ("quarantine", "          AND (NEW.verdict != 'supports' OR q.quote_quarantined = 0\n               OR (q.exact_match = 'matched' AND q.nli_signal = 'alarm' AND json_type(NEW.receipt, '$.adjudication') IS 'object'))))", "))"),
+          ("adjudication-escape", "\n               OR (q.exact_match = 'matched' AND q.nli_signal = 'alarm' AND json_type(NEW.receipt, '$.adjudication') IS 'object'))))", ")))"))),
     *(Mutation(f"A10-verification-json-{path.replace('.', '-').replace('_', '-')}", "A10", f"verification receipt column {col} no longer bound to $.{path}",
                (VT + "test_receipt_row_matches_its_json",), scope="verification_receipts", old=f"\n     AND json_extract(receipt, '$.{path}') IS {col}", new="")
       for path, col in (("topic_id", "topic_id"), ("claim.claim_id", "claim_id"), ("claim.claim_revision", "claim_revision"), ("source.work_id", "work_id"),
@@ -442,6 +445,76 @@ MUTATIONS: list[Mutation] = [
              (VT + "test_receipt_row_matches_its_json",), scope="verification_receipts", old="\n     AND json_extract(receipt, '$.verdict') IS verdict),", new="),"),
     Mutation("A10-verification-json-receipt-id", "A10", "verification receipt id no longer bound to the JSON",
              (VT + "test_receipt_row_matches_its_json",), scope="verification_receipts", old="  CHECK (json_extract(receipt, '$.verification_receipt_id') IS verification_receipt_id\n     AND ", new="  CHECK ("),
+    # --- A7 / A10: decision spec and receipt consistency; screening/observation binding ---
+    Mutation("A7-spec-provider-primitive", "A7", "a fallback spec may answer with a Jev primitive",
+             (DC + "test_spec_shape_by_class_and_provider",), old="  CHECK ((provider = 'jev' AND primitive IN ('noul', 'choice', 'score')) OR (provider = 'llm_fallback' AND primitive = 'label')),\n", new=""),
+    Mutation("A7-spec-options-object", "A7", "spec options may be a list (duplicate ids possible)",
+             (DC + "test_spec_shape_by_class_and_provider",), old="  CHECK (json_type(document, '$.options') IS 'object'),\n", new=""),
+    Mutation("A7-spec-at-least-two-options", "A7", "a spec may offer one option",
+             (DC + "test_spec_shape_by_class_and_provider",), scope="decision_specs_option_count", old="WHEN (SELECT count(*) FROM json_each(NEW.document, '$.options')) < 2\n  OR ", new="WHEN "),
+    Mutation("A7-spec-noul-two-options", "A7", "a Noul may offer other than two options",
+             (DC + "test_spec_shape_by_class_and_provider",), scope="decision_specs_option_count", old="\n  OR (NEW.primitive = 'noul' AND (SELECT count(*) FROM json_each(NEW.document, '$.options')) != 2)", new=""),
+    Mutation("A7-spec-screening-protocol", "A7", "a screening spec may have no eligibility protocol (the review's probe)",
+             (DC + "test_spec_shape_by_class_and_provider",), old="  CHECK (decision_class != 'screening' OR json_type(document, '$.protocol.eligibility_protocol_version') IS 'integer'),\n", new=""),
+    Mutation("NULL-spec-screening-protocol", "A7", "NULL-CHECK regression: '=' instead of IS lets an absent protocol pass",
+             (DC + "test_spec_shape_by_class_and_provider",), old="json_type(document, '$.protocol.eligibility_protocol_version') IS 'integer'", new="json_type(document, '$.protocol.eligibility_protocol_version') = 'integer'"),
+    Mutation("NULL-support-adjudication", "A6", "NULL-CHECK regression: '=' instead of IS lets an absent adjudication key pass an adverse check",
+             (VT + "test_absent_keys_are_not_passes",), old="  CHECK (verdict != 'supports' OR json_type(receipt, '$.adjudication') IS 'object' OR (", new="  CHECK (verdict != 'supports' OR json_type(receipt, '$.adjudication') = 'object' OR ("),
+    Mutation("NULL-support-quote-status", "A6", "NULL-CHECK regression: an absent exact-quote status passes",
+             (VT + "test_absent_keys_are_not_passes",), old="  CHECK (verdict != 'supports' OR coalesce(json_extract(receipt, '$.checks.exact_quote.status'), 'missing') IN ('matched', 'not_applicable')),",
+             new="  CHECK (verdict != 'supports' OR json_extract(receipt, '$.checks.exact_quote.status') IN ('matched', 'not_applicable')),"),
+    Mutation("A7-spec-method-protocol", "A7", "a method_selection spec may have no contract protocol",
+             (DC + "test_spec_shape_by_class_and_provider",), old="  CHECK (decision_class != 'method_selection' OR json_type(document, '$.protocol') IS 'object'),\n", new=""),
+    *(Mutation(f"A7-spec-json-{key}", "A7", f"spec {key} column no longer bound to its document",
+               (DC + "test_spec_shape_by_class_and_provider",), scope="decision_specs", old=old, new="")
+      for key, old in (("primitive", "\n     AND json_extract(document, '$.primitive') IS primitive"),
+                       ("policy-id", "\n     AND json_extract(document, '$.action_policy.policy_id') IS policy_id"),
+                       ("policy-version", "\n     AND json_extract(document, '$.action_policy.version') IS policy_version"),
+                       ("protocol-topic", "\n     AND json_extract(document, '$.protocol.topic_id') IS protocol_topic_id"))),
+    Mutation("A7-shadow-no-commit", "A7", "a shadow receipt may carry a committed operation (the review's probe)",
+             (DC + "test_action_fixes_the_outcome_shape",), old="  CHECK ((action = 'commit_reversible_action') = (commit_operation_id IS NOT NULL)),\n", new="  CHECK (action != 'commit_reversible_action' OR commit_operation_id IS NOT NULL),\n"),
+    Mutation("A7-proposal-iff-attach", "A7", "proposal ref no longer tied to attach_proposal",
+             (DC + "test_action_fixes_the_outcome_shape",), old="  CHECK ((action = 'attach_proposal') = (proposal_ref IS NOT NULL)),\n", new=""),
+    Mutation("A7-hold-only-for-hold-actions", "A7", "a hold may be named by shadow/commit/proposal actions",
+             (DC + "test_action_fixes_the_outcome_shape",), old="  CHECK (action NOT IN ('shadow_log_only', 'commit_reversible_action', 'attach_proposal') OR hold_id IS NULL),\n", new=""),
+    Mutation("A7-abstention-keeps-raw", "A7", "an abstention may discard the raw response (the review's probe)",
+             (DC + "test_abstention_retains_the_raw_response",), old="  CHECK (response_status NOT IN ('answered', 'abstained') OR raw_response_digest IS NOT NULL),\n", new="  CHECK (response_status != 'answered' OR raw_response_digest IS NOT NULL),\n"),
+    Mutation("A7-raw-is-retained-artifact", "A7", "the raw digest need not be a retained artifact",
+             (DC + "test_abstention_retains_the_raw_response",), old="  raw_response_digest TEXT REFERENCES artifacts (content_hash),", new="  raw_response_digest TEXT,"),
+    *(Mutation(f"A7-match-spec-{key}", "A7", f"receipt may differ from its spec in {key}", (DC + "test_receipt_matches_its_spec",), scope="decision_receipts_match_spec", old=old, new="")
+      for key, old in (
+          ("primitive", "  OR (NEW.answer IS NOT NULL AND (SELECT primitive FROM decision_specs WHERE spec_hash = NEW.spec_hash) IS NOT json_extract(NEW.answer, '$.primitive'))\n"),
+          ("policy-id", "  OR (SELECT policy_id FROM decision_specs WHERE spec_hash = NEW.spec_hash) IS NOT NEW.policy_id\n"),
+          ("policy-version", "  OR (SELECT policy_version FROM decision_specs WHERE spec_hash = NEW.spec_hash) IS NOT NEW.policy_version\n"),
+          ("protocol-topic", "  OR coalesce((SELECT protocol_topic_id FROM decision_specs WHERE spec_hash = NEW.spec_hash), NEW.topic_id) IS NOT NEW.topic_id\n"),
+          ("selected-option", "  OR (json_extract(NEW.answer, '$.selected_option_id') IS NOT NULL AND NOT EXISTS (\n        SELECT 1 FROM decision_specs sp, json_each(sp.document, '$.options') o\n        WHERE sp.spec_hash = NEW.spec_hash AND o.key = json_extract(NEW.answer, '$.selected_option_id')))\n"),
+          ("distribution", "\n  OR EXISTS (\n        SELECT 1 FROM json_each(NEW.answer, '$.distribution') d\n        WHERE NOT EXISTS (SELECT 1 FROM decision_specs sp, json_each(sp.document, '$.options') o WHERE sp.spec_hash = NEW.spec_hash AND o.key = d.key))"))),
+    *(Mutation(f"A10-decision-json-{path.replace('.', '-').replace('_', '-')}", "A10", f"decision receipt {col} no longer bound to $.{path}",
+               (DC + "test_receipt_row_matches_its_json",), scope="decision_receipts", old=f"\n     AND json_extract(receipt, '$.{path}') IS {col}", new="")
+      for path, col in (("invocation_id", "invocation_id"), ("topic_id", "topic_id"), ("spec.spec_hash", "spec_hash"), ("decision_class", "decision_class"),
+                        ("provider", "provider"), ("subject.kind", "subject_kind"), ("subject.ref", "subject_ref"), ("input_manifest.input_status", "input_status"),
+                        ("provider_response.status", "response_status"), ("provider_response.raw_response_digest", "raw_response_digest"),
+                        ("provider_response.raw_response_artifact.content_hash", "raw_response_digest"), ("provider_response.answer", "json(answer)"),
+                        ("policy.policy_id", "policy_id"), ("policy.version", "policy_version"), ("authorization.authority_level", "authority_level"),
+                        ("authorization.qualification_ref", "qualification_ref"), ("action", "action"), ("outcome.commit_operation_id", "commit_operation_id"),
+                        ("outcome.proposal_ref", "proposal_ref"), ("outcome.hold_id", "hold_id"), ("blind_sample.selected", "blind_sample"))),
+    Mutation("A10-decision-json-receipt-id", "A10", "decision receipt id no longer bound to its JSON",
+             (DC + "test_receipt_row_matches_its_json",), scope="decision_receipts", old="  CHECK (json_extract(receipt, '$.decision_receipt_id') IS decision_receipt_id\n     AND ", new="  CHECK ("),
+    *(Mutation(f"A10-screening-binds-{key}", "A10", f"a provider assessment may differ from its receipt in {key}", (SD + "test_provider_assessment_is_exactly_its_receipts_committed_action",),
+               scope="screening_assessments_bound", old=old, new=new)
+      for key, old, new in (("class", "AND r.decision_class = 'screening' ", ""), ("invocation", " AND r.invocation_id IS NEW.invocation_id", ""),
+                            ("commit", "          AND r.commit_operation_id = NEW.recorded_by_operation_id\n", ""),
+                            ("subject-kind", "AND r.subject_kind = 'work' ", ""), ("subject-ref", " AND r.subject_ref = NEW.work_id))", "))"))),
+    Mutation("A10-screening-operation-topic", "A10", "the recording operation may be another topic's", (SD + "test_assessment_operation_invocation_and_reversal_are_of_its_topic",),
+             scope="screening_assessments_bound", old="  OR (SELECT topic_id FROM operation_receipts WHERE operation_id = NEW.recorded_by_operation_id) IS NOT NEW.topic_id\n", new=""),
+    Mutation("A10-screening-invocation-topic", "A10", "the assessing invocation may be another topic's", (SD + "test_assessment_operation_invocation_and_reversal_are_of_its_topic",),
+             scope="screening_assessments_bound", old="  OR (NEW.invocation_id IS NOT NULL AND (SELECT topic_id FROM invocations WHERE invocation_id = NEW.invocation_id) IS NOT NEW.topic_id)\n", new=""),
+    Mutation("A10-screening-reversal-same-work", "A10", "a reversal may supersede another work's assessment", (SD + "test_assessment_operation_invocation_and_reversal_are_of_its_topic",),
+             scope="screening_assessments_bound", old=" AND o.work_id = NEW.work_id))", new="))"),
+    Mutation("A10-screening-reversal-same-topic", "A10", "a reversal may supersede another topic's assessment", (SD + "test_assessment_operation_invocation_and_reversal_are_of_its_topic",),
+             scope="screening_assessments_bound", old=" AND o.topic_id = NEW.topic_id AND", new=" AND"),
+    Mutation("A10-observation-invocation-topic", "A10", "an observation may be recorded under another topic's invocation (the review's probe)",
+             (OB + "test_observation_invocation_is_of_its_topic",), drop_trigger="search_observations_invocation_topic"),
     # --- A9: capability supersession --------------------------------------
     Mutation("A9-successor-fk-immediate", "A9", "successor FK checked immediately (the documented transaction cannot run)",
              (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",),
@@ -468,6 +541,9 @@ MUTATIONS: list[Mutation] = [
 # their removal alone. Listed so a reviewer does not mistake them for missed
 # coverage; each names the first layer (which IS in the inventory).
 SECOND_LAYER = {
+    "screening_provider_needs_qualified_authority (trigger)":
+        "screening_assessments_bound requires the receipt's commit_operation_id to be the assessment's recording operation; a receipt has a "
+        "commit_operation_id only for commit_reversible_action, which a CHECK allows only at qualified authority (A10-screening-binds-commit)",
     "verification_receipts CHECK (verdict != 'supports' OR exact_quote.status IN ('matched', 'not_applicable'))":
         "a mismatched quote is always quarantined (quote_checks CHECK, A6-D32-byte-mismatch) and a matched/mismatched status needs a bound check "
         "(A6-quote-check-iff-status), so verification_receipts_bindings refuses support on it first (A6-quote-binding-*)",

@@ -16,6 +16,10 @@
     },
     "decision_class": "screening",
     "provider": "jev",
+    "subject": {
+      "kind": "work",
+      "ref": "wrk_01J8WORK01"
+    },
     "input_manifest": {
       "snapshot_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
       "input_record_ids": [

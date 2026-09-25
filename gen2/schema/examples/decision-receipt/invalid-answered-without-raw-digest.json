@@ -2,12 +2,17 @@
   "fixture": {
     "schema": "decision-receipt.schema.json",
     "expect": "invalid",
-    "tests": "D-10: the raw response digest is retained for the replay audit",
+    "tests": "D-10/A7: an answered decision retains its raw response bytes (digest and artifact) for the replay audit",
     "base": "valid-jev-screening-shadow.json",
     "patch": [
       {
         "op": "replace",
         "path": "/provider_response/raw_response_digest",
+        "value": null
+      },
+      {
+        "op": "replace",
+        "path": "/provider_response/raw_response_artifact",
         "value": null
       }
     ],
@@ -15,6 +20,10 @@
       {
         "keyword": "type",
         "path": "/provider_response/raw_response_digest"
+      },
+      {
+        "keyword": "type",
+        "path": "/provider_response/raw_response_artifact"
       }
     ]
   }

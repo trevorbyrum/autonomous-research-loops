@@ -1,0 +1,31 @@
+{
+  "fixture": {
+    "schema": "decision-receipt.schema.json",
+    "expect": "invalid",
+    "tests": "A7/D-10: an abstention keeps its raw response artifact for replay (the review's probe)",
+    "base": "valid-truncated-input-abstains.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/input_manifest/input_status",
+        "value": "complete"
+      },
+      {
+        "op": "replace",
+        "path": "/provider_response/status",
+        "value": "abstained"
+      },
+      {
+        "op": "replace",
+        "path": "/provider_response/raw_response_digest",
+        "value": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/provider_response/raw_response_artifact"
+      }
+    ]
+  }
+}

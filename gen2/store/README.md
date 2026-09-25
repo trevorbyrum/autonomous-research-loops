@@ -70,7 +70,11 @@
   - only qualified authority commits
   - shadow does nothing
   - bad input is never answered
-  - shadow/advisory providers never write authoritative screening rows
+  - shadow/advisory providers never write authoritative screening rows; a provider assessment is exactly its qualified screening receipt's committed action (same invocation, commit, work)
+  - the action fixes the outcome shape (shadow: no effect; commit/proposal/hold fields belong to exactly their action)
+  - raw response bytes are a retained artifact whenever a response exists (answered or abstained)
+  - a receipt matches its spec's provider, class, primitive, action policy, options and protocol topic; spec options are keyed by id; screening/method-selection specs name their protocol
+  - every normalized receipt/spec column equals its JSON field; observations and assessments bind their invocation's/operation's topic (A10)
 - **Governance** (G-1, G-2, G-8, G-13):
   - contract content is immutable, never deleted, and hash-bound to its row; revisions are written as drafts
   - one approved revision per topic; approval names an approved contract/amendment/reframe decision about that exact revision and hash
@@ -93,7 +97,14 @@
 - **Stopping-rule evaluation and dossier assembly** (accounting); freshness-envelope computation (projector).
 - **Byte-level quote matching and normalization;** tier-0 invocation.
 - **Operational behavior:** transition alerts on capability facts, hold deadline escalation, verification capacity reservation, retry budgets.
-- **Consistency of the JSON documents beyond their key fields**, and timestamp format — validated against `gen2/schema/` at the router boundary.
+- **Consistency of the JSON documents beyond their bound fields**, and timestamp format — validated against `gen2/schema/` at the router boundary.
+- **Semantic comparisons the DDL cannot make (A10) — router contract, to be tested before these rows feed accounting (Phase 1/2):**
+  - a search observation's `result_count` against the retrieval events actually captured for it (complete / partial / unknown capture kept distinct from zero);
+  - a screening receipt's selected option against the assessment's include/exclude/borderline decision, and its criterion results against the eligibility protocol version;
+  - a DecisionSpec's question/rubric/input-builder versions against the registry (question registry: format frozen in 0, loaded in Phase 1 — ruling R3);
+  - qualification references against the qualification registry (spec'd in 0, fake-exercised in Phase 1, real in Phase 3 — ruling R3); a non-null `qualification_ref` string is not qualification;
+  - payload digests against staged bytes, and artifact sizes/media types against the spool;
+  - verification-receipt spans against the quote check's span offsets, and the obtained tier against what the acquisition route can deliver.
 
 ## Intentionally deferred
 

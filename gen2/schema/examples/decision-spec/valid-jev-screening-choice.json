@@ -38,19 +38,16 @@
       "policy_id": "P-screen-shadow",
       "version": 1
     },
-    "options": [
-      {
-        "option_id": "include",
+    "options": {
+      "include": {
         "criteria": "Meets EC-outcome on the abstract."
       },
-      {
-        "option_id": "exclude",
+      "exclude": {
         "criteria": "Clearly fails EC-outcome on the abstract; reason code required."
       },
-      {
-        "option_id": "borderline",
+      "borderline": {
         "criteria": "Cannot decide from the abstract."
       }
-    ]
+    }
   }
 }

@@ -16,6 +16,10 @@
     },
     "decision_class": "method_selection",
     "provider": "llm_fallback",
+    "subject": {
+      "kind": "obligation",
+      "ref": "O-effect"
+    },
     "input_manifest": {
       "snapshot_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
       "input_record_ids": [

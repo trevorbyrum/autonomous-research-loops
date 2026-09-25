@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "decision-receipt.schema.json",
+    "expect": "invalid",
+    "tests": "A7: a shadow receipt has no effect at all (the review's probe: a committed operation under shadow_log_only)",
+    "base": "valid-jev-screening-shadow.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/outcome/commit_operation_id",
+        "value": "op_01J8ZQ4K7M"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/outcome/commit_operation_id"
+      }
+    ]
+  }
+}

@@ -90,24 +90,31 @@
       }
     },
     "options": {
-      "description": "Enumerated options with their criteria. Noul is a yes/no question, so it lists exactly the two; Score lists its scale anchors.",
-      "type": "array",
-      "minItems": 2,
-      "maxItems": 50,
-      "items": {
+      "description": "Enumerated options keyed by option id — an object, so ids are unique by construction (duplicate keys are rejected at parse; Astra 0a review A7). Noul is a yes/no question, so it lists exactly the two; Score lists its scale anchors. A receipt's selected option and every distribution key must be options of its spec (enforced in the store).",
+      "type": "object",
+      "minProperties": 2,
+      "maxProperties": 50,
+      "propertyNames": {"$ref": "common.schema.json#/$defs/local_id"},
+      "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["option_id", "criteria"],
-        "properties": {
-          "option_id": {"$ref": "common.schema.json#/$defs/local_id"},
-          "criteria": {"$ref": "common.schema.json#/$defs/long_text"}
-        }
+        "required": ["criteria"],
+        "properties": {"criteria": {"$ref": "common.schema.json#/$defs/long_text"}}
       }
     }
   },
   "allOf": [
     {"if": {"properties": {"provider": {"const": "jev"}}}, "then": {"properties": {"primitive": {"enum": ["noul", "choice", "score"]}}}},
     {"if": {"properties": {"provider": {"const": "llm_fallback"}}}, "then": {"properties": {"primitive": {"const": "label"}}}},
-    {"if": {"properties": {"primitive": {"const": "noul"}}}, "then": {"properties": {"options": {"maxItems": 2}}}}
+    {"if": {"properties": {"primitive": {"const": "noul"}}}, "then": {"properties": {"options": {"maxProperties": 2}}}},
+    {
+      "description": "Screening embeds the topic's eligibility protocol; method selection embeds its contract (A7). Other classes' protocol requirements are draft (gen2/store/README.md).",
+      "if": {"properties": {"decision_class": {"const": "screening"}}},
+      "then": {"properties": {"protocol": {"type": "object", "properties": {"eligibility_protocol_version": {"type": "integer"}}}}}
+    },
+    {
+      "if": {"properties": {"decision_class": {"const": "method_selection"}}},
+      "then": {"properties": {"protocol": {"type": "object"}}}
+    }
   ]
 }

@@ -1237,6 +1237,13 @@ CREATE TABLE search_observations (
   CHECK (error_class IS NOT 'secrets_backend_failing' OR capability_fact_id IS NOT NULL)
 ) STRICT;
 
+CREATE TRIGGER search_observations_invocation_topic
+BEFORE INSERT ON search_observations
+WHEN (SELECT topic_id FROM invocations WHERE invocation_id = NEW.invocation_id) IS NOT NEW.topic_id
+BEGIN
+  SELECT RAISE(ABORT, 'an observation is recorded under an invocation of its own topic (A10)');
+END;
+
 CREATE TRIGGER search_observations_immutable_u BEFORE UPDATE ON search_observations
 BEGIN
   SELECT RAISE(ABORT, 'observations are immutable; a retry is a new attempt');
@@ -1362,6 +1369,29 @@ WHEN NEW.actor_kind = 'decision_provider'
   AND (SELECT authority_level FROM decision_receipts WHERE decision_receipt_id = NEW.decision_receipt_id) IS NOT 'qualified'
 BEGIN
   SELECT RAISE(ABORT, 'shadow/advisory decision providers never write authoritative screening assessments (D-5)');
+END;
+
+-- A10: a provider-written assessment is exactly the committed action of a
+-- screening receipt of this invocation, about this work, recorded by that
+-- receipt's commit (a commit_operation_id exists only on a committed action,
+-- and a receipt's topic is its invocation's — both CHECKed elsewhere); the
+-- recording operation and the invocation are of this topic; a reversal
+-- supersedes an assessment of the same topic and work.
+CREATE TRIGGER screening_assessments_bound
+BEFORE INSERT ON screening_assessments
+WHEN (NEW.actor_kind = 'decision_provider' AND NOT EXISTS (
+        SELECT 1 FROM decision_receipts r
+        WHERE r.decision_receipt_id = NEW.decision_receipt_id
+          AND r.decision_class = 'screening' AND r.invocation_id IS NEW.invocation_id
+          AND r.commit_operation_id = NEW.recorded_by_operation_id
+          AND r.subject_kind = 'work' AND r.subject_ref = NEW.work_id))
+  OR (SELECT topic_id FROM operation_receipts WHERE operation_id = NEW.recorded_by_operation_id) IS NOT NEW.topic_id
+  OR (NEW.invocation_id IS NOT NULL AND (SELECT topic_id FROM invocations WHERE invocation_id = NEW.invocation_id) IS NOT NEW.topic_id)
+  OR (NEW.supersedes_assessment_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM screening_assessments o
+        WHERE o.assessment_id = NEW.supersedes_assessment_id AND o.topic_id = NEW.topic_id AND o.work_id = NEW.work_id))
+BEGIN
+  SELECT RAISE(ABORT, 'screening assessment bindings: receipt class/topic/invocation/action/commit/subject, operation and invocation topic, superseded assessment (A10)');
 END;
 CREATE TRIGGER screening_assessments_immutable_u BEFORE UPDATE ON screening_assessments
 BEGIN
@@ -1507,9 +1537,9 @@ CREATE TABLE verification_receipts (
   CHECK (extraction_method != 'verifier_extraction' OR extraction_invocation_id = verifier_invocation_id),
   CHECK (extraction_method != 'validated_extraction' OR extraction_validation_ref IS NOT NULL),
   CHECK (extraction_method != 'canonical_bytes' OR json_extract(acquisition, '$.gateway_call_ref') IS NOT NULL),
-  CHECK ((json_extract(receipt, '$.checks.exact_quote.status') IN ('matched', 'mismatch')) = (quote_check_id IS NOT NULL)),
-  CHECK (verdict != 'supports' OR json_extract(receipt, '$.checks.exact_quote.status') IN ('matched', 'not_applicable')),
-  CHECK (verdict != 'supports' OR json_type(receipt, '$.adjudication') = 'object' OR (
+  CHECK ((coalesce(json_extract(receipt, '$.checks.exact_quote.status'), 'missing') IN ('matched', 'mismatch')) = (quote_check_id IS NOT NULL)),
+  CHECK (verdict != 'supports' OR coalesce(json_extract(receipt, '$.checks.exact_quote.status'), 'missing') IN ('matched', 'not_applicable')),
+  CHECK (verdict != 'supports' OR json_type(receipt, '$.adjudication') IS 'object' OR (
          coalesce(json_extract(receipt, '$.checks.numeric_units'), 'missing') IN ('checked_ok', 'not_applicable')
      AND coalesce(json_extract(receipt, '$.checks.denominators'), 'missing') IN ('checked_ok', 'not_applicable')
      AND coalesce(json_extract(receipt, '$.checks.negation'), 'missing') IN ('checked_ok', 'not_applicable')
@@ -1571,7 +1601,7 @@ WHEN (SELECT capability_id FROM invocations WHERE invocation_id = NEW.verifier_i
           AND q.source_artifact_hash IS json_extract(NEW.receipt, '$.checks.exact_quote.source_artifact_hash')
           AND q.exact_match IS json_extract(NEW.receipt, '$.checks.exact_quote.status')
           AND (NEW.verdict != 'supports' OR q.quote_quarantined = 0
-               OR (q.exact_match = 'matched' AND q.nli_signal = 'alarm' AND json_type(NEW.receipt, '$.adjudication') = 'object'))))
+               OR (q.exact_match = 'matched' AND q.nli_signal = 'alarm' AND json_type(NEW.receipt, '$.adjudication') IS 'object'))))
 BEGIN
   SELECT RAISE(ABORT, 'verification receipt bindings: verifier capability, authenticated canonical bytes, and an unquarantined quote check of this claim (A6, A10)');
 END;
@@ -1626,17 +1656,44 @@ END;
 -- trace: flow §2 (DecisionSpec; qualification bound to the exact spec);
 -- schema decision-spec.schema.json; INVARIANTS D-1, D-4.
 -- Supporting table (see README): immutable specs referenced by receipts.
+-- A7: the primitive and action policy that receipts must match are
+-- normalized and bound to the document; the provider fixes the primitive
+-- family (Jev: noul/choice/score; fallback: label); options are an object
+-- keyed by option id (so ids are unique by construction), a Noul has exactly
+-- two; screening names its eligibility protocol and method_selection its
+-- contract (other classes' protocol requirements are recorded as draft in
+-- gen2/store/README.md).
 CREATE TABLE decision_specs (
   spec_hash TEXT PRIMARY KEY CHECK (spec_hash GLOB 'sha256:*' AND length(spec_hash) = 71),
   spec_id TEXT NOT NULL UNIQUE CHECK (spec_id GLOB 'dspec_*'),
   decision_class TEXT NOT NULL,
   provider TEXT NOT NULL CHECK (provider IN ('jev', 'llm_fallback')),
+  primitive TEXT NOT NULL CHECK (primitive IN ('noul', 'choice', 'score', 'label')),
+  policy_id TEXT NOT NULL,
+  policy_version INTEGER NOT NULL CHECK (policy_version >= 1),
+  protocol_topic_id TEXT,
   document TEXT NOT NULL CHECK (json_valid(document)),
   created_at TEXT NOT NULL,
+  CHECK ((provider = 'jev' AND primitive IN ('noul', 'choice', 'score')) OR (provider = 'llm_fallback' AND primitive = 'label')),
+  CHECK (json_type(document, '$.options') IS 'object'),
+  CHECK (decision_class != 'screening' OR json_type(document, '$.protocol.eligibility_protocol_version') IS 'integer'),
+  CHECK (decision_class != 'method_selection' OR json_type(document, '$.protocol') IS 'object'),
   CHECK (json_extract(document, '$.spec_id') IS spec_id
      AND json_extract(document, '$.provider') IS provider
-     AND json_extract(document, '$.decision_class') IS decision_class)
+     AND json_extract(document, '$.decision_class') IS decision_class
+     AND json_extract(document, '$.primitive') IS primitive
+     AND json_extract(document, '$.action_policy.policy_id') IS policy_id
+     AND json_extract(document, '$.action_policy.version') IS policy_version
+     AND json_extract(document, '$.protocol.topic_id') IS protocol_topic_id)
 ) STRICT;
+
+CREATE TRIGGER decision_specs_option_count
+BEFORE INSERT ON decision_specs
+WHEN (SELECT count(*) FROM json_each(NEW.document, '$.options')) < 2
+  OR (NEW.primitive = 'noul' AND (SELECT count(*) FROM json_each(NEW.document, '$.options')) != 2)
+BEGIN
+  SELECT RAISE(ABORT, 'a spec offers at least two options; a Noul exactly two (A7)');
+END;
 
 CREATE TRIGGER decision_specs_immutable_u BEFORE UPDATE ON decision_specs
 BEGIN
@@ -1653,6 +1710,12 @@ END;
 -- abstains), §6.8 (calibration custody in the router's store); schema
 -- decision-receipt.schema.json; BOUNDARIES.md Decision layer; INVARIANTS
 -- D-1, D-2, D-3, D-5, D-6, D-10, D-12.
+-- A7: the action fixes the outcome shape (shadow and escalate have no
+-- commit/proposal effect; each effect field belongs to exactly its action);
+-- raw response bytes are retained as an artifact whenever a response exists
+-- (answered or abstained), and the digest is that artifact's hash; the
+-- receipt names the subject decided on (A10: screening binds it); every
+-- normalized column equals its receipt-JSON field.
 CREATE TABLE decision_receipts (
   decision_receipt_id TEXT PRIMARY KEY CHECK (decision_receipt_id GLOB 'dec_*'),
   invocation_id TEXT NOT NULL REFERENCES invocations (invocation_id),
@@ -1662,8 +1725,10 @@ CREATE TABLE decision_receipts (
   provider TEXT NOT NULL CHECK (provider IN ('jev', 'llm_fallback')),
   input_status TEXT NOT NULL CHECK (input_status IN ('complete', 'oversized', 'stale', 'truncated', 'disallowed')),
   response_status TEXT NOT NULL CHECK (response_status IN ('answered', 'abstained', 'rejected_input', 'error', 'timeout')),
-  raw_response_digest TEXT CHECK (raw_response_digest IS NULL OR raw_response_digest GLOB 'sha256:*'),
+  raw_response_digest TEXT REFERENCES artifacts (content_hash),
   answer TEXT CHECK (answer IS NULL OR json_valid(answer)),
+  subject_kind TEXT NOT NULL CHECK (subject_kind IN ('work', 'claim', 'obligation', 'facet', 'contract_revision', 'topic', 'source', 'checkpoint')),
+  subject_ref TEXT NOT NULL CHECK (length(subject_ref) > 0),
   policy_id TEXT NOT NULL,
   policy_version INTEGER NOT NULL CHECK (policy_version >= 1),
   authority_level TEXT NOT NULL CHECK (authority_level IN ('shadow', 'advisory', 'qualified')),
@@ -1671,6 +1736,7 @@ CREATE TABLE decision_receipts (
   action TEXT NOT NULL CHECK (action IN ('commit_reversible_action', 'attach_proposal', 'escalate', 'abstain_hold', 'shadow_log_only')),
   commit_operation_id TEXT REFERENCES operation_receipts (operation_id) DEFERRABLE INITIALLY DEFERRED,
   hold_id TEXT REFERENCES holds (hold_id) DEFERRABLE INITIALLY DEFERRED,
+  proposal_ref TEXT,
   blind_sample INTEGER NOT NULL CHECK (blind_sample IN (0, 1)),
   receipt TEXT NOT NULL CHECK (json_valid(receipt)),
   decided_at TEXT NOT NULL,
@@ -1678,10 +1744,36 @@ CREATE TABLE decision_receipts (
   CHECK (action != 'commit_reversible_action' OR (authority_level = 'qualified' AND commit_operation_id IS NOT NULL)),
   CHECK (authority_level != 'shadow' OR action = 'shadow_log_only'),
   CHECK (input_status = 'complete' OR response_status = 'rejected_input'),
-  CHECK (response_status != 'answered' OR (answer IS NOT NULL AND raw_response_digest IS NOT NULL)),
+  CHECK (response_status != 'answered' OR answer IS NOT NULL),
+  CHECK (response_status NOT IN ('answered', 'abstained') OR raw_response_digest IS NOT NULL),
   CHECK (response_status = 'answered' OR answer IS NULL),
   CHECK (response_status = 'answered' OR action IN ('escalate', 'abstain_hold', 'shadow_log_only')),
+  CHECK ((action = 'commit_reversible_action') = (commit_operation_id IS NOT NULL)),
+  CHECK ((action = 'attach_proposal') = (proposal_ref IS NOT NULL)),
   CHECK (action != 'abstain_hold' OR hold_id IS NOT NULL),
+  CHECK (action NOT IN ('shadow_log_only', 'commit_reversible_action', 'attach_proposal') OR hold_id IS NULL),
+  CHECK (json_extract(receipt, '$.decision_receipt_id') IS decision_receipt_id
+     AND json_extract(receipt, '$.invocation_id') IS invocation_id
+     AND json_extract(receipt, '$.topic_id') IS topic_id
+     AND json_extract(receipt, '$.spec.spec_hash') IS spec_hash
+     AND json_extract(receipt, '$.decision_class') IS decision_class
+     AND json_extract(receipt, '$.provider') IS provider
+     AND json_extract(receipt, '$.subject.kind') IS subject_kind
+     AND json_extract(receipt, '$.subject.ref') IS subject_ref
+     AND json_extract(receipt, '$.input_manifest.input_status') IS input_status
+     AND json_extract(receipt, '$.provider_response.status') IS response_status
+     AND json_extract(receipt, '$.provider_response.raw_response_digest') IS raw_response_digest
+     AND json_extract(receipt, '$.provider_response.raw_response_artifact.content_hash') IS raw_response_digest
+     AND json_extract(receipt, '$.provider_response.answer') IS json(answer)
+     AND json_extract(receipt, '$.policy.policy_id') IS policy_id
+     AND json_extract(receipt, '$.policy.version') IS policy_version
+     AND json_extract(receipt, '$.authorization.authority_level') IS authority_level
+     AND json_extract(receipt, '$.authorization.qualification_ref') IS qualification_ref
+     AND json_extract(receipt, '$.action') IS action
+     AND json_extract(receipt, '$.outcome.commit_operation_id') IS commit_operation_id
+     AND json_extract(receipt, '$.outcome.proposal_ref') IS proposal_ref
+     AND json_extract(receipt, '$.outcome.hold_id') IS hold_id
+     AND json_extract(receipt, '$.blind_sample.selected') IS blind_sample),
   CHECK (provider != 'llm_fallback' OR answer IS NULL OR (
          json_extract(answer, '$.primitive') IS 'label'
      AND json_type(answer, '$.probability') IS NULL
@@ -1694,13 +1786,27 @@ CREATE TABLE decision_receipts (
       OR (coalesce(json_type(answer, '$.probability'), 'missing') IN ('real', 'integer') AND json_type(answer, '$.confidence') IS NULL))
 ) STRICT;
 
+-- A7: a receipt matches its spec in provider, class, answer primitive and
+-- action policy; a selected option and every distribution key are options of
+-- the spec; a spec bound to a topic's protocol is used only for that topic;
+-- the invocation is of the receipt's topic.
 CREATE TRIGGER decision_receipts_match_spec
 BEFORE INSERT ON decision_receipts
 WHEN (SELECT provider FROM decision_specs WHERE spec_hash = NEW.spec_hash) IS NOT NEW.provider
   OR (SELECT decision_class FROM decision_specs WHERE spec_hash = NEW.spec_hash) IS NOT NEW.decision_class
   OR (SELECT topic_id FROM invocations WHERE invocation_id = NEW.invocation_id) IS NOT NEW.topic_id
+  OR (NEW.answer IS NOT NULL AND (SELECT primitive FROM decision_specs WHERE spec_hash = NEW.spec_hash) IS NOT json_extract(NEW.answer, '$.primitive'))
+  OR (SELECT policy_id FROM decision_specs WHERE spec_hash = NEW.spec_hash) IS NOT NEW.policy_id
+  OR (SELECT policy_version FROM decision_specs WHERE spec_hash = NEW.spec_hash) IS NOT NEW.policy_version
+  OR coalesce((SELECT protocol_topic_id FROM decision_specs WHERE spec_hash = NEW.spec_hash), NEW.topic_id) IS NOT NEW.topic_id
+  OR (json_extract(NEW.answer, '$.selected_option_id') IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM decision_specs sp, json_each(sp.document, '$.options') o
+        WHERE sp.spec_hash = NEW.spec_hash AND o.key = json_extract(NEW.answer, '$.selected_option_id')))
+  OR EXISTS (
+        SELECT 1 FROM json_each(NEW.answer, '$.distribution') d
+        WHERE NOT EXISTS (SELECT 1 FROM decision_specs sp, json_each(sp.document, '$.options') o WHERE sp.spec_hash = NEW.spec_hash AND o.key = d.key))
 BEGIN
-  SELECT RAISE(ABORT, 'decision receipt provider/class must match its spec; invocation topic must match');
+  SELECT RAISE(ABORT, 'decision receipt must match its spec: provider, class, primitive, action policy, options, protocol topic; invocation topic must match (A7)');
 END;
 CREATE TRIGGER decision_receipts_immutable_u BEFORE UPDATE ON decision_receipts
 BEGIN

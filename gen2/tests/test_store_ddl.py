@@ -548,6 +548,16 @@ class VerificationTest(StoreTestCase):
         with self.assertRaises(sqlite3.IntegrityError):  # the quarantine binding refuses it; the CHECK is a second layer
             self.verify("ver_mismatch", quote=("mismatch", "qc-mism"), adjudication=adjudicated)
 
+    def test_absent_keys_are_not_passes(self) -> None:
+        """SQLite passes a CHECK that evaluates to NULL, so an absent JSON key must
+        fail closed: 'supports' with an adverse check and NO adjudication key, or
+        with no exact-quote status, is refused like an explicit null."""
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.verify("ver_00000001", checks=dict(self.CHECKS_OK, numeric_units="checked_problem"), drop=("adjudication",))
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.verify("ver_00000002", quote=("not_applicable", None), drop=("checks.exact_quote.status",))
+        self.verify("ver_00000001", drop=("adjudication",))  # all checks succeeded: the absent adjudication is not needed
+
     def test_truthful_unsuccessful_verdicts_may_record_unperformed_checks(self) -> None:
         """A6 (the over-restriction): a load-bearing cannot_assess or
         does_not_support receipt may truthfully report not_checked/unavailable;
@@ -689,6 +699,13 @@ class ObservationTest(StoreTestCase):
         self.rejects("inserted current", "INSERT INTO capability_facts (fact_id, capability, state, detail, since, affected_lanes, superseded_by_fact_id, recorded_at) VALUES ('cf-9', 'secrets_backend', 'failing', 'd', ?, '[]', 'cf-2', ?)", T, T)
         self.assertEqual(self.rows(current), [("cf-2", "healthy")])
 
+    def test_observation_invocation_is_of_its_topic(self) -> None:
+        """A10: search_observations binds its invocation's topic."""
+        self.lease("lease_zzzzzzzz", 1, tid=OTHER)
+        self.invocation("inv_oooooooo", tid=OTHER, lease="lease_zzzzzzzz")
+        self.rejects("invocation of its own topic", self.INSERT.replace("'inv_pppppppp'", "'inv_oooooooo'"), "o1", TOPIC, h("1"), T, "searched_ok", 3, None, None)
+        self.x(self.INSERT.replace("'inv_pppppppp'", "'inv_oooooooo'"), "o1", OTHER, h("1"), T, "searched_ok", 3, None, None)
+
     def test_retrieval_events_only_from_successful_searches(self) -> None:
         self.obs("o1", "provider_unavailable", None, "timeout")
         self.obs("o2", "searched_ok", 2, ident="2")
@@ -716,10 +733,56 @@ class ScreeningAndDecisionTest(StoreTestCase):
         self.rejects("never deleted", "DELETE FROM screening_assessments WHERE assessment_id = 'sa1'")
 
     def test_shadow_decision_provider_cannot_write_authoritative_screening(self) -> None:
+        # The A10 binding (the receipt's committed action must be this assessment)
+        # now refuses a shadow receipt first; the qualified-authority trigger is
+        # its second layer (tools/gen2_mutations.py SECOND_LAYER).
         self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev)  # shadow
-        self.rejects("never write authoritative screening", self.SCREEN, "sa1", TOPIC, "include", None, "decision_provider", "dec_00000001", T)
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.x(self.SCREEN, "sa1", TOPIC, "include", None, "decision_provider", "dec_00000001", T)
         self.decision_receipt("dec_00000002", "inv_pppppppp", self.jev, authority="qualified", qualification="qual-screen-1", action="commit_reversible_action", commit_op="op_00000001")
         self.x(self.SCREEN, "sa1", TOPIC, "include", None, "decision_provider", "dec_00000002", T)
+
+    def test_provider_assessment_is_exactly_its_receipts_committed_action(self) -> None:
+        """A10: class, topic, invocation, action, commit and subject of the
+        qualified receipt all bind to the assessment; each probe is a qualified
+        receipt differing in one of them."""
+        self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000002', 'doi', '10.1/y', ?)", T)
+        self.receipt("op_00000002", "inv_pppppppp", kind="interim_transition", before=1)
+        pre = self.spec("dspec_prefil01", cls="relevance_prefilter")
+        q = dict(authority="qualified", qualification="qual-screen-1")
+        self.decision_receipt("dec_otherwrk", "inv_pppppppp", self.jev, action="commit_reversible_action", commit_op="op_00000001", subject=("work", "wrk_00000002"), **q)
+        self.decision_receipt("dec_othercls", "inv_pppppppp", pre, action="commit_reversible_action", commit_op="op_00000001", cls="relevance_prefilter", **q)
+        self.decision_receipt("dec_othercom", "inv_pppppppp", self.jev, action="commit_reversible_action", commit_op="op_00000002", **q)
+        self.decision_receipt("dec_proposal", "inv_pppppppp", self.jev, action="attach_proposal", proposal="prop-1", **q)
+        self.decision_receipt("dec_othersub", "inv_pppppppp", self.jev, action="commit_reversible_action", commit_op="op_00000001", subject=("claim", "wrk_00000001"), **q)
+        for did in ("dec_otherwrk", "dec_othercls", "dec_othercom", "dec_proposal", "dec_othersub"):
+            with self.subTest(receipt=did):
+                self.rejects("screening assessment bindings", self.SCREEN, "sa1", TOPIC, "include", None, "decision_provider", did, T)
+        # another invocation's receipt (a discovery pass of the same topic)
+        self.lease("lease_dddddddd", 2, scope="discovery")
+        self.invocation("inv_disc0001", kind="discovery", lease="lease_dddddddd")
+        self.decision_receipt("dec_otherinv", "inv_disc0001", self.jev, action="commit_reversible_action", commit_op="op_00000001", **q)
+        self.rejects("screening assessment bindings", self.SCREEN, "sa1", TOPIC, "include", None, "decision_provider", "dec_otherinv", T)
+        self.decision_receipt("dec_00000002", "inv_pppppppp", self.jev, action="commit_reversible_action", commit_op="op_00000001", **q)
+        self.x(self.SCREEN, "sa1", TOPIC, "include", None, "decision_provider", "dec_00000002", T)
+
+    def test_assessment_operation_invocation_and_reversal_are_of_its_topic(self) -> None:
+        self.lease("lease_zzzzzzzz", 1, tid=OTHER)
+        self.invocation("inv_oooooooo", tid=OTHER, lease="lease_zzzzzzzz")
+        self.receipt("op_other001", "inv_oooooooo", lease="lease_zzzzzzzz", tid=OTHER, kind="interim_transition")
+        self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000002', 'doi', '10.1/y', ?)", T)
+        refused = "screening assessment bindings"
+        self.rejects(refused, self.SCREEN.replace("'op_00000001'", "'op_other001'"), "sa1", TOPIC, "include", None, "primary", None, T)
+        self.rejects(refused, self.SCREEN.replace("'inv_pppppppp'", "'inv_oooooooo'"), "sa1", TOPIC, "include", None, "primary", None, T)
+        self.x(self.SCREEN, "sa1", TOPIC, "exclude", "EC-1", "primary", None, T)
+        reverse = ("INSERT INTO screening_assessments (assessment_id, topic_id, work_id, contract_revision, eligibility_protocol_version, framing_version, stage, decision, reason_code, criterion_results, actor_kind, invocation_id, supersedes_assessment_id, recorded_by_operation_id, created_at) "
+                   "VALUES (?, ?, ?, 1, 1, 1, 'abstract', 'include', NULL, '{}', 'primary', 'inv_pppppppp', 'sa1', 'op_00000001', ?)")
+        self.rejects(refused, reverse, "sa2", TOPIC, "wrk_00000002", T)  # a reversal of another work's exclusion
+        # a reversal of another topic's exclusion of the same work
+        self.x("INSERT INTO screening_assessments (assessment_id, topic_id, work_id, contract_revision, eligibility_protocol_version, framing_version, stage, decision, reason_code, criterion_results, actor_kind, invocation_id, recorded_by_operation_id, created_at) "
+               "VALUES ('sa-other', ?, 'wrk_00000001', 1, 1, 1, 'abstract', 'exclude', 'EC-1', '{}', 'primary', 'inv_oooooooo', 'op_other001', ?)", OTHER, T)
+        self.rejects(refused, reverse.replace("'sa1'", "'sa-other'"), "sa2", TOPIC, "wrk_00000001", T)
+        self.x(reverse, "sa2", TOPIC, "wrk_00000001", T)
 
     def test_fallback_label_cannot_carry_probability(self) -> None:
         fb = self.spec("dspec_screen02", provider="llm_fallback")
@@ -731,28 +794,156 @@ class ScreeningAndDecisionTest(StoreTestCase):
         self.decision_receipt("dec_00000001", "inv_pppppppp", fb, provider="llm_fallback", answer=label)
 
     def test_missing_confidence_or_primitive_is_rejected_not_defaulted(self) -> None:
+        """D41 (MODIFY per review): the Noul positive now runs under a Noul spec."""
+        noul = self.spec("dspec_noul0001", primitive="noul", options=("yes", "no"))
         with self.assertRaises(sqlite3.IntegrityError):
             self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, answer={"primitive": "choice", "selected_option_id": "include", "distribution": {"include": 0.8, "exclude": 0.2}})
         with self.assertRaises(sqlite3.IntegrityError):
             self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, answer={"selected_option_id": "include", "confidence": 0.7})
         with self.assertRaises(sqlite3.IntegrityError):
-            self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, answer={"primitive": "noul", "probability": 0.8, "confidence": 0.9})
+            self.decision_receipt("dec_00000001", "inv_pppppppp", noul, answer={"primitive": "noul", "probability": 0.8, "confidence": 0.9})
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.decision_receipt("dec_00000001", "inv_pppppppp", noul, answer={"primitive": "noul"})
         self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev)
-        self.decision_receipt("dec_00000002", "inv_pppppppp", self.jev, answer={"primitive": "noul", "probability": 0.8})
+        self.decision_receipt("dec_00000002", "inv_pppppppp", noul, answer={"primitive": "noul", "probability": 0.8})
 
     def test_unqualified_authority_is_capped(self) -> None:
         with self.assertRaises(sqlite3.IntegrityError):
-            self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, authority="qualified", action="attach_proposal")
+            self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, authority="qualified", action="attach_proposal", proposal="prop-1")
         with self.assertRaises(sqlite3.IntegrityError):
             self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, authority="advisory", action="commit_reversible_action", commit_op="op_00000001")
         with self.assertRaises(sqlite3.IntegrityError):
-            self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, authority="shadow", action="attach_proposal")
-        self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, authority="advisory", action="attach_proposal")
+            self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, authority="shadow", action="attach_proposal", proposal="prop-1")
+        self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, authority="advisory", action="attach_proposal", proposal="prop-1")
 
     def test_receipt_provider_must_match_spec(self) -> None:
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
             self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, provider="llm_fallback", answer={"primitive": "label", "selected_option_id": "x", "evidence_refs": ["r"]})
         self.assertIn("must match its spec", str(ctx.exception))
+
+
+class DecisionReceiptConsistencyTest(StoreTestCase):
+    """A7 (and A10 for the receipt JSON): action/outcome shapes, raw response
+    retention, spec binding by primitive/policy/options/protocol, spec shape."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.lease("lease_aaaaaaaa", 1)
+        self.invocation("inv_pppppppp")
+        self.receipt("op_00000001", "inv_pppppppp", kind="interim_transition")
+        self.x("INSERT INTO holds (hold_id, topic_id, subject_ref, hold_class, cause, recoverability, required_authority, owner, deadline_at, clears_when, created_at) "
+               "VALUES ('hold_00000001', ?, 'wrk_00000001', 'judgment', 'low confidence', 'needs_decision', 'primary', 'primary', ?, 'primary decides', ?)", TOPIC, T, T)
+        self.jev = self.spec()
+
+    def test_action_fixes_the_outcome_shape(self) -> None:
+        q = dict(authority="qualified", qualification="qual-1")
+        bad = {
+            "shadow with a committed operation (the review's probe)": dict(commit_op="op_00000001"),
+            "shadow with a hold": dict(hold="hold_00000001"),
+            "shadow with a proposal": dict(proposal="prop-1"),
+            "proposal without its ref": dict(action="attach_proposal", authority="advisory"),
+            "proposal that also commits": dict(action="attach_proposal", proposal="prop-1", commit_op="op_00000001", **q),
+            "commit that also proposes": dict(action="commit_reversible_action", commit_op="op_00000001", proposal="prop-1", **q),
+            "commit that also holds": dict(action="commit_reversible_action", commit_op="op_00000001", hold="hold_00000001", **q),
+            "escalation that commits": dict(action="escalate", commit_op="op_00000001", authority="advisory"),
+            "escalation that proposes": dict(action="escalate", proposal="prop-1", authority="advisory"),
+            "abstain-hold without its hold": dict(action="abstain_hold", authority="advisory"),
+        }
+        for label, kw in bad.items():
+            with self.subTest(case=label):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, **kw)
+                self.assertIn("CHECK constraint failed", str(ctx.exception))
+        self.decision_receipt("dec_shadow01", "inv_pppppppp", self.jev)
+        self.decision_receipt("dec_propos01", "inv_pppppppp", self.jev, action="attach_proposal", proposal="prop-1", authority="advisory")
+        self.decision_receipt("dec_commit01", "inv_pppppppp", self.jev, action="commit_reversible_action", commit_op="op_00000001", **q)
+        self.decision_receipt("dec_escal001", "inv_pppppppp", self.jev, action="escalate", hold="hold_00000001", authority="advisory")
+        self.decision_receipt("dec_abstn001", "inv_pppppppp", self.jev, action="abstain_hold", hold="hold_00000001", authority="advisory", status="abstained", answer=None)
+
+    def test_abstention_retains_the_raw_response(self) -> None:
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, status="abstained", answer=None, raw=None, action="escalate", authority="advisory")
+        self.assertIn("CHECK constraint failed", str(ctx.exception))
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, raw=None)  # an answer without its raw bytes
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, status="abstained", answer=None, action="escalate", authority="advisory", raw="0", stage_raw=False)
+        self.assertIn("FOREIGN KEY constraint failed", str(ctx.exception))  # the digest must be a retained artifact
+        self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, status="abstained", answer=None, action="escalate", authority="advisory")
+        self.decision_receipt("dec_00000002", "inv_pppppppp", self.jev, status="timeout", answer=None, raw=None, action="escalate", authority="advisory")
+
+    def test_receipt_matches_its_spec(self) -> None:
+        refused = "must match its spec"
+        noul = {"primitive": "noul", "probability": 0.6}
+        cases = {
+            "a Noul answer under a Choice spec (the review's D41 probe)": dict(answer=noul),
+            "another action-policy id": dict(policy=("P2", 1)),
+            "another action-policy version": dict(policy=("P1", 2)),
+            "a selected option the spec does not offer": dict(answer={"primitive": "choice", "selected_option_id": "maybe", "distribution": {"include": 0.5, "exclude": 0.5}, "confidence": 0.5}),
+            "a distribution over an option the spec does not offer": dict(answer={"primitive": "choice", "selected_option_id": "include", "distribution": {"include": 0.5, "maybe": 0.5}, "confidence": 0.5}),
+        }
+        for label, kw in cases.items():
+            with self.subTest(case=label):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, **kw)
+                self.assertIn(refused, str(ctx.exception))
+        other = self.spec("dspec_otherpr1", protocol_topic=OTHER)
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.decision_receipt("dec_00000001", "inv_pppppppp", other)  # a spec bound to another topic's protocol
+        self.assertIn(refused, str(ctx.exception))
+        self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev)
+
+    def test_spec_shape_by_class_and_provider(self) -> None:
+        cases = {
+            "screening without an eligibility protocol (the review's probe)": dict(spec_id="dspec_bad00001", no_protocol=True),
+            "method_selection without its contract protocol": dict(spec_id="dspec_bad00002", cls="method_selection", no_protocol=True),
+            "a fallback that answers Choice": dict(spec_id="dspec_bad00003", provider="llm_fallback", primitive="choice"),
+            "a Noul with three options": dict(spec_id="dspec_bad00004", primitive="noul", options=("yes", "no", "maybe")),
+            "a single option": dict(spec_id="dspec_bad00005", options=("include",)),
+            "options as a list (ids not unique by construction)": dict(spec_id="dspec_bad00006", document_overrides={"options": [{"option_id": "a"}, {"option_id": "a"}]}),
+            "no options key at all (absent, not null)": dict(spec_id="dspec_bad00007", drop=("options",)),
+            "screening whose protocol key is absent": dict(spec_id="dspec_bad00008", no_protocol=True, drop=("protocol",)),
+        }
+        for label, kw in cases.items():
+            with self.subTest(case=label):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.spec(**kw)
+                self.assertTrue("CHECK constraint failed" in str(ctx.exception) or "at least two options" in str(ctx.exception), str(ctx.exception))
+        other_protocol = {"topic_id": OTHER, "contract": {"revision": 1, "content_hash": h("a")}, "eligibility_protocol_version": 1}
+        for label, overrides in (("primitive", {"primitive": "score"}), ("policy id", {"action_policy": {"policy_id": "P2", "version": 1}}),
+                                 ("policy version", {"action_policy": {"policy_id": "P1", "version": 2}}), ("protocol topic", {"protocol": other_protocol})):
+            with self.subTest(json_field=label):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.spec("dspec_bad00009", document_overrides=overrides)
+                self.assertIn("CHECK constraint failed", str(ctx.exception))
+        self.spec("dspec_noul0001", primitive="noul", options=("yes", "no"))
+        self.spec("dspec_meth0001", cls="method_selection", options=("design-a", "design-b", "design-c"))
+        self.spec("dspec_fall0001", provider="llm_fallback", cls="intake_triage")
+
+    def test_receipt_row_matches_its_json(self) -> None:
+        """A10: each probe keeps the columns valid and changes only the JSON field."""
+        doc_probes = {
+            "decision_receipt_id": "dec_other000", "invocation_id": "inv_other000", "topic_id": OTHER, "spec": {"spec_id": "dspec_x", "spec_hash": h("0")},
+            "decision_class": "method_selection", "provider": "llm_fallback", "subject": {"kind": "work", "ref": "wrk_other000"},
+            "subject.kind": {"kind": "claim", "ref": "wrk_00000001"},
+            "input_manifest": {"snapshot_digest": h("6"), "input_record_ids": [], "input_status": "stale"},
+            "policy": {"policy_id": "P9", "version": 1}, "policy.version": {"policy_id": "P1", "version": 9},
+            "authorization": {"authority_level": "advisory", "qualification_ref": None}, "authorization.qualification_ref": {"authority_level": "shadow", "qualification_ref": "q-x"},
+            "action": "escalate", "outcome": {"commit_operation_id": "op_00000001", "proposal_ref": None, "hold_id": None},
+            "outcome.proposal_ref": {"commit_operation_id": None, "proposal_ref": "p-x", "hold_id": None}, "outcome.hold_id": {"commit_operation_id": None, "proposal_ref": None, "hold_id": "hold_00000001"},
+            "blind_sample": {"selected": True, "initial_disposition_ref": None},
+        }
+        base_response = {"status": "answered", "raw_response_digest": h("5"), "raw_response_artifact": {"content_hash": h("5"), "size_bytes": 10, "media_type": "application/json"},
+                         "answer": {"primitive": "choice", "selected_option_id": "include", "distribution": {"include": 0.8, "exclude": 0.2}, "confidence": 0.7}}
+        for key, value in (("status", "abstained"), ("raw_response_digest", h("4")), ("raw_response_artifact", {"content_hash": h("4"), "size_bytes": 10, "media_type": "application/json"}),
+                           ("answer", {"primitive": "choice", "selected_option_id": "exclude", "distribution": {"include": 0.2, "exclude": 0.8}, "confidence": 0.7})):
+            doc_probes[f"provider_response.{key}"] = dict(base_response, **{key: value})
+        for label, value in doc_probes.items():
+            with self.subTest(field=label):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, receipt_overrides={label.split(".")[0]: value})
+                self.assertIn("CHECK constraint failed", str(ctx.exception))
+        self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev)
 
 
 class HoldTest(StoreTestCase):

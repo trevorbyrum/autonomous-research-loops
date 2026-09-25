@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "decision-receipt.schema.json",
+    "expect": "invalid",
+    "tests": "A7: a shadow receipt names no hold",
+    "base": "valid-jev-screening-shadow.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/outcome/hold_id",
+        "value": "hold_01J8ZQ42HD"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/outcome/hold_id"
+      }
+    ]
+  }
+}

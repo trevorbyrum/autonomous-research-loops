@@ -1,0 +1,28 @@
+{
+  "fixture": {
+    "schema": "decision-spec.schema.json",
+    "expect": "invalid",
+    "tests": "A7/D-3: a Noul is a yes/no question with exactly two options",
+    "base": "valid-jev-screening-choice.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/primitive",
+        "value": "noul"
+      },
+      {
+        "op": "add",
+        "path": "/options/maybe",
+        "value": {
+          "criteria": "Neither clearly."
+        }
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "maxProperties",
+        "path": "/options"
+      }
+    ]
+  }
+}

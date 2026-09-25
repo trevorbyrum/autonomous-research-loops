@@ -231,7 +231,7 @@ class StoreTestCase(unittest.TestCase):
                producer: str = "inv_pppppppp", verifier: str = "inv_vvvvvvvv", verdict: str = "supports", checks: dict | None = None,
                quote: tuple = ("matched", "qc-1"), source_artifact: str | None = None, tier0: str | None = None, adjudication: dict | None = None,
                gateway: str | None = "gw-call-1", obtained: str | None = None, capability: str | None = None,
-               receipt_overrides: dict | None = None, column_overrides: dict | None = None) -> None:
+               receipt_overrides: dict | None = None, column_overrides: dict | None = None, drop: tuple = ()) -> None:
         """A verification receipt whose JSON (verification-receipt.schema.json
         shape) and normalized columns are built from the same values; pass
         receipt_overrides / column_overrides to make them disagree."""
@@ -252,6 +252,12 @@ class StoreTestCase(unittest.TestCase):
                "adjudication": adjudication, "verdict": verdict, "verified_at": T}
         for key, value in (receipt_overrides or {}).items():
             doc[key] = value
+        for path in drop:  # delete a (dotted) key: probes the absent-key case of NULL-sensitive CHECKs
+            *parents, last = path.split(".")
+            node = doc
+            for part in parents:
+                node = node[part]
+            del node[last]
         cols = {"verification_receipt_id": rid, "topic_id": TOPIC, "claim_id": claim[0], "claim_revision": claim[1], "work_id": work, "source_version": "v1",
                 "cited_spans": json.dumps(spans), "obtained_content_hash": obtained, "access_tier": tier, "use": use, "required_access_tier": required,
                 "acquisition": json.dumps(acquisition), "extraction_method": method, "extraction_invocation_id": extraction,
@@ -267,19 +273,64 @@ class StoreTestCase(unittest.TestCase):
                "VALUES (?, ?, ?, ?, 0, 5, 'n1', ?, ?, ?, ?, ?, ?)", check_id, claim[0], claim[1], source or h("7"), match,
                None if nli == "not_run" else "minicheck", None if nli == "not_run" else "1", nli, quarantined, T)
 
-    def spec(self, spec_id: str = "dspec_screen01", provider: str = "jev", cls: str = "screening") -> str:
+    def spec(self, spec_id: str = "dspec_screen01", provider: str = "jev", cls: str = "screening", *, primitive: str | None = None,
+             policy: tuple = ("P1", 1), options: tuple = ("include", "exclude"), protocol_topic: str | None = None,
+             no_protocol: bool = False, document_overrides: dict | None = None, drop: tuple = ()) -> str:
+        """A DecisionSpec row whose document follows decision-spec.schema.json in
+        the fields the store reads. Screening/method_selection specs get a
+        protocol bound to protocol_topic (default TOPIC); others none."""
         sh = "sha256:" + (spec_id.encode().hex() + "0" * 64)[:64]
-        self.x("INSERT INTO decision_specs (spec_hash, spec_id, decision_class, provider, document, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-               sh, spec_id, cls, provider, json.dumps({"spec_id": spec_id, "provider": provider, "decision_class": cls}), T)
+        primitive = primitive or ("choice" if provider == "jev" else "label")
+        if protocol_topic is None and cls in ("screening", "method_selection") and not no_protocol:
+            protocol_topic = TOPIC
+        protocol = None if protocol_topic is None else {"topic_id": protocol_topic, "contract": {"revision": 1, "content_hash": h("a")},
+                                                         "eligibility_protocol_version": 1 if cls == "screening" else None}
+        doc = {"spec_version": "decision-spec/1", "spec_id": spec_id, "decision_class": cls, "provider": provider, "primitive": primitive,
+               "action_policy": {"policy_id": policy[0], "version": policy[1]}, "protocol": protocol,
+               "options": {o: {"criteria": f"criteria for {o}"} for o in options}}
+        doc.update(document_overrides or {})
+        for key in drop:
+            del doc[key]
+        self.x("INSERT INTO decision_specs (spec_hash, spec_id, decision_class, provider, primitive, policy_id, policy_version, protocol_topic_id, document, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+               sh, spec_id, cls, provider, primitive, policy[0], policy[1], protocol_topic, json.dumps(doc), T)
         return sh
+
+    def raw_artifact(self, digest: str) -> str:
+        if not self.rows("SELECT 1 FROM artifacts WHERE content_hash = ?", digest):
+            self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'application/json', ?)", digest, T)
+        return digest
 
     def decision_receipt(self, did: str, inv: str, spec_hash: str, provider: str = "jev", answer: dict | None = None, authority: str = "shadow",
                          qualification: str | None = None, action: str = "shadow_log_only", commit_op: str | None = None, hold: str | None = None,
-                         cls: str = "screening", tid: str = TOPIC) -> None:
-        if answer is None:
+                         cls: str = "screening", tid: str = TOPIC, *, subject: tuple = ("work", "wrk_00000001"), proposal: str | None = None,
+                         status: str = "answered", input_status: str = "complete", raw: str | None = "5", policy: tuple = ("P1", 1),
+                         blind: bool = False, stage_raw: bool = True, receipt_overrides: dict | None = None, column_overrides: dict | None = None) -> None:
+        """A decision receipt whose JSON (decision-receipt.schema.json shape) and
+        columns come from the same values; the raw response bytes are a staged
+        artifact whose hash is the digest (pass raw=None for no bytes)."""
+        if answer is None and status == "answered":
             answer = {"primitive": "choice", "selected_option_id": "include", "distribution": {"include": 0.8, "exclude": 0.2}, "confidence": 0.7}
-        self.x("INSERT INTO decision_receipts (decision_receipt_id, invocation_id, topic_id, spec_hash, decision_class, provider, input_status, response_status, raw_response_digest, answer, policy_id, policy_version, authority_level, qualification_ref, action, commit_operation_id, hold_id, blind_sample, receipt, decided_at) VALUES (?, ?, ?, ?, ?, ?, 'complete', 'answered', ?, ?, 'P1', 1, ?, ?, ?, ?, ?, 0, '{}', ?)",
-               did, inv, tid, spec_hash, cls, provider, h("5"), json.dumps(answer), authority, qualification, action, commit_op, hold, T)
+        digest = None if raw is None else (self.raw_artifact(h(raw)) if stage_raw else h(raw))
+        doc = {"receipt_version": "decision-receipt/1", "decision_receipt_id": did, "invocation_id": inv, "topic_id": tid, "decided_at": T,
+               "spec": {"spec_id": "dspec_x", "spec_hash": spec_hash}, "decision_class": cls, "provider": provider,
+               "subject": {"kind": subject[0], "ref": subject[1]},
+               "input_manifest": {"snapshot_digest": h("6"), "input_record_ids": [], "input_status": input_status},
+               "provider_response": {"status": status, "raw_response_digest": digest,
+                                     "raw_response_artifact": None if digest is None else {"content_hash": digest, "size_bytes": 10, "media_type": "application/json"},
+                                     "answer": answer},
+               "policy": {"policy_id": policy[0], "version": policy[1]},
+               "authorization": {"authority_level": authority, "qualification_ref": qualification},
+               "action": action, "outcome": {"commit_operation_id": commit_op, "proposal_ref": proposal, "hold_id": hold},
+               "blind_sample": {"selected": blind, "initial_disposition_ref": None}}
+        doc.update(receipt_overrides or {})
+        cols = {"decision_receipt_id": did, "invocation_id": inv, "topic_id": tid, "spec_hash": spec_hash, "decision_class": cls, "provider": provider,
+                "input_status": input_status, "response_status": status, "raw_response_digest": digest,
+                "answer": None if answer is None else json.dumps(answer), "subject_kind": subject[0], "subject_ref": subject[1],
+                "policy_id": policy[0], "policy_version": policy[1], "authority_level": authority, "qualification_ref": qualification,
+                "action": action, "commit_operation_id": commit_op, "hold_id": hold, "proposal_ref": proposal, "blind_sample": int(blind),
+                "receipt": json.dumps(doc), "decided_at": T}
+        cols.update(column_overrides or {})
+        self.x(f"INSERT INTO decision_receipts ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", *cols.values())
 
     def to_launching(self, iid: str) -> None:
         self.x("UPDATE invocations SET state = 'launching', launch_intent_at = ?, job_handle = ? WHERE invocation_id = ?", T, "job-" + iid, iid)

@@ -15,6 +15,7 @@
     "spec",
     "decision_class",
     "provider",
+    "subject",
     "input_manifest",
     "provider_response",
     "policy",
@@ -40,6 +41,16 @@
     },
     "decision_class": {"$ref": "common.schema.json#/$defs/decision_class"},
     "provider": {"enum": ["jev", "llm_fallback"]},
+    "subject": {
+      "description": "What was decided about (Astra 0a review A10: a screening assessment written from this receipt must be about exactly this work).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "ref"],
+      "properties": {
+        "kind": {"enum": ["work", "claim", "obligation", "facet", "contract_revision", "topic", "source", "checkpoint"]},
+        "ref": {"$ref": "common.schema.json#/$defs/short_text"}
+      }
+    },
     "input_manifest": {
       "description": "Code-assembled snapshot. Anything but 'complete' input must not be answered (flow §2: oversized/stale/truncated/disallowed input abstains).",
       "type": "object",
@@ -77,7 +88,13 @@
       "allOf": [
         {"if": {"properties": {"status": {"const": "answered"}}}, "then": {"properties": {"answer": {"type": "object"}, "raw_response_digest": {"type": "string"}, "raw_response_artifact": {"type": "object"}}}},
         {"if": {"properties": {"status": {"enum": ["abstained", "rejected_input", "error", "timeout"]}}}, "then": {"properties": {"answer": {"type": "null"}}}},
-        {"if": {"properties": {"status": {"const": "abstained"}}}, "then": {"properties": {"raw_response_digest": {"type": "string"}}}}
+        {"if": {"properties": {"status": {"const": "abstained"}}}, "then": {"properties": {"raw_response_digest": {"type": "string"}, "raw_response_artifact": {"type": "object"}}}},
+        {
+          "description": "Whenever response bytes exist they are retained: digest and artifact appear together (A7; the store makes the digest the artifact's hash).",
+          "if": {"properties": {"raw_response_digest": {"type": "string"}}},
+          "then": {"properties": {"raw_response_artifact": {"type": "object"}}},
+          "else": {"properties": {"raw_response_artifact": {"type": "null"}}}
+        }
       ]
     },
     "policy": {
@@ -150,6 +167,19 @@
       "description": "Shadow decisions have no effect.",
       "if": {"properties": {"authorization": {"properties": {"authority_level": {"const": "shadow"}}}}},
       "then": {"properties": {"action": {"const": "shadow_log_only"}}}
+    },
+    {
+      "description": "The action fixes the outcome shape (A7): shadow_log_only has no effect at all; each effect field belongs to exactly its action; escalate may name the escalation hold but never commits or proposes.",
+      "allOf": [
+        {"if": {"properties": {"action": {"const": "shadow_log_only"}}},
+         "then": {"properties": {"outcome": {"properties": {"commit_operation_id": {"type": "null"}, "proposal_ref": {"type": "null"}, "hold_id": {"type": "null"}}}}}},
+        {"if": {"properties": {"action": {"const": "commit_reversible_action"}}},
+         "then": {"properties": {"outcome": {"properties": {"proposal_ref": {"type": "null"}, "hold_id": {"type": "null"}}}}},
+         "else": {"properties": {"outcome": {"properties": {"commit_operation_id": {"type": "null"}}}}}},
+        {"if": {"properties": {"action": {"const": "attach_proposal"}}},
+         "then": {"properties": {"outcome": {"properties": {"proposal_ref": {"type": "string"}, "hold_id": {"type": "null"}}}}},
+         "else": {"properties": {"outcome": {"properties": {"proposal_ref": {"type": "null"}}}}}}
+      ]
     },
     {
       "description": "Without an answer there is nothing to act on or propose; the decision routes up or holds.",

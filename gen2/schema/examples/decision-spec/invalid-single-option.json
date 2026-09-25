@@ -1,0 +1,24 @@
+{
+  "fixture": {
+    "schema": "decision-spec.schema.json",
+    "expect": "invalid",
+    "tests": "A7/D-8: providers select among enumerated options; one option is no choice",
+    "base": "valid-jev-screening-choice.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/options/exclude"
+      },
+      {
+        "op": "remove",
+        "path": "/options/borderline"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "minProperties",
+        "path": "/options"
+      }
+    ]
+  }
+}
