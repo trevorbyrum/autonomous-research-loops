@@ -87,6 +87,7 @@
   - topics are created at intake (revision 0); every status change is a commit (+1 revision)
   - completion names an approved completion approval of the current dossier revision and hash, under the active approved contract
   - retirement names an approved retirement decision made at the state revision being left (so it cannot be reused)
+  - the authorizing-decision pointer moves only with the status transition it authorizes: a completed or retired topic keeps the decision it used — no swap (even to another valid approval) or clearing without a status change, and a revision bump alone is not one (RA1)
 - **Holds** (H-3): owner, deadline and clearing condition are required; capability holds cite a fact; holds are created open; operator-authority holds clear only through an approved `hold_clearance` about that hold; clearing is final.
 - **Publication** (P-1, P-2, P-5): the outbox approval is an approved `publication_approval` of the exact source revision and hash; the manifest JSON's source, approval, kind, sinks and supersession equal its columns; generations strictly increase per topic; manifests are immutable; delivery receipts only for expected sinks; a sink's delivered generation never decreases.
 

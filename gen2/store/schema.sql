@@ -175,6 +175,20 @@ BEGIN
   SELECT RAISE(ABORT, 'retirement requires an approved operator retirement decision for this topic at its current state revision');
 END;
 
+-- G-13 (Astra re-review RA1): the authorizing-decision pointer moves only
+-- together with the status transition it authorizes — whose gate above then
+-- checks the decision. On a completed or retired topic it therefore stays the
+-- decision actually used: it cannot be swapped for another decision (a
+-- rejected or other-topic one, or even another valid approval) or cleared
+-- without a status change, and advancing state_revision alone is not an
+-- authorized transition.
+CREATE TRIGGER queue_status_decision_moves_with_status
+BEFORE UPDATE OF status_decision_id ON queue_entries
+WHEN NEW.status_decision_id IS NOT OLD.status_decision_id AND NEW.status IS OLD.status
+BEGIN
+  SELECT RAISE(ABORT, 'the authorizing decision changes only with the status transition it authorizes (G-13, RA1)');
+END;
+
 -- trace: flow S3 (Contract v2, hash-locked with its protocol revision);
 -- design review §4 (immutable approved revision; older revisions preserved);
 -- schema contract-v2.schema.json; INVARIANTS G-1.

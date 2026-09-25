@@ -1340,6 +1340,40 @@ class ContractGovernanceTest(StoreTestCase):
         self.decision("opd_00000001", "completion_approval", rev=7, hsh=h("8"))
         self.x(complete, "opd_00000001", TOPIC)
         self.assertEqual(self.rows("SELECT status, status_decision_id FROM queue_entries WHERE topic_id = ?", TOPIC), [("completed_with_qualified_conclusions", "opd_00000001")])
+        self.assert_terminal_authority_kept(TOPIC, "completed_with_qualified_conclusions", "opd_00000001",
+                                            also_valid=self.decision("opd_second01", "completion_approval", rev=7, hsh=h("8")))
+        # the pointer does move with an authorized transition: completed -> retired
+        self.decision("opd_retire01", "retirement", rev=self.state_revision())
+        self.x("UPDATE queue_entries SET status = 'retired', status_decision_id = 'opd_retire01', state_revision = state_revision + 1 WHERE topic_id = ?", TOPIC)
+        self.assertEqual(self.rows("SELECT status, status_decision_id FROM queue_entries WHERE topic_id = ?", TOPIC), [("retired", "opd_retire01")])
+
+    def assert_terminal_authority_kept(self, tid: str, status: str, used: str, also_valid: str) -> None:
+        """RA1: after a terminal transition the authorizing-decision pointer keeps
+        the decision actually used. The review's probe first — a rejected
+        retirement decision about ANOTHER topic written over it with status and
+        revision unchanged — then the same with the revision advanced, clearing
+        it, another valid approval of the same subject, and simultaneous
+        status+decision writes (same status re-asserted; a gated transition
+        naming the rejected decision). Each is refused and the row reads back
+        unchanged."""
+        if not self.rows("SELECT 1 FROM operator_decisions WHERE decision_id = 'opd_unrelatd'"):
+            self.decision("opd_unrelatd", "retirement", OTHER, disposition="rejected", rev=0)
+        before = self.snapshot("queue_entries")
+        moved = "changes only with the status transition it authorizes"
+        for label, sql, fragment in (
+                ("rejected other-topic decision, nothing else changed (the review's probe)", "UPDATE queue_entries SET status_decision_id = 'opd_unrelatd' WHERE topic_id = ?", moved),
+                ("same, revision advanced", "UPDATE queue_entries SET status_decision_id = 'opd_unrelatd', state_revision = state_revision + 1 WHERE topic_id = ?", moved),
+                ("cleared", "UPDATE queue_entries SET status_decision_id = NULL WHERE topic_id = ?", moved),
+                ("another valid approval of the same subject", f"UPDATE queue_entries SET status_decision_id = '{also_valid}' WHERE topic_id = ?", moved),
+                ("same status re-asserted with the rejected decision", f"UPDATE queue_entries SET status = '{status}', status_decision_id = 'opd_unrelatd', state_revision = state_revision + 1 WHERE topic_id = ?", moved),
+                ("a gated transition naming the rejected decision", "UPDATE queue_entries SET status = 'retired', status_decision_id = 'opd_unrelatd', state_revision = state_revision + 1 WHERE topic_id = ?", None)):
+            with self.subTest(case=label):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.x(sql, tid)
+                if fragment:
+                    self.assertIn(fragment, str(ctx.exception))
+                self.assertEqual(self.snapshot("queue_entries"), before)
+        self.assertEqual(self.rows("SELECT status, status_decision_id FROM queue_entries WHERE topic_id = ?", tid), [(status, used)])
 
     def test_retirement_needs_operator_decision(self) -> None:
         """D55 rewrite (A2): the transition names an approved retirement decision
@@ -1370,6 +1404,13 @@ class ContractGovernanceTest(StoreTestCase):
         self.rejects(refused, retire, "opd_stale000", TOPIC)  # a valid decision exists, but is not the one named
         self.x(retire, "opd_00000001", TOPIC)
         self.rejects("queue status transition not allowed", "UPDATE queue_entries SET status = 'queued', status_decision_id = NULL, state_revision = state_revision + 1 WHERE topic_id = ?", TOPIC)
+        # RA1: the used decision stays on the retired row (the rejected same-topic
+        # decision, an approved other-topic one, and the review's other-topic
+        # rejected decision are all refused)
+        for did in ("opd_rejected", "opd_othertop"):
+            with self.subTest(substitute=did):
+                self.rejects("changes only with the status transition it authorizes", "UPDATE queue_entries SET status_decision_id = ? WHERE topic_id = ?", did, TOPIC)
+        self.assert_terminal_authority_kept(TOPIC, "retired", "opd_00000001", also_valid=self.decision("opd_second01", "retirement", rev=now))
 
     def test_terminal_statuses_cannot_be_inserted(self) -> None:
         """A2: creation is constrained to the initial intake status."""
