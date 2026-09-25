@@ -98,3 +98,23 @@ Orchestrator independently re-ran `make gen2-check`: confirmed 262 tests pass, b
 Coder self-reported one process catch worth preserving: while building the mutation-harness's own baseline, it found a gap where a mutant could "die" from an import crash rather than a genuine assertion failure — caught before commit, harness now checks for it directly (matches the discipline from the 0a rounds: a green suite is only as good as its own harness's honesty).
 
 Routed: task file `research-loops-public/private/reviews/gen2-0b-review-task-20260925.md`.
+
+## 2026-09-25 — First 0b review (Astra, xhigh) — BLOCK (Gate A + C); Gate B PASS
+Full report: `~/work/research-loops-public/private/reviews/gen2-0b-astra-review-20260925.md`. Astra independently confirmed all coder-claimed counts (262 tests, 33 tables, 515/515 mutants, 1,043 trigger-order tests) then found real defects the green suite didn't catch.
+
+**5 Gate A findings, all independently reproduced (not inferred):**
+- **A1 (HIGH):** `Store.transaction`'s COMMIT sits *outside* the rollback-protected try/except. Reproduced with a real deferred-FK write that fails at COMMIT time: the connection is left with an active transaction, one connection sees a partial write, a second connection sees the original state, and the "failed" batch can later be silently completed by supplying the missing piece — directly violating the write layer's own documented all-or-nothing contract.
+- **A2 (HIGH, boundary deviation):** importer path-checks and the later file-open are two separate operations (check-then-open race). Demonstrated two synthetic exploits: swapping the output directory for a symlink into the gen-1 root *after* validation but *before* the report is written (writes into gen-1); and swapping a source file for an outside symlink after containment checks pass (reads outside gen-1). Both are TOCTOU races, not stable-symlink cases (those were already correctly refused).
+- **A3 (HIGH):** the "is this a live managed gen-1 deployment" detector requires the marker file to be *contained* in the scanned root; an external symlink to a real managed-store marker makes it invisible, so the importer proceeds as if there's no managed store and treats the stale JSON queue as authoritative — directly contradicting how gen-1's own queue.py decides managed-vs-legacy mode.
+- **A4 (MEDIUM):** `Store`'s public constructor accepts a raw connection + caller-supplied compatibility dict with no verification, bypassing the SQLite compatibility gate entirely — reproduced by constructing a Store against pragmas that were never actually applied and writing to it successfully. (Ironically: the new receipt tests themselves use this unchecked constructor.)
+- **A5 (MEDIUM):** the importer crashes uncaught (TypeError) on malformed input shapes instead of reporting them as issues, silently accepts duplicate target IDs without flagging the collision, and — the carried-forward-requirement-relevant one — parses out-of-range/fractional numeric identity tokens through lossy float conversion before bounds-checking, so a non-integer token can silently become a valid-looking integer.
+
+**Gate B: PASS**, with wording corrections needed (C-12/G-4/C-13 "Enforced at" lines need the exact qualifications Astra listed; C-13's rule text itself changed, not just its locator — route through the normal amendment process, not silently).
+
+**Gate C:** one test **REJECTED outright** — the importer's "every record is classified" completeness test is tautological: it only checks records the importer itself emitted, so a wholly *omitted* input record passes undetected. Several EXTEND items (existing tests are useful but don't cover the newly-found attack classes).
+
+**All 8 coder proposals ruled** — 7 straightforward ACCEPTs; proposal 1 (importer module) is a split ruling: the narrow import-graph restriction is accepted, but its *sufficiency as a read-only boundary claim* is explicitly rejected — that's exactly A2/A3.
+
+**Both operator-escalation questions independently confirmed correct to leave open** — Astra: "The coder was right to leave this undecided... This review gives no authorization for a live run. I also performed none." Explicitly declined to pick between the two live-access options itself, offering only the technical tradeoffs. **Both remain open for Trevor.** Question 3 (brief cancel/archive authorization) got a non-binding recommendation, not a requirement. Question 5 (accepted_support) restated as still open.
+
+**Explicit closing instruction, worth preserving:** "Do not soften this to PASS WITH FOLLOW-UPS because the suite is green."
