@@ -26,6 +26,17 @@ python3 -m venv --clear .venv-gen2
 
 Every check target (`gen2-boundaries`, `gen2-schemas`, `gen2-ddl`, `gen2-test`, `gen2-mutation`, `gen2-size`, `gen2-linecount`) depends on `gen2-venv` and runs with `PYTHON = .venv-gen2/bin/python`. The only host input is the interpreter the venv is created from: `PYTHON_BOOTSTRAP`, default `python3`, Python 3.12. The standard-library `sqlite3` comes with it, so the SQLite version the DDL runs on is still the interpreter's. `make gen2-check` reports it.
 
+## SQLite version floor
+
+**Supported floor: SQLite 3.45.1.** It is the only version the complete DDL and test suite have been executed on: this host's Python 3.12.3 `sqlite3` module, and Astra's third review, which ran the same version. It is a floor because nothing older has been run, not because 3.45.1 is known to be the oldest version that works.
+
+Feature minimums are facts about SQLite releases, not evidence that the schema works on them:
+
+- STRICT tables (every gen-2 table): 3.37.0 or later ([STRICT tables](https://www.sqlite.org/stricttables.html)).
+- JSON functions (`json_extract`, `json_each`, `json_valid`, …, used throughout the DDL): built in by default since 3.38.0; before that, only in builds compiled with JSON1 ([JSON support](https://www.sqlite.org/json1.html)).
+
+Advertising a lower floor needs `make gen2-check` passing on that version first. The DDL check prints the version it ran on (`DDL creates … on SQLite x.y.z`). CI's version is the one `actions/setup-python`'s Python 3.12 links. It has not been observed, because CI has not run yet. Neither the build nor any runtime code refuses a lower version today. Astra's third review requires the store to check the floor at startup/build before 0b opens durable stores. The venv locks do not pin the system SQLite library.
+
 ## Local use
 
 ```
