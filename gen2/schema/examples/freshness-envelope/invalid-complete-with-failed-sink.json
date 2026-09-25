@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "freshness-envelope.schema.json",
+    "expect": "invalid",
+    "tests": "P-4: publication is complete only if every sink delivered",
+    "base": "valid-partial-delivery-pinned.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/facts/publication/status",
+        "value": "complete"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "const",
+        "path": "/sinks/1/status"
+      }
+    ]
+  }
+}

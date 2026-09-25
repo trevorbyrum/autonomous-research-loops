@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "publication-manifest.schema.json",
+    "expect": "invalid",
+    "tests": "P-2: sinks are named physically, never 'graphrag'",
+    "base": "valid-correction-generation-2.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/expected_sinks/1",
+        "value": "graphrag"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "enum",
+        "path": "/expected_sinks/1"
+      }
+    ]
+  }
+}

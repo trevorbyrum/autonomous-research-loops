@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "freshness-envelope.schema.json",
+    "expect": "invalid",
+    "tests": "P-6/RG-U: an overdue feed cannot be reported current",
+    "base": "valid-dead-feed-degraded.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/facts/surveillance_currency/status",
+        "value": "current"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "maxItems",
+        "path": "/facts/surveillance_currency/overdue_feeds"
+      }
+    ]
+  }
+}

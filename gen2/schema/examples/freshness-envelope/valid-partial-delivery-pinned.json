@@ -1,0 +1,50 @@
+{
+  "fixture": {
+    "schema": "freshness-envelope.schema.json",
+    "expect": "valid",
+    "tests": "P-3/P-4: a failed Qdrant sink leaves publication partial, completion intact, retrieval pinned to a coherent generation"
+  },
+  "instance": {
+    "envelope_version": "freshness-envelope/1",
+    "topic_id": "fleet-a:intake-latency",
+    "generated_at": "2026-09-25T12:30:00Z",
+    "source_revision": 14,
+    "projected_revision": 12,
+    "approval_status": "approved",
+    "manifest_generation_served": 1,
+    "sinks": [
+      {
+        "sink": "neo4j",
+        "delivered_generation": 2,
+        "last_successful_delivery_at": "2026-09-25T12:05:00Z",
+        "status": "delivered"
+      },
+      {
+        "sink": "qdrant",
+        "delivered_generation": 1,
+        "last_successful_delivery_at": "2026-09-04T18:39:13Z",
+        "status": "failed"
+      }
+    ],
+    "mixed_generation": {
+      "detected": true,
+      "resolution": "pinned"
+    },
+    "newer_unapproved_material": true,
+    "facts": {
+      "completion": {
+        "status": "completed",
+        "dossier_revision": 5,
+        "outcome": "completed_with_qualified_conclusions"
+      },
+      "publication": {
+        "status": "partial"
+      },
+      "surveillance_currency": {
+        "status": "current",
+        "as_of": "2026-09-25T06:00:00Z",
+        "overdue_feeds": []
+      }
+    }
+  }
+}

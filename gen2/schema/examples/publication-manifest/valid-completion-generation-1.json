@@ -1,0 +1,37 @@
+{
+  "fixture": {
+    "schema": "publication-manifest.schema.json",
+    "expect": "valid",
+    "tests": "P-1: first generation of a completion publication"
+  },
+  "instance": {
+    "manifest_version": "publication-manifest/1",
+    "manifest_id": "man_01J8ZQ70M1",
+    "topic_id": "fleet-a:intake-latency",
+    "artifact_kind": "completion_publication",
+    "generation": 1,
+    "source": {
+      "revision": 12,
+      "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "approval": {
+      "operator_decision_id": "opd_comp0001",
+      "approved_revision": 12
+    },
+    "schema_version": "export/1",
+    "expected_sinks": [
+      "neo4j",
+      "qdrant"
+    ],
+    "supersedes": null,
+    "tombstones": [],
+    "content_refs": [
+      {
+        "content_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "size_bytes": 40211,
+        "media_type": "application/json"
+      }
+    ],
+    "created_at": "2026-09-25T12:00:00Z"
+  }
+}

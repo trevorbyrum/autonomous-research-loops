@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/publication-manifest.schema.json",
+  "$comment": "flow: S8 publication contract items 1, 2 and 5 (immutable manifest committed atomically with the approved revision; physical sinks; corrections and checkpoint publications get new events) | boundaries: Router; Projector / publication | design-review: §9 (outbox, stable IDs, per-sink delivery, supersession/tombstones) | adjudication: (a)G-A1; (b)2; (d)1 | invariants: P-1; P-2; P-5 | note: per-sink delivery receipts are separate projector-owned records (DDL sink_delivery_receipts), never fields of this immutable manifest",
+  "title": "Publication manifest",
+  "description": "Referenced by the outbox event the router commits in the same transaction as the approved publishable revision. Immutable: delivery state lives elsewhere. Unapproved work is never published, so an approval reference is required. generation increases per (topic, artifact kind) and must exceed any superseded generation (enforced in DDL; JSON Schema cannot compare the two numbers).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifest_version",
+    "manifest_id",
+    "topic_id",
+    "artifact_kind",
+    "generation",
+    "source",
+    "approval",
+    "schema_version",
+    "expected_sinks",
+    "supersedes",
+    "tombstones",
+    "content_refs",
+    "created_at"
+  ],
+  "properties": {
+    "manifest_version": {"const": "publication-manifest/1"},
+    "manifest_id": {"$ref": "common.schema.json#/$defs/manifest_id"},
+    "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
+    "artifact_kind": {"enum": ["completion_publication", "evidence_correction", "checkpoint_publication"]},
+    "generation": {"type": "integer", "minimum": 1},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "content_hash"],
+      "properties": {
+        "revision": {"$ref": "common.schema.json#/$defs/revision"},
+        "content_hash": {"$ref": "common.schema.json#/$defs/sha256"}
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operator_decision_id", "approved_revision"],
+      "properties": {
+        "operator_decision_id": {"$ref": "common.schema.json#/$defs/operator_decision_id"},
+        "approved_revision": {"$ref": "common.schema.json#/$defs/revision"}
+      }
+    },
+    "schema_version": {"$ref": "common.schema.json#/$defs/short_text"},
+    "expected_sinks": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/sink"}},
+    "supersedes": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["manifest_id", "generation"],
+      "properties": {
+        "manifest_id": {"$ref": "common.schema.json#/$defs/manifest_id"},
+        "generation": {"type": "integer", "minimum": 1}
+      }
+    },
+    "tombstones": {
+      "description": "Entities removed or corrected relative to the superseded generation; each sink acknowledges them.",
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["entity_id", "reason"],
+        "properties": {
+          "entity_id": {"$ref": "common.schema.json#/$defs/short_text"},
+          "reason": {"enum": ["superseded", "corrected", "retracted", "removed_by_amendment"]}
+        }
+      }
+    },
+    "content_refs": {"type": "array", "minItems": 1, "maxItems": 1000, "items": {"$ref": "common.schema.json#/$defs/artifact_ref"}},
+    "created_at": {"$ref": "common.schema.json#/$defs/timestamp"}
+  },
+  "allOf": [
+    {"if": {"properties": {"generation": {"const": 1}}}, "then": {"properties": {"supersedes": {"type": "null"}}}},
+    {"if": {"properties": {"supersedes": {"type": "null"}}}, "then": {"properties": {"tombstones": {"maxItems": 0}}}}
+  ]
+}

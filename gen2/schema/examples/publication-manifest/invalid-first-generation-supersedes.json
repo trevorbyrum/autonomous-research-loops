@@ -1,0 +1,24 @@
+{
+  "fixture": {
+    "schema": "publication-manifest.schema.json",
+    "expect": "invalid",
+    "tests": "P-2: generation 1 supersedes nothing",
+    "base": "valid-completion-generation-1.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/supersedes",
+        "value": {
+          "manifest_id": "man_01J8ZQ70M0",
+          "generation": 1
+        }
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/supersedes"
+      }
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "freshness-envelope.schema.json",
+    "expect": "invalid",
+    "tests": "P-4/G-8: completion is always at a dossier revision",
+    "base": "valid-partial-delivery-pinned.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/facts/completion/dossier_revision",
+        "value": null
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/facts/completion/dossier_revision"
+      }
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "fixture": {
+    "schema": "publication-manifest.schema.json",
+    "expect": "invalid",
+    "tests": "P-1: delivery receipts are separate records; the manifest is immutable",
+    "base": "valid-correction-generation-2.json",
+    "patch": [
+      {
+        "op": "add",
+        "path": "/delivered",
+        "value": {
+          "neo4j": true
+        }
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "additionalProperties",
+        "path": ""
+      }
+    ]
+  }
+}

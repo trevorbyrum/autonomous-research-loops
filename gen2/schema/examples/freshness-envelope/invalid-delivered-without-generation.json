@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "freshness-envelope.schema.json",
+    "expect": "invalid",
+    "tests": "RG-U: 'delivered' needs the generation and time it was observed",
+    "base": "valid-partial-delivery-pinned.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/sinks/0/delivered_generation",
+        "value": null
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/sinks/0/delivered_generation"
+      }
+    ]
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/freshness-envelope.schema.json",
+  "$comment": "flow: S8 publication contract items 3-5 (reader freshness envelope; three independent facts; unapproved material disclosed, not served); S8 surveillance liveness; §4.3 (absence is never zero) | boundaries: Projector / publication; Operator | design-review: §9 (readers honor the approved generation; completion and index-delivery health separately visible) | adjudication: (b)2 (replacement S8 publication contract, after the stale-projection incident); (a)K-A3 | methodology: §5 (canonical vs projected revision) | invariants: P-3; P-4; P-6; RG-U",
+  "title": "Reader freshness envelope",
+  "description": "Returned with every read of published material. Scientific completion at a dossier revision, current publication delivery, and surveillance currency as of a time are three separate facts: a failed sink makes publication partial without touching completion, and a dead feed makes currency degraded or unknown without rewriting history. Unknown delivery or currency is reported as unknown, never as delivered/current.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "envelope_version",
+    "topic_id",
+    "generated_at",
+    "source_revision",
+    "projected_revision",
+    "approval_status",
+    "manifest_generation_served",
+    "sinks",
+    "mixed_generation",
+    "newer_unapproved_material",
+    "facts"
+  ],
+  "properties": {
+    "envelope_version": {"const": "freshness-envelope/1"},
+    "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
+    "generated_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+    "source_revision": {"$ref": "common.schema.json#/$defs/revision"},
+    "projected_revision": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/revision"}]},
+    "approval_status": {"enum": ["approved", "no_approved_revision"]},
+    "manifest_generation_served": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]},
+    "sinks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sink", "delivered_generation", "last_successful_delivery_at", "status"],
+        "properties": {
+          "sink": {"$ref": "common.schema.json#/$defs/sink"},
+          "delivered_generation": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]},
+          "last_successful_delivery_at": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/timestamp"}]},
+          "status": {"enum": ["delivered", "pending", "failed", "unknown"]}
+        },
+        "if": {"properties": {"status": {"const": "delivered"}}},
+        "then": {"properties": {"delivered_generation": {"type": "integer"}, "last_successful_delivery_at": {"type": "string"}}}
+      }
+    },
+    "mixed_generation": {
+      "description": "Retrieval spanning generations is detected and either pinned to one coherent generation or reported degraded.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["detected", "resolution"],
+      "properties": {
+        "detected": {"type": "boolean"},
+        "resolution": {"enum": ["not_applicable", "pinned", "degraded"]}
+      },
+      "allOf": [
+        {"if": {"properties": {"detected": {"const": true}}}, "then": {"properties": {"resolution": {"enum": ["pinned", "degraded"]}}}},
+        {"if": {"properties": {"detected": {"const": false}}}, "then": {"properties": {"resolution": {"const": "not_applicable"}}}}
+      ]
+    },
+    "newer_unapproved_material": {"type": "boolean"},
+    "facts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["completion", "publication", "surveillance_currency"],
+      "properties": {
+        "completion": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "dossier_revision", "outcome"],
+          "properties": {
+            "status": {"enum": ["completed", "not_completed"]},
+            "dossier_revision": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/revision"}]},
+            "outcome": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/completion_outcome"}]}
+          },
+          "if": {"properties": {"status": {"const": "completed"}}},
+          "then": {"properties": {"dossier_revision": {"type": "integer"}, "outcome": {"type": "string"}}}
+        },
+        "publication": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {"status": {"enum": ["complete", "partial", "pending", "failed", "unknown"]}}
+        },
+        "surveillance_currency": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "as_of", "overdue_feeds"],
+          "properties": {
+            "status": {"enum": ["current", "degraded", "unknown"]},
+            "as_of": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/timestamp"}]},
+            "overdue_feeds": {"type": "array", "maxItems": 100, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/local_id"}}
+          },
+          "allOf": [
+            {"if": {"properties": {"status": {"const": "current"}}}, "then": {"properties": {"as_of": {"type": "string"}, "overdue_feeds": {"maxItems": 0}}}},
+            {"if": {"properties": {"status": {"const": "degraded"}}}, "then": {"properties": {"overdue_feeds": {"minItems": 1}}}}
+          ]
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "description": "Publication is complete only if every sink delivered.",
+      "if": {"properties": {"facts": {"properties": {"publication": {"properties": {"status": {"const": "complete"}}}}}}},
+      "then": {"properties": {"sinks": {"items": {"properties": {"status": {"const": "delivered"}}}}}}
+    },
+    {
+      "description": "Nothing approved means nothing served.",
+      "if": {"properties": {"approval_status": {"const": "no_approved_revision"}}},
+      "then": {"properties": {"manifest_generation_served": {"type": "null"}}}
+    }
+  ]
+}
