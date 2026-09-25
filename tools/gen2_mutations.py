@@ -72,6 +72,7 @@ FILE_TARGETS = {
     "gen2/core/canonical.py": ("module", "gen2.core.canonical"),
     "gen2/store/compat.py": ("module", "gen2.store.compat"),
     "gen2/store/db.py": ("module", "gen2.store.db"),
+    "gen2/store/api.py": ("module", "gen2.store.api"),
     "tools/gen2_trigger_order.py": ("attr", "test_trigger_order_tool", "TOOL"),
 }
 
@@ -883,6 +884,38 @@ MUTATIONS: list[Mutation] = [
           ("user-version-ignored", "another schema version is admitted",
            ("OpenStoreTest.test_a_store_with_another_schema_is_not_admitted",),
            "    if missing or extra or changed or stored_version != version:", "    if missing or extra or changed:"))),
+    # --- 0b carried requirements: writer-side JCS storage and identity bounds (RA2/RA8 rulings) ----
+    *(Mutation(f"WR-{key}", "0b-writer", desc, tuple("test_writer." + k for k in killers), target="gen2/store/api.py", old=old, new=new)
+      for key, desc, killers, old, new in (
+          ("json-not-canonicalized", "JSON values stored as json.dumps output, not JCS",
+           ("CanonicalStorageTest.test_json_is_stored_in_its_jcs_form", "CanonicalStorageTest.test_canonical_storage_makes_equal_entries_equal_text"),
+           '                return canonical.canonical_bytes(parsed).decode("utf-8")', '                return __import__("json").dumps(parsed)'),
+          ("text-stored-as-given", "JSON text from the caller stored as given (only parsed values canonicalized)",
+           ("CanonicalStorageTest.test_json_is_stored_in_its_jcs_form",),
+           '                parsed = canonical.parse_json_strict(value) if isinstance(value, (str, bytes)) else value\n',
+           '                if isinstance(value, str):\n                    return value\n                parsed = canonical.parse_json_strict(value) if isinstance(value, bytes) else value\n'),
+          ("identity-unbounded", "identity columns written without the RA8 bound (insert, update and advance share it)",
+           ("IdentityBoundTest.test_identity_columns_are_bounded_by_value_on_insert", "IdentityBoundTest.test_advance_is_bounded_and_compare_and_set"),
+           "                    return canonical.identity_integer(value)", "                    return value"),
+          ("sequence-unbounded", "a generated next value is returned past 2**53-1",
+           ("IdentityBoundTest.test_a_generated_increment_past_the_bound_writes_nothing",),
+           "            return canonical.identity_integer((current or 0) + 1)", "            return (current or 0) + 1"),
+          ("no-rollback", "a failing transaction commits what it wrote before the failure",
+           ("IdentityBoundTest.test_a_generated_increment_past_the_bound_writes_nothing", "WritePathTest.test_a_ddl_refusal_propagates_and_rolls_back_the_transaction"),
+           '        except BaseException:\n            self._conn.execute("ROLLBACK")', '        except BaseException:\n            self._conn.execute("COMMIT")'),
+          ("autocommit-writes", "writes accepted outside a transaction",
+           ("WritePathTest.test_writes_run_inside_a_transaction",), "        if not self._conn.in_transaction:", "        if False:"),
+          ("measures-unbounded", "non-identity integers written past +/-(2**53-1)",
+           ("IdentityBoundTest.test_other_integers_stay_json_interoperable",), " or abs(value) > canonical.INT_BOUND:", ":"),
+          ("bool-as-measure", "a boolean accepted as a non-flag integer",
+           ("IdentityBoundTest.test_other_integers_stay_json_interoperable",),
+           '                raise StoreWriteError(f"{table}.{column}: a boolean is not an integer here")', "                return int(value)"),
+          ("update-many-rows", "an update matching several rows is accepted",
+           ("WritePathTest.test_an_update_touches_exactly_one_row",), "        if cursor.rowcount != 1:", "        if cursor.rowcount == 0:"),
+          ("unknown-names-passed", "a table name outside the schema reaches the SQL text",
+           ("WritePathTest.test_names_come_from_the_schema_only",),
+           '        if table not in self._columns:\n            raise StoreWriteError(f"unknown table {table!r}")\n        known = self._columns[table]',
+           "        known = self._columns.get(table, {})"))),
     # --- 0b cleanup 2: the permanent reversed-trigger-order check ----------------------
     *(Mutation(f"TO-{key}", "0b-cleanup-2", desc, tuple("test_trigger_order_tool.TriggerOrderToolTest." + k for k in killers),
                target="tools/gen2_trigger_order.py", old=old, new=new)
