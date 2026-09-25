@@ -5,8 +5,10 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 ## Current
 - **Phase:** 0 — invariants & migration contract (operator-gate to Phase 1 at completion)
 - **Branch:** `gen2` @ dev workspace (/home/trevor/work/autonomous-research-loops)
-- **Active task:** 0a (dispatched 2026-09-25) — behavioral invariants doc, ID/authority scheme, contract-v2 schema, module-boundary graph in CI, normalized-store DDL draft. Coder: Opus (paseo claude provider). No engine logic in 0a.
-- **Gates pending:** Gate A+B on 0a deliverables when the coder lands; Gate C not yet applicable (no tests in 0a; boundary-graph CI check itself gets a Gate C review when written).
+- **Landed:** 0a (nine commits, a42cfe7..83a6513) — INVARIANTS.md, 9 schemas + 75 examples, store DDL (30 tables), boundary graph + checker in make/CI, size accounting. `make gen2-check` green (orchestrator-verified). Line baseline: 0 production / 827 tests / 1,878 schema / 2,596 fixtures / 1,251 SQL.
+- **In review:** Astra gate review of 0a (A+B+C incl. 86 tests), agent f299bc53, brief+report under research-loops-public/private/reviews/gen2-0a-*.md. Eight coder deviations + hash-canonicalization, lease-concurrency, and deferred-item-phasing rulings requested.
+- **Queued:** 0b (store + dry-run importer skeleton) after 0a review verdicts; 0c (deployment contract, generated key catalog/.env.example, export sinks, source-proposal pathway — operator-requested 2026-09-25) after 0a review lands.
+- **Operator items:** first push to GitHub (activates the new CI workflow) is the operator's call; three stale methodology-doc citations found by coder 0a were fixed by the orchestrator (lines 93/161/193), re-verification included in Astra's Gate B.
 
 ## Phase plan (adjudicated order — charter §Standing rules)
 0. Invariants & migration contract → **0a** specs/schemas/CI-boundary-graph → **0b** minimal normalized store + dry-run importer skeleton
