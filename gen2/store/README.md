@@ -66,14 +66,16 @@
   - shadow does nothing
   - bad input is never answered
   - shadow/advisory providers never write authoritative screening rows
-- **Governance** (G-1, G-2, G-8):
-  - contract content is immutable, never deleted, and hash-bound to its row
-  - one approved revision per topic
-  - operator ratings are band-consistent, and a score needs a band
-  - completion requires approval of the current dossier revision
-  - retirement requires an operator decision
-- **Holds** (H-3): owner, deadline and clearing condition are required; capability holds cite a fact; operator-authority holds clear only through an operator decision; clearing is final.
-- **Publication** (P-1, P-2, P-5): only approved work gets an outbox event; generations strictly increase per topic; manifests are immutable; delivery receipts only for expected sinks; a sink's delivered generation never decreases.
+- **Governance** (G-1, G-2, G-8, G-13):
+  - contract content is immutable, never deleted, and hash-bound to its row; revisions are written as drafts
+  - one approved revision per topic; approval names an approved contract/amendment/reframe decision about that exact revision and hash
+  - every operator decision names a typed subject that must exist (when stored here) with that exact revision and hash
+  - operator ratings are band-consistent, a score needs a band, and the rating cites an approved rating decision about an earlier revision of the same topic (the rated draft); a Jev proposal cites that topic's `importance_score` receipt
+  - topics are created at intake (revision 0); every status change is a commit (+1 revision)
+  - completion names an approved completion approval of the current dossier revision and hash, under the active approved contract
+  - retirement names an approved retirement decision made at the state revision being left (so it cannot be reused)
+- **Holds** (H-3): owner, deadline and clearing condition are required; capability holds cite a fact; holds are created open; operator-authority holds clear only through an approved `hold_clearance` about that hold; clearing is final.
+- **Publication** (P-1, P-2, P-5): the outbox approval is an approved `publication_approval` of the exact source revision and hash; the manifest JSON's source, approval, kind, sinks and supersession equal its columns; generations strictly increase per topic; manifests are immutable; delivery receipts only for expected sinks; a sink's delivered generation never decreases.
 
 ## What stays router logic (not expressible, or deliberately not in DDL)
 

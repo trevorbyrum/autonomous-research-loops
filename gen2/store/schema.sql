@@ -45,7 +45,12 @@ PRAGMA user_version = 1;
 -- trace: design review §5 (queue entries), §4 (fleet-prefixed topic IDs);
 -- flow S3 ("-> queue"), S7 outcomes; INVARIANTS G-8, G-9, RG-1b(c).
 -- state_revision is the optimistic-concurrency counter commit_outcome binds
--- to (expected_state_revision); it only ever advances by exactly one.
+-- to (expected_state_revision); it only ever advances by exactly one, and
+-- every status change advances it (so a decision bound to a state revision
+-- authorizes at most one transition). A topic is created at the start of
+-- intake; terminal statuses are reached only by a decision-bound transition
+-- (Astra 0a review A2). The historical importer (task 0b) gets its own
+-- explicit, audited path; it does not reuse ordinary creation.
 CREATE TABLE queue_entries (
   topic_id TEXT PRIMARY KEY,
   fleet_id TEXT NOT NULL,
@@ -57,10 +62,12 @@ CREATE TABLE queue_entries (
     'stopped_for_resources', 'awaiting_judgment', 'retired')),
   active_contract_revision INTEGER,
   state_revision INTEGER NOT NULL DEFAULT 0 CHECK (state_revision >= 0),
+  status_decision_id TEXT REFERENCES operator_decisions (decision_id),
   paused_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   CHECK (substr(topic_id, 1, length(fleet_id) + 1) = fleet_id || ':'),
+  CHECK ((status IN ('completed_with_qualified_conclusions', 'retired')) = (status_decision_id IS NOT NULL)),
   FOREIGN KEY (topic_id, active_contract_revision)
     REFERENCES contract_revisions (topic_id, revision) DEFERRABLE INITIALLY DEFERRED
 ) STRICT;
@@ -70,6 +77,20 @@ BEFORE UPDATE OF state_revision ON queue_entries
 WHEN NEW.state_revision IS NOT OLD.state_revision + 1
 BEGIN
   SELECT RAISE(ABORT, 'state_revision advances by exactly one per commit (RG-1b)');
+END;
+
+CREATE TRIGGER queue_entries_created_at_intake
+BEFORE INSERT ON queue_entries
+WHEN NEW.status IS NOT 'awaiting_brief_confirmation' OR NEW.state_revision IS NOT 0
+BEGIN
+  SELECT RAISE(ABORT, 'a topic is created awaiting brief confirmation at state revision 0 (G-4; A2: no terminal insertion)');
+END;
+
+CREATE TRIGGER queue_status_change_advances_revision
+BEFORE UPDATE OF status ON queue_entries
+WHEN NEW.status IS NOT OLD.status AND NEW.state_revision IS NOT OLD.state_revision + 1
+BEGIN
+  SELECT RAISE(ABORT, 'a status change is a commit: it advances state_revision by one (RG-1b)');
 END;
 
 CREATE TRIGGER queue_topic_identity_immutable
@@ -83,32 +104,46 @@ BEGIN
   SELECT RAISE(ABORT, 'queue entries are never deleted; retirement is an operator decision (C-11)');
 END;
 
--- G-8: completion is bound to operator approval of the CURRENT dossier
--- revision; an approval of an older revision is stale.
+-- G-8: completion names the decision that authorizes it, and that decision
+-- must be an approved completion approval of this topic's CURRENT dossier
+-- revision with that dossier's exact content hash, and the dossier must have
+-- been evaluated against the topic's active, approved contract revision
+-- (protocol binding). An approval of an older revision is stale.
 CREATE TRIGGER queue_completion_needs_current_dossier_approval
 BEFORE UPDATE OF status ON queue_entries
 WHEN NEW.status = 'completed_with_qualified_conclusions'
   AND OLD.status IS NOT NEW.status
   AND NOT EXISTS (
     SELECT 1 FROM operator_decisions d
-    WHERE d.topic_id = NEW.topic_id
+    JOIN dossiers x ON x.topic_id = NEW.topic_id AND x.dossier_revision = d.subject_revision AND x.content_hash = d.subject_hash
+    JOIN contract_revisions c ON c.topic_id = NEW.topic_id AND c.revision = x.contract_revision
+    WHERE d.decision_id = NEW.status_decision_id
+      AND d.topic_id = NEW.topic_id
       AND d.kind = 'completion_approval'
       AND d.disposition = 'approved'
-      AND d.dossier_revision = (SELECT max(x.dossier_revision) FROM dossiers x WHERE x.topic_id = NEW.topic_id))
+      AND x.dossier_revision = (SELECT max(y.dossier_revision) FROM dossiers y WHERE y.topic_id = NEW.topic_id)
+      AND x.contract_revision IS NEW.active_contract_revision
+      AND c.status = 'approved')
 BEGIN
-  SELECT RAISE(ABORT, 'completion requires operator approval of the current dossier revision (G-8)');
+  SELECT RAISE(ABORT, 'completion requires operator approval of the current dossier revision, its hash and the active approved contract (G-8)');
 END;
 
--- P-6 / G-9: retirement is an operator decision.
+-- P-6 / G-9: retirement names an approved retirement decision about this
+-- topic, made against the state revision being left (a decision about an
+-- earlier state is stale and cannot be reused).
 CREATE TRIGGER queue_retirement_needs_operator_decision
 BEFORE UPDATE OF status ON queue_entries
 WHEN NEW.status = 'retired'
   AND OLD.status IS NOT NEW.status
   AND NOT EXISTS (
     SELECT 1 FROM operator_decisions d
-    WHERE d.topic_id = NEW.topic_id AND d.kind = 'retirement' AND d.disposition = 'approved')
+    WHERE d.decision_id = NEW.status_decision_id
+      AND d.topic_id = NEW.topic_id
+      AND d.kind = 'retirement'
+      AND d.disposition = 'approved'
+      AND d.subject_revision = OLD.state_revision)
 BEGIN
-  SELECT RAISE(ABORT, 'retirement requires an approved operator retirement decision');
+  SELECT RAISE(ABORT, 'retirement requires an approved operator retirement decision for this topic at its current state revision');
 END;
 
 -- trace: flow S3 (Contract v2, hash-locked with its protocol revision);
@@ -140,6 +175,31 @@ CREATE TABLE contract_revisions (
 
 CREATE UNIQUE INDEX contract_one_approved_revision_per_topic
   ON contract_revisions (topic_id) WHERE status = 'approved';
+
+CREATE TRIGGER contract_created_as_draft
+BEFORE INSERT ON contract_revisions
+WHEN NEW.status IS NOT 'draft' OR NEW.approved_by_decision_id IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'a contract revision is written as a draft; approval is a separate, decision-bound update (A2)');
+END;
+
+-- A2: the approving decision must be an approved contract/amendment/reframe
+-- approval of THIS revision of THIS topic with THIS content hash.
+CREATE TRIGGER contract_approval_bound_to_revision
+BEFORE UPDATE OF approved_by_decision_id ON contract_revisions
+WHEN NEW.approved_by_decision_id IS NOT NULL
+  AND NEW.approved_by_decision_id IS NOT OLD.approved_by_decision_id
+  AND NOT EXISTS (
+    SELECT 1 FROM operator_decisions d
+    WHERE d.decision_id = NEW.approved_by_decision_id
+      AND d.kind IN ('contract_approval', 'amendment_approval', 'reframe_approval')
+      AND d.disposition = 'approved'
+      AND d.topic_id = NEW.topic_id
+      AND d.subject_revision = NEW.revision
+      AND d.subject_hash = NEW.content_hash)
+BEGIN
+  SELECT RAISE(ABORT, 'contract approval must be an approved decision about this exact topic, revision and content hash (A2)');
+END;
 
 CREATE TRIGGER contract_content_immutable
 BEFORE UPDATE ON contract_revisions
@@ -204,6 +264,27 @@ CREATE TABLE obligations (
       OR (operator_importance_band = 'important' AND operator_importance_score BETWEEN 4 AND 6)
       OR (operator_importance_band = 'limited' AND operator_importance_score BETWEEN 1 AND 3))
 ) STRICT;
+
+-- A2: an operator rating names an approved rating decision of the same
+-- topic whose subject is an EARLIER revision of this contract (the draft the
+-- operator rated; the rated revision's document then carries the rating, so
+-- the decision cannot be about the document that contains its own ID). A
+-- proposed Jev score names a same-topic importance_score decision receipt.
+CREATE TRIGGER obligations_rating_bound_to_decision
+BEFORE INSERT ON obligations
+WHEN (NEW.operator_rating_decision_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM operator_decisions d
+        WHERE d.decision_id = NEW.operator_rating_decision_id
+          AND d.kind = 'rating_approval' AND d.disposition = 'approved'
+          AND d.topic_id = NEW.topic_id
+          AND d.subject_revision < NEW.contract_revision))
+  OR (NEW.proposed_decision_receipt_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM decision_receipts r
+        WHERE r.decision_receipt_id = NEW.proposed_decision_receipt_id
+          AND r.topic_id = NEW.topic_id AND r.decision_class = 'importance_score'))
+BEGIN
+  SELECT RAISE(ABORT, 'an obligation rating must cite an approved rating decision about an earlier revision of this topic; a proposal must cite this topic''s importance_score receipt (A2)');
+END;
 
 CREATE TRIGGER obligations_immutable BEFORE UPDATE ON obligations
 BEGIN
@@ -400,8 +481,23 @@ END;
 -- (framework/ratings/set/method approval), S7, §2 (blind samples: initial
 -- disposition captured separately from advised feedback); BOUNDARIES.md
 -- Operator; INVARIANTS G-2, G-4, G-8, D-9.
--- subject_hash is the exact content decided on; completion approvals name
--- the dossier revision.
+-- Every decision names a typed subject; each kind admits exactly one subject
+-- kind (Astra 0a review A2: a decision ID is not authorization regardless
+-- of its subject). subject_ref / subject_revision / subject_hash by kind:
+--   intake_brief       brief id / brief version / brief content hash
+--   scoping_report     report id / report version / report content hash
+--   contract_revision  topic id / contract revision / contract content_hash
+--   dossier            topic id / dossier revision / dossier content_hash
+--   topic              topic id / queue state_revision decided against / -
+--   hold               hold id / - / -
+--   publication_source source ref / source revision / source content hash
+--   decision_receipt   decision receipt id / - / -
+-- The kind -> subject-kind mapping is a CHECK, so consuming gates test the
+-- decision kind (which fixes the subject kind). Subjects stored here are
+-- checked to exist with that exact hash when the decision is recorded; brief, scoping-report and publication-source
+-- subjects are not store rows yet (intake briefs arrive in 0b), so only
+-- their shape is checked. Consuming gates then re-check kind, disposition,
+-- topic and exact subject.
 CREATE TABLE operator_decisions (
   decision_id TEXT PRIMARY KEY CHECK (decision_id GLOB 'opd_*'),
   topic_id TEXT REFERENCES queue_entries (topic_id),
@@ -410,19 +506,46 @@ CREATE TABLE operator_decisions (
     'amendment_approval', 'reframe_approval', 'completion_approval', 'retirement',
     'hold_clearance', 'publication_approval', 'blind_initial_disposition', 'advised_feedback')),
   disposition TEXT NOT NULL CHECK (disposition IN ('approved', 'rejected', 'deferred', 'recorded')),
-  subject_kind TEXT NOT NULL,
-  subject_ref TEXT NOT NULL,
+  subject_kind TEXT NOT NULL CHECK (subject_kind IN (
+    'intake_brief', 'scoping_report', 'contract_revision', 'dossier', 'topic', 'hold',
+    'publication_source', 'decision_receipt')),
+  subject_ref TEXT NOT NULL CHECK (length(subject_ref) > 0),
+  subject_revision INTEGER CHECK (subject_revision >= 0),
   subject_hash TEXT CHECK (subject_hash IS NULL OR (subject_hash GLOB 'sha256:*' AND length(subject_hash) = 71)),
-  dossier_revision INTEGER,
   operator_id TEXT NOT NULL,
   decided_at TEXT NOT NULL,
   notes TEXT,
-  FOREIGN KEY (topic_id, dossier_revision) REFERENCES dossiers (topic_id, dossier_revision),
-  CHECK (kind NOT IN ('rating_approval', 'contract_approval', 'amendment_approval', 'reframe_approval',
-                      'completion_approval', 'publication_approval') OR subject_hash IS NOT NULL),
-  CHECK (kind != 'completion_approval' OR dossier_revision IS NOT NULL),
-  CHECK (kind NOT IN ('blind_initial_disposition', 'advised_feedback') OR disposition = 'recorded')
+  CHECK ((kind = 'brief_confirmation' AND subject_kind = 'intake_brief')
+      OR (kind = 'scope_approval' AND subject_kind = 'scoping_report')
+      OR (kind IN ('rating_approval', 'contract_approval', 'amendment_approval', 'reframe_approval') AND subject_kind = 'contract_revision')
+      OR (kind = 'completion_approval' AND subject_kind = 'dossier')
+      OR (kind = 'retirement' AND subject_kind = 'topic')
+      OR (kind = 'hold_clearance' AND subject_kind = 'hold')
+      OR (kind = 'publication_approval' AND subject_kind = 'publication_source')
+      OR (kind IN ('blind_initial_disposition', 'advised_feedback') AND subject_kind = 'decision_receipt')),
+  CHECK (subject_kind NOT IN ('intake_brief', 'scoping_report', 'contract_revision', 'dossier', 'publication_source')
+      OR (subject_revision IS NOT NULL AND subject_hash IS NOT NULL)),
+  CHECK (subject_kind NOT IN ('contract_revision', 'dossier', 'topic') OR subject_ref IS topic_id),
+  CHECK (subject_kind != 'topic' OR subject_revision IS NOT NULL),
+  CHECK (subject_kind = 'hold' OR topic_id IS NOT NULL),
+  CHECK ((kind IN ('blind_initial_disposition', 'advised_feedback')) = (disposition = 'recorded'))
 ) STRICT;
+
+CREATE TRIGGER operator_decisions_subject_exists
+BEFORE INSERT ON operator_decisions
+WHEN (NEW.subject_kind = 'contract_revision' AND NOT EXISTS (
+        SELECT 1 FROM contract_revisions c
+        WHERE c.topic_id = NEW.topic_id AND c.revision = NEW.subject_revision AND c.content_hash = NEW.subject_hash))
+  OR (NEW.subject_kind = 'dossier' AND NOT EXISTS (
+        SELECT 1 FROM dossiers x
+        WHERE x.topic_id = NEW.topic_id AND x.dossier_revision = NEW.subject_revision AND x.content_hash = NEW.subject_hash))
+  OR (NEW.subject_kind = 'hold' AND NOT EXISTS (
+        SELECT 1 FROM holds k WHERE k.hold_id = NEW.subject_ref AND k.topic_id IS NEW.topic_id))
+  OR (NEW.subject_kind = 'decision_receipt' AND NOT EXISTS (
+        SELECT 1 FROM decision_receipts r WHERE r.decision_receipt_id = NEW.subject_ref AND r.topic_id = NEW.topic_id))
+BEGIN
+  SELECT RAISE(ABORT, 'an operator decision must name an existing subject of its topic with that exact revision and hash (A2)');
+END;
 
 CREATE TRIGGER operator_decisions_immutable_u BEFORE UPDATE ON operator_decisions
 BEGIN
@@ -722,6 +845,30 @@ CREATE TABLE holds (
   CHECK (cleared_at IS NULL OR cleared_by_decision_id IS NOT NULL OR cleared_by_operation_id IS NOT NULL),
   CHECK (required_authority != 'operator' OR cleared_at IS NULL OR cleared_by_decision_id IS NOT NULL)
 ) STRICT;
+
+CREATE TRIGGER holds_created_open
+BEFORE INSERT ON holds
+WHEN NEW.cleared_at IS NOT NULL OR NEW.cleared_by_decision_id IS NOT NULL OR NEW.cleared_by_operation_id IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'a hold is created open; clearing is a separate update (A2: no terminal insertion)');
+END;
+
+-- A2: a clearing decision is an approved hold_clearance about THIS hold (same
+-- topic, subject = this hold id); a decision about anything else clears
+-- nothing.
+CREATE TRIGGER holds_clearance_bound_to_hold
+BEFORE UPDATE OF cleared_by_decision_id ON holds
+WHEN NEW.cleared_by_decision_id IS NOT NULL
+  AND NEW.cleared_by_decision_id IS NOT OLD.cleared_by_decision_id
+  AND NOT EXISTS (
+    SELECT 1 FROM operator_decisions d
+    WHERE d.decision_id = NEW.cleared_by_decision_id
+      AND d.kind = 'hold_clearance' AND d.disposition = 'approved'
+      AND d.topic_id IS NEW.topic_id
+      AND d.subject_ref = NEW.hold_id)
+BEGIN
+  SELECT RAISE(ABORT, 'a hold clears only through an approved hold_clearance decision about this hold (A2)');
+END;
 
 CREATE TRIGGER holds_clear_once_identity_immutable
 BEFORE UPDATE ON holds
@@ -1203,6 +1350,7 @@ CREATE TABLE outbox_events (
   generation INTEGER NOT NULL CHECK (generation >= 1),
   supersedes_generation INTEGER,
   source_revision INTEGER NOT NULL CHECK (source_revision >= 1),
+  source_content_hash TEXT NOT NULL CHECK (source_content_hash GLOB 'sha256:*' AND length(source_content_hash) = 71),
   approval_decision_id TEXT NOT NULL REFERENCES operator_decisions (decision_id),
   expected_sinks TEXT NOT NULL CHECK (json_valid(expected_sinks) AND json_type(expected_sinks) = 'array' AND json_array_length(expected_sinks) >= 1),
   manifest TEXT NOT NULL CHECK (json_valid(manifest)),
@@ -1213,7 +1361,14 @@ CREATE TABLE outbox_events (
   CHECK (generation != 1 OR supersedes_generation IS NULL),
   CHECK (json_extract(manifest, '$.manifest_id') IS manifest_id
      AND json_extract(manifest, '$.generation') IS generation
-     AND json_extract(manifest, '$.topic_id') IS topic_id)
+     AND json_extract(manifest, '$.topic_id') IS topic_id
+     AND json_extract(manifest, '$.artifact_kind') IS artifact_kind
+     AND json_extract(manifest, '$.source.revision') IS source_revision
+     AND json_extract(manifest, '$.source.content_hash') IS source_content_hash
+     AND json_extract(manifest, '$.approval.operator_decision_id') IS approval_decision_id
+     AND json_extract(manifest, '$.approval.approved_revision') IS source_revision
+     AND json_extract(manifest, '$.supersedes.generation') IS supersedes_generation
+     AND json_extract(manifest, '$.expected_sinks') IS json(expected_sinks))
 ) STRICT;
 
 CREATE TRIGGER outbox_events_generation_increases
@@ -1222,12 +1377,19 @@ WHEN NEW.generation <= (SELECT coalesce(max(generation), 0) FROM outbox_events W
 BEGIN
   SELECT RAISE(ABORT, 'publication generations strictly increase per topic (P-2)');
 END;
+-- A2: the approval is an approved publication_approval of this topic whose
+-- subject is exactly the published source revision and content hash.
 CREATE TRIGGER outbox_events_only_approved
 BEFORE INSERT ON outbox_events
-WHEN (SELECT disposition FROM operator_decisions WHERE decision_id = NEW.approval_decision_id) IS NOT 'approved'
-  OR (SELECT topic_id FROM operator_decisions WHERE decision_id = NEW.approval_decision_id) IS NOT NEW.topic_id
+WHEN NOT EXISTS (
+  SELECT 1 FROM operator_decisions d
+  WHERE d.decision_id = NEW.approval_decision_id
+    AND d.kind = 'publication_approval' AND d.disposition = 'approved'
+    AND d.topic_id = NEW.topic_id
+    AND d.subject_revision = NEW.source_revision
+    AND d.subject_hash = NEW.source_content_hash)
 BEGIN
-  SELECT RAISE(ABORT, 'unapproved work is never published (P-5)');
+  SELECT RAISE(ABORT, 'unapproved work is never published: approval must be of this exact source revision and hash (P-5, A2)');
 END;
 CREATE TRIGGER outbox_events_immutable_u BEFORE UPDATE ON outbox_events
 BEGIN

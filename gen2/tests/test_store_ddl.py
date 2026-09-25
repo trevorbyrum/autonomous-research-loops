@@ -447,55 +447,134 @@ class HoldTest(StoreTestCase):
         self.x(self.INSERT, "hold_00000001", TOPIC, "judgment", "primary", "primary", T, "adjudicated", None, T)
 
     def test_operator_hold_cleared_only_by_operator_decision(self) -> None:
+        """D45 rewrite (A2): only an approved hold_clearance about THIS hold clears
+        it. Each near-miss differs from the valid decision in one dimension:
+        disposition, subject (another hold of the same topic), or kind (a
+        publication approval whose free-text subject ref names this hold). A
+        decision's topic is fixed by its hold subject when it is recorded
+        (test_decision_subject_must_exist_with_its_topic)."""
         self.x(self.INSERT, "hold_00000001", TOPIC, "scope", "operator", "operator", T, "operator rules on reframe", None, T)
+        self.x(self.INSERT, "hold_00000002", TOPIC, "scope", "operator", "operator", T, "another hold", None, T)
         self.lease("lease_aaaaaaaa", 1)
         self.invocation("inv_pppppppp")
         self.receipt("op_00000001", "inv_pppppppp", kind="interim_transition")
+        clear = "UPDATE holds SET cleared_at = ?, cleared_by_decision_id = ? WHERE hold_id = 'hold_00000001'"
         self.rejects("CHECK constraint failed", "UPDATE holds SET cleared_at = ?, cleared_by_operation_id = 'op_00000001' WHERE hold_id = 'hold_00000001'", T)
-        self.decision("opd_00000001", "hold_clearance")
-        self.x("UPDATE holds SET cleared_at = ?, cleared_by_decision_id = 'opd_00000001' WHERE hold_id = 'hold_00000001'", T)
+        self.decision("opd_rejected", "hold_clearance", disposition="rejected", ref="hold_00000001")
+        self.decision("opd_otherhld", "hold_clearance", ref="hold_00000002")
+        self.decision("opd_wrongknd", "publication_approval", ref="hold_00000001", rev=1, hsh=h("5"))
+        for did in ("opd_rejected", "opd_otherhld", "opd_wrongknd"):
+            with self.subTest(decision=did):
+                self.rejects("hold_clearance decision about this hold", clear, T, did)
+        self.assertEqual(self.rows("SELECT cleared_at FROM holds WHERE hold_id = 'hold_00000001'"), [(None,)])
+        self.decision("opd_00000001", "hold_clearance", ref="hold_00000001")
+        self.rejects("hold_clearance decision about this hold", clear, T, "opd_rejected")  # a valid clearance exists, but is not the one named
+        self.x(clear, T, "opd_00000001")
         self.rejects("a cleared hold is final", "UPDATE holds SET cleared_at = NULL, cleared_by_decision_id = NULL WHERE hold_id = 'hold_00000001'")
+
+    def test_holds_are_created_open(self) -> None:
+        self.rejects("created open", "INSERT INTO holds (hold_id, topic_id, subject_ref, hold_class, cause, recoverability, required_authority, owner, deadline_at, clears_when, created_at, cleared_at, cleared_by_operation_id) "
+                     "VALUES ('hold_00000001', ?, 'x', 'judgment', 'c', 'needs_decision', 'primary', 'primary', ?, 'adjudicated', ?, ?, 'op_00000001')", TOPIC, T, T, T)
+
+    def test_decision_subject_must_exist_with_its_topic(self) -> None:
+        self.x(self.INSERT, "hold_00000001", TOPIC, "scope", "operator", "operator", T, "c", None, T)
+        ins = "INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_revision, subject_hash, operator_id, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'trevor', ?)"
+        self.rejects("existing subject", ins, "opd_x", TOPIC, "hold_clearance", "approved", "hold", "hold_nothere", None, None, T)
+        self.rejects("existing subject", ins, "opd_x", OTHER, "hold_clearance", "approved", "hold", "hold_00000001", None, None, T)  # another topic's decision about this hold
+        self.rejects("existing subject", ins, "opd_x", TOPIC, "blind_initial_disposition", "recorded", "decision_receipt", "dec_nothere", None, None, T)
+        self.x(ins, "opd_x", TOPIC, "hold_clearance", "approved", "hold", "hold_00000001", None, None, T)
+        self.lease("lease_aaaaaaaa", 1)
+        self.invocation("inv_pppppppp")
+        self.decision_receipt("dec_00000001", "inv_pppppppp", self.spec())
+        self.x(ins, "opd_y", TOPIC, "blind_initial_disposition", "recorded", "decision_receipt", "dec_00000001", None, None, T)
+
+    def test_decision_subject_shape(self) -> None:
+        """A2: each decision kind admits one subject kind with its identifying fields."""
+        ins = "INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_revision, subject_hash, operator_id, decided_at) VALUES ('opd_x', ?, ?, ?, ?, ?, ?, ?, 'trevor', ?)"
+        ch = self.content_hash_of(TOPIC, 1)
+        self.x(self.INSERT, "hold_00000001", TOPIC, "scope", "operator", "operator", T, "c", None, T)
+        # (rows chosen so the subject-existence trigger, which fires first, passes)
+        bad = (
+            (TOPIC, "hold_clearance", "approved", "topic", TOPIC, 0, None),                 # kind admits only a hold subject
+            (TOPIC, "retirement", "approved", "hold", "hold_00000001", None, None),         # and the reverse
+            (TOPIC, "scope_approval", "approved", "scoping_report", "scope-1", None, ch),   # a versioned subject needs its revision
+            (TOPIC, "contract_approval", "approved", "contract_revision", OTHER, 1, ch),     # contract subject is referenced by its own topic
+            (TOPIC, "retirement", "approved", "topic", TOPIC, None, None),                  # topic subject needs the state revision decided against
+            (None, "scope_approval", "approved", "scoping_report", "scope-1", 1, ch),       # only hold decisions may be topic-less
+            (TOPIC, "retirement", "recorded", "topic", TOPIC, 0, None),                     # 'recorded' is only for blind/advised records
+            (TOPIC, "publication_approval", "approved", "publication_source", "src-1", 1, None),  # a publication source needs its hash
+        )
+        for row in bad:
+            with self.subTest(row=row):
+                self.rejects("CHECK constraint failed", ins, *row, T)
+        self.x(ins, TOPIC, "contract_approval", "approved", "contract_revision", TOPIC, 1, ch, T)
 
 
 class PublicationTest(StoreTestCase):
-    OUTBOX = ("INSERT INTO outbox_events (outbox_event_id, topic_id, manifest_id, manifest_hash, artifact_kind, generation, supersedes_generation, source_revision, approval_decision_id, expected_sinks, manifest, committed_by_operation_id, created_at) "
-              "VALUES (?, ?, ?, ?, 'completion_publication', ?, ?, 3, ?, '[\"neo4j\", \"qdrant\"]', ?, 'op_00000001', ?)")
-
     def setUp(self) -> None:
         super().setUp()
         self.lease("lease_aaaaaaaa", 1)
         self.invocation("inv_pppppppp")
         self.receipt("op_00000001", "inv_pppppppp", kind="interim_transition")
 
-    def outbox(self, eid: str, mid: str, gen: int, sup, decision: str, mh: str) -> None:
-        self.x(self.OUTBOX, eid, TOPIC, mid, h(mh), gen, sup, decision, json.dumps({"manifest_id": mid, "generation": gen, "topic_id": TOPIC}), T)
-
     def test_only_approved_work_is_published(self) -> None:
-        self.decision("opd_00000001", "publication_approval", disposition="rejected")
-        with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.outbox("obx_00000001", "man_00000001", 1, None, "opd_00000001", "1")
-        self.assertIn("unapproved work is never published", str(ctx.exception))
-        self.decision("opd_00000002", "publication_approval")
-        self.outbox("obx_00000001", "man_00000001", 1, None, "opd_00000002", "1")
+        """D46 rewrite (A2): the approval must be an approved publication_approval
+        of this topic about exactly the published source revision and hash. Each
+        near-miss matches the published source in every dimension but one; the
+        wrong-kind probe is the review's (an approved rating decision) with its
+        subject revision/hash made to coincide with the source's."""
+        src = h("5")
+        rated = self.content_hash_of(TOPIC, 1)
+        probes = (
+            ("opd_rejected", dict(disposition="rejected", rev=3, hsh=src), 3, src),
+            ("opd_wronghsh", dict(rev=3, hsh=h("4")), 3, src),
+            ("opd_stalerev", dict(rev=2, hsh=src), 3, src),
+            ("opd_othertop", dict(tid=OTHER, rev=3, hsh=src), 3, src),
+        )
+        for did, kwargs, rev, hsh in probes:
+            self.decision(did, "publication_approval", **kwargs)
+        self.decision("opd_rating01", "rating_approval", rev=1, hsh=rated)
+        for did, rev, hsh in [(d, r, x) for d, _, r, x in probes] + [("opd_rating01", 1, rated)]:
+            with self.subTest(decision=did):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.outbox("obx_00000001", "man_00000001", 1, None, did, h("1"), source_rev=rev, source_hash=hsh)
+                self.assertIn("unapproved work is never published", str(ctx.exception))
+        self.decision("opd_00000002", "publication_approval", rev=3, hsh=src)
+        with self.assertRaises(sqlite3.IntegrityError):  # a valid approval exists, but is not the one named
+            self.outbox("obx_00000001", "man_00000001", 1, None, "opd_rejected", h("1"), source_rev=3, source_hash=src)
+        self.outbox("obx_00000001", "man_00000001", 1, None, "opd_00000002", h("1"), source_rev=3, source_hash=src)
+
+    def test_manifest_json_matches_its_columns(self) -> None:
+        src = h("5")
+        self.decision("opd_00000002", "publication_approval", rev=3, hsh=src)
+        for override in ({"source": {"revision": 3, "content_hash": h("4")}}, {"source": {"revision": 2, "content_hash": src}}, {"approval": {"operator_decision_id": "opd_other", "approved_revision": 3}},
+                         {"approval": {"operator_decision_id": "opd_00000002", "approved_revision": 2}}, {"artifact_kind": "evidence_correction"},
+                         {"expected_sinks": ["neo4j"]}, {"supersedes": {"manifest_id": "man_x", "generation": 1}}):
+            with self.subTest(override=override):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.outbox("obx_00000001", "man_00000001", 1, None, "opd_00000002", h("1"), source_rev=3, source_hash=src, manifest_overrides=override)
+                self.assertIn("CHECK constraint failed", str(ctx.exception))
+        self.outbox("obx_00000001", "man_00000001", 1, None, "opd_00000002", h("1"), source_rev=3, source_hash=src)
 
     def test_generations_strictly_increase(self) -> None:
-        self.decision("opd_00000002", "publication_approval")
-        self.outbox("obx_00000001", "man_00000001", 2, 1, "opd_00000002", "1")
+        self.decision("opd_00000002", "publication_approval", rev=3, hsh=h("5"))
+        self.outbox("obx_00000001", "man_00000001", 2, 1, "opd_00000002", h("1"))
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.outbox("obx_00000002", "man_00000002", 1, None, "opd_00000002", "2")
+            self.outbox("obx_00000002", "man_00000002", 1, None, "opd_00000002", h("2"))
         self.assertIn("strictly increase", str(ctx.exception))
-        self.outbox("obx_00000002", "man_00000002", 3, 2, "opd_00000002", "2")
+        self.outbox("obx_00000002", "man_00000002", 3, 2, "opd_00000002", h("2"))
 
     def test_delivery_receipt_only_for_expected_sinks(self) -> None:
-        self.decision("opd_00000002", "publication_approval")
-        self.outbox("obx_00000001", "man_00000001", 1, None, "opd_00000002", "1")
-        self.x("CREATE TEMP TABLE probe AS SELECT 1")  # connection still healthy
+        """D48 rewrite: membership, not vocabulary. The manifest expects only
+        Neo4j; a receipt for Qdrant (a valid physical sink) is refused by the
+        expected-sink trigger, and a Neo4j receipt is accepted."""
+        self.decision("opd_00000002", "publication_approval", rev=3, hsh=h("5"))
+        self.outbox("obx_00000001", "man_00000001", 1, None, "opd_00000002", h("1"), sinks=("neo4j",))
         ins = "INSERT INTO sink_delivery_receipts (delivery_receipt_id, outbox_event_id, sink, attempt, status, tombstones_acknowledged, error_class, attempted_at, acked_at) VALUES (?, 'obx_00000001', ?, 1, ?, ?, ?, ?, ?)"
-        # The expected-sink trigger fires before the sink CHECK, so its message is the one seen.
-        self.rejects("sink the manifest does not expect", ins, "d1", "graphrag", "delivered", 1, None, T, T)
-        self.rejects("CHECK constraint failed", ins, "d1", "qdrant", "failed", 0, None, T, None)
-        self.x(ins, "d1", "qdrant", "failed", 0, "timeout", T, None)
-        self.x(ins, "d2", "neo4j", "delivered", 1, None, T, T)
+        self.rejects("sink the manifest does not expect", ins, "d1", "qdrant", "delivered", 1, None, T, T)
+        self.rejects("CHECK constraint failed", ins, "d1", "neo4j", "failed", 0, None, T, None)  # a failure needs its error class
+        self.x(ins, "d1", "neo4j", "failed", 0, "timeout", T, None)
+        self.x("INSERT INTO sink_delivery_receipts (delivery_receipt_id, outbox_event_id, sink, attempt, status, tombstones_acknowledged, error_class, attempted_at, acked_at) VALUES ('d2', 'obx_00000001', 'neo4j', 2, 'delivered', 1, NULL, ?, ?)", T, T)
 
     def test_sink_generation_never_regresses(self) -> None:
         self.x("INSERT INTO sink_generations VALUES (?, 'qdrant', 2, ?)", TOPIC, T)
@@ -510,6 +589,12 @@ class PublicationTest(StoreTestCase):
 
 class ContractGovernanceTest(StoreTestCase):
     def test_contract_content_immutable_never_deleted(self) -> None:
+        """D50 rewrite (A1/A2): every pin, REPLACE, creation as draft, and the
+        approval subject. Approval near-misses differ in one dimension: kind (an
+        approved rating decision about this very revision), disposition, or
+        subject (another revision; a contract's revision, hash and topic are
+        mutually determined because content hashes are unique and the decision's
+        subject must exist when recorded)."""
         stored = self.snapshot("contract_revisions")
         for pin, value in (("protocol_revision", 2), ("framing_version", 2), ("content_hash", h("9")), ("parent_revision", 1),
                            ("document", '{"topic_id":"fleet-a:t1"}'), ("created_at", "2026-09-26T00:00:00Z"), ("revision", 7)):
@@ -518,26 +603,40 @@ class ContractGovernanceTest(StoreTestCase):
         self.rejects("never deleted", "DELETE FROM contract_revisions WHERE topic_id = ? AND revision = 1", TOPIC)
         self.rejects("never deleted", "INSERT OR REPLACE INTO contract_revisions SELECT topic_id, revision, parent_revision, 2, framing_version, content_hash, json_set(document, '$.protocol_revision', 2), status, approved_by_decision_id, created_at FROM contract_revisions WHERE topic_id = ? AND revision = 1", TOPIC)
         self.assertEqual(self.snapshot("contract_revisions"), stored)
-        self.decision("opd_00000001", "contract_approval")
-        self.x("UPDATE contract_revisions SET status = 'approved', approved_by_decision_id = 'opd_00000001' WHERE topic_id = ? AND revision = 1", TOPIC)
+        approve = "UPDATE contract_revisions SET status = 'approved', approved_by_decision_id = ? WHERE topic_id = ? AND revision = 1"
+        self.contract(TOPIC, 2)
+        self.decision("opd_ratingxx", "rating_approval", rev=1, hsh=self.content_hash_of(TOPIC, 1))
+        self.decision("opd_rejected", "contract_approval", disposition="rejected", rev=1, hsh=self.content_hash_of(TOPIC, 1))
+        self.decision("opd_otherrev", "contract_approval", rev=2, hsh=self.content_hash_of(TOPIC, 2))
+        self.decision("opd_othertop", "contract_approval", tid=OTHER, rev=1, hsh=self.content_hash_of(OTHER, 1))
+        for did in ("opd_ratingxx", "opd_rejected", "opd_otherrev", "opd_othertop"):
+            with self.subTest(decision=did):
+                self.rejects("exact topic, revision and content hash", approve, did, TOPIC)
+        self.rejects("existing subject", "INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_revision, subject_hash, operator_id, decided_at) VALUES ('opd_wronghsh', ?, 'contract_approval', 'approved', 'contract_revision', ?, 1, ?, 'trevor', ?)", TOPIC, TOPIC, h("0"), T)
+        self.decision("opd_00000001", "contract_approval", rev=1, hsh=self.content_hash_of(TOPIC, 1))
+        self.rejects("exact topic, revision and content hash", approve, "opd_rejected", TOPIC)  # a valid approval exists, but is not the one named
+        self.x(approve, "opd_00000001", TOPIC)
         self.rejects("draft -> approved -> superseded", "UPDATE contract_revisions SET status = 'draft' WHERE topic_id = ? AND revision = 1", TOPIC)
+        self.rejects("written as a draft", "INSERT INTO contract_revisions (topic_id, revision, parent_revision, protocol_revision, framing_version, content_hash, document, status, approved_by_decision_id, created_at) "
+                     "SELECT topic_id, 3, 2, protocol_revision, framing_version, ?, json_set(json_set(document, '$.revision', 3), '$.content_hash', ?), 'approved', 'opd_00000001', created_at FROM contract_revisions WHERE topic_id = ? AND revision = 1", h("8"), h("8"), TOPIC)
 
     def test_hash_lock_binds_document_to_row(self) -> None:
         doc = json.dumps({"topic_id": TOPIC, "revision": 2, "content_hash": h("0"), "protocol_revision": 1, "facet_map": {"framing_version": 1}})
         self.rejects("CHECK constraint failed", "INSERT INTO contract_revisions (topic_id, revision, parent_revision, protocol_revision, framing_version, content_hash, document, status, created_at) VALUES (?, 2, 1, 1, 1, ?, ?, 'draft', ?)", TOPIC, h("9"), doc, T)
 
     def test_one_approved_revision_per_topic(self) -> None:
-        self.decision("opd_00000001", "contract_approval")
-        self.x("UPDATE contract_revisions SET status = 'approved', approved_by_decision_id = 'opd_00000001' WHERE topic_id = ? AND revision = 1", TOPIC)
+        self.approve_contract(TOPIC, 1, "opd_00000001")
         self.contract(TOPIC, 2)
-        self.rejects("UNIQUE constraint failed", "UPDATE contract_revisions SET status = 'approved', approved_by_decision_id = 'opd_00000001' WHERE topic_id = ? AND revision = 2", TOPIC)
+        self.decision("opd_00000002", "amendment_approval", rev=2, hsh=self.content_hash_of(TOPIC, 2))
+        self.rejects("UNIQUE constraint failed", "UPDATE contract_revisions SET status = 'approved', approved_by_decision_id = 'opd_00000002' WHERE topic_id = ? AND revision = 2", TOPIC)
         self.x("UPDATE contract_revisions SET status = 'superseded' WHERE topic_id = ? AND revision = 1", TOPIC)
-        self.x("UPDATE contract_revisions SET status = 'approved', approved_by_decision_id = 'opd_00000001' WHERE topic_id = ? AND revision = 2", TOPIC)
+        self.x("UPDATE contract_revisions SET status = 'approved', approved_by_decision_id = 'opd_00000002' WHERE topic_id = ? AND revision = 2", TOPIC)
 
     def test_operator_rating_band_and_score_consistent(self) -> None:
-        self.decision("opd_00000001", "rating_approval")
+        self.decision("opd_00000001", "rating_approval", rev=1, hsh=self.content_hash_of(TOPIC, 1))
+        self.contract(TOPIC, 2)
         ins = ("INSERT INTO obligations (topic_id, contract_revision, obligation_id, template_id, template_version, claim_type, facet_ids, stopping_profile_id, exploratory, operator_importance_band, operator_importance_score, operator_rating_decision_id) "
-               "VALUES (?, 1, ?, 'T1', 1, 'effect', '[\"F-1\"]', 'SP-1', 0, ?, ?, ?)")
+               "VALUES (?, 2, ?, 'T1', 1, 'effect', '[\"F-1\"]', 'SP-1', 0, ?, ?, ?)")
         self.rejects("CHECK constraint failed", ins, TOPIC, "O-1", "critical", 5, "opd_00000001")
         self.rejects("CHECK constraint failed", ins, TOPIC, "O-1", "critical", 8, None)
         self.rejects("CHECK constraint failed", ins, TOPIC, "O-1", None, 8, None)  # a score without a band
@@ -546,21 +645,137 @@ class ContractGovernanceTest(StoreTestCase):
         self.x(ins, TOPIC, "O-3", None, None, None)
         self.rejects("obligations are immutable", "UPDATE obligations SET operator_importance_band = 'limited' WHERE obligation_id = 'O-2'")
 
+    def test_operator_rating_bound_to_a_rating_decision(self) -> None:
+        """A2: the rating's decision must be an approved rating_approval of this
+        topic about an earlier revision (the draft that was rated)."""
+        self.contract(TOPIC, 2)
+        self.decision("opd_rejected", "rating_approval", disposition="rejected", rev=1, hsh=self.content_hash_of(TOPIC, 1))
+        self.decision("opd_samerev", "rating_approval", rev=2, hsh=self.content_hash_of(TOPIC, 2))
+        self.decision("opd_othertop", "rating_approval", tid=OTHER, rev=1, hsh=self.content_hash_of(OTHER, 1))
+        self.decision("opd_approval", "contract_approval", rev=1, hsh=self.content_hash_of(TOPIC, 1))
+        ins = ("INSERT INTO obligations (topic_id, contract_revision, obligation_id, template_id, template_version, claim_type, facet_ids, stopping_profile_id, exploratory, operator_importance_band, operator_rating_decision_id) "
+               "VALUES (?, 2, 'O-1', 'T1', 1, 'effect', '[\"F-1\"]', 'SP-1', 0, 'critical', ?)")
+        self.decision("opd_00000001", "rating_approval", rev=1, hsh=self.content_hash_of(TOPIC, 1))  # a valid decision exists throughout
+        for did in ("opd_rejected", "opd_samerev", "opd_othertop", "opd_approval"):
+            with self.subTest(decision=did):
+                self.rejects("approved rating decision about an earlier revision", ins, TOPIC, did)
+        self.x(ins, TOPIC, "opd_00000001")
+
+    def test_proposed_importance_cites_an_importance_receipt(self) -> None:
+        """A2: a Jev-score proposal cites an importance_score decision receipt of
+        the same topic; a receipt of another class or topic is refused."""
+        self.contract(TOPIC, 2)
+        self.lease("lease_aaaaaaaa", 1)
+        self.invocation("inv_pppppppp")
+        self.lease("lease_zzzzzzzz", 1, tid=OTHER)
+        self.invocation("inv_oooooooo", tid=OTHER, lease="lease_zzzzzzzz")
+        imp = self.spec("dspec_import01", cls="importance_score")
+        self.decision_receipt("dec_screen01", "inv_pppppppp", self.spec())
+        self.decision_receipt("dec_import01", "inv_pppppppp", imp, cls="importance_score")
+        self.decision_receipt("dec_otherimp", "inv_oooooooo", imp, cls="importance_score", tid=OTHER)
+        ins = ("INSERT INTO obligations (topic_id, contract_revision, obligation_id, template_id, template_version, claim_type, facet_ids, stopping_profile_id, exploratory, proposed_importance_source, proposed_importance_score, proposed_decision_receipt_id) "
+               "VALUES (?, 2, 'O-1', 'T1', 1, 'effect', '[\"F-1\"]', 'SP-1', 0, 'jev_score', 8, ?)")
+        for rid in ("dec_screen01", "dec_otherimp"):
+            with self.subTest(receipt=rid):
+                self.rejects("importance_score receipt", ins, TOPIC, rid)
+        self.x(ins, TOPIC, "dec_import01")
+
+    def dossier(self, rev: int, contract_rev: int, ch: str) -> None:
+        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, ?, ?, 1, 'eval-1', ?, ?, ?)", TOPIC, rev, contract_rev, ch, h("7"), T)
+
     def test_completion_needs_approval_of_current_dossier(self) -> None:
+        """D54 rewrite (A2): the transition names an approved completion approval
+        of the current dossier (revision + hash) evaluated under the active,
+        approved contract. Each near-miss differs from a valid decision in one
+        dimension: currency (stale dossier), disposition, kind (a rating
+        decision whose subject revision/hash deliberately coincide with the
+        current dossier's), naming (a valid approval exists but the transition
+        names another), protocol (dossier under an approved but non-active
+        contract; under the active contract while it is unapproved)."""
         self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'application/json', ?)", h("7"), T)
-        dossier = "INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, ?, 1, 1, 'eval-1', ?, ?, ?)"
-        self.x(dossier, TOPIC, 1, h("3"), h("7"), T)
-        self.decision("opd_00000001", "completion_approval", dossier=1)
-        self.x(dossier, TOPIC, 2, h("4"), h("7"), T)  # material change after the approval
-        complete = "UPDATE queue_entries SET status = 'completed_with_qualified_conclusions' WHERE topic_id = ?"
-        self.rejects("current dossier revision", complete, TOPIC)
-        self.decision("opd_00000002", "completion_approval", dossier=2)
-        self.x(complete, TOPIC)
+        self.approve_contract(TOPIC, 1)
+        self.set_status(TOPIC, "active")
+        self.x("UPDATE queue_entries SET active_contract_revision = 1 WHERE topic_id = ?", TOPIC)
+        complete = "UPDATE queue_entries SET status = 'completed_with_qualified_conclusions', status_decision_id = ?, state_revision = state_revision + 1 WHERE topic_id = ?"
+        refused = "completion requires operator approval"
+        self.dossier(1, 1, h("3"))
+        self.decision("opd_stale001", "completion_approval", rev=1, hsh=h("3"))
+        self.dossier(2, 1, h("4"))  # material change after that approval
+        self.rejects(refused, complete, "opd_stale001", TOPIC)
+        self.decision("opd_rejected", "completion_approval", disposition="rejected", rev=2, hsh=h("4"))
+        self.rejects(refused, complete, "opd_rejected", TOPIC)
+        self.rejects("existing subject", "INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_revision, subject_hash, operator_id, decided_at) VALUES ('opd_wronghsh', ?, 'completion_approval', 'approved', 'dossier', ?, 2, ?, 'trevor', ?)", TOPIC, TOPIC, h("3"), T)
+        for rev in (2, 3, 4, 5):
+            self.contract(TOPIC, rev)
+        self.dossier(5, 1, self.content_hash_of(TOPIC, 5))  # current dossier carrying contract 5's hash
+        self.decision("opd_wrongknd", "rating_approval", rev=5, hsh=self.content_hash_of(TOPIC, 5))
+        self.rejects(refused, complete, "opd_wrongknd", TOPIC)
+        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, 5, 1, 1, 'eval-1', ?, ?, ?)", OTHER, h("9"), h("7"), T)
+        self.decision("opd_othertop", "completion_approval", tid=OTHER, rev=5, hsh=h("9"))
+        self.rejects(refused, complete, "opd_othertop", TOPIC)  # another topic's approval of its own dossier 5
+        self.decision("opd_valid005", "completion_approval", rev=5, hsh=self.content_hash_of(TOPIC, 5))
+        self.rejects(refused, complete, "opd_wrongknd", TOPIC)  # a valid approval exists, but is not the one named
+        self.x("UPDATE queue_entries SET active_contract_revision = 2 WHERE topic_id = ?", TOPIC)
+        self.rejects(refused, complete, "opd_valid005", TOPIC)  # dossier's contract (approved) is not the active one
+        self.dossier(6, 2, h("6"))
+        self.decision("opd_unapprov", "completion_approval", rev=6, hsh=h("6"))
+        self.rejects(refused, complete, "opd_unapprov", TOPIC)  # dossier under the active contract, which is not approved
+        self.x("UPDATE queue_entries SET active_contract_revision = 1 WHERE topic_id = ?", TOPIC)
+        self.dossier(7, 1, h("8"))
+        self.decision("opd_00000001", "completion_approval", rev=7, hsh=h("8"))
+        self.x(complete, "opd_00000001", TOPIC)
+        self.assertEqual(self.rows("SELECT status, status_decision_id FROM queue_entries WHERE topic_id = ?", TOPIC), [("completed_with_qualified_conclusions", "opd_00000001")])
 
     def test_retirement_needs_operator_decision(self) -> None:
-        self.rejects("retirement requires", "UPDATE queue_entries SET status = 'retired' WHERE topic_id = ?", TOPIC)
-        self.decision("opd_00000001", "retirement")
-        self.x("UPDATE queue_entries SET status = 'retired' WHERE topic_id = ?", TOPIC)
+        """D55 rewrite (A2): the transition names an approved retirement decision
+        about this topic at the state revision being left. Near-misses, one
+        dimension each: no decision, stale revision, disposition, topic (same
+        revision number), kind (a completion approval whose subject revision
+        equals the current state revision), naming (a valid decision exists but
+        another is named); and a used decision cannot be reused after
+        reactivation."""
+        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'application/json', ?)", h("7"), T)
+        retire = "UPDATE queue_entries SET status = 'retired', status_decision_id = ?, state_revision = state_revision + 1 WHERE topic_id = ?"
+        refused = "retirement requires"
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.x(retire, None, TOPIC)  # no decision named at all
+        self.decision("opd_stale000", "retirement", rev=self.state_revision())
+        self.set_status(TOPIC, "scoping")  # a commit after the decision makes it stale
+        now = self.state_revision()
+        self.rejects(refused, retire, "opd_stale000", TOPIC)
+        self.decision("opd_rejected", "retirement", disposition="rejected", rev=now)
+        self.decision("opd_othertop", "retirement", tid=OTHER, rev=now)
+        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, ?, 1, 1, 'eval-1', ?, ?, ?)", TOPIC, now, h("3"), h("7"), T)
+        self.decision("opd_wrongknd", "completion_approval", rev=now, hsh=h("3"))
+        for did in ("opd_rejected", "opd_othertop", "opd_wrongknd"):
+            with self.subTest(decision=did):
+                self.rejects(refused, retire, did, TOPIC)
+        self.decision("opd_00000001", "retirement", rev=now)
+        self.rejects(refused, retire, "opd_stale000", TOPIC)  # a valid decision exists, but is not the one named
+        self.x(retire, "opd_00000001", TOPIC)
+        self.set_status(TOPIC, "active")
+        self.rejects(refused, retire, "opd_00000001", TOPIC)  # reuse after reactivation: made against an earlier state
+
+    def test_terminal_statuses_cannot_be_inserted(self) -> None:
+        """A2: creation is constrained to the initial intake status."""
+        ins = "INSERT INTO queue_entries (topic_id, fleet_id, priority, status, status_decision_id, state_revision, created_at, updated_at) VALUES ('fleet-a:t3', 'fleet-a', 1, ?, ?, ?, ?, ?)"
+        self.decision("opd_00000001", "retirement", rev=self.state_revision())
+        for status, did in (("retired", "opd_00000001"), ("completed_with_qualified_conclusions", "opd_00000001"), ("active", None)):
+            with self.subTest(status=status):
+                self.rejects("created awaiting brief confirmation", ins, status, did, 0, T, T)
+        self.rejects("created awaiting brief confirmation", ins, "awaiting_brief_confirmation", None, 5, T, T)
+        self.x(ins, "awaiting_brief_confirmation", None, 0, T, T)
+
+    def test_status_change_is_a_commit(self) -> None:
+        self.rejects("advances state_revision by one", "UPDATE queue_entries SET status = 'scoping' WHERE topic_id = ?", TOPIC)
+        self.set_status(TOPIC, "scoping")
+        self.assertEqual(self.state_revision(), 1)
+        # the authorizing decision is recorded only with a decision-gated status, and cleared on leaving it
+        self.decision("opd_00000001", "retirement", rev=self.state_revision())
+        self.rejects("CHECK constraint failed", "UPDATE queue_entries SET status = 'active', status_decision_id = 'opd_00000001', state_revision = state_revision + 1 WHERE topic_id = ?", TOPIC)
+        self.set_status(TOPIC, "retired", "opd_00000001")
+        self.rejects("CHECK constraint failed", "UPDATE queue_entries SET status = 'active', state_revision = state_revision + 1 WHERE topic_id = ?", TOPIC)
+        self.set_status(TOPIC, "active")
 
 
 if __name__ == "__main__":

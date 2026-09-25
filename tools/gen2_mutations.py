@@ -50,6 +50,7 @@ class Mutation:
     old: str | None = None
     new: str = ""
     target: str = "ddl"  # ddl | connection
+    also: tuple[tuple[str, str], ...] = ()  # further (old, new) edits applied with this one (a dimension-level mutation)
 
 
 H = "test_store_history."
@@ -100,6 +101,125 @@ MUTATIONS: list[Mutation] = [
                       "record_work_links_immutable_u", "research_ordinals_immutable_u", "retrieval_events_immutable_u",
                       "screening_assessments_immutable_u", "search_observations_immutable_u",
                       "sink_delivery_receipts_immutable_u", "verification_receipts_immutable_u")),
+    # --- A2: decisions bound to their exact subject ---------------------------
+    # Each gate is mutated per binding dimension (naming, kind, disposition,
+    # topic, subject, currency, protocol); each dimension has a near-miss probe
+    # that differs from a valid decision only there. Where the schema makes
+    # conjuncts mutually determined (a contract's topic/revision/hash via its
+    # unique hash and the decision-time existence check) they are mutated
+    # together as one dimension.
+    Mutation("A2-queue-created-at-intake", "A2", "topics may be inserted in any status",
+             (D + "ContractGovernanceTest.test_terminal_statuses_cannot_be_inserted",), drop_trigger="queue_entries_created_at_intake"),
+    Mutation("A2-status-change-advances-revision", "A2", "status may change without a commit",
+             (D + "ContractGovernanceTest.test_status_change_is_a_commit",), drop_trigger="queue_status_change_advances_revision"),
+    Mutation("A2-status-decision-iff-gated", "A2", "status_decision_id no longer tied to decision-gated statuses",
+             (D + "ContractGovernanceTest.test_status_change_is_a_commit",),
+             old="\n  CHECK ((status IN ('completed_with_qualified_conclusions', 'retired')) = (status_decision_id IS NOT NULL)),", new=""),
+    Mutation("A2-completion-naming", "A2", "completion accepts any valid approval, not the one named",
+             (D + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",), old="    WHERE d.decision_id = NEW.status_decision_id\n      AND d.topic_id = NEW.topic_id\n      AND d.kind = 'completion_approval'", new="    WHERE d.topic_id = NEW.topic_id\n      AND d.kind = 'completion_approval'"),
+    Mutation("A2-completion-kind", "A2", "completion gate ignores decision kind",
+             (D + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",), old="      AND d.kind = 'completion_approval'\n", new=""),
+    Mutation("A2-completion-disposition", "A2", "completion gate ignores disposition",
+             (D + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",), old="      AND d.kind = 'completion_approval'\n      AND d.disposition = 'approved'\n", new="      AND d.kind = 'completion_approval'\n"),
+    Mutation("A2-completion-topic", "A2", "completion gate binds the dossier to the decision's topic, not the transition's",
+             (D + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",),
+             old="    JOIN dossiers x ON x.topic_id = NEW.topic_id AND x.dossier_revision = d.subject_revision AND x.content_hash = d.subject_hash",
+             new="    JOIN dossiers x ON x.topic_id = d.topic_id AND x.dossier_revision = d.subject_revision AND x.content_hash = d.subject_hash",
+             also=(("    WHERE d.decision_id = NEW.status_decision_id\n      AND d.topic_id = NEW.topic_id\n      AND d.kind = 'completion_approval'", "    WHERE d.decision_id = NEW.status_decision_id\n      AND d.kind = 'completion_approval'"),)),
+    Mutation("A2-completion-currency", "A2", "completion accepts an approval of a superseded dossier",
+             (D + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",),
+             old="      AND x.dossier_revision = (SELECT max(y.dossier_revision) FROM dossiers y WHERE y.topic_id = NEW.topic_id)\n", new=""),
+    Mutation("A2-completion-active-contract", "A2", "completion ignores which contract is active",
+             (D + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",), old="      AND x.contract_revision IS NEW.active_contract_revision\n", new=""),
+    Mutation("A2-completion-contract-approved", "A2", "completion ignores whether the contract is approved",
+             (D + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",), old="      AND c.status = 'approved')\nBEGIN\n  SELECT RAISE(ABORT, 'completion requires", new=")\nBEGIN\n  SELECT RAISE(ABORT, 'completion requires"),
+    Mutation("A2-retirement-naming", "A2", "retirement accepts any valid decision, not the one named",
+             (D + "ContractGovernanceTest.test_retirement_needs_operator_decision",), old="    WHERE d.decision_id = NEW.status_decision_id\n      AND d.topic_id = NEW.topic_id\n      AND d.kind = 'retirement'", new="    WHERE d.topic_id = NEW.topic_id\n      AND d.kind = 'retirement'"),
+    Mutation("A2-retirement-topic", "A2", "retirement ignores the decision's topic",
+             (D + "ContractGovernanceTest.test_retirement_needs_operator_decision",), old="      AND d.topic_id = NEW.topic_id\n      AND d.kind = 'retirement'", new="      AND d.kind = 'retirement'"),
+    Mutation("A2-retirement-kind", "A2", "retirement ignores decision kind",
+             (D + "ContractGovernanceTest.test_retirement_needs_operator_decision",), old="      AND d.kind = 'retirement'\n", new=""),
+    Mutation("A2-retirement-disposition", "A2", "retirement ignores disposition",
+             (D + "ContractGovernanceTest.test_retirement_needs_operator_decision",), old="      AND d.kind = 'retirement'\n      AND d.disposition = 'approved'\n", new="      AND d.kind = 'retirement'\n"),
+    Mutation("A2-retirement-state-revision", "A2", "a retirement decision about an earlier state is accepted (stale/reuse)",
+             (D + "ContractGovernanceTest.test_retirement_needs_operator_decision",), old="\n      AND d.subject_revision = OLD.state_revision)", new=")"),
+    Mutation("A2-contract-created-as-draft", "A2", "contracts may be inserted approved",
+             (D + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",), drop_trigger="contract_created_as_draft"),
+    Mutation("A2-contract-approval-naming", "A2", "contract approval accepts any valid approval, not the one named",
+             (D + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",), old="    WHERE d.decision_id = NEW.approved_by_decision_id\n", new="    WHERE 1\n"),
+    Mutation("A2-contract-approval-kind", "A2", "contract approval ignores decision kind",
+             (D + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",), old="      AND d.kind IN ('contract_approval', 'amendment_approval', 'reframe_approval')\n", new=""),
+    Mutation("A2-contract-approval-disposition", "A2", "contract approval ignores disposition",
+             (D + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",),
+             old="      AND d.kind IN ('contract_approval', 'amendment_approval', 'reframe_approval')\n      AND d.disposition = 'approved'\n", new="      AND d.kind IN ('contract_approval', 'amendment_approval', 'reframe_approval')\n"),
+    Mutation("A2-contract-approval-subject", "A2", "contract approval ignores subject topic/revision/hash",
+             (D + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",),
+             old="      AND d.topic_id = NEW.topic_id\n      AND d.subject_revision = NEW.revision\n      AND d.subject_hash = NEW.content_hash)", new=")"),
+    Mutation("A2-rating-naming", "A2", "an obligation rating accepts any valid rating decision, not the one named",
+             (D + "ContractGovernanceTest.test_operator_rating_bound_to_a_rating_decision",), old="        WHERE d.decision_id = NEW.operator_rating_decision_id\n", new="        WHERE 1\n"),
+    Mutation("A2-rating-kind", "A2", "rating binding ignores decision kind",
+             (D + "ContractGovernanceTest.test_operator_rating_bound_to_a_rating_decision",), old="          AND d.kind = 'rating_approval' AND d.disposition = 'approved'\n", new="          AND d.disposition = 'approved'\n"),
+    Mutation("A2-rating-disposition", "A2", "rating binding ignores disposition",
+             (D + "ContractGovernanceTest.test_operator_rating_bound_to_a_rating_decision",), old="          AND d.kind = 'rating_approval' AND d.disposition = 'approved'\n", new="          AND d.kind = 'rating_approval'\n"),
+    Mutation("A2-rating-topic", "A2", "rating binding ignores topic",
+             (D + "ContractGovernanceTest.test_operator_rating_bound_to_a_rating_decision",), old="          AND d.topic_id = NEW.topic_id\n          AND d.subject_revision < NEW.contract_revision))", new="          AND d.subject_revision < NEW.contract_revision))"),
+    Mutation("A2-rating-earlier-revision", "A2", "a rating decision may be about the revision that carries it",
+             (D + "ContractGovernanceTest.test_operator_rating_bound_to_a_rating_decision",), old="          AND d.subject_revision < NEW.contract_revision))", new="          AND d.subject_revision <= NEW.contract_revision))"),
+    Mutation("A2-proposal-receipt-class", "A2", "a Jev proposal may cite any decision class",
+             (D + "ContractGovernanceTest.test_proposed_importance_cites_an_importance_receipt",), old="          AND r.topic_id = NEW.topic_id AND r.decision_class = 'importance_score'))", new="          AND r.topic_id = NEW.topic_id))"),
+    Mutation("A2-proposal-receipt-topic", "A2", "a Jev proposal may cite another topic's receipt",
+             (D + "ContractGovernanceTest.test_proposed_importance_cites_an_importance_receipt",), old="          AND r.topic_id = NEW.topic_id AND r.decision_class = 'importance_score'))", new="          AND r.decision_class = 'importance_score'))"),
+    Mutation("A2-holds-created-open", "A2", "holds may be inserted cleared",
+             (D + "HoldTest.test_holds_are_created_open",), drop_trigger="holds_created_open"),
+    Mutation("A2-hold-clearance-naming", "A2", "a hold clears with any valid clearance, not the one named",
+             (D + "HoldTest.test_operator_hold_cleared_only_by_operator_decision",), old="    WHERE d.decision_id = NEW.cleared_by_decision_id\n", new="    WHERE 1\n"),
+    Mutation("A2-hold-clearance-kind", "A2", "hold clearance ignores decision kind",
+             (D + "HoldTest.test_operator_hold_cleared_only_by_operator_decision",), old="      AND d.kind = 'hold_clearance' AND d.disposition = 'approved'\n      AND d.topic_id IS NEW.topic_id", new="      AND d.disposition = 'approved'\n      AND d.topic_id IS NEW.topic_id"),
+    Mutation("A2-hold-clearance-disposition", "A2", "hold clearance ignores disposition",
+             (D + "HoldTest.test_operator_hold_cleared_only_by_operator_decision",), old="      AND d.kind = 'hold_clearance' AND d.disposition = 'approved'\n      AND d.topic_id IS NEW.topic_id", new="      AND d.kind = 'hold_clearance'\n      AND d.topic_id IS NEW.topic_id"),
+    Mutation("A2-hold-clearance-subject", "A2", "hold clearance ignores which hold (and so topic) it is about",
+             (D + "HoldTest.test_operator_hold_cleared_only_by_operator_decision",), old="      AND d.topic_id IS NEW.topic_id\n      AND d.subject_ref = NEW.hold_id)", new=")"),
+    Mutation("A2-publication-naming", "A2", "publication accepts any valid approval, not the one named",
+             (D + "PublicationTest.test_only_approved_work_is_published",), old="  WHERE d.decision_id = NEW.approval_decision_id\n", new="  WHERE 1\n"),
+    Mutation("A2-publication-kind", "A2", "publication ignores decision kind (the review's rating-decision probe)",
+             (D + "PublicationTest.test_only_approved_work_is_published",), old="    AND d.kind = 'publication_approval' AND d.disposition = 'approved'\n", new="    AND d.disposition = 'approved'\n"),
+    Mutation("A2-publication-disposition", "A2", "publication ignores disposition",
+             (D + "PublicationTest.test_only_approved_work_is_published",), old="    AND d.kind = 'publication_approval' AND d.disposition = 'approved'\n", new="    AND d.kind = 'publication_approval'\n"),
+    Mutation("A2-publication-topic", "A2", "publication ignores the approval's topic",
+             (D + "PublicationTest.test_only_approved_work_is_published",), old="    AND d.topic_id = NEW.topic_id\n    AND d.subject_revision = NEW.source_revision", new="    AND d.subject_revision = NEW.source_revision"),
+    Mutation("A2-publication-revision", "A2", "publication ignores the approved source revision",
+             (D + "PublicationTest.test_only_approved_work_is_published",), old="    AND d.subject_revision = NEW.source_revision\n", new=""),
+    Mutation("A2-publication-hash", "A2", "publication ignores the approved source hash",
+             (D + "PublicationTest.test_only_approved_work_is_published",), old="\n    AND d.subject_hash = NEW.source_content_hash)", new=")"),
+    *(Mutation(f"A2-manifest-binds-{key}", "A2", f"manifest JSON no longer bound to its {key} column",
+               (D + "PublicationTest.test_manifest_json_matches_its_columns",), old=f"\n     AND json_extract(manifest, '$.{path}') IS {col}", new="")
+      for key, path, col in (("artifact-kind", "artifact_kind", "artifact_kind"), ("source-revision", "source.revision", "source_revision"),
+                             ("source-hash", "source.content_hash", "source_content_hash"), ("approval-id", "approval.operator_decision_id", "approval_decision_id"),
+                             ("approved-revision", "approval.approved_revision", "source_revision"), ("supersedes", "supersedes.generation", "supersedes_generation"))),
+    Mutation("A2-manifest-binds-expected-sinks", "A2", "manifest JSON no longer bound to expected_sinks",
+             (D + "PublicationTest.test_manifest_json_matches_its_columns",), old="\n     AND json_extract(manifest, '$.expected_sinks') IS json(expected_sinks))", new=")"),
+    Mutation("A2-subject-exists-contract", "A2", "a contract decision may name a nonexistent revision/hash",
+             (D + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",),
+             old="WHEN (NEW.subject_kind = 'contract_revision' AND NOT EXISTS (\n        SELECT 1 FROM contract_revisions c\n        WHERE c.topic_id = NEW.topic_id AND c.revision = NEW.subject_revision AND c.content_hash = NEW.subject_hash))\n  OR ",
+             new="WHEN "),
+    Mutation("A2-subject-exists-dossier", "A2", "a completion decision may name a nonexistent dossier/hash",
+             (D + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",),
+             old="  OR (NEW.subject_kind = 'dossier' AND NOT EXISTS (\n        SELECT 1 FROM dossiers x\n        WHERE x.topic_id = NEW.topic_id AND x.dossier_revision = NEW.subject_revision AND x.content_hash = NEW.subject_hash))\n", new=""),
+    Mutation("A2-subject-exists-hold", "A2", "a clearance may name a nonexistent or other-topic hold",
+             (D + "HoldTest.test_decision_subject_must_exist_with_its_topic",),
+             old="  OR (NEW.subject_kind = 'hold' AND NOT EXISTS (\n        SELECT 1 FROM holds k WHERE k.hold_id = NEW.subject_ref AND k.topic_id IS NEW.topic_id))\n", new=""),
+    Mutation("A2-subject-exists-decision-receipt", "A2", "a blind/advised record may name a nonexistent receipt",
+             (D + "HoldTest.test_decision_subject_must_exist_with_its_topic",),
+             old="  OR (NEW.subject_kind = 'decision_receipt' AND NOT EXISTS (\n        SELECT 1 FROM decision_receipts r WHERE r.decision_receipt_id = NEW.subject_ref AND r.topic_id = NEW.topic_id))\n", new=""),
+    *(Mutation(f"A2-decision-shape-{key}", "A2", f"operator_decisions CHECK removed: {key}",
+               (D + "HoldTest.test_decision_subject_shape",), old=old, new="")
+      for key, old in (
+          ("kind-subject-map", "\n  CHECK ((kind = 'brief_confirmation' AND subject_kind = 'intake_brief')\n      OR (kind = 'scope_approval' AND subject_kind = 'scoping_report')\n      OR (kind IN ('rating_approval', 'contract_approval', 'amendment_approval', 'reframe_approval') AND subject_kind = 'contract_revision')\n      OR (kind = 'completion_approval' AND subject_kind = 'dossier')\n      OR (kind = 'retirement' AND subject_kind = 'topic')\n      OR (kind = 'hold_clearance' AND subject_kind = 'hold')\n      OR (kind = 'publication_approval' AND subject_kind = 'publication_source')\n      OR (kind IN ('blind_initial_disposition', 'advised_feedback') AND subject_kind = 'decision_receipt')),"),
+          ("versioned-subject", "\n  CHECK (subject_kind NOT IN ('intake_brief', 'scoping_report', 'contract_revision', 'dossier', 'publication_source')\n      OR (subject_revision IS NOT NULL AND subject_hash IS NOT NULL)),"),
+          ("ref-is-topic", "\n  CHECK (subject_kind NOT IN ('contract_revision', 'dossier', 'topic') OR subject_ref IS topic_id),"),
+          ("topic-revision", "\n  CHECK (subject_kind != 'topic' OR subject_revision IS NOT NULL),"),
+          ("topic-scoped", "\n  CHECK (subject_kind = 'hold' OR topic_id IS NOT NULL),"),
+          ("recorded-only-blind", ",\n  CHECK ((kind IN ('blind_initial_disposition', 'advised_feedback')) = (disposition = 'recorded'))"))),
     # --- A9: capability supersession --------------------------------------
     Mutation("A9-successor-fk-immediate", "A9", "successor FK checked immediately (the documented transaction cannot run)",
              (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",),
@@ -157,9 +277,11 @@ def mutate(text: str, m: Mutation) -> str:
             raise ValueError(f"trigger {m.drop_trigger!r} found {len(found)} times")
         return pattern.sub("", text)
     assert m.old is not None
-    if text.count(m.old) != 1:
-        raise ValueError(f"mutation text found {text.count(m.old)} times: {m.old[:60]!r}")
-    return text.replace(m.old, m.new)
+    for old, new in ((m.old, m.new), *m.also):
+        if text.count(old) != 1:
+            raise ValueError(f"mutation text found {text.count(old)} times: {old[:60]!r}")
+        text = text.replace(old, new)
+    return text
 
 
 def load_suite() -> unittest.TestSuite:

@@ -233,7 +233,10 @@ Numbering follows DR §10's release gates; gate 1 is split into its crash half (
 **G-7 — "Adjust within family" is self-serve only inside the approved operational envelope.** Any change to eligibility, estimand, required access tier, or stopping interpretation follows the amendment path. Reframes and expansion purposes always go to the operator.
 *Source:* F S5; ADJ (c) 4.
 
-**G-8 — Completion approval binds to the exact dossier revision** and goes stale after any material change. *Source:* F S7; DR §8. *Enforced at:* DDL `operator_decisions` (completion approvals reference a `dossiers` row).
+**G-8 — Completion approval binds to the exact dossier revision** and goes stale after any material change. *Source:* F S7; DR §8. *Enforced at:* DDL — the completion transition names its decision (`queue_entries.status_decision_id`), which must be an approved `completion_approval` of this topic about the current dossier revision with that dossier's content hash, evaluated under the topic's active, approved contract (G-13).
+
+**G-13 — A decision authorizes only its exact subject.** Every operator decision names a typed subject (one subject kind per decision kind) with its identifying revision and content hash; a stored subject must exist with that exact hash when the decision is recorded. A gated write (contract approval, operator rating, hold clearance, completion, retirement, publication) names the decision it relies on, and that decision must be of the permitted kind, `approved`, of the same topic, and about exactly the subject being written — revision, hash, and (for retirement) the state revision being left. A rejected or deferred decision, a decision of another kind or topic, or one about an earlier revision authorizes nothing, and a decision bound to a state revision cannot be reused. Rows that carry authority cannot be created in a decided/terminal state: topics start at intake, contracts as drafts, holds open (the importer gets its own audited path, 0b).
+*Source:* B *Operator*; DR §8; F S3, S7, S8; Astra 0a review A2 (added by task 0a-repair). *Enforced at:* DDL `operator_decisions` (subject shape and existence) and the consuming triggers on `contract_revisions`, `obligations`, `holds`, `queue_entries`, `outbox_events`. *Test must show:* for each gate, near-miss decisions that differ from a valid one in exactly one dimension (kind, disposition, topic, subject revision/hash, currency, the decision named) are each refused, and the valid one is accepted; direct insertion of a decided state is refused.
 
 **G-9 — Outcomes are distinct and recorded:** `completed_with_qualified_conclusions` (always conditional on framing F, coverage C, discovery mechanisms D), `capability_blocked`, `stopped_for_resources` (residual uncertainty stated — never relabeled as saturation), `awaiting_judgment`, `retired`. *Source:* F S7; DR §8; M §6.
 
@@ -258,7 +261,7 @@ Numbering follows DR §10's release gates; gate 1 is split into its crash half (
 
 **P-4 — Three facts, never conflated:** scientific completion at dossier revision R, current publication delivery, surveillance currency as of T. A failed sink leaves publication partial and raises a capability incident; it neither undoes completion nor stops surveillance. *Source:* F S8 item 4.
 
-**P-5 — Approved corrections and approved checkpoint publications create new outbox events.** Unapproved work is never served as accepted evidence; the envelope may disclose that newer unapproved material exists. *Source:* F S8 item 5.
+**P-5 — Approved corrections and approved checkpoint publications create new outbox events.** Unapproved work is never served as accepted evidence; the envelope may disclose that newer unapproved material exists. *Source:* F S8 item 5. *Enforced at:* DDL `outbox_events` — the approval is an approved `publication_approval` of the exact source revision and content hash (G-13), and the manifest JSON's source, approval, kind, sinks and supersession equal the row's columns.
 
 **P-6 — Surveillance liveness alarms on an overdue successful observation**, not on an absence of scientific events. Successful-empty is distinct from failed or never-ran. A dead feed makes currency unknown/degraded without rewriting historical completion. Retirement is an operator decision. *Source:* F S8; ADJ (a) K-A3.
 
@@ -271,7 +274,7 @@ Numbering follows DR §10's release gates; gate 1 is split into its crash half (
 **H-2 — Capability facts are first-class, dated, and alert on transition.** A failed secrets read is recorded as "secrets backend failing" with its since-time and affected lanes — never as "no key configured". *Source:* F §4.2; B *Gateway* (the 2026-09-21..24 vault outage is the fixture).
 
 **H-3 — Holds are typed, owned and deadlined.** Cause class (transient / capability / scope / judgment / unknown), recoverability, and required authority are separate fields, plus what clears the hold. A failed hold write is a control failure. A model label never clears an operator hold.
-*Source:* F §4.4; DR §6, §7 (separate dimensions for cause, recoverability, authority). *Enforced at:* DDL `holds` (owner, deadline and clearing condition required; operator-authority holds clear only through an operator decision).
+*Source:* F §4.4; DR §6, §7 (separate dimensions for cause, recoverability, authority). *Enforced at:* DDL `holds` (owner, deadline and clearing condition required; created open; operator-authority holds clear only through an approved `hold_clearance` decision about that hold — G-13).
 
 **H-4 — Status answers why every waiting item waits.** *Source:* F §4.4; DR §10 gate 9.
 

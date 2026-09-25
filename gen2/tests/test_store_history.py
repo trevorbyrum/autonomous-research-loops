@@ -116,12 +116,12 @@ class ReplaceAndDeleteTest(StoreTestCase):
         self.assertEqual(self.rows("SELECT closed_at FROM review_episodes"), [(T,)])
 
     def test_update_or_replace_cannot_delete_the_approved_contract(self) -> None:
-        self.decision("opd_00000001", "contract_approval")
-        self.x("UPDATE contract_revisions SET status = 'approved', approved_by_decision_id = 'opd_00000001' WHERE topic_id = ? AND revision = 1", TOPIC)
+        self.approve_contract(TOPIC, 1)
         self.contract(TOPIC, 2)
+        self.decision("opd_00000002", "amendment_approval", rev=2, hsh=self.content_hash_of(TOPIC, 2))
         # approving revision 2 collides with revision 1 on the one-approved index;
         # OR REPLACE would resolve that by deleting revision 1
-        self.assertRewriteRefused("contract_revisions", "UPDATE OR REPLACE contract_revisions SET status = 'approved', approved_by_decision_id = 'opd_00000001' WHERE topic_id = ? AND revision = 2", TOPIC,
+        self.assertRewriteRefused("contract_revisions", "UPDATE OR REPLACE contract_revisions SET status = 'approved', approved_by_decision_id = 'opd_00000002' WHERE topic_id = ? AND revision = 2", TOPIC,
                                   fragment=DELETE_GUARD["contract_revisions"])
 
 
