@@ -72,6 +72,7 @@ FILE_TARGETS = {
     "gen2/core/canonical.py": ("module", "gen2.core.canonical"),
     "gen2/store/compat.py": ("module", "gen2.store.compat"),
     "gen2/store/db.py": ("module", "gen2.store.db"),
+    "tools/gen2_trigger_order.py": ("attr", "test_trigger_order_tool", "TOOL"),
 }
 
 H = "test_store_history."
@@ -882,6 +883,20 @@ MUTATIONS: list[Mutation] = [
           ("user-version-ignored", "another schema version is admitted",
            ("OpenStoreTest.test_a_store_with_another_schema_is_not_admitted",),
            "    if missing or extra or changed or stored_version != version:", "    if missing or extra or changed:"))),
+    # --- 0b cleanup 2: the permanent reversed-trigger-order check ----------------------
+    *(Mutation(f"TO-{key}", "0b-cleanup-2", desc, tuple("test_trigger_order_tool.TriggerOrderToolTest." + k for k in killers),
+               target="tools/gen2_trigger_order.py", old=old, new=new)
+      for key, desc, killers, old, new in (
+          ("not-reversed", "the rebuild re-creates the triggers in their original order",
+           ("test_rebuild_creates_the_same_triggers_in_reverse",), r'"\n".join(reversed(blocks))', r'"\n".join(blocks)'),
+          ("rebuild-order-unchecked", "a rebuild that did not reverse the order is not detected",
+           ("test_a_rebuild_that_keeps_the_order_is_refused",), "    if r_order != list(reversed(order)):", "    if False:"),
+          ("rebuild-triggers-unchecked", "a rebuild that lost or changed a trigger is not detected",
+           ("test_a_rebuild_that_keeps_the_order_is_refused",), "    if r_sql != sql:", "    if False:"),
+          ("differences-ignored", "outcomes that differ between the two orders are not reported",
+           ("test_outcomes_must_be_green_and_identical",), "        if a != b:", "        if False:"),
+          ("original-failures-ignored", "a failure in the original order is not reported when both orders agree",
+           ("test_outcomes_must_be_green_and_identical",), '        if outcome != "pass":', "        if False:"))),
     # --- coverage pass: pre-existing 0a guards, so the inventory spans the whole DDL ----
     *(Mutation(f"cov-delete-guard-{trigger}", "C-11", f"drop delete guard {trigger}",
                (H + ("EveryTableSweepTest.test_unreferenced_rows_cannot_be_deleted_either" if trigger in ("claims_no_delete", "invocations_no_delete", "leases_no_delete", "outbox_events_immutable_d")

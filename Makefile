@@ -14,9 +14,9 @@ PYTHON ?= $(GEN2_VENV)/bin/python
 
 GEN2_SQLITE_REPORT ?=
 
-.PHONY: gen2-check gen2-venv gen2-sqlite gen2-boundaries gen2-schemas gen2-ddl gen2-test gen2-mutation gen2-size gen2-linecount
+.PHONY: gen2-check gen2-venv gen2-sqlite gen2-boundaries gen2-schemas gen2-ddl gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount
 
-gen2-check: gen2-sqlite gen2-boundaries gen2-schemas gen2-ddl gen2-test gen2-mutation gen2-size
+gen2-check: gen2-sqlite gen2-boundaries gen2-schemas gen2-ddl gen2-test gen2-trigger-order gen2-mutation gen2-size
 	@echo "gen2-check: all checks passed"
 
 # (Re)built when either lock changes; `venv --clear` starts from an empty
@@ -53,6 +53,12 @@ gen2-ddl: gen2-venv
 
 gen2-test: gen2-venv
 	$(PYTHON) -m unittest discover -s gen2/tests -p 'test_*.py'
+
+# The whole store suite again with every trigger re-created in reverse order;
+# every test and subtest must have the same outcome (task 0b cleanup 2: no
+# assertion may depend on SQLite's trigger-firing order).
+gen2-trigger-order: gen2-venv
+	$(PYTHON) tools/gen2_trigger_order.py
 
 # Every guard in tools/gen2_mutations.py is removed in memory and its named
 # tests must fail (task 0a-repair: fixes must be mutation-testable).
