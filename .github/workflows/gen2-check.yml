@@ -1,0 +1,19 @@
+# Gen-2 build gate (task 0a deliverable 4): runs `make gen2-check` — the
+# module-boundary graph (gen2/boundaries.toml), schema/DDL validation and the
+# gen-2 tests. Any failure fails the build.
+name: gen2-check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  gen2-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: make gen2-check
+        run: make gen2-check PYTHON=python

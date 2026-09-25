@@ -1,0 +1,169 @@
+# Gen-2 module-boundary graph — machine-checked by tools/check_boundaries.py
+# (run via `make gen2-check`; a violation fails the build).
+#
+# Trace: task 0a deliverable 4; charter "Standing rules" (machine-checkable
+# module-boundary graph in CI from the first commit); design review
+# (gen2-design-astra-review-20260922.md) §2 row F76 and §10 ("Enforce
+# dependency boundaries in CI, but do not promise this effect size or zero
+# violations"); docs/gen2/BOUNDARIES.md (every component heading is either
+# mapped to a module below or listed in [unmapped_components] with a reason —
+# the checker fails on drift in either direction).
+#
+# Rules the checker enforces for every .py file under `package_root`:
+#   1. The file belongs to exactly one declared module (undeclared code fails).
+#   2. Imports of other gen2 modules appear in that module's `may_import`.
+#   3. Nothing imports a name in `forbidden_imports` (gen-1 engine/gateway).
+#   4. Restricted stdlib entries are used only where granted in
+#      `stdlib_capabilities` (imports and attribute access on imported modules).
+#   5. Third-party imports appear in the module's `third_party` list.
+#   6. No star imports; no calls to names in `forbidden_calls`.
+#   7. The declared `may_import` graph is acyclic.
+# Amending this file is an architecture change: it goes through the charter's
+# review path, never as a drive-by edit to make a violation pass.
+
+schema_version = 1
+package_root = "gen2"
+boundaries_doc = "docs/gen2/BOUNDARIES.md"
+
+# Gen-1 engine and the gateway's internals. Gen-2 reaches the gateway service
+# through its API (module gateway_client), never by importing its code.
+# Trace: task 0a hard constraint "Nothing imports gen-1 research_loops".
+forbidden_imports = ["research_loops", "research_gateway"]
+
+# Dynamic evaluation defeats a static import graph and is how "execute
+# agent-supplied code" would happen (BOUNDARIES.md Router: Must never).
+forbidden_calls = ["eval", "exec", "compile", "__import__"]
+
+# Capability-bearing stdlib surfaces. An entry matches the dotted name itself
+# and anything below it; a trailing "*" matches by prefix.
+restricted_stdlib = [
+  # authoritative-store access (sole writer: BOUNDARIES.md Router)
+  "sqlite3",
+  # process control (BOUNDARIES.md Station supervisor owns lifecycles)
+  "subprocess", "multiprocessing", "concurrent.futures.process", "signal",
+  "asyncio", "pty",
+  "os.system", "os.popen", "os.fork", "os.forkpty", "os.kill", "os.killpg",
+  "os.exec*", "os.spawn*", "os.posix_spawn*",
+  # network (Gateway is the only door to research sources; decision providers,
+  # the tier-0 service and projection sinks are the other declared endpoints)
+  "socket", "ssl", "http.client", "http.server", "urllib.request",
+  "socketserver", "xmlrpc", "ftplib", "smtplib",
+  # dynamic code loading / deserialization of executable payloads
+  "importlib.import_module", "importlib.util", "importlib.machinery",
+  "runpy", "pickle", "marshal", "shelve", "code", "codeop", "ctypes",
+]
+
+# ---------------------------------------------------------------------------
+# Modules. `boundaries` names must match `## ` headings in boundaries_doc
+# exactly. `may_import` lists other modules (self is always allowed; "*" is
+# reserved for tests). Grants are minimal: widening one is an amendment.
+# ---------------------------------------------------------------------------
+
+[modules.core]
+path = "gen2/core"
+purpose = "Shared vocabulary: typed records, stable IDs, enums, envelope/receipt types and the ControlBackend protocol (claim / record_observation / commit_outcome / apply_operator_decision / ack_delivery — design review §5) that other modules code against. Holds no authority, so it maps to no BOUNDARIES.md component."
+boundaries = []
+may_import = []
+stdlib_capabilities = []
+third_party = []
+
+[modules.store]
+path = "gen2/store"
+purpose = "SQLite implementation of the one authoritative engine store (DDL in gen2/store/schema.sql). Private to the router: the only module granted sqlite3, and only the router may import it."
+boundaries = ["Router"]
+may_import = ["core"]
+stdlib_capabilities = ["sqlite3"]
+third_party = []
+
+[modules.router]
+path = "gen2/router"
+purpose = "Sole writer: scheduling, leases, commit_outcome, checkpoint cadence and the coalesced signal queue, decision-policy application, completion-candidate assembly, outbox commits. No model calls in its decision path, so it may not import decision; it may not spawn processes or open network connections."
+boundaries = ["Router"]
+may_import = ["core", "store", "accounting"]
+stdlib_capabilities = []
+third_party = []
+
+[modules.supervisor]
+path = "gen2/supervisor"
+purpose = "One lifecycle for every execution kind: launch intent, process identity, deadlines, cancellation, result retention, structural telemetry, snapshot assembly. Calls decision providers and the tier-0 checker at the trusted station/adapter boundary (flow §3 step 2). Submits results to the router only through the core ControlBackend protocol."
+boundaries = ["Station supervisor"]
+may_import = ["core", "decision", "tier0", "gateway_client"]
+stdlib_capabilities = [
+  "subprocess", "signal", "asyncio",
+  "os.kill", "os.killpg", "os.exec*", "os.spawn*", "os.posix_spawn*",
+]
+third_party = []
+
+[modules.accounting]
+path = "gen2/accounting"
+purpose = "Pure arithmetic over typed records: novelty/yield/accrual/coverage/verification tiers, the four candidate units, stopping dossiers. No model calls, no I/O."
+boundaries = ["Evidence accounting"]
+may_import = ["core"]
+stdlib_capabilities = []
+third_party = []
+
+[modules.decision]
+path = "gen2/decision"
+purpose = "DecisionProvider adapters (Jev primary, LLM fallback) returning provider-specific typed answers under a DecisionSpec. Answers only: may not import store or router. Optional at runtime: the engine must run with it disabled (charter: Jev is not a build dependency)."
+boundaries = ["Decision layer (DecisionProvider: Jev primary, LLM fallback)"]
+may_import = ["core"]
+stdlib_capabilities = ["socket", "ssl", "http.client", "urllib.request"]
+third_party = []
+
+[modules.tier0]
+path = "gen2/tier0"
+purpose = "Client for the local NLI claim-vs-span screen; runs after exact quote byte-matching, produces pass/alarm signals with checker identity. Screens only."
+boundaries = ["Tier-0 checker (NLI, local)"]
+may_import = ["core"]
+stdlib_capabilities = ["socket", "http.client", "urllib.request"]
+third_party = []
+
+[modules.gateway_client]
+path = "gen2/gateway_client"
+purpose = "The engine's typed door to the Gateway service (gateway/research_gateway runs as its own process and is never imported). Carries invocation IDs, request identity and coverage facts; never turns an unparseable payload into zero results."
+boundaries = ["Gateway"]
+may_import = ["core"]
+stdlib_capabilities = ["socket", "ssl", "http.client", "urllib.request"]
+third_party = []
+
+[modules.projector]
+path = "gen2/projector"
+purpose = "Outbox consumer publishing approved generations to the physical sinks (Neo4j, Qdrant); per-sink receipts are acknowledged through the ControlBackend protocol, never by writing the store."
+boundaries = ["Projector / publication"]
+may_import = ["core"]
+stdlib_capabilities = ["socket", "ssl", "http.client", "urllib.request"]
+third_party = []
+
+[modules.operator]
+path = "gen2/operator"
+purpose = "Operator transports (CLI/MCP/API behind one command service — design review §10) and status: typed holds, why-waiting answers, capability facts. Reaches state only through the ControlBackend protocol."
+boundaries = ["Operator"]
+may_import = ["core"]
+stdlib_capabilities = []
+third_party = []
+
+[modules.app]
+path = "gen2/app"
+purpose = "Composition root: constructs the router (which owns its store) and hands the core ControlBackend protocol to supervisor, projector and operator. Exists so router and supervisor never import each other. No domain logic."
+boundaries = []
+may_import = ["core", "router", "supervisor", "decision", "tier0", "gateway_client", "projector", "operator"]
+stdlib_capabilities = []
+third_party = []
+
+[modules.tests]
+path = "gen2/tests"
+purpose = "Gen-2 test suite. May import any gen2 module and any stdlib surface; forbidden_imports still apply (tests must not lean on gen-1 code)."
+boundaries = []
+may_import = ["*"]
+stdlib_capabilities = ["*"]
+third_party = []
+
+# ---------------------------------------------------------------------------
+# BOUNDARIES.md components that are not code modules. Their authority limits
+# are enforced where their output enters the engine (router at commit,
+# supervisor structural checks), not by an import rule.
+# ---------------------------------------------------------------------------
+[unmapped_components]
+"Primary agent (per-station frontier LLM)" = "An external model invocation launched by the supervisor (invocation kind research_pass/checkpoint). It writes nothing directly; its typed proposals enter only through commit_outcome."
+"Secondary/delegate agents" = "External model invocations (kind discovery/delegate) under the supervisor's lifecycle; no evidence-write capability exists for them to hold."
+"Verifier" = "A separate invocation (kind verification) with its own capability; role separation and required access tier are enforced by the router at commit (and by the verification_receipts constraints in gen2/store/schema.sql)."
