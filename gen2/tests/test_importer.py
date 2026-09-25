@@ -376,10 +376,11 @@ class DryRunMappingTest(ImporterTestCase):
     def test_identity_numerals_are_checked_as_written(self) -> None:
         """A5: 9007199254740990.6 parsed as 9007199254740991.0 and was then
         accepted as that integer; 1.0000000000000001 mapped as 1. The token is
-        now checked before any conversion: a fraction, a numeral binary64 does
-        not hold exactly, a string or a boolean is not an integer; an
-        integral value in range is accepted in any notation (as the store's
-        writer does), and one past 2**53-1 is out of range."""
+        now checked before a lossy conversion is accepted or used: a
+        fraction, a numeral binary64 does not hold exactly, a string or a
+        boolean is not an integer; an integral value in range is accepted in
+        any notation (as the store's writer does), and one past 2**53-1 is
+        out of range."""
         cases = {"9007199254740990.6": (None, "identity-not-an-integer"), "1.0000000000000001": (None, "identity-not-an-integer"),
                  "1.5": (None, "identity-not-an-integer"), '"3"': (None, "identity-not-an-integer"), "true": (None, "identity-not-an-integer"),
                  "1e400": (None, "identity-not-an-integer"), "9007199254740992": (None, "identity-out-of-range"), "-1": (None, "identity-out-of-range"),

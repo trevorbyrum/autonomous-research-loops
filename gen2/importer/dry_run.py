@@ -533,10 +533,10 @@ def gen2_topic_id(gen1_id: str, fleet: str | None) -> tuple[str | None, list[dic
 
 def _bounded(value: object, what: str, issues: list[dict]) -> int | None:
     """Apply the RA8 identity bound to a value the import would write as an
-    identity. The value is checked as parsed, before any conversion: a
-    numeral binary64 does not hold exactly, a fraction, a non-number or a
-    boolean is not an integer (A5), and an out-of-range integer is surfaced,
-    never truncated."""
+    identity. The value is checked as parsed, before a lossy conversion is
+    accepted or used (see _gen1_float): a numeral binary64 does not hold
+    exactly, a fraction, a non-number or a boolean is not an integer (A5),
+    and an out-of-range integer is surfaced, never truncated."""
     if isinstance(value, InexactNumeral) or isinstance(value, bool) or not isinstance(value, (int, float)) \
             or isinstance(value, float) and not value.is_integer():
         issues.append(_issue("identity-not-an-integer", f"{what}: {_show(value)} is not exactly an integer", "operator: resolve before import"))
