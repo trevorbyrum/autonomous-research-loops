@@ -55,7 +55,9 @@ deadlines, templates, ratings, confirmations or approvals. Input the
 importer cannot interpret is reported, not dropped (A5): fields of the wrong
 type, unsupported versions, fields and keys with no mapping, two records
 claiming one gen-2 identity, and numerals that are not exactly what they
-would be read as.
+would be read as. A numeral the parser cannot convert (past the
+interpreter's integer-conversion limit, or with an exponent past Decimal's
+range) makes its file or JSONL line unparseable, reported as such (A5-R2).
 """
 from __future__ import annotations
 
@@ -66,7 +68,7 @@ import re
 import reprlib
 import stat
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path, PurePosixPath
 
 from gen2.core import canonical
@@ -136,22 +138,48 @@ def _no_constant(name: str) -> object:
 
 
 def _gen1_float(token: str) -> float | InexactNumeral:
+    """A fraction or exponent numeral: its float when that float is exactly
+    the numeral written, else the token (InexactNumeral). The float is
+    computed first and then compared, as a decimal, with the token, so a
+    lossy conversion is never accepted or used. An exponent past Decimal's
+    range (1e-9999999999999999999) cannot be compared, so the numeral is
+    refused as input the parser cannot convert (A5-R2)."""
     value = float(token)
-    if value != value or value in (float("inf"), float("-inf")) or Decimal(repr(value)) != Decimal(token):
+    if value != value or value in (float("inf"), float("-inf")):
+        return InexactNumeral(token)
+    try:
+        written = Decimal(token)
+    except InvalidOperation:
+        raise Gen1ParseError(f"the numeral {_show(token)} has an exponent past what can be checked exactly") from None
+    if Decimal(repr(value)) != written:
         return InexactNumeral(token)
     return value
 
 
+def _gen1_int(token: str) -> int:
+    """An integer numeral of any size the interpreter converts. Past its
+    integer-conversion digit limit (sys.get_int_max_str_digits, 4300 by
+    default; the only way int() fails on a token the JSON scanner accepted),
+    the numeral is refused as input the parser cannot convert (A5-R2). The
+    limit is not raised."""
+    try:
+        return int(token)
+    except ValueError:
+        raise Gen1ParseError(f"an integer numeral of {len(token.lstrip('-'))} digits is past the interpreter's integer-conversion limit") from None
+
+
 def parse_gen1_json(data: bytes) -> object:
     """gen-1 JSON as gen-1 wrote it. Duplicate keys and NaN/Infinity are
-    refused, as in canonical.parse_json_strict. Integers of any size are
-    kept, so that a single out-of-range identity is surfaced on its own
-    record (see _bounded) instead of making the whole file unreadable. A
-    fractional or exponent numeral binary64 cannot hold exactly is kept as
-    its token (InexactNumeral), not rounded. This parser is for reading
-    only; what the report carries is canonicalized."""
+    refused, as in canonical.parse_json_strict. Integers are kept at any
+    size the interpreter converts, so that a single out-of-range identity is
+    surfaced on its own record (see _bounded) instead of making the whole
+    file unreadable. A fractional or exponent numeral binary64 cannot hold
+    exactly is kept as its token (InexactNumeral), not rounded. A numeral
+    the parser cannot convert or check (_gen1_int, _gen1_float) makes the
+    input unparseable, reported like any malformed JSON. This parser is for
+    reading only; what the report carries is canonicalized."""
     try:
-        return json.loads(data.decode("utf-8"), object_pairs_hook=_no_duplicates, parse_constant=_no_constant, parse_float=_gen1_float)
+        return json.loads(data.decode("utf-8"), object_pairs_hook=_no_duplicates, parse_constant=_no_constant, parse_float=_gen1_float, parse_int=_gen1_int)
     except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
         raise Gen1ParseError(str(exc)) from exc
 
@@ -391,8 +419,10 @@ class Gen1Reader:
             return None, str(exc)
 
     def jsonl(self, rel: PurePosixPath) -> tuple[list[dict], int] | None:
-        """(parsed lines, malformed line count): malformed lines are counted
-        and reported, never dropped silently (gen-1 defect §11.9)."""
+        """(parsed lines, malformed line count): a line that cannot be read
+        as a JSON object (malformed JSON, or a numeral the parser cannot
+        convert) is counted and reported, never dropped silently (gen-1
+        defect §11.9). Its neighbours are read as usual."""
         data = self.read(rel)
         if data is None:
             return None
@@ -643,7 +673,7 @@ def map_jsonl_history(reader: Gen1Reader, rel: PurePosixPath, ref: str, what: st
     lines, bad = result
     issues = [_issue("no-gen2-target", f"{what}: no gen-2 table yet", "Phase 4 (§12: available usage history is preserved)")]
     if bad:
-        issues.append(_issue("malformed-lines", f"{bad} line(s) are not JSON objects: reported, not dropped (gen-1 defect §11.9)", "operator review"))
+        issues.append(_issue("malformed-lines", f"{bad} line(s) could not be read as JSON objects: reported, not dropped (gen-1 defect §11.9)", "operator review"))
     return _record("history", ref, None, {"lines": len(lines), "malformed_lines": bad}, issues, unmapped=True)
 
 

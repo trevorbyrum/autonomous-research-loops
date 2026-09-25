@@ -687,5 +687,62 @@ class CommandTest(ImporterTestCase):
         lock = find(records_of(report, "latency"), "completion lock")
         self.assertEqual((lock["mapping"], "numeral-not-exact" in codes(lock)), ({"legacy_lock": None}, True))
 
+    def report_via_cli(self, root: Path, *args: str) -> tuple[int, dict]:
+        """(exit status, report) from the CLI for `root`, the report parsed from
+        what it printed. A crash, or output that is not a report, fails the
+        test (A5: input the importer cannot interpret is reported)."""
+        out, err = io.StringIO(), io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                status = dry_run.main(["--gen1-root", str(root), *args])
+        except Exception as exc:
+            self.fail(f"the importer crashed instead of reporting: {exc!r} ({len(out.getvalue())} report bytes)")
+        report = json.loads(out.getvalue())
+        self.assertEqual(report["report_version"], "gen1-import-dry-run/1")
+        return status, report
+
+    def test_numerals_the_parser_cannot_convert_are_reported_not_fatal(self) -> None:
+        """Astra 0b-repair re-review A5-R2: a 4,301-digit integer, past the
+        interpreter's integer-conversion limit, in state/queue.json or in the
+        middle line of state/events.jsonl escaped as a ValueError, and the
+        CLI printed no report. An exponent past Decimal's range did the same
+        (InvalidOperation). Such a queue now blocks as queue-unparseable and
+        the report is printed; such a line is counted as malformed and its
+        neighbours are read. The numerals just inside each limit (4,300
+        digits; an 18-digit exponent) are still read as numbers and reported
+        on their own record, as is an exponent so large the number overflows
+        (certainly not a binary64, so no exactness check is needed). The
+        limit is not raised."""
+        limit = sys.get_int_max_str_digits()
+        if not limit:
+            self.skipTest("this interpreter has no integer-conversion limit")
+        # count token -> (exit status, blocking issue, its detail, accepted-iterations codes when the queue maps); by hand
+        cases = {"9" * (limit + 1): (1, ["queue-unparseable"], f"an integer numeral of {limit + 1} digits is past the interpreter's integer-conversion limit", None),
+                 "9" * limit: (0, [], None, {"identity-out-of-range", "ordinals-without-history"}),
+                 "1e-9999999999999999999": (1, ["queue-unparseable"], "the numeral '1e-9999999999999999999' has an exponent past what can be checked exactly", None),
+                 "1e-999999999999999999": (0, [], None, {"identity-not-an-integer", "ordinals-without-history"}),
+                 "1e9999999999999999999": (0, [], None, {"identity-not-an-integer", "ordinals-without-history"})}
+        for n, (token, (exit_status, blocking, detail, count_codes)) in enumerate(cases.items()):
+            with self.subTest(queue=token[:24], length=len(token)):
+                root = self.tmp / f"queue-{n}"
+                write(root / "state" / "queue.json", '{"version":1,"items":[{"id":"topic","status":"queued","iterations_completed":' + token + '}]}')  # the review's payload
+                status, report = self.report_via_cli(root, "--fleet", "fleet-a")
+                self.assertEqual((status, [i["code"] for i in report["blocking"]]), (exit_status, blocking))
+                if count_codes is None:
+                    self.assertEqual((report["blocking"][0]["detail"], report["topics"]), (detail, []))
+                else:
+                    count = find(records_of(report, "topic"), "accepted iterations")
+                    self.assertEqual((count["mapping"], codes(count)), ({"accepted_count": None}, count_codes))
+        for token, bad in (("9" * (limit + 1), 1), ("9" * limit, 0), ("1e-9999999999999999999", 1), ("1e-999999999999999999", 0)):
+            with self.subTest(events=token[:24], length=len(token)):
+                write(self.root / "state" / "events.jsonl", '{"type": "a"}\n{"n": ' + token + '}\n{"type": "b"}\n')
+                status, report = self.report_via_cli(self.root, "--fleet", "fleet-a")
+                events = find(report["other"], "history", "events.jsonl")
+                self.assertEqual((status, events["mapping"], codes(events)),
+                                 (0, {"lines": 3 - bad, "malformed_lines": bad}, {"no-gen2-target", "malformed-lines"} if bad else {"no-gen2-target"}))
+                self.assertEqual(find(records_of(report, "latency"), "queue item")["mapping"], {"topic_id": "fleet-a:latency", "priority": 1})  # the rest maps as usual
+        self.assertEqual(sys.get_int_max_str_digits(), limit)
+
+
 if __name__ == "__main__":
     unittest.main()

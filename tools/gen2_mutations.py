@@ -1135,7 +1135,7 @@ MUTATIONS: list[Mutation] = [
           ("A5-numerals-rounded", "the review's shape: a numeral binary64 does not hold exactly is rounded (9007199254740990.6 becomes 9007199254740991)",
            ("DryRunMappingTest.test_identity_numerals_are_checked_as_written", "DryRunMappingTest.test_every_record_is_classified_and_every_gap_is_surfaced",
             "CommandTest.test_an_unrepresentable_gen1_value_is_surfaced_not_fatal"),
-           "    if value != value or value in (float(\"inf\"), float(\"-inf\")) or Decimal(repr(value)) != Decimal(token):\n        return InexactNumeral(token)\n", ""),
+           "    if Decimal(repr(value)) != written:\n        return InexactNumeral(token)\n", ""),
           ("A5-fraction-as-identity", "a fractional identity is judged only by the range check (reported as out of range, not as a non-integer)",
            ("DryRunMappingTest.test_identity_numerals_are_checked_as_written",), "            or isinstance(value, float) and not value.is_integer():", "            or False:"),
           ("A5-inexact-kept-in-mapping", "an inexact numeral in a mapped value is reported as merely unrepresentable",
@@ -1192,7 +1192,22 @@ MUTATIONS: list[Mutation] = [
           ("A5-unbounded-repr", "gen-1 values are quoted in issue text whole, however large (plain repr)",
            ("DryRunMappingTest.test_malformed_fields_are_reported_and_the_report_is_still_produced",), "_show = _SHOW.repr\n", "_show = repr\n"),
           ("A5-obligation-fields-dropped", "obligation fields with no mapping are dropped silently", ("DryRunMappingTest.test_obligations_sources_and_logs",),
-           "        extra = _unmapped_fields(obl, OBLIGATION_MAPPED)\n        if extra:", "        extra = _unmapped_fields(obl, OBLIGATION_MAPPED)\n        if False:"))),
+           "        extra = _unmapped_fields(obl, OBLIGATION_MAPPED)\n        if extra:", "        extra = _unmapped_fields(obl, OBLIGATION_MAPPED)\n        if False:"),
+          # --- 0b repair-2 A5-R2: a numeral the parser cannot convert is reported, never fatal ---
+          ("A5R2-int-limit-uncaught", "the review's probe: a 4,301-digit integer escapes the parser as a ValueError (no integer hook)",
+           ("CommandTest.test_numerals_the_parser_cannot_convert_are_reported_not_fatal",), ", parse_float=_gen1_float, parse_int=_gen1_int)", ", parse_float=_gen1_float)"),
+          ("A5R2-oversize-int-zeroed", "an integer past the conversion limit is read as 0, not refused",
+           ("CommandTest.test_numerals_the_parser_cannot_convert_are_reported_not_fatal",), '        raise Gen1ParseError(f"an integer numeral of', '        return 0\n        raise Gen1ParseError(f"an integer numeral of'),
+          ("A5R2-limit-lifted", "the fix the review forbids: the integer-conversion limit is lifted for the parse (then restored), so the numeral is converted",
+           ("CommandTest.test_numerals_the_parser_cannot_convert_are_reported_not_fatal",),
+           '        return json.loads(data.decode("utf-8"), object_pairs_hook=_no_duplicates, parse_constant=_no_constant, parse_float=_gen1_float, parse_int=_gen1_int)\n',
+           '        limit = __import__("sys").get_int_max_str_digits()\n        __import__("sys").set_int_max_str_digits(0)\n        try:\n'
+           '            return json.loads(data.decode("utf-8"), object_pairs_hook=_no_duplicates, parse_constant=_no_constant, parse_float=_gen1_float, parse_int=_gen1_int)\n'
+           '        finally:\n            __import__("sys").set_int_max_str_digits(limit)\n'),
+          ("A5R2-exponent-uncaught", "an exponent past Decimal's range escapes the parser as InvalidOperation",
+           ("CommandTest.test_numerals_the_parser_cannot_convert_are_reported_not_fatal",), "    except InvalidOperation:\n        raise Gen1ParseError(", "    except ZeroDivisionError:\n        raise Gen1ParseError("),
+          ("A5R2-overflow-unparseable", "an exponent so large the number overflows makes the file unparseable instead of an inexact numeral on its record",
+           ("CommandTest.test_numerals_the_parser_cannot_convert_are_reported_not_fatal",), '    if value != value or value in (float("inf"), float("-inf")):\n        return InexactNumeral(token)\n', ""))),
     *(Mutation(f"IMP-graph-{key}", "0b-importer", desc, (CB + "test_importer_cannot_reach_a_store_under_the_real_graph",), target="gen2/boundaries.toml",
                old='may_import = ["core"]\nstdlib_capabilities = []\nthird_party = []\n\n[modules.operator]', new=new)
       for key, desc, new in (
