@@ -27,6 +27,10 @@ class LeaseFencingTest(StoreTestCase):
         self.lease("lease_vvvvvvvv", 2, scope="verification")  # another scope is independent
         self.rejects("UNIQUE constraint failed: leases.topic_id, leases.scope",
                      "INSERT INTO leases (lease_id, topic_id, scope, generation, station_id, granted_at, expires_at) VALUES ('lease_bbbbbbbb', ?, 'research', 3, 'st2', ?, ?)", TOPIC, T, T)
+        # A1: REPLACE would resolve the one-live-lease conflict by deleting the live lease
+        self.rejects("leases are never deleted",
+                     "INSERT OR REPLACE INTO leases (lease_id, topic_id, scope, generation, station_id, granted_at, expires_at) VALUES ('lease_bbbbbbbb', ?, 'research', 3, 'st2', ?, ?)", TOPIC, T, T)
+        self.assertEqual(self.rows("SELECT lease_id FROM leases WHERE scope = 'research' AND released_at IS NULL"), [("lease_aaaaaaaa",)])
         self.x("UPDATE leases SET released_at = ?, release_reason = 'finalized' WHERE lease_id = 'lease_aaaaaaaa'", T)
         self.lease("lease_bbbbbbbb", 3)
 

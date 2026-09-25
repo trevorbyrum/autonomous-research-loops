@@ -656,6 +656,14 @@ MUTATIONS: list[Mutation] = [
           ("review_episodes_close_once", (RI + "test_review_episode_closes_once",)),
           ("claims_identity_immutable", (RI + "test_claim_content_is_immutable_per_revision",)),
           ("works_identity_immutable", (RI + "test_work_identity_is_immutable",)))),
+    Mutation("D48-any-physical-sink", "A2", "the review's surviving mutant: any physical sink (Neo4j/Qdrant) accepted, not just the manifest's expected ones",
+             (D + "PublicationTest.test_delivery_receipt_only_for_expected_sinks",), scope="sink_delivery_receipts_expected_sink",
+             old="WHEN NOT EXISTS (\n  SELECT 1 FROM outbox_events e, json_each(e.expected_sinks) j\n  WHERE e.outbox_event_id = NEW.outbox_event_id AND j.value = NEW.sink)",
+             new="WHEN NEW.sink NOT IN ('neo4j', 'qdrant')"),
+    Mutation("D48-expected-sink-dropped", "A2", "drop the expected-sink trigger", (D + "PublicationTest.test_delivery_receipt_only_for_expected_sinks",),
+             drop_trigger="sink_delivery_receipts_expected_sink"),
+    Mutation("A1-D01-live-lease-replace", "A1", "drop leases delete guard (REPLACE of the live lease)", (D + "LeaseFencingTest.test_one_live_lease_per_topic_and_scope_until_released",),
+             drop_trigger="leases_no_delete"),
     # --- A9: capability supersession --------------------------------------
     Mutation("A9-successor-fk-immediate", "A9", "successor FK checked immediately (the documented transaction cannot run)",
              (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",),
@@ -706,11 +714,13 @@ def uncovered_triggers(ddl: str) -> list[str]:
             continue
         if m.drop_trigger:
             covered.add(m.drop_trigger)
-        if m.scope in blocks:
-            covered.add(m.scope)
-        for old in [m.old, *(o for o, _ in m.also)]:
-            if old:
-                covered.update(name for name, body in blocks.items() if old in body)
+        elif m.scope:
+            if m.scope in blocks:
+                covered.add(m.scope)  # a scoped edit covers its scope only, whatever else shares the text
+        else:
+            for old in [m.old, *(o for o, _ in m.also)]:
+                if old:  # unscoped edits must match the DDL exactly once; credit the trigger holding that match
+                    covered.update(name for name, body in blocks.items() if old in body and ddl.count(old) == 1)
     return sorted(set(blocks) - covered - SECOND_LAYER_TRIGGERS)
 
 
