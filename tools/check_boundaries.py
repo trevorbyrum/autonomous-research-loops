@@ -15,10 +15,12 @@ which capability-bearing names a module can reach through ordinary static
 Python: imports (including the private low-level modules behind public ones,
 e.g. _sqlite3, _posixsubprocess), attribute chains on imported modules, and
 the forbidden builtins by any static spelling (bare reference, `from builtins
-import eval as e`, an alias of `builtins`, `__builtins__`). Import aliases are
-resolved in the scope that binds them (module, function, class,
-comprehension; global/nonlocal honoured), so an alias reused in another
-function cannot hide a restricted module.
+import eval as e`, an alias of `builtins`, `__builtins__`) — in any expression
+position, signature annotations, defaults, decorators and type-parameter
+bounds included (they are evaluated code). Import aliases are resolved in the
+scope that binds them (module, function, class, comprehension; `global` and
+`nonlocal` honoured, including an import that rebinds a nonlocal name), so an
+alias reused in another function cannot hide a restricted module.
 
 What it structurally cannot see, and so leaves to runtime isolation and
 review: names reached through reflection (getattr/globals/vars/sys.modules),
@@ -279,6 +281,7 @@ class _Binder(ast.NodeVisitor):
         self.imports: list[tuple[int, str]] = []
         self.loads: list[tuple[ast.Name, _Scope]] = []
         self.attrs: list[tuple[ast.Attribute, _Scope]] = []
+        self.nonlocal_imports: list[tuple[_Scope, str, str]] = []
         self.problems: list[str] = []
 
     # -- binding helpers ------------------------------------------------------
@@ -291,7 +294,28 @@ class _Binder(ast.NodeVisitor):
         scope = self._target_scope(name)
         scope.bound.add(name)
         if import_target is not None:
-            scope.imports.setdefault(name, set()).add(import_target)
+            if name in scope.nonlocal_names:
+                # `nonlocal x; import os as x` rebinds the ENCLOSING function's
+                # x (Astra re-review RA7); resolved once every binding is known
+                self.nonlocal_imports.append((scope, name, import_target))
+            else:
+                scope.imports.setdefault(name, set()).add(import_target)
+
+    def finish(self) -> None:
+        """Attach each nonlocal import to the function scope that owns the name:
+        the nearest enclosing function scope binding it (class bodies and
+        comprehensions are not enclosing scopes for nonlocal; a scope that
+        itself declares the name nonlocal or global does not own it). Python
+        refuses a nonlocal with no owner, so the module scope is only a
+        conservative fallback."""
+        for scope, name, target in self.nonlocal_imports:
+            owner = scope.parent
+            while owner is not None and owner.parent is not None and (
+                    owner.kind != "function" or name not in owner.bound or name in owner.nonlocal_names or name in owner.global_names):
+                owner = owner.parent
+            owner = owner or scope.module()
+            owner.bound.add(name)
+            owner.imports.setdefault(name, set()).add(target)
 
     def bind_target(self, node: ast.AST) -> None:
         for sub in ast.walk(node):
@@ -301,12 +325,30 @@ class _Binder(ast.NodeVisitor):
                 self.bind(sub.value.id)
 
     # -- scopes ---------------------------------------------------------------
+    def _type_params(self, node: ast.AST) -> None:
+        """Type-parameter bounds/defaults (3.12+) are evaluated code; visited
+        conservatively in the enclosing scope."""
+        for param in getattr(node, "type_params", ()):
+            for field in ("bound", "default_value"):
+                value = getattr(param, field, None)
+                if value is not None:
+                    self.visit(value)
+
+    def _signature(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        """Everything a `def` evaluates outside its body, in the enclosing
+        scope (Astra re-review RA7): decorators, defaults, parameter and return
+        annotations (run at definition time, or later by typing.get_type_hints
+        under `from __future__ import annotations` — either way code), type
+        parameters. The parameters themselves are not yet bound here."""
+        args = node.args
+        for expr in (*node.decorator_list, *args.defaults, *args.kw_defaults, node.returns,
+                     *(a.annotation for a in (*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg) if a is not None)):
+            if expr is not None:
+                self.visit(expr)
+        self._type_params(node)
+
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802
-        for deco in node.decorator_list:
-            self.visit(deco)
-        for default in (*node.args.defaults, *node.args.kw_defaults):
-            if default is not None:
-                self.visit(default)
+        self._signature(node)
         self.bind(node.name)
         outer = self.scope
         self.scope = _Scope("function", outer)
@@ -334,6 +376,7 @@ class _Binder(ast.NodeVisitor):
     def visit_ClassDef(self, node: ast.ClassDef) -> None:  # noqa: N802
         for expr in (*node.decorator_list, *node.bases, *(k.value for k in node.keywords)):
             self.visit(expr)
+        self._type_params(node)
         self.bind(node.name)
         outer = self.scope
         self.scope = _Scope("class", outer)
@@ -467,6 +510,7 @@ def collect_references(tree: ast.Module, package: str, rel: str, forbidden_calls
     """
     binder = _Binder(package, rel)
     binder.visit(tree)
+    binder.finish()
     refs: list[tuple[int, str, str, str]] = [(lineno, target, "import", "") for lineno, target in binder.imports]
     forbidden = set(forbidden_calls)
     for lineno, target in binder.imports:

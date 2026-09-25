@@ -190,8 +190,12 @@ class BoundaryCheckerTest(unittest.TestCase):
         self.assertViolation(self.run_checker(), "core uses restricted stdlib 'importlib.import_module'")
 
     def test_forbidden_builtin_calls(self) -> None:
-        """B20 rewrite (A8): every ordinary static spelling that reaches a
-        forbidden builtin is reported at its line — not only literal calls."""
+        """B20 rewrite (A8), extended for RA7: every ordinary static spelling
+        that reaches a forbidden builtin is reported at its line — not only
+        literal calls, and not only in bodies: parameter annotations (the
+        review's `def f(x: eval('1')): pass`, and keyword-only, *args/**kwargs
+        and positional-only variants), return annotations, async signatures and
+        type-parameter bounds are evaluated code too."""
         self.write("gen2/core/types.py", """\
             x = eval('1')
             y = __import__('gen2.supervisor')
@@ -207,10 +211,20 @@ class BoundaryCheckerTest(unittest.TestCase):
                 import builtins as bb
                 return bb.eval('2')
             ops = list(map(exec, []))
+            def f(x: eval('1')): pass
+            def ret() -> exec('pass'): pass
+            def kwonly(*, k: compile('1', 'f', 'eval') = 1): pass
+            def star(*a: __import__('os'), **kw: eval('2')): pass
+            def pos(p: exec('x'), /): pass
+            async def coro(x: eval('3')): pass
+            def generic[T: eval('4')](): pass
+            class Generic[T: exec('5')]: pass
             """)
         result = self.run_checker()
         self.assertViolation(result, "gen2/core/types.py:1: core reaches forbidden builtin eval()")
-        for line, name in ((2, "__import__()"), (4, "exec()"), (6, "exec()"), (7, "eval()"), (9, "compile()"), (10, "__builtins__"), (13, "eval()"), (14, "exec()")):
+        for line, name in ((2, "__import__()"), (4, "exec()"), (6, "exec()"), (7, "eval()"), (9, "compile()"), (10, "__builtins__"), (13, "eval()"), (14, "exec()"),
+                           (15, "eval()"), (16, "exec()"), (17, "compile()"), (18, "__import__()"), (18, "eval()"), (19, "exec()"), (20, "eval()"),
+                           (21, "eval()"), (22, "exec()")):
             with self.subTest(line=line):
                 self.assertIn(f"gen2/core/types.py:{line}: core reaches forbidden builtin {name}", result.stderr)
 
@@ -259,15 +273,100 @@ class BoundaryCheckerTest(unittest.TestCase):
         self.assertNotIn("types.py:14:", result.stderr)  # there x is json: json.system is no capability
         self.assertNotIn("types.py:4:", result.stderr)
 
+    REVIEW_RA7 = {  # Astra re-review RA7, verbatim: each returned no violation in accounting under the real graph
+        "annotation.py": "def f(x: eval('1')): pass\n",
+        "annotation_os.py": "import os\ndef f(x: os.system('true')): pass\n",
+        "nonlocal_rebind.py": "def f():\n    import json as x\n    def g():\n        nonlocal x\n        import os as x\n    g()\n    x.system('true')\n",
+        "posix_direct.py": "import posix\nposix.system('true')\n",
+    }
+
+    def real_graph(self) -> None:
+        self.write("gen2/boundaries.toml", REAL_BOUNDARIES.read_text(encoding="utf-8"))
+        self.write("docs/gen2/BOUNDARIES.md", (REPO / "docs" / "gen2" / "BOUNDARIES.md").read_text(encoding="utf-8"))
+
+    def test_review_ra7_reproductions_under_the_real_graph(self) -> None:
+        """RA7: the review's four sources, verbatim, in `accounting` under the
+        REAL gen2/boundaries.toml, each reported at its line — beside positive
+        shadowing controls that must stay silent: a parameter named eval with
+        a string annotation, an os annotation that is no capability, posixpath
+        and os.getcwd, a nonlocal import rebinding an os alias to json (x.dumps
+        is no capability), and a nonlocal non-import binding shadowing a
+        module-level os alias."""
+        self.real_graph()
+        for name, source in self.REVIEW_RA7.items():
+            self.write(f"gen2/accounting/{name}", source)
+        self.write("gen2/accounting/controls.py", """\
+            import os
+            import os as x
+            import posixpath
+            def typed(n: int = 1, *, eval: str = 's') -> 'eval':
+                return eval
+            def path(p: os.PathLike) -> str:
+                return posixpath.join(os.getcwd(), 'a')
+            def outer():
+                import os as y
+                def inner():
+                    nonlocal y
+                    import json as y
+                inner()
+                return y.dumps({})
+            def shadowed():
+                x = None
+                def inner():
+                    nonlocal x
+                    x = object()
+                inner()
+                return x.system
+            """)
+        result = subprocess.run([sys.executable, str(CHECKER), "--root", str(self.root)], capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 1, msg=result.stderr)
+        for where, what in (("annotation.py:1", "reaches forbidden builtin eval()"), ("annotation_os.py:2", "uses restricted stdlib 'os.system'"),
+                            ("nonlocal_rebind.py:7", "uses restricted stdlib 'os.system'"), ("posix_direct.py:1", "uses restricted stdlib 'posix'")):
+            with self.subTest(source=where):
+                self.assertIn(f"gen2/accounting/{where}: accounting {what}", result.stderr)
+        self.assertNotIn("controls.py", result.stderr)
+        self.assertIn("gen2 boundary check FAILED: 4 violation(s)", result.stderr)
+
+    def test_scope_resolution_witnesses(self) -> None:
+        """The three scope-resolution cases Astra's independent mutants showed
+        untested (re-review, 'additional Python mutants'): a class body is not
+        visible to its methods (module os, class-local json, method x.system:
+        os.system); `global` resolves at module scope from a nested function
+        even when the enclosing function rebinds the name to json; and — the
+        positive control — a walrus inside a comprehension binds in the
+        enclosing function, shadowing a module os alias (no violation)."""
+        self.write("gen2/core/types.py", """\
+            import os as x
+            class K:
+                import json as x
+                def m(self):
+                    return x.system('true')
+            def f():
+                import json as x
+                def g():
+                    global x
+                    return x.system('true')
+                return g
+            def h(items):
+                [(x := item) for item in items]
+                return x.system
+            """)
+        result = self.run_checker()
+        self.assertViolation(result, "gen2/core/types.py:5: core uses restricted stdlib 'os.system'")
+        self.assertIn("gen2/core/types.py:10: core uses restricted stdlib 'os.system'", result.stderr)
+        self.assertNotIn("types.py:14:", result.stderr)
+        self.assertIn("gen2 boundary check FAILED: 2 violation(s)", result.stderr)
+
     def test_real_graph_restricts_low_level_and_alternate_surfaces(self) -> None:
         """A8 against the REAL gen2/boundaries.toml and BOUNDARIES.md (not a
-        fixture config): the private modules behind the public surfaces and the
-        alternate network/loader surfaces are restricted for a module that is
-        granted none of them."""
+        fixture config): the private modules behind the public surfaces (RA7:
+        posix/nt, the modules behind os, included) and the alternate
+        network/loader surfaces are restricted for a module that is granted
+        none of them."""
         self.write("gen2/boundaries.toml", REAL_BOUNDARIES.read_text(encoding="utf-8"))
         self.write("docs/gen2/BOUNDARIES.md", (REPO / "docs" / "gen2" / "BOUNDARIES.md").read_text(encoding="utf-8"))
         surfaces = ("_sqlite3", "_posixsubprocess", "imaplib", "poplib", "_socket", "_ssl", "_multiprocessing", "_ctypes", "_pickle",
-                    "_imp", "zipimport", "pkgutil", "dbm", "webbrowser", "wsgiref", "_signal", "_asyncio")
+                    "_imp", "zipimport", "pkgutil", "dbm", "webbrowser", "wsgiref", "_signal", "_asyncio", "posix", "nt")
         self.write("gen2/accounting/sums.py", "".join(f"import {name}\n" for name in surfaces) + "import importlib\nimportlib.__import__('os')\n")
         result = subprocess.run([sys.executable, str(CHECKER), "--root", str(self.root)], capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 1, msg=result.stderr)

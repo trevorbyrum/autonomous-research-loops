@@ -63,8 +63,10 @@ forbidden_sql_exempt_modules = ["tests"]
 restricted_stdlib = [
   # authoritative-store access (sole writer: BOUNDARIES.md Router)
   "sqlite3", "_sqlite3", "dbm", "shelve",
-  # process control (BOUNDARIES.md Station supervisor owns lifecycles)
-  "subprocess", "_posixsubprocess", "multiprocessing", "_multiprocessing",
+  # process control (BOUNDARIES.md Station supervisor owns lifecycles). posix
+  # and nt are the modules behind os: system/fork/exec*/spawn*/kill directly
+  # (Astra re-review RA7) — restricted whole, granted nowhere; code uses os.
+  "subprocess", "_posixsubprocess", "posix", "nt", "multiprocessing", "_multiprocessing",
   "concurrent.futures.process", "signal", "_signal", "asyncio", "_asyncio",
   "pty", "webbrowser", "_winapi", "msvcrt",
   "os.system", "os.popen", "os.fork", "os.forkpty", "os.kill", "os.killpg",
