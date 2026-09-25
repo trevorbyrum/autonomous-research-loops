@@ -322,10 +322,13 @@ class CommitFencingTest(StoreTestCase):
         self.rejects("never deleted", "DELETE FROM operation_receipts WHERE operation_id = 'op_00000001'")
         # REPLACE on the primary key and on the alternate receipt_id key (A1);
         # every key is attacked in test_store_history.py.
+        # (the JSON is rewritten alongside, so each attempt is a consistent row and only the conflict decides)
         replace = ("INSERT OR REPLACE INTO operation_receipts SELECT ?, ?, operation_kind, invocation_id, topic_id, ?, ?, lease_id, lease_generation, admission_context, contract_revision, brief_hash, config_bundle_hash, state_revision_before + ?, state_revision_after + ?, validator_version, policy_version, "
-                   "json_set(receipt, '$.operation_id', ?, '$.receipt_id', ?, '$.payload_digest', ?), committed_at FROM operation_receipts WHERE operation_id = 'op_00000001'")
-        self.rejects("replay protection depends on them", replace, "op_00000001", "rcpt_00000001", h("9"), h("0"), 0, 0, "op_00000001", "rcpt_00000001", h("0"))
-        self.rejects("replay protection depends on them", replace, "op_00000002", "rcpt_00000001", h("9"), h("0"), 5, 5, "op_00000002", "rcpt_00000001", h("0"))
+                   "json_set(receipt, '$.operation_id', ?, '$.receipt_id', ?, '$.request_fingerprint', ?, '$.payload_digest', ?, '$.state_revision_before', state_revision_before + ?, '$.state_revision_after', state_revision_after + ?), committed_at "
+                   "FROM operation_receipts WHERE operation_id = 'op_00000001'")
+        for op, rid, shift in (("op_00000001", "rcpt_00000001", 0), ("op_00000002", "rcpt_00000001", 5)):
+            with self.subTest(operation=op):
+                self.rejects("replay protection depends on them", replace, op, rid, h("9"), h("0"), shift, shift, op, rid, h("9"), h("0"), shift, shift)
         self.assertEqual(self.snapshot("operation_receipts"), stored)
 
     def test_one_final_outcome_per_invocation(self) -> None:
@@ -966,6 +969,15 @@ class DecisionReceiptConsistencyTest(StoreTestCase):
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
             self.decision_receipt("dec_00000001", "inv_pppppppp", other)  # a spec bound to another topic's protocol
         self.assertIn(refused, str(ctx.exception))
+        # RA6: the spec id the receipt names must be the id of the spec its hash
+        # selects — an unknown id, and the id of another stored spec, each with
+        # the correct hash
+        self.spec("dspec_screen02")
+        for spec_id in ("dspec_wrong001", "dspec_screen02"):
+            with self.subTest(spec_id=spec_id):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, receipt_overrides={"spec": {"spec_id": spec_id, "spec_hash": self.jev}})
+                self.assertIn(refused, str(ctx.exception))
         self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev)
 
     def test_spec_shape_by_class_and_provider(self) -> None:
@@ -998,7 +1010,8 @@ class DecisionReceiptConsistencyTest(StoreTestCase):
     def test_receipt_row_matches_its_json(self) -> None:
         """A10: each probe keeps the columns valid and changes only the JSON field."""
         doc_probes = {
-            "decision_receipt_id": "dec_other000", "invocation_id": "inv_other000", "topic_id": OTHER, "spec": {"spec_id": "dspec_x", "spec_hash": h("0")},
+            "decision_receipt_id": "dec_other000", "invocation_id": "inv_other000", "topic_id": OTHER, "spec": {"spec_id": "dspec_screen01", "spec_hash": h("0")},
+            "decided_at": "2026-09-26T00:00:00Z",
             "decision_class": "method_selection", "provider": "llm_fallback", "subject": {"kind": "work", "ref": "wrk_other000"},
             "subject.kind": {"kind": "claim", "ref": "wrk_00000001"},
             "input_manifest": {"snapshot_digest": h("6"), "input_record_ids": [], "input_status": "stale"},
@@ -1211,8 +1224,16 @@ class ContractGovernanceTest(StoreTestCase):
                      "SELECT topic_id, 3, 2, protocol_revision, framing_version, ?, json_set(json_set(document, '$.revision', 3), '$.content_hash', ?), 'approved', 'opd_00000001', created_at FROM contract_revisions WHERE topic_id = ? AND revision = 1", h("8"), h("8"), TOPIC)
 
     def test_hash_lock_binds_document_to_row(self) -> None:
-        doc = json.dumps({"topic_id": TOPIC, "revision": 2, "content_hash": h("0"), "protocol_revision": 1, "facet_map": {"framing_version": 1}})
-        self.rejects("CHECK constraint failed", "INSERT INTO contract_revisions (topic_id, revision, parent_revision, protocol_revision, framing_version, content_hash, document, status, created_at) VALUES (?, 2, 1, 1, 1, ?, ?, 'draft', ?)", TOPIC, h("9"), doc, T)
+        """G-1 / RA6: every identity field the contract document duplicates —
+        topic, revision, parent (the lineage RA2 reads), created_at, content
+        hash, protocol revision, framing version — equals its column."""
+        base = {"topic_id": TOPIC, "revision": 2, "parent_revision": 1, "created_at": T, "content_hash": h("9"), "protocol_revision": 1, "facet_map": {"framing_version": 1}}
+        ins = "INSERT INTO contract_revisions (topic_id, revision, parent_revision, protocol_revision, framing_version, content_hash, document, status, created_at) VALUES (?, 2, 1, 1, 1, ?, ?, 'draft', ?)"
+        for key, value in (("topic_id", OTHER), ("revision", 3), ("parent_revision", None), ("created_at", "2026-09-26T00:00:00Z"), ("content_hash", h("0")),
+                           ("protocol_revision", 2), ("facet_map", {"framing_version": 2})):
+            with self.subTest(field=key):
+                self.rejects("CHECK constraint failed", ins, TOPIC, h("9"), json.dumps(dict(base, **{key: value})), T)
+        self.x(ins, TOPIC, h("9"), json.dumps(base), T)
 
     def test_one_approved_revision_per_topic(self) -> None:
         self.approve_contract(TOPIC, 1, "opd_00000001")
@@ -1579,19 +1600,64 @@ class AdmissionAndLeaseTest(StoreTestCase):
                 self.assertIn(pinned, str(ctx.exception))
         self.rejects(pinned, "INSERT INTO operation_receipts (operation_id, receipt_id, operation_kind, invocation_id, topic_id, request_fingerprint, payload_digest, lease_id, lease_generation, admission_context, contract_revision, config_bundle_hash, state_revision_before, state_revision_after, validator_version, policy_version, receipt, committed_at) "
                      "VALUES ('op_00000001', 'rcpt_00000001', 'final_outcome', 'inv_pppppppp', ?, ?, ?, 'lease_aaaaaaaa', 1, 'contract/1', 1, ?, 0, 1, 'v1', 'p1', ?, ?)",
-                     TOPIC, h("f"), h("d"), h("0"), json.dumps({"operation_id": "op_00000001", "receipt_id": "rcpt_00000001", "payload_digest": h("d"), "admission": {"context": "contract/1", "contract": {"revision": 1}, "brief": None}}), T)
+                     TOPIC, h("f"), h("d"), h("0"), json.dumps(self.receipt_body("op_00000001", "rcpt_00000001", "final_outcome", "inv_pppppppp", TOPIC, 0)), T)  # another config bundle
         self.receipt("op_00000001", "inv_pppppppp")
 
+    RECEIPT_INSERT = ("INSERT INTO operation_receipts (operation_id, receipt_id, operation_kind, invocation_id, topic_id, request_fingerprint, payload_digest, lease_id, lease_generation, "
+                      "admission_context, contract_revision, brief_hash, config_bundle_hash, state_revision_before, state_revision_after, validator_version, policy_version, receipt, committed_at) "
+                      "VALUES ('op_00000001', 'rcpt_00000001', 'final_outcome', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 'v1', 'p1', ?, ?)")
+
+    @staticmethod
+    def with_field(body: dict, path: str, value) -> str:
+        out = json.loads(json.dumps(body))
+        *parents, last = path.split(".")
+        node = out
+        for part in parents:
+            node = node[part]
+        node[last] = value
+        return json.dumps(out)
+
     def test_receipt_json_admission_matches_its_columns(self) -> None:
+        """A10 / RA6: every identity and version field the commit receipt JSON
+        duplicates equals its column or pinned reference. The review's probe
+        fields first (topic, invocation, revision-before, validator), then
+        every other one, then the admission references that need a join
+        (contract hash; brief id, version and confirmation of a pre-contract
+        receipt). Each probe changes ONE field of an otherwise consistent,
+        schema-shaped receipt, so only the JSON/row binding can refuse it; a
+        receipt recording the release of its own fencing lease is accepted."""
         self.lease("lease_aaaaaaaa", 1)
         self.invocation("inv_pppppppp")
-        body = {"operation_id": "op_00000001", "receipt_id": "rcpt_00000001", "payload_digest": h("d"), "admission": {"context": "contract/1", "contract": {"revision": 1}, "brief": None}}
-        ins = ("INSERT INTO operation_receipts (operation_id, receipt_id, operation_kind, invocation_id, topic_id, request_fingerprint, payload_digest, lease_id, lease_generation, admission_context, contract_revision, config_bundle_hash, state_revision_before, state_revision_after, validator_version, policy_version, receipt, committed_at) "
-               "VALUES ('op_00000001', 'rcpt_00000001', 'final_outcome', 'inv_pppppppp', ?, ?, ?, 'lease_aaaaaaaa', 1, 'contract/1', 1, ?, 0, 1, 'v1', 'p1', ?, ?)")
-        for key, value in (("context", "pre-contract/1"), ("contract", {"revision": 2}), ("brief", {"content_hash": h("b")})):
-            with self.subTest(field=key):
-                self.rejects("CHECK constraint failed", ins, TOPIC, h("f"), h("d"), h("c"), json.dumps({**body, "admission": {**body["admission"], key: value}}), T)
-        self.x(ins, TOPIC, h("f"), h("d"), h("c"), json.dumps(body), T)
+        base = self.receipt_body("op_00000001", "rcpt_00000001", "final_outcome", "inv_pppppppp", TOPIC, 0)
+        row = ("inv_pppppppp", TOPIC, h("f"), h("d"), "lease_aaaaaaaa", 1, "contract/1", 1, None, h("c"))
+        check, reference = "CHECK constraint failed", "admission references must be its pins"
+        for path, value, fragment in (
+                ("topic_id", "fleet-a:intake-latency", check), ("invocation_id", "inv_01J8ZQ3W2X", check),
+                ("state_revision_before", 41, check), ("validation.validator_version", "outcome-validator/1.0.0", check),
+                ("operation_id", "op_00000009", check), ("receipt_id", "rcpt_00000009", check), ("operation_kind", "interim_transition", check),
+                ("request_fingerprint", h("0"), check), ("payload_digest", h("0"), check), ("state_revision_after", 2, check),
+                ("validation.policy_version", "p9", check), ("committed_at", "2026-09-26T00:00:00Z", check),
+                ("admission.context", "pre-contract/1", check), ("admission.contract.revision", 2, check),
+                ("admission.brief", {"brief_id": None, "version": None, "content_hash": h("b")}, check),  # a brief hash on a contract receipt
+                ("effects.lease_release", {"lease_id": "lease_zzzzzzzz", "generation": 1, "rest_state": "idle"}, check),
+                ("effects.lease_release", {"lease_id": "lease_aaaaaaaa", "generation": 2, "rest_state": "idle"}, check),
+                ("admission.contract.content_hash", h("9"), reference)):
+            with self.subTest(field=path, value=value):
+                self.rejects(fragment, self.RECEIPT_INSERT, *row, self.with_field(base, path, value), T)
+        self.assertEqual(self.rows("SELECT count(*) FROM operation_receipts"), [(0,)])
+        self.x(self.RECEIPT_INSERT, *row, self.with_field(base, "effects.lease_release", {"lease_id": "lease_aaaaaaaa", "generation": 1, "rest_state": "idle"}), T)
+
+    def test_pre_contract_receipt_json_names_the_pinned_brief(self) -> None:
+        """RA6 / C-12 for the pre-contract admission references: the receipt JSON's
+        brief id, version and confirming decision are the invocation's pins."""
+        self.discovery()
+        base = self.receipt_body("op_00000001", "rcpt_00000001", "final_outcome", "inv_scope001", TOPIC, 0)
+        row = ("inv_scope001", TOPIC, h("f"), h("d"), "lease_dddddddd", 1, "pre-contract/1", None, h("b"), h("c"))
+        for path, value in (("admission.brief.brief_id", "brief-2"), ("admission.brief.version", 2), ("admission.brief_confirmation_decision_id", "opd_other000")):
+            with self.subTest(field=path):
+                self.rejects("admission references must be its pins", self.RECEIPT_INSERT, *row, self.with_field(base, path, value), T)
+        self.rejects("CHECK constraint failed", self.RECEIPT_INSERT, *row, self.with_field(base, "admission.brief.content_hash", h("9")), T)
+        self.x(self.RECEIPT_INSERT, *row, json.dumps(base), T)
 
     def test_pre_contract_receipt_carries_the_brief_pinned_at_admission(self) -> None:
         self.discovery()
@@ -2027,6 +2093,10 @@ class FacetImportanceTest(StoreTestCase):
         self.insert_facet(TOPIC, 2, entries["dec_import01"])
 
     def test_obligation_row_equals_its_entry_and_tags_only_its_facets(self) -> None:
+        """A3 / RA6: an obligation row equals its document entry in every field
+        it duplicates — facet tags, importance, template id/version/claim
+        type, stopping profile, exploratory flag — and tags only facets of
+        its revision."""
         entry = obligation("O-1", ("F-1",), band="important", decision="opd_rate0001")
         d = self.rate("opd_rate0001", facets=(facet("F-1"),), obligations=(entry,))
         self.contract(TOPIC, d + 1, facets=(facet("F-1"), facet("F-1b")), obligations=(entry, obligation("O-2", ("F-9",))))
@@ -2040,6 +2110,13 @@ class FacetImportanceTest(StoreTestCase):
             with self.subTest(field=name):
                 with self.assertRaises(sqlite3.IntegrityError) as ctx:
                     self.insert_obligation(TOPIC, d + 1, row)
+                self.assertIn("equal its document entry", str(ctx.exception))
+        # RA6: the protocol fields accounting reads (the review's probe values)
+        for column, value in (("template_id", "T-approved"), ("template_version", 3), ("claim_type", "mechanism"),
+                              ("stopping_profile_id", "SP-approved"), ("exploratory", 1)):
+            with self.subTest(column=column):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.insert_obligation(TOPIC, d + 1, entry, **{column: value})
                 self.assertIn("equal its document entry", str(ctx.exception))
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
             self.insert_obligation(TOPIC, d + 1, obligation("O-2", ("F-9",)))  # matches its entry, but F-9 is no facet of the revision

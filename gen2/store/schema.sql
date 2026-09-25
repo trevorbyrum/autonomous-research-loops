@@ -211,6 +211,8 @@ CREATE TABLE contract_revisions (
   CHECK (status = 'draft' OR approved_by_decision_id IS NOT NULL),
   CHECK (json_extract(document, '$.topic_id') IS topic_id
      AND json_extract(document, '$.revision') IS revision
+     AND json_extract(document, '$.parent_revision') IS parent_revision
+     AND json_extract(document, '$.created_at') IS created_at
      AND json_extract(document, '$.content_hash') IS content_hash
      AND json_extract(document, '$.protocol_revision') IS protocol_revision
      AND json_extract(document, '$.facet_map.framing_version') IS framing_version)
@@ -477,16 +479,22 @@ BEGIN
   SELECT RAISE(ABORT, 'an obligation rating is exactly what the operator rated: an approved rating decision of this topic about an ancestor draft defining this obligation exactly as here, whose payload gives it this band and score (G-2, RA2)');
 END;
 
--- A3: an obligation row equals its document entry (facet tags and
--- importance), and every facet it tags is a facet of the same revision — so
--- coverage (uncovered_critical_facets) is computed from the hash-locked
--- content, not from free-standing rows.
+-- A3 / RA6: an obligation row equals its document entry in every normalized
+-- field (template id/version/claim type, facet tags, stopping profile,
+-- exploratory flag, importance), and every facet it tags is a facet of the
+-- same revision — so coverage (uncovered_critical_facets) and the protocol
+-- fields accounting reads are the hash-locked content, not free-standing rows.
 CREATE TRIGGER obligations_bound_to_document_and_facets
 BEFORE INSERT ON obligations
 WHEN NOT EXISTS (
        SELECT 1 FROM contract_revisions c, json_each(c.document, '$.obligations') e
        WHERE c.topic_id = NEW.topic_id AND c.revision = NEW.contract_revision
          AND json_extract(e.value, '$.obligation_id') IS NEW.obligation_id
+         AND json_extract(e.value, '$.template.template_id') IS NEW.template_id
+         AND json_extract(e.value, '$.template.template_version') IS NEW.template_version
+         AND json_extract(e.value, '$.template.claim_type') IS NEW.claim_type
+         AND json_extract(e.value, '$.stopping_profile_id') IS NEW.stopping_profile_id
+         AND json_extract(e.value, '$.exploratory') IS NEW.exploratory
          AND json_extract(e.value, '$.facet_ids') IS json(NEW.facet_ids)
          AND json_extract(e.value, '$.importance.proposed.source') IS NEW.proposed_importance_source
          AND json_extract(e.value, '$.importance.proposed.score') IS NEW.proposed_importance_score
@@ -1047,12 +1055,30 @@ CREATE TABLE operation_receipts (
   committed_at TEXT NOT NULL,
   FOREIGN KEY (topic_id, contract_revision) REFERENCES contract_revisions (topic_id, revision),
   CHECK (state_revision_after = state_revision_before + 1),
+  -- RA6: every identity/version field the receipt JSON (commit-outcome
+  -- schema #/$defs/receipt) duplicates equals its column, so the stored
+  -- receipt cannot describe another topic, invocation, revision or validator
+  -- than the row that fences it. (A released lease, when the receipt records
+  -- one, is the fencing lease.) Admission references that need a join are
+  -- bound by operation_receipts_admission_references.
   CHECK (json_extract(receipt, '$.operation_id') IS operation_id
      AND json_extract(receipt, '$.receipt_id') IS receipt_id
+     AND json_extract(receipt, '$.operation_kind') IS operation_kind
+     AND json_extract(receipt, '$.invocation_id') IS invocation_id
+     AND json_extract(receipt, '$.topic_id') IS topic_id
+     AND json_extract(receipt, '$.request_fingerprint') IS request_fingerprint
      AND json_extract(receipt, '$.payload_digest') IS payload_digest
+     AND json_extract(receipt, '$.state_revision_before') IS state_revision_before
+     AND json_extract(receipt, '$.state_revision_after') IS state_revision_after
+     AND json_extract(receipt, '$.validation.validator_version') IS validator_version
+     AND json_extract(receipt, '$.validation.policy_version') IS policy_version
+     AND json_extract(receipt, '$.committed_at') IS committed_at
      AND json_extract(receipt, '$.admission.context') IS admission_context
      AND json_extract(receipt, '$.admission.contract.revision') IS contract_revision
-     AND json_extract(receipt, '$.admission.brief.content_hash') IS brief_hash)
+     AND json_extract(receipt, '$.admission.brief.content_hash') IS brief_hash),
+  CHECK (json_type(receipt, '$.effects.lease_release') IS NOT 'object'
+      OR (json_extract(receipt, '$.effects.lease_release.lease_id') IS lease_id
+          AND json_extract(receipt, '$.effects.lease_release.generation') IS lease_generation))
 ) STRICT;
 
 CREATE UNIQUE INDEX operation_receipts_one_final_outcome_per_invocation
@@ -1086,6 +1112,23 @@ WHEN NOT EXISTS (
     AND i.config_bundle_hash IS NEW.config_bundle_hash)
 BEGIN
   SELECT RAISE(ABORT, 'commit rejected: admission pins or config bundle differ from the invocation''s (stale contract/config, RG-1b(c))');
+END;
+
+-- RA6 / C-12: the receipt JSON's admission references are the pinned ones —
+-- the contract content hash of the pinned revision, and the brief id,
+-- version and confirming decision of the invocation's pre-contract pins.
+CREATE TRIGGER operation_receipts_admission_references
+BEFORE INSERT ON operation_receipts
+WHEN json_extract(NEW.receipt, '$.admission.contract.content_hash')
+       IS NOT (SELECT content_hash FROM contract_revisions WHERE topic_id = NEW.topic_id AND revision = NEW.contract_revision)
+  OR NOT EXISTS (
+       SELECT 1 FROM invocations i
+       WHERE i.invocation_id = NEW.invocation_id
+         AND json_extract(NEW.receipt, '$.admission.brief.brief_id') IS i.brief_ref
+         AND json_extract(NEW.receipt, '$.admission.brief.version') IS i.brief_version
+         AND json_extract(NEW.receipt, '$.admission.brief_confirmation_decision_id') IS i.brief_confirmation_decision_id)
+BEGIN
+  SELECT RAISE(ABORT, 'the receipt''s admission references must be its pins: the pinned contract revision''s hash, the pinned brief and its confirmation (RA6, C-12)');
 END;
 
 CREATE TRIGGER operation_receipts_immutable_u BEFORE UPDATE ON operation_receipts
@@ -2024,7 +2067,8 @@ CREATE TABLE decision_receipts (
      AND json_extract(receipt, '$.outcome.commit_operation_id') IS commit_operation_id
      AND json_extract(receipt, '$.outcome.proposal_ref') IS proposal_ref
      AND json_extract(receipt, '$.outcome.hold_id') IS hold_id
-     AND json_extract(receipt, '$.blind_sample.selected') IS blind_sample),
+     AND json_extract(receipt, '$.blind_sample.selected') IS blind_sample
+     AND json_extract(receipt, '$.decided_at') IS decided_at),
   CHECK (provider != 'llm_fallback' OR answer IS NULL OR (
          json_extract(answer, '$.primitive') IS 'label'
      AND json_type(answer, '$.probability') IS NULL
@@ -2040,10 +2084,12 @@ CREATE TABLE decision_receipts (
 -- A7: a receipt matches its spec in provider, class, answer primitive and
 -- action policy; a selected option and every distribution key are options of
 -- the spec; a spec bound to a topic's protocol is used only for that topic;
--- the invocation is of the receipt's topic.
+-- the invocation is of the receipt's topic. RA6: the spec id the receipt
+-- JSON names is the id of the spec its hash selects.
 CREATE TRIGGER decision_receipts_match_spec
 BEFORE INSERT ON decision_receipts
-WHEN (SELECT provider FROM decision_specs WHERE spec_hash = NEW.spec_hash) IS NOT NEW.provider
+WHEN (SELECT spec_id FROM decision_specs WHERE spec_hash = NEW.spec_hash) IS NOT json_extract(NEW.receipt, '$.spec.spec_id')
+  OR (SELECT provider FROM decision_specs WHERE spec_hash = NEW.spec_hash) IS NOT NEW.provider
   OR (SELECT decision_class FROM decision_specs WHERE spec_hash = NEW.spec_hash) IS NOT NEW.decision_class
   OR (SELECT topic_id FROM invocations WHERE invocation_id = NEW.invocation_id) IS NOT NEW.topic_id
   OR (NEW.answer IS NOT NULL AND (SELECT primitive FROM decision_specs WHERE spec_hash = NEW.spec_hash) IS NOT json_extract(NEW.answer, '$.primitive'))
@@ -2057,7 +2103,7 @@ WHEN (SELECT provider FROM decision_specs WHERE spec_hash = NEW.spec_hash) IS NO
         SELECT 1 FROM json_each(NEW.answer, '$.distribution') d
         WHERE NOT EXISTS (SELECT 1 FROM decision_specs sp, json_each(sp.document, '$.options') o WHERE sp.spec_hash = NEW.spec_hash AND o.key = d.key))
 BEGIN
-  SELECT RAISE(ABORT, 'decision receipt must match its spec: provider, class, primitive, action policy, options, protocol topic; invocation topic must match (A7)');
+  SELECT RAISE(ABORT, 'decision receipt must match its spec: spec id, provider, class, primitive, action policy, options, protocol topic; invocation topic must match (A7, RA6)');
 END;
 CREATE TRIGGER decision_receipts_immutable_u BEFORE UPDATE ON decision_receipts
 BEGIN

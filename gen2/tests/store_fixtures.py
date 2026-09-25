@@ -55,8 +55,13 @@ def facet(fid: str, **imp) -> dict:
     return {"facet_id": fid, "label": fid, "kind": "effect", "importance": importance(**imp)}
 
 
-def obligation(oid: str, facet_ids=("F-1",), **imp) -> dict:
-    return {"obligation_id": oid, "facet_ids": list(facet_ids), "importance": importance(**imp)}
+def obligation(oid: str, facet_ids=("F-1",), *, template: tuple = ("T1", 1, "effect"), stopping_profile: str = "SP-1",
+               exploratory: bool = False, **imp) -> dict:
+    """A contract-v2 obligation entry carrying the fields its normalized row
+    duplicates (template id/version/claim type, facet tags, stopping profile,
+    exploratory flag, importance)."""
+    return {"obligation_id": oid, "template": {"template_id": template[0], "template_version": template[1], "claim_type": template[2]},
+            "facet_ids": list(facet_ids), "exploratory": exploratory, "stopping_profile_id": stopping_profile, "importance": importance(**imp)}
 
 
 def connect(apply_connection_contract: bool = True) -> sqlite3.Connection:
@@ -101,7 +106,7 @@ class StoreTestCase(unittest.TestCase):
         """A draft revision; its parent is the previous revision unless `parent` is given."""
         content = content_hash or h(ch or ("a" if tid == TOPIC else "b") if rev == 1 else ch or str(rev))
         parent = parent if parent is not None else (None if rev == 1 else rev - 1)
-        doc = json.dumps({"topic_id": tid, "revision": rev, "content_hash": content, "protocol_revision": 1,
+        doc = json.dumps({"topic_id": tid, "revision": rev, "parent_revision": parent, "created_at": T, "content_hash": content, "protocol_revision": 1,
                           "facet_map": {"framing_version": 1, "facets": list(facets)}, "obligations": list(obligations),
                           "eligibility_protocol": {"protocol_version": 1}})
         self.x("INSERT INTO contract_revisions (topic_id, revision, parent_revision, protocol_revision, framing_version, content_hash, document, status, approved_by_decision_id, created_at) VALUES (?, ?, ?, 1, 1, ?, ?, ?, ?, ?)",
@@ -160,11 +165,16 @@ class StoreTestCase(unittest.TestCase):
                "operator_importance_band, operator_importance_score, operator_rating_decision_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                tid, rev, entry["facet_id"], *self._importance_columns(entry))
 
-    def insert_obligation(self, tid: str, rev: int, entry: dict) -> None:
-        self.x("INSERT INTO obligations (topic_id, contract_revision, obligation_id, template_id, template_version, claim_type, facet_ids, stopping_profile_id, exploratory, "
-               "proposed_importance_source, proposed_importance_score, proposed_decision_receipt_id, operator_importance_band, operator_importance_score, operator_rating_decision_id) "
-               "VALUES (?, ?, ?, 'T1', 1, 'effect', ?, 'SP-1', 0, ?, ?, ?, ?, ?, ?)",
-               tid, rev, entry["obligation_id"], json.dumps(entry["facet_ids"]), *self._importance_columns(entry))
+    def insert_obligation(self, tid: str, rev: int, entry: dict, **column_overrides) -> None:
+        """The normalized row of an obligation entry (column_overrides make it disagree)."""
+        t = entry["template"]
+        cols = {"topic_id": tid, "contract_revision": rev, "obligation_id": entry["obligation_id"], "template_id": t["template_id"],
+                "template_version": t["template_version"], "claim_type": t["claim_type"], "facet_ids": json.dumps(entry["facet_ids"]),
+                "stopping_profile_id": entry["stopping_profile_id"], "exploratory": int(entry["exploratory"])}
+        cols.update(zip(("proposed_importance_source", "proposed_importance_score", "proposed_decision_receipt_id",
+                         "operator_importance_band", "operator_importance_score", "operator_rating_decision_id"), self._importance_columns(entry)))
+        cols.update(column_overrides)
+        self.x(f"INSERT INTO obligations ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", *cols.values())
 
     def contract_with_rows(self, tid: str, rev: int, facets: tuple = (), obligations: tuple = (), **kwargs) -> str:
         """A draft revision whose document carries these entries, plus their normalized rows."""
@@ -281,22 +291,49 @@ class StoreTestCase(unittest.TestCase):
         names = ", ".join(row)
         return (f"INSERT INTO invocations ({names}) VALUES ({', '.join('?' * len(row))})", *row.values())
 
+    def receipt_body(self, op: str, rid: str, kind: str, inv: str, tid: str, before: int, *, digest: str | None = None, fingerprint: str | None = None,
+                     admission: tuple | None = None, validator: str = "v1", policy: str = "p1") -> dict:
+        """The commit receipt JSON (commit-outcome.schema.json#/$defs/receipt)
+        for these column values. Admission references come from the
+        invocation's pins; `admission=(context, contract_revision, brief_hash)`
+        overrides the three pinned columns (the JSON follows, so only the
+        column/invocation comparison can refuse it)."""
+        digest, fingerprint = digest or h("d"), fingerprint or h("f")
+        found = self.rows("SELECT admission_context, contract_revision, brief_ref, brief_version, brief_hash, brief_confirmation_decision_id FROM invocations WHERE invocation_id = ?", inv)
+        context, contract_rev, brief_ref, brief_version, brief_hash, confirmation = found[0] if found else ("contract/1", 1, None, None, None, None)
+        if admission is not None:
+            context, contract_rev, brief_hash = admission
+        adm: dict = {"context": context}
+        if contract_rev is not None:
+            chash = self.rows("SELECT content_hash FROM contract_revisions WHERE topic_id = ? AND revision = ?", tid, contract_rev)
+            adm["contract"] = {"revision": contract_rev, "content_hash": chash[0][0] if chash else None}
+        if brief_hash is not None:
+            adm["brief"] = {"brief_id": brief_ref, "version": brief_version, "content_hash": brief_hash}
+            adm["brief_confirmation_decision_id"] = confirmation
+        return {"receipt_version": "commit-receipt/1", "receipt_id": rid, "operation_id": op, "operation_kind": kind,
+                "invocation_id": inv, "topic_id": tid, "request_fingerprint": fingerprint, "payload_digest": digest,
+                "admission": adm, "committed_at": T, "state_revision_before": before, "state_revision_after": before + 1,
+                "validation": {"validator_version": validator, "policy_version": policy, "validated_hashes": [digest]},
+                "effects": {"evidence_revision": None, "research_ordinal": None, "queue_transition": None, "lease_release": None,
+                            "holds_created": [], "retry_intent": None, "trigger_identities": [], "outbox_event_ids": [],
+                            "decision_receipt_ids": [], "audit_event_id": "aud_" + op[3:]}}
+
     def receipt(self, op: str, inv: str, lease: str = "lease_aaaaaaaa", gen: int = 1, before: int = 0, kind: str = "final_outcome", tid: str = TOPIC,
-                rid: str | None = None, digest: str = "d", admission: tuple | None = None) -> None:
+                rid: str | None = None, digest: str = "d", admission: tuple | None = None, receipt_overrides: dict | None = None) -> None:
         """A commit receipt carrying the invocation's own admission pins (pass
-        `admission=(context, contract_revision, brief_hash)` to probe a mismatch)."""
+        `admission=(context, contract_revision, brief_hash)` to probe a mismatch;
+        receipt_overrides replace top-level JSON fields)."""
         rid = rid or "rcpt_" + op[3:]
-        if admission is None:
-            found = self.rows("SELECT admission_context, contract_revision, brief_hash FROM invocations WHERE invocation_id = ?", inv)
-            admission = found[0] if found else ("contract/1", 1, None)
-        context, contract_rev, brief_hash = admission
-        adm = {"context": context, "contract": None if contract_rev is None else {"revision": contract_rev},
-               "brief": None if brief_hash is None else {"content_hash": brief_hash}}
-        body = json.dumps({"operation_id": op, "receipt_id": rid, "payload_digest": h(digest), "admission": adm})
+        body = self.receipt_body(op, rid, kind, inv, tid, before, digest=h(digest), admission=admission)
+        body.update(receipt_overrides or {})
+        context = body["admission"]["context"]
+        contract_rev = (body["admission"].get("contract") or {}).get("revision") if admission is None else admission[1]
+        brief_hash = (body["admission"].get("brief") or {}).get("content_hash") if admission is None else admission[2]
         self.x("INSERT INTO operation_receipts (operation_id, receipt_id, operation_kind, invocation_id, topic_id, request_fingerprint, payload_digest, lease_id, lease_generation, "
                "admission_context, contract_revision, brief_hash, config_bundle_hash, state_revision_before, state_revision_after, validator_version, policy_version, receipt, committed_at) "
                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'v1', 'p1', ?, ?)",
-               op, rid, kind, inv, tid, h("f"), h(digest), lease, gen, context, contract_rev, brief_hash, h("c"), before, before + 1, body, T)
+               op, rid, kind, inv, tid, h("f"), h(digest), lease, gen, context if admission is None else admission[0], contract_rev, brief_hash, h("c"),
+               before, before + 1, json.dumps(body), T)
 
     CHECKS_OK = {"numeric_units": "checked_ok", "denominators": "checked_ok", "negation": "checked_ok", "qualifications": "checked_ok"}
 
@@ -385,8 +422,9 @@ class StoreTestCase(unittest.TestCase):
         if answer is None and status == "answered":
             answer = {"primitive": "choice", "selected_option_id": "include", "distribution": {"include": 0.8, "exclude": 0.2}, "confidence": 0.7}
         digest = None if raw is None else (self.raw_artifact(h(raw)) if stage_raw else h(raw))
+        spec_id = self.rows("SELECT spec_id FROM decision_specs WHERE spec_hash = ?", spec_hash)
         doc = {"receipt_version": "decision-receipt/1", "decision_receipt_id": did, "invocation_id": inv, "topic_id": tid, "decided_at": T,
-               "spec": {"spec_id": "dspec_x", "spec_hash": spec_hash}, "decision_class": cls, "provider": provider,
+               "spec": {"spec_id": spec_id[0][0] if spec_id else "dspec_unknown", "spec_hash": spec_hash}, "decision_class": cls, "provider": provider,
                "subject": {"kind": subject[0], "ref": subject[1]},
                "input_manifest": {"snapshot_digest": h("6"), "input_record_ids": [], "input_status": input_status},
                "provider_response": {"status": status, "raw_response_digest": digest,

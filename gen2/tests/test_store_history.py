@@ -72,22 +72,24 @@ class ReplaceAndDeleteTest(StoreTestCase):
         cols = "operation_id, receipt_id, operation_kind, invocation_id, topic_id, request_fingerprint, payload_digest, lease_id, lease_generation, admission_context, contract_revision, config_bundle_hash, state_revision_before, state_revision_after, validator_version, policy_version, receipt, committed_at"
         ins = f"INSERT OR REPLACE INTO operation_receipts ({cols}) VALUES (?, ?, ?, 'inv_pppppppp', ?, ?, ?, 'lease_aaaaaaaa', 1, 'contract/1', 1, ?, ?, ?, 'v1', 'p1', ?, ?)"
 
-        def body(op, rid, digest):
-            return json.dumps({"operation_id": op, "receipt_id": rid, "payload_digest": digest, "admission": {"context": "contract/1", "contract": {"revision": 1}, "brief": None}})
+        def row(op, rid, kind, before):
+            """A consistent row (its JSON agrees with its columns — RA6), so only the key conflict decides."""
+            body = self.receipt_body(op, rid, kind, "inv_pppppppp", TOPIC, before, digest=h("0"), fingerprint=h("9"))
+            return (op, rid, kind, TOPIC, h("9"), h("0"), h("c"), before, before + 1, json.dumps(body), T)
         guard = DELETE_GUARD["operation_receipts"]
         # primary key: same operation_id, different fingerprint/digest (the review's probe)
-        self.assertRewriteRefused("operation_receipts", ins, "op_00000001", "rcpt_00000001", "final_outcome", TOPIC, h("9"), h("0"), h("c"), 0, 1, body("op_00000001", "rcpt_00000001", h("0")), T, fragment=guard)
+        self.assertRewriteRefused("operation_receipts", ins, *row("op_00000001", "rcpt_00000001", "final_outcome", 0), fragment=guard)
         # alternate unique key: receipt_id
-        self.assertRewriteRefused("operation_receipts", ins, "op_00000002", "rcpt_00000001", "interim_transition", TOPIC, h("9"), h("0"), h("c"), 5, 6, body("op_00000002", "rcpt_00000001", h("0")), T, fragment=guard)
+        self.assertRewriteRefused("operation_receipts", ins, *row("op_00000002", "rcpt_00000001", "interim_transition", 5), fragment=guard)
         # partial unique index: one final outcome per invocation
-        self.assertRewriteRefused("operation_receipts", ins, "op_00000003", "rcpt_00000003", "final_outcome", TOPIC, h("9"), h("0"), h("c"), 7, 8, body("op_00000003", "rcpt_00000003", h("0")), T, fragment=guard)
+        self.assertRewriteRefused("operation_receipts", ins, *row("op_00000003", "rcpt_00000003", "final_outcome", 7), fragment=guard)
         # unique index: one commit per produced state revision
-        self.assertRewriteRefused("operation_receipts", ins, "op_00000004", "rcpt_00000004", "interim_transition", TOPIC, h("9"), h("0"), h("c"), 0, 1, body("op_00000004", "rcpt_00000004", h("0")), T, fragment=guard)
+        self.assertRewriteRefused("operation_receipts", ins, *row("op_00000004", "rcpt_00000004", "interim_transition", 0), fragment=guard)
         # REPLACE INTO is the same statement under another spelling
-        self.assertRewriteRefused("operation_receipts", ins.replace("INSERT OR REPLACE", "REPLACE"), "op_00000001", "rcpt_00000001", "final_outcome", TOPIC, h("9"), h("0"), h("c"), 0, 1, body("op_00000001", "rcpt_00000001", h("0")), T, fragment=guard)
+        self.assertRewriteRefused("operation_receipts", ins.replace("INSERT OR REPLACE", "REPLACE"), *row("op_00000001", "rcpt_00000001", "final_outcome", 0), fragment=guard)
         # upsert DO UPDATE fires the UPDATE guard instead
         self.assertRewriteRefused("operation_receipts", ins.replace("INSERT OR REPLACE", "INSERT") + " ON CONFLICT (operation_id) DO UPDATE SET payload_digest = excluded.payload_digest",
-                                  "op_00000001", "rcpt_00000001", "final_outcome", TOPIC, h("9"), h("0"), h("c"), 0, 1, body("op_00000001", "rcpt_00000001", h("0")), T, fragment="operation receipts are immutable")
+                                  *row("op_00000001", "rcpt_00000001", "final_outcome", 0), fragment="operation receipts are immutable")
         self.assertRewriteRefused("operation_receipts", "DELETE FROM operation_receipts", fragment=guard)
 
     def test_sink_watermark_cannot_regress_by_delete_reinsert_or_replace(self) -> None:

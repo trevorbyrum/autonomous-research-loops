@@ -88,6 +88,8 @@ DR = "test_check_ddl_rules.DdlRuleTest."
 IN = "test_instants.UtcInstantTest."
 CN = "test_canonical."
 RI = "test_store_history.RecordIdentityTest."
+EX = "test_store_examples.ExampleWorldTest."
+CG = "test_store_ddl.ContractGovernanceTest."
 
 MUTATIONS: list[Mutation] = [
     # --- A1: history cannot be rewritten ------------------------------------
@@ -508,6 +510,46 @@ MUTATIONS: list[Mutation] = [
            "\n    AND c.topic_id = NEW.topic_id", ""),
           ("link-producer-pin", "a link may name another protocol revision than its claim's producing work", "claim_source_links_under_approved_protocol",
            "\n    AND p.contract_revision = NEW.contract_revision)", ")"))),
+    # --- RA6: one representation — every duplicated identity field equals its twin ------
+    *(Mutation(f"RA6-receipt-json-{field.replace('.', '-')}", "RA6", f"a commit receipt's JSON {field} may differ from its row",
+               (AD + "test_receipt_json_admission_matches_its_columns", EX + "test_commit_receipt_cannot_describe_another_row"), scope="operation_receipts",
+               old=f"\n     AND json_extract(receipt, '$.{field}') IS {column}", new="")
+      for field, column in (("operation_kind", "operation_kind"), ("invocation_id", "invocation_id"), ("topic_id", "topic_id"),
+                            ("request_fingerprint", "request_fingerprint"), ("state_revision_before", "state_revision_before"),
+                            ("state_revision_after", "state_revision_after"), ("validation.validator_version", "validator_version"),
+                            ("validation.policy_version", "policy_version"), ("committed_at", "committed_at"))),
+    Mutation("RA6-receipt-json-lease-release-lease", "RA6", "a commit receipt may record the release of another lease than its fencing one",
+             (AD + "test_receipt_json_admission_matches_its_columns", EX + "test_commit_receipt_cannot_describe_another_row"), scope="operation_receipts",
+             old="json_extract(receipt, '$.effects.lease_release.lease_id') IS lease_id\n          AND ", new=""),
+    Mutation("RA6-receipt-json-lease-release-generation", "RA6", "a commit receipt may record another released generation than its fencing one",
+             (AD + "test_receipt_json_admission_matches_its_columns", EX + "test_commit_receipt_cannot_describe_another_row"), scope="operation_receipts",
+             old="\n          AND json_extract(receipt, '$.effects.lease_release.generation') IS lease_generation", new=""),
+    Mutation("RA6-receipt-admission-references-dropped", "RA6", "a commit receipt's JSON may name another contract hash or brief than its pins",
+             (AD + "test_receipt_json_admission_matches_its_columns", AD + "test_pre_contract_receipt_json_names_the_pinned_brief"),
+             drop_trigger="operation_receipts_admission_references"),
+    *(Mutation(f"RA6-receipt-admission-{key}", "RA6", desc, (killer,), scope="operation_receipts_admission_references", old=old, new=new)
+      for key, desc, killer, old, new in (
+          ("contract-hash", "the receipt JSON may name another contract content hash", AD + "test_receipt_json_admission_matches_its_columns",
+           "WHEN json_extract(NEW.receipt, '$.admission.contract.content_hash')\n       IS NOT (SELECT content_hash FROM contract_revisions WHERE topic_id = NEW.topic_id AND revision = NEW.contract_revision)\n  OR ", "WHEN "),
+          ("brief-id", "the receipt JSON may name another brief", AD + "test_pre_contract_receipt_json_names_the_pinned_brief",
+           "         AND json_extract(NEW.receipt, '$.admission.brief.brief_id') IS i.brief_ref\n", ""),
+          ("brief-version", "the receipt JSON may name another brief version", AD + "test_pre_contract_receipt_json_names_the_pinned_brief",
+           "         AND json_extract(NEW.receipt, '$.admission.brief.version') IS i.brief_version\n", ""),
+          ("brief-confirmation", "the receipt JSON may name another confirming decision", AD + "test_pre_contract_receipt_json_names_the_pinned_brief",
+           "\n         AND json_extract(NEW.receipt, '$.admission.brief_confirmation_decision_id') IS i.brief_confirmation_decision_id)", ")"))),
+    Mutation("RA6-decision-spec-id", "RA6", "the review's probe: a decision receipt may name another spec id than its hash selects",
+             (DC + "test_receipt_matches_its_spec", EX + "test_decision_receipt_cannot_name_another_spec"), scope="decision_receipts_match_spec",
+             old="WHEN (SELECT spec_id FROM decision_specs WHERE spec_hash = NEW.spec_hash) IS NOT json_extract(NEW.receipt, '$.spec.spec_id')\n  OR ", new="WHEN "),
+    Mutation("RA6-decision-decided-at", "RA6", "a decision receipt's JSON decided_at may differ from its row", (DC + "test_receipt_row_matches_its_json",),
+             scope="decision_receipts", old="\n     AND json_extract(receipt, '$.decided_at') IS decided_at", new=""),
+    *(Mutation(f"RA6-obligation-{key}", "RA6", f"the review's probe: an obligation row's {key} may differ from its document entry",
+               (FI + "test_obligation_row_equals_its_entry_and_tags_only_its_facets", EX + "test_obligation_rows_cannot_contradict_the_example_document"),
+               scope="obligations_bound_to_document_and_facets", old=f"         AND json_extract(e.value, '$.{path}') IS NEW.{key}\n", new="")
+      for key, path in (("template_id", "template.template_id"), ("template_version", "template.template_version"), ("claim_type", "template.claim_type"),
+                        ("stopping_profile_id", "stopping_profile_id"), ("exploratory", "exploratory"))),
+    *(Mutation(f"RA6-contract-{key}", "RA6", f"a contract document's {key} may differ from its row", (CG + "test_hash_lock_binds_document_to_row",),
+               scope="contract_revisions", old=f"\n     AND json_extract(document, '$.{key}') IS {key}", new="")
+      for key in ("parent_revision", "created_at")),
     Mutation("A6-binds-verifier-capability", "A10", "the receipt may name another invocation's capability",
              (VT + "test_receipt_names_the_verifiers_own_capability",), scope="verification_receipts_bindings",
              old="WHEN (SELECT capability_id FROM invocations WHERE invocation_id = NEW.verifier_invocation_id) IS NOT json_extract(NEW.receipt, '$.verifier_capability_id')\n  OR ", new="WHEN "),
