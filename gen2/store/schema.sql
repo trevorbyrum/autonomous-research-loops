@@ -890,6 +890,19 @@ CREATE TABLE dossiers (
   FOREIGN KEY (topic_id, contract_revision) REFERENCES contract_revisions (topic_id, revision)
 ) STRICT;
 
+-- C-12 (RA3): a dossier is evaluated against an approved protocol revision
+-- (one that an approval decision bound — current or since superseded, so
+-- history keeps its pins); never against a draft. Completion additionally
+-- requires that revision to be the topic's active, currently approved one.
+CREATE TRIGGER dossiers_under_approved_protocol
+BEFORE INSERT ON dossiers
+WHEN NOT EXISTS (
+  SELECT 1 FROM contract_revisions c
+  WHERE c.topic_id = NEW.topic_id AND c.revision = NEW.contract_revision AND c.approved_by_decision_id IS NOT NULL)
+BEGIN
+  SELECT RAISE(ABORT, 'a dossier is evaluated against an approved protocol revision, never a draft (C-12, RA3)');
+END;
+
 CREATE TRIGGER dossiers_immutable_u BEFORE UPDATE ON dossiers
 BEGIN
   SELECT RAISE(ABORT, 'dossiers are immutable; every completion permanently carries its evidence');
@@ -1440,6 +1453,34 @@ WHEN (NEW.actor_kind = 'decision_provider' AND NOT EXISTS (
 BEGIN
   SELECT RAISE(ABORT, 'screening assessment bindings: receipt class/topic/invocation/action/commit/subject, operation and invocation topic, superseded assessment (A10)');
 END;
+-- C-12 (Astra re-review RA3): a screening assessment is a scientific
+-- disposition, so it exists only under the approved protocol it names. It is
+-- recorded by a commit of CONTRACT-admitted work pinned to exactly that
+-- contract revision (admission required the revision to be approved; a
+-- pre-contract commit — however well-formed — records no disposition), its
+-- assessing invocation (when named) carries the same pin, and its framing and
+-- eligibility-protocol versions are that revision's own. (Only contract/1
+-- work carries a contract-revision pin: invocations CHECK, and a receipt
+-- carries exactly its invocation's pins.) Scoping
+-- observations (search_observations, retrieval_events, works) stay open to
+-- pre-contract work.
+CREATE TRIGGER screening_assessments_under_approved_protocol
+BEFORE INSERT ON screening_assessments
+WHEN NOT EXISTS (
+       SELECT 1 FROM operation_receipts o
+       WHERE o.operation_id = NEW.recorded_by_operation_id AND o.contract_revision = NEW.contract_revision)
+  OR (NEW.invocation_id IS NOT NULL AND NOT EXISTS (
+       SELECT 1 FROM invocations i
+       WHERE i.invocation_id = NEW.invocation_id AND i.contract_revision = NEW.contract_revision))
+  OR NOT EXISTS (
+       SELECT 1 FROM contract_revisions c
+       WHERE c.topic_id = NEW.topic_id AND c.revision = NEW.contract_revision
+         AND c.framing_version = NEW.framing_version
+         AND json_extract(c.document, '$.eligibility_protocol.protocol_version') IS NEW.eligibility_protocol_version)
+BEGIN
+  SELECT RAISE(ABORT, 'a screening assessment is recorded by contract-admitted work under the approved protocol revision it names, with that revision''s framing and eligibility-protocol versions (C-12, RA3)');
+END;
+
 CREATE TRIGGER screening_assessments_immutable_u BEFORE UPDATE ON screening_assessments
 BEGIN
   SELECT RAISE(ABORT, 'assessments are immutable; reverse by superseding (E-9)');
@@ -1555,6 +1596,22 @@ CREATE TABLE claim_source_links (
   FOREIGN KEY (claim_id, claim_revision) REFERENCES claims (claim_id, revision),
   FOREIGN KEY (topic_id, contract_revision, obligation_id) REFERENCES obligations (topic_id, contract_revision, obligation_id)
 ) STRICT;
+
+-- C-12 (RA3): a claim-source-obligation link ties evidence to the approved
+-- protocol, so it is about a claim of its own topic whose producing work was
+-- CONTRACT-admitted under exactly the contract revision whose obligation it
+-- names (a claim captured by pre-contract scoping may exist, provisional,
+-- but links to no obligation).
+CREATE TRIGGER claim_source_links_under_approved_protocol
+BEFORE INSERT ON claim_source_links
+WHEN NOT EXISTS (
+  SELECT 1 FROM claims c JOIN invocations p ON p.invocation_id = c.producer_invocation_id
+  WHERE c.claim_id = NEW.claim_id AND c.revision = NEW.claim_revision
+    AND c.topic_id = NEW.topic_id
+    AND p.contract_revision = NEW.contract_revision)  -- a contract-revision pin exists only under contract/1
+BEGIN
+  SELECT RAISE(ABORT, 'a claim-source link is about a claim of its topic produced by contract-admitted work under the protocol revision whose obligation it names (C-12, RA3)');
+END;
 
 CREATE TRIGGER claim_source_links_immutable_u BEFORE UPDATE ON claim_source_links
 BEGIN

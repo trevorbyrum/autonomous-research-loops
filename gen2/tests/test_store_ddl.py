@@ -18,7 +18,7 @@ import json
 import sqlite3
 import unittest
 
-from gen2.tests.store_fixtures import OTHER, TOPIC, StoreTestCase, T, facet, h, obligation
+from gen2.tests.store_fixtures import OTHER, TOPIC, StoreTestCase, T, connect, facet, h, obligation
 
 
 class LeaseFencingTest(StoreTestCase):
@@ -1297,7 +1297,8 @@ class ContractGovernanceTest(StoreTestCase):
         decision whose subject revision/hash deliberately coincide with the
         current dossier's), naming (a valid approval exists but the transition
         names another), protocol (dossier under an approved but non-active
-        contract; under the active contract while it is unapproved)."""
+        contract; under the active contract after an amendment superseded it
+        — a dossier under a draft cannot even be written, RA3)."""
         self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'application/json', ?)", h("7"), T)
         self.approve_contract(TOPIC, 1)
         self.walk_to(TOPIC, "active")
@@ -1316,6 +1317,7 @@ class ContractGovernanceTest(StoreTestCase):
         self.dossier(5, 1, self.content_hash_of(TOPIC, 5))  # current dossier carrying contract 5's hash
         self.decision("opd_wrongknd", "rating_approval", rev=5, hsh=self.content_hash_of(TOPIC, 5))
         self.rejects(refused, complete, "opd_wrongknd", TOPIC)
+        self.approve_contract(OTHER, 1)
         self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, 5, 1, 1, 'eval-1', ?, ?, ?)", OTHER, h("9"), h("7"), T)
         self.decision("opd_othertop", "completion_approval", tid=OTHER, rev=5, hsh=h("9"))
         self.rejects(refused, complete, "opd_othertop", TOPIC)  # another topic's approval of its own dossier 5
@@ -1323,11 +1325,18 @@ class ContractGovernanceTest(StoreTestCase):
         self.rejects(refused, complete, "opd_wrongknd", TOPIC)  # a valid approval exists, but is not the one named
         self.x("UPDATE queue_entries SET active_contract_revision = 2 WHERE topic_id = ?", TOPIC)
         self.rejects(refused, complete, "opd_valid005", TOPIC)  # dossier's contract (approved) is not the active one
+        # RA3: no dossier is ever evaluated against a draft (revision 2 is one)
+        self.rejects("never a draft", "INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, 6, 2, 1, 'eval-1', ?, ?, ?)", TOPIC, h("6"), h("7"), T)
+        # protocol currency: the dossier's (active) contract was approved, then superseded by an amendment
+        self.x("UPDATE contract_revisions SET status = 'superseded' WHERE topic_id = ? AND revision = 1", TOPIC)
+        self.approve_contract(TOPIC, 2, kind="amendment_approval")
         self.dossier(6, 2, h("6"))
-        self.decision("opd_unapprov", "completion_approval", rev=6, hsh=h("6"))
-        self.rejects(refused, complete, "opd_unapprov", TOPIC)  # dossier under the active contract, which is not approved
-        self.x("UPDATE queue_entries SET active_contract_revision = 1 WHERE topic_id = ?", TOPIC)
-        self.dossier(7, 1, h("8"))
+        self.decision("opd_supersed", "completion_approval", rev=6, hsh=h("6"))
+        self.x("UPDATE contract_revisions SET status = 'superseded' WHERE topic_id = ? AND revision = 2", TOPIC)
+        self.approve_contract(TOPIC, 3, kind="amendment_approval")
+        self.rejects(refused, complete, "opd_supersed", TOPIC)  # dossier under the active contract, which is no longer approved
+        self.x("UPDATE queue_entries SET active_contract_revision = 3 WHERE topic_id = ?", TOPIC)
+        self.dossier(7, 3, h("8"))
         self.decision("opd_00000001", "completion_approval", rev=7, hsh=h("8"))
         self.x(complete, "opd_00000001", TOPIC)
         self.assertEqual(self.rows("SELECT status, status_decision_id FROM queue_entries WHERE topic_id = ?", TOPIC), [("completed_with_qualified_conclusions", "opd_00000001")])
@@ -1341,6 +1350,7 @@ class ContractGovernanceTest(StoreTestCase):
         another is named); and retired is final (draft vocabulary, R2.5), so a
         used decision has no transition left to authorize."""
         self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'application/json', ?)", h("7"), T)
+        self.approve_contract(TOPIC, 1)  # the wrong-kind probe below needs a dossier, and dossiers need an approved protocol (RA3)
         retire = "UPDATE queue_entries SET status = 'retired', status_decision_id = ?, state_revision = state_revision + 1 WHERE topic_id = ?"
         refused = "retirement requires"
         with self.assertRaises(sqlite3.IntegrityError):
@@ -1391,8 +1401,9 @@ class AdmissionAndLeaseTest(StoreTestCase):
         self.invocation(iid, kind="discovery", lease=lease, pre_contract=True, **kw)
 
     def test_pre_contract_discovery_can_finalize(self) -> None:
-        """The review's probe: a scoping discovery on a topic with no contract
-        commits its final receipt (it hit an FK failure before)."""
+        """The review's probe: a scoping discovery on a topic with no approved
+        contract (drafts exist here — ZeroContractDiscoveryTest runs it with
+        none at all) commits its final receipt (it hit an FK failure before)."""
         self.discovery()
         self.receipt("op_00000001", "inv_scope001", lease="lease_dddddddd", kind="final_outcome")
         self.assertEqual(self.rows("SELECT admission_context, contract_revision, brief_hash FROM operation_receipts"), [("pre-contract/1", None, h("b"))])
@@ -1494,6 +1505,92 @@ class AdmissionAndLeaseTest(StoreTestCase):
         self.receipt("op_00000001", "inv_draft001", lease="lease_rrrrrrrr", kind="final_outcome")
         self.rejects("ordinals go only to", "INSERT INTO research_ordinals VALUES (?, 1, 'inv_draft001', 'op_00000001')", TOPIC)
 
+    SCREEN = ("INSERT INTO screening_assessments (assessment_id, topic_id, work_id, contract_revision, eligibility_protocol_version, framing_version, stage, decision, reason_code, criterion_results, actor_kind, invocation_id, recorded_by_operation_id, created_at) "
+              "VALUES (?, ?, 'wrk_00000001', ?, ?, ?, 'abstract', 'exclude', 'EC-1', '{}', 'primary', ?, ?, ?)")
+    LINK = ("INSERT INTO claim_source_links (claim_id, claim_revision, work_id, source_version, topic_id, contract_revision, obligation_id, spans, contribution, evidence_origin_lineage, created_at) "
+            "VALUES (?, 1, 'wrk_00000001', 'v1', ?, ?, 'O-1', '[]', 'answer', 'study-1', ?)")
+    DOSSIER = ("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) "
+               "VALUES (?, 1, ?, 1, 'eval-1', ?, ?, ?)")
+
+    def evidence_basics(self) -> None:
+        self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000001', 'doi', '10.1/x', ?)", T)
+        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'text/plain', ?)", h("7"), T)
+
+    def claim(self, cid: str, producer: str, tid: str = TOPIC) -> None:
+        self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES (?, 1, ?, ?, ?, 0, NULL, 'provisional', ?)", cid, tid, h("7"), producer, T)
+
+    def scientific_row_counts(self) -> list[tuple]:
+        return self.rows("SELECT (SELECT count(*) FROM screening_assessments), (SELECT count(*) FROM claim_source_links), (SELECT count(*) FROM dossiers)")
+
+    def test_pre_contract_work_records_no_scientific_disposition(self) -> None:
+        """RA3, the review's probe first: with only draft contracts, a confirmed
+        brief and a pre-contract research pass whose final receipt committed, a
+        primary 'exclude' screening assessment naming draft revision 1 is
+        refused — as is one naming the draft that carries an obligation, a
+        claim-source link to that draft's obligation, and a dossier under a
+        draft. Genuine scoping stays open to the same pass: its search
+        observation and a provisional claim are recorded."""
+        self.contract_with_rows(TOPIC, 2, facets=(facet("F-1"),), obligations=(obligation("O-1", ("F-1",)),))  # a draft with an obligation
+        self.lease("lease_rrrrrrrr", 1)
+        self.invocation("inv_draft001", lease="lease_rrrrrrrr", pre_contract=True)
+        self.receipt("op_00000001", "inv_draft001", lease="lease_rrrrrrrr", kind="final_outcome")
+        self.evidence_basics()
+        self.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, completeness, policy_version) "
+               "VALUES ('o1', 'inv_draft001', ?, ?, 1, 'crossref', '{}', '[]', ?, 'searched_ok', 1, 'complete', 'pol1')", TOPIC, h("4"), T)
+        self.claim("clm_00000001", "inv_draft001")
+        refused = "recorded by contract-admitted work under the approved protocol revision it names"
+        for rev in (1, 2):
+            with self.subTest(draft_revision=rev):
+                self.rejects(refused, self.SCREEN, "sa1", TOPIC, rev, 1, 1, "inv_draft001", "op_00000001", T)
+        self.rejects("produced by contract-admitted work", self.LINK, "clm_00000001", TOPIC, 2, T)
+        self.rejects("never a draft", self.DOSSIER, TOPIC, 2, h("3"), h("7"), T)
+        self.assertEqual(self.scientific_row_counts(), [(0, 0, 0)])
+        self.assertEqual(self.rows("SELECT count(*) FROM search_observations"), [(1,)])
+
+    def test_scientific_rows_bind_the_approved_protocol_they_name(self) -> None:
+        """RA3 valid control and pin near-misses. Revision 1 is approved and
+        work A is admitted under it and commits; then an amendment approves
+        revision 3 (draft 2 was rated) and work B is admitted under it and
+        commits; draft 4 sits beside it. Under revision 3, B's commit records a
+        screening assessment, a link for B's claim and a dossier. Each
+        near-miss differs in one pin: naming the draft; recorded by A's commit
+        (pinned to revision 1); assessed by A; another framing or
+        eligibility-protocol version; a link for A's claim; a link naming this
+        topic's obligation for another topic's claim."""
+        self.approve_contract(TOPIC, 1)
+        self.lease("lease_aaaaaaaa", 1)
+        self.invocation("inv_aaaaaaaa", lease="lease_aaaaaaaa", contract_rev=1)
+        self.receipt("op_00000001", "inv_aaaaaaaa", kind="interim_transition", before=0)
+        rev = self.approved_with_obligation(TOPIC)
+        self.assertEqual(rev, 3)
+        self.contract(TOPIC, 4, content_hash=self.chash(TOPIC, 4))
+        self.lease("lease_bbbbbbbb", 2, scope="discovery")
+        self.invocation("inv_bbbbbbbb", kind="discovery", lease="lease_bbbbbbbb", contract_rev=3)
+        self.receipt("op_00000002", "inv_bbbbbbbb", lease="lease_bbbbbbbb", gen=2, kind="interim_transition", before=1)
+        self.evidence_basics()
+        self.claim("clm_0000000a", "inv_aaaaaaaa")
+        self.claim("clm_0000000b", "inv_bbbbbbbb")
+        self.assertEqual(self.approved_with_obligation(OTHER), 3)
+        self.lease("lease_zzzzzzzz", 1, tid=OTHER)
+        self.invocation("inv_oooooooo", tid=OTHER, lease="lease_zzzzzzzz")
+        self.claim("clm_0000000o", "inv_oooooooo", tid=OTHER)
+        refused = "recorded by contract-admitted work under the approved protocol revision it names"
+        for label, args in (("names the draft", (4, 1, 1, "inv_bbbbbbbb", "op_00000002")),
+                            ("recorded by a commit pinned to revision 1", (3, 1, 1, "inv_bbbbbbbb", "op_00000001")),
+                            ("assessed by work pinned to revision 1", (3, 1, 1, "inv_aaaaaaaa", "op_00000002")),
+                            ("another framing version", (3, 1, 2, "inv_bbbbbbbb", "op_00000002")),
+                            ("another eligibility-protocol version", (3, 2, 1, "inv_bbbbbbbb", "op_00000002"))):
+            with self.subTest(screening=label):
+                self.rejects(refused, self.SCREEN, "sa1", TOPIC, *args, T)
+        linked = "produced by contract-admitted work"
+        self.rejects(linked, self.LINK, "clm_0000000a", TOPIC, 3, T)  # A's claim: produced under revision 1
+        self.rejects(linked, self.LINK, "clm_0000000o", TOPIC, 3, T)  # another topic's claim (its producer is pinned to that topic's revision 3)
+        self.assertEqual(self.scientific_row_counts(), [(0, 0, 0)])
+        self.x(self.SCREEN, "sa1", TOPIC, 3, 1, 1, "inv_bbbbbbbb", "op_00000002", T)
+        self.x(self.LINK, "clm_0000000b", TOPIC, 3, T)
+        self.x(self.DOSSIER, TOPIC, 3, h("3"), h("7"), T)
+        self.assertEqual(self.scientific_row_counts(), [(1, 1, 1)])
+
     def test_invocation_owns_a_live_lease_of_its_kind_and_topic(self) -> None:
         self.approve_contract(TOPIC, 1)
         self.lease("lease_aaaaaaaa", 1)
@@ -1521,6 +1618,34 @@ class AdmissionAndLeaseTest(StoreTestCase):
         self.receipt("op_00000002", "inv_vvvvvvvv", lease="lease_vvvvvvvv", gen=2, before=0, kind="final_outcome")
         self.receipt("op_00000001", "inv_pppppppp", lease="lease_aaaaaaaa", gen=1, before=1, kind="final_outcome")
         self.assertEqual(self.rows("SELECT operation_id FROM operation_receipts ORDER BY state_revision_after"), [("op_00000002",), ("op_00000001",)])
+
+
+class ZeroContractDiscoveryTest(StoreTestCase):
+    """A4/RA3 with a genuinely empty contract table (the review's own probe):
+    the base fixture's setUp writes draft contracts, so this class writes the
+    two topics only."""
+
+    def setUp(self) -> None:
+        self.db = connect(self.APPLY_CONNECTION_CONTRACT)
+        for tid in (TOPIC, OTHER):
+            self.x("INSERT INTO queue_entries (topic_id, fleet_id, priority, status, created_at, updated_at) VALUES (?, 'fleet-a', 1, 'awaiting_brief_confirmation', ?, ?)", tid, T, T)
+
+    def test_pre_contract_discovery_can_finalize(self) -> None:
+        """No contract row exists anywhere: a confirmed brief admits a scoping
+        discovery, which runs, records its scoping observation, and commits its
+        final receipt with a NULL contract pin carrying the brief."""
+        self.assertEqual(self.rows("SELECT count(*) FROM contract_revisions"), [(0,)])
+        self.lease("lease_dddddddd", 1, scope="discovery")
+        self.invocation("inv_scope001", kind="discovery", lease="lease_dddddddd", pre_contract=True)
+        self.to_running("inv_scope001")
+        self.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, completeness, policy_version) "
+               "VALUES ('o1', 'inv_scope001', ?, ?, 1, 'crossref', '{}', '[]', ?, 'searched_ok', 2, 'complete', 'pol1')", TOPIC, h("4"), T)
+        self.receipt("op_00000001", "inv_scope001", lease="lease_dddddddd", kind="final_outcome")
+        self.x("UPDATE invocations SET state = 'result_ready', result_payload_digest = ?, result_staged_at = ? WHERE invocation_id = 'inv_scope001'", h("d"), T)
+        self.x("UPDATE invocations SET state = 'committed' WHERE invocation_id = 'inv_scope001'")
+        self.assertEqual(self.rows("SELECT admission_context, contract_revision, brief_hash FROM operation_receipts"), [("pre-contract/1", None, h("b"))])
+        self.assertEqual(self.rows("SELECT state FROM invocations"), [("committed",)])
+        self.assertEqual(self.rows("SELECT count(*) FROM contract_revisions"), [(0,)])
 
 
 class DraftVocabularyTransitionTest(StoreTestCase):

@@ -99,7 +99,8 @@ class StoreTestCase(unittest.TestCase):
                  facets: tuple = (), obligations: tuple = (), content_hash: str | None = None) -> str:
         content = content_hash or h(ch or ("a" if tid == TOPIC else "b") if rev == 1 else ch or str(rev))
         doc = json.dumps({"topic_id": tid, "revision": rev, "content_hash": content, "protocol_revision": 1,
-                          "facet_map": {"framing_version": 1, "facets": list(facets)}, "obligations": list(obligations)})
+                          "facet_map": {"framing_version": 1, "facets": list(facets)}, "obligations": list(obligations),
+                          "eligibility_protocol": {"protocol_version": 1}})
         self.x("INSERT INTO contract_revisions (topic_id, revision, parent_revision, protocol_revision, framing_version, content_hash, document, status, approved_by_decision_id, created_at) VALUES (?, ?, ?, 1, 1, ?, ?, ?, ?, ?)",
                tid, rev, None if rev == 1 else rev - 1, content, doc, status, approved_by, T)
         return content
@@ -141,6 +142,28 @@ class StoreTestCase(unittest.TestCase):
         for entry in obligations:
             self.insert_obligation(tid, rev, entry)
         return content
+
+    @staticmethod
+    def chash(tid: str, rev: int) -> str:
+        """A content hash unique per (topic, revision) — contract hashes are unique store-wide."""
+        return "sha256:" + (tid.encode().hex() + f"{rev:06d}").ljust(64, "0")[:64]
+
+    def approved_with_obligation(self, tid: str = TOPIC) -> int:
+        """The S3 path to an approved protocol with a critical facet F-1 and an
+        obligation O-1 tagging it: draft n carries them unrated; the operator's
+        rating decision is about draft n; revision n + 1 carries the ratings,
+        citing that decision, and is approved (any earlier approved revision is
+        superseded first). Returns n + 1."""
+        n = self.rows("SELECT coalesce(max(revision), 0) + 1 FROM contract_revisions WHERE topic_id = ?", tid)[0][0]
+        self.contract(tid, n, facets=(facet("F-1"),), obligations=(obligation("O-1", ("F-1",)),), content_hash=self.chash(tid, n))
+        did = f"opd_rate{tid[-2:]}{n:02d}"
+        self.decision(did, "rating_approval", tid, rev=n, hsh=self.chash(tid, n))
+        rated = dict(band="critical", score=8, decision=did)
+        self.contract_with_rows(tid, n + 1, facets=(facet("F-1", **rated),), obligations=(obligation("O-1", ("F-1",), **rated),), content_hash=self.chash(tid, n + 1))
+        for (old,) in self.rows("SELECT revision FROM contract_revisions WHERE topic_id = ? AND status = 'approved'", tid):
+            self.x("UPDATE contract_revisions SET status = 'superseded' WHERE topic_id = ? AND revision = ?", tid, old)
+        self.approve_contract(tid, n + 1)
+        return n + 1
 
     def content_hash_of(self, tid: str, rev: int) -> str:
         return self.rows("SELECT content_hash FROM contract_revisions WHERE topic_id = ? AND revision = ?", tid, rev)[0][0]

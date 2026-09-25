@@ -457,6 +457,28 @@ MUTATIONS: list[Mutation] = [
     Mutation("RA5-use-matches-claim-tier", "RA5", "a load-bearing-use receipt may name another required tier than its claim's",
              (VT + "test_load_bearing_receipt_states_its_claims_designation",), scope="verification_receipts_use_matches_claim",
              old="\n    AND c.required_access_tier = NEW.required_access_tier)", new=")"),
+    # --- RA3: scientific rows only under contract-admitted work and approved pins -------
+    *(Mutation(f"RA3-{key}", "RA3", desc, tuple(AD + k for k in killers), drop_trigger=trigger)
+      for key, desc, killers, trigger in (
+          ("screening-dropped", "pre-contract work may record a screening disposition against a draft (the review's probe)",
+           ("test_pre_contract_work_records_no_scientific_disposition", "test_scientific_rows_bind_the_approved_protocol_they_name"), "screening_assessments_under_approved_protocol"),
+          ("link-dropped", "a claim-source link may tie pre-contract or other-protocol work to an obligation",
+           ("test_pre_contract_work_records_no_scientific_disposition", "test_scientific_rows_bind_the_approved_protocol_they_name"), "claim_source_links_under_approved_protocol"),
+          ("dossier-dropped", "a dossier may be evaluated against a draft", ("test_pre_contract_work_records_no_scientific_disposition",), "dossiers_under_approved_protocol"))),
+    *(Mutation(f"RA3-{key}", "RA3", desc, (AD + "test_scientific_rows_bind_the_approved_protocol_they_name",), scope=scope, old=old, new=new)
+      for key, desc, scope, old, new in (
+          ("screening-operation-pin", "a screening row may be recorded by a commit pinned to another revision", "screening_assessments_under_approved_protocol",
+           "WHERE o.operation_id = NEW.recorded_by_operation_id AND o.contract_revision = NEW.contract_revision)", "WHERE o.operation_id = NEW.recorded_by_operation_id)"),
+          ("screening-invocation-pin", "a screening row may be assessed by work pinned to another revision", "screening_assessments_under_approved_protocol",
+           "WHERE i.invocation_id = NEW.invocation_id AND i.contract_revision = NEW.contract_revision))", "WHERE i.invocation_id = NEW.invocation_id))"),
+          ("screening-framing", "a screening row may carry another framing version than its revision's", "screening_assessments_under_approved_protocol",
+           "\n         AND c.framing_version = NEW.framing_version", ""),
+          ("screening-eligibility", "a screening row may carry another eligibility-protocol version than its revision's", "screening_assessments_under_approved_protocol",
+           "\n         AND json_extract(c.document, '$.eligibility_protocol.protocol_version') IS NEW.eligibility_protocol_version)", ")"),
+          ("link-topic", "a link may name this topic's obligation for another topic's claim", "claim_source_links_under_approved_protocol",
+           "\n    AND c.topic_id = NEW.topic_id", ""),
+          ("link-producer-pin", "a link may name another protocol revision than its claim's producing work", "claim_source_links_under_approved_protocol",
+           "\n    AND p.contract_revision = NEW.contract_revision)", ")"))),
     Mutation("A6-binds-verifier-capability", "A10", "the receipt may name another invocation's capability",
              (VT + "test_receipt_names_the_verifiers_own_capability",), scope="verification_receipts_bindings",
              old="WHEN (SELECT capability_id FROM invocations WHERE invocation_id = NEW.verifier_invocation_id) IS NOT json_extract(NEW.receipt, '$.verifier_capability_id')\n  OR ", new="WHEN "),
