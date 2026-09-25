@@ -131,7 +131,8 @@
       "then": {"properties": {"launch_intent": {"type": "object"}}}
     },
     {
-      "if": {"properties": {"state": {"enum": ["running", "result_ready", "committed"]}}},
+      "description": "Observed running means identity was recorded. A job reconciled from outcome_unknown may already have exited, so later states require the retained result instead.",
+      "if": {"properties": {"state": {"const": "running"}}},
       "then": {"properties": {"process_identity": {"type": "object"}}}
     },
     {

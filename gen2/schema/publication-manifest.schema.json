@@ -3,7 +3,7 @@
   "$id": "https://research-loops.invalid/gen2/schema/publication-manifest.schema.json",
   "$comment": "flow: S8 publication contract items 1, 2 and 5 (immutable manifest committed atomically with the approved revision; physical sinks; corrections and checkpoint publications get new events) | boundaries: Router; Projector / publication | design-review: §9 (outbox, stable IDs, per-sink delivery, supersession/tombstones) | adjudication: (a)G-A1; (b)2; (d)1 | invariants: P-1; P-2; P-5 | note: per-sink delivery receipts are separate projector-owned records (DDL sink_delivery_receipts), never fields of this immutable manifest",
   "title": "Publication manifest",
-  "description": "Referenced by the outbox event the router commits in the same transaction as the approved publishable revision. Immutable: delivery state lives elsewhere. Unapproved work is never published, so an approval reference is required. generation increases per (topic, artifact kind) and must exceed any superseded generation (enforced in DDL; JSON Schema cannot compare the two numbers).",
+  "description": "Referenced by the outbox event the router commits in the same transaction as the approved publishable revision. Immutable: delivery state lives elsewhere. Unapproved work is never published, so an approval reference is required. generation increases per topic across all artifact kinds (one publication stream, one served generation) and must exceed any superseded generation (enforced in DDL; JSON Schema cannot compare the two numbers).",
   "type": "object",
   "additionalProperties": false,
   "required": [

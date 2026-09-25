@@ -36,8 +36,8 @@ Numbering follows DR §10's release gates; gate 1 is split into its crash half (
 **RG-4 — Degraded observation never becomes negative evidence or successful stopping.** Provider outage, malformed or unparseable payload, telemetry loss, denied access, and partial pagination never produce: a `searched_empty` coverage fact, a zero in any count or denominator, a novelty or yield observation, a satisfied stopping rule, or a completion candidate. They produce `provider_unavailable` / `auth_failed` / `unknown` coverage plus a dated capability fact.
 *Source:* DR §10 gate 4; F §4.3; B *Gateway*, *Evidence accounting*. *Enforced at:* gateway_client, accounting; DDL `search_observations` (a result count is only allowed on a successful search state). *Test must show:* each degraded input driven end to end to the dossier, which shows the affected rules as `unknown`.
 
-**RG-5 — Producer capabilities cannot approve their own verification; cross-topic and stale-revision writes are rejected.** A verification receipt is refused when the verifier invocation is the producer invocation, when the verifier invocation is not of kind `verification`, or when the extraction it relied on came from the producer invocation.
-*Source:* DR §10 gate 5; F S4 step 8; B *Verifier*. *Enforced at:* router (capability-derived authority); DDL `verification_receipts` (checks plus a kind trigger). *Test must show:* each refusal, plus a write carrying another topic's ID and a write bound to a superseded claim revision.
+**RG-5 — Producer capabilities cannot approve their own verification; cross-topic and stale-revision writes are rejected.** A verification receipt is refused when the verifier invocation is the producer invocation, when the verifier invocation is not of kind `verification`, or when it relied on an unvalidated extraction produced by the producer invocation.
+*Source:* DR §10 gate 5; F S4 step 8; B *Verifier*. *Enforced at:* router (capability-derived authority); DDL `verification_receipts` (checks plus a role trigger that also refuses a verifier launched by the producer — an interpretation flagged in `gen2/store/README.md`). *Test must show:* each refusal, plus a write carrying another topic's ID and a write bound to a superseded claim revision.
 
 **RG-6 — Accounting edge cases.** The known-item, novelty and dossier logic handles: zero assessed units (result `unknown`), repeated reports of one study (counted once at the study unit), a changed protocol (labels made under the old protocol do not count under the new one), and an unresolved contradiction (blocks `satisfied` wherever the profile names it).
 *Source:* DR §10 gate 6; DR §8. *Enforced at:* accounting. *Test must show:* each fixture, with the expected operands written out by hand rather than computed by the code under test.
@@ -102,7 +102,7 @@ Numbering follows DR §10's release gates; gate 1 is split into its crash half (
 **L-2 — Launch intent is recorded before spawn.** *Source:* DR §5 ("Crash fencing"). *Enforced at:* DDL (`launching` and later states require the launch-intent timestamp).
 
 **L-3 — Process identity is never a bare PID.** It is the invocation/job handle plus host/container identity, boot identity, and process start fingerprint. A crash between spawn and identity record is resolved by idempotent job lookup or by terminating/reconciling the owned execution group, never by PID adoption.
-*Source:* DR §5; B *Station supervisor*. *Enforced at:* DDL (running-or-later states require host, boot and start fingerprint; the schema has no PID column).
+*Source:* DR §5; B *Station supervisor*. *Enforced at:* DDL (`running` requires job handle, host, boot identity and start fingerprint; there is no PID column).
 
 **L-4 — `outcome_unknown` is reconciled, never assumed.** It is not synonymous with vanished, failed, safely retryable, or done. *Source:* DR §6; B *Station supervisor*.
 
