@@ -528,7 +528,19 @@ MUTATIONS: list[Mutation] = [
            ("test_pre_contract_work_records_no_scientific_disposition", "test_scientific_rows_bind_the_approved_protocol_they_name"), "screening_assessments_under_approved_protocol"),
           ("link-dropped", "a claim-source link may tie pre-contract or other-protocol work to an obligation",
            ("test_pre_contract_work_records_no_scientific_disposition", "test_scientific_rows_bind_the_approved_protocol_they_name"), "claim_source_links_under_approved_protocol"),
-          ("dossier-dropped", "a dossier may be evaluated against a draft", ("test_pre_contract_work_records_no_scientific_disposition",), "dossiers_under_approved_protocol"))),
+          ("dossier-dropped", "a dossier may be evaluated against a draft",
+           ("test_pre_contract_work_records_no_scientific_disposition", "test_scientific_rows_bind_the_approved_protocol_they_name"), "dossiers_under_approved_protocol"))),
+    # --- RA3-R: the approving decision is recorded only by the draft -> approved transition ---
+    Mutation("RA3R-dropped", "RA3-R", "the review's probe: an approving decision may be recorded on a still-draft revision, which then admits a dossier",
+             (CG + "test_approval_pointer_is_set_only_by_the_approval_transition", AD + "test_pre_contract_work_records_no_scientific_disposition",
+              EX + "test_review_ra3r_approval_pointer_without_approval"), drop_trigger="contract_approval_pointer_set_by_approval"),
+    Mutation("RA3R-superseded-too", "RA3-R", "the decision may also be first recorded by draft -> superseded, skipping the approval gate",
+             (CG + "test_approval_pointer_is_set_only_by_the_approval_transition",), scope="contract_approval_pointer_set_by_approval",
+             old="  AND NEW.status IS NOT 'approved'\n", new="  AND NEW.status NOT IN ('approved', 'superseded')\n"),
+    Mutation("RA3R-approval-refused-too", "RA3-R", "over-restriction: not even the draft -> approved transition may record its decision",
+             (CG + "test_approval_pointer_is_set_only_by_the_approval_transition", AD + "test_scientific_rows_bind_the_approved_protocol_they_name",
+              EX + "test_review_ra3r_approval_pointer_without_approval"), scope="contract_approval_pointer_set_by_approval",
+             old="\n  AND NEW.status IS NOT 'approved'\n", new="\n"),
     *(Mutation(f"RA3-{key}", "RA3", desc, (AD + "test_scientific_rows_bind_the_approved_protocol_they_name",), scope=scope, old=old, new=new)
       for key, desc, scope, old, new in (
           ("screening-operation-pin", "a screening row may be recorded by a commit pinned to another revision", "screening_assessments_under_approved_protocol",

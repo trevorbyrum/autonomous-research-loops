@@ -253,6 +253,25 @@ BEGIN
   SELECT RAISE(ABORT, 'contract approval must be an approved decision about this exact topic, revision and content hash (A2)');
 END;
 
+-- C-12 / G-13 (Astra third review RA3-R): the approving decision is first
+-- recorded only by the draft -> approved update itself (a row without one is
+-- a draft, by the CHECK above, so an update giving it one and moving it to
+-- approved is exactly that transition), whose gate
+-- (contract_approval_needs_rated_covered_facets) runs in the same statement;
+-- once recorded it never changes (contract_content_immutable). So a retained
+-- pointer is evidence that the revision passed approval, and a draft never
+-- holds one. This also closes draft -> superseded, which
+-- contract_status_forward_only admits: a superseded row must hold a pointer
+-- (CHECK), and one cannot be first recorded there, so a revision reaches
+-- superseded only from approved.
+CREATE TRIGGER contract_approval_pointer_set_by_approval
+BEFORE UPDATE OF approved_by_decision_id ON contract_revisions
+WHEN OLD.approved_by_decision_id IS NULL AND NEW.approved_by_decision_id IS NOT NULL
+  AND NEW.status IS NOT 'approved'
+BEGIN
+  SELECT RAISE(ABORT, 'the approving decision is recorded only by the draft -> approved transition it authorizes (C-12, RA3-R)');
+END;
+
 -- G-3 / A3: approval needs the revision's normalized obligation and facet
 -- rows to be complete (one row per document entry, each bound to its entry
 -- by the insert triggers below), every facet to carry an operator rating
@@ -1025,10 +1044,13 @@ CREATE TABLE dossiers (
   FOREIGN KEY (topic_id, contract_revision) REFERENCES contract_revisions (topic_id, revision)
 ) STRICT;
 
--- C-12 (RA3): a dossier is evaluated against an approved protocol revision
--- (one that an approval decision bound — current or since superseded, so
--- history keeps its pins); never against a draft. Completion additionally
--- requires that revision to be the topic's active, currently approved one.
+-- C-12 (RA3, RA3-R): a dossier is evaluated against a revision that passed
+-- approval — current or since superseded, so history keeps its pins; never
+-- a draft. The approving-decision pointer is that evidence: it is recorded
+-- only by the draft -> approved transition and its gate
+-- (contract_approval_pointer_set_by_approval), never alone. Completion
+-- additionally requires that revision to be the topic's active, currently
+-- approved one.
 CREATE TRIGGER dossiers_under_approved_protocol
 BEFORE INSERT ON dossiers
 WHEN NOT EXISTS (

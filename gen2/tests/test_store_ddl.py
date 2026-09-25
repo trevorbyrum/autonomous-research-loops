@@ -1346,6 +1346,70 @@ class ContractGovernanceTest(StoreTestCase):
         self.x("UPDATE contract_revisions SET status = 'superseded' WHERE topic_id = ? AND revision = 1", TOPIC)
         self.x("UPDATE contract_revisions SET status = 'approved', approved_by_decision_id = 'opd_00000002' WHERE topic_id = ? AND revision = 2", TOPIC)
 
+    def test_approval_pointer_is_set_only_by_the_approval_transition(self) -> None:
+        """RA3-R: a retained approving decision is evidence that its revision
+        passed the draft -> approved transition, whose gate checks rows,
+        ratings and coverage — so a dossier can rely on it. Draft 2 was rated;
+        revision 3 carries the ratings with its rows (approvable); revision 4
+        carries the same entries with its rows deliberately missing (the
+        review's probe shape). Each has a valid contract_approval about its
+        exact revision and hash. Refused, leaving every contract and dossier
+        row unchanged: recording the decision while the revision stays a draft
+        (the review's probe; on 3 and 4; also spelled as an upsert); the
+        structural approval of 4; the draft -> superseded alternative with the
+        decision (it would skip the approval gate) and without it; and a
+        dossier under 3 or 4 after each. Accepted: approving 3 with its
+        decision in one update, then a dossier under it; after an amendment
+        (revision 5) supersedes 3, revision 3 keeps its decision and a dossier
+        under it is still accepted (historical pins)."""
+        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'application/json', ?)", h("7"), T)
+        rated = dict(band="critical", score=8, decision="opd_rate0001")
+        entries = dict(facets=(facet("F-1", **rated),), obligations=(obligation("O-1", ("F-1",), **rated),))
+        draft = self.rate("opd_rate0001", **entries)
+        self.contract_with_rows(TOPIC, draft + 1, **entries, content_hash=self.chash(TOPIC, draft + 1))
+        self.contract(TOPIC, draft + 2, **entries, parent=draft, content_hash=self.chash(TOPIC, draft + 2))
+        self.assertEqual((draft, draft + 1, draft + 2), (2, 3, 4))
+        for rev in (3, 4):
+            self.decision(f"opd_appr{rev:04d}", "contract_approval", rev=rev, hsh=self.chash(TOPIC, rev))
+        pointer = "UPDATE contract_revisions SET approved_by_decision_id = ? WHERE topic_id = ? AND revision = ?"
+        upsert = ("INSERT INTO contract_revisions SELECT topic_id, revision, parent_revision, protocol_revision, framing_version, content_hash, document, status, NULL, created_at "
+                  "FROM contract_revisions WHERE topic_id = ? AND revision = ? ON CONFLICT (topic_id, revision) DO UPDATE SET approved_by_decision_id = ?")
+        approve = "UPDATE contract_revisions SET status = 'approved', approved_by_decision_id = ? WHERE topic_id = ? AND revision = ?"
+        supersede = "UPDATE contract_revisions SET status = 'superseded', approved_by_decision_id = ? WHERE topic_id = ? AND revision = ?"
+        only = "recorded only by the draft -> approved transition"
+        no_dossier = "never a draft"
+
+        def dossier_refused(rev: int) -> None:
+            with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                self.dossier(9, rev, h("9"))
+            self.assertIn(no_dossier, str(ctx.exception))
+
+        stored = (self.snapshot("contract_revisions"), self.snapshot("dossiers"))
+        for rev in (3, 4):
+            with self.subTest(case="the decision recorded on a draft", revision=rev):
+                self.rejects(only, pointer, f"opd_appr{rev:04d}", TOPIC, rev)
+                self.rejects(only, upsert, TOPIC, rev, f"opd_appr{rev:04d}")
+                dossier_refused(rev)
+        with self.subTest(case="a failed structural approval"):
+            self.rejects("approval needs complete obligation/facet rows", approve, "opd_appr0004", TOPIC, 4)
+            dossier_refused(4)
+        with self.subTest(case="draft -> superseded"):
+            self.rejects(only, supersede, "opd_appr0004", TOPIC, 4)
+            self.rejects("CHECK constraint failed", "UPDATE contract_revisions SET status = 'superseded' WHERE topic_id = ? AND revision = 4", TOPIC)
+            dossier_refused(4)
+        self.assertEqual((self.snapshot("contract_revisions"), self.snapshot("dossiers")), stored)
+        self.x(approve, "opd_appr0003", TOPIC, 3)
+        self.dossier(1, 3, h("1"))
+        self.contract_with_rows(TOPIC, 5, **entries, parent=3, content_hash=self.chash(TOPIC, 5))
+        self.decision("opd_amend005", "amendment_approval", rev=5, hsh=self.chash(TOPIC, 5))
+        self.x("UPDATE contract_revisions SET status = 'superseded' WHERE topic_id = ? AND revision = 3", TOPIC)
+        self.x(approve, "opd_amend005", TOPIC, 5)
+        self.dossier(2, 3, h("2"))  # under the historically approved, now superseded revision
+        self.dossier(3, 5, h("3"))
+        self.assertEqual(self.rows("SELECT revision, status, approved_by_decision_id FROM contract_revisions WHERE topic_id = ? ORDER BY revision", TOPIC),
+                         [(1, "draft", None), (2, "draft", None), (3, "superseded", "opd_appr0003"), (4, "draft", None), (5, "approved", "opd_amend005")])
+        self.assertEqual(self.rows("SELECT dossier_revision, contract_revision FROM dossiers ORDER BY dossier_revision"), [(1, 3), (2, 3), (3, 5)])
+
     def test_operator_rating_band_and_score_consistent(self) -> None:
         """Each probe's document entry carries the same values as its row, so the
         rejection is the band/score CHECK, not the document binding."""
@@ -1832,8 +1896,11 @@ class AdmissionAndLeaseTest(StoreTestCase):
         primary 'exclude' screening assessment naming draft revision 1 is
         refused — as is one naming the draft that carries an obligation, a
         claim-source link to that draft's obligation, and a dossier under a
-        draft. Genuine scoping stays open to the same pass: its search
-        observation and a provisional claim are recorded."""
+        draft. RA3-R: a valid contract_approval of that draft cannot be
+        recorded on it while it stays a draft, its structural approval fails
+        (unrated facet), and the dossier under it is still refused; the
+        contract rows are unchanged. Genuine scoping stays open to the same
+        pass: its search observation and a provisional claim are recorded."""
         self.contract_with_rows(TOPIC, 2, facets=(facet("F-1"),), obligations=(obligation("O-1", ("F-1",)),))  # a draft with an obligation
         self.lease("lease_rrrrrrrr", 1)
         self.invocation("inv_draft001", lease="lease_rrrrrrrr", pre_contract=True)
@@ -1848,6 +1915,12 @@ class AdmissionAndLeaseTest(StoreTestCase):
                 self.rejects(refused, self.SCREEN, "sa1", TOPIC, rev, 1, 1, "inv_draft001", "op_00000001", T)
         self.rejects("produced by contract-admitted work", self.LINK, "clm_00000001", TOPIC, 2, T)
         self.rejects("never a draft", self.DOSSIER, TOPIC, 2, h("3"), h("7"), T)
+        contracts = self.snapshot("contract_revisions")
+        self.decision("opd_appr0002", "contract_approval", rev=2, hsh=self.content_hash_of(TOPIC, 2))
+        self.rejects("recorded only by the draft -> approved transition", "UPDATE contract_revisions SET approved_by_decision_id = 'opd_appr0002' WHERE topic_id = ? AND revision = 2", TOPIC)
+        self.rejects("approval needs complete obligation/facet rows", "UPDATE contract_revisions SET status = 'approved', approved_by_decision_id = 'opd_appr0002' WHERE topic_id = ? AND revision = 2", TOPIC)
+        self.rejects("never a draft", self.DOSSIER, TOPIC, 2, h("3"), h("7"), T)
+        self.assertEqual(self.snapshot("contract_revisions"), contracts)
         self.assertEqual(self.scientific_row_counts(), [(0, 0, 0)])
         self.assertEqual(self.rows("SELECT count(*) FROM search_observations"), [(1,)])
 
@@ -1860,7 +1933,12 @@ class AdmissionAndLeaseTest(StoreTestCase):
         near-miss differs in one pin: naming the draft; recorded by A's commit
         (pinned to revision 1); assessed by A; another framing or
         eligibility-protocol version; a link for A's claim; a link naming this
-        topic's obligation for another topic's claim."""
+        topic's obligation for another topic's claim. RA3-R: the dossier
+        controls rest on actual approval history, read back — revision 1
+        passed approval and was superseded by the amendment, keeping its
+        decision, so a dossier under it keeps its pins and is accepted; 3 is
+        approved; drafts 2 and 4 never held a decision, and a dossier under 4
+        is refused."""
         self.approve_contract(TOPIC, 1)
         self.lease("lease_aaaaaaaa", 1)
         self.invocation("inv_aaaaaaaa", lease="lease_aaaaaaaa", contract_rev=1)
@@ -1894,6 +1972,13 @@ class AdmissionAndLeaseTest(StoreTestCase):
         self.x(self.LINK, "clm_0000000b", TOPIC, 3, T)
         self.x(self.DOSSIER, TOPIC, 3, h("3"), h("7"), T)
         self.assertEqual(self.scientific_row_counts(), [(1, 1, 1)])
+        self.assertEqual(self.rows("SELECT revision, status, approved_by_decision_id FROM contract_revisions WHERE topic_id = ? ORDER BY revision", TOPIC),
+                         [(1, "superseded", "opd_ca01t1xx"), (2, "draft", None), (3, "approved", "opd_ca03t1xx"), (4, "draft", None)])
+        second = ("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) "
+                  "VALUES (?, 2, ?, 1, 'eval-1', ?, ?, ?)")
+        self.rejects("never a draft", second, TOPIC, 4, h("4"), h("7"), T)
+        self.x(second, TOPIC, 1, h("4"), h("7"), T)  # the historically approved, now superseded revision 1
+        self.assertEqual(self.scientific_row_counts(), [(1, 1, 2)])
 
     def test_invocation_owns_a_live_lease_of_its_kind_and_topic(self) -> None:
         self.approve_contract(TOPIC, 1)
