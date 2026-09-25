@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "contract-v2.schema.json",
+    "expect": "invalid",
+    "tests": "A3: every facet carries its own importance record (proposed + operator rating fields)",
+    "base": "valid-critical-facet-without-obligation.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/facet_map/facets/2/importance"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": "/facet_map/facets/2"
+      }
+    ]
+  }
+}

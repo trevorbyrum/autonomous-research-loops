@@ -18,7 +18,7 @@ import json
 import sqlite3
 import unittest
 
-from gen2.tests.store_fixtures import OTHER, TOPIC, StoreTestCase, T, h
+from gen2.tests.store_fixtures import OTHER, TOPIC, StoreTestCase, T, facet, h, obligation
 
 
 class LeaseFencingTest(StoreTestCase):
@@ -633,38 +633,51 @@ class ContractGovernanceTest(StoreTestCase):
         self.x("UPDATE contract_revisions SET status = 'approved', approved_by_decision_id = 'opd_00000002' WHERE topic_id = ? AND revision = 2", TOPIC)
 
     def test_operator_rating_band_and_score_consistent(self) -> None:
+        """Each probe's document entry carries the same values as its row, so the
+        rejection is the band/score CHECK, not the document binding."""
         self.decision("opd_00000001", "rating_approval", rev=1, hsh=self.content_hash_of(TOPIC, 1))
+        bad = (obligation("O-bad1", band="critical", score=5, decision="opd_00000001"),
+               obligation("O-bad2", band="critical", score=8),
+               obligation("O-bad3", score=8))  # a score without a band
+        good = (obligation("O-1", band="critical", score=8, decision="opd_00000001"),
+                obligation("O-2", band="important", decision="opd_00000001"),
+                obligation("O-3"))
         self.contract(TOPIC, 2)
-        ins = ("INSERT INTO obligations (topic_id, contract_revision, obligation_id, template_id, template_version, claim_type, facet_ids, stopping_profile_id, exploratory, operator_importance_band, operator_importance_score, operator_rating_decision_id) "
-               "VALUES (?, 2, ?, 'T1', 1, 'effect', '[\"F-1\"]', 'SP-1', 0, ?, ?, ?)")
-        self.rejects("CHECK constraint failed", ins, TOPIC, "O-1", "critical", 5, "opd_00000001")
-        self.rejects("CHECK constraint failed", ins, TOPIC, "O-1", "critical", 8, None)
-        self.rejects("CHECK constraint failed", ins, TOPIC, "O-1", None, 8, None)  # a score without a band
-        self.x(ins, TOPIC, "O-1", "critical", 8, "opd_00000001")
-        self.x(ins, TOPIC, "O-2", "important", None, "opd_00000001")
-        self.x(ins, TOPIC, "O-3", None, None, None)
+        self.contract(TOPIC, 3, facets=(facet("F-1"),), obligations=bad + good)
+        self.insert_facet(TOPIC, 3, facet("F-1"))
+        for entry in bad:
+            with self.subTest(obligation=entry["obligation_id"]):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.insert_obligation(TOPIC, 3, entry)
+                self.assertIn("CHECK constraint failed", str(ctx.exception))
+        for entry in good:
+            self.insert_obligation(TOPIC, 3, entry)
         self.rejects("obligations are immutable", "UPDATE obligations SET operator_importance_band = 'limited' WHERE obligation_id = 'O-2'")
 
     def test_operator_rating_bound_to_a_rating_decision(self) -> None:
         """A2: the rating's decision must be an approved rating_approval of this
-        topic about an earlier revision (the draft that was rated)."""
-        self.contract(TOPIC, 2)
+        topic about an earlier revision (the draft that was rated). Each probe's
+        document entry names its own decision, so only the decision binding can
+        refuse it; a valid decision exists throughout (naming)."""
+        self.decision("opd_00000001", "rating_approval", rev=1, hsh=self.content_hash_of(TOPIC, 1))
+        probes = ("opd_rejected", "opd_samerev", "opd_othertop", "opd_approval")
+        entries = {did: obligation("O-" + did, band="critical", decision=did) for did in probes + ("opd_00000001",)}
+        self.contract(TOPIC, 2, facets=(facet("F-1"),), obligations=tuple(entries.values()))
+        self.insert_facet(TOPIC, 2, facet("F-1"))
         self.decision("opd_rejected", "rating_approval", disposition="rejected", rev=1, hsh=self.content_hash_of(TOPIC, 1))
-        self.decision("opd_samerev", "rating_approval", rev=2, hsh=self.content_hash_of(TOPIC, 2))
+        self.decision("opd_samerev", "rating_approval", rev=2, hsh=self.content_hash_of(TOPIC, 2))  # about the revision that carries it
         self.decision("opd_othertop", "rating_approval", tid=OTHER, rev=1, hsh=self.content_hash_of(OTHER, 1))
         self.decision("opd_approval", "contract_approval", rev=1, hsh=self.content_hash_of(TOPIC, 1))
-        ins = ("INSERT INTO obligations (topic_id, contract_revision, obligation_id, template_id, template_version, claim_type, facet_ids, stopping_profile_id, exploratory, operator_importance_band, operator_rating_decision_id) "
-               "VALUES (?, 2, 'O-1', 'T1', 1, 'effect', '[\"F-1\"]', 'SP-1', 0, 'critical', ?)")
-        self.decision("opd_00000001", "rating_approval", rev=1, hsh=self.content_hash_of(TOPIC, 1))  # a valid decision exists throughout
-        for did in ("opd_rejected", "opd_samerev", "opd_othertop", "opd_approval"):
+        for did in probes:
             with self.subTest(decision=did):
-                self.rejects("approved rating decision about an earlier revision", ins, TOPIC, did)
-        self.x(ins, TOPIC, "opd_00000001")
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.insert_obligation(TOPIC, 2, entries[did])
+                self.assertIn("approved rating decision about an earlier revision", str(ctx.exception))
+        self.insert_obligation(TOPIC, 2, entries["opd_00000001"])
 
     def test_proposed_importance_cites_an_importance_receipt(self) -> None:
         """A2: a Jev-score proposal cites an importance_score decision receipt of
         the same topic; a receipt of another class or topic is refused."""
-        self.contract(TOPIC, 2)
         self.lease("lease_aaaaaaaa", 1)
         self.invocation("inv_pppppppp")
         self.lease("lease_zzzzzzzz", 1, tid=OTHER)
@@ -673,12 +686,15 @@ class ContractGovernanceTest(StoreTestCase):
         self.decision_receipt("dec_screen01", "inv_pppppppp", self.spec())
         self.decision_receipt("dec_import01", "inv_pppppppp", imp, cls="importance_score")
         self.decision_receipt("dec_otherimp", "inv_oooooooo", imp, cls="importance_score", tid=OTHER)
-        ins = ("INSERT INTO obligations (topic_id, contract_revision, obligation_id, template_id, template_version, claim_type, facet_ids, stopping_profile_id, exploratory, proposed_importance_source, proposed_importance_score, proposed_decision_receipt_id) "
-               "VALUES (?, 2, 'O-1', 'T1', 1, 'effect', '[\"F-1\"]', 'SP-1', 0, 'jev_score', 8, ?)")
+        entries = {rid: obligation("O-" + rid, psource="jev_score", pscore=8, preceipt=rid) for rid in ("dec_screen01", "dec_otherimp", "dec_import01")}
+        self.contract(TOPIC, 2, facets=(facet("F-1"),), obligations=tuple(entries.values()))
+        self.insert_facet(TOPIC, 2, facet("F-1"))
         for rid in ("dec_screen01", "dec_otherimp"):
             with self.subTest(receipt=rid):
-                self.rejects("importance_score receipt", ins, TOPIC, rid)
-        self.x(ins, TOPIC, "dec_import01")
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.insert_obligation(TOPIC, 2, entries[rid])
+                self.assertIn("importance_score receipt", str(ctx.exception))
+        self.insert_obligation(TOPIC, 2, entries["dec_import01"])
 
     def dossier(self, rev: int, contract_rev: int, ch: str) -> None:
         self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, ?, ?, 1, 'eval-1', ?, ?, ?)", TOPIC, rev, contract_rev, ch, h("7"), T)
@@ -776,6 +792,124 @@ class ContractGovernanceTest(StoreTestCase):
         self.set_status(TOPIC, "retired", "opd_00000001")
         self.rejects("CHECK constraint failed", "UPDATE queue_entries SET status = 'active', state_revision = state_revision + 1 WHERE topic_id = ?", TOPIC)
         self.set_status(TOPIC, "active")
+
+
+class FacetImportanceTest(StoreTestCase):
+    """A3: facet importance is its own record, bound to the hash-locked
+    document and the operator's rating decision — never inferred from
+    obligations — and G-3's uncovered-critical-facet rule gates approval."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.decision("opd_rate0001", "rating_approval", rev=1, hsh=self.content_hash_of(TOPIC, 1))
+
+    def approve(self, rev: int) -> None:
+        self.decision(f"opd_appr{rev:04d}", "contract_approval", rev=rev, hsh=self.content_hash_of(TOPIC, rev))
+        self.x("UPDATE contract_revisions SET status = 'approved', approved_by_decision_id = ? WHERE topic_id = ? AND revision = ?", f"opd_appr{rev:04d}", TOPIC, rev)
+
+    def uncovered(self, rev: int) -> list[tuple]:
+        return self.rows("SELECT facet_id FROM uncovered_critical_facets WHERE topic_id = ? AND contract_revision = ? ORDER BY facet_id", TOPIC, rev)
+
+    def test_critical_facet_with_zero_obligations_is_representable_and_blocks_approval(self) -> None:
+        # F-omitted is rated critical by the operator and no obligation tags it
+        self.contract_with_rows(TOPIC, 2, facets=(facet("F-omitted", band="critical", score=8, decision="opd_rate0001"),
+                                                  facet("F-2", band="important", decision="opd_rate0001")),
+                                obligations=(obligation("O-1", ("F-2",), band="important", decision="opd_rate0001"),))
+        self.assertEqual(self.rows("SELECT operator_importance_band FROM facets WHERE facet_id = 'F-omitted'"), [("critical",)])
+        self.assertEqual(self.uncovered(2), [("F-omitted",)])
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.approve(2)
+        self.assertIn("no uncovered critical facet", str(ctx.exception))
+        # a revision whose obligation tags the critical facet is approvable
+        self.contract_with_rows(TOPIC, 3, facets=(facet("F-omitted", band="critical", score=8, decision="opd_rate0001"),),
+                                obligations=(obligation("O-2", ("F-omitted",)),))
+        self.assertEqual(self.uncovered(3), [])
+        self.approve(3)
+
+    def test_approval_needs_complete_rows_and_every_facet_rated(self) -> None:
+        both = (facet("F-1", band="limited", decision="opd_rate0001"), facet("F-2", band="limited", decision="opd_rate0001"))
+        # a document facet without its row
+        self.contract(TOPIC, 2, facets=both, obligations=(obligation("O-1", ("F-1",)),))
+        self.insert_facet(TOPIC, 2, both[0])
+        self.insert_obligation(TOPIC, 2, obligation("O-1", ("F-1",)))
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.approve(2)
+        # a document obligation without its row
+        self.contract(TOPIC, 3, facets=both, obligations=(obligation("O-1", ("F-1",)), obligation("O-2", ("F-2",))))
+        for entry in both:
+            self.insert_facet(TOPIC, 3, entry)
+        self.insert_obligation(TOPIC, 3, obligation("O-1", ("F-1",)))
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.approve(3)
+        # an unrated facet (its importance could not be known critical)
+        self.contract_with_rows(TOPIC, 4, facets=(both[0], facet("F-2")), obligations=(obligation("O-1", ("F-1",)),))
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.approve(4)
+        self.contract_with_rows(TOPIC, 5, facets=both, obligations=(obligation("O-1", ("F-1",)),))
+        self.approve(5)
+
+    def test_facet_row_must_equal_its_document_entry(self) -> None:
+        doc_entry = facet("F-1", band="critical", score=8, decision="opd_rate0001")
+        self.contract(TOPIC, 2, facets=(doc_entry,))
+        for field, row in (("band", facet("F-1", band="important", decision="opd_rate0001")),
+                           ("score", facet("F-1", band="critical", score=9, decision="opd_rate0001")),
+                           ("unrated", facet("F-1")),
+                           ("absent", facet("F-9", band="critical", score=8, decision="opd_rate0001"))):
+            with self.subTest(field=field):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.insert_facet(TOPIC, 2, row)
+                self.assertIn("equal its document entry", str(ctx.exception))
+        self.insert_facet(TOPIC, 2, doc_entry)
+
+    def test_facet_rating_bound_to_a_rating_decision(self) -> None:
+        probes = ("opd_rejected", "opd_samerev", "opd_othertop", "opd_approval")
+        entries = {did: facet("F-" + did, band="critical", decision=did) for did in probes + ("opd_rate0001",)}
+        out_of_band = facet("F-x", band="critical", score=5, decision="opd_rate0001")
+        self.contract(TOPIC, 2, facets=tuple(entries.values()) + (out_of_band,))
+        self.decision("opd_rejected", "rating_approval", disposition="rejected", rev=1, hsh=self.content_hash_of(TOPIC, 1))
+        self.decision("opd_samerev", "rating_approval", rev=2, hsh=self.content_hash_of(TOPIC, 2))
+        self.decision("opd_othertop", "rating_approval", tid=OTHER, rev=1, hsh=self.content_hash_of(OTHER, 1))
+        self.decision("opd_approval", "contract_approval", rev=1, hsh=self.content_hash_of(TOPIC, 1))
+        for did in probes:
+            with self.subTest(decision=did):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.insert_facet(TOPIC, 2, entries[did])
+                self.assertIn("approved rating decision", str(ctx.exception))
+        self.insert_facet(TOPIC, 2, entries["opd_rate0001"])  # a valid decision exists throughout (naming)
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.insert_facet(TOPIC, 2, out_of_band)
+        self.assertIn("CHECK constraint failed", str(ctx.exception))
+        self.rejects("facets are immutable", "UPDATE facets SET operator_importance_band = 'limited'")
+
+    def test_facet_proposal_cites_an_importance_receipt(self) -> None:
+        self.lease("lease_aaaaaaaa", 1)
+        self.invocation("inv_pppppppp")
+        self.lease("lease_zzzzzzzz", 1, tid=OTHER)
+        self.invocation("inv_oooooooo", tid=OTHER, lease="lease_zzzzzzzz")
+        imp = self.spec("dspec_import01", cls="importance_score")
+        self.decision_receipt("dec_screen01", "inv_pppppppp", self.spec())
+        self.decision_receipt("dec_import01", "inv_pppppppp", imp, cls="importance_score")
+        self.decision_receipt("dec_otherimp", "inv_oooooooo", imp, cls="importance_score", tid=OTHER)
+        entries = {rid: facet("F-" + rid, psource="jev_score", pscore=8, preceipt=rid) for rid in ("dec_screen01", "dec_otherimp", "dec_import01")}
+        self.contract(TOPIC, 2, facets=tuple(entries.values()))
+        for rid in ("dec_screen01", "dec_otherimp"):
+            with self.subTest(receipt=rid):
+                with self.assertRaises(sqlite3.IntegrityError):
+                    self.insert_facet(TOPIC, 2, entries[rid])
+        self.insert_facet(TOPIC, 2, entries["dec_import01"])
+
+    def test_obligation_row_equals_its_entry_and_tags_only_its_facets(self) -> None:
+        entry = obligation("O-1", ("F-1",), band="important", decision="opd_rate0001")
+        self.contract(TOPIC, 2, facets=(facet("F-1"),), obligations=(entry, obligation("O-2", ("F-9",))))
+        self.insert_facet(TOPIC, 2, facet("F-1"))
+        for name, row in (("facet tags", obligation("O-1", ("F-1", "F-2"), band="important", decision="opd_rate0001")),
+                          ("band", obligation("O-1", ("F-1",), band="critical", decision="opd_rate0001"))):
+            with self.subTest(field=name):
+                self.assertRaises(sqlite3.IntegrityError, self.insert_obligation, TOPIC, 2, row)
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.insert_obligation(TOPIC, 2, obligation("O-2", ("F-9",)))  # matches its entry, but F-9 is no facet of the revision
+        self.assertIn("tag only facets of its revision", str(ctx.exception))
+        self.insert_obligation(TOPIC, 2, entry)
 
 
 if __name__ == "__main__":

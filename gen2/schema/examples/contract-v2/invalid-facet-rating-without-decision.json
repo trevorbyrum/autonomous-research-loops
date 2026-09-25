@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "contract-v2.schema.json",
+    "expect": "invalid",
+    "tests": "A3/G-2: an operator facet rating names the operator decision",
+    "base": "valid-critical-facet-without-obligation.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/facet_map/facets/2/importance/operator_rating/operator_decision_id"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": "/facet_map/facets/2/importance/operator_rating"
+      }
+    ]
+  }
+}

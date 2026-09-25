@@ -2,7 +2,7 @@
   "fixture": {
     "schema": "contract-v2.schema.json",
     "expect": "valid",
-    "tests": "Contract v2 shape: decision record, facet map, templated rated obligations, eligibility, stopping profile, surveillance, applicability, method design"
+    "tests": "A3/G-3: a facet's importance is stored on the facet itself, so a critical facet with zero obligations is representable (schema-valid); the uncovered-critical rule that then blocks approval is a store check (gen2/store/schema.sql contract_approval_needs_rated_covered_facets), not a schema one"
   },
   "instance": {
     "schema_version": "contract-v2",
@@ -103,8 +103,16 @@
           "label": "Effect of design on omissions",
           "kind": "effect",
           "importance": {
-            "proposed": {"source": "jev_score", "score": 8, "decision_receipt_id": "dec_facet0001"},
-            "operator_rating": {"band": "critical", "score": 8, "operator_decision_id": "opd_rate0001"}
+            "proposed": {
+              "source": "jev_score",
+              "score": 8,
+              "decision_receipt_id": "dec_facet0001"
+            },
+            "operator_rating": {
+              "band": "critical",
+              "score": 8,
+              "operator_decision_id": "opd_rate0001"
+            }
           }
         },
         {
@@ -113,7 +121,27 @@
           "kind": "alternatives",
           "importance": {
             "proposed": null,
-            "operator_rating": {"band": "important", "operator_decision_id": "opd_rate0001"}
+            "operator_rating": {
+              "band": "important",
+              "operator_decision_id": "opd_rate0001"
+            }
+          }
+        },
+        {
+          "facet_id": "F-omitted",
+          "label": "Reversibility of the change",
+          "kind": "boundary_conditions",
+          "importance": {
+            "proposed": {
+              "source": "jev_score",
+              "score": 7,
+              "decision_receipt_id": "dec_facet0002"
+            },
+            "operator_rating": {
+              "band": "critical",
+              "score": 7,
+              "operator_decision_id": "opd_rate0001"
+            }
           }
         }
       ],
@@ -150,6 +178,12 @@
             "question_type": "effect",
             "state": "gap",
             "rationale": "No obligation yet; flagged for operator review."
+          },
+          {
+            "facet_id": "F-omitted",
+            "question_type": "effect",
+            "state": "gap",
+            "rationale": "No obligation yet; left visible so the operator sees the gap."
           }
         ]
       },

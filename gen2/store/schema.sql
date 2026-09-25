@@ -201,6 +201,24 @@ BEGIN
   SELECT RAISE(ABORT, 'contract approval must be an approved decision about this exact topic, revision and content hash (A2)');
 END;
 
+-- G-3 / A3: approval needs the revision's normalized obligation and facet
+-- rows to be complete (one row per document entry, each bound to its entry
+-- by the insert triggers below), every facet to carry an operator rating
+-- (the operator approves framework, ratings, set and method together — flow
+-- S3), and no critical facet without an obligation (uncovered_critical_facets).
+CREATE TRIGGER contract_approval_needs_rated_covered_facets
+BEFORE UPDATE OF status ON contract_revisions
+WHEN NEW.status = 'approved' AND OLD.status = 'draft' AND (
+     (SELECT count(*) FROM obligations o WHERE o.topic_id = NEW.topic_id AND o.contract_revision = NEW.revision)
+       IS NOT json_array_length(NEW.document, '$.obligations')
+  OR (SELECT count(*) FROM facets f WHERE f.topic_id = NEW.topic_id AND f.contract_revision = NEW.revision)
+       IS NOT json_array_length(NEW.document, '$.facet_map.facets')
+  OR EXISTS (SELECT 1 FROM facets f WHERE f.topic_id = NEW.topic_id AND f.contract_revision = NEW.revision AND f.operator_importance_band IS NULL)
+  OR EXISTS (SELECT 1 FROM uncovered_critical_facets u WHERE u.topic_id = NEW.topic_id AND u.contract_revision = NEW.revision))
+BEGIN
+  SELECT RAISE(ABORT, 'approval needs complete obligation/facet rows, every facet operator-rated, and no uncovered critical facet (G-3)');
+END;
+
 CREATE TRIGGER contract_content_immutable
 BEFORE UPDATE ON contract_revisions
 WHEN NEW.document IS NOT OLD.document
@@ -228,6 +246,78 @@ END;
 CREATE TRIGGER contract_no_delete BEFORE DELETE ON contract_revisions
 BEGIN
   SELECT RAISE(ABORT, 'contract revisions are never deleted (G-1)');
+END;
+
+-- trace: flow S3 (facet map; "Jev scores (Score: facet importance)";
+-- operator approves framework, ratings, set and method design together;
+-- "critical facet uncovered -> blocks approval (deterministic check on the
+-- matrix)"), §6.4 (auto-promotion keyed to an existing facet's
+-- operator-confirmed rating); methodology §2 (GRADE bands); adjudication
+-- (a)G-R9, K-R4, K-A7; Astra 0a review A3; INVARIANTS G-2, G-3, G-5.
+-- Normalized projection of one contract revision's facet_map.facets,
+-- immutable with that revision. Facet importance is stored here in its own
+-- right — never inferred from obligation ratings, which would make the
+-- uncovered-critical-facet check circular (a facet with no obligation would
+-- have no importance at all). Rows are bound to their document entry and
+-- rating decision by facets_bound_to_document_and_decision.
+CREATE TABLE facets (
+  topic_id TEXT NOT NULL,
+  contract_revision INTEGER NOT NULL,
+  facet_id TEXT NOT NULL,
+  proposed_importance_source TEXT CHECK (proposed_importance_source IN ('jev_score', 'primary_draft')),
+  proposed_importance_score INTEGER CHECK (proposed_importance_score BETWEEN 1 AND 9),
+  proposed_decision_receipt_id TEXT REFERENCES decision_receipts (decision_receipt_id),
+  operator_importance_band TEXT CHECK (operator_importance_band IN ('critical', 'important', 'limited')),
+  operator_importance_score INTEGER CHECK (operator_importance_score BETWEEN 1 AND 9),
+  operator_rating_decision_id TEXT REFERENCES operator_decisions (decision_id),
+  PRIMARY KEY (topic_id, contract_revision, facet_id),
+  FOREIGN KEY (topic_id, contract_revision) REFERENCES contract_revisions (topic_id, revision),
+  CHECK ((proposed_importance_source IS NULL) = (proposed_importance_score IS NULL)),
+  CHECK (proposed_importance_source IS NOT 'jev_score' OR proposed_decision_receipt_id IS NOT NULL),
+  CHECK ((operator_importance_band IS NULL) = (operator_rating_decision_id IS NULL)),
+  CHECK (operator_importance_score IS NULL OR operator_importance_band IS NOT NULL),
+  CHECK (operator_importance_score IS NULL
+      OR (operator_importance_band = 'critical' AND operator_importance_score BETWEEN 7 AND 9)
+      OR (operator_importance_band = 'important' AND operator_importance_score BETWEEN 4 AND 6)
+      OR (operator_importance_band = 'limited' AND operator_importance_score BETWEEN 1 AND 3))
+) STRICT;
+
+-- A2/A3: the same rating/proposal binding as obligations, plus equality with
+-- the facet's entry in the revision's document (the hash-locked content).
+CREATE TRIGGER facets_bound_to_document_and_decision
+BEFORE INSERT ON facets
+WHEN NOT EXISTS (
+       SELECT 1 FROM contract_revisions c, json_each(c.document, '$.facet_map.facets') e
+       WHERE c.topic_id = NEW.topic_id AND c.revision = NEW.contract_revision
+         AND json_extract(e.value, '$.facet_id') IS NEW.facet_id
+         AND json_extract(e.value, '$.importance.proposed.source') IS NEW.proposed_importance_source
+         AND json_extract(e.value, '$.importance.proposed.score') IS NEW.proposed_importance_score
+         AND json_extract(e.value, '$.importance.proposed.decision_receipt_id') IS NEW.proposed_decision_receipt_id
+         AND json_extract(e.value, '$.importance.operator_rating.band') IS NEW.operator_importance_band
+         AND json_extract(e.value, '$.importance.operator_rating.score') IS NEW.operator_importance_score
+         AND json_extract(e.value, '$.importance.operator_rating.operator_decision_id') IS NEW.operator_rating_decision_id)
+  OR (NEW.operator_rating_decision_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM operator_decisions d
+        WHERE d.decision_id = NEW.operator_rating_decision_id
+          AND d.kind = 'rating_approval' AND d.disposition = 'approved'
+          AND d.topic_id = NEW.topic_id
+          AND d.subject_revision < NEW.contract_revision))
+  OR (NEW.proposed_decision_receipt_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM decision_receipts r
+        WHERE r.decision_receipt_id = NEW.proposed_decision_receipt_id
+          AND r.topic_id = NEW.topic_id AND r.decision_class = 'importance_score'))
+BEGIN
+  SELECT RAISE(ABORT, 'a facet row must equal its document entry, and its rating/proposal must cite this topic''s approved rating decision / importance_score receipt (A3)');
+END;
+
+CREATE TRIGGER facets_immutable BEFORE UPDATE ON facets
+BEGIN
+  SELECT RAISE(ABORT, 'facets are immutable with their contract revision');
+END;
+
+CREATE TRIGGER facets_no_delete BEFORE DELETE ON facets
+BEGIN
+  SELECT RAISE(ABORT, 'facets are never deleted');
 END;
 
 -- trace: flow S3 (templated, importance-rated, facet-tagged obligations),
@@ -286,6 +376,30 @@ BEGIN
   SELECT RAISE(ABORT, 'an obligation rating must cite an approved rating decision about an earlier revision of this topic; a proposal must cite this topic''s importance_score receipt (A2)');
 END;
 
+-- A3: an obligation row equals its document entry (facet tags and
+-- importance), and every facet it tags is a facet of the same revision — so
+-- coverage (uncovered_critical_facets) is computed from the hash-locked
+-- content, not from free-standing rows.
+CREATE TRIGGER obligations_bound_to_document_and_facets
+BEFORE INSERT ON obligations
+WHEN NOT EXISTS (
+       SELECT 1 FROM contract_revisions c, json_each(c.document, '$.obligations') e
+       WHERE c.topic_id = NEW.topic_id AND c.revision = NEW.contract_revision
+         AND json_extract(e.value, '$.obligation_id') IS NEW.obligation_id
+         AND json_extract(e.value, '$.facet_ids') IS json(NEW.facet_ids)
+         AND json_extract(e.value, '$.importance.proposed.source') IS NEW.proposed_importance_source
+         AND json_extract(e.value, '$.importance.proposed.score') IS NEW.proposed_importance_score
+         AND json_extract(e.value, '$.importance.proposed.decision_receipt_id') IS NEW.proposed_decision_receipt_id
+         AND json_extract(e.value, '$.importance.operator_rating.band') IS NEW.operator_importance_band
+         AND json_extract(e.value, '$.importance.operator_rating.score') IS NEW.operator_importance_score
+         AND json_extract(e.value, '$.importance.operator_rating.operator_decision_id') IS NEW.operator_rating_decision_id)
+  OR EXISTS (
+       SELECT 1 FROM json_each(NEW.facet_ids) j
+       WHERE NOT EXISTS (SELECT 1 FROM facets f WHERE f.topic_id = NEW.topic_id AND f.contract_revision = NEW.contract_revision AND f.facet_id = j.value))
+BEGIN
+  SELECT RAISE(ABORT, 'an obligation row must equal its document entry and tag only facets of its revision (A3)');
+END;
+
 CREATE TRIGGER obligations_immutable BEFORE UPDATE ON obligations
 BEGIN
   SELECT RAISE(ABORT, 'obligations are immutable with their contract revision');
@@ -295,6 +409,17 @@ CREATE TRIGGER obligations_no_delete BEFORE DELETE ON obligations
 BEGIN
   SELECT RAISE(ABORT, 'obligations are never deleted');
 END;
+
+-- G-3: critical facets (operator band) that no obligation of the same
+-- revision tags. Structural only: a tagged facet can still be semantically
+-- under-covered (flow S3) — that stays with the operator and the facet audit.
+CREATE VIEW uncovered_critical_facets AS
+SELECT f.topic_id, f.contract_revision, f.facet_id
+FROM facets f
+WHERE f.operator_importance_band = 'critical'
+  AND NOT EXISTS (
+    SELECT 1 FROM obligations o, json_each(o.facet_ids) j
+    WHERE o.topic_id = f.topic_id AND o.contract_revision = f.contract_revision AND j.value = f.facet_id);
 
 -- ===========================================================================
 -- Leases and invocations

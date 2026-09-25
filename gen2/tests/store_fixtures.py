@@ -43,6 +43,21 @@ def h(ch: str) -> str:
     return "sha256:" + ch * 64
 
 
+def importance(band=None, score=None, decision=None, psource=None, pscore=None, preceipt=None) -> dict:
+    """The contract-v2 importance object (proposed vs operator rating kept apart)."""
+    proposed = None if psource is None and pscore is None else {"source": psource, "score": pscore, "decision_receipt_id": preceipt}
+    rating = None if band is None and score is None and decision is None else {"band": band, "score": score, "operator_decision_id": decision}
+    return {"proposed": proposed, "operator_rating": rating}
+
+
+def facet(fid: str, **imp) -> dict:
+    return {"facet_id": fid, "label": fid, "kind": "effect", "importance": importance(**imp)}
+
+
+def obligation(oid: str, facet_ids=("F-1",), **imp) -> dict:
+    return {"obligation_id": oid, "facet_ids": list(facet_ids), "importance": importance(**imp)}
+
+
 def connect(apply_connection_contract: bool = True) -> sqlite3.Connection:
     db = sqlite3.connect(":memory:", isolation_level=None)
     if apply_connection_contract:
@@ -80,9 +95,11 @@ class StoreTestCase(unittest.TestCase):
         return self.rows(f"SELECT * FROM {table} ORDER BY rowid")
 
     # -- builders --------------------------------------------------------
-    def contract(self, tid: str, rev: int, status: str = "draft", approved_by: str | None = None, ch: str | None = None) -> str:
+    def contract(self, tid: str, rev: int, status: str = "draft", approved_by: str | None = None, ch: str | None = None,
+                 facets: tuple = (), obligations: tuple = ()) -> str:
         content = h(ch or ("a" if tid == TOPIC else "b") if rev == 1 else ch or str(rev))
-        doc = json.dumps({"topic_id": tid, "revision": rev, "content_hash": content, "protocol_revision": 1, "facet_map": {"framing_version": 1}})
+        doc = json.dumps({"topic_id": tid, "revision": rev, "content_hash": content, "protocol_revision": 1,
+                          "facet_map": {"framing_version": 1, "facets": list(facets)}, "obligations": list(obligations)})
         self.x("INSERT INTO contract_revisions (topic_id, revision, parent_revision, protocol_revision, framing_version, content_hash, document, status, approved_by_decision_id, created_at) VALUES (?, ?, ?, 1, 1, ?, ?, ?, ?, ?)",
                tid, rev, None if rev == 1 else rev - 1, content, doc, status, approved_by, T)
         return content
@@ -97,6 +114,33 @@ class StoreTestCase(unittest.TestCase):
         self.x("INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_revision, subject_hash, operator_id, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'trevor', ?)",
                did, tid, kind, disposition, sk, ref, rev, hsh, T)
         return did
+
+    @staticmethod
+    def _importance_columns(entry: dict) -> tuple:
+        proposed = entry["importance"]["proposed"] or {}
+        rating = entry["importance"]["operator_rating"] or {}
+        return (proposed.get("source"), proposed.get("score"), proposed.get("decision_receipt_id"),
+                rating.get("band"), rating.get("score"), rating.get("operator_decision_id"))
+
+    def insert_facet(self, tid: str, rev: int, entry: dict) -> None:
+        self.x("INSERT INTO facets (topic_id, contract_revision, facet_id, proposed_importance_source, proposed_importance_score, proposed_decision_receipt_id, "
+               "operator_importance_band, operator_importance_score, operator_rating_decision_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+               tid, rev, entry["facet_id"], *self._importance_columns(entry))
+
+    def insert_obligation(self, tid: str, rev: int, entry: dict) -> None:
+        self.x("INSERT INTO obligations (topic_id, contract_revision, obligation_id, template_id, template_version, claim_type, facet_ids, stopping_profile_id, exploratory, "
+               "proposed_importance_source, proposed_importance_score, proposed_decision_receipt_id, operator_importance_band, operator_importance_score, operator_rating_decision_id) "
+               "VALUES (?, ?, ?, 'T1', 1, 'effect', ?, 'SP-1', 0, ?, ?, ?, ?, ?, ?)",
+               tid, rev, entry["obligation_id"], json.dumps(entry["facet_ids"]), *self._importance_columns(entry))
+
+    def contract_with_rows(self, tid: str, rev: int, facets: tuple = (), obligations: tuple = (), **kwargs) -> str:
+        """A draft revision whose document carries these entries, plus their normalized rows."""
+        content = self.contract(tid, rev, facets=facets, obligations=obligations, **kwargs)
+        for entry in facets:
+            self.insert_facet(tid, rev, entry)
+        for entry in obligations:
+            self.insert_obligation(tid, rev, entry)
+        return content
 
     def content_hash_of(self, tid: str, rev: int) -> str:
         return self.rows("SELECT content_hash FROM contract_revisions WHERE topic_id = ? AND revision = ?", tid, rev)[0][0]
@@ -153,9 +197,8 @@ class StoreTestCase(unittest.TestCase):
         self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, topic_id, staged_at) VALUES (?, 10, 'application/json', ?, ?)", h("7"), TOPIC, T)
         # S3: the operator rates draft revision 1; revision 2 carries the ratings and is approved
         self.decision("opd_rating001", "rating_approval", rev=1, hsh=self.content_hash_of(TOPIC, 1))
-        self.contract(TOPIC, 2)
-        self.x("INSERT INTO obligations (topic_id, contract_revision, obligation_id, template_id, template_version, claim_type, facet_ids, stopping_profile_id, exploratory, operator_importance_band, operator_importance_score, operator_rating_decision_id) "
-               "VALUES (?, 2, 'O-1', 'T1', 1, 'effect', '[\"F-1\"]', 'SP-1', 0, 'critical', 8, 'opd_rating001')", TOPIC)
+        self.contract_with_rows(TOPIC, 2, facets=(facet("F-1", band="critical", score=8, decision="opd_rating001"),),
+                                obligations=(obligation("O-1", ("F-1",), band="critical", score=8, decision="opd_rating001"),))
         self.approve_contract(TOPIC, 2, "opd_contract1")
         self.x("UPDATE queue_entries SET active_contract_revision = 2 WHERE topic_id = ?", TOPIC)
         self.lease("lease_aaaaaaaa", 1)

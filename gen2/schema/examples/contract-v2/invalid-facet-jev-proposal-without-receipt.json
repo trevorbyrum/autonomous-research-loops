@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "contract-v2.schema.json",
+    "expect": "invalid",
+    "tests": "A3/G-2: a Jev facet-importance proposal names its decision receipt",
+    "base": "valid-critical-facet-without-obligation.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/facet_map/facets/2/importance/proposed/decision_receipt_id"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": "/facet_map/facets/2/importance/proposed"
+      }
+    ]
+  }
+}

@@ -8,7 +8,7 @@
 
 ## How the brief's table list maps to the DDL
 
-- Contract revisions and obligations → `contract_revisions`, `obligations`
+- Contract revisions and obligations → `contract_revisions`, `facets` (facet importance in its own right, A3), `obligations`, and the `uncovered_critical_facets` view (G-3)
 - Queue entries → `queue_entries`
 - Invocations and leases → `invocations`, `invocation_transitions`, `leases`
 - Review episodes and triggers → `review_episodes`, `review_triggers`
@@ -70,7 +70,9 @@
   - contract content is immutable, never deleted, and hash-bound to its row; revisions are written as drafts
   - one approved revision per topic; approval names an approved contract/amendment/reframe decision about that exact revision and hash
   - every operator decision names a typed subject that must exist (when stored here) with that exact revision and hash
-  - operator ratings are band-consistent, a score needs a band, and the rating cites an approved rating decision about an earlier revision of the same topic (the rated draft); a Jev proposal cites that topic's `importance_score` receipt
+  - facet and obligation rows each equal their entry in the hash-locked document; obligations tag only facets of their revision
+  - operator ratings (facet and obligation) are band-consistent, a score needs a band, and the rating cites an approved rating decision about an earlier revision of the same topic (the rated draft); a Jev proposal cites that topic's `importance_score` receipt
+  - approval needs complete facet/obligation rows, every facet operator-rated, and no critical facet untagged by an obligation (G-3)
   - topics are created at intake (revision 0); every status change is a commit (+1 revision)
   - completion names an approved completion approval of the current dossier revision and hash, under the active approved contract
   - retirement names an approved retirement decision made at the state revision being left (so it cannot be reused)
@@ -82,7 +84,7 @@
 - **Replay vs conflict on operation-ID reuse.** This compares `request_fingerprint`; the DDL only guarantees the ID cannot be committed twice.
 - **The compare-and-set on `expected_state_revision`** (`UPDATE … WHERE state_revision = ?`); the DDL guarantees only +1 steps and one commit per revision.
 - **Authority from capability**, payload validation and the step-2 validation binding.
-- **Deterministic contract-approval checks:** referential consistency, template slot completeness, no uncovered critical facet.
+- **Deterministic contract-approval checks the DDL cannot see:** template slot completeness, framework-link and decision-record references, coverage-matrix cell consistency. (Facet coverage by obligations, facet referential integrity and rating completeness are DDL, above.)
 - **Stopping-rule evaluation and dossier assembly** (accounting); freshness-envelope computation (projector).
 - **Byte-level quote matching and normalization;** tier-0 invocation.
 - **Operational behavior:** transition alerts on capability facts, hold deadline escalation, verification capacity reservation, retry budgets.
@@ -109,4 +111,5 @@ These are choices this draft made where the sources leave room. Each is easy to 
 3. **An exact-quote mismatch quarantines the quote.** The sources state quarantine for NLI alarms; this draft applies it to byte mismatches too.
 4. **Process identity is required only while `running`.** A job reconciled from `outcome_unknown` may already have exited; later states require the retained result.
 5. **Queue status, claim status, reason-code and error-class vocabularies are drafts.**
+7. **Facet coverage (A3).** Any obligation of the revision that tags a facet covers it, exploratory ones included; approval requires every facet to carry an operator rating (flow S3: ratings are approved with the framework, set and method design); an operator rating cites a `rating_approval` whose subject is an *earlier* revision (the draft the operator rated) because the rated revision's own hash covers the rating.
 6. **Canonical form for content hashes** (contract `content_hash`, `request_fingerprint`, `spec_hash`, `payload_digest`) is open: RFC 8785 JCS, or a stdlib-reproducible subset such as sorted keys, compact separators and integer-only numbers.

@@ -158,12 +158,13 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["facet_id", "label", "kind"],
+            "required": ["facet_id", "label", "kind", "importance"],
             "properties": {
               "facet_id": {"$ref": "common.schema.json#/$defs/local_id"},
               "label": {"$ref": "common.schema.json#/$defs/short_text"},
               "kind": {"enum": ["mechanism", "effect", "applicability", "alternatives", "boundary_conditions", "other"]},
-              "description": {"$ref": "common.schema.json#/$defs/long_text"}
+              "description": {"$ref": "common.schema.json#/$defs/long_text"},
+              "importance": {"$ref": "#/$defs/importance"}
             }
           }
         },
@@ -255,41 +256,43 @@
         },
         "exploratory": {"type": "boolean"},
         "stopping_profile_id": {"$ref": "common.schema.json#/$defs/local_id"},
-        "importance": {
-          "type": "object",
+        "importance": {"$ref": "#/$defs/importance"}
+      }
+    },
+    "importance": {
+      "description": "Facet and obligation importance (flow S3: Jev scores facet importance; the operator approves ratings with the framework, set and method design; §6.4: auto-promotion keys on an existing facet's operator-confirmed rating). The proposal and the operator rating are separate fields; only operator_rating authorizes anything, and a facet's importance is its own — never inferred from obligations (Astra 0a review A3).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["proposed", "operator_rating"],
+      "properties": {
+        "proposed": {
+          "description": "A proposal only — e.g. a Jev Score. Carries no authority. Null when nothing was proposed.",
+          "type": ["object", "null"],
           "additionalProperties": false,
-          "required": ["proposed", "operator_rating"],
+          "required": ["source", "score"],
           "properties": {
-            "proposed": {
-              "description": "A proposal only — e.g. a Jev Score. Carries no authority. Null when nothing was proposed.",
-              "type": ["object", "null"],
-              "additionalProperties": false,
-              "required": ["source", "score"],
-              "properties": {
-                "source": {"enum": ["jev_score", "primary_draft"]},
-                "score": {"type": "integer", "minimum": 1, "maximum": 9},
-                "decision_receipt_id": {"$ref": "common.schema.json#/$defs/decision_receipt_id"}
-              },
-              "if": {"type": "object", "properties": {"source": {"const": "jev_score"}}},
-              "then": {"required": ["decision_receipt_id"]}
-            },
-            "operator_rating": {
-              "description": "GRADE-style: the band is required; the 1-9 score is an optional elicitation aid and must sit in its band (critical 7-9, important 4-6, limited 1-3). Not a calibrated probability (methodology §2; adjudication (a)G-R9). Null until the operator rates.",
-              "type": ["object", "null"],
-              "additionalProperties": false,
-              "required": ["band", "operator_decision_id"],
-              "properties": {
-                "band": {"enum": ["critical", "important", "limited"]},
-                "score": {"type": "integer", "minimum": 1, "maximum": 9},
-                "operator_decision_id": {"$ref": "common.schema.json#/$defs/operator_decision_id"}
-              },
-              "allOf": [
-                {"if": {"type": "object", "properties": {"band": {"const": "critical"}}}, "then": {"properties": {"score": {"minimum": 7}}}},
-                {"if": {"type": "object", "properties": {"band": {"const": "important"}}}, "then": {"properties": {"score": {"minimum": 4, "maximum": 6}}}},
-                {"if": {"type": "object", "properties": {"band": {"const": "limited"}}}, "then": {"properties": {"score": {"maximum": 3}}}}
-              ]
-            }
-          }
+            "source": {"enum": ["jev_score", "primary_draft"]},
+            "score": {"type": "integer", "minimum": 1, "maximum": 9},
+            "decision_receipt_id": {"$ref": "common.schema.json#/$defs/decision_receipt_id"}
+          },
+          "if": {"type": "object", "properties": {"source": {"const": "jev_score"}}},
+          "then": {"required": ["decision_receipt_id"]}
+        },
+        "operator_rating": {
+          "description": "GRADE-style: the band is required; the 1-9 score is an optional elicitation aid and must sit in its band (critical 7-9, important 4-6, limited 1-3). Not a calibrated probability (methodology §2; adjudication (a)G-R9). Null until the operator rates.",
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["band", "operator_decision_id"],
+          "properties": {
+            "band": {"enum": ["critical", "important", "limited"]},
+            "score": {"type": "integer", "minimum": 1, "maximum": 9},
+            "operator_decision_id": {"$ref": "common.schema.json#/$defs/operator_decision_id"}
+          },
+          "allOf": [
+            {"if": {"type": "object", "properties": {"band": {"const": "critical"}}}, "then": {"properties": {"score": {"minimum": 7}}}},
+            {"if": {"type": "object", "properties": {"band": {"const": "important"}}}, "then": {"properties": {"score": {"minimum": 4, "maximum": 6}}}},
+            {"if": {"type": "object", "properties": {"band": {"const": "limited"}}}, "then": {"properties": {"score": {"maximum": 3}}}}
+          ]
         }
       }
     },

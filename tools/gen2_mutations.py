@@ -51,10 +51,12 @@ class Mutation:
     new: str = ""
     target: str = "ddl"  # ddl | connection
     also: tuple[tuple[str, str], ...] = ()  # further (old, new) edits applied with this one (a dimension-level mutation)
+    scope: str | None = None  # apply the edits only inside this trigger (CREATE TRIGGER <scope> ... END;)
 
 
 H = "test_store_history."
 D = "test_store_ddl."
+FI = "test_store_ddl.FacetImportanceTest."
 
 MUTATIONS: list[Mutation] = [
     # --- A1: history cannot be rewritten ------------------------------------
@@ -156,19 +158,19 @@ MUTATIONS: list[Mutation] = [
              (D + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",),
              old="      AND d.topic_id = NEW.topic_id\n      AND d.subject_revision = NEW.revision\n      AND d.subject_hash = NEW.content_hash)", new=")"),
     Mutation("A2-rating-naming", "A2", "an obligation rating accepts any valid rating decision, not the one named",
-             (D + "ContractGovernanceTest.test_operator_rating_bound_to_a_rating_decision",), old="        WHERE d.decision_id = NEW.operator_rating_decision_id\n", new="        WHERE 1\n"),
+             (D + "ContractGovernanceTest.test_operator_rating_bound_to_a_rating_decision",), old="        WHERE d.decision_id = NEW.operator_rating_decision_id\n", new="        WHERE 1\n", scope="obligations_rating_bound_to_decision"),
     Mutation("A2-rating-kind", "A2", "rating binding ignores decision kind",
-             (D + "ContractGovernanceTest.test_operator_rating_bound_to_a_rating_decision",), old="          AND d.kind = 'rating_approval' AND d.disposition = 'approved'\n", new="          AND d.disposition = 'approved'\n"),
+             (D + "ContractGovernanceTest.test_operator_rating_bound_to_a_rating_decision",), old="          AND d.kind = 'rating_approval' AND d.disposition = 'approved'\n", new="          AND d.disposition = 'approved'\n", scope="obligations_rating_bound_to_decision"),
     Mutation("A2-rating-disposition", "A2", "rating binding ignores disposition",
-             (D + "ContractGovernanceTest.test_operator_rating_bound_to_a_rating_decision",), old="          AND d.kind = 'rating_approval' AND d.disposition = 'approved'\n", new="          AND d.kind = 'rating_approval'\n"),
+             (D + "ContractGovernanceTest.test_operator_rating_bound_to_a_rating_decision",), old="          AND d.kind = 'rating_approval' AND d.disposition = 'approved'\n", new="          AND d.kind = 'rating_approval'\n", scope="obligations_rating_bound_to_decision"),
     Mutation("A2-rating-topic", "A2", "rating binding ignores topic",
-             (D + "ContractGovernanceTest.test_operator_rating_bound_to_a_rating_decision",), old="          AND d.topic_id = NEW.topic_id\n          AND d.subject_revision < NEW.contract_revision))", new="          AND d.subject_revision < NEW.contract_revision))"),
+             (D + "ContractGovernanceTest.test_operator_rating_bound_to_a_rating_decision",), old="          AND d.topic_id = NEW.topic_id\n          AND d.subject_revision < NEW.contract_revision))", new="          AND d.subject_revision < NEW.contract_revision))", scope="obligations_rating_bound_to_decision"),
     Mutation("A2-rating-earlier-revision", "A2", "a rating decision may be about the revision that carries it",
-             (D + "ContractGovernanceTest.test_operator_rating_bound_to_a_rating_decision",), old="          AND d.subject_revision < NEW.contract_revision))", new="          AND d.subject_revision <= NEW.contract_revision))"),
+             (D + "ContractGovernanceTest.test_operator_rating_bound_to_a_rating_decision",), old="          AND d.subject_revision < NEW.contract_revision))", new="          AND d.subject_revision <= NEW.contract_revision))", scope="obligations_rating_bound_to_decision"),
     Mutation("A2-proposal-receipt-class", "A2", "a Jev proposal may cite any decision class",
-             (D + "ContractGovernanceTest.test_proposed_importance_cites_an_importance_receipt",), old="          AND r.topic_id = NEW.topic_id AND r.decision_class = 'importance_score'))", new="          AND r.topic_id = NEW.topic_id))"),
+             (D + "ContractGovernanceTest.test_proposed_importance_cites_an_importance_receipt",), old="          AND r.topic_id = NEW.topic_id AND r.decision_class = 'importance_score'))", new="          AND r.topic_id = NEW.topic_id))", scope="obligations_rating_bound_to_decision"),
     Mutation("A2-proposal-receipt-topic", "A2", "a Jev proposal may cite another topic's receipt",
-             (D + "ContractGovernanceTest.test_proposed_importance_cites_an_importance_receipt",), old="          AND r.topic_id = NEW.topic_id AND r.decision_class = 'importance_score'))", new="          AND r.decision_class = 'importance_score'))"),
+             (D + "ContractGovernanceTest.test_proposed_importance_cites_an_importance_receipt",), old="          AND r.topic_id = NEW.topic_id AND r.decision_class = 'importance_score'))", new="          AND r.decision_class = 'importance_score'))", scope="obligations_rating_bound_to_decision"),
     Mutation("A2-holds-created-open", "A2", "holds may be inserted cleared",
              (D + "HoldTest.test_holds_are_created_open",), drop_trigger="holds_created_open"),
     Mutation("A2-hold-clearance-naming", "A2", "a hold clears with any valid clearance, not the one named",
@@ -220,6 +222,41 @@ MUTATIONS: list[Mutation] = [
           ("topic-revision", "\n  CHECK (subject_kind != 'topic' OR subject_revision IS NOT NULL),"),
           ("topic-scoped", "\n  CHECK (subject_kind = 'hold' OR topic_id IS NOT NULL),"),
           ("recorded-only-blind", ",\n  CHECK ((kind IN ('blind_initial_disposition', 'advised_feedback')) = (disposition = 'recorded'))"))),
+    # --- A3: facet importance is its own record; G-3 gates approval ------------
+    Mutation("A3-facet-document-binding", "A3", "facet rows no longer equal their document entry",
+             (FI + "test_facet_row_must_equal_its_document_entry",), scope="facets_bound_to_document_and_decision",
+             old="WHEN NOT EXISTS (", new="WHEN 0 AND NOT EXISTS ("),
+    Mutation("A3-facet-rating-naming", "A3", "facet rating accepts any valid rating decision", (FI + "test_facet_rating_bound_to_a_rating_decision",),
+             scope="facets_bound_to_document_and_decision", old="        WHERE d.decision_id = NEW.operator_rating_decision_id\n", new="        WHERE 1\n"),
+    Mutation("A3-facet-rating-kind", "A3", "facet rating ignores decision kind", (FI + "test_facet_rating_bound_to_a_rating_decision",),
+             scope="facets_bound_to_document_and_decision", old="AND d.kind = 'rating_approval' AND d.disposition = 'approved'", new="AND d.disposition = 'approved'"),
+    Mutation("A3-facet-rating-disposition", "A3", "facet rating ignores disposition", (FI + "test_facet_rating_bound_to_a_rating_decision",),
+             scope="facets_bound_to_document_and_decision", old="AND d.kind = 'rating_approval' AND d.disposition = 'approved'", new="AND d.kind = 'rating_approval'"),
+    Mutation("A3-facet-rating-topic", "A3", "facet rating ignores topic", (FI + "test_facet_rating_bound_to_a_rating_decision",),
+             scope="facets_bound_to_document_and_decision", old="          AND d.topic_id = NEW.topic_id\n", new=""),
+    Mutation("A3-facet-rating-earlier-revision", "A3", "facet rating may be about the revision carrying it", (FI + "test_facet_rating_bound_to_a_rating_decision",),
+             scope="facets_bound_to_document_and_decision", old="d.subject_revision < NEW.contract_revision", new="d.subject_revision <= NEW.contract_revision"),
+    Mutation("A3-facet-proposal-class", "A3", "facet proposal may cite any decision class", (FI + "test_facet_proposal_cites_an_importance_receipt",),
+             scope="facets_bound_to_document_and_decision", old=" AND r.decision_class = 'importance_score'))", new="))"),
+    Mutation("A3-facet-proposal-topic", "A3", "facet proposal may cite another topic's receipt", (FI + "test_facet_proposal_cites_an_importance_receipt",),
+             scope="facets_bound_to_document_and_decision", old="          AND r.topic_id = NEW.topic_id AND r.decision_class", new="          AND r.decision_class"),
+    Mutation("A3-facet-band-score", "A3", "facet band/score consistency CHECK removed", (FI + "test_facet_rating_bound_to_a_rating_decision",),
+             old="  CHECK (operator_importance_score IS NULL\n      OR (operator_importance_band = 'critical' AND operator_importance_score BETWEEN 7 AND 9)\n      OR (operator_importance_band = 'important' AND operator_importance_score BETWEEN 4 AND 6)\n      OR (operator_importance_band = 'limited' AND operator_importance_score BETWEEN 1 AND 3))\n) STRICT;\n\n-- A2/A3: the same rating",
+             new="  CHECK (1)\n) STRICT;\n\n-- A2/A3: the same rating"),
+    Mutation("A3-obligation-document-binding", "A3", "obligation rows no longer equal their document entry", (FI + "test_obligation_row_equals_its_entry_and_tags_only_its_facets",),
+             scope="obligations_bound_to_document_and_facets", old="WHEN NOT EXISTS (", new="WHEN 0 AND NOT EXISTS ("),
+    Mutation("A3-obligation-facet-referential", "A3", "obligations may tag facets absent from their revision", (FI + "test_obligation_row_equals_its_entry_and_tags_only_its_facets",),
+             scope="obligations_bound_to_document_and_facets", old="  OR EXISTS (\n       SELECT 1 FROM json_each(NEW.facet_ids) j", new="  OR 0 AND EXISTS (\n       SELECT 1 FROM json_each(NEW.facet_ids) j"),
+    Mutation("A3-approval-obligation-rows-complete", "A3", "approval ignores missing obligation rows", (FI + "test_approval_needs_complete_rows_and_every_facet_rated",),
+             scope="contract_approval_needs_rated_covered_facets", old="       IS NOT json_array_length(NEW.document, '$.obligations')", new="       IS NOT (SELECT count(*) FROM obligations o WHERE o.topic_id = NEW.topic_id AND o.contract_revision = NEW.revision)"),
+    Mutation("A3-approval-facet-rows-complete", "A3", "approval ignores missing facet rows", (FI + "test_approval_needs_complete_rows_and_every_facet_rated",),
+             scope="contract_approval_needs_rated_covered_facets", old="       IS NOT json_array_length(NEW.document, '$.facet_map.facets')", new="       IS NOT (SELECT count(*) FROM facets f WHERE f.topic_id = NEW.topic_id AND f.contract_revision = NEW.revision)"),
+    Mutation("A3-approval-every-facet-rated", "A3", "approval allows unrated facets", (FI + "test_approval_needs_complete_rows_and_every_facet_rated",),
+             scope="contract_approval_needs_rated_covered_facets", old="  OR EXISTS (SELECT 1 FROM facets f WHERE f.topic_id = NEW.topic_id AND f.contract_revision = NEW.revision AND f.operator_importance_band IS NULL)\n", new=""),
+    Mutation("A3-approval-uncovered-critical", "A3", "approval ignores uncovered critical facets (G-3)", (FI + "test_critical_facet_with_zero_obligations_is_representable_and_blocks_approval",),
+             scope="contract_approval_needs_rated_covered_facets", old="  OR EXISTS (SELECT 1 FROM uncovered_critical_facets u WHERE u.topic_id = NEW.topic_id AND u.contract_revision = NEW.revision))", new=")"),
+    Mutation("A3-facets-delete-guard", "A3", "drop facets delete guard", (H + "EveryTableSweepTest.test_no_table_can_be_deleted_from_or_replaced_into",), drop_trigger="facets_no_delete"),
+    Mutation("A3-facets-update-guard", "A3", "drop facets update guard", (H + "EveryTableSweepTest.test_append_only_tables_reject_every_update", FI + "test_facet_rating_bound_to_a_rating_decision"), drop_trigger="facets_immutable"),
     # --- A9: capability supersession --------------------------------------
     Mutation("A9-successor-fk-immediate", "A9", "successor FK checked immediately (the documented transaction cannot run)",
              (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",),
@@ -277,11 +314,18 @@ def mutate(text: str, m: Mutation) -> str:
             raise ValueError(f"trigger {m.drop_trigger!r} found {len(found)} times")
         return pattern.sub("", text)
     assert m.old is not None
+    prefix, body, suffix = "", text, ""
+    if m.scope:
+        block = re.compile(r"CREATE TRIGGER " + re.escape(m.scope) + r"\b.*?\nEND;\n", re.DOTALL)
+        found = list(block.finditer(text))
+        if len(found) != 1:
+            raise ValueError(f"scope trigger {m.scope!r} found {len(found)} times")
+        prefix, body, suffix = text[: found[0].start()], found[0].group(0), text[found[0].end():]
     for old, new in ((m.old, m.new), *m.also):
-        if text.count(old) != 1:
-            raise ValueError(f"mutation text found {text.count(old)} times: {old[:60]!r}")
-        text = text.replace(old, new)
-    return text
+        if body.count(old) != 1:
+            raise ValueError(f"mutation text found {body.count(old)} times: {old[:60]!r}")
+        body = body.replace(old, new)
+    return prefix + body + suffix
 
 
 def load_suite() -> unittest.TestSuite:

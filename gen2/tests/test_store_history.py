@@ -143,7 +143,7 @@ class EveryTableSweepTest(StoreTestCase):
     # no UPDATE at all (the others move through guarded state machines tested
     # in test_store_ddl.py).
     APPEND_ONLY = ("artifacts", "audit_events", "claim_source_links", "decision_receipts", "decision_specs", "dossiers",
-                   "invocation_transitions", "obligations", "operation_receipts", "operator_decisions", "outbox_events",
+                   "facets", "invocation_transitions", "obligations", "operation_receipts", "operator_decisions", "outbox_events",
                    "quote_checks", "record_work_links", "research_ordinals", "retrieval_events", "screening_assessments",
                    "search_observations", "sink_delivery_receipts", "verification_receipts")
 

@@ -217,16 +217,16 @@ Numbering follows DR §10's release gates; gate 1 is split into its crash half (
 *Source:* F S3; DR §4. *Enforced at:* schema `contract-v2.schema.json`; DDL `contract_revisions` (approved rows immutable, no deletes).
 
 **G-2 — Only operator-approved importance ratings authorize later actions.** A Jev score is a proposal. The GRADE-style 1–9 number is an optional elicitation aid atop a required band (critical 7–9 / important 4–6 / limited 1–3) — not a calibrated probability or a validated Jev measurement.
-*Source:* F S3; M §2; ADJ (a) G-R9, K-R4. *Enforced at:* schema (separate `proposed` and `operator_rating` fields; band required, score optional and band-consistent); DDL `obligations` checks.
+*Source:* F S3; M §2; ADJ (a) G-R9, K-R4. *Enforced at:* schema `contract-v2.schema.json#/$defs/importance`, used by both facets and obligations (separate `proposed` and `operator_rating` fields; band required, score optional and band-consistent); DDL `facets` and `obligations` (band/score checks; each row equals its hash-locked document entry; an operator rating cites an approved `rating_approval` about the earlier, rated revision; a Jev proposal cites a same-topic `importance_score` receipt).
 
-**G-3 — An uncovered critical facet blocks approval** (deterministic check on the coverage matrix). Structural validity is not semantic adequacy: a well-typed omission remains an omission, and whether facets represent the decision stays with the operator and the fresh-context facet audit.
-*Source:* F S1, S3; ADJ (c) 1.
+**G-3 — An uncovered critical facet blocks approval** (deterministic check on the coverage matrix). Facet importance is recorded on the facet itself, never inferred from its obligations (that would make the check circular: an untagged facet would have no importance). Structural validity is not semantic adequacy: a well-typed omission remains an omission, and whether facets represent the decision stays with the operator and the fresh-context facet audit.
+*Source:* F S1, S3; ADJ (c) 1; Astra 0a review A3. *Enforced at:* DDL — `uncovered_critical_facets` view; approval of a contract revision is refused unless its facet and obligation rows are complete, every facet carries an operator rating, and no critical facet is untagged by an obligation of that revision. *Test must show:* a critical facet with zero obligations is representable (schema fixture and store row) and blocks approval; tagging it lifts the block.
 
 **G-4 — Unconfirmed briefs cannot advance.** A draft brief is a durable intake item with an operator owner, `awaiting_confirmation` state, creation time and review deadline. Expiry marks it overdue — it never advances it. Cancellation or archival is an explicit act.
 *Source:* F S1; ADJ (a) G-A8.
 
 **G-5 — Auto-promotion is narrow and revision-bound.** It is allowed only for a sub-question inside an existing facet whose operator-confirmed rating is at or above the declared threshold, bound to the exact approved contract revision and the remaining auto-budget reservation. New facets always require an amendment. Auto-promotions are suspended during a reframe migration.
-*Source:* F §6.4; ADJ (a) G-A6, K-A7.
+*Source:* F §6.4; ADJ (a) G-A6, K-A7. *Record the check reads:* the facet's operator rating in DDL `facets` (A3); the promotion mechanism itself is Phase 3.
 
 **G-6 — Reframe migration** versions the facet map, marks affected labels and coverage stale-under-new-framing, reopens exclusions for re-screening, and re-renders synthesis views. No silent reuse, no deletion. *Source:* F §6.5.
 
