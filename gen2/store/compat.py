@@ -1,7 +1,7 @@
 """SQLite compatibility gate for the gen-2 store.
 
-Every path that creates or opens a durable store (the store module's
-open_store, and through it the importer) and the build route (`make
+Every route to a store (the store module's open_store, and adopt_in_memory
+for a test fixture's in-memory store) and the build route (`make
 gen2-sqlite`, and tools/check_gen2_schemas.py before it runs the DDL) calls
 these same functions, so the library the build accepts is the library the
 runtime accepts.

@@ -356,13 +356,15 @@ class ReceiptHashContractWriterTest(store_fixtures.StoreTestCase):
     whose recorded hash contract is not the frozen one is refused before any
     SQL runs (StoreWriteError, not the DDL's IntegrityError), and a receipt
     recording it is written. Rows come from the DDL-test fixtures (an
-    in-memory store with the connection contract), written through Store."""
+    in-memory store with the connection contract), admitted as a Store by
+    api.adopt_in_memory, which runs the compatibility gate and schema
+    identity on it (A4: no unchecked construction)."""
 
     def setUp(self) -> None:
         super().setUp()
         self.lease("lease_aaaaaaaa", 1)
         self.invocation("inv_pppppppp")
-        self.store = api.Store(self.db, {})
+        self.store = api.adopt_in_memory(self.db)
 
     def commit_receipt(self, hash_contract) -> None:
         body = self.receipt_body("op_00000001", "rcpt_00000001", "final_outcome", "inv_pppppppp", TOPIC, 0, digest=h("d"))

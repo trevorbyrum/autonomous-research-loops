@@ -30,7 +30,7 @@ from pathlib import Path
 from unittest import mock
 
 from gen2.core.instants import is_utc_instant
-from gen2.store import compat, db
+from gen2.store import api, compat, db
 from gen2.store.compat import StoreCompatibilityError
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -174,14 +174,93 @@ class OpenStoreTest(unittest.TestCase):
 
     def test_refused_library_creates_nothing_on_disk(self) -> None:
         """The gate runs before the path is touched: a refused create leaves
-        no file (sqlite3.connect would have created one)."""
+        no file (sqlite3.connect would have created one). The refusal holds
+        for every route to a Store (A4): open_store, the in-memory adoption
+        route, and the constructor, which admits no caller-built store."""
         path = self.dir / "store.sqlite3"
         with mock.patch.object(compat, "SQLITE_FLOOR", (99, 0, 0)):
             exc = self.open_error(path, create=True)
+            self.refused(StoreCompatibilityError, api.open_store, path, create=True)
+            memory = self.memory_store()
+            adopted = self.refused(StoreCompatibilityError, api.adopt_in_memory, memory)
+            self.refused(db.StoreOpenError, api.Store, memory, {})
+            memory.close()
         self.assertIsInstance(exc, StoreCompatibilityError)
         self.assertIn("below the supported floor 99.0.0", exc.fact["detail"])
+        self.assertIn("below the supported floor 99.0.0", adopted.fact["detail"])
         self.assertFalse(path.exists())
         self.assertEqual(list(self.dir.iterdir()), [])
+
+    def refused(self, error: type, call, *args, **kwargs) -> BaseException:
+        """call(*args) raises `error` (any other outcome fails the test)."""
+        with self.assertRaises(Exception) as ctx:
+            call(*args, **kwargs)
+        self.assertIsInstance(ctx.exception, error)
+        return ctx.exception
+
+    @staticmethod
+    def memory_store(ddl: str | None = None, *, contract: bool = False) -> sqlite3.Connection:
+        """An in-memory connection holding the shipped DDL (or `ddl`), built
+        by hand; the connection contract is applied only when asked."""
+        conn = sqlite3.connect(":memory:", isolation_level=None)
+        if contract:
+            conn.executescript(compat.CONNECTION_CONTRACT.read_text(encoding="utf-8"))
+        conn.executescript((ROOT / "gen2" / "store" / "schema.sql").read_text(encoding="utf-8") if ddl is None else ddl)
+        return conn
+
+    def test_a_store_is_made_only_through_a_checked_route(self) -> None:
+        """Astra 0b review A4, the review's reproduction: a file holding the
+        complete shipped schema, with foreign_keys and recursive_triggers
+        left off and the supported floor raised above this SQLite. Store(conn,
+        {}) accepted it and then persisted a lease for a topic that does not
+        exist. Now the constructor refuses every caller-built store, open_store
+        refuses the library, and adoption refuses a file connection; the file
+        gains no row. The adoption route (in-memory fixtures) runs the gate:
+        it applies and reads back the contract, and refuses another schema, a
+        connection with a transaction open, and one not in autocommit mode."""
+        path = self.dir / "store.sqlite3"
+        raw = sqlite3.connect(path, isolation_level=None)
+        raw.executescript((ROOT / "gen2" / "store" / "schema.sql").read_text(encoding="utf-8"))
+        self.assertEqual([raw.execute(f"PRAGMA {p}").fetchone() for p in ("foreign_keys", "recursive_triggers")], [(0,), (0,)])
+        with mock.patch.object(compat, "SQLITE_FLOOR", (99, 0, 0)):
+            self.refused(db.StoreOpenError, api.Store, raw, {})
+            self.refused(db.StoreOpenError, api.Store, raw, {"sqlite_version": "99.0.0", "pragmas": {"foreign_keys": 1, "recursive_triggers": 1}})
+            self.refused(StoreCompatibilityError, api.open_store, path)
+            adopted = self.refused(db.StoreOpenError, api.adopt_in_memory, raw)
+        self.assertIn("open a durable store with open_store", str(adopted))
+        self.assertEqual(raw.execute("SELECT count(*) FROM leases").fetchone(), (0,))
+        raw.close()
+        # Ordinary construction: open_store's connection has the contract read back on.
+        with api.open_store(path) as store:
+            self.assertEqual(store.compatibility["pragmas"], {"foreign_keys": 1, "recursive_triggers": 1})
+            with self.assertRaises(sqlite3.IntegrityError):
+                with store.transaction() as s:
+                    s.insert("leases", {"lease_id": "lease_orphan", "topic_id": "fleet-a:nowhere", "scope": "research", "generation": 1,
+                                        "station_id": "st1", "granted_at": "2026-09-25T00:00:00Z", "expires_at": "2026-09-25T00:00:00Z"})
+        # Adoption: the gate applies the contract to a hand-built in-memory store and reads it back.
+        memory = self.memory_store()
+        self.assertEqual(memory.execute("PRAGMA foreign_keys").fetchone(), (0,))
+        store = api.adopt_in_memory(memory)
+        self.assertEqual([memory.execute(f"PRAGMA {p}").fetchone() for p in ("foreign_keys", "recursive_triggers")], [(1,), (1,)])
+        self.assertEqual(store.compatibility["pragmas"], {"foreign_keys": 1, "recursive_triggers": 1})
+        with self.assertRaises(sqlite3.IntegrityError):
+            with store.transaction() as s:
+                s.insert("leases", {"lease_id": "lease_orphan", "topic_id": "fleet-a:nowhere", "scope": "research", "generation": 1,
+                                    "station_id": "st1", "granted_at": "2026-09-25T00:00:00Z", "expires_at": "2026-09-25T00:00:00Z"})
+        store.close()
+        ddl = (ROOT / "gen2" / "store" / "schema.sql").read_text(encoding="utf-8")
+        weakened = ddl.replace("SELECT RAISE(ABORT, 'contract revisions are never deleted (G-1)');", "SELECT 1;")
+        self.assertNotEqual(weakened, ddl)
+        open_tx = self.memory_store(contract=True)
+        open_tx.execute("BEGIN")
+        legacy = sqlite3.connect(":memory:")  # default isolation_level: Python opens transactions implicitly
+        legacy.executescript(ddl)
+        for case, conn, error, fragment in (("another schema", self.memory_store(weakened, contract=True), db.StoreOpenError, "changed ['trigger contract_no_delete']"),
+                                            ("transaction open", open_tx, db.StoreOpenError, "transaction open"),
+                                            ("not autocommit", legacy, db.StoreOpenError, "autocommit")):
+            with self.subTest(case=case):
+                self.assertIn(fragment, str(self.refused(error, api.adopt_in_memory, conn)))
+                conn.close()
 
     def test_refused_library_does_not_admit_an_existing_store(self) -> None:
         path = self.dir / "store.sqlite3"

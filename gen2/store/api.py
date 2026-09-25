@@ -41,6 +41,12 @@ propagate unchanged, and the store never retries a refused write or resolves
 a conflict by REPLACE (C-11; the boundary lint forbids REPLACE in this
 module).
 
+A Store exists only through a checked route (Astra 0b review A4): open_store
+(a durable store, through db.connect) or adopt_in_memory (an in-memory
+connection a test fixture built, through the same compatibility gate and
+schema-identity check). The constructor refuses any other caller, so a raw
+connection plus a caller-supplied "compatibility" dict is not a store.
+
 Not here (Phase 1+): commit_outcome, routing, scheduling, decisions,
 hash-truth recomputation (the router boundary's).
 """
@@ -54,7 +60,7 @@ from typing import Iterator, Mapping
 
 from gen2.core import canonical
 from gen2.core.canonical import CanonicalizationError
-from gen2.store import db
+from gen2.store import compat, db
 
 # RA8: identity, revision, generation and counter columns, bounded to
 # [0, 2**53-1] by canonical.identity_integer, by value, in every table.
@@ -89,10 +95,18 @@ def _json_columns(create_sql: str) -> frozenset[str]:
     return frozenset(re.findall(r"json_valid\((\w+)\)", create_sql))
 
 
-class Store:
-    """One open, compatibility-checked, schema-identical store connection."""
+# Held only by this module's checked routes (open_store, adopt_in_memory).
+_ADMITTED = object()
 
-    def __init__(self, conn: sqlite3.Connection, compatibility: dict) -> None:
+
+class Store:
+    """One open, compatibility-checked, schema-identical store connection.
+    Constructed by open_store or adopt_in_memory only."""
+
+    def __init__(self, conn: sqlite3.Connection, compatibility: dict, *, _admitted_by: object = None) -> None:
+        if _admitted_by is not _ADMITTED:
+            raise db.StoreOpenError("a Store is made by open_store() or adopt_in_memory(), which check the connection; "
+                                    "a connection and a compatibility dict supplied by the caller are not evidence (A4)")
         self._conn = conn
         self.compatibility = compatibility
         self._in_transaction = False  # inside this Store's own transaction() context
@@ -284,9 +298,31 @@ class Store:
 
 def open_store(path: str | Path, *, create: bool = False) -> Store:
     """Create (create=True) or open the durable store at `path` through the
-    compatibility gate and schema-identity check (gen2/store/db.py)."""
+    compatibility gate and schema-identity check (gen2/store/db.py). The one
+    route to a durable store."""
     conn, observed = db.connect(path, create=create)
-    return Store(conn, observed)
+    return Store(conn, observed, _admitted_by=_ADMITTED)
+
+
+def adopt_in_memory(conn: sqlite3.Connection) -> Store:
+    """A Store over an in-memory connection the caller built (test fixtures
+    that load the DDL themselves). It runs the checks db.connect runs on a
+    durable connection: the compatibility gate, with the connection contract
+    applied and read back, then schema identity with gen2/store/schema.sql.
+    Refused: a connection to a file (a durable store is opened with
+    open_store, which also sets WAL, synchronous FULL and the busy timeout),
+    one with a transaction open, and one not in autocommit mode
+    (transaction() issues BEGIN and COMMIT itself)."""
+    if conn.isolation_level is not None:
+        raise db.StoreOpenError("adopt_in_memory needs an autocommit connection (isolation_level=None)")
+    if conn.in_transaction:
+        raise db.StoreOpenError("adopt_in_memory refuses a connection with a transaction open")
+    files = [row[2] for row in conn.execute("PRAGMA database_list") if row[2]]
+    if files:
+        raise db.StoreOpenError(f"adopt_in_memory refuses a connection to {files}: open a durable store with open_store")
+    observed = compat.check_connection(conn)
+    db.check_schema_identity(conn)
+    return Store(conn, observed, _admitted_by=_ADMITTED)
 
 
 def integer_columns(store: Store) -> dict[str, list[str]]:
