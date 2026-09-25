@@ -9,19 +9,30 @@ record that does not map cleanly); INVARIANTS §12, RG-8, E-8, RG-U, C-13
 Oracle: a synthetic gen-1 root written here by hand in gen-1's on-disk
 formats (queue.json items, AUTHORITY.md / QA-RECORD.md sections,
 SEMANTIC-STATE.json obligations, SOURCE-LEDGER.md entries, JSONL logs), with
-the expected status and issue codes of each record written out by hand; the
-file tree's bytes and mtimes before and after; a tree made read-only for the
-run (any write attempt would raise).
+the expected status and issue codes of each record written out by hand; an
+input inventory enumerated by hand (every record the input holds, and every
+input file with its size) that the report is reconciled against; the file
+tree's bytes and mtimes before and after; a tree made read-only for the run
+(any write attempt would raise). The race tests (Astra 0b review A2) replace
+a path at the moment the importer opens it or just after it checked it, as
+the review's own probes did: real renames and symlinks in a temporary tree,
+scheduled by wrapping os.open or the importer's own check, never by changing
+what the check decides. All inputs are synthetic; no gen-1 state is read.
 
 What these tests cannot show: that the formats match every live gen-1
 deployment (the fixtures follow gen-1's writers, not live state, which this
-task does not read), or anything about the managed store's contents.
+task does not read), or anything about the managed store's contents; nor
+races other than the ones scheduled here (a file's bytes changing during a
+read, or the report directory moved between the last check and the write,
+which the module docstring states it does not cover).
 """
 from __future__ import annotations
 
 import contextlib
 import io
 import json
+import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -29,6 +40,7 @@ import tempfile
 import tomllib
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from gen2.importer import dry_run
 
@@ -85,10 +97,24 @@ def codes(record: dict) -> set[str]:
     return {i["code"] for i in record["issues"]}
 
 
+def queue_text(root: Path, edit=None, tokens: dict[str, str] | None = None) -> str:
+    """queue.json after `edit(queue)`; each tokens key (a string value in the
+    edited queue) is replaced by the raw numeral text it names."""
+    queue = json.loads((root / "state" / "queue.json").read_text(encoding="utf-8"))
+    if edit is not None:
+        edit(queue)
+    text = json.dumps(queue)
+    for placeholder, raw in (tokens or {}).items():
+        assert text.count(json.dumps(placeholder)) == 1, placeholder
+        text = text.replace(json.dumps(placeholder), raw)
+    return text
+
+
 class ImporterTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self._tmp.name) / "gen1"
+        self.tmp = Path(self._tmp.name)
+        self.root = self.tmp / "gen1"
         gen1_tree(self.root)
 
     def tearDown(self) -> None:
@@ -97,22 +123,118 @@ class ImporterTestCase(unittest.TestCase):
                 path.chmod(stat.S_IRWXU)
         self._tmp.cleanup()
 
+    def dry(self, fleet: str | None = "fleet-a", root: Path | None = None) -> dict:
+        """The report for the fixture (or `root`). A crash fails the test (A5:
+        malformed input is reported, never fatal)."""
+        try:
+            return dry_run.dry_run(self.root if root is None else root, fleet)
+        except Exception as exc:
+            self.fail(f"the importer crashed instead of reporting: {exc!r}")
+
+    def edit_queue(self, edit=None, tokens: dict[str, str] | None = None) -> None:
+        (self.root / "state" / "queue.json").write_text(queue_text(self.root, edit, tokens), encoding="utf-8")
+
+
+def inventory_tree(root: Path) -> None:
+    """A gen-1 root whose every record is enumerated in INVENTORY below. It
+    holds each input family the importer reads, input it cannot interpret
+    (a malformed status, a non-object item, an item without an id, a
+    non-object obligation), two items claiming one topic id, two
+    obligations claiming one id, a precision-losing count, an unsupported
+    semantic-state version, keys and fields with no mapping, and absent
+    files."""
+    alpha = root / "topics" / "alpha"
+    items = [
+        {"id": "alpha", "cwd": str(alpha), "status": "queued", "completion_lock": LOCK, "iterations_completed": 2, "title": "Alpha"},
+        {"id": "delta", "status": "paused"},
+        {"id": "delta", "status": "backoff"},
+        {"id": "beta", "status": [], "iterations_completed": "@@COUNT@@"},
+        {"id": "gamma", "status": "completed"},
+        "not an object",
+        {"status": "queued"},
+    ]
+    text = json.dumps({"version": 1, "revision": 3, "paused": False, "items": items}).replace('"@@COUNT@@"', "1.0000000000000001")
+    write(root / "state" / "queue.json", text)
+    write(root / "state" / "events.jsonl", '{"type": "a"}\n{"type": "b"}\n{not json\n')
+    write(root / "state" / "stations.json", json.dumps({"revision": 1}))
+    write(alpha / "AUTHORITY.md", "## Operator brief (verbatim)\n\nAlpha brief.\n\n## Assumptions\n\n- One.\n")
+    write(alpha / "QA-RECORD.md", "## Mode\n\nfocused\n")
+    write(alpha / "SEMANTIC-STATE.json", json.dumps({
+        "schema_version": 2, "topic_id": "alpha", "evidence_graph": {"nodes": []}, "deliverables": [], "pending_evidence_refs": [],
+        "contradictions": [{"id": "C-1"}],
+        "obligations": [{"id": "OB-1", "text": "t", "disposition": "open"}, {"id": "OB-1", "text": "u", "disposition": "open"}, 7]}))
+    write(alpha / "SOURCE-LEDGER.md", "## [SRC-001] external\n- url: https://doi.org/10.1/a\n\n## [SRC-002] internal\n- path: x\n")
+    write(alpha / "logs" / "run.jsonl", '{"source": "crossref"}\n')
+    write(root / "topics" / "gamma" / "SEMANTIC-STATE.json", json.dumps({"schema_version": 999, "evidence": [{"id": "E-1"}]}))
+
+
+BRIEF_GAPS = ["brief-slot-missing"] * 4 + ["confirmation-unrecorded", "deadline-unknown", "owner-unknown"]
+# (gen-1 item, [(kind, ref, status, issue codes)]) per queue item in order, then "other"; written by hand from the tree above.
+INVENTORY = [
+    ("alpha", [("queue item", "alpha", "maps", []), ("queue status", "alpha.status=queued", "partial", ["contract-approval-unrecorded"]),
+               ("completion lock", "alpha.completion_lock", "unmapped", ["legacy-lock-is-not-a-gen2-hash"]),
+               ("accepted iterations", "alpha.iterations_completed", "partial", ["ordinals-without-history"]),
+               ("unmapped fields", "alpha.fields", "unmapped", ["no-gen2-target"]),
+               ("intake brief", "alpha/AUTHORITY.md", "partial", BRIEF_GAPS),
+               ("semantic state", "alpha/SEMANTIC-STATE.json", "unmapped", ["unrecognized-material"]),
+               ("obligation", "alpha#OB-1", "partial", ["obligation-contract-fields-missing", "target-identity-collision"]),
+               ("obligation", "alpha#OB-1", "partial", ["obligation-contract-fields-missing", "target-identity-collision"]),
+               ("obligation", "alpha#obligations[2]", "unmapped", ["field-shape"]),
+               ("contradictions", "alpha#contradictions", "unmapped", ["no-gen2-target"]),
+               ("source", "alpha#SRC-001", "partial", ["work-identity-unverified"]),
+               ("source", "alpha#SRC-002", "unmapped", ["no-work-identity"]),
+               ("history", "alpha/logs/run.jsonl", "unmapped", ["no-gen2-target"])]),
+    *(("delta", [("queue item", "delta", "partial", ["target-identity-collision"]), ("queue status", f"delta.status={status}", "partial", [code]),
+                 ("completion lock", "delta.completion_lock", "unmapped", ["no-lock"]),
+                 ("accepted iterations", "delta.iterations_completed", "unmapped", ["count-unknown"]), ("topic directory", "delta", "unmapped", ["topic-dir-not-found"])])
+      for status, code in (("paused", "untyped-hold"), ("backoff", "backoff-is-two-states"))),
+    ("beta", [("queue item", "beta", "maps", []), ("queue status", "beta.status=[]", "unmapped", ["field-shape"]),
+              ("completion lock", "beta.completion_lock", "unmapped", ["no-lock"]),
+              ("accepted iterations", "beta.iterations_completed", "partial", ["identity-not-an-integer", "ordinals-without-history"]),
+              ("topic directory", "beta", "unmapped", ["topic-dir-not-found"])]),
+    ("gamma", [("queue item", "gamma", "maps", []), ("queue status", "gamma.status=completed", "unmapped", ["completion-unapproved"]),
+               ("completion lock", "gamma.completion_lock", "unmapped", ["no-lock"]),
+               ("accepted iterations", "gamma.iterations_completed", "unmapped", ["count-unknown"]),
+               ("intake brief", "gamma/AUTHORITY.md", "unmapped", ["no-brief"]),
+               ("semantic state", "gamma/SEMANTIC-STATE.json", "unmapped", ["unsupported-schema-version"])]),
+]
+INVENTORY_OTHER = [("queue state", "state/queue.json", "unmapped", ["no-gen2-target"]),
+                   ("queue item", "items[5]", "unmapped", ["queue-shape"]), ("queue item", "items[6]", "unmapped", ["queue-shape"]),
+                   ("history", "state/events.jsonl", "unmapped", ["malformed-lines", "no-gen2-target"]),
+                   ("station configuration", "state/stations.json", "unmapped", ["no-gen2-target"])]
+INVENTORY_ABSENT = {"topics/gamma/AUTHORITY.md", "topics/gamma/SOURCE-LEDGER.md"}
+
+
+def as_rows(records: list[dict]) -> list[tuple]:
+    return sorted((r["gen1"], r["ref"], r["status"], sorted(i["code"] for i in r["issues"])) for r in records)
+
 
 class DryRunMappingTest(ImporterTestCase):
     def test_every_record_is_classified_and_every_gap_is_surfaced(self) -> None:
-        report = dry_run.dry_run(self.root, "fleet-a")
-        records = [r for t in report["topics"] for r in t["records"]] + report["other"]
-        self.assertTrue(records)
-        for record in records:
-            self.assertIn(record["status"], ("maps", "partial", "unmapped"))
-            if record["status"] == "maps":
-                self.assertEqual(record["issues"], [], record)  # "maps" means nothing is missing
-            else:
-                self.assertTrue(record["issues"], record)
-            self.assertEqual(record["status"] == "unmapped", record["gen2_target"] is None or record["status"] == "unmapped")
-        self.assertEqual(report["summary"]["records"], len(records))
-        self.assertEqual(report["writes"], "none: dry run (no gen-2 store, no gen-1 file)")
+        """Reconciled against the input, not against the importer's own
+        output (Astra 0b review, Gate C REJECT of the earlier version): the
+        report's records are exactly INVENTORY's, item by item, so a record
+        omitted, added, or classified otherwise fails; every file of the tree
+        is a source read at its own size, and the absent ones are named; the
+        summary counts are INVENTORY's."""
+        root = self.tmp / "inventory"
+        inventory_tree(root)
+        report = self.dry(root=root)
+        self.assertEqual([t["gen1_id"] for t in report["topics"]], [gen1_id for gen1_id, _ in INVENTORY])
+        for (gen1_id, expected), topic in zip(INVENTORY, report["topics"]):
+            with self.subTest(topic=gen1_id):
+                self.assertEqual(as_rows(topic["records"]), sorted((k, r, s, sorted(c)) for k, r, s, c in expected))
+        self.assertEqual(as_rows(report["other"]), sorted((k, r, s, sorted(c)) for k, r, s, c in INVENTORY_OTHER))
+        files = {str(p.relative_to(root)): p.stat().st_size for p in root.rglob("*") if p.is_file()}
+        self.assertEqual(report["sources"], {**{name: f"read ({size} bytes)" for name, size in files.items()}, **{name: "absent" for name in INVENTORY_ABSENT}})
         self.assertEqual(report["blocking"], [])
+        rows = [row for _, expected in INVENTORY for row in expected] + INVENTORY_OTHER
+        self.assertEqual(report["summary"], {"records": len(rows), "maps": sum(r[2] == "maps" for r in rows), "partial": sum(r[2] == "partial" for r in rows),
+                                             "unmapped": sum(r[2] == "unmapped" for r in rows), "issues": sum(len(r[3]) for r in rows), "blocking": 0})
+        self.assertEqual((report["summary"]["records"], report["summary"]["maps"], report["summary"]["partial"]), (40, 3, 11))  # counted by hand
+        for record in [r for t in report["topics"] for r in t["records"]] + report["other"]:
+            self.assertEqual(record["status"] == "maps", record["issues"] == [], record)  # "maps" means nothing is missing
+        self.assertEqual(report["writes"], "none: dry run (no gen-2 store, no gen-1 file)")
 
     def test_queue_items_map_with_the_authority_they_lack_named(self) -> None:
         report = dry_run.dry_run(self.root, "fleet-a")
@@ -164,9 +286,9 @@ class DryRunMappingTest(ImporterTestCase):
 
     def test_obligations_sources_and_logs(self) -> None:
         latency = records_of(dry_run.dry_run(self.root, "fleet-a"), "latency")
-        self.assertEqual(codes(find(latency, "obligation", "SCOPE-01")), {"obligation-contract-fields-missing"})
+        self.assertEqual(codes(find(latency, "obligation", "SCOPE-01")), {"obligation-contract-fields-missing", "fields-not-mapped"})  # source_ref
         self.assertEqual(codes(find(latency, "obligation", "9-bad")),
-                         {"obligation-contract-fields-missing", "obligation-id-not-a-local-id", "disposition-is-not-verification"})
+                         {"obligation-contract-fields-missing", "obligation-id-not-a-local-id", "disposition-is-not-verification", "fields-not-mapped"})
         self.assertEqual(codes(find(latency, "contradictions")), {"no-gen2-target"})
         doi = find(latency, "source", "SRC-001")
         self.assertEqual((doi["status"], doi["mapping"]), ("partial", {"identity_scheme": "doi", "identity_value": "10.1000/xyz"}))
@@ -175,6 +297,127 @@ class DryRunMappingTest(ImporterTestCase):
         self.assertEqual((log["mapping"], codes(log)), ({"lines": 2, "malformed_lines": 1}, {"no-gen2-target", "malformed-lines"}))
         events = find(dry_run.dry_run(self.root, "fleet-a")["other"], "history", "events.jsonl")
         self.assertEqual(events["mapping"], {"lines": 2, "malformed_lines": 1})
+
+    def test_malformed_fields_are_reported_and_the_report_is_still_produced(self) -> None:
+        """Astra 0b review A5: a queue item with status [] and a semantic
+        state with obligations 3 raised uncaught TypeErrors. Each wrong-typed
+        field the importer interprets is now an issue on its record, nothing
+        is coerced, and the rest of the input still maps."""
+        def edit(queue):
+            queue["items"][0]["status"] = []
+            queue["items"][1]["cwd"] = 7
+            queue["items"][3]["lane"] = ["intake"]
+            queue["items"].append({"id": 12, "status": "queued"})
+            queue["items"].append({"id": "nul\u0000id", "cwd": str(self.root / "topics" / "nul\u0000id"), "status": "queued"})
+            queue["items"].append({"id": "deep", "status": "@@DEEP@@", "completion_lock": "@@DEEPER@@"})
+        deep = "[" * 1500 + "]" * 1500  # parses, but deeper than Python can walk or repr
+        self.edit_queue(edit, {"@@DEEP@@": deep, "@@DEEPER@@": deep})
+        write(self.root / "state" / "stations.json", "[" * 100000)  # deeper than the parser can take
+        state = json.loads((self.root / "topics" / "latency" / "SEMANTIC-STATE.json").read_text(encoding="utf-8"))
+        write(self.root / "topics" / "latency" / "SEMANTIC-STATE.json", json.dumps(dict(state, obligations=3, deliverables={"a": 1})))
+        write(self.root / "topics" / "big" / "SEMANTIC-STATE.json", json.dumps({"schema_version": 2, "obligations": [
+            {"id": 5, "text": "t"}, {"id": "OB-2", "text": ["x"], "disposition": 4}]}))
+        report = self.dry()
+        latency = records_of(report, "latency")
+        status = find(latency, "queue status")
+        self.assertEqual((status["ref"], status["status"], status["mapping"], codes(status)), ("latency.status=[]", "unmapped", {"status": None}, {"field-shape"}))
+        self.assertEqual((find(latency, "queue item")["status"], find(latency, "queue item")["mapping"]["topic_id"]), ("maps", "fleet-a:latency"))
+        self.assertEqual([(r["ref"], r["status"], codes(r)) for r in latency if r["gen1"] in ("obligations", "deliverables")],
+                         [("latency#obligations", "unmapped", {"field-shape"}), ("latency#deliverables", "unmapped", {"field-shape"})])
+        self.assertEqual([r for r in latency if r["gen1"] == "obligation"], [])
+        self.assertEqual(find(latency, "intake brief")["status"], "partial")  # the readable parts still map
+        big = records_of(report, "big")
+        self.assertEqual((find(big, "queue status")["status"], codes(find(big, "queue status"))), ("unmapped", {"untyped-hold", "field-shape"}))
+        self.assertEqual((find(big, "obligation", "obligations[0]")["status"], codes(find(big, "obligation", "obligations[0]"))), ("unmapped", {"field-shape"}))
+        ob2 = find(big, "obligation", "OB-2")
+        self.assertEqual((ob2["mapping"]["text"], sorted(i["code"] for i in ob2["issues"])),
+                         (None, ["field-shape", "field-shape", "obligation-contract-fields-missing"]))
+        mixed = records_of(report, "Mixed.Case")
+        self.assertIn(("unmapped", {"field-shape"}), [(r["status"], codes(r)) for r in mixed if r["gen1"] == "topic directory"])
+        self.assertEqual((find(report["other"], "queue item", "items[5]")["status"], codes(find(report["other"], "queue item", "items[5]"))),
+                         ("unmapped", {"queue-shape"}))
+        self.assertNotIn("12", [t["gen1_id"] for t in report["topics"]])  # an integer id is not stringified into a topic
+        nul = records_of(report, "nul\u0000id")
+        self.assertEqual(codes(find(nul, "topic directory")), {"topic-dir-not-found"})
+        self.assertEqual(codes(find(nul, "queue item")), {"topic-id-not-a-gen2-slug"})
+        deep = records_of(report, "deep")
+        self.assertEqual((find(deep, "queue status")["status"], codes(find(deep, "queue status"))), ("unmapped", {"field-shape"}))
+        self.assertLess(len(find(deep, "queue status")["issues"][0]["detail"]), 300)  # a quoted gen-1 value is abbreviated, not copied whole
+        self.assertEqual((find(deep, "completion lock")["mapping"], "value-unrepresentable" in codes(find(deep, "completion lock"))), ({"legacy_lock": None}, True))
+        self.assertIn("maximum recursion depth", find(report["other"], "station configuration")["issues"][0]["detail"])
+        self.assertIn('"report_version"', dry_run.render(report))
+
+    def test_two_records_claiming_one_gen2_identity_are_flagged(self) -> None:
+        """A5: two queue items with the same valid id both mapped, with the
+        same gen-2 primary key. Both now carry the collision, neither is
+        renamed, and neither reports "maps"; likewise two obligations with
+        one id. A distinct id beside them is not flagged."""
+        self.edit_queue(lambda queue: queue["items"].append({"id": "latency", "status": "paused"}))
+        state = json.loads((self.root / "topics" / "latency" / "SEMANTIC-STATE.json").read_text(encoding="utf-8"))
+        state["obligations"].append({"id": "SCOPE-01", "text": "Again", "disposition": "open"})
+        write(self.root / "topics" / "latency" / "SEMANTIC-STATE.json", json.dumps(state))
+        report = self.dry()
+        entries = [t for t in report["topics"] if t["gen1_id"] == "latency"]
+        self.assertEqual(len(entries), 2)
+        for entry in entries:
+            item = find(entry["records"], "queue item")
+            self.assertEqual((item["status"], item["mapping"]["topic_id"]), ("partial", "fleet-a:latency"))
+            self.assertIn("target-identity-collision", codes(item))
+            scope = [r for r in entry["records"] if r["ref"] == "latency#SCOPE-01"]
+            self.assertEqual([("target-identity-collision" in codes(r), r["mapping"]["obligation_id"]) for r in scope], [(True, "SCOPE-01"), (True, "SCOPE-01")])
+            self.assertNotIn("target-identity-collision", codes(find(entry["records"], "obligation", "9-bad")))
+        self.assertNotIn("target-identity-collision", codes(find(records_of(report, "big"), "queue item")))
+
+    def test_identity_numerals_are_checked_as_written(self) -> None:
+        """A5: 9007199254740990.6 parsed as 9007199254740991.0 and was then
+        accepted as that integer; 1.0000000000000001 mapped as 1. The token is
+        now checked before any conversion: a fraction, a numeral binary64 does
+        not hold exactly, a string or a boolean is not an integer; an
+        integral value in range is accepted in any notation (as the store's
+        writer does), and one past 2**53-1 is out of range."""
+        cases = {"9007199254740990.6": (None, "identity-not-an-integer"), "1.0000000000000001": (None, "identity-not-an-integer"),
+                 "1.5": (None, "identity-not-an-integer"), '"3"': (None, "identity-not-an-integer"), "true": (None, "identity-not-an-integer"),
+                 "1e400": (None, "identity-not-an-integer"), "9007199254740992": (None, "identity-out-of-range"), "-1": (None, "identity-out-of-range"),
+                 "3.0": (3, None), "1e2": (100, None), "9007199254740991": (9007199254740991, None)}
+        original = (self.root / "state" / "queue.json").read_text(encoding="utf-8")
+        for token, (count, code) in cases.items():
+            with self.subTest(token=token):
+                (self.root / "state" / "queue.json").write_text(original, encoding="utf-8")
+                self.edit_queue(lambda queue: queue["items"][0].update(iterations_completed="@@N@@"), {"@@N@@": token})
+                record = find(records_of(self.dry(), "latency"), "accepted iterations")
+                self.assertEqual(record["mapping"], {"accepted_count": count})
+                self.assertEqual(codes(record), {"ordinals-without-history"} | ({code} if code else set()))
+
+
+    def test_unsupported_versions_and_unmapped_material_are_reported(self) -> None:
+        """A5: a semantic state with schema_version 999 and an unknown
+        evidence collection was recorded as read, with no record and no
+        issue. An unsupported version is now named and nothing in it is
+        interpreted; keys and fields with no mapping are listed, not
+        dropped; a queue of another version maps no item and blocks."""
+        latency = self.root / "topics" / "latency" / "SEMANTIC-STATE.json"
+        write(latency, json.dumps({"schema_version": 999, "topic_id": "latency", "evidence": [{"id": "E-1"}],
+                                   "obligations": [{"id": "SCOPE-09", "text": "x", "disposition": "open"}]}))
+        write(self.root / "topics" / "big" / "SEMANTIC-STATE.json", json.dumps({"schema_version": 2, "obligations": [], "evidence_graph": {"nodes": [1]}}))
+        report = self.dry()
+        records = records_of(report, "latency")
+        semantic = find(records, "semantic state")
+        self.assertEqual((semantic["status"], codes(semantic), semantic["mapping"]),
+                         ("unmapped", {"unsupported-schema-version"}, {"schema_version": 999, "keys": ["evidence", "obligations", "schema_version", "topic_id"]}))
+        self.assertEqual([r for r in records if r["gen1"] == "obligation"], [])
+        self.assertEqual(report["sources"]["topics/latency/SEMANTIC-STATE.json"], f"read ({latency.stat().st_size} bytes)")
+        big = find(records_of(report, "big"), "semantic state")
+        self.assertEqual((big["status"], codes(big), big["mapping"]), ("unmapped", {"unrecognized-material"}, {"keys": ["evidence_graph"]}))
+        fields = find(records, "unmapped fields")
+        self.assertEqual((fields["status"], fields["mapping"]), ("unmapped", {"fields": ["title"]}))
+        self.assertEqual(find(report["other"], "queue state")["mapping"], {"fields": ["paused", "revision"]})
+        for version in (2, None, "1", 1.0):
+            with self.subTest(queue_version=version):
+                self.edit_queue(lambda queue: queue.update(version=version) if version is not None else queue.pop("version"))
+                report = self.dry()
+                self.assertEqual([i["code"] for i in report["blocking"]], ["queue-version-unsupported"])
+                self.assertEqual(report["topics"], [])
+                write(self.root / "state" / "queue.json", queue_text(self.root, lambda queue: queue.update(version=1)))
 
 
 class ReadOnlyTest(ImporterTestCase):
@@ -188,24 +431,136 @@ class ReadOnlyTest(ImporterTestCase):
 
     def test_managed_store_blocks_and_the_json_queue_is_marked_stale(self) -> None:
         write(self.root / "state" / "control.sqlite3", "")
+        self.edit_queue(lambda queue: queue["items"].append("not an object"))
         report = dry_run.dry_run(self.root, "fleet-a")
         self.assertEqual([i["code"] for i in report["blocking"]], ["managed-store-not-read"])
         self.assertEqual(report["sources"]["state/control.sqlite3"], "present, not read")
-        queue_records = [r for t in report["topics"] for r in t["records"] if r["gen1"] in ("queue item", "queue status", "completion lock", "accepted iterations")]
-        self.assertTrue(queue_records)
+        queue_records = [r for t in report["topics"] for r in t["records"] if r["gen1"] in ("queue item", "queue status", "completion lock", "accepted iterations", "unmapped fields")]
+        queue_records += [r for r in report["other"] if r["gen1"] in ("queue item", "queue state")]
+        self.assertEqual({r["gen1"] for r in queue_records}, {"queue item", "queue status", "completion lock", "accepted iterations", "unmapped fields", "queue state"})
         for record in queue_records:
             self.assertIn("stale-snapshot", codes(record))
             self.assertNotEqual(record["status"], "maps")
 
     def test_paths_outside_the_root_are_not_read(self) -> None:
-        outside = Path(self._tmp.name) / "outside-ledger.md"
+        """A link is refused, not followed, wherever it points, and the refusal
+        is reported as missing evidence (a record naming it), not as an
+        absent file. An item id cannot walk out of the root either."""
+        outside = self.tmp / "outside-ledger.md"
         write(outside, "## [SRC-009] external\n- url: https://example.org/secret\n")
         ledger = self.root / "topics" / "latency" / "SOURCE-LEDGER.md"
         ledger.unlink()
         ledger.symlink_to(outside)
+        shutil.rmtree(self.root / "topics" / "big")
+        (self.root / "topics" / "big").symlink_to(self.root / "topics" / "latency", target_is_directory=True)  # a link inside the root
+        write(self.tmp / "escape" / "AUTHORITY.md", "## Operator brief (verbatim)\n\nescape-marker\n")
+        self.edit_queue(lambda queue: queue["items"].extend([{"id": "../../escape", "status": "queued"}, {"id": str(self.tmp / "escape"), "status": "queued"}]))
         report = dry_run.dry_run(self.root, "fleet-a")
-        self.assertEqual(report["sources"][str(ledger)], "refused: resolves outside the gen-1 root")
-        self.assertEqual([r for r in records_of(report, "latency") if r["gen1"] == "source"], [])
+        key = "topics/latency/SOURCE-LEDGER.md"
+        self.assertEqual(report["sources"].get(key), "refused: topics/latency/SOURCE-LEDGER.md is a symlink (links are not followed)")
+        latency = records_of(report, "latency")
+        self.assertEqual([r for r in latency if r["gen1"] == "source"], [])
+        self.assertEqual((find(latency, "unread input", key)["status"], codes(find(latency, "unread input", key))), ("unmapped", {"input-refused"}))
+        self.assertEqual(report["sources"].get("topics/big"), "refused: topics/big is a symlink (links are not followed)")
+        self.assertEqual(codes(find(records_of(report, "big"), "topic directory")), {"topic-dir-not-found"})
+        self.assertEqual([r for r in records_of(report, "big") if r["gen1"] == "intake brief"], [])  # latency's brief is not read again through the link
+        self.assertIn("input-refused", codes(find(report["other"], "unread input", "topics/big")))
+        for gen1_id in ("../../escape", str(self.tmp / "escape")):
+            self.assertEqual(codes(find(records_of(report, gen1_id), "topic directory")), {"topic-dir-not-found"})
+        text = dry_run.render(report)
+        self.assertNotIn("example.org/secret", text)
+        self.assertNotIn("escape-marker", text)
+
+    def swap_at_open(self, name: str, replace):
+        """Patch os.open so that `replace()` runs just before the first open of
+        a path named `name`: the path is replaced at the moment it is opened
+        (the review's scheduled check/open race, with no gap left)."""
+        real_open, done = os.open, []
+
+        def opener(path, flags, mode=0o777, *, dir_fd=None):
+            if path == name and not done:
+                done.append(path)
+                replace()
+            return real_open(path, flags, mode, dir_fd=dir_fd)
+        return mock.patch.object(dry_run.os, "open", opener), done
+
+    def test_a_source_replaced_by_a_link_as_it_is_opened_is_not_followed(self) -> None:
+        """Astra 0b review A2, the read race: after the reader's containment
+        checks, state/queue.json was replaced by a symlink to an outside file,
+        and the report carried the outside topic "outside-marker" as read
+        from queue.json. Here the file, or its parent directory, is replaced
+        by a link to outside at the moment the reader opens it: nothing
+        outside is read, the queue is reported as not read, and it blocks."""
+        outside = self.tmp / "outside"
+        write(outside / "queue.json", json.dumps({"version": 1, "items": [{"id": "outside-marker", "status": "queued"}]}))
+        state = self.root / "state"
+
+        def swap_file():
+            (state / "queue.json").unlink()
+            (state / "queue.json").symlink_to(outside / "queue.json")
+
+        def swap_parent():
+            state.rename(self.tmp / "state-moved")
+            state.symlink_to(outside, target_is_directory=True)
+
+        for case, name, replace, blocking in (("file", "queue.json", swap_file, ["queue-not-read"]),
+                                              ("parent directory", "state", swap_parent, ["managed-store-unverifiable", "queue-not-read"])):
+            with self.subTest(case=case):
+                patch, done = self.swap_at_open(name, replace)
+                with patch:
+                    report = self.dry()
+                self.assertEqual(done, [name])  # the swap happened
+                self.assertNotIn("outside-marker", dry_run.render(report))
+                self.assertTrue(report["sources"].get("state/queue.json", "").startswith("refused: "), report["sources"].get("state/queue.json"))
+                self.assertEqual([i["code"] for i in report["blocking"]], blocking)
+                self.assertEqual(report["topics"], [])
+                shutil.rmtree(self.root)
+                gen1_tree(self.root)
+
+    def test_managed_store_evidence_is_never_mistaken_for_absence(self) -> None:
+        """Astra 0b review A3: with state/control.sqlite3 a symlink to an
+        existing outside file, the importer reported no managed store and
+        mapped the JSON queue as clean. gen-1 runs managed when that path
+        exists. The shapes now give three distinct answers: absent (the queue
+        maps), a regular file (blocks: not read, stale), and anything the
+        importer cannot establish without following or opening it (blocks:
+        cannot verify, stale): an outside link, a dangling link, a link inside
+        the root, a directory, or a state/ that is itself a link."""
+        managed = self.root / "state" / "control.sqlite3"
+        write(self.tmp / "outside.sqlite3", "outside-marker")
+        cases = {
+            "absent": (lambda: None, [], None),
+            "regular file": (lambda: write(managed, ""), ["managed-store-not-read"], "present, not read"),
+            "symlink to an existing outside file": (lambda: managed.symlink_to(self.tmp / "outside.sqlite3"), ["managed-store-unverifiable"],
+                                                    f"a symlink to {str(self.tmp / 'outside.sqlite3')!r}; not followed or read"),
+            "dangling symlink": (lambda: managed.symlink_to(self.tmp / "missing.sqlite3"), ["managed-store-unverifiable"],
+                                 f"a symlink to {str(self.tmp / 'missing.sqlite3')!r}; not followed or read"),
+            "symlink inside the root": (lambda: managed.symlink_to("queue.json"), ["managed-store-unverifiable"], "a symlink to 'queue.json'; not followed or read"),
+            "directory": (lambda: managed.mkdir(), ["managed-store-unverifiable"], "a directory; not followed or read"),
+        }
+        for case, (make, blocking, source) in cases.items():
+            with self.subTest(case=case):
+                make()
+                report = self.dry()
+                self.assertEqual([i["code"] for i in report["blocking"]], blocking)
+                self.assertEqual(report["sources"].get("state/control.sqlite3"), source)
+                item = find(records_of(report, "latency"), "queue item")
+                if blocking:
+                    self.assertEqual((item["status"], "stale-snapshot" in codes(item)), ("partial", True))
+                else:
+                    self.assertEqual((item["status"], item["issues"]), ("maps", []))
+                self.assertNotIn("outside-marker", dry_run.render(report))
+                if managed.is_dir() and not managed.is_symlink():
+                    managed.rmdir()
+                elif managed.exists() or managed.is_symlink():
+                    managed.unlink()
+        state = self.root / "state"
+        state.rename(self.tmp / "state-elsewhere")
+        state.symlink_to(self.tmp / "state-elsewhere", target_is_directory=True)
+        report = self.dry()
+        self.assertEqual([i["code"] for i in report["blocking"]], ["managed-store-unverifiable", "queue-not-read"])
+        self.assertEqual(report["sources"]["state/control.sqlite3"],
+                         "an entry that cannot be examined (refused: state is a symlink (links are not followed)); not followed or read")
 
     def test_absent_queue_is_blocking(self) -> None:
         (self.root / "state" / "queue.json").unlink()
@@ -233,11 +588,72 @@ class CommandTest(ImporterTestCase):
                 status, _, err = self.run_cli("--fleet", "fleet-a", "--report", str(target))
                 self.assertEqual(status, 2, err)
                 self.assertIn("refused", err)
+        linked = self.tmp / "linked-out"
+        linked.symlink_to(self.root, target_is_directory=True)  # a stable link into the root
+        status, _, err = self.run_cli("--fleet", "fleet-a", "--report", str(linked / "report.json"))
+        self.assertEqual((status, "inside the gen-1 root" in err), (2, True), err)
         self.assertEqual(snapshot(self.root), before)
         existing = Path(self._tmp.name) / "existing.json"
         existing.write_text("keep", encoding="utf-8")
         self.assertEqual(self.run_cli("--report", str(existing))[0], 2)
         self.assertEqual(existing.read_text(encoding="utf-8"), "keep")
+        status, _, err = self.run_cli("--report", str(self.tmp / "no-such-dir" / "report.json"))
+        self.assertEqual((status, "cannot open the report's directory" in err), (2, True), err)
+
+    def test_a_report_directory_swapped_for_a_link_after_the_check_is_not_followed(self) -> None:
+        """Astra 0b review A2, the report race: after main validated an empty
+        output directory outside the root, the directory was renamed and a
+        symlink to the gen-1 root put in its place, and the CLI exited 0
+        having written report.json inside that root. The directory is now
+        held by descriptor from that first open, so the report lands in the
+        directory that was checked (under its new name) and the gen-1 tree
+        is unchanged."""
+        before = snapshot(self.root)
+        out, moved = self.tmp / "out", self.tmp / "out.moved"
+        out.mkdir()
+        real = dry_run._report_directory
+
+        def then_swap(target):
+            held = real(target)
+            out.rename(moved)
+            out.symlink_to(self.root, target_is_directory=True)
+            return held
+        with mock.patch.object(dry_run, "_report_directory", then_swap):
+            status, _, err = self.run_cli("--fleet", "fleet-a", "--report", str(out / "report.json"))
+        self.assertEqual(status, 0, err)
+        self.assertTrue(out.is_symlink())  # the swap happened
+        self.assertEqual(snapshot(self.root), before)
+        self.assertFalse((self.root / "report.json").exists())
+        self.assertEqual(json.loads((moved / "report.json").read_text(encoding="utf-8"))["report_version"], "gen1-import-dry-run/1")
+
+    def test_a_report_directory_moved_into_the_root_gets_no_report(self) -> None:
+        """The case the descriptor alone cannot answer: the checked directory
+        itself is moved into the gen-1 tree. Moved before the file is
+        created, the check just before creation refuses and nothing is
+        created; moved just after, the check after creation refuses and
+        nothing is written into the (empty) file. This test does the moving,
+        so the gen-1 tree it checks is expected to hold the moved directory."""
+        for when in ("before create", "after create"):
+            with self.subTest(when=when):
+                out, inside = self.tmp / f"out-{when[0]}", self.root / f"moved-in-{when[0]}"
+                out.mkdir()
+                real, calls = dry_run._outside_root, []
+
+                def checked(dir_fd, root):
+                    calls.append(1)
+                    if len(calls) == (1 if when == "before create" else 2):
+                        out.rename(inside)
+                    return real(dir_fd, root)
+                with mock.patch.object(dry_run, "_outside_root", checked):
+                    status, _, err = self.run_cli("--fleet", "fleet-a", "--report", str(out / "report.json"))
+                self.assertEqual(status, 2, err)
+                self.assertIn("inside the gen-1 root", err)
+                if when == "before create":
+                    self.assertEqual(list(inside.iterdir()), [])
+                    self.assertIn("nothing was created", err)
+                else:
+                    self.assertEqual([(p.name, p.stat().st_size) for p in inside.iterdir()], [("report.json", 0)])
+                    self.assertIn("nothing was written to it", err)
 
     def test_report_written_outside_and_exit_status_reflects_blocking(self) -> None:
         target = Path(self._tmp.name) / "report.json"
@@ -265,6 +681,11 @@ class CommandTest(ImporterTestCase):
         self.assertEqual(lock["mapping"], {"legacy_lock": None})
         self.assertIn("value-unrepresentable", codes(lock))
         self.assertIn('"report_version": "gen1-import-dry-run/1"', dry_run.render(report))
+        # A5: a numeral binary64 does not hold exactly is kept out, not rounded into the report
+        self.edit_queue(lambda queue: queue["items"][0].update(completion_lock="@@LOCK@@"), {"@@LOCK@@": "0.1000000000000000000001"})
+        report = dry_run.dry_run(self.root, "fleet-a")
+        lock = find(records_of(report, "latency"), "completion lock")
+        self.assertEqual((lock["mapping"], "numeral-not-exact" in codes(lock)), ({"legacy_lock": None}, True))
 
 if __name__ == "__main__":
     unittest.main()
