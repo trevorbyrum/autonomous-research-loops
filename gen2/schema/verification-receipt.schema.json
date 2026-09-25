@@ -21,7 +21,9 @@
     "producer_invocation_id",
     "verifier_invocation_id",
     "verifier_capability_id",
+    "quote_check_id",
     "checks",
+    "adjudication",
     "verdict",
     "verified_at"
   ],
@@ -96,7 +98,7 @@
       }
     },
     "extraction": {
-      "description": "What the check read. The producer's selected summary or unvalidated extraction may not be what the verifier relies on (flow S4 step 8).",
+      "description": "What the check read. The producer's selected summary or unvalidated extraction may not be what the verifier relies on (flow S4 step 8); authenticated canonical/cache bytes may be reused whoever acquired them (adjudication (b)5; Astra 0a review A6/B6). verifier_extraction is the verifier's own (produced_by = verifier, enforced in the store); validated_extraction cites its validation; canonical_bytes needs an authenticated acquisition (gateway_call_ref) and, in the store, a staged artifact with exactly the obtained hash.",
       "type": "object",
       "additionalProperties": false,
       "required": ["method", "extractor", "produced_by_invocation_id", "validation_ref"],
@@ -112,6 +114,10 @@
     "producer_invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
     "verifier_invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
     "verifier_capability_id": {"$ref": "common.schema.json#/$defs/capability_id"},
+    "quote_check_id": {
+      "description": "The exact quote check (store: quote_checks) this receipt rests on — required when a quote was byte-checked (matched or mismatch), null when not applicable. The store binds its claim revision, source artifact and match status to this receipt, and refuses support on a quarantined quote unless an NLI-alarm quarantine is explicitly adjudicated.",
+      "oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/short_text"}]
+    },
     "checks": {
       "type": "object",
       "additionalProperties": false,
@@ -145,25 +151,69 @@
         }
       }
     },
+    "adjudication": {
+      "description": "An explicit adjudicated resolution of an adverse check or tier-0 alarm (flow S4 step 8: disagreement becomes a typed adjudication, never averaged). Without it, 'supports' requires every check to have succeeded (Astra 0a review A6). It never turns a byte mismatch into support.",
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["adjudication_ref", "resolved_at", "resolution"],
+          "properties": {
+            "adjudication_ref": {"$ref": "common.schema.json#/$defs/short_text"},
+            "resolved_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+            "resolution": {"$ref": "common.schema.json#/$defs/long_text"}
+          }
+        }
+      ]
+    },
     "verdict": {"enum": ["supports", "partially_supports", "does_not_support", "cannot_assess_at_required_tier"]},
     "verified_at": {"$ref": "common.schema.json#/$defs/timestamp"}
   },
   "allOf": [
     {
-      "description": "Load-bearing uses get independent numeric/denominator/negation/qualification checks (flow S4 step 4).",
-      "if": {"properties": {"requested_for": {"properties": {"use": {"const": "load_bearing"}}}}},
+      "description": "Load-bearing support verdicts get independent numeric/denominator/negation/qualification checks (flow S4 step 4). A truthful cannot_assess / does_not_support may report unperformed or unavailable checks (Astra 0a review A6).",
+      "if": {"properties": {"requested_for": {"properties": {"use": {"const": "load_bearing"}}}, "verdict": {"enum": ["supports", "partially_supports"]}}},
       "then": {
         "properties": {
           "checks": {
             "properties": {
-              "numeric_units": {"not": {"const": "not_checked"}},
-              "denominators": {"not": {"const": "not_checked"}},
-              "negation": {"not": {"const": "not_checked"}},
-              "qualifications": {"not": {"const": "not_checked"}}
+              "numeric_units": {"not": {"enum": ["not_checked", "unavailable"]}},
+              "denominators": {"not": {"enum": ["not_checked", "unavailable"]}},
+              "negation": {"not": {"enum": ["not_checked", "unavailable"]}},
+              "qualifications": {"not": {"enum": ["not_checked", "unavailable"]}}
             }
           }
         }
       }
+    },
+    {
+      "description": "Support requires every check to have succeeded and no tier-0 alarm — or an explicit adjudication (A6).",
+      "if": {"properties": {"verdict": {"const": "supports"}, "adjudication": {"type": "null"}}},
+      "then": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "numeric_units": {"enum": ["checked_ok", "not_applicable"]},
+              "denominators": {"enum": ["checked_ok", "not_applicable"]},
+              "negation": {"enum": ["checked_ok", "not_applicable"]},
+              "qualifications": {"enum": ["checked_ok", "not_applicable"]},
+              "tier0": {"properties": {"signal": {"const": "pass"}}}
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "A byte-checked quote names its quote check; an inapplicable one names none.",
+      "if": {"properties": {"checks": {"properties": {"exact_quote": {"properties": {"status": {"enum": ["matched", "mismatch"]}}}}}}},
+      "then": {"properties": {"quote_check_id": {"type": "string"}}},
+      "else": {"properties": {"quote_check_id": {"type": "null"}}}
+    },
+    {
+      "description": "Canonical bytes are authenticated acquired bytes (A6/B6).",
+      "if": {"properties": {"extraction": {"properties": {"method": {"const": "canonical_bytes"}}}}},
+      "then": {"properties": {"acquisition": {"properties": {"gateway_call_ref": {"type": "string"}}}}}
     },
     {
       "description": "A mismatched quote cannot support.",
@@ -185,6 +235,9 @@
     }
   ],
   "$defs": {
-    "check_status": {"enum": ["checked_ok", "checked_problem", "not_applicable", "not_checked"]}
+    "check_status": {
+      "description": "checked_ok / checked_problem: performed; not_applicable: the claim has no such element; not_checked: not attempted; unavailable: could not be performed with the content obtained (A6: explicit, never silently treated as a pass).",
+      "enum": ["checked_ok", "checked_problem", "not_applicable", "not_checked", "unavailable"]
+    }
   }
 }

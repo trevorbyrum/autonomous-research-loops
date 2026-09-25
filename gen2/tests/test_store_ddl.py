@@ -423,40 +423,25 @@ class VerificationTest(StoreTestCase):
         self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'text/plain', ?)", h("7"), T)
         self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000001', 'doi', '10.1/x', ?)", T)
         self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000001', 1, ?, ?, 'inv_pppppppp', 1, 'full_text', 'provisional', ?)", TOPIC, h("7"), T)
-
-    VER = ("INSERT INTO verification_receipts (verification_receipt_id, topic_id, claim_id, claim_revision, work_id, source_version, cited_spans, obtained_content_hash, access_tier, use, required_access_tier, acquisition, extraction_method, extraction_invocation_id, extraction_validation_ref, producer_invocation_id, verifier_invocation_id, verdict, receipt, verified_at) "
-           "VALUES (?, ?, 'clm_00000001', 1, 'wrk_00000001', 'v1', '[{\"start\":0,\"end\":5}]', ?, ?, 'load_bearing', ?, '{}', ?, ?, ?, ?, ?, ?, '{}', ?)")
-
-    def verify(self, rid: str, *, tier: str = "full_text", required: str = "full_text", method: str = "verifier_extraction", extraction: str = "inv_vvvvvvvv",
-               validation: str | None = None, producer: str = "inv_pppppppp", verifier: str = "inv_vvvvvvvv", verdict: str = "supports") -> None:
-        self.x(self.VER, rid, TOPIC, h("2"), tier, required, method, extraction, validation, producer, verifier, verdict, T)
-
-    def test_requested_by_is_same_topic_and_never_self(self) -> None:
-        self.lease("lease_zzzzzzzz", 1, tid=OTHER)
-        self.invocation("inv_oooooooo", tid=OTHER, lease="lease_zzzzzzzz")
-        self.x("UPDATE leases SET released_at = ?, release_reason = 'finalized' WHERE lease_id = 'lease_vvvvvvvv'", T)
-        self.lease("lease_wwwwwwww", 4, scope="verification")
-        self.rejects("same topic", *self.raw_invocation(invocation_id="inv_reqdver1", kind="verification", lease_id="lease_wwwwwwww", requested_by_invocation_id="inv_oooooooo"))
-        self.rejects("same topic", *self.raw_invocation(invocation_id="inv_reqdver1", kind="verification", lease_id="lease_wwwwwwww", requested_by_invocation_id="inv_reqdver1"))
-        self.invocation("inv_reqdver1", kind="verification", lease="lease_wwwwwwww", requested_by="inv_pppppppp")
-
-    def test_producer_cannot_verify_itself(self) -> None:
-        # Realistic case: the research-pass producer names itself as verifier (the role trigger fires first).
-        with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.verify("ver_00000001", verifier="inv_pppppppp", extraction="inv_pppppppp", validation="val-1")
-        self.assertIn("separate verification invocation", str(ctx.exception))
-        # Isolate the producer != verifier CHECK: a claim whose producer is itself a
-        # verification-kind invocation passes the role trigger, so only the CHECK can refuse it.
-        self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000001', 2, ?, ?, 'inv_vvvvvvvv', 0, NULL, 'provisional', ?)", TOPIC, h("7"), T)
-        with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.x(self.VER.replace("'clm_00000001', 1,", "'clm_00000001', 2,"), "ver_00000002", TOPIC, h("2"), "full_text", "full_text", "validated_extraction", "inv_vvvvvvvv", "val-9", "inv_vvvvvvvv", "inv_vvvvvvvv", "supports", T)
-        self.assertIn("CHECK constraint failed", str(ctx.exception))
-        self.verify("ver_00000001")
+        self.quote_check("qc-1")
 
     def second_research_pass(self) -> None:
         self.x("UPDATE leases SET released_at = ?, release_reason = 'finalized' WHERE lease_id = 'lease_aaaaaaaa'", T)
         self.lease("lease_bbbbbbbb", 3)
         self.invocation("inv_qqqqqqqq", lease="lease_bbbbbbbb")
+
+    def test_producer_cannot_verify_itself(self) -> None:
+        # Realistic case: the research-pass producer names itself as verifier (the role trigger fires first).
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.verify("ver_00000001", verifier="inv_pppppppp", extraction="inv_pppppppp")
+        self.assertIn("separate verification invocation", str(ctx.exception))
+        # Isolate the producer != verifier CHECK: a claim whose producer is itself a
+        # verification-kind invocation passes the role trigger, so only the CHECK can refuse it.
+        self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000001', 2, ?, ?, 'inv_vvvvvvvv', 0, NULL, 'provisional', ?)", TOPIC, h("7"), T)
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.verify("ver_00000002", claim=("clm_00000001", 2), quote=("not_applicable", None), producer="inv_vvvvvvvv")
+        self.assertIn("CHECK constraint failed", str(ctx.exception))
+        self.verify("ver_00000001")
 
     def test_verifier_must_be_separate_verification_invocation(self) -> None:
         """D26 rewrite (ruling R2.2): keep the kind rule; replace blanket parent
@@ -475,6 +460,15 @@ class VerificationTest(StoreTestCase):
         self.invocation("inv_reqdver1", kind="verification", lease="lease_wwwwwwww", requested_by="inv_pppppppp")
         self.verify("ver_00000002", verifier="inv_reqdver1", extraction="inv_reqdver1")
 
+    def test_requested_by_is_same_topic_and_never_self(self) -> None:
+        self.lease("lease_zzzzzzzz", 1, tid=OTHER)
+        self.invocation("inv_oooooooo", tid=OTHER, lease="lease_zzzzzzzz")
+        self.x("UPDATE leases SET released_at = ?, release_reason = 'finalized' WHERE lease_id = 'lease_vvvvvvvv'", T)
+        self.lease("lease_wwwwwwww", 4, scope="verification")
+        self.rejects("same topic", *self.raw_invocation(invocation_id="inv_reqdver1", kind="verification", lease_id="lease_wwwwwwww", requested_by_invocation_id="inv_oooooooo"))
+        self.rejects("same topic", *self.raw_invocation(invocation_id="inv_reqdver1", kind="verification", lease_id="lease_wwwwwwww", requested_by_invocation_id="inv_reqdver1"))
+        self.invocation("inv_reqdver1", kind="verification", lease="lease_wwwwwwww", requested_by="inv_pppppppp")
+
     def test_receipt_must_name_the_claims_real_producer(self) -> None:
         self.second_research_pass()
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
@@ -482,10 +476,27 @@ class VerificationTest(StoreTestCase):
         self.assertIn("independent of the claim producer", str(ctx.exception))
 
     def test_producer_unvalidated_extraction_rejected(self) -> None:
+        """D28 rewrite (A6/B6): the prohibited thing is the producer's selected or
+        unvalidated extraction — not authenticated canonical bytes the producer
+        acquired. Negatives: an unvalidated producer extraction (as a
+        'validated' one without its validation, or passed off as the verifier's
+        own); canonical bytes without an authenticated acquisition or not a
+        staged artifact. Positives: canonical-byte reuse of producer-acquired
+        bytes; a validated producer extraction."""
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.verify("ver_00000001", method="canonical_bytes", extraction="inv_pppppppp")
+            self.verify("ver_00000001", method="validated_extraction", extraction="inv_pppppppp", validation=None)
         self.assertIn("CHECK constraint failed", str(ctx.exception))
-        self.verify("ver_00000001", method="validated_extraction", extraction="inv_pppppppp", validation="validation-7")
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.verify("ver_00000001", method="verifier_extraction", extraction="inv_pppppppp")
+        self.assertIn("CHECK constraint failed", str(ctx.exception))
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.verify("ver_00000001", method="canonical_bytes", extraction="inv_pppppppp", gateway=None)
+        self.assertIn("CHECK constraint failed", str(ctx.exception))
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.verify("ver_00000001", method="canonical_bytes", extraction="inv_pppppppp", obtained=h("0"))
+        self.assertIn("authenticated canonical bytes", str(ctx.exception))
+        self.verify("ver_00000001", method="canonical_bytes", extraction="inv_pppppppp")  # producer-acquired canonical bytes
+        self.verify("ver_00000002", method="validated_extraction", extraction="inv_pppppppp", validation="validation-7")
 
     def test_supports_cannot_exceed_obtained_tier(self) -> None:
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
@@ -505,9 +516,105 @@ class VerificationTest(StoreTestCase):
         self.rejects("claims are captured provisional", "INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000002', 1, ?, ?, 'inv_pppppppp', 0, NULL, 'accepted_support', ?)", TOPIC, h("7"), T)
 
     def test_nli_alarm_quarantines_the_quote(self) -> None:
-        insert = "INSERT INTO quote_checks (check_id, claim_id, claim_revision, source_artifact_hash, span_start, span_end, normalization_version, exact_match, nli_checker, nli_checker_version, nli_signal, quote_quarantined, checked_at) VALUES (?, 'clm_00000001', 1, ?, 0, 5, 'n1', 'matched', 'minicheck', '1', 'alarm', ?, ?)"
-        self.rejects("CHECK constraint failed", insert, "qc-1", h("7"), 0, T)
-        self.x(insert, "qc-1", h("7"), 1, T)
+        """D32 + the byte-mismatch test the review found missing: an NLI alarm
+        and an exact-byte mismatch each quarantine the quote."""
+        insert = "INSERT INTO quote_checks (check_id, claim_id, claim_revision, source_artifact_hash, span_start, span_end, normalization_version, exact_match, nli_checker, nli_checker_version, nli_signal, quote_quarantined, checked_at) VALUES (?, 'clm_00000001', 1, ?, 0, 5, 'n1', ?, 'minicheck', '1', ?, ?, ?)"
+        self.rejects("CHECK constraint failed", insert, "qc-2", h("7"), "matched", "alarm", 0, T)
+        self.x(insert, "qc-2", h("7"), "matched", "alarm", 1, T)
+        self.rejects("CHECK constraint failed", insert, "qc-3", h("7"), "mismatch", "pass", 0, T)
+        self.x(insert, "qc-3", h("7"), "mismatch", "pass", 1, T)
+
+    def test_support_needs_successful_checks_or_adjudication(self) -> None:
+        """A6: 'supports' with an adverse or unperformed check, or a tier-0 alarm,
+        is refused unless an explicit adjudication resolves it; a mismatched
+        quote can never support."""
+        adjudicated = {"adjudication_ref": "adj-1", "resolved_at": T, "resolution": "operator ruled the qualification immaterial"}
+        n = 0
+        for name in ("numeric_units", "denominators", "negation", "qualifications"):
+            for status in ("checked_problem", "not_checked", "unavailable"):
+                with self.subTest(check=name, status=status):
+                    n += 1
+                    checks = dict(self.CHECKS_OK, **{name: status})
+                    with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                        self.verify(f"ver_{n:08d}", checks=checks)
+                    self.assertIn("CHECK constraint failed", str(ctx.exception))
+                    if status == "checked_problem":
+                        self.verify(f"ver_{n:08d}", checks=checks, adjudication=adjudicated)
+        self.quote_check("qc-alarm", nli="alarm")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.verify("ver_alarm001", tier0="alarm")
+        self.verify("ver_alarm001", tier0="alarm", adjudication=adjudicated)
+        self.quote_check("qc-mism", match="mismatch")
+        with self.assertRaises(sqlite3.IntegrityError):  # the quarantine binding refuses it; the CHECK is a second layer
+            self.verify("ver_mismatch", quote=("mismatch", "qc-mism"), adjudication=adjudicated)
+
+    def test_truthful_unsuccessful_verdicts_may_record_unperformed_checks(self) -> None:
+        """A6 (the over-restriction): a load-bearing cannot_assess or
+        does_not_support receipt may truthfully report not_checked/unavailable;
+        a load-bearing partial-support verdict may not."""
+        unperformed = {"numeric_units": "not_checked", "denominators": "unavailable", "negation": "not_checked", "qualifications": "unavailable"}
+        self.verify("ver_00000001", tier="abstract", verdict="cannot_assess_at_required_tier", checks=unperformed, quote=("not_applicable", None))
+        self.verify("ver_00000002", verdict="does_not_support", checks=unperformed)
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.verify("ver_00000003", verdict="partially_supports", checks=unperformed)
+        self.verify("ver_00000004", verdict="partially_supports", checks=dict(self.CHECKS_OK, numeric_units="checked_problem"))
+
+    def test_quote_check_binding(self) -> None:
+        """A6/A10: the receipt's quote check is of this claim revision, against the
+        receipt's source artifact, with the receipt's match status; support never
+        rests on a quarantined quote without adjudication."""
+        self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000001', 2, ?, ?, 'inv_pppppppp', 1, 'full_text', 'provisional', ?)", TOPIC, h("7"), T)
+        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'text/plain', ?)", h("8"), T)
+        self.quote_check("qc-rev2", claim=("clm_00000001", 2))
+        self.quote_check("qc-src8", source=h("8"))
+        self.quote_check("qc-mism", match="mismatch")
+        self.quote_check("qc-alarm", nli="alarm")
+        refused = "unquarantined quote check of this claim"
+        for label, kw in (("other claim revision", dict(quote=("matched", "qc-rev2"))),
+                          ("other source artifact", dict(quote=("matched", "qc-src8"))),
+                          ("status disagrees", dict(verdict="does_not_support", quote=("matched", "qc-mism"))),
+                          ("quarantined by alarm", dict(quote=("matched", "qc-alarm")))):
+            with self.subTest(case=label):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.verify("ver_00000001", **kw)
+                self.assertIn(refused, str(ctx.exception))
+        self.verify("ver_00000001", quote=("matched", "qc-alarm"), adjudication={"adjudication_ref": "adj-1", "resolved_at": T, "resolution": "entailment confirmed on re-read"})
+        self.verify("ver_00000002", verdict="does_not_support", quote=("mismatch", "qc-mism"))
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.verify("ver_00000003", quote=("matched", None))  # a matched quote names its check
+        self.assertIn("CHECK constraint failed", str(ctx.exception))
+
+    def test_receipt_row_matches_its_json(self) -> None:
+        """A10: every normalized column equals its field in the immutable receipt
+        JSON. Each probe keeps the columns valid (so the role, quote and
+        capability triggers pass) and changes only the JSON field, so only the
+        binding CHECK can refuse it — including the review's probe (JSON
+        does_not_support while the column says supports)."""
+        spans = [{"start": 0, "end": 9, "locator": {"kind": "page", "value": "3"}}]
+        acq = {"route": "gateway:other", "retrieved_at": T, "gateway_call_ref": "gw-call-1", "cache_reuse": False}
+        ext = {"method": "verifier_extraction", "extractor": "x-1", "produced_by_invocation_id": "inv_other000", "validation_ref": None}
+        probes = {
+            "verification_receipt_id": "ver_other000", "topic_id": OTHER,
+            "claim": {"claim_id": "clm_other000", "claim_revision": 1}, "claim.revision": {"claim_id": "clm_00000001", "claim_revision": 2},
+            "source": {"work_id": "wrk_other000", "source_version": "v1"}, "source.version": {"work_id": "wrk_00000001", "source_version": "v2"},
+            "cited_spans": spans, "obtained_content_hash": h("0"), "access_tier": "reproduced",
+            "requested_for": {"use": "sampled", "required_access_tier": "full_text"}, "requested_for.tier": {"use": "load_bearing", "required_access_tier": "abstract"},
+            "acquisition": acq, "extraction": ext, "extraction.method": dict(ext, method="canonical_bytes", produced_by_invocation_id="inv_vvvvvvvv"),
+            "extraction.validation_ref": dict(ext, produced_by_invocation_id="inv_vvvvvvvv", validation_ref="v-1"),
+            "producer_invocation_id": "inv_other000", "verifier_invocation_id": "inv_other000", "quote_check_id": "qc-other", "verdict": "does_not_support",
+        }
+        for label, value in probes.items():
+            with self.subTest(field=label):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.verify("ver_00000001", receipt_overrides={label.split(".")[0]: value})
+                self.assertIn("CHECK constraint failed", str(ctx.exception))
+        self.verify("ver_00000001")
+
+    def test_receipt_names_the_verifiers_own_capability(self) -> None:
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.verify("ver_00000001", capability="cap_pppppppp")
+        self.assertIn("verifier capability", str(ctx.exception))
+        self.verify("ver_00000001")
 
 
 class ObservationTest(StoreTestCase):

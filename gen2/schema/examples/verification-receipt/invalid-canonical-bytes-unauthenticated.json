@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "verification-receipt.schema.json",
+    "expect": "invalid",
+    "tests": "A6/B6: canonical bytes without an authenticated acquisition are not canonical",
+    "base": "valid-canonical-bytes-reuse.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/acquisition/gateway_call_ref",
+        "value": null
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/acquisition/gateway_call_ref"
+      }
+    ]
+  }
+}

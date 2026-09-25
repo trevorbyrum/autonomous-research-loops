@@ -1461,6 +1461,21 @@ END;
 -- the producer's unvalidated extraction not), S4 step 4 (exact quote match);
 -- BOUNDARIES.md Verifier; schema verification-receipt.schema.json;
 -- adjudication (a)K-A2, (b)5; INVARIANTS V-1, V-2, V-3, RG-5.
+-- Support integrity (Astra 0a review A6): 'supports' needs a non-mismatched
+-- exact quote and every numeric/denominator/negation/qualification check
+-- successful (checked_ok or not_applicable) and no tier-0 alarm — or an
+-- explicit adjudicated resolution. A truthful unsuccessful verdict
+-- (cannot_assess_at_required_tier, does_not_support) may carry not_checked /
+-- unavailable checks; load-bearing *support* verdicts may not. The check
+-- statuses and adjudication are read directly from the immutable receipt
+-- JSON, and every normalized column must equal its JSON field (A10), so the
+-- row cannot contradict the receipt.
+-- Extraction (A6/B6; adjudication (b)5): the prohibition is on the
+-- producer's selected summary or unvalidated extraction, not on bytes the
+-- producer legitimately acquired: verifier_extraction is the verifier's own;
+-- validated_extraction (anyone's) cites its validation; canonical_bytes are
+-- authenticated acquired bytes — a gateway-call reference and a staged
+-- artifact with exactly the obtained hash — whoever acquired them.
 -- The verifier must be a separate verification-kind invocation of the same
 -- topic checking the claim's actual producer. A verification invocation never
 -- has a controlling parent (invocations CHECK, ruling R2.2), so a producer
@@ -1483,13 +1498,47 @@ CREATE TABLE verification_receipts (
   extraction_validation_ref TEXT,
   producer_invocation_id TEXT NOT NULL REFERENCES invocations (invocation_id),
   verifier_invocation_id TEXT NOT NULL REFERENCES invocations (invocation_id),
+  quote_check_id TEXT REFERENCES quote_checks (check_id),
   verdict TEXT NOT NULL CHECK (verdict IN ('supports', 'partially_supports', 'does_not_support', 'cannot_assess_at_required_tier')),
   receipt TEXT NOT NULL CHECK (json_valid(receipt)),
   verified_at TEXT NOT NULL,
   FOREIGN KEY (claim_id, claim_revision) REFERENCES claims (claim_id, revision),
   CHECK (producer_invocation_id != verifier_invocation_id),
-  CHECK (extraction_invocation_id != producer_invocation_id OR extraction_validation_ref IS NOT NULL),
+  CHECK (extraction_method != 'verifier_extraction' OR extraction_invocation_id = verifier_invocation_id),
   CHECK (extraction_method != 'validated_extraction' OR extraction_validation_ref IS NOT NULL),
+  CHECK (extraction_method != 'canonical_bytes' OR json_extract(acquisition, '$.gateway_call_ref') IS NOT NULL),
+  CHECK ((json_extract(receipt, '$.checks.exact_quote.status') IN ('matched', 'mismatch')) = (quote_check_id IS NOT NULL)),
+  CHECK (verdict != 'supports' OR json_extract(receipt, '$.checks.exact_quote.status') IN ('matched', 'not_applicable')),
+  CHECK (verdict != 'supports' OR json_type(receipt, '$.adjudication') = 'object' OR (
+         coalesce(json_extract(receipt, '$.checks.numeric_units'), 'missing') IN ('checked_ok', 'not_applicable')
+     AND coalesce(json_extract(receipt, '$.checks.denominators'), 'missing') IN ('checked_ok', 'not_applicable')
+     AND coalesce(json_extract(receipt, '$.checks.negation'), 'missing') IN ('checked_ok', 'not_applicable')
+     AND coalesce(json_extract(receipt, '$.checks.qualifications'), 'missing') IN ('checked_ok', 'not_applicable')
+     AND json_extract(receipt, '$.checks.tier0.signal') IS NOT 'alarm')),
+  CHECK (use != 'load_bearing' OR verdict NOT IN ('supports', 'partially_supports') OR (
+         coalesce(json_extract(receipt, '$.checks.numeric_units'), 'missing') NOT IN ('not_checked', 'unavailable', 'missing')
+     AND coalesce(json_extract(receipt, '$.checks.denominators'), 'missing') NOT IN ('not_checked', 'unavailable', 'missing')
+     AND coalesce(json_extract(receipt, '$.checks.negation'), 'missing') NOT IN ('not_checked', 'unavailable', 'missing')
+     AND coalesce(json_extract(receipt, '$.checks.qualifications'), 'missing') NOT IN ('not_checked', 'unavailable', 'missing'))),
+  CHECK (json_extract(receipt, '$.verification_receipt_id') IS verification_receipt_id
+     AND json_extract(receipt, '$.topic_id') IS topic_id
+     AND json_extract(receipt, '$.claim.claim_id') IS claim_id
+     AND json_extract(receipt, '$.claim.claim_revision') IS claim_revision
+     AND json_extract(receipt, '$.source.work_id') IS work_id
+     AND json_extract(receipt, '$.source.source_version') IS source_version
+     AND json_extract(receipt, '$.cited_spans') IS json(cited_spans)
+     AND json_extract(receipt, '$.obtained_content_hash') IS obtained_content_hash
+     AND json_extract(receipt, '$.access_tier') IS access_tier
+     AND json_extract(receipt, '$.requested_for.use') IS use
+     AND json_extract(receipt, '$.requested_for.required_access_tier') IS required_access_tier
+     AND json_extract(receipt, '$.acquisition') IS json(acquisition)
+     AND json_extract(receipt, '$.extraction.method') IS extraction_method
+     AND json_extract(receipt, '$.extraction.produced_by_invocation_id') IS extraction_invocation_id
+     AND json_extract(receipt, '$.extraction.validation_ref') IS extraction_validation_ref
+     AND json_extract(receipt, '$.producer_invocation_id') IS producer_invocation_id
+     AND json_extract(receipt, '$.verifier_invocation_id') IS verifier_invocation_id
+     AND json_extract(receipt, '$.quote_check_id') IS quote_check_id
+     AND json_extract(receipt, '$.verdict') IS verdict),
   CHECK (verdict != 'supports'
       OR (CASE access_tier WHEN 'bibliographic' THEN 1 WHEN 'abstract' THEN 2 WHEN 'full_text' THEN 3 WHEN 'reproduced' THEN 4 END)
       >= (CASE required_access_tier WHEN 'bibliographic' THEN 1 WHEN 'abstract' THEN 2 WHEN 'full_text' THEN 3 WHEN 'reproduced' THEN 4 END))
@@ -1503,6 +1552,28 @@ WHEN (SELECT kind FROM invocations WHERE invocation_id = NEW.verifier_invocation
   OR (SELECT topic_id FROM claims WHERE claim_id = NEW.claim_id AND revision = NEW.claim_revision) IS NOT NEW.topic_id
 BEGIN
   SELECT RAISE(ABORT, 'verification must come from a separate verification invocation of the same topic, independent of the claim producer (RG-5)');
+END;
+
+-- A6/A10: the receipt names the verifier's own capability; canonical bytes
+-- are a staged artifact with exactly the obtained hash; the quote check it
+-- binds is of this claim revision, against the receipt's source artifact,
+-- with the receipt's match status — and a supporting receipt cannot rest on
+-- a quarantined quote unless the quarantine is an NLI alarm (never a byte
+-- mismatch) resolved by explicit adjudication.
+CREATE TRIGGER verification_receipts_bindings
+BEFORE INSERT ON verification_receipts
+WHEN (SELECT capability_id FROM invocations WHERE invocation_id = NEW.verifier_invocation_id) IS NOT json_extract(NEW.receipt, '$.verifier_capability_id')
+  OR (NEW.extraction_method = 'canonical_bytes' AND NOT EXISTS (SELECT 1 FROM artifacts a WHERE a.content_hash = NEW.obtained_content_hash))
+  OR (NEW.quote_check_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM quote_checks q
+        WHERE q.check_id = NEW.quote_check_id
+          AND q.claim_id = NEW.claim_id AND q.claim_revision = NEW.claim_revision
+          AND q.source_artifact_hash IS json_extract(NEW.receipt, '$.checks.exact_quote.source_artifact_hash')
+          AND q.exact_match IS json_extract(NEW.receipt, '$.checks.exact_quote.status')
+          AND (NEW.verdict != 'supports' OR q.quote_quarantined = 0
+               OR (q.exact_match = 'matched' AND q.nli_signal = 'alarm' AND json_type(NEW.receipt, '$.adjudication') = 'object'))))
+BEGIN
+  SELECT RAISE(ABORT, 'verification receipt bindings: verifier capability, authenticated canonical bytes, and an unquarantined quote check of this claim (A6, A10)');
 END;
 CREATE TRIGGER verification_receipts_immutable_u BEFORE UPDATE ON verification_receipts
 BEGIN

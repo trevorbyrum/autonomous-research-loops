@@ -2,7 +2,7 @@
   "fixture": {
     "schema": "verification-receipt.schema.json",
     "expect": "valid",
-    "tests": "V-1/V-3: all bindings present; reused cache bytes are acceptable for independent checking"
+    "tests": "A6: an adverse check and a tier-0 alarm may coexist with 'supports' only through an explicit adjudicated resolution"
   },
   "instance": {
     "receipt_version": "verification-receipt/1",
@@ -57,14 +57,18 @@
       "numeric_units": "checked_ok",
       "denominators": "checked_ok",
       "negation": "not_applicable",
-      "qualifications": "checked_ok",
+      "qualifications": "checked_problem",
       "tier0": {
-        "checker": "minicheck-local",
-        "checker_version": "2024.1",
-        "signal": "pass"
+        "checker": "minicheck",
+        "checker_version": "1.0",
+        "signal": "alarm"
       }
     },
-    "adjudication": null,
+    "adjudication": {
+      "adjudication_ref": "adj-01J8ADJ001",
+      "resolved_at": "2026-09-25T11:12:00Z",
+      "resolution": "Operator adjudicated: the qualification narrows but does not contradict the claim; the NLI alarm was a negation-scope false alarm."
+    },
     "verdict": "supports",
     "verified_at": "2026-09-25T11:12:00Z"
   }

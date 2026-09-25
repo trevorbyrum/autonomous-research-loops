@@ -224,6 +224,49 @@ class StoreTestCase(unittest.TestCase):
                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'v1', 'p1', ?, ?)",
                op, rid, kind, inv, tid, h("f"), h(digest), lease, gen, context, contract_rev, brief_hash, h("c"), before, before + 1, body, T)
 
+    CHECKS_OK = {"numeric_units": "checked_ok", "denominators": "checked_ok", "negation": "checked_ok", "qualifications": "checked_ok"}
+
+    def verify(self, rid: str, *, claim: tuple = ("clm_00000001", 1), work: str = "wrk_00000001", tier: str = "full_text", required: str = "full_text",
+               use: str = "load_bearing", method: str = "verifier_extraction", extraction: str = "inv_vvvvvvvv", validation: str | None = None,
+               producer: str = "inv_pppppppp", verifier: str = "inv_vvvvvvvv", verdict: str = "supports", checks: dict | None = None,
+               quote: tuple = ("matched", "qc-1"), source_artifact: str | None = None, tier0: str | None = None, adjudication: dict | None = None,
+               gateway: str | None = "gw-call-1", obtained: str | None = None, capability: str | None = None,
+               receipt_overrides: dict | None = None, column_overrides: dict | None = None) -> None:
+        """A verification receipt whose JSON (verification-receipt.schema.json
+        shape) and normalized columns are built from the same values; pass
+        receipt_overrides / column_overrides to make them disagree."""
+        obtained = obtained or h("7")
+        status, check_id = quote
+        capability = capability or self.rows("SELECT capability_id FROM invocations WHERE invocation_id = ?", verifier)[0][0]
+        spans = [{"start": 0, "end": 5, "locator": {"kind": "page", "value": "3"}}]
+        acquisition = {"route": "gateway:crossref", "retrieved_at": T, "gateway_call_ref": gateway, "cache_reuse": False}
+        doc = {"receipt_version": "verification-receipt/1", "verification_receipt_id": rid, "topic_id": TOPIC,
+               "claim": {"claim_id": claim[0], "claim_revision": claim[1]}, "source": {"work_id": work, "source_version": "v1"},
+               "cited_spans": spans, "obtained_content_hash": obtained, "access_tier": tier,
+               "requested_for": {"use": use, "required_access_tier": required}, "acquisition": acquisition,
+               "extraction": {"method": method, "extractor": "x-1", "produced_by_invocation_id": extraction, "validation_ref": validation},
+               "producer_invocation_id": producer, "verifier_invocation_id": verifier, "verifier_capability_id": capability,
+               "quote_check_id": check_id,
+               "checks": {"exact_quote": {"status": status, "normalization_version": "n1", "source_artifact_hash": source_artifact or h("7")},
+                          **(checks or self.CHECKS_OK), **({"tier0": {"checker": "minicheck", "checker_version": "1", "signal": tier0}} if tier0 else {})},
+               "adjudication": adjudication, "verdict": verdict, "verified_at": T}
+        for key, value in (receipt_overrides or {}).items():
+            doc[key] = value
+        cols = {"verification_receipt_id": rid, "topic_id": TOPIC, "claim_id": claim[0], "claim_revision": claim[1], "work_id": work, "source_version": "v1",
+                "cited_spans": json.dumps(spans), "obtained_content_hash": obtained, "access_tier": tier, "use": use, "required_access_tier": required,
+                "acquisition": json.dumps(acquisition), "extraction_method": method, "extraction_invocation_id": extraction,
+                "extraction_validation_ref": validation, "producer_invocation_id": producer, "verifier_invocation_id": verifier,
+                "quote_check_id": check_id, "verdict": verdict, "receipt": json.dumps(doc), "verified_at": T}
+        cols.update(column_overrides or {})
+        self.x(f"INSERT INTO verification_receipts ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", *cols.values())
+
+    def quote_check(self, check_id: str, *, claim: tuple = ("clm_00000001", 1), source: str | None = None, match: str = "matched",
+                    nli: str = "not_run", quarantined: int | None = None) -> None:
+        quarantined = quarantined if quarantined is not None else int(match == "mismatch" or nli == "alarm")
+        self.x("INSERT INTO quote_checks (check_id, claim_id, claim_revision, source_artifact_hash, span_start, span_end, normalization_version, exact_match, nli_checker, nli_checker_version, nli_signal, quote_quarantined, checked_at) "
+               "VALUES (?, ?, ?, ?, 0, 5, 'n1', ?, ?, ?, ?, ?, ?)", check_id, claim[0], claim[1], source or h("7"), match,
+               None if nli == "not_run" else "minicheck", None if nli == "not_run" else "1", nli, quarantined, T)
+
     def spec(self, spec_id: str = "dspec_screen01", provider: str = "jev", cls: str = "screening") -> str:
         sh = "sha256:" + (spec_id.encode().hex() + "0" * 64)[:64]
         self.x("INSERT INTO decision_specs (spec_hash, spec_id, decision_class, provider, document, created_at) VALUES (?, ?, ?, ?, ?, ?)",
@@ -298,10 +341,8 @@ class StoreTestCase(unittest.TestCase):
                "VALUES ('clm_00000001', 1, 'wrk_00000001', 'v1', ?, 2, 'O-1', '[]', 'answer', 'study-1', ?)", TOPIC, T)
         self.lease("lease_vvvvvvvv", 2, scope="verification")
         self.invocation("inv_vvvvvvvv", kind="verification", lease="lease_vvvvvvvv")
-        self.x("INSERT INTO quote_checks (check_id, claim_id, claim_revision, source_artifact_hash, span_start, span_end, normalization_version, exact_match, nli_signal, quote_quarantined, checked_at) "
-               "VALUES ('qc-1', 'clm_00000001', 1, ?, 0, 5, 'n1', 'matched', 'not_run', 0, ?)", h("7"), T)
-        self.x("INSERT INTO verification_receipts (verification_receipt_id, topic_id, claim_id, claim_revision, work_id, source_version, cited_spans, obtained_content_hash, access_tier, use, required_access_tier, acquisition, extraction_method, extraction_invocation_id, extraction_validation_ref, producer_invocation_id, verifier_invocation_id, verdict, receipt, verified_at) "
-               "VALUES ('ver_00000001', ?, 'clm_00000001', 1, 'wrk_00000001', 'v1', '[{\"start\":0,\"end\":5}]', ?, 'full_text', 'load_bearing', 'full_text', '{}', 'verifier_extraction', 'inv_vvvvvvvv', NULL, 'inv_pppppppp', 'inv_vvvvvvvv', 'supports', '{}', ?)", TOPIC, h("7"), T)
+        self.quote_check("qc-1")
+        self.verify("ver_00000001")
         self.x("UPDATE claims SET status = 'accepted_support' WHERE claim_id = 'clm_00000001' AND revision = 1")
         jev = self.spec()
         self.decision_receipt("dec_00000001", "inv_pppppppp", jev)

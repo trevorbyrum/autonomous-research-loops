@@ -158,8 +158,8 @@ Process identity is required while `running`; a job never observed running may b
 **V-2 — Access tiers are ordered and never inflated:** bibliographic < abstract < full_text < reproduced. A verifier never certifies above the tier it obtained; an abstract check never satisfies a full-text requirement. A claim about a table requires the table to have been accessible. Missing required content produces a hold.
 *Source:* F S4 step 8; B *Verifier*. *Enforced at:* router; DDL `claims` trigger (accepted support needs a supporting receipt at or above the required tier).
 
-**V-3 — Independence is not a URL count.** Independent re-access may reuse identical canonical transport/cache bytes; it may never reuse the producer's selected summary or unvalidated extraction.
-*Source:* F S4 step 8; ADJ (a) K-A2, (b) resolution 5.
+**V-3 — Independence is not a URL count.** Independent re-access may reuse identical canonical transport/cache bytes — authenticated acquired bytes, whoever acquired them, the producer included; it may never reuse the producer's selected summary or unvalidated extraction.
+*Source:* F S4 step 8; ADJ (a) K-A2, (b) resolution 5; Astra 0a review A6/B6. *Enforced at:* DDL `verification_receipts` — `verifier_extraction` is the verifier's own; `validated_extraction` cites its validation; `canonical_bytes` needs a gateway-call reference and a staged artifact with exactly the obtained hash. *Test must show:* producer-acquired canonical bytes accepted; an unvalidated producer extraction (however labelled) and unauthenticated "canonical" bytes refused.
 
 **V-4 — Provisional capture may commit before verification; accepted support may not.** A load-bearing disposition becomes accepted support only once the required verification receipt exists. Pending evidence can open a bounded investigation but cannot satisfy a completion gate.
 *Source:* F S4 step 9; F §5 (hybrid placement); ADJ (b) resolution 7. *Enforced at:* DDL `claims` trigger.
@@ -167,13 +167,13 @@ Process identity is required while `running`; a job never observed running may b
 **V-5 — Disagreement becomes a typed adjudication hold** (class `judgment`, owned by the primary, escalating to the operator at its deadline). It is never averaged.
 *Source:* F S4 step 8, §6.6; B *Verifier*.
 
-**V-6 — Exact quote byte-matching precedes NLI.** Quoted bytes are checked against a versioned source artifact with explicit normalization and span offsets. A failed NLI check quarantines the quote (not the source), notifies the capturing pass's owner, and blocks the quote from backing any disposition until it is re-captured or adjudicated.
-*Source:* F S4 step 4, §6.7; ADJ (c) 2; B *Tier-0 checker*.
+**V-6 — Exact quote byte-matching precedes NLI.** Quoted bytes are checked against a versioned source artifact with explicit normalization and span offsets. A byte mismatch or a failed NLI check quarantines the quote (not the source), notifies the capturing pass's owner, and blocks the quote from backing any disposition until it is re-captured or adjudicated; an adjudication can resolve an NLI alarm, never a byte mismatch.
+*Source:* F S4 step 4, §6.7; ADJ (c) 2; B *Tier-0 checker*; Astra ruling R2.3 (byte-mismatch quarantine accepted). *Enforced at:* DDL `quote_checks` (mismatch or alarm ⇒ quarantined); `verification_receipts` binds the exact quote check (claim revision, source artifact, match status) and refuses support resting on a quarantined quote unless an NLI-alarm quarantine is explicitly adjudicated.
 
 **V-7 — The tier-0 checker screens and alarms; it never promotes.** On observed regression it is re-evaluated, narrowed, or suspended — never auto-tightened. Passed claims are sampled for false passes (numeric, negation, context traps), reported with denominators.
 *Source:* F §4.8; ADJ (a) G-A5; B *Tier-0 checker*.
 
-**V-8 — Load-bearing uses get independent checks** of numeric units, denominators, negation, and surrounding qualifications. *Source:* F S4 step 4; ADJ (c) 2.
+**V-8 — Load-bearing uses get independent checks** of numeric units, denominators, negation, and surrounding qualifications. A support verdict (`supports`) requires every such check to have succeeded (or be not applicable) and no tier-0 alarm — or an explicit adjudicated resolution; a load-bearing `supports`/`partially_supports` cannot rest on unperformed (`not_checked`) or `unavailable` checks. A truthful unsuccessful verdict (`cannot_assess_at_required_tier`, `does_not_support`) may record checks as not performed or unavailable: missing access is reported, never hidden. *Source:* F S4 step 4, step 8; ADJ (c) 2; Astra 0a review A6. *Enforced at:* schema `verification-receipt.schema.json`; DDL `verification_receipts` CHECKs over the immutable receipt JSON, whose normalized columns must equal their JSON fields (A10).
 
 **V-9 — Three independence properties are recorded separately:** independent checking, independent evidence origins (lineage), and different analytical methods. Two analyses of one study never count as two independent studies.
 *Source:* ADJ (b) resolution 5; M §3. *Enforced at:* DDL `claim_source_links` (separate lineage and method columns) and `verification_receipts` (checking).

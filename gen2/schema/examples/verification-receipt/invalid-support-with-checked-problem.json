@@ -2,20 +2,16 @@
   "fixture": {
     "schema": "verification-receipt.schema.json",
     "expect": "invalid",
-    "tests": "V-8/A6: a load-bearing 'supports' needs its numeric check performed and successful (two rules: performed for load-bearing support; successful for any support)",
+    "tests": "A6: 'supports' with an adverse check and no adjudication (the review's probe)",
     "base": "valid-load-bearing-full-text.json",
     "patch": [
       {
         "op": "replace",
         "path": "/checks/numeric_units",
-        "value": "not_checked"
+        "value": "checked_problem"
       }
     ],
     "errors": [
-      {
-        "keyword": "not",
-        "path": "/checks/numeric_units"
-      },
       {
         "keyword": "enum",
         "path": "/checks/numeric_units"

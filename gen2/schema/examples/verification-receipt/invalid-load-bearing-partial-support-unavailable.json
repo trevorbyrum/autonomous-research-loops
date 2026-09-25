@@ -1,0 +1,26 @@
+{
+  "fixture": {
+    "schema": "verification-receipt.schema.json",
+    "expect": "invalid",
+    "tests": "A6/V-8: a load-bearing partial support needs performed checks; 'unavailable' is explicit, never a pass",
+    "base": "valid-load-bearing-full-text.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/verdict",
+        "value": "partially_supports"
+      },
+      {
+        "op": "replace",
+        "path": "/checks/denominators",
+        "value": "unavailable"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "not",
+        "path": "/checks/denominators"
+      }
+    ]
+  }
+}

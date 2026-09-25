@@ -56,7 +56,9 @@
 - **Verification** (RG-5, V-2, V-4):
   - producer ≠ verifier
   - the verifier is a `verification` invocation of the same topic with no controlling parent (it may be *requested by* the producer — R2.2) and names the claim's real producer
-  - no reliance on the producer's unvalidated extraction
+  - no reliance on the producer's selected or unvalidated extraction; authenticated canonical bytes (gateway-call reference + staged artifact with the obtained hash) may be reused whoever acquired them
+  - `supports` needs successful numeric/denominator/negation/qualification checks and no tier-0 alarm, or an explicit adjudication; load-bearing support verdicts cannot rest on unperformed/unavailable checks; truthful unsuccessful verdicts may report them
+  - the receipt binds its exact quote check (claim revision, source artifact, match status) and never supports on a quarantined quote without an adjudicated NLI alarm; it names the verifier's own capability; every normalized column equals its receipt-JSON field
   - `supports` never exceeds the obtained tier
   - load-bearing claims reach `accepted_support` only with a supporting receipt at the required tier
   - claims start provisional
@@ -111,7 +113,7 @@ These are choices this draft made where the sources leave room. Each is easy to 
 
 1. **Lease scopes — ruled (R2.1, MODIFY/ACCEPT).** Research, discovery, verification and checkpoint leases coexist, one live lease per (topic, scope). Each non-delegate owns exactly one lease of its kind's scope, live and of its topic when admitted; delegates inherit the parent's lease. A commit is fenced by *its own* lease's generation, so a newer verification lease never invalidates an unreleased research lease. "Live" in this DDL means unreleased — expiry, deadlines, station/resource accounting, conservative scheduling and amendment invalidation are Phase 1 router work, proven there with stale-result/cancel/reservation tests.
 2. **Verifier independence — ruled (R2.2, blanket parent rule REJECTED).** `parent_invocation_id` is control/reservation parentage only (delegates); a verifier never has one, so a producer cannot launch or control it. `requested_by_invocation_id` is the causal link and may name the producer: supervisor-created verification requested by the producing pass is accepted.
-3. **An exact-quote mismatch quarantines the quote.** The sources state quarantine for NLI alarms; this draft applies it to byte mismatches too.
+3. **Byte-mismatch quarantine — ruled (R2.3, ACCEPT).** An exact-quote mismatch quarantines the quote, like an NLI alarm; tested directly (D32 rewrite). Re-capture and adjudication stay explicit: an adjudication can resolve an alarm, never a mismatch.
 4. **Process identity — ruled (R2.4, MODIFY).** Identity is required while `running`; a never-observed job may be recovered through its authenticated stable handle (recorded with the launch intent) and retained result without one; every identity field once observed, host and container included, is write-once in all later states. Leaving `outcome_unknown` needs the durable `invocation_reconciliations` record of that episode (method, evidence, digest found, descendant confirmation) — a result digest alone is neither reconciliation nor descendant-cleanup evidence. Process/descendant recovery itself is Phase 1.
 5. **Queue status, claim status, reason-code and error-class vocabularies are drafts.**
 7. **Facet coverage (A3).** Any obligation of the revision that tags a facet covers it, exploratory ones included; approval requires every facet to carry an operator rating (flow S3: ratings are approved with the framework, set and method design); an operator rating cites a `rating_approval` whose subject is an *earlier* revision (the draft the operator rated) because the rated revision's own hash covers the rating.

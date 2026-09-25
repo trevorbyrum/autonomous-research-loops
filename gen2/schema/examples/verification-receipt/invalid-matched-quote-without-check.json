@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "verification-receipt.schema.json",
+    "expect": "invalid",
+    "tests": "A6: a byte-checked quote names the quote check the receipt rests on",
+    "base": "valid-load-bearing-full-text.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/quote_check_id",
+        "value": null
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/quote_check_id"
+      }
+    ]
+  }
+}

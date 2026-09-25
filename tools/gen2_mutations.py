@@ -56,7 +56,7 @@ class Mutation:
     new: str = ""
     target: str = "ddl"  # ddl | connection
     also: tuple[tuple[str, str], ...] = ()  # further (old, new) edits applied with this one (a dimension-level mutation)
-    scope: str | None = None  # apply the edits only inside this trigger (CREATE TRIGGER <scope> ... END;)
+    scope: str | None = None  # apply the edits only inside this trigger or table (CREATE TRIGGER <scope> ... END; / CREATE TABLE <scope> ... STRICT;)
 
 
 H = "test_store_history."
@@ -390,6 +390,58 @@ MUTATIONS: list[Mutation] = [
              (LT + "test_reconciliation_resolutions_and_evidence", H + "EveryTableSweepTest.test_append_only_tables_reject_every_update"), drop_trigger="invocation_reconciliations_immutable_u"),
     Mutation("A5-reconciliation-delete-guard", "A5", "reconciliation records may be deleted",
              (H + "EveryTableSweepTest.test_no_table_can_be_deleted_from_or_replaced_into",), drop_trigger="invocation_reconciliations_no_delete"),
+    # --- A6 / A10: verification support integrity and receipt binding -------------
+    Mutation("A6-D32-byte-mismatch", "A6", "the review's surviving mutant: a byte mismatch need not quarantine the quote",
+             (VT + "test_nli_alarm_quarantines_the_quote",), old=",\n  CHECK (exact_match != 'mismatch' OR quote_quarantined = 1)", new=""),
+    Mutation("A6-verifier-extraction-is-own", "A6", "a producer's extraction may be passed off as the verifier's own",
+             (VT + "test_producer_unvalidated_extraction_rejected",), old="  CHECK (extraction_method != 'verifier_extraction' OR extraction_invocation_id = verifier_invocation_id),\n", new=""),
+    Mutation("A6-validated-extraction-cites-validation", "A6", "a 'validated' extraction need not cite its validation",
+             (VT + "test_producer_unvalidated_extraction_rejected",), old="  CHECK (extraction_method != 'validated_extraction' OR extraction_validation_ref IS NOT NULL),\n", new=""),
+    Mutation("A6-canonical-bytes-authenticated", "A6", "canonical bytes need no authenticated acquisition",
+             (VT + "test_producer_unvalidated_extraction_rejected",), old="  CHECK (extraction_method != 'canonical_bytes' OR json_extract(acquisition, '$.gateway_call_ref') IS NOT NULL),\n", new=""),
+    Mutation("A6-canonical-bytes-staged", "A6", "canonical bytes need not be a staged artifact with the obtained hash",
+             (VT + "test_producer_unvalidated_extraction_rejected",), scope="verification_receipts_bindings",
+             old="  OR (NEW.extraction_method = 'canonical_bytes' AND NOT EXISTS (SELECT 1 FROM artifacts a WHERE a.content_hash = NEW.obtained_content_hash))\n", new=""),
+    Mutation("A6-D28-old-over-restriction", "A6", "over-restriction restored: producer-acquired canonical bytes refused (the review's D28 finding)",
+             (VT + "test_producer_unvalidated_extraction_rejected",),
+             old="  CHECK (extraction_method != 'verifier_extraction' OR extraction_invocation_id = verifier_invocation_id),\n",
+             new="  CHECK (extraction_method != 'verifier_extraction' OR extraction_invocation_id = verifier_invocation_id),\n  CHECK (extraction_invocation_id != producer_invocation_id OR extraction_validation_ref IS NOT NULL),\n"),
+    Mutation("A6-quote-check-iff-status", "A6", "a matched/mismatched quote need not name its quote check",
+             (VT + "test_quote_check_binding",), old="  CHECK ((json_extract(receipt, '$.checks.exact_quote.status') IN ('matched', 'mismatch')) = (quote_check_id IS NOT NULL)),\n", new=""),
+    *(Mutation(f"A6-support-needs-{name.replace('_', '-')}", "A6", f"'supports' accepted with an adverse/unperformed {name} check",
+               (VT + "test_support_needs_successful_checks_or_adjudication",), scope="verification_receipts",
+               old=f"coalesce(json_extract(receipt, '$.checks.{name}'), 'missing') IN ('checked_ok', 'not_applicable')", new="1")
+      for name in ("numeric_units", "denominators", "negation", "qualifications")),
+    Mutation("A6-support-needs-no-tier0-alarm", "A6", "'supports' accepted over an unadjudicated tier-0 alarm",
+             (VT + "test_support_needs_successful_checks_or_adjudication",), old="\n     AND json_extract(receipt, '$.checks.tier0.signal') IS NOT 'alarm'))", new="))"),
+    Mutation("A6-support-adjudication-escape", "A6", "over-restriction: an explicit adjudication no longer resolves an adverse check",
+             (VT + "test_support_needs_successful_checks_or_adjudication",), old="  CHECK (verdict != 'supports' OR json_type(receipt, '$.adjudication') = 'object' OR (", new="  CHECK (verdict != 'supports' OR ("),
+    Mutation("A6-load-bearing-support-checks-performed", "A6", "a load-bearing partial support may skip its checks",
+             (VT + "test_truthful_unsuccessful_verdicts_may_record_unperformed_checks",), old="  CHECK (use != 'load_bearing' OR verdict NOT IN ('supports', 'partially_supports') OR (", new="  CHECK (1 OR ("),
+    Mutation("A6-truthful-cannot-assess-over-restriction", "A6", "over-restriction restored: load-bearing checks required for every verdict (the review's rejected truthful receipt)",
+             (VT + "test_truthful_unsuccessful_verdicts_may_record_unperformed_checks",), old="  CHECK (use != 'load_bearing' OR verdict NOT IN ('supports', 'partially_supports') OR (", new="  CHECK (use != 'load_bearing' OR ("),
+    Mutation("A6-binds-verifier-capability", "A10", "the receipt may name another invocation's capability",
+             (VT + "test_receipt_names_the_verifiers_own_capability",), scope="verification_receipts_bindings",
+             old="WHEN (SELECT capability_id FROM invocations WHERE invocation_id = NEW.verifier_invocation_id) IS NOT json_extract(NEW.receipt, '$.verifier_capability_id')\n  OR ", new="WHEN "),
+    *(Mutation(f"A6-quote-binding-{key}", "A6", f"a bound quote check may differ in {key}", (VT + "test_quote_check_binding",), scope="verification_receipts_bindings", old=old, new=new)
+      for key, old, new in (
+          ("claim", "          AND q.claim_id = NEW.claim_id AND q.claim_revision = NEW.claim_revision\n", ""),
+          ("source", "          AND q.source_artifact_hash IS json_extract(NEW.receipt, '$.checks.exact_quote.source_artifact_hash')\n", ""),
+          ("status", "          AND q.exact_match IS json_extract(NEW.receipt, '$.checks.exact_quote.status')\n", ""),
+          ("quarantine", "          AND (NEW.verdict != 'supports' OR q.quote_quarantined = 0\n               OR (q.exact_match = 'matched' AND q.nli_signal = 'alarm' AND json_type(NEW.receipt, '$.adjudication') = 'object'))))", "))"),
+          ("adjudication-escape", "\n               OR (q.exact_match = 'matched' AND q.nli_signal = 'alarm' AND json_type(NEW.receipt, '$.adjudication') = 'object'))))", ")))"))),
+    *(Mutation(f"A10-verification-json-{path.replace('.', '-').replace('_', '-')}", "A10", f"verification receipt column {col} no longer bound to $.{path}",
+               (VT + "test_receipt_row_matches_its_json",), scope="verification_receipts", old=f"\n     AND json_extract(receipt, '$.{path}') IS {col}", new="")
+      for path, col in (("topic_id", "topic_id"), ("claim.claim_id", "claim_id"), ("claim.claim_revision", "claim_revision"), ("source.work_id", "work_id"),
+                        ("source.source_version", "source_version"), ("cited_spans", "json(cited_spans)"), ("obtained_content_hash", "obtained_content_hash"),
+                        ("access_tier", "access_tier"), ("requested_for.use", "use"), ("requested_for.required_access_tier", "required_access_tier"),
+                        ("acquisition", "json(acquisition)"), ("extraction.method", "extraction_method"), ("extraction.produced_by_invocation_id", "extraction_invocation_id"),
+                        ("extraction.validation_ref", "extraction_validation_ref"), ("producer_invocation_id", "producer_invocation_id"),
+                        ("verifier_invocation_id", "verifier_invocation_id"), ("quote_check_id", "quote_check_id"))),
+    Mutation("A10-verification-json-verdict", "A10", "verification verdict column no longer bound to the receipt JSON (the review's contradiction probe)",
+             (VT + "test_receipt_row_matches_its_json",), scope="verification_receipts", old="\n     AND json_extract(receipt, '$.verdict') IS verdict),", new="),"),
+    Mutation("A10-verification-json-receipt-id", "A10", "verification receipt id no longer bound to the JSON",
+             (VT + "test_receipt_row_matches_its_json",), scope="verification_receipts", old="  CHECK (json_extract(receipt, '$.verification_receipt_id') IS verification_receipt_id\n     AND ", new="  CHECK ("),
     # --- A9: capability supersession --------------------------------------
     Mutation("A9-successor-fk-immediate", "A9", "successor FK checked immediately (the documented transaction cannot run)",
              (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",),
@@ -409,6 +461,17 @@ MUTATIONS: list[Mutation] = [
              old="  OR NEW.created_at IS NOT OLD.created_at\n  OR (OLD.approved_by_decision_id IS NOT NULL",
              new="  OR (OLD.approved_by_decision_id IS NOT NULL"),
 ]
+
+
+# Guards deliberately kept as a second layer behind another guard that
+# always fires first for every row that reaches them, so no test can kill
+# their removal alone. Listed so a reviewer does not mistake them for missed
+# coverage; each names the first layer (which IS in the inventory).
+SECOND_LAYER = {
+    "verification_receipts CHECK (verdict != 'supports' OR exact_quote.status IN ('matched', 'not_applicable'))":
+        "a mismatched quote is always quarantined (quote_checks CHECK, A6-D32-byte-mismatch) and a matched/mismatched status needs a bound check "
+        "(A6-quote-check-iff-status), so verification_receipts_bindings refuses support on it first (A6-quote-binding-*)",
+}
 
 
 class _Collector(unittest.TestResult):
@@ -449,10 +512,10 @@ def mutate(text: str, m: Mutation) -> str:
     assert m.old is not None
     prefix, body, suffix = "", text, ""
     if m.scope:
-        block = re.compile(r"CREATE TRIGGER " + re.escape(m.scope) + r"\b.*?\nEND;\n", re.DOTALL)
-        found = list(block.finditer(text))
+        found = list(re.finditer(r"CREATE TRIGGER " + re.escape(m.scope) + r"\b.*?\nEND;\n", text, re.DOTALL))
+        found += list(re.finditer(r"CREATE TABLE " + re.escape(m.scope) + r" \(.*?\n\) STRICT;\n", text, re.DOTALL))
         if len(found) != 1:
-            raise ValueError(f"scope trigger {m.scope!r} found {len(found)} times")
+            raise ValueError(f"scope {m.scope!r} found {len(found)} times")
         prefix, body, suffix = text[: found[0].start()], found[0].group(0), text[found[0].end():]
     for old, new in ((m.old, m.new), *m.also):
         if body.count(old) != 1:
@@ -508,6 +571,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.list:
         for m in MUTATIONS:
             print(f"{m.mid:45} {m.finding:6} {m.description}")
+        for guard, reason in SECOND_LAYER.items():
+            print(f"second layer (not independently killable): {guard}\n    first layer: {reason}")
         return 0
     sys.path[:0] = [str(TESTS), str(ROOT)]
     import gen2.tests.store_fixtures as fx  # noqa: E402 (path set above)
