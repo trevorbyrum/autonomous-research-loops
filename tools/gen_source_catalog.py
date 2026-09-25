@@ -240,7 +240,7 @@ def rate_text(rate: dict) -> str:
 def cost_text(rate: dict) -> str:
     if rate.get("cost_cap_per_day"):
         return f"metered: the registry records a cost cap of {rate['cost_cap_per_day']:g}/day"
-    return "no cost cap recorded in the registry (the registry has no price field — see § *What this catalog does not know*)"
+    return "no cost cap recorded in the registry, which has no price field (see *What this catalog does not know*)"
 
 
 def lane_text(source: dict) -> str:
