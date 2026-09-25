@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "contract-v2.schema.json",
+    "expect": "invalid",
+    "tests": "G-12: every contract routes retractions to mandatory review",
+    "base": "valid-two-obligations.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/surveillance_policy/signals/0"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "contains",
+        "path": "/surveillance_policy/signals"
+      }
+    ]
+  }
+}

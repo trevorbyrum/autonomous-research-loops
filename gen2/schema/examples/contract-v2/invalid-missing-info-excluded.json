@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "contract-v2.schema.json",
+    "expect": "invalid",
+    "tests": "Eligibility: missing information is unknown, never an exclusion",
+    "base": "valid-two-obligations.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/eligibility_protocol/missing_information",
+        "value": "exclude"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "const",
+        "path": "/eligibility_protocol/missing_information"
+      }
+    ]
+  }
+}

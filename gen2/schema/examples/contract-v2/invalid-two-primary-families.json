@@ -1,0 +1,28 @@
+{
+  "fixture": {
+    "schema": "contract-v2.schema.json",
+    "expect": "invalid",
+    "tests": "Method design: exactly one primary family",
+    "base": "valid-two-obligations.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/method_design/families/1",
+        "value": {
+          "family_id": "FAM-2",
+          "family": "realist",
+          "role": "primary",
+          "sequence": 2,
+          "integration_point": "x",
+          "contradiction_handling": "y"
+        }
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "maxContains",
+        "path": "/method_design/families"
+      }
+    ]
+  }
+}

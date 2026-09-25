@@ -1,0 +1,430 @@
+{
+  "fixture": {
+    "schema": "contract-v2.schema.json",
+    "expect": "valid",
+    "tests": "Contract v2 shape: decision record, facet map, templated rated obligations, eligibility, stopping profile, surveillance, applicability, method design"
+  },
+  "instance": {
+    "schema_version": "contract-v2",
+    "topic_id": "fleet-a:intake-latency",
+    "revision": 2,
+    "parent_revision": 1,
+    "protocol_revision": 1,
+    "created_at": "2026-09-25T10:00:00Z",
+    "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "decision_record": {
+      "decision_owner": "operator",
+      "objective": {
+        "operator_words": "Decide whether to replace the intake committee with one author plus a fresh-context audit.",
+        "confirmed_brief": {
+          "brief_id": "BRIEF-1",
+          "version": 3,
+          "confirmed_by": "opd_brief0003"
+        }
+      },
+      "feeds": {
+        "kind": "decision",
+        "description": "Intake station design for the five-station fleet.",
+        "alternatives": [
+          {
+            "entry_id": "ALT-1",
+            "text": "Single author plus fresh-context coverage audit."
+          },
+          {
+            "entry_id": "ALT-2",
+            "text": "Two-author committee."
+          }
+        ]
+      },
+      "evidence_that_would_change_it": [
+        {
+          "entry_id": "EV-1",
+          "text": "Comparative evidence on missed facets between single-author and committee intake at matched cost."
+        }
+      ],
+      "constraints": [
+        {
+          "entry_id": "CON-1",
+          "text": "Five stations; no standing committee."
+        }
+      ],
+      "operator_hypotheses": [
+        {
+          "entry_id": "HYP-1",
+          "statement": "A fresh-context audit catches most missed facets.",
+          "as_testable": "Seeded-omission briefs: audit detection rate versus committee detection rate at matched budget."
+        }
+      ],
+      "surfaced_assumptions": [
+        {
+          "entry_id": "ASM-1",
+          "text": "Missed facets are the dominant intake failure."
+        }
+      ]
+    },
+    "facet_map": {
+      "framing_version": 1,
+      "analytic_framework": {
+        "nodes": [
+          {
+            "node_id": "N-intake",
+            "label": "Intake design choice",
+            "kind": "candidate_action"
+          },
+          {
+            "node_id": "N-missed",
+            "label": "Missed facets at approval",
+            "kind": "intermediate_outcome"
+          },
+          {
+            "node_id": "N-quality",
+            "label": "Decision-relevant coverage",
+            "kind": "decision_outcome"
+          }
+        ],
+        "links": [
+          {
+            "link_id": "L-1",
+            "from_node": "N-intake",
+            "to_node": "N-missed",
+            "key_question": "Does intake design change the rate of missed facets?"
+          },
+          {
+            "link_id": "L-2",
+            "from_node": "N-missed",
+            "to_node": "N-quality",
+            "key_question": "How much do missed facets degrade decision-relevant coverage?"
+          }
+        ]
+      },
+      "facets": [
+        {
+          "facet_id": "F-effect",
+          "label": "Effect of design on omissions",
+          "kind": "effect"
+        },
+        {
+          "facet_id": "F-cost",
+          "label": "Full cost including operator time",
+          "kind": "alternatives"
+        }
+      ],
+      "coverage_matrix": {
+        "question_types": [
+          "effect",
+          "cost"
+        ],
+        "cells": [
+          {
+            "facet_id": "F-effect",
+            "question_type": "effect",
+            "state": "covered",
+            "obligation_ids": [
+              "O-1"
+            ]
+          },
+          {
+            "facet_id": "F-cost",
+            "question_type": "cost",
+            "state": "covered",
+            "obligation_ids": [
+              "O-2"
+            ]
+          },
+          {
+            "facet_id": "F-effect",
+            "question_type": "cost",
+            "state": "deliberately_out",
+            "rationale": "Costed under F-cost."
+          },
+          {
+            "facet_id": "F-cost",
+            "question_type": "effect",
+            "state": "gap",
+            "rationale": "No obligation yet; flagged for operator review."
+          }
+        ]
+      },
+      "deliberately_out": [
+        {
+          "item_id": "OUT-1",
+          "description": "Human-only library reference interviews.",
+          "reason": "Different population from agent intake; noted as analogy only."
+        }
+      ]
+    },
+    "obligations": [
+      {
+        "obligation_id": "O-1",
+        "template": {
+          "template_id": "T-comparison",
+          "template_version": 1,
+          "claim_type": "comparison"
+        },
+        "slots": {
+          "population": "Research-loop intake briefs",
+          "intervention": "Single author plus fresh-context audit",
+          "comparator": "Two-author committee",
+          "outcome": "Missed decision-relevant facets"
+        },
+        "text": "Compare missed-facet rates between single-author-plus-audit and committee intake.",
+        "facet_ids": [
+          "F-effect"
+        ],
+        "traces_to": {
+          "decision_record_entries": [
+            "EV-1"
+          ],
+          "framework_links": [
+            "L-1"
+          ]
+        },
+        "exploratory": false,
+        "stopping_profile_id": "SP-effect",
+        "importance": {
+          "proposed": {
+            "source": "jev_score",
+            "score": 8,
+            "decision_receipt_id": "dec_imp00001"
+          },
+          "operator_rating": {
+            "band": "critical",
+            "score": 8,
+            "operator_decision_id": "opd_rate0001"
+          }
+        }
+      },
+      {
+        "obligation_id": "O-2",
+        "template": {
+          "template_id": "T-comparison",
+          "template_version": 1,
+          "claim_type": "comparison"
+        },
+        "slots": {
+          "population": "Five-station fleet",
+          "intervention": "Single author plus audit",
+          "comparator": "Committee",
+          "outcome": "Operator correction time, latency and full cost"
+        },
+        "text": "Compare operator correction time, latency and full cost of the two intake designs.",
+        "facet_ids": [
+          "F-cost"
+        ],
+        "traces_to": {
+          "decision_record_entries": [],
+          "framework_links": [
+            "L-2"
+          ]
+        },
+        "exploratory": false,
+        "stopping_profile_id": "SP-effect",
+        "importance": {
+          "proposed": null,
+          "operator_rating": {
+            "band": "important",
+            "operator_decision_id": "opd_rate0001"
+          }
+        }
+      }
+    ],
+    "eligibility_protocol": {
+      "protocol_version": 1,
+      "document_types": [
+        "peer_reviewed_study",
+        "preprint",
+        "technical_report"
+      ],
+      "search_scope": "Agent and human intake/requirements elicitation studies, 2010 onward, any language with an English abstract.",
+      "criteria": [
+        {
+          "criterion_id": "EC-date",
+          "kind": "deterministic_predicate",
+          "description": "Published 2010 or later.",
+          "stage": "metadata",
+          "predicate": {
+            "field": "year",
+            "op": "ge",
+            "value": 2010
+          }
+        },
+        {
+          "criterion_id": "EC-outcome",
+          "kind": "semantic",
+          "description": "Reports an omission or coverage outcome for elicited requirements.",
+          "stage": "abstract"
+        }
+      ],
+      "required_access_tier": {
+        "load_bearing": "full_text",
+        "other": "abstract"
+      },
+      "missing_information": "unknown_not_excluded",
+      "conflicting_evidence": "Record both sides in the contradiction ledger; never average.",
+      "inapplicable_evidence": "Retain with an applicability judgment and its assumptions."
+    },
+    "stopping_profiles": [
+      {
+        "profile_id": "SP-effect",
+        "obligation_class": "comparison",
+        "rules": [
+          {
+            "rule_id": "R-dr",
+            "family": "diminishing_returns",
+            "evaluation": "automatic",
+            "params": {
+              "unit": "assessed_candidate",
+              "min_assessed_per_window": 20,
+              "consecutive_windows": 2,
+              "max_new_fraction": 0.05
+            }
+          },
+          {
+            "rule_id": "R-known",
+            "family": "known_item",
+            "evaluation": "automatic",
+            "params": {
+              "sentinel_set": {
+                "content_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "size_bytes": 2048,
+                "media_type": "application/json"
+              },
+              "tests": "both",
+              "seeded_into_prompts": false
+            }
+          },
+          {
+            "rule_id": "R-counter",
+            "family": "counterevidence_pass",
+            "evaluation": "automatic",
+            "params": {
+              "scope": "both",
+              "min_completed_requests": 3
+            }
+          },
+          {
+            "rule_id": "R-meaning",
+            "family": "code_meaning_saturation",
+            "evaluation": "reviewed_judgment",
+            "params": {}
+          }
+        ],
+        "completion_condition": {
+          "op": "all",
+          "operands": [
+            {
+              "rule": "R-counter"
+            },
+            {
+              "op": "any",
+              "operands": [
+                {
+                  "rule": "R-dr"
+                },
+                {
+                  "rule": "R-meaning"
+                }
+              ]
+            },
+            {
+              "rule": "R-known"
+            }
+          ]
+        },
+        "conjunctive_gates": [
+          "challenge_pass_completed",
+          "coverage_integrity",
+          "load_bearing_verification_tiers"
+        ],
+        "resource_limits": {
+          "max_research_passes": 40
+        },
+        "permitted_outcomes": [
+          "completed_with_qualified_conclusions",
+          "stopped_for_resources",
+          "capability_blocked",
+          "awaiting_judgment"
+        ]
+      }
+    ],
+    "surveillance_policy": {
+      "signals": [
+        {
+          "signal_id": "S-retract",
+          "kind": "retraction",
+          "mandatory": true,
+          "triage": "code_policy"
+        },
+        {
+          "signal_id": "S-decision",
+          "kind": "decision_record_change",
+          "mandatory": true,
+          "triage": "code_policy"
+        },
+        {
+          "signal_id": "S-new",
+          "kind": "new_evidence_class",
+          "mandatory": false,
+          "triage": "model_ranked"
+        }
+      ],
+      "freshness_requirement": {
+        "description": "Re-check before any fleet intake redesign.",
+        "max_currency_age_days": 180
+      },
+      "retirement_criteria": [
+        "question_no_longer_relevant",
+        "resources_withdrawn"
+      ],
+      "retirement_authority": "operator"
+    },
+    "applicability_rules": [
+      {
+        "rule_id": "AP-1",
+        "obligation_ids": [
+          "O-1"
+        ],
+        "target_context": "LLM agents drafting research briefs for a single operator.",
+        "support_factors": [
+          "Omissions are detectable against a confirmed brief"
+        ],
+        "transportability_assumptions": [
+          "Human-group findings transfer only by analogy"
+        ],
+        "uncertainty_requirement": "State setting and model family for every transferred finding."
+      }
+    ],
+    "method_design": {
+      "selection": "template",
+      "template": {
+        "template_id": "MD-sr-plus-initiation",
+        "template_version": 1
+      },
+      "families": [
+        {
+          "family_id": "FAM-1",
+          "family": "systematic_review",
+          "role": "primary",
+          "sequence": 1,
+          "integration_point": "Synthesis of comparative outcomes",
+          "contradiction_handling": "Contradiction ledger"
+        },
+        {
+          "family_id": "FAM-2",
+          "family": "truth_discovery",
+          "role": "added",
+          "purpose": "initiation",
+          "sequence": 2,
+          "integration_point": "Standing contradictions only",
+          "contradiction_handling": "Recorded adjudication"
+        }
+      ],
+      "operational_envelope": {
+        "permitted_adjustments": [
+          "Add search strings within the approved scope",
+          "Reorder lanes"
+        ]
+      }
+    }
+  }
+}

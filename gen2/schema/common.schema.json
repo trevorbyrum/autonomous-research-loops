@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/common.schema.json",
+  "$comment": "flow: §0 (actor roster); §4.1-4.4 (invocation IDs, capability facts, unknown is never zero, typed holds); S4 step 2 (four candidate units); S7 (outcomes) | boundaries: Router; Station supervisor; Evidence accounting; Gateway; Verifier | design-review: §4 (stable fleet/topic IDs); §5 (receipts); §6 (lifecycle states); §8 (verification tiers) | adjudication: (b)5; (b)7 | invariants: RG-U; E-3; L-1; V-2; H-3 | note: shared vocabulary only; no document validates against this file's root",
+  "title": "Gen-2 shared definitions",
+  "description": "Identifiers, hashes, timestamps and enumerations shared by every gen-2 schema. Prefix-typed IDs make cross-wiring (an operation ID where an invocation ID belongs) a validation error instead of a silent join.",
+  "$defs": {
+    "sha256": {
+      "description": "Content hash: 'sha256:' + 64 lowercase hex digits. For JSON documents the hash is taken over the canonical form declared in gen2/store/README.md (open question: RFC 8785 JCS vs a stdlib-reproducible subset).",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "timestamp": {
+      "description": "UTC instant, RFC 3339 with a literal Z. A pattern rather than `format` so it is always enforced.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]{1,9})?Z$"
+    },
+    "fleet_id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+    "topic_id": {
+      "description": "'<fleet_id>:<topic slug>'. Fleet-prefixed so Fleet A/B topics with similar names are never merged (design review §4).",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,31}:[a-z0-9][a-z0-9._-]{0,95}$"
+    },
+    "local_id": {
+      "description": "An identifier stable within one topic (obligation, facet, criterion, rule, entry).",
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,63}$"
+    },
+    "invocation_id": {"type": "string", "pattern": "^inv_[A-Za-z0-9_-]{8,64}$"},
+    "operation_id": {"type": "string", "pattern": "^op_[A-Za-z0-9_-]{8,64}$"},
+    "lease_id": {"type": "string", "pattern": "^lease_[A-Za-z0-9_-]{8,64}$"},
+    "capability_id": {"type": "string", "pattern": "^cap_[A-Za-z0-9_-]{8,64}$"},
+    "commit_receipt_id": {"type": "string", "pattern": "^rcpt_[A-Za-z0-9_-]{8,64}$"},
+    "decision_receipt_id": {"type": "string", "pattern": "^dec_[A-Za-z0-9_-]{8,64}$"},
+    "decision_spec_id": {"type": "string", "pattern": "^dspec_[A-Za-z0-9_-]{8,64}$"},
+    "verification_receipt_id": {"type": "string", "pattern": "^ver_[A-Za-z0-9_-]{8,64}$"},
+    "operator_decision_id": {"type": "string", "pattern": "^opd_[A-Za-z0-9_-]{8,64}$"},
+    "hold_id": {"type": "string", "pattern": "^hold_[A-Za-z0-9_-]{8,64}$"},
+    "manifest_id": {"type": "string", "pattern": "^man_[A-Za-z0-9_-]{8,64}$"},
+    "outbox_event_id": {"type": "string", "pattern": "^obx_[A-Za-z0-9_-]{8,64}$"},
+    "audit_event_id": {"type": "string", "pattern": "^aud_[A-Za-z0-9_-]{8,64}$"},
+    "claim_id": {"type": "string", "pattern": "^clm_[A-Za-z0-9_-]{8,64}$"},
+    "work_id": {"type": "string", "pattern": "^wrk_[A-Za-z0-9_-]{8,64}$"},
+    "revision": {"description": "A document revision number; revisions start at 1.", "type": "integer", "minimum": 1},
+    "state_revision": {"description": "The router's optimistic-concurrency counter for a topic; starts at 0.", "type": "integer", "minimum": 0},
+    "short_text": {"type": "string", "minLength": 1, "maxLength": 500},
+    "long_text": {"type": "string", "minLength": 1, "maxLength": 8000},
+    "artifact_ref": {
+      "description": "An immutable, content-addressed artifact staged by trusted station code in the protected spool. Location derives from the hash; agents never choose a destination path (design review §5).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_hash", "size_bytes", "media_type"],
+      "properties": {
+        "content_hash": {"$ref": "#/$defs/sha256"},
+        "size_bytes": {"type": "integer", "minimum": 0},
+        "media_type": {"type": "string", "pattern": "^[a-z]+/[a-z0-9.+-]+$"}
+      }
+    },
+    "contract_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "content_hash"],
+      "properties": {
+        "revision": {"$ref": "#/$defs/revision"},
+        "content_hash": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "observed_count": {
+      "description": "A count that may be unobserved. Unknown is a distinct state with a reason, never 0 (invariant RG-U; flow §4.3).",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "value"],
+          "properties": {"status": {"const": "observed"}, "value": {"type": "integer", "minimum": 0}}
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reason"],
+          "properties": {"status": {"const": "unknown"}, "reason": {"$ref": "#/$defs/short_text"}}
+        }
+      ]
+    },
+    "access_tier": {
+      "description": "Ordered: bibliographic < abstract < full_text < reproduced. Different checks, not interchangeable 'verified' flags (flow S4 step 8; design review §8).",
+      "enum": ["bibliographic", "abstract", "full_text", "reproduced"]
+    },
+    "candidate_unit": {
+      "description": "The four units evidence accounting keeps distinct (flow S4 step 2; adjudication (b)7).",
+      "enum": ["retrieved_record", "deduplicated_work", "assessed_candidate", "accepted_claim"]
+    },
+    "rule_status": {"enum": ["satisfied", "not_satisfied", "unknown"]},
+    "coverage_state": {
+      "description": "Gateway coverage vocabulary with its narrow meanings (gateway/docs/STATION-CONTRACT.md §2), plus 'unknown' for lost telemetry — design review §9: missing observations become acknowledged unknowns, never ignored.",
+      "enum": ["searched_ok", "searched_empty", "not_searched", "provider_unavailable", "auth_failed", "metadata_only", "exhausted", "unknown"]
+    },
+    "invocation_kind": {
+      "description": "Every execution kind shares one lifecycle (BOUNDARIES.md Station supervisor; invariant RG-2). Decision-provider calls are made inside an invocation, not as a kind of their own.",
+      "enum": ["research_pass", "discovery", "delegate", "verification", "checkpoint"]
+    },
+    "invocation_state": {
+      "description": "Allowed transitions are listed in docs/gen2/INVARIANTS.md L-1 and enforced by the invocations trigger in gen2/store/schema.sql.",
+      "enum": ["admitted", "launching", "running", "result_ready", "committed", "cancelled", "failed", "outcome_unknown"]
+    },
+    "hold_class": {"enum": ["transient", "capability", "scope", "judgment", "unknown"]},
+    "required_authority": {"enum": ["router", "primary", "operator"]},
+    "completion_outcome": {
+      "description": "Distinct recorded outcomes (flow S7). A resource stop is never relabeled as saturation.",
+      "enum": ["completed_with_qualified_conclusions", "capability_blocked", "stopped_for_resources", "awaiting_judgment", "retired"]
+    },
+    "decision_class": {
+      "description": "Decision classes named in the flow doc. Initial rollout exercises only screening (shadow) and method_selection (advisory) — flow §5.",
+      "enum": [
+        "screening",
+        "method_selection",
+        "relevance_prefilter",
+        "intake_triage",
+        "template_completeness",
+        "importance_score",
+        "template_choice",
+        "coverage_matrix",
+        "source_lifecycle",
+        "source_add_battery",
+        "checkpoint_pretriage",
+        "method_fit",
+        "probe_ranking"
+      ]
+    },
+    "authority_level": {
+      "description": "shadow: logged, never shown or acted on. advisory: a recommendation a person or the primary disposes of. qualified: the router's policy may commit a reversible action; requires a qualification reference for this exact DecisionSpec (flow §2).",
+      "enum": ["shadow", "advisory", "qualified"]
+    },
+    "sink": {
+      "description": "Physical publication sinks, named as such — never 'GraphRAG' (flow S8 item 2).",
+      "enum": ["neo4j", "qdrant"]
+    }
+  }
+}

@@ -15,5 +15,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install dev-only schema validator
+        run: python -m pip install -r gen2/requirements-dev.txt
       - name: make gen2-check
         run: make gen2-check PYTHON=python

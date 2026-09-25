@@ -1,0 +1,24 @@
+{
+  "fixture": {
+    "schema": "contract-v2.schema.json",
+    "expect": "invalid",
+    "tests": "E-6: completion requires every conjunctive gate",
+    "base": "valid-two-obligations.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/stopping_profiles/0/conjunctive_gates",
+        "value": [
+          "coverage_integrity",
+          "load_bearing_verification_tiers"
+        ]
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "contains",
+        "path": "/stopping_profiles/0/conjunctive_gates"
+      }
+    ]
+  }
+}

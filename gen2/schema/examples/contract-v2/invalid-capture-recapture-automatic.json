@@ -1,0 +1,26 @@
+{
+  "fixture": {
+    "schema": "contract-v2.schema.json",
+    "expect": "invalid",
+    "tests": "G-11: capture-recapture stays a reviewed judgment, never an automatic gate",
+    "base": "valid-two-obligations.json",
+    "patch": [
+      {
+        "op": "add",
+        "path": "/stopping_profiles/0/rules/-",
+        "value": {
+          "rule_id": "R-crc",
+          "family": "capture_recapture",
+          "evaluation": "automatic",
+          "params": {}
+        }
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "const",
+        "path": "/stopping_profiles/0/rules/4/evaluation"
+      }
+    ]
+  }
+}

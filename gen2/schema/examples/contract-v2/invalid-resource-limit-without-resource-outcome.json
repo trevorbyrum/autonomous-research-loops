@@ -1,0 +1,23 @@
+{
+  "fixture": {
+    "schema": "contract-v2.schema.json",
+    "expect": "invalid",
+    "tests": "G-9: a resource limit can only yield stopped_for_resources, which must be permitted",
+    "base": "valid-two-obligations.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/stopping_profiles/0/permitted_outcomes",
+        "value": [
+          "completed_with_qualified_conclusions"
+        ]
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "contains",
+        "path": "/stopping_profiles/0/permitted_outcomes"
+      }
+    ]
+  }
+}

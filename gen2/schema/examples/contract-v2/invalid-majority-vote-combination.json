@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "contract-v2.schema.json",
+    "expect": "invalid",
+    "tests": "E-6: combination is all/any only — no majority voting",
+    "base": "valid-two-obligations.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/stopping_profiles/0/completion_condition/op",
+        "value": "majority"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "oneOf",
+        "path": "/stopping_profiles/0/completion_condition"
+      }
+    ]
+  }
+}

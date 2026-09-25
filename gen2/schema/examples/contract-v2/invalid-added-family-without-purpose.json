@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "contract-v2.schema.json",
+    "expect": "invalid",
+    "tests": "Method design: every added family names its purpose",
+    "base": "valid-two-obligations.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/method_design/families/1/purpose"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": "/method_design/families/1"
+      }
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "contract-v2.schema.json",
+    "expect": "invalid",
+    "tests": "G-2: a critical rating's optional score must be 7-9",
+    "base": "valid-two-obligations.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/obligations/0/importance/operator_rating/score",
+        "value": 5
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "minimum",
+        "path": "/obligations/0/importance/operator_rating/score"
+      }
+    ]
+  }
+}

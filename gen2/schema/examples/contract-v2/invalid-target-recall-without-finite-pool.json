@@ -1,0 +1,31 @@
+{
+  "fixture": {
+    "schema": "contract-v2.schema.json",
+    "expect": "invalid",
+    "tests": "G-11: statistical target recall requires an identified finite pool",
+    "base": "valid-two-obligations.json",
+    "patch": [
+      {
+        "op": "add",
+        "path": "/stopping_profiles/0/rules/-",
+        "value": {
+          "rule_id": "R-str",
+          "family": "statistical_target_recall",
+          "evaluation": "automatic",
+          "params": {
+            "screening_procedure": "Random-order screening of the pool",
+            "target_recall": 0.95,
+            "confidence_level": 0.95,
+            "method": "callaghan-mueller-hansen-2020"
+          }
+        }
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": "/stopping_profiles/0/rules/4/params"
+      }
+    ]
+  }
+}

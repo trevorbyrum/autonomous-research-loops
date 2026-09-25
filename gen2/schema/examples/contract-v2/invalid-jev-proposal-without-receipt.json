@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "contract-v2.schema.json",
+    "expect": "invalid",
+    "tests": "D-1/G-2: a Jev importance proposal must cite its decision receipt",
+    "base": "valid-two-obligations.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/obligations/0/importance/proposed/decision_receipt_id"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": "/obligations/0/importance/proposed"
+      }
+    ]
+  }
+}

@@ -1,0 +1,5 @@
+# Dev/CI-only: the independent JSON Schema 2020-12 validator used by
+# tools/check_gen2_schemas.py. Pinned to the version the fixtures were
+# validated against. Gen-2 runtime code never imports it (boundaries.toml
+# declares no third-party dependencies).
+jsonschema==4.10.3

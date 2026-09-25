@@ -1,0 +1,8 @@
+{
+  "fixture": {
+    "schema": "common.schema.json#/$defs/sink",
+    "expect": "valid",
+    "tests": "P-2: sinks are physical stores"
+  },
+  "instance": "neo4j"
+}

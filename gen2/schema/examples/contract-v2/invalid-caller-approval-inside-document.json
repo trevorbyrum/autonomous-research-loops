@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "contract-v2.schema.json",
+    "expect": "invalid",
+    "tests": "G-1: approval is a separate operator decision, never a member of the hash-locked document",
+    "base": "valid-two-obligations.json",
+    "patch": [
+      {
+        "op": "add",
+        "path": "/approved_by",
+        "value": "opd_rate0001"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "additionalProperties",
+        "path": ""
+      }
+    ]
+  }
+}

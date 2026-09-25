@@ -1,0 +1,651 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/contract-v2.schema.json",
+  "$comment": "flow: S3 (contract construction; Contract v2 output list); S1 (confirmed brief); S5 (operational envelope); S7 (stopping profile, conjunctive gates); S8 (surveillance); §6.1-6.2 (brief->framework, scoping gap map = EGM matrix v0); §6.4 (operator-confirmed ratings) | boundaries: Operator; Router; Evidence accounting; Primary agent (per-station frontier LLM) | design-review: §4 (immutable approved contract revision); §8 (stopping-rule applicability table) | adjudication: (a)G-R9; (a)K-R4; (a)K-A7; (b)6; (c)1; (c)4; (c)5 | methodology: §2 (analytic framework, templates, GRADE 1-9 bands, EGM matrix); §3 (method families, Greene purposes); §4 (reversible exclusions); §6 (stopping signals) | invariants: G-1; G-2; G-3; G-10; G-11; G-12; E-6 | note: the document is pure scientific content; approval is a separate operator decision referencing content_hash, and execution policy (retries, cadence, budgets) lives in the engine's mounted policy bundle, not here (design review §4)",
+  "title": "Research contract, version 2",
+  "description": "One immutable contract revision. Hash-locked: content_hash covers every member except content_hash itself, so it locks the approved inventory and the eligibility/stopping/applicability protocol together (design review §4). Checks JSON Schema cannot express — referential consistency (every facet/obligation/rule/profile ID referenced exists), template slot completeness against the template registry, and 'no critical facet uncovered' — are deterministic approval checks in code (flow S3).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "topic_id",
+    "revision",
+    "parent_revision",
+    "protocol_revision",
+    "created_at",
+    "content_hash",
+    "decision_record",
+    "facet_map",
+    "obligations",
+    "eligibility_protocol",
+    "stopping_profiles",
+    "surveillance_policy",
+    "applicability_rules",
+    "method_design"
+  ],
+  "properties": {
+    "schema_version": {"const": "contract-v2"},
+    "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
+    "revision": {"$ref": "common.schema.json#/$defs/revision"},
+    "parent_revision": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/revision"}]},
+    "protocol_revision": {"$ref": "common.schema.json#/$defs/revision"},
+    "created_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+    "content_hash": {"$ref": "common.schema.json#/$defs/sha256"},
+    "decision_record": {"$ref": "#/$defs/decision_record"},
+    "facet_map": {"$ref": "#/$defs/facet_map"},
+    "obligations": {"type": "array", "minItems": 1, "maxItems": 200, "items": {"$ref": "#/$defs/obligation"}},
+    "eligibility_protocol": {"$ref": "#/$defs/eligibility_protocol"},
+    "stopping_profiles": {"type": "array", "minItems": 1, "maxItems": 20, "items": {"$ref": "#/$defs/stopping_profile"}},
+    "surveillance_policy": {"$ref": "#/$defs/surveillance_policy"},
+    "applicability_rules": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/applicability_rule"}},
+    "method_design": {"$ref": "#/$defs/method_design"}
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entry_id", "text"],
+      "properties": {
+        "entry_id": {"$ref": "common.schema.json#/$defs/local_id"},
+        "text": {"$ref": "common.schema.json#/$defs/long_text"}
+      }
+    },
+    "decision_record": {
+      "description": "What the research feeds and what evidence could change it — the reference every obligation traces to (flow S1/S3; methodology §2). Operator hypotheses are testables, never scope boundaries.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision_owner", "objective", "feeds", "evidence_that_would_change_it", "constraints", "operator_hypotheses", "surfaced_assumptions"],
+      "properties": {
+        "decision_owner": {"$ref": "common.schema.json#/$defs/short_text"},
+        "objective": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["operator_words", "confirmed_brief"],
+          "properties": {
+            "operator_words": {"$ref": "common.schema.json#/$defs/long_text"},
+            "confirmed_brief": {
+              "description": "The operator-confirmed Intake Brief version this contract was drafted from (flow S1, §6.1). Unconfirmed briefs cannot advance.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["brief_id", "version", "confirmed_by"],
+              "properties": {
+                "brief_id": {"$ref": "common.schema.json#/$defs/local_id"},
+                "version": {"$ref": "common.schema.json#/$defs/revision"},
+                "confirmed_by": {"$ref": "common.schema.json#/$defs/operator_decision_id"}
+              }
+            }
+          }
+        },
+        "feeds": {
+          "description": "Exploratory work may feed a learning objective rather than an invented purchasing/build decision (design review §4).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "description"],
+          "properties": {
+            "kind": {"enum": ["decision", "build", "learning_objective"]},
+            "description": {"$ref": "common.schema.json#/$defs/long_text"},
+            "alternatives": {"type": "array", "maxItems": 50, "items": {"$ref": "#/$defs/entry"}}
+          }
+        },
+        "evidence_that_would_change_it": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"$ref": "#/$defs/entry"}},
+        "constraints": {"type": "array", "maxItems": 50, "items": {"$ref": "#/$defs/entry"}},
+        "operator_hypotheses": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["entry_id", "statement", "as_testable"],
+            "properties": {
+              "entry_id": {"$ref": "common.schema.json#/$defs/local_id"},
+              "statement": {"$ref": "common.schema.json#/$defs/long_text"},
+              "as_testable": {"$ref": "common.schema.json#/$defs/long_text"}
+            }
+          }
+        },
+        "surfaced_assumptions": {"type": "array", "maxItems": 50, "items": {"$ref": "#/$defs/entry"}}
+      }
+    },
+    "facet_map": {
+      "description": "Analytic framework (each link generates a key question), facets, and the facet x question-type coverage matrix where empty cells are visible decisions (methodology §2 steps 1 and 4). The scoping report's gap-map skeleton is matrix v0 (flow §6.2).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["framing_version", "analytic_framework", "facets", "coverage_matrix", "deliberately_out"],
+      "properties": {
+        "framing_version": {"$ref": "common.schema.json#/$defs/revision"},
+        "analytic_framework": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["nodes", "links"],
+          "properties": {
+            "nodes": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 200,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["node_id", "label", "kind"],
+                "properties": {
+                  "node_id": {"$ref": "common.schema.json#/$defs/local_id"},
+                  "label": {"$ref": "common.schema.json#/$defs/short_text"},
+                  "kind": {"enum": ["situation", "candidate_action", "intermediate_outcome", "decision_outcome", "other"]}
+                }
+              }
+            },
+            "links": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 400,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["link_id", "from_node", "to_node", "key_question"],
+                "properties": {
+                  "link_id": {"$ref": "common.schema.json#/$defs/local_id"},
+                  "from_node": {"$ref": "common.schema.json#/$defs/local_id"},
+                  "to_node": {"$ref": "common.schema.json#/$defs/local_id"},
+                  "key_question": {"$ref": "common.schema.json#/$defs/long_text"}
+                }
+              }
+            }
+          }
+        },
+        "facets": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["facet_id", "label", "kind"],
+            "properties": {
+              "facet_id": {"$ref": "common.schema.json#/$defs/local_id"},
+              "label": {"$ref": "common.schema.json#/$defs/short_text"},
+              "kind": {"enum": ["mechanism", "effect", "applicability", "alternatives", "boundary_conditions", "other"]},
+              "description": {"$ref": "common.schema.json#/$defs/long_text"}
+            }
+          }
+        },
+        "coverage_matrix": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["question_types", "cells"],
+          "properties": {
+            "question_types": {"type": "array", "minItems": 1, "maxItems": 20, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/local_id"}},
+            "cells": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 2000,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["facet_id", "question_type", "state"],
+                "properties": {
+                  "facet_id": {"$ref": "common.schema.json#/$defs/local_id"},
+                  "question_type": {"$ref": "common.schema.json#/$defs/local_id"},
+                  "state": {"enum": ["covered", "gap", "deliberately_out"]},
+                  "obligation_ids": {"type": "array", "maxItems": 50, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/local_id"}},
+                  "rationale": {"$ref": "common.schema.json#/$defs/long_text"}
+                },
+                "allOf": [
+                  {"if": {"properties": {"state": {"const": "covered"}}}, "then": {"required": ["obligation_ids"], "properties": {"obligation_ids": {"minItems": 1}}}},
+                  {"if": {"properties": {"state": {"enum": ["gap", "deliberately_out"]}}}, "then": {"required": ["rationale"]}}
+                ]
+              }
+            }
+          }
+        },
+        "deliberately_out": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["item_id", "description", "reason"],
+            "properties": {
+              "item_id": {"$ref": "common.schema.json#/$defs/local_id"},
+              "description": {"$ref": "common.schema.json#/$defs/long_text"},
+              "reason": {"$ref": "common.schema.json#/$defs/long_text"}
+            }
+          }
+        }
+      }
+    },
+    "obligation": {
+      "description": "Drafted by the primary inside an approved template (it fills slots; it does not freestyle the structure). Importance keeps the proposal and the operator's rating in separate fields: only operator_rating authorizes later actions such as auto-promotion (flow S3, §6.4; adjudication (a)K-R4, K-A7).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["obligation_id", "template", "slots", "text", "facet_ids", "traces_to", "exploratory", "stopping_profile_id", "importance"],
+      "properties": {
+        "obligation_id": {"$ref": "common.schema.json#/$defs/local_id"},
+        "template": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["template_id", "template_version", "claim_type"],
+          "properties": {
+            "template_id": {"$ref": "common.schema.json#/$defs/local_id"},
+            "template_version": {"$ref": "common.schema.json#/$defs/revision"},
+            "claim_type": {"enum": ["effect", "qualitative_experience", "mechanism", "mapping", "comparison", "design", "prevalence", "other"]}
+          }
+        },
+        "slots": {
+          "description": "Template slot values. An empty slot is invalid here; a missing required slot is caught by the template-registry check at intake (methodology §2 step 2).",
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 20,
+          "propertyNames": {"$ref": "common.schema.json#/$defs/local_id"},
+          "additionalProperties": {"$ref": "common.schema.json#/$defs/long_text"}
+        },
+        "text": {"$ref": "common.schema.json#/$defs/long_text"},
+        "facet_ids": {"type": "array", "minItems": 1, "maxItems": 20, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/local_id"}},
+        "traces_to": {
+          "description": "Every obligation traces to decision-record entries or analytic-framework links (methodology §2).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["decision_record_entries", "framework_links"],
+          "properties": {
+            "decision_record_entries": {"type": "array", "maxItems": 20, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/local_id"}},
+            "framework_links": {"type": "array", "maxItems": 20, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/local_id"}}
+          },
+          "anyOf": [
+            {"properties": {"decision_record_entries": {"minItems": 1}}},
+            {"properties": {"framework_links": {"minItems": 1}}}
+          ]
+        },
+        "exploratory": {"type": "boolean"},
+        "stopping_profile_id": {"$ref": "common.schema.json#/$defs/local_id"},
+        "importance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["proposed", "operator_rating"],
+          "properties": {
+            "proposed": {
+              "description": "A proposal only — e.g. a Jev Score. Carries no authority. Null when nothing was proposed.",
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "required": ["source", "score"],
+              "properties": {
+                "source": {"enum": ["jev_score", "primary_draft"]},
+                "score": {"type": "integer", "minimum": 1, "maximum": 9},
+                "decision_receipt_id": {"$ref": "common.schema.json#/$defs/decision_receipt_id"}
+              },
+              "if": {"type": "object", "properties": {"source": {"const": "jev_score"}}},
+              "then": {"required": ["decision_receipt_id"]}
+            },
+            "operator_rating": {
+              "description": "GRADE-style: the band is required; the 1-9 score is an optional elicitation aid and must sit in its band (critical 7-9, important 4-6, limited 1-3). Not a calibrated probability (methodology §2; adjudication (a)G-R9). Null until the operator rates.",
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "required": ["band", "operator_decision_id"],
+              "properties": {
+                "band": {"enum": ["critical", "important", "limited"]},
+                "score": {"type": "integer", "minimum": 1, "maximum": 9},
+                "operator_decision_id": {"$ref": "common.schema.json#/$defs/operator_decision_id"}
+              },
+              "allOf": [
+                {"if": {"type": "object", "properties": {"band": {"const": "critical"}}}, "then": {"properties": {"score": {"minimum": 7}}}},
+                {"if": {"type": "object", "properties": {"band": {"const": "important"}}}, "then": {"properties": {"score": {"minimum": 4, "maximum": 6}}}},
+                {"if": {"type": "object", "properties": {"band": {"const": "limited"}}}, "then": {"properties": {"score": {"maximum": 3}}}}
+              ]
+            }
+          }
+        }
+      }
+    },
+    "eligibility_protocol": {
+      "description": "Exact metadata predicates are evaluated by code; semantic criteria are assessed by models or people with criterion IDs and evidence references. Missing information is unknown, not excluded (design review §7).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol_version", "document_types", "search_scope", "criteria", "required_access_tier", "missing_information", "conflicting_evidence", "inapplicable_evidence"],
+      "properties": {
+        "protocol_version": {"$ref": "common.schema.json#/$defs/revision"},
+        "document_types": {"type": "array", "minItems": 1, "maxItems": 30, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/local_id"}},
+        "search_scope": {"$ref": "common.schema.json#/$defs/long_text"},
+        "criteria": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["criterion_id", "kind", "description", "stage"],
+            "properties": {
+              "criterion_id": {"$ref": "common.schema.json#/$defs/local_id"},
+              "kind": {"enum": ["deterministic_predicate", "semantic"]},
+              "description": {"$ref": "common.schema.json#/$defs/long_text"},
+              "stage": {"enum": ["metadata", "abstract", "full_text"]},
+              "predicate": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["field", "op", "value"],
+                "properties": {
+                  "field": {"$ref": "common.schema.json#/$defs/local_id"},
+                  "op": {"enum": ["eq", "ne", "in", "not_in", "lt", "le", "gt", "ge", "exists"]},
+                  "value": {}
+                }
+              }
+            },
+            "allOf": [
+              {"if": {"properties": {"kind": {"const": "deterministic_predicate"}}}, "then": {"required": ["predicate"]}},
+              {"if": {"properties": {"kind": {"const": "semantic"}}}, "then": {"not": {"required": ["predicate"]}}}
+            ]
+          }
+        },
+        "required_access_tier": {
+          "description": "The access tier a verification must reach before a claim can back a disposition of each kind (flow S4 step 8).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["load_bearing", "other"],
+          "properties": {
+            "load_bearing": {"$ref": "common.schema.json#/$defs/access_tier"},
+            "other": {"$ref": "common.schema.json#/$defs/access_tier"}
+          }
+        },
+        "missing_information": {"const": "unknown_not_excluded"},
+        "conflicting_evidence": {"$ref": "common.schema.json#/$defs/long_text"},
+        "inapplicable_evidence": {"$ref": "common.schema.json#/$defs/long_text"}
+      }
+    },
+    "stopping_profile": {
+      "description": "Supported rule identifiers, parameters, prerequisites, combination semantics and permitted outcomes (design review §4). No required count of rules; correlated heuristics are not independent confirmation. Combination is explicit all/any — no majority voting (design review §8). Resource limits are a separate field so a budget stop can never satisfy the completion condition.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile_id", "obligation_class", "rules", "completion_condition", "conjunctive_gates", "permitted_outcomes"],
+      "properties": {
+        "profile_id": {"$ref": "common.schema.json#/$defs/local_id"},
+        "obligation_class": {"$ref": "common.schema.json#/$defs/local_id"},
+        "rules": {"type": "array", "minItems": 1, "maxItems": 20, "items": {"$ref": "#/$defs/stopping_rule"}},
+        "completion_condition": {"$ref": "#/$defs/rule_expression"},
+        "conjunctive_gates": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"enum": ["challenge_pass_completed", "coverage_integrity", "load_bearing_verification_tiers"]}
+        },
+        "resource_limits": {
+          "description": "Reaching one yields stopped_for_resources with residual uncertainty stated — never saturation.",
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "max_research_passes": {"type": "integer", "minimum": 1},
+            "deadline": {"$ref": "common.schema.json#/$defs/timestamp"},
+            "max_budget_units": {"type": "integer", "minimum": 1}
+          }
+        },
+        "permitted_outcomes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/completion_outcome"}}
+      },
+      "allOf": [
+        {
+          "description": "Completion requires every conjunctive gate (flow S7: gates, not votes).",
+          "if": {"properties": {"permitted_outcomes": {"contains": {"const": "completed_with_qualified_conclusions"}}}},
+          "then": {
+            "properties": {
+              "conjunctive_gates": {
+                "allOf": [
+                  {"contains": {"const": "challenge_pass_completed"}},
+                  {"contains": {"const": "coverage_integrity"}},
+                  {"contains": {"const": "load_bearing_verification_tiers"}}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {"required": ["resource_limits"]},
+          "then": {"properties": {"permitted_outcomes": {"contains": {"const": "stopped_for_resources"}}}}
+        }
+      ]
+    },
+    "rule_expression": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rule"],
+          "properties": {"rule": {"$ref": "common.schema.json#/$defs/local_id"}}
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["op", "operands"],
+          "properties": {
+            "op": {"enum": ["all", "any"]},
+            "operands": {"type": "array", "minItems": 1, "maxItems": 20, "items": {"$ref": "#/$defs/rule_expression"}}
+          }
+        }
+      ]
+    },
+    "stopping_rule": {
+      "description": "Families from the design review §8 applicability table. The engine evaluates only the closed automatic set; capture-recapture, VoI/EVPI, SAFE and code/meaning saturation remain reviewed judgments (explicit reviewed analyses, not default completion gates). Each family's parameter object is closed.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule_id", "family", "evaluation", "params"],
+      "properties": {
+        "rule_id": {"$ref": "common.schema.json#/$defs/local_id"},
+        "family": {
+          "enum": [
+            "diminishing_returns",
+            "known_item",
+            "counterevidence_pass",
+            "statistical_target_recall",
+            "capture_recapture",
+            "voi_evpi",
+            "safe",
+            "code_meaning_saturation"
+          ]
+        },
+        "evaluation": {"enum": ["automatic", "reviewed_judgment"]},
+        "prerequisites": {"type": "array", "maxItems": 20, "items": {"$ref": "common.schema.json#/$defs/short_text"}},
+        "params": {"type": "object"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"family": {"enum": ["capture_recapture", "voi_evpi", "safe", "code_meaning_saturation"]}}},
+          "then": {"properties": {"evaluation": {"const": "reviewed_judgment"}}}
+        },
+        {
+          "description": "Descriptive threshold over sufficiently large, completed assessment windows; an effort heuristic, not a recall guarantee. A window with zero assessed units evaluates unknown (invariant E-1).",
+          "if": {"properties": {"family": {"const": "diminishing_returns"}}},
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["unit", "min_assessed_per_window", "consecutive_windows", "max_new_fraction"],
+                "properties": {
+                  "unit": {"$ref": "common.schema.json#/$defs/candidate_unit"},
+                  "min_assessed_per_window": {"type": "integer", "minimum": 1},
+                  "consecutive_windows": {"type": "integer", "minimum": 1},
+                  "max_new_fraction": {"type": "number", "minimum": 0, "maximum": 1}
+                }
+              }
+            }
+          }
+        },
+        {
+          "description": "Sentinels are predeclared and independently chosen; record whether they test retrieval, screening or both, and whether they were seeded into prompts. Finding known items does not show unknown items were found.",
+          "if": {"properties": {"family": {"const": "known_item"}}},
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["sentinel_set", "tests", "seeded_into_prompts"],
+                "properties": {
+                  "sentinel_set": {"$ref": "common.schema.json#/$defs/artifact_ref"},
+                  "tests": {"enum": ["retrieval", "screening", "both"]},
+                  "seeded_into_prompts": {"type": "boolean"}
+                }
+              }
+            }
+          }
+        },
+        {
+          "description": "A pass that ran is insufficient if the provider failed or no usable packet arrived; the record must show the alternative explanation, strategy, completed requests and screened results.",
+          "if": {"properties": {"family": {"const": "counterevidence_pass"}}},
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["scope", "min_completed_requests"],
+                "properties": {
+                  "scope": {"enum": ["load_bearing_claims", "open_contradictions", "both"]},
+                  "min_completed_requests": {"type": "integer", "minimum": 1}
+                }
+              }
+            }
+          }
+        },
+        {
+          "description": "Callaghan & Mueller-Hansen 2020: a recall guarantee within an identified finite candidate collection and a specified screening procedure only — never recall over undiscovered literature (methodology §6; adjudication (a)G-R10).",
+          "if": {"properties": {"family": {"const": "statistical_target_recall"}}},
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["finite_pool", "screening_procedure", "target_recall", "confidence_level", "method"],
+                "properties": {
+                  "finite_pool": {"$ref": "common.schema.json#/$defs/short_text"},
+                  "screening_procedure": {"$ref": "common.schema.json#/$defs/short_text"},
+                  "target_recall": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1},
+                  "confidence_level": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1},
+                  "method": {"const": "callaghan-mueller-hansen-2020"}
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "surveillance_policy": {
+      "description": "Which signals reopen, freshness needs and retirement criteria; polling schedules and budgets are router policy (design review §4). Retractions and decision-record changes are always present, mandatory, and triaged by code — a model score may rank only discretionary signals (flow S8; invariant G-12).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signals", "freshness_requirement", "retirement_criteria", "retirement_authority"],
+      "properties": {
+        "signals": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 30,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["signal_id", "kind", "mandatory", "triage"],
+            "properties": {
+              "signal_id": {"$ref": "common.schema.json#/$defs/local_id"},
+              "kind": {"enum": ["retraction", "decision_record_change", "new_evidence_class", "contradiction_load_bearing", "discovered_branch", "source_update"]},
+              "mandatory": {"type": "boolean"},
+              "triage": {"enum": ["code_policy", "model_ranked"]}
+            },
+            "allOf": [
+              {"if": {"properties": {"kind": {"enum": ["retraction", "decision_record_change"]}}}, "then": {"properties": {"mandatory": {"const": true}}}},
+              {"if": {"properties": {"mandatory": {"const": true}}}, "then": {"properties": {"triage": {"const": "code_policy"}}}}
+            ]
+          },
+          "allOf": [
+            {"contains": {"properties": {"kind": {"const": "retraction"}}}},
+            {"contains": {"properties": {"kind": {"const": "decision_record_change"}}}}
+          ]
+        },
+        "freshness_requirement": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["description"],
+          "properties": {
+            "description": {"$ref": "common.schema.json#/$defs/long_text"},
+            "max_currency_age_days": {"type": "integer", "minimum": 1}
+          }
+        },
+        "retirement_criteria": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["evidence_conclusive", "question_no_longer_relevant", "resources_withdrawn"]}
+        },
+        "retirement_authority": {"const": "operator"}
+      }
+    },
+    "applicability_rule": {
+      "description": "Transportability is an explicit judgment with assumptions, kept separate from methodological appraisal, provenance and claim support; a source tier is not certainty about a claim (design review §4; methodology §4).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule_id", "obligation_ids", "target_context", "support_factors", "uncertainty_requirement"],
+      "properties": {
+        "rule_id": {"$ref": "common.schema.json#/$defs/local_id"},
+        "obligation_ids": {"type": "array", "minItems": 1, "maxItems": 50, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/local_id"}},
+        "target_context": {"$ref": "common.schema.json#/$defs/long_text"},
+        "support_factors": {"type": "array", "minItems": 1, "maxItems": 20, "items": {"$ref": "common.schema.json#/$defs/short_text"}},
+        "transportability_assumptions": {"type": "array", "maxItems": 20, "items": {"$ref": "common.schema.json#/$defs/short_text"}},
+        "uncertainty_requirement": {"$ref": "common.schema.json#/$defs/long_text"}
+      }
+    },
+    "method_design": {
+      "description": "Selected from a small set of coherent method-design templates, with a primary-authored proposal as the escape route (flow S3; adjudication (c)5). Every added family names its Greene purpose; the primary family names none. Referential consistency is a code check; scientific fit is the operator's approval. Self-serve 'adjust within family' stays inside operational_envelope; changes to eligibility, estimand, required access tier or stopping interpretation are amendments (flow S5; adjudication (c)4). The purpose rubric is the fleet's own adaptation — Greene et al. 1989 give design justifications, not scored rubrics (methodology §3).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selection", "families", "operational_envelope"],
+      "properties": {
+        "selection": {"enum": ["template", "primary_proposal"]},
+        "template": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["template_id", "template_version"],
+          "properties": {
+            "template_id": {"$ref": "common.schema.json#/$defs/local_id"},
+            "template_version": {"$ref": "common.schema.json#/$defs/revision"}
+          }
+        },
+        "proposal": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["document", "proposed_by"],
+          "properties": {
+            "document": {"$ref": "common.schema.json#/$defs/artifact_ref"},
+            "proposed_by": {"$ref": "common.schema.json#/$defs/invocation_id"}
+          }
+        },
+        "families": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["family_id", "family", "role", "sequence", "integration_point", "contradiction_handling"],
+            "properties": {
+              "family_id": {"$ref": "common.schema.json#/$defs/local_id"},
+              "family": {"enum": ["systematic_review", "scoping_mapping", "realist", "meta_narrative", "grounded_theory", "lbd_bridge", "truth_discovery", "etd_translation"]},
+              "role": {"enum": ["primary", "added"]},
+              "purpose": {"enum": ["triangulation", "complementarity", "development", "initiation", "expansion"]},
+              "sequence": {"type": "integer", "minimum": 1},
+              "integration_point": {"$ref": "common.schema.json#/$defs/short_text"},
+              "contradiction_handling": {"$ref": "common.schema.json#/$defs/short_text"}
+            },
+            "allOf": [
+              {"if": {"properties": {"role": {"const": "added"}}}, "then": {"required": ["purpose"]}},
+              {"if": {"properties": {"role": {"const": "primary"}}}, "then": {"not": {"required": ["purpose"]}}}
+            ]
+          },
+          "contains": {"properties": {"role": {"const": "primary"}}},
+          "minContains": 1,
+          "maxContains": 1
+        },
+        "operational_envelope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["permitted_adjustments"],
+          "properties": {
+            "permitted_adjustments": {"type": "array", "maxItems": 30, "items": {"$ref": "common.schema.json#/$defs/short_text"}}
+          }
+        }
+      },
+      "allOf": [
+        {"if": {"properties": {"selection": {"const": "template"}}}, "then": {"required": ["template"], "not": {"required": ["proposal"]}}},
+        {"if": {"properties": {"selection": {"const": "primary_proposal"}}}, "then": {"required": ["proposal"], "not": {"required": ["template"]}}}
+      ]
+    }
+  }
+}

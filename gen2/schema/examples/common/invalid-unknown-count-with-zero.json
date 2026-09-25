@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "common.schema.json#/$defs/observed_count",
+    "expect": "invalid",
+    "tests": "RG-U: unknown may not smuggle in a value of 0",
+    "base": "valid-unknown-count.json",
+    "patch": [
+      {
+        "op": "add",
+        "path": "/value",
+        "value": 0
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "oneOf",
+        "path": ""
+      }
+    ]
+  }
+}

@@ -4,13 +4,17 @@
 # CONTRIBUTING.md.
 PYTHON ?= python3
 
-.PHONY: gen2-check gen2-boundaries gen2-test
+.PHONY: gen2-check gen2-boundaries gen2-schemas gen2-test
 
-gen2-check: gen2-boundaries gen2-test
+gen2-check: gen2-boundaries gen2-schemas gen2-test
 	@echo "gen2-check: all checks passed"
 
 gen2-boundaries:
 	$(PYTHON) tools/check_boundaries.py
+
+# Needs jsonschema (pip install -r gen2/requirements-dev.txt); fails loudly without it.
+gen2-schemas:
+	$(PYTHON) tools/check_gen2_schemas.py --part schemas
 
 gen2-test:
 	$(PYTHON) -m unittest discover -s gen2/tests -p 'test_*.py'

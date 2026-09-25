@@ -1,0 +1,11 @@
+{
+  "fixture": {
+    "schema": "common.schema.json#/$defs/observed_count",
+    "expect": "valid",
+    "tests": "RG-U: an observed count carries a value"
+  },
+  "instance": {
+    "status": "observed",
+    "value": 0
+  }
+}

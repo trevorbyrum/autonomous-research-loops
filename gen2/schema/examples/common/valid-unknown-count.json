@@ -1,0 +1,11 @@
+{
+  "fixture": {
+    "schema": "common.schema.json#/$defs/observed_count",
+    "expect": "valid",
+    "tests": "RG-U: an unobserved count is 'unknown' with a reason"
+  },
+  "instance": {
+    "status": "unknown",
+    "reason": "activity telemetry missing for invocation inv_abc12345"
+  }
+}
