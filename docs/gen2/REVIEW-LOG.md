@@ -158,3 +158,16 @@ Coder's session ended without sending a final prose report this time (a stall of
 Orchestrator independently re-ran `make gen2-check`: confirmed 279 tests pass (up from 275), boundary/schema/DDL checks pass, trigger-order check passes.
 
 Routed: task file `research-loops-public/private/reviews/gen2-0b-repair-2-review-task-20260925.md`. Explicitly asked to state plainly whether 0b is now accepted, matching the same discipline used for 0a's final round.
+
+## 2026-09-25 — Final 0b review (Astra, xhigh) — **PASS all gates. 0b ACCEPTED.**
+Full report: `~/work/research-loops-public/private/reviews/gen2-0b-repair-2-astra-review-20260925.md`. A5-R1/R2 confirmed resolved by direct reconstruction of the exact prior-failing inputs (both now produce usable reports, not zero bytes). A1–A4 confirmed unchanged via AST comparison against the last-verified version (not re-run from scratch — Astra explicitly declined to repeat the earlier fault-injection campaign since nothing in that code changed).
+
+**The unprompted Decimal-overflow fix: independently verified as real and correctly fixed**, and explicitly called a positive signal: "Finding this additional exception source while repairing the integer conversion path is a specific positive sign... evidence of improved local testing discipline, not proof of exhaustive malformed-input coverage" (the qualifier matters — noted, not overclaimed).
+
+**Original 0b task scope (`docs/gen2/tasks/0b.md`) confirmed fully satisfied**, item by item — not just the specific review findings, the actual original requirements list.
+
+**The coder's missing final prose message explicitly ruled a non-issue:** "a process omission... does not leave an implementation requirement unfinished or justify another repair cycle." Confirms the orchestrator's handling (working from commits, not waiting on narration) was correct.
+
+**Phase 1 authorization — explicitly NOT granted by this report, and explicitly why:** "0b no longer blocks it... It is not authorized to begin now solely by this report: BUILD-STATE still lists 0c as queued, and this review neither completes that task nor supplies the operator's approval." This is Astra correctly declining to overstep — accepting 0b doesn't imply anything about 0c or the Phase 0→1 operator gate.
+
+**All open operator items reconfirmed, none decided:** internal gen-1 symlinks (unanswered), queues missing `version` (unanswered), files-never-examined (recorded in store README, not implemented — confirmed present), live-state authorization / SQLite-vs-export / `accepted_support` general policy / C-13's normative amendment (all still pending, none touched this round).
