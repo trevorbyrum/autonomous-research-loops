@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-bundle.schema.json", "expect": "invalid",
+  "tests": "design review §8: a completion permanently carries the evidence it was ruled on, so a completed bundle names its dossier revision",
+  "base": "valid-completed-topic.json",
+  "patch": [{"op": "replace", "path": "/completion/dossier_revision", "value": null}],
+  "errors": [{"keyword": "type", "path": "/completion/dossier_revision"}]}}

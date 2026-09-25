@@ -1,0 +1,26 @@
+{
+  "fixture": {
+    "schema": "export-delivery-receipt.schema.json",
+    "expect": "valid",
+    "tests": "P-4 and RG-4: a sink that stopped part-way is a failure with a typed class and a dated capability fact, and what it wrote is a lower bound - the failure never rewrites completion and never becomes a total"
+  },
+  "instance": {
+    "receipt_version": "export-delivery-receipt/1",
+    "export_receipt_id": "exr_01J8ZQB3S6",
+    "export_manifest_id": "exm_01J8ZQA1Q4",
+    "topic_id": "fleet-a:intake-latency",
+    "sink": {"sink_id": "partner-index", "sink_type": "bespoke"},
+    "generation": 3,
+    "options_revision": 2,
+    "attempt": 2,
+    "status": "failed",
+    "written": {"status": "partial", "value": 806, "reason": "the sink refused the 807th record and the transaction was abandoned"},
+    "tombstones_acknowledged": false,
+    "reconciliation_required": false,
+    "error_class": "partial_write",
+    "capability_fact_id": "fact-export-partner-index-0007",
+    "hold_id": "hold_exp00021",
+    "attempted_at": "2026-09-25T10:08:00Z",
+    "acked_at": null
+  }
+}

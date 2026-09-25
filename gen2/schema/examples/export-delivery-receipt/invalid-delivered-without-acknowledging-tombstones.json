@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-delivery-receipt.schema.json", "expect": "invalid",
+  "tests": "P-2: supersession and tombstones are acknowledged per sink, so an unacknowledged tombstone is not a delivered generation",
+  "base": "valid-delivered.json",
+  "patch": [{"op": "replace", "path": "/tombstones_acknowledged", "value": false}],
+  "errors": [{"keyword": "const", "path": "/tombstones_acknowledged"}]}}

@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-bundle.schema.json", "expect": "invalid",
+  "tests": "BOUNDARIES.md Decision layer: an invented numeric probability is unrepresentable here, in either confidence shape",
+  "base": "valid-completed-topic.json",
+  "patch": [{"op": "add", "path": "/obligations/0/confidence/probability", "value": 0.82}],
+  "errors": [{"keyword": "oneOf", "path": "/obligations/0/confidence"}]}}

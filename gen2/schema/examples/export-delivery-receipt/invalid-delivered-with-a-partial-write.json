@@ -1,0 +1,6 @@
+{"fixture": {"schema": "export-delivery-receipt.schema.json", "expect": "invalid",
+  "tests": "RG-4: a partial write is a lower bound, so it cannot be reported as a completed delivery",
+  "base": "valid-delivered.json",
+  "patch": [{"op": "replace", "path": "/written",
+             "value": {"status": "partial", "value": 806, "reason": "stopped part-way"}}],
+  "errors": [{"keyword": "const", "path": "/written/status"}]}}

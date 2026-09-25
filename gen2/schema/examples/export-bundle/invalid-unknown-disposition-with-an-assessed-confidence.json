@@ -1,0 +1,7 @@
+{"fixture": {"schema": "export-bundle.schema.json", "expect": "invalid",
+  "tests": "RG-U: nothing was assessed, so there is no assessment to be confident about",
+  "base": "valid-completed-topic.json",
+  "patch": [{"op": "replace", "path": "/obligations/3/confidence",
+             "value": {"basis": "recorded_assessment", "scheme": {"scheme_id": "contract-certainty", "version": 2},
+                       "label": "low", "assessed_by_invocation_id": "inv_pass0170"}}],
+  "errors": [{"keyword": "const", "path": "/obligations/3/confidence/basis"}]}}

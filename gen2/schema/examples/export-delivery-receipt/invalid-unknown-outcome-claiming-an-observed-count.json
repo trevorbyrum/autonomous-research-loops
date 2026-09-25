@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-delivery-receipt.schema.json", "expect": "invalid",
+  "tests": "L-4 / RG-4: if the outcome is not established, the count is not established either",
+  "base": "valid-outcome-unknown-pending-reconciliation.json",
+  "patch": [{"op": "replace", "path": "/written", "value": {"status": "observed", "value": 2214}}],
+  "errors": [{"keyword": "enum", "path": "/written/status"}]}}

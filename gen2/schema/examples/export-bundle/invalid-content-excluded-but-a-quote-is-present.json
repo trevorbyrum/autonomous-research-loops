@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-bundle.schema.json", "expect": "invalid",
+  "tests": "content_policy is the single place the redistribution answer lives: declaring no source content while shipping a quote contradicts it",
+  "base": "valid-completed-topic.json",
+  "patch": [{"op": "replace", "path": "/content_policy/source_content_included", "value": false}],
+  "errors": [{"keyword": "type", "path": "/claim_source_links/0/supporting_quote"}]}}

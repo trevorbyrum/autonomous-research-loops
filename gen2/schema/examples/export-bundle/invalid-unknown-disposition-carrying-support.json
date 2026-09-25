@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-bundle.schema.json", "expect": "invalid",
+  "tests": "RG-U: an obligation whose coverage is unknown has nothing supporting it - unknown is not a quiet 'supported with less'",
+  "base": "valid-completed-topic.json",
+  "patch": [{"op": "add", "path": "/obligations/3/supporting_claim_ids/-", "value": "clm_00000141"}],
+  "errors": [{"keyword": "maxItems", "path": "/obligations/3/supporting_claim_ids"}]}}

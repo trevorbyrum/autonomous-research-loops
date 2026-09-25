@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-manifest.schema.json", "expect": "invalid",
+  "tests": "one manifest version accompanies one bundle version: a future bundle shape is a new manifest version, never a silently wider field",
+  "base": "valid-first-export-generation-3.json",
+  "patch": [{"op": "replace", "path": "/bundle/bundle_version", "value": "export-bundle/2"}],
+  "errors": [{"keyword": "const", "path": "/bundle/bundle_version"}]}}

@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-manifest.schema.json", "expect": "invalid",
+  "tests": "nothing to supersede means nothing to tombstone: a first export cannot claim it removed something",
+  "base": "valid-first-export-generation-3.json",
+  "patch": [{"op": "add", "path": "/tombstones/-", "value": {"entity_id": "clm_00000148", "reason": "superseded"}}],
+  "errors": [{"keyword": "maxItems", "path": "/tombstones"}]}}

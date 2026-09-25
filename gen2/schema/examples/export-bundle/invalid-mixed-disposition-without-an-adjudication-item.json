@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-bundle.schema.json", "expect": "invalid",
+  "tests": "V-4 / flow §6.6: a recorded disagreement is a typed adjudication item, never an average and never a bare label",
+  "base": "valid-completed-topic.json",
+  "patch": [{"op": "replace", "path": "/obligations/0/disposition", "value": "mixed"}],
+  "errors": [{"keyword": "required", "path": "/obligations/0"}]}}

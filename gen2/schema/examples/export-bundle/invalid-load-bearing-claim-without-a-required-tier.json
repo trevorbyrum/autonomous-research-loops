@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-bundle.schema.json", "expect": "invalid",
+  "tests": "V-2: tiers are different checks, so a load-bearing claim states which tier its verification had to reach",
+  "base": "valid-completed-topic.json",
+  "patch": [{"op": "remove", "path": "/claims/0/required_access_tier"}],
+  "errors": [{"keyword": "required", "path": "/claims/0"}]}}

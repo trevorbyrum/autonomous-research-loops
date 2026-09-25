@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-delivery-receipt.schema.json", "expect": "invalid",
+  "tests": "a failure has nothing acknowledged: an acked_at on it would let a failed delivery read as a delivered one",
+  "base": "valid-partial-write-failed.json",
+  "patch": [{"op": "replace", "path": "/acked_at", "value": "2026-09-25T10:08:30Z"}],
+  "errors": [{"keyword": "type", "path": "/acked_at"}]}}

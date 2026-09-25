@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-delivery-receipt.schema.json", "expect": "invalid",
+  "tests": "reconciliation is pending only for an unknown outcome; a known result is not left quietly open",
+  "base": "valid-delivered.json",
+  "patch": [{"op": "replace", "path": "/reconciliation_required", "value": true}],
+  "errors": [{"keyword": "const", "path": "/reconciliation_required"}, {"keyword": "const", "path": "/status"}]}}

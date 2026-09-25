@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-delivery-receipt.schema.json", "expect": "invalid",
+  "tests": "P-2: a skipped delivery is skipped because a newer pair is already there - it cannot also have written rows",
+  "base": "valid-skipped-superseded.json",
+  "patch": [{"op": "replace", "path": "/written/value", "value": 7}],
+  "errors": [{"keyword": "const", "path": "/written/value"}]}}

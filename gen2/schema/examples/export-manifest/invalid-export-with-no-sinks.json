@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-manifest.schema.json", "expect": "invalid",
+  "tests": "an export committed for no sink is not an export; disabling every sink is a config state, not a manifest",
+  "base": "valid-first-export-generation-3.json",
+  "patch": [{"op": "replace", "path": "/expected_sinks", "value": {}}],
+  "errors": [{"keyword": "minProperties", "path": "/expected_sinks"}]}}

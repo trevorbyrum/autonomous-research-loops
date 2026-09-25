@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-delivery-receipt.schema.json", "expect": "invalid",
+  "tests": "a delivered attempt did not fail: an error class on it would make 'delivered' unreadable",
+  "base": "valid-delivered.json",
+  "patch": [{"op": "add", "path": "/error_class", "value": "timeout"}],
+  "errors": [{"keyword": "not", "path": ""}]}}

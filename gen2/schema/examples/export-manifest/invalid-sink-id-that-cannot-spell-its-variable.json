@@ -1,0 +1,6 @@
+{"fixture": {"schema": "export-manifest.schema.json", "expect": "invalid",
+  "tests": "a sink id maps to GEN2_SECRET_EXPORT_SINK_<ID>, so an id that does not spell a legal variable suffix is refused rather than silently transformed",
+  "base": "valid-first-export-generation-3.json",
+  "patch": [{"op": "remove", "path": "/expected_sinks/archive"},
+            {"op": "add", "path": "/expected_sinks/cold_archive", "value": {"sink_type": "jsonl_file"}}],
+  "errors": [{"keyword": "pattern", "path": "/expected_sinks"}]}}

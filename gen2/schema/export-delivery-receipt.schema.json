@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/export-delivery-receipt.schema.json",
+  "$comment": "flow: S8 item 2 (per-sink receipts; supersession and tombstones acknowledged per sink); item 4 (three independent facts, never conflated: a failed sink leaves publication partial and raises a capability incident, and neither undoes completion nor stops surveillance); §4.2 (dated capability facts that alert on the transition); §4.3 (silence is never success) | boundaries: Projector / publication; Station supervisor; Operator | design-review: §9 (per-sink delivery receipts, partial delivery recovery); §6 (an ambiguous outcome is a visible reconciliation state with an owner, never a silent park) | adjudication: (a)G-A1 | invariants: P-2; P-4; RG-3; RG-4; RG-U; L-4; H-2 | note: what a delivery result may say about the world, and nothing more. There is no completion field and no currency field in this document - a sink cannot report, and a reader cannot infer from a receipt, that a topic is complete or current",
+  "title": "Export delivery receipt",
+  "description": "One attempt to deliver one export manifest's bundle to one sink. Returned by `deliver(manifest, bundle)` and recorded by the projector; a retry is a new attempt with a new receipt, never an edit of an old one. The ordering pair (generation, options_revision) is carried so a receipt says which material this attempt was about: a sink that already accepted a higher pair reports `skipped_superseded` instead of overwriting. An attempt whose result is not known is `outcome_unknown` and must be reconciled — it is never read as delivered, never as failed, and never as a zero anywhere.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "receipt_version",
+    "export_receipt_id",
+    "export_manifest_id",
+    "topic_id",
+    "sink",
+    "generation",
+    "options_revision",
+    "attempt",
+    "status",
+    "written",
+    "tombstones_acknowledged",
+    "reconciliation_required",
+    "attempted_at",
+    "acked_at"
+  ],
+  "properties": {
+    "receipt_version": {"const": "export-delivery-receipt/1"},
+    "export_receipt_id": {"$ref": "common.schema.json#/$defs/export_receipt_id"},
+    "export_manifest_id": {"$ref": "common.schema.json#/$defs/export_manifest_id"},
+    "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
+    "sink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sink_id", "sink_type"],
+      "properties": {
+        "sink_id": {"$ref": "common.schema.json#/$defs/export_sink_id"},
+        "sink_type": {"$ref": "common.schema.json#/$defs/export_sink_type"}
+      }
+    },
+    "generation": {"$ref": "common.schema.json#/$defs/generation", "minimum": 1},
+    "options_revision": {"$ref": "common.schema.json#/$defs/revision"},
+    "attempt": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+    "invocation_id": {
+      "description": "The invocation this delivery ran under, so one id threads the chain to the commit receipt (H-1).",
+      "$ref": "common.schema.json#/$defs/invocation_id"
+    },
+    "status": {
+      "description": "delivered: the sink accepted the whole bundle and acknowledged the tombstones. failed: the attempt was refused or errored. skipped_superseded: the sink already holds a higher ordering pair, so this attempt correctly wrote nothing. outcome_unknown: the attempt's result is not established (the process died mid-delivery, the response was unreadable) and needs reconciliation before anything may be concluded from it.",
+      "enum": ["delivered", "failed", "skipped_superseded", "outcome_unknown"]
+    },
+    "written": {
+      "description": "How much of the bundle the sink took, as an observed count. A sink that stopped part-way reports `partial` with what it actually wrote, which is a lower bound and never a total; a sink whose outcome is unknown reports `unknown`. The one legitimate zero here is a deliberately skipped delivery, which is known to have written nothing.",
+      "$ref": "common.schema.json#/$defs/observed_count"
+    },
+    "tombstones_acknowledged": {"type": "boolean"},
+    "reconciliation_required": {"type": "boolean"},
+    "error_class": {
+      "description": "A typed failure class, not a message: unreachable, auth_failed, refused (the sink rejected the payload), schema_mismatch (the destination does not match the export schema version), quota, timeout, partial_write, unreadable_response.",
+      "enum": ["unreachable", "auth_failed", "refused", "schema_mismatch", "quota", "timeout", "partial_write", "unreadable_response"]
+    },
+    "capability_fact_id": {
+      "description": "The dated capability fact this failure raised (`capability_facts.fact_id`). Required for a failure and for an unknown outcome: a dead export sink is a visible, dated incident with a since-time, which is the rule the 2026-09-21..24 secrets outage produced (H-2). It is never, by itself, a reason to block completion.",
+      "$ref": "common.schema.json#/$defs/short_text"
+    },
+    "hold_id": {
+      "description": "The typed hold that owns getting this delivery finished, when one was raised (H-3: class, owner, deadline and what clears it live on the hold, not here).",
+      "$ref": "common.schema.json#/$defs/hold_id"
+    },
+    "attempted_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+    "acked_at": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/timestamp"}]}
+  },
+  "allOf": [
+    {
+      "description": "Delivered means the sink said so: an acknowledgement time, the tombstones acknowledged, an observed count, no error and nothing left to reconcile.",
+      "if": {"properties": {"status": {"const": "delivered"}}, "required": ["status"]},
+      "then": {
+        "properties": {
+          "acked_at": {"type": "string"},
+          "tombstones_acknowledged": {"const": true},
+          "written": {"properties": {"status": {"const": "observed"}}},
+          "reconciliation_required": {"const": false}
+        },
+        "not": {"anyOf": [{"required": ["error_class"]}, {"required": ["capability_fact_id"]}]}
+      }
+    },
+    {
+      "description": "A failure names its class and raises a dated capability fact; it has no acknowledgement time.",
+      "if": {"properties": {"status": {"const": "failed"}}, "required": ["status"]},
+      "then": {
+        "required": ["error_class", "capability_fact_id"],
+        "properties": {
+          "acked_at": {"type": "null"},
+          "tombstones_acknowledged": {"const": false},
+          "reconciliation_required": {"const": false}
+        }
+      }
+    },
+    {
+      "description": "An unknown outcome must be reconciled, and may not claim a count it cannot know (L-4, RG-4). It is not a failure, so it does not carry an error class.",
+      "if": {"properties": {"status": {"const": "outcome_unknown"}}, "required": ["status"]},
+      "then": {
+        "required": ["capability_fact_id"],
+        "properties": {
+          "reconciliation_required": {"const": true},
+          "acked_at": {"type": "null"},
+          "written": {"properties": {"status": {"enum": ["unknown", "partial"]}}},
+          "tombstones_acknowledged": {"const": false}
+        },
+        "not": {"required": ["error_class"]}
+      }
+    },
+    {
+      "description": "A skipped delivery is the one place a zero is knowledge: nothing was written, and that is observed, not unknown.",
+      "if": {"properties": {"status": {"const": "skipped_superseded"}}, "required": ["status"]},
+      "then": {
+        "properties": {
+          "written": {"properties": {"status": {"const": "observed"}, "value": {"const": 0}}},
+          "tombstones_acknowledged": {"const": false},
+          "reconciliation_required": {"const": false},
+          "acked_at": {"type": "null"}
+        },
+        "not": {"required": ["error_class"]}
+      }
+    },
+    {
+      "description": "Reconciliation is only ever pending for an unknown outcome; a known result is not quietly left open.",
+      "if": {"properties": {"reconciliation_required": {"const": true}}, "required": ["reconciliation_required"]},
+      "then": {"properties": {"status": {"const": "outcome_unknown"}}}
+    }
+  ]
+}

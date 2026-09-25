@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-delivery-receipt.schema.json", "expect": "invalid",
+  "tests": "flow §4.3: silence is never success - delivered means the sink said so, at a time",
+  "base": "valid-delivered.json",
+  "patch": [{"op": "replace", "path": "/acked_at", "value": null}],
+  "errors": [{"keyword": "type", "path": "/acked_at"}]}}

@@ -1,0 +1,440 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/export-bundle.schema.json",
+  "$comment": "flow: S7 (distinct recorded outcomes; qualified conclusions are conditional on framing, coverage and discovery mechanisms); S8 items 1-4 (approved revisions only; three independent facts); §5 (synthesis representation: claim-graph first, synthesis as a rendered view); §4.3 (absence is never zero) | boundaries: Projector / publication; Evidence accounting; Verifier; Operator | design-review: §8 (versioned dossiers, per-rule operands, verification tiers that are different checks rather than interchangeable flags); §9 (the engine's canonical export contract replaces the external GraphRAG ingest script, whose semantics were wrong: completion recognized only when every obligation was supported, verification parsed by substring, dotted ids missed by a regex) | adjudication: (b)2; (b)7 (the four candidate units) | invariants: P-1; P-2; P-4; P-5; G-9; V-1; V-2; RG-U; E-3 | note: one shape for every export sink - a sink never receives a different document because it is a different kind of sink. The obligation `disposition` vocabulary here is PROPOSED: the authoritative dossier document is Phase 2, and if it lands a different vocabulary this schema becomes export-bundle/2 rather than being edited in place. No field in this document can hold a numeric confidence: `confidence` is a label under a pinned scheme, and additionalProperties is false everywhere",
+  "title": "Canonical research export bundle",
+  "description": "What every export sink receives: the topic's approved research record in one versioned shape. Assembled by code from committed state — never by an agent, and never from agent prose. It carries only material already approved for publication (the manifest that accompanies it names the approval), so a bundle is never a route by which unapproved work leaves the engine. Source content appears only where the record says it may be redistributed; everything else is referenced by locator. Nothing in a bundle is evidence that delivery happened: delivery lives in export-delivery-receipt.schema.json, and completion lives in the dossier the bundle points at.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "bundle_version",
+    "bundle_id",
+    "topic_id",
+    "contract",
+    "completion",
+    "obligations",
+    "claims",
+    "claim_source_links",
+    "synthesis_views",
+    "stopping_dossier",
+    "candidate_units",
+    "content_policy",
+    "assembler_version",
+    "assembled_at",
+    "hash_contract"
+  ],
+  "properties": {
+    "bundle_version": {"const": "export-bundle/1"},
+    "bundle_id": {"$ref": "common.schema.json#/$defs/export_bundle_id"},
+    "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
+    "contract": {
+      "description": "The approved contract revision the work was conducted under (G-1: hash-locked with its protocol revision).",
+      "$ref": "common.schema.json#/$defs/contract_ref"
+    },
+    "completion": {"$ref": "#/$defs/completion"},
+    "obligations": {"type": "array", "minItems": 1, "maxItems": 500, "items": {"$ref": "#/$defs/obligation"}},
+    "claims": {"type": "array", "maxItems": 5000, "items": {"$ref": "#/$defs/claim"}},
+    "claim_source_links": {"type": "array", "maxItems": 20000, "items": {"$ref": "#/$defs/claim_source_link"}},
+    "synthesis_views": {"type": "array", "maxItems": 500, "items": {"$ref": "#/$defs/synthesis_view"}},
+    "stopping_dossier": {"$ref": "#/$defs/stopping_dossier"},
+    "candidate_units": {"$ref": "#/$defs/candidate_units"},
+    "content_policy": {"$ref": "#/$defs/content_policy"},
+    "assembler_version": {
+      "description": "The identity of the code that assembled this bundle, as dossiers carry evaluator_version. A bundle is a pure function of (approved revision, bundle_version, export options, assembler_version): the same inputs assemble byte-identically, which is what lets a sink treat redelivery as idempotent.",
+      "$ref": "common.schema.json#/$defs/short_text"
+    },
+    "assembled_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+    "hash_contract": {"$ref": "common.schema.json#/$defs/logical_hash_contract"}
+  },
+  "allOf": [
+    {
+      "description": "A bundle with no source content may carry no quote (content_policy is the single place that answer is recorded).",
+      "if": {"properties": {"content_policy": {"properties": {"source_content_included": {"const": false}}}}},
+      "then": {"properties": {"claim_source_links": {"items": {"properties": {"supporting_quote": {"type": "null"}}}}}}
+    }
+  ],
+  "$defs": {
+    "completion": {
+      "description": "Scientific completion, one of the three independent facts (P-4). Delivery and surveillance currency are NOT here: a bundle that cannot be delivered is still a bundle of a completed topic, and a stale feed does not rewrite this. A qualified conclusion is always conditional on framing, coverage and discovery mechanisms (G-9), so those three statements are required when that is the outcome — a completion that cannot state them is not this outcome.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "outcome", "dossier_revision"],
+      "properties": {
+        "status": {"enum": ["completed", "not_completed"]},
+        "outcome": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/completion_outcome"}]},
+        "dossier_revision": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/revision"}]},
+        "qualifications": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["framing", "coverage", "discovery_mechanisms"],
+          "properties": {
+            "framing": {"$ref": "common.schema.json#/$defs/long_text"},
+            "coverage": {"$ref": "common.schema.json#/$defs/long_text"},
+            "discovery_mechanisms": {"$ref": "common.schema.json#/$defs/long_text"}
+          }
+        },
+        "residual_uncertainty": {
+          "description": "Required by G-9 when the topic stopped for resources: the stop is never relabeled as saturation, and the uncertainty it left is stated.",
+          "$ref": "common.schema.json#/$defs/long_text"
+        }
+      },
+      "allOf": [
+        {"if": {"properties": {"status": {"const": "completed"}}},
+         "then": {"properties": {"outcome": {"type": "string"}, "dossier_revision": {"type": "integer"}}}},
+        {"if": {"properties": {"status": {"const": "not_completed"}}},
+         "then": {"properties": {"outcome": {"type": "null"}}}},
+        {"if": {"properties": {"outcome": {"const": "completed_with_qualified_conclusions"}}},
+         "then": {"required": ["qualifications"]}},
+        {"if": {"properties": {"outcome": {"const": "stopped_for_resources"}}},
+         "then": {"required": ["residual_uncertainty"]}}
+      ]
+    },
+    "importance": {
+      "description": "The operator-confirmed rating, band first (G-2). The 1-9 score is an optional elicitation aid atop the band, never a probability; a bundle carries the operator's rating, never a Jev proposal.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["band"],
+      "properties": {
+        "band": {"enum": ["critical", "important", "limited"]},
+        "score": {"type": "integer", "minimum": 1, "maximum": 9}
+      },
+      "allOf": [
+        {"if": {"properties": {"band": {"const": "critical"}}, "required": ["score"]},
+         "then": {"properties": {"score": {"minimum": 7, "maximum": 9}}}},
+        {"if": {"properties": {"band": {"const": "important"}}, "required": ["score"]},
+         "then": {"properties": {"score": {"minimum": 4, "maximum": 6}}}},
+        {"if": {"properties": {"band": {"const": "limited"}}, "required": ["score"]},
+         "then": {"properties": {"score": {"minimum": 1, "maximum": 3}}}}
+      ]
+    },
+    "confidence": {
+      "description": "How certain the record is about a disposition, in the form the record actually holds. Two shapes only. `recorded_assessment` is a LABEL from a scheme pinned by id and version, with the invocation that assessed it — the primary agent's judgment within the protocol, attributed. `unknown` states that no assessment exists and why. There is deliberately no numeric field in either shape: an LLM label never carries an invented probability (BOUNDARIES.md *Decision layer*), and additionalProperties: false makes one unrepresentable rather than discouraged. This schema does not legislate a certainty scale; the scheme the labels come from is declared by the contract revision.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["basis", "scheme", "label", "assessed_by_invocation_id"],
+          "properties": {
+            "basis": {"const": "recorded_assessment"},
+            "scheme": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["scheme_id", "version"],
+              "properties": {
+                "scheme_id": {"$ref": "common.schema.json#/$defs/local_id"},
+                "version": {"$ref": "common.schema.json#/$defs/revision"}
+              }
+            },
+            "label": {"$ref": "common.schema.json#/$defs/short_text"},
+            "assessed_by_invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["basis", "reason"],
+          "properties": {
+            "basis": {"const": "unknown"},
+            "reason": {"$ref": "common.schema.json#/$defs/short_text"}
+          }
+        }
+      ]
+    },
+    "obligation": {
+      "description": "One obligation of the approved contract with its disposition. `supported` and `not_supported` are both answers; `insufficient_evidence` means the search was adequate and nothing sufficient was found; `unknown` means coverage itself is not established (a degraded or unobserved window) and is never read as a null result (RG-U). `mixed` records a conflict and keeps it — disagreement is never averaged.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["obligation_id", "template", "facet_ids", "importance", "disposition", "confidence", "supporting_claim_ids"],
+      "properties": {
+        "obligation_id": {"$ref": "common.schema.json#/$defs/local_id"},
+        "template": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["template_id", "template_version", "claim_type"],
+          "properties": {
+            "template_id": {"$ref": "common.schema.json#/$defs/local_id"},
+            "template_version": {"$ref": "common.schema.json#/$defs/revision"},
+            "claim_type": {"enum": ["effect", "qualitative_experience", "mechanism", "mapping", "comparison", "design", "prevalence", "other"]}
+          }
+        },
+        "text": {"$ref": "common.schema.json#/$defs/long_text"},
+        "facet_ids": {"type": "array", "maxItems": 100, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/local_id"}},
+        "importance": {"$ref": "#/$defs/importance"},
+        "exploratory": {"type": "boolean"},
+        "disposition": {"enum": ["supported", "not_supported", "mixed", "insufficient_evidence", "unknown"]},
+        "reason": {"$ref": "common.schema.json#/$defs/long_text"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "supporting_claim_ids": {"type": "array", "maxItems": 2000, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/claim_id"}},
+        "open_adjudication_hold_ids": {"type": "array", "maxItems": 100, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/hold_id"}}
+      },
+      "allOf": [
+        {
+          "description": "An unresolved or unestablished disposition says why; it never stands as a bare label.",
+          "if": {"properties": {"disposition": {"enum": ["insufficient_evidence", "unknown", "mixed"]}}},
+          "then": {"required": ["reason"]}
+        },
+        {
+          "description": "RG-U: an unknown-coverage obligation cannot also report an assessed confidence — there is nothing assessed to be confident about.",
+          "if": {"properties": {"disposition": {"const": "unknown"}}},
+          "then": {"properties": {"confidence": {"properties": {"basis": {"const": "unknown"}}, "required": ["basis"]}}}
+        },
+        {
+          "description": "A supported obligation cites the claims that support it.",
+          "if": {"properties": {"disposition": {"const": "supported"}}},
+          "then": {"properties": {"supporting_claim_ids": {"minItems": 1}}}
+        },
+        {
+          "description": "An obligation with no accepted evidence cites none: `unknown` and `insufficient_evidence` never carry support.",
+          "if": {"properties": {"disposition": {"enum": ["unknown", "insufficient_evidence"]}}},
+          "then": {"properties": {"supporting_claim_ids": {"maxItems": 0}}}
+        },
+        {
+          "description": "A recorded conflict has an open or recorded adjudication item, not a silent average.",
+          "if": {"properties": {"disposition": {"const": "mixed"}}},
+          "then": {"required": ["open_adjudication_hold_ids"]}
+        }
+      ]
+    },
+    "claim": {
+      "description": "A claim of the record at the revision it was exported at. Claim text is the engine's own synthesis statement, not retrieved source content; retrieved text travels only as a quote on a link, under the content policy.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "revision", "text", "status", "load_bearing"],
+      "properties": {
+        "claim_id": {"$ref": "common.schema.json#/$defs/claim_id"},
+        "revision": {"$ref": "common.schema.json#/$defs/revision"},
+        "text": {"$ref": "common.schema.json#/$defs/long_text"},
+        "status": {"enum": ["accepted_support", "contested", "rejected", "quarantined", "superseded"]},
+        "load_bearing": {"type": "boolean"},
+        "required_access_tier": {"$ref": "common.schema.json#/$defs/access_tier"}
+      },
+      "allOf": [
+        {
+          "description": "A load-bearing claim declares the access tier its verification had to reach (the DDL requires the same).",
+          "if": {"properties": {"load_bearing": {"const": true}}},
+          "then": {"required": ["required_access_tier"]}
+        },
+        {
+          "description": "A provisional claim is not exportable: the bundle carries the record's dispositions, not its scratch state.",
+          "if": {"properties": {"status": {"const": "accepted_support"}}},
+          "then": {"required": ["load_bearing"]}
+        }
+      ]
+    },
+    "claim_source_link": {
+      "description": "One claim's link to one source, with the tier the check actually reached. Tiers are different checks, not interchangeable 'verified' flags: an abstract check never satisfies a full-text requirement (V-2). A load-bearing claim's link must name a verification receipt — a tier-0 entailment pass is a screen and never stands in for verification.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "claim_revision", "source_id", "locator", "access_tier", "verification", "load_bearing", "supporting_quote"],
+      "properties": {
+        "claim_id": {"$ref": "common.schema.json#/$defs/claim_id"},
+        "claim_revision": {"$ref": "common.schema.json#/$defs/revision"},
+        "work_id": {"$ref": "common.schema.json#/$defs/work_id"},
+        "source_id": {
+          "description": "The gateway source the record came from (its registry id, e.g. `crossref`), so an export can be traced to a lane and its licence verdict.",
+          "$ref": "common.schema.json#/$defs/short_text"
+        },
+        "locator": {
+          "description": "The identity the record is reachable by (a DOI, a persistent identifier, a URL). Exports carry locators, never fetched content.",
+          "$ref": "common.schema.json#/$defs/short_text"
+        },
+        "access_tier": {"$ref": "common.schema.json#/$defs/access_tier"},
+        "load_bearing": {"type": "boolean"},
+        "verification": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status", "receipt_id", "tier", "verified_at"],
+              "properties": {
+                "status": {"const": "verified"},
+                "receipt_id": {"$ref": "common.schema.json#/$defs/verification_receipt_id"},
+                "tier": {"$ref": "common.schema.json#/$defs/access_tier"},
+                "verified_at": {"$ref": "common.schema.json#/$defs/timestamp"}
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status", "reason"],
+              "properties": {
+                "status": {"const": "unverified"},
+                "reason": {"$ref": "common.schema.json#/$defs/short_text"}
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status", "hold_id"],
+              "properties": {
+                "status": {"const": "adjudication_open"},
+                "hold_id": {"$ref": "common.schema.json#/$defs/hold_id"}
+              }
+            }
+          ]
+        },
+        "supporting_quote": {
+          "description": "An exact quote from the source, included ONLY where the record says that source's content may be redistributed. `redistributable` is a const true, so a quote whose posture is prohibited or unknown cannot be represented at all — it is omitted, and the omission is recorded in content_policy.omitted_for_licence. The licence is the CONTENT licence the source reported for the work, which is a different question from the source's metadata terms.",
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["text", "licence", "redistributable"],
+              "properties": {
+                "text": {"$ref": "common.schema.json#/$defs/long_text"},
+                "licence": {"$ref": "common.schema.json#/$defs/short_text"},
+                "redistributable": {"const": true},
+                "span": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["start", "end"],
+                  "properties": {
+                    "start": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+                    "end": {"type": "integer", "minimum": 0, "maximum": 9007199254740991}
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "description": "V-1/V-2: a load-bearing link carries a verification receipt, at a named tier.",
+          "if": {"properties": {"load_bearing": {"const": true}}},
+          "then": {"properties": {"verification": {"properties": {"status": {"const": "verified"}}, "required": ["status"]}}}
+        }
+      ]
+    },
+    "synthesis_view": {
+      "description": "Synthesis travels as a RENDERED VIEW of the claim graph at a revision, never as the record itself (flow §5: claim-graph first, so a reframe re-renders instead of rewriting). The artifact is content-addressed; the renderer's identity and the graph revision are what make the view reproducible.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["view_id", "view_kind", "claim_graph_revision", "renderer_version", "artifact"],
+      "properties": {
+        "view_id": {"$ref": "common.schema.json#/$defs/local_id"},
+        "view_kind": {"enum": ["obligation_synthesis", "topic_synthesis", "contradiction_register", "coverage_matrix"]},
+        "claim_graph_revision": {"$ref": "common.schema.json#/$defs/revision"},
+        "renderer_version": {"$ref": "common.schema.json#/$defs/short_text"},
+        "artifact": {"$ref": "common.schema.json#/$defs/artifact_ref"},
+        "obligation_id": {"$ref": "common.schema.json#/$defs/local_id"}
+      },
+      "allOf": [
+        {"if": {"properties": {"view_kind": {"const": "obligation_synthesis"}}}, "then": {"required": ["obligation_id"]}}
+      ]
+    },
+    "stopping_dossier": {
+      "description": "The dossier the completion was ruled on, carried permanently with the bundle (design review §8: every completion permanently carries its evidence). Per-rule operands are typed counts, so an unobserved operand stays unobserved: a satisfied rule may not rest on one.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dossier_revision", "content_hash", "evaluator_version", "profile_id", "rules", "conjunctive_gates"],
+      "properties": {
+        "dossier_revision": {"$ref": "common.schema.json#/$defs/revision"},
+        "content_hash": {"$ref": "common.schema.json#/$defs/sha256"},
+        "evaluator_version": {"$ref": "common.schema.json#/$defs/short_text"},
+        "profile_id": {"$ref": "common.schema.json#/$defs/local_id"},
+        "rules": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["rule_id", "status", "operands"],
+            "properties": {
+              "rule_id": {"$ref": "common.schema.json#/$defs/local_id"},
+              "status": {"$ref": "common.schema.json#/$defs/rule_status"},
+              "operands": {
+                "description": "What the rule was evaluated over: named counts that can be observed, partial or unknown.",
+                "type": "object",
+                "maxProperties": 50,
+                "propertyNames": {"$ref": "common.schema.json#/$defs/local_id"},
+                "additionalProperties": {"$ref": "common.schema.json#/$defs/observed_count"}
+              },
+              "thresholds": {
+                "description": "The rule's declared parameters, from the approved contract.",
+                "type": "object",
+                "maxProperties": 50,
+                "propertyNames": {"$ref": "common.schema.json#/$defs/local_id"},
+                "additionalProperties": {"type": "number"}
+              }
+            },
+            "allOf": [
+              {
+                "description": "RG-U made checkable: a satisfied rule has no unknown operand.",
+                "if": {"properties": {"status": {"const": "satisfied"}}},
+                "then": {"properties": {"operands": {"additionalProperties": {"not": {"properties": {"status": {"const": "unknown"}}}}}}}
+              }
+            ]
+          }
+        },
+        "conjunctive_gates": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["gate_id", "status"],
+            "properties": {
+              "gate_id": {"$ref": "common.schema.json#/$defs/local_id"},
+              "status": {"$ref": "common.schema.json#/$defs/rule_status"}
+            }
+          }
+        },
+        "resource_limit_reached": {
+          "description": "Recorded separately from every scientific rule, so a budget stop can never satisfy a completion condition (G-11).",
+          "type": "boolean"
+        }
+      }
+    },
+    "candidate_units": {
+      "description": "The four units evidence accounting keeps distinct (adjudication (b)7). Each is an observed count, so an unobserved window travels as unknown with its reason and never as a zero denominator.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["retrieved_record", "deduplicated_work", "assessed_candidate", "accepted_claim"],
+      "properties": {
+        "retrieved_record": {"$ref": "common.schema.json#/$defs/observed_count"},
+        "deduplicated_work": {"$ref": "common.schema.json#/$defs/observed_count"},
+        "assessed_candidate": {"$ref": "common.schema.json#/$defs/observed_count"},
+        "accepted_claim": {"$ref": "common.schema.json#/$defs/observed_count"}
+      }
+    },
+    "content_policy": {
+      "description": "The one place a bundle answers 'may this content leave the engine'. Redistribution is a per-record question the gateway answers per record (it records a `redistributable` flag and the content licence beside each contributing payload), not a per-source one: a CC0 metadata record can describe a copyrighted paper. Omissions are listed rather than silently dropped, so an export that is thinner than the record says why.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy_version", "source_content_included", "omitted_for_licence"],
+      "properties": {
+        "policy_version": {"const": "export-content-policy/1"},
+        "source_content_included": {"type": "boolean"},
+        "omitted_for_licence": {
+          "type": "array",
+          "maxItems": 500,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source_id", "reason", "omitted_quotes"],
+            "properties": {
+              "source_id": {"$ref": "common.schema.json#/$defs/short_text"},
+              "reason": {"enum": ["redistribution_prohibited", "licence_unknown", "per_item_licence_not_allow_listed"]},
+              "omitted_quotes": {"$ref": "common.schema.json#/$defs/observed_count"}
+            }
+          }
+        },
+        "attribution_required": {
+          "type": "array",
+          "maxItems": 500,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source_id", "attribution"],
+            "properties": {
+              "source_id": {"$ref": "common.schema.json#/$defs/short_text"},
+              "attribution": {"$ref": "common.schema.json#/$defs/short_text"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

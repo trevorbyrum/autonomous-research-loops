@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-bundle.schema.json", "expect": "invalid",
+  "tests": "G-2: the optional 1-9 score is an aid atop the required band, so it cannot contradict it",
+  "base": "valid-completed-topic.json",
+  "patch": [{"op": "replace", "path": "/obligations/0/importance/score", "value": 3}],
+  "errors": [{"keyword": "minimum", "path": "/obligations/0/importance/score"}]}}

@@ -1,0 +1,6 @@
+{"fixture": {"schema": "export-manifest.schema.json", "expect": "invalid",
+  "tests": "the three shipped adapters are the engine's own; naming a module for one would let reviewed-code identity be asserted from config",
+  "base": "valid-superseding-options-revision-2.json",
+  "patch": [{"op": "add", "path": "/expected_sinks/warehouse/implementation",
+             "value": {"module": "gen2.projector.export.sql", "review_ref": "none"}}],
+  "errors": [{"keyword": "not", "path": "/expected_sinks/warehouse"}]}}

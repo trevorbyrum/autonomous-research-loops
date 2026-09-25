@@ -1,0 +1,24 @@
+{
+  "fixture": {
+    "schema": "export-delivery-receipt.schema.json",
+    "expect": "valid",
+    "tests": "L-4 and RG-4: an attempt whose result is not established is outcome_unknown, must be reconciled, cannot claim an observed count, and is not a failure - so it carries a capability fact but no error class"
+  },
+  "instance": {
+    "receipt_version": "export-delivery-receipt/1",
+    "export_receipt_id": "exr_01J8ZQB4T7",
+    "export_manifest_id": "exm_01J8ZQA1Q4",
+    "topic_id": "fleet-a:intake-latency",
+    "sink": {"sink_id": "warehouse", "sink_type": "generic_sql"},
+    "generation": 3,
+    "options_revision": 2,
+    "attempt": 3,
+    "status": "outcome_unknown",
+    "written": {"status": "unknown", "reason": "the projector was terminated after the commit was sent and before any response was read"},
+    "tombstones_acknowledged": false,
+    "reconciliation_required": true,
+    "capability_fact_id": "fact-export-warehouse-0002",
+    "attempted_at": "2026-09-25T10:12:00Z",
+    "acked_at": null
+  }
+}

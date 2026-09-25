@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://research-loops.invalid/gen2/schema/common.schema.json",
-  "$comment": "flow: §0 (actor roster); §4.1-4.4 (invocation IDs, capability facts, unknown is never zero, typed holds); S4 step 2 (four candidate units); S7 (outcomes) | boundaries: Router; Station supervisor; Evidence accounting; Gateway; Verifier | design-review: §4 (stable fleet/topic IDs); §5 (receipts); §6 (lifecycle states); §8 (verification tiers) | adjudication: (b)5; (b)7 | invariants: RG-U; E-3; L-1; V-2; H-3 | note: shared vocabulary only; no document validates against this file's root",
+  "$comment": "flow: §0 (actor roster); §4.1-4.4 (invocation IDs, capability facts, unknown is never zero, typed holds); S4 step 2 (four candidate units); S7 (outcomes) | boundaries: Router; Station supervisor; Evidence accounting; Gateway; Verifier | design-review: §4 (stable fleet/topic IDs); §5 (receipts); §6 (lifecycle states); §8 (verification tiers) | adjudication: (b)5; (b)7 | invariants: RG-U; E-3; L-1; V-2; H-3 | note: shared vocabulary only; no document validates against this file's root; the export identifiers and sink vocabulary added by task 0c are a SEPARATE surface from the publication `sink` enum - see export-bundle.schema.json",
   "title": "Gen-2 shared definitions",
   "description": "Identifiers, hashes, timestamps and enumerations shared by every gen-2 schema. Prefix-typed IDs make cross-wiring (an operation ID where an invocation ID belongs) a validation error instead of a silent join.",
   "$defs": {
@@ -61,6 +61,10 @@
     "audit_event_id": {"type": "string", "pattern": "^aud_[A-Za-z0-9_-]{8,64}$"},
     "claim_id": {"type": "string", "pattern": "^clm_[A-Za-z0-9_-]{8,64}$"},
     "work_id": {"type": "string", "pattern": "^wrk_[A-Za-z0-9_-]{8,64}$"},
+    "export_bundle_id": {"type": "string", "pattern": "^exb_[A-Za-z0-9_-]{8,64}$"},
+    "export_manifest_id": {"type": "string", "pattern": "^exm_[A-Za-z0-9_-]{8,64}$"},
+    "export_receipt_id": {"type": "string", "pattern": "^exr_[A-Za-z0-9_-]{8,64}$"},
+    "source_proposal_id": {"type": "string", "pattern": "^srcp_[A-Za-z0-9_-]{8,64}$"},
     "revision": {"description": "A document revision number; revisions start at 1. Identity numbers are bounded BY VALUE to 2^53-1 (Astra re-review RA8): JSON Schema treats 9007199254740992, 9007199254740992.0 and 9007199254740992e0 alike as the integer 2^53, so `maximum` refuses all three; larger identities travel as strings (gen2/core/canonical.py identity_integer states the same bound).", "type": "integer", "minimum": 1, "maximum": 9007199254740991},
     "state_revision": {"description": "The router's optimistic-concurrency counter for a topic; starts at 0. Bounded by value like revision (RA8).", "type": "integer", "minimum": 0, "maximum": 9007199254740991},
     "generation": {"description": "A lease or publication generation (or other identity counter): strictly increasing per topic. Bounded by value like revision (RA8).", "type": "integer", "minimum": 0, "maximum": 9007199254740991},
@@ -191,8 +195,17 @@
       "enum": ["shadow", "advisory", "qualified"]
     },
     "sink": {
-      "description": "Physical publication sinks, named as such — never 'GraphRAG' (flow S8 item 2).",
+      "description": "Physical publication sinks, named as such — never 'GraphRAG' (flow S8 item 2). Closed by design: these are the stores gen-2's own readers read, and a publication manifest's expected_sinks admits nothing else. Operator-pluggable *export* destinations are a different surface with its own identifiers (export_sink_id / export_sink_type) — they are never added here.",
       "enum": ["neo4j", "qdrant"]
+    },
+    "export_sink_id": {
+      "description": "An operator-configured export destination's stable name, from the mounted export-sink config (task 0c deliverable 3; docs/gen2/EXPORT-SINKS.md). Not a physical publication sink (see `sink`): nothing the engine serves reads from an export sink. The credential for sink `warehouse` is the environment variable GEN2_SECRET_EXPORT_SINK_WAREHOUSE — the id upper-cased with '-' replaced by '_' — so the pattern admits only what spells a legal variable suffix.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,62}[a-z0-9]$"
+    },
+    "export_sink_type": {
+      "description": "The three shipped generic adapters, plus `bespoke` for a reviewed-code sink. A bespoke sink names its implementation and its review; it is never operator config alone (docs/gen2/EXPORT-SINKS.md §5).",
+      "enum": ["generic_sql", "jsonl_file", "webhook_http", "bespoke"]
     }
   }
 }

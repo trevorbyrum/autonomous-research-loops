@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/export-manifest.schema.json",
+  "$comment": "flow: S8 item 1 (an immutable manifest committed with the approved revision); item 2 (idempotent, generation-aware updates; old retries never overwrite newer generations; supersession and tombstones acknowledged per sink); item 5 (approved corrections and checkpoint publications create new events) | boundaries: Router; Projector / publication; Operator | design-review: §6 (a new executable adapter requires an image release, so a bespoke sink is reviewed code and not operator config); §9 (per-sink receipts, supersession, stable ids) | adjudication: (a)G-A1 (mutable delivery state stored separately from the immutable manifest); (b)2 | invariants: P-1; P-2; P-5; G-13 | note: this manifest does not create a second approval path. It binds to an approved PUBLICATION generation, so export inherits P-5's approval gate instead of re-deciding it, and inherits one generation counter per topic instead of introducing a second. Delivery state is never a field here",
+  "title": "Export manifest",
+  "description": "The immutable record of one export: which bundle, built from which approved publication generation, under which export options, to which enabled sinks. It is what `deliver(manifest, bundle)` receives, and it is the sink's idempotency key. Ordering is the pair (generation, options_revision), compared in that order: a sink refuses a delivery whose pair is lower than what it has already accepted, so a retry that arrives late cannot overwrite newer material. JSON Schema cannot compare a manifest with its predecessor — that the superseded pair is strictly lower is checked where both are stored, exactly as it is for publication generations.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifest_version",
+    "export_manifest_id",
+    "topic_id",
+    "bundle",
+    "publication",
+    "generation",
+    "options_revision",
+    "expected_sinks",
+    "supersedes",
+    "tombstones",
+    "created_at",
+    "hash_contract"
+  ],
+  "properties": {
+    "manifest_version": {"const": "export-manifest/1"},
+    "export_manifest_id": {"$ref": "common.schema.json#/$defs/export_manifest_id"},
+    "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
+    "bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bundle_id", "bundle_version", "content_hash"],
+      "properties": {
+        "bundle_id": {"$ref": "common.schema.json#/$defs/export_bundle_id"},
+        "bundle_version": {"const": "export-bundle/1"},
+        "content_hash": {"$ref": "common.schema.json#/$defs/sha256"}
+      }
+    },
+    "publication": {
+      "description": "The approved publication generation this export was built from. Unapproved work is never exported, and the approval is not re-decided here: it is the same `publication_approval` decision the outbox event required, about the same source revision and hash (P-5, G-13).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifest_id", "artifact_kind", "source", "approval"],
+      "properties": {
+        "manifest_id": {"$ref": "common.schema.json#/$defs/manifest_id"},
+        "artifact_kind": {"enum": ["completion_publication", "evidence_correction", "checkpoint_publication"]},
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["revision", "content_hash"],
+          "properties": {
+            "revision": {"$ref": "common.schema.json#/$defs/revision"},
+            "content_hash": {"$ref": "common.schema.json#/$defs/sha256"}
+          }
+        },
+        "approval": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["operator_decision_id", "approved_revision"],
+          "properties": {
+            "operator_decision_id": {"$ref": "common.schema.json#/$defs/operator_decision_id"},
+            "approved_revision": {
+              "description": "Equal to publication.source.revision by construction: an export is of the revision that was approved. JSON Schema cannot compare two sibling values, so — exactly as for publication manifests, where the DDL checks that the stored manifest's approval revision IS the row's source_revision — the equality is enforced where both are stored. That is a Phase-3 obligation for the export tables, recorded here rather than assumed.",
+              "$ref": "common.schema.json#/$defs/revision"
+            }
+          }
+        }
+      }
+    },
+    "generation": {
+      "description": "The publication generation the bundle was assembled from — the same number the outbox event carries, not a second counter. Exports may be enabled at any point in a topic's life, so generation 1 is not required to be the first exported generation and a first export legitimately supersedes nothing.",
+      "$ref": "common.schema.json#/$defs/generation",
+      "minimum": 1
+    },
+    "options_revision": {
+      "description": "The revision of the mounted per-topic export options the bundle was assembled under. It is the second half of the ordering pair: the same approved generation re-exported after the operator changes what an export should contain is a new, higher options_revision, and the sink treats it as newer material rather than as a duplicate to ignore.",
+      "$ref": "common.schema.json#/$defs/revision"
+    },
+    "expected_sinks": {
+      "description": "Keyed by sink id, so one sink cannot appear twice with contradictory types. Enablement itself is mounted config; this records which enabled sinks this export was committed for.",
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 100,
+      "propertyNames": {"$ref": "common.schema.json#/$defs/export_sink_id"},
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sink_type"],
+        "properties": {
+          "sink_type": {"$ref": "common.schema.json#/$defs/export_sink_type"},
+          "implementation": {
+            "description": "Required for a bespoke sink: the image-baked module that implements it and the review that accepted it. A bespoke sink is engine code, so it arrives by image release — never by an operator adding a name to mounted config (design review §6).",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["module", "review_ref"],
+            "properties": {
+              "module": {"$ref": "common.schema.json#/$defs/short_text"},
+              "review_ref": {"$ref": "common.schema.json#/$defs/short_text"}
+            }
+          }
+        },
+        "allOf": [
+          {"if": {"properties": {"sink_type": {"const": "bespoke"}}}, "then": {"required": ["implementation"]}},
+          {"if": {"properties": {"sink_type": {"enum": ["generic_sql", "jsonl_file", "webhook_http"]}}},
+           "then": {"not": {"required": ["implementation"]}}}
+        ]
+      }
+    },
+    "supersedes": {
+      "description": "The export manifest this one replaces, with its ordering pair. Null when this is the first export of the topic (including when exports were enabled at a later generation).",
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["export_manifest_id", "generation", "options_revision"],
+          "properties": {
+            "export_manifest_id": {"$ref": "common.schema.json#/$defs/export_manifest_id"},
+            "generation": {"$ref": "common.schema.json#/$defs/generation", "minimum": 1},
+            "options_revision": {"$ref": "common.schema.json#/$defs/revision"}
+          }
+        }
+      ]
+    },
+    "tombstones": {
+      "description": "Entities removed or corrected relative to the superseded export; each sink acknowledges them, and a delivery that did not acknowledge them is not `delivered`.",
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["entity_id", "reason"],
+        "properties": {
+          "entity_id": {"$ref": "common.schema.json#/$defs/short_text"},
+          "reason": {"enum": ["superseded", "corrected", "retracted", "removed_by_amendment", "removed_for_licence"]}
+        }
+      }
+    },
+    "created_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+    "hash_contract": {"$ref": "common.schema.json#/$defs/logical_hash_contract"}
+  },
+  "allOf": [
+    {
+      "description": "Nothing to supersede means nothing to tombstone.",
+      "if": {"properties": {"supersedes": {"type": "null"}}},
+      "then": {"properties": {"tombstones": {"maxItems": 0}}}
+    }
+  ]
+}

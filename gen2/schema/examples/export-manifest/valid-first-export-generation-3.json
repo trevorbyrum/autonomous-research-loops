@@ -1,0 +1,36 @@
+{
+  "fixture": {
+    "schema": "export-manifest.schema.json",
+    "expect": "valid",
+    "tests": "P-5: export binds to an approved publication generation rather than re-deciding approval; exports enabled at generation 3 supersede nothing, so tombstones are empty; two shipped generic sinks, keyed by sink id"
+  },
+  "instance": {
+    "manifest_version": "export-manifest/1",
+    "export_manifest_id": "exm_01J8ZQ90P3",
+    "topic_id": "fleet-a:intake-latency",
+    "bundle": {
+      "bundle_id": "exb_01J8ZQ70M1",
+      "bundle_version": "export-bundle/1",
+      "content_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+    },
+    "publication": {
+      "manifest_id": "man_01J8ZQ70M1",
+      "artifact_kind": "completion_publication",
+      "source": {
+        "revision": 12,
+        "content_hash": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+      },
+      "approval": {"operator_decision_id": "opd_comp0001", "approved_revision": 12}
+    },
+    "generation": 3,
+    "options_revision": 1,
+    "expected_sinks": {
+      "warehouse": {"sink_type": "generic_sql"},
+      "archive": {"sink_type": "jsonl_file"}
+    },
+    "supersedes": null,
+    "tombstones": [],
+    "created_at": "2026-09-25T09:35:00Z",
+    "hash_contract": {"canonicalization": "jcs-rfc8785/1"}
+  }
+}

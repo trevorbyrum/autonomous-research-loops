@@ -1,0 +1,6 @@
+{"fixture": {"schema": "export-bundle.schema.json", "expect": "invalid",
+  "tests": "RG-U made checkable: a stopping rule cannot be satisfied by an operand nobody observed",
+  "base": "valid-completed-topic.json",
+  "patch": [{"op": "replace", "path": "/stopping_dossier/rules/0/operands/assessed_candidates",
+             "value": {"status": "unknown", "reason": "screening telemetry was lost"}}],
+  "errors": [{"keyword": "not", "path": "/stopping_dossier/rules/0/operands/assessed_candidates"}]}}

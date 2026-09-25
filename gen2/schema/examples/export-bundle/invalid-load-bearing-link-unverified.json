@@ -1,0 +1,6 @@
+{"fixture": {"schema": "export-bundle.schema.json", "expect": "invalid",
+  "tests": "V-1: a load-bearing claim's link must name a verification receipt; a reason for not verifying is not a substitute",
+  "base": "valid-completed-topic.json",
+  "patch": [{"op": "replace", "path": "/claim_source_links/0/verification",
+             "value": {"status": "unverified", "reason": "the verifier queue was backed up"}}],
+  "errors": [{"keyword": "const", "path": "/claim_source_links/0/verification/status"}]}}

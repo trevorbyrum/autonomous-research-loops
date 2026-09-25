@@ -1,0 +1,216 @@
+{
+  "fixture": {
+    "schema": "export-bundle.schema.json",
+    "expect": "valid",
+    "tests": "one shape for every sink: a completed topic with qualified conclusions, obligations of four dispositions, a load-bearing verified link with a redistributable quote, rendered synthesis views, and a stopping dossier whose satisfied rule rests on observed operands"
+  },
+  "instance": {
+    "bundle_version": "export-bundle/1",
+    "bundle_id": "exb_01J8ZQ70M1",
+    "topic_id": "fleet-a:intake-latency",
+    "contract": {
+      "revision": 12,
+      "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "completion": {
+      "status": "completed",
+      "outcome": "completed_with_qualified_conclusions",
+      "dossier_revision": 7,
+      "qualifications": {
+        "framing": "Conclusions hold under the approved framing revision 12: intake latency measured from operator submission to confirmed brief, excluding scoping passes.",
+        "coverage": "Article lanes searched_ok for the whole window; the Semantic Scholar lane was provider_unavailable for 3 of 14 passes, so coverage of that lane is partial and recorded as such.",
+        "discovery_mechanisms": "Discovery was retain-all screening over base article lanes plus the management domain lane; no automatic exclusion was applied, so exclusions are operator- or primary-reviewed."
+      }
+    },
+    "obligations": [
+      {
+        "obligation_id": "OB-01",
+        "template": {"template_id": "effect-of-x-on-y", "template_version": 3, "claim_type": "effect"},
+        "text": "Does structured intake negotiation reduce the number of operator corrections per completed topic?",
+        "facet_ids": ["F-operator-effort"],
+        "importance": {"band": "critical", "score": 8},
+        "exploratory": false,
+        "disposition": "supported",
+        "confidence": {
+          "basis": "recorded_assessment",
+          "scheme": {"scheme_id": "contract-certainty", "version": 2},
+          "label": "moderate",
+          "assessed_by_invocation_id": "inv_pass0142"
+        },
+        "supporting_claim_ids": ["clm_00000141"]
+      },
+      {
+        "obligation_id": "OB-02",
+        "template": {"template_id": "mechanism-of-x", "template_version": 1, "claim_type": "mechanism"},
+        "facet_ids": ["F-operator-effort"],
+        "importance": {"band": "important"},
+        "disposition": "insufficient_evidence",
+        "reason": "Four candidate works were assessed; none reported a mechanism at the required access tier, and the two full texts reachable did not separate negotiation from template choice.",
+        "confidence": {
+          "basis": "recorded_assessment",
+          "scheme": {"scheme_id": "contract-certainty", "version": 2},
+          "label": "low",
+          "assessed_by_invocation_id": "inv_pass0151"
+        },
+        "supporting_claim_ids": []
+      },
+      {
+        "obligation_id": "OB-03",
+        "template": {"template_id": "comparison-of-x-and-y", "template_version": 2, "claim_type": "comparison"},
+        "facet_ids": ["F-latency"],
+        "importance": {"band": "limited", "score": 2},
+        "disposition": "mixed",
+        "reason": "Two accepted claims disagree on direction; the disagreement is held as an adjudication item rather than averaged.",
+        "confidence": {
+          "basis": "recorded_assessment",
+          "scheme": {"scheme_id": "contract-certainty", "version": 2},
+          "label": "low",
+          "assessed_by_invocation_id": "inv_pass0163"
+        },
+        "supporting_claim_ids": ["clm_00000141", "clm_00000148"],
+        "open_adjudication_hold_ids": ["hold_adj00019"]
+      },
+      {
+        "obligation_id": "OB-04",
+        "template": {"template_id": "prevalence-of-x", "template_version": 1, "claim_type": "prevalence"},
+        "facet_ids": ["F-latency"],
+        "importance": {"band": "important", "score": 5},
+        "disposition": "unknown",
+        "reason": "The only lane that could answer it was auth_failed for the whole window: coverage is unknown, not empty.",
+        "confidence": {"basis": "unknown", "reason": "no assessment was made: nothing was observed to assess"},
+        "supporting_claim_ids": []
+      }
+    ],
+    "claims": [
+      {
+        "claim_id": "clm_00000141",
+        "revision": 3,
+        "text": "Structured intake negotiation reduced operator corrections per completed topic in the one deployment that measured both.",
+        "status": "accepted_support",
+        "load_bearing": true,
+        "required_access_tier": "full_text"
+      },
+      {
+        "claim_id": "clm_00000148",
+        "revision": 1,
+        "text": "A second deployment reported no change in corrections after adopting the same negotiation step.",
+        "status": "contested",
+        "load_bearing": false
+      }
+    ],
+    "claim_source_links": [
+      {
+        "claim_id": "clm_00000141",
+        "claim_revision": 3,
+        "work_id": "wrk_00000912",
+        "source_id": "crossref",
+        "locator": "doi:10.1000/intake-negotiation-2025",
+        "access_tier": "full_text",
+        "load_bearing": true,
+        "verification": {
+          "status": "verified",
+          "receipt_id": "ver_00000771",
+          "tier": "full_text",
+          "verified_at": "2026-09-20T11:04:00Z"
+        },
+        "supporting_quote": {
+          "text": "Corrections per completed review fell from 4.1 to 2.6 after the negotiation step was introduced.",
+          "licence": "CC-BY-4.0",
+          "redistributable": true,
+          "span": {"start": 18422, "end": 18518}
+        }
+      },
+      {
+        "claim_id": "clm_00000148",
+        "claim_revision": 1,
+        "source_id": "semanticscholar",
+        "locator": "doi:10.1000/no-change-2026",
+        "access_tier": "abstract",
+        "load_bearing": false,
+        "verification": {
+          "status": "unverified",
+          "reason": "full text unreachable through the licensed routes; abstract-tier capture only"
+        },
+        "supporting_quote": null
+      }
+    ],
+    "synthesis_views": [
+      {
+        "view_id": "V-OB-01",
+        "view_kind": "obligation_synthesis",
+        "claim_graph_revision": 19,
+        "renderer_version": "synthesis-renderer/1.4",
+        "artifact": {
+          "content_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "size_bytes": 8120,
+          "media_type": "text/markdown"
+        },
+        "obligation_id": "OB-01"
+      },
+      {
+        "view_id": "V-CONTRA",
+        "view_kind": "contradiction_register",
+        "claim_graph_revision": 19,
+        "renderer_version": "synthesis-renderer/1.4",
+        "artifact": {
+          "content_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "size_bytes": 2044,
+          "media_type": "text/markdown"
+        }
+      }
+    ],
+    "stopping_dossier": {
+      "dossier_revision": 7,
+      "content_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "evaluator_version": "accounting/2.1",
+      "profile_id": "SP-effect-default",
+      "rules": [
+        {
+          "rule_id": "R-novelty-window",
+          "status": "satisfied",
+          "operands": {
+            "assessed_candidates": {"status": "observed", "value": 214},
+            "novel_accepted": {"status": "observed", "value": 0}
+          },
+          "thresholds": {"window_passes": 3}
+        },
+        {
+          "rule_id": "R-lane-coverage",
+          "status": "unknown",
+          "operands": {
+            "lanes_searched_ok": {"status": "partial", "value": 11, "reason": "the semanticscholar lane was provider_unavailable for 3 passes"}
+          },
+          "thresholds": {"required_lanes": 14}
+        }
+      ],
+      "conjunctive_gates": [
+        {"gate_id": "G-challenge-pass", "status": "satisfied"},
+        {"gate_id": "G-coverage", "status": "unknown"}
+      ],
+      "resource_limit_reached": false
+    },
+    "candidate_units": {
+      "retrieved_record": {"status": "observed", "value": 1841},
+      "deduplicated_work": {"status": "observed", "value": 1203},
+      "assessed_candidate": {"status": "observed", "value": 214},
+      "accepted_claim": {"status": "observed", "value": 2}
+    },
+    "content_policy": {
+      "policy_version": "export-content-policy/1",
+      "source_content_included": true,
+      "omitted_for_licence": [
+        {
+          "source_id": "semanticscholar",
+          "reason": "redistribution_prohibited",
+          "omitted_quotes": {"status": "observed", "value": 4}
+        }
+      ],
+      "attribution_required": [
+        {"source_id": "crossref", "attribution": "Metadata from Crossref."}
+      ]
+    },
+    "assembler_version": "export-assembler/1.0",
+    "assembled_at": "2026-09-25T09:30:00Z",
+    "hash_contract": {"canonicalization": "jcs-rfc8785/1"}
+  }
+}

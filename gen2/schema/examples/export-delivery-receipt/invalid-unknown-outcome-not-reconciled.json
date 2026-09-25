@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-delivery-receipt.schema.json", "expect": "invalid",
+  "tests": "RG-3: an ambiguous outcome is a visible reconciliation state, never a silent permanent park",
+  "base": "valid-outcome-unknown-pending-reconciliation.json",
+  "patch": [{"op": "replace", "path": "/reconciliation_required", "value": false}],
+  "errors": [{"keyword": "const", "path": "/reconciliation_required"}]}}

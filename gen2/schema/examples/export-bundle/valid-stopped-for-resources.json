@@ -1,0 +1,69 @@
+{
+  "fixture": {
+    "schema": "export-bundle.schema.json",
+    "expect": "valid",
+    "tests": "G-9: a resource stop is its own outcome with its residual uncertainty stated, never relabeled as saturation; RG-U: unknown candidate units and an unknown-coverage obligation carry reasons, not zeros; content_policy with no source content included and therefore no quote anywhere"
+  },
+  "instance": {
+    "bundle_version": "export-bundle/1",
+    "bundle_id": "exb_01J8ZQ80N2",
+    "topic_id": "fleet-b:delegate-cost",
+    "contract": {
+      "revision": 4,
+      "content_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+    },
+    "completion": {
+      "status": "completed",
+      "outcome": "stopped_for_resources",
+      "dossier_revision": 2,
+      "residual_uncertainty": "The daily gateway budget was exhausted with 9 of 22 assessed candidates still unverified; nothing here establishes that further search would find nothing, and no saturation rule was satisfied."
+    },
+    "obligations": [
+      {
+        "obligation_id": "OB-01",
+        "template": {"template_id": "effect-of-x-on-y", "template_version": 3, "claim_type": "effect"},
+        "facet_ids": [],
+        "importance": {"band": "important"},
+        "disposition": "unknown",
+        "reason": "The budget stopped the pass before any lane completed: coverage is unknown, which is not the same as finding nothing.",
+        "confidence": {"basis": "unknown", "reason": "no assessment was made before the stop"},
+        "supporting_claim_ids": []
+      }
+    ],
+    "claims": [],
+    "claim_source_links": [],
+    "synthesis_views": [],
+    "stopping_dossier": {
+      "dossier_revision": 2,
+      "content_hash": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "evaluator_version": "accounting/2.1",
+      "profile_id": "SP-effect-default",
+      "rules": [
+        {
+          "rule_id": "R-novelty-window",
+          "status": "unknown",
+          "operands": {
+            "assessed_candidates": {"status": "unknown", "reason": "the pass ended before assessment ran"}
+          },
+          "thresholds": {"window_passes": 3}
+        }
+      ],
+      "conjunctive_gates": [{"gate_id": "G-coverage", "status": "not_satisfied"}],
+      "resource_limit_reached": true
+    },
+    "candidate_units": {
+      "retrieved_record": {"status": "partial", "value": 63, "reason": "pagination stopped when the daily budget closed"},
+      "deduplicated_work": {"status": "partial", "value": 58, "reason": "deduplication ran only over what was retrieved"},
+      "assessed_candidate": {"status": "unknown", "reason": "screening did not run"},
+      "accepted_claim": {"status": "observed", "value": 0}
+    },
+    "content_policy": {
+      "policy_version": "export-content-policy/1",
+      "source_content_included": false,
+      "omitted_for_licence": []
+    },
+    "assembler_version": "export-assembler/1.0",
+    "assembled_at": "2026-09-25T09:31:00Z",
+    "hash_contract": {"canonicalization": "jcs-rfc8785/1"}
+  }
+}

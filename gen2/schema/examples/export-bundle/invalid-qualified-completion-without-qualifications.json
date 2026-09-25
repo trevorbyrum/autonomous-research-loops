@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-bundle.schema.json", "expect": "invalid",
+  "tests": "G-9: a qualified conclusion that cannot state its framing, coverage and discovery conditions is not that outcome",
+  "base": "valid-completed-topic.json",
+  "patch": [{"op": "remove", "path": "/completion/qualifications"}],
+  "errors": [{"keyword": "required", "path": "/completion"}]}}
