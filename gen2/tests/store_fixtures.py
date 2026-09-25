@@ -13,6 +13,7 @@ written by hand in each test, never derived from the DDL under test.
 """
 from __future__ import annotations
 
+import copy
 import json
 import sqlite3
 import unittest
@@ -96,25 +97,56 @@ class StoreTestCase(unittest.TestCase):
 
     # -- builders --------------------------------------------------------
     def contract(self, tid: str, rev: int, status: str = "draft", approved_by: str | None = None, ch: str | None = None,
-                 facets: tuple = (), obligations: tuple = (), content_hash: str | None = None) -> str:
+                 facets: tuple = (), obligations: tuple = (), content_hash: str | None = None, parent: int | None = None) -> str:
+        """A draft revision; its parent is the previous revision unless `parent` is given."""
         content = content_hash or h(ch or ("a" if tid == TOPIC else "b") if rev == 1 else ch or str(rev))
+        parent = parent if parent is not None else (None if rev == 1 else rev - 1)
         doc = json.dumps({"topic_id": tid, "revision": rev, "content_hash": content, "protocol_revision": 1,
                           "facet_map": {"framing_version": 1, "facets": list(facets)}, "obligations": list(obligations),
                           "eligibility_protocol": {"protocol_version": 1}})
         self.x("INSERT INTO contract_revisions (topic_id, revision, parent_revision, protocol_revision, framing_version, content_hash, document, status, approved_by_decision_id, created_at) VALUES (?, ?, ?, 1, 1, ?, ?, ?, ?, ?)",
-               tid, rev, None if rev == 1 else rev - 1, content, doc, status, approved_by, T)
+               tid, rev, parent, content, doc, status, approved_by, T)
         return content
 
     def decision(self, did: str, kind: str, tid: str | None = TOPIC, disposition: str = "approved", *, ref: str | None = None,
-                 rev: int | None = None, hsh: str | None = None, subject_kind: str | None = None) -> str:
+                 rev: int | None = None, hsh: str | None = None, subject_kind: str | None = None, payload: dict | None = None) -> str:
         """Record an operator decision. Subject defaults: contract/dossier/topic
-        subjects are referenced by topic id; other refs must be passed."""
+        subjects are referenced by topic id; other refs must be passed. A
+        rating decision carries its rating payload (default: rates nothing)."""
         sk = subject_kind or SUBJECT_KIND[kind]
         if ref is None:
             ref = tid if sk in ("contract_revision", "dossier", "topic") else "ref-" + did
-        self.x("INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_revision, subject_hash, operator_id, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'trevor', ?)",
-               did, tid, kind, disposition, sk, ref, rev, hsh, T)
+        if kind == "rating_approval" and payload is None:
+            payload = {"facets": {}, "obligations": {}}
+        self.x("INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_revision, subject_hash, operator_id, decided_at, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'trevor', ?, ?)",
+               did, tid, kind, disposition, sk, ref, rev, hsh, T, None if payload is None else json.dumps(payload))
         return did
+
+    @staticmethod
+    def unrated(entry: dict) -> dict:
+        """The entry as it stood in the draft the operator rated (no operator rating yet)."""
+        out = copy.deepcopy(entry)
+        out["importance"]["operator_rating"] = None
+        return out
+
+    def rate(self, did: str, tid: str = TOPIC, *, facets: tuple = (), obligations: tuple = (), disposition: str = "approved",
+             parent: int | None = None, payload: dict | None = None) -> int:
+        """S3's rating step (RA2). Writes the next revision of `tid` as the draft
+        the operator rates — these entries with no operator rating — and
+        records rating decision `did` about it, whose retained payload is the
+        band/score each entry carries (or `payload`). The caller then writes the
+        rated revision (draft + 1), whose entries carry the ratings citing
+        `did`. Returns the draft revision."""
+        rev = self.rows("SELECT coalesce(max(revision), 0) + 1 FROM contract_revisions WHERE topic_id = ?", tid)[0][0]
+        self.contract(tid, rev, facets=tuple(map(self.unrated, facets)), obligations=tuple(map(self.unrated, obligations)),
+                      content_hash=self.chash(tid, rev), parent=parent)
+        if payload is None:
+            def rated(entries, key):
+                return {e[key]: {"band": e["importance"]["operator_rating"]["band"], "score": e["importance"]["operator_rating"]["score"]}
+                        for e in entries if (e["importance"]["operator_rating"] or {}).get("operator_decision_id") == did}
+            payload = {"facets": rated(facets, "facet_id"), "obligations": rated(obligations, "obligation_id")}
+        self.decision(did, "rating_approval", tid, disposition, rev=rev, hsh=self.chash(tid, rev), payload=payload)
+        return rev
 
     @staticmethod
     def _importance_columns(entry: dict) -> tuple:
@@ -155,11 +187,11 @@ class StoreTestCase(unittest.TestCase):
         citing that decision, and is approved (any earlier approved revision is
         superseded first). Returns n + 1."""
         n = self.rows("SELECT coalesce(max(revision), 0) + 1 FROM contract_revisions WHERE topic_id = ?", tid)[0][0]
-        self.contract(tid, n, facets=(facet("F-1"),), obligations=(obligation("O-1", ("F-1",)),), content_hash=self.chash(tid, n))
         did = f"opd_rate{tid[-2:]}{n:02d}"
-        self.decision(did, "rating_approval", tid, rev=n, hsh=self.chash(tid, n))
         rated = dict(band="critical", score=8, decision=did)
-        self.contract_with_rows(tid, n + 1, facets=(facet("F-1", **rated),), obligations=(obligation("O-1", ("F-1",), **rated),), content_hash=self.chash(tid, n + 1))
+        entries = dict(facets=(facet("F-1", **rated),), obligations=(obligation("O-1", ("F-1",), **rated),))
+        self.rate(did, tid, **entries)
+        self.contract_with_rows(tid, n + 1, **entries, content_hash=self.chash(tid, n + 1))
         for (old,) in self.rows("SELECT revision FROM contract_revisions WHERE topic_id = ? AND status = 'approved'", tid):
             self.x("UPDATE contract_revisions SET status = 'superseded' WHERE topic_id = ? AND revision = ?", tid, old)
         self.approve_contract(tid, n + 1)
@@ -401,12 +433,9 @@ class StoreTestCase(unittest.TestCase):
         every table: test_every_table_is_populated fails if a table is added
         without extending this."""
         self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, topic_id, staged_at) VALUES (?, 10, 'application/json', ?, ?)", h("7"), TOPIC, T)
-        # S3: the operator rates draft revision 1; revision 2 carries the ratings and is approved
-        self.decision("opd_rating001", "rating_approval", rev=1, hsh=self.content_hash_of(TOPIC, 1))
-        self.contract_with_rows(TOPIC, 2, facets=(facet("F-1", band="critical", score=8, decision="opd_rating001"),),
-                                obligations=(obligation("O-1", ("F-1",), band="critical", score=8, decision="opd_rating001"),))
-        self.approve_contract(TOPIC, 2, "opd_contract1")
-        self.x("UPDATE queue_entries SET active_contract_revision = 2 WHERE topic_id = ?", TOPIC)
+        # S3: the operator rates draft revision 2; revision 3 carries the ratings and is approved
+        rev = self.approved_with_obligation(TOPIC)
+        self.x("UPDATE queue_entries SET active_contract_revision = ? WHERE topic_id = ?", rev, TOPIC)
         self.lease("lease_aaaaaaaa", 1)
         self.invocation("inv_pppppppp")
         self.to_running("inv_pppppppp")
@@ -414,7 +443,7 @@ class StoreTestCase(unittest.TestCase):
         self.x("UPDATE invocations SET state = 'outcome_unknown', outcome_unknown_since = ? WHERE invocation_id = 'inv_pppppppp'", T)
         self.reconcile("inv_pppppppp", "found_running")
         self.x("UPDATE invocations SET state = 'running' WHERE invocation_id = 'inv_pppppppp'")
-        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, 1, 2, 1, 'eval-1', ?, ?, ?)", TOPIC, h("3"), h("7"), T)
+        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, 1, ?, 1, 'eval-1', ?, ?, ?)", TOPIC, rev, h("3"), h("7"), T)
         self.receipt("op_00000001", "inv_pppppppp", kind="final_outcome", before=0)
         self.x("INSERT INTO research_ordinals VALUES (?, 1, 'inv_pppppppp', 'op_00000001')", TOPIC)
         self.x("INSERT INTO review_episodes (episode_id, topic_id, kind, opened_at, opened_by_operation_id) VALUES ('ep-1', ?, 'method_fit', ?, 'op_00000001')", TOPIC, T)
@@ -428,10 +457,10 @@ class StoreTestCase(unittest.TestCase):
         self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000001', 'doi', '10.1/x', ?)", T)
         self.x("INSERT INTO record_work_links (event_id, work_id, dedup_method_version, linked_at) VALUES ('e1', 'wrk_00000001', 'dedup-1', ?)", T)
         self.x("INSERT INTO screening_assessments (assessment_id, topic_id, work_id, contract_revision, eligibility_protocol_version, framing_version, stage, decision, reason_code, criterion_results, actor_kind, invocation_id, recorded_by_operation_id, created_at) "
-               "VALUES ('sa1', ?, 'wrk_00000001', 2, 1, 1, 'abstract', 'include', NULL, '{}', 'primary', 'inv_pppppppp', 'op_00000001', ?)", TOPIC, T)
+               "VALUES ('sa1', ?, 'wrk_00000001', ?, 1, 1, 'abstract', 'include', NULL, '{}', 'primary', 'inv_pppppppp', 'op_00000001', ?)", TOPIC, rev, T)
         self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000001', 1, ?, ?, 'inv_pppppppp', 1, 'full_text', 'provisional', ?)", TOPIC, h("7"), T)
         self.x("INSERT INTO claim_source_links (claim_id, claim_revision, work_id, source_version, topic_id, contract_revision, obligation_id, spans, contribution, evidence_origin_lineage, created_at) "
-               "VALUES ('clm_00000001', 1, 'wrk_00000001', 'v1', ?, 2, 'O-1', '[]', 'answer', 'study-1', ?)", TOPIC, T)
+               "VALUES ('clm_00000001', 1, 'wrk_00000001', 'v1', ?, ?, 'O-1', '[]', 'answer', 'study-1', ?)", TOPIC, rev, T)
         self.lease("lease_vvvvvvvv", 2, scope="verification")
         self.invocation("inv_vvvvvvvv", kind="verification", lease="lease_vvvvvvvv")
         self.quote_check("qc-1")

@@ -325,8 +325,49 @@ CREATE TABLE facets (
       OR (operator_importance_band = 'limited' AND operator_importance_score BETWEEN 1 AND 3))
 ) STRICT;
 
--- A2/A3: the same rating/proposal binding as obligations, plus equality with
--- the facet's entry in the revision's document (the hash-locked content).
+-- G-2 / G-13 (Astra re-review RA2): an operator rating is exactly what the
+-- operator rated. The rating decision cannot be about the revision that
+-- carries its ID (that would be a self-hash cycle), so it is about an
+-- earlier DRAFT — and not an arbitrary one: an ANCESTOR of this revision
+-- (parent_revision chain) whose entry for this facet is the same subject,
+-- defined exactly as here (the whole entry minus its importance object; the
+-- router stores documents in their canonical JCS form, so equal entries are
+-- equal text and a reordered one fails closed), and the decision's retained
+-- rating payload gives this facet exactly this band and score. So an empty
+-- or unrelated draft authorizes nothing, a rating cannot be changed or
+-- invented under an old decision, and an unchanged rating carries forward.
+-- (Defined before the document binding below: SQLite fires the most recently
+-- created trigger first, so a row is first checked against its document.)
+CREATE TRIGGER facets_rating_is_what_the_operator_rated
+BEFORE INSERT ON facets
+WHEN NEW.operator_rating_decision_id IS NOT NULL AND NOT EXISTS (
+  SELECT 1
+  FROM operator_decisions d, json_each(d.payload, '$.facets') p,
+       contract_revisions rated, json_each(rated.document, '$.facet_map.facets') re,
+       contract_revisions here, json_each(here.document, '$.facet_map.facets') he
+  WHERE d.decision_id = NEW.operator_rating_decision_id
+    AND d.kind = 'rating_approval' AND d.disposition = 'approved'
+    AND d.topic_id = NEW.topic_id
+    AND d.subject_revision IN (
+          WITH RECURSIVE lineage(rev) AS (
+            SELECT parent_revision FROM contract_revisions WHERE topic_id = NEW.topic_id AND revision = NEW.contract_revision
+            UNION SELECT c.parent_revision FROM contract_revisions c JOIN lineage l ON c.topic_id = NEW.topic_id AND c.revision = l.rev)
+          SELECT rev FROM lineage)
+    AND p.key = NEW.facet_id
+    AND json_extract(p.value, '$.band') IS NEW.operator_importance_band
+    AND json_extract(p.value, '$.score') IS NEW.operator_importance_score
+    AND rated.topic_id = d.topic_id AND rated.revision = d.subject_revision
+    AND json_extract(re.value, '$.facet_id') IS NEW.facet_id
+    AND here.topic_id = NEW.topic_id AND here.revision = NEW.contract_revision
+    AND json_extract(he.value, '$.facet_id') IS NEW.facet_id
+    AND json_remove(he.value, '$.importance') IS json_remove(re.value, '$.importance'))
+BEGIN
+  SELECT RAISE(ABORT, 'a facet rating is exactly what the operator rated: an approved rating decision of this topic about an ancestor draft defining this facet exactly as here, whose payload gives it this band and score (G-2, RA2)');
+END;
+
+-- A3: a facet row equals its entry in the revision's document (the
+-- hash-locked content); a Jev proposal cites this topic's importance_score
+-- receipt. (The operator rating is bound by the trigger above.)
 CREATE TRIGGER facets_bound_to_document_and_decision
 BEFORE INSERT ON facets
 WHEN NOT EXISTS (
@@ -339,18 +380,12 @@ WHEN NOT EXISTS (
          AND json_extract(e.value, '$.importance.operator_rating.band') IS NEW.operator_importance_band
          AND json_extract(e.value, '$.importance.operator_rating.score') IS NEW.operator_importance_score
          AND json_extract(e.value, '$.importance.operator_rating.operator_decision_id') IS NEW.operator_rating_decision_id)
-  OR (NEW.operator_rating_decision_id IS NOT NULL AND NOT EXISTS (
-        SELECT 1 FROM operator_decisions d
-        WHERE d.decision_id = NEW.operator_rating_decision_id
-          AND d.kind = 'rating_approval' AND d.disposition = 'approved'
-          AND d.topic_id = NEW.topic_id
-          AND d.subject_revision < NEW.contract_revision))
   OR (NEW.proposed_decision_receipt_id IS NOT NULL AND NOT EXISTS (
         SELECT 1 FROM decision_receipts r
         WHERE r.decision_receipt_id = NEW.proposed_decision_receipt_id
           AND r.topic_id = NEW.topic_id AND r.decision_class = 'importance_score'))
 BEGIN
-  SELECT RAISE(ABORT, 'a facet row must equal its document entry, and its rating/proposal must cite this topic''s approved rating decision / importance_score receipt (A3)');
+  SELECT RAISE(ABORT, 'a facet row must equal its document entry, and its proposal must cite this topic''s importance_score receipt (A3)');
 END;
 
 CREATE TRIGGER facets_immutable BEFORE UPDATE ON facets
@@ -398,25 +433,48 @@ CREATE TABLE obligations (
       OR (operator_importance_band = 'limited' AND operator_importance_score BETWEEN 1 AND 3))
 ) STRICT;
 
--- A2: an operator rating names an approved rating decision of the same
--- topic whose subject is an EARLIER revision of this contract (the draft the
--- operator rated; the rated revision's document then carries the rating, so
--- the decision cannot be about the document that contains its own ID). A
--- proposed Jev score names a same-topic importance_score decision receipt.
-CREATE TRIGGER obligations_rating_bound_to_decision
+-- A2: a proposed Jev score names a same-topic importance_score decision
+-- receipt.
+CREATE TRIGGER obligations_proposal_cites_importance_receipt
 BEFORE INSERT ON obligations
-WHEN (NEW.operator_rating_decision_id IS NOT NULL AND NOT EXISTS (
-        SELECT 1 FROM operator_decisions d
-        WHERE d.decision_id = NEW.operator_rating_decision_id
-          AND d.kind = 'rating_approval' AND d.disposition = 'approved'
-          AND d.topic_id = NEW.topic_id
-          AND d.subject_revision < NEW.contract_revision))
-  OR (NEW.proposed_decision_receipt_id IS NOT NULL AND NOT EXISTS (
+WHEN NEW.proposed_decision_receipt_id IS NOT NULL AND NOT EXISTS (
         SELECT 1 FROM decision_receipts r
         WHERE r.decision_receipt_id = NEW.proposed_decision_receipt_id
-          AND r.topic_id = NEW.topic_id AND r.decision_class = 'importance_score'))
+          AND r.topic_id = NEW.topic_id AND r.decision_class = 'importance_score')
 BEGIN
-  SELECT RAISE(ABORT, 'an obligation rating must cite an approved rating decision about an earlier revision of this topic; a proposal must cite this topic''s importance_score receipt (A2)');
+  SELECT RAISE(ABORT, 'an obligation proposal must cite this topic''s importance_score receipt (A2)');
+END;
+
+-- G-2 / G-13 (RA2): the same binding as facets_rating_is_what_the_operator_rated
+-- — an approved rating decision of this topic about an ancestor draft whose
+-- entry is this obligation defined exactly as here (template, slots, text,
+-- facet tags, traces, exploratory flag, stopping profile), and whose retained
+-- payload gives it exactly this band and score.
+CREATE TRIGGER obligations_rating_is_what_the_operator_rated
+BEFORE INSERT ON obligations
+WHEN NEW.operator_rating_decision_id IS NOT NULL AND NOT EXISTS (
+  SELECT 1
+  FROM operator_decisions d, json_each(d.payload, '$.obligations') p,
+       contract_revisions rated, json_each(rated.document, '$.obligations') re,
+       contract_revisions here, json_each(here.document, '$.obligations') he
+  WHERE d.decision_id = NEW.operator_rating_decision_id
+    AND d.kind = 'rating_approval' AND d.disposition = 'approved'
+    AND d.topic_id = NEW.topic_id
+    AND d.subject_revision IN (
+          WITH RECURSIVE lineage(rev) AS (
+            SELECT parent_revision FROM contract_revisions WHERE topic_id = NEW.topic_id AND revision = NEW.contract_revision
+            UNION SELECT c.parent_revision FROM contract_revisions c JOIN lineage l ON c.topic_id = NEW.topic_id AND c.revision = l.rev)
+          SELECT rev FROM lineage)
+    AND p.key = NEW.obligation_id
+    AND json_extract(p.value, '$.band') IS NEW.operator_importance_band
+    AND json_extract(p.value, '$.score') IS NEW.operator_importance_score
+    AND rated.topic_id = d.topic_id AND rated.revision = d.subject_revision
+    AND json_extract(re.value, '$.obligation_id') IS NEW.obligation_id
+    AND here.topic_id = NEW.topic_id AND here.revision = NEW.contract_revision
+    AND json_extract(he.value, '$.obligation_id') IS NEW.obligation_id
+    AND json_remove(he.value, '$.importance') IS json_remove(re.value, '$.importance'))
+BEGIN
+  SELECT RAISE(ABORT, 'an obligation rating is exactly what the operator rated: an approved rating decision of this topic about an ancestor draft defining this obligation exactly as here, whose payload gives it this band and score (G-2, RA2)');
 END;
 
 -- A3: an obligation row equals its document entry (facet tags and
@@ -829,6 +887,10 @@ END;
 -- subjects are not store rows yet (intake briefs arrive in 0b), so only
 -- their shape is checked. Consuming gates then re-check kind, disposition,
 -- topic and exact subject.
+-- A rating decision retains what the operator rated (RA2): payload =
+-- {"facets": {facet_id: {"band", "score"}}, "obligations": {obligation_id:
+-- {"band", "score"}}}, every key an entry of the rated draft (its subject
+-- revision). Immutable with the decision; no other kind carries a payload.
 CREATE TABLE operator_decisions (
   decision_id TEXT PRIMARY KEY CHECK (decision_id GLOB 'opd_*'),
   topic_id TEXT REFERENCES queue_entries (topic_id),
@@ -846,6 +908,9 @@ CREATE TABLE operator_decisions (
   operator_id TEXT NOT NULL,
   decided_at TEXT NOT NULL,
   notes TEXT,
+  payload TEXT CHECK (payload IS NULL OR json_valid(payload)),
+  CHECK ((kind = 'rating_approval') = (payload IS NOT NULL)),
+  CHECK (kind != 'rating_approval' OR (json_type(payload, '$.facets') IS 'object' AND json_type(payload, '$.obligations') IS 'object')),
   CHECK ((kind = 'brief_confirmation' AND subject_kind = 'intake_brief')
       OR (kind = 'scope_approval' AND subject_kind = 'scoping_report')
       OR (kind IN ('rating_approval', 'contract_approval', 'amendment_approval', 'reframe_approval') AND subject_kind = 'contract_revision')
@@ -876,6 +941,25 @@ WHEN (NEW.subject_kind = 'contract_revision' AND NOT EXISTS (
         SELECT 1 FROM decision_receipts r WHERE r.decision_receipt_id = NEW.subject_ref AND r.topic_id = NEW.topic_id))
 BEGIN
   SELECT RAISE(ABORT, 'an operator decision must name an existing subject of its topic with that exact revision and hash (A2)');
+END;
+
+-- RA2: a rating payload names only subjects of the draft it is about, with a
+-- band from the vocabulary (the score/band fit is the rated rows' CHECK).
+CREATE TRIGGER operator_decisions_rating_payload_of_its_draft
+BEFORE INSERT ON operator_decisions
+WHEN NEW.kind = 'rating_approval' AND (
+     EXISTS (SELECT 1 FROM json_each(NEW.payload, '$.facets') p
+             WHERE coalesce(json_extract(p.value, '$.band'), '') NOT IN ('critical', 'important', 'limited')
+                OR NOT EXISTS (SELECT 1 FROM contract_revisions c, json_each(c.document, '$.facet_map.facets') e
+                               WHERE c.topic_id = NEW.topic_id AND c.revision = NEW.subject_revision
+                                 AND json_extract(e.value, '$.facet_id') IS p.key))
+  OR EXISTS (SELECT 1 FROM json_each(NEW.payload, '$.obligations') p
+             WHERE coalesce(json_extract(p.value, '$.band'), '') NOT IN ('critical', 'important', 'limited')
+                OR NOT EXISTS (SELECT 1 FROM contract_revisions c, json_each(c.document, '$.obligations') e
+                               WHERE c.topic_id = NEW.topic_id AND c.revision = NEW.subject_revision
+                                 AND json_extract(e.value, '$.obligation_id') IS p.key)))
+BEGIN
+  SELECT RAISE(ABORT, 'a rating payload rates only entries of the draft the decision is about, each with a band (RA2)');
 END;
 
 CREATE TRIGGER operator_decisions_immutable_u BEFORE UPDATE ON operator_decisions
