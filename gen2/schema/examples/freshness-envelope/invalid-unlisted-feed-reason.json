@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "freshness-envelope.schema.json",
+    "expect": "invalid",
+    "tests": "A11: feed-issue reasons are a closed vocabulary (no free-text relabeling of failure as success)",
+    "base": "valid-early-feed-failure-degraded.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/facts/surveillance_currency/feed_issues/S-retract",
+        "value": "empty"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "enum",
+        "path": "/facts/surveillance_currency/feed_issues/S-retract"
+      }
+    ]
+  }
+}

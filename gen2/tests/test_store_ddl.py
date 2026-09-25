@@ -628,16 +628,18 @@ class VerificationTest(StoreTestCase):
 
 
 class ObservationTest(StoreTestCase):
-    INSERT = ("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, error_class, capability_fact_id, policy_version) "
-              "VALUES (?, 'inv_pppppppp', ?, ?, 1, 'crossref', '{}', '[]', ?, ?, ?, ?, ?, 'pol1')")
+    INSERT = ("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, error_class, capability_fact_id, policy_version, completeness) "
+              "VALUES (?, 'inv_pppppppp', ?, ?, 1, 'crossref', '{}', '[]', ?, ?, ?, ?, ?, 'pol1', ?)")
 
     def setUp(self) -> None:
         super().setUp()
         self.lease("lease_aaaaaaaa", 1)
         self.invocation("inv_pppppppp")
 
-    def obs(self, oid: str, state: str, count, error=None, fact=None, ident: str = "1") -> None:
-        self.x(self.INSERT, oid, TOPIC, h(ident), T, state, count, error, fact)
+    def obs(self, oid: str, state: str, count, error=None, fact=None, ident: str = "1", completeness: str | None = None) -> None:
+        if completeness is None:
+            completeness = "complete" if state in ("searched_ok", "searched_empty", "metadata_only") else "unobserved"
+        self.x(self.INSERT, oid, TOPIC, h(ident), T, state, count, error, fact, completeness)
 
     def test_degraded_search_cannot_report_zero(self) -> None:
         with self.assertRaises(sqlite3.IntegrityError):
@@ -703,8 +705,27 @@ class ObservationTest(StoreTestCase):
         """A10: search_observations binds its invocation's topic."""
         self.lease("lease_zzzzzzzz", 1, tid=OTHER)
         self.invocation("inv_oooooooo", tid=OTHER, lease="lease_zzzzzzzz")
-        self.rejects("invocation of its own topic", self.INSERT.replace("'inv_pppppppp'", "'inv_oooooooo'"), "o1", TOPIC, h("1"), T, "searched_ok", 3, None, None)
-        self.x(self.INSERT.replace("'inv_pppppppp'", "'inv_oooooooo'"), "o1", OTHER, h("1"), T, "searched_ok", 3, None, None)
+        self.rejects("invocation of its own topic", self.INSERT.replace("'inv_pppppppp'", "'inv_oooooooo'"), "o1", TOPIC, h("1"), T, "searched_ok", 3, None, None, "complete")
+        self.x(self.INSERT.replace("'inv_pppppppp'", "'inv_oooooooo'"), "o1", OTHER, h("1"), T, "searched_ok", 3, None, None, "complete")
+
+    def test_partial_results_are_kept_and_marked_incomplete(self) -> None:
+        """A11 / RG-4: a partial result set keeps its observed records (count as a
+        lower bound, retrieval events captured) and says why it is partial; it is
+        never searched_empty, a degraded search never claims an observed result
+        set, and a complete successful search carries no error."""
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.obs("o1", "searched_ok", 5, completeness="partial")  # partial must say why
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.obs("o1", "searched_empty", 0, "partial_pagination", completeness="partial")  # an empty page is not an empty search
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.obs("o1", "provider_unavailable", None, "provider_outage", completeness="complete")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.obs("o1", "searched_ok", 5, completeness="unobserved")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.obs("o1", "searched_ok", 5, "timeout", completeness="complete")  # a complete result set has no error
+        self.obs("o1", "searched_ok", 5, "partial_pagination", completeness="partial")
+        self.x("INSERT INTO retrieval_events (event_id, observation_id, topic_id, provider_record_id, captured_at) VALUES ('e1', 'o1', ?, 'rec-1', ?)", TOPIC, T)
+        self.assertEqual(self.rows("SELECT completeness, result_count, error_class FROM search_observations"), [("partial", 5, "partial_pagination")])
 
     def test_retrieval_events_only_from_successful_searches(self) -> None:
         self.obs("o1", "provider_unavailable", None, "timeout")

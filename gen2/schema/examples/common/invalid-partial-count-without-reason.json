@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "common.schema.json#/$defs/observed_count",
+    "expect": "invalid",
+    "tests": "A11/RG-4: a partial count says why it is partial",
+    "base": "valid-partial-count.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/reason"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "oneOf",
+        "path": ""
+      }
+    ]
+  }
+}

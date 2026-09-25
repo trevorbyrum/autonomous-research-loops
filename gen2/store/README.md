@@ -49,6 +49,7 @@
   - leaving `outcome_unknown` needs a reconciliation record of that episode supporting the target (L-4)
   - `running` requires job handle, host, boot identity and start fingerprint; there is no PID column
   - identity, admission/config pins, and observed process identity (host and container included) are write-once
+- **Unknown is not zero; partial is not complete** (RG-4, RG-U, A11): an observed result set is `complete` or `partial` (records kept, count a lower bound, error class says why); a degraded search observed none (`unobserved`); `searched_empty` is only complete.
 - **Unknown is not zero** (RG-4, RG-U):
   - result counts exist only for `searched_ok` / `searched_empty` / `metadata_only`
   - degraded coverage states need an error class
@@ -97,7 +98,7 @@
 - **Stopping-rule evaluation and dossier assembly** (accounting); freshness-envelope computation (projector).
 - **Byte-level quote matching and normalization;** tier-0 invocation.
 - **Operational behavior:** transition alerts on capability facts, hold deadline escalation, verification capacity reservation, retry budgets.
-- **Consistency of the JSON documents beyond their bound fields**, and timestamp format — validated against `gen2/schema/` at the router boundary.
+- **Consistency of the JSON documents beyond their bound fields** — validated against `gen2/schema/` at the router boundary. **Timestamps** are validated there as real calendar instants by `gen2/core/instants.py` (the schema's `date-time` format; the pattern alone admits February 31); the DDL stores router-validated text and does not re-validate (A11).
 - **Semantic comparisons the DDL cannot make (A10) — router contract, to be tested before these rows feed accounting (Phase 1/2):**
   - a search observation's `result_count` against the retrieval events actually captured for it (complete / partial / unknown capture kept distinct from zero);
   - a screening receipt's selected option against the assessment's include/exclude/borderline decision, and its criterion results against the eligibility protocol version;

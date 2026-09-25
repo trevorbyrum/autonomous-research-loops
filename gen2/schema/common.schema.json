@@ -11,8 +11,9 @@
       "pattern": "^sha256:[0-9a-f]{64}$"
     },
     "timestamp": {
-      "description": "UTC instant, RFC 3339 with a literal Z. A pattern rather than `format` so it is always enforced.",
+      "description": "UTC instant, RFC 3339 with a literal Z, naming a real calendar instant. The pattern is only a shape pre-filter (it admits February 31); calendar validity is the `date-time` format, checked by gen2/core/instants.py:is_utc_instant — the one validator, applied at the router's schema-validation boundary and registered by tools/check_gen2_schemas.py (Astra 0a review A11). The store keeps router-validated text and does not re-validate.",
       "type": "string",
+      "format": "date-time",
       "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]{1,9})?Z$"
     },
     "fleet_id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"},
@@ -98,8 +99,14 @@
       ]
     },
     "observed_count": {
-      "description": "A count that may be unobserved. Unknown is a distinct state with a reason, never 0 (invariant RG-U; flow §4.3).",
+      "description": "A count that may be unobserved or only partly observed. Unknown is a distinct state with a reason, never 0 (invariant RG-U; flow §4.3). Partial (A11/RG-4): the records actually observed are kept and counted, the value is a lower bound, and the reason says why the rest is missing — it never supports exhausted coverage, negative evidence or saturation.",
       "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "value", "reason"],
+          "properties": {"status": {"const": "partial"}, "value": {"type": "integer", "minimum": 0}, "reason": {"$ref": "#/$defs/short_text"}}
+        },
         {
           "type": "object",
           "additionalProperties": false,

@@ -1,0 +1,12 @@
+{
+  "fixture": {
+    "schema": "common.schema.json#/$defs/observed_count",
+    "expect": "valid",
+    "tests": "A11/RG-4: a partial result keeps its observed count as a lower bound with the reason, distinct from a complete count and from unknown"
+  },
+  "instance": {
+    "status": "partial",
+    "value": 40,
+    "reason": "pagination failed after page 2 (partial_pagination)"
+  }
+}

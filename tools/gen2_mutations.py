@@ -515,6 +515,17 @@ MUTATIONS: list[Mutation] = [
              scope="screening_assessments_bound", old=" AND o.topic_id = NEW.topic_id AND", new=" AND"),
     Mutation("A10-observation-invocation-topic", "A10", "an observation may be recorded under another topic's invocation (the review's probe)",
              (OB + "test_observation_invocation_is_of_its_topic",), drop_trigger="search_observations_invocation_topic"),
+    # --- A11: partial results kept and marked (RG-4) -------------------------------
+    Mutation("A11-completeness-tied-to-coverage", "A11", "completeness no longer tied to the coverage state", (OB + "test_partial_results_are_kept_and_marked_incomplete",),
+             old="  CHECK ((coverage_state IN ('searched_ok', 'searched_empty', 'metadata_only')) = (completeness != 'unobserved')),\n", new=""),
+    Mutation("A11-searched-empty-only-complete", "A11", "an empty partial page may read as an empty search", (OB + "test_partial_results_are_kept_and_marked_incomplete",),
+             old="  CHECK (coverage_state != 'searched_empty' OR completeness = 'complete'),\n", new=""),
+    Mutation("A11-partial-says-why", "A11", "a partial result need not name its error class", (OB + "test_partial_results_are_kept_and_marked_incomplete",),
+             old="  CHECK (completeness != 'partial' OR error_class IS NOT NULL),\n", new=""),
+    Mutation("A11-complete-has-no-error", "A11", "a complete successful search may carry an error", (OB + "test_partial_results_are_kept_and_marked_incomplete",),
+             old="  CHECK (coverage_state NOT IN ('searched_ok', 'searched_empty') OR completeness = 'partial' OR error_class IS NULL),", new="  CHECK (1),"),
+    Mutation("A11-old-partial-ban", "A11", "over-restriction restored: a partial result may keep no count/error (the review's A11 finding)", (OB + "test_partial_results_are_kept_and_marked_incomplete",),
+             old="  CHECK (coverage_state NOT IN ('searched_ok', 'searched_empty') OR completeness = 'partial' OR error_class IS NULL),", new="  CHECK (coverage_state NOT IN ('searched_ok', 'searched_empty') OR error_class IS NULL),"),
     # --- A9: capability supersession --------------------------------------
     Mutation("A9-successor-fk-immediate", "A9", "successor FK checked immediately (the documented transaction cannot run)",
              (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",),

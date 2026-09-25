@@ -2,18 +2,18 @@
   "fixture": {
     "schema": "freshness-envelope.schema.json",
     "expect": "invalid",
-    "tests": "P-6/RG-U: an overdue feed cannot be reported current",
-    "base": "valid-dead-feed-degraded.json",
+    "tests": "A11/P-6: degraded currency says which feed and why",
+    "base": "valid-early-feed-failure-degraded.json",
     "patch": [
       {
         "op": "replace",
-        "path": "/facts/surveillance_currency/status",
-        "value": "current"
+        "path": "/facts/surveillance_currency/feed_issues",
+        "value": {}
       }
     ],
     "errors": [
       {
-        "keyword": "maxProperties",
+        "keyword": "minProperties",
         "path": "/facts/surveillance_currency/feed_issues"
       }
     ]

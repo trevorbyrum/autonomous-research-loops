@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "freshness-envelope.schema.json",
+    "expect": "invalid",
+    "tests": "A11: 29 February 2026 does not exist",
+    "base": "valid-dead-feed-degraded.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/generated_at",
+        "value": "2026-02-29T12:00:00Z"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "format",
+        "path": "/generated_at"
+      }
+    ]
+  }
+}

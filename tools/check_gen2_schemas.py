@@ -22,7 +22,9 @@ Checks, in order (any failure exits 1; a missing validator exits 2):
      every foreign key targets an existing primary key or unique index.
 
 Uses the `jsonschema` package (dev-only; see gen2/requirements-dev.txt) as the
-independent metaschema/validation oracle. Gen-2 runtime code never imports it
+independent metaschema/validation oracle. The `date-time` format is asserted
+with gen2/core/instants.py:is_utc_instant — the same calendar validator the
+router boundary uses (A11) — so a fixture naming February 31 fails. Gen-2 runtime code never imports it
 (the boundary graph forbids third-party imports).
 
 Trace: task 0a deliverables 2-4.
@@ -175,6 +177,15 @@ def check_schemas(root: Path, headings: set[str]) -> tuple[list[str], int, int]:
         except jsonschema.SchemaError as exc:
             failures.append(f"{rel}: fails the 2020-12 metaschema: {exc.message} at {'/'.join(map(str, exc.absolute_path))}")
         store[schema.get("$id", rel)] = schema
+    sys.path.insert(0, str(root))
+    from gen2.core.instants import is_utc_instant
+
+    format_checker = jsonschema.FormatChecker(formats=())
+
+    @format_checker.checks("date-time")
+    def _utc_instant(instance) -> bool:
+        return not isinstance(instance, str) or is_utc_instant(instance)
+
     resolvers = {}
     for sid, schema in store.items():
         resolver = jsonschema.RefResolver(base_uri=sid, referrer=schema, store=store)
@@ -194,7 +205,7 @@ def check_schemas(root: Path, headings: set[str]) -> tuple[list[str], int, int]:
         if fragment:
             _, sub = resolvers[sid].resolve(f"{sid}#{fragment}")
             schema = sub
-        return jsonschema.Draft202012Validator(schema, resolver=resolvers[sid])
+        return jsonschema.Draft202012Validator(schema, resolver=resolvers[sid], format_checker=format_checker)
 
     n_valid = n_invalid = 0
     examples = schema_dir / "examples"

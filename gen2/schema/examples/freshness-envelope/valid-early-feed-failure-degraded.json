@@ -2,7 +2,7 @@
   "fixture": {
     "schema": "freshness-envelope.schema.json",
     "expect": "valid",
-    "tests": "P-3/P-4: a failed Qdrant sink leaves publication partial, completion intact, retrieval pinned to a coherent generation"
+    "tests": "A11: a feed whose latest observation failed before its next due time makes currency degraded, truthfully, without claiming it is overdue"
   },
   "instance": {
     "envelope_version": "freshness-envelope/1",
@@ -39,9 +39,11 @@
         "status": "partial"
       },
       "surveillance_currency": {
-        "status": "current",
-        "as_of": "2026-09-25T06:00:00Z",
-        "feed_issues": {}
+        "status": "degraded",
+        "as_of": "2026-09-25T12:00:00Z",
+        "feed_issues": {
+          "S-retract": "failed_before_due"
+        }
       }
     }
   }

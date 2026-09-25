@@ -12,20 +12,18 @@
     "projected_revision": 12,
     "approval_status": "approved",
     "manifest_generation_served": 1,
-    "sinks": [
-      {
-        "sink": "neo4j",
+    "sinks": {
+      "neo4j": {
         "delivered_generation": 2,
         "last_successful_delivery_at": "2026-09-25T12:05:00Z",
         "status": "delivered"
       },
-      {
-        "sink": "qdrant",
+      "qdrant": {
         "delivered_generation": 1,
         "last_successful_delivery_at": "2026-09-04T18:39:13Z",
         "status": "failed"
       }
-    ],
+    },
     "mixed_generation": {
       "detected": true,
       "resolution": "pinned"
@@ -43,9 +41,9 @@
       "surveillance_currency": {
         "status": "degraded",
         "as_of": "2026-09-21T19:47:00Z",
-        "overdue_feeds": [
-          "S-retract"
-        ]
+        "feed_issues": {
+          "S-retract": "overdue"
+        }
       }
     }
   }

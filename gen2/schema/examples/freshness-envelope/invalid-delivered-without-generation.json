@@ -7,14 +7,14 @@
     "patch": [
       {
         "op": "replace",
-        "path": "/sinks/0/delivered_generation",
+        "path": "/sinks/neo4j/delivered_generation",
         "value": null
       }
     ],
     "errors": [
       {
         "keyword": "type",
-        "path": "/sinks/0/delivered_generation"
+        "path": "/sinks/neo4j/delivered_generation"
       }
     ]
   }

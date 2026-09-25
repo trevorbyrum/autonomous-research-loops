@@ -1205,6 +1205,14 @@ END;
 -- BOUNDARIES.md Gateway; INVARIANTS RG-4, RG-U, E-2, H-2, H-5.
 -- A result count exists only for a successful search state; every degraded
 -- state carries an error class, and NULL means unknown — never 0.
+-- completeness (Astra 0a review A11; INVARIANTS RG-4): a result set that was
+-- observed is 'complete' or 'partial' (e.g. pagination failed midway: the
+-- records seen are real and kept — retrieval events may be captured for them
+-- — but result_count is then only a lower bound and the error class says why);
+-- a degraded search observed no result set ('unobserved'). A partial
+-- observation never establishes exhausted coverage, negative evidence or
+-- saturation (accounting reads completeness), and searched_empty is only
+-- ever complete.
 CREATE TABLE search_observations (
   observation_id TEXT PRIMARY KEY,
   invocation_id TEXT NOT NULL REFERENCES invocations (invocation_id),
@@ -1220,6 +1228,7 @@ CREATE TABLE search_observations (
     'searched_ok', 'searched_empty', 'not_searched', 'provider_unavailable',
     'auth_failed', 'metadata_only', 'exhausted', 'unknown')),
   result_count INTEGER CHECK (result_count >= 0),
+  completeness TEXT NOT NULL CHECK (completeness IN ('complete', 'partial', 'unobserved')),
   error_class TEXT CHECK (error_class IN (
     'payload_invalid', 'timeout', 'rate_limited', 'breaker_open', 'budget_refused',
     'provider_outage', 'credentials_rejected', 'credentials_not_configured',
@@ -1233,7 +1242,10 @@ CREATE TABLE search_observations (
   CHECK (coverage_state != 'searched_empty' OR (result_count IS NOT NULL AND result_count = 0)),
   CHECK (coverage_state IN ('searched_ok', 'searched_empty', 'metadata_only') OR result_count IS NULL),
   CHECK (coverage_state NOT IN ('provider_unavailable', 'auth_failed', 'unknown') OR error_class IS NOT NULL),
-  CHECK (coverage_state NOT IN ('searched_ok', 'searched_empty') OR error_class IS NULL),
+  CHECK ((coverage_state IN ('searched_ok', 'searched_empty', 'metadata_only')) = (completeness != 'unobserved')),
+  CHECK (coverage_state != 'searched_empty' OR completeness = 'complete'),
+  CHECK (completeness != 'partial' OR error_class IS NOT NULL),
+  CHECK (coverage_state NOT IN ('searched_ok', 'searched_empty') OR completeness = 'partial' OR error_class IS NULL),
   CHECK (error_class IS NOT 'secrets_backend_failing' OR capability_fact_id IS NOT NULL)
 ) STRICT;
 

@@ -28,14 +28,15 @@
     "approval_status": {"enum": ["approved", "no_approved_revision"]},
     "manifest_generation_served": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]},
     "sinks": {
-      "type": "array",
-      "minItems": 1,
-      "items": {
+      "description": "Keyed by physical sink, so a sink cannot be reported twice with contradictory statuses.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"$ref": "common.schema.json#/$defs/sink"},
+      "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["sink", "delivered_generation", "last_successful_delivery_at", "status"],
+        "required": ["delivered_generation", "last_successful_delivery_at", "status"],
         "properties": {
-          "sink": {"$ref": "common.schema.json#/$defs/sink"},
           "delivered_generation": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]},
           "last_successful_delivery_at": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/timestamp"}]},
           "status": {"enum": ["delivered", "pending", "failed", "unknown"]}
@@ -85,15 +86,21 @@
         "surveillance_currency": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["status", "as_of", "overdue_feeds"],
+          "required": ["status", "as_of", "feed_issues"],
           "properties": {
             "status": {"enum": ["current", "degraded", "unknown"]},
             "as_of": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/timestamp"}]},
-            "overdue_feeds": {"type": "array", "maxItems": 100, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/local_id"}}
+            "feed_issues": {
+              "description": "Why currency is not current, per feed (Astra 0a review A11: 'overdue' is one reason among several — a feed whose latest attempt failed before its next due time is degraded too, and says so). overdue: no successful observation by its due time; failed_before_due: latest attempt failed, not yet due; never_ran: no observation recorded yet; unparseable_payload: the latest response could not be parsed (never read as zero results); cursor_lost: continuation state lost, coverage since unknown; unknown: telemetry missing.",
+              "type": "object",
+              "maxProperties": 100,
+              "propertyNames": {"$ref": "common.schema.json#/$defs/local_id"},
+              "additionalProperties": {"enum": ["overdue", "failed_before_due", "never_ran", "unparseable_payload", "cursor_lost", "unknown"]}
+            }
           },
           "allOf": [
-            {"if": {"properties": {"status": {"const": "current"}}}, "then": {"properties": {"as_of": {"type": "string"}, "overdue_feeds": {"maxItems": 0}}}},
-            {"if": {"properties": {"status": {"const": "degraded"}}}, "then": {"properties": {"overdue_feeds": {"minItems": 1}}}}
+            {"if": {"properties": {"status": {"const": "current"}}}, "then": {"properties": {"as_of": {"type": "string"}, "feed_issues": {"maxProperties": 0}}}},
+            {"if": {"properties": {"status": {"const": "degraded"}}}, "then": {"properties": {"feed_issues": {"minProperties": 1}}}}
           ]
         }
       }
@@ -103,7 +110,7 @@
     {
       "description": "Publication is complete only if every sink delivered.",
       "if": {"properties": {"facts": {"properties": {"publication": {"properties": {"status": {"const": "complete"}}}}}}},
-      "then": {"properties": {"sinks": {"items": {"properties": {"status": {"const": "delivered"}}}}}}
+      "then": {"properties": {"sinks": {"additionalProperties": {"properties": {"status": {"const": "delivered"}}}}}}
     },
     {
       "description": "Nothing approved means nothing served.",

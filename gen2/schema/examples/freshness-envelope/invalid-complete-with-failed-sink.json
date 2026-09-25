@@ -14,7 +14,7 @@
     "errors": [
       {
         "keyword": "const",
-        "path": "/sinks/1/status"
+        "path": "/sinks/qdrant/status"
       }
     ]
   }

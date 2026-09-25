@@ -1,0 +1,8 @@
+{
+  "fixture": {
+    "schema": "common.schema.json#/$defs/timestamp",
+    "expect": "valid",
+    "tests": "A11: a real calendar instant (29 February of a leap year) passes the date-time format"
+  },
+  "instance": "2028-02-29T23:59:59Z"
+}
