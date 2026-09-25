@@ -69,6 +69,7 @@ LT = "test_store_ddl.InvocationLifecycleTest."
 DC = "test_store_ddl.DecisionReceiptConsistencyTest."
 SD = "test_store_ddl.ScreeningAndDecisionTest."
 OB = "test_store_ddl.ObservationTest."
+VO = "test_store_ddl.DraftVocabularyTransitionTest."
 
 MUTATIONS: list[Mutation] = [
     # --- A1: history cannot be rewritten ------------------------------------
@@ -526,6 +527,32 @@ MUTATIONS: list[Mutation] = [
              old="  CHECK (coverage_state NOT IN ('searched_ok', 'searched_empty') OR completeness = 'partial' OR error_class IS NULL),", new="  CHECK (1),"),
     Mutation("A11-old-partial-ban", "A11", "over-restriction restored: a partial result may keep no count/error (the review's A11 finding)", (OB + "test_partial_results_are_kept_and_marked_incomplete",),
              old="  CHECK (coverage_state NOT IN ('searched_ok', 'searched_empty') OR completeness = 'partial' OR error_class IS NULL),", new="  CHECK (coverage_state NOT IN ('searched_ok', 'searched_empty') OR error_class IS NULL),"),
+    # --- R2.5: draft vocabularies with explicit transition semantics --------------
+    *(Mutation(f"R2.5-queue-{key}", "R2.5", desc, (VO + "test_queue_status_transitions",), scope="queue_status_transitions", old=old, new=new)
+      for key, desc, old, new in (
+          ("revive-retired", "retired topics may be requeued", "  OR (OLD.status = 'completed_with_qualified_conclusions' AND NEW.status IN ('queued', 'retired')))",
+           "  OR (OLD.status = 'completed_with_qualified_conclusions' AND NEW.status IN ('queued', 'retired'))\n  OR (OLD.status = 'retired' AND NEW.status = 'queued'))"),
+          ("skip-intake", "intake may jump straight to active", "(OLD.status = 'awaiting_brief_confirmation' AND NEW.status IN ('scoping', 'retired'))",
+           "(OLD.status = 'awaiting_brief_confirmation' AND NEW.status IN ('scoping', 'active', 'retired'))"),
+          ("complete-from-queued", "a queued (never active) topic may complete", "(OLD.status = 'queued' AND NEW.status IN ('active', 'held', 'capability_blocked', 'retired'))",
+           "(OLD.status = 'queued' AND NEW.status IN ('active', 'held', 'capability_blocked', 'completed_with_qualified_conclusions', 'retired'))"),
+          ("resource-stop-as-completion", "a resource stop may be relabeled as completion", "(OLD.status = 'stopped_for_resources' AND NEW.status IN ('queued', 'awaiting_judgment', 'retired'))",
+           "(OLD.status = 'stopped_for_resources' AND NEW.status IN ('queued', 'awaiting_judgment', 'completed_with_qualified_conclusions', 'retired'))"),
+          ("drop-contract-approval-to-queued", "over-restriction: an approved contract can no longer be queued",
+           "(OLD.status = 'awaiting_contract_approval' AND NEW.status IN ('queued', 'scoping', 'retired'))", "(OLD.status = 'awaiting_contract_approval' AND NEW.status IN ('scoping', 'retired'))"))),
+    *(Mutation(f"R2.5-claim-{key}", "R2.5", desc, (VO + "test_claim_status_transitions",), scope="claims_status_transitions", old=old, new=new)
+      for key, desc, old, new in (
+          ("revive-superseded", "a superseded claim may return to provisional", "  OR (OLD.status = 'rejected' AND NEW.status = 'superseded'))",
+           "  OR (OLD.status = 'rejected' AND NEW.status = 'superseded')\n  OR (OLD.status = 'superseded' AND NEW.status = 'provisional'))"),
+          ("rejected-to-support", "a rejected claim may become accepted support", "(OLD.status = 'rejected' AND NEW.status = 'superseded')",
+           "(OLD.status = 'rejected' AND NEW.status IN ('superseded', 'accepted_support'))"),
+          ("quarantine-to-support", "a quarantined claim may skip re-capture straight to support", "(OLD.status = 'quarantined' AND NEW.status IN ('provisional', 'rejected', 'superseded'))",
+           "(OLD.status = 'quarantined' AND NEW.status IN ('provisional', 'accepted_support', 'rejected', 'superseded'))"),
+          ("drop-provisional-to-support", "over-restriction: a provisional claim can no longer be accepted",
+           "(OLD.status = 'provisional' AND NEW.status IN ('accepted_support', 'contested', 'rejected', 'quarantined', 'superseded'))",
+           "(OLD.status = 'provisional' AND NEW.status IN ('contested', 'rejected', 'quarantined', 'superseded'))"))),
+    Mutation("R2.5-mandatory-signals-not-model-raised", "R2.5", "a model observation may raise (and so be ranked below) a retraction signal",
+             (VO + "test_mandatory_signals_are_code_or_operator_raised",), old=",\n  CHECK (reason_code NOT IN ('retraction', 'decision_record_change') OR signal_source IN ('deterministic', 'operator'))", new=""),
     # --- A9: capability supersession --------------------------------------
     Mutation("A9-successor-fk-immediate", "A9", "successor FK checked immediately (the documented transaction cannot run)",
              (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",),

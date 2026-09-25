@@ -96,8 +96,8 @@ class StoreTestCase(unittest.TestCase):
 
     # -- builders --------------------------------------------------------
     def contract(self, tid: str, rev: int, status: str = "draft", approved_by: str | None = None, ch: str | None = None,
-                 facets: tuple = (), obligations: tuple = ()) -> str:
-        content = h(ch or ("a" if tid == TOPIC else "b") if rev == 1 else ch or str(rev))
+                 facets: tuple = (), obligations: tuple = (), content_hash: str | None = None) -> str:
+        content = content_hash or h(ch or ("a" if tid == TOPIC else "b") if rev == 1 else ch or str(rev))
         doc = json.dumps({"topic_id": tid, "revision": rev, "content_hash": content, "protocol_revision": 1,
                           "facet_map": {"framing_version": 1, "facets": list(facets)}, "obligations": list(obligations)})
         self.x("INSERT INTO contract_revisions (topic_id, revision, parent_revision, protocol_revision, framing_version, content_hash, document, status, approved_by_decision_id, created_at) VALUES (?, ?, ?, 1, 1, ?, ?, ?, ?, ?)",
@@ -153,6 +153,25 @@ class StoreTestCase(unittest.TestCase):
 
     def set_status(self, tid: str, status: str, decision: str | None = None) -> None:
         self.x("UPDATE queue_entries SET status = ?, status_decision_id = ?, state_revision = state_revision + 1 WHERE topic_id = ?", status, decision, tid)
+
+    # One allowed path from intake to each status (hand-written from the draft
+    # queue vocabulary in gen2/store/README.md; the DDL trigger is under test).
+    QUEUE_PATH = {
+        "awaiting_brief_confirmation": (), "scoping": ("scoping",),
+        "awaiting_scope_approval": ("scoping", "awaiting_scope_approval"),
+        "awaiting_contract_approval": ("scoping", "awaiting_scope_approval", "awaiting_contract_approval"),
+        "queued": ("scoping", "awaiting_scope_approval", "awaiting_contract_approval", "queued"),
+        "active": ("scoping", "awaiting_scope_approval", "awaiting_contract_approval", "queued", "active"),
+        "resting": ("scoping", "awaiting_scope_approval", "awaiting_contract_approval", "queued", "active", "resting"),
+        "held": ("scoping", "awaiting_scope_approval", "awaiting_contract_approval", "queued", "held"),
+        "capability_blocked": ("scoping", "awaiting_scope_approval", "awaiting_contract_approval", "queued", "capability_blocked"),
+        "stopped_for_resources": ("scoping", "awaiting_scope_approval", "awaiting_contract_approval", "queued", "active", "stopped_for_resources"),
+        "awaiting_judgment": ("scoping", "awaiting_scope_approval", "awaiting_contract_approval", "queued", "active", "awaiting_judgment"),
+    }
+
+    def walk_to(self, tid: str, status: str) -> None:
+        for step in self.QUEUE_PATH[status]:
+            self.set_status(tid, step)
 
     def state_revision(self, tid: str = TOPIC) -> int:
         return self.rows("SELECT state_revision FROM queue_entries WHERE topic_id = ?", tid)[0][0]

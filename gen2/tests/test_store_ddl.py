@@ -1246,7 +1246,7 @@ class ContractGovernanceTest(StoreTestCase):
         contract; under the active contract while it is unapproved)."""
         self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'application/json', ?)", h("7"), T)
         self.approve_contract(TOPIC, 1)
-        self.set_status(TOPIC, "active")
+        self.walk_to(TOPIC, "active")
         self.x("UPDATE queue_entries SET active_contract_revision = 1 WHERE topic_id = ?", TOPIC)
         complete = "UPDATE queue_entries SET status = 'completed_with_qualified_conclusions', status_decision_id = ?, state_revision = state_revision + 1 WHERE topic_id = ?"
         refused = "completion requires operator approval"
@@ -1284,8 +1284,8 @@ class ContractGovernanceTest(StoreTestCase):
         dimension each: no decision, stale revision, disposition, topic (same
         revision number), kind (a completion approval whose subject revision
         equals the current state revision), naming (a valid decision exists but
-        another is named); and a used decision cannot be reused after
-        reactivation."""
+        another is named); and retired is final (draft vocabulary, R2.5), so a
+        used decision has no transition left to authorize."""
         self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'application/json', ?)", h("7"), T)
         retire = "UPDATE queue_entries SET status = 'retired', status_decision_id = ?, state_revision = state_revision + 1 WHERE topic_id = ?"
         refused = "retirement requires"
@@ -1305,8 +1305,7 @@ class ContractGovernanceTest(StoreTestCase):
         self.decision("opd_00000001", "retirement", rev=now)
         self.rejects(refused, retire, "opd_stale000", TOPIC)  # a valid decision exists, but is not the one named
         self.x(retire, "opd_00000001", TOPIC)
-        self.set_status(TOPIC, "active")
-        self.rejects(refused, retire, "opd_00000001", TOPIC)  # reuse after reactivation: made against an earlier state
+        self.rejects("queue status transition not allowed", "UPDATE queue_entries SET status = 'queued', status_decision_id = NULL, state_revision = state_revision + 1 WHERE topic_id = ?", TOPIC)
 
     def test_terminal_statuses_cannot_be_inserted(self) -> None:
         """A2: creation is constrained to the initial intake status."""
@@ -1322,12 +1321,10 @@ class ContractGovernanceTest(StoreTestCase):
         self.rejects("advances state_revision by one", "UPDATE queue_entries SET status = 'scoping' WHERE topic_id = ?", TOPIC)
         self.set_status(TOPIC, "scoping")
         self.assertEqual(self.state_revision(), 1)
-        # the authorizing decision is recorded only with a decision-gated status, and cleared on leaving it
+        # the authorizing decision is recorded only with a decision-gated status
         self.decision("opd_00000001", "retirement", rev=self.state_revision())
-        self.rejects("CHECK constraint failed", "UPDATE queue_entries SET status = 'active', status_decision_id = 'opd_00000001', state_revision = state_revision + 1 WHERE topic_id = ?", TOPIC)
+        self.rejects("CHECK constraint failed", "UPDATE queue_entries SET status = 'awaiting_scope_approval', status_decision_id = 'opd_00000001', state_revision = state_revision + 1 WHERE topic_id = ?", TOPIC)
         self.set_status(TOPIC, "retired", "opd_00000001")
-        self.rejects("CHECK constraint failed", "UPDATE queue_entries SET status = 'active', state_revision = state_revision + 1 WHERE topic_id = ?", TOPIC)
-        self.set_status(TOPIC, "active")
 
 
 class AdmissionAndLeaseTest(StoreTestCase):
@@ -1470,6 +1467,123 @@ class AdmissionAndLeaseTest(StoreTestCase):
         self.receipt("op_00000002", "inv_vvvvvvvv", lease="lease_vvvvvvvv", gen=2, before=0, kind="final_outcome")
         self.receipt("op_00000001", "inv_pppppppp", lease="lease_aaaaaaaa", gen=1, before=1, kind="final_outcome")
         self.assertEqual(self.rows("SELECT operation_id FROM operation_receipts ORDER BY state_revision_after"), [("op_00000002",), ("op_00000001",)])
+
+
+class DraftVocabularyTransitionTest(StoreTestCase):
+    """Ruling R2.5: the draft queue and claim vocabularies carry explicit,
+    tested transition semantics. Oracles are hand-written from the README's
+    "Draft vocabularies" section, not read from the DDL."""
+
+    QUEUE = {
+        "awaiting_brief_confirmation": {"scoping", "retired"},
+        "scoping": {"awaiting_scope_approval", "held", "capability_blocked", "retired"},
+        "awaiting_scope_approval": {"awaiting_contract_approval", "scoping", "retired"},
+        "awaiting_contract_approval": {"queued", "scoping", "retired"},
+        "queued": {"active", "held", "capability_blocked", "retired"},
+        "active": {"resting", "queued", "held", "awaiting_judgment", "completed_with_qualified_conclusions", "capability_blocked", "stopped_for_resources", "retired"},
+        "resting": {"active", "queued", "held", "retired"},
+        "held": {"scoping", "awaiting_scope_approval", "awaiting_contract_approval", "queued", "retired"},
+        "capability_blocked": {"scoping", "queued", "held", "retired"},
+        "stopped_for_resources": {"queued", "awaiting_judgment", "retired"},
+        "awaiting_judgment": {"active", "queued", "completed_with_qualified_conclusions", "stopped_for_resources", "retired"},
+        "completed_with_qualified_conclusions": {"queued", "retired"},
+        "retired": set(),
+    }
+    CLAIMS = {
+        "provisional": {"accepted_support", "contested", "rejected", "quarantined", "superseded"},
+        "accepted_support": {"contested", "quarantined", "superseded"},
+        "contested": {"accepted_support", "rejected", "quarantined", "superseded"},
+        "quarantined": {"provisional", "rejected", "superseded"},
+        "rejected": {"superseded"},
+        "superseded": set(),
+    }
+    CLAIM_PATH = {"provisional": (), "accepted_support": ("accepted_support",), "contested": ("contested",), "quarantined": ("quarantined",),
+                  "rejected": ("rejected",), "superseded": ("superseded",)}
+
+    def fresh_topic(self, n: int) -> str:
+        """A new topic whose revision-1 contract is approved and active, with a
+        current dossier and a valid completion approval of it, so completion
+        and retirement attempts are decided by the transition rule alone."""
+        tid = f"fleet-a:m{n:04d}"
+        self.x("INSERT INTO queue_entries (topic_id, fleet_id, priority, status, created_at, updated_at) VALUES (?, 'fleet-a', 1, 'awaiting_brief_confirmation', ?, ?)", tid, T, T)
+        self.contract(tid, 1, content_hash="sha256:" + f"{n:060x}c0c0")
+        self.approve_contract(tid, 1, did=f"opd_ca{n:06d}")
+        self.x("UPDATE queue_entries SET active_contract_revision = 1 WHERE topic_id = ?", tid)
+        dossier_hash = "sha256:" + f"{n:060x}d0d0"
+        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, 1, 1, 1, 'eval-1', ?, ?, ?)", tid, dossier_hash, h("7"), T)
+        self.decision(f"opd_co{n:06d}", "completion_approval", tid, rev=1, hsh=dossier_hash)
+        return tid
+
+    def reach(self, tid: str, n: int, status: str) -> None:
+        if status == "completed_with_qualified_conclusions":
+            self.walk_to(tid, "active")
+            self.set_status(tid, status, f"opd_co{n:06d}")
+        elif status == "retired":
+            self.decision(f"opd_rt{n:06d}", "retirement", tid, rev=self.state_revision(tid))
+            self.set_status(tid, status, f"opd_rt{n:06d}")
+        else:
+            self.walk_to(tid, status)
+
+    def test_queue_status_transitions(self) -> None:
+        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'application/json', ?)", h("7"), T)
+        n = 0
+        for src, allowed in self.QUEUE.items():
+            for dst in self.QUEUE:
+                if dst == src:
+                    continue
+                n += 1
+                with self.subTest(src=src, dst=dst):
+                    tid = self.fresh_topic(n)
+                    self.reach(tid, n, src)
+                    decision = None
+                    if dst == "completed_with_qualified_conclusions":
+                        decision = f"opd_co{n:06d}"
+                    elif dst == "retired":
+                        decision = f"opd_rx{n:06d}"
+                        self.decision(decision, "retirement", tid, rev=self.state_revision(tid))
+                    attempt = "UPDATE queue_entries SET status = ?, status_decision_id = ?, state_revision = state_revision + 1 WHERE topic_id = ?"
+                    if dst in allowed:
+                        self.x(attempt, dst, decision, tid)
+                        self.assertEqual(self.rows("SELECT status FROM queue_entries WHERE topic_id = ?", tid), [(dst,)])
+                    else:
+                        self.rejects("queue status transition not allowed", attempt, dst, decision, tid)
+        self.assertEqual(n, 13 * 12)
+
+    def test_claim_status_transitions(self) -> None:
+        self.lease("lease_aaaaaaaa", 1)
+        self.invocation("inv_pppppppp")
+        self.lease("lease_vvvvvvvv", 2, scope="verification")
+        self.invocation("inv_vvvvvvvv", kind="verification", lease="lease_vvvvvvvv")
+        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'text/plain', ?)", h("7"), T)
+        self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000001', 'doi', '10.1/x', ?)", T)
+        n = 0
+        for src, allowed in self.CLAIMS.items():
+            for dst in self.CLAIMS:
+                if dst == src:
+                    continue
+                n += 1
+                with self.subTest(src=src, dst=dst):
+                    cid = f"clm_{n:08d}"
+                    # non-load-bearing, so accepted_support is decided by the transition rule alone
+                    self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES (?, 1, ?, ?, 'inv_pppppppp', 0, NULL, 'provisional', ?)", cid, TOPIC, h("7"), T)
+                    for step in self.CLAIM_PATH[src]:
+                        self.x("UPDATE claims SET status = ? WHERE claim_id = ?", step, cid)
+                    attempt = "UPDATE claims SET status = ? WHERE claim_id = ?"
+                    if dst in allowed:
+                        self.x(attempt, dst, cid)
+                    else:
+                        self.rejects("claim status transition not allowed", attempt, dst, cid)
+        self.assertEqual(n, 6 * 5)
+
+    def test_mandatory_signals_are_code_or_operator_raised(self) -> None:
+        """G-12 / R2.5: retraction and decision-record-change triggers are never a
+        model observation (a model may rank discretionary alerts only)."""
+        ins = "INSERT INTO review_triggers (trigger_identity, topic_id, reason_code, signal_source, cause_ref, observed_at) VALUES (?, ?, ?, ?, 'SRC-9', ?)"
+        for n, reason in enumerate(("retraction", "decision_record_change")):
+            with self.subTest(reason=reason):
+                self.rejects("CHECK constraint failed", ins, h(str(n)), TOPIC, reason, "primary_observation", T)
+                self.x(ins, h(str(n)), TOPIC, reason, "deterministic", T)
+        self.x(ins, h("9"), TOPIC, "persistent_contradiction", "primary_observation", T)  # discretionary signals may be observations
 
 
 class FacetImportanceTest(StoreTestCase):

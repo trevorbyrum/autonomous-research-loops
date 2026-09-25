@@ -93,6 +93,35 @@ BEGIN
   SELECT RAISE(ABORT, 'a status change is a commit: it advances state_revision by one (RG-1b)');
 END;
 
+-- Ruling R2.5: the queue-status vocabulary is a DRAFT with explicit
+-- transition semantics (gen2/store/README.md "Draft vocabularies" gives the
+-- owner of each move and the amendment rule). Pre-contract lane: intake ->
+-- scoping -> scope approval -> contract approval -> queued. Research lane:
+-- queued <-> active <-> resting; held / capability_blocked /
+-- stopped_for_resources / awaiting_judgment are waiting states, never
+-- scientific outcomes; completion and retirement are decision-bound (above);
+-- a completed topic may be requeued (approved amendment or mandatory
+-- surveillance review); retired is terminal.
+CREATE TRIGGER queue_status_transitions
+BEFORE UPDATE OF status ON queue_entries
+WHEN NEW.status IS NOT OLD.status AND NOT (
+     (OLD.status = 'awaiting_brief_confirmation' AND NEW.status IN ('scoping', 'retired'))
+  OR (OLD.status = 'scoping' AND NEW.status IN ('awaiting_scope_approval', 'held', 'capability_blocked', 'retired'))
+  OR (OLD.status = 'awaiting_scope_approval' AND NEW.status IN ('awaiting_contract_approval', 'scoping', 'retired'))
+  OR (OLD.status = 'awaiting_contract_approval' AND NEW.status IN ('queued', 'scoping', 'retired'))
+  OR (OLD.status = 'queued' AND NEW.status IN ('active', 'held', 'capability_blocked', 'retired'))
+  OR (OLD.status = 'active' AND NEW.status IN ('resting', 'queued', 'held', 'awaiting_judgment', 'completed_with_qualified_conclusions',
+                                                'capability_blocked', 'stopped_for_resources', 'retired'))
+  OR (OLD.status = 'resting' AND NEW.status IN ('active', 'queued', 'held', 'retired'))
+  OR (OLD.status = 'held' AND NEW.status IN ('scoping', 'awaiting_scope_approval', 'awaiting_contract_approval', 'queued', 'retired'))
+  OR (OLD.status = 'capability_blocked' AND NEW.status IN ('scoping', 'queued', 'held', 'retired'))
+  OR (OLD.status = 'stopped_for_resources' AND NEW.status IN ('queued', 'awaiting_judgment', 'retired'))
+  OR (OLD.status = 'awaiting_judgment' AND NEW.status IN ('active', 'queued', 'completed_with_qualified_conclusions', 'stopped_for_resources', 'retired'))
+  OR (OLD.status = 'completed_with_qualified_conclusions' AND NEW.status IN ('queued', 'retired')))
+BEGIN
+  SELECT RAISE(ABORT, 'queue status transition not allowed (draft vocabulary, ruling R2.5)');
+END;
+
 CREATE TRIGGER queue_topic_identity_immutable
 BEFORE UPDATE OF topic_id, fleet_id ON queue_entries
 BEGIN
@@ -1029,6 +1058,10 @@ END;
 -- episode); adjudication (a)G-A7; INVARIANTS RG-1a, RG-1b(e), G-12.
 -- trigger_identity is a deterministic hash of (topic, reason, cause ref,
 -- source revision), so a replayed trigger collides instead of re-opening.
+-- Mandatory signals (G-12; ruling R2.5): retraction and decision_record_change
+-- are raised by code policy or the operator, never by a model observation,
+-- and route to mandatory review (the surveillance policy schema already
+-- requires both, code-triaged).
 CREATE TABLE review_triggers (
   trigger_identity TEXT PRIMARY KEY CHECK (trigger_identity GLOB 'sha256:*' AND length(trigger_identity) = 71),
   topic_id TEXT NOT NULL REFERENCES queue_entries (topic_id),
@@ -1036,13 +1069,15 @@ CREATE TABLE review_triggers (
     'cadence_floor', 'persistent_contradiction', 'yield_exhaustion_open_obligations',
     'cross_context_heterogeneity', 'definitional_disagreement', 'evidence_type_mismatch',
     'inapplicable_synthesis_plan', 'out_of_frame_concepts',
-    'amendment', 'reframe', 'capability_change', 'facet_audit_due', 'calibration_due')),
+    'amendment', 'reframe', 'capability_change', 'facet_audit_due', 'calibration_due',
+    'retraction', 'decision_record_change')),
   signal_source TEXT NOT NULL CHECK (signal_source IN ('deterministic', 'primary_observation', 'operator')),
   cause_ref TEXT NOT NULL,
   observed_at TEXT NOT NULL,
   recorded_by_operation_id TEXT REFERENCES operation_receipts (operation_id),
   episode_id TEXT REFERENCES review_episodes (episode_id),
-  handled_at TEXT
+  handled_at TEXT,
+  CHECK (reason_code NOT IN ('retraction', 'decision_record_change') OR signal_source IN ('deterministic', 'operator'))
 ) STRICT;
 
 CREATE TRIGGER review_triggers_handled_is_final
@@ -1439,6 +1474,22 @@ BEFORE INSERT ON claims
 WHEN NEW.status IS NOT 'provisional'
 BEGIN
   SELECT RAISE(ABORT, 'claims are captured provisional (V-4)');
+END;
+
+-- Ruling R2.5: draft claim-status transitions (owner: the router at commit;
+-- accepted_support additionally needs its verification receipt, below).
+-- provisional is capture; quarantined returns to provisional only by
+-- re-capture; rejected can only be superseded; superseded is terminal.
+CREATE TRIGGER claims_status_transitions
+BEFORE UPDATE OF status ON claims
+WHEN NEW.status IS NOT OLD.status AND NOT (
+     (OLD.status = 'provisional' AND NEW.status IN ('accepted_support', 'contested', 'rejected', 'quarantined', 'superseded'))
+  OR (OLD.status = 'accepted_support' AND NEW.status IN ('contested', 'quarantined', 'superseded'))
+  OR (OLD.status = 'contested' AND NEW.status IN ('accepted_support', 'rejected', 'quarantined', 'superseded'))
+  OR (OLD.status = 'quarantined' AND NEW.status IN ('provisional', 'rejected', 'superseded'))
+  OR (OLD.status = 'rejected' AND NEW.status = 'superseded'))
+BEGIN
+  SELECT RAISE(ABORT, 'claim status transition not allowed (draft vocabulary, ruling R2.5)');
 END;
 
 CREATE TRIGGER claims_accepted_support_needs_receipt

@@ -127,6 +127,43 @@ These are choices this draft made where the sources leave room. Each is easy to 
 2. **Verifier independence — ruled (R2.2, blanket parent rule REJECTED).** `parent_invocation_id` is control/reservation parentage only (delegates); a verifier never has one, so a producer cannot launch or control it. `requested_by_invocation_id` is the causal link and may name the producer: supervisor-created verification requested by the producing pass is accepted.
 3. **Byte-mismatch quarantine — ruled (R2.3, ACCEPT).** An exact-quote mismatch quarantines the quote, like an NLI alarm; tested directly (D32 rewrite). Re-capture and adjudication stay explicit: an adjudication can resolve an alarm, never a mismatch.
 4. **Process identity — ruled (R2.4, MODIFY).** Identity is required while `running`; a never-observed job may be recovered through its authenticated stable handle (recorded with the launch intent) and retained result without one; every identity field once observed, host and container included, is write-once in all later states. Leaving `outcome_unknown` needs the durable `invocation_reconciliations` record of that episode (method, evidence, digest found, descendant confirmation) — a result digest alone is neither reconciliation nor descendant-cleanup evidence. Process/descendant recovery itself is Phase 1.
-5. **Queue status, claim status, reason-code and error-class vocabularies are drafts.**
+5. **Draft vocabularies — ruled (R2.5, MODIFY).** They stay drafts, but each now has explicit transition/ownership semantics (below, "Draft vocabularies") enforced in the DDL where it is a state machine, plus an amendment rule. Mandatory retraction / decision-record-change signals and the pre-contract meanings are added; unknown, resource limits and pending assessment are never relabeled as scientific outcomes.
+6. **Canonical form for content hashes — ruled (R1/R2.6, ACCEPT JCS).** Implemented with the canonicalization helper (task 0a-repair R1).
 7. **Facet coverage (A3).** Any obligation of the revision that tags a facet covers it, exploratory ones included; approval requires every facet to carry an operator rating (flow S3: ratings are approved with the framework, set and method design); an operator rating cites a `rating_approval` whose subject is an *earlier* revision (the draft the operator rated) because the rated revision's own hash covers the rating.
-6. **Canonical form for content hashes** (contract `content_hash`, `request_fingerprint`, `spec_hash`, `payload_digest`) is open: RFC 8785 JCS, or a stdlib-reproducible subset such as sorted keys, compact separators and integer-only numbers.
+
+## Draft vocabularies (ruling R2.5)
+
+Each vocabulary below is a draft: it may change only by amendment (a README/INVARIANTS change reviewed at Gate A, with its transition table and owners stated, and never by reinterpreting stored rows — the importer maps old values explicitly). None may relabel an unknown, a resource limit or a pending assessment as a scientific outcome.
+
+**Queue status** (`queue_entries.status`; transitions enforced by `queue_status_transitions`; every change is a commit that advances `state_revision`):
+
+| From | To | Owner / condition |
+|---|---|---|
+| awaiting_brief_confirmation | scoping | operator `brief_confirmation` (G-4) |
+| scoping | awaiting_scope_approval | router, on the committed scoping report |
+| awaiting_scope_approval | awaiting_contract_approval / scoping | operator `scope_approval` / rework |
+| awaiting_contract_approval | queued / scoping | operator contract approval / rework |
+| queued | active | router (lease granted) |
+| active | resting / queued | router (rest; requeue) |
+| resting | active / queued | router |
+| scoping, queued, active, resting, capability_blocked | held | router, with a typed hold (H-3) |
+| held | scoping, awaiting_scope_approval, awaiting_contract_approval, queued | the hold's clearing authority |
+| scoping, queued, active | capability_blocked | router, citing a capability fact (H-2) |
+| capability_blocked | scoping / queued / held | router when the capability recovers, or hold |
+| active | stopped_for_resources | router: a resource limit — never saturation (G-9) |
+| stopped_for_resources | queued / awaiting_judgment | budget restored / operator judgment needed |
+| active, stopped_for_resources | awaiting_judgment | router: pending an operator judgment — not an outcome |
+| awaiting_judgment | active / queued / stopped_for_resources | operator judgment |
+| active, awaiting_judgment | completed_with_qualified_conclusions | operator `completion_approval` of the current dossier (G-8, G-13) |
+| completed_with_qualified_conclusions | queued | an approved amendment, or mandatory surveillance review (G-12) |
+| every non-retired state | retired | operator `retirement` decision at the state revision being left (G-13) |
+| retired | — | terminal (reviving a retired topic would be a new topic or an explicit amendment path — to confirm) |
+
+**Claim status** (`claims.status`; enforced by `claims_status_transitions`; owner: the router at commit): `provisional` (captured) → `accepted_support` (only with its verification receipt, V-4) / `contested` / `rejected` / `quarantined` / `superseded`; `accepted_support` → `contested` / `quarantined` / `superseded`; `contested` → `accepted_support` / `rejected` / `quarantined` / `superseded`; `quarantined` → `provisional` (re-capture) / `rejected` / `superseded`; `rejected` → `superseded`; `superseded` is terminal.
+
+**Review-trigger reason codes** (`review_triggers.reason_code`): the seven method-fit codes of flow S5, the cadence floor, amendment/reframe/capability/facet-audit/calibration causes, and the mandatory `retraction` and `decision_record_change` signals (G-12), which only code policy or the operator may raise — never a model observation (CHECK). A trigger is handled once and stays handled (RG-1b(e)).
+
+**Search coverage, completeness and error classes** (`search_observations`): coverage states keep the gateway's narrow meanings plus `unknown` for lost telemetry; `completeness` says whether a result set was observed completely, partly (records kept, count a lower bound, error class says why) or not at all (A11, RG-4). Error classes name *why* a search is degraded or partial; `credentials_not_configured` and `secrets_backend_failing` are distinct (H-2: a failed secrets read is never "no key configured").
+
+**Holds** (`hold_class`, `recoverability`, `required_authority`): three separate dimensions (H-3); a hold is created open and cleared once, operator-authority holds only through an approved `hold_clearance` about that hold.
+
