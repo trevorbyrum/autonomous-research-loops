@@ -18,6 +18,11 @@ a path at the moment the importer opens it or just after it checked it, as
 the review's own probes did: real renames and symlinks in a temporary tree,
 scheduled by wrapping os.open or the importer's own check, never by changing
 what the check decides. All inputs are synthetic; no gen-1 state is read.
+The A5-R1/A5-R2 tests (Astra 0b-repair re-review) run the CLI end to end,
+on the review's own probes and on the same defects beside valid records,
+and parse what it printed. Their oracle is a printed report that names the
+defect, with the expected records and escaped text written out by hand, not
+merely the absence of an exception.
 
 What these tests cannot show: that the formats match every live gen-1
 deployment (the fixtures follow gen-1's writers, not live state, which this
@@ -742,6 +747,125 @@ class CommandTest(ImporterTestCase):
                                  (0, {"lines": 3 - bad, "malformed_lines": bad}, {"no-gen2-target", "malformed-lines"} if bad else {"no-gen2-target"}))
                 self.assertEqual(find(records_of(report, "latency"), "queue item")["mapping"], {"topic_id": "fleet-a:latency", "priority": 1})  # the rest maps as usual
         self.assertEqual(sys.get_int_max_str_digits(), limit)
+
+    def test_the_reviews_invalid_unicode_probes_get_a_report(self) -> None:
+        """Astra 0b-repair re-review A5-R1: each of these queues, alone in a
+        gen-1 root, crashed the CLI with no report. A lone surrogate (the
+        JSON escape \\ud800) reached a ref, an issue's text, or the topic id
+        and a sources key. Each now gets a report that names the defect.
+        The expected records and issue text are written out by hand, with
+        each lone surrogate shown as the six characters \\ud800."""
+        escaped = "not valid Unicode (it holds a lone surrogate), so shown escaped: each backslash doubled, each lone surrogate written \\udXXX"
+        probes = {  # queue.json -> (topics, other, [(kind, ref, issue code, its detail)])
+            "status": (r'{"version":1,"items":[{"id":"topic","status":"\ud800"}]}',
+                       [("topic", [("queue item", "topic", "maps", []), ("queue status", r"topic.status=\ud800", "unmapped", ["invalid-unicode", "unknown-status"]),
+                                   ("completion lock", "topic.completion_lock", "unmapped", ["no-lock"]),
+                                   ("accepted iterations", "topic.iterations_completed", "unmapped", ["count-unknown"]),
+                                   ("topic directory", "topic", "unmapped", ["topic-dir-not-found"])])], [],
+                       [("queue status", r"topic.status=\ud800", "invalid-unicode", "ref: " + escaped)]),
+            "unknown key": (r'{"version":1,"items":[],"\ud800":1}', [],
+                            [("queue state", "state/queue.json", "unmapped", ["invalid-unicode", "no-gen2-target", "value-unrepresentable"])],
+                            [("queue state", "state/queue.json", "no-gen2-target", r"queue-level fields with no mapping in this skeleton: \ud800"),
+                             ("queue state", "state/queue.json", "invalid-unicode", "issues[0].detail: " + escaped)]),
+            "id": (r'{"version":1,"items":[{"id":"bad\ud800id","status":"queued"}]}', [], [("queue item", "items[0]", "unmapped", ["invalid-unicode"])],
+                   [("queue item", "items[0]", "invalid-unicode", r"items[0]: its id 'bad\ud800id' is not valid Unicode (it holds a lone surrogate), so it names no gen-2 topic")]),
+        }
+        for name, (queue, topics, other, details) in probes.items():
+            with self.subTest(probe=name):
+                root = self.tmp / name.replace(" ", "-")
+                write(root / "state" / "queue.json", queue)
+                status, report = self.report_via_cli(root, "--fleet", "fleet-a")
+                self.assertEqual((status, report["blocking"]), (0, []))
+                self.assertEqual([(t["gen1_id"], as_rows(t["records"])) for t in report["topics"]], [(g, sorted(rows)) for g, rows in topics])
+                self.assertEqual(as_rows(report["other"]), sorted(other))
+                self.assertEqual(set(report["sources"]), {"state/queue.json", "state/events.jsonl", "state/stations.json"})  # no path made of the id
+                records = [r for t in report["topics"] for r in t["records"]] + report["other"]
+                for kind, ref, code, detail in details:
+                    record = find([r for r in records if r["ref"] == ref], kind)
+                    self.assertEqual([i["detail"] for i in record["issues"] if i["code"] == code], [detail])
+                self.assertEqual(report["summary"]["issues"], sum(len(r[3]) for _, rows in topics for r in rows) + sum(len(r[3]) for r in other))
+
+    def test_invalid_unicode_is_reported_beside_records_that_still_map(self) -> None:
+        """A5-R1 among valid neighbours in the same files: an item whose id
+        holds a lone surrogate; one whose status does, after a literal
+        backslash, which shows the escaping is reversible; one with such a
+        field name; a queue-level key; an obligation id; a cwd; and a topic
+        log whose file name is not UTF-8. Each is reported where it occurs,
+        escaped (each backslash doubled, each lone surrogate as \\udXXX),
+        with an invalid-unicode issue. The records around them are exactly
+        what the unedited tree gives."""
+        _, before = self.report_via_cli(self.root, "--fleet", "fleet-a")
+        cwd = json.dumps(str(self.root / "topics") + "/x")[:-1] + r'\ud800"'
+
+        def edit(queue):
+            queue["@@KEY@@"] = 1
+            queue["items"] += [{"id": "@@ID@@", "status": "queued"}, {"id": "odd-status", "status": "@@STATUS@@"},
+                               {"id": "odd-field", "status": "queued", "@@FIELD@@": True}, {"id": "odd-cwd", "cwd": "@@CWD@@", "status": "queued"}]
+        self.edit_queue(edit, {"@@KEY@@": r'"\ud800"', "@@ID@@": r'"bad\ud800id"', "@@STATUS@@": r'"\\\ud800"', "@@FIELD@@": r'"f\udfff"', "@@CWD@@": cwd})
+        semantic = self.root / "topics" / "latency" / "SEMANTIC-STATE.json"
+        state = json.loads(semantic.read_text(encoding="utf-8"))
+        state["obligations"].append({"id": "OB-\ud800", "text": "x", "disposition": "open"})
+        write(semantic, json.dumps(state))  # json.dumps writes the surrogate as the escape \ud800
+        with open(os.path.join(os.fsencode(self.root / "topics" / "latency" / "logs"), b"\xff.jsonl"), "wb") as handle:
+            handle.write(b'{"source": "crossref"}\n')
+        status, after = self.report_via_cli(self.root, "--fleet", "fleet-a")
+        self.assertEqual((status, after["blocking"]), (0, []))
+        for gen1_id in ("latency", "discovery.latency"):  # both read topics/latency
+            with self.subTest(topic=gen1_id):
+                new = {gen1_id + r"#OB-\ud800": ("obligation", "partial", ["invalid-unicode", "obligation-contract-fields-missing", "obligation-id-not-a-local-id",
+                                                                             "value-unrepresentable"]),
+                       gen1_id + r"/logs/\udcff.jsonl": ("history", "unmapped", ["invalid-unicode", "no-gen2-target"])}
+                records = records_of(after, gen1_id)
+                self.assertEqual([r for r in records if r["ref"] not in new], records_of(before, gen1_id))
+                self.assertEqual(as_rows([r for r in records if r["ref"] in new]), sorted((k, ref, s, c) for ref, (k, s, c) in new.items()))
+        self.assertEqual(after["topics"][1:4], before["topics"][1:4])
+        expected = {
+            "odd-status": [("queue item", "odd-status", "maps", []), ("queue status", r"odd-status.status=\\\ud800", "unmapped", ["invalid-unicode", "unknown-status"]),
+                           ("topic directory", "odd-status", "unmapped", ["topic-dir-not-found"])],
+            "odd-field": [("queue item", "odd-field", "maps", []), ("queue status", "odd-field.status=queued", "partial", ["contract-approval-unrecorded"]),
+                          ("unmapped fields", "odd-field.fields", "unmapped", ["invalid-unicode", "no-gen2-target", "value-unrepresentable"]),
+                          ("topic directory", "odd-field", "unmapped", ["topic-dir-not-found"])],
+            "odd-cwd": [("queue item", "odd-cwd", "maps", []), ("queue status", "odd-cwd.status=queued", "partial", ["contract-approval-unrecorded"]),
+                        ("topic directory", "odd-cwd", "unmapped", ["topic-dir-not-found", "value-unrepresentable"])],
+        }
+        self.assertEqual([t["gen1_id"] for t in after["topics"][5:]], list(expected))
+        for topic in after["topics"][5:]:
+            gen1_id = topic["gen1_id"]
+            self.assertEqual(as_rows(topic["records"]), sorted(expected[gen1_id] + [("completion lock", f"{gen1_id}.completion_lock", "unmapped", ["no-lock"]),
+                                                                                     ("accepted iterations", f"{gen1_id}.iterations_completed", "unmapped", ["count-unknown"])]))
+        other_before = {r["ref"]: r for r in before["other"]}
+        self.assertEqual([r for r in after["other"] if r["ref"] in ("state/events.jsonl", "state/stations.json")],
+                         [other_before["state/events.jsonl"], other_before["state/stations.json"]])
+        self.assertEqual(as_rows([r for r in after["other"] if r["ref"] not in ("state/events.jsonl", "state/stations.json")]), sorted([
+            ("queue state", "state/queue.json", "unmapped", ["invalid-unicode", "no-gen2-target", "value-unrepresentable"]),
+            ("queue item", "items[5]", "unmapped", ["invalid-unicode"]),
+            ("unread input", r"topics/x\ud800", "unmapped", ["input-refused", "invalid-unicode"]),
+            ("source path", r"topics/latency/logs/\udcff.jsonl", "unmapped", ["invalid-unicode"]),
+            ("source path", r"topics/x\ud800", "unmapped", ["invalid-unicode"])]))
+        queue_state = find(after["other"], "queue state")
+        self.assertEqual(queue_state["issues"][0]["detail"], r"queue-level fields with no mapping in this skeleton: paused, revision, \ud800")
+        self.assertEqual(find(records_of(after, "odd-field"), "unmapped fields")["issues"][0]["detail"], r"queue item fields with no mapping in this skeleton: f\udfff")
+        self.assertEqual(find(after["other"], "source path", "logs")["mapping"], {"status": "read (23 bytes)"})
+        self.assertEqual(set(after["sources"]) - set(before["sources"]), set())  # the two paths that are not text are records, not keys
+
+    def test_a_root_path_or_fleet_that_is_not_valid_unicode_is_reported(self) -> None:
+        """A5-R1 in the report's own fields: a gen-1 root whose path is not
+        UTF-8 (\\udcff once decoded) and a fleet holding a lone surrogate are
+        shown escaped, with a blocking invalid-unicode issue naming them,
+        and the topics are still mapped. A missing root's blocking issue,
+        which quotes the path, is escaped too."""
+        odd = self.tmp / "gen1-\udcff"
+        gen1_tree(odd)
+        status, report = self.report_via_cli(odd, "--fleet", "fleet-\ud800")
+        self.assertEqual((status, report["gen1_root"], report["fleet_id"]), (1, str(self.tmp.resolve()) + r"/gen1-\udcff", r"fleet-\ud800"))
+        self.assertEqual([(i["code"], i["detail"].split(":")[0]) for i in report["blocking"]], [("invalid-unicode", "gen1_root, fleet_id")])
+        self.assertEqual([t["gen1_id"] for t in report["topics"]], ["latency", "Mixed.Case", "running-one", "big", "discovery.latency"])
+        self.assertEqual(codes(find(records_of(report, "latency"), "queue item")), {"fleet-invalid"})
+        self.assertEqual(find(records_of(report, "latency"), "intake brief")["status"], "partial")  # read through the root's odd path
+        status, report = self.report_via_cli(self.tmp / "absent-\udcfe", "--fleet", "fleet-a")
+        self.assertEqual((status, [(i["code"], i["detail"].split(":")[0]) for i in report["blocking"]]),
+                         (1, [("no-gen1-root", str(self.tmp.resolve()) + r"/absent-\udcfe is not a directory"), ("invalid-unicode", "gen1_root, blocking[0].detail")]))
+        self.assertEqual(report["fleet_id"], "fleet-a")
 
 
 if __name__ == "__main__":

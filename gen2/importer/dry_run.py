@@ -58,6 +58,9 @@ claiming one gen-2 identity, and numerals that are not exactly what they
 would be read as. A numeral the parser cannot convert (past the
 interpreter's integer-conversion limit, or with an exponent past Decimal's
 range) makes its file or JSONL line unparseable, reported as such (A5-R2).
+Text that is not valid Unicode (a lone surrogate) is shown escaped wherever
+the report carries it, with an invalid-unicode issue saying so, and a queue
+item whose id is such text is reported by position (A5-R1).
 """
 from __future__ import annotations
 
@@ -188,6 +191,34 @@ def _issue(code: str, detail: str, needs: str) -> dict:
     return {"code": code, "detail": detail, "needs": needs}
 
 
+def _is_text(text: str) -> bool:
+    """Whether a string is valid Unicode, so that JSON text can carry it. A
+    lone surrogate, from a gen-1 JSON escape (\\ud800) or a file name that is
+    not UTF-8, is not."""
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+def _text(text: str, where: str, escaped: list[str]) -> str:
+    """`text` for the report (A5-R1): unchanged when it is valid Unicode.
+    Otherwise it is escaped reversibly, each backslash doubled and each lone
+    surrogate written \\udXXX, and `where` is added to `escaped` for the
+    caller to report. The escaped form is a locator and is never taken for
+    the name itself."""
+    if _is_text(text):
+        return text
+    escaped.append(where)
+    return text.replace("\\", "\\\\").encode("utf-8", "backslashreplace").decode("utf-8")
+
+
+def _escaped_issue(escaped: list[str], needs: str) -> dict:
+    return _issue("invalid-unicode", f"{', '.join(escaped)}: not valid Unicode (it holds a lone surrogate), so shown escaped: "
+                  "each backslash doubled, each lone surrogate written \\udXXX", needs)
+
+
 def _inexact(value: object) -> list[str]:
     if isinstance(value, InexactNumeral):
         return [value.token]
@@ -211,6 +242,13 @@ def _record(kind: str, ref: str, target: str | None, mapping: dict, issues: list
         except (canonical.CanonicalizationError, RecursionError) as exc:
             mapping[key] = None
             issues.append(_issue("value-unrepresentable", f"{key}: {exc}", "operator: resolve before import"))
+    escaped: list[str] = []  # A5-R1: the ref and issue text quote gen-1 names and values
+    ref = _text(ref, "ref", escaped)
+    for n, issue in enumerate(issues):
+        for field in issue:
+            issue[field] = _text(issue[field], f"issues[{n}].{field}", escaped)
+    if escaped:
+        issues.append(_escaped_issue(escaped, "operator: correct the gen-1 name or record (nothing is substituted for it)"))
     status = "unmapped" if unmapped or target is None else ("partial" if issues else "maps")
     return {"gen1": kind, "ref": ref, "gen2_target": target, "status": status, "mapping": mapping, "issues": issues}
 
@@ -739,9 +777,15 @@ def map_gen1(reader: Gen1Reader, fleet: str | None) -> dict:
     valid_ids = [item["id"] for item in items or [] if isinstance(item, dict) and isinstance(item.get("id"), str)]
     taken: set[str] = set()
     for index, item in enumerate(items or []):
+        malformed = None
         if not isinstance(item, dict) or not isinstance(item.get("id"), str):
             what = "not an object" if not isinstance(item, dict) else f"its id is {_type_name(item.get('id'))} ({_show(item.get('id'))}), not a string"
-            record = _record("queue item", f"items[{index}]", None, {}, [_issue("queue-shape", f"items[{index}]: {what}", "operator")], unmapped=True)
+            malformed = _issue("queue-shape", f"items[{index}]: {what}", "operator")
+        elif not _is_text(item["id"]):  # A5-R1: no topic id, report locator or path can be made of it
+            malformed = _issue("invalid-unicode", f"items[{index}]: its id {_show(item['id'])} is not valid Unicode (it holds a lone surrogate), so it names no gen-2 topic",
+                               "operator: correct the gen-1 record (nothing is substituted for it)")
+        if malformed:
+            record = _record("queue item", f"items[{index}]", None, {}, [malformed], unmapped=True)
             if stale is not None:
                 record["issues"].append(_issue("stale-snapshot", stale, "the managed store's state"))
             other.append(record)
@@ -807,14 +851,28 @@ def _topic_dir(reader: Gen1Reader, cwd: object, gen1_id: str) -> PurePosixPath |
 
 
 def _report(reader: Gen1Reader, fleet: str | None, blocking: list[dict], topics: list[dict], other: list[dict]) -> dict:
+    sources = {}
+    for path, status in sorted(reader.sources.items()):
+        if _is_text(path) and _is_text(status):
+            sources[path] = status
+        else:  # A5-R1: sources is keyed by path text, which this path is not; its record carries it escaped
+            other.append(_record("source path", path, None, {"status": status}, [], unmapped=True))
+    escaped: list[str] = []
+    root = _text(str(reader.root), "gen1_root", escaped)
+    fleet_id = None if fleet is None else _text(fleet, "fleet_id", escaped)
+    for n, issue in enumerate(blocking):
+        for field in issue:
+            issue[field] = _text(issue[field], f"blocking[{n}].{field}", escaped)
+    if escaped:
+        blocking.append(_escaped_issue(escaped, "operator: a gen-1 root path and a fleet id that are valid Unicode"))
     records = [r for t in topics for r in t["records"]] + other
     summary = {status: sum(1 for r in records if r["status"] == status) for status in ("maps", "partial", "unmapped")}
     summary["records"] = len(records)
     summary["issues"] = sum(len(r["issues"]) for r in records) + len(blocking)
     summary["blocking"] = len(blocking)
     return {"report_version": REPORT_VERSION, "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "gen1_root": str(reader.root), "fleet_id": fleet, "writes": "none: dry run (no gen-2 store, no gen-1 file)",
-            "sources": dict(sorted(reader.sources.items())), "blocking": blocking, "topics": topics, "other": other, "summary": summary}
+            "gen1_root": root, "fleet_id": fleet_id, "writes": "none: dry run (no gen-2 store, no gen-1 file)",
+            "sources": sources, "blocking": blocking, "topics": topics, "other": other, "summary": summary}
 
 
 def render(report: dict) -> str:
