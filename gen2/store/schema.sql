@@ -365,8 +365,9 @@ CREATE TABLE facets (
 -- rating payload gives this facet exactly this band and score. So an empty
 -- or unrelated draft authorizes nothing, a rating cannot be changed or
 -- invented under an old decision, and an unchanged rating carries forward.
--- (Defined before the document binding below: SQLite fires the most recently
--- created trigger first, so a row is first checked against its document.)
+-- This trigger and the document binding below both only refuse, so a row
+-- either refuses is refused whichever fires first; nothing here depends on
+-- SQLite's trigger order, and tests accept either reason where both apply.
 CREATE TRIGGER facets_rating_is_what_the_operator_rated
 BEFORE INSERT ON facets
 WHEN NEW.operator_rating_decision_id IS NOT NULL AND NOT EXISTS (

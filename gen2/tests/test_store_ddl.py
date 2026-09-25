@@ -197,15 +197,18 @@ class InvocationLifecycleTest(StoreTestCase):
         before = self.snapshot("invocations")
         fresh = "takes a fresh identity on entry"
         self.rejects(refused, exit_running)  # direct exit: episode 2 has no record
-        for label, sql, params, fragment in (
-                ("the review's rewind of the start time", "UPDATE invocations SET outcome_unknown_since = ? WHERE invocation_id = 'inv_disc0001'", (T,), fresh),
-                ("identity rewritten to the reconciled episode", "UPDATE invocations SET unknown_episode = 1 WHERE invocation_id = 'inv_disc0001'", (), fresh),
-                ("identity skipped ahead while active", "UPDATE invocations SET unknown_episode = 3 WHERE invocation_id = 'inv_disc0001'", (), fresh),
-                # in one statement with the exit, the exit's own gate (it reads the episode being left) refuses first
-                ("rewind and exit in one statement", "UPDATE invocations SET outcome_unknown_since = ?, state = 'running' WHERE invocation_id = 'inv_disc0001'", (T,), refused),
-                ("identity rewritten and exit in one statement", "UPDATE invocations SET unknown_episode = 1, state = 'running' WHERE invocation_id = 'inv_disc0001'", (), refused)):
+        for label, sql, params, reasons in (
+                ("the review's rewind of the start time", "UPDATE invocations SET outcome_unknown_since = ? WHERE invocation_id = 'inv_disc0001'", (T,), (fresh,)),
+                ("identity rewritten to the reconciled episode", "UPDATE invocations SET unknown_episode = 1 WHERE invocation_id = 'inv_disc0001'", (), (fresh,)),
+                ("identity skipped ahead while active", "UPDATE invocations SET unknown_episode = 3 WHERE invocation_id = 'inv_disc0001'", (), (fresh,)),
+                # in one statement with the exit, both the exit's gate (it reads the episode being left) and the
+                # identity guard refuse; which reports first is SQLite's trigger order, not the invariant
+                ("rewind and exit in one statement", "UPDATE invocations SET outcome_unknown_since = ?, state = 'running' WHERE invocation_id = 'inv_disc0001'", (T,), (refused, fresh)),
+                ("identity rewritten and exit in one statement", "UPDATE invocations SET unknown_episode = 1, state = 'running' WHERE invocation_id = 'inv_disc0001'", (), (refused, fresh))):
             with self.subTest(attack=label):
-                self.rejects(fragment, sql, *params)
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.x(sql, *params)
+                self.assertTrue(any(reason in str(ctx.exception) for reason in reasons), str(ctx.exception))
                 self.assertEqual(self.snapshot("invocations"), before)
         self.reconcile("inv_disc0001", "found_running")  # episode 2's own record
         self.x(exit_running)
@@ -2210,14 +2213,18 @@ class FacetImportanceTest(StoreTestCase):
         doc_entry = facet("F-1", band="critical", score=8, decision="opd_rate0001")
         d = self.rate("opd_rate0001", facets=(doc_entry,))
         self.contract(TOPIC, d + 1, facets=(doc_entry,))
-        for field, row in (("band", facet("F-1", band="important", decision="opd_rate0001")),
-                           ("score", facet("F-1", band="critical", score=9, decision="opd_rate0001")),
-                           ("unrated", facet("F-1")),
-                           ("absent", facet("F-9", band="critical", score=8, decision="opd_rate0001"))):
+        # a rated probe that differs from what the operator rated is refused by the
+        # rating binding too; which of the two reports first is SQLite's trigger
+        # order, not the invariant, so either reason is accepted there
+        document, rating = "equal its document entry", "exactly what the operator rated"
+        for field, row, reasons in (("band", facet("F-1", band="important", decision="opd_rate0001"), (document, rating)),
+                                    ("score", facet("F-1", band="critical", score=9, decision="opd_rate0001"), (document, rating)),
+                                    ("unrated", facet("F-1"), (document,)),
+                                    ("absent", facet("F-9", band="critical", score=8, decision="opd_rate0001"), (document, rating))):
             with self.subTest(field=field):
                 with self.assertRaises(sqlite3.IntegrityError) as ctx:
                     self.insert_facet(TOPIC, d + 1, row)
-                self.assertIn("equal its document entry", str(ctx.exception))
+                self.assertTrue(any(reason in str(ctx.exception) for reason in reasons), str(ctx.exception))
         self.insert_facet(TOPIC, d + 1, doc_entry)
 
     def test_facet_rating_bound_to_a_rating_decision(self) -> None:
@@ -2328,15 +2335,19 @@ class FacetImportanceTest(StoreTestCase):
         self.contract(TOPIC, d + 1, facets=(facet("F-1"), facet("F-1b")), obligations=(entry, obligation("O-2", ("F-9",))))
         self.insert_facet(TOPIC, d + 1, facet("F-1"))
         self.insert_facet(TOPIC, d + 1, facet("F-1b"))
-        # each row differs from its entry in one field; the rating it carries is
-        # the entry's own (so the rating binding, which reads the documents, passes)
-        for name, row in (("facet tags (another facet of the revision)", obligation("O-1", ("F-1", "F-1b"), band="important", decision="opd_rate0001")),
-                          ("band", obligation("O-1", ("F-1",), band="critical", decision="opd_rate0001")),
-                          ("unrated row for a rated entry", obligation("O-1", ("F-1",)))):
+        # each row differs from its entry in one field. The rating binding reads
+        # the documents, so it passes the tag probe and has nothing to check on
+        # the unrated one; the band probe also differs from what the operator
+        # rated, so the rating binding refuses it too (either reason is accepted:
+        # which reports first is SQLite's trigger order, not the invariant)
+        document, rating = "equal its document entry", "exactly what the operator rated"
+        for name, row, reasons in (("facet tags (another facet of the revision)", obligation("O-1", ("F-1", "F-1b"), band="important", decision="opd_rate0001"), (document,)),
+                                   ("band", obligation("O-1", ("F-1",), band="critical", decision="opd_rate0001"), (document, rating)),
+                                   ("unrated row for a rated entry", obligation("O-1", ("F-1",)), (document,))):
             with self.subTest(field=name):
                 with self.assertRaises(sqlite3.IntegrityError) as ctx:
                     self.insert_obligation(TOPIC, d + 1, row)
-                self.assertIn("equal its document entry", str(ctx.exception))
+                self.assertTrue(any(reason in str(ctx.exception) for reason in reasons), str(ctx.exception))
         # RA6: the protocol fields accounting reads (the review's probe values)
         for column, value in (("template_id", "T-approved"), ("template_version", 3), ("claim_type", "mechanism"),
                               ("stopping_profile_id", "SP-approved"), ("exploratory", 1)):
