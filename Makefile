@@ -14,9 +14,9 @@ PYTHON ?= $(GEN2_VENV)/bin/python
 
 GEN2_SQLITE_REPORT ?=
 
-.PHONY: gen2-check gen2-venv gen2-sqlite gen2-boundaries gen2-schemas gen2-ddl gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount
+.PHONY: gen2-check gen2-venv gen2-sqlite gen2-boundaries gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount
 
-gen2-check: gen2-sqlite gen2-boundaries gen2-schemas gen2-ddl gen2-test gen2-trigger-order gen2-mutation gen2-size
+gen2-check: gen2-sqlite gen2-boundaries gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size
 	@echo "gen2-check: all checks passed"
 
 # (Re)built when either lock changes; `venv --clear` starts from an empty
@@ -50,6 +50,17 @@ gen2-schemas: gen2-venv
 
 gen2-ddl: gen2-venv
 	$(PYTHON) tools/check_gen2_schemas.py --part ddl
+
+# The generated key catalog and .env example (task 0c deliverable 2): both are
+# derived from the gateway source registry, which is the one source of truth.
+# gen2-catalog-check (part of gen2-check) fails when the registry and either
+# artifact disagree — a new or changed source that was not regenerated, and a
+# hand edit of either generated file. gen2-catalog rewrites them.
+gen2-catalog: gen2-venv
+	$(PYTHON) tools/gen_source_catalog.py
+
+gen2-catalog-check: gen2-venv
+	$(PYTHON) tools/gen_source_catalog.py --check
 
 gen2-test: gen2-venv
 	$(PYTHON) -m unittest discover -s gen2/tests -p 'test_*.py'

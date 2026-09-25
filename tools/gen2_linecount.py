@@ -36,10 +36,15 @@ CODE_SUFFIXES = {".py", ".sh"}
 # list omitted tools/gen2_mutations.py and tools/gen2_jcs_cross_vectors.js).
 BUILD_TOOLING = {
     "tools/check_boundaries.py",
+    "tools/gen_source_catalog.py",
     "Makefile",
     ".github/workflows/gen2-check.yml",
 }
 BUILD_TOOLING_PREFIXES = ("tools/gen2_", "tools/check_gen2_")
+# Gen-2 deployment artifacts outside gen2/ (task 0c): generated or hand-written
+# deployment config the gen-2 build owns. Counted as `config` so a generated
+# artifact cannot grow unreported.
+GEN2_DEPLOY_PREFIXES = ("deploy/gen2",)
 DR_BASELINE = {"research_loops": 14_333, "gateway/research_gateway": 7_894}
 
 
@@ -62,6 +67,8 @@ def category(rel: str) -> str | None:
         return "build_tooling"
     if rel.startswith("docs/gen2/"):
         return "docs"
+    if rel.startswith(GEN2_DEPLOY_PREFIXES):
+        return "config"
     if not rel.startswith("gen2/"):
         return None
     if rel.startswith("gen2/tests/"):
