@@ -75,6 +75,7 @@
         "topic_id",
         "request_fingerprint",
         "payload_digest",
+        "hash_contract",
         "admission",
         "committed_at",
         "state_revision_before",
@@ -94,6 +95,7 @@
           "$ref": "common.schema.json#/$defs/sha256"
         },
         "payload_digest": {"$ref": "common.schema.json#/$defs/sha256"},
+        "hash_contract": {"$ref": "common.schema.json#/$defs/commit_hash_contract"},
         "admission": {"$ref": "common.schema.json#/$defs/admission_context"},
         "committed_at": {"$ref": "common.schema.json#/$defs/timestamp"},
         "state_revision_before": {"$ref": "common.schema.json#/$defs/state_revision"},

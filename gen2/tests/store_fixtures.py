@@ -40,6 +40,17 @@ SUBJECT_KIND = {
 }
 
 
+DROP = object()  # a receipt_overrides value: remove this top-level field from the receipt JSON
+
+
+def _override(body: dict, overrides: dict | None) -> None:
+    for key, value in (overrides or {}).items():
+        if value is DROP:
+            body.pop(key, None)
+        else:
+            body[key] = value
+
+
 def h(ch: str) -> str:
     return "sha256:" + ch * 64
 
@@ -329,6 +340,7 @@ class StoreTestCase(unittest.TestCase):
             adm["brief_confirmation_decision_id"] = confirmation
         return {"receipt_version": "commit-receipt/1", "receipt_id": rid, "operation_id": op, "operation_kind": kind,
                 "invocation_id": inv, "topic_id": tid, "request_fingerprint": fingerprint, "payload_digest": digest,
+                "hash_contract": {"canonicalization": "jcs-rfc8785/1", "fingerprint": "commit-fingerprint/1"},
                 "admission": adm, "committed_at": T, "state_revision_before": before, "state_revision_after": before + 1,
                 "validation": {"validator_version": validator, "policy_version": policy, "validated_hashes": [digest]},
                 "effects": {"evidence_revision": None, "research_ordinal": None, "queue_transition": None, "lease_release": None,
@@ -339,10 +351,10 @@ class StoreTestCase(unittest.TestCase):
                 rid: str | None = None, digest: str = "d", admission: tuple | None = None, receipt_overrides: dict | None = None) -> None:
         """A commit receipt carrying the invocation's own admission pins (pass
         `admission=(context, contract_revision, brief_hash)` to probe a mismatch;
-        receipt_overrides replace top-level JSON fields)."""
+        receipt_overrides replace top-level JSON fields; DROP removes one)."""
         rid = rid or "rcpt_" + op[3:]
         body = self.receipt_body(op, rid, kind, inv, tid, before, digest=h(digest), admission=admission)
-        body.update(receipt_overrides or {})
+        _override(body, receipt_overrides)
         context = body["admission"]["context"]
         contract_rev = (body["admission"].get("contract") or {}).get("revision") if admission is None else admission[1]
         brief_hash = (body["admission"].get("brief") or {}).get("content_hash") if admission is None else admission[2]
@@ -441,6 +453,7 @@ class StoreTestCase(unittest.TestCase):
         digest = None if raw is None else (self.raw_artifact(h(raw)) if stage_raw else h(raw))
         spec_id = self.rows("SELECT spec_id FROM decision_specs WHERE spec_hash = ?", spec_hash)
         doc = {"receipt_version": "decision-receipt/1", "decision_receipt_id": did, "invocation_id": inv, "topic_id": tid, "decided_at": T,
+               "hash_contract": {"canonicalization": "jcs-rfc8785/1"},
                "spec": {"spec_id": spec_id[0][0] if spec_id else "dspec_unknown", "spec_hash": spec_hash}, "decision_class": cls, "provider": provider,
                "subject": {"kind": subject[0], "ref": subject[1]},
                "input_manifest": {"snapshot_digest": h("6"), "input_record_ids": [], "input_status": input_status},
@@ -451,7 +464,7 @@ class StoreTestCase(unittest.TestCase):
                "authorization": {"authority_level": authority, "qualification_ref": qualification},
                "action": action, "outcome": {"commit_operation_id": commit_op, "proposal_ref": proposal, "hold_id": hold},
                "blind_sample": {"selected": blind, "initial_disposition_ref": None}}
-        doc.update(receipt_overrides or {})
+        _override(doc, receipt_overrides)
         cols = {"decision_receipt_id": did, "invocation_id": inv, "topic_id": tid, "spec_hash": spec_hash, "decision_class": cls, "provider": provider,
                 "input_status": input_status, "response_status": status, "raw_response_digest": digest,
                 "answer": None if answer is None else json.dumps(answer), "subject_kind": subject[0], "subject_ref": subject[1],

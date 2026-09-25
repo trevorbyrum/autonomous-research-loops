@@ -22,6 +22,13 @@ partial row:
     classified here (a test enforces it).
   * Generated increments (next_in_sequence, advance) apply the same bound
     to the value they generate, before it is written.
+  * Receipts record the frozen hashing contract their hashes were computed
+    under (Astra 0a ruling R1, frozen in 0b): a commit receipt's
+    hash_contract is FROZEN_HASH_CONTRACTS["operation_receipts"]
+    (canonicalization and request fingerprint), and a decision receipt's is
+    the canonicalization alone (its spec_hash is logical; it has no
+    fingerprint). The DDL admits only these versions too; this check ties
+    them to the versions canonical.py actually computes.
 
 Writes run only inside transaction() (BEGIN IMMEDIATE ... COMMIT), and any
 exception rolls the whole transaction back (INVARIANTS C-4: one short
@@ -59,7 +66,12 @@ FLAG_COLUMNS = frozenset({"load_bearing", "blind_sample", "exploratory", "quote_
 SCORE_COLUMNS = frozenset({"proposed_importance_score", "operator_importance_score"})  # 1-9, the DDL's CHECKs
 MEASURE_COLUMNS = frozenset({"size_bytes", "priority", "result_count", "cost_units", "rank", "span_start", "span_end"})
 
-_IDENT = re.compile(r"\A[a-z_][a-z0-9_]*\Z")
+# The hashing contracts each receipt table's JSON records (INVARIANTS C-13).
+# Verification receipts hold byte digests only, so they record none.
+FROZEN_HASH_CONTRACTS = {
+    "operation_receipts": {"canonicalization": canonical.CANONICALIZATION, "fingerprint": canonical.FINGERPRINT_CONTRACT},
+    "decision_receipts": {"canonicalization": canonical.CANONICALIZATION},
+}
 
 
 class StoreWriteError(ValueError):
@@ -142,6 +154,14 @@ class Store:
                 raise StoreWriteError(f"{table}.{column}: {value!r} is not an integer within +/-(2**53-1)")
         return value
 
+    def _check_hash_contract(self, table: str, prepared: dict[str, object]) -> None:
+        frozen = FROZEN_HASH_CONTRACTS.get(table)
+        if frozen is None or prepared.get("receipt") is None:
+            return
+        recorded = canonical.parse_json_strict(prepared["receipt"]).get("hash_contract")
+        if recorded != frozen:
+            raise StoreWriteError(f"a {table} receipt records the frozen hash contract {frozen}, not {recorded!r} (C-13)")
+
     def _require_transaction(self) -> None:
         if not self._conn.in_transaction:
             raise StoreWriteError("writes run inside Store.transaction()")
@@ -152,9 +172,9 @@ class Store:
         self._check_names(table, row)
         if not row:
             raise StoreWriteError("an insert names at least one column")
-        values = [self._prepare(table, column, value) for column, value in row.items()]
-        columns = ", ".join(row)
-        self._conn.execute(f"INSERT INTO {table} ({columns}) VALUES ({', '.join('?' for _ in row)})", values)
+        prepared = {column: self._prepare(table, column, value) for column, value in row.items()}
+        self._check_hash_contract(table, prepared)
+        self._conn.execute(f"INSERT INTO {table} ({', '.join(prepared)}) VALUES ({', '.join('?' for _ in prepared)})", list(prepared.values()))
 
     def update(self, table: str, key: Mapping[str, object], changes: Mapping[str, object], *, expect: Mapping[str, object] | None = None) -> None:
         """UPDATE exactly one row: `key` and `expect` are equality conditions

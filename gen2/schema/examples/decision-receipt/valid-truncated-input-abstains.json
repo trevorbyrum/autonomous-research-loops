@@ -10,6 +10,9 @@
     "invocation_id": "inv_01J8ZQ3W2X",
     "topic_id": "fleet-a:intake-latency",
     "decided_at": "2026-09-25T10:50:00Z",
+    "hash_contract": {
+      "canonicalization": "jcs-rfc8785/1"
+    },
     "spec": {
       "spec_id": "dspec_screen_v1_jev",
       "spec_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777"

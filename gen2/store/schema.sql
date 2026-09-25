@@ -1134,7 +1134,14 @@ CREATE TABLE operation_receipts (
      AND json_extract(receipt, '$.admission.brief.content_hash') IS brief_hash),
   CHECK (json_type(receipt, '$.effects.lease_release') IS NOT 'object'
       OR (json_extract(receipt, '$.effects.lease_release.lease_id') IS lease_id
-          AND json_extract(receipt, '$.effects.lease_release.generation') IS lease_generation))
+          AND json_extract(receipt, '$.effects.lease_release.generation') IS lease_generation)),
+  -- C-13 / Astra 0a ruling R1 (frozen in 0b): every commit receipt records
+  -- the canonicalization and request-fingerprint contracts its hashes were
+  -- computed under, and only the frozen versions are admitted (a new
+  -- contract adds a version here, never edits one in place).
+  CONSTRAINT operation_receipts_hash_contract_frozen CHECK (
+        coalesce(json_extract(receipt, '$.hash_contract.canonicalization'), '') IN ('jcs-rfc8785/1')
+    AND coalesce(json_extract(receipt, '$.hash_contract.fingerprint'), '') IN ('commit-fingerprint/1'))
 ) STRICT;
 
 CREATE UNIQUE INDEX operation_receipts_one_final_outcome_per_invocation
@@ -2125,6 +2132,12 @@ CREATE TABLE decision_receipts (
      AND json_extract(receipt, '$.outcome.hold_id') IS hold_id
      AND json_extract(receipt, '$.blind_sample.selected') IS blind_sample
      AND json_extract(receipt, '$.decided_at') IS decided_at),
+  -- C-13 / Astra 0a ruling R1 (frozen in 0b): the receipt records the
+  -- canonicalization contract of its logical hashes (spec_hash); it carries
+  -- no request fingerprint, so it names no fingerprint contract.
+  CONSTRAINT decision_receipts_hash_contract_frozen CHECK (
+        coalesce(json_extract(receipt, '$.hash_contract.canonicalization'), '') IN ('jcs-rfc8785/1')
+    AND json_type(receipt, '$.hash_contract.fingerprint') IS NULL),
   CHECK (provider != 'llm_fallback' OR answer IS NULL OR (
          json_extract(answer, '$.primitive') IS 'label'
      AND json_type(answer, '$.probability') IS NULL

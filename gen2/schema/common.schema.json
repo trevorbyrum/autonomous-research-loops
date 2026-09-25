@@ -10,6 +10,25 @@
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
     },
+    "commit_hash_contract": {
+      "description": "The canonicalization and request-fingerprint contracts a commit receipt's hashes were computed under (Astra 0a ruling R1: versioned, and frozen in 0b before durable identities or replay fixtures exist). Recorded on every commit receipt; the only admitted values are the frozen ones (gen2/core/canonical.py CANONICALIZATION, FINGERPRINT_CONTRACT). A new contract is a new version here and in the DDL, never an edit in place.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canonicalization", "fingerprint"],
+      "properties": {
+        "canonicalization": {"const": "jcs-rfc8785/1"},
+        "fingerprint": {"const": "commit-fingerprint/1"}
+      }
+    },
+    "logical_hash_contract": {
+      "description": "The canonicalization contract a receipt's logical (JCS) hashes were computed under, for receipts that carry logical hashes but no request fingerprint (decision receipts: spec_hash). Frozen as commit_hash_contract is.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canonicalization"],
+      "properties": {
+        "canonicalization": {"const": "jcs-rfc8785/1"}
+      }
+    },
     "timestamp": {
       "description": "UTC instant, RFC 3339 with a literal Z, naming a real calendar instant. The pattern is only a shape pre-filter (it admits February 31); calendar validity is the `date-time` format, checked by gen2/core/instants.py:is_utc_instant — the one validator, applied at the router's schema-validation boundary and registered by tools/check_gen2_schemas.py (Astra 0a review A11). The store keeps router-validated text and does not re-validate.",
       "type": "string",

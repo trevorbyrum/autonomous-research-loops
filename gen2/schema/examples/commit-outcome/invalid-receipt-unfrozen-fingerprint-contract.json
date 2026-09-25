@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json#/$defs/receipt",
+    "expect": "invalid",
+    "tests": "C-13 / Astra R1: only the frozen fingerprint contract (commit-fingerprint/1) is admitted; a new contract is a new version, never an edit in place",
+    "base": "valid-receipt-final.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/hash_contract/fingerprint",
+        "value": "commit-fingerprint/2"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "const",
+        "path": "/hash_contract/fingerprint"
+      }
+    ]
+  }
+}

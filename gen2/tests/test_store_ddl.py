@@ -18,7 +18,8 @@ import json
 import sqlite3
 import unittest
 
-from gen2.tests.store_fixtures import OTHER, TOPIC, StoreTestCase, T, connect, facet, h, obligation
+from gen2.tests import store_fixtures
+from gen2.tests.store_fixtures import DROP, OTHER, STORE_DIR, TOPIC, StoreTestCase, T, connect, facet, h, obligation
 
 
 class LeaseFencingTest(StoreTestCase):
@@ -2376,6 +2377,64 @@ class FacetImportanceTest(StoreTestCase):
             self.insert_obligation(TOPIC, d + 1, obligation("O-2", ("F-9",)))  # matches its entry, but F-9 is no facet of the revision
         self.assertIn("tag only facets of its revision", str(ctx.exception))
         self.insert_obligation(TOPIC, d + 1, entry)
+
+
+class HashContractTest(StoreTestCase):
+    """C-13 / Astra 0a ruling R1, frozen in 0b: every commit receipt records
+    the canonicalization and request-fingerprint contracts its hashes were
+    computed under; every decision receipt records the canonicalization
+    contract of its logical hashes (spec_hash) and no fingerprint contract.
+    Only the frozen versions are admitted. Oracle: the frozen strings written
+    here by hand; each refusal leaves the table unchanged."""
+
+    FROZEN_COMMIT = {"canonicalization": "jcs-rfc8785/1", "fingerprint": "commit-fingerprint/1"}
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.lease("lease_aaaaaaaa", 1)
+        self.invocation("inv_pppppppp")
+
+    def test_commit_receipt_records_the_frozen_contracts(self) -> None:
+        refused = "CHECK constraint failed: operation_receipts_hash_contract_frozen"
+        stored = self.snapshot("operation_receipts")
+        for case, value in (("absent", DROP), ("null", None), ("fingerprint contract absent", {"canonicalization": "jcs-rfc8785/1"}),
+                            ("canonicalization absent", {"fingerprint": "commit-fingerprint/1"}),
+                            ("another fingerprint contract", {**self.FROZEN_COMMIT, "fingerprint": "commit-fingerprint/2"}),
+                            ("another canonicalization", {**self.FROZEN_COMMIT, "canonicalization": "json-sort-keys/1"})):
+            with self.subTest(case=case):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.receipt("op_00000001", "inv_pppppppp", receipt_overrides={"hash_contract": value})
+                self.assertIn(refused, str(ctx.exception))
+                self.assertEqual(self.snapshot("operation_receipts"), stored)
+        self.receipt("op_00000001", "inv_pppppppp", receipt_overrides={"hash_contract": dict(self.FROZEN_COMMIT)})
+        self.assertEqual(self.rows("SELECT json_extract(receipt, '$.hash_contract.fingerprint') FROM operation_receipts"), [("commit-fingerprint/1",)])
+
+    def test_decision_receipt_records_the_frozen_canonicalization_only(self) -> None:
+        refused = "CHECK constraint failed: decision_receipts_hash_contract_frozen"
+        spec = self.spec()
+        stored = self.snapshot("decision_receipts")
+        for case, value in (("absent", DROP), ("another canonicalization", {"canonicalization": "json-sort-keys/1"}),
+                            ("a fingerprint contract it has no fingerprint for", {"canonicalization": "jcs-rfc8785/1", "fingerprint": "commit-fingerprint/1"})):
+            with self.subTest(case=case):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.decision_receipt("dec_00000001", "inv_pppppppp", spec, receipt_overrides={"hash_contract": value})
+                self.assertIn(refused, str(ctx.exception))
+                self.assertEqual(self.snapshot("decision_receipts"), stored)
+        self.decision_receipt("dec_00000001", "inv_pppppppp", spec, receipt_overrides={"hash_contract": {"canonicalization": "jcs-rfc8785/1"}})
+        self.assertEqual(len(self.snapshot("decision_receipts")), 1)
+
+    def test_frozen_versions_agree_across_ddl_schema_and_helper(self) -> None:
+        """The DDL, the JSON schema and gen2/core/canonical.py name the same
+        frozen versions (a bump in one place alone fails here)."""
+        from gen2.core import canonical
+
+        common = json.loads((STORE_DIR.parent / "schema" / "common.schema.json").read_text(encoding="utf-8"))["$defs"]
+        self.assertEqual((canonical.CANONICALIZATION, canonical.FINGERPRINT_CONTRACT), ("jcs-rfc8785/1", "commit-fingerprint/1"))
+        self.assertEqual({k: v["const"] for k, v in common["commit_hash_contract"]["properties"].items()}, self.FROZEN_COMMIT)
+        self.assertEqual({k: v["const"] for k, v in common["logical_hash_contract"]["properties"].items()}, {"canonicalization": "jcs-rfc8785/1"})
+        ddl = store_fixtures.DDL_TEXT
+        self.assertIn("'$.hash_contract.canonicalization'), '') IN ('jcs-rfc8785/1')", ddl)
+        self.assertIn("'$.hash_contract.fingerprint'), '') IN ('commit-fingerprint/1')", ddl)
 
 
 if __name__ == "__main__":

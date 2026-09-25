@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json#/$defs/receipt",
+    "expect": "invalid",
+    "tests": "C-13 / Astra R1 (frozen in 0b): a commit receipt records the canonicalization and fingerprint contract its hashes were computed under",
+    "base": "valid-receipt-final.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/hash_contract"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": ""
+      }
+    ]
+  }
+}

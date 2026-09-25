@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json#/$defs/receipt",
+    "expect": "invalid",
+    "tests": "C-13 / Astra R1: only the frozen canonicalization contract (jcs-rfc8785/1) is admitted",
+    "base": "valid-receipt-final.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/hash_contract/canonicalization",
+        "value": "json-sort-keys/1"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "const",
+        "path": "/hash_contract/canonicalization"
+      }
+    ]
+  }
+}

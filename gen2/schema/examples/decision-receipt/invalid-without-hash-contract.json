@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "decision-receipt.schema.json",
+    "expect": "invalid",
+    "tests": "C-13 / Astra R1: a decision receipt (its spec_hash is a logical hash) records the canonicalization contract",
+    "base": "valid-jev-screening-shadow.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/hash_contract"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": ""
+      }
+    ]
+  }
+}

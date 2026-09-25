@@ -19,6 +19,7 @@ sqlite3 user; it does not prove a caller uses its write path.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -26,6 +27,7 @@ from pathlib import Path
 
 from gen2.store import api
 from gen2.store.api import IdentityBoundError, StoreWriteError
+from gen2.tests import store_fixtures
 
 T = "2026-09-25T12:00:00Z"
 TOPIC = "fleet-a:t1"
@@ -230,6 +232,60 @@ class WritePathTest(WriterTestCase):
                     self.store.select(table)
                 self.assertIsInstance(ctx.exception, StoreWriteError)
         self.assertEqual(self.raw("SELECT count(*) FROM sqlite_schema WHERE name = 'artifacts'"), [(1,)])
+
+
+class ReceiptHashContractWriterTest(store_fixtures.StoreTestCase):
+    """C-13 / Astra 0a ruling R1 (frozen in 0b), at the writer: a receipt
+    whose recorded hash contract is not the frozen one is refused before any
+    SQL runs (StoreWriteError, not the DDL's IntegrityError), and a receipt
+    recording it is written. Rows come from the DDL-test fixtures (an
+    in-memory store with the connection contract), written through Store."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.lease("lease_aaaaaaaa", 1)
+        self.invocation("inv_pppppppp")
+        self.store = api.Store(self.db, {})
+
+    def commit_receipt(self, hash_contract) -> None:
+        body = self.receipt_body("op_00000001", "rcpt_00000001", "final_outcome", "inv_pppppppp", TOPIC, 0, digest=h("d"))
+        store_fixtures._override(body, {"hash_contract": hash_contract})
+        rev = body["admission"]["contract"]["revision"]
+        with self.store.transaction() as s:
+            s.insert("operation_receipts", {
+                "operation_id": "op_00000001", "receipt_id": "rcpt_00000001", "operation_kind": "final_outcome", "invocation_id": "inv_pppppppp",
+                "topic_id": TOPIC, "request_fingerprint": h("f"), "payload_digest": h("d"), "lease_id": "lease_aaaaaaaa", "lease_generation": 1,
+                "admission_context": "contract/1", "contract_revision": rev, "brief_hash": None, "config_bundle_hash": h("c"),
+                "state_revision_before": 0, "state_revision_after": 1, "validator_version": "v1", "policy_version": "p1", "receipt": body, "committed_at": T})
+
+    def test_commit_receipt_contract_checked_before_sql(self) -> None:
+        for case, value in (("absent", store_fixtures.DROP), ("another fingerprint", {"canonicalization": "jcs-rfc8785/1", "fingerprint": "commit-fingerprint/2"}),
+                            ("fingerprint missing", {"canonicalization": "jcs-rfc8785/1"})):
+            with self.subTest(case=case):
+                with self.assertRaises(Exception) as ctx:
+                    self.commit_receipt(value)
+                self.assertIsInstance(ctx.exception, StoreWriteError)
+                self.assertEqual(self.rows("SELECT count(*) FROM operation_receipts"), [(0,)])
+        self.commit_receipt({"fingerprint": "commit-fingerprint/1", "canonicalization": "jcs-rfc8785/1"})
+        self.assertEqual(self.rows("SELECT json_extract(receipt, '$.hash_contract') FROM operation_receipts"),
+                         [('{"canonicalization":"jcs-rfc8785/1","fingerprint":"commit-fingerprint/1"}',)])
+
+    def test_decision_receipt_contract_checked_before_sql(self) -> None:
+        spec = self.spec()
+        self.decision_receipt("dec_00000001", "inv_pppppppp", spec)  # the fixture's own row: gives a valid receipt to copy
+        row = dict(zip([d[0] for d in self.db.execute("SELECT * FROM decision_receipts").description], self.rows("SELECT * FROM decision_receipts")[0]))
+        body = json.loads(row["receipt"])
+        for case, value in (("absent", store_fixtures.DROP), ("a fingerprint contract", {"canonicalization": "jcs-rfc8785/1", "fingerprint": "commit-fingerprint/1"})):
+            with self.subTest(case=case):
+                doc = dict(body, decision_receipt_id="dec_00000002")
+                store_fixtures._override(doc, {"hash_contract": value})
+                with self.assertRaises(Exception) as ctx:
+                    with self.store.transaction() as s:
+                        s.insert("decision_receipts", dict(row, decision_receipt_id="dec_00000002", receipt=doc))
+                self.assertIsInstance(ctx.exception, StoreWriteError)
+        with self.store.transaction() as s:
+            s.insert("decision_receipts", dict(row, decision_receipt_id="dec_00000002", receipt=dict(body, decision_receipt_id="dec_00000002")))
+        self.assertEqual(self.rows("SELECT count(*) FROM decision_receipts"), [(2,)])
 
 
 if __name__ == "__main__":

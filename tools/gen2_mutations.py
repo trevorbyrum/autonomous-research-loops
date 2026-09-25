@@ -916,6 +916,31 @@ MUTATIONS: list[Mutation] = [
            ("WritePathTest.test_names_come_from_the_schema_only",),
            '        if table not in self._columns:\n            raise StoreWriteError(f"unknown table {table!r}")\n        known = self._columns[table]',
            "        known = self._columns.get(table, {})"))),
+    # --- 0b: the hashing contract recorded (and frozen) on receipts (Astra 0a ruling R1) ----
+    *(Mutation(f"C13-{key}", "0b-R1-freeze", desc, tuple("test_store_ddl.HashContractTest." + k for k in killers), scope=scope, old=old, new=new)
+      for key, desc, killers, scope, old, new in (
+          ("commit-contract-unchecked", "a commit receipt may record any hashing contract, or none",
+           ("test_commit_receipt_records_the_frozen_contracts", "test_frozen_versions_agree_across_ddl_schema_and_helper"), "operation_receipts",
+           "  CONSTRAINT operation_receipts_hash_contract_frozen CHECK (\n        coalesce(json_extract(receipt, '$.hash_contract.canonicalization'), '') IN ('jcs-rfc8785/1')\n    AND coalesce(json_extract(receipt, '$.hash_contract.fingerprint'), '') IN ('commit-fingerprint/1'))",
+           "  CHECK (1)"),
+          ("commit-fingerprint-unchecked", "a commit receipt's fingerprint contract is not checked",
+           ("test_commit_receipt_records_the_frozen_contracts",), "operation_receipts",
+           "\n    AND coalesce(json_extract(receipt, '$.hash_contract.fingerprint'), '') IN ('commit-fingerprint/1'))", ")"),
+          ("commit-absent-passes", "an absent contract passes (a NULL CHECK result is a pass)",
+           ("test_commit_receipt_records_the_frozen_contracts",), "operation_receipts",
+           "        coalesce(json_extract(receipt, '$.hash_contract.canonicalization'), '') IN ('jcs-rfc8785/1')\n    AND coalesce(json_extract(receipt, '$.hash_contract.fingerprint'), '') IN ('commit-fingerprint/1'))",
+           "        json_extract(receipt, '$.hash_contract.canonicalization') IN ('jcs-rfc8785/1')\n    AND json_extract(receipt, '$.hash_contract.fingerprint') IN ('commit-fingerprint/1'))"),
+          ("decision-contract-unchecked", "a decision receipt may record any canonicalization contract, or none",
+           ("test_decision_receipt_records_the_frozen_canonicalization_only",), "decision_receipts",
+           "        coalesce(json_extract(receipt, '$.hash_contract.canonicalization'), '') IN ('jcs-rfc8785/1')\n    AND json_type(receipt, '$.hash_contract.fingerprint') IS NULL),",
+           "        1),"),
+          ("decision-claims-fingerprint", "a decision receipt may name a fingerprint contract it has no fingerprint for",
+           ("test_decision_receipt_records_the_frozen_canonicalization_only",), "decision_receipts",
+           "\n    AND json_type(receipt, '$.hash_contract.fingerprint') IS NULL),", "),"))),
+    Mutation("C13-writer-unchecked", "0b-R1-freeze", "the writer does not check a receipt's recorded hash contract (only the DDL would)",
+             ("test_writer.ReceiptHashContractWriterTest.test_commit_receipt_contract_checked_before_sql",
+              "test_writer.ReceiptHashContractWriterTest.test_decision_receipt_contract_checked_before_sql"),
+             target="gen2/store/api.py", old="        self._check_hash_contract(table, prepared)\n", new=""),
     # --- 0b cleanup 2: the permanent reversed-trigger-order check ----------------------
     *(Mutation(f"TO-{key}", "0b-cleanup-2", desc, tuple("test_trigger_order_tool.TriggerOrderToolTest." + k for k in killers),
                target="tools/gen2_trigger_order.py", old=old, new=new)

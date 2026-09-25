@@ -12,6 +12,7 @@
     "invocation_id",
     "topic_id",
     "decided_at",
+    "hash_contract",
     "spec",
     "decision_class",
     "provider",
@@ -30,6 +31,7 @@
     "invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
     "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
     "decided_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+    "hash_contract": {"$ref": "common.schema.json#/$defs/logical_hash_contract"},
     "spec": {
       "type": "object",
       "additionalProperties": false,

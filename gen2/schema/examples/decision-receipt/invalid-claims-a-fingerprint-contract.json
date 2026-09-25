@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "decision-receipt.schema.json",
+    "expect": "invalid",
+    "tests": "C-13: a decision receipt carries no request fingerprint, so it records no fingerprint contract",
+    "base": "valid-jev-screening-shadow.json",
+    "patch": [
+      {
+        "op": "add",
+        "path": "/hash_contract/fingerprint",
+        "value": "commit-fingerprint/1"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "additionalProperties",
+        "path": "/hash_contract"
+      }
+    ]
+  }
+}
