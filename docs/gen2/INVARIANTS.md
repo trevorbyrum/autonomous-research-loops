@@ -289,7 +289,7 @@ A receipt matches its spec in provider, class, answer primitive and action polic
 
 ## 10. Build invariants
 
-**B-1 — The module-boundary graph is enforced in CI from the first commit.** `make gen2-check` fails on any violation (`tools/check_boundaries.py` against `gen2/boundaries.toml`). The research cited for machine-checkable boundaries (Fleet B F76) is weak and confounded (DR §2); no violation rate is promised — this is engineering discipline. *Source:* charter; DR §2, §10.
+**B-1 — The module-boundary graph is enforced in CI from the first commit.** `make gen2-check` fails on any violation (`tools/check_boundaries.py` against `gen2/boundaries.toml`). It is an architectural lint over the names a module can reach statically — imports (the private low-level modules behind public surfaces included), attribute chains resolved in the scope that binds each alias, and the forbidden builtins by any static spelling — not a security sandbox: reflection, filesystem I/O, endpoint correctness and permitted-library behaviour are left to runtime isolation and review (Astra 0a review A8). The research cited for machine-checkable boundaries (Fleet B F76) is weak and confounded (DR §2); no violation rate is promised — this is engineering discipline. *Source:* charter; DR §2, §10; Astra 0a review A8.
 
 **B-2 — No gen-2 module imports gen-1 `research_loops` or the gateway's internals (`research_gateway`).** *Source:* task 0a; DR §6. *Enforced at:* boundary graph (`forbidden_imports`).
 

@@ -19,7 +19,9 @@ import textwrap
 import unittest
 from pathlib import Path
 
-CHECKER = Path(__file__).resolve().parents[2] / "tools" / "check_boundaries.py"
+REPO = Path(__file__).resolve().parents[2]
+CHECKER = REPO / "tools" / "check_boundaries.py"  # module globals: tools/gen2_mutations.py points these at mutated copies
+REAL_BOUNDARIES = REPO / "gen2" / "boundaries.toml"
 
 DOC_HEADINGS = ["Router", "Station supervisor", "Verifier"]
 
@@ -188,11 +190,91 @@ class BoundaryCheckerTest(unittest.TestCase):
         self.assertViolation(self.run_checker(), "core uses restricted stdlib 'importlib.import_module'")
 
     def test_forbidden_builtin_calls(self) -> None:
-        self.write("gen2/core/types.py", "x = eval('1')\ny = __import__('gen2.supervisor')\nimport builtins\nbuiltins.exec('pass')\n")
+        """B20 rewrite (A8): every ordinary static spelling that reaches a
+        forbidden builtin is reported at its line — not only literal calls."""
+        self.write("gen2/core/types.py", """\
+            x = eval('1')
+            y = __import__('gen2.supervisor')
+            import builtins
+            builtins.exec('pass')
+            import builtins as b
+            b.exec('pass')
+            from builtins import eval as evaluate
+            evaluate('1')
+            e = compile
+            __builtins__['exec']('pass')
+            def late():
+                import builtins as bb
+                return bb.eval('2')
+            ops = list(map(exec, []))
+            """)
         result = self.run_checker()
-        self.assertViolation(result, "gen2/core/types.py:1: core calls forbidden builtin eval()")
-        self.assertIn("gen2/core/types.py:2: core calls forbidden builtin __import__()", result.stderr)
-        self.assertIn("gen2/core/types.py:4: core calls forbidden builtin exec()", result.stderr)
+        self.assertViolation(result, "gen2/core/types.py:1: core reaches forbidden builtin eval()")
+        for line, name in ((2, "__import__()"), (4, "exec()"), (6, "exec()"), (7, "eval()"), (9, "compile()"), (10, "__builtins__"), (13, "eval()"), (14, "exec()")):
+            with self.subTest(line=line):
+                self.assertIn(f"gen2/core/types.py:{line}: core reaches forbidden builtin {name}", result.stderr)
+
+    def test_shadowed_names_are_not_builtins(self) -> None:
+        """Scope-aware negative controls: a local binding named like a builtin is
+        not the builtin (re.compile, a parameter, a local function)."""
+        self.write("gen2/core/types.py", """\
+            from re import compile
+            PATTERN = compile('x')
+            def run(eval):
+                return eval(1)
+            def local():
+                def exec(code):
+                    return code
+                return exec('x')
+            class K:
+                def compile(self):
+                    return self.compile
+            """)
+        result = self.run_checker()
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+
+    def test_alias_reuse_in_another_scope_does_not_hide_a_capability(self) -> None:
+        """The review's A8 probe: `import json as x` in one function must not hide
+        `import os as x` (module level) used in another. Aliases resolve in the
+        scope that binds them; global declarations are honoured."""
+        self.write("gen2/core/types.py", """\
+            import os as x
+            def f():
+                import json as x
+                return x.dumps({})
+            def g():
+                return x.system('true')
+            def h():
+                global y
+                import os as y
+            def i():
+                return y.system('true')
+            def j():
+                import json as x
+                return x.system
+            """)
+        result = self.run_checker()
+        self.assertViolation(result, "gen2/core/types.py:6: core uses restricted stdlib 'os.system'")
+        self.assertIn("gen2/core/types.py:11: core uses restricted stdlib 'os.system'", result.stderr)
+        self.assertNotIn("types.py:14:", result.stderr)  # there x is json: json.system is no capability
+        self.assertNotIn("types.py:4:", result.stderr)
+
+    def test_real_graph_restricts_low_level_and_alternate_surfaces(self) -> None:
+        """A8 against the REAL gen2/boundaries.toml and BOUNDARIES.md (not a
+        fixture config): the private modules behind the public surfaces and the
+        alternate network/loader surfaces are restricted for a module that is
+        granted none of them."""
+        self.write("gen2/boundaries.toml", REAL_BOUNDARIES.read_text(encoding="utf-8"))
+        self.write("docs/gen2/BOUNDARIES.md", (REPO / "docs" / "gen2" / "BOUNDARIES.md").read_text(encoding="utf-8"))
+        surfaces = ("_sqlite3", "_posixsubprocess", "imaplib", "poplib", "_socket", "_ssl", "_multiprocessing", "_ctypes", "_pickle",
+                    "_imp", "zipimport", "pkgutil", "dbm", "webbrowser", "wsgiref", "_signal", "_asyncio")
+        self.write("gen2/accounting/sums.py", "".join(f"import {name}\n" for name in surfaces) + "import importlib\nimportlib.__import__('os')\n")
+        result = subprocess.run([sys.executable, str(CHECKER), "--root", str(self.root)], capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 1, msg=result.stderr)
+        for line, name in enumerate(surfaces, start=1):
+            with self.subTest(surface=name):
+                self.assertIn(f"gen2/accounting/sums.py:{line}: accounting uses restricted stdlib '{name}'", result.stderr)
+        self.assertIn(f"gen2/accounting/sums.py:{len(surfaces) + 2}: accounting uses restricted stdlib 'importlib.__import__'", result.stderr)
 
     def test_star_import_rejected(self) -> None:
         self.write("gen2/router/commit.py", "from gen2.store import *\n")

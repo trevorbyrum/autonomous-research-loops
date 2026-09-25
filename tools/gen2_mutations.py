@@ -54,10 +54,22 @@ class Mutation:
     drop_trigger: str | None = None
     old: str | None = None
     new: str = ""
-    target: str = "ddl"  # ddl | connection
+    target: str = "ddl"  # ddl | connection | a repo-relative file in FILE_TARGETS
     also: tuple[tuple[str, str], ...] = ()  # further (old, new) edits applied with this one (a dimension-level mutation)
     scope: str | None = None  # apply the edits only inside this trigger or table (CREATE TRIGGER <scope> ... END; / CREATE TABLE <scope> ... STRICT;)
 
+
+# File targets: how the named tests are pointed at a mutated copy. ("attr",
+# module, name): the file is written to a temp dir and module.name is set to
+# its path (tests that run tools as subprocesses or read config files);
+# ("module", dotted): the mutated source is loaded as that module and the
+# killer test modules are reloaded so their imports rebind to it.
+FILE_TARGETS = {
+    "tools/check_boundaries.py": ("attr", "test_check_boundaries", "CHECKER"),
+    "gen2/boundaries.toml": ("attr", "test_check_boundaries", "REAL_BOUNDARIES"),
+    "tools/check_gen2_schemas.py": ("attr", "test_check_ddl_rules", "CHECKER"),
+    "gen2/core/instants.py": ("module", "gen2.core.instants"),
+}
 
 H = "test_store_history."
 D = "test_store_ddl."
@@ -70,6 +82,9 @@ DC = "test_store_ddl.DecisionReceiptConsistencyTest."
 SD = "test_store_ddl.ScreeningAndDecisionTest."
 OB = "test_store_ddl.ObservationTest."
 VO = "test_store_ddl.DraftVocabularyTransitionTest."
+CB = "test_check_boundaries.BoundaryCheckerTest."
+DR = "test_check_ddl_rules.DdlRuleTest."
+IN = "test_instants.UtcInstantTest."
 
 MUTATIONS: list[Mutation] = [
     # --- A1: history cannot be rewritten ------------------------------------
@@ -553,6 +568,39 @@ MUTATIONS: list[Mutation] = [
            "(OLD.status = 'provisional' AND NEW.status IN ('contested', 'rejected', 'quarantined', 'superseded'))"))),
     Mutation("R2.5-mandatory-signals-not-model-raised", "R2.5", "a model observation may raise (and so be ranked below) a retraction signal",
              (VO + "test_mandatory_signals_are_code_or_operator_raised",), old=",\n  CHECK (reason_code NOT IN ('retraction', 'decision_record_change') OR signal_source IN ('deterministic', 'operator'))", new=""),
+    # --- A8 (checker), and the Python-side A1/A11 guards: file-target mutants ---------
+    Mutation("A8-global-alias-map", "A8", "the original bug: one last-wins alias map for the whole file", (CB + "test_alias_reuse_in_another_scope_does_not_hide_a_capability",),
+             target="tools/check_boundaries.py", old="        scope = self._target_scope(name)\n        scope.bound.add(name)\n        if import_target is not None:\n            scope.imports.setdefault(name, set()).add(import_target)",
+             new="        scope = self.scope.module()\n        scope.bound.add(name)\n        if import_target is not None:\n            scope.imports[name] = {import_target}"),
+    Mutation("A8-global-declaration-ignored", "A8", "`global y; import os as y` treated as a local binding", (CB + "test_alias_reuse_in_another_scope_does_not_hide_a_capability",),
+             target="tools/check_boundaries.py", old="        if name in self.scope.global_names:\n            return self.scope.module()\n        return self.scope", new="        return self.scope"),
+    Mutation("A8-builtins-import-alias", "A8", "`from builtins import eval as evaluate` not reported", (CB + "test_forbidden_builtin_calls",),
+             target="tools/check_boundaries.py", old='        if target.startswith("builtins.") and target.split(".", 1)[1] in forbidden:', new='        if False:'),
+    Mutation("A8-builtins-module-alias", "A8", "`import builtins as b; b.exec(...)` not reported", (CB + "test_forbidden_builtin_calls",),
+             target="tools/check_boundaries.py", old='            if base == "builtins" and chain[1] and chain[1][0] in forbidden:', new='            if False:'),
+    Mutation("A8-dunder-builtins", "A8", "`__builtins__[...]` not reported", (CB + "test_forbidden_builtin_calls",),
+             target="tools/check_boundaries.py", old='        if node.id == "__builtins__":\n            refs.append((node.lineno, "__builtins__", "builtin", ""))\n        elif', new='        if'),
+    Mutation("A8-bare-references", "A8", "forbidden builtins reached by name are no longer reported", (CB + "test_forbidden_builtin_calls",),
+             target="tools/check_boundaries.py", old="        elif node.id in forbidden:", new="        elif False:"),
+    Mutation("A8-unscoped-builtin-names", "A8", "over-restriction: any name spelled like a builtin is flagged (re.compile, parameters)", (CB + "test_shadowed_names_are_not_builtins",),
+             target="tools/check_boundaries.py", old='            if targets is None or any(t == f"builtins.{node.id}" for t in targets):', new='            if True:'),
+    *(Mutation(f"A8-real-graph-{name.strip('_')}", "A8", f"{name} dropped from the real restricted list", (CB + "test_real_graph_restricts_low_level_and_alternate_surfaces",),
+               target="gen2/boundaries.toml", old=f'"{name}", ', new="")
+      for name in ("_sqlite3", "_posixsubprocess", "imaplib")),
+    Mutation("A1-replace-lint", "A1", "the REPLACE lint no longer runs", (CB + "test_replace_sql_in_a_store_write_path_fails",),
+             target="tools/check_boundaries.py", old="    if mod.name not in cfg.forbidden_sql_exempt:", new="    if False:"),
+    Mutation("A1-ddl-rule-delete-guards", "A1", "the build no longer requires a delete guard on every table", (DR + "test_table_without_delete_guard_fails", DR + "test_conditional_delete_guard_does_not_count"),
+             target="tools/check_gen2_schemas.py", old="        if not guarded:", new="        if False:"),
+    Mutation("A1-ddl-rule-on-conflict", "A1", "the build no longer refuses ON CONFLICT clauses", (DR + "test_on_conflict_replace_clause_fails",),
+             target="tools/check_gen2_schemas.py", old='    if re.search(r"\\bON\\s+CONFLICT\\b", _strip_sql_comments(text), re.IGNORECASE):', new="    if False:"),
+    Mutation("A1-ddl-rule-pragmas", "A1", "the build no longer reads the connection pragmas back", (DR + "test_connection_contract_without_recursive_triggers_fails",),
+             target="tools/check_gen2_schemas.py", old='            if conn.execute(f"PRAGMA {pragma}").fetchone() != (1,):', new="            if False:"),
+    Mutation("A11-instants-calendar", "A11", "timestamps checked for shape only (February 31 accepted)", (IN + "test_impossible_or_malformed_instants_refused",),
+             target="gen2/core/instants.py", old="        datetime(*(int(part) for part in match.groups()))\n", new="        pass\n"),
+    Mutation("A11-instants-utc-only", "A11", "offsets other than Z accepted", (IN + "test_impossible_or_malformed_instants_refused",),
+             target="gen2/core/instants.py", old=r"(?:\.\d{1,9})?Z\Z", new=r"(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})\Z"),
+    Mutation("A11-instants-strings-only", "A11", "non-strings accepted", (IN + "test_non_strings_refused",),
+             target="gen2/core/instants.py", old="    if not isinstance(value, str):\n        return False", new="    if not isinstance(value, str):\n        return True"),
     # --- A9: capability supersession --------------------------------------
     Mutation("A9-successor-fk-immediate", "A9", "successor FK checked immediately (the documented transaction cannot run)",
              (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",),
@@ -652,18 +700,64 @@ def run(fx, ddl: str, connection: str) -> _Collector:
 _FX = None  # the fixtures module, bound in main() before workers fork
 
 
+def _run_file_mutation(m: Mutation) -> _Collector:
+    """Mutate a Python/config file into a temp copy, point the killers' test
+    modules at it, run just those modules. Runs in a forked worker (or at the
+    end of a serial run), so module state it changes is not reused."""
+    import importlib
+    import tempfile
+    import types
+
+    text = mutate((ROOT / m.target).read_text(encoding="utf-8"), m)
+    how = FILE_TARGETS[m.target]
+    modules = sorted({k.split(".")[0] for k in m.killers})
+    with tempfile.TemporaryDirectory() as tmp:
+        if how[0] == "attr":
+            path = Path(tmp) / Path(m.target).name
+            path.write_text(text, encoding="utf-8")
+            loaded = [importlib.import_module(name) for name in modules]
+            setattr(importlib.import_module(how[1]), how[2], path)
+        else:
+            mutant = types.ModuleType(how[1])
+            mutant.__file__ = str(ROOT / m.target)
+            exec(compile(text, str(ROOT / m.target), "exec"), mutant.__dict__)
+            sys.modules[how[1]] = mutant
+            parent, _, leaf = how[1].rpartition(".")
+            setattr(importlib.import_module(parent), leaf, mutant)
+            loaded = [importlib.reload(importlib.import_module(name)) for name in modules]
+        suite = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromModule(mod) for mod in loaded)
+        result = _Collector()
+        suite.run(result)
+        return result
+
+
+def _run_file_mutation_unmutated(m: Mutation) -> _Collector:
+    """The file target's killer modules against the file as it is (a mutation
+    that finds its text is only meaningful if these pass unmutated)."""
+    import importlib
+
+    modules = sorted({k.split(".")[0] for k in m.killers})
+    suite = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromModule(importlib.import_module(name)) for name in modules)
+    result = _Collector()
+    suite.run(result)
+    return result
+
+
 def _evaluate(m: Mutation) -> str:
     fx = _FX
     ddl0, conn0 = fx.DDL_TEXT, fx.CONNECTION_TEXT
     try:
-        ddl = mutate(ddl0, m) if m.target == "ddl" else ddl0
-        conn = mutate(conn0, m) if m.target == "connection" else conn0
+        if m.target in FILE_TARGETS:
+            res = _run_file_mutation(m)
+        else:
+            ddl = mutate(ddl0, m) if m.target == "ddl" else ddl0
+            conn = mutate(conn0, m) if m.target == "connection" else conn0
+            try:
+                res = run(fx, ddl, conn)
+            finally:
+                fx.DDL_TEXT, fx.CONNECTION_TEXT = ddl0, conn0
     except ValueError as exc:
         return f"INVALID   {m.mid}: {exc}"
-    try:
-        res = run(fx, ddl, conn)
-    finally:
-        fx.DDL_TEXT, fx.CONNECTION_TEXT = ddl0, conn0
     missing = [k for k in m.killers if not any(f == k or f.endswith("." + k) for f in res.failed)]
     if res.errored and (missing or not m.killers):
         return f"INVALID   {m.mid}: {len(res.errored)} test error(s), e.g. {next(iter(res.errored.items()))}"
@@ -698,16 +792,23 @@ def main(argv: list[str] | None = None) -> int:
         print(f"BASELINE NOT GREEN: failed={sorted(base.failed)} errored={base.errored}", file=sys.stderr)
         return 1
     selected = [m for m in MUTATIONS if not args.only or m.mid.startswith(args.only)]
+    for target in sorted({m.target for m in selected if m.target in FILE_TARGETS}):
+        clean = Mutation("baseline", "-", "unmutated", tuple(k for m in selected if m.target == target for k in m.killers), target=target, old="", new="")
+        res = _run_file_mutation_unmutated(clean)
+        if res.failed or res.errored:
+            print(f"BASELINE NOT GREEN for {target}: failed={sorted(res.failed)} errored={res.errored}", file=sys.stderr)
+            return 1
     ids = [m.mid for m in MUTATIONS]
     if len(set(ids)) != len(ids):
         print("duplicate mutation ids", file=sys.stderr)
         return 1
     _FX = fx
     if args.jobs > 1 and len(selected) > 1:
-        with multiprocessing.get_context("fork").Pool(args.jobs) as pool:
+        with multiprocessing.get_context("fork").Pool(args.jobs, maxtasksperchild=1) as pool:
             verdicts = pool.map(_evaluate, selected, chunksize=1)
     else:
-        verdicts = [_evaluate(m) for m in selected]
+        verdicts = [_evaluate(m) for m in selected if m.target not in FILE_TARGETS]
+        verdicts += [_evaluate(m) for m in selected if m.target in FILE_TARGETS]  # these may rebind modules: run last
     bad = 0
     for verdict in verdicts:
         if not verdict.startswith("KILLED"):

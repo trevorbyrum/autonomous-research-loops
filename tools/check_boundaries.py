@@ -10,10 +10,22 @@ Trace: task 0a deliverable 4; charter "Standing rules"; design review §10
 ("Enforce dependency boundaries in CI"). The rules are listed in the header of
 gen2/boundaries.toml.
 
-What a static import check structurally cannot see: names reached through
-getattr()/globals() tricks, code run by a child interpreter, filesystem writes,
-and behaviour of permitted imports. It bounds *which* capabilities a module
-can name, not what it does with them.
+This is an ARCHITECTURAL LINT, not a sandbox (Astra 0a review A8). It bounds
+which capability-bearing names a module can reach through ordinary static
+Python: imports (including the private low-level modules behind public ones,
+e.g. _sqlite3, _posixsubprocess), attribute chains on imported modules, and
+the forbidden builtins by any static spelling (bare reference, `from builtins
+import eval as e`, an alias of `builtins`, `__builtins__`). Import aliases are
+resolved in the scope that binds them (module, function, class,
+comprehension; global/nonlocal honoured), so an alias reused in another
+function cannot hide a restricted module.
+
+What it structurally cannot see, and so leaves to runtime isolation and
+review: names reached through reflection (getattr/globals/vars/sys.modules),
+assignment of a module to another variable, code run by a child interpreter,
+filesystem I/O (open/pathlib/io are not restricted — a module described as
+"no I/O" is held to that by review, not by this tool), which network endpoint
+a permitted client talks to, and the behaviour of permitted imports.
 """
 from __future__ import annotations
 
@@ -236,56 +248,247 @@ def _attribute_chain(node: ast.Attribute) -> tuple[str, list[str]] | None:
     return None
 
 
-def collect_references(tree: ast.Module, package: str, rel: str) -> tuple[list[tuple[int, str, str, str]], list[str]]:
+class _Scope:
+    """One Python name scope (module, function/lambda, class, comprehension)."""
+
+    def __init__(self, kind: str, parent: "_Scope | None") -> None:
+        self.kind = kind
+        self.parent = parent
+        self.imports: dict[str, set[str]] = {}
+        self.bound: set[str] = set()
+        self.global_names: set[str] = set()
+        self.nonlocal_names: set[str] = set()
+
+    def module(self) -> "_Scope":
+        scope = self
+        while scope.parent is not None:
+            scope = scope.parent
+        return scope
+
+
+class _Binder(ast.NodeVisitor):
+    """Scope-aware name binding (Astra 0a review A8): an import alias is
+    resolved in the scope where the name is actually bound, so `import json as
+    x` inside one function cannot hide `import os as x` used by another.
+    Records, per scope, which names are bound and to which import targets;
+    every Name load keeps the scope it occurs in for later resolution."""
+
+    def __init__(self, package: str, rel: str) -> None:
+        self.package, self.rel = package, rel
+        self.scope = _Scope("module", None)
+        self.imports: list[tuple[int, str]] = []
+        self.loads: list[tuple[ast.Name, _Scope]] = []
+        self.attrs: list[tuple[ast.Attribute, _Scope]] = []
+        self.problems: list[str] = []
+
+    # -- binding helpers ------------------------------------------------------
+    def _target_scope(self, name: str) -> _Scope:
+        if name in self.scope.global_names:
+            return self.scope.module()
+        return self.scope
+
+    def bind(self, name: str, import_target: str | None = None) -> None:
+        scope = self._target_scope(name)
+        scope.bound.add(name)
+        if import_target is not None:
+            scope.imports.setdefault(name, set()).add(import_target)
+
+    def bind_target(self, node: ast.AST) -> None:
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Name) and isinstance(sub.ctx, (ast.Store, ast.Del)):
+                self.bind(sub.id)
+            elif isinstance(sub, ast.Starred) and isinstance(sub.value, ast.Name):
+                self.bind(sub.value.id)
+
+    # -- scopes ---------------------------------------------------------------
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802
+        for deco in node.decorator_list:
+            self.visit(deco)
+        for default in (*node.args.defaults, *node.args.kw_defaults):
+            if default is not None:
+                self.visit(default)
+        self.bind(node.name)
+        outer = self.scope
+        self.scope = _Scope("function", outer)
+        for arg in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs, node.args.vararg, node.args.kwarg):
+            if arg is not None:
+                self.scope.bound.add(arg.arg)
+        for stmt in node.body:
+            self.visit(stmt)
+        self.scope = outer
+
+    visit_AsyncFunctionDef = visit_FunctionDef  # noqa: N815
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:  # noqa: N802
+        for default in (*node.args.defaults, *node.args.kw_defaults):
+            if default is not None:
+                self.visit(default)
+        outer = self.scope
+        self.scope = _Scope("function", outer)
+        for arg in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs, node.args.vararg, node.args.kwarg):
+            if arg is not None:
+                self.scope.bound.add(arg.arg)
+        self.visit(node.body)
+        self.scope = outer
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:  # noqa: N802
+        for expr in (*node.decorator_list, *node.bases, *(k.value for k in node.keywords)):
+            self.visit(expr)
+        self.bind(node.name)
+        outer = self.scope
+        self.scope = _Scope("class", outer)
+        for stmt in node.body:
+            self.visit(stmt)
+        self.scope = outer
+
+    def _comprehension(self, node: ast.AST, elements: list[ast.AST]) -> None:
+        generators = node.generators  # type: ignore[attr-defined]
+        self.visit(generators[0].iter)  # the first iterable is evaluated in the enclosing scope
+        outer = self.scope
+        self.scope = _Scope("comprehension", outer)
+        for index, gen in enumerate(generators):
+            if index:
+                self.visit(gen.iter)
+            self.bind_target(gen.target)
+            for cond in gen.ifs:
+                self.visit(cond)
+        for element in elements:
+            self.visit(element)
+        self.scope = outer
+
+    def visit_ListComp(self, node: ast.ListComp) -> None:  # noqa: N802
+        self._comprehension(node, [node.elt])
+
+    visit_SetComp = visit_ListComp  # noqa: N815
+    visit_GeneratorExp = visit_ListComp  # noqa: N815
+
+    def visit_DictComp(self, node: ast.DictComp) -> None:  # noqa: N802
+        self._comprehension(node, [node.key, node.value])
+
+    # -- bindings -------------------------------------------------------------
+    def visit_Global(self, node: ast.Global) -> None:  # noqa: N802
+        self.scope.global_names.update(node.names)
+
+    def visit_Nonlocal(self, node: ast.Nonlocal) -> None:  # noqa: N802
+        self.scope.nonlocal_names.update(node.names)
+
+    def visit_Import(self, node: ast.Import) -> None:  # noqa: N802
+        for alias in node.names:
+            self.imports.append((node.lineno, alias.name))
+            if alias.asname:
+                self.bind(alias.asname, alias.name)
+            else:
+                top = alias.name.split(".")[0]
+                self.bind(top, top)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:  # noqa: N802
+        if node.level:
+            base_parts = self.package.split(".") if self.package else []
+            if node.level - 1 >= len(base_parts):
+                self.problems.append(f"{self.rel}:{node.lineno}: relative import escapes the package root")
+                return
+            base = ".".join(base_parts[: len(base_parts) - (node.level - 1)])
+            module = ".".join(part for part in (base, node.module) if part)
+        else:
+            module = node.module or ""
+        if module == "__future__":
+            return
+        for alias in node.names:
+            if alias.name == "*":
+                self.problems.append(f"{self.rel}:{node.lineno}: star import from {module!r} hides its dependencies")
+                continue
+            target = f"{module}.{alias.name}" if module else alias.name
+            self.imports.append((node.lineno, target))
+            self.bind(alias.asname or alias.name, target)
+
+    def visit_Name(self, node: ast.Name) -> None:  # noqa: N802
+        if isinstance(node.ctx, (ast.Store, ast.Del)):
+            self.bind(node.id)
+        else:
+            self.loads.append((node, self.scope))
+
+    def visit_NamedExpr(self, node: ast.NamedExpr) -> None:  # noqa: N802
+        scope = self.scope
+        while scope.kind == "comprehension" and scope.parent is not None:  # PEP 572: binds in the enclosing scope
+            scope = scope.parent
+        scope.bound.add(node.target.id)
+        self.visit(node.value)
+
+    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:  # noqa: N802
+        if node.name:
+            self.bind(node.name)
+        self.generic_visit(node)
+
+    def visit_MatchAs(self, node: ast.MatchAs) -> None:  # noqa: N802
+        if node.name:
+            self.bind(node.name)
+        self.generic_visit(node)
+
+    def visit_MatchStar(self, node: ast.MatchStar) -> None:  # noqa: N802
+        if node.name:
+            self.bind(node.name)
+
+    def visit_MatchMapping(self, node: ast.MatchMapping) -> None:  # noqa: N802
+        if node.rest:
+            self.bind(node.rest)
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:  # noqa: N802
+        self.attrs.append((node, self.scope))
+        self.generic_visit(node)
+
+
+def resolve(name: str, scope: _Scope) -> set[str] | None:
+    """Import targets `name` refers to from `scope`: None if it is bound nowhere
+    (a builtin), an empty set if its binding is not an import. A name bound by
+    import and by other statements in the same scope resolves to the imports
+    (conservative)."""
+    start = scope
+    if name in scope.global_names:
+        scope = scope.module()
+    while scope is not None:
+        visible = scope is start or scope.kind != "class"  # class bodies are not visible to nested scopes
+        if visible and name in scope.bound and name not in scope.nonlocal_names:
+            return set(scope.imports.get(name, set()))
+        scope = scope.parent
+    return None
+
+
+def collect_references(tree: ast.Module, package: str, rel: str, forbidden_calls: list[str]) -> tuple[list[tuple[int, str, str, str]], list[str]]:
     """Return ([(lineno, dotted target, kind, alias base)], problems).
 
-    kind is import|attr|call. For attr, `alias base` is the import target the
-    attribute chain starts from (so `os.system(...)` is caught even though
-    `import os` itself is unrestricted).
+    kind is import|attr|builtin. For attr, `alias base` is the import target
+    the attribute chain starts from (so `os.system(...)` is caught even though
+    `import os` itself is unrestricted), resolved in the chain's own scope.
+    builtin refs name a forbidden builtin reached by any static spelling: a
+    bare reference to it (called or not) where the name is not rebound, an
+    import of builtins.<name>, an attribute on an alias of `builtins`, or any
+    use of `__builtins__`.
     """
-    refs: list[tuple[int, str, str, str]] = []
-    problems: list[str] = []
-    aliases: dict[str, str] = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                refs.append((node.lineno, alias.name, "import", ""))
-                if alias.asname:
-                    aliases[alias.asname] = alias.name
-                else:
-                    top = alias.name.split(".")[0]
-                    aliases[top] = top
-        elif isinstance(node, ast.ImportFrom):
-            if node.level:
-                base_parts = package.split(".") if package else []
-                if node.level - 1 >= len(base_parts):
-                    problems.append(f"{rel}:{node.lineno}: relative import escapes the package root")
-                    continue
-                base = ".".join(base_parts[: len(base_parts) - (node.level - 1)])
-                module = ".".join(p for p in (base, node.module) if p)
-            else:
-                module = node.module or ""
-            if module == "__future__":
-                continue
-            for alias in node.names:
-                if alias.name == "*":
-                    problems.append(f"{rel}:{node.lineno}: star import from {module!r} hides its dependencies")
-                    continue
-                target = f"{module}.{alias.name}" if module else alias.name
-                refs.append((node.lineno, target, "import", ""))
-                aliases[alias.asname or alias.name] = target
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Attribute):
-            chain = _attribute_chain(node)
-            if chain and chain[0] in aliases:
-                refs.append((node.lineno, ".".join([aliases[chain[0]], *chain[1]]), "attr", aliases[chain[0]]))
-        elif isinstance(node, ast.Call):
-            func = node.func
-            if isinstance(func, ast.Name):
-                refs.append((node.lineno, func.id, "call", ""))
-            elif isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name) and func.value.id == "builtins":
-                refs.append((node.lineno, func.attr, "call", ""))
-    return refs, problems
+    binder = _Binder(package, rel)
+    binder.visit(tree)
+    refs: list[tuple[int, str, str, str]] = [(lineno, target, "import", "") for lineno, target in binder.imports]
+    forbidden = set(forbidden_calls)
+    for lineno, target in binder.imports:
+        if target.startswith("builtins.") and target.split(".", 1)[1] in forbidden:
+            refs.append((lineno, target.split(".", 1)[1], "builtin", ""))
+    for node, scope in binder.attrs:
+        chain = _attribute_chain(node)
+        if chain is None:
+            continue
+        for base in sorted(resolve(chain[0], scope) or ()):
+            dotted = ".".join([base, *chain[1]])
+            refs.append((node.lineno, dotted, "attr", base))
+            if base == "builtins" and chain[1] and chain[1][0] in forbidden:
+                refs.append((node.lineno, chain[1][0], "builtin", ""))
+    for node, scope in binder.loads:
+        if node.id == "__builtins__":
+            refs.append((node.lineno, "__builtins__", "builtin", ""))
+        elif node.id in forbidden:
+            targets = resolve(node.id, scope)
+            if targets is None or any(t == f"builtins.{node.id}" for t in targets):
+                refs.append((node.lineno, node.id, "builtin", ""))
+    return refs, binder.problems
 
 
 def _docstring_nodes(tree: ast.Module) -> set[int]:
@@ -319,7 +522,7 @@ def check_file(root: Path, rel: str, mod: Module, cfg: Config) -> list[str]:
     except (SyntaxError, UnicodeDecodeError) as exc:
         return [f"{rel}: cannot be parsed, so its imports cannot be checked: {exc}"]
     _, package = _dotted_of_file(rel)
-    refs, problems = collect_references(tree, package, rel)
+    refs, problems = collect_references(tree, package, rel, cfg.forbidden_calls)
     violations = list(problems)
     if mod.name not in cfg.forbidden_sql_exempt:
         for lineno, pattern in forbidden_sql_uses(tree, cfg.forbidden_sql):
@@ -331,9 +534,8 @@ def check_file(root: Path, rel: str, mod: Module, cfg: Config) -> list[str]:
             continue
         seen.add((lineno, target))
         where = f"{rel}:{lineno}"
-        if kind == "call":
-            if target in cfg.forbidden_calls:
-                violations.append(f"{where}: {mod.name} calls forbidden builtin {target}()")
+        if kind == "builtin":
+            violations.append(f"{where}: {mod.name} reaches forbidden builtin {target}" + ("" if target == "__builtins__" else "()"))
             continue
         top = target.split(".")[0]
         if kind == "attr" and (top != base.split(".")[0] or top not in stdlib or any(_matches(base, e) for e in cfg.restricted_stdlib)):

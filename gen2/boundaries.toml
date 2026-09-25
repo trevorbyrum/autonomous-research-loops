@@ -20,6 +20,11 @@
 #   7. The declared `may_import` graph is acyclic.
 #   8. No string literal matches `forbidden_sql` (REPLACE conflict resolution)
 #      outside `forbidden_sql_exempt_modules`.
+# What this graph is: an architectural lint over the static names a module can
+# reach. What it is not: a security sandbox, a proof that a network endpoint
+# is the right one, or a check on filesystem I/O — reflection, runtime path
+# tricks, child interpreters and permitted-library behaviour are left to
+# runtime isolation and review (tools/check_boundaries.py docstring; A8).
 # Amending this file is an architecture change: it goes through the charter's
 # review path, never as a drive-by edit to make a violation pass.
 
@@ -33,7 +38,12 @@ boundaries_doc = "docs/gen2/BOUNDARIES.md"
 forbidden_imports = ["research_loops", "research_gateway"]
 
 # Dynamic evaluation defeats a static import graph and is how "execute
-# agent-supplied code" would happen (BOUNDARIES.md Router: Must never).
+# agent-supplied code" would happen (BOUNDARIES.md Router: Must never). The
+# checker refuses every static spelling that reaches one of these builtins:
+# a bare reference (called or passed along) where the name is not rebound,
+# `from builtins import eval as e`, an attribute on an alias of `builtins`,
+# and any use of `__builtins__` (A8). Reflection (getattr/globals/vars/
+# sys.modules) remains out of reach of a static lint.
 forbidden_calls = ["eval", "exec", "compile", "__import__"]
 
 # SQL that resolves a conflict by deleting the stored row (INSERT OR
@@ -47,21 +57,27 @@ forbidden_sql_exempt_modules = ["tests"]
 
 # Capability-bearing stdlib surfaces. An entry matches the dotted name itself
 # and anything below it; a trailing "*" matches by prefix.
+# The low-level private modules behind each public surface are listed too
+# (Astra 0a review A8: `import _sqlite3` / `_posixsubprocess` bypassed the
+# public names), and none of them is granted anywhere.
 restricted_stdlib = [
   # authoritative-store access (sole writer: BOUNDARIES.md Router)
-  "sqlite3",
+  "sqlite3", "_sqlite3", "dbm", "shelve",
   # process control (BOUNDARIES.md Station supervisor owns lifecycles)
-  "subprocess", "multiprocessing", "concurrent.futures.process", "signal",
-  "asyncio", "pty",
+  "subprocess", "_posixsubprocess", "multiprocessing", "_multiprocessing",
+  "concurrent.futures.process", "signal", "_signal", "asyncio", "_asyncio",
+  "pty", "webbrowser", "_winapi", "msvcrt",
   "os.system", "os.popen", "os.fork", "os.forkpty", "os.kill", "os.killpg",
-  "os.exec*", "os.spawn*", "os.posix_spawn*",
+  "os.exec*", "os.spawn*", "os.posix_spawn*", "os.startfile",
   # network (Gateway is the only door to research sources; decision providers,
   # the tier-0 service and projection sinks are the other declared endpoints)
-  "socket", "ssl", "http.client", "http.server", "urllib.request",
-  "socketserver", "xmlrpc", "ftplib", "smtplib",
+  "socket", "_socket", "ssl", "_ssl", "http.client", "http.server",
+  "urllib.request", "socketserver", "xmlrpc", "wsgiref", "ftplib", "smtplib",
+  "imaplib", "poplib", "nntplib", "telnetlib",
   # dynamic code loading / deserialization of executable payloads
   "importlib.import_module", "importlib.util", "importlib.machinery",
-  "runpy", "pickle", "marshal", "shelve", "code", "codeop", "ctypes",
+  "importlib.__import__", "_imp", "zipimport", "pkgutil",
+  "runpy", "pickle", "_pickle", "marshal", "code", "codeop", "ctypes", "_ctypes",
 ]
 
 # ---------------------------------------------------------------------------
@@ -107,7 +123,7 @@ third_party = []
 
 [modules.accounting]
 path = "gen2/accounting"
-purpose = "Pure arithmetic over typed records: novelty/yield/accrual/coverage/verification tiers, the four candidate units, stopping dossiers. No model calls, no I/O."
+purpose = "Pure arithmetic over typed records: novelty/yield/accrual/coverage/verification tiers, the four candidate units, stopping dossiers. No model calls, and no I/O by design — but only the restricted capability surfaces are machine-checked: filesystem access (open, pathlib, io, os file calls) is not, so 'no I/O' is held by review and runtime isolation, not by this graph (A8)."
 boundaries = ["Evidence accounting"]
 may_import = ["core"]
 stdlib_capabilities = []
