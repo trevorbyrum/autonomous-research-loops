@@ -532,6 +532,7 @@ CREATE TABLE invocations (
            ELSE brief_ref IS NULL AND brief_version IS NULL AND brief_hash IS NULL AND brief_confirmation_decision_id IS NULL END),
   CHECK (admission_context = 'contract/1' OR kind IN ('discovery', 'delegate', 'research_pass')),
   CHECK (launch_intent_at IS NOT NULL OR state IN ('admitted', 'cancelled')),
+  CHECK (launch_intent_at IS NULL OR job_handle IS NOT NULL),
   CHECK (state != 'running' OR (job_handle IS NOT NULL AND host_id IS NOT NULL AND boot_id IS NOT NULL AND start_fingerprint IS NOT NULL)),
   CHECK (state NOT IN ('result_ready', 'committed') OR (result_payload_digest IS NOT NULL AND result_staged_at IS NOT NULL)),
   CHECK (state != 'cancelled' OR descendants_confirmed_at IS NOT NULL),
@@ -634,18 +635,88 @@ WHEN NEW.invocation_id IS NOT OLD.invocation_id
   OR NEW.contract_revision IS NOT OLD.contract_revision
   OR NEW.brief_ref IS NOT OLD.brief_ref OR NEW.brief_version IS NOT OLD.brief_version
   OR NEW.brief_hash IS NOT OLD.brief_hash OR NEW.brief_confirmation_decision_id IS NOT OLD.brief_confirmation_decision_id
+  OR NEW.admitted_at IS NOT OLD.admitted_at
   OR (OLD.launch_intent_at IS NOT NULL AND NEW.launch_intent_at IS NOT OLD.launch_intent_at)
   OR (OLD.job_handle IS NOT NULL AND NEW.job_handle IS NOT OLD.job_handle)
+  OR (OLD.host_id IS NOT NULL AND NEW.host_id IS NOT OLD.host_id)
+  OR (OLD.container_id IS NOT NULL AND NEW.container_id IS NOT OLD.container_id)
   OR (OLD.boot_id IS NOT NULL AND NEW.boot_id IS NOT OLD.boot_id)
   OR (OLD.start_fingerprint IS NOT NULL AND NEW.start_fingerprint IS NOT OLD.start_fingerprint)
   OR (OLD.result_payload_digest IS NOT NULL AND NEW.result_payload_digest IS NOT OLD.result_payload_digest)
 BEGIN
-  SELECT RAISE(ABORT, 'invocation identity, launch intent, process identity and staged result are write-once');
+  SELECT RAISE(ABORT, 'invocation identity, admission pins, launch intent, process identity and staged result are write-once');
+END;
+
+-- A5 / L-4: leaving outcome_unknown for any state L-1 allows needs the
+-- durable reconciliation record of THIS unknown episode whose resolution
+-- supports the target: found_running -> running; found_result -> result_ready
+-- (same payload digest); found_committed -> committed (a final receipt
+-- exists); confirmed_failed/terminated_group -> failed; terminated_group ->
+-- cancelled. A timestamp or a result digest alone is not reconciliation.
+CREATE TRIGGER invocations_unknown_needs_reconciliation
+BEFORE UPDATE OF state ON invocations
+WHEN OLD.state = 'outcome_unknown'
+  AND NEW.state IN ('running', 'result_ready', 'committed', 'failed', 'cancelled')
+  AND NOT EXISTS (
+    SELECT 1 FROM invocation_reconciliations r
+    WHERE r.invocation_id = NEW.invocation_id AND r.unknown_since = OLD.outcome_unknown_since
+      AND ((NEW.state = 'running' AND r.resolution = 'found_running')
+        OR (NEW.state = 'result_ready' AND r.result_payload_digest = NEW.result_payload_digest)  -- only found_result carries a digest (CHECK)
+        OR (NEW.state = 'committed' AND r.resolution = 'found_committed'
+            AND EXISTS (SELECT 1 FROM operation_receipts o WHERE o.invocation_id = NEW.invocation_id AND o.operation_kind = 'final_outcome'))
+        OR (NEW.state = 'failed' AND r.resolution IN ('confirmed_failed', 'terminated_group'))
+        OR (NEW.state = 'cancelled' AND r.resolution = 'terminated_group')))
+BEGIN
+  SELECT RAISE(ABORT, 'outcome_unknown is left only through a reconciliation record of this episode that supports the target state (L-4, A5)');
 END;
 
 CREATE TRIGGER invocations_no_delete BEFORE DELETE ON invocations
 BEGIN
   SELECT RAISE(ABORT, 'invocations are never deleted');
+END;
+
+-- trace: design review §6 ("outcome_unknown ... must be reconciled"), §5
+-- (a crash between spawn and identity record is resolved by idempotent job
+-- lookup or by terminating/reconciling the owned execution group, never by
+-- PID adoption); BOUNDARIES.md Station supervisor (never treat
+-- outcome_unknown as vanished/failed/retryable/done without reconciliation);
+-- schema invocation.schema.json#/properties/reconciliation; Astra 0a review
+-- A5 and ruling R2.4; INVARIANTS L-4.
+-- One immutable row per resolved unknown episode (keyed by its
+-- unknown_since), recorded while the invocation is still outcome_unknown.
+-- The evidence is the retained lookup/termination record, never a bare
+-- digest; terminal resolutions confirm descendant handling.
+CREATE TABLE invocation_reconciliations (
+  reconciliation_id TEXT PRIMARY KEY CHECK (reconciliation_id GLOB 'rec_*'),
+  invocation_id TEXT NOT NULL REFERENCES invocations (invocation_id),
+  unknown_since TEXT NOT NULL,
+  resolution TEXT NOT NULL CHECK (resolution IN ('found_running', 'found_result', 'found_committed', 'confirmed_failed', 'terminated_group')),
+  method TEXT NOT NULL CHECK (method IN ('job_handle_lookup', 'execution_group_termination')),
+  evidence_ref TEXT NOT NULL REFERENCES artifacts (content_hash),
+  result_payload_digest TEXT CHECK (result_payload_digest IS NULL OR result_payload_digest GLOB 'sha256:*'),
+  descendants_confirmed_at TEXT,
+  resolved_at TEXT NOT NULL,
+  UNIQUE (invocation_id, unknown_since),
+  CHECK ((resolution = 'found_result') = (result_payload_digest IS NOT NULL)),
+  CHECK (resolution NOT IN ('confirmed_failed', 'terminated_group') OR descendants_confirmed_at IS NOT NULL),
+  CHECK ((resolution = 'terminated_group') = (method = 'execution_group_termination'))
+) STRICT;
+
+CREATE TRIGGER invocation_reconciliations_for_current_episode
+BEFORE INSERT ON invocation_reconciliations
+WHEN NOT EXISTS (
+  SELECT 1 FROM invocations i
+  WHERE i.invocation_id = NEW.invocation_id AND i.state = 'outcome_unknown' AND i.outcome_unknown_since = NEW.unknown_since)
+BEGIN
+  SELECT RAISE(ABORT, 'a reconciliation records the current outcome_unknown episode of its invocation');
+END;
+CREATE TRIGGER invocation_reconciliations_immutable_u BEFORE UPDATE ON invocation_reconciliations
+BEGIN
+  SELECT RAISE(ABORT, 'reconciliation records are immutable');
+END;
+CREATE TRIGGER invocation_reconciliations_no_delete BEFORE DELETE ON invocation_reconciliations
+BEGIN
+  SELECT RAISE(ABORT, 'reconciliation records are never deleted (C-11)');
 END;
 
 -- trace: INVARIANTS L-1 (transition audit); flow §4.1.

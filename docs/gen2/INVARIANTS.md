@@ -105,12 +105,13 @@ Numbering follows DR §10's release gates; gate 1 is split into its crash half (
 
 `result_ready → failed` covers a result rejected by `commit_outcome`; the result stays retained (C-10). *Source:* DR §6; B *Station supervisor*. *Enforced at:* DDL `invocations` transition trigger; schema `invocation.schema.json`.
 
-**L-2 — Launch intent is recorded before spawn.** *Source:* DR §5 ("Crash fencing"). *Enforced at:* DDL (`launching` and later states require the launch-intent timestamp).
+**L-2 — Launch intent is recorded before spawn,** carrying the stable supervisor job handle. *Source:* DR §5 ("Crash fencing"). *Enforced at:* DDL (`launching` and later states require the launch-intent timestamp, and a launch intent requires the job handle — matching the JSON record).
 
 **L-3 — Process identity is never a bare PID.** It is the invocation/job handle plus host/container identity, boot identity, and process start fingerprint. A crash between spawn and identity record is resolved by idempotent job lookup or by terminating/reconciling the owned execution group, never by PID adoption.
-*Source:* DR §5; B *Station supervisor*. *Enforced at:* DDL (`running` requires job handle, host, boot identity and start fingerprint; there is no PID column).
+Process identity is required while `running`; a job never observed running may be recovered through its stable handle and retained result without one, but every identity field once observed — host and container included — is write-once and preserved in all later states (ruling R2.4).
+*Source:* DR §5; B *Station supervisor*; Astra 0a ruling R2.4. *Enforced at:* DDL (`running` requires job handle, host, boot identity and start fingerprint; job handle, host, container, boot identity, start fingerprint, admission/config pins and the staged result are write-once; there is no PID column).
 
-**L-4 — `outcome_unknown` is reconciled, never assumed.** It is not synonymous with vanished, failed, safely retryable, or done. *Source:* DR §6; B *Station supervisor*.
+**L-4 — `outcome_unknown` is reconciled, never assumed.** It is not synonymous with vanished, failed, safely retryable, or done. Leaving it requires a durable reconciliation record of that unknown episode — method (job-handle lookup or execution-group termination), retained evidence, the result digest found, and descendant confirmation for terminal resolutions — whose resolution supports the target state; a timestamp or a digest alone is not reconciliation. *Source:* DR §6; B *Station supervisor*; Astra 0a review A5. *Enforced at:* DDL `invocation_reconciliations` and the `invocations_unknown_needs_reconciliation` trigger; schema `invocation.schema.json#/properties/reconciliation`. *Test must show:* each exit from `outcome_unknown` with and without a supporting record of the current episode (stale episode, wrong resolution, mismatched digest refused); the full L-1 matrix for all five kinds.
 
 **L-5 — Agent self-reported completion is never accepted.** The supervisor's structural checks and the commit protocol decide what happened. *Source:* F S4 step 7; B *Station supervisor*.
 

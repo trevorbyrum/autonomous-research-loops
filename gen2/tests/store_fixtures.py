@@ -238,9 +238,25 @@ class StoreTestCase(unittest.TestCase):
         self.x("INSERT INTO decision_receipts (decision_receipt_id, invocation_id, topic_id, spec_hash, decision_class, provider, input_status, response_status, raw_response_digest, answer, policy_id, policy_version, authority_level, qualification_ref, action, commit_operation_id, hold_id, blind_sample, receipt, decided_at) VALUES (?, ?, ?, ?, ?, ?, 'complete', 'answered', ?, ?, 'P1', 1, ?, ?, ?, ?, ?, 0, '{}', ?)",
                did, inv, tid, spec_hash, cls, provider, h("5"), json.dumps(answer), authority, qualification, action, commit_op, hold, T)
 
+    def to_launching(self, iid: str) -> None:
+        self.x("UPDATE invocations SET state = 'launching', launch_intent_at = ?, job_handle = ? WHERE invocation_id = ?", T, "job-" + iid, iid)
+
     def to_running(self, iid: str) -> None:
-        self.x("UPDATE invocations SET state = 'launching', launch_intent_at = ? WHERE invocation_id = ?", T, iid)
-        self.x("UPDATE invocations SET state = 'running', job_handle = ?, host_id = 'dev', boot_id = 'b1', start_fingerprint = 'st=1' WHERE invocation_id = ?", "job-" + iid, iid)
+        self.to_launching(iid)
+        self.x("UPDATE invocations SET state = 'running', host_id = 'dev', boot_id = 'b1', start_fingerprint = 'st=1' WHERE invocation_id = ?", iid)
+
+    def reconcile(self, iid: str, resolution: str, *, digest: str | None = None, rid: str | None = None, method: str | None = None,
+                  descendants: str | None = None, since: str | None = None) -> None:
+        """Record the reconciliation of the invocation's current unknown episode
+        (evidence: the retained lookup record, artifact h("7"))."""
+        if not self.rows("SELECT 1 FROM artifacts WHERE content_hash = ?", h("7")):
+            self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'application/json', ?)", h("7"), T)
+        since = since or self.rows("SELECT outcome_unknown_since FROM invocations WHERE invocation_id = ?", iid)[0][0]
+        method = method or ("execution_group_termination" if resolution == "terminated_group" else "job_handle_lookup")
+        if descendants is None and resolution in ("confirmed_failed", "terminated_group"):
+            descendants = T
+        self.x("INSERT INTO invocation_reconciliations (reconciliation_id, invocation_id, unknown_since, resolution, method, evidence_ref, result_payload_digest, descendants_confirmed_at, resolved_at) "
+               "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", rid or f"rec_{iid[4:]}{since[-9:-7]}", iid, since, resolution, method, h("7"), digest, descendants, T)
 
     # -- one coherent row in every table -------------------------------------
     def populate_every_table(self) -> None:
@@ -259,6 +275,9 @@ class StoreTestCase(unittest.TestCase):
         self.invocation("inv_pppppppp")
         self.to_running("inv_pppppppp")
         self.x("INSERT INTO invocation_transitions (invocation_id, seq, from_state, to_state, at, cause) VALUES ('inv_pppppppp', 1, NULL, 'admitted', ?, 'admit')", T)
+        self.x("UPDATE invocations SET state = 'outcome_unknown', outcome_unknown_since = ? WHERE invocation_id = 'inv_pppppppp'", T)
+        self.reconcile("inv_pppppppp", "found_running")
+        self.x("UPDATE invocations SET state = 'running' WHERE invocation_id = 'inv_pppppppp'")
         self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, 1, 2, 1, 'eval-1', ?, ?, ?)", TOPIC, h("3"), h("7"), T)
         self.receipt("op_00000001", "inv_pppppppp", kind="final_outcome", before=0)
         self.x("INSERT INTO research_ordinals VALUES (?, 1, 'inv_pppppppp', 'op_00000001')", TOPIC)

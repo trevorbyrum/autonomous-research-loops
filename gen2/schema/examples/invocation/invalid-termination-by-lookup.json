@@ -1,0 +1,31 @@
+{
+  "fixture": {
+    "schema": "invocation.schema.json",
+    "expect": "invalid",
+    "tests": "A5: terminated_group comes from terminating the owned execution group, with descendants confirmed",
+    "base": "valid-reconciled-result-ready.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/reconciliation/resolution",
+        "value": "terminated_group"
+      },
+      {
+        "op": "replace",
+        "path": "/reconciliation/result_payload_digest",
+        "value": null
+      },
+      {
+        "op": "replace",
+        "path": "/reconciliation/descendants_confirmed_at",
+        "value": "2026-09-25T10:55:00Z"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "const",
+        "path": "/reconciliation/method"
+      }
+    ]
+  }
+}

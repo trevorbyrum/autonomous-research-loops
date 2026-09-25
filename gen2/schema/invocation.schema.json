@@ -101,14 +101,40 @@
       }
     },
     "reconciliation": {
+      "description": "The latest outcome_unknown episode (L-4). While pending nothing is resolved; a resolution is a durable record (DDL invocation_reconciliations) naming its method and retained evidence — never just a timestamp or a digest (Astra 0a review A5). found_result names the digest found; confirmed_failed and terminated_group confirm descendant handling; terminated_group is reached only by terminating the owned execution group.",
       "type": ["object", "null"],
       "additionalProperties": false,
-      "required": ["unknown_since", "resolved_at", "resolution"],
+      "required": ["unknown_since", "resolved_at", "resolution", "method", "evidence_ref", "result_payload_digest", "descendants_confirmed_at"],
       "properties": {
         "unknown_since": {"$ref": "common.schema.json#/$defs/timestamp"},
         "resolved_at": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/timestamp"}]},
-        "resolution": {"enum": ["pending", "found_running", "found_result", "found_committed", "confirmed_failed", "terminated_group"]}
-      }
+        "resolution": {"enum": ["pending", "found_running", "found_result", "found_committed", "confirmed_failed", "terminated_group"]},
+        "method": {"enum": [null, "job_handle_lookup", "execution_group_termination"]},
+        "evidence_ref": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/sha256"}]},
+        "result_payload_digest": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/sha256"}]},
+        "descendants_confirmed_at": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/timestamp"}]}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"resolution": {"const": "pending"}}},
+          "then": {"properties": {"resolved_at": {"type": "null"}, "method": {"type": "null"}, "evidence_ref": {"type": "null"}, "result_payload_digest": {"type": "null"}}},
+          "else": {"properties": {"resolved_at": {"type": "string"}, "method": {"type": "string"}, "evidence_ref": {"type": "string"}}}
+        },
+        {
+          "if": {"properties": {"resolution": {"const": "found_result"}}},
+          "then": {"properties": {"result_payload_digest": {"type": "string"}}},
+          "else": {"properties": {"result_payload_digest": {"type": "null"}}}
+        },
+        {
+          "if": {"properties": {"resolution": {"enum": ["confirmed_failed", "terminated_group"]}}},
+          "then": {"properties": {"descendants_confirmed_at": {"type": "string"}}}
+        },
+        {
+          "if": {"properties": {"resolution": {"const": "terminated_group"}}},
+          "then": {"properties": {"method": {"const": "execution_group_termination"}}},
+          "else": {"properties": {"method": {"not": {"const": "execution_group_termination"}}}}
+        }
+      ]
     },
     "transitions": {
       "type": "array",
@@ -145,7 +171,7 @@
       "then": {"properties": {"launch_intent": {"type": "object"}}}
     },
     {
-      "description": "Observed running means identity was recorded. A job reconciled from outcome_unknown may already have exited, so later states require the retained result instead.",
+      "description": "Observed running means identity was recorded. Ruling R2.4: a job never observed running (recovered through its stable handle and retained result) has no process identity, but identity once observed is write-once and kept in every later state (enforced by the store, which sees history; one record cannot).",
       "if": {"properties": {"state": {"const": "running"}}},
       "then": {"properties": {"process_identity": {"type": "object"}}}
     },

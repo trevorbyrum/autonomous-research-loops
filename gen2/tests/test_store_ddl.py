@@ -63,37 +63,210 @@ class InvocationLifecycleTest(StoreTestCase):
         self.x("UPDATE invocations SET state = 'result_ready', result_payload_digest = ?, result_staged_at = ? WHERE invocation_id = 'inv_pppppppp'", h("d"), T)
         self.x("UPDATE invocations SET state = 'committed' WHERE invocation_id = 'inv_pppppppp'")
 
+    # Hand-written from INVARIANTS L-1 (not read from the DDL): the oracle.
+    ALLOWED = {
+        "admitted": {"launching", "cancelled"},
+        "launching": {"running", "failed", "cancelled", "outcome_unknown"},
+        "running": {"result_ready", "failed", "cancelled", "outcome_unknown"},
+        "result_ready": {"committed", "failed", "outcome_unknown"},
+        "outcome_unknown": {"running", "result_ready", "committed", "failed", "cancelled"},
+        "committed": set(), "cancelled": set(), "failed": set(),
+    }
+    KINDS = ("research_pass", "discovery", "delegate", "verification", "checkpoint")
+    SCOPE = {"research_pass": "research", "discovery": "discovery", "verification": "verification", "checkpoint": "checkpoint"}
+
+    def fresh(self, kind: str, n: int) -> str:
+        """A new invocation of this kind, owning a fresh lease (or under a running parent)."""
+        iid = f"inv_{kind[:4]}{n:04d}"
+        if kind == "delegate":
+            if not self.rows("SELECT 1 FROM invocations WHERE invocation_id = 'inv_parent00'"):
+                self.owned("research_pass", "inv_parent00", "lease_parent00")
+                self.to_running("inv_parent00")
+            self.invocation(iid, kind="delegate", lease=None, parent="inv_parent00")
+            return iid
+        self.owned(kind, iid, f"lease_{kind[:4]}{n:04d}")
+        return iid
+
+    def owned(self, kind: str, iid: str, lid: str) -> None:
+        """Release the scope's live lease, grant the next generation, admit iid on it."""
+        for (old,) in self.rows("SELECT lease_id FROM leases WHERE topic_id = ? AND scope = ? AND released_at IS NULL", TOPIC, self.SCOPE[kind]):
+            self.x("UPDATE leases SET released_at = ?, release_reason = 'finalized' WHERE lease_id = ?", T, old)
+        gen = self.rows("SELECT coalesce(max(generation), 0) + 1 FROM leases WHERE topic_id = ?", TOPIC)[0][0]
+        self.x("INSERT INTO leases (lease_id, topic_id, scope, generation, station_id, granted_at, expires_at) VALUES (?, ?, ?, ?, 'st1', ?, ?)", lid, TOPIC, self.SCOPE[kind], gen, T, T)
+        self.invocation(iid, kind=kind, lease=lid)
+
+    def columns_for(self, iid: str, state: str) -> str:
+        """SET clause giving a row everything the target state's CHECKs need,
+        with deterministic values so write-once columns are re-set unchanged."""
+        return {
+            "admitted": "state = 'admitted'",
+            "launching": f"state = 'launching', launch_intent_at = '{T}', job_handle = 'job-{iid}'",
+            "running": f"state = 'running', launch_intent_at = '{T}', job_handle = 'job-{iid}', host_id = 'dev', boot_id = 'b1', start_fingerprint = 'st=1'",
+            "result_ready": f"state = 'result_ready', launch_intent_at = '{T}', job_handle = 'job-{iid}', result_payload_digest = '{h('d')}', result_staged_at = '{T}'",
+            "committed": f"state = 'committed', launch_intent_at = '{T}', job_handle = 'job-{iid}', result_payload_digest = '{h('d')}', result_staged_at = '{T}'",
+            "cancelled": f"state = 'cancelled', cancel_requested_at = '{T}', cancel_requested_by = 'router', descendants_confirmed_at = '{T}'",
+            "failed": "state = 'failed'",
+            "outcome_unknown": f"state = 'outcome_unknown', launch_intent_at = '{T}', job_handle = 'job-{iid}', outcome_unknown_since = '{T}'",
+        }[state]
+
+    PATH = {"admitted": (), "launching": ("launching",), "running": ("launching", "running"),
+            "result_ready": ("launching", "running", "result_ready"), "committed": ("launching", "running", "result_ready", "committed"),
+            "cancelled": ("cancelled",), "failed": ("launching", "failed"), "outcome_unknown": ("launching", "running", "outcome_unknown")}
+    RESOLUTION = {"running": "found_running", "result_ready": "found_result", "committed": "found_committed", "failed": "confirmed_failed", "cancelled": "terminated_group"}
+
     def test_terminal_states_are_final(self) -> None:
-        self.invocation("inv_pppppppp")
-        self.to_running("inv_pppppppp")
-        self.x("UPDATE invocations SET state = 'failed' WHERE invocation_id = 'inv_pppppppp'")
-        self.rejects("invocation state transition not allowed", "UPDATE invocations SET state = 'running' WHERE invocation_id = 'inv_pppppppp'")
+        """D06 rewrite: the full L-1 transition matrix, for all five kinds. Each
+        (kind, from, to) pair starts from a fresh invocation driven to `from`
+        along an allowed path; the attempt supplies every column the target's
+        CHECKs need (and, out of outcome_unknown, the matching reconciliation
+        record), so only the transition rule decides."""
+        n = 0
+        for kind in self.KINDS:
+            for src, allowed in self.ALLOWED.items():
+                for dst in self.ALLOWED:
+                    if dst == src:
+                        continue
+                    n += 1
+                    with self.subTest(kind=kind, src=src, dst=dst):
+                        iid = self.fresh(kind, n)
+                        for step in self.PATH[src]:
+                            self.x(f"UPDATE invocations SET {self.columns_for(iid, step)} WHERE invocation_id = ?", iid)
+                        if src == "outcome_unknown" and dst in self.RESOLUTION:
+                            if dst == "committed":
+                                lease = self.rows("SELECT coalesce(i.lease_id, p.lease_id) FROM invocations i LEFT JOIN invocations p ON p.invocation_id = i.parent_invocation_id WHERE i.invocation_id = ?", iid)[0][0]
+                                gen = self.rows("SELECT generation FROM leases WHERE lease_id = ?", lease)[0][0]
+                                self.receipt(f"op_{n:08d}", iid, lease=lease, gen=gen, before=n)
+                            self.reconcile(iid, self.RESOLUTION[dst], digest=h("d") if dst == "result_ready" else None, rid=f"rec_{n:08d}")
+                        attempt = f"UPDATE invocations SET {self.columns_for(iid, dst)} WHERE invocation_id = ?"
+                        if dst in allowed:
+                            self.x(attempt, iid)
+                            self.assertEqual(self.rows("SELECT state FROM invocations WHERE invocation_id = ?", iid), [(dst,)])
+                        else:
+                            self.rejects("invocation state transition not allowed", attempt, iid)
+        self.assertEqual(n, 5 * 8 * 7)
 
     def test_outcome_unknown_is_reconciled_not_skipped(self) -> None:
+        """D07 rewrite (A5): leaving outcome_unknown needs the durable
+        reconciliation of this episode, with a resolution that supports the
+        target; a timestamp, a bare digest, a stale episode's record, a
+        mismatched digest or the wrong resolution are refused."""
+        later = "2026-09-25T13:00:00Z"
         self.invocation("inv_pppppppp")
         self.to_running("inv_pppppppp")
         self.rejects("CHECK constraint failed", "UPDATE invocations SET state = 'outcome_unknown' WHERE invocation_id = 'inv_pppppppp'")
         self.x("UPDATE invocations SET state = 'outcome_unknown', outcome_unknown_since = ? WHERE invocation_id = 'inv_pppppppp'", T)
+        to_ready = "UPDATE invocations SET state = 'result_ready', result_payload_digest = ?, result_staged_at = ? WHERE invocation_id = 'inv_pppppppp'"
+        refused = "reconciliation record of this episode"
+        self.rejects(refused, to_ready, h("d"), T)  # timestamp + result digest, no reconciliation
+        self.reconcile("inv_pppppppp", "found_running", rid="rec_00000001")
+        self.rejects(refused, to_ready, h("d"), T)  # a record whose resolution does not support result_ready
+        self.x("UPDATE invocations SET state = 'running' WHERE invocation_id = 'inv_pppppppp'")
+        self.x("UPDATE invocations SET state = 'outcome_unknown', outcome_unknown_since = ? WHERE invocation_id = 'inv_pppppppp'", later)
+        self.rejects("current outcome_unknown episode", "INSERT INTO invocation_reconciliations (reconciliation_id, invocation_id, unknown_since, resolution, method, evidence_ref, result_payload_digest, resolved_at) "
+                     "VALUES ('rec_00000009', 'inv_pppppppp', ?, 'found_result', 'job_handle_lookup', ?, ?, ?)", T, h("7"), h("d"), T)  # a record for the earlier episode
+        self.rejects(refused, "UPDATE invocations SET state = 'running' WHERE invocation_id = 'inv_pppppppp'")  # the earlier episode's record is stale
+        self.rejects("CHECK constraint failed", "INSERT INTO invocation_reconciliations (reconciliation_id, invocation_id, unknown_since, resolution, method, evidence_ref, resolved_at) "
+                     "VALUES ('rec_00000002', 'inv_pppppppp', ?, 'found_result', 'job_handle_lookup', ?, ?)", later, h("7"), T)  # found_result names its digest
+        self.reconcile("inv_pppppppp", "found_result", digest=h("e"), rid="rec_00000002")
+        self.rejects(refused, to_ready, h("d"), T)  # the digest found is not the one being staged
+        self.assertEqual(self.rows("SELECT state FROM invocations WHERE invocation_id = 'inv_pppppppp'"), [("outcome_unknown",)])
+        self.x(to_ready, h("e"), T)
+
+    def test_reconciliation_resolutions_and_evidence(self) -> None:
+        """A5: terminal resolutions confirm descendant handling; termination is its
+        own method; evidence is a retained artifact; records are immutable."""
+        self.invocation("inv_pppppppp")
+        self.to_running("inv_pppppppp")
+        self.x("UPDATE invocations SET state = 'outcome_unknown', outcome_unknown_since = ? WHERE invocation_id = 'inv_pppppppp'", T)
+        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'application/json', ?)", h("7"), T)
+        ins = ("INSERT INTO invocation_reconciliations (reconciliation_id, invocation_id, unknown_since, resolution, method, evidence_ref, descendants_confirmed_at, resolved_at) "
+               "VALUES ('rec_00000001', 'inv_pppppppp', ?, ?, ?, ?, ?, ?)")
+        self.rejects("CHECK constraint failed", ins, T, "confirmed_failed", "job_handle_lookup", h("7"), None, T)  # descendants unconfirmed
+        self.rejects("CHECK constraint failed", ins, T, "terminated_group", "job_handle_lookup", h("7"), T, T)  # termination is its own method
+        self.rejects("CHECK constraint failed", ins, T, "found_running", "execution_group_termination", h("7"), None, T)
+        self.rejects("FOREIGN KEY constraint failed", ins, T, "found_running", "job_handle_lookup", h("0"), None, T)  # evidence must be a retained artifact
+        self.rejects("CHECK constraint failed", "INSERT INTO invocation_reconciliations (reconciliation_id, invocation_id, unknown_since, resolution, method, evidence_ref, result_payload_digest, resolved_at) "
+                     "VALUES ('rec_00000001', 'inv_pppppppp', ?, 'found_running', 'job_handle_lookup', ?, ?, ?)", T, h("7"), h("d"), T)  # only found_result names a digest
+        refused = "reconciliation record of this episode"
+        # episode 1: found running supports only running
+        self.reconcile("inv_pppppppp", "found_running", rid="rec_00000001")
+        for target in ("failed", "cancelled"):
+            with self.subTest(target=target):
+                self.rejects(refused, f"UPDATE invocations SET state = '{target}', cancel_requested_at = ?, cancel_requested_by = 'operator', descendants_confirmed_at = ? WHERE invocation_id = 'inv_pppppppp'", T, T)
+        self.x("UPDATE invocations SET state = 'running' WHERE invocation_id = 'inv_pppppppp'")
+        # episode 2: a confirmed failure supports failed, not cancelled
+        later = "2026-09-25T13:00:00Z"
+        self.x("UPDATE invocations SET state = 'outcome_unknown', outcome_unknown_since = ? WHERE invocation_id = 'inv_pppppppp'", later)
+        self.reconcile("inv_pppppppp", "confirmed_failed", rid="rec_00000002")
+        self.rejects(refused, "UPDATE invocations SET state = 'cancelled', cancel_requested_at = ?, cancel_requested_by = 'operator', descendants_confirmed_at = ? WHERE invocation_id = 'inv_pppppppp'", T, T)
+        self.rejects("immutable", "UPDATE invocation_reconciliations SET resolution = 'terminated_group'")
+        self.x("UPDATE invocations SET state = 'failed' WHERE invocation_id = 'inv_pppppppp'")
+        # a group termination supports cancelled (and not running)
+        self.lease("lease_dddddddd", 2, scope="discovery")
+        self.invocation("inv_disc0001", kind="discovery", lease="lease_dddddddd")
+        self.to_running("inv_disc0001")
+        self.x("UPDATE invocations SET state = 'outcome_unknown', outcome_unknown_since = ? WHERE invocation_id = 'inv_disc0001'", T)
+        self.x(ins.replace("'rec_00000001', 'inv_pppppppp'", "'rec_00000003', 'inv_disc0001'"), T, "terminated_group", "execution_group_termination", h("7"), T, T)
+        self.rejects(refused, "UPDATE invocations SET state = 'running' WHERE invocation_id = 'inv_disc0001'")
+        self.x("UPDATE invocations SET state = 'cancelled', cancel_requested_at = ?, cancel_requested_by = 'operator', descendants_confirmed_at = ? WHERE invocation_id = 'inv_disc0001'", T, T)
+
+    def test_found_committed_needs_the_final_receipt(self) -> None:
+        self.invocation("inv_pppppppp")
+        self.to_running("inv_pppppppp")
+        self.x("UPDATE invocations SET state = 'outcome_unknown', outcome_unknown_since = ? WHERE invocation_id = 'inv_pppppppp'", T)
+        self.reconcile("inv_pppppppp", "found_committed")
+        commit = "UPDATE invocations SET state = 'committed', result_payload_digest = ?, result_staged_at = ? WHERE invocation_id = 'inv_pppppppp'"
+        self.receipt("op_00000001", "inv_pppppppp", kind="interim_transition", before=0)
+        self.rejects("reconciliation record of this episode", commit, h("d"), T)  # only an interim receipt exists
+        self.receipt("op_00000002", "inv_pppppppp", kind="final_outcome", before=1)
+        self.x(commit, h("d"), T)
+
+    def test_never_observed_job_recovered_by_handle(self) -> None:
+        """Ruling R2.4: a job never observed running (no process identity) is
+        recovered through its stable handle and retained result."""
+        self.invocation("inv_pppppppp")
+        self.to_launching("inv_pppppppp")
+        self.x("UPDATE invocations SET state = 'outcome_unknown', outcome_unknown_since = ? WHERE invocation_id = 'inv_pppppppp'", T)
+        self.reconcile("inv_pppppppp", "found_result", digest=h("d"))
         self.x("UPDATE invocations SET state = 'result_ready', result_payload_digest = ?, result_staged_at = ? WHERE invocation_id = 'inv_pppppppp'", h("d"), T)
+        self.assertEqual(self.rows("SELECT job_handle, host_id, boot_id FROM invocations WHERE invocation_id = 'inv_pppppppp'"), [("job-inv_pppppppp", None, None)])
 
     def test_running_requires_process_identity_not_a_pid(self) -> None:
         self.invocation("inv_pppppppp")
-        self.x("UPDATE invocations SET state = 'launching', launch_intent_at = ? WHERE invocation_id = 'inv_pppppppp'", T)
-        self.rejects("CHECK constraint failed", "UPDATE invocations SET state = 'running', job_handle = 'job-1', host_id = 'dev' WHERE invocation_id = 'inv_pppppppp'")
-        self.x("UPDATE invocations SET state = 'running', job_handle = 'job-1', host_id = 'dev', boot_id = 'b1', start_fingerprint = 'st=1' WHERE invocation_id = 'inv_pppppppp'")
+        self.to_launching("inv_pppppppp")
+        self.rejects("CHECK constraint failed", "UPDATE invocations SET state = 'running', host_id = 'dev' WHERE invocation_id = 'inv_pppppppp'")
+        self.x("UPDATE invocations SET state = 'running', host_id = 'dev', boot_id = 'b1', start_fingerprint = 'st=1' WHERE invocation_id = 'inv_pppppppp'")
         columns = {row[1] for row in self.x("PRAGMA table_info(invocations)")}
         self.assertNotIn("pid", columns)
 
     def test_launching_requires_launch_intent(self) -> None:
+        """Launch intent (before spawn) carries the stable job handle — SQL and
+        JSON now agree (A5)."""
         self.invocation("inv_pppppppp")
         self.rejects("CHECK constraint failed", "UPDATE invocations SET state = 'launching' WHERE invocation_id = 'inv_pppppppp'")
-        self.x("UPDATE invocations SET state = 'launching', launch_intent_at = ? WHERE invocation_id = 'inv_pppppppp'", T)
+        self.rejects("CHECK constraint failed", "UPDATE invocations SET state = 'launching', launch_intent_at = ? WHERE invocation_id = 'inv_pppppppp'", T)
+        self.to_launching("inv_pppppppp")
 
     def test_process_identity_is_write_once(self) -> None:
+        """D10 rewrite (A5, ruling R2.4): every identity/config/admission pin is
+        write-once; observed process identity (host and container included) is
+        write-once once observed and preserved in every later state."""
         self.invocation("inv_pppppppp")
-        self.to_running("inv_pppppppp")
-        self.rejects("write-once", "UPDATE invocations SET boot_id = 'b2' WHERE invocation_id = 'inv_pppppppp'")
-        self.rejects("write-once", "UPDATE invocations SET kind = 'verification' WHERE invocation_id = 'inv_pppppppp'")
+        self.to_running("inv_pppppppp")  # container_id not observed yet
+        self.x("UPDATE invocations SET container_id = 'ctr-1' WHERE invocation_id = 'inv_pppppppp'")  # first observation is allowed
+        pins = (("kind", "'verification'"), ("topic_id", f"'{OTHER}'"), ("parent_invocation_id", "'inv_pppppppp'"),
+                ("requested_by_invocation_id", "'inv_pppppppp'"), ("lease_id", "NULL"), ("capability_id", "'cap_other000'"),
+                ("config_bundle_hash", f"'{h('0')}'"), ("admission_context", "'pre-contract/1'"), ("contract_revision", "2"),
+                ("brief_ref", "'brief-1'"), ("brief_version", "1"), ("brief_hash", f"'{h('b')}'"), ("brief_confirmation_decision_id", "'opd_x'"),
+                ("admitted_at", "'2026-09-26T00:00:00Z'"), ("launch_intent_at", "'2026-09-26T00:00:00Z'"), ("job_handle", "'job-other'"),
+                ("host_id", "'other-host'"), ("container_id", "'ctr-2'"), ("container_id", "NULL"), ("host_id", "NULL"),
+                ("boot_id", "'b2'"), ("start_fingerprint", "'st=2'"))
+        for column, value in pins:
+            with self.subTest(column=column, value=value):
+                self.rejects("write-once", f"UPDATE invocations SET {column} = {value} WHERE invocation_id = 'inv_pppppppp'")
+        self.x("UPDATE invocations SET state = 'result_ready', result_payload_digest = ?, result_staged_at = ? WHERE invocation_id = 'inv_pppppppp'", h("d"), T)
+        self.rejects("write-once", "UPDATE invocations SET result_payload_digest = ? WHERE invocation_id = 'inv_pppppppp'", h("e"))
+        self.assertEqual(self.rows("SELECT host_id, container_id, boot_id, start_fingerprint FROM invocations WHERE invocation_id = 'inv_pppppppp'"), [("dev", "ctr-1", "b1", "st=1")])
 
     def test_delegate_names_its_parent(self) -> None:
         self.invocation("inv_pppppppp")

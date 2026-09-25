@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "invocation.schema.json",
+    "expect": "invalid",
+    "tests": "A5: a pending reconciliation has no resolution time (the review's probe)",
+    "base": "valid-outcome-unknown-pending.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/reconciliation/resolved_at",
+        "value": "2026-09-25T10:55:00Z"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/reconciliation/resolved_at"
+      }
+    ]
+  }
+}

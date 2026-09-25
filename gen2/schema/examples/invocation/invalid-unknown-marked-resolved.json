@@ -7,8 +7,16 @@
     "patch": [
       {
         "op": "replace",
-        "path": "/reconciliation/resolution",
-        "value": "confirmed_failed"
+        "path": "/reconciliation",
+        "value": {
+          "unknown_since": "2026-09-25T10:41:00Z",
+          "resolved_at": "2026-09-25T10:55:00Z",
+          "resolution": "confirmed_failed",
+          "method": "job_handle_lookup",
+          "evidence_ref": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "result_payload_digest": null,
+          "descendants_confirmed_at": "2026-09-25T10:55:00Z"
+        }
       }
     ],
     "errors": [

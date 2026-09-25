@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "invocation.schema.json",
+    "expect": "invalid",
+    "tests": "A5: found_result names the digest it found",
+    "base": "valid-reconciled-result-ready.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/reconciliation/result_payload_digest",
+        "value": null
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/reconciliation/result_payload_digest"
+      }
+    ]
+  }
+}

@@ -11,9 +11,12 @@ schema, and checks that the guard's own tests catch it:
             write the test expects to succeed — its positive control — was
             refused, i.e. the mutant over-restricts);
   SURVIVED  no test fails — the guard is untested;
-  INVALID   the mutation text was not found exactly once, the mutated DDL
-            errored a test (setup broke rather than an assertion catching the
-            mutant), or a listed killer did not fail.
+  INVALID   the mutation text was not found exactly once, a listed killer
+            did not fail, or tests errored (setup broke rather than an
+            assertion catching the mutant) while some listed killer did not
+            fail in its own body. Setup errors elsewhere are reported but
+            tolerated when every listed killer failed in its body: an
+            over-restricting mutant can also break a shared fixture.
 
 Exit 0 only if the unmutated baseline passes and every mutation is KILLED.
 The inventory is the reviewable claim: Astra's Gate C re-runs it
@@ -62,6 +65,7 @@ FI = "test_store_ddl.FacetImportanceTest."
 AD = "test_store_ddl.AdmissionAndLeaseTest."
 IL = "test_store_ddl.InvocationLifecycleTest."
 VT = "test_store_ddl.VerificationTest."
+LT = "test_store_ddl.InvocationLifecycleTest."
 
 MUTATIONS: list[Mutation] = [
     # --- A1: history cannot be rewritten ------------------------------------
@@ -331,6 +335,61 @@ MUTATIONS: list[Mutation] = [
                        ("brief", "\n     AND json_extract(receipt, '$.admission.brief.content_hash') IS brief_hash"))),
     Mutation("A4-ordinal-needs-contract", "A4", "a pre-contract research pass may earn an ordinal",
              (AD + "test_pre_contract_research_pass_earns_no_ordinal",), old="  OR (SELECT admission_context FROM operation_receipts WHERE operation_id = NEW.operation_id) IS NOT 'contract/1'\n", new=""),
+    # --- A5: lifecycle pins, launch handle, reconciliation; D06 matrix ------------
+    Mutation("A5-D06-reopen-committed-cancelled", "A5", "the review's surviving mutant: committed/cancelled may return to running",
+             (LT + "test_terminal_states_are_final",), scope="invocations_allowed_transitions",
+             old="  OR (OLD.state = 'outcome_unknown' AND NEW.state IN (", new="  OR (OLD.state IN ('committed', 'cancelled') AND NEW.state = 'running')\n  OR (OLD.state = 'outcome_unknown' AND NEW.state IN ("),
+    Mutation("A5-D06-unknown-back-to-launching", "A5", "outcome_unknown may return to launching",
+             (LT + "test_terminal_states_are_final",), scope="invocations_allowed_transitions",
+             old="NEW.state IN ('running', 'result_ready', 'committed', 'failed', 'cancelled')))", new="NEW.state IN ('launching', 'running', 'result_ready', 'committed', 'failed', 'cancelled')))"),
+    Mutation("A5-D06-skip-admitted-to-running", "A5", "admitted may skip straight to running",
+             (LT + "test_terminal_states_are_final",), scope="invocations_allowed_transitions",
+             old="(OLD.state = 'admitted' AND NEW.state IN ('launching', 'cancelled'))", new="(OLD.state = 'admitted' AND NEW.state IN ('launching', 'running', 'cancelled'))"),
+    Mutation("A5-D06-drop-result-ready-to-committed", "A5", "over-restriction: result_ready may no longer commit",
+             (LT + "test_terminal_states_are_final",), scope="invocations_allowed_transitions",
+             old="(OLD.state = 'result_ready' AND NEW.state IN ('committed', 'failed', 'outcome_unknown'))", new="(OLD.state = 'result_ready' AND NEW.state IN ('failed', 'outcome_unknown'))"),
+    Mutation("A5-launch-intent-carries-handle", "A5", "launch intent may be recorded without the stable job handle",
+             (LT + "test_launching_requires_launch_intent",), old="  CHECK (launch_intent_at IS NULL OR job_handle IS NOT NULL),\n", new=""),
+    *(Mutation(f"A5-pin-{key}", "A5", f"invocation {key} no longer write-once",
+               (LT + "test_process_identity_is_write_once",), scope="invocations_identity_immutable", old=old, new="")
+      for key, old in (("host", "\n  OR (OLD.host_id IS NOT NULL AND NEW.host_id IS NOT OLD.host_id)"),
+                       ("container", "\n  OR (OLD.container_id IS NOT NULL AND NEW.container_id IS NOT OLD.container_id)"),
+                       ("admitted-at", "\n  OR NEW.admitted_at IS NOT OLD.admitted_at"),
+                       ("requested-by", "\n  OR NEW.requested_by_invocation_id IS NOT OLD.requested_by_invocation_id"),
+                       ("admission-context", "\n  OR NEW.admission_context IS NOT OLD.admission_context"),
+                       ("contract-revision", "\n  OR NEW.contract_revision IS NOT OLD.contract_revision"),
+                       ("brief-pins", "\n  OR NEW.brief_ref IS NOT OLD.brief_ref OR NEW.brief_version IS NOT OLD.brief_version"),
+                       ("brief-hash-decision", "\n  OR NEW.brief_hash IS NOT OLD.brief_hash OR NEW.brief_confirmation_decision_id IS NOT OLD.brief_confirmation_decision_id"),
+                       ("config", "\n  OR NEW.config_bundle_hash IS NOT OLD.config_bundle_hash"),
+                       ("result-digest", "\n  OR (OLD.result_payload_digest IS NOT NULL AND NEW.result_payload_digest IS NOT OLD.result_payload_digest)"))),
+    Mutation("A5-unknown-needs-reconciliation", "A5", "outcome_unknown may be left with a timestamp and a digest (the review's probe)",
+             (LT + "test_outcome_unknown_is_reconciled_not_skipped",), drop_trigger="invocations_unknown_needs_reconciliation"),
+    Mutation("A5-reconciliation-episode", "A5", "an earlier episode's reconciliation may be reused",
+             (LT + "test_outcome_unknown_is_reconciled_not_skipped",), scope="invocations_unknown_needs_reconciliation", old=" AND r.unknown_since = OLD.outcome_unknown_since", new=""),
+    Mutation("A5-reconciliation-running-branch", "A5", "over-restriction: found_running no longer supports running",
+             (LT + "test_terminal_states_are_final",), scope="invocations_unknown_needs_reconciliation", old="(NEW.state = 'running' AND r.resolution = 'found_running')", new="(0)"),
+    Mutation("A5-reconciliation-result-digest", "A5", "result_ready accepted with another digest than the one found",
+             (LT + "test_outcome_unknown_is_reconciled_not_skipped",), scope="invocations_unknown_needs_reconciliation", old=" AND r.result_payload_digest = NEW.result_payload_digest)", new=")"),
+    Mutation("A5-reconciliation-committed-receipt", "A5", "found_committed accepted without a final receipt",
+             (LT + "test_found_committed_needs_the_final_receipt",), scope="invocations_unknown_needs_reconciliation",
+             old="\n            AND EXISTS (SELECT 1 FROM operation_receipts o WHERE o.invocation_id = NEW.invocation_id AND o.operation_kind = 'final_outcome'))", new=")"),
+    Mutation("A5-reconciliation-failed-resolution", "A5", "failed accepted with any resolution",
+             (LT + "test_reconciliation_resolutions_and_evidence",), scope="invocations_unknown_needs_reconciliation", old="(NEW.state = 'failed' AND r.resolution IN ('confirmed_failed', 'terminated_group'))", new="(NEW.state = 'failed')"),
+    Mutation("A5-reconciliation-cancelled-resolution", "A5", "cancelled accepted with any resolution",
+             (LT + "test_reconciliation_resolutions_and_evidence",), scope="invocations_unknown_needs_reconciliation", old="(NEW.state = 'cancelled' AND r.resolution = 'terminated_group')", new="(NEW.state = 'cancelled')"),
+    Mutation("A5-reconciliation-current-episode", "A5", "a reconciliation may be recorded for a past episode or a known state",
+             (LT + "test_outcome_unknown_is_reconciled_not_skipped",), drop_trigger="invocation_reconciliations_for_current_episode"),
+    Mutation("A5-reconciliation-digest-iff-found-result", "A5", "digest no longer tied to found_result",
+             (LT + "test_outcome_unknown_is_reconciled_not_skipped", LT + "test_reconciliation_resolutions_and_evidence"),
+             old="  CHECK ((resolution = 'found_result') = (result_payload_digest IS NOT NULL)),\n", new=""),
+    Mutation("A5-reconciliation-descendants", "A5", "terminal resolutions without descendant confirmation",
+             (LT + "test_reconciliation_resolutions_and_evidence",), old="  CHECK (resolution NOT IN ('confirmed_failed', 'terminated_group') OR descendants_confirmed_at IS NOT NULL),\n", new=""),
+    Mutation("A5-reconciliation-termination-method", "A5", "termination method no longer tied to terminated_group",
+             (LT + "test_reconciliation_resolutions_and_evidence",), old=",\n  CHECK ((resolution = 'terminated_group') = (method = 'execution_group_termination'))", new=""),
+    Mutation("A5-reconciliation-update-guard", "A5", "reconciliation records may be edited",
+             (LT + "test_reconciliation_resolutions_and_evidence", H + "EveryTableSweepTest.test_append_only_tables_reject_every_update"), drop_trigger="invocation_reconciliations_immutable_u"),
+    Mutation("A5-reconciliation-delete-guard", "A5", "reconciliation records may be deleted",
+             (H + "EveryTableSweepTest.test_no_table_can_be_deleted_from_or_replaced_into",), drop_trigger="invocation_reconciliations_no_delete"),
     # --- A9: capability supersession --------------------------------------
     Mutation("A9-successor-fk-immediate", "A9", "successor FK checked immediately (the documented transaction cannot run)",
              (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",),
@@ -429,13 +488,14 @@ def _evaluate(m: Mutation) -> str:
     finally:
         fx.DDL_TEXT, fx.CONNECTION_TEXT = ddl0, conn0
     missing = [k for k in m.killers if not any(f == k or f.endswith("." + k) for f in res.failed)]
-    if res.errored:
+    if res.errored and (missing or not m.killers):
         return f"INVALID   {m.mid}: {len(res.errored)} test error(s), e.g. {next(iter(res.errored.items()))}"
     if not res.failed:
         return f"SURVIVED  {m.mid}: {m.description}"
     if missing:
         return f"INVALID   {m.mid}: listed killer(s) did not fail: {missing}"
-    return f"KILLED    {m.mid} by {len(res.failed)} test(s)"
+    note = f" ({len(res.errored)} other test(s) errored in setup: the mutant also breaks a shared fixture)" if res.errored else ""
+    return f"KILLED    {m.mid} by {len(res.failed)} test(s){note}"
 
 
 def main(argv: list[str] | None = None) -> int:

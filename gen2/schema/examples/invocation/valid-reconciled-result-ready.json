@@ -2,7 +2,7 @@
   "fixture": {
     "schema": "invocation.schema.json",
     "expect": "valid",
-    "tests": "L-4: outcome_unknown carries a pending reconciliation"
+    "tests": "A5/R2.4: a job reconciled out of outcome_unknown by its stable handle, with retained evidence and the found result digest"
   },
   "instance": {
     "record_version": "invocation/1",
@@ -23,7 +23,7 @@
         "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       }
     },
-    "state": "outcome_unknown",
+    "state": "result_ready",
     "admitted_at": "2026-09-25T10:40:00Z",
     "deadline_at": "2026-09-25T11:40:00Z",
     "launch_intent": {
@@ -38,14 +38,18 @@
       "start_fingerprint": "start_ticks=884211"
     },
     "cancellation": null,
-    "result": null,
+    "result": {
+      "payload_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "artifact_refs": [],
+      "staged_at": "2026-09-25T10:56:00Z"
+    },
     "reconciliation": {
       "unknown_since": "2026-09-25T10:41:00Z",
-      "resolved_at": null,
-      "resolution": "pending",
-      "method": null,
-      "evidence_ref": null,
-      "result_payload_digest": null,
+      "resolved_at": "2026-09-25T10:55:00Z",
+      "resolution": "found_result",
+      "method": "job_handle_lookup",
+      "evidence_ref": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "result_payload_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
       "descendants_confirmed_at": null
     },
     "transitions": [
@@ -76,6 +80,13 @@
         "to": "outcome_unknown",
         "at": "2026-09-25T10:41:00Z",
         "cause": "supervisor_restart"
+      },
+      {
+        "seq": 5,
+        "from": "outcome_unknown",
+        "to": "result_ready",
+        "at": "2026-09-25T10:56:00Z",
+        "cause": "reconciled"
       }
     ]
   }

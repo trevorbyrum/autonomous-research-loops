@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "invocation.schema.json",
+    "expect": "invalid",
+    "tests": "A5: a resolution names its retained evidence, not just a time and a digest",
+    "base": "valid-reconciled-result-ready.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/reconciliation/evidence_ref",
+        "value": null
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/reconciliation/evidence_ref"
+      }
+    ]
+  }
+}
