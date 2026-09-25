@@ -420,7 +420,7 @@
       ]
     },
     "stopping_rule": {
-      "description": "Families from the design review §8 applicability table. The engine evaluates only the closed automatic set; capture-recapture, VoI/EVPI, SAFE and code/meaning saturation remain reviewed judgments (explicit reviewed analyses, not default completion gates). Each family's parameter object is closed.",
+      "description": "Families from the design review §8 applicability table. The engine evaluates only the closed automatic set; capture-recapture, VoI/EVPI, SAFE and code/meaning saturation remain reviewed judgments (explicit reviewed analyses, not default completion gates). Each family's parameter object is closed: automatic families carry exactly the operands the engine evaluates; reviewed families carry at most the analysis plan a reviewer follows, never operands the engine could read as a threshold (Astra 0a review: the reviewed families' params were open).",
       "type": "object",
       "additionalProperties": false,
       "required": ["rule_id", "family", "evaluation", "params"],
@@ -445,7 +445,16 @@
       "allOf": [
         {
           "if": {"properties": {"family": {"enum": ["capture_recapture", "voi_evpi", "safe", "code_meaning_saturation"]}}},
-          "then": {"properties": {"evaluation": {"const": "reviewed_judgment"}}}
+          "then": {
+            "properties": {
+              "evaluation": {"const": "reviewed_judgment"},
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {"analysis_plan": {"$ref": "common.schema.json#/$defs/long_text"}}
+              }
+            }
+          }
         },
         {
           "description": "Descriptive threshold over sufficiently large, completed assessment windows; an effort heuristic, not a recall guarantee. A window with zero assessed units evaluates unknown (invariant E-1).",

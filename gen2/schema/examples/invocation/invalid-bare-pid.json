@@ -2,7 +2,7 @@
   "fixture": {
     "schema": "invocation.schema.json",
     "expect": "invalid",
-    "tests": "L-3: a bare PID is not process identity",
+    "tests": "L-3 (closed object): a PID field cannot be added even to a complete identity — see invalid-bare-identity for identity without the fingerprint fields",
     "base": "valid-research-pass-running.json",
     "patch": [
       {

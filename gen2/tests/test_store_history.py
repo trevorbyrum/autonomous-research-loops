@@ -17,7 +17,7 @@ import json
 import sqlite3
 import unittest
 
-from gen2.tests.store_fixtures import TOPIC, StoreTestCase, T, connect, h
+from gen2.tests.store_fixtures import OTHER, TOPIC, StoreTestCase, T, connect, h
 
 # The message of each table's BEFORE DELETE guard fragment we expect a
 # REPLACE conflict to surface (the guard, not some other constraint).
@@ -156,6 +156,25 @@ class EveryTableSweepTest(StoreTestCase):
                     self.x(f"UPDATE {table} SET {first} = {first}")  # even a no-op rewrite is refused
                 self.assertEqual(self.snapshot(table), before)
 
+    def test_unreferenced_rows_cannot_be_deleted_either(self) -> None:
+        """In a populated store a foreign key can also block a DELETE, masking a
+        missing delete guard; these rows have no dependents, so only the
+        guard can refuse (found by the mutation-coverage pass)."""
+        self.x("UPDATE leases SET released_at = ?, release_reason = 'finalized' WHERE lease_id = 'lease_aaaaaaaa'", T)
+        self.lease("lease_lonely01", 9)
+        self.lease("lease_lonely02", 10, scope="checkpoint")
+        self.invocation("inv_lonely01", kind="checkpoint", lease="lease_lonely02")
+        self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_lonely01', 1, ?, ?, 'inv_pppppppp', 0, NULL, 'provisional', ?)", TOPIC, h("7"), T)
+        self.decision("opd_publish02", "publication_approval", ref="dossier-1", rev=1, hsh=h("3"))
+        self.outbox("obx_lonely01", "man_lonely01", 2, 1, "opd_publish02", h("8"), source_rev=1, source_hash=h("3"), sinks=("neo4j",))
+        for table, where in (("leases", "lease_id = 'lease_lonely01'"), ("invocations", "invocation_id = 'inv_lonely01'"),
+                             ("claims", "claim_id = 'clm_lonely01'"), ("outbox_events", "outbox_event_id = 'obx_lonely01'")):
+            with self.subTest(table=table):
+                before = self.snapshot(table)
+                with self.assertRaises(sqlite3.IntegrityError):
+                    self.x(f"DELETE FROM {table} WHERE {where}")
+                self.assertEqual(self.snapshot(table), before)
+
     def test_no_table_can_be_deleted_from_or_replaced_into(self) -> None:
         for table in self.tables():
             with self.subTest(table=table):
@@ -166,6 +185,47 @@ class EveryTableSweepTest(StoreTestCase):
                 with self.assertRaises(sqlite3.IntegrityError):
                     self.x(f"INSERT OR REPLACE INTO {table} SELECT * FROM {table} WHERE rowid = (SELECT min(rowid) FROM {table})")
                 self.assertEqual(self.snapshot(table), before)
+
+
+class RecordIdentityTest(StoreTestCase):
+    """Identity pins that had no test (found by the mutation-coverage pass):
+    topic identity, review-episode close-once, claim content, work identity,
+    hold identity. Each probe changes one pinned field; the permitted update
+    beside it shows the row itself is updatable."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.populate_every_table()
+
+    def test_topic_identity_is_immutable(self) -> None:
+        for column, value in (("topic_id", "fleet-a:renamed"), ("fleet_id", "fleet-b")):
+            with self.subTest(column=column):
+                self.rejects("topic identity is immutable", f"UPDATE queue_entries SET {column} = ? WHERE topic_id = ?", value, TOPIC)
+        self.x("UPDATE queue_entries SET priority = 5 WHERE topic_id = ?", TOPIC)
+
+    def test_review_episode_closes_once(self) -> None:
+        self.receipt("op_00000002", "inv_pppppppp", kind="interim_transition", before=5)
+        self.rejects("a closed review episode is final", "UPDATE review_episodes SET kind = 'facet_audit' WHERE episode_id = 'ep-1'")
+        self.x("UPDATE review_episodes SET closed_at = ?, closed_by_operation_id = 'op_00000002' WHERE episode_id = 'ep-1'", T)
+        self.rejects("a closed review episode is final", "UPDATE review_episodes SET closed_at = NULL, closed_by_operation_id = NULL WHERE episode_id = 'ep-1'")
+
+    def test_claim_content_is_immutable_per_revision(self) -> None:
+        for column, value in (("text_ref", h("0")), ("producer_invocation_id", "inv_vvvvvvvv"), ("load_bearing", 0), ("required_access_tier", "abstract"), ("topic_id", OTHER)):
+            with self.subTest(column=column):
+                self.rejects("claim content is immutable", f"UPDATE claims SET {column} = ? WHERE claim_id = 'clm_00000001'", value)
+        self.x("UPDATE claims SET status = 'contested' WHERE claim_id = 'clm_00000001'")
+
+    def test_work_identity_is_immutable(self) -> None:
+        for column, value in (("identity_scheme", "arxiv"), ("identity_value", "10.1/y"), ("created_at", "2026-09-26T00:00:00Z")):
+            with self.subTest(column=column):
+                self.rejects("work identity is immutable", f"UPDATE works SET {column} = ? WHERE work_id = 'wrk_00000001'", value)
+        self.x("UPDATE works SET study_group_id = 'study-7' WHERE work_id = 'wrk_00000001'")  # set by a recorded lineage assessment
+
+    def test_hold_identity_class_and_authority_are_immutable(self) -> None:
+        for column, value in (("subject_ref", "lane:other"), ("hold_class", "judgment"), ("required_authority", "operator"), ("topic_id", OTHER)):
+            with self.subTest(column=column):
+                self.rejects("hold identity, class and authority are immutable", f"UPDATE holds SET {column} = ? WHERE hold_id = 'hold_00000001'", value)
+        self.x("UPDATE holds SET deadline_at = '2026-09-26T00:00:00Z' WHERE hold_id = 'hold_00000001'")
 
 
 if __name__ == "__main__":

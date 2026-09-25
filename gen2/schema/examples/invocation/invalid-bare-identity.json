@@ -1,0 +1,28 @@
+{
+  "fixture": {
+    "schema": "invocation.schema.json",
+    "expect": "invalid",
+    "tests": "L-3: a running invocation's identity is job handle + host + boot identity + start fingerprint; a handle alone (the bare-PID pattern) is refused",
+    "base": "valid-research-pass-running.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/process_identity/host_id"
+      },
+      {
+        "op": "remove",
+        "path": "/process_identity/boot_id"
+      },
+      {
+        "op": "remove",
+        "path": "/process_identity/start_fingerprint"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": "/process_identity"
+      }
+    ]
+  }
+}

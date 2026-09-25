@@ -1,0 +1,29 @@
+{
+  "fixture": {
+    "schema": "contract-v2.schema.json",
+    "expect": "invalid",
+    "tests": "G-11: a reviewed-judgment family carries at most its analysis plan \u2014 no operand the engine could evaluate as an automatic threshold",
+    "base": "valid-two-obligations.json",
+    "patch": [
+      {
+        "op": "add",
+        "path": "/stopping_profiles/0/rules/-",
+        "value": {
+          "rule_id": "R-crc",
+          "family": "capture_recapture",
+          "evaluation": "reviewed_judgment",
+          "params": {
+            "min_overlap": 5,
+            "max_estimated_missing": 0.05
+          }
+        }
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "additionalProperties",
+        "path": "/stopping_profiles/0/rules/4/params"
+      }
+    ]
+  }
+}

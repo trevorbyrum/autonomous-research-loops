@@ -87,6 +87,7 @@ CB = "test_check_boundaries.BoundaryCheckerTest."
 DR = "test_check_ddl_rules.DdlRuleTest."
 IN = "test_instants.UtcInstantTest."
 CN = "test_canonical."
+RI = "test_store_history.RecordIdentityTest."
 
 MUTATIONS: list[Mutation] = [
     # --- A1: history cannot be rewritten ------------------------------------
@@ -626,6 +627,35 @@ MUTATIONS: list[Mutation] = [
            ("HashSemanticsTest.test_content_hash_excludes_exactly_itself",), 'CONTENT_HASH_EXCLUDES = ("content_hash",)', "CONTENT_HASH_EXCLUDES = ()"),
           ("raw-bytes-canonicalized", "raw provider bytes canonicalized before hashing (the ruling's false-provenance case)",
            ("HashSemanticsTest.test_raw_bytes_are_hashed_raw_never_canonicalized",), "    return _sha256(bytes(raw))", "    return logical_hash(parse_json_strict(bytes(raw)))"))),
+    # --- coverage pass: pre-existing 0a guards, so the inventory spans the whole DDL ----
+    *(Mutation(f"cov-delete-guard-{trigger}", "C-11", f"drop delete guard {trigger}",
+               (H + ("EveryTableSweepTest.test_unreferenced_rows_cannot_be_deleted_either" if trigger in ("claims_no_delete", "invocations_no_delete", "leases_no_delete", "outbox_events_immutable_d")
+                     else "EveryTableSweepTest.test_no_table_can_be_deleted_from_or_replaced_into"),), drop_trigger=trigger)
+      for trigger in ("artifacts_immutable_d", "audit_events_append_only_d", "capability_facts_no_delete", "claims_no_delete", "decision_receipts_immutable_d",
+                      "decision_specs_immutable_d", "dossiers_immutable_d", "holds_no_delete", "invocation_transitions_append_only_d", "invocations_no_delete",
+                      "leases_no_delete", "obligations_no_delete", "operator_decisions_immutable_d", "outbox_events_immutable_d", "research_ordinals_immutable_d",
+                      "retrieval_events_immutable_d", "review_episodes_no_delete", "screening_assessments_immutable_d", "search_observations_immutable_d",
+                      "verification_receipts_immutable_d")),
+    *(Mutation(f"cov-{trigger}", "0a", f"drop {trigger} (a pre-existing 0a guard)", tuple(killers), drop_trigger=trigger)
+      for trigger, killers in (
+          ("operation_receipts_fenced", (D + "CommitFencingTest.test_stale_generation_rejected", D + "CommitFencingTest.test_released_lease_cannot_commit",
+                                         D + "CommitFencingTest.test_cross_topic_commit_rejected", D + "CommitFencingTest.test_commit_under_another_invocations_lease_rejected")),
+          ("claims_accepted_support_needs_receipt", (VT + "test_accepted_support_needs_receipt_at_required_tier",)),
+          ("sink_generations_never_regress", (D + "PublicationTest.test_sink_generation_never_regresses",)),
+          ("invocations_start_admitted", (LT + "test_invocations_start_admitted",)),
+          ("leases_generation_increases", (D + "LeaseFencingTest.test_generation_strictly_increases_per_topic",)),
+          ("leases_release_final_identity_immutable", (D + "LeaseFencingTest.test_release_is_write_once",)),
+          ("queue_state_revision_advances_by_one", (D + "CommitFencingTest.test_state_revision_advances_by_exactly_one",)),
+          ("contract_status_forward_only", (D + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",)),
+          ("claims_start_provisional", (VT + "test_claims_start_provisional",)),
+          ("retrieval_events_from_successful_search", (OB + "test_retrieval_events_only_from_successful_searches",)),
+          ("review_triggers_handled_is_final", (D + "OrdinalAndTriggerTest.test_trigger_identity_unique_and_handled_is_final",)),
+          ("outbox_events_generation_increases", (D + "PublicationTest.test_generations_strictly_increase",)),
+          ("holds_clear_once_identity_immutable", (D + "HoldTest.test_operator_hold_cleared_only_by_operator_decision", RI + "test_hold_identity_class_and_authority_are_immutable")),
+          ("queue_topic_identity_immutable", (RI + "test_topic_identity_is_immutable",)),
+          ("review_episodes_close_once", (RI + "test_review_episode_closes_once",)),
+          ("claims_identity_immutable", (RI + "test_claim_content_is_immutable_per_revision",)),
+          ("works_identity_immutable", (RI + "test_work_identity_is_immutable",)))),
     # --- A9: capability supersession --------------------------------------
     Mutation("A9-successor-fk-immediate", "A9", "successor FK checked immediately (the documented transaction cannot run)",
              (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",),
@@ -659,6 +689,29 @@ SECOND_LAYER = {
         "a mismatched quote is always quarantined (quote_checks CHECK, A6-D32-byte-mismatch) and a matched/mismatched status needs a bound check "
         "(A6-quote-check-iff-status), so verification_receipts_bindings refuses support on it first (A6-quote-binding-*)",
 }
+
+
+SECOND_LAYER_TRIGGERS = {"screening_provider_needs_qualified_authority"}
+
+
+def uncovered_triggers(ddl: str) -> list[str]:
+    """DDL triggers that no mutation drops, scopes or edits, minus the
+    documented second layers. The run fails while this is non-empty, so a new
+    guard cannot land without a mutant (CHECK constraints are anonymous in
+    SQLite and are not enumerated here; their mutants edit their text)."""
+    blocks = {m.group(1): m.group(0) for m in re.finditer(r"CREATE TRIGGER (\w+)\b.*?\nEND;\n", ddl, re.DOTALL)}
+    covered: set[str] = set()
+    for m in MUTATIONS:
+        if m.target != "ddl":
+            continue
+        if m.drop_trigger:
+            covered.add(m.drop_trigger)
+        if m.scope in blocks:
+            covered.add(m.scope)
+        for old in [m.old, *(o for o, _ in m.also)]:
+            if old:
+                covered.update(name for name, body in blocks.items() if old in body)
+    return sorted(set(blocks) - covered - SECOND_LAYER_TRIGGERS)
 
 
 class _Collector(unittest.TestResult):
@@ -827,6 +880,10 @@ def main(argv: list[str] | None = None) -> int:
     if len(set(ids)) != len(ids):
         print("duplicate mutation ids", file=sys.stderr)
         return 1
+    missing = uncovered_triggers(ddl0)
+    if missing and not args.only:
+        print(f"UNCOVERED TRIGGERS (add a mutant or document a second layer): {missing}", file=sys.stderr)
+        return 1
     _FX = fx
     if args.jobs > 1 and len(selected) > 1:
         with multiprocessing.get_context("fork").Pool(args.jobs, maxtasksperchild=1) as pool:
@@ -839,7 +896,8 @@ def main(argv: list[str] | None = None) -> int:
         if not verdict.startswith("KILLED"):
             bad += 1
         print(verdict)
-    print(f"gen2 mutation run: {len(selected) - bad}/{len(selected)} killed, baseline {base.testsRun} tests green, {time.monotonic() - started:.1f}s")
+    coverage = "" if args.only else f"every DDL trigger covered (second layers: {len(SECOND_LAYER_TRIGGERS)}), "
+    print(f"gen2 mutation run: {len(selected) - bad}/{len(selected)} killed, baseline {base.testsRun} tests green, {coverage}{time.monotonic() - started:.1f}s")
     return 1 if bad else 0
 
 
