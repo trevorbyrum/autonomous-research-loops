@@ -167,3 +167,11 @@ Each vocabulary below is a draft: it may change only by amendment (a README/INVA
 
 **Holds** (`hold_class`, `recoverability`, `required_authority`): three separate dimensions (H-3); a hold is created open and cleared once, operator-authority holds only through an approved `hold_clearance` about that hold.
 
+## Hashing contract (ruling R1; R2.6)
+
+- **Logical hashes** (contract `content_hash`, DecisionSpec `spec_hash`, manifest hashes, `request_fingerprint`, internally produced JSON artifacts): SHA-256 over the RFC 8785 JCS serialization, via `gen2/core/canonical.py` (canonicalization contract `jcs-rfc8785/1`). JCS itself is the pinned `rfc8785` package (`gen2/requirements.txt`, hash-locked, granted to `core` only), verified against the RFC's published examples, the development-portal test data and the RFC's Appendix A ECMAScript canonicalizer on V8 (`tools/gen2_jcs_cross_vectors.js`). Python's `json.dumps(sort_keys=True)` is not JCS (number forms, UTF-16 key order).
+- **What is excluded:** a document's `content_hash` excludes only its own `content_hash` field; the commit `request_fingerprint` (contract `commit-fingerprint/1`) excludes only `submitted_at` — every authority-bearing envelope field, including `envelope_version` and the admission context, is inside it.
+- **Refused before hashing** (`parse_json_strict` / `canonical_bytes`): duplicate keys, NaN/Infinity, lone surrogates, integers beyond ±(2^53−1) (larger identities travel as strings), numerals a double cannot hold exactly (they would silently round — e.g. the RFC's own `333333333.33333329` input is refused at our boundary although JCS can serialize its rounded value).
+- **Byte digests** (raw provider responses, acquired/staged artifacts): SHA-256 over the retained bytes exactly (`bytes_digest`), never parsed or canonicalized — a canonicalized response's hash is not a digest of the response. An internally produced JSON artifact is serialized canonically once, and its staged bytes are what is hashed.
+- **Freeze point:** these contracts are fixed before any store/importer writes durable identities or replay fixtures (task 0b). Recording the fingerprint-contract version in each commit receipt belongs to that freeze (0b).
+

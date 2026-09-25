@@ -6,7 +6,7 @@
   "description": "Identifiers, hashes, timestamps and enumerations shared by every gen-2 schema. Prefix-typed IDs make cross-wiring (an operation ID where an invocation ID belongs) a validation error instead of a silent join.",
   "$defs": {
     "sha256": {
-      "description": "Content hash: 'sha256:' + 64 lowercase hex digits. For JSON documents the hash is taken over the canonical form declared in gen2/store/README.md (open question: RFC 8785 JCS vs a stdlib-reproducible subset).",
+      "description": "'sha256:' + 64 lowercase hex digits. Two kinds, never mixed (Astra ruling R1; gen2/store/README.md 'Hashing contract'): a logical hash is SHA-256 over the RFC 8785 JCS serialization of a JSON value (canonicalization jcs-rfc8785/1; content_hash excludes only itself, request_fingerprint excludes only submitted_at); a byte digest is SHA-256 over retained bytes exactly as received/staged (raw provider responses, artifacts) and is never computed over a canonicalized re-serialization. Both are computed by gen2/core/canonical.py.",
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
     },

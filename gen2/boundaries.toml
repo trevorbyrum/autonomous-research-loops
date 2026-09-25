@@ -88,11 +88,14 @@ restricted_stdlib = [
 
 [modules.core]
 path = "gen2/core"
-purpose = "Shared vocabulary: typed records, stable IDs, enums, envelope/receipt types and the ControlBackend protocol (claim / record_observation / commit_outcome / apply_operator_decision / ack_delivery — design review §5) that other modules code against. Holds no authority, so it maps to no BOUNDARIES.md component."
+purpose = "Shared vocabulary: typed records, stable IDs, enums, envelope/receipt types and the ControlBackend protocol (claim / record_observation / commit_outcome / apply_operator_decision / ack_delivery — design review §5) that other modules code against; pure helpers every module shares (canonical hashing, calendar-instant validation). Holds no authority, so it maps to no BOUNDARIES.md component."
 boundaries = []
 may_import = []
 stdlib_capabilities = []
-third_party = []
+# rfc8785: RFC 8785 JCS, used only by gen2/core/canonical.py (Astra ruling R1:
+# one small pinned implementation behind a pure helper). Hash-locked in
+# gen2/requirements.txt. Granting it anywhere else is an amendment.
+third_party = ["rfc8785"]
 
 [modules.store]
 path = "gen2/store"

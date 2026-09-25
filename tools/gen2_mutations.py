@@ -69,6 +69,7 @@ FILE_TARGETS = {
     "gen2/boundaries.toml": ("attr", "test_check_boundaries", "REAL_BOUNDARIES"),
     "tools/check_gen2_schemas.py": ("attr", "test_check_ddl_rules", "CHECKER"),
     "gen2/core/instants.py": ("module", "gen2.core.instants"),
+    "gen2/core/canonical.py": ("module", "gen2.core.canonical"),
 }
 
 H = "test_store_history."
@@ -85,6 +86,7 @@ VO = "test_store_ddl.DraftVocabularyTransitionTest."
 CB = "test_check_boundaries.BoundaryCheckerTest."
 DR = "test_check_ddl_rules.DdlRuleTest."
 IN = "test_instants.UtcInstantTest."
+CN = "test_canonical."
 
 MUTATIONS: list[Mutation] = [
     # --- A1: history cannot be rewritten ------------------------------------
@@ -601,6 +603,29 @@ MUTATIONS: list[Mutation] = [
              target="gen2/core/instants.py", old=r"(?:\.\d{1,9})?Z\Z", new=r"(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})\Z"),
     Mutation("A11-instants-strings-only", "A11", "non-strings accepted", (IN + "test_non_strings_refused",),
              target="gen2/core/instants.py", old="    if not isinstance(value, str):\n        return False", new="    if not isinstance(value, str):\n        return True"),
+    # --- R1: RFC 8785 JCS canonicalization; raw bytes kept raw -------------------------
+    *(Mutation(f"R1-{key}", "R1", desc, tuple(CN + k for k in killers), target="gen2/core/canonical.py", old=old, new=new)
+      for key, desc, killers, old, new in (
+          ("sort-keys-is-not-jcs", "json.dumps(sort_keys=True) substituted for JCS (the ruling's explicit counterexample)",
+           ("PublishedVectorsTest.test_rfc_3_2_3_utf16_property_order", "PublishedVectorsTest.test_cross_implementation_vectors"),
+           "        return rfc8785.dumps(value)", '        return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")'),
+          ("duplicate-keys-merged", "duplicate keys silently merged (last wins)", ("StrictBoundaryTest.test_parse_rejects",),
+           "        if key in out:\n            raise CanonicalizationError(f\"duplicate object key {key!r}\")\n", ""),
+          ("precision-lost-silently", "precision-losing literals rounded instead of refused", ("StrictBoundaryTest.test_parse_rejects",),
+           "        if Decimal(repr(value)) != Decimal(text):", "        if False:"),
+          ("integers-unbounded", "integers beyond 2**53-1 accepted by the strict parser", ("StrictBoundaryTest.test_parse_rejects",),
+           "        if abs(value) > INT_BOUND:", "        if False:"),
+          ("lone-surrogates-accepted", "invalid Unicode (lone surrogates) accepted by the strict parser", ("StrictBoundaryTest.test_parse_rejects",),
+           "            value.encode(\"utf-8\")\n", "            pass\n"),
+          ("fingerprint-drops-lease", "an authority-bearing field (lease) excluded from the fingerprint",
+           ("HashSemanticsTest.test_semantically_changed_envelopes_fingerprint_differently", "HashSemanticsTest.test_contract_versions_are_declared"),
+           'FINGERPRINT_EXCLUDES = ("submitted_at",)', 'FINGERPRINT_EXCLUDES = ("submitted_at", "lease")'),
+          ("fingerprint-keeps-submitted-at", "submitted_at (non-identity metadata) included in the fingerprint",
+           ("HashSemanticsTest.test_request_fingerprint_excludes_exactly_submitted_at",), 'FINGERPRINT_EXCLUDES = ("submitted_at",)', "FINGERPRINT_EXCLUDES = ()"),
+          ("content-hash-covers-itself", "a document's content hash covers its own content_hash field",
+           ("HashSemanticsTest.test_content_hash_excludes_exactly_itself",), 'CONTENT_HASH_EXCLUDES = ("content_hash",)', "CONTENT_HASH_EXCLUDES = ()"),
+          ("raw-bytes-canonicalized", "raw provider bytes canonicalized before hashing (the ruling's false-provenance case)",
+           ("HashSemanticsTest.test_raw_bytes_are_hashed_raw_never_canonicalized",), "    return _sha256(bytes(raw))", "    return logical_hash(parse_json_strict(bytes(raw)))"))),
     # --- A9: capability supersession --------------------------------------
     Mutation("A9-successor-fk-immediate", "A9", "successor FK checked immediately (the documented transaction cannot run)",
              (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",),

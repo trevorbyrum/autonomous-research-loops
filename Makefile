@@ -12,7 +12,10 @@ gen2-check: gen2-boundaries gen2-schemas gen2-ddl gen2-test gen2-mutation gen2-s
 gen2-boundaries:
 	$(PYTHON) tools/check_boundaries.py
 
-# Needs jsonschema (pip install -r gen2/requirements-dev.txt); fails loudly without it.
+# Needs the hash-locked runtime deps (pip install --require-hashes -r
+# gen2/requirements.txt: rfc8785, used by gen2/core/canonical.py) and the
+# dev-only validator (pip install -r gen2/requirements-dev.txt: jsonschema);
+# each check fails loudly without them.
 gen2-schemas:
 	$(PYTHON) tools/check_gen2_schemas.py --part schemas
 
