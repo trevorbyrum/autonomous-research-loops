@@ -20,5 +20,11 @@ jobs:
       # every check run with its interpreter (docs/gen2/ENVIRONMENT.md).
       - name: Build the gen-2 environment (hash-locked venv)
         run: make gen2-venv PYTHON_BOOTSTRAP=python
+      # Records the SQLite this job actually runs on (version, JSON probes,
+      # connection pragmas) in the job summary, and refuses the build if the
+      # store's compatibility gate would refuse it (Astra third review ruling 4).
+      # No pipe: make's exit status is the step's.
+      - name: SQLite compatibility gate (records the version CI runs on)
+        run: make gen2-sqlite PYTHON_BOOTSTRAP=python GEN2_SQLITE_REPORT="$GITHUB_STEP_SUMMARY"
       - name: make gen2-check
         run: make gen2-check PYTHON_BOOTSTRAP=python

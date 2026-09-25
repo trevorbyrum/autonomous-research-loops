@@ -1,7 +1,8 @@
 """Black-box tests for the structural DDL rules in tools/check_gen2_schemas.py.
 
 Trace: Astra 0a review A1 (a table without a delete guard, or a connection
-without recursive_triggers, lets history be rewritten); INVARIANTS C-11.
+without recursive_triggers, lets history be rewritten); INVARIANTS C-11;
+Astra third review ruling 4 (the build runs the store's SQLite gate).
 
 Each test writes a throwaway gen2/store/{schema,connection}.sql pair, runs
 `check_gen2_schemas.py --part ddl` as a subprocess, and asserts the exit code
@@ -9,6 +10,7 @@ and the specific failure. The fixtures are literal SQL written here.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -16,7 +18,12 @@ import textwrap
 import unittest
 from pathlib import Path
 
-CHECKER = Path(__file__).resolve().parents[2] / "tools" / "check_gen2_schemas.py"
+REPO = Path(__file__).resolve().parents[2]
+CHECKER = REPO / "tools" / "check_gen2_schemas.py"
+# The checker imports the store's SQLite gate (gen2.store.compat) from the
+# repository; the mutation harness runs a copy of the checker from a temp dir,
+# so the import path is given explicitly rather than derived from its location.
+ENV = {**os.environ, "PYTHONPATH": str(REPO)}
 CONNECTION = "PRAGMA foreign_keys = ON;\nPRAGMA recursive_triggers = ON;\n"
 GUARDED = """\
 -- trace: fixture
@@ -41,7 +48,22 @@ class DdlRuleTest(unittest.TestCase):
         store.mkdir(parents=True, exist_ok=True)
         (store / "schema.sql").write_text(textwrap.dedent(schema), encoding="utf-8")
         (store / "connection.sql").write_text(connection, encoding="utf-8")
-        return subprocess.run([sys.executable, str(CHECKER), "--root", str(self.root), "--part", "ddl"], capture_output=True, text=True, timeout=60)
+        return subprocess.run([sys.executable, str(CHECKER), "--root", str(self.root), "--part", "ddl"], capture_output=True, text=True, timeout=60, env=ENV)
+
+    def test_refused_sqlite_fails_the_ddl_check(self) -> None:
+        """The build route runs the store's gate: a SQLite it refuses fails
+        the DDL check (here the floor is raised above this SQLite in the
+        checker's own process)."""
+        store = self.root / "gen2" / "store"
+        store.mkdir(parents=True)
+        (store / "schema.sql").write_text(GUARDED, encoding="utf-8")
+        (store / "connection.sql").write_text(CONNECTION, encoding="utf-8")
+        code = ("import runpy, sys, gen2.store.compat as c\nc.SQLITE_FLOOR = (99, 0, 0)\n"
+                f"sys.argv = [{str(CHECKER)!r}, '--root', {str(self.root)!r}, '--part', 'ddl']\nrunpy.run_path({str(CHECKER)!r}, run_name='__main__')")
+        result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60, env=ENV)
+        self.assertEqual(result.returncode, 1, msg=result.stderr)
+        self.assertIn("SQLite compatibility gate refused this build's SQLite", result.stderr)
+        self.assertIn("below the supported floor 99.0.0", result.stderr)
 
     def test_guarded_table_passes(self) -> None:
         result = self.run_check(GUARDED)
@@ -62,6 +84,13 @@ class DdlRuleTest(unittest.TestCase):
         result = self.run_check(GUARDED.replace("id TEXT PRIMARY KEY", "id TEXT PRIMARY KEY ON CONFLICT REPLACE"))
         self.assertEqual(result.returncode, 1)
         self.assertIn("ON CONFLICT clause", result.stderr)
+
+    def test_json_function_without_a_gate_probe_fails(self) -> None:
+        """A JSON function the compatibility gate does not probe would be an
+        unchecked capability (Astra third review ruling 4)."""
+        result = self.run_check(GUARDED + "-- trace: fixture\nCREATE VIEW v AS SELECT json_patch(v, '{}') AS p FROM t;\n")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("uses JSON function(s) ['json_patch'] that the compatibility gate does not probe", result.stderr)
 
     def test_connection_contract_without_recursive_triggers_fails(self) -> None:
         result = self.run_check(GUARDED, connection="PRAGMA foreign_keys = ON;\n")

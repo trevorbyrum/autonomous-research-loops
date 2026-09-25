@@ -14,9 +14,14 @@ Checks, in order (any failure exits 1; a missing validator exits 2):
                        (keyword, instance path) errors — so a fixture that
                        fails for an unrelated reason does not pass.
      Every schema needs at least one valid fixture.
-  4. gen2/store/schema.sql executes on an empty in-memory SQLite database
-     opened with gen2/store/connection.sql (whose pragmas must read back as
-     on); every table is STRICT, is preceded by a `-- trace:` comment and has
+  4. The SQLite this runs on passes the store's compatibility gate
+     (gen2/store/compat.py: numeric version floor, JSON functions answering
+     correctly — every json_* function the DDL uses must have a probe there),
+     the same gate the store's open path runs; then gen2/store/schema.sql
+     executes on an empty in-memory SQLite database opened with
+     gen2/store/connection.sql through that gate (every pragma it sets, and
+     foreign_keys/recursive_triggers, must read back as on); every table is
+     STRICT, is preceded by a `-- trace:` comment and has
      a BEFORE DELETE trigger that raises ABORT; no constraint carries an
      ON CONFLICT clause (which would turn a plain INSERT into a REPLACE); and
      every foreign key targets an existing primary key or unique index.
@@ -39,6 +44,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
+TOOL_ROOT = Path(__file__).resolve().parent.parent  # gen2.store.compat comes from here, whatever --root names
 DRAFT = "https://json-schema.org/draft/2020-12/schema"
 ID_BASE = "https://research-loops.invalid/gen2/schema/"
 REQUIRED_TRACE_KEYS = ("flow", "boundaries")
@@ -268,7 +274,15 @@ def check_schemas(root: Path, headings: set[str]) -> tuple[list[str], int, int]:
     return failures, n_valid, n_invalid
 
 
-CONNECTION_PRAGMAS = ("foreign_keys", "recursive_triggers")
+def _compat():
+    """The store's SQLite gate: the repository's gen2.store.compat (from the
+    import path when one is given, else from this tool's own checkout)."""
+    try:
+        from gen2.store import compat
+    except ImportError:
+        sys.path.insert(0, str(TOOL_ROOT))
+        from gen2.store import compat
+    return compat
 
 
 def _strip_sql_comments(text: str) -> str:
@@ -285,15 +299,24 @@ def check_ddl(root: Path) -> tuple[list[str], int]:
         return [f"{conn_rel}: not found"], 0
     text = path.read_text(encoding="utf-8")
     failures: list[str] = []
+    compat = _compat()
+    unprobed = sorted(compat.json_functions_used(text) - {name for name, _, _ in compat.JSON_PROBES})
+    if unprobed:
+        failures.append(f"{rel}: uses JSON function(s) {unprobed} that the compatibility gate does not probe (add them to gen2/store/compat.py JSON_PROBES)")
     conn = sqlite3.connect(":memory:")
     try:
-        conn.executescript((root / conn_rel).read_text(encoding="utf-8"))
-        for pragma in CONNECTION_PRAGMAS:
-            if conn.execute(f"PRAGMA {pragma}").fetchone() != (1,):
-                failures.append(f"{conn_rel}: PRAGMA {pragma} does not read back as 1 after applying the connection contract")
+        compat.check_library(conn)
+    except compat.StoreCompatibilityError as exc:
+        conn.close()
+        return [f"SQLite compatibility gate refused this build's SQLite: {exc}"], 0
+    try:
+        compat.apply_connection_contract(conn, (root / conn_rel).read_text(encoding="utf-8"))
+    except compat.StoreCompatibilityError as exc:
+        failures.append(f"{conn_rel}: {exc.fact['detail']}")
+    try:
         conn.executescript(text)
     except sqlite3.Error as exc:
-        return [f"{rel}: does not execute on SQLite {sqlite3.sqlite_version}: {exc}"], 0
+        return failures + [f"{rel}: does not execute on SQLite {sqlite3.sqlite_version}: {exc}"], 0
     if re.search(r"\bON\s+CONFLICT\b", _strip_sql_comments(text), re.IGNORECASE):
         failures.append(f"{rel}: an ON CONFLICT clause in the DDL would let a plain INSERT replace a stored row (INVARIANTS C-11)")
     tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]
@@ -370,7 +393,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.part in ("all", "ddl"):
         ddl_failures, n_tables = check_ddl(root)
         failures += ddl_failures
-        summary.append(f"DDL creates {n_tables} STRICT tables on SQLite {sqlite3.sqlite_version}")
+        summary.append(f"DDL creates {n_tables} STRICT tables on SQLite {sqlite3.sqlite_version} (compatibility gate passed)")
     for failure in failures:
         print(f"SCHEMA CHECK FAILURE: {failure}", file=sys.stderr)
     if failures:

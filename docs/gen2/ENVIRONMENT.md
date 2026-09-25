@@ -24,7 +24,7 @@ python3 -m venv --clear .venv-gen2
 - `venv --clear` starts from an empty environment every time either lock changes. The target is keyed on both files.
 - A venv does not see the base interpreter's site-packages or the user site (`~/.local`), so a package installed on the host can neither satisfy nor shadow a locked one.
 
-Every check target (`gen2-boundaries`, `gen2-schemas`, `gen2-ddl`, `gen2-test`, `gen2-mutation`, `gen2-size`, `gen2-linecount`) depends on `gen2-venv` and runs with `PYTHON = .venv-gen2/bin/python`. The only host input is the interpreter the venv is created from: `PYTHON_BOOTSTRAP`, default `python3`, Python 3.12. The standard-library `sqlite3` comes with it, so the SQLite version the DDL runs on is still the interpreter's. `make gen2-check` reports it.
+Every check target (`gen2-sqlite`, `gen2-boundaries`, `gen2-schemas`, `gen2-ddl`, `gen2-test`, `gen2-mutation`, `gen2-size`, `gen2-linecount`) depends on `gen2-venv` and runs with `PYTHON = .venv-gen2/bin/python`. The only host input is the interpreter the venv is created from: `PYTHON_BOOTSTRAP`, default `python3`, Python 3.12. The standard-library `sqlite3` comes with it, so the SQLite version the DDL runs on is still the interpreter's. `make gen2-check` reports it.
 
 ## SQLite version floor
 
@@ -35,7 +35,21 @@ Feature minimums are facts about SQLite releases, not evidence that the schema w
 - STRICT tables (every gen-2 table): 3.37.0 or later ([STRICT tables](https://www.sqlite.org/stricttables.html)).
 - JSON functions (`json_extract`, `json_each`, `json_valid`, …, used throughout the DDL): built in by default since 3.38.0; before that, only in builds compiled with JSON1 ([JSON support](https://www.sqlite.org/json1.html)).
 
-Advertising a lower floor needs `make gen2-check` passing on that version first. The DDL check prints the version it ran on (`DDL creates … on SQLite x.y.z`). CI's version is the one `actions/setup-python`'s Python 3.12 links. It has not been observed, because CI has not run yet. Neither the build nor any runtime code refuses a lower version today. Astra's third review requires the store to check the floor at startup/build before 0b opens durable stores. The venv locks do not pin the system SQLite library.
+Advertising a lower floor needs `make gen2-check` passing on that version first. The venv locks do not pin the system SQLite library, so the floor is enforced where the library is used:
+
+**Compatibility gate (task 0b; Astra third review ruling 4).** `gen2/store/compat.py` refuses a SQLite that cannot hold the store. It runs three checks. None of them replaces another.
+1. **Version.** The linked library's `sqlite_version()` is parsed into integers and compared with 3.45.1 as a tuple. A string comparison would rank 3.9.0 above 3.45.1.
+2. **JSON.** Every JSON function the DDL uses is executed on known inputs, and its answers are compared with SQLite's documented results. SQLite can be built without JSON at any version, so the version check alone cannot establish it. The DDL check fails the build if the DDL uses a JSON function the gate does not probe.
+3. **Connection contract.** `connection.sql` is applied, and every pragma it sets, plus `foreign_keys` and `recursive_triggers` in any case, must read back as 1.
+
+A refusal raises `StoreCompatibilityError`. The error carries a dated capability fact (`store.sqlite failing since …`, with what was observed). It is not a silent fallback.
+
+The same functions run in three places:
+- **The store's open path, `gen2/store/db.py`.** The library is checked on an in-memory connection before anything on disk is created or opened (`sqlite3.connect(path)` would create the file). The contract is then applied and read back on the durable connection itself. An existing store is admitted only if its schema is exactly `schema.sql`.
+- **`make gen2-sqlite`.** This runs first in `gen2-check` and prints the record of what the build ran on.
+- **The DDL check, `make gen2-ddl`.** It prints `DDL creates … on SQLite x.y.z (compatibility gate passed)`.
+
+**CI's SQLite version** is the one `actions/setup-python`'s Python 3.12 links. The workflow now records it: its `make gen2-sqlite` step appends the gate's record (version, JSON probes, pragmas) to the job summary, and a refusal fails the job. It has still not been observed, because CI has not run yet (the first push is the operator's call).
 
 ## Local use
 
@@ -49,7 +63,7 @@ Run `make` directly, and do not pipe its output through `tail`, `grep` or `tee` 
 
 ## CI
 
-`.github/workflows/gen2-check.yml` installs Python 3.12 with `actions/setup-python`, then runs `make gen2-venv` and `make gen2-check`. These are the same targets, the same locks and the same flags as a local build. CI no longer installs into the runner's interpreter.
+`.github/workflows/gen2-check.yml` installs Python 3.12 with `actions/setup-python`, then runs `make gen2-venv`, `make gen2-sqlite` (recording the SQLite version in the job summary) and `make gen2-check`. These are the same targets, the same locks and the same flags as a local build. CI no longer installs into the runner's interpreter.
 
 ## Changing a dependency
 

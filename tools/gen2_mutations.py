@@ -70,6 +70,8 @@ FILE_TARGETS = {
     "tools/check_gen2_schemas.py": ("attr", "test_check_ddl_rules", "CHECKER"),
     "gen2/core/instants.py": ("module", "gen2.core.instants"),
     "gen2/core/canonical.py": ("module", "gen2.core.canonical"),
+    "gen2/store/compat.py": ("module", "gen2.store.compat"),
+    "gen2/store/db.py": ("module", "gen2.store.db"),
 }
 
 H = "test_store_history."
@@ -90,6 +92,7 @@ CN = "test_canonical."
 RI = "test_store_history.RecordIdentityTest."
 EX = "test_store_examples.ExampleWorldTest."
 CG = "test_store_ddl.ContractGovernanceTest."
+SG = "test_sqlite_gate."
 
 MUTATIONS: list[Mutation] = [
     # --- A1: history cannot be rewritten ------------------------------------
@@ -773,8 +776,14 @@ MUTATIONS: list[Mutation] = [
              target="tools/check_gen2_schemas.py", old="        if not guarded:", new="        if False:"),
     Mutation("A1-ddl-rule-on-conflict", "A1", "the build no longer refuses ON CONFLICT clauses", (DR + "test_on_conflict_replace_clause_fails",),
              target="tools/check_gen2_schemas.py", old='    if re.search(r"\\bON\\s+CONFLICT\\b", _strip_sql_comments(text), re.IGNORECASE):', new="    if False:"),
-    Mutation("A1-ddl-rule-pragmas", "A1", "the build no longer reads the connection pragmas back", (DR + "test_connection_contract_without_recursive_triggers_fails",),
-             target="tools/check_gen2_schemas.py", old='            if conn.execute(f"PRAGMA {pragma}").fetchone() != (1,):', new="            if False:"),
+    Mutation("A1-ddl-rule-pragmas", "A1", "the build no longer reads the connection pragmas back (contract executed, not gated)", (DR + "test_connection_contract_without_recursive_triggers_fails",),
+             target="tools/check_gen2_schemas.py", old='        compat.apply_connection_contract(conn, (root / conn_rel).read_text(encoding="utf-8"))',
+             new='        conn.executescript((root / conn_rel).read_text(encoding="utf-8"))'),
+    Mutation("SQLC-build-skips-library-gate", "0b-R4", "the DDL check no longer runs the store's SQLite gate on the build's SQLite", (DR + "test_refused_sqlite_fails_the_ddl_check",),
+             target="tools/check_gen2_schemas.py", old="        compat.check_library(conn)\n    except compat.StoreCompatibilityError as exc:\n        conn.close()",
+             new="        pass\n    except compat.StoreCompatibilityError as exc:\n        conn.close()"),
+    Mutation("SQLC-build-unprobed-json", "0b-R4", "the DDL check no longer refuses a JSON function the gate does not probe", (DR + "test_json_function_without_a_gate_probe_fails",),
+             target="tools/check_gen2_schemas.py", old="    if unprobed:", new="    if False:"),
     Mutation("A11-instants-calendar", "A11", "timestamps checked for shape only (February 31 accepted)", (IN + "test_impossible_or_malformed_instants_refused",),
              target="gen2/core/instants.py", old="        datetime(*(int(part) for part in match.groups()))\n", new="        pass\n"),
     Mutation("A11-instants-utc-only", "A11", "offsets other than Z accepted", (IN + "test_impossible_or_malformed_instants_refused",),
@@ -827,6 +836,46 @@ MUTATIONS: list[Mutation] = [
            "    if isinstance(value, float) and not (math.isfinite(value) and value.is_integer()):", "    if isinstance(value, float) and not math.isfinite(value):"),
           ("identity-bool", "a JSON boolean passes as an identity", ("StrictBoundaryTest.test_identity_bound_holds_by_value_in_every_notation",),
            "    if isinstance(value, bool) or not isinstance(value, (int, float)):", "    if not isinstance(value, (int, float)):"))),
+    # --- 0b: the SQLite compatibility gate (Astra third review ruling 4) and the store's open path ----
+    *(Mutation(f"SQLC-{key}", "0b-R4", desc, tuple(SG + k for k in killers), target="gen2/store/compat.py", old=old, new=new)
+      for key, desc, killers, old, new in (
+          ("version-string-compare", "the version compared as a string (3.9.0 passes, 3.100.0 is refused)",
+           ("VersionFloorTest.test_version_is_compared_as_numbers",), "    if not meets_floor(version):", '    if reported < ".".join(map(str, SQLITE_FLOOR)):'),
+          ("version-unanchored", "a version with trailing text parsed as its prefix instead of refused",
+           ("VersionFloorTest.test_unparseable_version_is_refused_not_guessed",),
+           r'_VERSION = re.compile(r"\A([0-9]+)\.([0-9]+)\.([0-9]+)\Z")', r'_VERSION = re.compile(r"\A([0-9]+)\.([0-9]+)\.([0-9]+)")'),
+          ("json-not-probed", "JSON never probed: the version check alone admits a JSON-less build",
+           ("JsonCapabilityTest.test_missing_json_function_is_refused_at_a_passing_version", "JsonCapabilityTest.test_json_function_answering_wrongly_is_refused"),
+           "    for name, sql, expected in JSON_PROBES:", "    for name, sql, expected in ():"),
+          ("json-presence-only", "a JSON function that exists but answers wrongly is accepted",
+           ("JsonCapabilityTest.test_json_function_answering_wrongly_is_refused",), "        if got != expected:", "        if False:"),
+          ("pragmas-not-read-back", "the connection contract executed but its pragmas never read back",
+           ("ConnectionContractGateTest.test_a_contract_without_a_required_pragma_is_refused", "ConnectionContractGateTest.test_a_misspelled_pragma_does_not_pass_silently"),
+           "        if row != (1,):", "        if False:"),
+          ("required-pragmas-from-file-only", "only the pragmas the contract file names are read back (a file dropping one is trusted)",
+           ("ConnectionContractGateTest.test_a_contract_without_a_required_pragma_is_refused", "ConnectionContractGateTest.test_a_misspelled_pragma_does_not_pass_silently"),
+           "[*REQUIRED_PRAGMAS, *pragmas_set_by(text)]", "[*pragmas_set_by(text)]"))),
+    *(Mutation(f"DBO-{key}", "0b-R4", desc, tuple(SG + k for k in killers), target="gen2/store/db.py", old=old, new=new)
+      for key, desc, killers, old, new in (
+          ("gate-after-open", "the library is checked only on the durable connection, after the path is created",
+           ("OpenStoreTest.test_refused_library_creates_nothing_on_disk",),
+           "        compat.check_connection(probe)  # the library itself; nothing on disk exists or is opened yet", "        pass"),
+          ("implicit-create", "a missing store is opened as if it existed (no startup error)",
+           ("OpenStoreTest.test_missing_store_is_an_error_not_a_mode",), "    if not create and not path.is_file():", "    if False:"),
+          ("create-over-existing", "create proceeds over an existing file",
+           ("OpenStoreTest.test_create_refuses_an_existing_path",), "    if create and path.exists():", "    if False:"),
+          ("durable-contract-skipped", "the durable connection gets the library check but not the connection contract",
+           ("OpenStoreTest.test_created_store_reopens_with_the_contract_applied",),
+           "        observed = compat.check_connection(conn)  # the durable connection: contract applied and read back here",
+           "        observed = compat.check_library(conn)"),
+          ("no-schema-identity", "an existing store is admitted whatever its schema",
+           ("OpenStoreTest.test_a_store_with_another_schema_is_not_admitted",), "        check_schema_identity(conn)\n    except BaseException:", "        pass\n    except BaseException:"),
+          ("schema-names-only", "schema identity compares object names, not their SQL (a weakened guard passes)",
+           ("OpenStoreTest.test_a_store_with_another_schema_is_not_admitted",),
+           "    changed = sorted(f\"{k} {n}\" for (k, n) in expected.keys() & actual.keys() if expected[(k, n)] != actual[(k, n)])", "    changed = []"),
+          ("user-version-ignored", "another schema version is admitted",
+           ("OpenStoreTest.test_a_store_with_another_schema_is_not_admitted",),
+           "    if missing or extra or changed or stored_version != version:", "    if missing or extra or changed:"))),
     # --- coverage pass: pre-existing 0a guards, so the inventory spans the whole DDL ----
     *(Mutation(f"cov-delete-guard-{trigger}", "C-11", f"drop delete guard {trigger}",
                (H + ("EveryTableSweepTest.test_unreferenced_rows_cannot_be_deleted_either" if trigger in ("claims_no_delete", "invocations_no_delete", "leases_no_delete", "outbox_events_immutable_d")

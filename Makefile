@@ -12,9 +12,11 @@ PYTHON_BOOTSTRAP ?= python3
 GEN2_VENV ?= .venv-gen2
 PYTHON ?= $(GEN2_VENV)/bin/python
 
-.PHONY: gen2-check gen2-venv gen2-boundaries gen2-schemas gen2-ddl gen2-test gen2-mutation gen2-size gen2-linecount
+GEN2_SQLITE_REPORT ?=
 
-gen2-check: gen2-boundaries gen2-schemas gen2-ddl gen2-test gen2-mutation gen2-size
+.PHONY: gen2-check gen2-venv gen2-sqlite gen2-boundaries gen2-schemas gen2-ddl gen2-test gen2-mutation gen2-size gen2-linecount
+
+gen2-check: gen2-sqlite gen2-boundaries gen2-schemas gen2-ddl gen2-test gen2-mutation gen2-size
 	@echo "gen2-check: all checks passed"
 
 # (Re)built when either lock changes; `venv --clear` starts from an empty
@@ -28,6 +30,14 @@ $(GEN2_VENV)/.gen2-installed: gen2/requirements.txt gen2/requirements-dev.txt
 		-r gen2/requirements.txt -r gen2/requirements-dev.txt
 	$(GEN2_VENV)/bin/python -c "import rfc8785, jsonschema"
 	touch $@
+
+# The store's SQLite compatibility gate (gen2/store/compat.py; Astra third
+# review ruling 4), run first: the same numeric version floor, JSON probes and
+# connection-pragma read-back the store's open path runs. It prints what it
+# ran on (the SQLite version this build actually used); GEN2_SQLITE_REPORT=PATH
+# also appends that record to PATH (CI: the job summary). Exit 1 = refused.
+gen2-sqlite: gen2-venv
+	$(PYTHON) -m gen2.store.compat $(if $(GEN2_SQLITE_REPORT),--report "$(GEN2_SQLITE_REPORT)")
 
 gen2-boundaries: gen2-venv
 	$(PYTHON) tools/check_boundaries.py

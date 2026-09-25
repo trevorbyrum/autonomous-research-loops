@@ -23,8 +23,10 @@
 -- busy_timeout) belong to the store module too, but they do not change which
 -- rows the schema admits, so they are not part of this file.
 --
--- This file is executed verbatim by the DDL tests, by
--- tools/check_gen2_schemas.py and (Phase 0b) by the store module.
+-- This file is executed verbatim by the DDL tests, and through
+-- gen2/store/compat.py apply_connection_contract (which reads every pragma
+-- below, and foreign_keys/recursive_triggers in any case, back as 1) by
+-- tools/check_gen2_schemas.py and by the store's open path (gen2/store/db.py).
 
 PRAGMA foreign_keys = ON;
 PRAGMA recursive_triggers = ON;
