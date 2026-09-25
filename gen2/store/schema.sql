@@ -631,6 +631,7 @@ CREATE TABLE invocations (
   result_payload_digest TEXT,
   result_staged_at TEXT,
   outcome_unknown_since TEXT,
+  unknown_episode INTEGER NOT NULL DEFAULT 0 CHECK (unknown_episode >= 0),
   state_changed_at TEXT NOT NULL,
   FOREIGN KEY (topic_id, contract_revision) REFERENCES contract_revisions (topic_id, revision),
   CHECK ((kind = 'delegate') = (parent_invocation_id IS NOT NULL)),
@@ -645,7 +646,7 @@ CREATE TABLE invocations (
   CHECK (state != 'running' OR (job_handle IS NOT NULL AND host_id IS NOT NULL AND boot_id IS NOT NULL AND start_fingerprint IS NOT NULL)),
   CHECK (state NOT IN ('result_ready', 'committed') OR (result_payload_digest IS NOT NULL AND result_staged_at IS NOT NULL)),
   CHECK (state != 'cancelled' OR descendants_confirmed_at IS NOT NULL),
-  CHECK (state != 'outcome_unknown' OR outcome_unknown_since IS NOT NULL),
+  CHECK (state != 'outcome_unknown' OR (outcome_unknown_since IS NOT NULL AND unknown_episode >= 1)),
   CHECK ((cancel_requested_at IS NULL) = (cancel_requested_by IS NULL))
 ) STRICT;
 
@@ -756,19 +757,36 @@ BEGIN
   SELECT RAISE(ABORT, 'invocation identity, admission pins, launch intent, process identity and staged result are write-once');
 END;
 
+-- L-4 (Astra re-review RA4): every outcome_unknown episode has its own,
+-- never-reused identity. Entering outcome_unknown takes the next episode
+-- number (exactly +1) with its start time; at any other moment — while the
+-- episode is active, and after it ends — neither the episode number nor its
+-- start time can change. So a later episode can never be made to look like
+-- an earlier, already-reconciled one: rewinding the timestamp is refused,
+-- and a re-entry at a reused timestamp is still a new episode.
+CREATE TRIGGER invocations_unknown_episode_is_fresh
+BEFORE UPDATE ON invocations
+WHEN CASE WHEN OLD.state IS NOT 'outcome_unknown' AND NEW.state = 'outcome_unknown'
+          THEN NEW.unknown_episode IS NOT OLD.unknown_episode + 1
+          ELSE NEW.unknown_episode IS NOT OLD.unknown_episode OR NEW.outcome_unknown_since IS NOT OLD.outcome_unknown_since END
+BEGIN
+  SELECT RAISE(ABORT, 'an outcome_unknown episode takes a fresh identity on entry, and its identity and start time never change (L-4, RA4)');
+END;
+
 -- A5 / L-4: leaving outcome_unknown for any state L-1 allows needs the
--- durable reconciliation record of THIS unknown episode whose resolution
--- supports the target: found_running -> running; found_result -> result_ready
--- (same payload digest); found_committed -> committed (a final receipt
--- exists); confirmed_failed/terminated_group -> failed; terminated_group ->
--- cancelled. A timestamp or a result digest alone is not reconciliation.
+-- durable reconciliation record of THIS unknown episode (by its identity,
+-- RA4) whose resolution supports the target: found_running -> running;
+-- found_result -> result_ready (same payload digest); found_committed ->
+-- committed (a final receipt exists); confirmed_failed/terminated_group ->
+-- failed; terminated_group -> cancelled. A timestamp or a result digest
+-- alone is not reconciliation.
 CREATE TRIGGER invocations_unknown_needs_reconciliation
 BEFORE UPDATE OF state ON invocations
 WHEN OLD.state = 'outcome_unknown'
   AND NEW.state IN ('running', 'result_ready', 'committed', 'failed', 'cancelled')
   AND NOT EXISTS (
     SELECT 1 FROM invocation_reconciliations r
-    WHERE r.invocation_id = NEW.invocation_id AND r.unknown_since = OLD.outcome_unknown_since
+    WHERE r.invocation_id = NEW.invocation_id AND r.unknown_episode = OLD.unknown_episode
       AND ((NEW.state = 'running' AND r.resolution = 'found_running')
         OR (NEW.state = 'result_ready' AND r.result_payload_digest = NEW.result_payload_digest)  -- only found_result carries a digest (CHECK)
         OR (NEW.state = 'committed' AND r.resolution = 'found_committed'
@@ -791,13 +809,15 @@ END;
 -- outcome_unknown as vanished/failed/retryable/done without reconciliation);
 -- schema invocation.schema.json#/properties/reconciliation; Astra 0a review
 -- A5 and ruling R2.4; INVARIANTS L-4.
--- One immutable row per resolved unknown episode (keyed by its
--- unknown_since), recorded while the invocation is still outcome_unknown.
+-- One immutable row per resolved unknown episode (keyed by the episode's
+-- identity, RA4 — a start time can recur, an episode number cannot),
+-- recorded while the invocation is still in that episode.
 -- The evidence is the retained lookup/termination record, never a bare
 -- digest; terminal resolutions confirm descendant handling.
 CREATE TABLE invocation_reconciliations (
   reconciliation_id TEXT PRIMARY KEY CHECK (reconciliation_id GLOB 'rec_*'),
   invocation_id TEXT NOT NULL REFERENCES invocations (invocation_id),
+  unknown_episode INTEGER NOT NULL CHECK (unknown_episode >= 1),
   unknown_since TEXT NOT NULL,
   resolution TEXT NOT NULL CHECK (resolution IN ('found_running', 'found_result', 'found_committed', 'confirmed_failed', 'terminated_group')),
   method TEXT NOT NULL CHECK (method IN ('job_handle_lookup', 'execution_group_termination')),
@@ -805,7 +825,7 @@ CREATE TABLE invocation_reconciliations (
   result_payload_digest TEXT CHECK (result_payload_digest IS NULL OR result_payload_digest GLOB 'sha256:*'),
   descendants_confirmed_at TEXT,
   resolved_at TEXT NOT NULL,
-  UNIQUE (invocation_id, unknown_since),
+  UNIQUE (invocation_id, unknown_episode),
   CHECK ((resolution = 'found_result') = (result_payload_digest IS NOT NULL)),
   CHECK (resolution NOT IN ('confirmed_failed', 'terminated_group') OR descendants_confirmed_at IS NOT NULL),
   CHECK ((resolution = 'terminated_group') = (method = 'execution_group_termination'))
@@ -815,7 +835,8 @@ CREATE TRIGGER invocation_reconciliations_for_current_episode
 BEFORE INSERT ON invocation_reconciliations
 WHEN NOT EXISTS (
   SELECT 1 FROM invocations i
-  WHERE i.invocation_id = NEW.invocation_id AND i.state = 'outcome_unknown' AND i.outcome_unknown_since = NEW.unknown_since)
+  WHERE i.invocation_id = NEW.invocation_id AND i.state = 'outcome_unknown'
+    AND i.unknown_episode = NEW.unknown_episode AND i.outcome_unknown_since = NEW.unknown_since)
 BEGIN
   SELECT RAISE(ABORT, 'a reconciliation records the current outcome_unknown episode of its invocation');
 END;

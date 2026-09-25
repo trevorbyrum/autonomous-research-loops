@@ -40,6 +40,7 @@
     "cancellation": null,
     "result": null,
     "reconciliation": {
+      "episode": 1,
       "unknown_since": "2026-09-25T10:41:00Z",
       "resolved_at": null,
       "resolution": "pending",

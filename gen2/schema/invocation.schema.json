@@ -104,8 +104,9 @@
       "description": "The latest outcome_unknown episode (L-4). While pending nothing is resolved; a resolution is a durable record (DDL invocation_reconciliations) naming its method and retained evidence — never just a timestamp or a digest (Astra 0a review A5). found_result names the digest found; confirmed_failed and terminated_group confirm descendant handling; terminated_group is reached only by terminating the owned execution group.",
       "type": ["object", "null"],
       "additionalProperties": false,
-      "required": ["unknown_since", "resolved_at", "resolution", "method", "evidence_ref", "result_payload_digest", "descendants_confirmed_at"],
+      "required": ["episode", "unknown_since", "resolved_at", "resolution", "method", "evidence_ref", "result_payload_digest", "descendants_confirmed_at"],
       "properties": {
+        "episode": {"description": "The episode's own identity (Astra re-review RA4): the invocation's Nth entry into outcome_unknown, taken fresh on entry and never reused. A start time can recur; an episode number cannot, and a resolution resolves exactly one episode.", "type": "integer", "minimum": 1},
         "unknown_since": {"$ref": "common.schema.json#/$defs/timestamp"},
         "resolved_at": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/timestamp"}]},
         "resolution": {"enum": ["pending", "found_running", "found_result", "found_committed", "confirmed_failed", "terminated_group"]},

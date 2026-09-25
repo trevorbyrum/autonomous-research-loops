@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "invocation.schema.json",
+    "expect": "invalid",
+    "tests": "L-4/RA4: a reconciliation names the one unknown episode it resolves (a start time can recur; an episode identity cannot)",
+    "base": "valid-reconciled-result-ready.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/reconciliation/episode"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": "/reconciliation"
+      }
+    ]
+  }
+}

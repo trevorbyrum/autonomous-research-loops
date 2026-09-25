@@ -9,6 +9,7 @@
         "op": "replace",
         "path": "/reconciliation",
         "value": {
+          "episode": 1,
           "unknown_since": "2026-09-25T10:41:00Z",
           "resolved_at": "2026-09-25T10:55:00Z",
           "resolution": "confirmed_failed",
