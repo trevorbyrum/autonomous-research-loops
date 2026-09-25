@@ -30,13 +30,16 @@ partial row:
     fingerprint). The DDL admits only these versions too; this check ties
     them to the versions canonical.py actually computes.
 
-Writes run only inside transaction() (BEGIN IMMEDIATE ... COMMIT), and any
-exception rolls the whole transaction back (INVARIANTS C-4: one short
-transaction; C-8: none spans a subprocess or network call — that is the
-caller's discipline). The DDL's guards are the authority on what a row may
-be. Their refusals (sqlite3.IntegrityError) propagate unchanged, and the
-store never retries a refused write or resolves a conflict by REPLACE
-(C-11; the boundary lint forbids REPLACE in this module).
+Writes run only inside transaction() (BEGIN IMMEDIATE ... COMMIT), and a
+failure anywhere in it, COMMIT included, leaves nothing written (INVARIANTS
+C-4: one short transaction; C-8: none spans a subprocess or network call —
+that is the caller's discipline). COMMIT is where SQLite checks deferred
+foreign keys (a capability fact's successor link), so it can refuse too, and
+it is inside the rollback path (Astra 0b review A1). The DDL's guards are the
+authority on what a row may be. Their refusals (sqlite3.IntegrityError)
+propagate unchanged, and the store never retries a refused write or resolves
+a conflict by REPLACE (C-11; the boundary lint forbids REPLACE in this
+module).
 
 Not here (Phase 1+): commit_outcome, routing, scheduling, decisions,
 hash-truth recomputation (the router boundary's).
@@ -92,6 +95,8 @@ class Store:
     def __init__(self, conn: sqlite3.Connection, compatibility: dict) -> None:
         self._conn = conn
         self.compatibility = compatibility
+        self._in_transaction = False  # inside this Store's own transaction() context
+        self._unusable: str | None = None  # why the connection was closed after a failed rollback
         self._columns: dict[str, dict[str, str]] = {}
         self._json: dict[str, frozenset[str]] = {}
         for table, sql in conn.execute("SELECT name, sql FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"):
@@ -110,16 +115,50 @@ class Store:
 
     @contextmanager
     def transaction(self) -> Iterator["Store"]:
-        """BEGIN IMMEDIATE ... COMMIT; any exception rolls everything back."""
-        if self._conn.in_transaction:
+        """BEGIN IMMEDIATE ... COMMIT. An exception in the body or from COMMIT
+        itself ends the transaction with nothing written (_end_failed), and
+        that exception is what propagates."""
+        self._require_usable()
+        if self._conn.in_transaction or self._in_transaction:
             raise StoreWriteError("transactions do not nest")
         self._conn.execute("BEGIN IMMEDIATE")
+        self._in_transaction = True
         try:
             yield self
-        except BaseException:
-            self._conn.execute("ROLLBACK")
+            self._conn.execute("COMMIT")
+        except BaseException as exc:
+            self._end_failed(exc)
             raise
-        self._conn.execute("COMMIT")
+        finally:
+            self._in_transaction = False
+
+    def _end_failed(self, exc: BaseException) -> None:
+        """Roll back a failed transaction, if SQLite still holds it open. Some
+        failures end it on SQLite's side (an interrupt, SQLITE_FULL, an I/O
+        error), and an unconditional ROLLBACK would then raise its own error
+        in place of `exc`. If ROLLBACK fails, this connection cannot be shown
+        to hold nothing: it is closed (SQLite discards an uncommitted
+        transaction on close), this Store refuses further use, and `exc`
+        carries a note saying so."""
+        if not self._conn.in_transaction:
+            return
+        try:
+            self._conn.execute("ROLLBACK")
+        except BaseException as rollback_error:
+            self._close_unusable(f"ROLLBACK failed ({rollback_error!r})", exc)
+
+    def _close_unusable(self, reason: str, exc: BaseException) -> None:
+        self._unusable = reason
+        try:
+            self._conn.close()
+        except BaseException as close_error:
+            reason += f"; closing the connection also failed ({close_error!r})"
+            self._unusable = reason
+        exc.add_note(f"gen2 store: {reason}. The connection was closed, and this Store refuses further use")
+
+    def _require_usable(self) -> None:
+        if self._unusable is not None:
+            raise StoreWriteError(f"this Store's connection was closed after a failed transaction: {self._unusable}")
 
     # -- value preparation -------------------------------------------------
     def _check_names(self, table: str, columns) -> dict[str, str]:
@@ -163,7 +202,10 @@ class Store:
             raise StoreWriteError(f"a {table} receipt records the frozen hash contract {frozen}, not {recorded!r} (C-13)")
 
     def _require_transaction(self) -> None:
-        if not self._conn.in_transaction:
+        """Inside this Store's own transaction() context, not merely while
+        SQLite reports some transaction open on the connection."""
+        self._require_usable()
+        if not (self._in_transaction and self._conn.in_transaction):
             raise StoreWriteError("writes run inside Store.transaction()")
 
     # -- writes ------------------------------------------------------------

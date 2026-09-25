@@ -196,21 +196,138 @@ class IdentityBoundTest(WriterTestCase):
         self.assertEqual(self.raw("SELECT size_bytes FROM artifacts"), [(BOUND,)])
 
 
+def fact(fid: str, superseded_by: str | None = None) -> dict:
+    return {"fact_id": fid, "capability": "gateway.crossref", "state": "healthy", "detail": fid, "since": T, "affected_lanes": ["research"],
+            "superseded_by_fact_id": superseded_by, "recorded_at": T}
+
+
+def artifact(ch: str) -> dict:
+    return {"content_hash": h(ch), "size_bytes": 1, "media_type": "text/plain", "staged_at": T}
+
+
+def deny(*statements: str):
+    """An SQLite authorizer refusing the named transaction statements
+    (fault injection through SQLite's own mechanism, not a mock)."""
+    def authorizer(action, arg1, *_):
+        return sqlite3.SQLITE_DENY if action == sqlite3.SQLITE_TRANSACTION and arg1 in statements else sqlite3.SQLITE_OK
+    return authorizer
+
+
 class WritePathTest(WriterTestCase):
     def test_writes_run_inside_a_transaction(self) -> None:
         with self.assertRaises(Exception) as ctx:
-            self.store.insert("artifacts", {"content_hash": h("e"), "size_bytes": 1, "media_type": "text/plain", "staged_at": T})
+            self.store.insert("artifacts", artifact("e"))
         self.assertIsInstance(ctx.exception, StoreWriteError)
+        self.assertEqual(self.raw("SELECT count(*) FROM artifacts"), [(0,)])
+
+    def test_writes_need_the_stores_own_transaction(self) -> None:
+        """A transaction SQLite reports on the connection, but that
+        Store.transaction() did not open, does not admit writes (the review's
+        A1 step 5: after the failed COMMIT, an insert outside any context was
+        accepted because only SQLite's flag was checked). Fault injection: the
+        test opens that transaction on the Store's private connection."""
+        self.store._conn.execute("BEGIN")
+        try:
+            with self.assertRaises(Exception) as ctx:
+                self.store.insert("artifacts", artifact("o"))
+            self.assertIsInstance(ctx.exception, StoreWriteError)
+        finally:
+            self.store._conn.execute("ROLLBACK")
         self.assertEqual(self.raw("SELECT count(*) FROM artifacts"), [(0,)])
 
     def test_a_ddl_refusal_propagates_and_rolls_back_the_transaction(self) -> None:
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
             with self.store.transaction() as s:
-                s.insert("artifacts", {"content_hash": h("f"), "size_bytes": 1, "media_type": "text/plain", "staged_at": T})
+                s.insert("artifacts", artifact("f"))
                 s.insert("queue_entries", {"topic_id": "fleet-a:t2", "fleet_id": "fleet-a", "priority": 1, "status": "active", "created_at": T, "updated_at": T})
         self.assertIn("created awaiting brief confirmation", str(ctx.exception))
         self.assertEqual(self.raw("SELECT count(*) FROM artifacts"), [(0,)])
         self.assertEqual(self.raw("SELECT topic_id FROM queue_entries"), [(TOPIC,)])
+
+    def test_a_refusal_at_commit_rolls_back_and_the_store_stays_usable(self) -> None:
+        """Astra 0b review A1, the review's reproduction: the successor FK of a
+        capability fact is DEFERRABLE INITIALLY DEFERRED, so linking a
+        successor that is never inserted is refused by COMMIT itself, after
+        every statement succeeded. Nothing of that transaction persists (on
+        a second connection, and on the Store's own), the Store is not left
+        inside it (writes outside a context are refused, and a new
+        transaction is not "nested"), and completing the supersession later
+        does not bring the failed batch's audit event back."""
+        with self.store.transaction() as s:
+            s.insert("capability_facts", fact("cf_old"))
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            with self.store.transaction() as s:
+                s.insert("audit_events", {"audit_event_id": "aud_lost", "at": T, "kind": "probe", "detail": {}})
+                s.update("capability_facts", {"fact_id": "cf_old"}, {"superseded_by_fact_id": "cf_missing"})
+        self.assertEqual(str(ctx.exception), "FOREIGN KEY constraint failed")
+        self.assertEqual(getattr(ctx.exception, "__notes__", []), [])  # rolled back normally: the Store is not closed
+        self.assertEqual(self.raw("SELECT count(*) FROM audit_events"), [(0,)])  # a second connection
+        self.assertEqual(self.raw("SELECT fact_id, superseded_by_fact_id FROM capability_facts"), [("cf_old", None)])
+        self.assertEqual(self.store.select("audit_events"), [])  # the Store's own connection sees the same
+        self.assertEqual([(r["fact_id"], r["superseded_by_fact_id"]) for r in self.store.select("capability_facts")], [("cf_old", None)])
+        with self.assertRaises(Exception) as outside:
+            self.store.insert("audit_events", {"audit_event_id": "aud_outside", "at": T, "kind": "probe", "detail": {}})
+        self.assertIsInstance(outside.exception, StoreWriteError)
+        with self.store.transaction() as s:  # the same connection: a new transaction, not a nested one
+            s.update("capability_facts", {"fact_id": "cf_old"}, {"superseded_by_fact_id": "cf_new"})
+            s.insert("capability_facts", fact("cf_new"))
+        self.assertEqual(self.raw("SELECT fact_id, superseded_by_fact_id FROM capability_facts ORDER BY fact_id"), [("cf_new", None), ("cf_old", "cf_new")])
+        self.assertEqual(self.raw("SELECT count(*) FROM audit_events"), [(0,)])
+
+    def test_a_transaction_sqlite_already_ended_is_not_rolled_back_again(self) -> None:
+        """An interrupted INSERT inside a transaction makes SQLite roll the
+        whole transaction back itself. The interrupt is what propagates: an
+        unconditional ROLLBACK here would raise "no transaction is active"
+        in its place (A1: never mask the original failure). Fault injection:
+        a progress handler interrupting the statement, set on the Store's
+        private connection."""
+        with self.assertRaises(sqlite3.OperationalError) as ctx:
+            with self.store.transaction() as s:
+                s.insert("artifacts", artifact("i"))
+                s._conn.set_progress_handler(lambda: 1, 1)
+                try:
+                    s.insert("artifacts", artifact("j"))
+                finally:
+                    s._conn.set_progress_handler(None, 1)
+        self.assertEqual(str(ctx.exception), "interrupted")
+        self.assertEqual(getattr(ctx.exception, "__notes__", []), [])
+        self.assertEqual(self.raw("SELECT count(*) FROM artifacts"), [(0,)])
+        with self.store.transaction() as s:
+            s.insert("artifacts", artifact("k"))
+        self.assertEqual(self.raw("SELECT content_hash FROM artifacts"), [(h("k"),)])
+
+    def test_a_failed_rollback_closes_the_connection_and_the_store_refuses_use(self) -> None:
+        """COMMIT refused and ROLLBACK working (the review's authorizer
+        variant): nothing persists and the Store stays usable. COMMIT and
+        ROLLBACK both refused: the Store cannot show its connection holds
+        nothing, so it closes it (SQLite discards the open transaction) and
+        refuses further use. Either way COMMIT's own error is what
+        propagates. Fault injection: an SQLite authorizer on the Store's
+        private connection."""
+        with self.assertRaises(sqlite3.DatabaseError) as ctx:
+            with self.store.transaction() as s:
+                s.insert("artifacts", artifact("l"))
+                s._conn.set_authorizer(deny("COMMIT"))
+        self.store._conn.set_authorizer(None)
+        self.assertEqual((str(ctx.exception), getattr(ctx.exception, "__notes__", [])), ("not authorized", []))
+        self.assertEqual(self.raw("SELECT count(*) FROM artifacts"), [(0,)])
+        with self.store.transaction() as s:
+            s.insert("artifacts", artifact("m"))
+        with self.assertRaises(sqlite3.DatabaseError) as ctx:
+            with self.store.transaction() as s:
+                s.insert("artifacts", artifact("n"))
+                s._conn.set_authorizer(deny("COMMIT", "ROLLBACK"))
+        notes = getattr(ctx.exception, "__notes__", [])
+        self.assertEqual((str(ctx.exception), len(notes)), ("not authorized", 1))
+        self.assertIn("ROLLBACK failed", notes[0])
+        self.assertIn("this Store refuses further use", notes[0])
+        self.assertEqual(self.raw("SELECT content_hash FROM artifacts"), [(h("m"),)])
+        self.raw("INSERT INTO audit_events (audit_event_id, at, kind, detail) VALUES ('aud_after', ?, 'probe', '{}')", T)  # no write lock is left held
+        for attempt in (lambda: self.store.transaction().__enter__(), lambda: self.store.insert("artifacts", artifact("p"))):
+            with self.assertRaises(Exception) as refused:
+                attempt()
+            self.assertIsInstance(refused.exception, StoreWriteError)
+            self.assertIn("closed after a failed transaction", str(refused.exception))
 
     def test_an_update_touches_exactly_one_row(self) -> None:
         self.raw("INSERT INTO sink_generations (topic_id, sink, delivered_generation, delivered_at) VALUES (?, 'neo4j', 3, ?), (?, 'qdrant', 3, ?)", TOPIC, T, TOPIC, T)
