@@ -75,6 +75,7 @@ FILE_TARGETS = {
     "gen2/store/api.py": ("module", "gen2.store.api"),
     "gen2/importer/dry_run.py": ("module", "gen2.importer.dry_run"),
     "tools/gen2_trigger_order.py": ("attr", "test_trigger_order_tool", "TOOL"),
+    "tools/gen_source_catalog.py": ("attr", "test_source_catalog", "TOOL"),
 }
 
 H = "test_store_history."
@@ -97,6 +98,7 @@ EX = "test_store_examples.ExampleWorldTest."
 CG = "test_store_ddl.ContractGovernanceTest."
 SG = "test_sqlite_gate."
 IB = "test_store_intake.IntakeBriefTest."
+SC = "test_source_catalog.CatalogToolTest."
 
 MUTATIONS: list[Mutation] = [
     # --- A1: history cannot be rewritten ------------------------------------
@@ -1305,6 +1307,62 @@ MUTATIONS: list[Mutation] = [
              (D + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",),
              old="  OR NEW.created_at IS NOT OLD.created_at\n  OR (OLD.approved_by_decision_id IS NOT NULL",
              new="  OR (OLD.approved_by_decision_id IS NOT NULL"),
+    # --- 0c: the registry/artifact drift gate (task 0c deliverable 2, Gate C) ------
+    # Each of these is a way the drift check could stop meaning anything while
+    # `make gen2-check` still passed. The named tests must notice every one.
+    *(Mutation(f"0C-{key}", "0c-drift", desc, tuple(SC + k for k in killers),
+               target="tools/gen_source_catalog.py", old=old, new=new)
+      for key, desc, killers, old, new in (
+          ("comparison-removed", "the check stops comparing the artifacts with the registry (it only reports success)",
+           ("test_a_new_credentialled_source_makes_both_artifacts_stale",
+            "test_deleting_a_secret_line_from_the_env_example_is_drift",
+            "test_a_hand_edited_catalog_is_drift",
+            "test_a_registry_change_with_no_secret_effect_is_still_drift"),
+           "                if current != expected:", "                if False:"),
+          ("missing-artifact-unreported", "a missing artifact is no longer reported (the checker crashes on it instead)",
+           ("test_a_missing_artifact_is_reported_not_crashed_on",), "            if not path.exists():", "            if False:"),
+          ("env-not-checked", "the check covers only the first artifact, so the .env example may drift freely",
+           ("test_deleting_a_secret_line_from_the_env_example_is_drift",
+            "test_a_missing_artifact_is_reported_not_crashed_on"),
+           "        for path, expected in artifacts:\n            if not path.exists():",
+           "        for path, expected in artifacts[:1]:\n            if not path.exists():"),
+          ("unknown-auth-accepted", "an auth kind the generator cannot map is accepted instead of refused",
+           ("test_an_unknown_auth_kind_is_refused_rather_than_emitted_without_its_key",),
+           "        if auth not in AUTH_SECRETS:", "        if False:"),
+          ("empty-secret-ref-accepted", "a credentialled source with no secret_ref is accepted (its key vanishes)",
+           ("test_a_credentialled_source_without_a_secret_ref_is_refused",),
+           "            if AUTH_SECRETS[auth] and not ref:", "            if False:"),
+          ("stray-secret-ref-accepted", "a secret_ref on a source that reads no credential is silently dropped",
+           ("test_a_secret_ref_on_a_source_that_reads_no_credential_is_refused",),
+           "            if not AUTH_SECRETS[auth] and ref:", "            if False:"),
+          ("illegal-variable-name-accepted", "a secret_ref that cannot spell an environment variable is accepted",
+           ("test_a_secret_ref_that_is_not_a_legal_variable_name_is_refused",),
+           "                if not name.replace(\"_\", \"A\").isalnum() or not name[0].isalpha() or name != name.upper():",
+           "                if False:"),
+          ("shared-ref-conflict-ignored", "one secret_ref shared by sources that read it differently is accepted",
+           ("test_one_secret_ref_shared_with_two_different_auth_kinds_is_refused",),
+           "        if len(auths) > 1:", "        if False:"),
+          ("required-fields-unchecked", "a source missing a required field is rendered with blanks",
+           ("test_a_missing_required_field_is_refused",), "            if key not in s:", "            if False:"),
+          ("duplicate-id-accepted", "two rows with one id are accepted",
+           ("test_a_duplicate_source_id_is_refused",), "        if sid in seen:", "        if False:"),
+          ("invalid-problems-ignored", "validation runs but its findings no longer stop generation",
+           ("test_an_unknown_auth_kind_is_refused_rather_than_emitted_without_its_key",
+            "test_a_credentialled_source_without_a_secret_ref_is_refused",
+            "test_a_missing_required_field_is_refused"),
+           "    if problems:\n        print(f\"CATALOG ERROR: {registry} cannot produce a complete catalog and .env example:\", file=sys.stderr)",
+           "    if False:\n        print(f\"CATALOG ERROR: {registry} cannot produce a complete catalog and .env example:\", file=sys.stderr)"),
+          ("optional-emitted-live", "an optional credential is emitted as a live line, so a blank looks configured",
+           ("test_required_credentials_are_live_lines_and_optional_ones_are_commented",),
+           "            out.append(f\"{'' if s.required else '# '}{s.var}=example-{s.secret_ref.replace('_', '-')}\"",
+           "            out.append(f\"{s.var}=example-{s.secret_ref.replace('_', '-')}\""),
+          ("multi-field-collapsed", "a multi-field credential emits one unsuffixed variable",
+           ("test_multi_field_credentials_emit_one_variable_per_field",),
+           '    return f"{name}_{field.upper()}" if field else name', "    return name"),
+          ("cost-cap-not-reported", "a recorded cost cap is not reported, so a metered source reads as uncapped",
+           ("test_a_cost_cap_in_the_registry_is_reported_as_metered",),
+           '    if rate.get("cost_cap_per_day"):', "    if False:"),
+      )),
 ]
 
 
