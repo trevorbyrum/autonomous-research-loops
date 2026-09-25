@@ -48,6 +48,7 @@ The same functions run in three places:
 - **The store's open path, `gen2/store/db.py`.** The library is checked on an in-memory connection before anything on disk is created or opened (`sqlite3.connect(path)` would create the file). The contract is then applied and read back on the durable connection itself. An existing store is admitted only if its schema is exactly `schema.sql`.
 - **`make gen2-sqlite`.** This runs first in `gen2-check` and prints the record of what the build ran on.
 - **The DDL check, `make gen2-ddl`.** It prints `DDL creates … on SQLite x.y.z (compatibility gate passed)`.
+- **The importer.** The 0b dry-run importer (`gen2/importer/`) has no SQLite access at all: the boundary graph lets it import `core` only, with no `sqlite3` grant. Any importer that writes a store (Phase 4) must open it through `gen2/store/api.py` `open_store`, and so through this gate. That requires amending the importer's boundary entry, which the review path covers.
 
 **CI's SQLite version** is the one `actions/setup-python`'s Python 3.12 links. The workflow now records it: its `make gen2-sqlite` step appends the gate's record (version, JSON probes, pragmas) to the job summary, and a refusal fails the job. It has still not been observed, because CI has not run yet (the first push is the operator's call).
 
