@@ -1,0 +1,6 @@
+{"fixture": {"schema": "source-proposal.schema.json", "expect": "invalid",
+  "tests": "if the terms could not be found, neither question was answered: unknown does not become permitted for the convenient half",
+  "base": "valid-manual-only-source.json",
+  "patch": [{"op": "replace", "path": "/licensing/redistribution", "value": "permitted"},
+            {"op": "add", "path": "/licensing/content_licence", "value": "probably CC-BY"}],
+  "errors": [{"keyword": "const", "path": "/licensing/redistribution"}]}}

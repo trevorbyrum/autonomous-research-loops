@@ -1,0 +1,59 @@
+{
+  "fixture": {
+    "schema": "source-proposal.schema.json",
+    "expect": "valid",
+    "tests": "a provider with no programmatic interface is proposed as manual-only: documented, never queried, declaring no capability and no credential; unknown licensing fails closed and drags redistribution to unknown with it"
+  },
+  "instance": {
+    "proposal_version": "source-proposal/1",
+    "proposal_id": "srcp_01J8ZR20B2",
+    "topic_id": "fleet-b:clinical-trial-registries",
+    "proposed_by": {"invocation_id": "inv_pass00311", "invocation_kind": "research_pass"},
+    "proposed_at": "2026-09-25T08:40:00Z",
+    "motivation": {
+      "evidence_gap": "One obligation depends on a national statistics office's trial-funding tables, which are published only as annual PDFs behind a click-through. Recording it as manual-only means the operator knows the route exists and that the engine will never call it.",
+      "blocked_obligation_ids": ["OB-09"]
+    },
+    "source": {
+      "suggested_registry_id": "example_stats_office",
+      "name": "Example National Statistics Office (annual trial-funding tables)",
+      "homepage": "https://stats.example.invalid/"
+    },
+    "provides": {
+      "kind": "manual",
+      "capabilities": [],
+      "what_it_provides": "Annual PDF tables of publicly funded trial counts by therapeutic area. No API, no bulk download, and a click-through agreement before each download."
+    },
+    "placement": {
+      "base_for": [],
+      "domains": ["biomed"],
+      "substitution_group": null,
+      "rationale": "Not a lane at all. Documented so the route is known and so a later pass does not re-derive its absence as a coverage gap."
+    },
+    "access": {
+      "auth": "account",
+      "secret_ref": null,
+      "key_acquisition": "A free account is required to accept the download agreement. There is no API and therefore no credential the gateway could hold.",
+      "credential_cost": "free_registration"
+    },
+    "api_shape": {
+      "protocol": "other",
+      "protocol_notes": "No machine interface: a per-download click-through on a web page.",
+      "pagination": "none",
+      "rate_limits": {
+        "status": "undocumented",
+        "statement": "No limits are published, and none apply: the gateway will never call this source."
+      }
+    },
+    "licensing": {
+      "licensing_tier": "unknown",
+      "metadata_terms": "The click-through agreement text is not reachable without an account, so its reuse terms could not be read.",
+      "redistribution": "unknown",
+      "evidence_urls": ["https://stats.example.invalid/data/terms"]
+    },
+    "unknowns": [
+      {"field": "licensing.licensing_tier", "statement": "The terms are behind an account wall; nothing about reuse was established, so the verdict is unknown and fails closed."},
+      {"field": "licensing.redistribution", "statement": "Unread for the same reason: whether the tables may be redistributed is not established."}
+    ]
+  }
+}

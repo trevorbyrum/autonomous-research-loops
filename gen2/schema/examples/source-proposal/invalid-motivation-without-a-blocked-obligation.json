@@ -1,0 +1,5 @@
+{"fixture": {"schema": "source-proposal.schema.json", "expect": "invalid",
+  "tests": "a proposal comes from doing research: the gap is tied to the record, not to an impression that a provider would be nice to have",
+  "base": "valid-domain-lane-with-a-key.json",
+  "patch": [{"op": "remove", "path": "/motivation/blocked_obligation_ids"}],
+  "errors": [{"keyword": "required", "path": "/motivation"}]}}

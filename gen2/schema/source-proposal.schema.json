@@ -1,0 +1,279 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/source-proposal.schema.json",
+  "$comment": "flow: S2 (tradition census: which communities study this under what names - the stage where a missing provider is usually noticed, and which records coverage facts per lane); S4 step 2 (discovery through the gateway only); §2 (the decision ladder: an agent's new OPTION is always generation, never selection, and a new option is a proposal to the operator); §4.3 (unknown is stated as unknown) | boundaries: Primary agent (per-station frontier LLM); Secondary/delegate agents; Gateway; Operator | design-review: §6 (a new executable adapter requires an image release; agents never introduce executables); §9 (the gateway's licensing/provenance handling and coverage vocabulary are kept) | invariants: G-7 (anything scope-changing follows the amendment path); G-13 (a decision authorizes only its exact subject); RG-U; H-2; B-2 (no gen-2 module imports the gateway's internals) | note: this is a proposal to add a RESEARCH PROVIDER (an API the gateway could call) to the gateway's source registry. It is NOT the S4 step-5 source lifecycle, and not the `source_lifecycle` / `source_add_battery` decision classes in common.schema.json - those are about a retrieved WORK's place in the evidence base (add / keep / supersede / coexist / quarantine / link-duplicate). Different subject, different owner, different vocabulary; docs/gen2/SOURCE-GOVERNANCE.md keeps the two apart deliberately",
+  "title": "Research source proposal",
+  "description": "An agent's typed proposal that the gateway should be able to call a provider it currently cannot. It authorizes nothing: it is generation, not selection (flow §2 - a new option is always a proposal to the operator), and the pathway it enters is in docs/gen2/SOURCE-GOVERNANCE.md. The document deliberately has no field for approval, for enablement, for a verified rate limit, or for a credential value: an agent cannot approve a source, cannot turn one on, cannot assert that a limit was confirmed, and cannot carry a secret. Everything the agent could not establish goes in `unknowns` rather than being filled in plausibly.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "proposal_version",
+    "proposal_id",
+    "topic_id",
+    "proposed_by",
+    "proposed_at",
+    "motivation",
+    "source",
+    "provides",
+    "placement",
+    "access",
+    "api_shape",
+    "licensing",
+    "unknowns"
+  ],
+  "properties": {
+    "proposal_version": {"const": "source-proposal/1"},
+    "proposal_id": {"$ref": "common.schema.json#/$defs/source_proposal_id"},
+    "topic_id": {
+      "description": "The topic whose work motivated the proposal. A proposal always comes from doing research, not from browsing what exists.",
+      "$ref": "common.schema.json#/$defs/topic_id"
+    },
+    "proposed_by": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["invocation_id", "invocation_kind"],
+      "properties": {
+        "invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
+        "invocation_kind": {"$ref": "common.schema.json#/$defs/invocation_kind"}
+      }
+    },
+    "proposed_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+    "motivation": {
+      "description": "Why this provider, tied to the record rather than to an impression. A coverage gap is stated in the gateway's own vocabulary: a lane that was `searched_ok` and returned little is a different fact from a lane that does not exist, and neither is `searched_empty`.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence_gap", "blocked_obligation_ids"],
+      "properties": {
+        "evidence_gap": {"$ref": "common.schema.json#/$defs/long_text"},
+        "blocked_obligation_ids": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {"$ref": "common.schema.json#/$defs/local_id"}
+        },
+        "observed_coverage": {
+          "description": "What the existing lanes actually reported while the gap was observed, per lane, in the gateway's coverage vocabulary.",
+          "type": "object",
+          "maxProperties": 100,
+          "propertyNames": {"$ref": "common.schema.json#/$defs/short_text"},
+          "additionalProperties": {"$ref": "common.schema.json#/$defs/coverage_state"}
+        },
+        "why_existing_sources_do_not_cover_it": {"$ref": "common.schema.json#/$defs/long_text"}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["suggested_registry_id", "name", "homepage"],
+      "properties": {
+        "suggested_registry_id": {
+          "description": "The id the registry row would use if the proposal is approved. Lower-case with underscores, matching the registry's existing ids (`harvard_dataverse`, `api_data_gov`); the operator may change it, and nothing downstream depends on the suggestion.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$"
+        },
+        "name": {"$ref": "common.schema.json#/$defs/short_text"},
+        "homepage": {"$ref": "common.schema.json#/$defs/short_text"},
+        "docs_url": {"$ref": "common.schema.json#/$defs/short_text"}
+      }
+    },
+    "provides": {
+      "description": "What the provider holds and what the gateway would ask it for, in the registry's own vocabulary so an approved proposal maps onto a row without translation.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "capabilities", "what_it_provides"],
+      "properties": {
+        "kind": {"enum": ["article", "dataset", "citation", "resolver", "statistical", "manual"]},
+        "capabilities": {
+          "type": "array",
+          "maxItems": 6,
+          "uniqueItems": true,
+          "items": {"enum": ["find", "resolve", "enrich", "fetch", "data", "catalog"]}
+        },
+        "identifiers": {
+          "type": "array",
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {"$ref": "common.schema.json#/$defs/short_text"}
+        },
+        "what_it_provides": {"$ref": "common.schema.json#/$defs/long_text"}
+      },
+      "allOf": [
+        {
+          "description": "A manual-only source is documented and never queried, so it declares no gateway capability (the registry's own rule).",
+          "if": {"properties": {"kind": {"const": "manual"}}, "required": ["kind"]},
+          "then": {"properties": {"capabilities": {"maxItems": 0}}}
+        },
+        {
+          "description": "Anything the gateway would call has to say what it would be called for.",
+          "if": {"properties": {"kind": {"enum": ["article", "dataset", "citation", "resolver", "statistical"]}}, "required": ["kind"]},
+          "then": {"properties": {"capabilities": {"minItems": 1}}}
+        }
+      ]
+    },
+    "placement": {
+      "description": "Where the provider would sit in the gateway's existing structure. A base lane is queried for every request of its kind; a domain lane is added only for the domains it is tagged with (and an `other`-domain request includes every domain lane). A substitution family groups providers that answer the same question, so the router can fall back within it. Proposing a base lane is a bigger claim than proposing a domain lane, and the rationale is where that claim is made.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_for", "domains", "rationale"],
+      "properties": {
+        "base_for": {
+          "type": "array",
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {"$ref": "common.schema.json#/$defs/short_text"}
+        },
+        "domains": {
+          "type": "array",
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {"enum": ["finance", "market", "social", "management", "ai-ml", "software", "biomed"]}
+        },
+        "substitution_group": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/short_text"}]},
+        "rationale": {"$ref": "common.schema.json#/$defs/long_text"},
+        "expected_overlap": {
+          "description": "What the proposal expects this lane to duplicate. A provider with near-total overlap with an existing lane is a fallback, not a discovery lane — the registry already records one such case (OpenAIRE, 96-99% overlap with Crossref, kept as a fallback and not as a lane).",
+          "$ref": "common.schema.json#/$defs/long_text"
+        }
+      }
+    },
+    "access": {
+      "description": "How a deployment would authenticate. `secret_ref` is a LOGICAL NAME ONLY — the value never appears in this document, and there is no field it could appear in. The auth vocabulary is the registry's, and the required/absent pairing with `secret_ref` matches what tools/gen_source_catalog.py enforces, so an approved proposal cannot produce a registry row whose keys the generator would refuse.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["auth", "secret_ref", "key_acquisition", "credential_cost"],
+      "properties": {
+        "auth": {"enum": ["none", "email", "key", "optional_token", "client_credentials", "username_key", "account"]},
+        "secret_ref": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"}
+          ]
+        },
+        "key_acquisition": {
+          "description": "The steps a person follows to obtain the credential, in enough detail to be followed — this becomes the registry row's key_instructions and then the catalog's 'How to get access'.",
+          "$ref": "common.schema.json#/$defs/long_text"
+        },
+        "credential_cost": {
+          "description": "What obtaining it costs, as far as the provider's own pages say: no_credential, free_registration, paid, or unknown. `unknown` is a legitimate answer and is listed in `unknowns`; a guess is not.",
+          "enum": ["no_credential", "free_registration", "paid", "unknown"]
+        }
+      },
+      "allOf": [
+        {
+          "description": "An auth kind that reads a credential needs a logical name for it.",
+          "if": {"properties": {"auth": {"enum": ["key", "optional_token", "client_credentials", "username_key"]}}, "required": ["auth"]},
+          "then": {"properties": {"secret_ref": {"type": "string"}}}
+        },
+        {
+          "description": "An auth kind that reads no credential must not name one: a stray secret name is how a key silently goes missing from, or is invented in, the generated .env example.",
+          "if": {"properties": {"auth": {"enum": ["none", "email", "account"]}}, "required": ["auth"]},
+          "then": {"properties": {"secret_ref": {"type": "null"}}}
+        },
+        {
+          "description": "No credential to obtain, nothing to charge for.",
+          "if": {"properties": {"auth": {"enum": ["none", "email"]}}, "required": ["auth"]},
+          "then": {"properties": {"credential_cost": {"const": "no_credential"}}}
+        }
+      ]
+    },
+    "api_shape": {
+      "description": "Enough of the interface to judge whether an adapter is a small job or a subsystem. Rate limits are either DOCUMENTED with the page they were read from, or undocumented and said to be so — there is no shape in which a limit can be asserted without a source, and no shape in which this document can claim a limit was verified against live headers. Verification happens later, by a person running the smoke, and is recorded in the registry seed, not here.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol", "pagination", "rate_limits"],
+      "properties": {
+        "protocol": {"enum": ["rest_json", "rest_xml", "sdmx", "oai_pmh", "graphql", "bulk_snapshot", "other"]},
+        "protocol_notes": {"$ref": "common.schema.json#/$defs/long_text"},
+        "pagination": {"enum": ["offset", "cursor", "page", "none", "unknown"]},
+        "rate_limits": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status", "limits", "evidence_url"],
+              "properties": {
+                "status": {"const": "documented"},
+                "limits": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "per_second": {"type": "number", "exclusiveMinimum": 0},
+                    "per_minute": {"type": "number", "exclusiveMinimum": 0},
+                    "per_hour": {"type": "number", "exclusiveMinimum": 0},
+                    "per_day": {"type": "number", "exclusiveMinimum": 0},
+                    "burst": {"type": "integer", "exclusiveMinimum": 0},
+                    "cost_cap_per_day": {"type": "number", "exclusiveMinimum": 0}
+                  }
+                },
+                "evidence_url": {"$ref": "common.schema.json#/$defs/short_text"}
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status", "statement"],
+              "properties": {
+                "status": {"const": "undocumented"},
+                "statement": {"$ref": "common.schema.json#/$defs/short_text"}
+              }
+            }
+          ]
+        },
+        "response_shape": {
+          "description": "What a successful response looks like, and — the field that matters for the gateway's repaired defect — what an error or empty result looks like, so an adapter can tell them apart instead of turning an unreadable payload into zero results.",
+          "$ref": "common.schema.json#/$defs/long_text"
+        }
+      }
+    },
+    "licensing": {
+      "description": "The terms, read rather than assumed. `licensing_tier` is the registry's commercial verdict vocabulary, and `unknown` fails closed for commercial-flagged requests exactly as it does for an existing source. Redistribution is recorded separately because it is a different question from commercial use, and because it decides whether retrieved content may travel in an export bundle at all (docs/gen2/EXPORT-SINKS.md §2). Evidence is a link to the terms that were read: at least one, always.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["licensing_tier", "redistribution", "evidence_urls"],
+      "properties": {
+        "licensing_tier": {"enum": ["allow", "per-item", "deny", "unknown"]},
+        "content_licence": {"$ref": "common.schema.json#/$defs/short_text"},
+        "metadata_terms": {"$ref": "common.schema.json#/$defs/long_text"},
+        "redistribution": {"enum": ["permitted", "prohibited", "unknown"]},
+        "evidence_urls": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {"$ref": "common.schema.json#/$defs/short_text"}
+        }
+      },
+      "allOf": [
+        {
+          "description": "Saying content may be redistributed means naming the licence that says so.",
+          "if": {"properties": {"redistribution": {"const": "permitted"}}, "required": ["redistribution"]},
+          "then": {"required": ["content_licence"]}
+        },
+        {
+          "description": "An unlocatable commercial verdict cannot come with a confident redistribution answer: if the terms could not be found, neither question was answered.",
+          "if": {"properties": {"licensing_tier": {"const": "unknown"}}, "required": ["licensing_tier"]},
+          "then": {"properties": {"redistribution": {"const": "unknown"}}}
+        }
+      ]
+    },
+    "unknowns": {
+      "description": "Everything the proposal could not establish, one entry each, naming the field it is about. Present and possibly empty — an empty array is a claim that nothing was left open, which a reviewer can check against the rest of the document. A field that is `unknown` above and absent here is an inconsistency a reviewer should catch; the schema requires the array, not the cross-check.",
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "statement"],
+        "properties": {
+          "field": {"$ref": "common.schema.json#/$defs/short_text"},
+          "statement": {"$ref": "common.schema.json#/$defs/short_text"}
+        }
+      }
+    },
+    "supersedes_proposal_id": {
+      "description": "A previous proposal for the same provider that this one replaces (a re-proposal after a rejection is explicit, and carries what changed). An operator's rejection of the earlier proposal stands as its own record; this field does not reopen it.",
+      "$ref": "common.schema.json#/$defs/source_proposal_id"
+    }
+  }
+}

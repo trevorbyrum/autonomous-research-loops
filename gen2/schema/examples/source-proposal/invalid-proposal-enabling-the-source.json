@@ -1,0 +1,5 @@
+{"fixture": {"schema": "source-proposal.schema.json", "expect": "invalid",
+  "tests": "enablement is a deployment decision, not a proposal field: an agent cannot turn a lane on",
+  "base": "valid-domain-lane-with-a-key.json",
+  "patch": [{"op": "add", "path": "/enabled", "value": true}],
+  "errors": [{"keyword": "additionalProperties", "path": ""}]}}

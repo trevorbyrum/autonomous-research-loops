@@ -1,0 +1,74 @@
+{
+  "fixture": {
+    "schema": "source-proposal.schema.json",
+    "expect": "valid",
+    "tests": "flow §2: an agent generates a new option and proposes it; the document authorizes nothing, names a logical secret but no value, cites the terms it read, and lists what it could not establish"
+  },
+  "instance": {
+    "proposal_version": "source-proposal/1",
+    "proposal_id": "srcp_01J8ZR10A1",
+    "topic_id": "fleet-b:clinical-trial-registries",
+    "proposed_by": {"invocation_id": "inv_disc00214", "invocation_kind": "discovery"},
+    "proposed_at": "2026-09-25T08:12:00Z",
+    "motivation": {
+      "evidence_gap": "Three obligations need trial registrations rather than published articles. The article lanes return the publications that cite a registration but never the registration record itself, so registered-but-unpublished trials are invisible to every lane currently enabled.",
+      "blocked_obligation_ids": ["OB-04", "OB-07", "OB-11"],
+      "observed_coverage": {
+        "crossref": "searched_ok",
+        "europepmc": "searched_ok",
+        "doaj": "searched_empty"
+      },
+      "why_existing_sources_do_not_cover_it": "Europe PMC indexes publications and returns registration identifiers as metadata on them; it has no lane that enumerates registrations with no publication attached, which is the population these three obligations are about."
+    },
+    "source": {
+      "suggested_registry_id": "example_trial_registry",
+      "name": "Example Trial Registry",
+      "homepage": "https://registry.example.invalid/",
+      "docs_url": "https://registry.example.invalid/api/docs"
+    },
+    "provides": {
+      "kind": "dataset",
+      "capabilities": ["find", "resolve"],
+      "identifiers": ["registration_id", "doi"],
+      "what_it_provides": "Trial registration records: identifier, status, sponsor, registered outcomes, dates, and linked publications where they exist. Records exist for trials with no publication, which is the population the blocked obligations need."
+    },
+    "placement": {
+      "base_for": [],
+      "domains": ["biomed"],
+      "substitution_group": null,
+      "rationale": "A domain lane, not a base lane: only biomed-tagged requests would benefit, and adding it to every article request would spend budget on lanes that cannot answer. It is not a substitute for any enabled lane, so it joins no substitution family.",
+      "expected_overlap": "Low overlap with the article lanes by construction, since the records it returns are registrations rather than publications; the linked-publication field will duplicate Crossref metadata for the subset that published."
+    },
+    "access": {
+      "auth": "key",
+      "secret_ref": "example_trial_registry",
+      "key_acquisition": "Create an account at https://registry.example.invalid/account, then API access -> Request key. The provider's page states the key is issued immediately and at no charge. Sent as the X-Api-Key header.",
+      "credential_cost": "free_registration"
+    },
+    "api_shape": {
+      "protocol": "rest_json",
+      "protocol_notes": "One search endpoint and one record endpoint; no batch endpoint documented.",
+      "pagination": "cursor",
+      "rate_limits": {
+        "status": "documented",
+        "limits": {"per_second": 5, "per_day": 20000},
+        "evidence_url": "https://registry.example.invalid/api/docs#rate-limits"
+      },
+      "response_shape": "A success is an object with `results` and `next_cursor`. An error is an object with `error` and an HTTP 4xx/5xx status. An empty result is `results: []` with HTTP 200 and no `error` key — so an empty search and a failed one are distinguishable, and an unreadable payload can be refused rather than read as zero results."
+    },
+    "licensing": {
+      "licensing_tier": "per-item",
+      "content_licence": "Per record: most are CC-BY-4.0, some are marked 'all rights reserved' by the sponsor.",
+      "metadata_terms": "The terms permit programmatic access for research and require attribution. Commercial reuse is described as depending on the individual record's licence, which is why this is per-item rather than allow.",
+      "redistribution": "permitted",
+      "evidence_urls": [
+        "https://registry.example.invalid/terms",
+        "https://registry.example.invalid/api/docs#licensing"
+      ]
+    },
+    "unknowns": [
+      {"field": "api_shape.rate_limits", "statement": "The documented limits were read from the docs page; they have not been observed from response headers, and the registry's own rate.verified flag stays false until someone runs the live smoke."},
+      {"field": "licensing.content_licence", "statement": "The proportion of records marked all-rights-reserved is not stated anywhere I could find, so the cost of the per-item filter is unknown."}
+    ]
+  }
+}

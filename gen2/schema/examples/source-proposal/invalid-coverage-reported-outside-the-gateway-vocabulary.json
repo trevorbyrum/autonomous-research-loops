@@ -1,0 +1,5 @@
+{"fixture": {"schema": "source-proposal.schema.json", "expect": "invalid",
+  "tests": "H-5 / RG-4: a lane's state is one of the gateway's own coverage facts - 'no results' is not one of them, and would blur searched_empty with provider_unavailable",
+  "base": "valid-domain-lane-with-a-key.json",
+  "patch": [{"op": "replace", "path": "/motivation/observed_coverage/crossref", "value": "no_results"}],
+  "errors": [{"keyword": "enum", "path": "/motivation/observed_coverage/crossref"}]}}

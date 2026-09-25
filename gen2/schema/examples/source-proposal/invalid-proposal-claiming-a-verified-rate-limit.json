@@ -1,0 +1,5 @@
+{"fixture": {"schema": "source-proposal.schema.json", "expect": "invalid",
+  "tests": "verification is a live observation a person makes and records in the registry seed; a proposal has no shape in which to assert it",
+  "base": "valid-domain-lane-with-a-key.json",
+  "patch": [{"op": "add", "path": "/api_shape/rate_limits/verified", "value": true}],
+  "errors": [{"keyword": "oneOf", "path": "/api_shape/rate_limits"}]}}

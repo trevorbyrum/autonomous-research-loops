@@ -1,0 +1,5 @@
+{"fixture": {"schema": "source-proposal.schema.json", "expect": "invalid",
+  "tests": "RG-U applied to a proposal: what could not be established is stated, and the array is required so silence is not an option",
+  "base": "valid-domain-lane-with-a-key.json",
+  "patch": [{"op": "remove", "path": "/unknowns"}],
+  "errors": [{"keyword": "required", "path": ""}]}}

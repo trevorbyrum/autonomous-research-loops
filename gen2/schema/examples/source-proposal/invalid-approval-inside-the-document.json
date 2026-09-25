@@ -1,0 +1,5 @@
+{"fixture": {"schema": "source-proposal.schema.json", "expect": "invalid",
+  "tests": "G-13 and the convention 0a set for contracts and briefs: an operator's act is never a field of the document it is about - an agent cannot carry its own approval",
+  "base": "valid-domain-lane-with-a-key.json",
+  "patch": [{"op": "add", "path": "/operator_approved", "value": true}],
+  "errors": [{"keyword": "additionalProperties", "path": ""}]}}

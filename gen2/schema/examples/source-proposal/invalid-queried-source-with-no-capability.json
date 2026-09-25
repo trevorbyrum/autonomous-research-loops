@@ -1,0 +1,5 @@
+{"fixture": {"schema": "source-proposal.schema.json", "expect": "invalid",
+  "tests": "anything the gateway would call has to say what it would be called for",
+  "base": "valid-domain-lane-with-a-key.json",
+  "patch": [{"op": "replace", "path": "/provides/capabilities", "value": []}],
+  "errors": [{"keyword": "minItems", "path": "/provides/capabilities"}]}}

@@ -1,0 +1,5 @@
+{"fixture": {"schema": "source-proposal.schema.json", "expect": "invalid",
+  "tests": "the registry's own rule: a manual-only source is never queried, so it declares nothing the gateway would call it for",
+  "base": "valid-manual-only-source.json",
+  "patch": [{"op": "add", "path": "/provides/capabilities/-", "value": "find"}],
+  "errors": [{"keyword": "maxItems", "path": "/provides/capabilities"}]}}

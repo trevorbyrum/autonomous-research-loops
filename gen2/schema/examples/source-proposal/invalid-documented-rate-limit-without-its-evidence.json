@@ -1,0 +1,5 @@
+{"fixture": {"schema": "source-proposal.schema.json", "expect": "invalid",
+  "tests": "a limit is either documented WITH the page it was read from, or said to be undocumented; an unsourced number is neither",
+  "base": "valid-domain-lane-with-a-key.json",
+  "patch": [{"op": "remove", "path": "/api_shape/rate_limits/evidence_url"}],
+  "errors": [{"keyword": "oneOf", "path": "/api_shape/rate_limits"}]}}

@@ -1,0 +1,5 @@
+{"fixture": {"schema": "source-proposal.schema.json", "expect": "invalid",
+  "tests": "every verdict in the registry cites where it was read; a proposal with no link asks the operator to take a licence claim on trust",
+  "base": "valid-domain-lane-with-a-key.json",
+  "patch": [{"op": "replace", "path": "/licensing/evidence_urls", "value": []}],
+  "errors": [{"keyword": "minItems", "path": "/licensing/evidence_urls"}]}}
