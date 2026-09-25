@@ -4,9 +4,9 @@
 # CONTRIBUTING.md.
 PYTHON ?= python3
 
-.PHONY: gen2-check gen2-boundaries gen2-schemas gen2-ddl gen2-test
+.PHONY: gen2-check gen2-boundaries gen2-schemas gen2-ddl gen2-test gen2-size gen2-linecount
 
-gen2-check: gen2-boundaries gen2-schemas gen2-ddl gen2-test
+gen2-check: gen2-boundaries gen2-schemas gen2-ddl gen2-test gen2-size
 	@echo "gen2-check: all checks passed"
 
 gen2-boundaries:
@@ -21,3 +21,11 @@ gen2-ddl:
 
 gen2-test:
 	$(PYTHON) -m unittest discover -s gen2/tests -p 'test_*.py'
+
+# Size budget (charter; design review §10): fails above the 12,000-line ceiling.
+gen2-size:
+	$(PYTHON) tools/gen2_linecount.py --check
+
+# Full report, including the like-for-like gen-1 recount.
+gen2-linecount:
+	$(PYTHON) tools/gen2_linecount.py --gen1-baseline
