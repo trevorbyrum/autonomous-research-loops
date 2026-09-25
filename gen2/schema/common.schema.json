@@ -201,7 +201,7 @@
     "export_sink_id": {
       "description": "An operator-configured export destination's stable name, from the mounted export-sink config (task 0c deliverable 3; docs/gen2/EXPORT-SINKS.md). Not a physical publication sink (see `sink`): nothing the engine serves reads from an export sink. The credential for sink `warehouse` is the environment variable GEN2_SECRET_EXPORT_SINK_WAREHOUSE — the id upper-cased with '-' replaced by '_' — so the pattern admits only what spells a legal variable suffix.",
       "type": "string",
-      "pattern": "^[a-z][a-z0-9-]{0,62}[a-z0-9]$"
+      "pattern": "^[a-z]([a-z0-9-]{0,62}[a-z0-9])?$"
     },
     "export_sink_type": {
       "description": "The three shipped generic adapters, plus `bespoke` for a reviewed-code sink. A bespoke sink names its implementation and its review; it is never operator config alone (docs/gen2/EXPORT-SINKS.md §5).",

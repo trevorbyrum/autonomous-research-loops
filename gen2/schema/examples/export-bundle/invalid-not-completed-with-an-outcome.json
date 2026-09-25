@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-bundle.schema.json", "expect": "invalid",
+  "tests": "G-9: an outcome is a recorded completion, so a topic still in progress cannot carry one",
+  "base": "valid-checkpoint-export-not-completed.json",
+  "patch": [{"op": "replace", "path": "/completion/outcome", "value": "completed_with_qualified_conclusions"}],
+  "errors": [{"keyword": "type", "path": "/completion/outcome"}, {"keyword": "required", "path": "/completion"}]}}

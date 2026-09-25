@@ -196,7 +196,7 @@
       ]
     },
     "claim": {
-      "description": "A claim of the record at the revision it was exported at. Claim text is the engine's own synthesis statement, not retrieved source content; retrieved text travels only as a quote on a link, under the content policy.",
+      "description": "A claim of the record at the revision it was exported at. Claim text is the engine's own synthesis statement, not retrieved source content; retrieved text travels only as a quote on a link, under the content policy. `provisional` is absent from the status enum on purpose: a bundle carries the record's dispositions, not its scratch capture state.",
       "type": "object",
       "additionalProperties": false,
       "required": ["claim_id", "revision", "text", "status", "load_bearing"],
@@ -213,11 +213,6 @@
           "description": "A load-bearing claim declares the access tier its verification had to reach (the DDL requires the same).",
           "if": {"properties": {"load_bearing": {"const": true}}},
           "then": {"required": ["required_access_tier"]}
-        },
-        {
-          "description": "A provisional claim is not exportable: the bundle carries the record's dispositions, not its scratch state.",
-          "if": {"properties": {"status": {"const": "accepted_support"}}},
-          "then": {"required": ["load_bearing"]}
         }
       ]
     },

@@ -1,0 +1,89 @@
+{
+  "fixture": {
+    "schema": "export-bundle.schema.json",
+    "expect": "valid",
+    "tests": "P-4 / P-5: a checkpoint export of a topic still in progress - not_completed carries no outcome, exports still happen (publishing only at terminal completion is what let a projection go stale), and a single-character sink id is representable"
+  },
+  "instance": {
+    "bundle_version": "export-bundle/1",
+    "bundle_id": "exb_01J8ZQ90C3",
+    "topic_id": "fleet-a:intake-latency",
+    "contract": {
+      "revision": 12,
+      "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "completion": {
+      "status": "not_completed",
+      "outcome": null,
+      "dossier_revision": 5
+    },
+    "obligations": [
+      {
+        "obligation_id": "OB-01",
+        "template": {"template_id": "effect-of-x-on-y", "template_version": 3, "claim_type": "effect"},
+        "facet_ids": ["F-operator-effort"],
+        "importance": {"band": "critical", "score": 8},
+        "disposition": "not_supported",
+        "confidence": {
+          "basis": "recorded_assessment",
+          "scheme": {"scheme_id": "contract-certainty", "version": 2},
+          "label": "moderate",
+          "assessed_by_invocation_id": "inv_chk00087"
+        },
+        "supporting_claim_ids": ["clm_00000141"]
+      }
+    ],
+    "claims": [
+      {
+        "claim_id": "clm_00000141",
+        "revision": 2,
+        "text": "The one deployment that measured both reported no change in operator corrections.",
+        "status": "accepted_support",
+        "load_bearing": false
+      }
+    ],
+    "claim_source_links": [
+      {
+        "claim_id": "clm_00000141",
+        "claim_revision": 2,
+        "source_id": "crossref",
+        "locator": "doi:10.1000/no-change-2026",
+        "access_tier": "abstract",
+        "load_bearing": false,
+        "verification": {"status": "adjudication_open", "hold_id": "hold_adj00021"},
+        "supporting_quote": null
+      }
+    ],
+    "synthesis_views": [],
+    "stopping_dossier": {
+      "dossier_revision": 5,
+      "content_hash": "sha256:aaaa111111111111111111111111111111111111111111111111111111111111",
+      "evaluator_version": "accounting/2.1",
+      "profile_id": "SP-effect-default",
+      "rules": [
+        {
+          "rule_id": "R-novelty-window",
+          "status": "not_satisfied",
+          "operands": {"assessed_candidates": {"status": "observed", "value": 48}},
+          "thresholds": {"window_passes": 3}
+        }
+      ],
+      "conjunctive_gates": [{"gate_id": "G-challenge-pass", "status": "not_satisfied"}],
+      "resource_limit_reached": false
+    },
+    "candidate_units": {
+      "retrieved_record": {"status": "observed", "value": 402},
+      "deduplicated_work": {"status": "observed", "value": 311},
+      "assessed_candidate": {"status": "observed", "value": 48},
+      "accepted_claim": {"status": "observed", "value": 1}
+    },
+    "content_policy": {
+      "policy_version": "export-content-policy/1",
+      "source_content_included": false,
+      "omitted_for_licence": []
+    },
+    "assembler_version": "export-assembler/1.0",
+    "assembled_at": "2026-09-22T14:00:00Z",
+    "hash_contract": {"canonicalization": "jcs-rfc8785/1"}
+  }
+}
