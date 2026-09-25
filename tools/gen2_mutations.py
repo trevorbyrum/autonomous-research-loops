@@ -237,6 +237,21 @@ MUTATIONS: list[Mutation] = [
            "                                 AND json_extract(e.value, '$.facet_id') IS p.key))", "                                 AND 1))"),
           ("obligation-in-draft", "a payload obligation need not be an obligation of the rated draft",
            "                                 AND json_extract(e.value, '$.obligation_id') IS p.key)))", "                                 AND 1)))"))),
+    # --- RA2-R: a contract's parent is a strictly earlier revision (proper ancestry) ---
+    *(Mutation(f"RA2R-{key}", "RA2-R", desc, killers, scope="contract_revisions",
+               old="\n  CONSTRAINT contract_parent_is_earlier CHECK (parent_revision IS NULL OR parent_revision < revision),", new=new)
+      for key, desc, killers, new in (
+          ("dropped", "the review's probe: a revision may be its own parent, a later revision's child, or on a cycle",
+           (CG + "test_parent_is_a_strictly_earlier_revision", CG + "test_operator_rating_bound_to_a_rating_decision",
+            FI + "test_facet_rating_bound_to_a_rating_decision", EX + "test_review_ra2r_self_parent_contract_cannot_rate_itself"), ""),
+          ("self-parent", "a revision may name itself as its parent (the review's probe)",
+           (CG + "test_parent_is_a_strictly_earlier_revision", CG + "test_operator_rating_bound_to_a_rating_decision",
+            FI + "test_facet_rating_bound_to_a_rating_decision", EX + "test_review_ra2r_self_parent_contract_cannot_rate_itself"),
+           "\n  CONSTRAINT contract_parent_is_earlier CHECK (parent_revision IS NULL OR parent_revision <= revision),"),
+          ("only-self-excluded", "only self-parentage is refused: a later parent, and so a cycle, is admitted",
+           (CG + "test_parent_is_a_strictly_earlier_revision", CG + "test_operator_rating_bound_to_a_rating_decision",
+            FI + "test_facet_rating_bound_to_a_rating_decision"),
+           "\n  CONSTRAINT contract_parent_is_earlier CHECK (parent_revision IS NULL OR parent_revision != revision),"))),
     Mutation("A2-proposal-receipt-class", "A2", "a Jev proposal may cite any decision class",
              (D + "ContractGovernanceTest.test_proposed_importance_cites_an_importance_receipt",), scope="obligations_proposal_cites_importance_receipt",
              old=" AND r.decision_class = 'importance_score')", new=")"),

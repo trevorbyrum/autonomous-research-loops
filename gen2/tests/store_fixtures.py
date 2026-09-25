@@ -101,17 +101,34 @@ class StoreTestCase(unittest.TestCase):
         return self.rows(f"SELECT * FROM {table} ORDER BY rowid")
 
     # -- builders --------------------------------------------------------
+    CONTRACT_INSERT = ("INSERT INTO contract_revisions (topic_id, revision, parent_revision, protocol_revision, framing_version, content_hash, document, status, approved_by_decision_id, created_at) "
+                       "VALUES (?, ?, ?, 1, 1, ?, ?, ?, ?, ?)")
+
+    @staticmethod
+    def contract_row(tid: str, rev: int, parent: int | None, content: str, facets: tuple = (), obligations: tuple = (),
+                     status: str = "draft", approved_by: str | None = None) -> tuple:
+        """The CONTRACT_INSERT parameters of one revision, its document agreeing with its columns."""
+        doc = json.dumps({"topic_id": tid, "revision": rev, "parent_revision": parent, "created_at": T, "content_hash": content, "protocol_revision": 1,
+                          "facet_map": {"framing_version": 1, "facets": list(facets)}, "obligations": list(obligations),
+                          "eligibility_protocol": {"protocol_version": 1}})
+        return (tid, rev, parent, content, doc, status, approved_by, T)
+
     def contract(self, tid: str, rev: int, status: str = "draft", approved_by: str | None = None, ch: str | None = None,
                  facets: tuple = (), obligations: tuple = (), content_hash: str | None = None, parent: int | None = None) -> str:
         """A draft revision; its parent is the previous revision unless `parent` is given."""
         content = content_hash or h(ch or ("a" if tid == TOPIC else "b") if rev == 1 else ch or str(rev))
         parent = parent if parent is not None else (None if rev == 1 else rev - 1)
-        doc = json.dumps({"topic_id": tid, "revision": rev, "parent_revision": parent, "created_at": T, "content_hash": content, "protocol_revision": 1,
-                          "facet_map": {"framing_version": 1, "facets": list(facets)}, "obligations": list(obligations),
-                          "eligibility_protocol": {"protocol_version": 1}})
-        self.x("INSERT INTO contract_revisions (topic_id, revision, parent_revision, protocol_revision, framing_version, content_hash, document, status, approved_by_decision_id, created_at) VALUES (?, ?, ?, 1, 1, ?, ?, ?, ?, ?)",
-               tid, rev, parent, content, doc, status, approved_by, T)
+        self.x(self.CONTRACT_INSERT, *self.contract_row(tid, rev, parent, content, facets, obligations, status, approved_by))
         return content
+
+    def contract_cycle(self, tid: str, a: int, b: int, facets: tuple = (), obligations: tuple = ()) -> None:
+        """Revisions a and b of `tid`, each naming the other as its parent,
+        written by ONE multi-row INSERT — the foreign key is checked at
+        statement end, when both rows exist — so the parent chain would be a
+        cycle (RA2-R). Both carry these entries."""
+        self.x(self.CONTRACT_INSERT + ", (?, ?, ?, 1, 1, ?, ?, ?, ?, ?)",
+               *self.contract_row(tid, a, b, self.chash(tid, a), facets, obligations),
+               *self.contract_row(tid, b, a, self.chash(tid, b), facets, obligations))
 
     def decision(self, did: str, kind: str, tid: str | None = TOPIC, disposition: str = "approved", *, ref: str | None = None,
                  rev: int | None = None, hsh: str | None = None, subject_kind: str | None = None, payload: dict | None = None) -> str:

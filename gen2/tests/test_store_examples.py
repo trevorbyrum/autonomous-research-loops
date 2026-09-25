@@ -14,7 +14,8 @@ inv_01J8ZQ3W2X under lease generation 7 — which setUp builds around them:
 normalized rows are derived from the documents field by field, and every
 accept/refuse expectation is written by hand. Each probe changes one field
 of a schema-valid document (or of the row beside it), so only the
-JSON/row binding can refuse it.
+JSON/row binding can refuse it. The third review's reproductions (Astra
+RA2-R, RA3-R) also start from the whole example contract.
 
 What this cannot show: that the example hashes are true hashes (they are
 labels; recomputing hashes from stored bytes is the router boundary's,
@@ -28,6 +29,7 @@ import sqlite3
 import unittest
 from pathlib import Path
 
+from gen2.core import canonical
 from gen2.tests.store_fixtures import StoreTestCase, T, connect, h
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "schema" / "examples"
@@ -68,20 +70,29 @@ class ExampleWorldTest(StoreTestCase):
         # operator ratings; the rating decision retains what the operator rated.
         draft = copy.deepcopy(self.contract_doc)
         draft.update(revision=1, parent_revision=None, content_hash=self.chash(WORLD, 1))
-        payload: dict = {"facets": {}, "obligations": {}}
-        for group, key, entries in (("facets", "facet_id", draft["facet_map"]["facets"]), ("obligations", "obligation_id", draft["obligations"])):
-            for entry in entries:
-                rating = entry["importance"]["operator_rating"]
-                payload[group][entry[key]] = {"band": rating["band"], "score": rating.get("score")}
-                entry["importance"]["operator_rating"] = None
+        payload = self.rating_payload(draft)
+        for entry in draft["facet_map"]["facets"] + draft["obligations"]:
+            entry["importance"]["operator_rating"] = None
         self.store_contract(draft)
         self.decision("opd_rate0001", "rating_approval", WORLD, rev=1, hsh=self.chash(WORLD, 1), payload=payload)
 
     # -- building the world from the documents -----------------------------------
-    def store_contract(self, doc: dict) -> None:
+    @staticmethod
+    def rating_payload(doc: dict) -> dict:
+        """A rating decision's retained payload: the band and score each of the
+        document's facets and obligations carries."""
+        payload: dict = {"facets": {}, "obligations": {}}
+        for group, key, entries in (("facets", "facet_id", doc["facet_map"]["facets"]), ("obligations", "obligation_id", doc["obligations"])):
+            for entry in entries:
+                rating = entry["importance"]["operator_rating"]
+                payload[group][entry[key]] = {"band": rating["band"], "score": rating.get("score")}
+        return payload
+
+    def store_contract(self, doc: dict, text: str | None = None) -> None:
+        """The row of a contract document, stored as `text` (default json.dumps)."""
         self.x("INSERT INTO contract_revisions (topic_id, revision, parent_revision, protocol_revision, framing_version, content_hash, document, status, created_at) "
                "VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?)", doc["topic_id"], doc["revision"], doc["parent_revision"], doc["protocol_revision"],
-               doc["facet_map"]["framing_version"], doc["content_hash"], json.dumps(doc), doc["created_at"])
+               doc["facet_map"]["framing_version"], doc["content_hash"], json.dumps(doc) if text is None else text, doc["created_at"])
 
     def store_rows(self, doc: dict) -> None:
         for entry in doc["facet_map"]["facets"]:
@@ -213,6 +224,35 @@ class ExampleWorldTest(StoreTestCase):
         for entry in forward["obligations"]:
             self.insert_obligation(WORLD, 3, entry)
         self.assertEqual(self.rows("SELECT count(*) FROM obligations WHERE contract_revision = 3"), [(2,)])
+
+    def test_review_ra2r_self_parent_contract_cannot_rate_itself(self) -> None:
+        """RA2-R, the review's reproduction on the whole example contract:
+        revision 2 naming itself as parent, every facet and obligation rating
+        citing opd_selfrated, its content hash recomputed by the canonical
+        helper and the document stored as its actual JCS serialization; then an
+        approved rating decision opd_selfrated about revision 2 with that hash
+        and the matching payload; then the normalized facet and obligation
+        rows. Before RA2-R every step succeeded (the revision was its own
+        ancestor). Now the history is refused — or, were it stored, the
+        self-rated rows (either reason is accepted) — and nothing is written.
+        The example's genuine history, revision 2 under the rated draft 1, is
+        then stored whole with its rows and approved."""
+        doc = copy.deepcopy(self.contract_doc)
+        doc["parent_revision"] = 2
+        for entry in doc["facet_map"]["facets"] + doc["obligations"]:
+            entry["importance"]["operator_rating"]["operator_decision_id"] = "opd_selfrated"
+        doc["content_hash"] = canonical.content_hash(doc)
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.store_contract(doc, text=canonical.canonical_bytes(doc).decode("utf-8"))
+            self.decision("opd_selfrated", "rating_approval", WORLD, rev=2, hsh=doc["content_hash"], payload=self.rating_payload(doc))
+            self.store_rows(doc)
+        self.assertTrue(any(f in str(ctx.exception) for f in ("contract_parent_is_earlier", "exactly what the operator rated")), str(ctx.exception))
+        self.assertEqual(self.rows("SELECT revision, parent_revision FROM contract_revisions WHERE topic_id = ?", WORLD), [(1, None)])
+        self.assertEqual(self.rows("SELECT (SELECT count(*) FROM facets), (SELECT count(*) FROM obligations), "
+                                   "(SELECT count(*) FROM operator_decisions WHERE decision_id = 'opd_selfrated')"), [(0, 0, 0)])
+        self.approved_example_contract()
+        self.assertEqual(self.rows("SELECT revision, parent_revision, status FROM contract_revisions WHERE topic_id = ? ORDER BY revision", WORLD),
+                         [(1, None, "draft"), (2, 1, "approved")])
 
 
 if __name__ == "__main__":

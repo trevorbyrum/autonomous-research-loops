@@ -78,12 +78,12 @@
   - a receipt matches its spec's provider, class, primitive, action policy, options and protocol topic; spec options are keyed by id; screening/method-selection specs name their protocol
   - every normalized receipt/spec column equals its JSON field; observations and assessments bind their invocation's/operation's topic (A10)
 - **Governance** (G-1, G-2, G-8, G-13):
-  - contract content is immutable, never deleted, and hash-bound to its row; revisions are written as drafts
+  - contract content is immutable, never deleted, and hash-bound to its row; revisions are written as drafts; a parent is a strictly earlier revision of the topic, so the parent chain is proper ancestry — no self-parent, no cycle (RA2-R)
   - one approved revision per topic; approval names an approved contract/amendment/reframe decision about that exact revision and hash
   - every operator decision names a typed subject that must exist (when stored here) with that exact revision and hash
   - facet and obligation rows each equal their entry in the hash-locked document; obligations tag only facets of their revision
   - operator ratings (facet and obligation) are band-consistent and a score needs a band; a Jev proposal cites that topic's `importance_score` receipt
-  - a rating is exactly what the operator rated (RA2): the `rating_approval` decision retains its payload (`{"facets": {id: {band, score}}, "obligations": {...}}`, ids drawn from the draft it rates); a rated row cites an approved one of its topic about an *ancestor* draft (parent chain — so neither the revision carrying it nor an unrelated draft) that defines the same subject exactly as here, with exactly the payload's band and score; unchanged ratings carry forward
+  - a rating is exactly what the operator rated (RA2): the `rating_approval` decision retains its payload (`{"facets": {id: {band, score}}, "obligations": {...}}`, ids drawn from the draft it rates); a rated row cites an approved one of its topic about an *ancestor* draft (parent chain, every parent strictly earlier — so neither the revision carrying it nor an unrelated draft) that defines the same subject exactly as here, with exactly the payload's band and score; unchanged ratings carry forward
   - approval needs complete facet/obligation rows, every facet operator-rated, and no critical facet untagged by an obligation (G-3)
   - topics are created at intake (revision 0); every status change is a commit (+1 revision)
   - completion names an approved completion approval of the current dossier revision and hash, under the active approved contract

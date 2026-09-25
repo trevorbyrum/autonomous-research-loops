@@ -1311,6 +1311,33 @@ class ContractGovernanceTest(StoreTestCase):
                 self.rejects("CHECK constraint failed", ins, TOPIC, h("9"), json.dumps(dict(base, **{key: value})), T)
         self.x(ins, TOPIC, h("9"), json.dumps(base), T)
 
+    def test_parent_is_a_strictly_earlier_revision(self) -> None:
+        """RA2-R: the stored parent relation is proper ancestry. Refused, each
+        with its document agreeing with its row (so only the ancestry CHECK can
+        refuse) and nothing written: a revision naming itself as parent (the
+        review's probe shape), a two-revision cycle written by one multi-row
+        INSERT (its foreign key is checked at statement end, when both rows
+        exist), and a parent that exists but is a later revision. Accepted: a
+        direct parent, an earlier non-adjacent one (a sibling draft's shape),
+        and the first revision's NULL parent (setUp)."""
+        refused = "CHECK constraint failed: contract_parent_is_earlier"
+        stored = self.snapshot("contract_revisions")
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.contract(TOPIC, 2, parent=2)
+        self.assertIn(refused, str(ctx.exception))
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.contract_cycle(TOPIC, 2, 3)
+        self.assertIn(refused, str(ctx.exception))
+        self.assertEqual(self.snapshot("contract_revisions"), stored)
+        self.contract(TOPIC, 2)  # direct parent 1
+        self.contract(TOPIC, 5, parent=1)  # earlier, not adjacent
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.contract(TOPIC, 3, parent=5)  # an existing, later revision
+        self.assertIn(refused, str(ctx.exception))
+        self.contract(TOPIC, 3, parent=2)
+        self.assertEqual(self.rows("SELECT revision, parent_revision FROM contract_revisions WHERE topic_id = ? ORDER BY revision", TOPIC),
+                         [(1, None), (2, 1), (3, 2), (5, 1)])
+
     def test_one_approved_revision_per_topic(self) -> None:
         self.approve_contract(TOPIC, 1, "opd_00000001")
         self.contract(TOPIC, 2)
@@ -1369,7 +1396,13 @@ class ContractGovernanceTest(StoreTestCase):
         self-hash cycle), the review's probe (a decision about the EMPTY draft 1
         invoked for an invented obligation, and for O-1), an obligation the
         operator did not rate, a changed band (with and without a score) or
-        score, the same id redefined, an unrelated sibling draft. No row is written by any of
+        score, the same id redefined, an unrelated sibling draft. RA2-R on top:
+        no stored history makes a revision its own ancestor — a revision naming
+        itself as parent, or two revisions naming each other in one INSERT, with
+        the entry citing an approved decision (payload matching) about that very
+        revision — so the rated row never lands; the ancestry CHECK refuses the
+        history, and were it stored the rating binding would have to (either
+        reason is accepted). No row is written by any of
         them; then an unchanged rating carries forward over two revisions."""
         o1 = obligation("O-1", ("F-1",), **self.RATED, decision="opd_00000001")
         o2 = obligation("O-2", ("F-2",))
@@ -1405,6 +1438,21 @@ class ContractGovernanceTest(StoreTestCase):
         probe("a changed score alone", obligation("O-1", ("F-1",), band="critical", score=9, decision="opd_00000001"))
         probe("the same id redefined", obligation("O-1", ("F-2",), **self.RATED, decision="opd_00000001"))
         probe("an unrelated (sibling) draft", o1, parent=1)
+        for label, cyclic in (("a self-parent revision", False), ("a two-revision cycle", True)):
+            with self.subTest(case=label):
+                rev, did = self.next_revision(), f"opd_selfanc{int(cyclic)}"
+                entry = obligation("O-1", ("F-1",), **self.RATED, decision=did)
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    if cyclic:
+                        self.contract_cycle(TOPIC, rev, rev + 1, facets=(facet("F-1"), facet("F-2")), obligations=(entry,))
+                    else:
+                        self.contract(TOPIC, rev, facets=(facet("F-1"), facet("F-2")), obligations=(entry,), parent=rev, content_hash=self.chash(TOPIC, rev))
+                    self.decision(did, "rating_approval", rev=rev, hsh=self.chash(TOPIC, rev), payload=self.PAYLOAD_O1)
+                    for unrated in (facet("F-1"), facet("F-2")):
+                        self.insert_facet(TOPIC, rev, unrated)
+                    self.insert_obligation(TOPIC, rev, entry)
+                self.assertTrue(any(f in str(ctx.exception) for f in ("contract_parent_is_earlier", refused)), str(ctx.exception))
+                self.assertEqual(self.rows("SELECT count(*) FROM contract_revisions WHERE topic_id = ? AND revision >= ?", TOPIC, rev), [(0,)])
         self.assertEqual(self.rows("SELECT count(*) FROM obligations"), [(0,)])
         first = self.rated_revision(draft, obligations=(o1,))
         self.insert_obligation(TOPIC, first, o1)
@@ -2097,7 +2145,10 @@ class FacetImportanceTest(StoreTestCase):
         (the empty draft 1's decision invoked for an invented facet), a facet
         the operator did not rate, a changed band (with and without a score)
         or score, the same id redefined (another label), an unrelated sibling
-        draft. Then the
+        draft; and RA2-R, as for obligations: a self-parent revision and a
+        two-revision cycle, the entry citing an approved decision (payload
+        matching) about that very revision, never yield a rated row (the
+        ancestry CHECK or the rating binding refuses). Then the
         out-of-band CHECK (the payload rates it so, so only the CHECK refuses),
         immutability, and an unchanged carry-forward over two revisions."""
         f1 = facet("F-1", band="critical", score=8, decision="opd_rate0001")
@@ -2138,6 +2189,20 @@ class FacetImportanceTest(StoreTestCase):
         probe("a changed score alone", facet("F-1", band="critical", score=9, decision="opd_rate0001"))
         probe("the same id redefined", dict(f1, label="another subject"))
         probe("an unrelated (sibling) draft", f1, parent=1)
+        for label, cyclic in (("a self-parent revision", False), ("a two-revision cycle", True)):
+            with self.subTest(case=label):
+                rev = self.rows("SELECT max(revision) + 1 FROM contract_revisions WHERE topic_id = ?", TOPIC)[0][0]
+                did = f"opd_selfanc{int(cyclic)}"
+                entry = facet("F-1", band="critical", score=8, decision=did)
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    if cyclic:
+                        self.contract_cycle(TOPIC, rev, rev + 1, facets=(entry,))
+                    else:
+                        self.contract(TOPIC, rev, facets=(entry,), parent=rev, content_hash=self.chash(TOPIC, rev))
+                    self.decision(did, "rating_approval", rev=rev, hsh=self.chash(TOPIC, rev), payload=payload)
+                    self.insert_facet(TOPIC, rev, entry)
+                self.assertTrue(any(f in str(ctx.exception) for f in ("contract_parent_is_earlier", refused)), str(ctx.exception))
+                self.assertEqual(self.rows("SELECT count(*) FROM contract_revisions WHERE topic_id = ? AND revision >= ?", TOPIC, rev), [(0,)])
         self.assertEqual(self.rows("SELECT count(*) FROM facets"), [(0,)])
         rev = revision(out_of_band)
         with self.assertRaises(sqlite3.IntegrityError) as ctx:

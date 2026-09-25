@@ -194,7 +194,13 @@ END;
 -- schema contract-v2.schema.json; INVARIANTS G-1.
 -- Every revision's content is immutable once written (a change is a new
 -- revision); only status and the approving decision move, draft ->
--- approved -> superseded.
+-- approved -> superseded. A parent is a strictly earlier revision of the
+-- same topic (Astra third review RA2-R): revisions are ordered numbers, so
+-- one CHECK (contract_parent_is_earlier, named so its refusal reads the same
+-- whatever its expression) excludes self-parentage and every cycle
+-- (including one written by a single multi-row INSERT, which the immediate
+-- foreign key only checks at statement end), and the rating triggers'
+-- parent-chain walk visits proper ancestors only.
 CREATE TABLE contract_revisions (
   topic_id TEXT NOT NULL REFERENCES queue_entries (topic_id),
   revision INTEGER NOT NULL CHECK (revision >= 1),
@@ -208,6 +214,7 @@ CREATE TABLE contract_revisions (
   created_at TEXT NOT NULL,
   PRIMARY KEY (topic_id, revision),
   FOREIGN KEY (topic_id, parent_revision) REFERENCES contract_revisions (topic_id, revision),
+  CONSTRAINT contract_parent_is_earlier CHECK (parent_revision IS NULL OR parent_revision < revision),
   CHECK (status = 'draft' OR approved_by_decision_id IS NOT NULL),
   CHECK (json_extract(document, '$.topic_id') IS topic_id
      AND json_extract(document, '$.revision') IS revision
@@ -331,7 +338,8 @@ CREATE TABLE facets (
 -- operator rated. The rating decision cannot be about the revision that
 -- carries its ID (that would be a self-hash cycle), so it is about an
 -- earlier DRAFT — and not an arbitrary one: an ANCESTOR of this revision
--- (parent_revision chain) whose entry for this facet is the same subject,
+-- (parent_revision chain; every parent is strictly earlier, RA2-R, so the
+-- chain never reaches this revision) whose entry for this facet is the same subject,
 -- defined exactly as here (the whole entry minus its importance object; the
 -- router stores documents in their canonical JCS form, so equal entries are
 -- equal text and a reordered one fails closed), and the decision's retained
@@ -447,8 +455,8 @@ BEGIN
   SELECT RAISE(ABORT, 'an obligation proposal must cite this topic''s importance_score receipt (A2)');
 END;
 
--- G-2 / G-13 (RA2): the same binding as facets_rating_is_what_the_operator_rated
--- — an approved rating decision of this topic about an ancestor draft whose
+-- G-2 / G-13 (RA2, RA2-R): the same binding as facets_rating_is_what_the_operator_rated
+-- — an approved rating decision of this topic about a proper-ancestor draft whose
 -- entry is this obligation defined exactly as here (template, slots, text,
 -- facet tags, traces, exploratory flag, stopping profile), and whose retained
 -- payload gives it exactly this band and score.
