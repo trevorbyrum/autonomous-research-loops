@@ -290,7 +290,7 @@ def check_ddl(root: Path) -> tuple[list[str], int]:
         if not strict or strict[0] != 1:
             failures.append(f"{rel}: table {table} is not STRICT")
     for match in re.finditer(r"CREATE TABLE (\w+)", text):
-        preceding = text[: match.start()].rstrip().splitlines()[-12:]
+        preceding = text[: match.start()].rstrip().splitlines()  # the whole contiguous comment block above
         block = []
         for line in reversed(preceding):
             if not line.startswith("--"):

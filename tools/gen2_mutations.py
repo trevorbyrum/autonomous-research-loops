@@ -5,8 +5,11 @@ Each mutation below removes or weakens exactly one guard in memory (never on
 disk), reruns every gen2/tests/test_store_*.py test against the mutated
 schema, and checks that the guard's own tests catch it:
 
-  KILLED    at least one test fails (an assertion failure, not an error), and
-            every test listed in `killers` is among the failures;
+  KILLED    at least one test fails, and every test listed in `killers` is
+            among the failures. A failure is an assertion failure, or an
+            sqlite3.IntegrityError raised in a test body outside setUp (a
+            write the test expects to succeed — its positive control — was
+            refused, i.e. the mutant over-restricts);
   SURVIVED  no test fails — the guard is untested;
   INVALID   the mutation text was not found exactly once, the mutated DDL
             errored a test (setup broke rather than an assertion catching the
@@ -25,8 +28,10 @@ from __future__ import annotations
 
 import argparse
 import re
+import sqlite3
 import sys
 import time
+import traceback
 import unittest
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -95,6 +100,20 @@ MUTATIONS: list[Mutation] = [
                       "record_work_links_immutable_u", "research_ordinals_immutable_u", "retrieval_events_immutable_u",
                       "screening_assessments_immutable_u", "search_observations_immutable_u",
                       "sink_delivery_receipts_immutable_u", "verification_receipts_immutable_u")),
+    # --- A9: capability supersession --------------------------------------
+    Mutation("A9-successor-fk-immediate", "A9", "successor FK checked immediately (the documented transaction cannot run)",
+             (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",),
+             old="REFERENCES capability_facts (fact_id) DEFERRABLE INITIALLY DEFERRED", new="REFERENCES capability_facts (fact_id)"),
+    Mutation("A9-self-supersession", "A9", "drop the no-self-supersession CHECK",
+             (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",),
+             old=",\n  CHECK (superseded_by_fact_id IS NOT fact_id)\n) STRICT;", new="\n) STRICT;"),
+    Mutation("A9-insert-current-same-capability", "A9", "drop the insert-current/same-capability trigger",
+             (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",), drop_trigger="capability_facts_insert_current_same_capability"),
+    Mutation("A9-link-successor", "A9", "drop the successor-link trigger (cross-capability, cyclic)",
+             (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",), drop_trigger="capability_facts_link_successor"),
+    Mutation("A9-fact-provenance-pins", "A9", "capability fact recorded_at/observer no longer pinned",
+             (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",),
+             old="\n  OR NEW.observed_by_invocation_id IS NOT OLD.observed_by_invocation_id OR NEW.recorded_at IS NOT OLD.recorded_at", new=""),
     Mutation("A1-contract-created-at-pin", "A1", "contract created_at no longer pinned",
              (D + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",),
              old="  OR NEW.created_at IS NOT OLD.created_at\n  OR (OLD.approved_by_decision_id IS NOT NULL",
@@ -111,8 +130,15 @@ class _Collector(unittest.TestResult):
     def addFailure(self, test, err) -> None:  # noqa: N802 (unittest API)
         self.failed.add(test.id())
 
+    def _record_error(self, test, err) -> None:
+        in_setup = any(frame.name in ("setUp", "setUpClass") for frame in traceback.extract_tb(err[2]))
+        if issubclass(err[0], sqlite3.IntegrityError) and not in_setup:
+            self.failed.add(test.id())
+        else:
+            self.errored[test.id()] = self._exc_info_to_string(err, test).strip().splitlines()[-1]
+
     def addError(self, test, err) -> None:  # noqa: N802
-        self.errored[test.id()] = self._exc_info_to_string(err, test).strip().splitlines()[-1]
+        self._record_error(test, err)
 
     def addSubTest(self, test, subtest, err) -> None:  # noqa: N802
         if err is None:
@@ -120,7 +146,7 @@ class _Collector(unittest.TestResult):
         if issubclass(err[0], test.failureException):
             self.failed.add(test.id())
         else:
-            self.errored[test.id()] = self._exc_info_to_string(err, test).strip().splitlines()[-1]
+            self._record_error(test, err)
 
 
 def mutate(text: str, m: Mutation) -> str:

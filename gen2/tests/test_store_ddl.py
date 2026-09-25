@@ -332,11 +332,38 @@ class ObservationTest(StoreTestCase):
         self.obs("o1", "auth_failed", None, "secrets_backend_failing", "cf-1")
 
     def test_one_current_capability_fact_supersede_to_transition(self) -> None:
-        ins = "INSERT INTO capability_facts (fact_id, capability, state, detail, since, affected_lanes, recorded_at) VALUES (?, 'secrets_backend', ?, 'd', ?, '[]', ?)"
-        self.x(ins, "cf-1", "failing", T, T)
-        self.rejects("UNIQUE constraint failed", ins, "cf-2", "healthy", T, T)
-        self.x(ins.replace("'secrets_backend'", "'secrets_backend_next'"), "cf-2", "healthy", T, T)
+        ins = "INSERT INTO capability_facts (fact_id, capability, state, detail, since, affected_lanes, recorded_at) VALUES (?, ?, ?, 'd', ?, '[]', ?)"
+        current = "SELECT fact_id, state FROM capability_facts WHERE capability = 'secrets_backend' AND superseded_by_fact_id IS NULL"
+        self.x(ins, "cf-1", "secrets_backend", "failing", T, T)
+        self.rejects("UNIQUE constraint failed", ins, "cf-2", "secrets_backend", "healthy", T, T)  # a second current fact
+        # A9: the documented supersession transaction, failure -> healthy, same capability
+        self.x("BEGIN")
+        self.x("UPDATE capability_facts SET superseded_by_fact_id = 'cf-2' WHERE fact_id = 'cf-1'")
+        self.x(ins, "cf-2", "secrets_backend", "healthy", T, T)
+        self.x("COMMIT")
+        self.assertEqual(self.rows(current), [("cf-2", "healthy")])
+        self.assertEqual(self.rows("SELECT state, superseded_by_fact_id FROM capability_facts WHERE fact_id = 'cf-1'"), [("failing", "cf-2")])  # retained
         self.rejects("supersede, never edit", "UPDATE capability_facts SET state = 'healthy' WHERE fact_id = 'cf-1'")
+        self.rejects("supersede, never edit", "UPDATE capability_facts SET recorded_at = '2026-09-26T00:00:00Z' WHERE fact_id = 'cf-2'")
+        # linking a successor that is never inserted fails at COMMIT; rollback leaves cf-2 current
+        self.x("BEGIN")
+        self.x("UPDATE capability_facts SET superseded_by_fact_id = 'cf-3' WHERE fact_id = 'cf-2'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.x("COMMIT")
+        self.x("ROLLBACK")
+        self.assertEqual(self.rows(current), [("cf-2", "healthy")])
+        # cross-capability successor, in either order
+        self.x("BEGIN")
+        self.x("UPDATE capability_facts SET superseded_by_fact_id = 'cf-x' WHERE fact_id = 'cf-2'")
+        self.rejects("same capability", ins, "cf-x", "gateway_budget", "failing", T, T)
+        self.x("ROLLBACK")
+        self.x(ins, "cf-y", "gateway_budget", "failing", T, T)
+        self.rejects("same capability", "UPDATE capability_facts SET superseded_by_fact_id = 'cf-y' WHERE fact_id = 'cf-2'")
+        # self and cyclic supersession; inserting an already-superseded fact
+        self.rejects("CHECK constraint failed", "UPDATE capability_facts SET superseded_by_fact_id = 'cf-2' WHERE fact_id = 'cf-2'")
+        self.rejects("must be current", "UPDATE capability_facts SET superseded_by_fact_id = 'cf-1' WHERE fact_id = 'cf-2'")
+        self.rejects("inserted current", "INSERT INTO capability_facts (fact_id, capability, state, detail, since, affected_lanes, superseded_by_fact_id, recorded_at) VALUES ('cf-9', 'secrets_backend', 'failing', 'd', ?, '[]', 'cf-2', ?)", T, T)
+        self.assertEqual(self.rows(current), [("cf-2", "healthy")])
 
     def test_retrieval_events_only_from_successful_searches(self) -> None:
         self.obs("o1", "provider_unavailable", None, "timeout")

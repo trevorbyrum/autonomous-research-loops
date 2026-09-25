@@ -637,7 +637,14 @@ END;
 -- key configured"); INVARIANTS H-2. DEVIATION PROPOSAL (not in the 0a brief's
 -- table list) — see README.
 -- A transition is a new row superseding the current one; one current fact
--- per capability.
+-- per capability. The supersession contract (Astra 0a review A9) is one
+-- transaction: UPDATE the current fact's superseded_by_fact_id to the new
+-- id, then INSERT the new fact. The successor FK is DEFERRABLE INITIALLY
+-- DEFERRED so that order satisfies both the one-current index and the FK at
+-- COMMIT; a transaction that links a successor it never inserts fails at
+-- COMMIT and must be rolled back (nothing changes). Facts are inserted
+-- current; a successor is of the same capability, never itself, and never a
+-- fact that is already superseded (so no cycles, and at most one current fact).
 CREATE TABLE capability_facts (
   fact_id TEXT PRIMARY KEY,
   capability TEXT NOT NULL,
@@ -647,12 +654,31 @@ CREATE TABLE capability_facts (
   last_success_at TEXT,
   affected_lanes TEXT NOT NULL CHECK (json_valid(affected_lanes) AND json_type(affected_lanes) = 'array'),
   observed_by_invocation_id TEXT REFERENCES invocations (invocation_id),
-  superseded_by_fact_id TEXT REFERENCES capability_facts (fact_id),
-  recorded_at TEXT NOT NULL
+  superseded_by_fact_id TEXT REFERENCES capability_facts (fact_id) DEFERRABLE INITIALLY DEFERRED,
+  recorded_at TEXT NOT NULL,
+  CHECK (superseded_by_fact_id IS NOT fact_id)
 ) STRICT;
 
 CREATE UNIQUE INDEX capability_facts_one_current_per_capability
   ON capability_facts (capability) WHERE superseded_by_fact_id IS NULL;
+
+CREATE TRIGGER capability_facts_insert_current_same_capability
+BEFORE INSERT ON capability_facts
+WHEN NEW.superseded_by_fact_id IS NOT NULL
+  OR EXISTS (SELECT 1 FROM capability_facts o WHERE o.superseded_by_fact_id = NEW.fact_id AND o.capability IS NOT NEW.capability)
+BEGIN
+  SELECT RAISE(ABORT, 'a capability fact is inserted current, and only as the successor of a fact of the same capability (A9)');
+END;
+
+CREATE TRIGGER capability_facts_link_successor
+BEFORE UPDATE OF superseded_by_fact_id ON capability_facts
+WHEN NEW.superseded_by_fact_id IS NOT NULL AND EXISTS (
+  SELECT 1 FROM capability_facts n
+  WHERE n.fact_id = NEW.superseded_by_fact_id
+    AND (n.capability IS NOT OLD.capability OR n.superseded_by_fact_id IS NOT NULL))
+BEGIN
+  SELECT RAISE(ABORT, 'a successor fact must be current and of the same capability (A9: no cross-capability or cyclic supersession)');
+END;
 
 CREATE TRIGGER capability_facts_supersede_only
 BEFORE UPDATE ON capability_facts
@@ -660,6 +686,7 @@ WHEN OLD.superseded_by_fact_id IS NOT NULL
   OR NEW.fact_id IS NOT OLD.fact_id OR NEW.capability IS NOT OLD.capability
   OR NEW.state IS NOT OLD.state OR NEW.detail IS NOT OLD.detail OR NEW.since IS NOT OLD.since
   OR NEW.last_success_at IS NOT OLD.last_success_at OR NEW.affected_lanes IS NOT OLD.affected_lanes
+  OR NEW.observed_by_invocation_id IS NOT OLD.observed_by_invocation_id OR NEW.recorded_at IS NOT OLD.recorded_at
 BEGIN
   SELECT RAISE(ABORT, 'capability facts are dated records: supersede, never edit');
 END;
