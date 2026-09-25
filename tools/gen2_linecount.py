@@ -30,13 +30,16 @@ from pathlib import Path, PurePosixPath
 ALLOCATION = 10_000
 CEILING = 12_000
 CODE_SUFFIXES = {".py", ".sh"}
+# Gen-2 build tooling: these files, plus every tracked `tools/gen2_*` and
+# `tools/check_gen2_*` file of any type — by rule rather than by list, so a new
+# tool cannot silently drop out of the report (Astra re-review: the old fixed
+# list omitted tools/gen2_mutations.py and tools/gen2_jcs_cross_vectors.js).
 BUILD_TOOLING = {
     "tools/check_boundaries.py",
-    "tools/check_gen2_schemas.py",
-    "tools/gen2_linecount.py",
     "Makefile",
     ".github/workflows/gen2-check.yml",
 }
+BUILD_TOOLING_PREFIXES = ("tools/gen2_", "tools/check_gen2_")
 DR_BASELINE = {"research_loops": 14_333, "gateway/research_gateway": 7_894}
 
 
@@ -55,7 +58,7 @@ def physical_lines(path: Path) -> int:
 
 def category(rel: str) -> str | None:
     p = PurePosixPath(rel)
-    if rel in BUILD_TOOLING:
+    if rel in BUILD_TOOLING or rel.startswith(BUILD_TOOLING_PREFIXES):
         return "build_tooling"
     if rel.startswith("docs/gen2/"):
         return "docs"
