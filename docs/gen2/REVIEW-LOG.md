@@ -58,6 +58,19 @@ Coder deferred 4 items rather than deciding unilaterally: (1) whether to remove 
 
 Independently re-ran `make gen2-check` in background; not confirmed complete before dispatching the fourth review (Astra's own independent run supersedes this regardless). Routed: task file `research-loops-public/private/reviews/gen2-0a-repair-3-review-task-20260925.md`. This review was explicitly asked to say plainly if 0a is ready to accept, rather than searching for a new residual to keep the cycle going.
 
+## 2026-09-25 — Fourth Astra review (0a-repair-3) — **PASS WITH FOLLOW-UPS. 0a ACCEPTED.**
+Full report: `~/work/research-loops-public/private/reviews/gen2-0a-repair-3-astra-review-20260925.md`. **Gates A/B/C: PASS/PASS/PASS.** Astra reconstructed both RA2-R and RA3-R attacks fresh (not re-running the coder's tests) — full example contract, recomputed content hash, actual JCS serialization — against both the pre-fix commit and HEAD, confirmed each attack succeeds on the old schema and fails on the new one, with unchanged database state on every rejection. Also independently: 5 fresh SQL mutations (all killed, zero test errors), reversed all 119 trigger creation orders (all 135 store tests still pass), and confirmed the coder's "shared fix" claim by diffing the two rating triggers byte-for-byte between commits — unchanged, confirming the ancestry fix required no per-consumer special-casing.
+
+**4 rulings, all decided:**
+1. Remove the now-dead `draft→superseded` transition edge from `contract_status_forward_only`'s `OLD.status='draft'` arm — nonblocking cleanup, not a condition of acceptance.
+2. Coder was correct to leave REVIEW-LOG.md alone; charter explicitly assigns it to the orchestrator. Confirmed the orchestrator's own corrections (the "closed all 8" / "applied uniformly" overclaim fix, above) are sufficient — no further edit needed.
+3. Add the reversed-trigger-order run as a permanent CI check — worth doing now while context is fresh, can land alongside 0b's first work.
+4. **SQLite version-floor enforcement is a hard 0b requirement, not deferrable**: "There is no permission to postpone compatibility enforcement until after durable stores exist." Must be checked numerically (not just version string) plus JSON-capability verified (SQLite can be built without JSON support even post-3.38.0) plus the connection pragmas applied/read-back, in 0b's *common store initialization path* — before any durable store is created or admitted, covering both runtime and importer use paths.
+
+**Carried forward into 0b, explicit, not silently decided:** writer/importer must actually perform JCS canonicalization on write (schema validation alone doesn't enforce it — flagged back in round 3); identity/revision bounds must be applied by every writer, not just the schema; fingerprint-version recording on receipts; durable intake brief rows/import mapping. **The `accepted_support` general-admission question (ruling 5 from round 3) remains explicitly unresolved and is Trevor's call** — current limited-consumer behavior stands, this review does not choose a policy for him.
+
+**Historical-accuracy note Astra flagged approvingly:** the orchestrator's mid-cycle correction (that round 3 found RA2/RA3 only *partially* resolved, not fully) should stand as the accurate record — "preserve the corrected third-round history rather than retroactively describing that earlier review as accepting."
+
 ## 2026-09-25 — Third Astra review (0a-repair-2) — BLOCK, substantially narrower
 Full report: `~/work/research-loops-public/private/reviews/gen2-0a-repair-2-astra-review-20260925.md`. **Gate B: PASS.** Gate A/C: BLOCK, down to 2 findings from 8, both medium severity.
 
