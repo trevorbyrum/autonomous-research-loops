@@ -80,7 +80,7 @@
   - a receipt matches its spec's provider, class, primitive, action policy, options and protocol topic; spec options are keyed by id; screening/method-selection specs name their protocol
   - every normalized receipt/spec column equals its JSON field; observations and assessments bind their invocation's/operation's topic (A10)
 - **Governance** (G-1, G-2, G-8, G-13):
-  - contract content is immutable, never deleted, and hash-bound to its row; revisions are written as drafts; a parent is a strictly earlier revision of the topic, so the parent chain is proper ancestry — no self-parent, no cycle (RA2-R)
+  - contract content is immutable, never deleted, and hash-bound to its row; revisions are written as drafts; a draft moves only to approved, and superseded is reached only from approved (0a-repair-3 ruling 1: the unreachable draft → superseded edge is gone from the status machine); a parent is a strictly earlier revision of the topic, so the parent chain is proper ancestry — no self-parent, no cycle (RA2-R)
   - one approved revision per topic; approval names an approved contract/amendment/reframe decision about that exact revision and hash, recorded only by the draft → approved update itself (whose gate runs in the same statement) and never changed after — so a retained approving decision is evidence the revision passed approval (RA3-R)
   - every operator decision names a typed subject that must exist (when stored here) with that exact revision and hash
   - facet and obligation rows each equal their entry in the hash-locked document; obligations tag only facets of their revision

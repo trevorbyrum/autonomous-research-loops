@@ -537,9 +537,15 @@ MUTATIONS: list[Mutation] = [
     Mutation("RA3R-dropped", "RA3-R", "the review's probe: an approving decision may be recorded on a still-draft revision, which then admits a dossier",
              (CG + "test_approval_pointer_is_set_only_by_the_approval_transition", AD + "test_pre_contract_work_records_no_scientific_disposition",
               EX + "test_review_ra3r_approval_pointer_without_approval"), drop_trigger="contract_approval_pointer_set_by_approval"),
-    Mutation("RA3R-superseded-too", "RA3-R", "the decision may also be first recorded by draft -> superseded, skipping the approval gate",
-             (CG + "test_approval_pointer_is_set_only_by_the_approval_transition",), scope="contract_approval_pointer_set_by_approval",
-             old="  AND NEW.status IS NOT 'approved'\n", new="  AND NEW.status NOT IN ('approved', 'superseded')\n"),
+    # (RA3R-superseded-too — the pointer first recorded by draft -> superseded — is a second layer since
+    # the draft -> superseded edge was removed; see SECOND_LAYER.)
+    # --- 0a-repair-3 ruling 1: draft -> superseded is not an edge -------------------
+    Mutation("R1c-draft-superseded-edge-restored", "0b-cleanup-1", "the unreachable draft -> superseded edge is back in the status machine (the CHECK then refuses in its place)",
+             (CG + "test_approval_pointer_is_set_only_by_the_approval_transition",), scope="contract_status_forward_only",
+             old="(OLD.status = 'draft' AND NEW.status IN ('draft', 'approved'))", new="(OLD.status = 'draft' AND NEW.status IN ('draft', 'approved', 'superseded'))"),
+    Mutation("R1c-approved-without-decision", "0b-cleanup-1", "drop the CHECK that a non-draft revision holds its approving decision",
+             (CG + "test_approval_pointer_is_set_only_by_the_approval_transition",),
+             old="  CHECK (status = 'draft' OR approved_by_decision_id IS NOT NULL),\n", new=""),
     Mutation("RA3R-approval-refused-too", "RA3-R", "over-restriction: not even the draft -> approved transition may record its decision",
              (CG + "test_approval_pointer_is_set_only_by_the_approval_transition", AD + "test_scientific_rows_bind_the_approved_protocol_they_name",
               EX + "test_review_ra3r_approval_pointer_without_approval"), scope="contract_approval_pointer_set_by_approval",
@@ -895,7 +901,7 @@ MUTATIONS: list[Mutation] = [
           ("leases_generation_increases", (D + "LeaseFencingTest.test_generation_strictly_increases_per_topic",)),
           ("leases_release_final_identity_immutable", (D + "LeaseFencingTest.test_release_is_write_once",)),
           ("queue_state_revision_advances_by_one", (D + "CommitFencingTest.test_state_revision_advances_by_exactly_one",)),
-          ("contract_status_forward_only", (D + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",)),
+          ("contract_status_forward_only", (D + "ContractGovernanceTest.test_contract_content_immutable_never_deleted", CG + "test_approval_pointer_is_set_only_by_the_approval_transition")),
           ("claims_start_provisional", (VT + "test_claims_start_provisional",)),
           ("retrieval_events_from_successful_search", (OB + "test_retrieval_events_only_from_successful_searches",)),
           ("review_triggers_handled_is_final", (D + "OrdinalAndTriggerTest.test_trigger_identity_unique_and_handled_is_final",)),
@@ -951,6 +957,11 @@ SECOND_LAYER = {
     "facets/obligations_rating_is_what_the_operator_rated: the d.kind = 'rating_approval' conjunct (RA2)":
         "only a rating decision carries a payload (operator_decisions CHECK, RA2-payload-only-on-rating-decisions) and a decision without one joins "
         "no payload row, so a decision of another kind is refused before the kind conjunct is read",
+    "contract_approval_pointer_set_by_approval: its superseded case (RA3-R — no pointer first recorded by draft -> superseded)":
+        "since 0a-repair-3 ruling 1, contract_status_forward_only refuses draft -> superseded outright (R1c-draft-superseded-edge-restored), and a "
+        "pointer can only be first recorded on a draft (a non-draft holds one by CHECK, R1c-approved-without-decision); the trigger's approved "
+        "exemption and the trigger itself are mutated (RA3R-approval-refused-too, RA3R-dropped). Which of the two triggers reports first is "
+        "SQLite trigger order, which no test may depend on",
     "claims_accepted_support_needs_receipt: its required-tier, obtained-tier and performed-checks conjuncts (RA5, re-checked at promotion)":
         "a load-bearing-use receipt is written only at its claim's own required tier (verification_receipts_use_matches_claim, RA5-use-matches-claim-*), "
         "'supports' never exceeds the obtained tier (verification_receipts CHECK), and a load-bearing support cannot record an unperformed check "

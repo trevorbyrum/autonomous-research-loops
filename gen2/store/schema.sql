@@ -260,10 +260,10 @@ END;
 -- (contract_approval_needs_rated_covered_facets) runs in the same statement;
 -- once recorded it never changes (contract_content_immutable). So a retained
 -- pointer is evidence that the revision passed approval, and a draft never
--- holds one. This also closes draft -> superseded, which
--- contract_status_forward_only admits: a superseded row must hold a pointer
--- (CHECK), and one cannot be first recorded there, so a revision reaches
--- superseded only from approved.
+-- holds one. draft -> superseded is refused first by
+-- contract_status_forward_only (ruling 1); this trigger (no pointer can be
+-- first recorded on a superseded row) and the CHECK (a superseded row holds
+-- a pointer) stay behind it as second layers for that edge.
 CREATE TRIGGER contract_approval_pointer_set_by_approval
 BEFORE UPDATE OF approved_by_decision_id ON contract_revisions
 WHEN OLD.approved_by_decision_id IS NULL AND NEW.approved_by_decision_id IS NOT NULL
@@ -305,9 +305,13 @@ BEGIN
   SELECT RAISE(ABORT, 'contract revisions are immutable; amend by writing a new revision (G-1)');
 END;
 
+-- Astra third review (0a-repair-3), ruling 1: a draft reaches only
+-- approved. draft -> superseded is not an edge (since RA3-R it could never
+-- complete anyway, see contract_approval_pointer_set_by_approval), so this
+-- trigger is its first refusal; superseded is reached only from approved.
 CREATE TRIGGER contract_status_forward_only
 BEFORE UPDATE OF status ON contract_revisions
-WHEN NOT ((OLD.status = 'draft' AND NEW.status IN ('draft', 'approved', 'superseded'))
+WHEN NOT ((OLD.status = 'draft' AND NEW.status IN ('draft', 'approved'))
        OR (OLD.status = 'approved' AND NEW.status IN ('approved', 'superseded'))
        OR (OLD.status = 'superseded' AND NEW.status = 'superseded'))
 BEGIN

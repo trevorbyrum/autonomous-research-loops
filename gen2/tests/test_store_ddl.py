@@ -1359,9 +1359,11 @@ class ContractGovernanceTest(StoreTestCase):
         exact revision and hash. Refused, leaving every contract and dossier
         row unchanged: recording the decision while the revision stays a draft
         (the review's probe; on 3 and 4; also spelled as an upsert); the
-        structural approval of 4; the draft -> superseded alternative with the
-        decision (it would skip the approval gate) and without it; and a
-        dossier under 3 or 4 after each. Accepted: approving 3 with its
+        structural approval of 4; draft -> superseded with the decision (it
+        would skip the approval gate) and without it — not an edge at all
+        since ruling 1, so the status guard refuses it; approving 3 without
+        naming its decision (the status CHECK); and a dossier under 3 or 4
+        after each. Accepted: approving 3 with its
         decision in one update, then a dossier under it; after an amendment
         (revision 5) supersedes 3, revision 3 keeps its decision and a dossier
         under it is still accepted (historical pins)."""
@@ -1397,9 +1399,24 @@ class ContractGovernanceTest(StoreTestCase):
             self.rejects("approval needs complete obligation/facet rows", approve, "opd_appr0004", TOPIC, 4)
             dossier_refused(4)
         with self.subTest(case="draft -> superseded"):
-            self.rejects(only, supersede, "opd_appr0004", TOPIC, 4)
-            self.rejects("CHECK constraint failed", "UPDATE contract_revisions SET status = 'superseded' WHERE topic_id = ? AND revision = 4", TOPIC)
+            # Not an edge (ruling 1): the status guard refuses it. With a
+            # decision named, the pointer guard refuses the same update too,
+            # and which of the two SQLite fires first is trigger order, not
+            # the invariant, so either is accepted. With none named, only the
+            # status guard applies (triggers run before the CHECK).
+            with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                self.x(supersede, "opd_appr0004", TOPIC, 4)
+            self.assertTrue(any(f in str(ctx.exception) for f in (only, "draft -> approved -> superseded only")), str(ctx.exception))
+            self.rejects("contract status moves draft -> approved -> superseded only",
+                         "UPDATE contract_revisions SET status = 'superseded' WHERE topic_id = ? AND revision = 4", TOPIC)
             dossier_refused(4)
+        with self.subTest(case="approved without naming its decision"):
+            # Revision 3 passes the approval gate (complete, rated, covered
+            # rows), so the status CHECK is what refuses an approval that
+            # records no decision.
+            self.rejects("CHECK constraint failed: status = 'draft' OR approved_by_decision_id IS NOT NULL",
+                         "UPDATE contract_revisions SET status = 'approved' WHERE topic_id = ? AND revision = 3", TOPIC)
+            dossier_refused(3)
         self.assertEqual((self.snapshot("contract_revisions"), self.snapshot("dossiers")), stored)
         self.x(approve, "opd_appr0003", TOPIC, 3)
         self.dossier(1, 3, h("1"))
