@@ -149,3 +149,12 @@ Both are continuations of A5's actual requirement (report don't crash), not new 
 **Mutation-count accounting, worth carrying forward as a general discipline:** Astra explicitly diffed 515→560 rather than accepting the delta at face value — "46 added, one removed, not 45 newly independent guarantees" (one old mutant was replaced by a more specific set, not simply supplemented).
 
 **Explicit note on the bookkeeping:** "Its bookkeeping statement that A1–A5 are 'all closed' is a coder claim superseded by this verdict" — same discipline as every round: a coder's own completion report is a claim, not a verified fact, until independently re-probed.
+
+## 2026-09-25 — Task 0b-repair-2 landed (3 commits), routed for likely-final review
+Coder's session ended without sending a final prose report this time (a stall of the "work landed, no closing message" kind seen once before with Astra) — the orchestrator worked from the commit messages directly rather than waiting, since the actual deliverable (working, tested code) doesn't depend on the coder narrating it. A5-R1 and A5-R2 both closed: the integer-conversion-limit failure is now converted to a reportable parse error without raising or lifting the interpreter's own limit (the review's explicit prohibition); invalid Unicode is now caught in all four paths the review named (refs, issue text, topic IDs, sources keys), not just the one path the first repair covered.
+
+**Coder found and fixed one more related bug on its own initiative, not asked for:** a `Decimal` exponent past Python's representable range (e.g. `1e-9999999999999999999`) was causing an uncaught `InvalidOperation` in the same exactness-check code path — same failure class as A5-R2, just a different trigger. Flagged to Astra to independently verify and to assess as a signal about the coder's own testing discipline, not just accept as another line item.
+
+Orchestrator independently re-ran `make gen2-check`: confirmed 279 tests pass (up from 275), boundary/schema/DDL checks pass, trigger-order check passes.
+
+Routed: task file `research-loops-public/private/reviews/gen2-0b-repair-2-review-task-20260925.md`. Explicitly asked to state plainly whether 0b is now accepted, matching the same discipline used for 0a's final round.
