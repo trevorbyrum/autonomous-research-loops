@@ -1492,15 +1492,31 @@ BEGIN
   SELECT RAISE(ABORT, 'claim status transition not allowed (draft vocabulary, ruling R2.5)');
 END;
 
+-- V-4 / V-8 (Astra re-review RA5): promotion is decided from the claim's
+-- OWN stored designation, not from what a receipt says about itself. A
+-- load-bearing claim becomes accepted support only through a receipt
+-- requested for load-bearing use — a sampling receipt never qualifies,
+-- however it came out — at the claim's own required tier, obtained at or
+-- above it, with all four substantive checks performed. The checks are
+-- re-read from the immutable receipt JSON here, at the consuming boundary,
+-- so neither a sampling label nor an adjudication record can waive the
+-- unperformed-check prohibition. (The tier and checks conjuncts are also
+-- enforced when a load-bearing receipt is written — a second layer here.)
 CREATE TRIGGER claims_accepted_support_needs_receipt
 BEFORE UPDATE OF status ON claims
 WHEN NEW.status = 'accepted_support' AND NEW.load_bearing = 1 AND NOT EXISTS (
   SELECT 1 FROM verification_receipts v
   WHERE v.claim_id = NEW.claim_id AND v.claim_revision = NEW.revision AND v.verdict = 'supports'
+    AND v.use = 'load_bearing'
+    AND v.required_access_tier = NEW.required_access_tier
     AND (CASE v.access_tier WHEN 'bibliographic' THEN 1 WHEN 'abstract' THEN 2 WHEN 'full_text' THEN 3 WHEN 'reproduced' THEN 4 END)
-     >= (CASE NEW.required_access_tier WHEN 'bibliographic' THEN 1 WHEN 'abstract' THEN 2 WHEN 'full_text' THEN 3 WHEN 'reproduced' THEN 4 END))
+     >= (CASE NEW.required_access_tier WHEN 'bibliographic' THEN 1 WHEN 'abstract' THEN 2 WHEN 'full_text' THEN 3 WHEN 'reproduced' THEN 4 END)
+    AND coalesce(json_extract(v.receipt, '$.checks.numeric_units'), 'missing') NOT IN ('not_checked', 'unavailable', 'missing')
+    AND coalesce(json_extract(v.receipt, '$.checks.denominators'), 'missing') NOT IN ('not_checked', 'unavailable', 'missing')
+    AND coalesce(json_extract(v.receipt, '$.checks.negation'), 'missing') NOT IN ('not_checked', 'unavailable', 'missing')
+    AND coalesce(json_extract(v.receipt, '$.checks.qualifications'), 'missing') NOT IN ('not_checked', 'unavailable', 'missing'))
 BEGIN
-  SELECT RAISE(ABORT, 'a load-bearing claim needs a supporting verification receipt at its required tier (V-2, V-4)');
+  SELECT RAISE(ABORT, 'a load-bearing claim needs a supporting load-bearing-use verification receipt at its own required tier with every check performed (V-2, V-4, V-8)');
 END;
 
 CREATE TRIGGER claims_identity_immutable
@@ -1645,6 +1661,23 @@ WHEN (SELECT kind FROM invocations WHERE invocation_id = NEW.verifier_invocation
   OR (SELECT topic_id FROM claims WHERE claim_id = NEW.claim_id AND revision = NEW.claim_revision) IS NOT NEW.topic_id
 BEGIN
   SELECT RAISE(ABORT, 'verification must come from a separate verification invocation of the same topic, independent of the claim producer (RG-5)');
+END;
+
+-- V-8 (RA5): a receipt requested for load-bearing use states its claim's own
+-- designation — the claim revision is load-bearing and the required tier is
+-- the claim's stored required tier — so a receipt cannot re-describe the
+-- subject it certifies. A sampled receipt may be of any claim at any tier
+-- (sampling audits are legitimate); it just never qualifies a load-bearing
+-- claim for accepted support (claims_accepted_support_needs_receipt).
+CREATE TRIGGER verification_receipts_use_matches_claim
+BEFORE INSERT ON verification_receipts
+WHEN NEW.use = 'load_bearing' AND NOT EXISTS (
+  SELECT 1 FROM claims c
+  WHERE c.claim_id = NEW.claim_id AND c.revision = NEW.claim_revision
+    AND c.load_bearing = 1
+    AND c.required_access_tier = NEW.required_access_tier)
+BEGIN
+  SELECT RAISE(ABORT, 'a load-bearing-use receipt must be about a load-bearing claim at that claim''s own required tier (V-8, RA5)');
 END;
 
 -- A6/A10: the receipt names the verifier's own capability; canonical bytes

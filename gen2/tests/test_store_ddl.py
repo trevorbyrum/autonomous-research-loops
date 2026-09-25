@@ -443,7 +443,7 @@ class VerificationTest(StoreTestCase):
         # verification-kind invocation passes the role trigger, so only the CHECK can refuse it.
         self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000001', 2, ?, ?, 'inv_vvvvvvvv', 0, NULL, 'provisional', ?)", TOPIC, h("7"), T)
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.verify("ver_00000002", claim=("clm_00000001", 2), quote=("not_applicable", None), producer="inv_vvvvvvvv")
+            self.verify("ver_00000002", claim=("clm_00000001", 2), quote=("not_applicable", None), producer="inv_vvvvvvvv", use="sampled")  # not load-bearing: sampled
         self.assertIn("CHECK constraint failed", str(ctx.exception))
         self.verify("ver_00000001")
 
@@ -508,13 +508,63 @@ class VerificationTest(StoreTestCase):
         self.assertIn("CHECK constraint failed", str(ctx.exception))
         self.verify("ver_00000001", tier="abstract", required="full_text", verdict="cannot_assess_at_required_tier")
 
+    ACCEPT = "UPDATE claims SET status = 'accepted_support' WHERE claim_id = 'clm_00000001' AND revision = 1"
+    PROMOTION_REFUSED = "needs a supporting load-bearing-use verification receipt"
+
+    def claim_status(self) -> list[tuple]:
+        return self.rows("SELECT status FROM claims WHERE claim_id = 'clm_00000001' AND revision = 1")
+
     def test_accepted_support_needs_receipt_at_required_tier(self) -> None:
-        accept = "UPDATE claims SET status = 'accepted_support' WHERE claim_id = 'clm_00000001' AND revision = 1"
-        self.rejects("needs a supporting verification receipt", accept)
-        self.verify("ver_00000001", tier="abstract", required="abstract")  # supports, but only at abstract
-        self.rejects("needs a supporting verification receipt", accept)
+        self.rejects(self.PROMOTION_REFUSED, self.ACCEPT)  # no receipt at all
+        self.verify("ver_00000001", use="sampled", tier="abstract", required="abstract")  # supports, but a sample, and only at abstract
+        self.rejects(self.PROMOTION_REFUSED, self.ACCEPT)
         self.verify("ver_00000002", tier="full_text", required="full_text")
-        self.x(accept)
+        self.x(self.ACCEPT)
+
+    def test_sampling_never_qualifies_a_load_bearing_claim(self) -> None:
+        """RA5. The review's probe: on the load-bearing, full-text claim, a
+        full-text 'supports' receipt with use='sampled', all four substantive
+        checks not_checked, a matched quote and an adjudication record. It is a
+        truthful sampling receipt and is stored as one, but promotion reads the
+        claim's own designation and refuses it. So is a *successful* sampling
+        receipt (every check performed and passed): sampling is not
+        load-bearing qualification. A load-bearing partial support does not
+        qualify either. Only a load-bearing-use 'supports' receipt with every
+        check performed promotes; the claim reads back provisional after each
+        refusal."""
+        unperformed = {name: "not_checked" for name in self.CHECKS_OK}
+        adjudicated = {"adjudication_ref": "adj-1", "resolved_at": T, "resolution": "sampled; not re-checked"}
+        self.verify("ver_sample01", use="sampled", checks=unperformed, adjudication=adjudicated)
+        self.rejects(self.PROMOTION_REFUSED, self.ACCEPT)
+        self.verify("ver_sample02", use="sampled")  # successful sampling
+        self.rejects(self.PROMOTION_REFUSED, self.ACCEPT)
+        self.verify("ver_partial1", verdict="partially_supports")  # load-bearing use, checks performed, not support
+        self.rejects(self.PROMOTION_REFUSED, self.ACCEPT)
+        self.assertEqual(self.claim_status(), [("provisional",)])
+        self.verify("ver_lb000001")  # genuine load-bearing qualification
+        self.x(self.ACCEPT)
+        self.assertEqual(self.claim_status(), [("accepted_support",)])
+
+    def test_load_bearing_receipt_states_its_claims_designation(self) -> None:
+        """RA5: a receipt requested for load-bearing use must be about a
+        load-bearing claim at that claim's own required tier — it cannot
+        re-describe the subject it certifies. A sampled receipt may audit any
+        claim at any tier. (clm_00000002 is not load-bearing but does carry a
+        full-text tier, so the load-bearing conjunct alone refuses it.)"""
+        self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000002', 1, ?, ?, 'inv_pppppppp', 0, 'full_text', 'provisional', ?)", TOPIC, h("7"), T)
+        self.quote_check("qc-2", claim=("clm_00000002", 1))
+        refused = "that claim's own required tier"
+        for label, kw in (("a higher required tier than the claim's", dict(tier="reproduced", required="reproduced")),
+                          ("a lower required tier than the claim's", dict(tier="abstract", required="abstract")),
+                          ("a claim that is not load-bearing", dict(claim=("clm_00000002", 1), quote=("matched", "qc-2")))):
+            with self.subTest(case=label):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.verify("ver_00000001", **kw)
+                self.assertIn(refused, str(ctx.exception))
+        self.assertEqual(self.rows("SELECT count(*) FROM verification_receipts"), [(0,)])
+        self.verify("ver_00000001", use="sampled", tier="abstract", required="abstract")
+        self.verify("ver_00000002", use="sampled", claim=("clm_00000002", 1), quote=("matched", "qc-2"))
+        self.verify("ver_00000003")  # the claim's own designation
 
     def test_claims_start_provisional(self) -> None:
         self.rejects("claims are captured provisional", "INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000002', 1, ?, ?, 'inv_pppppppp', 0, NULL, 'accepted_support', ?)", TOPIC, h("7"), T)

@@ -61,7 +61,8 @@
   - `supports` needs successful numeric/denominator/negation/qualification checks and no tier-0 alarm, or an explicit adjudication; load-bearing support verdicts cannot rest on unperformed/unavailable checks; truthful unsuccessful verdicts may report them
   - the receipt binds its exact quote check (claim revision, source artifact, match status) and never supports on a quarantined quote without an adjudicated NLI alarm; it names the verifier's own capability; every normalized column equals its receipt-JSON field
   - `supports` never exceeds the obtained tier
-  - load-bearing claims reach `accepted_support` only with a supporting receipt at the required tier
+  - load-bearing claims reach `accepted_support` only with a supporting receipt requested for load-bearing use at the claim's *own* stored required tier, with every substantive check performed (re-read from the receipt JSON at promotion); a sampling receipt never qualifies and no adjudication waives an unperformed check (RA5)
+  - a load-bearing-use receipt states its claim's own designation (the claim is load-bearing; the required tier is the claim's); a sampled receipt may audit any claim at any tier
   - claims start provisional
 - **Decisions** (D-3, D-5):
   - a fallback answer carries no probability, distribution or confidence

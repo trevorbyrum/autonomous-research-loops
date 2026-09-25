@@ -442,6 +442,21 @@ MUTATIONS: list[Mutation] = [
              (VT + "test_truthful_unsuccessful_verdicts_may_record_unperformed_checks",), old="  CHECK (use != 'load_bearing' OR verdict NOT IN ('supports', 'partially_supports') OR (", new="  CHECK (1 OR ("),
     Mutation("A6-truthful-cannot-assess-over-restriction", "A6", "over-restriction restored: load-bearing checks required for every verdict (the review's rejected truthful receipt)",
              (VT + "test_truthful_unsuccessful_verdicts_may_record_unperformed_checks",), old="  CHECK (use != 'load_bearing' OR verdict NOT IN ('supports', 'partially_supports') OR (", new="  CHECK (use != 'load_bearing' OR ("),
+    # --- RA5: promotion from the stored claim; sampling never qualifies ----------
+    Mutation("RA5-promotion-accepts-sampling", "RA5", "the review's probe: a sampled receipt (any checks, any adjudication) promotes a load-bearing claim",
+             (VT + "test_sampling_never_qualifies_a_load_bearing_claim",), scope="claims_accepted_support_needs_receipt",
+             old="    AND v.use = 'load_bearing'\n", new=""),
+    Mutation("RA5-promotion-verdict", "RA5", "a load-bearing partial support promotes the claim",
+             (VT + "test_sampling_never_qualifies_a_load_bearing_claim",), scope="claims_accepted_support_needs_receipt",
+             old="AND v.verdict = 'supports'\n", new="AND v.verdict IN ('supports', 'partially_supports')\n"),
+    Mutation("RA5-use-matches-claim-dropped", "RA5", "a load-bearing-use receipt may re-describe its claim's designation",
+             (VT + "test_load_bearing_receipt_states_its_claims_designation",), drop_trigger="verification_receipts_use_matches_claim"),
+    Mutation("RA5-use-matches-claim-load-bearing", "RA5", "a load-bearing-use receipt may be about a claim that is not load-bearing",
+             (VT + "test_load_bearing_receipt_states_its_claims_designation",), scope="verification_receipts_use_matches_claim",
+             old="    AND c.load_bearing = 1\n", new=""),
+    Mutation("RA5-use-matches-claim-tier", "RA5", "a load-bearing-use receipt may name another required tier than its claim's",
+             (VT + "test_load_bearing_receipt_states_its_claims_designation",), scope="verification_receipts_use_matches_claim",
+             old="\n    AND c.required_access_tier = NEW.required_access_tier)", new=")"),
     Mutation("A6-binds-verifier-capability", "A10", "the receipt may name another invocation's capability",
              (VT + "test_receipt_names_the_verifiers_own_capability",), scope="verification_receipts_bindings",
              old="WHEN (SELECT capability_id FROM invocations WHERE invocation_id = NEW.verifier_invocation_id) IS NOT json_extract(NEW.receipt, '$.verifier_capability_id')\n  OR ", new="WHEN "),
@@ -696,6 +711,10 @@ SECOND_LAYER = {
     "verification_receipts CHECK (verdict != 'supports' OR exact_quote.status IN ('matched', 'not_applicable'))":
         "a mismatched quote is always quarantined (quote_checks CHECK, A6-D32-byte-mismatch) and a matched/mismatched status needs a bound check "
         "(A6-quote-check-iff-status), so verification_receipts_bindings refuses support on it first (A6-quote-binding-*)",
+    "claims_accepted_support_needs_receipt: its required-tier, obtained-tier and performed-checks conjuncts (RA5, re-checked at promotion)":
+        "a load-bearing-use receipt is written only at its claim's own required tier (verification_receipts_use_matches_claim, RA5-use-matches-claim-*), "
+        "'supports' never exceeds the obtained tier (verification_receipts CHECK), and a load-bearing support cannot record an unperformed check "
+        "(A6-load-bearing-support-checks-performed); the trigger's own use and verdict conjuncts are mutated (RA5-promotion-*)",
 }
 
 
