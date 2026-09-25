@@ -1,0 +1,25 @@
+{
+  "fixture": {
+    "schema": "decision-receipt.schema.json",
+    "expect": "invalid",
+    "tests": "D-3: Noul returns a probability, not a confidence field",
+    "base": "valid-jev-screening-shadow.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/provider_response/answer",
+        "value": {
+          "primitive": "noul",
+          "probability": 0.8,
+          "confidence": 0.9
+        }
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "additionalProperties",
+        "path": "/provider_response/answer"
+      }
+    ]
+  }
+}

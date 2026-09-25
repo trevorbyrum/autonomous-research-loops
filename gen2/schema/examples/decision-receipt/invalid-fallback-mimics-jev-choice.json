@@ -1,0 +1,29 @@
+{
+  "fixture": {
+    "schema": "decision-receipt.schema.json",
+    "expect": "invalid",
+    "tests": "D-3: the fallback cannot answer with a Jev primitive",
+    "base": "valid-fallback-method-advisory.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/provider_response/answer",
+        "value": {
+          "primitive": "choice",
+          "selected_option_id": "adjust_within_family",
+          "distribution": {
+            "adjust_within_family": 0.9,
+            "keep": 0.1
+          },
+          "confidence": 0.9
+        }
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "const",
+        "path": "/provider_response/answer/primitive"
+      }
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "verification-receipt.schema.json",
+    "expect": "invalid",
+    "tests": "V-3: a reused extraction must cite its validation",
+    "base": "valid-load-bearing-full-text.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/extraction/method",
+        "value": "validated_extraction"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/extraction/validation_ref"
+      }
+    ]
+  }
+}

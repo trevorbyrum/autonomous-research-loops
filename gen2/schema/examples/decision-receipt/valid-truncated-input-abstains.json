@@ -1,0 +1,51 @@
+{
+  "fixture": {
+    "schema": "decision-receipt.schema.json",
+    "expect": "valid",
+    "tests": "D-6: truncated input is never answered; the decision holds"
+  },
+  "instance": {
+    "receipt_version": "decision-receipt/1",
+    "decision_receipt_id": "dec_01J8ZQ42CC",
+    "invocation_id": "inv_01J8ZQ3W2X",
+    "topic_id": "fleet-a:intake-latency",
+    "decided_at": "2026-09-25T10:50:00Z",
+    "spec": {
+      "spec_id": "dspec_screen_v1_jev",
+      "spec_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+    },
+    "decision_class": "screening",
+    "provider": "jev",
+    "input_manifest": {
+      "snapshot_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "input_record_ids": [
+        "wrk_01J8ZQ00W2"
+      ],
+      "input_status": "truncated"
+    },
+    "provider_response": {
+      "status": "rejected_input",
+      "raw_response_digest": null,
+      "raw_response_artifact": null,
+      "answer": null
+    },
+    "policy": {
+      "policy_id": "P-screen-shadow",
+      "version": 1
+    },
+    "authorization": {
+      "authority_level": "advisory",
+      "qualification_ref": null
+    },
+    "action": "abstain_hold",
+    "outcome": {
+      "commit_operation_id": null,
+      "proposal_ref": null,
+      "hold_id": "hold_01J8ZQ42HD"
+    },
+    "blind_sample": {
+      "selected": false,
+      "initial_disposition_ref": null
+    }
+  }
+}

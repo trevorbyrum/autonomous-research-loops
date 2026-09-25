@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "decision-spec.schema.json",
+    "expect": "invalid",
+    "tests": "D-1: questions are pinned by version and hash",
+    "base": "valid-jev-screening-choice.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/question/version"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": "/question"
+      }
+    ]
+  }
+}

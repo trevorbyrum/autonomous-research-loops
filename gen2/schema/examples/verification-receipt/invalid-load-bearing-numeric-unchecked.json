@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "verification-receipt.schema.json",
+    "expect": "invalid",
+    "tests": "V-8: load-bearing uses need independent numeric checks",
+    "base": "valid-load-bearing-full-text.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/checks/numeric_units",
+        "value": "not_checked"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "not",
+        "path": "/checks/numeric_units"
+      }
+    ]
+  }
+}

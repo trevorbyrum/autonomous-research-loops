@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/decision-spec.schema.json",
+  "$comment": "flow: §2 (DecisionSpec; per-provider, per-class qualification); §3 steps 1-2 (pinned question version); §5 (versioned question registry) | boundaries: Decision layer (DecisionProvider: Jev primary, LLM fallback); Router | design-review: §7 (provider seam preserves differences; Noul probability vs Choice/Score distribution+confidence, as documented by the vendor) | adjudication: (a)G-A3; (a)G-A4; (a)K-A6; (b)6 | methodology: §9 (evaluation bound to the full DecisionSpec) | invariants: D-1; D-3; D-4; D-8 | note: immutable once referenced; spec_hash in receipts binds each decision to it, and any behavior-affecting change is a new spec that retires the old qualification",
+  "title": "DecisionSpec",
+  "description": "Everything that determines a provider's behavior and the permitted action for one decision class: class, provider, resolved model/version, primitive and output semantics, question/rubric version, input-builder version, applicable protocol, action-policy version (flow §2). Options are enumerated with criteria embedded — providers select, never generate (BOUNDARIES.md Decision layer). Jev answers with Noul/Choice/Score; the LLM fallback answers with a schema-valid label and evidence references, never a synthetic probability.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "spec_version",
+    "spec_id",
+    "decision_class",
+    "provider",
+    "model",
+    "primitive",
+    "output_semantics",
+    "question",
+    "rubric",
+    "input_builder",
+    "protocol",
+    "action_policy",
+    "options"
+  ],
+  "properties": {
+    "spec_version": {"const": "decision-spec/1"},
+    "spec_id": {"$ref": "common.schema.json#/$defs/decision_spec_id"},
+    "decision_class": {"$ref": "common.schema.json#/$defs/decision_class"},
+    "provider": {"enum": ["jev", "llm_fallback"]},
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requested", "resolved_version"],
+      "properties": {
+        "requested": {"$ref": "common.schema.json#/$defs/short_text"},
+        "resolved_version": {"$ref": "common.schema.json#/$defs/short_text"}
+      }
+    },
+    "primitive": {"enum": ["noul", "choice", "score", "label"]},
+    "output_semantics": {"$ref": "common.schema.json#/$defs/long_text"},
+    "question": {
+      "description": "Pinned registry entry; rewording is a new version and a visible calibration event (flow §5).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["question_id", "version", "content_hash"],
+      "properties": {
+        "question_id": {"$ref": "common.schema.json#/$defs/local_id"},
+        "version": {"$ref": "common.schema.json#/$defs/revision"},
+        "content_hash": {"$ref": "common.schema.json#/$defs/sha256"}
+      }
+    },
+    "rubric": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["rubric_id", "version"],
+      "properties": {
+        "rubric_id": {"$ref": "common.schema.json#/$defs/local_id"},
+        "version": {"$ref": "common.schema.json#/$defs/revision"}
+      }
+    },
+    "input_builder": {
+      "description": "The code that assembles the typed snapshot (never agent prose; flow §3 step 1).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["builder_id", "version", "max_input_tokens"],
+      "properties": {
+        "builder_id": {"$ref": "common.schema.json#/$defs/local_id"},
+        "version": {"$ref": "common.schema.json#/$defs/revision"},
+        "max_input_tokens": {"type": "integer", "minimum": 1}
+      }
+    },
+    "protocol": {
+      "description": "The protocol whose criteria the question embeds, when one applies (e.g. the eligibility protocol for screening).",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["topic_id", "contract", "eligibility_protocol_version"],
+      "properties": {
+        "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
+        "contract": {"$ref": "common.schema.json#/$defs/contract_ref"},
+        "eligibility_protocol_version": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/revision"}]}
+      }
+    },
+    "action_policy": {
+      "description": "The router policy mapping (class, answer, confidence) to a permitted action (flow §3 step 3).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy_id", "version"],
+      "properties": {
+        "policy_id": {"$ref": "common.schema.json#/$defs/local_id"},
+        "version": {"$ref": "common.schema.json#/$defs/revision"}
+      }
+    },
+    "options": {
+      "description": "Enumerated options with their criteria. Noul is a yes/no question, so it lists exactly the two; Score lists its scale anchors.",
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["option_id", "criteria"],
+        "properties": {
+          "option_id": {"$ref": "common.schema.json#/$defs/local_id"},
+          "criteria": {"$ref": "common.schema.json#/$defs/long_text"}
+        }
+      }
+    }
+  },
+  "allOf": [
+    {"if": {"properties": {"provider": {"const": "jev"}}}, "then": {"properties": {"primitive": {"enum": ["noul", "choice", "score"]}}}},
+    {"if": {"properties": {"provider": {"const": "llm_fallback"}}}, "then": {"properties": {"primitive": {"const": "label"}}}},
+    {"if": {"properties": {"primitive": {"const": "noul"}}}, "then": {"properties": {"options": {"maxItems": 2}}}}
+  ]
+}

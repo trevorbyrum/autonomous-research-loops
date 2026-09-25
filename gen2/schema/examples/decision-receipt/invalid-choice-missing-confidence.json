@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "decision-receipt.schema.json",
+    "expect": "invalid",
+    "tests": "D-3: a missing confidence is invalid, never a default pass",
+    "base": "valid-jev-screening-shadow.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/provider_response/answer/confidence"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": "/provider_response/answer"
+      }
+    ]
+  }
+}

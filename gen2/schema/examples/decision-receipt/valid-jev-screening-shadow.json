@@ -1,0 +1,65 @@
+{
+  "fixture": {
+    "schema": "decision-receipt.schema.json",
+    "expect": "valid",
+    "tests": "D-1/D-5: screening runs in shadow with a full receipt"
+  },
+  "instance": {
+    "receipt_version": "decision-receipt/1",
+    "decision_receipt_id": "dec_01J8ZQ40AA",
+    "invocation_id": "inv_01J8ZQ3W2X",
+    "topic_id": "fleet-a:intake-latency",
+    "decided_at": "2026-09-25T10:50:00Z",
+    "spec": {
+      "spec_id": "dspec_screen_v1_jev",
+      "spec_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+    },
+    "decision_class": "screening",
+    "provider": "jev",
+    "input_manifest": {
+      "snapshot_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "input_record_ids": [
+        "wrk_01J8ZQ00W1",
+        "EC-outcome"
+      ],
+      "input_status": "complete"
+    },
+    "provider_response": {
+      "status": "answered",
+      "raw_response_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "raw_response_artifact": {
+        "content_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "size_bytes": 812,
+        "media_type": "application/json"
+      },
+      "answer": {
+        "primitive": "choice",
+        "selected_option_id": "include",
+        "distribution": {
+          "include": 0.81,
+          "exclude": 0.07,
+          "borderline": 0.12
+        },
+        "confidence": 0.74
+      }
+    },
+    "policy": {
+      "policy_id": "P-screen-shadow",
+      "version": 1
+    },
+    "authorization": {
+      "authority_level": "shadow",
+      "qualification_ref": null
+    },
+    "action": "shadow_log_only",
+    "outcome": {
+      "commit_operation_id": null,
+      "proposal_ref": null,
+      "hold_id": null
+    },
+    "blind_sample": {
+      "selected": false,
+      "initial_disposition_ref": null
+    }
+  }
+}

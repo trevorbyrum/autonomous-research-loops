@@ -1,0 +1,63 @@
+{
+  "fixture": {
+    "schema": "decision-receipt.schema.json",
+    "expect": "valid",
+    "tests": "D-3/D-5/D-9: an unqualified fallback label is advisory; blind sample recorded"
+  },
+  "instance": {
+    "receipt_version": "decision-receipt/1",
+    "decision_receipt_id": "dec_01J8ZQ41BB",
+    "invocation_id": "inv_01J8ZQ3W2X",
+    "topic_id": "fleet-a:intake-latency",
+    "decided_at": "2026-09-25T10:50:00Z",
+    "spec": {
+      "spec_id": "dspec_method_v1_llm",
+      "spec_hash": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+    },
+    "decision_class": "method_selection",
+    "provider": "llm_fallback",
+    "input_manifest": {
+      "snapshot_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "input_record_ids": [
+        "wrk_01J8ZQ00W1",
+        "EC-outcome"
+      ],
+      "input_status": "complete"
+    },
+    "provider_response": {
+      "status": "answered",
+      "raw_response_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "raw_response_artifact": {
+        "content_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "size_bytes": 1400,
+        "media_type": "application/json"
+      },
+      "answer": {
+        "primitive": "label",
+        "selected_option_id": "adjust_within_family",
+        "evidence_refs": [
+          "clm_01J8ZQ11C1",
+          "contradiction:CL-3"
+        ]
+      }
+    },
+    "policy": {
+      "policy_id": "P-method-advisory",
+      "version": 1
+    },
+    "authorization": {
+      "authority_level": "advisory",
+      "qualification_ref": null
+    },
+    "action": "attach_proposal",
+    "outcome": {
+      "commit_operation_id": null,
+      "proposal_ref": "proposal:method-fit-2",
+      "hold_id": null
+    },
+    "blind_sample": {
+      "selected": true,
+      "initial_disposition_ref": "opd_blind0007"
+    }
+  }
+}

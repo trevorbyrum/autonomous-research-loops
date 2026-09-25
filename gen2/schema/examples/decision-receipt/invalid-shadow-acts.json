@@ -1,0 +1,26 @@
+{
+  "fixture": {
+    "schema": "decision-receipt.schema.json",
+    "expect": "invalid",
+    "tests": "D-5: shadow decisions have no effect",
+    "base": "valid-jev-screening-shadow.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/action",
+        "value": "attach_proposal"
+      },
+      {
+        "op": "replace",
+        "path": "/outcome/proposal_ref",
+        "value": "proposal:x"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "const",
+        "path": "/action"
+      }
+    ]
+  }
+}

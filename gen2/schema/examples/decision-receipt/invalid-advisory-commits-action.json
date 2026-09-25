@@ -1,0 +1,26 @@
+{
+  "fixture": {
+    "schema": "decision-receipt.schema.json",
+    "expect": "invalid",
+    "tests": "D-2/D-5: only qualified authority commits an action",
+    "base": "valid-fallback-method-advisory.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/action",
+        "value": "commit_reversible_action"
+      },
+      {
+        "op": "replace",
+        "path": "/outcome/commit_operation_id",
+        "value": "op_01J8ZQ4K7M"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "const",
+        "path": "/authorization/authority_level"
+      }
+    ]
+  }
+}

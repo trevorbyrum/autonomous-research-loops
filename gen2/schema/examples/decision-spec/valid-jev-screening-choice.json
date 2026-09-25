@@ -1,0 +1,56 @@
+{
+  "fixture": {
+    "schema": "decision-spec.schema.json",
+    "expect": "valid",
+    "tests": "D-1: every field of the flow §2 DecisionSpec"
+  },
+  "instance": {
+    "spec_version": "decision-spec/1",
+    "spec_id": "dspec_screen_v1_jev",
+    "decision_class": "screening",
+    "provider": "jev",
+    "model": {
+      "requested": "jev-1.13",
+      "resolved_version": "jev-1.13.0"
+    },
+    "primitive": "choice",
+    "output_semantics": "Include/exclude/borderline against the eligibility protocol's semantic criteria; borderline routes to the primary with protocol text.",
+    "question": {
+      "question_id": "Q-screen",
+      "version": 1,
+      "content_hash": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+    },
+    "rubric": null,
+    "input_builder": {
+      "builder_id": "B-screen-snapshot",
+      "version": 1,
+      "max_input_tokens": 30000
+    },
+    "protocol": {
+      "topic_id": "fleet-a:intake-latency",
+      "contract": {
+        "revision": 2,
+        "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "eligibility_protocol_version": 1
+    },
+    "action_policy": {
+      "policy_id": "P-screen-shadow",
+      "version": 1
+    },
+    "options": [
+      {
+        "option_id": "include",
+        "criteria": "Meets EC-outcome on the abstract."
+      },
+      {
+        "option_id": "exclude",
+        "criteria": "Clearly fails EC-outcome on the abstract; reason code required."
+      },
+      {
+        "option_id": "borderline",
+        "criteria": "Cannot decide from the abstract."
+      }
+    ]
+  }
+}

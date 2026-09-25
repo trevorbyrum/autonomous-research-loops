@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/verification-receipt.schema.json",
+  "$comment": "flow: S4 step 4 (exact quote match before NLI; numeric/negation/qualification checks); S4 step 8 (receipt bindings, access tier, independence is not a URL count, missing content -> hold, disagreement -> adjudication hold); S4 step 9 (accepted-support boundary) | boundaries: Verifier; Router; Tier-0 checker (NLI, local) | design-review: §8 (distinct verification checks); §9 (producer/verifier separation) | adjudication: (a)K-A2; (b)5; (c)2; (d)3 | methodology: §4 (claim-level verification; three independence properties) | invariants: V-1; V-2; V-3; V-6; V-8; V-9; RG-5 | note: producer != verifier and 'extraction not the producer's unvalidated extraction' are cross-field rules JSON Schema cannot state; they are enforced at commit and by the verification_receipts constraints in gen2/store/schema.sql",
+  "title": "Verification receipt",
+  "description": "Written by a separate verifier invocation with its own capability after independently obtaining the cited content. It binds claim revision, source version, cited spans, obtained content hash, access tier, acquisition and extraction lineage, and producer and verifier invocation identities (flow S4 step 8). A 'supports' verdict must be reached at or above the tier the proposed use requires; an abstract check never becomes full-text verification. Disagreement verdicts become typed adjudication holds at commit, never averaged.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "receipt_version",
+    "verification_receipt_id",
+    "topic_id",
+    "claim",
+    "source",
+    "cited_spans",
+    "obtained_content_hash",
+    "access_tier",
+    "requested_for",
+    "acquisition",
+    "extraction",
+    "producer_invocation_id",
+    "verifier_invocation_id",
+    "verifier_capability_id",
+    "checks",
+    "verdict",
+    "verified_at"
+  ],
+  "properties": {
+    "receipt_version": {"const": "verification-receipt/1"},
+    "verification_receipt_id": {"$ref": "common.schema.json#/$defs/verification_receipt_id"},
+    "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "claim_revision"],
+      "properties": {
+        "claim_id": {"$ref": "common.schema.json#/$defs/claim_id"},
+        "claim_revision": {"$ref": "common.schema.json#/$defs/revision"}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["work_id", "source_version"],
+      "properties": {
+        "work_id": {"$ref": "common.schema.json#/$defs/work_id"},
+        "source_version": {"$ref": "common.schema.json#/$defs/short_text"}
+      }
+    },
+    "cited_spans": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["start", "end", "locator"],
+        "properties": {
+          "start": {"type": "integer", "minimum": 0},
+          "end": {"type": "integer", "minimum": 1},
+          "locator": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "value"],
+            "properties": {
+              "kind": {"enum": ["page", "section", "table", "figure", "paragraph", "line"]},
+              "value": {"$ref": "common.schema.json#/$defs/short_text"}
+            }
+          }
+        }
+      }
+    },
+    "obtained_content_hash": {
+      "description": "Hash of the content the verifier obtained. Identical to the producer's bytes is acceptable — independent checking may reuse canonical transport/cache bytes (adjudication (b)5).",
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "access_tier": {"$ref": "common.schema.json#/$defs/access_tier"},
+    "requested_for": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["use", "required_access_tier"],
+      "properties": {
+        "use": {"enum": ["load_bearing", "sampled"]},
+        "required_access_tier": {"$ref": "common.schema.json#/$defs/access_tier"}
+      }
+    },
+    "acquisition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["route", "retrieved_at", "gateway_call_ref", "cache_reuse"],
+      "properties": {
+        "route": {"$ref": "common.schema.json#/$defs/short_text"},
+        "retrieved_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+        "gateway_call_ref": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/short_text"}]},
+        "cache_reuse": {"type": "boolean"}
+      }
+    },
+    "extraction": {
+      "description": "What the check read. The producer's selected summary or unvalidated extraction may not be what the verifier relies on (flow S4 step 8).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "extractor", "produced_by_invocation_id", "validation_ref"],
+      "properties": {
+        "method": {"enum": ["verifier_extraction", "validated_extraction", "canonical_bytes"]},
+        "extractor": {"$ref": "common.schema.json#/$defs/short_text"},
+        "produced_by_invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
+        "validation_ref": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/short_text"}]}
+      },
+      "if": {"properties": {"method": {"const": "validated_extraction"}}},
+      "then": {"properties": {"validation_ref": {"type": "string"}}}
+    },
+    "producer_invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
+    "verifier_invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
+    "verifier_capability_id": {"$ref": "common.schema.json#/$defs/capability_id"},
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exact_quote", "numeric_units", "denominators", "negation", "qualifications"],
+      "properties": {
+        "exact_quote": {
+          "description": "Byte match against a versioned source artifact with explicit normalization and span offsets, before any NLI (flow S4 step 4).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "normalization_version", "source_artifact_hash"],
+          "properties": {
+            "status": {"enum": ["matched", "mismatch", "not_applicable"]},
+            "normalization_version": {"$ref": "common.schema.json#/$defs/short_text"},
+            "source_artifact_hash": {"$ref": "common.schema.json#/$defs/sha256"}
+          }
+        },
+        "numeric_units": {"$ref": "#/$defs/check_status"},
+        "denominators": {"$ref": "#/$defs/check_status"},
+        "negation": {"$ref": "#/$defs/check_status"},
+        "qualifications": {"$ref": "#/$defs/check_status"},
+        "tier0": {
+          "description": "Optional NLI screen result; a signal only, never a verdict (BOUNDARIES.md Tier-0 checker).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["checker", "checker_version", "signal"],
+          "properties": {
+            "checker": {"$ref": "common.schema.json#/$defs/short_text"},
+            "checker_version": {"$ref": "common.schema.json#/$defs/short_text"},
+            "signal": {"enum": ["pass", "alarm"]}
+          }
+        }
+      }
+    },
+    "verdict": {"enum": ["supports", "partially_supports", "does_not_support", "cannot_assess_at_required_tier"]},
+    "verified_at": {"$ref": "common.schema.json#/$defs/timestamp"}
+  },
+  "allOf": [
+    {
+      "description": "Load-bearing uses get independent numeric/denominator/negation/qualification checks (flow S4 step 4).",
+      "if": {"properties": {"requested_for": {"properties": {"use": {"const": "load_bearing"}}}}},
+      "then": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "numeric_units": {"not": {"const": "not_checked"}},
+              "denominators": {"not": {"const": "not_checked"}},
+              "negation": {"not": {"const": "not_checked"}},
+              "qualifications": {"not": {"const": "not_checked"}}
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "A mismatched quote cannot support.",
+      "if": {"properties": {"checks": {"properties": {"exact_quote": {"properties": {"status": {"const": "mismatch"}}}}}}},
+      "then": {"properties": {"verdict": {"not": {"const": "supports"}}}}
+    },
+    {
+      "description": "Never certify above the obtained tier: supports requires access_tier >= required_access_tier.",
+      "if": {"properties": {"verdict": {"const": "supports"}, "requested_for": {"properties": {"required_access_tier": {"const": "abstract"}}}}},
+      "then": {"properties": {"access_tier": {"enum": ["abstract", "full_text", "reproduced"]}}}
+    },
+    {
+      "if": {"properties": {"verdict": {"const": "supports"}, "requested_for": {"properties": {"required_access_tier": {"const": "full_text"}}}}},
+      "then": {"properties": {"access_tier": {"enum": ["full_text", "reproduced"]}}}
+    },
+    {
+      "if": {"properties": {"verdict": {"const": "supports"}, "requested_for": {"properties": {"required_access_tier": {"const": "reproduced"}}}}},
+      "then": {"properties": {"access_tier": {"const": "reproduced"}}}
+    }
+  ],
+  "$defs": {
+    "check_status": {"enum": ["checked_ok", "checked_problem", "not_applicable", "not_checked"]}
+  }
+}

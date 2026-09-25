@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "verification-receipt.schema.json",
+    "expect": "invalid",
+    "tests": "V-1/RG-5: the producer identity is bound so separation can be enforced",
+    "base": "valid-load-bearing-full-text.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/producer_invocation_id"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": ""
+      }
+    ]
+  }
+}

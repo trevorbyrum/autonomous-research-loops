@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/decision-receipt.schema.json",
+  "$comment": "flow: §2 (ladder rules: abstain on bad input, no synthetic probability, missing confidence never a pass, unqualified = advisory); §3 steps 2-5 (receipt links inputs, provider response, policy, authorization, action, outcome; raw digest retained at the station/adapter boundary; blind samples) | boundaries: Decision layer (DecisionProvider: Jev primary, LLM fallback); Router; Station supervisor | design-review: §7 (recommendation envelope with explicit abstain/error state; provider-specific uncertainty) | adjudication: (a)G-R2; (a)G-A3; (a)K-A1; (a)K-A4; (b)6 | invariants: D-1; D-2; D-3; D-5; D-6; D-9; D-10 | note: a receipt that fails this schema is not a low-confidence decision — the router treats it as a control incident",
+  "title": "Decision receipt",
+  "description": "One per automated decision. The provider answers; the router's policy acts (BOUNDARIES.md Decision layer). Answer shapes are provider- and primitive-specific: Jev Noul returns a probability without a confidence field; Jev Choice/Score return a distribution and a derived confidence statistic (interface facts per design review §7, not calibration claims); an LLM-fallback label carries evidence references and no probability, distribution or confidence. Required fields make 'missing confidence' unrepresentable rather than defaulted.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "receipt_version",
+    "decision_receipt_id",
+    "invocation_id",
+    "topic_id",
+    "decided_at",
+    "spec",
+    "decision_class",
+    "provider",
+    "input_manifest",
+    "provider_response",
+    "policy",
+    "authorization",
+    "action",
+    "outcome",
+    "blind_sample"
+  ],
+  "properties": {
+    "receipt_version": {"const": "decision-receipt/1"},
+    "decision_receipt_id": {"$ref": "common.schema.json#/$defs/decision_receipt_id"},
+    "invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
+    "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
+    "decided_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spec_id", "spec_hash"],
+      "properties": {
+        "spec_id": {"$ref": "common.schema.json#/$defs/decision_spec_id"},
+        "spec_hash": {"$ref": "common.schema.json#/$defs/sha256"}
+      }
+    },
+    "decision_class": {"$ref": "common.schema.json#/$defs/decision_class"},
+    "provider": {"enum": ["jev", "llm_fallback"]},
+    "input_manifest": {
+      "description": "Code-assembled snapshot. Anything but 'complete' input must not be answered (flow §2: oversized/stale/truncated/disallowed input abstains).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["snapshot_digest", "input_record_ids", "input_status"],
+      "properties": {
+        "snapshot_digest": {"$ref": "common.schema.json#/$defs/sha256"},
+        "input_record_ids": {"type": "array", "maxItems": 500, "items": {"$ref": "common.schema.json#/$defs/short_text"}},
+        "input_status": {"enum": ["complete", "oversized", "stale", "truncated", "disallowed"]}
+      }
+    },
+    "provider_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "raw_response_digest", "raw_response_artifact", "answer"],
+      "properties": {
+        "status": {"enum": ["answered", "abstained", "rejected_input", "error", "timeout"]},
+        "raw_response_digest": {
+          "description": "Digest of the exact bytes returned, retained outside the interpretation path for the replay audit. Null only when no response bytes exist (error/timeout/rejected_input).",
+          "oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/sha256"}]
+        },
+        "raw_response_artifact": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/artifact_ref"}]},
+        "answer": {
+          "type": ["object", "null"],
+          "required": ["primitive"],
+          "properties": {"primitive": {"enum": ["noul", "choice", "score", "label"]}},
+          "allOf": [
+            {"if": {"type": "object", "properties": {"primitive": {"const": "noul"}}}, "then": {"$ref": "#/$defs/noul_answer"}},
+            {"if": {"type": "object", "properties": {"primitive": {"const": "choice"}}}, "then": {"$ref": "#/$defs/choice_answer"}},
+            {"if": {"type": "object", "properties": {"primitive": {"const": "score"}}}, "then": {"$ref": "#/$defs/score_answer"}},
+            {"if": {"type": "object", "properties": {"primitive": {"const": "label"}}}, "then": {"$ref": "#/$defs/label_answer"}}
+          ]
+        }
+      },
+      "allOf": [
+        {"if": {"properties": {"status": {"const": "answered"}}}, "then": {"properties": {"answer": {"type": "object"}, "raw_response_digest": {"type": "string"}, "raw_response_artifact": {"type": "object"}}}},
+        {"if": {"properties": {"status": {"enum": ["abstained", "rejected_input", "error", "timeout"]}}}, "then": {"properties": {"answer": {"type": "null"}}}},
+        {"if": {"properties": {"status": {"const": "abstained"}}}, "then": {"properties": {"raw_response_digest": {"type": "string"}}}}
+      ]
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy_id", "version"],
+      "properties": {
+        "policy_id": {"$ref": "common.schema.json#/$defs/local_id"},
+        "version": {"$ref": "common.schema.json#/$defs/revision"}
+      }
+    },
+    "authorization": {
+      "description": "Derived by the router from qualification records for this exact spec at decision time — per provider and per class, never inherited across providers (flow §2).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authority_level", "qualification_ref"],
+      "properties": {
+        "authority_level": {"$ref": "common.schema.json#/$defs/authority_level"},
+        "qualification_ref": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/short_text"}]}
+      },
+      "if": {"properties": {"qualification_ref": {"type": "null"}}},
+      "then": {"properties": {"authority_level": {"enum": ["shadow", "advisory"]}}}
+    },
+    "action": {
+      "description": "The router policy's action (flow §3 step 3), plus shadow_log_only for shadow classes.",
+      "enum": ["commit_reversible_action", "attach_proposal", "escalate", "abstain_hold", "shadow_log_only"]
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit_operation_id", "proposal_ref", "hold_id"],
+      "properties": {
+        "commit_operation_id": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/operation_id"}]},
+        "proposal_ref": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/short_text"}]},
+        "hold_id": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/hold_id"}]}
+      }
+    },
+    "blind_sample": {
+      "description": "A recorded random subset hides the recommendation until the operator's initial disposition is captured; blind labels are stored separately from advised feedback (flow §2; adjudication (a)K-A4).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selected", "initial_disposition_ref"],
+      "properties": {
+        "selected": {"type": "boolean"},
+        "initial_disposition_ref": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/short_text"}]}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "description": "The fallback never mimics Jev: its only answer shape is a label.",
+      "if": {"properties": {"provider": {"const": "llm_fallback"}}},
+      "then": {"properties": {"provider_response": {"properties": {"answer": {"properties": {"primitive": {"const": "label"}}}}}}}
+    },
+    {
+      "if": {"properties": {"provider": {"const": "jev"}}},
+      "then": {"properties": {"provider_response": {"properties": {"answer": {"properties": {"primitive": {"enum": ["noul", "choice", "score"]}}}}}}}
+    },
+    {
+      "description": "Bad input is never answered.",
+      "if": {"properties": {"input_manifest": {"properties": {"input_status": {"enum": ["oversized", "stale", "truncated", "disallowed"]}}}}},
+      "then": {"properties": {"provider_response": {"properties": {"status": {"const": "rejected_input"}}}}}
+    },
+    {
+      "description": "Only qualified authority may commit an action.",
+      "if": {"properties": {"action": {"const": "commit_reversible_action"}}},
+      "then": {"properties": {"authorization": {"properties": {"authority_level": {"const": "qualified"}}}, "outcome": {"properties": {"commit_operation_id": {"type": "string"}}}}}
+    },
+    {
+      "description": "Shadow decisions have no effect.",
+      "if": {"properties": {"authorization": {"properties": {"authority_level": {"const": "shadow"}}}}},
+      "then": {"properties": {"action": {"const": "shadow_log_only"}}}
+    },
+    {
+      "description": "Without an answer there is nothing to act on or propose; the decision routes up or holds.",
+      "if": {"properties": {"provider_response": {"properties": {"status": {"enum": ["abstained", "rejected_input", "error", "timeout"]}}}}},
+      "then": {"properties": {"action": {"enum": ["escalate", "abstain_hold", "shadow_log_only"]}}}
+    },
+    {
+      "if": {"properties": {"action": {"const": "abstain_hold"}}},
+      "then": {"properties": {"outcome": {"properties": {"hold_id": {"type": "string"}}}}}
+    }
+  ],
+  "$defs": {
+    "noul_answer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primitive", "probability"],
+      "properties": {
+        "primitive": {"const": "noul"},
+        "probability": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "distribution": {
+      "type": "object",
+      "minProperties": 2,
+      "propertyNames": {"$ref": "common.schema.json#/$defs/local_id"},
+      "additionalProperties": {"type": "number", "minimum": 0, "maximum": 1}
+    },
+    "choice_answer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primitive", "selected_option_id", "distribution", "confidence"],
+      "properties": {
+        "primitive": {"const": "choice"},
+        "selected_option_id": {"$ref": "common.schema.json#/$defs/local_id"},
+        "distribution": {"$ref": "#/$defs/distribution"},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "score_answer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primitive", "value", "distribution", "confidence"],
+      "properties": {
+        "primitive": {"const": "score"},
+        "value": {"type": "number"},
+        "distribution": {"$ref": "#/$defs/distribution"},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "label_answer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primitive", "selected_option_id", "evidence_refs"],
+      "properties": {
+        "primitive": {"const": "label"},
+        "selected_option_id": {"$ref": "common.schema.json#/$defs/local_id"},
+        "evidence_refs": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"$ref": "common.schema.json#/$defs/short_text"}}
+      }
+    }
+  }
+}

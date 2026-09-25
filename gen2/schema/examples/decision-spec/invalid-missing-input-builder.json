@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "decision-spec.schema.json",
+    "expect": "invalid",
+    "tests": "D-1: the input-builder version is part of the spec",
+    "base": "valid-jev-screening-choice.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/input_builder"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": ""
+      }
+    ]
+  }
+}

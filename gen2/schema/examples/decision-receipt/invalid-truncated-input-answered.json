@@ -1,0 +1,44 @@
+{
+  "fixture": {
+    "schema": "decision-receipt.schema.json",
+    "expect": "invalid",
+    "tests": "D-6: truncated input cannot be answered",
+    "base": "valid-truncated-input-abstains.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/provider_response",
+        "value": {
+          "status": "answered",
+          "raw_response_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "raw_response_artifact": {
+            "content_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "size_bytes": 812,
+            "media_type": "application/json"
+          },
+          "answer": {
+            "primitive": "choice",
+            "selected_option_id": "include",
+            "distribution": {
+              "include": 0.81,
+              "exclude": 0.07,
+              "borderline": 0.12
+            },
+            "confidence": 0.74
+          }
+        }
+      },
+      {
+        "op": "replace",
+        "path": "/action",
+        "value": "escalate"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "const",
+        "path": "/provider_response/status"
+      }
+    ]
+  }
+}
