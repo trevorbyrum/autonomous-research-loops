@@ -869,6 +869,9 @@ SECOND_LAYER = {
     "verification_receipts CHECK (verdict != 'supports' OR exact_quote.status IN ('matched', 'not_applicable'))":
         "a mismatched quote is always quarantined (quote_checks CHECK, A6-D32-byte-mismatch) and a matched/mismatched status needs a bound check "
         "(A6-quote-check-iff-status), so verification_receipts_bindings refuses support on it first (A6-quote-binding-*)",
+    "invocations CHECK: the unknown_episode >= 1 conjunct of the outcome_unknown shape (RA4)":
+        "an invocation is inserted admitted with unknown_episode 0 (column CHECK >= 0), and every entry into outcome_unknown takes "
+        "exactly the previous number + 1 (invocations_unknown_episode_is_fresh, RA4-entry-takes-next-identity), so the conjunct cannot fail on its own",
     "facets/obligations_rating_is_what_the_operator_rated: the d.kind = 'rating_approval' conjunct (RA2)":
         "only a rating decision carries a payload (operator_decisions CHECK, RA2-payload-only-on-rating-decisions) and a decision without one joins "
         "no payload row, so a decision of another kind is refused before the kind conjunct is read",
