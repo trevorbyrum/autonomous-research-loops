@@ -327,3 +327,19 @@ Further defects the sources record (all *per DR* unless marked):
 ## 12. What migration must preserve
 
 Import preserves contract and citation identity, operator decisions and holds, queue priority, accepted ordinals, handled triggers, outstanding review episodes, consumed budgets, capability blockers, artifacts, publication state, and available usage history. Unavailable or pruned history is imported as unknown, never as zero (RG-U, E-8). Host PIDs are never adopted across the cutover (L-3). After new writes, rollback means reconciliation or repair-forward, not restoring a stale database over new operator decisions. *Source:* DR §10 (Phase 4 and migration paragraph). The dry-run importer (task 0b) is the first code bound by this section.
+
+---
+
+## 13. Deferred-item phasing (Astra ruling R3)
+
+Added by task 0a-repair so that the scope of 0b / 1 / 2 / 3 is unambiguous. "Phase 0" means before the Phase 1 operator-gate; items marked 0b are named by the ruling itself.
+
+| Item | Phase 0 | Phase 1 | Phase 2 | Phase 3 |
+|---|---|---|---|---|
+| Durable intake briefs + confirmation history (G-4) | **0b:** minimal versioned rows + import mapping; owner, deadline, awaiting-confirmation, explicit cancellation; bound to the pre-contract admission context (C-12, done in 0a-repair) | fake-executor lifecycle; confirmation/amendment fencing | real intake conversation and scoping workflow | — |
+| Surveillance feed liveness (P-6) | record shape and unknown-import treatment specified (reader vocabulary `feed_issues` done in 0a-repair) | — | implemented before the first completed topic is claimed current: due time, last success, cursor/coverage, successful-empty vs failed/never-ran, owner, mandatory routing | hardening/extension only — never the first point dead feeds become visible |
+| Question registry (D-1, D-4) | freeze IDs/content/version/hash format and persistence contract | loading, pinning, restart retention with fake/disabled providers | — | live question content, shadow/advisory calls; no live call before an immutable retrievable question and input-builder version |
+| Qualification / evaluation / blind-label registry (D-4, D-5, D-9) | specify exact binding, revocation, and "no qualification ⇒ no automated authority" | fake qualification/revocation records exercise the authority fences | runs with the decision layer disabled | immutable evaluations, population provenance, blind exposure history, full qualification-change audit — before any promotion |
+
+Other deferrals stay accountable: config/admission pins and reservations → Phase 1; branch/contradiction/evidence views and trustworthy denominators → before Phase 2 stopping; fuller projection/automation (full-snapshot vs delta publication, sink-side fencing) → Phase 3; reconciled import and single-writer canary → Phase 4. No deferred registry may be replaced by treating an arbitrary non-null string as authorization.
+
