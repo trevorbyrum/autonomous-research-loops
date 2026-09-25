@@ -29,6 +29,8 @@
 - Outbox events and per-sink delivery receipts → `outbox_events`, `sink_delivery_receipts`, `sink_generations` (the per-sink high-water mark)
 - Holds → `holds`
 
+**Added in 0b:** `intake_briefs` holds the durable, versioned Intake Brief rows (flow S1; INVARIANTS G-4, §13). The document is `intake-brief.schema.json`. Owner, review deadline, status, overdue marking, confirmation and cancellation belong to the row's lifecycle and are not document fields.
+
 **Supporting tables not named in the brief:**
 - `artifacts`, `dossiers`, `decision_specs`, `audit_events` exist because listed tables reference them. Completion approvals bind to a dossier revision; decision receipts bind to an immutable spec; step 4 of `commit_outcome` records an audit event; content is referenced by hash.
 - `capability_facts` is a **deviation proposal**. Flow §4.2 and BOUNDARIES.md *Gateway* make dated capability facts first-class. Capability holds and failed secrets reads (`search_observations.error_class = 'secrets_backend_failing'`) reference one. Remove it, and those two checks, if the proposal is rejected.
@@ -94,6 +96,17 @@
   - retirement names an approved retirement decision made at the state revision being left (so it cannot be reused)
   - the authorizing-decision pointer moves only with the status transition it authorizes: a completed or retired topic keeps the decision it used — no swap (even to another valid approval) or clearing without a status change, and a revision bump alone is not one (RA1)
 - **One record, one representation** (A10, RA6): wherever a stored JSON document duplicates identity or version fields of its row, each is bound to its twin — commit receipts (every identity/version field; the admission references, joined to the pinned contract hash and brief), decision receipts (every field, and the spec id its hash selects), verification receipts, manifests, DecisionSpecs, contract documents (topic, revision, parent, created_at, hash, protocol revision, framing version) and facet/obligation rows (every duplicated field of their entry). The schema-valid example documents under `gen2/schema/examples/` are stored whole as integration controls (`gen2/tests/test_store_examples.py`).
+- **Intake briefs** (G-4, C-12, G-13; 0b):
+  - rows are versioned (`parent_version` strictly earlier), and their content, lineage, owner and deadline are immutable (a change is a new version)
+  - every version is written `awaiting_confirmation`
+  - it moves to `confirmed` only by naming an approved `brief_confirmation` about exactly that topic, brief id, version and hash; the pointer is recorded only by that transition and never changes
+  - `cancelled` (from awaiting) and `archived` (from confirmed) record who, when and why
+  - `superseded` needs a later version of the same brief
+  - terminal versions never change; one confirmed version per topic
+  - `overdue_since` is marked once, only on a version awaiting confirmation, and never together with a status change (expiry marks, it never advances)
+  - a `brief_confirmation` can be recorded only about a stored brief
+  - pre-contract admission pins the topic's currently confirmed version and the decision that confirmed it
+  - a topic leaves `awaiting_brief_confirmation` for `scoping` only with a confirmed brief (G-4, structurally)
 - **Holds** (H-3): owner, deadline and clearing condition are required; capability holds cite a fact; holds are created open; operator-authority holds clear only through an approved `hold_clearance` about that hold; clearing is final.
 - **Publication** (P-1, P-2, P-5): the outbox approval is an approved `publication_approval` of the exact source revision and hash; the manifest JSON's source, approval, kind, sinks and supersession equal its columns; generations strictly increase per topic; manifests are immutable; delivery receipts only for expected sinks; a sink's delivered generation never decreases.
 
@@ -120,14 +133,17 @@
 
 Each deferral names its phase, per Astra's ruling R3 (INVARIANTS §13 is the normative list). "Phase 0" items not done in 0a/0a-repair remain Phase 0 work, scheduled by the orchestrator before Phase 1 starts. No deferred registry may be stood in for by treating an arbitrary non-null string as authorization.
 
-- **Intake briefs and confirmation history.** *Phase 0 (0b):* minimal versioned brief rows and their import mapping — owner, deadline, `awaiting_confirmation`, explicit cancellation — bound to the pre-contract admission context 0a-repair added (an invocation already pins brief id/version/hash and the operator's `brief_confirmation`; 0b makes the brief itself a durable row). *Phase 1:* fake-executor lifecycle, confirmation/amendment fencing. *Phase 2:* the real intake conversation and scoping workflow. Durability is not deferred past workflow construction.
+- **Intake briefs and confirmation history.** *Phase 0 (0b, done):* `intake_briefs`, whose rules are listed above, is bound to the pre-contract admission context and to the queue's first transition. The import mapping is in the dry-run importer. *Still open, by phase:*
+  - *Phase 1:* the fake-executor lifecycle, and confirmation/amendment fencing of in-flight work: what happens to admitted pre-contract work when its brief re-versions. New work already needs the current confirmed version.
+  - *Phase 1:* owner reassignment and deadline extension. A version's owner and deadline are immutable in 0b, so today either change means a new version.
+  - *Phase 2:* the real intake conversation and scoping workflow.
 - **Surveillance feed liveness.** *Phase 0:* specify the persisted liveness record shape and how unknown history imports (0a-repair fixed the reader-facing vocabulary: `feed_issues` reasons). *Phase 2*, before the first completed topic is claimed current: due time, last successful observation, cursor/coverage, successful-empty vs failed/never-ran, owner, mandatory signal routing. *Phase 3* may only harden and extend it — it cannot be the first point at which dead feeds become visible.
 - **Question registry.** *Phase 0:* freeze question IDs/content/version/hash format and the persistence contract (a DecisionSpec already pins `question_id`/`version`/`content_hash`). *Phase 1:* loading, pinning and restart retention with fake/disabled providers. *Phase 3:* live question content, shadow/advisory calls only. No live call precedes an immutable, retrievable question and input-builder version.
 - **Qualification / evaluation / blind-label registry.** *Phase 0:* specify the exact binding (provider × class × DecisionSpec), revocation, and "no qualification ⇒ no automated authority" (the DDL today: no `qualification_ref` ⇒ shadow/advisory; a non-null ref is *not* proof of qualification). *Phase 1:* fake qualification/revocation records exercise the authority fences. *Phase 3:* immutable evaluations, population provenance, blind-exposure history and a complete qualification-change audit, before any promotion. Phase 2 runs with the decision layer disabled. Blind initial dispositions and advised feedback are separate `operator_decisions` kinds until the blind-label store exists.
 - **Config/admission pins and reservations.** Admission pins exist (0a-repair); the config-bundle registry, protected-exploration and auto-promotion budget reservations, and signal-queue budget/cooldown are *Phase 1*.
 - **Research-state views** (branch registry, contradiction ledger, claim graph, synthesis views — methodology §5) and **trustworthy denominators** (retrieved-count vs captured-inventory reconciliation, above): *before Phase 2 stopping* evaluates anything.
 - **Projection and automation:** publication full-snapshot vs delta semantics (a later manifest may currently omit supersession), sink-side generation fencing, served/projected-generation consistency in the freshness envelope, qualified automation — *Phase 3*.
-- **Import provenance columns and the import path for historical rows** — *Phase 0 (0b)* dry-run importer; reconciled import and single-writer canary — *Phase 4*. The admitted-only invocation insert, intake-only topic creation, draft-only contract creation and open-only hold creation mean the importer needs its own explicit, audited path.
+- **Import provenance columns and the import path for historical rows** — *Phase 0 (0b)* dry-run importer; reconciled import and single-writer canary — *Phase 4*. The admitted-only invocation insert, intake-only topic creation, awaiting-only brief creation, draft-only contract creation and open-only hold creation mean the importer needs its own explicit, audited path (the 0b dry-run importer reports that mapping; it writes nothing).
 - **Retention and pruning policy.** No row can be deleted through any write path today (every table has a delete guard, and REPLACE is aborted by it on a contract-conforming connection). A future retention policy is a separate, audited operation — not an ordinary write path — and must preserve receipts, trigger tombstones and sink watermarks (design review §5; INVARIANTS C-11).
 - **Operational schema concerns:** query indexes beyond uniqueness, and a migration mechanism beyond `PRAGMA user_version`.
 - **Out of scope for this store:** the gateway's budget/cache database stays the gateway's; transcripts stay in the spool, not SQL rows.
@@ -152,7 +168,7 @@ Each vocabulary below is a draft: it may change only by amendment (a README/INVA
 
 | From | To | Owner / condition |
 |---|---|---|
-| awaiting_brief_confirmation | scoping | operator `brief_confirmation` (G-4) |
+| awaiting_brief_confirmation | scoping | a confirmed intake brief of the topic (G-4; DDL `queue_scoping_needs_confirmed_brief`, 0b) |
 | scoping | awaiting_scope_approval | router, on the committed scoping report |
 | awaiting_scope_approval | awaiting_contract_approval / scoping | operator `scope_approval` / rework |
 | awaiting_contract_approval | queued / scoping | operator contract approval / rework |

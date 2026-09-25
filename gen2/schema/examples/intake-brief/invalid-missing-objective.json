@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "intake-brief.schema.json",
+    "expect": "invalid",
+    "tests": "flow S1: the objective in the operator's words is required",
+    "base": "valid-brief-v1.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/objective_in_operator_words"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": ""
+      }
+    ]
+  }
+}

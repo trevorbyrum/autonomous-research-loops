@@ -1693,6 +1693,7 @@ class ContractGovernanceTest(StoreTestCase):
         with self.assertRaises(sqlite3.IntegrityError):
             self.x(retire, None, TOPIC)  # no decision named at all
         self.decision("opd_stale000", "retirement", rev=self.state_revision())
+        self.confirm_brief(TOPIC)
         self.set_status(TOPIC, "scoping")  # a commit after the decision makes it stale
         now = self.state_revision()
         self.rejects(refused, retire, "opd_stale000", TOPIC)
@@ -1726,6 +1727,7 @@ class ContractGovernanceTest(StoreTestCase):
         self.x(ins, "awaiting_brief_confirmation", None, 0, T, T)
 
     def test_status_change_is_a_commit(self) -> None:
+        self.confirm_brief(TOPIC)  # leaving intake needs a confirmed brief (G-4); here only the revision rule may refuse
         self.rejects("advances state_revision by one", "UPDATE queue_entries SET status = 'scoping' WHERE topic_id = ?", TOPIC)
         self.set_status(TOPIC, "scoping")
         self.assertEqual(self.state_revision(), 1)
@@ -1753,20 +1755,62 @@ class AdmissionAndLeaseTest(StoreTestCase):
         self.assertEqual(self.rows("SELECT admission_context, contract_revision, brief_hash FROM operation_receipts"), [("pre-contract/1", None, h("b"))])
 
     def test_pre_contract_admission_needs_the_confirmed_brief(self) -> None:
-        brief, version, bhash, _ = self.confirm_brief(TOPIC)  # a valid confirmation exists throughout (naming)
+        """C-12 / G-4 with durable briefs (0b): pre-contract pins name the
+        topic's confirmed brief version (id, version, hash) and the decision
+        that confirmed it. Near-misses, one dimension each, are refused: a
+        rejected confirmation of the same version, a second approved
+        confirmation that is not the one recorded, a decision of another kind,
+        another hash, this version's hash under another version number or
+        brief id, a version that was stored and has an approved
+        confirmation but was never confirmed, and another topic's confirmed
+        brief. Decisions about briefs that are not stored cannot even be
+        recorded (G-13 subject existence). The exact pins are accepted."""
+        brief, version, bhash, did = self.confirm_brief(TOPIC)
         self.lease("lease_dddddddd", 1, scope="discovery")
+        for case, kw in (("another brief id", dict(ref="brief-2", rev=version, hsh=bhash)), ("an unstored version", dict(ref=brief, rev=2, hsh=bhash)),
+                         ("another hash", dict(ref=brief, rev=version, hsh=h("9"))), ("another topic", dict(tid=OTHER, ref=brief, rev=version, hsh=bhash))):
+            with self.subTest(unrecordable=case):
+                self.rejects("must name an existing subject", "INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_revision, subject_hash, operator_id, decided_at) "
+                             "VALUES ('opd_nosubject', ?, 'brief_confirmation', 'approved', 'intake_brief', ?, ?, ?, 'trevor', ?)", kw.get("tid", TOPIC), kw["ref"], kw["rev"], kw["hsh"], T)
         self.decision("opd_rejected", "brief_confirmation", disposition="rejected", ref=brief, rev=version, hsh=bhash)
-        self.decision("opd_otherbrf", "brief_confirmation", ref="brief-2", rev=version, hsh=bhash)
-        self.decision("opd_otherver", "brief_confirmation", ref=brief, rev=2, hsh=bhash)
-        self.decision("opd_otherhsh", "brief_confirmation", ref=brief, rev=version, hsh=h("9"))
-        self.decision("opd_othertop", "brief_confirmation", tid=OTHER, ref=brief, rev=version, hsh=bhash)
+        self.decision("opd_second00", "brief_confirmation", ref=brief, rev=version, hsh=bhash)
         self.decision("opd_wrongknd", "scope_approval", ref=brief, rev=version, hsh=bhash)
-        pins = dict(kind="discovery", lease_id="lease_dddddddd", admission_context="pre-contract/1", contract_revision=None,
-                    brief_ref=brief, brief_version=version, brief_hash=bhash)
-        for did in ("opd_rejected", "opd_otherbrf", "opd_otherver", "opd_otherhsh", "opd_othertop", "opd_wrongknd"):
-            with self.subTest(decision=did):
-                self.rejects("pre-contract work needs a confirmed brief", *self.raw_invocation(invocation_id="inv_scope001", brief_confirmation_decision_id=did, **pins))
-        self.x(*self.raw_invocation(invocation_id="inv_scope001", brief_confirmation_decision_id=self.confirm_brief(TOPIC)[3], **pins))
+        v2 = self.brief(TOPIC, brief, 2, parent=1)
+        self.decision("opd_v2unconf", "brief_confirmation", ref=brief, rev=2, hsh=v2)
+        other = self.confirm_brief(OTHER, "brief-o", 1)
+        pins = dict(kind="discovery", lease_id="lease_dddddddd", admission_context="pre-contract/1", contract_revision=None)
+        exact = dict(brief_ref=brief, brief_version=version, brief_hash=bhash, brief_confirmation_decision_id=did)
+        stored = self.snapshot("invocations")
+        for case, over in (("a rejected confirmation", dict(brief_confirmation_decision_id="opd_rejected")),
+                           ("an approved confirmation that is not the recorded one", dict(brief_confirmation_decision_id="opd_second00")),
+                           ("a decision of another kind", dict(brief_confirmation_decision_id="opd_wrongknd")),
+                           ("another hash", dict(brief_hash=h("9"))),
+                           ("another version number with this version's hash", dict(brief_version=2)),
+                           ("another brief id with this version's hash", dict(brief_ref="brief-9")),
+                           ("a stored, never-confirmed version", dict(brief_version=2, brief_hash=v2, brief_confirmation_decision_id="opd_v2unconf")),
+                           ("another topic's confirmed brief", dict(zip(("brief_ref", "brief_version", "brief_hash", "brief_confirmation_decision_id"), other)))):
+            with self.subTest(pins=case):
+                self.rejects("pre-contract work needs a confirmed brief", *self.raw_invocation(invocation_id="inv_scope001", **pins, **dict(exact, **over)))
+        self.assertEqual(self.snapshot("invocations"), stored)
+        self.x(*self.raw_invocation(invocation_id="inv_scope001", **pins, **exact))
+
+    def test_pre_contract_admission_pins_the_current_confirmed_version(self) -> None:
+        """Once the brief re-versions and the new version is confirmed, the
+        superseded version admits no new work (as a superseded contract
+        admits no new contract/1 work); work already admitted keeps its pins."""
+        brief, version, bhash, did = self.confirm_brief(TOPIC)
+        self.lease("lease_dddddddd", 1, scope="discovery")
+        self.lease("lease_eeeeeeee", 2, scope="research")
+        old_pins = dict(admission_context="pre-contract/1", contract_revision=None, brief_ref=brief, brief_version=1, brief_hash=bhash, brief_confirmation_decision_id=did)
+        self.x(*self.raw_invocation(invocation_id="inv_scope001", kind="discovery", lease_id="lease_dddddddd", **old_pins))
+        v2 = self.brief(TOPIC, brief, 2, parent=1)
+        self.decision("opd_confirm2", "brief_confirmation", ref=brief, rev=2, hsh=v2)
+        self.x("UPDATE intake_briefs SET status = 'superseded' WHERE topic_id = ? AND brief_id = ? AND version = 1", TOPIC, brief)
+        self.x("UPDATE intake_briefs SET status = 'confirmed', confirmed_by_decision_id = 'opd_confirm2' WHERE topic_id = ? AND brief_id = ? AND version = 2", TOPIC, brief)
+        self.rejects("pre-contract work needs a confirmed brief", *self.raw_invocation(invocation_id="inv_scope002", kind="research_pass", lease_id="lease_eeeeeeee", **old_pins))
+        self.x(*self.raw_invocation(invocation_id="inv_scope002", kind="research_pass", lease_id="lease_eeeeeeee",
+                                    **dict(old_pins, brief_version=2, brief_hash=v2, brief_confirmation_decision_id="opd_confirm2")))
+        self.assertEqual(self.rows("SELECT invocation_id, brief_version FROM invocations ORDER BY invocation_id"), [("inv_scope001", 1), ("inv_scope002", 2)])
 
     def test_pre_contract_admission_closes_once_a_contract_is_approved(self) -> None:
         self.approve_contract(TOPIC, 1)
@@ -2090,11 +2134,13 @@ class DraftVocabularyTransitionTest(StoreTestCase):
                   "rejected": ("rejected",), "superseded": ("superseded",)}
 
     def fresh_topic(self, n: int) -> str:
-        """A new topic whose revision-1 contract is approved and active, with a
-        current dossier and a valid completion approval of it, so completion
-        and retirement attempts are decided by the transition rule alone."""
+        """A new topic with a confirmed intake brief, whose revision-1 contract
+        is approved and active, with a current dossier and a valid completion
+        approval of it, so leaving intake, completion and retirement attempts
+        are decided by the transition rule alone."""
         tid = f"fleet-a:m{n:04d}"
         self.x("INSERT INTO queue_entries (topic_id, fleet_id, priority, status, created_at, updated_at) VALUES (?, 'fleet-a', 1, 'awaiting_brief_confirmation', ?, ?)", tid, T, T)
+        self.confirm_brief(tid)
         self.contract(tid, 1, content_hash="sha256:" + f"{n:060x}c0c0")
         self.approve_contract(tid, 1, did=f"opd_ca{n:06d}")
         self.x("UPDATE queue_entries SET active_contract_revision = 1 WHERE topic_id = ?", tid)

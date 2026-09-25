@@ -189,6 +189,157 @@ BEGIN
   SELECT RAISE(ABORT, 'the authorizing decision changes only with the status transition it authorizes (G-13, RA1)');
 END;
 
+-- trace: flow S1 (Intake Brief v1; the operator confirms it — an explicit,
+-- versioned act; "unconfirmed briefs cannot advance — structural"; a draft
+-- brief is a durable intake item with an operator owner, awaiting_confirmation
+-- state, creation time and review deadline; expiry marks it overdue, never
+-- advances it; cancellation/archival is an explicit act), §6.1 (an edited
+-- brief re-versions); adjudication (a)G-A8; BOUNDARIES.md Operator (owners
+-- and deadlines; status that answers why a waiting item waits); schema
+-- intake-brief.schema.json; INVARIANTS G-4, C-12, G-13, §13 (the 0b row).
+-- One row per brief version (task 0b: minimal versioned rows). Content
+-- (document, hash, lineage, owner, deadline) is immutable; a change is a new
+-- version. A version is written awaiting confirmation and moves:
+--   awaiting_confirmation -> confirmed   naming an approved brief_confirmation
+--                                        decision about exactly this topic,
+--                                        brief id, version and hash (G-13);
+--                                        the decision pointer is recorded only
+--                                        by this transition and never changes
+--   awaiting_confirmation -> cancelled   explicit: closed_by/at/reason
+--   awaiting_confirmation | confirmed -> superseded   only once a later
+--                                        version of the same brief exists
+--   confirmed -> archived                explicit: closed_by/at/reason
+-- cancelled, superseded and archived are terminal (no further change).
+-- One confirmed brief version per topic. overdue_since is set once, only on a
+-- version awaiting confirmation and never together with a status change:
+-- expiry marks, it does not advance. Whether the deadline has passed is the
+-- router's comparison (timestamps are router-validated text here; the text
+-- order of RFC 3339 instants with fractions is not their time order).
+-- Pre-contract admission (invocations_admission_context) and the queue's
+-- first step (queue_scoping_needs_confirmed_brief) read these rows.
+CREATE TABLE intake_briefs (
+  topic_id TEXT NOT NULL REFERENCES queue_entries (topic_id),
+  brief_id TEXT NOT NULL CHECK (length(brief_id) BETWEEN 1 AND 64 AND brief_id GLOB '[A-Za-z]*' AND brief_id NOT GLOB '*[^A-Za-z0-9._-]*'),
+  version INTEGER NOT NULL CHECK (version >= 1),
+  parent_version INTEGER,
+  content_hash TEXT NOT NULL UNIQUE CHECK (content_hash GLOB 'sha256:*' AND length(content_hash) = 71),
+  document TEXT NOT NULL CHECK (json_valid(document)),
+  owner_operator_id TEXT NOT NULL CHECK (length(owner_operator_id) > 0),
+  status TEXT NOT NULL CHECK (status IN ('awaiting_confirmation', 'confirmed', 'superseded', 'cancelled', 'archived')),
+  created_at TEXT NOT NULL,
+  review_deadline TEXT NOT NULL,
+  overdue_since TEXT,
+  confirmed_by_decision_id TEXT REFERENCES operator_decisions (decision_id),
+  closed_by TEXT,
+  closed_at TEXT,
+  close_reason TEXT,
+  PRIMARY KEY (topic_id, brief_id, version),
+  FOREIGN KEY (topic_id, brief_id, parent_version) REFERENCES intake_briefs (topic_id, brief_id, version),
+  CONSTRAINT intake_brief_parent_is_earlier CHECK (parent_version IS NULL OR parent_version < version),
+  CHECK (status NOT IN ('confirmed', 'archived') OR confirmed_by_decision_id IS NOT NULL),
+  CHECK (status NOT IN ('awaiting_confirmation', 'cancelled') OR confirmed_by_decision_id IS NULL),
+  CHECK ((closed_by IS NULL) = (closed_at IS NULL) AND (closed_at IS NULL) = (close_reason IS NULL)),
+  CHECK ((status IN ('cancelled', 'archived')) = (closed_at IS NOT NULL)),
+  CHECK (json_extract(document, '$.topic_id') IS topic_id
+     AND json_extract(document, '$.brief_id') IS brief_id
+     AND json_extract(document, '$.version') IS version
+     AND json_extract(document, '$.parent_version') IS parent_version
+     AND json_extract(document, '$.created_at') IS created_at
+     AND json_extract(document, '$.content_hash') IS content_hash)
+) STRICT;
+
+CREATE UNIQUE INDEX intake_briefs_one_confirmed_per_topic
+  ON intake_briefs (topic_id) WHERE status = 'confirmed';
+
+CREATE TRIGGER intake_briefs_created_awaiting
+BEFORE INSERT ON intake_briefs
+WHEN NEW.status IS NOT 'awaiting_confirmation' OR NEW.confirmed_by_decision_id IS NOT NULL
+  OR NEW.overdue_since IS NOT NULL OR NEW.closed_at IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'an intake brief version is written awaiting confirmation, not overdue and not closed (G-4; G-13: no decided insertion)');
+END;
+
+CREATE TRIGGER intake_briefs_status_transitions
+BEFORE UPDATE OF status ON intake_briefs
+WHEN NEW.status IS NOT OLD.status AND NOT (
+     (OLD.status = 'awaiting_confirmation' AND NEW.status IN ('confirmed', 'cancelled', 'superseded'))
+  OR (OLD.status = 'confirmed' AND NEW.status IN ('superseded', 'archived')))
+BEGIN
+  SELECT RAISE(ABORT, 'intake brief status moves awaiting_confirmation -> confirmed | cancelled | superseded, confirmed -> superseded | archived only (G-4)');
+END;
+
+CREATE TRIGGER intake_briefs_confirmation_bound
+BEFORE UPDATE OF status ON intake_briefs
+WHEN NEW.status = 'confirmed' AND OLD.status IS NOT 'confirmed' AND NOT EXISTS (
+  SELECT 1 FROM operator_decisions d
+  WHERE d.decision_id = NEW.confirmed_by_decision_id
+    AND d.kind = 'brief_confirmation' AND d.disposition = 'approved'
+    AND d.topic_id = NEW.topic_id
+    AND d.subject_ref = NEW.brief_id AND d.subject_revision = NEW.version AND d.subject_hash = NEW.content_hash)
+BEGIN
+  SELECT RAISE(ABORT, 'confirming a brief needs an approved brief_confirmation decision about this exact topic, brief, version and hash (G-4, G-13)');
+END;
+
+-- The confirmation pointer is evidence the version passed the gate above: it
+-- is first recorded only by awaiting_confirmation -> confirmed, and never
+-- changes after (the contract approval pointer's rule, RA3-R). A version
+-- awaiting confirmation holds no pointer (CHECK), so "changes only on that
+-- transition" is both rules at once.
+CREATE TRIGGER intake_briefs_confirmation_pointer_set_by_confirmation
+BEFORE UPDATE OF confirmed_by_decision_id ON intake_briefs
+WHEN NEW.confirmed_by_decision_id IS NOT OLD.confirmed_by_decision_id
+  AND (OLD.status IS NOT 'awaiting_confirmation' OR NEW.status IS NOT 'confirmed')
+BEGIN
+  SELECT RAISE(ABORT, 'the confirming decision is recorded only by the awaiting_confirmation -> confirmed transition, and never changes (G-13)');
+END;
+
+CREATE TRIGGER intake_briefs_superseded_by_a_later_version
+BEFORE UPDATE OF status ON intake_briefs
+WHEN NEW.status = 'superseded' AND OLD.status IS NOT 'superseded' AND NOT EXISTS (
+  SELECT 1 FROM intake_briefs n WHERE n.topic_id = NEW.topic_id AND n.brief_id = NEW.brief_id AND n.version > NEW.version)
+BEGIN
+  SELECT RAISE(ABORT, 'a brief version is superseded only by a later version of the same brief (flow §6.1)');
+END;
+
+CREATE TRIGGER intake_briefs_overdue_marks_only
+BEFORE UPDATE OF overdue_since ON intake_briefs
+WHEN NEW.overdue_since IS NOT OLD.overdue_since
+  AND (OLD.overdue_since IS NOT NULL OR OLD.status IS NOT 'awaiting_confirmation' OR NEW.status IS NOT OLD.status)
+BEGIN
+  SELECT RAISE(ABORT, 'overdue is marked once, on a brief awaiting confirmation, and never advances it (G-4: expiry marks, it does not advance)');
+END;
+
+CREATE TRIGGER intake_briefs_content_immutable
+BEFORE UPDATE ON intake_briefs
+WHEN NEW.topic_id IS NOT OLD.topic_id OR NEW.brief_id IS NOT OLD.brief_id OR NEW.version IS NOT OLD.version
+  OR NEW.parent_version IS NOT OLD.parent_version OR NEW.content_hash IS NOT OLD.content_hash OR NEW.document IS NOT OLD.document
+  OR NEW.owner_operator_id IS NOT OLD.owner_operator_id OR NEW.created_at IS NOT OLD.created_at OR NEW.review_deadline IS NOT OLD.review_deadline
+BEGIN
+  SELECT RAISE(ABORT, 'a brief version''s content, lineage, owner and deadline are immutable; a change is a new version (flow §6.1)');
+END;
+
+CREATE TRIGGER intake_briefs_terminal_immutable
+BEFORE UPDATE ON intake_briefs
+WHEN OLD.status IN ('cancelled', 'superseded', 'archived')
+BEGIN
+  SELECT RAISE(ABORT, 'a cancelled, superseded or archived brief version never changes');
+END;
+
+CREATE TRIGGER intake_briefs_no_delete BEFORE DELETE ON intake_briefs
+BEGIN
+  SELECT RAISE(ABORT, 'intake briefs are never deleted; cancellation and archival are explicit status changes (G-4)');
+END;
+
+-- G-4 (flow S1: unconfirmed briefs cannot advance — structurally): a topic
+-- leaves intake for scoping only while it has a confirmed brief version.
+CREATE TRIGGER queue_scoping_needs_confirmed_brief
+BEFORE UPDATE OF status ON queue_entries
+WHEN OLD.status = 'awaiting_brief_confirmation' AND NEW.status = 'scoping' AND NOT EXISTS (
+  SELECT 1 FROM intake_briefs b WHERE b.topic_id = NEW.topic_id AND b.status = 'confirmed')
+BEGIN
+  SELECT RAISE(ABORT, 'a topic leaves intake only with a confirmed intake brief (G-4)');
+END;
+
 -- trace: flow S3 (Contract v2, hash-locked with its protocol revision);
 -- design review §4 (immutable approved revision; older revisions preserved);
 -- schema contract-v2.schema.json; INVARIANTS G-1.
@@ -723,7 +874,11 @@ END;
 
 -- A4 / C-12: contract/1 admission pins an approved contract revision;
 -- pre-contract/1 admission pins an operator-confirmed brief and is open only
--- while the topic has never had an approved contract. Checked when a
+-- while the topic has never had an approved contract. Since 0b the brief is
+-- a stored row: the pins must name the topic's currently confirmed brief
+-- version (exact id, version and hash), and the pinned decision must be the
+-- one that confirmed it (whose gate checked kind, disposition, topic and
+-- exact subject — intake_briefs_confirmation_bound). Checked when a
 -- non-delegate is admitted; a delegate inherits its parent's already-checked
 -- pins even if an amendment has since superseded them (in-flight work keeps
 -- its pins; amendment invalidation is explicit router work, ruling R2.1).
@@ -735,11 +890,11 @@ WHEN NEW.kind != 'delegate' AND ((NEW.admission_context = 'contract/1' AND NOT E
   OR (NEW.admission_context = 'pre-contract/1' AND (
         EXISTS (SELECT 1 FROM contract_revisions c WHERE c.topic_id = NEW.topic_id AND c.status != 'draft')
      OR NOT EXISTS (
-        SELECT 1 FROM operator_decisions d
-        WHERE d.decision_id = NEW.brief_confirmation_decision_id
-          AND d.kind = 'brief_confirmation' AND d.disposition = 'approved'
-          AND d.topic_id = NEW.topic_id
-          AND d.subject_ref = NEW.brief_ref AND d.subject_revision = NEW.brief_version AND d.subject_hash = NEW.brief_hash))))
+        SELECT 1 FROM intake_briefs b
+        WHERE b.topic_id = NEW.topic_id
+          AND b.brief_id = NEW.brief_ref AND b.version = NEW.brief_version AND b.content_hash = NEW.brief_hash
+          AND b.status = 'confirmed'
+          AND b.confirmed_by_decision_id = NEW.brief_confirmation_decision_id))))
 BEGIN
   SELECT RAISE(ABORT, 'admission: contract work needs an approved contract revision; pre-contract work needs a confirmed brief and no approved contract (A4, C-12)');
 END;
@@ -944,9 +1099,10 @@ END;
 --   decision_receipt   decision receipt id / - / -
 -- The kind -> subject-kind mapping is a CHECK, so consuming gates test the
 -- decision kind (which fixes the subject kind). Subjects stored here are
--- checked to exist with that exact hash when the decision is recorded; brief, scoping-report and publication-source
--- subjects are not store rows yet (intake briefs arrive in 0b), so only
--- their shape is checked. Consuming gates then re-check kind, disposition,
+-- checked to exist with that exact hash when the decision is recorded
+-- (intake briefs since 0b: topic, brief id, version and hash); scoping-report
+-- and publication-source subjects are not store rows yet, so only their
+-- shape is checked. Consuming gates then re-check kind, disposition,
 -- topic and exact subject.
 -- A rating decision retains what the operator rated (RA2): payload =
 -- {"facets": {facet_id: {"band", "score"}}, "obligations": {obligation_id:
@@ -1000,6 +1156,9 @@ WHEN (NEW.subject_kind = 'contract_revision' AND NOT EXISTS (
         SELECT 1 FROM holds k WHERE k.hold_id = NEW.subject_ref AND k.topic_id IS NEW.topic_id))
   OR (NEW.subject_kind = 'decision_receipt' AND NOT EXISTS (
         SELECT 1 FROM decision_receipts r WHERE r.decision_receipt_id = NEW.subject_ref AND r.topic_id = NEW.topic_id))
+  OR (NEW.subject_kind = 'intake_brief' AND NOT EXISTS (
+        SELECT 1 FROM intake_briefs b
+        WHERE b.topic_id = NEW.topic_id AND b.brief_id = NEW.subject_ref AND b.version = NEW.subject_revision AND b.content_hash = NEW.subject_hash))
 BEGIN
   SELECT RAISE(ABORT, 'an operator decision must name an existing subject of its topic with that exact revision and hash (A2)');
 END;

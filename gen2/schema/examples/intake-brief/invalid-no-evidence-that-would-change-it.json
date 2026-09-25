@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "intake-brief.schema.json",
+    "expect": "invalid",
+    "tests": "flow S1: what evidence would change the decision is required, not empty",
+    "base": "valid-brief-v1.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/evidence_that_would_change_it",
+        "value": []
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "minItems",
+        "path": "/evidence_that_would_change_it"
+      }
+    ]
+  }
+}

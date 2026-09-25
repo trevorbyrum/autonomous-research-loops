@@ -95,6 +95,7 @@ RI = "test_store_history.RecordIdentityTest."
 EX = "test_store_examples.ExampleWorldTest."
 CG = "test_store_ddl.ContractGovernanceTest."
 SG = "test_sqlite_gate."
+IB = "test_store_intake.IntakeBriefTest."
 
 MUTATIONS: list[Mutation] = [
     # --- A1: history cannot be rewritten ------------------------------------
@@ -378,16 +379,17 @@ MUTATIONS: list[Mutation] = [
     Mutation("A4-pre-contract-closes-on-approval", "A4", "pre-contract admission stays open after a contract is approved",
              (AD + "test_pre_contract_admission_closes_once_a_contract_is_approved",), scope="invocations_admission_context",
              old="        EXISTS (SELECT 1 FROM contract_revisions c WHERE c.topic_id = NEW.topic_id AND c.status != 'draft')\n     OR NOT EXISTS (", new="        NOT EXISTS ("),
-    *(Mutation(f"A4-brief-confirmation-{key}", "A4", f"pre-contract admission ignores the brief confirmation's {key}",
+    *(Mutation(f"A4-brief-confirmation-{key}", "A4/0b", f"pre-contract admission ignores the pinned brief row's {key}",
                (AD + "test_pre_contract_admission_needs_the_confirmed_brief",), scope="invocations_admission_context", old=old, new=new)
       for key, old, new in (
-          ("naming", "        WHERE d.decision_id = NEW.brief_confirmation_decision_id\n", "        WHERE 1\n"),
-          ("kind", "          AND d.kind = 'brief_confirmation' AND d.disposition = 'approved'", "          AND d.disposition = 'approved'"),
-          ("disposition", "          AND d.kind = 'brief_confirmation' AND d.disposition = 'approved'", "          AND d.kind = 'brief_confirmation'"),
-          ("topic", "          AND d.topic_id = NEW.topic_id\n", ""),
-          ("brief-id", "d.subject_ref = NEW.brief_ref AND ", ""),
-          ("brief-version", " AND d.subject_revision = NEW.brief_version", ""),
-          ("brief-hash", " AND d.subject_hash = NEW.brief_hash", ""))),
+          ("confirming-decision", "\n          AND b.confirmed_by_decision_id = NEW.brief_confirmation_decision_id))))", "))))"),
+          ("topic", "        WHERE b.topic_id = NEW.topic_id\n          AND b.brief_id", "        WHERE b.brief_id"),
+          ("brief-hash", " AND b.content_hash = NEW.brief_hash", ""),
+          ("brief-version", " AND b.version = NEW.brief_version", ""),
+          ("brief-id", "          AND b.brief_id = NEW.brief_ref AND ", "          AND "))),
+    Mutation("A4-brief-confirmation-status", "A4/0b", "pre-contract admission accepts a superseded (no longer current) brief version",
+             (AD + "test_pre_contract_admission_pins_the_current_confirmed_version",),
+             scope="invocations_admission_context", old="\n          AND b.status = 'confirmed'", new=""),
     Mutation("A4-pre-contract-kinds", "A4", "any kind may be admitted pre-contract",
              (AD + "test_pre_contract_admission_only_for_scoping_kinds",), old="  CHECK (admission_context = 'contract/1' OR kind IN ('discovery', 'delegate', 'research_pass')),\n", new=""),
     Mutation("A4-contract-pins-exclusive", "A4", "a pre-contract row may carry a contract revision",
@@ -941,6 +943,71 @@ MUTATIONS: list[Mutation] = [
              ("test_writer.ReceiptHashContractWriterTest.test_commit_receipt_contract_checked_before_sql",
               "test_writer.ReceiptHashContractWriterTest.test_decision_receipt_contract_checked_before_sql"),
              target="gen2/store/api.py", old="        self._check_hash_contract(table, prepared)\n", new=""),
+    # --- 0b: durable intake briefs (G-4, C-12, G-13; INVARIANTS §13) ------------------
+    *(Mutation(f"IB-{key}-dropped", "0b-intake", desc, tuple(IB + k for k in killers), drop_trigger=trigger)
+      for key, desc, killers, trigger in (
+          ("created-awaiting", "a brief may be inserted confirmed, overdue or closed", ("test_a_brief_is_written_awaiting_confirmation_with_owner_and_deadline",),
+           "intake_briefs_created_awaiting"),
+          ("transitions", "any brief status move is allowed", ("test_cancellation_and_archival_are_explicit_and_final",), "intake_briefs_status_transitions"),
+          ("confirmation-bound", "a brief may be confirmed under any decision", ("test_confirmation_names_an_approved_decision_about_exactly_this_version",),
+           "intake_briefs_confirmation_bound"),
+          ("pointer", "the confirming decision may be recorded without the transition, or changed after", ("test_confirmation_names_an_approved_decision_about_exactly_this_version",),
+           "intake_briefs_confirmation_pointer_set_by_confirmation"),
+          ("superseded-by-later", "a version may be superseded with no later version", ("test_a_version_is_superseded_only_by_a_later_one_and_one_is_confirmed",),
+           "intake_briefs_superseded_by_a_later_version"),
+          ("overdue", "overdue may be re-marked, cleared, set on a confirmed brief or with a status change", ("test_expiry_marks_overdue_and_never_advances",),
+           "intake_briefs_overdue_marks_only"),
+          ("content", "a brief version's content, lineage, owner or deadline may change", ("test_content_lineage_owner_and_deadline_are_immutable",),
+           "intake_briefs_content_immutable"),
+          ("terminal", "a cancelled/superseded/archived version may still change", ("test_cancellation_and_archival_are_explicit_and_final",),
+           "intake_briefs_terminal_immutable"),
+          ("delete-guard", "intake briefs may be deleted or REPLACEd", ("test_content_lineage_owner_and_deadline_are_immutable",), "intake_briefs_no_delete"),
+          ("queue-gate", "a topic leaves intake without a confirmed brief (G-4)", ("test_an_unconfirmed_brief_cannot_advance_the_topic",),
+           "queue_scoping_needs_confirmed_brief"))),
+    *(Mutation(f"IB-{key}", "0b-intake", desc, tuple(IB + k for k in killers), scope=scope, old=old, new=new)
+      for key, desc, killers, scope, old, new in (
+          ("archive-from-awaiting", "an unconfirmed brief may be archived instead of cancelled", ("test_cancellation_and_archival_are_explicit_and_final",),
+           "intake_briefs_status_transitions", "(OLD.status = 'confirmed' AND NEW.status IN ('superseded', 'archived'))",
+           "(OLD.status IN ('confirmed', 'awaiting_confirmation') AND NEW.status IN ('superseded', 'archived'))"),
+          ("confirmation-kind", "any decision kind confirms", ("test_confirmation_names_an_approved_decision_about_exactly_this_version",),
+           "intake_briefs_confirmation_bound", "    AND d.kind = 'brief_confirmation' AND d.disposition = 'approved'\n", "    AND d.disposition = 'approved'\n"),
+          ("confirmation-disposition", "a rejected confirmation confirms", ("test_confirmation_names_an_approved_decision_about_exactly_this_version",),
+           "intake_briefs_confirmation_bound", "    AND d.kind = 'brief_confirmation' AND d.disposition = 'approved'\n", "    AND d.kind = 'brief_confirmation'\n"),
+          ("confirmation-subject", "an approved confirmation of any brief of the topic confirms (subject conjuncts removed together)",
+           ("test_confirmation_names_an_approved_decision_about_exactly_this_version",), "intake_briefs_confirmation_bound",
+           "\n    AND d.subject_ref = NEW.brief_id AND d.subject_revision = NEW.version AND d.subject_hash = NEW.content_hash)", ")"),
+          ("pointer-changes-after", "the recorded confirming decision may be swapped for another valid one", ("test_confirmation_names_an_approved_decision_about_exactly_this_version",),
+           "intake_briefs_confirmation_pointer_set_by_confirmation", "  AND (OLD.status IS NOT 'awaiting_confirmation' OR ", "  AND ("),
+          ("pointer-without-transition", "the confirming decision may be recorded without the confirming transition",
+           ("test_confirmation_names_an_approved_decision_about_exactly_this_version",),
+           "intake_briefs_confirmation_pointer_set_by_confirmation", " OR NEW.status IS NOT 'confirmed')", ")"),
+          ("overdue-remarked", "overdue may be re-marked or cleared", ("test_expiry_marks_overdue_and_never_advances",),
+           "intake_briefs_overdue_marks_only", "  AND (OLD.overdue_since IS NOT NULL OR ", "  AND ("),
+          ("overdue-advances", "marking overdue may carry a status change with it", ("test_expiry_marks_overdue_and_never_advances",),
+           "intake_briefs_overdue_marks_only", " OR NEW.status IS NOT OLD.status)", ")"),
+          ("overdue-on-confirmed", "a confirmed brief may be marked overdue", ("test_expiry_marks_overdue_and_never_advances",),
+           "intake_briefs_overdue_marks_only", " OR OLD.status IS NOT 'awaiting_confirmation'", ""),
+          ("queue-gate-any-brief", "an unconfirmed (awaiting or cancelled) brief lets a topic leave intake", ("test_an_unconfirmed_brief_cannot_advance_the_topic",),
+           "queue_scoping_needs_confirmed_brief", " AND b.status = 'confirmed')", ")"),
+          ("queue-gate-any-topic", "another topic's confirmed brief lets this topic leave intake", ("test_an_unconfirmed_brief_cannot_advance_the_topic",),
+           "queue_scoping_needs_confirmed_brief", "WHERE b.topic_id = NEW.topic_id AND b.status", "WHERE b.status"),
+          ("parent-earlier", "a brief version may name itself (or a later version) as its parent", ("test_content_lineage_owner_and_deadline_are_immutable",),
+           "intake_briefs", "  CONSTRAINT intake_brief_parent_is_earlier CHECK (parent_version IS NULL OR parent_version < version),\n", ""),
+          ("closed-iff-cancelled-archived", "a brief may be cancelled or archived without recording the act", ("test_cancellation_and_archival_are_explicit_and_final",),
+           "intake_briefs", "  CHECK ((status IN ('cancelled', 'archived')) = (closed_at IS NOT NULL)),\n", ""),
+          ("closed-fields-together", "the closing act may omit its actor", ("test_cancellation_and_archival_are_explicit_and_final",),
+           "intake_briefs", "  CHECK ((closed_by IS NULL) = (closed_at IS NULL) AND (closed_at IS NULL) = (close_reason IS NULL)),\n", ""),
+          ("document-binding", "the brief document may describe another topic, brief, version, lineage, time or hash than its row",
+           ("test_a_brief_is_written_awaiting_confirmation_with_owner_and_deadline",), "intake_briefs",
+           "  CHECK (json_extract(document, '$.topic_id') IS topic_id\n     AND json_extract(document, '$.brief_id') IS brief_id\n     AND json_extract(document, '$.version') IS version\n     AND json_extract(document, '$.parent_version') IS parent_version\n     AND json_extract(document, '$.created_at') IS created_at\n     AND json_extract(document, '$.content_hash') IS content_hash)\n",
+           "  CHECK (1)\n"))),
+    Mutation("IB-one-confirmed-per-topic", "0b-intake", "two brief versions of a topic may be confirmed at once",
+             (IB + "test_a_version_is_superseded_only_by_a_later_one_and_one_is_confirmed",),
+             old="CREATE UNIQUE INDEX intake_briefs_one_confirmed_per_topic\n  ON intake_briefs (topic_id) WHERE status = 'confirmed';\n", new=""),
+    Mutation("IB-decision-subject-exists", "0b-intake", "a brief_confirmation may be recorded about a brief that is not stored (G-13 subject existence)",
+             (AD + "test_pre_contract_admission_needs_the_confirmed_brief",), scope="operator_decisions_subject_exists",
+             old="\n  OR (NEW.subject_kind = 'intake_brief' AND NOT EXISTS (\n        SELECT 1 FROM intake_briefs b\n        WHERE b.topic_id = NEW.topic_id AND b.brief_id = NEW.subject_ref AND b.version = NEW.subject_revision AND b.content_hash = NEW.subject_hash))",
+             new=""),
     # --- 0b cleanup 2: the permanent reversed-trigger-order check ----------------------
     *(Mutation(f"TO-{key}", "0b-cleanup-2", desc, tuple("test_trigger_order_tool.TriggerOrderToolTest." + k for k in killers),
                target="tools/gen2_trigger_order.py", old=old, new=new)
@@ -1035,6 +1102,14 @@ SECOND_LAYER = {
         "pointer can only be first recorded on a draft (a non-draft holds one by CHECK, R1c-approved-without-decision); the trigger's approved "
         "exemption and the trigger itself are mutated (RA3R-approval-refused-too, RA3R-dropped). Which of the two triggers reports first is "
         "SQLite trigger order, which no test may depend on",
+    "intake_briefs_confirmation_bound: each subject conjunct alone (topic; brief id and version; hash)":
+        "a brief_confirmation is recorded only about a stored brief with exactly that topic, id, version and hash (IB-decision-subject-exists), "
+        "and brief hashes are unique, so any one of them identifies the same stored subject as the rest; they are mutated together "
+        "(IB-confirmation-subject). At admission the pins are not otherwise checked, so there each conjunct is mutated alone (A4-brief-confirmation-*)",
+    "intake_briefs CHECKs: confirmed/archived hold a confirming decision; awaiting/cancelled hold none (0b)":
+        "a brief is confirmed only through intake_briefs_confirmation_bound, which needs an existing decision (IB-confirmation-bound-dropped), "
+        "archived is reached only from confirmed (IB-archive-from-awaiting), and the pointer is set only by that transition and never "
+        "changes (IB-pointer-dropped, IB-pointer-changes-after); so neither CHECK can be the first refusal",
     "claims_accepted_support_needs_receipt: its required-tier, obtained-tier and performed-checks conjuncts (RA5, re-checked at promotion)":
         "a load-bearing-use receipt is written only at its claim's own required tier (verification_receipts_use_matches_claim, RA5-use-matches-claim-*), "
         "'supports' never exceeds the obtained tier (verification_receipts CHECK), and a load-bearing support cannot record an unperformed check "

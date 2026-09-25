@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "intake-brief.schema.json",
+    "expect": "invalid",
+    "tests": "flow S1: brief versions start at 1",
+    "base": "valid-brief-v1.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/version",
+        "value": 0
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "minimum",
+        "path": "/version"
+      }
+    ]
+  }
+}

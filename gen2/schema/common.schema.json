@@ -87,7 +87,7 @@
       }
     },
     "brief_ref": {
-      "description": "An operator-confirmed Intake Brief version (flow S1: confirmation is an explicit, versioned act). Durable brief rows arrive in task 0b (ruling R3); until then the store binds this triple to the operator's brief_confirmation decision.",
+      "description": "An operator-confirmed Intake Brief version (flow S1: confirmation is an explicit, versioned act; document: intake-brief.schema.json). The store binds this triple to the topic's confirmed intake_briefs row and to the brief_confirmation decision that confirmed it (task 0b).",
       "type": "object",
       "additionalProperties": false,
       "required": ["brief_id", "version", "content_hash"],

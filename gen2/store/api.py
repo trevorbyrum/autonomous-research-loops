@@ -60,7 +60,7 @@ IDENTITY_COLUMNS = frozenset({
     "claim_revision", "dossier_revision", "evidence_revision", "source_revision", "subject_revision", "state_revision",
     "state_revision_before", "state_revision_after", "generation", "lease_generation", "supersedes_generation",
     "delivered_generation", "unknown_episode", "seq", "ordinal", "brief_version", "template_version", "policy_version",
-    "eligibility_protocol_version", "attempt",
+    "eligibility_protocol_version", "attempt", "version", "parent_version",
 })
 FLAG_COLUMNS = frozenset({"load_bearing", "blind_sample", "exploratory", "quote_quarantined", "tombstones_acknowledged"})
 SCORE_COLUMNS = frozenset({"proposed_importance_score", "operator_importance_score"})  # 1-9, the DDL's CHECKs

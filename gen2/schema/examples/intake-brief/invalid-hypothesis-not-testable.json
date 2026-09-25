@@ -1,0 +1,23 @@
+{
+  "fixture": {
+    "schema": "intake-brief.schema.json",
+    "expect": "invalid",
+    "tests": "flow S1: operator hypotheses are recorded as testables",
+    "base": "valid-brief-v1.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/operator_hypotheses/0",
+        "value": {
+          "statement": "Manual review is the bottleneck."
+        }
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": "/operator_hypotheses/0"
+      }
+    ]
+  }
+}

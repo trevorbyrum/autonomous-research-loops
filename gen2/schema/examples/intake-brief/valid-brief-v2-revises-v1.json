@@ -1,0 +1,34 @@
+{
+  "fixture": {
+    "schema": "intake-brief.schema.json",
+    "expect": "valid",
+    "tests": "flow §6.1: an edited brief is a new version naming the one it revises"
+  },
+  "instance": {
+    "brief_version": "intake-brief/1",
+    "topic_id": "fleet-a:intake-latency",
+    "brief_id": "brief-latency",
+    "version": 2,
+    "parent_version": 1,
+    "created_at": "2026-09-21T09:00:00Z",
+    "content_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "objective_in_operator_words": "Find out why intake takes three days and what would cut it to one.",
+    "feeds": "Whether to rebuild the intake pipeline this quarter.",
+    "evidence_that_would_change_it": [
+      "Measured stage latencies showing the delay is outside the pipeline."
+    ],
+    "constraints": [
+      "Public sources and our own logs only.",
+      "No vendor interviews."
+    ],
+    "operator_hypotheses": [
+      {
+        "statement": "Manual review is the bottleneck.",
+        "testable_as": "Manual-review stage time exceeds half the end-to-end time."
+      }
+    ],
+    "surfaced_assumptions": [
+      "Three days is the median, not a worst case."
+    ]
+  }
+}

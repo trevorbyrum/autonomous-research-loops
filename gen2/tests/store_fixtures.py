@@ -263,6 +263,9 @@ class StoreTestCase(unittest.TestCase):
     }
 
     def walk_to(self, tid: str, status: str) -> None:
+        """Leaving intake needs a confirmed brief (G-4); the walk confirms one."""
+        if self.QUEUE_PATH[status]:
+            self.confirm_brief(tid)
         for step in self.QUEUE_PATH[status]:
             self.set_status(tid, step)
 
@@ -281,11 +284,40 @@ class StoreTestCase(unittest.TestCase):
         self.approve_contract(tid, 1)
         return 1
 
+    @staticmethod
+    def brief_hash(tid: str, brief: str = "brief-1", version: int = 1) -> str:
+        """h("b") for TOPIC's brief-1 v1 (the brief most tests pin); a hash
+        unique per (topic, brief, version) otherwise (brief hashes are unique
+        store-wide)."""
+        if (tid, brief, version) == (TOPIC, "brief-1", 1):
+            return h("b")
+        return "sha256:" + (tid + "/" + brief).encode().hex()[:52].ljust(52, "0") + f"{version:012d}"
+
+    def brief(self, tid: str = TOPIC, brief: str = "brief-1", version: int = 1, parent: int | None = None, *,
+              content_hash: str | None = None, owner: str = "trevor", deadline: str = T) -> str:
+        """An intake brief version, written awaiting confirmation; its
+        document's identity fields agree with its columns. Returns its hash."""
+        content = content_hash or self.brief_hash(tid, brief, version)
+        doc = {"brief_version": "intake-brief/1", "topic_id": tid, "brief_id": brief, "version": version, "parent_version": parent,
+               "created_at": T, "content_hash": content, "objective_in_operator_words": "why is intake slow", "feeds": "rebuild or not",
+               "evidence_that_would_change_it": ["stage latencies"], "constraints": [], "operator_hypotheses": [], "surfaced_assumptions": []}
+        self.x("INSERT INTO intake_briefs (topic_id, brief_id, version, parent_version, content_hash, document, owner_operator_id, status, created_at, review_deadline) "
+               "VALUES (?, ?, ?, ?, ?, ?, ?, 'awaiting_confirmation', ?, ?)", tid, brief, version, parent, content, json.dumps(doc), owner, T, deadline)
+        return content
+
     def confirm_brief(self, tid: str = TOPIC, brief: str = "brief-1", version: int = 1, did: str | None = None) -> tuple:
-        did = did or f"opd_brief{tid[-2:]}{version:02d}"
+        """The S1 confirmation (G-4): the brief version is stored, the operator's
+        brief_confirmation decision names it exactly, and the version moves
+        to confirmed recording that decision. Idempotent."""
+        did = did or f"opd_brief_{tid}_{brief}_v{version}"
+        bhash = self.brief_hash(tid, brief, version)
+        if not self.rows("SELECT 1 FROM intake_briefs WHERE topic_id = ? AND brief_id = ? AND version = ?", tid, brief, version):
+            self.brief(tid, brief, version, parent=None if version == 1 else version - 1)
         if not self.rows("SELECT 1 FROM operator_decisions WHERE decision_id = ?", did):
-            self.decision(did, "brief_confirmation", tid, ref=brief, rev=version, hsh=h("b"))
-        return brief, version, h("b"), did
+            self.decision(did, "brief_confirmation", tid, ref=brief, rev=version, hsh=bhash)
+        if not self.rows("SELECT 1 FROM intake_briefs WHERE topic_id = ? AND brief_id = ? AND version = ? AND status = 'confirmed'", tid, brief, version):
+            self.x("UPDATE intake_briefs SET status = 'confirmed', confirmed_by_decision_id = ? WHERE topic_id = ? AND brief_id = ? AND version = ?", did, tid, brief, version)
+        return brief, version, bhash, did
 
     def invocation(self, iid: str, kind: str = "research_pass", lease: str | None = "lease_aaaaaaaa", tid: str = TOPIC, parent: str | None = None,
                    *, pre_contract: bool = False, contract_rev: int | None = None, requested_by: str | None = None) -> None:
@@ -507,6 +539,7 @@ class StoreTestCase(unittest.TestCase):
         every table: test_every_table_is_populated fails if a table is added
         without extending this."""
         self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, topic_id, staged_at) VALUES (?, 10, 'application/json', ?, ?)", h("7"), TOPIC, T)
+        self.confirm_brief(TOPIC)  # S1: the topic's intake brief, confirmed (intake_briefs)
         # S3: the operator rates draft revision 2; revision 3 carries the ratings and is approved
         rev = self.approved_with_obligation(TOPIC)
         self.x("UPDATE queue_entries SET active_contract_revision = ? WHERE topic_id = ?", rev, TOPIC)

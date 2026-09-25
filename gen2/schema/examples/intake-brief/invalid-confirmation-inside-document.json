@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "intake-brief.schema.json",
+    "expect": "invalid",
+    "tests": "G-4 / G-13: confirmation is the operator's decision recorded by the store, never a document field",
+    "base": "valid-brief-v1.json",
+    "patch": [
+      {
+        "op": "add",
+        "path": "/confirmed_by",
+        "value": "opd_brief0001"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "additionalProperties",
+        "path": ""
+      }
+    ]
+  }
+}

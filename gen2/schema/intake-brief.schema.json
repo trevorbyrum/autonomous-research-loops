@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/intake-brief.schema.json",
+  "$comment": "flow: S1 (Intake Brief v1: objective in the operator's words, the decision/build it feeds, what evidence would change it, constraints, operator hypotheses as testables, surfaced assumptions; the operator confirms it by an explicit, versioned act); §6.1 (an edited brief re-versions) | boundaries: Operator; Router | adjudication: (a)G-A8 | invariants: G-4; C-12; G-13 | note: task 0b minimal versioned brief. The document is the hash-locked content; owner, review deadline, status, overdue marking, confirmation and cancellation are the store row's lifecycle (gen2/store/schema.sql intake_briefs), never document fields",
+  "title": "Intake Brief",
+  "description": "One version of a topic's Intake Brief (flow S1). Its content_hash is SHA-256 over the JCS serialization of this document minus content_hash (jcs-rfc8785/1). Confirmation is not a document field: the operator's brief_confirmation decision names this exact topic, brief id, version and hash, and the store records it on the row. A change to any slot is a new version whose parent_version is the one it revises.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "brief_version",
+    "topic_id",
+    "brief_id",
+    "version",
+    "parent_version",
+    "created_at",
+    "content_hash",
+    "objective_in_operator_words",
+    "feeds",
+    "evidence_that_would_change_it",
+    "constraints",
+    "operator_hypotheses",
+    "surfaced_assumptions"
+  ],
+  "properties": {
+    "brief_version": {
+      "const": "intake-brief/1"
+    },
+    "topic_id": {
+      "$ref": "common.schema.json#/$defs/topic_id"
+    },
+    "brief_id": {
+      "$ref": "common.schema.json#/$defs/local_id"
+    },
+    "version": {
+      "$ref": "common.schema.json#/$defs/revision",
+      "minimum": 1
+    },
+    "parent_version": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "common.schema.json#/$defs/revision",
+          "minimum": 1
+        }
+      ]
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "content_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "objective_in_operator_words": {
+      "description": "The operator's stated ask, verbatim (S1: the brief is the reference the facet audit checks against).",
+      "$ref": "common.schema.json#/$defs/long_text"
+    },
+    "feeds": {
+      "description": "The decision or build the research feeds.",
+      "$ref": "common.schema.json#/$defs/long_text"
+    },
+    "evidence_that_would_change_it": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "$ref": "common.schema.json#/$defs/long_text"
+      }
+    },
+    "constraints": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "$ref": "common.schema.json#/$defs/long_text"
+      }
+    },
+    "operator_hypotheses": {
+      "description": "Operator hypotheses stated as testables (S1).",
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "statement",
+          "testable_as"
+        ],
+        "properties": {
+          "statement": {
+            "$ref": "common.schema.json#/$defs/long_text"
+          },
+          "testable_as": {
+            "$ref": "common.schema.json#/$defs/long_text"
+          }
+        }
+      }
+    },
+    "surfaced_assumptions": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "$ref": "common.schema.json#/$defs/long_text"
+      }
+    }
+  }
+}
