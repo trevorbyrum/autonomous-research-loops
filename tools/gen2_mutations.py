@@ -1080,13 +1080,30 @@ def _run_file_mutation(m: Mutation) -> _Collector:
 
 def _run_file_mutation_unmutated(m: Mutation) -> _Collector:
     """The file target's killer modules against the file as it is (a mutation
-    that finds its text is only meaningful if these pass unmutated)."""
+    that finds its text is only meaningful if these pass unmutated). An "attr"
+    target is run from an unmodified temp copy, exactly as its mutants are, so
+    a file that only works from its own location (an import resolved relative
+    to itself) fails here instead of letting every mutant "die" of it."""
     import importlib
+    import tempfile
 
     modules = sorted({k.split(".")[0] for k in m.killers})
-    suite = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromModule(importlib.import_module(name)) for name in modules)
-    result = _Collector()
-    suite.run(result)
+    how = FILE_TARGETS[m.target]
+    with tempfile.TemporaryDirectory() as tmp:
+        loaded = [importlib.import_module(name) for name in modules]
+        if how[0] == "attr":
+            path = Path(tmp) / Path(m.target).name
+            path.write_text((ROOT / m.target).read_text(encoding="utf-8"), encoding="utf-8")
+            holder = importlib.import_module(how[1])
+            original = getattr(holder, how[2])
+            setattr(holder, how[2], path)
+        try:
+            suite = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromModule(mod) for mod in loaded)
+            result = _Collector()
+            suite.run(result)
+        finally:
+            if how[0] == "attr":
+                setattr(holder, how[2], original)
     return result
 
 
