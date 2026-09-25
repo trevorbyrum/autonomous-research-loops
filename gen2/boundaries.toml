@@ -166,6 +166,14 @@ may_import = ["core"]
 stdlib_capabilities = ["socket", "ssl", "http.client", "urllib.request"]
 third_party = []
 
+[modules.importer]
+path = "gen2/importer"
+purpose = "Offline migration (design review §10 Phase 4; INVARIANTS §12). Task 0b: the dry-run skeleton only — reads gen-1 JSON/JSONL state read-only and reports how each record maps to the gen-2 ID/authority scheme, surfacing every record that does not map cleanly. It writes no store: it may import only core (not store, which is the router's), holds no sqlite3, and so cannot read gen-1's managed SQLite store either (it reports that as blocking). The Phase 4 import that writes goes through the store's open path and its own audited route — an amendment of this entry."
+boundaries = []
+may_import = ["core"]
+stdlib_capabilities = []
+third_party = []
+
 [modules.operator]
 path = "gen2/operator"
 purpose = "Operator transports (CLI/MCP/API behind one command service — design review §10) and status: typed holds, why-waiting answers, capability facts. Reaches state only through the ControlBackend protocol."

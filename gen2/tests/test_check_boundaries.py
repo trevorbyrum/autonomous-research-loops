@@ -375,6 +375,21 @@ class BoundaryCheckerTest(unittest.TestCase):
                 self.assertIn(f"gen2/accounting/sums.py:{line}: accounting uses restricted stdlib '{name}'", result.stderr)
         self.assertIn(f"gen2/accounting/sums.py:{len(surfaces) + 2}: accounting uses restricted stdlib 'importlib.__import__'", result.stderr)
 
+    def test_importer_cannot_reach_a_store_under_the_real_graph(self) -> None:
+        """Task 0b: the dry-run importer writes no gen-2 store and reads no
+        SQLite. Under the REAL gen2/boundaries.toml a gen2/importer file that
+        imports the store module, the router, or sqlite3 (also its private
+        module) is reported at each line; core is allowed."""
+        self.real_graph()
+        self.write("gen2/importer/probe.py", "from gen2.store import api\nimport gen2.router\nimport sqlite3\nimport _sqlite3\nfrom gen2.core import canonical\n")
+        result = subprocess.run([sys.executable, str(CHECKER), "--root", str(self.root)], capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 1, msg=result.stderr)
+        for fragment in ("gen2/importer/probe.py:1: importer imports store", "gen2/importer/probe.py:2: importer imports router",
+                         "gen2/importer/probe.py:3: importer uses restricted stdlib 'sqlite3'", "gen2/importer/probe.py:4: importer uses restricted stdlib '_sqlite3'"):
+            with self.subTest(violation=fragment):
+                self.assertIn(fragment, result.stderr)
+        self.assertNotIn("probe.py:5:", result.stderr)
+
     def test_star_import_rejected(self) -> None:
         self.write("gen2/router/commit.py", "from gen2.store import *\n")
         self.assertViolation(self.run_checker(), "star import from 'gen2.store' hides its dependencies")
