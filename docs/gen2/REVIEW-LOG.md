@@ -127,3 +127,25 @@ Coder closed all five findings: A1's COMMIT now runs inside the rollback path (w
 **C-13's rule-text amendment correctly left pending, not silently applied** — the coder recorded it as needing Trevor's decision rather than treating "I wrote the correction" as the same thing as "it's approved."
 
 Routed: task file `research-loops-public/private/reviews/gen2-0b-repair-review-task-20260925.md`.
+
+## 2026-09-25 — Re-review of 0b-repair — BLOCK, narrower still (A1–A4 RESOLVED; A5 incomplete)
+Full report: `~/work/research-loops-public/private/reviews/gen2-0b-repair-astra-review-20260925.md`. **A1–A4 fully RESOLVED**, independently re-verified with fault injection beyond what was asked (a real SQLite authorizer that denies only ROLLBACK; a deliberate cross-thread connection-ownership violation to trigger the one previously-untestable close-failure path; a novel race — swapping the *final report filename itself* for a symlink to an existing gen-1 file right before exclusive-create, which correctly failed with the victim file unchanged). A2/A3 explicitly accepted "within the stated offline/stable-filesystem operating contract" — Astra's own phrase, not a rubber stamp: it confirmed the coder's snapshot-vs-descriptor reasoning holds, but was precise that this bounds what's actually proven (no cross-file-consistency guarantee, not a substitute for the frozen/reconciled snapshot the real Phase 4 migration will need).
+
+**A5: two new narrow findings, both "crashes instead of reports" — the same class as the original bug, just two cases the first repair missed:**
+- **A5-R1:** invalid Unicode (a lone surrogate) reaching report metadata through several paths the original fix didn't cover (references, issue text, topic IDs, source-map keys) crashes the importer with zero report output — a small, deliberately-crafted JSON snippet, no real filesystem needed.
+- **A5-R2:** a ~4KB numeric token that exceeds Python's own integer-conversion digit limit isn't caught by the existing exception handling and also produces zero report output.
+
+Both are continuations of A5's actual requirement (report don't crash), not new scope.
+
+**Gate B: PASS**, one precision fix needed (a docstring literally says "before any float conversion" — the code actually computes the float first, then compares the round-trip; wording should say "before accepting or using a lossy conversion" instead).
+
+**Coder's 5 questions, all ruled correctly per the routing the brief specified:**
+1. **Internal gen-1 symlinks — reconfirmed Trevor-only, unanswered by design.** "I did not inspect it and do not infer the answer from source code or fixtures."
+2. Output-directory-moved-after-final-check residual — ACCEPTED as a documented operating restriction for this offline skeleton; no further race-closing required for 0b.
+3. **Files-never-examined should be listed in the report** — real ruling, not deferred: Astra independently placed extra unread files in a synthetic tree and confirmed they're currently invisible in the report. Not a 0b blocker, but flagged as required before the report can be trusted as migration-planning evidence.
+4. **Missing-`version` queues — reconfirmed Trevor-only, unanswered by design.**
+5. `boundaries.toml`'s "read-only" wording — correct to leave the normative entry unchanged (it's still true as policy; the import graph never claimed filesystem-level enforcement); a clarifying wording pass is recommended, not required.
+
+**Mutation-count accounting, worth carrying forward as a general discipline:** Astra explicitly diffed 515→560 rather than accepting the delta at face value — "46 added, one removed, not 45 newly independent guarantees" (one old mutant was replaced by a more specific set, not simply supplemented).
+
+**Explicit note on the bookkeeping:** "Its bookkeeping statement that A1–A5 are 'all closed' is a coder claim superseded by this verdict" — same discipline as every round: a coder's own completion report is a claim, not a verified fact, until independently re-probed.
