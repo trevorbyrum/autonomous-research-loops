@@ -136,7 +136,8 @@ def check_schemas(root: Path, headings: set[str]) -> tuple[list[str], int, int]:
     except ImportError:
         print(
             "SCHEMA CHECK ERROR: the `jsonschema` package is required for schema validation "
-            "(pip install -r gen2/requirements-dev.txt). Refusing to report success without it.",
+            "(run through `make gen2-check`, which builds the hash-locked .venv-gen2 environment: docs/gen2/ENVIRONMENT.md). "
+            "Refusing to report success without it.",
             file=sys.stderr,
         )
         sys.exit(2)

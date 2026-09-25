@@ -1,5 +1,29 @@
-# Dev/CI-only: the independent JSON Schema 2020-12 validator used by
-# tools/check_gen2_schemas.py. Pinned to the version the fixtures were
-# validated against. Gen-2 runtime code never imports it (boundaries.toml
-# declares no third-party dependencies).
-jsonschema==4.10.3
+# Gen-2 DEV/CI-only dependencies, hash-locked with their complete transitive
+# graph (pip install --require-hashes --no-deps: nothing unlisted is ever
+# installed). Installed only into the project build environment that
+# `make gen2-venv` creates (docs/gen2/ENVIRONMENT.md) — never into a shared
+# interpreter.
+#
+# jsonschema — the independent JSON Schema 2020-12 validator used by
+# tools/check_gen2_schemas.py, pinned to the version the fixtures were
+# validated against; attrs and pyrsistent are its only dependencies on
+# Python 3.12 (pinned to the versions the build was validated with).
+# Gen-2 code never imports these: gen2/boundaries.toml grants a third-party
+# package only where it declares one (today rfc8785, to module core, from
+# gen2/requirements.txt) and grants none of these anywhere.
+# Hashes: from PyPI for these exact releases — the universal wheel and sdist,
+# plus pyrsistent's CPython 3.12 wheels (the project interpreter; another
+# interpreter version needs its wheel hash added here).
+jsonschema==4.10.3 \
+    --hash=sha256:443442f9ac2fdfde7bc99079f0ba08e5d167fc67749e9fc706a393bc8857ca48 \
+    --hash=sha256:59ad13764820eb9d2cafc6db32e92fabd318c1e4e3f2205e646225283704a2c3
+attrs==23.2.0 \
+    --hash=sha256:99b87a485a5820b23b879f04c2305b44b951b502fd64be915879d77a7e8fc6f1 \
+    --hash=sha256:935dc3b529c262f6cf76e50877d35a4bd3c1de194fd41f47a2b7ae8f19971f30
+pyrsistent==0.20.0 \
+    --hash=sha256:c55acc4733aad6560a7f5f818466631f07efc001fd023f34a6c203f8b6df0f0b \
+    --hash=sha256:4c48f78f62ab596c679086084d0dd13254ae4f3d6c72a83ffdf5ebdef8f265a4 \
+    --hash=sha256:b14decb628fac50db5e02ee5a35a9c0772d20277824cfe845c8a8b717c15daa3 \
+    --hash=sha256:a14798c3005ec892bbada26485c2eea3b54109cb2533713e355c806891f63c5e \
+    --hash=sha256:09848306523a3aba463c4b49493a760e7a6ca52e4826aa100ee99d8d39b7ad1e \
+    --hash=sha256:4021a7f963d88ccd15b523787d18ed5e5269ce57aa4037146a2377ff607ae87d

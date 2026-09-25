@@ -1,6 +1,8 @@
-# Gen-2 RUNTIME dependencies, hash-locked (pip install --require-hashes -r
-# gen2/requirements.txt). Each entry is a boundary decision: it is granted to
-# exactly the module named here in gen2/boundaries.toml `third_party`.
+# Gen-2 RUNTIME dependencies, hash-locked with their complete transitive
+# graph (installed by `make gen2-venv` into the project build environment:
+# pip install --require-hashes --no-deps; docs/gen2/ENVIRONMENT.md). Each
+# entry is a boundary decision: it is granted to exactly the module named here
+# in gen2/boundaries.toml `third_party`.
 #
 # rfc8785 — RFC 8785 JSON Canonicalization Scheme (Trail of Bits; pure
 # Python, no dependencies, Apache-2.0). Used only by gen2/core/canonical.py
