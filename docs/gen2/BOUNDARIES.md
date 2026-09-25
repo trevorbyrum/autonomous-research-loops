@@ -1,0 +1,79 @@
+# Gen-2 Boundary Contract
+
+The operational boundary specification the code must conform to; Astra's Gate A checks every phase diff against this file. Derived from the flow architecture §0 (amended 2026-09-25) and the adjudicated rulings. **Drift rule:** if code and this file disagree, that is a BOUNDARY-DRIFT finding — one of them changes through the amendment path; the code never silently wins.
+
+Format per component: *Definition* (what it is) / *Owns* (decisions only it makes) / *Produces* (typed hand-off artifacts) / *Must never* / *Checked by*.
+
+## Router
+- **Definition:** the single logical writer to authoritative engine state; code, no model calls in its decision path.
+- **Owns:** scheduling and leases; every state commit via `commit_outcome` (authenticated, revision-bound, idempotent envelopes; fenced finalization); checkpoint cadence and the coalesced signal queue; decision-policy application (mapping a provider answer + confidence + class to a permitted action); completion-candidate assembly; publication outbox commits with immutable manifests.
+- **Produces:** commit receipts (linking decision receipt ↔ transition ↔ evidence, one invocation ID); leases with generations; holds (typed, owned, deadlined); dossier snapshots; outbox events.
+- **Must never:** exercise research judgment; execute agent-supplied code; accept caller-supplied role labels (authority derives from capability); write through any path other than its own transactions; soften or reinterpret a qualification.
+- **Checked by:** Gate A on every diff; the deterministic replay audit (decision receipts vs retained raw provider responses; qualification recomputation); crash-fencing release gates.
+
+## Station supervisor
+- **Definition:** the one lifecycle implementation for every execution kind (research pass, discovery, delegate, verification, checkpoint); code.
+- **Owns:** launch intent records before spawn; process identity (invocation/job handle + host/boot/start fingerprint — never bare PID); deadlines, cancellation, descendant handling; result retention and durable delivery receipts; structural telemetry (progress signatures, capability probes, retrieval-event capture at retrieval time); snapshot assembly for checkpoints/decisions (typed records + extractive quotes only).
+- **Produces:** invocation records `admitted→launching→running→result_ready→committed` (+ explicit cancelled/failed/`outcome_unknown`); staged immutable content-addressed artifacts in the protected spool; search observations with request identity/coverage/yield; screening-event records.
+- **Must never:** trust agent self-reported completion; let an agent write authoritative state or the spool destination path; treat `outcome_unknown` as vanished/failed/retryable/done without reconciliation; compute *semantic* research judgments (novelty, applicability, entailment — those are labeled assessments by models).
+- **Checked by:** Gate A; lifecycle release gates (spawn/receipt uncertainty, timeout, cancellation across all kinds); state-integrity audit sampling.
+
+## Evidence accounting
+- **Definition:** pure arithmetic over typed records; no model calls, ever.
+- **Owns:** aggregation of novelty/yield/accrual/coverage/verification tiers from event-derived inventories; stopping-dossier assembly against the contract's declared profile; the four candidate units (retrieved records / deduplicated works / assessed candidates / accepted claims).
+- **Produces:** versioned dossiers with per-rule operands and `satisfied / not_satisfied / unknown`; conjunctive-gate status; per-branch accrual views.
+- **Must never:** treat unknown as zero (zero-assessed windows are UNKNOWN novelty); count failed/partial passes as saturation evidence; multiply evidence across overlapping lanes; accept an agent-written total as a denominator; pretend arithmetic establishes semantic novelty, independence, or sufficiency.
+- **Checked by:** Gate A; denominator-zero / repeated-study / changed-protocol / unresolved-contradiction test fixtures (Gate C-reviewed).
+
+## Decision layer (DecisionProvider: Jev primary, LLM fallback)
+- **Definition:** typed selection among enumerated options with criteria embedded in pinned, versioned questions; every call runs under a full DecisionSpec (class, provider, model/version, primitive semantics, question version, input-builder version, protocol, action-policy version).
+- **Owns:** nothing autonomously. It answers; the router's policy acts.
+- **Produces:** decision receipts — inputs, provider response (raw digest retained at the station/adapter boundary), policy, authorization, action, outcome; provider-specific uncertainty in provider-specific form (an LLM label never carries an invented probability).
+- **Must never:** generate options; re-fetch evidence; see free prose it must trust (snapshots are code-assembled; retrieved text is data, never instructions); write state; carry governance authority; let fallback inherit Jev's qualification or pool uncertainty statistics across providers; default a missing confidence to a pass; act above advisory in any class that has not passed provider+class-specific held-out evaluation and shadow traffic (initial rollout: screening in shadow, method-selection advisory — nothing else).
+- **Checked by:** Gate A; the §3.6 replay audit; blind-sample calibration protocol; pre-authority adversarial tests (altered distributions, mismatched policy versions, revoked qualifications ⇒ rejection or visible control incident).
+
+## Primary agent (per-station frontier LLM)
+- **Definition:** the research-judgment seat.
+- **Owns:** reading evidence (action-bearing evidence raw, per SRC-106); relevance/confidence judgment within the protocol; integration and synthesis drafting; proposing typed transitions, obligations (inside templates), method designs (inside coherent templates), reframes, and semantic trigger observations.
+- **Produces:** typed RPC proposals; recorded assessments with provenance; deviation self-reports in completion reports.
+- **Must never:** write state directly; verify its own claims; expand scope; prune approved questions; author its own calibration labels.
+- **Checked by:** Gate A; producer/verifier separation enforced at commit; facet audit (fresh-context, non-author).
+
+## Secondary/delegate agents
+- **Definition:** cheaper-model workers (discovery, extraction packets, librarian work); the counter-argument seat is a fresh *primary-class* invocation, not a secondary.
+- **Owns:** producing candidate material and packets.
+- **Produces:** extraction packets with locators; discovery results through the gateway only.
+- **Must never:** hold evidence-write capability; make final judgments; have their unverified characterizations treated as rejection records.
+- **Checked by:** Gate A; supervisor structural checks (packet schema, completeness fields, receipts).
+
+## Verifier
+- **Definition:** a separate invocation with its own capability, per claim.
+- **Owns:** independent re-access of cited content; the claim-vs-source check at a recorded access tier.
+- **Produces:** verification receipts binding claim revision, source version, spans, content hash, access tier, acquisition/extraction lineage, invocation identities.
+- **Must never:** be the producer's invocation; certify above its access tier (abstract check ≠ full-text verification); rely on the producer's extraction; average disagreements (disagreement ⇒ typed adjudication hold).
+- **Checked by:** Gate A; commit-time role-separation enforcement; sampled re-verification.
+
+## Tier-0 checker (NLI, local)
+- **Definition:** claim-vs-span entailment screen; runs after exact quote byte-matching, never instead of it.
+- **Owns:** nothing. Screens and alarms.
+- **Produces:** pass/alarm signals with versioned checker identity; quarantines quotes (not sources) pending re-capture/adjudication.
+- **Must never:** promote a claim; gate load-bearing claims in place of verification; be trusted on numerics/negation without the independent checks; auto-tighten thresholds on regression (re-evaluate/narrow/suspend instead).
+- **Checked by:** Gate A; sampled false-pass audits with denominators (numeric/negation/context traps).
+
+## Gateway
+- **Definition:** the only door to external research sources — licensed, metered, logged, provenance-carrying.
+- **Owns:** lane dispatch, budgets/breakers, coverage facts, licensing/provenance fields, retrieval-event capture.
+- **Produces:** records with provenance and coverage vocabulary (`searched_ok`/`searched_empty`/`provider_unavailable`/`auth_failed` — with their narrow meanings); call logs with invocation IDs.
+- **Must never:** be bypassed by direct API calls from agents; report a failed secrets read as "no key configured" (a dated `secrets backend failing` capability fact instead — the 2026-09-21..24 vault outage is the fixture); translate unparseable payloads into zero results; let two different requests share a request identity.
+- **Checked by:** Gate A; the repaired-defect regression fixtures (breaker persistence, budget ownership, SIGTERM, correlation IDs, request identity, payload validation, server-side policy).
+
+## Projector / publication
+- **Definition:** the outbox consumer that publishes approved generations to the physical stores (Neo4j and Qdrant, named as such).
+- **Owns:** idempotent generation-aware sink writes; per-sink receipts; supersession/tombstones; the reader freshness envelope.
+- **Must never:** overwrite newer generations with old retries; publish unapproved work; let publication failure rewrite scientific completion (three independent facts: completion at revision R / delivery / currency at T).
+- **Checked by:** Gate A; partial-delivery and stale-generation fixtures; the standing review-process rule (review bundles pin hashes + corpus-access manifests).
+
+## Operator
+- **Definition:** the human authority.
+- **Owns:** scope, framing and reframes, obligation and rating approval, phase transitions, completion, retirement, merges to main, anything contested.
+- **Interface guarantees owed to the operator:** typed holds with owners and deadlines; status that answers why every waiting item waits; dated capability facts with transition alerts; dossiers that permanently carry their evidence; blind-sample protocol so advisory recommendations don't anchor the labels.
