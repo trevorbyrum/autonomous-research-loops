@@ -27,6 +27,8 @@ Astra 0a review, "Independent mutation record".
 from __future__ import annotations
 
 import argparse
+import multiprocessing
+import os
 import re
 import sqlite3
 import sys
@@ -411,10 +413,37 @@ def run(fx, ddl: str, connection: str) -> _Collector:
     return result
 
 
+_FX = None  # the fixtures module, bound in main() before workers fork
+
+
+def _evaluate(m: Mutation) -> str:
+    fx = _FX
+    ddl0, conn0 = fx.DDL_TEXT, fx.CONNECTION_TEXT
+    try:
+        ddl = mutate(ddl0, m) if m.target == "ddl" else ddl0
+        conn = mutate(conn0, m) if m.target == "connection" else conn0
+    except ValueError as exc:
+        return f"INVALID   {m.mid}: {exc}"
+    try:
+        res = run(fx, ddl, conn)
+    finally:
+        fx.DDL_TEXT, fx.CONNECTION_TEXT = ddl0, conn0
+    missing = [k for k in m.killers if not any(f == k or f.endswith("." + k) for f in res.failed)]
+    if res.errored:
+        return f"INVALID   {m.mid}: {len(res.errored)} test error(s), e.g. {next(iter(res.errored.items()))}"
+    if not res.failed:
+        return f"SURVIVED  {m.mid}: {m.description}"
+    if missing:
+        return f"INVALID   {m.mid}: listed killer(s) did not fail: {missing}"
+    return f"KILLED    {m.mid} by {len(res.failed)} test(s)"
+
+
 def main(argv: list[str] | None = None) -> int:
+    global _FX
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--only", help="run only mutations whose id starts with this prefix")
     parser.add_argument("--list", action="store_true", help="print the inventory and exit")
+    parser.add_argument("--jobs", type=int, default=os.cpu_count() or 1, help="worker processes (default: all cores)")
     args = parser.parse_args(argv)
     if args.list:
         for m in MUTATIONS:
@@ -434,29 +463,17 @@ def main(argv: list[str] | None = None) -> int:
     if len(set(ids)) != len(ids):
         print("duplicate mutation ids", file=sys.stderr)
         return 1
+    _FX = fx
+    if args.jobs > 1 and len(selected) > 1:
+        with multiprocessing.get_context("fork").Pool(args.jobs) as pool:
+            verdicts = pool.map(_evaluate, selected, chunksize=1)
+    else:
+        verdicts = [_evaluate(m) for m in selected]
     bad = 0
-    for m in selected:
-        try:
-            ddl = mutate(ddl0, m) if m.target == "ddl" else ddl0
-            conn = mutate(conn0, m) if m.target == "connection" else conn0
-        except ValueError as exc:
-            print(f"INVALID   {m.mid}: {exc}")
-            bad += 1
-            continue
-        res = run(fx, ddl, conn)
-        missing = [k for k in m.killers if not any(f == k or f.endswith("." + k) for f in res.failed)]
-        if res.errored:
-            verdict = f"INVALID   {m.mid}: {len(res.errored)} test error(s), e.g. {next(iter(res.errored.items()))}"
-        elif not res.failed:
-            verdict = f"SURVIVED  {m.mid}: {m.description}"
-        elif missing:
-            verdict = f"INVALID   {m.mid}: listed killer(s) did not fail: {missing}"
-        else:
-            verdict = f"KILLED    {m.mid} by {len(res.failed)} test(s)"
+    for verdict in verdicts:
         if not verdict.startswith("KILLED"):
             bad += 1
         print(verdict)
-    fx.DDL_TEXT, fx.CONNECTION_TEXT = ddl0, conn0
     print(f"gen2 mutation run: {len(selected) - bad}/{len(selected)} killed, baseline {base.testsRun} tests green, {time.monotonic() - started:.1f}s")
     return 1 if bad else 0
 
