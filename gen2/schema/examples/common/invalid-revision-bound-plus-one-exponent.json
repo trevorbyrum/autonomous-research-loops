@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "common.schema.json#/$defs/contract_ref",
+    "expect": "invalid",
+    "tests": "RA8: 2^53 is refused as an identity/revision in exponent notation alike (the review's probe: 9007199254740992.0 and ...e0 used to validate)",
+    "base": "valid-revision-bound-integer.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/revision",
+        "value": 9007199254740992e0
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "maximum",
+        "path": "/revision"
+      }
+    ]
+  }
+}

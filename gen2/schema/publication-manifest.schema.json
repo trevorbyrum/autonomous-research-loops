@@ -26,7 +26,7 @@
     "manifest_id": {"$ref": "common.schema.json#/$defs/manifest_id"},
     "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
     "artifact_kind": {"enum": ["completion_publication", "evidence_correction", "checkpoint_publication"]},
-    "generation": {"type": "integer", "minimum": 1},
+    "generation": {"$ref": "common.schema.json#/$defs/generation", "minimum": 1},
     "source": {
       "type": "object",
       "additionalProperties": false,
@@ -53,7 +53,7 @@
       "required": ["manifest_id", "generation"],
       "properties": {
         "manifest_id": {"$ref": "common.schema.json#/$defs/manifest_id"},
-        "generation": {"type": "integer", "minimum": 1}
+        "generation": {"$ref": "common.schema.json#/$defs/generation", "minimum": 1}
       }
     },
     "tombstones": {

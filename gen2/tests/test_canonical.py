@@ -23,7 +23,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from gen2.core import canonical
-from gen2.core.canonical import CanonicalizationError, bytes_digest, canonical_bytes, content_hash, logical_hash, parse_json_strict, request_fingerprint
+from gen2.core.canonical import CanonicalizationError, bytes_digest, canonical_bytes, content_hash, identity_integer, logical_hash, parse_json_strict, request_fingerprint
 
 ENVELOPE_FIXTURE = Path(__file__).resolve().parents[1] / "schema" / "examples" / "commit-outcome" / "valid-final-outcome-envelope.json"
 
@@ -173,14 +173,69 @@ class StrictBoundaryTest(unittest.TestCase):
     def test_parse_rejects(self) -> None:
         for text in ('{"a":1,"a":2}', '{"x":{"a":1,"a":1}}', 'NaN', '[Infinity]', '{"v":-Infinity}', '"\\ud800"', '{"\\udfff":1}',
                      '12345678901234567890', '-9007199254740992', '0.1000000000000000055511151231257827', '333333333.33333329',
-                     '1e400', '{"a":1} x', "{'a':1}", ''):
+                     '1e400', '{"a":1} x', "{'a':1}", '',
+                     '1e-400', '-1e-400', '[2.4e-324]'):  # underflow: the double would be 0.0, a value the text never named
             with self.subTest(text=text):
                 self.assertRaises(CanonicalizationError, parse_json_strict, text)
 
     def test_parse_accepts_exact_values(self) -> None:
-        for text, value in (('0.1', 0.1), ('4.50', 4.5), ('1E30', 1e30), ('9007199254740991', 9007199254740991), ('-0', 0), ('{"a":[true,null]}', {"a": [True, None]})):
+        for text, value in (('0.1', 0.1), ('4.50', 4.5), ('1E30', 1e30), ('9007199254740991', 9007199254740991), ('-0', 0), ('{"a":[true,null]}', {"a": [True, None]}),
+                            ('5e-324', 5e-324)):  # the smallest subnormal is a real, exact double
             with self.subTest(text=text):
                 self.assertEqual(parse_json_strict(text), value)
+
+    def test_parse_decodes_bytes_as_utf8(self) -> None:
+        """Byte input is UTF-8 (RFC 8259 §8.1), non-ASCII included."""
+        for raw, value in (('"é"'.encode("utf-8"), "é"), ('{"k":"€ ☃"}'.encode("utf-8"), {"k": "€ ☃"}), (b'"\xf0\x9f\x98\x80"', "\U0001F600")):
+            with self.subTest(raw=raw):
+                try:
+                    parsed = parse_json_strict(raw)
+                except CanonicalizationError as exc:  # a refusal here is the defect under test, so report it as a failure
+                    self.fail(f"valid UTF-8 JSON bytes refused: {exc}")
+                self.assertEqual(parsed, value)
+        self.assertRaises(CanonicalizationError, parse_json_strict, b'"\xff"')  # not UTF-8
+
+    # bound - 1, bound, bound + 1 (bound = 2**53 - 1), each in integer, decimal and exponent notation
+    IDENTITY_NOTATIONS = {
+        9007199254740990: ("9007199254740990", "9007199254740990.0", "9.00719925474099e15"),
+        9007199254740991: ("9007199254740991", "9007199254740991.0", "9.007199254740991e15"),
+        9007199254740992: ("9007199254740992", "9007199254740992.0", "9007199254740992e0"),
+    }
+
+    def test_identity_bound_holds_by_value_in_every_notation(self) -> None:
+        """RA8: '9007199254740992' was refused but '9007199254740992.0' and
+        '9007199254740992e0' parsed and canonicalized to the same value. An
+        identity/revision/generation field is now bounded by VALUE — whatever
+        the notation and whichever type the parser produced: bound - 1 and
+        bound pass as ints in all three notations; bound + 1 is refused in all
+        three (the bare integer by the parser, the others by the bound)."""
+        def identity_from(text: str) -> int:
+            return identity_integer(parse_json_strict(text))
+        for value in (9007199254740990, 9007199254740991):
+            for text in self.IDENTITY_NOTATIONS[value]:
+                with self.subTest(text=text):
+                    self.assertEqual(identity_from(text), value)
+                    self.assertIs(type(identity_from(text)), int)
+        for text in self.IDENTITY_NOTATIONS[9007199254740992]:
+            with self.subTest(text=text):
+                self.assertRaises(CanonicalizationError, identity_from, text)
+        for value in (2**53, 2.0**53, -1, -1.0, 1.5, float("inf"), float("nan"), True, "7", None):
+            with self.subTest(value=repr(value)):
+                self.assertRaises(CanonicalizationError, identity_integer, value)
+        self.assertEqual(identity_integer(0), 0)
+        self.assertRaises(CanonicalizationError, identity_integer, 0, minimum=1)  # revisions start at 1
+
+    def test_large_numbers_stay_legitimate_outside_identity_fields(self) -> None:
+        """RA8 without breaking JCS: outside identity fields a large integral
+        double is an ordinary binary64 number (RFC 8785 Appendix B serializes
+        2**53 as 9007199254740992), so the parser accepts it in decimal or
+        exponent notation and JCS serializes it."""
+        for text in ("9007199254740992.0", "9007199254740992e0", "1E30"):
+            with self.subTest(text=text):
+                value = parse_json_strict(text)
+                self.assertIsInstance(value, float)
+        self.assertEqual(canonical_bytes(parse_json_strict("9007199254740992.0")), b"9007199254740992")
+        self.assertEqual(canonical_bytes(parse_json_strict("1E30")), b"1e+30")
 
     def test_value_rejects(self) -> None:
         for value in (float("nan"), float("inf"), 2**53, -(2**53), {1: "a"}, {"a": {2.0: "b"}}, {"s": "\ud800"}, b"bytes", {"x"}, Decimal("0.1"), object()):
@@ -240,6 +295,11 @@ class HashSemanticsTest(unittest.TestCase):
         self.assertNotEqual(bytes_digest(raw_a), logical_hash(parse_json_strict(raw_a)))
         self.assertEqual(bytes_digest(b"not json at all \xff"), sha(b"not json at all \xff"))
         self.assertRaises(TypeError, bytes_digest, raw_a.decode())
+        # leading/trailing bytes are retained bytes too (whitespace, newline, BOM)
+        for raw in (b" x\n", b"\n{\"a\":1}\n", b"\xef\xbb\xbf{}", b"\t"):
+            with self.subTest(raw=raw):
+                self.assertEqual(bytes_digest(raw), sha(raw))
+        self.assertNotEqual(bytes_digest(b" x\n"), sha(b"x"))
 
 
 if __name__ == "__main__":

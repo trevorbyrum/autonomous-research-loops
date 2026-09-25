@@ -751,7 +751,15 @@ MUTATIONS: list[Mutation] = [
     Mutation("A11-instants-calendar", "A11", "timestamps checked for shape only (February 31 accepted)", (IN + "test_impossible_or_malformed_instants_refused",),
              target="gen2/core/instants.py", old="        datetime(*(int(part) for part in match.groups()))\n", new="        pass\n"),
     Mutation("A11-instants-utc-only", "A11", "offsets other than Z accepted", (IN + "test_impossible_or_malformed_instants_refused",),
-             target="gen2/core/instants.py", old=r"(?:\.\d{1,9})?Z\Z", new=r"(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})\Z"),
+             target="gen2/core/instants.py", old=r"(?:\.[0-9]{1,9})?Z\Z", new=r"(?:\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})\Z"),
+    # Astra's independent survivors (re-review), now killed; and the ASCII cleanup
+    Mutation("A11-instants-empty-fraction", "A11", "Astra's survivor: a decimal point with no fraction digits accepted", (IN + "test_impossible_or_malformed_instants_refused",),
+             target="gen2/core/instants.py", old=r"(?:\.[0-9]{1,9})?Z\Z", new=r"(?:\.[0-9]{0,9})?Z\Z"),
+    Mutation("A11-instants-pre-1970", "A11", "Astra's survivor: real instants before 1970 refused", (IN + "test_real_instants_accepted",),
+             target="gen2/core/instants.py", old="    if match is None:\n        return False\n", new="    if match is None or int(match.group(1)) < 1970:\n        return False\n"),
+    Mutation("A11-instants-unicode-digits", "A11", "the helper's \\d admits Unicode decimal digits the schema's ASCII pattern refuses", (IN + "test_impossible_or_malformed_instants_refused",),
+             target="gen2/core/instants.py", old=r'_SHAPE = re.compile(r"\A([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(?:\.[0-9]{1,9})?Z\Z")',
+             new=r'_SHAPE = re.compile(r"\A(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?Z\Z")'),
     Mutation("A11-instants-strings-only", "A11", "non-strings accepted", (IN + "test_non_strings_refused",),
              target="gen2/core/instants.py", old="    if not isinstance(value, str):\n        return False", new="    if not isinstance(value, str):\n        return True"),
     # --- R1: RFC 8785 JCS canonicalization; raw bytes kept raw -------------------------
@@ -776,7 +784,22 @@ MUTATIONS: list[Mutation] = [
           ("content-hash-covers-itself", "a document's content hash covers its own content_hash field",
            ("HashSemanticsTest.test_content_hash_excludes_exactly_itself",), 'CONTENT_HASH_EXCLUDES = ("content_hash",)', "CONTENT_HASH_EXCLUDES = ()"),
           ("raw-bytes-canonicalized", "raw provider bytes canonicalized before hashing (the ruling's false-provenance case)",
-           ("HashSemanticsTest.test_raw_bytes_are_hashed_raw_never_canonicalized",), "    return _sha256(bytes(raw))", "    return logical_hash(parse_json_strict(bytes(raw)))"))),
+           ("HashSemanticsTest.test_raw_bytes_are_hashed_raw_never_canonicalized",), "    return _sha256(bytes(raw))", "    return logical_hash(parse_json_strict(bytes(raw)))"),
+          # Astra's independent survivors (re-review), now killed
+          ("underflow-to-zero", "Astra's survivor: a numeral that underflows is accepted as 0.0", ("StrictBoundaryTest.test_parse_rejects",),
+           "        if Decimal(repr(value)) != Decimal(text):", "        if value != 0 and Decimal(repr(value)) != Decimal(text):"),
+          ("raw-bytes-stripped", "Astra's survivor: retained bytes stripped of leading/trailing whitespace before hashing",
+           ("HashSemanticsTest.test_raw_bytes_are_hashed_raw_never_canonicalized",), "    return _sha256(bytes(raw))", "    return _sha256(bytes(raw).strip())"),
+          ("bytes-decoded-as-ascii", "Astra's survivor: JSON bytes decoded as ASCII, not UTF-8", ("StrictBoundaryTest.test_parse_decodes_bytes_as_utf8",),
+           '            text = text.decode("utf-8")', '            text = text.decode("ascii")'),
+          # RA8: identity bounds by value
+          ("identity-bounded-by-type", "the review's RA8 probe: only int identities are bounded (9007199254740992.0 / ...e0 pass)",
+           ("StrictBoundaryTest.test_identity_bound_holds_by_value_in_every_notation",),
+           "    if not minimum <= value <= INT_BOUND:", "    if isinstance(value, int) and not minimum <= value <= INT_BOUND:"),
+          ("identity-non-integral", "a non-integral float passes as an identity", ("StrictBoundaryTest.test_identity_bound_holds_by_value_in_every_notation",),
+           "    if isinstance(value, float) and not (math.isfinite(value) and value.is_integer()):", "    if isinstance(value, float) and not math.isfinite(value):"),
+          ("identity-bool", "a JSON boolean passes as an identity", ("StrictBoundaryTest.test_identity_bound_holds_by_value_in_every_notation",),
+           "    if isinstance(value, bool) or not isinstance(value, (int, float)):", "    if not isinstance(value, (int, float)):"))),
     # --- coverage pass: pre-existing 0a guards, so the inventory spans the whole DDL ----
     *(Mutation(f"cov-delete-guard-{trigger}", "C-11", f"drop delete guard {trigger}",
                (H + ("EveryTableSweepTest.test_unreferenced_rows_cannot_be_deleted_either" if trigger in ("claims_no_delete", "invocations_no_delete", "leases_no_delete", "outbox_events_immutable_d")

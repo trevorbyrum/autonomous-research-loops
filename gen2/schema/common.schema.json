@@ -42,8 +42,9 @@
     "audit_event_id": {"type": "string", "pattern": "^aud_[A-Za-z0-9_-]{8,64}$"},
     "claim_id": {"type": "string", "pattern": "^clm_[A-Za-z0-9_-]{8,64}$"},
     "work_id": {"type": "string", "pattern": "^wrk_[A-Za-z0-9_-]{8,64}$"},
-    "revision": {"description": "A document revision number; revisions start at 1.", "type": "integer", "minimum": 1},
-    "state_revision": {"description": "The router's optimistic-concurrency counter for a topic; starts at 0.", "type": "integer", "minimum": 0},
+    "revision": {"description": "A document revision number; revisions start at 1. Identity numbers are bounded BY VALUE to 2^53-1 (Astra re-review RA8): JSON Schema treats 9007199254740992, 9007199254740992.0 and 9007199254740992e0 alike as the integer 2^53, so `maximum` refuses all three; larger identities travel as strings (gen2/core/canonical.py identity_integer states the same bound).", "type": "integer", "minimum": 1, "maximum": 9007199254740991},
+    "state_revision": {"description": "The router's optimistic-concurrency counter for a topic; starts at 0. Bounded by value like revision (RA8).", "type": "integer", "minimum": 0, "maximum": 9007199254740991},
+    "generation": {"description": "A lease or publication generation (or other identity counter): strictly increasing per topic. Bounded by value like revision (RA8).", "type": "integer", "minimum": 0, "maximum": 9007199254740991},
     "short_text": {"type": "string", "minLength": 1, "maxLength": 500},
     "long_text": {"type": "string", "minLength": 1, "maxLength": 8000},
     "artifact_ref": {

@@ -46,7 +46,7 @@
       "required": ["lease_id", "generation"],
       "properties": {
         "lease_id": {"$ref": "common.schema.json#/$defs/lease_id"},
-        "generation": {"type": "integer", "minimum": 0}
+        "generation": {"$ref": "common.schema.json#/$defs/generation"}
       }
     },
     "expected_state_revision": {"$ref": "common.schema.json#/$defs/state_revision"},
@@ -128,7 +128,7 @@
             "evidence_revision": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/revision"}]},
             "research_ordinal": {
               "description": "Only an accepted research_pass final outcome can receive one (invariant C-7).",
-              "oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]
+              "oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/generation", "minimum": 1}]
             },
             "queue_transition": {
               "type": ["object", "null"],
@@ -145,7 +145,7 @@
               "required": ["lease_id", "generation", "rest_state"],
               "properties": {
                 "lease_id": {"$ref": "common.schema.json#/$defs/lease_id"},
-                "generation": {"type": "integer", "minimum": 0},
+                "generation": {"$ref": "common.schema.json#/$defs/generation"},
                 "rest_state": {"enum": ["idle", "rest_until", "held"]}
               }
             },
@@ -155,7 +155,7 @@
               "additionalProperties": false,
               "required": ["attempt", "budget_remaining", "not_before"],
               "properties": {
-                "attempt": {"type": "integer", "minimum": 1},
+                "attempt": {"$ref": "common.schema.json#/$defs/generation", "minimum": 1},
                 "budget_remaining": {"type": "integer", "minimum": 0},
                 "not_before": {"$ref": "common.schema.json#/$defs/timestamp"}
               }

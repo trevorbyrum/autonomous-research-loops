@@ -26,7 +26,7 @@
     "source_revision": {"$ref": "common.schema.json#/$defs/revision"},
     "projected_revision": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/revision"}]},
     "approval_status": {"enum": ["approved", "no_approved_revision"]},
-    "manifest_generation_served": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]},
+    "manifest_generation_served": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/generation", "minimum": 1}]},
     "sinks": {
       "description": "Keyed by physical sink, so a sink cannot be reported twice with contradictory statuses.",
       "type": "object",
@@ -37,7 +37,7 @@
         "additionalProperties": false,
         "required": ["delivered_generation", "last_successful_delivery_at", "status"],
         "properties": {
-          "delivered_generation": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]},
+          "delivered_generation": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/generation", "minimum": 1}]},
           "last_successful_delivery_at": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/timestamp"}]},
           "status": {"enum": ["delivered", "pending", "failed", "unknown"]}
         },

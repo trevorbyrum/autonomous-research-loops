@@ -45,7 +45,7 @@
       "required": ["lease_id", "generation"],
       "properties": {
         "lease_id": {"$ref": "common.schema.json#/$defs/lease_id"},
-        "generation": {"type": "integer", "minimum": 0}
+        "generation": {"$ref": "common.schema.json#/$defs/generation"}
       }
     },
     "capability_id": {
@@ -106,7 +106,7 @@
       "additionalProperties": false,
       "required": ["episode", "unknown_since", "resolved_at", "resolution", "method", "evidence_ref", "result_payload_digest", "descendants_confirmed_at"],
       "properties": {
-        "episode": {"description": "The episode's own identity (Astra re-review RA4): the invocation's Nth entry into outcome_unknown, taken fresh on entry and never reused. A start time can recur; an episode number cannot, and a resolution resolves exactly one episode.", "type": "integer", "minimum": 1},
+        "episode": {"description": "The episode's own identity (Astra re-review RA4): the invocation's Nth entry into outcome_unknown, taken fresh on entry and never reused. A start time can recur; an episode number cannot, and a resolution resolves exactly one episode.", "$ref": "common.schema.json#/$defs/generation", "minimum": 1},
         "unknown_since": {"$ref": "common.schema.json#/$defs/timestamp"},
         "resolved_at": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/timestamp"}]},
         "resolution": {"enum": ["pending", "found_running", "found_result", "found_committed", "confirmed_failed", "terminated_group"]},
@@ -146,7 +146,7 @@
         "additionalProperties": false,
         "required": ["seq", "from", "to", "at", "cause"],
         "properties": {
-          "seq": {"type": "integer", "minimum": 1},
+          "seq": {"$ref": "common.schema.json#/$defs/generation", "minimum": 1},
           "from": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/invocation_state"}]},
           "to": {"$ref": "common.schema.json#/$defs/invocation_state"},
           "at": {"$ref": "common.schema.json#/$defs/timestamp"},

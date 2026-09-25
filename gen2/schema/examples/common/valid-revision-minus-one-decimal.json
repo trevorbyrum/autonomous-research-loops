@@ -1,0 +1,11 @@
+{
+  "fixture": {
+    "schema": "common.schema.json#/$defs/contract_ref",
+    "expect": "valid",
+    "tests": "RA8: an identity/revision field at 2^53-1 - 1 is valid in decimal notation (bounded by value, not by spelling)"
+  },
+  "instance": {
+    "revision": 9007199254740990.0,
+    "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+}

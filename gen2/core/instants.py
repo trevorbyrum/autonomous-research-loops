@@ -12,15 +12,19 @@ schema's `pattern` is only a shape pre-filter (it admits February 31); the
 store DDL keeps router-validated text and does not re-validate it.
 
 Accepted form: YYYY-MM-DDTHH:MM:SS with an optional 1-9 digit fraction and a
-literal upper-case Z — the Gregorian date must exist (leap years included)
-and the time must be a real time of day (no leap second, no 24:00).
+literal upper-case Z, ASCII digits only — the Gregorian date must exist (leap
+years included; any year 0001-9999) and the time must be a real time of day
+(no leap second, no 24:00).
 """
 from __future__ import annotations
 
 import re
 from datetime import datetime
 
-_SHAPE = re.compile(r"\A(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?Z\Z")
+# ASCII digits only ([0-9], not \d, which matches every Unicode decimal digit
+# and so would admit what the schema's ASCII pattern refuses — Astra
+# re-review, non-blocking cleanup).
+_SHAPE = re.compile(r"\A([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(?:\.[0-9]{1,9})?Z\Z")
 
 
 def is_utc_instant(value: object) -> bool:

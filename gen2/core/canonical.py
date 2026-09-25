@@ -6,7 +6,8 @@ cross-implementation vectors; reject duplicate keys, non-finite numbers,
 invalid Unicode and unsupported numeric precision before hashing; bound
 integers to the interoperable range; keep raw provider-response and artifact
 byte hashes separate and never canonicalized; version the contract);
-ruling R2.6; gen2/store/README.md "Hashing contract"; INVARIANTS C-13.
+ruling R2.6; Astra re-review RA8 (identity bounds by value, any notation);
+gen2/store/README.md "Hashing contract"; INVARIANTS C-13.
 
 Two kinds of digest, never mixed:
   * content_hash / request_fingerprint / logical_hash: SHA-256 over the JCS
@@ -68,11 +69,17 @@ def _exact_float(text: str) -> float:
 
 
 def parse_json_strict(text: str | bytes) -> object:
-    """Parse JSON text for hashing: duplicate keys, NaN/Infinity, integers
-    outside +/-(2**53-1) and numbers a double cannot hold exactly are errors,
-    never silently rounded or merged."""
+    """Parse JSON text (bytes are UTF-8) for hashing: duplicate keys,
+    NaN/Infinity, integer-notation numerals outside +/-(2**53-1) and numerals
+    a double cannot hold exactly (underflow to zero included) are errors,
+    never silently rounded or merged. Any other number is an IEEE binary64
+    value, as in JCS — 1e30 and 9007199254740992.0 are legitimate numbers —
+    so identity bounds are not this parser's: see identity_integer."""
     if isinstance(text, bytes):
-        text = text.decode("utf-8")
+        try:
+            text = text.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise CanonicalizationError(f"JSON bytes are not UTF-8: {exc}") from exc
     try:
         value = json.loads(text, object_pairs_hook=_reject_duplicates, parse_constant=_reject_constant, parse_float=_exact_float)
     except json.JSONDecodeError as exc:
@@ -110,6 +117,23 @@ def _validate(value: object, path: str = "$") -> None:
             _validate(item, f"{path}.{key}")
         return
     raise CanonicalizationError(f"{path}: {type(value).__name__} is not a JSON value")
+
+
+def identity_integer(value: object, *, minimum: int = 0) -> int:
+    """An identity, revision or generation number, bounded BY VALUE (Astra
+    re-review RA8): an int, or an integral float, in [minimum, 2**53-1] —
+    whatever notation it arrived in (9007199254740991, 9007199254740991.0,
+    9.007199254740991e15 all pass; their +1 all fail) and whichever Python
+    type the parser produced. Identities that need more travel as strings.
+    The schemas state the same bound as `maximum` on revision, state_revision
+    and generation."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise CanonicalizationError(f"identity {value!r} is not a JSON number")
+    if isinstance(value, float) and not (math.isfinite(value) and value.is_integer()):
+        raise CanonicalizationError(f"identity {value!r} is not an integer")
+    if not minimum <= value <= INT_BOUND:
+        raise CanonicalizationError(f"identity {value!r} outside [{minimum}, 2**53-1]; encode larger identities as strings")
+    return int(value)
 
 
 def canonical_bytes(value: object) -> bytes:

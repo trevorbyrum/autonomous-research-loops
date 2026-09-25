@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json",
+    "expect": "invalid",
+    "tests": "RA8: a lease generation of 2^53 written in exponent notation is refused by value",
+    "base": "valid-final-outcome-envelope.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/lease/generation",
+        "value": 9007199254740992e0
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "maximum",
+        "path": "/lease/generation"
+      }
+    ]
+  }
+}

@@ -12,7 +12,8 @@ from gen2.core.instants import is_utc_instant
 
 class UtcInstantTest(unittest.TestCase):
     VALID = ("2026-09-25T12:00:00Z", "2028-02-29T23:59:59Z", "2000-02-29T00:00:00Z", "2026-01-31T00:00:00.5Z",
-             "2026-12-31T23:59:59.123456789Z", "1970-01-01T00:00:00Z")
+             "2026-12-31T23:59:59.123456789Z", "1970-01-01T00:00:00Z",
+             "1969-12-31T23:59:59Z", "0001-01-01T00:00:00Z")  # before the Unix epoch is still a real instant
     INVALID = (
         "2026-02-31T12:00:00Z",   # February 31 (the review's probe; the schema pattern admits it)
         "2026-02-30T12:00:00Z",
@@ -23,6 +24,11 @@ class UtcInstantTest(unittest.TestCase):
         "2026-09-25T24:00:00Z", "2026-09-25T23:60:00Z", "2026-09-25T23:59:60Z",
         "2026-09-25T12:00:00+00:00", "2026-09-25T12:00:00z", "2026-09-25 12:00:00Z", "2026-09-25T12:00Z",
         "2026-09-25T12:00:00.1234567890Z", "2026-09-25", "", "2026-09-25T12:00:00Z\n",
+        "2026-09-25T12:00:00.Z",  # a decimal point needs at least one fraction digit
+        # Unicode decimal digits: the schema's ASCII pattern refuses them, and so does the helper
+        "\uff12\uff10\uff12\uff16-09-25T12:00:00Z",  # fullwidth 2026
+        "\u0662\u0660\u0662\u0666-09-25T12:00:00Z",  # Arabic-Indic 2026
+        "2026-09-25T1\u0662:00:00Z", "2026-09-25T12:00:00.\u0665Z",
     )
 
     def test_real_instants_accepted(self) -> None:

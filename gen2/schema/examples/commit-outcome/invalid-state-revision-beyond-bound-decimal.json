@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json",
+    "expect": "invalid",
+    "tests": "RA8: an expected state revision of 2^53 written in decimal notation is refused by value",
+    "base": "valid-final-outcome-envelope.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/expected_state_revision",
+        "value": 9007199254740992.0
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "maximum",
+        "path": "/expected_state_revision"
+      }
+    ]
+  }
+}
