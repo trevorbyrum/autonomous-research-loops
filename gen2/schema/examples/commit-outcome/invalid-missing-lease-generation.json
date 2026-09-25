@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json",
+    "expect": "invalid",
+    "tests": "RG-1b(c): fencing needs the lease generation",
+    "base": "valid-final-outcome-envelope.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/lease/generation"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": "/lease"
+      }
+    ]
+  }
+}

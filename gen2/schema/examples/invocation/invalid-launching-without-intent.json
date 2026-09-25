@@ -1,0 +1,26 @@
+{
+  "fixture": {
+    "schema": "invocation.schema.json",
+    "expect": "invalid",
+    "tests": "L-2: launch intent precedes spawn",
+    "base": "valid-research-pass-running.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/state",
+        "value": "launching"
+      },
+      {
+        "op": "replace",
+        "path": "/launch_intent",
+        "value": null
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/launch_intent"
+      }
+    ]
+  }
+}

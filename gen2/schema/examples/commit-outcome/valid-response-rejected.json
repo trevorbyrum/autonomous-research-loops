@@ -1,0 +1,14 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json#/$defs/response",
+    "expect": "valid",
+    "tests": "RG-1b(c): a stale generation is rejected and nothing changes"
+  },
+  "instance": {
+    "status": "rejected",
+    "operation_id": "op_01J8ZQ4K7M",
+    "reason": "lease_generation_stale",
+    "detail": "lease generation 7 superseded by 8",
+    "current_state_revision": 42
+  }
+}

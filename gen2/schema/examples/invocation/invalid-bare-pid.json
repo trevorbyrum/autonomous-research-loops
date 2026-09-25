@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "invocation.schema.json",
+    "expect": "invalid",
+    "tests": "L-3: a bare PID is not process identity",
+    "base": "valid-research-pass-running.json",
+    "patch": [
+      {
+        "op": "add",
+        "path": "/process_identity/pid",
+        "value": 4242
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "additionalProperties",
+        "path": "/process_identity"
+      }
+    ]
+  }
+}

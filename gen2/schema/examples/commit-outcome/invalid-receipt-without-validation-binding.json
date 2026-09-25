@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json#/$defs/receipt",
+    "expect": "invalid",
+    "tests": "C-3: validation is bound to exact hashes and versions",
+    "base": "valid-receipt-final.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/validation/validated_hashes"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": "/validation"
+      }
+    ]
+  }
+}

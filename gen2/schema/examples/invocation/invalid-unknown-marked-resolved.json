@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "invocation.schema.json",
+    "expect": "invalid",
+    "tests": "L-4: outcome_unknown cannot claim a resolution while still unknown",
+    "base": "valid-outcome-unknown-pending.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/reconciliation/resolution",
+        "value": "confirmed_failed"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "const",
+        "path": "/reconciliation/resolution"
+      }
+    ]
+  }
+}

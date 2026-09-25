@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json",
+    "expect": "invalid",
+    "tests": "RG-1b(c): commits are revision-bound",
+    "base": "valid-final-outcome-envelope.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/expected_state_revision"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": ""
+      }
+    ]
+  }
+}

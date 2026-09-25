@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/invocation.schema.json",
+  "$comment": "flow: S4 (per pass: fenced lease, station launch); §4.1 (one invocation ID end to end) | boundaries: Station supervisor; Router; Verifier; Secondary/delegate agents | design-review: §5 (crash fencing, router outage); §6 (one lifecycle, admitted->launching->running->result_ready->committed plus cancelled/failed/outcome_unknown; delegates and verifiers as supervisor-owned jobs) | invariants: L-1; L-2; L-3; L-4; L-7; L-8; RG-2; C-10 | note: allowed state transitions are normative in docs/gen2/INVARIANTS.md L-1 and enforced by the invocations trigger in gen2/store/schema.sql; this schema checks each record's internal consistency",
+  "title": "Invocation lifecycle record",
+  "description": "One record per execution of any kind. The same fields and states serve every kind (invariant RG-2). There is deliberately no PID field: process identity is the job handle plus host/container, boot identity and start fingerprint (design review §5). outcome_unknown must be reconciled before it can be treated as anything else (L-4).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "record_version",
+    "invocation_id",
+    "kind",
+    "topic_id",
+    "parent_invocation_id",
+    "lease",
+    "capability_id",
+    "state",
+    "admitted_at",
+    "deadline_at",
+    "launch_intent",
+    "process_identity",
+    "cancellation",
+    "result",
+    "reconciliation",
+    "transitions"
+  ],
+  "properties": {
+    "record_version": {"const": "invocation/1"},
+    "invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
+    "kind": {"$ref": "common.schema.json#/$defs/invocation_kind"},
+    "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
+    "parent_invocation_id": {
+      "description": "Delegates run under their parent's reservation and always name it.",
+      "oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/invocation_id"}]
+    },
+    "lease": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["lease_id", "generation"],
+      "properties": {
+        "lease_id": {"$ref": "common.schema.json#/$defs/lease_id"},
+        "generation": {"type": "integer", "minimum": 0}
+      }
+    },
+    "capability_id": {
+      "description": "Each invocation has its own capability; a verifier never shares its producer's (BOUNDARIES.md Verifier).",
+      "$ref": "common.schema.json#/$defs/capability_id"
+    },
+    "state": {"$ref": "common.schema.json#/$defs/invocation_state"},
+    "admitted_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+    "deadline_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+    "launch_intent": {
+      "description": "Recorded before spawn (L-2).",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["recorded_at", "job_handle"],
+      "properties": {
+        "recorded_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+        "job_handle": {"$ref": "common.schema.json#/$defs/short_text"}
+      }
+    },
+    "process_identity": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["job_handle", "host_id", "container_id", "boot_id", "start_fingerprint"],
+      "properties": {
+        "job_handle": {"$ref": "common.schema.json#/$defs/short_text"},
+        "host_id": {"$ref": "common.schema.json#/$defs/short_text"},
+        "container_id": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/short_text"}]},
+        "boot_id": {"$ref": "common.schema.json#/$defs/short_text"},
+        "start_fingerprint": {"$ref": "common.schema.json#/$defs/short_text"}
+      }
+    },
+    "cancellation": {
+      "description": "Capacity is released only after descendants are confirmed handled (L-7).",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["requested_at", "requested_by", "descendants_confirmed_at"],
+      "properties": {
+        "requested_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+        "requested_by": {"enum": ["router", "operator"]},
+        "descendants_confirmed_at": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/timestamp"}]}
+      }
+    },
+    "result": {
+      "description": "Retained by the supervisor with a durable delivery receipt; survives a rejected commit (C-10).",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["payload_digest", "artifact_refs", "staged_at"],
+      "properties": {
+        "payload_digest": {"$ref": "common.schema.json#/$defs/sha256"},
+        "artifact_refs": {"type": "array", "maxItems": 256, "items": {"$ref": "common.schema.json#/$defs/artifact_ref"}},
+        "staged_at": {"$ref": "common.schema.json#/$defs/timestamp"}
+      }
+    },
+    "reconciliation": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["unknown_since", "resolved_at", "resolution"],
+      "properties": {
+        "unknown_since": {"$ref": "common.schema.json#/$defs/timestamp"},
+        "resolved_at": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/timestamp"}]},
+        "resolution": {"enum": ["pending", "found_running", "found_result", "found_committed", "confirmed_failed", "terminated_group"]}
+      }
+    },
+    "transitions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["seq", "from", "to", "at", "cause"],
+        "properties": {
+          "seq": {"type": "integer", "minimum": 1},
+          "from": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/invocation_state"}]},
+          "to": {"$ref": "common.schema.json#/$defs/invocation_state"},
+          "at": {"$ref": "common.schema.json#/$defs/timestamp"},
+          "cause": {"$ref": "common.schema.json#/$defs/local_id"}
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"kind": {"const": "delegate"}}},
+      "then": {"properties": {"parent_invocation_id": {"type": "string"}}}
+    },
+    {
+      "if": {"properties": {"state": {"enum": ["launching", "running", "result_ready", "committed", "outcome_unknown"]}}},
+      "then": {"properties": {"launch_intent": {"type": "object"}}}
+    },
+    {
+      "if": {"properties": {"state": {"enum": ["running", "result_ready", "committed"]}}},
+      "then": {"properties": {"process_identity": {"type": "object"}}}
+    },
+    {
+      "if": {"properties": {"state": {"enum": ["result_ready", "committed"]}}},
+      "then": {"properties": {"result": {"type": "object"}}}
+    },
+    {
+      "if": {"properties": {"state": {"const": "outcome_unknown"}}},
+      "then": {"properties": {"reconciliation": {"type": "object", "properties": {"resolution": {"const": "pending"}}}}}
+    },
+    {
+      "if": {"properties": {"state": {"const": "cancelled"}}},
+      "then": {"properties": {"cancellation": {"type": "object", "properties": {"descendants_confirmed_at": {"type": "string"}}}}}
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "invocation.schema.json",
+    "expect": "invalid",
+    "tests": "L-8: a delegate always names its parent",
+    "base": "valid-delegate-under-parent.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/parent_invocation_id",
+        "value": null
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/parent_invocation_id"
+      }
+    ]
+  }
+}

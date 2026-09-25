@@ -1,0 +1,35 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json",
+    "expect": "valid",
+    "tests": "C-2: envelope carries every identity field of design review §5 step 1"
+  },
+  "instance": {
+    "envelope_version": "commit-outcome/1",
+    "operation_id": "op_01J8ZQ4K7M",
+    "operation_kind": "final_outcome",
+    "invocation_id": "inv_01J8ZQ3W2X",
+    "capability_id": "cap_01J8ZQ3W2X",
+    "topic_id": "fleet-a:intake-latency",
+    "contract": {
+      "revision": 2,
+      "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "config_bundle_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "lease": {
+      "lease_id": "lease_01J8ZQ3V9T",
+      "generation": 7
+    },
+    "expected_state_revision": 41,
+    "payload_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "payload_size_bytes": 18234,
+    "result_refs": [
+      {
+        "content_hash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "size_bytes": 912345,
+        "media_type": "text/plain"
+      }
+    ],
+    "submitted_at": "2026-09-25T11:02:03.120Z"
+  }
+}

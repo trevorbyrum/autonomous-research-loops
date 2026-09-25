@@ -1,0 +1,59 @@
+{
+  "fixture": {
+    "schema": "invocation.schema.json",
+    "expect": "valid",
+    "tests": "L-1/L-3: a running invocation with full process identity"
+  },
+  "instance": {
+    "record_version": "invocation/1",
+    "invocation_id": "inv_01J8ZQ3W2X",
+    "kind": "research_pass",
+    "topic_id": "fleet-a:intake-latency",
+    "parent_invocation_id": null,
+    "lease": {
+      "lease_id": "lease_01J8ZQ3V9T",
+      "generation": 7
+    },
+    "capability_id": "cap_01J8ZQ3W2X",
+    "state": "running",
+    "admitted_at": "2026-09-25T10:40:00Z",
+    "deadline_at": "2026-09-25T11:40:00Z",
+    "launch_intent": {
+      "recorded_at": "2026-09-25T10:40:01Z",
+      "job_handle": "job-5f2c"
+    },
+    "process_identity": {
+      "job_handle": "job-5f2c",
+      "host_id": "dev-box",
+      "container_id": "c-81aa",
+      "boot_id": "b7e2d5f0-boot",
+      "start_fingerprint": "start_ticks=884211"
+    },
+    "cancellation": null,
+    "result": null,
+    "reconciliation": null,
+    "transitions": [
+      {
+        "seq": 1,
+        "from": null,
+        "to": "admitted",
+        "at": "2026-09-25T10:40:00Z",
+        "cause": "claim"
+      },
+      {
+        "seq": 2,
+        "from": "admitted",
+        "to": "launching",
+        "at": "2026-09-25T10:40:01Z",
+        "cause": "launch_intent"
+      },
+      {
+        "seq": 3,
+        "from": "launching",
+        "to": "running",
+        "at": "2026-09-25T10:40:02Z",
+        "cause": "identity_recorded"
+      }
+    ]
+  }
+}

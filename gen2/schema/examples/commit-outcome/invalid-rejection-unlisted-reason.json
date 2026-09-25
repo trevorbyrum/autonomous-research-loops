@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json#/$defs/response",
+    "expect": "invalid",
+    "tests": "RG-1b(b): digest conflicts use the typed reason, not free text",
+    "base": "valid-response-rejected.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/reason",
+        "value": "oops"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "enum",
+        "path": "/reason"
+      }
+    ]
+  }
+}

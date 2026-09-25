@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "invocation.schema.json",
+    "expect": "invalid",
+    "tests": "L-3: running requires process identity",
+    "base": "valid-research-pass-running.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/process_identity",
+        "value": null
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/process_identity"
+      }
+    ]
+  }
+}

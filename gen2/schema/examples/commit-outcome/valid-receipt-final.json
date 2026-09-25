@@ -1,0 +1,51 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json#/$defs/receipt",
+    "expect": "valid",
+    "tests": "C-4/C-5: one receipt records every effect of the transaction"
+  },
+  "instance": {
+    "receipt_version": "commit-receipt/1",
+    "receipt_id": "rcpt_01J8ZQ4M1A",
+    "operation_id": "op_01J8ZQ4K7M",
+    "operation_kind": "final_outcome",
+    "invocation_id": "inv_01J8ZQ3W2X",
+    "topic_id": "fleet-a:intake-latency",
+    "request_fingerprint": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "payload_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "committed_at": "2026-09-25T11:02:03.402Z",
+    "state_revision_before": 41,
+    "state_revision_after": 42,
+    "validation": {
+      "validator_version": "outcome-validator/1.0.0",
+      "policy_version": "engine-policy/2026-09-25",
+      "validated_hashes": [
+        "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      ]
+    },
+    "effects": {
+      "evidence_revision": 12,
+      "research_ordinal": 9,
+      "queue_transition": {
+        "from": "active",
+        "to": "resting"
+      },
+      "lease_release": {
+        "lease_id": "lease_01J8ZQ3V9T",
+        "generation": 7,
+        "rest_state": "rest_until"
+      },
+      "holds_created": [],
+      "retry_intent": null,
+      "trigger_identities": [
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      ],
+      "outbox_event_ids": [],
+      "decision_receipt_ids": [
+        "dec_01J8ZQ40AA"
+      ],
+      "audit_event_id": "aud_01J8ZQ4M1B"
+    }
+  }
+}

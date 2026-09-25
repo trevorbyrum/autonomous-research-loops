@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/commit-outcome.schema.json",
+  "$comment": "flow: S4 step 7 (commit via commit_outcome); §3 step 4 (decision actions commit through the same path; one invocation ID threads the chain); §4.1 | boundaries: Router; Station supervisor | design-review: §5 commit_outcome steps 1-5, the five-step protocol (the task brief attributes it to the adjudication's §5, but that resolution is verification independence, so the protocol is traced here to design review §5); §3 (split finalization, replay probes) | adjudication: (d)3 (accepted-support commit boundary) | invariants: C-2; C-4; C-5; RG-1a; RG-1b; C-7 | note: root = request envelope; $defs/receipt = committed receipt; $defs/response = what the caller receives",
+  "title": "commit_outcome request envelope",
+  "description": "Submitted by trusted station code on behalf of one invocation (step 1). Closed object: authority derives from capability_id as bound by the router, so there is no role, actor or authority field to supply — one sent anyway fails validation rather than being ignored. The typed outcome document lives in the protected spool, addressed by payload_digest; validating it (step 2) happens outside the write transaction. A replay is identical only if every identity field below matches the stored request (the router compares a request fingerprint over them); a reused operation_id with any difference is a conflict (step 3). The router additionally enforces a byte cap on the serialized envelope; JSON Schema cannot bound total size.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "envelope_version",
+    "operation_id",
+    "operation_kind",
+    "invocation_id",
+    "capability_id",
+    "topic_id",
+    "contract",
+    "config_bundle_hash",
+    "lease",
+    "expected_state_revision",
+    "payload_digest",
+    "payload_size_bytes",
+    "result_refs",
+    "submitted_at"
+  ],
+  "properties": {
+    "envelope_version": {"const": "commit-outcome/1"},
+    "operation_id": {"$ref": "common.schema.json#/$defs/operation_id"},
+    "operation_kind": {
+      "description": "final_outcome: the invocation's one terminal result (one per invocation — DDL operation_receipts). interim_transition: an earlier committed transition inside the pass, e.g. provisional capture or a decision-policy action (flow §3 step 4).",
+      "enum": ["final_outcome", "interim_transition"]
+    },
+    "invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
+    "capability_id": {"$ref": "common.schema.json#/$defs/capability_id"},
+    "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
+    "contract": {"$ref": "common.schema.json#/$defs/contract_ref"},
+    "config_bundle_hash": {
+      "description": "The mounted engine policy bundle the invocation was pinned to (design review §6: in-flight work retains its pinned bundle).",
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "lease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lease_id", "generation"],
+      "properties": {
+        "lease_id": {"$ref": "common.schema.json#/$defs/lease_id"},
+        "generation": {"type": "integer", "minimum": 0}
+      }
+    },
+    "expected_state_revision": {"$ref": "common.schema.json#/$defs/state_revision"},
+    "payload_digest": {"$ref": "common.schema.json#/$defs/sha256"},
+    "payload_size_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576},
+    "result_refs": {
+      "description": "Further immutable artifacts the payload references (transcripts, packets, extractions).",
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {"$ref": "common.schema.json#/$defs/artifact_ref"}
+    },
+    "submitted_at": {"$ref": "common.schema.json#/$defs/timestamp"}
+  },
+  "$defs": {
+    "receipt": {
+      "description": "Returned only after commit (step 5). Records what the one short transaction did atomically (step 4). A retained receipt may be read after its lease ends but authorizes no new change. Receipts are immutable.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receipt_version",
+        "receipt_id",
+        "operation_id",
+        "operation_kind",
+        "invocation_id",
+        "topic_id",
+        "request_fingerprint",
+        "payload_digest",
+        "committed_at",
+        "state_revision_before",
+        "state_revision_after",
+        "validation",
+        "effects"
+      ],
+      "properties": {
+        "receipt_version": {"const": "commit-receipt/1"},
+        "receipt_id": {"$ref": "common.schema.json#/$defs/commit_receipt_id"},
+        "operation_id": {"$ref": "common.schema.json#/$defs/operation_id"},
+        "operation_kind": {"enum": ["final_outcome", "interim_transition"]},
+        "invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
+        "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
+        "request_fingerprint": {
+          "description": "Hash over the envelope's identity fields (everything except submitted_at). Replay comparison uses this, not payload_digest alone.",
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        "payload_digest": {"$ref": "common.schema.json#/$defs/sha256"},
+        "committed_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+        "state_revision_before": {"$ref": "common.schema.json#/$defs/state_revision"},
+        "state_revision_after": {"$ref": "common.schema.json#/$defs/state_revision"},
+        "validation": {
+          "description": "Step 2 binding: the validation result is tied to exact hashes and validator/policy versions.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["validator_version", "policy_version", "validated_hashes"],
+          "properties": {
+            "validator_version": {"$ref": "common.schema.json#/$defs/short_text"},
+            "policy_version": {"$ref": "common.schema.json#/$defs/short_text"},
+            "validated_hashes": {"type": "array", "minItems": 1, "maxItems": 257, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/sha256"}}
+          }
+        },
+        "effects": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "evidence_revision",
+            "research_ordinal",
+            "queue_transition",
+            "lease_release",
+            "holds_created",
+            "retry_intent",
+            "trigger_identities",
+            "outbox_event_ids",
+            "decision_receipt_ids",
+            "audit_event_id"
+          ],
+          "properties": {
+            "evidence_revision": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/revision"}]},
+            "research_ordinal": {
+              "description": "Only an accepted research_pass final outcome can receive one (invariant C-7).",
+              "oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]
+            },
+            "queue_transition": {
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "required": ["from", "to"],
+              "properties": {
+                "from": {"$ref": "common.schema.json#/$defs/local_id"},
+                "to": {"$ref": "common.schema.json#/$defs/local_id"}
+              }
+            },
+            "lease_release": {
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "required": ["lease_id", "generation", "rest_state"],
+              "properties": {
+                "lease_id": {"$ref": "common.schema.json#/$defs/lease_id"},
+                "generation": {"type": "integer", "minimum": 0},
+                "rest_state": {"enum": ["idle", "rest_until", "held"]}
+              }
+            },
+            "holds_created": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/hold_id"}},
+            "retry_intent": {
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "required": ["attempt", "budget_remaining", "not_before"],
+              "properties": {
+                "attempt": {"type": "integer", "minimum": 1},
+                "budget_remaining": {"type": "integer", "minimum": 0},
+                "not_before": {"$ref": "common.schema.json#/$defs/timestamp"}
+              }
+            },
+            "trigger_identities": {
+              "description": "Unique review-trigger identities recorded by this commit; a handled identity stays handled after its episode closes.",
+              "type": "array",
+              "maxItems": 64,
+              "uniqueItems": true,
+              "items": {"$ref": "common.schema.json#/$defs/sha256"}
+            },
+            "outbox_event_ids": {"type": "array", "maxItems": 16, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/outbox_event_id"}},
+            "decision_receipt_ids": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/decision_receipt_id"}},
+            "audit_event_id": {"$ref": "common.schema.json#/$defs/audit_event_id"}
+          }
+        }
+      },
+      "if": {"properties": {"operation_kind": {"const": "interim_transition"}}},
+      "then": {"properties": {"effects": {"properties": {"research_ordinal": {"type": "null"}, "lease_release": {"type": "null"}}}}}
+    },
+    "response": {
+      "description": "committed and replayed carry the (same) receipt; rejected carries no receipt and means nothing changed (step 3: reject before mutation).",
+      "type": "object",
+      "required": ["status"],
+      "properties": {"status": {"enum": ["committed", "replayed", "rejected"]}},
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"enum": ["committed", "replayed"]}}},
+          "then": {
+            "additionalProperties": false,
+            "required": ["status", "receipt"],
+            "properties": {"status": true, "receipt": {"$ref": "#/$defs/receipt"}}
+          }
+        },
+        {
+          "if": {"properties": {"status": {"const": "rejected"}}},
+          "then": {
+            "additionalProperties": false,
+            "required": ["status", "operation_id", "reason", "current_state_revision"],
+            "properties": {
+              "status": true,
+              "operation_id": {"$ref": "common.schema.json#/$defs/operation_id"},
+              "reason": {
+                "enum": [
+                  "operation_id_conflict",
+                  "unknown_invocation",
+                  "capability_invalid",
+                  "capability_invocation_mismatch",
+                  "cross_topic",
+                  "lease_not_current",
+                  "lease_generation_stale",
+                  "lease_released",
+                  "state_revision_stale",
+                  "contract_revision_stale",
+                  "config_bundle_mismatch",
+                  "topic_paused",
+                  "amendment_pending",
+                  "restart_pending",
+                  "payload_missing",
+                  "payload_digest_mismatch",
+                  "payload_invalid",
+                  "kind_not_permitted",
+                  "final_outcome_exists"
+                ]
+              },
+              "detail": {"$ref": "common.schema.json#/$defs/short_text"},
+              "current_state_revision": {"$ref": "common.schema.json#/$defs/state_revision"}
+            }
+          }
+        }
+      ]
+    }
+  }
+}

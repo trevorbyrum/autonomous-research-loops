@@ -1,0 +1,26 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json#/$defs/receipt",
+    "expect": "invalid",
+    "tests": "C-7: only a final research outcome receives an ordinal",
+    "base": "valid-receipt-final.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/operation_kind",
+        "value": "interim_transition"
+      },
+      {
+        "op": "replace",
+        "path": "/effects/lease_release",
+        "value": null
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/effects/research_ordinal"
+      }
+    ]
+  }
+}

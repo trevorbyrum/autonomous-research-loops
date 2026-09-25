@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json",
+    "expect": "invalid",
+    "tests": "ID scheme: prefix typing catches an invocation ID used as an operation ID",
+    "base": "valid-final-outcome-envelope.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/operation_id",
+        "value": "inv_01J8ZQ3W2X"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "pattern",
+        "path": "/operation_id"
+      }
+    ]
+  }
+}

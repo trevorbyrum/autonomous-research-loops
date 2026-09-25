@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json",
+    "expect": "invalid",
+    "tests": "C-2: envelopes are size-bounded (payload by reference, capped)",
+    "base": "valid-final-outcome-envelope.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/payload_size_bytes",
+        "value": 5000000
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "maximum",
+        "path": "/payload_size_bytes"
+      }
+    ]
+  }
+}
