@@ -4,9 +4,11 @@ Trace: task 0a deliverable 3 ("Uniqueness/fencing constraints expressed in
 DDL where SQLite allows"); invariant IDs refer to docs/gen2/INVARIANTS.md.
 
 What these tests show: the named constraint or trigger rejects the stated
-row, and the same write minus the violation is accepted (so a rejection is
-not an unrelated failure such as a missing foreign key). What they cannot
-show: that the router uses these tables correctly, that crash recovery or
+row. Where a test also shows the same write minus the violation being
+accepted, that control rules out an unrelated failure (such as a missing
+foreign key); the few tests without such a control say so. Every
+connection applies gen2/store/connection.sql (store_fixtures.connect). What
+they cannot show: that the router uses these tables correctly, that crash recovery or
 replay behave (RG-1a/RG-1b need Phase 1 fault-injection tests against the
 router), or anything about concurrency. They test the draft schema only.
 """
@@ -15,79 +17,8 @@ from __future__ import annotations
 import json
 import sqlite3
 import unittest
-from pathlib import Path
 
-SCHEMA = Path(__file__).resolve().parents[1] / "store" / "schema.sql"
-T = "2026-09-25T12:00:00Z"
-TOPIC = "fleet-a:t1"
-OTHER = "fleet-a:t2"
-
-
-def h(ch: str) -> str:
-    return "sha256:" + ch * 64
-
-
-class StoreTestCase(unittest.TestCase):
-    def setUp(self) -> None:
-        self.db = sqlite3.connect(":memory:", isolation_level=None)
-        self.db.execute("PRAGMA foreign_keys = ON")
-        self.db.executescript(SCHEMA.read_text(encoding="utf-8"))
-        for tid in (TOPIC, OTHER):
-            self.x("INSERT INTO queue_entries (topic_id, fleet_id, priority, status, created_at, updated_at) VALUES (?, 'fleet-a', 1, 'active', ?, ?)", tid, T, T)
-            self.contract(tid, 1)
-
-    def tearDown(self) -> None:
-        self.db.close()
-
-    def x(self, sql: str, *params):
-        return self.db.execute(sql, params)
-
-    def rejects(self, fragment: str, sql: str, *params) -> None:
-        with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.x(sql, *params)
-        self.assertIn(fragment, str(ctx.exception))
-
-    # -- builders --------------------------------------------------------
-    def contract(self, tid: str, rev: int, status: str = "draft", approved_by: str | None = None, ch: str | None = None) -> str:
-        content = h(ch or ("a" if tid == TOPIC else "b") if rev == 1 else ch or str(rev))
-        doc = json.dumps({"topic_id": tid, "revision": rev, "content_hash": content, "protocol_revision": 1, "facet_map": {"framing_version": 1}})
-        self.x("INSERT INTO contract_revisions (topic_id, revision, parent_revision, protocol_revision, framing_version, content_hash, document, status, approved_by_decision_id, created_at) VALUES (?, ?, ?, 1, 1, ?, ?, ?, ?, ?)",
-               tid, rev, None if rev == 1 else rev - 1, content, doc, status, approved_by, T)
-        return content
-
-    def decision(self, did: str, kind: str, tid: str = TOPIC, disposition: str = "approved", dossier: int | None = None) -> None:
-        self.x("INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_hash, dossier_revision, operator_id, decided_at) VALUES (?, ?, ?, ?, 'x', 'ref', ?, ?, 'trevor', ?)",
-               did, tid, kind, disposition, h("e"), dossier, T)
-
-    def lease(self, lid: str, gen: int, tid: str = TOPIC, scope: str = "research") -> None:
-        self.x("INSERT INTO leases (lease_id, topic_id, scope, generation, station_id, granted_at, expires_at) VALUES (?, ?, ?, ?, 'st1', ?, ?)", lid, tid, scope, gen, T, T)
-
-    def invocation(self, iid: str, kind: str = "research_pass", lease: str | None = "lease_aaaaaaaa", tid: str = TOPIC, parent: str | None = None) -> None:
-        self.x("INSERT INTO invocations (invocation_id, kind, topic_id, parent_invocation_id, lease_id, capability_id, config_bundle_hash, state, admitted_at, deadline_at, state_changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'admitted', ?, ?, ?)",
-               iid, kind, tid, parent, lease, "cap_" + iid[4:], h("c"), T, T, T)
-
-    def receipt(self, op: str, inv: str, lease: str = "lease_aaaaaaaa", gen: int = 1, before: int = 0, kind: str = "final_outcome", tid: str = TOPIC, rid: str | None = None) -> None:
-        rid = rid or "rcpt_" + op[3:]
-        body = json.dumps({"operation_id": op, "receipt_id": rid, "payload_digest": h("d")})
-        self.x("INSERT INTO operation_receipts (operation_id, receipt_id, operation_kind, invocation_id, topic_id, request_fingerprint, payload_digest, lease_id, lease_generation, contract_revision, config_bundle_hash, state_revision_before, state_revision_after, validator_version, policy_version, receipt, committed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 'v1', 'p1', ?, ?)",
-               op, rid, kind, inv, tid, h("f"), h("d"), lease, gen, h("c"), before, before + 1, body, T)
-
-    def spec(self, spec_id: str = "dspec_screen01", provider: str = "jev", cls: str = "screening") -> str:
-        sh = h("9" if provider == "jev" else "8")
-        self.x("INSERT INTO decision_specs (spec_hash, spec_id, decision_class, provider, document, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-               sh, spec_id, cls, provider, json.dumps({"spec_id": spec_id, "provider": provider, "decision_class": cls}), T)
-        return sh
-
-    def decision_receipt(self, did: str, inv: str, spec_hash: str, provider: str = "jev", answer: dict | None = None, authority: str = "shadow",
-                         qualification: str | None = None, action: str = "shadow_log_only", commit_op: str | None = None, hold: str | None = None) -> None:
-        if answer is None:
-            answer = {"primitive": "choice", "selected_option_id": "include", "distribution": {"include": 0.8, "exclude": 0.2}, "confidence": 0.7}
-        self.x("INSERT INTO decision_receipts (decision_receipt_id, invocation_id, topic_id, spec_hash, decision_class, provider, input_status, response_status, raw_response_digest, answer, policy_id, policy_version, authority_level, qualification_ref, action, commit_operation_id, hold_id, blind_sample, receipt, decided_at) VALUES (?, ?, ?, ?, 'screening', ?, 'complete', 'answered', ?, ?, 'P1', 1, ?, ?, ?, ?, ?, 0, '{}', ?)",
-               did, inv, TOPIC, spec_hash, provider, h("5"), json.dumps(answer), authority, qualification, action, commit_op, hold, T)
-
-    def to_running(self, iid: str) -> None:
-        self.x("UPDATE invocations SET state = 'launching', launch_intent_at = ? WHERE invocation_id = ?", T, iid)
-        self.x("UPDATE invocations SET state = 'running', job_handle = ?, host_id = 'dev', boot_id = 'b1', start_fingerprint = 'st=1' WHERE invocation_id = ?", "job-" + iid, iid)
+from gen2.tests.store_fixtures import OTHER, TOPIC, StoreTestCase, T, h
 
 
 class LeaseFencingTest(StoreTestCase):
@@ -184,11 +115,19 @@ class CommitFencingTest(StoreTestCase):
 
     def test_operation_id_reuse_rejected_and_receipts_immutable(self) -> None:
         self.receipt("op_00000001", "inv_pppppppp")
+        stored = self.snapshot("operation_receipts")
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
             self.receipt("op_00000001", "inv_pppppppp", before=1, kind="interim_transition", rid="rcpt_distinct1")
         self.assertIn("UNIQUE constraint failed: operation_receipts.operation_id", str(ctx.exception))
         self.rejects("operation receipts are immutable", "UPDATE operation_receipts SET payload_digest = ? WHERE operation_id = 'op_00000001'", h("0"))
         self.rejects("never deleted", "DELETE FROM operation_receipts WHERE operation_id = 'op_00000001'")
+        # REPLACE on the primary key and on the alternate receipt_id key (A1);
+        # every key is attacked in test_store_history.py.
+        replace = ("INSERT OR REPLACE INTO operation_receipts SELECT ?, ?, operation_kind, invocation_id, topic_id, ?, ?, lease_id, lease_generation, contract_revision, config_bundle_hash, state_revision_before + ?, state_revision_after + ?, validator_version, policy_version, "
+                   "json_set(receipt, '$.operation_id', ?, '$.receipt_id', ?, '$.payload_digest', ?), committed_at FROM operation_receipts WHERE operation_id = 'op_00000001'")
+        self.rejects("replay protection depends on them", replace, "op_00000001", "rcpt_00000001", h("9"), h("0"), 0, 0, "op_00000001", "rcpt_00000001", h("0"))
+        self.rejects("replay protection depends on them", replace, "op_00000002", "rcpt_00000001", h("9"), h("0"), 5, 5, "op_00000002", "rcpt_00000001", h("0"))
+        self.assertEqual(self.snapshot("operation_receipts"), stored)
 
     def test_one_final_outcome_per_invocation(self) -> None:
         self.receipt("op_00000001", "inv_pppppppp", kind="interim_transition", before=0)
@@ -264,9 +203,17 @@ class OrdinalAndTriggerTest(StoreTestCase):
         insert = "INSERT INTO review_triggers (trigger_identity, topic_id, reason_code, signal_source, cause_ref, observed_at) VALUES (?, ?, 'persistent_contradiction', 'deterministic', 'CL-3', ?)"
         self.x(insert, h("1"), TOPIC, T)
         self.rejects("UNIQUE constraint failed: review_triggers.trigger_identity", insert, h("1"), TOPIC, T)
-        self.x("UPDATE review_triggers SET handled_at = ? WHERE trigger_identity = ?", T, h("1"))
+        self.receipt("op_00000009", "inv_pppppppp", kind="interim_transition", before=0)
+        self.receipt("op_00000010", "inv_pppppppp", kind="interim_transition", before=1)
+        self.x("INSERT INTO review_episodes (episode_id, topic_id, kind, opened_at, opened_by_operation_id) VALUES ('ep-1', ?, 'method_fit', ?, 'op_00000009')", TOPIC, T)
+        self.x("UPDATE review_triggers SET episode_id = 'ep-1', handled_at = ? WHERE trigger_identity = ?", T, h("1"))
+        self.x("UPDATE review_episodes SET closed_at = ?, closed_by_operation_id = 'op_00000010' WHERE episode_id = 'ep-1'", T)
         self.rejects("a handled trigger stays handled", "UPDATE review_triggers SET handled_at = NULL WHERE trigger_identity = ?", h("1"))
         self.rejects("never deleted", "DELETE FROM review_triggers WHERE trigger_identity = ?", h("1"))
+        # A1 / RG-1b(e): replaying the trigger unhandled after its episode closed,
+        # through REPLACE, cannot reopen it; read back the stored row.
+        self.rejects("never deleted", insert.replace("INSERT", "INSERT OR REPLACE"), h("1"), TOPIC, T)
+        self.assertEqual(self.rows("SELECT episode_id, handled_at FROM review_triggers WHERE trigger_identity = ?", h("1")), [("ep-1", T)])
 
 
 class VerificationTest(StoreTestCase):
@@ -527,13 +474,23 @@ class PublicationTest(StoreTestCase):
         self.x("INSERT INTO sink_generations VALUES (?, 'qdrant', 2, ?)", TOPIC, T)
         self.x("UPDATE sink_generations SET delivered_generation = 2, delivered_at = ? WHERE topic_id = ? AND sink = 'qdrant'", T, TOPIC)  # idempotent retry
         self.rejects("never overwrites a newer delivered generation", "UPDATE sink_generations SET delivered_generation = 1 WHERE topic_id = ? AND sink = 'qdrant'", TOPIC)
+        # A1: the regression paths that bypass an UPDATE guard
+        self.rejects("high-water mark is never deleted", "DELETE FROM sink_generations WHERE topic_id = ? AND sink = 'qdrant'", TOPIC)
+        self.rejects("high-water mark is never deleted", "INSERT OR REPLACE INTO sink_generations VALUES (?, 'qdrant', 1, ?)", TOPIC, T)
+        self.assertEqual(self.rows("SELECT delivered_generation FROM sink_generations WHERE topic_id = ? AND sink = 'qdrant'", TOPIC), [(2,)])
         self.x("UPDATE sink_generations SET delivered_generation = 3 WHERE topic_id = ? AND sink = 'qdrant'", TOPIC)
 
 
 class ContractGovernanceTest(StoreTestCase):
     def test_contract_content_immutable_never_deleted(self) -> None:
-        self.rejects("contract revisions are immutable", "UPDATE contract_revisions SET protocol_revision = 2 WHERE topic_id = ? AND revision = 1", TOPIC)
+        stored = self.snapshot("contract_revisions")
+        for pin, value in (("protocol_revision", 2), ("framing_version", 2), ("content_hash", h("9")), ("parent_revision", 1),
+                           ("document", '{"topic_id":"fleet-a:t1"}'), ("created_at", "2026-09-26T00:00:00Z"), ("revision", 7)):
+            with self.subTest(pin=pin):
+                self.rejects("contract revisions are immutable", f"UPDATE contract_revisions SET {pin} = ? WHERE topic_id = ? AND revision = 1", value, TOPIC)
         self.rejects("never deleted", "DELETE FROM contract_revisions WHERE topic_id = ? AND revision = 1", TOPIC)
+        self.rejects("never deleted", "INSERT OR REPLACE INTO contract_revisions SELECT topic_id, revision, parent_revision, 2, framing_version, content_hash, json_set(document, '$.protocol_revision', 2), status, approved_by_decision_id, created_at FROM contract_revisions WHERE topic_id = ? AND revision = 1", TOPIC)
+        self.assertEqual(self.snapshot("contract_revisions"), stored)
         self.decision("opd_00000001", "contract_approval")
         self.x("UPDATE contract_revisions SET status = 'approved', approved_by_decision_id = 'opd_00000001' WHERE topic_id = ? AND revision = 1", TOPIC)
         self.rejects("draft -> approved -> superseded", "UPDATE contract_revisions SET status = 'draft' WHERE topic_id = ? AND revision = 1", TOPIC)

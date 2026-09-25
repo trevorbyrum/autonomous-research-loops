@@ -4,9 +4,9 @@
 # CONTRIBUTING.md.
 PYTHON ?= python3
 
-.PHONY: gen2-check gen2-boundaries gen2-schemas gen2-ddl gen2-test gen2-size gen2-linecount
+.PHONY: gen2-check gen2-boundaries gen2-schemas gen2-ddl gen2-test gen2-mutation gen2-size gen2-linecount
 
-gen2-check: gen2-boundaries gen2-schemas gen2-ddl gen2-test gen2-size
+gen2-check: gen2-boundaries gen2-schemas gen2-ddl gen2-test gen2-mutation gen2-size
 	@echo "gen2-check: all checks passed"
 
 gen2-boundaries:
@@ -21,6 +21,11 @@ gen2-ddl:
 
 gen2-test:
 	$(PYTHON) -m unittest discover -s gen2/tests -p 'test_*.py'
+
+# Every guard in tools/gen2_mutations.py is removed in memory and its named
+# tests must fail (task 0a-repair: fixes must be mutation-testable).
+gen2-mutation:
+	$(PYTHON) tools/gen2_mutations.py
 
 # Size budget (charter; design review §10): fails above the 12,000-line ceiling.
 gen2-size:

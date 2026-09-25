@@ -1,0 +1,164 @@
+"""Shared fixtures for the gen-2 store DDL tests (not collected as tests).
+
+Every connection applies gen2/store/connection.sql — the integrity-bearing
+per-connection pragmas (foreign_keys, recursive_triggers) — before the DDL,
+exactly as the store module must (INVARIANTS C-11).
+
+DDL_TEXT and CONNECTION_TEXT are module globals so that the mutation harness
+(tools/gen2_mutations.py) can substitute a mutated schema in memory and rerun
+the same tests; nothing else should reassign them.
+
+Builders construct input rows only. Expected accept/reject outcomes are
+written by hand in each test, never derived from the DDL under test.
+"""
+from __future__ import annotations
+
+import json
+import sqlite3
+import unittest
+from pathlib import Path
+
+STORE_DIR = Path(__file__).resolve().parents[1] / "store"
+DDL_TEXT = (STORE_DIR / "schema.sql").read_text(encoding="utf-8")
+CONNECTION_TEXT = (STORE_DIR / "connection.sql").read_text(encoding="utf-8")
+
+T = "2026-09-25T12:00:00Z"
+TOPIC = "fleet-a:t1"
+OTHER = "fleet-a:t2"
+
+
+def h(ch: str) -> str:
+    return "sha256:" + ch * 64
+
+
+def connect(apply_connection_contract: bool = True) -> sqlite3.Connection:
+    db = sqlite3.connect(":memory:", isolation_level=None)
+    if apply_connection_contract:
+        db.executescript(CONNECTION_TEXT)
+    else:
+        db.execute("PRAGMA foreign_keys = ON")  # FK enforcement only; recursive_triggers left at SQLite's default (off)
+    db.executescript(DDL_TEXT)
+    return db
+
+
+class StoreTestCase(unittest.TestCase):
+    APPLY_CONNECTION_CONTRACT = True
+
+    def setUp(self) -> None:
+        self.db = connect(self.APPLY_CONNECTION_CONTRACT)
+        for tid in (TOPIC, OTHER):
+            self.x("INSERT INTO queue_entries (topic_id, fleet_id, priority, status, created_at, updated_at) VALUES (?, 'fleet-a', 1, 'active', ?, ?)", tid, T, T)
+            self.contract(tid, 1)
+
+    def tearDown(self) -> None:
+        self.db.close()
+
+    def x(self, sql: str, *params):
+        return self.db.execute(sql, params)
+
+    def rows(self, sql: str, *params) -> list[tuple]:
+        return self.db.execute(sql, params).fetchall()
+
+    def rejects(self, fragment: str, sql: str, *params) -> None:
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.x(sql, *params)
+        self.assertIn(fragment, str(ctx.exception))
+
+    def snapshot(self, table: str) -> list[tuple]:
+        return self.rows(f"SELECT * FROM {table} ORDER BY rowid")
+
+    # -- builders --------------------------------------------------------
+    def contract(self, tid: str, rev: int, status: str = "draft", approved_by: str | None = None, ch: str | None = None) -> str:
+        content = h(ch or ("a" if tid == TOPIC else "b") if rev == 1 else ch or str(rev))
+        doc = json.dumps({"topic_id": tid, "revision": rev, "content_hash": content, "protocol_revision": 1, "facet_map": {"framing_version": 1}})
+        self.x("INSERT INTO contract_revisions (topic_id, revision, parent_revision, protocol_revision, framing_version, content_hash, document, status, approved_by_decision_id, created_at) VALUES (?, ?, ?, 1, 1, ?, ?, ?, ?, ?)",
+               tid, rev, None if rev == 1 else rev - 1, content, doc, status, approved_by, T)
+        return content
+
+    def decision(self, did: str, kind: str, tid: str = TOPIC, disposition: str = "approved", dossier: int | None = None) -> None:
+        self.x("INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_hash, dossier_revision, operator_id, decided_at) VALUES (?, ?, ?, ?, 'x', 'ref', ?, ?, 'trevor', ?)",
+               did, tid, kind, disposition, h("e"), dossier, T)
+
+    def lease(self, lid: str, gen: int, tid: str = TOPIC, scope: str = "research") -> None:
+        self.x("INSERT INTO leases (lease_id, topic_id, scope, generation, station_id, granted_at, expires_at) VALUES (?, ?, ?, ?, 'st1', ?, ?)", lid, tid, scope, gen, T, T)
+
+    def invocation(self, iid: str, kind: str = "research_pass", lease: str | None = "lease_aaaaaaaa", tid: str = TOPIC, parent: str | None = None) -> None:
+        self.x("INSERT INTO invocations (invocation_id, kind, topic_id, parent_invocation_id, lease_id, capability_id, config_bundle_hash, state, admitted_at, deadline_at, state_changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'admitted', ?, ?, ?)",
+               iid, kind, tid, parent, lease, "cap_" + iid[4:], h("c"), T, T, T)
+
+    def receipt(self, op: str, inv: str, lease: str = "lease_aaaaaaaa", gen: int = 1, before: int = 0, kind: str = "final_outcome", tid: str = TOPIC, rid: str | None = None, digest: str = "d") -> None:
+        rid = rid or "rcpt_" + op[3:]
+        body = json.dumps({"operation_id": op, "receipt_id": rid, "payload_digest": h(digest)})
+        self.x("INSERT INTO operation_receipts (operation_id, receipt_id, operation_kind, invocation_id, topic_id, request_fingerprint, payload_digest, lease_id, lease_generation, contract_revision, config_bundle_hash, state_revision_before, state_revision_after, validator_version, policy_version, receipt, committed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 'v1', 'p1', ?, ?)",
+               op, rid, kind, inv, tid, h("f"), h(digest), lease, gen, h("c"), before, before + 1, body, T)
+
+    def spec(self, spec_id: str = "dspec_screen01", provider: str = "jev", cls: str = "screening") -> str:
+        sh = h("9" if provider == "jev" else "8")
+        self.x("INSERT INTO decision_specs (spec_hash, spec_id, decision_class, provider, document, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+               sh, spec_id, cls, provider, json.dumps({"spec_id": spec_id, "provider": provider, "decision_class": cls}), T)
+        return sh
+
+    def decision_receipt(self, did: str, inv: str, spec_hash: str, provider: str = "jev", answer: dict | None = None, authority: str = "shadow",
+                         qualification: str | None = None, action: str = "shadow_log_only", commit_op: str | None = None, hold: str | None = None) -> None:
+        if answer is None:
+            answer = {"primitive": "choice", "selected_option_id": "include", "distribution": {"include": 0.8, "exclude": 0.2}, "confidence": 0.7}
+        self.x("INSERT INTO decision_receipts (decision_receipt_id, invocation_id, topic_id, spec_hash, decision_class, provider, input_status, response_status, raw_response_digest, answer, policy_id, policy_version, authority_level, qualification_ref, action, commit_operation_id, hold_id, blind_sample, receipt, decided_at) VALUES (?, ?, ?, ?, 'screening', ?, 'complete', 'answered', ?, ?, 'P1', 1, ?, ?, ?, ?, ?, 0, '{}', ?)",
+               did, inv, TOPIC, spec_hash, provider, h("5"), json.dumps(answer), authority, qualification, action, commit_op, hold, T)
+
+    def to_running(self, iid: str) -> None:
+        self.x("UPDATE invocations SET state = 'launching', launch_intent_at = ? WHERE invocation_id = ?", T, iid)
+        self.x("UPDATE invocations SET state = 'running', job_handle = ?, host_id = 'dev', boot_id = 'b1', start_fingerprint = 'st=1' WHERE invocation_id = ?", "job-" + iid, iid)
+
+    # -- one coherent row in every table -------------------------------------
+    def populate_every_table(self) -> None:
+        """A positive control that the whole schema admits one coherent history,
+        and the population the history-rewrite sweep attacks. Keep one row in
+        every table: test_every_table_is_populated fails if a table is added
+        without extending this."""
+        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, topic_id, staged_at) VALUES (?, 10, 'application/json', ?, ?)", h("7"), TOPIC, T)
+        self.decision("opd_contract1", "contract_approval")
+        self.x("UPDATE contract_revisions SET status = 'approved', approved_by_decision_id = 'opd_contract1' WHERE topic_id = ? AND revision = 1", TOPIC)
+        self.decision("opd_rating001", "rating_approval")
+        self.x("INSERT INTO obligations (topic_id, contract_revision, obligation_id, template_id, template_version, claim_type, facet_ids, stopping_profile_id, exploratory, operator_importance_band, operator_importance_score, operator_rating_decision_id) "
+               "VALUES (?, 1, 'O-1', 'T1', 1, 'effect', '[\"F-1\"]', 'SP-1', 0, 'critical', 8, 'opd_rating001')", TOPIC)
+        self.lease("lease_aaaaaaaa", 1)
+        self.invocation("inv_pppppppp")
+        self.to_running("inv_pppppppp")
+        self.x("INSERT INTO invocation_transitions (invocation_id, seq, from_state, to_state, at, cause) VALUES ('inv_pppppppp', 1, NULL, 'admitted', ?, 'admit')", T)
+        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, 1, 1, 1, 'eval-1', ?, ?, ?)", TOPIC, h("3"), h("7"), T)
+        self.receipt("op_00000001", "inv_pppppppp", kind="final_outcome", before=0)
+        self.x("INSERT INTO research_ordinals VALUES (?, 1, 'inv_pppppppp', 'op_00000001')", TOPIC)
+        self.x("INSERT INTO review_episodes (episode_id, topic_id, kind, opened_at, opened_by_operation_id) VALUES ('ep-1', ?, 'method_fit', ?, 'op_00000001')", TOPIC, T)
+        self.x("INSERT INTO review_triggers (trigger_identity, topic_id, reason_code, signal_source, cause_ref, observed_at, episode_id, handled_at) VALUES (?, ?, 'persistent_contradiction', 'deterministic', 'CL-3', ?, 'ep-1', ?)", h("1"), TOPIC, T, T)
+        self.x("INSERT INTO capability_facts (fact_id, capability, state, detail, since, affected_lanes, recorded_at) VALUES ('cf-1', 'secrets_backend', 'failing', 'vault 403', ?, '[\"semantic_scholar\"]', ?)", T, T)
+        self.x("INSERT INTO holds (hold_id, topic_id, subject_ref, hold_class, cause, recoverability, required_authority, owner, deadline_at, clears_when, capability_fact_id, created_at) "
+               "VALUES ('hold_00000001', ?, 'lane:semantic_scholar', 'capability', 'vault 403', 'needs_remediation', 'router', 'router', ?, 'secrets backend healthy', 'cf-1', ?)", TOPIC, T, T)
+        self.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, policy_version) "
+               "VALUES ('o1', 'inv_pppppppp', ?, ?, 1, 'crossref', '{}', '[\"O-1\"]', ?, 'searched_ok', 1, 'pol1')", TOPIC, h("4"), T)
+        self.x("INSERT INTO retrieval_events (event_id, observation_id, topic_id, provider_record_id, rank, captured_at) VALUES ('e1', 'o1', ?, 'rec-1', 1, ?)", TOPIC, T)
+        self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000001', 'doi', '10.1/x', ?)", T)
+        self.x("INSERT INTO record_work_links (event_id, work_id, dedup_method_version, linked_at) VALUES ('e1', 'wrk_00000001', 'dedup-1', ?)", T)
+        self.x("INSERT INTO screening_assessments (assessment_id, topic_id, work_id, contract_revision, eligibility_protocol_version, framing_version, stage, decision, reason_code, criterion_results, actor_kind, invocation_id, recorded_by_operation_id, created_at) "
+               "VALUES ('sa1', ?, 'wrk_00000001', 1, 1, 1, 'abstract', 'include', NULL, '{}', 'primary', 'inv_pppppppp', 'op_00000001', ?)", TOPIC, T)
+        self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000001', 1, ?, ?, 'inv_pppppppp', 1, 'full_text', 'provisional', ?)", TOPIC, h("7"), T)
+        self.x("INSERT INTO claim_source_links (claim_id, claim_revision, work_id, source_version, topic_id, contract_revision, obligation_id, spans, contribution, evidence_origin_lineage, created_at) "
+               "VALUES ('clm_00000001', 1, 'wrk_00000001', 'v1', ?, 1, 'O-1', '[]', 'answer', 'study-1', ?)", TOPIC, T)
+        self.lease("lease_vvvvvvvv", 2, scope="verification")
+        self.invocation("inv_vvvvvvvv", kind="verification", lease="lease_vvvvvvvv")
+        self.x("INSERT INTO quote_checks (check_id, claim_id, claim_revision, source_artifact_hash, span_start, span_end, normalization_version, exact_match, nli_signal, quote_quarantined, checked_at) "
+               "VALUES ('qc-1', 'clm_00000001', 1, ?, 0, 5, 'n1', 'matched', 'not_run', 0, ?)", h("7"), T)
+        self.x("INSERT INTO verification_receipts (verification_receipt_id, topic_id, claim_id, claim_revision, work_id, source_version, cited_spans, obtained_content_hash, access_tier, use, required_access_tier, acquisition, extraction_method, extraction_invocation_id, extraction_validation_ref, producer_invocation_id, verifier_invocation_id, verdict, receipt, verified_at) "
+               "VALUES ('ver_00000001', ?, 'clm_00000001', 1, 'wrk_00000001', 'v1', '[{\"start\":0,\"end\":5}]', ?, 'full_text', 'load_bearing', 'full_text', '{}', 'verifier_extraction', 'inv_vvvvvvvv', NULL, 'inv_pppppppp', 'inv_vvvvvvvv', 'supports', '{}', ?)", TOPIC, h("7"), T)
+        self.x("UPDATE claims SET status = 'accepted_support' WHERE claim_id = 'clm_00000001' AND revision = 1")
+        jev = self.spec()
+        self.decision_receipt("dec_00000001", "inv_pppppppp", jev)
+        self.decision("opd_publish01", "publication_approval")
+        self.x("INSERT INTO outbox_events (outbox_event_id, topic_id, manifest_id, manifest_hash, artifact_kind, generation, supersedes_generation, source_revision, approval_decision_id, expected_sinks, manifest, committed_by_operation_id, created_at) "
+               "VALUES ('obx_00000001', ?, 'man_00000001', ?, 'completion_publication', 1, NULL, 1, 'opd_publish01', '[\"neo4j\"]', ?, 'op_00000001', ?)",
+               TOPIC, h("6"), json.dumps({"manifest_id": "man_00000001", "generation": 1, "topic_id": TOPIC}), T)
+        self.x("INSERT INTO sink_delivery_receipts (delivery_receipt_id, outbox_event_id, sink, attempt, status, tombstones_acknowledged, attempted_at, acked_at) VALUES ('d1', 'obx_00000001', 'neo4j', 1, 'delivered', 1, ?, ?)", T, T)
+        self.x("INSERT INTO sink_generations (topic_id, sink, delivered_generation, delivered_at) VALUES (?, 'neo4j', 1, ?)", TOPIC, T)
+        self.x("INSERT INTO audit_events (audit_event_id, at, kind, topic_id, detail) VALUES ('aud_00000001', ?, 'commit', ?, '{}')", T, TOPIC)
+
+    def tables(self) -> list[str]:
+        return [r[0] for r in self.rows("SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]

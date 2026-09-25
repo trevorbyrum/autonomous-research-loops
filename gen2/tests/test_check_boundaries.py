@@ -31,6 +31,7 @@ BASE_MODULES: dict[str, dict] = {
     "tests": {"path": "gen2/tests", "boundaries": [], "may_import": ["*"], "stdlib_capabilities": ["*"]},
 }
 RESTRICTED = ["sqlite3", "subprocess", "os.system", "os.exec*", "urllib.request", "importlib.import_module"]
+FORBIDDEN_SQL = [r"\bOR\s+REPLACE\b", r"\bREPLACE\s+INTO\b"]
 
 
 def render_config(modules: dict[str, dict], unmapped: dict[str, str] | None = None) -> str:
@@ -41,6 +42,8 @@ def render_config(modules: dict[str, dict], unmapped: dict[str, str] | None = No
         'forbidden_imports = ["research_loops", "research_gateway"]',
         'forbidden_calls = ["eval", "exec", "compile", "__import__"]',
         f"restricted_stdlib = {json.dumps(RESTRICTED)}",
+        f"forbidden_sql = {json.dumps(FORBIDDEN_SQL)}",
+        'forbidden_sql_exempt_modules = ["tests"]',
     ]
     for name, spec in modules.items():
         lines.append(f"[modules.{name}]")
@@ -194,6 +197,19 @@ class BoundaryCheckerTest(unittest.TestCase):
     def test_star_import_rejected(self) -> None:
         self.write("gen2/router/commit.py", "from gen2.store import *\n")
         self.assertViolation(self.run_checker(), "star import from 'gen2.store' hides its dependencies")
+
+    # -- REPLACE in store write paths (INVARIANTS C-11) ---------------------
+    def test_replace_sql_in_a_store_write_path_fails(self) -> None:
+        self.write("gen2/store/db.py", 'import sqlite3\nQ = "insert or replace into operation_receipts values (?)"\nR = f"REPLACE INTO {Q}"\n')
+        result = self.run_checker()
+        self.assertViolation(result, "gen2/store/db.py:2: store has SQL matching forbidden pattern")
+        self.assertIn("gen2/store/db.py:3: store has SQL matching forbidden pattern", result.stderr)
+
+    def test_replace_sql_allowed_in_exempt_module_and_docstrings(self) -> None:
+        self.write("gen2/tests/test_x.py", 'Q = "INSERT OR REPLACE INTO t VALUES (1)"\n')
+        self.write("gen2/store/db.py", '"""Never uses INSERT OR REPLACE."""\ndef f():\n    """Nor REPLACE INTO."""\n    return "INSERT INTO t VALUES (1)"\n')
+        result = self.run_checker()
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
 
     # -- files the checker cannot analyse fail rather than pass ------------
     def test_unparseable_file_fails_loudly(self) -> None:

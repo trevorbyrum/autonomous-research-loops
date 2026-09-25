@@ -18,6 +18,8 @@
 #   5. Third-party imports appear in the module's `third_party` list.
 #   6. No star imports; no calls to names in `forbidden_calls`.
 #   7. The declared `may_import` graph is acyclic.
+#   8. No string literal matches `forbidden_sql` (REPLACE conflict resolution)
+#      outside `forbidden_sql_exempt_modules`.
 # Amending this file is an architecture change: it goes through the charter's
 # review path, never as a drive-by edit to make a violation pass.
 
@@ -33,6 +35,15 @@ forbidden_imports = ["research_loops", "research_gateway"]
 # Dynamic evaluation defeats a static import graph and is how "execute
 # agent-supplied code" would happen (BOUNDARIES.md Router: Must never).
 forbidden_calls = ["eval", "exec", "compile", "__import__"]
+
+# SQL that resolves a conflict by deleting the stored row (INSERT OR
+# REPLACE, REPLACE INTO, UPDATE OR REPLACE, a REPLACE conflict clause).
+# Prohibited in every store write path (INVARIANTS C-11); the DDL's delete
+# guards plus gen2/store/connection.sql already abort it, this is the second
+# layer. Case-insensitive regexes over string literals (docstrings excluded);
+# tests are exempt because they issue REPLACE to prove the guards hold.
+forbidden_sql = ['\bOR\s+REPLACE\b', '\bREPLACE\s+INTO\b', '\bON\s+CONFLICT\s+REPLACE\b']
+forbidden_sql_exempt_modules = ["tests"]
 
 # Capability-bearing stdlib surfaces. An entry matches the dotted name itself
 # and anything below it; a trailing "*" matches by prefix.

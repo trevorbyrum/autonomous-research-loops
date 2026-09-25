@@ -2,7 +2,9 @@
 
 `schema.sql` is the draft DDL for the one authoritative engine store (task 0a deliverable 3). It is not wired to any code yet. The router is its only writer: in `gen2/boundaries.toml` only the `store` module may use `sqlite3`, and only `router` may import `store`.
 
-**Traceability.** Every table carries a `-- trace:` comment naming the flow-doc section, design-review section, BOUNDARIES.md entry and `docs/gen2/INVARIANTS.md` IDs it implements. `make gen2-check` enforces that the comment exists, that the DDL executes, that every table is STRICT, and that every foreign key targets a real key. `gen2/tests/test_store_ddl.py` shows that each constraint rejects its violation and accepts the same write without it.
+**Connection contract.** `connection.sql` holds the per-connection settings the schema's guarantees depend on: `foreign_keys = ON` and `recursive_triggers = ON`. Every connection (the Phase 0b store module, the tests, `tools/check_gen2_schemas.py`) applies it before the DDL and reads both pragmas back. Without `recursive_triggers`, SQLite resolves a REPLACE conflict by deleting the stored row without firing its delete guard; `gen2/tests/test_store_history.py` demonstrates that bypass on a connection that skipped the contract.
+
+**Traceability.** Every table carries a `-- trace:` comment naming the flow-doc section, design-review section, BOUNDARIES.md entry and `docs/gen2/INVARIANTS.md` IDs it implements. `make gen2-check` enforces that the comment exists, that the DDL executes, that every table is STRICT and has an unconditional delete guard, that no constraint has an `ON CONFLICT` clause, and that every foreign key targets a real key. The `gen2/tests/test_store_*.py` suites show each constraint rejecting its violation (and, where the test says so, accepting the same write without it). `make gen2-mutation` (part of `gen2-check`) removes each guard in memory and confirms its named tests fail — the inventory is `tools/gen2_mutations.py`.
 
 ## How the brief's table list maps to the DDL
 
@@ -29,6 +31,7 @@
 
 ## What the DDL enforces
 
+- **History cannot be rewritten** (C-11): every table rejects DELETE; REPLACE (`INSERT OR REPLACE`, `REPLACE INTO`, `UPDATE OR REPLACE`) aborts on the delete guard of the row it would displace; append-only tables reject every UPDATE; the boundary lint rejects REPLACE in store code.
 - **One writer's fencing** (RG-1a, RG-1b):
   - operation ID is the primary key and receipts are immutable
   - one `final_outcome` per invocation
@@ -91,7 +94,7 @@
 - **Decision-layer registries:** the question registry, qualification records with evaluation populations, and a dedicated blind-label store. Blind initial dispositions and advised feedback are currently separate `operator_decisions` kinds.
 - **Engine policy bookkeeping:** the config-bundle registry, protected-exploration and auto-promotion budget reservations, and signal-queue budget/cooldown.
 - **Import provenance columns and the import path for historical invocations** (task 0b). The `admitted`-only insert rule means the importer needs an explicit path.
-- **Retention and pruning policy.** Nothing is deletable today; receipts and trigger tombstones must survive any future pruning (design review §5).
+- **Retention and pruning policy.** No row can be deleted through any write path today (every table has a delete guard, and REPLACE is aborted by it on a contract-conforming connection). A future retention policy is a separate, audited operation — not an ordinary write path — and must preserve receipts, trigger tombstones and sink watermarks (design review §5; INVARIANTS C-11).
 - **Operational schema concerns:** query indexes beyond uniqueness, and a migration mechanism beyond `PRAGMA user_version`.
 - **Out of scope for this store:** the gateway's budget/cache database stays the gateway's; transcripts stay in the spool, not SQL rows.
 

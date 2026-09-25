@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import re
 import sys
 import tomllib
 from dataclasses import dataclass, field
@@ -50,6 +51,8 @@ class Config:
     forbidden_imports: list[str]
     forbidden_calls: list[str]
     restricted_stdlib: list[str]
+    forbidden_sql: list[re.Pattern]
+    forbidden_sql_exempt: list[str]
     modules: dict[str, Module]
     unmapped_components: dict[str, str]
     errors: list[str] = field(default_factory=list)
@@ -109,12 +112,20 @@ def load_config(root: Path, config_rel: str) -> Config:
     if not isinstance(unmapped, dict) or not all(isinstance(v, str) and v.strip() for v in unmapped.values()):
         errors.append(f"{config_rel}: [unmapped_components] values must be non-empty reasons")
         unmapped = {}
+    forbidden_sql: list[re.Pattern] = []
+    for pattern in _str_list(raw, "forbidden_sql", config_rel, errors):
+        try:
+            forbidden_sql.append(re.compile(pattern, re.IGNORECASE))
+        except re.error as exc:
+            errors.append(f"{config_rel}: forbidden_sql pattern {pattern!r} is not a valid regex: {exc}")
     cfg = Config(
         package_root=package_root,
         boundaries_doc=boundaries_doc,
         forbidden_imports=_str_list(raw, "forbidden_imports", config_rel, errors),
         forbidden_calls=_str_list(raw, "forbidden_calls", config_rel, errors),
         restricted_stdlib=_str_list(raw, "restricted_stdlib", config_rel, errors),
+        forbidden_sql=forbidden_sql,
+        forbidden_sql_exempt=_str_list(raw, "forbidden_sql_exempt_modules", config_rel, errors) if "forbidden_sql_exempt_modules" in raw else [],
         modules=modules,
         unmapped_components=unmapped,
         errors=errors,
@@ -134,6 +145,9 @@ def validate_config(cfg: Config, headings: list[str], config_rel: str) -> list[s
     errors = list(cfg.errors)
     names = set(cfg.modules)
     restricted = set(cfg.restricted_stdlib)
+    for name in cfg.forbidden_sql_exempt:
+        if name not in names:
+            errors.append(f"{config_rel}: forbidden_sql_exempt_modules names undeclared module {name!r}")
     for mod in cfg.modules.values():
         where = f"{config_rel}: modules.{mod.name}"
         for dep in mod.may_import:
@@ -274,6 +288,30 @@ def collect_references(tree: ast.Module, package: str, rel: str) -> tuple[list[t
     return refs, problems
 
 
+def _docstring_nodes(tree: ast.Module) -> set[int]:
+    ids: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.body:
+            first = node.body[0]
+            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
+                ids.add(id(first.value))
+    return ids
+
+
+def forbidden_sql_uses(tree: ast.Module, patterns: list[re.Pattern]) -> list[tuple[int, str]]:
+    """String literals (not docstrings) matching a forbidden SQL pattern.
+    A lint over literal text: SQL assembled at runtime from fragments that do
+    not individually match is not seen."""
+    docstrings = _docstring_nodes(tree)
+    hits: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings:
+            for pattern in patterns:
+                if pattern.search(node.value):
+                    hits.append((node.lineno, pattern.pattern))
+    return hits
+
+
 def check_file(root: Path, rel: str, mod: Module, cfg: Config) -> list[str]:
     try:
         source = (root / rel).read_text(encoding="utf-8")
@@ -283,6 +321,9 @@ def check_file(root: Path, rel: str, mod: Module, cfg: Config) -> list[str]:
     _, package = _dotted_of_file(rel)
     refs, problems = collect_references(tree, package, rel)
     violations = list(problems)
+    if mod.name not in cfg.forbidden_sql_exempt:
+        for lineno, pattern in forbidden_sql_uses(tree, cfg.forbidden_sql):
+            violations.append(f"{rel}:{lineno}: {mod.name} has SQL matching forbidden pattern {pattern!r}: conflict resolution by REPLACE rewrites stored rows (INVARIANTS C-11)")
     stdlib = sys.stdlib_module_names
     seen: set[tuple[int, str]] = set()
     for lineno, target, kind, base in refs:

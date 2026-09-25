@@ -1,0 +1,30 @@
+-- Gen-2 store connection contract: the integrity-bearing per-connection
+-- settings every connection to the store MUST apply before its first
+-- statement, and must read back (PRAGMA foreign_keys; PRAGMA
+-- recursive_triggers both return 1) before it is used.
+--
+-- Trace: Astra 0a review A1 (REPLACE bypassed receipt/watermark
+-- immutability because recursive_triggers was 0); design review §5
+-- (receipts and trigger tombstones must survive; replay protection depends on
+-- them); docs/gen2/INVARIANTS.md C-11.
+--
+-- Why each line is load-bearing:
+--   foreign_keys       SQLite ships with FK enforcement off per connection.
+--   recursive_triggers SQLite fires DELETE triggers for rows removed by a
+--                      REPLACE conflict resolution (INSERT OR REPLACE,
+--                      REPLACE INTO, UPDATE OR REPLACE) ONLY when this is on.
+--                      Every table in schema.sql has a BEFORE DELETE guard,
+--                      so with this on a REPLACE that would overwrite a
+--                      stored row aborts; with it off the row is silently
+--                      replaced (demonstrated by
+--                      gen2/tests/test_store_history.py).
+--
+-- Operational settings (journal_mode = WAL, synchronous = FULL, a
+-- busy_timeout) belong to the store module too, but they do not change which
+-- rows the schema admits, so they are not part of this file.
+--
+-- This file is executed verbatim by the DDL tests, by
+-- tools/check_gen2_schemas.py and (Phase 0b) by the store module.
+
+PRAGMA foreign_keys = ON;
+PRAGMA recursive_triggers = ON;

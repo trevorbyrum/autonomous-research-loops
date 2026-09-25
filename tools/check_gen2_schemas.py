@@ -14,9 +14,12 @@ Checks, in order (any failure exits 1; a missing validator exits 2):
                        (keyword, instance path) errors — so a fixture that
                        fails for an unrelated reason does not pass.
      Every schema needs at least one valid fixture.
-  4. gen2/store/schema.sql executes on an empty in-memory SQLite database,
-     every table is STRICT and preceded by a `-- trace:` comment, and every
-     foreign key targets an existing primary key or unique index.
+  4. gen2/store/schema.sql executes on an empty in-memory SQLite database
+     opened with gen2/store/connection.sql (whose pragmas must read back as
+     on); every table is STRICT, is preceded by a `-- trace:` comment and has
+     a BEFORE DELETE trigger that raises ABORT; no constraint carries an
+     ON CONFLICT clause (which would turn a plain INSERT into a REPLACE); and
+     every foreign key targets an existing primary key or unique index.
 
 Uses the `jsonschema` package (dev-only; see gen2/requirements-dev.txt) as the
 independent metaschema/validation oracle. Gen-2 runtime code never imports it
@@ -253,19 +256,34 @@ def check_schemas(root: Path, headings: set[str]) -> tuple[list[str], int, int]:
     return failures, n_valid, n_invalid
 
 
+CONNECTION_PRAGMAS = ("foreign_keys", "recursive_triggers")
+
+
+def _strip_sql_comments(text: str) -> str:
+    return "\n".join(line.split("--", 1)[0] for line in text.splitlines())
+
+
 def check_ddl(root: Path) -> tuple[list[str], int]:
     rel = "gen2/store/schema.sql"
+    conn_rel = "gen2/store/connection.sql"
     path = root / rel
     if not path.exists():
         return [f"{rel}: not found"], 0
+    if not (root / conn_rel).exists():
+        return [f"{conn_rel}: not found"], 0
     text = path.read_text(encoding="utf-8")
     failures: list[str] = []
     conn = sqlite3.connect(":memory:")
     try:
-        conn.execute("PRAGMA foreign_keys = ON")
+        conn.executescript((root / conn_rel).read_text(encoding="utf-8"))
+        for pragma in CONNECTION_PRAGMAS:
+            if conn.execute(f"PRAGMA {pragma}").fetchone() != (1,):
+                failures.append(f"{conn_rel}: PRAGMA {pragma} does not read back as 1 after applying the connection contract")
         conn.executescript(text)
     except sqlite3.Error as exc:
         return [f"{rel}: does not execute on SQLite {sqlite3.sqlite_version}: {exc}"], 0
+    if re.search(r"\bON\s+CONFLICT\b", _strip_sql_comments(text), re.IGNORECASE):
+        failures.append(f"{rel}: an ON CONFLICT clause in the DDL would let a plain INSERT replace a stored row (INVARIANTS C-11)")
     tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]
     for table in tables:
         strict = conn.execute("SELECT strict FROM pragma_table_list WHERE name = ?", (table,)).fetchone()
@@ -280,6 +298,17 @@ def check_ddl(root: Path) -> tuple[list[str], int]:
             block.append(line)
         if not any(line.lower().startswith("-- trace:") for line in block):
             failures.append(f"{rel}: CREATE TABLE {match.group(1)} lacks a `-- trace:` comment directly above it")
+    triggers = conn.execute("SELECT tbl_name, sql FROM sqlite_schema WHERE type = 'trigger'").fetchall()
+    for table in tables:
+        guarded = any(
+            tbl == table
+            and re.search(r"\bBEFORE\s+DELETE\s+ON\s+" + re.escape(table) + r"\b", sql, re.IGNORECASE)
+            and re.search(r"RAISE\s*\(\s*ABORT", sql, re.IGNORECASE)
+            and not re.search(r"\bWHEN\b", sql.split("BEGIN", 1)[0], re.IGNORECASE)
+            for tbl, sql in triggers
+        )
+        if not guarded:
+            failures.append(f"{rel}: table {table} has no unconditional BEFORE DELETE ... RAISE(ABORT) guard, so a delete or REPLACE could rewrite it (INVARIANTS C-11)")
     for table in tables:
         fks = conn.execute(f"PRAGMA foreign_key_list({table})").fetchall()
         groups: dict[int, list] = {}

@@ -16,9 +16,13 @@
 -- below express uniqueness and fencing wherever SQLite can; the rest is router
 -- logic, listed in gen2/store/README.md along with what this draft defers.
 --
--- Connection settings the store module must apply (per connection, so not
--- executable here): PRAGMA foreign_keys = ON; journal_mode = WAL;
--- synchronous = FULL; a busy_timeout; short transactions only (INVARIANTS C-8).
+-- Connection settings: every connection applies gen2/store/connection.sql
+-- (foreign_keys = ON, recursive_triggers = ON) and reads them back before use;
+-- the store module adds journal_mode = WAL, synchronous = FULL and a
+-- busy_timeout, and keeps transactions short (INVARIANTS C-8). Without
+-- recursive_triggers, a REPLACE conflict resolution deletes a stored row
+-- without firing its BEFORE DELETE guard, so the history guarantees below
+-- hold only on a connection that applied connection.sql (INVARIANTS C-11).
 --
 -- Conventions: every table is STRICT; IDs are prefix-typed TEXT matching
 -- gen2/schema/common.schema.json; timestamps are RFC 3339 UTC TEXT validated
@@ -26,6 +30,11 @@
 -- INTEGER 0/1. In CHECK constraints a NULL result passes, so every
 -- conditional check below tests IS NOT NULL explicitly. Records of fact
 -- (receipts, decisions, transitions, triggers) reject UPDATE and DELETE.
+-- EVERY table has a BEFORE DELETE guard (tools/check_gen2_schemas.py fails
+-- the build otherwise), and no constraint carries an ON CONFLICT clause:
+-- nothing here is deletable through an ordinary write path, and REPLACE
+-- cannot overwrite a stored row (INVARIANTS C-11). Retention/pruning is a
+-- deferred, explicit policy (gen2/store/README.md).
 
 PRAGMA user_version = 1;
 
@@ -67,6 +76,11 @@ CREATE TRIGGER queue_topic_identity_immutable
 BEFORE UPDATE OF topic_id, fleet_id ON queue_entries
 BEGIN
   SELECT RAISE(ABORT, 'topic identity is immutable');
+END;
+
+CREATE TRIGGER queue_entries_no_delete BEFORE DELETE ON queue_entries
+BEGIN
+  SELECT RAISE(ABORT, 'queue entries are never deleted; retirement is an operator decision (C-11)');
 END;
 
 -- G-8: completion is bound to operator approval of the CURRENT dossier
@@ -136,6 +150,7 @@ WHEN NEW.document IS NOT OLD.document
   OR NEW.parent_revision IS NOT OLD.parent_revision
   OR NEW.topic_id IS NOT OLD.topic_id
   OR NEW.revision IS NOT OLD.revision
+  OR NEW.created_at IS NOT OLD.created_at
   OR (OLD.approved_by_decision_id IS NOT NULL AND NEW.approved_by_decision_id IS NOT OLD.approved_by_decision_id)
 BEGIN
   SELECT RAISE(ABORT, 'contract revisions are immutable; amend by writing a new revision (G-1)');
@@ -793,6 +808,20 @@ CREATE TABLE works (
   UNIQUE (identity_scheme, identity_value)
 ) STRICT;
 
+CREATE TRIGGER works_identity_immutable
+BEFORE UPDATE ON works
+WHEN NEW.work_id IS NOT OLD.work_id
+  OR NEW.identity_scheme IS NOT OLD.identity_scheme
+  OR NEW.identity_value IS NOT OLD.identity_value
+  OR NEW.created_at IS NOT OLD.created_at
+BEGIN
+  SELECT RAISE(ABORT, 'work identity is immutable');
+END;
+CREATE TRIGGER works_no_delete BEFORE DELETE ON works
+BEGIN
+  SELECT RAISE(ABORT, 'works are never deleted; retrieval provenance links to them (C-11)');
+END;
+
 -- trace: flow S4 step 2 (cross-lane overlap never multiplies evidence);
 -- INVARIANTS E-3. Each retrieved record maps to at most one work.
 CREATE TABLE record_work_links (
@@ -805,6 +834,10 @@ CREATE TABLE record_work_links (
 CREATE TRIGGER record_work_links_immutable_u BEFORE UPDATE ON record_work_links
 BEGIN
   SELECT RAISE(ABORT, 'record-work links are immutable');
+END;
+CREATE TRIGGER record_work_links_no_delete BEFORE DELETE ON record_work_links
+BEGIN
+  SELECT RAISE(ABORT, 'record-work links are never deleted (C-11)');
 END;
 
 -- trace: flow S4 step 3 (deterministic predicates -> Jev -> primary; every
@@ -935,6 +968,10 @@ CREATE TRIGGER claim_source_links_immutable_u BEFORE UPDATE ON claim_source_link
 BEGIN
   SELECT RAISE(ABORT, 'claim-source links are immutable per claim revision');
 END;
+CREATE TRIGGER claim_source_links_no_delete BEFORE DELETE ON claim_source_links
+BEGIN
+  SELECT RAISE(ABORT, 'claim-source links are never deleted (C-11)');
+END;
 
 -- trace: flow S4 step 8 (receipt bindings; role separation and required
 -- access tier enforced by the router; identical canonical bytes allowed,
@@ -1021,6 +1058,10 @@ CREATE TABLE quote_checks (
 CREATE TRIGGER quote_checks_immutable_u BEFORE UPDATE ON quote_checks
 BEGIN
   SELECT RAISE(ABORT, 'quote checks are immutable; re-capture writes a new check');
+END;
+CREATE TRIGGER quote_checks_no_delete BEFORE DELETE ON quote_checks
+BEGIN
+  SELECT RAISE(ABORT, 'quote checks are never deleted; a quarantine stays on record (C-11)');
 END;
 
 -- ===========================================================================
@@ -1202,6 +1243,10 @@ CREATE TRIGGER sink_delivery_receipts_immutable_u BEFORE UPDATE ON sink_delivery
 BEGIN
   SELECT RAISE(ABORT, 'delivery receipts are immutable; a retry is a new attempt');
 END;
+CREATE TRIGGER sink_delivery_receipts_no_delete BEFORE DELETE ON sink_delivery_receipts
+BEGIN
+  SELECT RAISE(ABORT, 'delivery receipts are never deleted (C-11)');
+END;
 
 -- trace: flow S8 item 2 ("old retries cannot overwrite newer generations");
 -- BOUNDARIES.md Projector / publication (must never overwrite newer
@@ -1221,6 +1266,10 @@ WHEN NEW.delivered_generation < OLD.delivered_generation
   OR NEW.topic_id IS NOT OLD.topic_id OR NEW.sink IS NOT OLD.sink
 BEGIN
   SELECT RAISE(ABORT, 'an old retry never overwrites a newer delivered generation (P-2)');
+END;
+CREATE TRIGGER sink_generations_no_delete BEFORE DELETE ON sink_generations
+BEGIN
+  SELECT RAISE(ABORT, 'a sink high-water mark is never deleted: delete-and-reinsert would regress it (P-2, C-11)');
 END;
 
 -- ===========================================================================
