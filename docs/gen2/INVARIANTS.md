@@ -9,7 +9,7 @@
 - **M** — `methodology-synthesis-20260924.md` (amended 2026-09-25).
 - **B** — `docs/gen2/BOUNDARIES.md` (component entries by heading).
 
-(F, DR, ADJ, M live under `~/work/research-loops-public/private/`.)
+(F, DR, ADJ and M are cited by document identity: file name and dates. They belong to the design record kept outside this repository; each review's input manifest records the copy it read and its SHA-256.)
 
 **Entry format.** `ID — statement` (written so a test can refute it). *Source*; *Enforced at* (where the rule is expected to live: schema file, DDL object in `gen2/store/schema.sql`, the module named in `gen2/boundaries.toml`, or an audit job); *Test must show* (the failure the test exists to catch — Gate C checks tests against this line). "Enforced at DDL" means the draft store rejects the violation itself; everything else is a Phase 1+ obligation.
 

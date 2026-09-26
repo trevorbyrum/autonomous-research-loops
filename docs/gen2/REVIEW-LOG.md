@@ -233,3 +233,6 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-0d-astra-review-
 **Gate list (Astra):** the C-13 ratification and opening Phase 1 remain. The export design and the BOUNDARIES amendment are decided by the ruling. There are no port or coexistence questions. `accepted_support` goes early in Phase 1.
 
 **Routed:** `docs/gen2/tasks/0d-repair.md` to an Opus 5.5 coder (agent 43851429).
+
+## 2026-09-26: 0d-repair: host note moved here from ENVIRONMENT.md (review finding 1)
+The build-environment document no longer carries this machine's maintenance state; it keeps the generic rule that the isolated venv excludes user-site packages. The note, as it stood in `docs/gen2/ENVIRONMENT.md` ("Host state left by the earlier practice"): the 0a-repair round installed `rfc8785==0.1.4` into the build host's user site (`~/.local/lib/python3.12/site-packages/`). The 0a-repair-2 venv fix installed, upgraded and removed no host package, and that copy is no longer on the build's import path. Removing it is the operator's decision (first recorded above, 0a-repair-2 coder item 7). Nothing was installed or removed by 0d-repair.

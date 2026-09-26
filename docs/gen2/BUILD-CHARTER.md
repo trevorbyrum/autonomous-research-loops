@@ -9,10 +9,12 @@ Operator-authorized 2026-09-25. Governs the background build loop until the oper
 - **Operator — Trevor.** Merges to main; approves phase transitions flagged `operator-gate`; resolves anything the charter doesn't settle.
 
 ## Source-of-truth documents (reviewers check against these, in this order)
-1. `~/work/research-loops-public/private/gen2-flow-architecture-20260924.md` (amended 2026-09-25) — stages, boundaries, decision ladder, observability.
-2. `~/work/research-loops-public/private/methodology-synthesis-20260924.md` (amended 2026-09-25) — research basis with [corpus]/[anchored]/[proposed] statuses.
-3. `~/work/research-loops-public/private/reviews/gen2-design-astra-review-20260922.md` and `flow-adjudication-astra-20260924.md` — settled constraints and rulings.
+1. `gen2-flow-architecture-20260924.md` (amended 2026-09-25) — stages, boundaries, decision ladder, observability.
+2. `methodology-synthesis-20260924.md` (amended 2026-09-25) — research basis with [corpus]/[anchored]/[proposed] statuses.
+3. `reviews/gen2-design-astra-review-20260922.md` and `reviews/flow-adjudication-astra-20260924.md` — settled constraints and rulings.
 4. `docs/gen2/BOUNDARIES.md` (this repo) — the operational boundary contract; drift between code and this file is itself a review finding.
+
+Items 1–3 are cited by document identity (file name and dates). They belong to the design record kept outside this repository, not to the repository itself; each review's input manifest records the copy it read and its SHA-256.
 
 ## Review gates (every phase; no exceptions)
 **Gate A — Architecture/boundary conformance.** Astra reviews the phase diff in detail against the flow doc and BOUNDARIES.md: every component's role matches its boundary entry; no actor writes outside its authority; hand-off artifacts are typed as specified; the decision ladder and commit protocol match the amended design. Verdict per finding: CONFORMS / DEVIATION (with severity) / BOUNDARY-DRIFT (code and BOUNDARIES.md disagree — one of them must change via the amendment path).

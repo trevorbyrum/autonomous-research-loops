@@ -28,7 +28,7 @@ Every check target (`gen2-sqlite`, `gen2-boundaries`, `gen2-schemas`, `gen2-ddl`
 
 ## SQLite version floor
 
-**Supported floor: SQLite 3.45.1.** It is the only version the complete DDL and test suite have been executed on: this host's Python 3.12.3 `sqlite3` module, and Astra's third review, which ran the same version. It is a floor because nothing older has been run, not because 3.45.1 is known to be the oldest version that works.
+**Supported floor: SQLite 3.45.1.** It is the only version the complete DDL and test suite have been executed on: the `sqlite3` module of Python 3.12.3 in the reviewed test environment, and Astra's third review, which ran the same version. It is a floor because nothing older has been run, not because 3.45.1 is known to be the oldest version that works.
 
 Feature minimums are facts about SQLite releases, not evidence that the schema works on them:
 
@@ -69,7 +69,3 @@ Run `make` directly, and do not pipe its output through `tail`, `grep` or `tee` 
 ## Changing a dependency
 
 A new runtime dependency is an architecture change. It needs a `third_party` grant in `gen2/boundaries.toml`, and it goes through the charter's review path. Whether runtime or dev, a new dependency, or a version change, updates the lock with the complete transitive graph and every hash (from PyPI, for the exact release). For a platform-specific wheel, that means the CPython 3.12 wheels at least. A change to either lock rebuilds `.venv-gen2` on the next `make` run.
-
-## Host state left by the earlier practice
-
-The 0a-repair round installed `rfc8785==0.1.4` into the user site (`~/.local/lib/python3.12/site-packages/`). This repair did not install, upgrade or remove any host package. That user-site copy is no longer on the build's import path, because the venv excludes the user site. Removing it is the operator's decision.
