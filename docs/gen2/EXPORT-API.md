@@ -197,6 +197,10 @@ tests and bound mutants):
   least one;
 - a manifest is never updated or deleted.
 
+The store does not check that an extension names its implementation and review,
+or that a reference connector names none. That is `export-manifest/2`'s rule,
+validated before outbox admission (§5).
+
 ## 4. The connector contract
 
 ```
@@ -325,8 +329,21 @@ A connector whose destination carries no credential (a mounted directory) has no
 secret variable at all. Nothing about a connector is agent-writable, and no
 connector is introduced by anything an agent produces. An operator cannot create
 a connector type by writing a name in config: the type vocabulary is closed, and
-the schema and the store refuse an undeclared type and an extension that names
-no implementation.
+the schema and the store both refuse an undeclared type (DDL
+`outbox_events_connectors_declared`).
+
+That an extension names its implementation (module and review), and that a
+reference connector names none, is a **schema rule only**: `export-manifest/2`
+holds it, and the store does not repeat it. The store binds the manifest's
+connectors to their column and checks each type; the rest of a stored document's
+consistency is schema validation at the router boundary (`gen2/store/README.md`,
+"What stays router logic"). Validating every manifest against
+`export-manifest/2` before it is admitted to the outbox is therefore a named
+obligation: of the router's validation boundary, which every document it commits
+must pass (Phase 1), and of the manifest commit and extension loading that §9 items
+2 and 4 owe (Phase 3). Even then, a nonempty module and review name establish
+neither that the module exists nor that the review accepted it. That is the
+extension's admission (§7).
 
 ## 6. The reference connectors
 
@@ -672,14 +689,18 @@ currentness from the engine.
    revision while a connector is enabled, and a new options revision when the
    connector configuration or a topic's export options change (§3); assembling
    the bundle from committed state before the commit transaction, so the
-   transaction stays short (C-8).
+   transaction stays short (C-8); validating each manifest against
+   `export-manifest/2` before it is admitted to the outbox, because the
+   extension implementation/review rule is the schema's, not the store's (§5).
 3. **Receipt storage in full.** The store now holds every status rule of the
    receipt (§4). Persisting the whole receipt document beside its row, with the
    written count and hold id bound to the columns the way the manifest is, lands
    with the router's `ack_delivery`. So does advancing a connector watermark
    only from a delivered receipt.
 4. **Extension loading:** the boundary amendment that lets the image register a
-   reviewed extension with the exporter (§7).
+   reviewed extension with the exporter (§7). Registration must match the module
+   a manifest names to one the image actually carries; the schema only requires
+   that a module and a review are named (§5).
 5. **Retiring the external ingest script** the design review examined. That is
    a cutover outside this build: once the exporter exists, whatever consumed the
    script's output connects through a connector instead. Until then nothing
