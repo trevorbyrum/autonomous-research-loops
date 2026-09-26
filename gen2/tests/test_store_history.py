@@ -23,7 +23,7 @@ from gen2.tests.store_fixtures import OTHER, TOPIC, StoreTestCase, T, connect, h
 # REPLACE conflict to surface (the guard, not some other constraint).
 DELETE_GUARD = {
     "operation_receipts": "never deleted; replay protection",
-    "sink_generations": "high-water mark is never deleted",
+    "connector_watermarks": "connector watermark is never deleted",
     "review_triggers": "review triggers are never deleted",
     "contract_revisions": "contract revisions are never deleted",
     "verification_receipts": "verification receipts are never deleted",
@@ -92,13 +92,14 @@ class ReplaceAndDeleteTest(StoreTestCase):
                                   *row("op_00000001", "rcpt_00000001", "final_outcome", 0), fragment="operation receipts are immutable")
         self.assertRewriteRefused("operation_receipts", "DELETE FROM operation_receipts", fragment=guard)
 
-    def test_sink_watermark_cannot_regress_by_delete_reinsert_or_replace(self) -> None:
-        self.x("INSERT INTO sink_generations VALUES (?, 'qdrant', 2, ?)", TOPIC, T)
-        guard = DELETE_GUARD["sink_generations"]
-        self.assertRewriteRefused("sink_generations", "DELETE FROM sink_generations WHERE topic_id = ? AND sink = 'qdrant'", TOPIC, fragment=guard)
-        self.assertRewriteRefused("sink_generations", "INSERT OR REPLACE INTO sink_generations VALUES (?, 'qdrant', 1, ?)", TOPIC, T, fragment=guard)
-        self.assertRewriteRefused("sink_generations", "REPLACE INTO sink_generations VALUES (?, 'qdrant', 1, ?)", TOPIC, T, fragment=guard)
-        self.assertEqual(self.rows("SELECT delivered_generation FROM sink_generations"), [(2,)])
+    def test_connector_watermark_cannot_regress_by_delete_reinsert_or_replace(self) -> None:
+        """Carries the sink-watermark case (A1) to the connector watermark."""
+        self.x("INSERT INTO connector_watermarks VALUES (?, 'archive', 2, 1, ?)", TOPIC, T)
+        guard = DELETE_GUARD["connector_watermarks"]
+        self.assertRewriteRefused("connector_watermarks", "DELETE FROM connector_watermarks WHERE topic_id = ? AND connector_id = 'archive'", TOPIC, fragment=guard)
+        self.assertRewriteRefused("connector_watermarks", "INSERT OR REPLACE INTO connector_watermarks VALUES (?, 'archive', 1, 1, ?)", TOPIC, T, fragment=guard)
+        self.assertRewriteRefused("connector_watermarks", "REPLACE INTO connector_watermarks VALUES (?, 'archive', 1, 1, ?)", TOPIC, T, fragment=guard)
+        self.assertEqual(self.rows("SELECT generation, options_revision FROM connector_watermarks"), [(2, 1)])
 
     def test_handled_trigger_replayed_after_its_episode_closed_stays_handled(self) -> None:
         self.receipt("op_00000001", "inv_pppppppp", kind="interim_transition", before=0)
@@ -147,7 +148,7 @@ class EveryTableSweepTest(StoreTestCase):
     APPEND_ONLY = ("artifacts", "audit_events", "claim_source_links", "decision_receipts", "decision_specs", "dossiers",
                    "facets", "invocation_reconciliations", "invocation_transitions", "obligations", "operation_receipts", "operator_decisions", "outbox_events",
                    "quote_checks", "record_work_links", "research_ordinals", "retrieval_events", "screening_assessments",
-                   "search_observations", "sink_delivery_receipts", "verification_receipts")
+                   "search_observations", "export_delivery_receipts", "verification_receipts")
 
     def test_append_only_tables_reject_every_update(self) -> None:
         for table in self.APPEND_ONLY:
@@ -168,7 +169,7 @@ class EveryTableSweepTest(StoreTestCase):
         self.invocation("inv_lonely01", kind="checkpoint", lease="lease_lonely02")
         self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_lonely01', 1, ?, ?, 'inv_pppppppp', 0, NULL, 'provisional', ?)", TOPIC, h("7"), T)
         self.decision("opd_publish02", "publication_approval", ref="dossier-1", rev=1, hsh=h("3"))
-        self.outbox("obx_lonely01", "man_lonely01", 2, 1, "opd_publish02", h("8"), source_rev=1, source_hash=h("3"), sinks=("neo4j",))
+        self.outbox("obx_lonely01", "man_lonely01", 2, 1, "opd_publish02", h("8"), source_rev=1, source_hash=h("3"), connectors={"warehouse": "sql"})
         for table, where in (("leases", "lease_id = 'lease_lonely01'"), ("invocations", "invocation_id = 'inv_lonely01'"),
                              ("claims", "claim_id = 'clm_lonely01'"), ("outbox_events", "outbox_event_id = 'obx_lonely01'")):
             with self.subTest(table=table):

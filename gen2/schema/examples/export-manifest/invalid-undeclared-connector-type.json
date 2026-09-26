@@ -2,7 +2,7 @@
   "fixture": {
     "schema": "export-manifest.schema.json",
     "expect": "invalid",
-    "tests": "P-2 (operator ruling 2026-09-26; replaces publication-manifest's 'GraphRAG as sink' negative): connector types are a closed, reviewed vocabulary, so a type nobody declared - here a store kind written into config - is refused rather than becoming a new path; a database that is not a reference type is an extension, named with its implementation and review",
+    "tests": "P-2 (operator ruling 2026-09-26; replaces publication-manifest's named-store-as-sink negative): connector types are a closed, reviewed vocabulary, so a type nobody declared - here a store kind written into config - is refused rather than becoming a new path; a database that is not a reference type is an extension, named with its implementation and review",
     "base": "valid-correction-generation-2.json",
     "patch": [
       {

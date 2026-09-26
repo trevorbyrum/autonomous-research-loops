@@ -2,7 +2,7 @@
   "fixture": {
     "schema": "common.schema.json#/$defs/connector_type",
     "expect": "valid",
-    "tests": "P-2 (operator ruling 2026-09-26; replaces valid-sink-neo4j): a database that is not a reference connector is reached by a reviewed extension, a type the closed vocabulary already has - never by its product name"
+    "tests": "P-2 (operator ruling 2026-09-26; replaces the positive that named a product as a sink): a database that is not a reference connector is reached by a reviewed extension, a type the closed vocabulary already has - never by its product name"
   },
   "instance": "extension"
 }

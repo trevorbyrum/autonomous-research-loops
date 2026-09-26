@@ -576,23 +576,38 @@ class StoreTestCase(unittest.TestCase):
         jev = self.spec()
         self.decision_receipt("dec_00000001", "inv_pppppppp", jev)
         self.decision("opd_publish01", "publication_approval", ref="dossier-1", rev=1, hsh=h("3"))
-        self.outbox("obx_00000001", "man_00000001", 1, None, "opd_publish01", h("6"), source_rev=1, source_hash=h("3"), sinks=("neo4j",))
-        self.x("INSERT INTO sink_delivery_receipts (delivery_receipt_id, outbox_event_id, sink, attempt, status, tombstones_acknowledged, attempted_at, acked_at) VALUES ('d1', 'obx_00000001', 'neo4j', 1, 'delivered', 1, ?, ?)", T, T)
-        self.x("INSERT INTO sink_generations (topic_id, sink, delivered_generation, delivered_at) VALUES (?, 'neo4j', 1, ?)", TOPIC, T)
+        self.outbox("obx_00000001", "man_00000001", 1, None, "opd_publish01", h("6"), source_rev=1, source_hash=h("3"), connectors={"warehouse": "sql"})
+        self.x("INSERT INTO export_delivery_receipts (export_receipt_id, manifest_id, connector_id, connector_type, attempt, status, tombstones_acknowledged, reconciliation_required, attempted_at, acked_at) "
+               "VALUES ('exr_00000001', 'man_00000001', 'warehouse', 'sql', 1, 'delivered', 1, 0, ?, ?)", T, T)
+        self.x("INSERT INTO connector_watermarks (topic_id, connector_id, generation, options_revision, delivered_at) VALUES (?, 'warehouse', 1, 1, ?)", TOPIC, T)
         self.x("INSERT INTO audit_events (audit_event_id, at, kind, topic_id, detail) VALUES ('aud_00000001', ?, 'commit', ?, '{}')", T, TOPIC)
 
     def outbox(self, eid: str, mid: str, gen: int, sup: int | None, decision: str, manifest_hash: str, *, source_rev: int = 3,
-               source_hash: str | None = None, sinks: tuple[str, ...] = ("neo4j", "qdrant"), kind: str = "completion_publication",
-               tid: str = TOPIC, op: str = "op_00000001", manifest_overrides: dict | None = None) -> None:
+               source_hash: str | None = None, connectors: dict | None = None, kind: str = "completion_publication",
+               tid: str = TOPIC, op: str = "op_00000001", manifest_overrides: dict | None = None, options: int = 1,
+               sup_options: int | None = 1, bundle_hash: str | None = None, connectors_json: str | None = None) -> None:
+        """One export manifest (outbox_events, task 0d). `connectors` maps a
+        connector id to its type; `connectors_json` stores exact JSON text
+        instead (the shape probes). `sup`/`sup_options` are the superseded
+        pair; the manifest JSON always agrees with the columns unless
+        `manifest_overrides` says otherwise."""
         source_hash = source_hash or h("5")
-        manifest = {"manifest_id": mid, "topic_id": tid, "artifact_kind": kind, "generation": gen,
+        bundle_hash = bundle_hash or h("e")
+        if connectors_json is None:
+            connectors = {"warehouse": "sql", "archive": "jsonl_file"} if connectors is None else connectors
+            connectors_json = json.dumps({cid: {"connector_type": ctype} for cid, ctype in connectors.items()})
+        sup_opt = None if sup is None else sup_options
+        manifest = {"manifest_id": mid, "topic_id": tid, "artifact_kind": kind, "generation": gen, "options_revision": options,
                     "source": {"revision": source_rev, "content_hash": source_hash},
                     "approval": {"operator_decision_id": decision, "approved_revision": source_rev},
-                    "expected_sinks": list(sinks), "supersedes": None if sup is None else {"manifest_id": "man_prev0000", "generation": sup}}
+                    "bundle": {"bundle_id": "exb_" + mid[4:], "bundle_version": "export-bundle/1", "content_hash": bundle_hash},
+                    "expected_connectors": json.loads(connectors_json),
+                    "supersedes": None if sup is None else {"manifest_id": "man_prev0000", "generation": sup, "options_revision": sup_opt}}
         manifest.update(manifest_overrides or {})
-        self.x("INSERT INTO outbox_events (outbox_event_id, topic_id, manifest_id, manifest_hash, artifact_kind, generation, supersedes_generation, source_revision, source_content_hash, approval_decision_id, expected_sinks, manifest, committed_by_operation_id, created_at) "
-               "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-               eid, tid, mid, manifest_hash, kind, gen, sup, source_rev, source_hash, decision, json.dumps(list(sinks)), json.dumps(manifest), op, T)
+        self.x("INSERT INTO outbox_events (outbox_event_id, topic_id, manifest_id, manifest_hash, artifact_kind, generation, options_revision, supersedes_generation, supersedes_options_revision, "
+               "source_revision, source_content_hash, approval_decision_id, bundle_content_hash, expected_connectors, manifest, committed_by_operation_id, created_at) "
+               "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+               eid, tid, mid, manifest_hash, kind, gen, options, sup, sup_opt, source_rev, source_hash, decision, bundle_hash, connectors_json, json.dumps(manifest), op, T)
 
     def tables(self) -> list[str]:
         return [r[0] for r in self.rows("SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]

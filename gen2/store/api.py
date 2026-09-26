@@ -68,10 +68,10 @@ IDENTITY_COLUMNS = frozenset({
     "revision", "parent_revision", "protocol_revision", "framing_version", "contract_revision", "active_contract_revision",
     "claim_revision", "dossier_revision", "evidence_revision", "source_revision", "subject_revision", "state_revision",
     "state_revision_before", "state_revision_after", "generation", "lease_generation", "supersedes_generation",
-    "delivered_generation", "unknown_episode", "seq", "ordinal", "brief_version", "template_version", "policy_version",
-    "eligibility_protocol_version", "attempt", "version", "parent_version",
+    "options_revision", "supersedes_options_revision", "unknown_episode", "seq", "ordinal", "brief_version", "template_version",
+    "policy_version", "eligibility_protocol_version", "attempt", "version", "parent_version",
 })
-FLAG_COLUMNS = frozenset({"load_bearing", "blind_sample", "exploratory", "quote_quarantined", "tombstones_acknowledged"})
+FLAG_COLUMNS = frozenset({"load_bearing", "blind_sample", "exploratory", "quote_quarantined", "tombstones_acknowledged", "reconciliation_required"})
 SCORE_COLUMNS = frozenset({"proposed_importance_score", "operator_importance_score"})  # 1-9, the DDL's CHECKs
 MEASURE_COLUMNS = frozenset({"size_bytes", "priority", "result_count", "cost_units", "rank", "span_start", "span_end"})
 

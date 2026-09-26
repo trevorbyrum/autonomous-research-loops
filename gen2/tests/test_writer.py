@@ -153,24 +153,24 @@ class IdentityBoundTest(WriterTestCase):
         self.assertEqual(self.store.next_in_sequence("leases", "generation", {"topic_id": "fleet-a:none"}), 1)
 
     def test_advance_is_bounded_and_compare_and_set(self) -> None:
-        self.raw("INSERT INTO sink_generations (topic_id, sink, delivered_generation, delivered_at) VALUES (?, 'neo4j', ?, ?), (?, 'qdrant', 5, ?)",
+        self.raw("INSERT INTO connector_watermarks (topic_id, connector_id, generation, options_revision, delivered_at) VALUES (?, 'warehouse', ?, 1, ?), (?, 'archive', 5, 1, ?)",
                  TOPIC, BOUND, T, TOPIC, T)
         with self.assertRaises(IdentityBoundError):
             with self.store.transaction() as s:
                 s.insert("artifacts", {"content_hash": h("b"), "size_bytes": 1, "media_type": "text/plain", "staged_at": T})
-                s.advance("sink_generations", {"topic_id": TOPIC, "sink": "neo4j"}, "delivered_generation", expected=BOUND)
+                s.advance("connector_watermarks", {"topic_id": TOPIC, "connector_id": "warehouse"}, "generation", expected=BOUND)
         self.assertEqual(self.raw("SELECT count(*) FROM artifacts"), [(0,)])
         with self.assertRaises(IdentityBoundError):
             with self.store.transaction() as s:
-                s.update("sink_generations", {"topic_id": TOPIC, "sink": "qdrant"}, {"delivered_generation": 2**53})
+                s.update("connector_watermarks", {"topic_id": TOPIC, "connector_id": "archive"}, {"generation": 2**53})
         with self.assertRaises(StoreWriteError):  # stale expectation: nothing matches, nothing changes
             with self.store.transaction() as s:
-                s.advance("sink_generations", {"topic_id": TOPIC, "sink": "qdrant"}, "delivered_generation", expected=4)
+                s.advance("connector_watermarks", {"topic_id": TOPIC, "connector_id": "archive"}, "generation", expected=4)
         with self.store.transaction() as s:
-            self.assertEqual(s.advance("sink_generations", {"topic_id": TOPIC, "sink": "qdrant"}, "delivered_generation", expected=5), 6)
-        self.assertEqual(self.raw("SELECT sink, delivered_generation FROM sink_generations ORDER BY sink"), [("neo4j", BOUND), ("qdrant", 6)])
-        self.raw("UPDATE sink_generations SET delivered_generation = ? WHERE sink = 'neo4j'", 2**53)  # control: the DDL accepts it
-        self.assertEqual(self.raw("SELECT delivered_generation FROM sink_generations WHERE sink = 'neo4j'"), [(2**53,)])
+            self.assertEqual(s.advance("connector_watermarks", {"topic_id": TOPIC, "connector_id": "archive"}, "generation", expected=5), 6)
+        self.assertEqual(self.raw("SELECT connector_id, generation FROM connector_watermarks ORDER BY connector_id"), [("archive", 6), ("warehouse", BOUND)])
+        self.raw("UPDATE connector_watermarks SET generation = ? WHERE connector_id = 'warehouse'", 2**53)  # control: the DDL accepts it
+        self.assertEqual(self.raw("SELECT generation FROM connector_watermarks WHERE connector_id = 'warehouse'"), [(2**53,)])
 
     def test_every_integer_column_is_classified_once(self) -> None:
         """A new INTEGER column cannot land unbounded by accident: each is an
@@ -330,11 +330,11 @@ class WritePathTest(WriterTestCase):
             self.assertIn("closed after a failed transaction", str(refused.exception))
 
     def test_an_update_touches_exactly_one_row(self) -> None:
-        self.raw("INSERT INTO sink_generations (topic_id, sink, delivered_generation, delivered_at) VALUES (?, 'neo4j', 3, ?), (?, 'qdrant', 3, ?)", TOPIC, T, TOPIC, T)
+        self.raw("INSERT INTO connector_watermarks (topic_id, connector_id, generation, options_revision, delivered_at) VALUES (?, 'warehouse', 3, 1, ?), (?, 'archive', 3, 1, ?)", TOPIC, T, TOPIC, T)
         with self.assertRaises(StoreWriteError):
             with self.store.transaction() as s:
-                s.update("sink_generations", {"topic_id": TOPIC}, {"delivered_generation": 4})
-        self.assertEqual(self.raw("SELECT delivered_generation FROM sink_generations"), [(3,), (3,)])
+                s.update("connector_watermarks", {"topic_id": TOPIC}, {"generation": 4})
+        self.assertEqual(self.raw("SELECT generation FROM connector_watermarks"), [(3,), (3,)])
 
     def test_names_come_from_the_schema_only(self) -> None:
         for table, row in (("no_such_table", {"a": 1}), ("artifacts", {"content_hash": h("g"), "size_bytes": 1, "media_type": "x", "staged_at": T, "extra": 1}),

@@ -6,8 +6,8 @@
 -- receipts, and outbox deliveries"; the commit_outcome protocol; crash
 -- fencing) and §8 (typed evidence records); flow doc S4 step 2 (retrieval-
 -- event inventory, four candidate units), S4 steps 8-9 (verification receipts,
--- accepted-support boundary), §3 (decision receipts), S8 (outbox, per-sink
--- receipts), §4.4 (typed holds); docs/gen2/BOUNDARIES.md Router ("every state
+-- accepted-support boundary), §3 (decision receipts), S8 (outbox, per-
+-- connector receipts; operator ruling 2026-09-26), §4.4 (typed holds); docs/gen2/BOUNDARIES.md Router ("every state
 -- commit via commit_outcome"; "holds (typed, owned, deadlined)"); invariant IDs
 -- refer to docs/gen2/INVARIANTS.md.
 --
@@ -2343,16 +2343,23 @@ BEGIN
 END;
 
 -- ===========================================================================
--- Publication
+-- Export: the one outbound path (operator ruling 2026-09-26)
 -- ===========================================================================
+-- External export is one standard API that any database connects to
+-- (docs/gen2/EXPORT-API.md). No database product is named here: connectors
+-- are operator-named and closed by type, and nothing below is read back as
+-- research — engine readers read the record above.
 
--- trace: flow S8 publication contract items 1 and 5 (outbox event
--- referencing an immutable manifest, committed atomically with the approved
--- revision; corrections and checkpoint publications are new events); design
--- review §9; schema publication-manifest.schema.json; BOUNDARIES.md Router
--- ("publication outbox commits with immutable manifests"); INVARIANTS P-1,
+-- trace: flow S8 items 1, 2 and 5 as amended by operator ruling 2026-09-26
+-- (the router commits the approved revision and an outbox event whose
+-- manifest is the export manifest, atomically; corrections, checkpoint
+-- publications and options re-exports are new events); design review §9;
+-- schema export-manifest.schema.json; BOUNDARIES.md Router ("export outbox
+-- commits with immutable export manifests"), Exporter; INVARIANTS P-1, P-2,
 -- P-5.
--- Generations increase per topic; unapproved work is never published.
+-- One row per export manifest. Ordering pairs (generation, options_revision)
+-- strictly increase per topic; one generation is one approved revision;
+-- unapproved work is never exported.
 CREATE TABLE outbox_events (
   outbox_event_id TEXT PRIMARY KEY CHECK (outbox_event_id GLOB 'obx_*'),
   topic_id TEXT NOT NULL REFERENCES queue_entries (topic_id),
@@ -2360,37 +2367,67 @@ CREATE TABLE outbox_events (
   manifest_hash TEXT NOT NULL UNIQUE CHECK (manifest_hash GLOB 'sha256:*'),
   artifact_kind TEXT NOT NULL CHECK (artifact_kind IN ('completion_publication', 'evidence_correction', 'checkpoint_publication')),
   generation INTEGER NOT NULL CHECK (generation >= 1),
+  options_revision INTEGER NOT NULL CHECK (options_revision >= 1),
   supersedes_generation INTEGER,
+  supersedes_options_revision INTEGER,
   source_revision INTEGER NOT NULL CHECK (source_revision >= 1),
   source_content_hash TEXT NOT NULL CHECK (source_content_hash GLOB 'sha256:*' AND length(source_content_hash) = 71),
   approval_decision_id TEXT NOT NULL REFERENCES operator_decisions (decision_id),
-  expected_sinks TEXT NOT NULL CHECK (json_valid(expected_sinks) AND json_type(expected_sinks) = 'array' AND json_array_length(expected_sinks) >= 1),
+  bundle_content_hash TEXT NOT NULL CHECK (bundle_content_hash GLOB 'sha256:*' AND length(bundle_content_hash) = 71),
+  expected_connectors TEXT NOT NULL CHECK (json_valid(expected_connectors) AND json_type(expected_connectors) = 'object' AND json(expected_connectors) != '{}'),
   manifest TEXT NOT NULL CHECK (json_valid(manifest)),
   committed_by_operation_id TEXT NOT NULL REFERENCES operation_receipts (operation_id),
   created_at TEXT NOT NULL,
-  UNIQUE (topic_id, generation),
-  CHECK (supersedes_generation IS NULL OR supersedes_generation < generation),
-  CHECK (generation != 1 OR supersedes_generation IS NULL),
+  UNIQUE (topic_id, generation, options_revision),
+  CHECK ((supersedes_generation IS NULL) = (supersedes_options_revision IS NULL)),
+  CHECK (supersedes_generation IS NULL
+     OR (supersedes_generation >= 1 AND supersedes_options_revision >= 1
+         AND (supersedes_generation < generation
+              OR (supersedes_generation = generation AND supersedes_options_revision < options_revision)))),
   CHECK (json_extract(manifest, '$.manifest_id') IS manifest_id
      AND json_extract(manifest, '$.generation') IS generation
+     AND json_extract(manifest, '$.options_revision') IS options_revision
      AND json_extract(manifest, '$.topic_id') IS topic_id
      AND json_extract(manifest, '$.artifact_kind') IS artifact_kind
      AND json_extract(manifest, '$.source.revision') IS source_revision
      AND json_extract(manifest, '$.source.content_hash') IS source_content_hash
      AND json_extract(manifest, '$.approval.operator_decision_id') IS approval_decision_id
      AND json_extract(manifest, '$.approval.approved_revision') IS source_revision
+     AND json_extract(manifest, '$.bundle.content_hash') IS bundle_content_hash
      AND json_extract(manifest, '$.supersedes.generation') IS supersedes_generation
-     AND json_extract(manifest, '$.expected_sinks') IS json(expected_sinks))
+     AND json_extract(manifest, '$.supersedes.options_revision') IS supersedes_options_revision
+     AND json_extract(manifest, '$.expected_connectors') IS json(expected_connectors))
 ) STRICT;
 
-CREATE TRIGGER outbox_events_generation_increases
+-- The ordering pair: a manifest's (generation, options_revision) exceeds
+-- every earlier one of its topic, so an old retry cannot be committed as
+-- newer material.
+CREATE TRIGGER outbox_events_pair_increases
 BEFORE INSERT ON outbox_events
-WHEN NEW.generation <= (SELECT coalesce(max(generation), 0) FROM outbox_events WHERE topic_id = NEW.topic_id)
+WHEN EXISTS (
+  SELECT 1 FROM outbox_events e
+  WHERE e.topic_id = NEW.topic_id
+    AND (e.generation > NEW.generation
+         OR (e.generation = NEW.generation AND e.options_revision >= NEW.options_revision)))
 BEGIN
-  SELECT RAISE(ABORT, 'publication generations strictly increase per topic (P-2)');
+  SELECT RAISE(ABORT, 'export ordering pairs (generation, options_revision) strictly increase per topic (P-2)');
+END;
+-- One generation is one approved revision: a re-export under a later options
+-- revision keeps its generation's source, approval and artifact kind.
+CREATE TRIGGER outbox_events_generation_is_one_approved_revision
+BEFORE INSERT ON outbox_events
+WHEN EXISTS (
+  SELECT 1 FROM outbox_events e
+  WHERE e.topic_id = NEW.topic_id AND e.generation = NEW.generation
+    AND (e.source_revision IS NOT NEW.source_revision
+         OR e.source_content_hash IS NOT NEW.source_content_hash
+         OR e.approval_decision_id IS NOT NEW.approval_decision_id
+         OR e.artifact_kind IS NOT NEW.artifact_kind))
+BEGIN
+  SELECT RAISE(ABORT, 'one generation is one approved revision: a re-export keeps its source, approval and kind (P-2, P-5)');
 END;
 -- A2: the approval is an approved publication_approval of this topic whose
--- subject is exactly the published source revision and content hash.
+-- subject is exactly the exported source revision and content hash.
 CREATE TRIGGER outbox_events_only_approved
 BEFORE INSERT ON outbox_events
 WHEN NOT EXISTS (
@@ -2401,7 +2438,19 @@ WHEN NOT EXISTS (
     AND d.subject_revision = NEW.source_revision
     AND d.subject_hash = NEW.source_content_hash)
 BEGIN
-  SELECT RAISE(ABORT, 'unapproved work is never published: approval must be of this exact source revision and hash (P-5, A2)');
+  SELECT RAISE(ABORT, 'unapproved work is never exported: approval must be of this exact source revision and hash (P-5, A2)');
+END;
+-- Connector types are a closed, reviewed vocabulary: every connector a
+-- manifest names is an object whose type is declared (a store kind written
+-- into config is not a type; P-2).
+CREATE TRIGGER outbox_events_connectors_declared
+BEFORE INSERT ON outbox_events
+WHEN EXISTS (
+  SELECT 1 FROM json_each(NEW.expected_connectors) j
+  WHERE coalesce(CASE WHEN j.type = 'object' THEN json_extract(j.value, '$.connector_type') END, '')
+        NOT IN ('sql', 'jsonl_file', 'webhook', 'extension'))
+BEGIN
+  SELECT RAISE(ABORT, 'an export names only connectors of a declared type (P-2)');
 END;
 CREATE TRIGGER outbox_events_immutable_u BEFORE UPDATE ON outbox_events
 BEGIN
@@ -2412,65 +2461,88 @@ BEGIN
   SELECT RAISE(ABORT, 'outbox events are never deleted');
 END;
 
--- trace: flow S8 item 2 (per-sink receipts; supersession/tombstones
--- acknowledged per sink); BOUNDARIES.md Projector / publication;
+-- trace: flow S8 item 2 as amended by operator ruling 2026-09-26 (per-
+-- connector receipts; supersession/tombstones acknowledged per connector);
+-- BOUNDARIES.md Exporter; schema export-delivery-receipt.schema.json;
 -- adjudication (a)G-A1 (mutable delivery receipts stored separately);
--- INVARIANTS P-2, P-4.
--- Projector-owned records, written through the router's ack_delivery.
-CREATE TABLE sink_delivery_receipts (
-  delivery_receipt_id TEXT PRIMARY KEY,
-  outbox_event_id TEXT NOT NULL REFERENCES outbox_events (outbox_event_id),
-  sink TEXT NOT NULL CHECK (sink IN ('neo4j', 'qdrant')),
+-- INVARIANTS P-2, P-4, P-7, H-2.
+-- Exporter-owned records, written through the router's ack_delivery. One
+-- row per attempt; a retry or a reconciliation is a new attempt, never an
+-- edit. The status rules are the receipt schema's.
+CREATE TABLE export_delivery_receipts (
+  export_receipt_id TEXT PRIMARY KEY CHECK (export_receipt_id GLOB 'exr_*'),
+  manifest_id TEXT NOT NULL REFERENCES outbox_events (manifest_id),
+  connector_id TEXT NOT NULL CHECK (connector_id GLOB '[a-z]*' AND connector_id NOT GLOB '*[^a-z0-9-]*' AND connector_id NOT GLOB '*-' AND length(connector_id) <= 64),
+  connector_type TEXT NOT NULL CHECK (connector_type IN ('sql', 'jsonl_file', 'webhook', 'extension')),
   attempt INTEGER NOT NULL CHECK (attempt >= 1),
-  status TEXT NOT NULL CHECK (status IN ('delivered', 'failed', 'skipped_superseded')),
+  status TEXT NOT NULL CHECK (status IN ('delivered', 'failed', 'skipped_superseded', 'outcome_unknown')),
   tombstones_acknowledged INTEGER NOT NULL CHECK (tombstones_acknowledged IN (0, 1)),
-  error_class TEXT,
+  reconciliation_required INTEGER NOT NULL CHECK (reconciliation_required IN (0, 1)),
+  error_class TEXT CHECK (error_class IN ('unreachable', 'auth_failed', 'refused', 'schema_mismatch', 'quota', 'timeout', 'conflict', 'partial_write')),
+  unknown_cause TEXT CHECK (unknown_cause IN ('terminated_after_send', 'no_response_after_send', 'unreadable_response', 'unauthoritative_response')),
+  capability_fact_id TEXT REFERENCES capability_facts (fact_id),
   attempted_at TEXT NOT NULL,
   acked_at TEXT,
-  UNIQUE (outbox_event_id, sink, attempt),
+  UNIQUE (manifest_id, connector_id, attempt),
   CHECK (status != 'failed' OR error_class IS NOT NULL),
-  CHECK (status != 'delivered' OR (acked_at IS NOT NULL AND tombstones_acknowledged = 1))
+  CHECK (error_class IS NULL OR status = 'failed'),
+  CHECK (status != 'delivered' OR (acked_at IS NOT NULL AND tombstones_acknowledged = 1)),
+  CHECK (acked_at IS NULL OR status = 'delivered'),
+  CHECK (tombstones_acknowledged = 0 OR status = 'delivered'),
+  CHECK ((unknown_cause IS NOT NULL) = (status = 'outcome_unknown')),
+  CHECK (reconciliation_required = (status = 'outcome_unknown')),
+  CHECK (status NOT IN ('failed', 'outcome_unknown') OR capability_fact_id IS NOT NULL),
+  CHECK (status != 'delivered' OR capability_fact_id IS NULL)
 ) STRICT;
 
-CREATE TRIGGER sink_delivery_receipts_expected_sink
-BEFORE INSERT ON sink_delivery_receipts
+-- D48: membership, not vocabulary — a receipt is for a connector the
+-- manifest names, with the type the manifest declared for it.
+CREATE TRIGGER export_delivery_receipts_expected_connector
+BEFORE INSERT ON export_delivery_receipts
 WHEN NOT EXISTS (
-  SELECT 1 FROM outbox_events e, json_each(e.expected_sinks) j
-  WHERE e.outbox_event_id = NEW.outbox_event_id AND j.value = NEW.sink)
+  SELECT 1 FROM outbox_events e, json_each(e.expected_connectors) j
+  WHERE e.manifest_id = NEW.manifest_id AND j.key = NEW.connector_id
+    AND json_extract(j.value, '$.connector_type') IS NEW.connector_type)
 BEGIN
-  SELECT RAISE(ABORT, 'delivery receipt for a sink the manifest does not expect');
+  SELECT RAISE(ABORT, 'delivery receipt for a connector the manifest does not name');
 END;
-CREATE TRIGGER sink_delivery_receipts_immutable_u BEFORE UPDATE ON sink_delivery_receipts
+CREATE TRIGGER export_delivery_receipts_immutable_u BEFORE UPDATE ON export_delivery_receipts
 BEGIN
-  SELECT RAISE(ABORT, 'delivery receipts are immutable; a retry is a new attempt');
+  SELECT RAISE(ABORT, 'delivery receipts are immutable; a retry or a reconciliation is a new attempt');
 END;
-CREATE TRIGGER sink_delivery_receipts_no_delete BEFORE DELETE ON sink_delivery_receipts
+CREATE TRIGGER export_delivery_receipts_no_delete BEFORE DELETE ON export_delivery_receipts
 BEGIN
   SELECT RAISE(ABORT, 'delivery receipts are never deleted (C-11)');
 END;
 
--- trace: flow S8 item 2 ("old retries cannot overwrite newer generations");
--- BOUNDARIES.md Projector / publication (must never overwrite newer
--- generations with old retries); INVARIANTS P-2.
--- Per-sink high-water mark; it never decreases.
-CREATE TABLE sink_generations (
+-- trace: flow S8 item 2 as amended by operator ruling 2026-09-26 ("old
+-- retries cannot overwrite newer generations", by the ordering pair);
+-- BOUNDARIES.md Exporter (must never overwrite newer material with an old
+-- retry); INVARIANTS P-2.
+-- The engine's per-connector high-water mark: the highest pair a connector
+-- has a delivered receipt for. It never decreases. It is the engine's own
+-- bookkeeping, not a reading of the connector's store; the connector's
+-- retained evidence is the correctness boundary (EXPORT-API.md §4).
+CREATE TABLE connector_watermarks (
   topic_id TEXT NOT NULL REFERENCES queue_entries (topic_id),
-  sink TEXT NOT NULL CHECK (sink IN ('neo4j', 'qdrant')),
-  delivered_generation INTEGER NOT NULL CHECK (delivered_generation >= 1),
+  connector_id TEXT NOT NULL CHECK (connector_id GLOB '[a-z]*' AND connector_id NOT GLOB '*[^a-z0-9-]*' AND connector_id NOT GLOB '*-' AND length(connector_id) <= 64),
+  generation INTEGER NOT NULL CHECK (generation >= 1),
+  options_revision INTEGER NOT NULL CHECK (options_revision >= 1),
   delivered_at TEXT NOT NULL,
-  PRIMARY KEY (topic_id, sink)
+  PRIMARY KEY (topic_id, connector_id)
 ) STRICT;
 
-CREATE TRIGGER sink_generations_never_regress
-BEFORE UPDATE ON sink_generations
-WHEN NEW.delivered_generation < OLD.delivered_generation
-  OR NEW.topic_id IS NOT OLD.topic_id OR NEW.sink IS NOT OLD.sink
+CREATE TRIGGER connector_watermarks_never_regress
+BEFORE UPDATE ON connector_watermarks
+WHEN NEW.generation < OLD.generation
+  OR (NEW.generation = OLD.generation AND NEW.options_revision < OLD.options_revision)
+  OR NEW.topic_id IS NOT OLD.topic_id OR NEW.connector_id IS NOT OLD.connector_id
 BEGIN
-  SELECT RAISE(ABORT, 'an old retry never overwrites a newer delivered generation (P-2)');
+  SELECT RAISE(ABORT, 'an old retry never overwrites newer material: a connector watermark never regresses (P-2)');
 END;
-CREATE TRIGGER sink_generations_no_delete BEFORE DELETE ON sink_generations
+CREATE TRIGGER connector_watermarks_no_delete BEFORE DELETE ON connector_watermarks
 BEGIN
-  SELECT RAISE(ABORT, 'a sink high-water mark is never deleted: delete-and-reinsert would regress it (P-2, C-11)');
+  SELECT RAISE(ABORT, 'a connector watermark is never deleted: delete-and-reinsert would regress it (P-2, C-11)');
 END;
 
 -- ===========================================================================
