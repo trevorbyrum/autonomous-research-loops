@@ -1,0 +1,24 @@
+{
+  "fixture": {
+    "schema": "freshness-envelope.schema.json",
+    "expect": "invalid",
+    "tests": "P-3 (operator ruling 2026-09-26; 0d-repair, Astra 0d review finding 2): the retired mixed_generation field in the shape freshness-envelope/1 defined it (detected, resolution) is refused too",
+    "base": "valid-partial-export-delivery.json",
+    "patch": [
+      {
+        "op": "add",
+        "path": "/mixed_generation",
+        "value": {
+          "detected": true,
+          "resolution": "pinned"
+        }
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "additionalProperties",
+        "path": ""
+      }
+    ]
+  }
+}

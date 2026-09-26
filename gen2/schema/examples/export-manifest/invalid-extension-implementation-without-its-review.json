@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "export-manifest.schema.json",
+    "expect": "invalid",
+    "tests": "design review §6 (0d-repair; Astra 0d review finding 2): an extension's implementation names the review that accepted it - a module alone is unreviewed code; the whole-object negative cannot tell the two members apart",
+    "base": "valid-superseding-options-revision-2.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/expected_connectors/partner-index/implementation/review_ref"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": "/expected_connectors/partner-index/implementation"
+      }
+    ]
+  }
+}

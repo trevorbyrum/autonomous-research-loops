@@ -23,7 +23,8 @@ That happens in one of two ways, and they prove different things:
   means the negative now validates: the mutant admits a bad document, and
   the negative depends on that rule. Every export negative except the
   combined unreadable-response regression is of this kind (the manifest and
-  freshness-envelope negatives of task 0d included), and so are the three
+  freshness-envelope negatives of task 0d included, and the per-member ones
+  0d-repair added beside its whole-object negatives), and so are the three
   single-member identity negatives.
 - A combined negative declares two or three errors, and the negative is
   still refused after the removal, only with fewer errors than declared. The
@@ -156,6 +157,17 @@ class FixtureCounterfactualTest(unittest.TestCase):
         self.assertBehaveAsDeclared("export-manifest", "valid-superseding-options-revision-2.json",
                                     "invalid-extension-without-an-implementation.json")
 
+    # Per member (0d-repair; Astra 0d review finding 2): the whole-object
+    # negative above survives dropping either member from `required`, so each
+    # member has its own one-error negative; the valid extension is the control.
+    def test_an_extension_implementation_names_its_module(self) -> None:
+        self.assertBehaveAsDeclared("export-manifest", "valid-superseding-options-revision-2.json",
+                                    "invalid-extension-implementation-without-its-module.json")
+
+    def test_an_extension_implementation_names_its_review(self) -> None:
+        self.assertBehaveAsDeclared("export-manifest", "valid-superseding-options-revision-2.json",
+                                    "invalid-extension-implementation-without-its-review.json")
+
     def test_a_reference_connector_claiming_an_implementation_is_refused(self) -> None:
         self.assertBehaveAsDeclared("export-manifest", "valid-superseding-options-revision-2.json",
                                     "invalid-reference-connector-claiming-an-implementation.json")
@@ -200,8 +212,27 @@ class FixtureCounterfactualTest(unittest.TestCase):
     def test_a_delivered_connector_names_its_pair(self) -> None:
         self.assertBehaveAsDeclared("freshness-envelope", "valid-partial-export-delivery.json", "invalid-delivered-without-a-pair.json")
 
+    # The null-pair negative above survives dropping either pair member from
+    # `required` (0d-repair; Astra 0d review finding 2): each member has its
+    # own negative, and the complete pair in the valid fixture is the control.
+    def test_a_delivered_pair_names_its_options_revision(self) -> None:
+        self.assertBehaveAsDeclared("freshness-envelope", "valid-partial-export-delivery.json",
+                                    "invalid-delivered-pair-without-its-options-revision.json")
+
+    def test_a_delivered_pair_names_its_generation(self) -> None:
+        self.assertBehaveAsDeclared("freshness-envelope", "valid-partial-export-delivery.json",
+                                    "invalid-delivered-pair-without-its-generation.json")
+
     def test_a_read_cannot_claim_a_projected_revision(self) -> None:
         self.assertBehaveAsDeclared("freshness-envelope", "valid-partial-export-delivery.json", "invalid-projected-revision-claimed.json")
+
+    def test_a_read_cannot_claim_mixed_generation(self) -> None:
+        """The other retired /1 field (0d-repair; Astra 0d review finding 2):
+        the projected-revision negative says nothing about it. Two shapes, so
+        restoring the field as a bare flag or as /1 defined it are both
+        noticed."""
+        self.assertBehaveAsDeclared("freshness-envelope", "valid-partial-export-delivery.json",
+                                    "invalid-mixed-generation-claimed.json", "invalid-mixed-generation-as-in-envelope-1.json")
 
     def test_no_connectors_lists_none(self) -> None:
         self.assertBehaveAsDeclared("freshness-envelope", "valid-no-connectors-enabled.json", "invalid-no-connectors-listing-one.json")

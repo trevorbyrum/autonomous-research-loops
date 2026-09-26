@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "freshness-envelope.schema.json",
+    "expect": "invalid",
+    "tests": "P-3 (operator ruling 2026-09-26; 0d-repair, Astra 0d review finding 2): mixed_generation is retired with projections - a read of the one local record has no second copy to mix - so a /2 envelope cannot carry it, here as a bare claim",
+    "base": "valid-partial-export-delivery.json",
+    "patch": [
+      {
+        "op": "add",
+        "path": "/mixed_generation",
+        "value": true
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "additionalProperties",
+        "path": ""
+      }
+    ]
+  }
+}

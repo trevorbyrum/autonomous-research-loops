@@ -1661,6 +1661,36 @@ MUTATIONS: list[Mutation] = [
            '"additionalProperties": {"enum": ["overdue", "failed_before_due", "never_ran", "unparseable_payload", "cursor_lost", "unknown"]}',
            '"additionalProperties": {"type": "string"}'),
       )),
+    # --- 0d-repair: per-member replacement coverage (Astra 0d review, finding
+    # 2). Each rule above had a negative that removed a whole object, so
+    # weakening one member of it survived. Each mutant here weakens one member
+    # (or restores the retired field in one shape), and its own one-error
+    # negative must validate.
+    *(Mutation(f"0DR-{key}", "0d-F2", desc, tuple(SF + k for k in killers), target=target, old=old, new=new)
+      for key, desc, killers, target, old, new in (
+          ("implementation-module-not-required", "an extension's implementation may omit its module (the review's survivor)",
+           ("test_an_extension_implementation_names_its_module",), MANIFEST,
+           '"required": ["module", "review_ref"],', '"required": ["review_ref"],'),
+          ("implementation-review-not-required", "an extension's implementation may omit its review (the review's survivor)",
+           ("test_an_extension_implementation_names_its_review",), MANIFEST,
+           '"required": ["module", "review_ref"],', '"required": ["module"],'),
+          ("mixed-generation-restored-as-a-boolean", "the retired mixed_generation field is back as a boolean (the review's survivor)",
+           ("test_a_read_cannot_claim_mixed_generation",), ENVELOPE,
+           '    "approval_status": {"enum": ["approved", "no_approved_revision"]},\n',
+           '    "approval_status": {"enum": ["approved", "no_approved_revision"]},\n    "mixed_generation": {"type": "boolean"},\n'),
+          ("mixed-generation-restored-as-in-envelope-1", "the retired mixed_generation field is back in its freshness-envelope/1 shape",
+           ("test_a_read_cannot_claim_mixed_generation",), ENVELOPE,
+           '    "approval_status": {"enum": ["approved", "no_approved_revision"]},\n',
+           '    "approval_status": {"enum": ["approved", "no_approved_revision"]},\n'
+           '    "mixed_generation": {"type": "object", "additionalProperties": false, "required": ["detected", "resolution"],'
+           ' "properties": {"detected": {"type": "boolean"}, "resolution": {"enum": ["not_applicable", "pinned", "degraded"]}}},\n'),
+          ("delivered-pair-without-its-options-revision", "a delivered pair may omit its options revision (the review's survivor)",
+           ("test_a_delivered_pair_names_its_options_revision",), ENVELOPE,
+           '"required": ["generation", "options_revision"],', '"required": ["generation"],'),
+          ("delivered-pair-without-its-generation", "a delivered pair may omit its generation (the mirror of the review's survivor)",
+           ("test_a_delivered_pair_names_its_generation",), ENVELOPE,
+           '"required": ["generation", "options_revision"],', '"required": ["options_revision"],'),
+      )),
     Mutation("0CR-operator-listen-on-container-loopback", "A6", "the review's defect restored: the engine binds its container's loopback",
              (SC + "test_services_listen_on_their_container_interface",), target="tools/gen_source_catalog.py",
              old='Key("GEN2_OPERATOR_LISTEN", "0.0.0.0:8770",', new='Key("GEN2_OPERATOR_LISTEN", "127.0.0.1:8770",'),

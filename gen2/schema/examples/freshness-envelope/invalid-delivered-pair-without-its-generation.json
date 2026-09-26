@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "freshness-envelope.schema.json",
+    "expect": "invalid",
+    "tests": "RG-U / EXPORT-API ordering pair (0d-repair; Astra 0d review finding 2; the mirror of the options-revision negative): an options revision without its generation is not a pair either",
+    "base": "valid-partial-export-delivery.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/facts/export_delivery/connectors/warehouse/delivered/generation"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "oneOf",
+        "path": "/facts/export_delivery/connectors/warehouse/delivered"
+      }
+    ]
+  }
+}

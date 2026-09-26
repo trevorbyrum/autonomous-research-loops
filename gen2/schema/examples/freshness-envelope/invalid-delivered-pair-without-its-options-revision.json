@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "freshness-envelope.schema.json",
+    "expect": "invalid",
+    "tests": "RG-U / EXPORT-API ordering pair (0d-repair; Astra 0d review finding 2): a delivered connector names the whole pair it holds - a generation without its options revision cannot say which re-export was delivered",
+    "base": "valid-partial-export-delivery.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/facts/export_delivery/connectors/warehouse/delivered/options_revision"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "oneOf",
+        "path": "/facts/export_delivery/connectors/warehouse/delivered"
+      }
+    ]
+  }
+}
