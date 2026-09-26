@@ -32,13 +32,12 @@ restart-not-rebuild for everything except engine bugs".
 internals). `docs/gen2/ENVIRONMENT.md` covers the *build* environment; this file
 covers the *runtime* one.
 
-**Hard boundary against gen-1.** Nothing here touches the running gen-1
-deployment. On this host (observed 2026-09-25) `research-gateway.service` is
-active and listening on `127.0.0.1:8765`, with PostgreSQL on `5432`. The gen-2
-stack gets its own gateway container, its own database, and its own host ports
-(below). One gateway service per database is a gen-1 decision (`D-25`) that
-holds here too: pointing a gen-2 container at gen-1's database or its port is a
-deployment error, not a configuration choice.
+**A dedicated stack.** Each gen-2 deployment is one dedicated stack instance:
+its own gateway container, its own gateway database, and its own host ports
+(below). It shares none of them with any other deployment on the same machine.
+One gateway service per database (`D-25`, a decision carried over from gen-1)
+holds here too: pointing a gen-2 container at another deployment's gateway
+database or listener is a deployment error, not a configuration choice.
 
 ---
 
@@ -54,7 +53,7 @@ creates nor owns nor names any of them (operator ruling 2026-09-26).
 | Service | What it is | Image | Referenced or ours |
 |---|---|---|---|
 | `engine` | Router (sole writer, owns the control store) + station supervisor + composition root. The operator command service (CLI/HTTP/MCP behind one service, design review §10) is exposed from here. | baked gen-2 image | ours |
-| `gateway` | A second instance of the federated research gateway (`gateway/research_gateway`), the only door to external research sources. Run as a service and reached over HTTP; never imported (B-2). | the gateway's own image (`gateway/deploy/Dockerfile`). The current image is admissible in the `env` secrets mode only; `vault` mode needs a reviewed gateway release (§3.4) | ours (separate instance from gen-1's) |
+| `gateway` | This stack's own instance of the federated research gateway (`gateway/research_gateway`), the only door to external research sources. Run as a service and reached over HTTP; never imported (B-2). | the gateway's own image (`gateway/deploy/Dockerfile`). The current image is admissible in the `env` secrets mode only; `vault` mode needs a reviewed gateway release (§3.4) | ours (dedicated to this stack) |
 | `exporter` | Outbox consumer: delivers each approved export manifest's bundle to every enabled connector through the one connector contract (`docs/gen2/EXPORT-API.md`; operator ruling 2026-09-26, was `projector`). | baked gen-2 image, same image as `engine`, different entrypoint; reference connectors in the core, reviewed extension connectors from their own packages | ours |
 | `tier0` | The local NLI claim-vs-span screen. Optional: with it absent the engine records a dated capability fact and verification proceeds without the screen (the screen never gated a load-bearing claim anyway — BOUNDARIES.md *Tier-0 checker*). | its own pinned image | ours |
 | `gateway-db` | PostgreSQL for the gen-2 gateway instance only. | `postgres` pinned | ours |
@@ -73,10 +72,10 @@ invariant no matter what the code does.
 
 ### 1.1 Port map
 
-Container ports are fixed by the images. Host ports are defaults chosen to
-avoid what was already listening on this host on 2026-09-25 (8765, 8766, 5432,
-6767, 8642, 8643, 8652, 11434, 18000, 18080); the operator confirms them at
-deploy time rather than trusting this list.
+Container ports are fixed by the images. The host ports below are the product's
+defaults, not a survey of any machine. Each deployment checks that every host
+port it publishes is free on the deploying host, and changes a port that is
+taken in its own configuration; it never shares one.
 
 **A listen address and a host publication are different things.** A service's
 listen address is inside its own container's network namespace. Its host
@@ -468,8 +467,8 @@ surveillance.
   the `env` secrets mode only.
 - **Vault mode for any service** waits for §3.4's acceptance tests. The gateway
   release it needs is Phase 2/3 repair work, and authorizing it is Trevor's.
-- **Port defaults are a starting point**, chosen against one observation of one
-  host on 2026-09-25. The operator confirms them.
+- **Port defaults are only defaults** (§1.1). Whether each is free is checked
+  at every deployment, on the host being deployed to.
 - **Migration and cutover** (freeze, import, reconcile, single-writer cutover)
   are Phase 4 and live in the migration contract, not here.
 - **Nothing here is evidence that a mechanism works.** Every rule above is a

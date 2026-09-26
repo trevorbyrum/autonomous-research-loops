@@ -17,8 +17,8 @@ tool derives BOTH operator-facing artifacts from it and nothing else:
 `make gen2-catalog` writes them; `make gen2-check` runs `--check`, so a registry
 edit that is not regenerated fails the build, and so does a hand edit of either
 artifact. The registry is read as TOML: no gen-2 code and no gen-2 build tool
-imports `research_gateway` (INVARIANTS B-2), and nothing here touches the
-running gen-1 gateway service.
+imports `research_gateway` (INVARIANTS B-2). The tool reads and writes files
+only; it contacts no running service.
 
 The registry is read strictly. An `auth` value this tool does not know, a
 credentialled source with no `secret_ref`, a `secret_ref` that does not spell a
@@ -480,15 +480,15 @@ SERVICE_GROUPS: tuple[Group, ...] = (
     ),
     Group(
         "Gen-2 research gateway instance",
-        ("The gateway runs its own image and keeps its own variable names. This instance is the",
-         "GEN-2 one: it must have its own database. Pointing it at gen-1's DSN or its port (127.0.0.1:8765",
-         "on this host) is a deployment error — one gateway service per database."),
+        ("The gateway runs its own image and keeps its own variable names. This stack's gateway has a",
+         "database of its own (gateway-db). One gateway service per database: pointing it at another",
+         "deployment's database or listener is a deployment error (DEPLOYMENT-CONTRACT.md, \"A dedicated stack\")."),
         (
             Key("RESEARCH_GATEWAY_LISTEN", "0.0.0.0:8765", "inside the container; published on 127.0.0.1:8771"),
             Key("RESEARCH_GATEWAY_CONTACT_EMAIL", "you@example.org",
                 "sent to sources whose polite pool wants a contact address"),
             Key("RESEARCH_GATEWAY_DSN", "postgresql://gateway@gateway-db:5432/gen2_research_loops",
-                "the gen-2 database, never gen-1's"),
+                "this stack's own gateway-db, never another deployment's database"),
             Key("PGPASSWORD", "example-database-password"),
             Key("RESEARCH_GATEWAY_TOKENS", "loops=example-token-issued-to-the-gen2-engine,mcp=example-token-for-mcp",
                 "one bearer token per client; the gateway refuses to start without any"),
@@ -546,8 +546,8 @@ def render_env_example(sources: list[dict]) -> str:
         f"# {CATALOG}; `make gen2-check` fails if either drifts from the registry, or if this",
         "# file was edited by hand.",
         "#",
-        "# This is the GEN-2 stack's environment. It is never pointed at the running gen-1 gateway service",
-        "# or its database (docs/gen2/DEPLOYMENT-CONTRACT.md, \"Hard boundary against gen-1\").",
+        "# This is one dedicated gen-2 stack's environment. Its gateway and gateway database are its own; it",
+        "# is never pointed at another deployment's (docs/gen2/DEPLOYMENT-CONTRACT.md, \"A dedicated stack\").",
         "#",
         "# Trace: task 0c deliverable 2; DEPLOYMENT-CONTRACT.md §3; INVARIANTS H-2 (a failed secrets read is",
         "# a dated capability fact, never \"no key configured\").",
