@@ -79,6 +79,7 @@ FILE_TARGETS = {
     "tools/gen_source_catalog.py": ("attr", "test_source_catalog", "TOOL"),
     # A schema file: the whole schema tree is re-checked with this file replaced (0c-repair, C1).
     "gen2/schema/export-bundle.schema.json": ("attr", "test_schema_counterfactuals", "EXPORT_BUNDLE_SCHEMA"),
+    "gen2/schema/export-delivery-receipt.schema.json": ("attr", "test_schema_counterfactuals", "EXPORT_RECEIPT_SCHEMA"),
     "gen2/schema/decision-receipt.schema.json": ("attr", "test_schema_counterfactuals", "DECISION_RECEIPT_SCHEMA"),
     "gen2/schema/invocation.schema.json": ("attr", "test_schema_counterfactuals", "INVOCATION_SCHEMA"),
 }
@@ -105,6 +106,7 @@ SG = "test_sqlite_gate."
 IB = "test_store_intake.IntakeBriefTest."
 SC = "test_source_catalog.CatalogToolTest."
 SF = "test_schema_counterfactuals.FixtureCounterfactualTest."
+RECEIPT = "gen2/schema/export-delivery-receipt.schema.json"
 
 MUTATIONS: list[Mutation] = [
     # --- A1: history cannot be rewritten ------------------------------------
@@ -1385,6 +1387,23 @@ MUTATIONS: list[Mutation] = [
            ("test_a_mixed_disposition_with_an_empty_hold_list_is_refused",), "gen2/schema/export-bundle.schema.json",
            '"then": {"required": ["open_adjudication_hold_ids"], "properties": {"open_adjudication_hold_ids": {"minItems": 1}}}',
            '"then": {"required": ["open_adjudication_hold_ids"]}'),
+          ("partial-write-count-unconstrained", "A4", "a partial_write failure may report an observed total (the review's substitution)",
+           ("test_a_partial_write_claiming_an_observed_total_is_refused",), RECEIPT,
+           '"then": {"properties": {"written": {"properties": {"status": {"const": "partial"}}}}}', '"then": {}'),
+          ("settled-failure-count-unconstrained", "A2", "a failure other than a partial write may report any count, an unknown one included",
+           ("test_a_failure_whose_count_is_unknown_is_refused", "test_a_refusal_claiming_it_wrote_records_is_refused",
+            "test_the_reviews_unreadable_response_reproduction_is_refused_twice"), RECEIPT,
+           '"then": {"properties": {"written": {"properties": {"status": {"const": "observed"}, "value": {"const": 0}}}}}', '"then": {}'),
+          ("unreadable-response-is-a-failure-class", "A2", "unreadable_response is a settled failure's class again",
+           ("test_an_unreadable_response_is_not_a_failure_class", "test_the_reviews_unreadable_response_reproduction_is_refused_twice"), RECEIPT,
+           '"partial_write"]\n    },\n    "unknown_cause"', '"partial_write", "unreadable_response"]\n    },\n    "unknown_cause"'),
+          ("unknown-cause-not-required", "A2", "an unknown outcome need not say why it is unknown",
+           ("test_an_unknown_outcome_without_a_cause_is_refused",), RECEIPT,
+           '"required": ["capability_fact_id", "unknown_cause"],', '"required": ["capability_fact_id"],'),
+          ("unknown-cause-on-a-settled-result", "A2", "a settled result may carry an unknown cause",
+           ("test_a_settled_result_carrying_an_unknown_cause_is_refused",), RECEIPT,
+           '"if": {"required": ["unknown_cause"]},\n      "then": {"properties": {"status": {"const": "outcome_unknown"}}}',
+           '"if": {"required": ["unknown_cause"]},\n      "then": {}'),
           # The audit of every other negative for the same collapse found four
           # (0a fixtures). The checker now counts errors (below); these show
           # each hidden rule is noticed on its own. intake-brief's

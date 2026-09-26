@@ -132,12 +132,34 @@ earlier export lists what was removed or corrected, including entities removed f
 licence reasons. A delivery that did not acknowledge the tombstones is not
 `delivered`; the schema refuses that combination.
 
-**Partial delivery is visible, and is not a total.** A sink that stopped part-way
-reports `failed` with `error_class: partial_write` and `written` as a `partial`
-count — records actually written, a lower bound, never a total. An attempt whose
-result is not established is `outcome_unknown`, requires reconciliation, and may
-not claim an observed count. It is not a failure and carries no error class; it is
-also not a success.
+**The status records what is known about the sink, not what the transport did.**
+Three questions decide it, in order:
+
+1. *Could any of the request have been applied?* If it was never sent (a name
+   that did not resolve, a refused connection, a connect timeout, a credential
+   the adapter could not load), it could not. That is `failed`, and `written` is
+   an observed zero.
+2. *If it may have been applied, did an authoritative answer settle the
+   result?* An acknowledgement is `delivered`. An authoritative refusal is
+   `failed` with an observed zero. A sink that reports which part it applied
+   before it stopped is `failed` with `error_class: partial_write`, and
+   `written` is a `partial` count: records actually written, a lower bound,
+   never a total.
+3. *Otherwise* the request may have been applied and nothing establishes
+   whether. The process stopped after sending, no response came, the response
+   could not be read, or it was neither an acknowledgement nor a refusal. That
+   is `outcome_unknown`: it requires reconciliation, may not claim an observed
+   count, and carries no error class. It is neither a failure nor a success.
+
+The transport symptom is kept, in the receipt's typed `unknown_cause` and on the
+capability fact, but it never decides the status by itself. An unreadable
+response is `unknown_cause: unreadable_response`, never an error class, because a
+receiver may have committed the export before its response became unreadable.
+The schema holds these rules. A failure's count must be known: a `partial` count
+for `partial_write`, an observed zero for every other class. An unknown cause
+appears only on an unknown outcome. What counts as authoritative depends on the
+adapter; §5 defines it for each shipped adapter, and a bespoke sink's review must
+define it for that sink.
 
 **A dead sink is a dated capability incident.** Every failure and every unknown
 outcome names a `capability_facts` row with its `since` time, and the projector
@@ -217,13 +239,35 @@ credential.
 ### 5.3 `webhook_http`
 
 One POST per manifest, carrying the manifest and the bundle, with the manifest id
-as an idempotency header so the receiver can dedupe. Bearer token from the
-secrets surface; endpoint URL from mounted config. A non-2xx response is `failed`
-with a typed class; a response that cannot be read is `unreadable_response`, and a
-request that was sent but whose response never arrived is `outcome_unknown` — not
-a failure, and never a success. The adapter never follows a redirect (a redirect
-could re-send the bearer token elsewhere; the gateway's vault client already
-refuses redirects for the same reason).
+as an `Idempotency-Key` header so the receiver can dedupe. Bearer token from the
+secrets surface; endpoint URL from mounted config. The adapter never follows a
+redirect (a redirect could re-send the bearer token elsewhere; the gateway's vault
+client already refuses redirects for the same reason).
+
+**What is authoritative.** Only a final status line read in full from the
+configured endpoint, on the connection that carried this request, settles
+anything. A body is not needed, and a body the adapter cannot parse does not
+downgrade a readable 2xx or 4xx.
+
+| What the adapter observed | Authoritative? | Receipt |
+|---|---|---|
+| Nothing was sent: the name did not resolve, the connection was refused, or TLS setup or the connect failed or timed out before any byte of the request was written | not needed: known not applied | `failed`, `unreachable` or `timeout`, observed 0 |
+| A 2xx | **acknowledgement** of the whole request, tombstones included (they travel in it) | `delivered`; `written` is the number of records the request carried |
+| 401 or 403 | **refusal** | `failed`, `auth_failed`, observed 0 |
+| 429 | **refusal** | `failed`, `quota`, observed 0 |
+| Any other 4xx | **refusal**: the receiver says it did not apply the request | `failed`, `refused`, observed 0 |
+| A 3xx (never followed) or a 5xx | **no**: a 303 can follow a POST that was processed, and a 5xx says nothing reliable about whether the receiver applied it | `outcome_unknown`, `unauthoritative_response` |
+| A response whose status line could not be read | **no** | `outcome_unknown`, `unreadable_response` |
+| No response after the request was sent (closed, reset, timed out) | **no** | `outcome_unknown`, `no_response_after_send` |
+| The projector stopped after sending and before reading | **no** | `outcome_unknown`, `terminated_after_send` |
+
+The engine holds no sink-side evidence of its own for a webhook, so the
+receiver's idempotency is what makes reconciliation safe. The receiver contract
+is this: a repeated `Idempotency-Key` whose request was already applied is
+answered with a 2xx and not applied twice. Reconciling an unknown outcome means
+re-sending the same request under the same key until an authoritative answer
+arrives. Until then the attempt stays `outcome_unknown` under its hold; it is
+never settled by assumption.
 
 ## 6. What Phase 3 still owes
 
@@ -245,7 +289,9 @@ refuses redirects for the same reason).
 3. **The adapters, with Gate C tests** whose failure modes are named up front:
    re-delivery of the same pair, an old retry after a newer one, a tombstone the
    sink ignores, a mid-transaction abort, a response that never arrives, a
-   destination whose schema version does not match.
+   response that cannot be read, a 3xx or 5xx that settles nothing, a partial
+   write reported as a total, a destination whose schema version does not
+   match.
 4. **The GraphRAG ingest replacement.** The external script the design review
    examined is what this contract exists to retire. Retiring it is a Phase-3
    cutover, and until it happens nothing here changes what that script does.

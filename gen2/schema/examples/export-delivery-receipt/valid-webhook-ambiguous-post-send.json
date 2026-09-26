@@ -1,0 +1,26 @@
+{
+  "fixture": {
+    "schema": "export-delivery-receipt.schema.json",
+    "expect": "valid",
+    "tests": "A2 (Astra 0c review) and L-4: a webhook POST was sent and its response could not be read, so the receiver may have applied it. That is outcome_unknown with reconciliation required and a capability fact; the transport symptom is kept as the typed unknown_cause, never as a failure class"
+  },
+  "instance": {
+    "receipt_version": "export-delivery-receipt/1",
+    "export_receipt_id": "exr_01J8ZQC7W0",
+    "export_manifest_id": "exm_01J8ZQC1H2",
+    "topic_id": "fleet-a:intake-latency",
+    "sink": {"sink_id": "hook", "sink_type": "webhook_http"},
+    "generation": 3,
+    "options_revision": 2,
+    "attempt": 2,
+    "status": "outcome_unknown",
+    "unknown_cause": "unreadable_response",
+    "written": {"status": "unknown", "reason": "the POST was sent in full; the response was truncated before its status line could be read"},
+    "tombstones_acknowledged": false,
+    "reconciliation_required": true,
+    "capability_fact_id": "fact-export-hook-0004",
+    "hold_id": "hold_exp00022",
+    "attempted_at": "2026-09-25T10:25:00Z",
+    "acked_at": null
+  }
+}

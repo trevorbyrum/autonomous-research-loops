@@ -39,10 +39,12 @@ ENV = {**os.environ, "PYTHONPATH": str(REPO)}
 
 # Module globals: tools/gen2_mutations.py points one at a mutated copy.
 EXPORT_BUNDLE_SCHEMA = SCHEMAS / "export-bundle.schema.json"
+EXPORT_RECEIPT_SCHEMA = SCHEMAS / "export-delivery-receipt.schema.json"
 DECISION_RECEIPT_SCHEMA = SCHEMAS / "decision-receipt.schema.json"
 INVOCATION_SCHEMA = SCHEMAS / "invocation.schema.json"
 OVERRIDES = {
     "EXPORT_BUNDLE_SCHEMA": "export-bundle.schema.json",
+    "EXPORT_RECEIPT_SCHEMA": "export-delivery-receipt.schema.json",
     "DECISION_RECEIPT_SCHEMA": "decision-receipt.schema.json",
     "INVOCATION_SCHEMA": "invocation.schema.json",
 }
@@ -86,6 +88,36 @@ class FixtureCounterfactualTest(unittest.TestCase):
         self.assertBehaveAsDeclared("export-bundle", "valid-completed-topic.json",
                                     "invalid-mixed-disposition-with-an-empty-adjudication-list.json")
 
+
+    # --- export-delivery-receipt: the status says what is known about the
+    # sink (A2), and a partial write is a partial count (A4)
+    def test_a_partial_write_claiming_an_observed_total_is_refused(self) -> None:
+        self.assertBehaveAsDeclared("export-delivery-receipt", "valid-partial-write-failed.json",
+                                    "invalid-partial-write-claiming-an-observed-total.json")
+
+    def test_a_failure_whose_count_is_unknown_is_refused(self) -> None:
+        self.assertBehaveAsDeclared("export-delivery-receipt", "valid-webhook-known-refusal.json",
+                                    "invalid-ambiguous-post-send-recorded-as-a-failure.json")
+
+    def test_a_refusal_claiming_it_wrote_records_is_refused(self) -> None:
+        self.assertBehaveAsDeclared("export-delivery-receipt", "valid-webhook-known-refusal.json",
+                                    "invalid-refusal-claiming-it-wrote-records.json")
+
+    def test_an_unreadable_response_is_not_a_failure_class(self) -> None:
+        self.assertBehaveAsDeclared("export-delivery-receipt", "valid-webhook-known-refusal.json",
+                                    "invalid-unreadable-response-as-an-error-class.json")
+
+    def test_the_reviews_unreadable_response_reproduction_is_refused_twice(self) -> None:
+        self.assertBehaveAsDeclared("export-delivery-receipt", "valid-partial-write-failed.json",
+                                    "invalid-unreadable-response-recorded-as-a-settled-failure.json")
+
+    def test_an_unknown_outcome_without_a_cause_is_refused(self) -> None:
+        self.assertBehaveAsDeclared("export-delivery-receipt", "valid-webhook-ambiguous-post-send.json",
+                                    "invalid-outcome-unknown-without-a-cause.json")
+
+    def test_a_settled_result_carrying_an_unknown_cause_is_refused(self) -> None:
+        self.assertBehaveAsDeclared("export-delivery-receipt", "valid-webhook-known-refusal.json",
+                                    "invalid-settled-result-carrying-an-unknown-cause.json")
 
     # --- the 0c-repair audit: 0a negatives whose one declared signature hid
     # two or three errors. Now counted, each rule's removal is noticed.

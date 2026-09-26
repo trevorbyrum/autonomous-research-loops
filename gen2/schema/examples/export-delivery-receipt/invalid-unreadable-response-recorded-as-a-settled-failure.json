@@ -1,0 +1,6 @@
+{"fixture": {"schema": "export-delivery-receipt.schema.json", "expect": "invalid",
+  "tests": "A2, the Astra 0c review's exact reproduction: an unreadable response after the request was sent, recorded as a settled failure with nothing to reconcile. Refused twice: unreadable_response is not a failure class, and a failure's count is known",
+  "base": "valid-partial-write-failed.json",
+  "patch": [{"op": "replace", "path": "/error_class", "value": "unreadable_response"},
+            {"op": "replace", "path": "/written", "value": {"status": "unknown", "reason": "Response unreadable after request was sent"}}],
+  "errors": [{"keyword": "enum", "path": "/error_class"}, {"keyword": "const", "path": "/written/status"}]}}

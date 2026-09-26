@@ -2,7 +2,7 @@
   "fixture": {
     "schema": "export-delivery-receipt.schema.json",
     "expect": "valid",
-    "tests": "L-4 and RG-4: an attempt whose result is not established is outcome_unknown, must be reconciled, cannot claim an observed count, and is not a failure - so it carries a capability fact but no error class"
+    "tests": "L-4 and RG-4: an attempt whose result is not established is outcome_unknown, must be reconciled, cannot claim an observed count, and is not a failure - so it carries a capability fact and a typed unknown_cause, but no error class"
   },
   "instance": {
     "receipt_version": "export-delivery-receipt/1",
@@ -14,6 +14,7 @@
     "options_revision": 2,
     "attempt": 3,
     "status": "outcome_unknown",
+    "unknown_cause": "terminated_after_send",
     "written": {"status": "unknown", "reason": "the projector was terminated after the commit was sent and before any response was read"},
     "tombstones_acknowledged": false,
     "reconciliation_required": true,

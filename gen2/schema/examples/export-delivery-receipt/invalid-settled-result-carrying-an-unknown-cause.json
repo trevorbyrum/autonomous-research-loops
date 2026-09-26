@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-delivery-receipt.schema.json", "expect": "invalid",
+  "tests": "A2: an unknown cause belongs only to an unknown outcome - a known refusal carrying one would say both that the result is settled and that it is not",
+  "base": "valid-webhook-known-refusal.json",
+  "patch": [{"op": "add", "path": "/unknown_cause", "value": "unreadable_response"}],
+  "errors": [{"keyword": "const", "path": "/status"}]}}

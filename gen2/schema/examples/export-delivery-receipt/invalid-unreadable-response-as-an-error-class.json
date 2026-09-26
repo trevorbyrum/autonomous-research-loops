@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-delivery-receipt.schema.json", "expect": "invalid",
+  "tests": "A2: a response that cannot be read says nothing about whether the request was applied, so it is never a settled failure's class (it is an unknown outcome's unknown_cause) - only the class of a known refusal is changed",
+  "base": "valid-webhook-known-refusal.json",
+  "patch": [{"op": "replace", "path": "/error_class", "value": "unreadable_response"}],
+  "errors": [{"keyword": "enum", "path": "/error_class"}]}}

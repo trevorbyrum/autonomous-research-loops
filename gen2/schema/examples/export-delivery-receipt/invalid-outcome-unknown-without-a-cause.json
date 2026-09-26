@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-delivery-receipt.schema.json", "expect": "invalid",
+  "tests": "A2: an unknown outcome keeps its diagnostic as a typed field, so reconciliation knows what it is reconciling",
+  "base": "valid-webhook-ambiguous-post-send.json",
+  "patch": [{"op": "remove", "path": "/unknown_cause"}],
+  "errors": [{"keyword": "required", "path": ""}]}}

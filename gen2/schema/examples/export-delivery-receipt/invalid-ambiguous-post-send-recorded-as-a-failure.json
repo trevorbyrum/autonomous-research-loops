@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-delivery-receipt.schema.json", "expect": "invalid",
+  "tests": "A2 / L-4: a failure is a settled result. A request that was sent and got no answer may have been applied - its count is unknown - and that is outcome_unknown with reconciliation, not failed",
+  "base": "valid-webhook-known-refusal.json",
+  "patch": [{"op": "replace", "path": "/written", "value": {"status": "unknown", "reason": "the POST was sent and no response arrived before the timeout"}}],
+  "errors": [{"keyword": "const", "path": "/written/status"}]}}

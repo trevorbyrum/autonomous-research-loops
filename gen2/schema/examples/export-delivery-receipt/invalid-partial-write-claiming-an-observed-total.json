@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-delivery-receipt.schema.json", "expect": "invalid",
+  "tests": "A4, the Astra 0c review's exact substitution: a partial write's count is a lower bound, so it cannot be reported as an observed total",
+  "base": "valid-partial-write-failed.json",
+  "patch": [{"op": "replace", "path": "/written", "value": {"status": "observed", "value": 806}}],
+  "errors": [{"keyword": "const", "path": "/written/status"}]}}

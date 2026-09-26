@@ -1,0 +1,25 @@
+{
+  "fixture": {
+    "schema": "export-delivery-receipt.schema.json",
+    "expect": "valid",
+    "tests": "A2 (Astra 0c review): an authoritative refusal - a 4xx status read from the configured endpoint itself (EXPORT-SINKS.md §5.3) - settles the attempt. Nothing was applied, so it is failed with a typed class, its count is a known zero and nothing is left to reconcile; the failure is still a dated capability fact (H-2)"
+  },
+  "instance": {
+    "receipt_version": "export-delivery-receipt/1",
+    "export_receipt_id": "exr_01J8ZQC6V9",
+    "export_manifest_id": "exm_01J8ZQC1H2",
+    "topic_id": "fleet-a:intake-latency",
+    "sink": {"sink_id": "hook", "sink_type": "webhook_http"},
+    "generation": 3,
+    "options_revision": 2,
+    "attempt": 1,
+    "status": "failed",
+    "written": {"status": "observed", "value": 0},
+    "tombstones_acknowledged": false,
+    "reconciliation_required": false,
+    "error_class": "refused",
+    "capability_fact_id": "fact-export-hook-0003",
+    "attempted_at": "2026-09-25T10:20:00Z",
+    "acked_at": null
+  }
+}
