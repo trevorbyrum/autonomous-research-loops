@@ -137,41 +137,33 @@ configured". Those two are never collapsed (§3.3).
 | Engine (router, supervisor) | write the gateway's registry; treat an unavailable lane as `searched_empty`; count an unavailable lane as a zero in any denominator |
 | Operator | — (this is the operator's decision; the reviewed build task is the check on the code, not on the decision) |
 
-## For contrast: registering a GraphRAG corpus
+## For contrast: connecting a database to the export API
 
-The corpus side looks similar and is governed completely differently, which is
-worth stating so the two are not managed as if they were one thing.
+*Operator ruling 2026-09-26: this section replaced one that described the
+operator's own corpus registry. Nothing specific to one deployment belongs in
+the build; the contrast it drew is kept, in generic terms.*
 
-Adding a **GraphRAG corpus** is a runtime registry write with no code change and
-no release. The namespace registry is a set of `(:RagNamespace)` nodes in the
-`neo4j-graphrag` database, each carrying an alias, a corpus label, the Qdrant
-collection paired with it, an optional central node type, and a purpose string;
-`namespace_upsert` merges one by alias and `namespace_remove` deletes the registry
-node while leaving the corpus data in Neo4j and Qdrant untouched. The write paths
-carry an actor, an idempotency key, a provenance value (`user_confirmed`,
-`system`, `source_derived`, `model_inferred`, `imported`, `legacy_unknown`) and,
-for updates and archival, an expected version for optimistic concurrency. Several
-of this fleet's own corpora were registered that way automatically — the
-`LoopsRag` namespaces record themselves as "auto-registered by completion
-ingest". *(Observed from the live namespace registry on 2026-09-25.)*
+A source brings material *in*. A connector sends approved research *out*
+(`docs/gen2/EXPORT-API.md`). The two look alike, because each is a named
+external system with a credential. They are governed differently, and should
+not be managed as if they were one thing.
 
-So:
-
-| | New research source | New GraphRAG corpus |
+| | New research source | New export connector |
 |---|---|---|
-| What it changes | what the gateway may call | what an alias resolves to |
-| Code | a new adapter, image-baked, reviewed | none |
-| Release | yes | no |
-| Who may write it | operator, through the gateway's seed | a registry call, with an actor and a provenance value — automatic registration included |
-| Risk being governed | an unlicensed, unmetered or unlogged call to the outside world | an alias pointing at the wrong collection |
-| Reversal | a registry row edit plus an image change | delete the registry node; the data is untouched |
+| What it changes | what the gateway may call | where approved research is delivered |
+| Code | a new adapter, image-baked, reviewed | none for a reference type (`sql`, `jsonl_file`, `webhook`): an entry in mounted config. An `extension` for any other database: reviewed code outside the core, image-baked |
+| Release | yes | no for a reference type; yes for an extension |
+| Who may write it | operator, through the gateway's seed | operator, through the mounted connector config; never an agent |
+| Risk being governed | an unlicensed, unmetered or unlogged call to the outside world | redistributing content the record says may not leave, or delivering to a destination that cannot keep the ordering and settlement rules |
+| Reversal | a registry row edit plus an image change | disable the connector; its receipts and the engine's record are untouched |
 
-The asymmetry is the point. A corpus registration decides where a *name* points
-inside stores we already own. A source registration decides that the engine may
-send a request to somebody else's service under somebody else's terms, spending a
-budget, under a licence that constrains what may be kept and what may be
-exported. The first is reversible bookkeeping; the second is why the gateway is
-"the only door" at all.
+The asymmetry is the point. A connector decides where material the operator
+already approved is sent, under per-record licence rules the bundle already
+enforces. A source registration decides that the engine may send a request to
+somebody else's service, under somebody else's terms, spending a budget, and
+under a licence that constrains what may be kept and what may be exported.
+The engine never reads research back from a connector, so a connector can never
+become a source. That is why the gateway is "the only door" in.
 
 ## Status
 

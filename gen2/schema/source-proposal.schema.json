@@ -227,7 +227,7 @@
       }
     },
     "licensing": {
-      "description": "The terms, read rather than assumed. `licensing_tier` is the registry's commercial verdict vocabulary, and `unknown` fails closed for commercial-flagged requests exactly as it does for an existing source. Redistribution is recorded separately because it is a different question from commercial use, and because it decides whether retrieved content may travel in an export bundle at all (docs/gen2/EXPORT-SINKS.md §2). Evidence is a link to the terms that were read: at least one, always.",
+      "description": "The terms, read rather than assumed. `licensing_tier` is the registry's commercial verdict vocabulary, and `unknown` fails closed for commercial-flagged requests exactly as it does for an existing source. Redistribution is recorded separately because it is a different question from commercial use, and because it decides whether retrieved content may travel in an export bundle at all (docs/gen2/EXPORT-API.md §2). Evidence is a link to the terms that were read: at least one, always.",
       "type": "object",
       "additionalProperties": false,
       "required": ["licensing_tier", "redistribution", "evidence_urls"],

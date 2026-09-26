@@ -1,5 +1,5 @@
 {"fixture": {"schema": "source-proposal.schema.json", "expect": "invalid",
-  "tests": "content may travel in an export bundle only under a named licence (EXPORT-SINKS.md §2), so 'permitted' names the licence that says so",
+  "tests": "content may travel in an export bundle only under a named licence (EXPORT-API.md §2), so 'permitted' names the licence that says so",
   "base": "valid-domain-lane-with-a-key.json",
   "patch": [{"op": "remove", "path": "/licensing/content_licence"}],
   "errors": [{"keyword": "required", "path": "/licensing"}]}}

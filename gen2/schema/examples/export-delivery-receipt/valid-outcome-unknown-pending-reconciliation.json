@@ -15,7 +15,7 @@
     "attempt": 3,
     "status": "outcome_unknown",
     "unknown_cause": "terminated_after_send",
-    "written": {"status": "unknown", "reason": "the projector was terminated after the commit was sent and before any response was read"},
+    "written": {"status": "unknown", "reason": "the exporter was terminated after the commit was sent and before any response was read"},
     "tombstones_acknowledged": false,
     "reconciliation_required": true,
     "capability_fact_id": "fact-export-warehouse-0002",
