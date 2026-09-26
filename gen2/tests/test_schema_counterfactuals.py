@@ -15,10 +15,30 @@ declared.
 Unmutated, these tests restate what `make gen2-schemas` already checks. Their
 purpose is the mutation inventory (tools/gen2_mutations.py, the `0CR-`
 entries): the harness points one of the *_SCHEMA globals below at a copy of
-that schema with one rule removed, and the test named for the rule's negative
-must then fail, because that negative now validates. A kill proves the
-negative depends on the rule. It does not prove the rule is the right one,
-and these tests read no runtime behaviour.
+that schema with a rule removed, and the test named for the rule's negative
+must then fail, because that negative no longer behaves exactly as declared.
+That happens in one of two ways, and they prove different things:
+
+- An isolated negative declares one error, from its rule alone. The kill
+  means the negative now validates: the mutant admits a bad document, and
+  the negative depends on that rule. Every export negative except the
+  combined unreadable-response regression is of this kind, and so are the
+  three single-member identity negatives.
+- A combined negative declares two or three errors, and the negative is
+  still refused after the removal, only with fewer errors than declared. The
+  kill means the checker noticed that rule's contribution go missing. It
+  does not mean the mutant admits a bad document (another rule may still
+  refuse it), and it does not say which rule produced which error: a second
+  edit that adds an equal error at the same (keyword, path) keeps the count
+  and goes unnoticed (Astra 0c-repair re-review, BLOCK 3). The decision-
+  receipt audit negatives are of this kind, because their guards overlap by
+  design, and so are the bare-identity and unreadable-response regressions.
+  Where the members can be removed one at a time, an isolated negative backs
+  the combined one; the identity members are, and the review's compensated
+  mutant is in the inventory to show it is now refused.
+
+Neither kind proves the rule is the right one, and these tests read no
+runtime behaviour.
 """
 from __future__ import annotations
 
@@ -129,8 +149,23 @@ class FixtureCounterfactualTest(unittest.TestCase):
         self.assertBehaveAsDeclared("decision-receipt", "valid-jev-screening-shadow.json",
                                     "invalid-shadow-with-commit-effect.json")
 
-    def test_a_bare_process_identity_is_refused_for_each_missing_member(self) -> None:
+    def test_a_bare_process_identity_is_refused_three_times(self) -> None:
         self.assertBehaveAsDeclared("invocation", "valid-research-pass-running.json", "invalid-bare-identity.json")
+
+    # --- per-member identity coverage (Astra 0c-repair re-review BLOCK 3): the
+    # count above cannot tell the three missing members apart, so each has its
+    # own negative with one error.
+    def test_a_process_identity_without_its_host_is_refused(self) -> None:
+        self.assertBehaveAsDeclared("invocation", "valid-research-pass-running.json",
+                                    "invalid-identity-without-host-id.json")
+
+    def test_a_process_identity_without_its_boot_id_is_refused(self) -> None:
+        self.assertBehaveAsDeclared("invocation", "valid-research-pass-running.json",
+                                    "invalid-identity-without-boot-id.json")
+
+    def test_a_process_identity_without_its_start_fingerprint_is_refused(self) -> None:
+        self.assertBehaveAsDeclared("invocation", "valid-research-pass-running.json",
+                                    "invalid-identity-without-start-fingerprint.json")
 
 
 if __name__ == "__main__":

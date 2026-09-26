@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "invocation.schema.json",
+    "expect": "invalid",
+    "tests": "L-3, Astra 0c-repair re-review BLOCK 3: a running identity missing only the boot identity (`boot_id`) is refused by that member's `required` alone, one error. Per-member coverage lives here, not in invalid-bare-identity's count: a schema that stopped requiring `boot_id` but required another member twice would keep that fixture's three errors and let this one validate",
+    "base": "valid-research-pass-running.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/process_identity/boot_id"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": "/process_identity"
+      }
+    ]
+  }
+}

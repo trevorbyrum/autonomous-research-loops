@@ -107,6 +107,12 @@ IB = "test_store_intake.IntakeBriefTest."
 SC = "test_source_catalog.CatalogToolTest."
 SF = "test_schema_counterfactuals.FixtureCounterfactualTest."
 RECEIPT = "gen2/schema/export-delivery-receipt.schema.json"
+IDENTITY = ("job_handle", "host_id", "container_id", "boot_id", "start_fingerprint")
+IDENTITY_KILLER = {  # each identity member's own one-error negative (0c-repair-2)
+    "host_id": "test_a_process_identity_without_its_host_is_refused",
+    "boot_id": "test_a_process_identity_without_its_boot_id_is_refused",
+    "start_fingerprint": "test_a_process_identity_without_its_start_fingerprint_is_refused",
+}
 
 MUTATIONS: list[Mutation] = [
     # --- A1: history cannot be rewritten ------------------------------------
@@ -1422,11 +1428,26 @@ MUTATIONS: list[Mutation] = [
           ("non-commit-action-may-commit", "C1-audit", "an action other than commit_reversible_action may carry a commit operation",
            ("test_a_shadow_receipt_with_a_commit_is_refused_by_both_rules",), "gen2/schema/decision-receipt.schema.json",
            ',\n         "else": {"properties": {"outcome": {"properties": {"commit_operation_id": {"type": "null"}}}}}}', "}"),
+          # Each identity member's removal: its own one-error negative now
+          # validates, and the bare-identity count drops from three to two.
           *((f"identity-{member.replace('_', '-')}-not-required", "C1-audit", f"a running invocation's identity no longer requires {member}",
-             ("test_a_bare_process_identity_is_refused_for_each_missing_member",), "gen2/schema/invocation.schema.json",
+             (IDENTITY_KILLER[member], "test_a_bare_process_identity_is_refused_three_times"), "gen2/schema/invocation.schema.json",
              '"required": ["job_handle", "host_id", "container_id", "boot_id", "start_fingerprint"]',
-             '"required": ' + json.dumps([m for m in ("job_handle", "host_id", "container_id", "boot_id", "start_fingerprint") if m != member]))
-            for member in ("host_id", "boot_id", "start_fingerprint")),
+             '"required": ' + json.dumps([m for m in IDENTITY if m != member]))
+            for member in IDENTITY_KILLER),
+          # Astra 0c-repair re-review BLOCK 3: drop one member and require
+          # another twice. The bare-identity negative still reports three
+          # `required` errors, so its count cannot see this (it survives).
+          # The dropped member's own negative validates; the doubled one's
+          # reports two errors where it declares one. The first is the
+          # review's mutant, the other two its rotations.
+          *((f"identity-{dropped.replace('_', '-')}-traded-for-a-second-{doubled.replace('_', '-')}", "C1-audit",
+             f"identity stops requiring {dropped} and requires {doubled} twice, so the bare-identity count is unchanged",
+             (IDENTITY_KILLER[dropped], IDENTITY_KILLER[doubled]), "gen2/schema/invocation.schema.json",
+             '"required": ["job_handle", "host_id", "container_id", "boot_id", "start_fingerprint"],',
+             '"required": ' + json.dumps([m for m in IDENTITY if m != dropped])
+             + ',\n      "allOf": [{"required": ["' + doubled + '"]}],')
+            for dropped, doubled in (("host_id", "boot_id"), ("boot_id", "start_fingerprint"), ("start_fingerprint", "host_id"))),
       )),
     Mutation("0CR-operator-listen-on-container-loopback", "A6", "the review's defect restored: the engine binds its container's loopback",
              (SC + "test_services_listen_on_their_container_interface",), target="tools/gen_source_catalog.py",
