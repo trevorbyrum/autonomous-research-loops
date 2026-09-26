@@ -327,6 +327,22 @@ class CatalogToolTest(unittest.TestCase):
         self.assertIn("**domain lane** added for biomed", text)
         self.assertIn("neither a base nor a domain lane", text)
 
+    def test_services_listen_on_their_container_interface(self):
+        """Astra 0c review A6: a listener bound to 127.0.0.1 inside a container
+        is that container's own loopback, unreachable from the projector or
+        through a host publication. Every listen address the example emits is
+        the container's interfaces; host exposure is Compose's 127.0.0.1
+        publication, not the bind. Literal oracle, from the port map in
+        DEPLOYMENT-CONTRACT.md §1.1."""
+        _, _, env = self.fixture_pair([variant()])
+        settings = dict(line.split("=", 1) for line in env.read_text(encoding="utf-8").splitlines()
+                        if line and not line.startswith("#") and "=" in line)
+        listens = {name: value for name, value in settings.items() if name.endswith("_LISTEN")}
+        self.assertEqual(listens, {"GEN2_OPERATOR_LISTEN": "0.0.0.0:8770", "GEN2_PROJECTOR_HEALTH_LISTEN": "0.0.0.0:8772",
+                                   "RESEARCH_GATEWAY_LISTEN": "0.0.0.0:8765"})
+        self.assertEqual(settings.get("GEN2_ENGINE_URL"), "http://engine:8770",
+                         "the projector reaches the engine by its Compose service name, not by a loopback address")
+
     # ------------------------------------------ the real repository pair and its keys
 
     def test_the_committed_pair_is_current_for_the_real_registry(self):

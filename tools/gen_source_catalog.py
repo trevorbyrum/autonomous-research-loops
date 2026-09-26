@@ -400,7 +400,9 @@ SERVICE_GROUPS: tuple[Group, ...] = (
                 "mounted read-only: stations.yaml, fleet policy, prompts, question registry, thresholds"),
             Key("GEN2_WRAPPERS_DIR", "/etc/gen2/wrappers",
                 "operator-owned, operator-trusted, read-only; agents never write here (§4)"),
-            Key("GEN2_OPERATOR_LISTEN", "127.0.0.1:8770", "operator command service: HTTP + POST /mcp; loopback only"),
+            Key("GEN2_OPERATOR_LISTEN", "0.0.0.0:8770",
+                "operator service (HTTP + POST /mcp): all of the CONTAINER's interfaces, so the projector and the"
+                " healthcheck reach it; published on the host at 127.0.0.1:8770 only (DEPLOYMENT-CONTRACT.md §1.1)"),
             Key("GEN2_OPERATOR_TOKENS", "operator=example-operator-token,mcp=example-mcp-token",
                 "one bearer token per operator client; the service refuses to start without any"),
             Key("GEN2_SECRETS", "env", "env | vault"),
@@ -456,7 +458,11 @@ SERVICE_GROUPS: tuple[Group, ...] = (
          "dated capability fact when it cannot. A failed sink leaves publication partial; it never rewrites",
          "completion (INVARIANTS P-2, P-4)."),
         (
-            Key("GEN2_PROJECTOR_HEALTH_LISTEN", "0.0.0.0:8772", "in-network only; not published to the host"),
+            Key("GEN2_PROJECTOR_HEALTH_LISTEN", "0.0.0.0:8772", "inside the container; not published to the host"),
+            Key("GEN2_ENGINE_URL", "http://engine:8770",
+                "the engine over the Compose network: the projector's ControlBackend calls (outbox claims, delivery acks)"),
+            Key("GEN2_SECRET_PROJECTOR_TOKEN", "example-projector-token",
+                "presented by the projector, verified by the engine; projector capability only, never operator authority"),
             Key("GEN2_NEO4J_URI", "bolt://neo4j-host:7687"),
             Key("GEN2_NEO4J_USER", "neo4j"),
             Key("GEN2_SECRET_NEO4J_PASSWORD", "example-neo4j-password"),

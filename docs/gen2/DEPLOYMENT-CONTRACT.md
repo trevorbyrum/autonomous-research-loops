@@ -59,9 +59,11 @@ The control store (`gen2/store`, SQLite) is **not** a service. It is a file on a
 mounted volume that only the `engine` container opens, because the router is the
 sole writer (BOUNDARIES.md *Router*). `projector` and `operator` transports
 reach state only through the `ControlBackend` protocol inside `engine` — no
-second process opens the SQLite file. A deployment that mounts the control
-store into two containers has broken the sole-writer invariant no matter what
-the code does.
+second process opens the SQLite file. The projector does so over the Compose
+network: it calls the engine's listener at `GEN2_ENGINE_URL`
+(`http://engine:8770`) with its own bearer token (§1.1). A deployment that
+mounts the control store into two containers has broken the sole-writer
+invariant no matter what the code does.
 
 ### 1.1 Port map
 
@@ -70,21 +72,39 @@ avoid what was already listening on this host on 2026-09-25 (8765, 8766, 5432,
 6767, 8642, 8643, 8652, 11434, 18000, 18080); the operator confirms them at
 deploy time rather than trusting this list.
 
-| Service | Container port | Default host port | Exposure | Protocol |
-|---|---|---|---|---|
-| `engine` operator service | 8770 | 127.0.0.1:8770 | loopback only | HTTP + `POST /mcp` (stateless MCP over HTTP, one JSON-RPC message per request — the gateway's proven shape) |
-| `engine` health | 8770 | — | in-network | `GET /v1/health`, no token |
-| `gateway` | 8765 | 127.0.0.1:8771 | loopback only | HTTP + `POST /mcp` |
-| `projector` health | 8772 | — | in-network only | `GET /v1/health`, no token |
-| `tier0` | 8773 | — | in-network only | HTTP |
-| `gateway-db` | 5432 | not published | in-network only | PostgreSQL |
-| Neo4j | 7687 (bolt) | — | external service | bolt |
-| Qdrant | 6333 | — | external service | HTTP |
-| Vault | 8200 | — | external service | HTTPS |
+**A listen address and a host publication are different things.** A service's
+listen address is inside its own container's network namespace. Its host
+publication is the port Compose maps on the host. `127.0.0.1` inside a container
+is that container's own loopback: nothing else can reach it, not the projector,
+not another container, and not a host port published to it. So every service
+listens on `0.0.0.0` inside its container, meaning all of that container's
+interfaces (its loopback and its Compose-network interface). Where a service is
+published at all, the publication is bound to host loopback only, for example
+`ports: ["127.0.0.1:8770:8770"]`.
 
-Nothing in this stack binds `0.0.0.0` on the host. The operator service carries
-operator authority; it is loopback (or a private network) plus a bearer token,
-never a published port.
+| Service | Listens on, inside its container | Host publication | Reached by | Protocol |
+|---|---|---|---|---|
+| `engine` operator service | `0.0.0.0:8770` (`GEN2_OPERATOR_LISTEN`) | `127.0.0.1:8770` only | operator clients on the host (operator token); the projector at `http://engine:8770` (`GEN2_ENGINE_URL`, projector token) | HTTP + `POST /mcp` (stateless MCP over HTTP, one JSON-RPC message per request — the gateway's proven shape) |
+| `engine` health | the same listener: `GET /v1/health`, no token | the same, `127.0.0.1:8770` | its own container healthcheck; anything on the Compose network | HTTP |
+| `gateway` | `0.0.0.0:8765` (`RESEARCH_GATEWAY_LISTEN`) | `127.0.0.1:8771` only | the engine at `http://gateway:8765` (`GEN2_GATEWAY_URL`); host clients | HTTP + `POST /mcp` |
+| `projector` health | `0.0.0.0:8772` (`GEN2_PROJECTOR_HEALTH_LISTEN`): `GET /v1/health`, no token | not published | its own container healthcheck; the Compose network | HTTP |
+| `tier0` | port 8773 on its container's interfaces (its image's setting) | not published | the engine at `http://tier0:8773` (`GEN2_TIER0_URL`) | HTTP |
+| `gateway-db` | 5432 on its container's interfaces | not published | the gateway only | PostgreSQL |
+| Neo4j | — | — | the projector (`GEN2_NEO4J_URI`) | bolt, 7687 |
+| Qdrant | — | — | the projector (`GEN2_QDRANT_URL`) | HTTP, 6333 |
+| Vault | — | — | a service in vault mode, once admissible (§3.4) | HTTPS, 8200 |
+
+Nothing is published beyond host loopback. Every host publication is
+`127.0.0.1:<port>`, and a `0.0.0.0` listen address appears only inside a
+container, where it means that container's own interfaces. The engine's
+listener carries operator authority, so every route on it except
+`GET /v1/health` requires a bearer token, and its publication stays on host
+loopback. Exposing it on a private network is an operator decision recorded at
+deployment, never a default. Two kinds of token reach it.
+`GEN2_OPERATOR_TOKENS` are the operator's. `GEN2_SECRET_PROJECTOR_TOKEN` is the
+projector's, and the engine accepts it only for the projector's `ControlBackend`
+calls (claiming outbox events, acknowledging deliveries); it never carries
+operator authority.
 
 ### 1.2 Healthchecks
 
@@ -93,9 +113,9 @@ thing that container owns — not about a dependency.
 
 | Service | Check | Healthy means | Explicitly **not** part of the check |
 |---|---|---|---|
-| `engine` | `GET /v1/health`: control store opens through the compatibility gate (`gen2/store/compat.py`), the schema matches `schema.sql` exactly, the last scheduler tick is within its interval | the router can commit | whether any provider, sink or the gateway is reachable |
+| `engine` | `GET http://127.0.0.1:8770/v1/health` from inside the container (the `0.0.0.0` listener includes the container's loopback): control store opens through the compatibility gate (`gen2/store/compat.py`), the schema matches `schema.sql` exactly, the last scheduler tick is within its interval | the router can commit | whether any provider, sink or the gateway is reachable |
 | `gateway` | the gateway image's own healthcheck (`GET /v1/health`, no token) | the service answers | whether any source lane is working |
-| `projector` | `GET /v1/health`: the outbox can be read through the `ControlBackend` and the worker's last loop is within its interval | the consumer is alive | whether Neo4j, Qdrant or an export sink accepted anything |
+| `projector` | `GET http://127.0.0.1:8772/v1/health` from inside the container: the outbox can be read through the `ControlBackend` at `GEN2_ENGINE_URL`, and the worker's last loop is within its interval | the consumer is alive | whether Neo4j, Qdrant or an export sink accepted anything |
 | `tier0` | model loaded, one fixed probe pair classified | the screen answers | — |
 | `gateway-db` | `pg_isready` | — | — |
 

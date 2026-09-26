@@ -1428,6 +1428,9 @@ MUTATIONS: list[Mutation] = [
              '"required": ' + json.dumps([m for m in ("job_handle", "host_id", "container_id", "boot_id", "start_fingerprint") if m != member]))
             for member in ("host_id", "boot_id", "start_fingerprint")),
       )),
+    Mutation("0CR-operator-listen-on-container-loopback", "A6", "the review's defect restored: the engine binds its container's loopback",
+             (SC + "test_services_listen_on_their_container_interface",), target="tools/gen_source_catalog.py",
+             old='Key("GEN2_OPERATOR_LISTEN", "0.0.0.0:8770",', new='Key("GEN2_OPERATOR_LISTEN", "127.0.0.1:8770",'),
     Mutation("0CR-checker-errors-collapsed-to-a-set", "C1", "the schema check compares declared and actual errors as sets again, so two rules at one signature pass as one",
              ("test_check_ddl_rules.SchemaFixtureRuleTest.test_two_rules_reporting_one_signature_must_both_be_declared",),
              target="tools/check_gen2_schemas.py", old="            if actual != expected:", new="            if set(actual) != set(expected):"),
