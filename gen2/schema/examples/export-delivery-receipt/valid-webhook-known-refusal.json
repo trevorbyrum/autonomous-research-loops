@@ -2,7 +2,7 @@
   "fixture": {
     "schema": "export-delivery-receipt.schema.json",
     "expect": "valid",
-    "tests": "A2 (Astra 0c review): an authoritative refusal - a 4xx status read from the configured endpoint itself (EXPORT-SINKS.md §5.3) - settles the attempt. Nothing was applied, so it is failed with a typed class, its count is a known zero and nothing is left to reconcile; the failure is still a dated capability fact (H-2)"
+    "tests": "A2 (Astra 0c review): an authoritative refusal settles the attempt. For webhook_http that is a status the receiver protocol lists as a refusal (here a 422: the request did not validate), which a conforming receiver sends only before its atomic step or after that step rolled back (EXPORT-SINKS.md §5.3). Nothing was applied, so it is failed with a typed class, its count is a known zero and nothing is left to reconcile; the failure is still a dated capability fact (H-2)"
   },
   "instance": {
     "receipt_version": "export-delivery-receipt/1",

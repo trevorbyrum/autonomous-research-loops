@@ -1,0 +1,26 @@
+{
+  "fixture": {
+    "schema": "export-delivery-receipt.schema.json",
+    "expect": "valid",
+    "tests": "Astra 0c-repair re-review BLOCK 1: the receiver answered 202 Accepted after queuing the request, so nothing establishes that any of it was applied. A queued request is not an applied one (EXPORT-SINKS.md §5.3), so this is outcome_unknown with unauthoritative_response, an unknown count, tombstones not acknowledged, and reconciliation, a capability fact and a hold. It is shape only: no schema can see the status line, and the Phase-3 queued-then-rejected case tests the adapter"
+  },
+  "instance": {
+    "receipt_version": "export-delivery-receipt/1",
+    "export_receipt_id": "exr_01J8ZQC9Y2",
+    "export_manifest_id": "exm_01J8ZQC1H2",
+    "topic_id": "fleet-a:intake-latency",
+    "sink": {"sink_id": "hook", "sink_type": "webhook_http"},
+    "generation": 3,
+    "options_revision": 2,
+    "attempt": 3,
+    "status": "outcome_unknown",
+    "unknown_cause": "unauthoritative_response",
+    "written": {"status": "unknown", "reason": "the receiver answered 202 Accepted with no Export-Webhook-Result: it queued the request and has not said it applied any of it"},
+    "tombstones_acknowledged": false,
+    "reconciliation_required": true,
+    "capability_fact_id": "fact-export-hook-0006",
+    "hold_id": "hold_exp00024",
+    "attempted_at": "2026-09-25T10:35:00Z",
+    "acked_at": null
+  }
+}
