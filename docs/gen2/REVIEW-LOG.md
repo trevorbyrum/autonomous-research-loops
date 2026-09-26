@@ -236,3 +236,19 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-0d-astra-review-
 
 ## 2026-09-26: 0d-repair: host note moved here from ENVIRONMENT.md (review finding 1)
 The build-environment document no longer carries this machine's maintenance state; it keeps the generic rule that the isolated venv excludes user-site packages. The note, as it stood in `docs/gen2/ENVIRONMENT.md` ("Host state left by the earlier practice"): the 0a-repair round installed `rfc8785==0.1.4` into the build host's user site (`~/.local/lib/python3.12/site-packages/`). The 0a-repair-2 venv fix installed, upgraded and removed no host package, and that copy is no longer on the build's import path. Removing it is the operator's decision (first recorded above, 0a-repair-2 coder item 7). Nothing was installed or removed by 0d-repair.
+
+## 2026-09-26: 0d-repair re-review (Astra, xhigh). **ACCEPT. 0d ACCEPTED. Phase 0 (0a, 0b, 0c, 0d) fully ACCEPTED.**
+Full report: `~/work/research-loops-public/private/reviews/gen2-0d-repair-astra-review-20260926.md`. Gates A/B/C all PASS.
+
+**Independent check:** Astra ran `make gen2-check` and it exited 0 (356 tests, 680/680 mutants, 57 valid + 171 invalid fixtures). The orchestrator's own run gave the same result.
+
+**Finding 1 closed:** Astra's own sweep covered 287 active files, looking for private products, paths, hosts, addresses, services, identities and endpoints. It found no remaining setup-specific material. Astra accepted leaving the following in place:
+- Trevor as the named operator in governance text;
+- the synthetic `'trevor'` test-fixture IDs;
+- the `jev=typesafe-jev` alias example.
+
+**Finding 2 closed:** Astra rebuilt all four survivors, and each is now killed by its own isolated negative. Both mirrors are sound, and the positive controls still hold.
+
+**Finding 3 closed:** extension admission is now accurately documented as a schema rule, with router validation named as a Phase 1/3 obligation.
+
+**Trevor at the Phase 0→1 gate (final):** (1) ratify C-13; (2) approve opening Phase 1. Nothing else. `accepted_support` goes early in Phase 1. Merge and push remain Trevor's actions and are not prerequisites for the gate.
