@@ -122,10 +122,27 @@ duplicate rows, records or events.
 publication generation the bundle came from; `options_revision` is the revision of
 the mounted per-topic export options it was assembled under, so the same approved
 generation re-exported after the operator changes *what* an export should contain
-is newer material rather than a duplicate to ignore. A sink that already accepted a
-higher pair answers `skipped_superseded` and writes nothing. **An old retry never
-overwrites newer material** — the same rule as `sink_generations` for publication,
-with a two-part key.
+is newer material rather than a duplicate to ignore. A sink compares the incoming
+pair with the highest pair it has accepted for the topic, and there are four
+answers:
+
+- **Lower.** The sink already holds newer material: `skipped_superseded`, and
+  nothing is written. **An old retry never overwrites newer material**, which is
+  the same rule as `sink_generations` for publication, with a two-part key.
+- **Equal, same export.** The sink's retained evidence names this manifest's
+  `export_manifest_id` and `bundle.content_hash`, so this export was already
+  applied. The usual cause is an attempt that committed and then lost its
+  receipt. Nothing is rewritten: the sink acknowledges the earlier application
+  from that evidence, tombstones included, and the receipt is an ordinary
+  `delivered`.
+- **Equal, different content.** One ordering pair naming two different exports
+  is an upstream fault, and a sink does not settle it by overwriting. The result
+  is `failed` with `error_class: conflict`, nothing written, a capability fact
+  and a hold.
+- **Greater, or nothing stored yet.** Write it and advance the stored pair,
+  atomically.
+
+§5 names the retained evidence each shipped adapter compares.
 
 **Supersession and tombstones are acknowledged.** A manifest that supersedes an
 earlier export lists what was removed or corrected, including entities removed for
@@ -201,7 +218,7 @@ sink is not expected to query.
 
 | Table | Key | Holds |
 |---|---|---|
-| `export_bundle` | `(topic_id, generation, options_revision)` | `bundle_id`, `bundle_version`, contract revision + hash, completion status/outcome/dossier revision, `assembler_version`, `assembled_at`, `bundle_hash`, `source_content_included` |
+| `export_bundle` | `(topic_id, generation, options_revision)` | `export_manifest_id`, `bundle_id`, `bundle_version`, contract revision + hash, completion status/outcome/dossier revision, `assembler_version`, `assembled_at`, `bundle_hash` (the manifest's `bundle.content_hash`), `source_content_included` |
 | `export_obligation` | `(topic_id, generation, options_revision, obligation_id)` | template id/version/claim type, importance band + optional score, `disposition`, `reason`, confidence scheme id/version/label or `confidence_unknown_reason`, `exploratory` |
 | `export_obligation_facet` | `(… , obligation_id, facet_id)` | the facet tags, so coverage is queryable without parsing an array |
 | `export_obligation_support` | `(… , obligation_id, claim_id)` | which claims support which obligation |
@@ -210,31 +227,68 @@ sink is not expected to query.
 | `export_synthesis_view` | `(… , view_id)` | view kind, claim-graph revision, renderer version, artifact hash + media type (the artifact itself is not inlined) |
 | `export_stopping_rule` | `(… , rule_id)` | status, operands JSON, thresholds JSON |
 | `export_candidate_unit` | `(… , unit)` | the unit's status, value and reason — never a bare integer, so `unknown` survives the trip |
-| `export_tombstone` | `(… , entity_id)` | reason |
-| `export_sink_generation` | `(topic_id)` | the highest `(generation, options_revision)` this sink has accepted; it never decreases |
+| `export_tombstone` | `(… , entity_id)` | reason; one row per tombstone in the manifest, written in the transaction that advanced the watermark |
+| `export_sink_generation` | `(topic_id)` | the highest `(generation, options_revision)` this sink has accepted, which never decreases, plus the identity of the delivery that set it: `export_manifest_id`, `bundle_hash`, `tombstone_count`, `tombstone_digest`, `applied_at` |
 
-Delivery is one transaction per manifest: upsert `export_bundle` on its key,
-replace the child rows for that key, apply tombstones, then advance
-`export_sink_generation` — and refuse the whole transaction if the incoming pair
-is not greater than the stored one. `export_candidate_unit` keeping status and
+**Delivery is one transaction per manifest.** Its first step reads this topic's
+`export_sink_generation` row inside that transaction and compares the incoming
+pair with it (§3):
+
+- **Lower:** roll back, write nothing, answer `skipped_superseded` with an
+  observed zero.
+- **Equal, with the stored `export_manifest_id` and `bundle_hash` equal to the
+  incoming manifest's, and the stored `tombstone_count` and `tombstone_digest`
+  equal to its tombstone list's:** the export was already applied. A lost
+  receipt looks exactly like this: the transaction committed, then the projector
+  died before recording the result. Roll back without writing and answer
+  `delivered`, with tombstones acknowledged, `written` the observed row count
+  stored under the key (read in the same transaction), and `acked_at` the time
+  of that read.
+- **Equal, with anything above differing:** roll back, write nothing, answer
+  `failed` with `error_class: conflict`, and raise a capability fact and a hold.
+- **Greater, or no row yet:** upsert `export_bundle` on its key, replace that
+  key's child rows, write the manifest's tombstones as `export_tombstone` rows,
+  and advance `export_sink_generation` to the incoming pair with this delivery's
+  identity, all in the one transaction. The advance is a conditional update
+  (`WHERE` the stored pair is lower, or an insert when there is no row), and its
+  row count is checked before commit. If a concurrent delivery got there first,
+  the transaction rolls back and the comparison is made again against what that
+  delivery stored. It never overwrites.
+
+**The sink-side evidence the comparison reads** is that watermark row and the
+rows under its key. `export_manifest_id` and `bundle_hash` tell an equal pair
+apart from a conflicting one. `tombstone_count` and `tombstone_digest` (SHA-256
+over the RFC 8785 canonical form of the manifest's `tombstones` array, as
+applied) let the equal-pair branch report `tombstones_acknowledged: true` from
+what the sink recorded, not by assumption. The `export_tombstone` rows are the
+per-entity record, written in the same transaction as the watermark. Reconciling
+an `outcome_unknown` SQL attempt is the same comparison: re-deliver the manifest,
+and the branch it lands in is the answer.
+
+`export_candidate_unit` keeping status and
 reason beside the value is the one place a reader of the warehouse can still tell
 "nobody looked" from "nothing was there"; flattening it to an integer would
 reintroduce exactly the defect the engine spent its accounting rules avoiding.
 
-The sink's own delivery rows, if an operator wants them, are a mirror for
-convenience. **The record of delivery is the engine's receipt**, not the sink's
-table.
+The watermark row is evidence the adapter reads to decide a replay; it is not
+the record of delivery. Nor are the sink's own delivery rows, if an operator
+wants them: those are a mirror for convenience. **The record of delivery is the
+engine's receipt**, not the sink's table.
 
 ### 5.2 `jsonl_file`
 
 One file per `(topic, generation, options_revision)`, written to a temporary name
 in the destination directory and atomically renamed into place, so a reader never
 sees a half-written export. Each line is one typed record with a `record_kind`
-discriminator; the first line is the bundle header. A tombstone file accompanies a
-superseding export. Re-delivery of the same triple rewrites the same target name
-byte-identically (the bundle is a pure function of its inputs), which is what
-makes the rename idempotent. The destination is mounted config; there is no
-credential.
+discriminator; the first line is the bundle header, which carries the manifest
+id and the bundle content hash. A tombstone file accompanies a superseding
+export. The files are the retained evidence, and the §3 comparison reads them.
+The highest triple already present for the topic is the stored pair, and a lower
+incoming pair is skipped. The same triple whose header names this manifest id
+and bundle hash, with its tombstone file present when the manifest has
+tombstones, is acknowledged without rewriting. The same triple with a different
+header is a `conflict`, and nothing is renamed. A higher pair is written. The
+destination is mounted config; there is no credential.
 
 ### 5.3 `webhook_http`
 
@@ -255,6 +309,7 @@ downgrade a readable 2xx or 4xx.
 | A 2xx | **acknowledgement** of the whole request, tombstones included (they travel in it) | `delivered`; `written` is the number of records the request carried |
 | 401 or 403 | **refusal** | `failed`, `auth_failed`, observed 0 |
 | 429 | **refusal** | `failed`, `quota`, observed 0 |
+| 409 | **refusal**: the receiver holds a different request under this key | `failed`, `conflict`, observed 0 |
 | Any other 4xx | **refusal**: the receiver says it did not apply the request | `failed`, `refused`, observed 0 |
 | A 3xx (never followed) or a 5xx | **no**: a 303 can follow a POST that was processed, and a 5xx says nothing reliable about whether the receiver applied it | `outcome_unknown`, `unauthoritative_response` |
 | A response whose status line could not be read | **no** | `outcome_unknown`, `unreadable_response` |
@@ -264,7 +319,8 @@ downgrade a readable 2xx or 4xx.
 The engine holds no sink-side evidence of its own for a webhook, so the
 receiver's idempotency is what makes reconciliation safe. The receiver contract
 is this: a repeated `Idempotency-Key` whose request was already applied is
-answered with a 2xx and not applied twice. Reconciling an unknown outcome means
+answered with a 2xx and not applied twice, and one whose stored request differs
+is answered with a 409. Reconciling an unknown outcome means
 re-sending the same request under the same key until an authoritative answer
 arrives. Until then the attempt stays `outcome_unknown` under its hold; it is
 never settled by assumption.
@@ -290,8 +346,10 @@ never settled by assumption.
    re-delivery of the same pair, an old retry after a newer one, a tombstone the
    sink ignores, a mid-transaction abort, a response that never arrives, a
    response that cannot be read, a 3xx or 5xx that settles nothing, a partial
-   write reported as a total, a destination whose schema version does not
-   match.
+   write reported as a total, equal-pair replay after a lost receipt
+   (acknowledged without a rewrite, tombstones included), an equal pair with
+   different content (refused as a conflict), two concurrent deliveries racing
+   for the watermark, a destination whose schema version does not match.
 4. **The GraphRAG ingest replacement.** The external script the design review
    examined is what this contract exists to retire. Retiring it is a Phase-3
    cutover, and until it happens nothing here changes what that script does.
