@@ -209,3 +209,27 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-0c-repair-2-astr
 "Nothing in this build should have a caveat or specific feature for my setup. This is going to be open source." External export must be **one standard API that any database can connect to, local or cloud**. The operator's Neo4j/Qdrant GraphRAG connects to it after the build, like any other database, with no special path of its own. "Don't change the internal process." This overrides flow doc S8's hardwired Neo4j/Qdrant publication sinks, and it overrides 0c's design of a second, generic export path alongside them. The orchestrator should have flagged the parallel-path design when export was first requested. It is also the operator's decision on the BOUNDARIES amendment: fold export into one generic role.
 
 Phase 0 is reopened for task **0d** (`docs/gen2/tasks/0d.md`): collapse publication and export into one versioned export API with generic reference connectors only (SQL connection string, JSONL/file, webhook). Remove every Neo4j/Qdrant/GraphRAG reference from schemas, DDL, fixtures, tests, deployment and governing text. Keep every guarantee that export already proved. The engine never reads research back from an external database. The internal process is unchanged. Routed to an Opus 5.5 coder (agent 5985c8ba). Astra reviews it next.
+
+## 2026-09-26: 0d review (Astra, xhigh): BLOCK, narrow (Gates A + C); Gate B PASS
+Full report: `~/work/research-loops-public/private/reviews/gen2-0d-astra-review-20260926.md`. Astra's independent run of `make gen2-check` exited 0, matching the orchestrator's: 351 tests, 674/674 mutants, 57 valid + 165 invalid fixtures.
+
+**CONFORMS:** there is now one export path; the internal process is unchanged; every guarantee export had already proved is preserved; no `neo4j|qdrant|graphrag` remains in the build outside history.
+
+**Findings:**
+1. **P1:** host-specific deployment material remains:
+   - DEPLOYMENT-CONTRACT's gen-1 service and occupied-port inventory;
+   - the generator and env example's "on this host" gen-1 notes;
+   - a personal cleanup note in ENVIRONMENT;
+   - hardcoded `~/work/...` locators in CHARTER and INVARIANTS.
+
+   Astra: the ruling covers the whole build surface. Don't ask Trevor about any of this.
+2. **P2 (Gate C):** four replacement-rule mutations survive every fixture and all 36 counterfactual tests:
+   - extension missing only `module`;
+   - extension missing only `review_ref`;
+   - `mixed_generation` re-added;
+   - delivered pair missing only `options_revision`.
+3. **P2:** EXPORT-API §~326 claims the store refuses an extension with no implementation, but the DDL checks only the connector type. Astra showed this with direct inserts.
+
+**Gate list (Astra):** the C-13 ratification and opening Phase 1 remain. The export design and the BOUNDARIES amendment are decided by the ruling. There are no port or coexistence questions. `accepted_support` goes early in Phase 1.
+
+**Routed:** `docs/gen2/tasks/0d-repair.md` to an Opus 5.5 coder (agent 43851429).
