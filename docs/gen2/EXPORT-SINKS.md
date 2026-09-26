@@ -167,9 +167,8 @@ licence reasons. A delivery that did not acknowledge the tombstones is not
 Three questions decide it, in order:
 
 1. *Could any of the request have been applied?* If it was never sent (a name
-   that did not resolve, a refused connection, a connect timeout, a credential
-   the adapter could not load), it could not. That is `failed`, and `written` is
-   an observed zero.
+   that did not resolve, a refused connection, a connect timeout), it could
+   not. That is `failed`, and `written` is an observed zero.
 2. *If it may have been applied, did an authoritative answer settle the
    result?* An acknowledgement is `delivered`. An authoritative refusal is
    `failed` with an observed zero. A sink that reports which part it applied
@@ -330,14 +329,17 @@ downgrade a readable 2xx or 4xx.
 | No response after the request was sent (closed, reset, timed out) | **no** | `outcome_unknown`, `no_response_after_send` |
 | The projector stopped after sending and before reading | **no** | `outcome_unknown`, `terminated_after_send` |
 
-The engine holds no sink-side evidence of its own for a webhook, so the
-receiver's idempotency is what makes reconciliation safe. The receiver contract
-is this: a repeated `Idempotency-Key` whose request was already applied is
-answered with a 2xx and not applied twice, and one whose stored request differs
-is answered with a 409. Reconciling an unknown outcome means
-re-sending the same request under the same key until an authoritative answer
-arrives. Until then the attempt stays `outcome_unknown` under its hold; it is
-never settled by assumption.
+The engine holds no sink-side evidence of its own for a webhook. For the §3
+ordering rule, the projector compares the incoming pair with the highest pair
+this sink has *delivered* according to the engine's own receipts. A lower pair
+is `skipped_superseded` and is not sent; an equal or higher one is sent. The
+receiver's idempotency is what makes the equal case and reconciliation safe.
+The receiver contract is this: a repeated `Idempotency-Key` whose request was
+already applied is answered with a 2xx and not applied twice, and one whose
+stored request differs is answered with a 409. Reconciling an unknown outcome
+means re-sending the same request under the same key until an authoritative
+answer arrives. Until then the attempt stays `outcome_unknown` under its hold;
+it is never settled by assumption.
 
 ## 6. What Phase 3 still owes
 

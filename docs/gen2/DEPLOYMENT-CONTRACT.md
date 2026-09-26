@@ -304,12 +304,15 @@ inspection:
    while running: the service refuses to start, or records each read as
    *failing*. Never as *absent*.
 3. *Transport and status failures.* Vault unreachable, timing out, answering 403,
-   answering 5xx, and answering 200 with an unparseable body: each read is
+   answering 5xx, answering 404 because the mount itself does not exist (a
+   misconfigured mount or prefix, which would make every key look absent), and
+   answering 200 with an unparseable body: each read is
    *failing*, distinct from *absent*. It is surfaced as a dated
    `secrets backend failing` capability fact with `since` (the first failure),
    `last_success_at` and the affected lanes, and it alerts on the transition.
-4. *Genuinely absent.* Vault answers 404 for the path, or 200 with an entry that
-   lacks the field: the read is *absent* ("no secret configured for this name"),
+4. *Genuinely absent.* Vault answers 404 for a secret path under a mount that
+   exists, or 200 with an entry that lacks the field: the read is *absent* ("no
+   secret configured for this name"),
    does not alarm, and is distinct from every case in test 3.
 5. *The outcome survives the HTTP boundary.* When a request's lanes needed a
    failing secret, the gateway's response says so per lane
