@@ -184,3 +184,16 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-0c-astra-review-
 **Coder questions ruled:** (2) the disposition vocabulary may stand as proposed; (3) no `cost_tier` field is needed to accept 0c; (5) the reader freshness envelope stays unextended; (4) port availability is for Trevor to confirm at deploy time, but A6 gets fixed now; (1) the boundary amendment is escalated to Trevor with a recommendation to adopt it with refinements. It only needs deciding before a phase implements export (Phase 3), so it does not block 0c.
 
 **Routed:** task `docs/gen2/tasks/0c-repair.md` to an Opus 5.5 coder (agent 9eb1ac80). A1's owner is the gateway repair work already in the phase plan (Phases 2 and 3), so it isn't sent to Trevor. The repair is a spec fix only; `gateway/` is untouched.
+
+## 2026-09-26 — 0c-repair re-review (Astra, xhigh): BLOCK, narrow (A + C); Gate B PASS
+Full report: `~/work/research-loops-public/private/reviews/gen2-0c-repair-astra-review-20260926.md`. Independently observed `make gen2-check` exit 0: 321 tests, 605/605 mutants, 54 valid + 158 invalid fixtures, 1,845 production lines unchanged.
+
+**CLOSED:** A1 (vault mode inadmissible until the reviewed gateway release; ownership is Phase 2/3; no separate approval question), A3, A4, A5's SQL contract, A6, A2 at the schema level, and C1. Astra rebuilt every original reproduction: each validated at ad3e2ec and is refused at HEAD. A broken schema mutation is correctly classified INVALID. 0a changes verified: only the fixtures' `tests` and `errors` fields changed, and every 0a schema is byte-identical. Count-based kills are ACCEPTED as bounded redundant-guard checks.
+
+**Remaining:** BLOCK 1 (HIGH): the webhook table treats any 2xx as full application; Astra demonstrated a 202 receiver that applied nothing. BLOCK 2 (HIGH): engine-side watermarks plus per-key dedup don't implement the four ordering branches; Astra demonstrated both a same-pair conflicting manifest being applied and an in-flight older request regressing state. BLOCK 3 (MEDIUM, Gate C): a compensated two-edit mutant swaps which identity members are required without changing the error count; it needs three isolated negatives.
+
+**Coder questions ruled:** declared counts are acceptable for the redundant-guard 0a fixtures; an echoed idempotency key is not required, but status class alone is not sufficient; the projector sharing the engine listener with a projector-only token is CLOSED under A6.
+
+**Trevor at the Phase 0→1 gate (Astra's list):** C-13 ratification; opening Phase 1; the BOUNDARIES amendment, which can stay pending until the phase that implements export. Nothing else is escalated. Astra explicitly declined to re-escalate `accepted_support`, symlinks, queue versions, gateway repair authorization and importer live access.
+
+**Routed:** `docs/gen2/tasks/0c-repair-2.md` to an Opus 5.5 coder (agent 1bdfa4b8).
