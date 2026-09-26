@@ -7,10 +7,15 @@ each phase diff against this file the same way it checks `BOUNDARIES.md`. Where
 this file and a later deployment disagree, one of them changes through the
 charter's amendment path.
 
+*Amended by operator ruling 2026-09-26: the stack is the engine, the research gateway and the
+exporter, with their supporting containers. No database that receives exports
+is part of it or named in it; each connects through the one export API
+(`docs/gen2/EXPORT-API.md`), like anyone else's.*
+
 **Trace.** Flow architecture (`gen2-flow-architecture-20260924.md`, amended
 2026-09-25): §0 actor roster; §4.1–4.4 observability spine (one invocation ID,
 dated capability facts, silence-is-never-success, typed holds); S8 publication
-contract items 1–4; §5 "Jev question storage" (mounted versioned registry, a
+contract items 1–4, as amended by the operator ruling 2026-09-26; §5 "Jev question storage" (mounted versioned registry, a
 restart not a rebuild). Design review
 (`reviews/gen2-design-astra-review-20260922.md`): §6 container isolation and
 mounted bundles (the paragraph this file's baked/mounted table implements); §5
@@ -21,7 +26,7 @@ auth-volume access and permissions). Design review task
 engine baked, config/prompts/contracts/thresholds/auth mounted;
 restart-not-rebuild for everything except engine bugs".
 `docs/gen2/BOUNDARIES.md`: *Router*, *Station supervisor*, *Gateway*,
-*Projector / publication*, *Operator*. `docs/gen2/INVARIANTS.md`: H-2
+*Exporter*, *Operator*. `docs/gen2/INVARIANTS.md`: H-2
 (capability facts, the vault-outage fixture), H-4, P-1–P-4, RG-3, RG-4, G-10
 (protocol data vs execution policy), B-2 (no gen-2 module imports the gateway's
 internals). `docs/gen2/ENVIRONMENT.md` covers the *build* environment; this file
@@ -39,27 +44,28 @@ deployment error, not a configuration choice.
 
 ## 1. The stack
 
-Five gen-2 containers and four referenced external services. "Referenced" means
+Five gen-2 containers and two referenced external services. "Referenced" means
 this stack does not create, own, upgrade or back them up; it connects to them
-and reports a dated capability fact when it cannot.
+and reports a dated capability fact when it cannot. The databases an operator
+connects to the export API are not services of this stack at all: each is a
+connector destination named in mounted config (§2), and the stack neither
+creates nor owns nor names any of them (operator ruling 2026-09-26).
 
 | Service | What it is | Image | Referenced or ours |
 |---|---|---|---|
 | `engine` | Router (sole writer, owns the control store) + station supervisor + composition root. The operator command service (CLI/HTTP/MCP behind one service, design review §10) is exposed from here. | baked gen-2 image | ours |
 | `gateway` | A second instance of the federated research gateway (`gateway/research_gateway`), the only door to external research sources. Run as a service and reached over HTTP; never imported (B-2). | the gateway's own image (`gateway/deploy/Dockerfile`). The current image is admissible in the `env` secrets mode only; `vault` mode needs a reviewed gateway release (§3.4) | ours (separate instance from gen-1's) |
-| `projector` | Outbox consumer: publishes approved generations to Neo4j and Qdrant, and hands approved bundles to the enabled export sinks (`docs/gen2/EXPORT-SINKS.md`). | baked gen-2 image, same image as `engine`, different entrypoint | ours |
+| `exporter` | Outbox consumer: delivers each approved export manifest's bundle to every enabled connector through the one connector contract (`docs/gen2/EXPORT-API.md`; operator ruling 2026-09-26, was `projector`). | baked gen-2 image, same image as `engine`, different entrypoint; reference connectors in the core, reviewed extension connectors from their own packages | ours |
 | `tier0` | The local NLI claim-vs-span screen. Optional: with it absent the engine records a dated capability fact and verification proceeds without the screen (the screen never gated a load-bearing claim anyway — BOUNDARIES.md *Tier-0 checker*). | its own pinned image | ours |
 | `gateway-db` | PostgreSQL for the gen-2 gateway instance only. | `postgres` pinned | ours |
-| Neo4j | Physical publication sink. | — | referenced |
-| Qdrant | Physical publication sink. | — | referenced |
 | Vault | Secrets backend, when the vault backend is selected. | — | referenced |
 | Decision provider (Jev API, LLM fallback) | Reached over the network by `gen2/decision`. **Not a build or run dependency**: the charter requires the engine to run and be testable with the decision layer disabled. | — | referenced |
 
 The control store (`gen2/store`, SQLite) is **not** a service. It is a file on a
 mounted volume that only the `engine` container opens, because the router is the
-sole writer (BOUNDARIES.md *Router*). `projector` and `operator` transports
+sole writer (BOUNDARIES.md *Router*). `exporter` and `operator` transports
 reach state only through the `ControlBackend` protocol inside `engine` — no
-second process opens the SQLite file. The projector does so over the Compose
+second process opens the SQLite file. The exporter does so over the Compose
 network: it calls the engine's listener at `GEN2_ENGINE_URL`
 (`http://engine:8770`) with its own bearer token (§1.1). A deployment that
 mounts the control store into two containers has broken the sole-writer
@@ -75,7 +81,7 @@ deploy time rather than trusting this list.
 **A listen address and a host publication are different things.** A service's
 listen address is inside its own container's network namespace. Its host
 publication is the port Compose maps on the host. `127.0.0.1` inside a container
-is that container's own loopback: nothing else can reach it, not the projector,
+is that container's own loopback: nothing else can reach it, not the exporter,
 not another container, and not a host port published to it. So every service
 listens on `0.0.0.0` inside its container, meaning all of that container's
 interfaces (its loopback and its Compose-network interface). Where a service is
@@ -84,14 +90,13 @@ published at all, the publication is bound to host loopback only, for example
 
 | Service | Listens on, inside its container | Host publication | Reached by | Protocol |
 |---|---|---|---|---|
-| `engine` operator service | `0.0.0.0:8770` (`GEN2_OPERATOR_LISTEN`) | `127.0.0.1:8770` only | operator clients on the host (operator token); the projector at `http://engine:8770` (`GEN2_ENGINE_URL`, projector token) | HTTP + `POST /mcp` (stateless MCP over HTTP, one JSON-RPC message per request — the gateway's proven shape) |
+| `engine` operator service | `0.0.0.0:8770` (`GEN2_OPERATOR_LISTEN`) | `127.0.0.1:8770` only | operator clients on the host (operator token); the exporter at `http://engine:8770` (`GEN2_ENGINE_URL`, exporter token) | HTTP + `POST /mcp` (stateless MCP over HTTP, one JSON-RPC message per request — the gateway's proven shape) |
 | `engine` health | the same listener: `GET /v1/health`, no token | the same, `127.0.0.1:8770` | its own container healthcheck; anything on the Compose network | HTTP |
 | `gateway` | `0.0.0.0:8765` (`RESEARCH_GATEWAY_LISTEN`) | `127.0.0.1:8771` only | the engine at `http://gateway:8765` (`GEN2_GATEWAY_URL`); host clients | HTTP + `POST /mcp` |
-| `projector` health | `0.0.0.0:8772` (`GEN2_PROJECTOR_HEALTH_LISTEN`): `GET /v1/health`, no token | not published | its own container healthcheck; the Compose network | HTTP |
+| `exporter` health | `0.0.0.0:8772` (`GEN2_EXPORTER_HEALTH_LISTEN`): `GET /v1/health`, no token | not published | its own container healthcheck; the Compose network | HTTP |
 | `tier0` | port 8773 on its container's interfaces (its image's setting) | not published | the engine at `http://tier0:8773` (`GEN2_TIER0_URL`) | HTTP |
 | `gateway-db` | 5432 on its container's interfaces | not published | the gateway only | PostgreSQL |
-| Neo4j | — | — | the projector (`GEN2_NEO4J_URI`) | bolt, 7687 |
-| Qdrant | — | — | the projector (`GEN2_QDRANT_URL`) | HTTP, 6333 |
+| Connector destinations | — | — | the exporter, one per enabled connector: a SQL connection string, a mounted directory, a webhook endpoint, or what a reviewed extension names (`EXPORT-API.md` §5; operator ruling 2026-09-26) | per connector |
 | Vault | — | — | a service in vault mode, once admissible (§3.4) | HTTPS, 8200 |
 
 Nothing is published beyond host loopback. Every host publication is
@@ -101,8 +106,8 @@ listener carries operator authority, so every route on it except
 `GET /v1/health` requires a bearer token, and its publication stays on host
 loopback. Exposing it on a private network is an operator decision recorded at
 deployment, never a default. Two kinds of token reach it.
-`GEN2_OPERATOR_TOKENS` are the operator's. `GEN2_SECRET_PROJECTOR_TOKEN` is the
-projector's, and the engine accepts it only for the projector's `ControlBackend`
+`GEN2_OPERATOR_TOKENS` are the operator's. `GEN2_SECRET_EXPORTER_TOKEN` is the
+exporter's, and the engine accepts it only for the exporter's `ControlBackend`
 calls (claiming outbox events, acknowledging deliveries); it never carries
 operator authority.
 
@@ -113,14 +118,14 @@ thing that container owns — not about a dependency.
 
 | Service | Check | Healthy means | Explicitly **not** part of the check |
 |---|---|---|---|
-| `engine` | `GET http://127.0.0.1:8770/v1/health` from inside the container (the `0.0.0.0` listener includes the container's loopback): control store opens through the compatibility gate (`gen2/store/compat.py`), the schema matches `schema.sql` exactly, the last scheduler tick is within its interval | the router can commit | whether any provider, sink or the gateway is reachable |
+| `engine` | `GET http://127.0.0.1:8770/v1/health` from inside the container (the `0.0.0.0` listener includes the container's loopback): control store opens through the compatibility gate (`gen2/store/compat.py`), the schema matches `schema.sql` exactly, the last scheduler tick is within its interval | the router can commit | whether any provider, connector or the gateway is reachable |
 | `gateway` | the gateway image's own healthcheck (`GET /v1/health`, no token) | the service answers | whether any source lane is working |
-| `projector` | `GET http://127.0.0.1:8772/v1/health` from inside the container: the outbox can be read through the `ControlBackend` at `GEN2_ENGINE_URL`, and the worker's last loop is within its interval | the consumer is alive | whether Neo4j, Qdrant or an export sink accepted anything |
+| `exporter` | `GET http://127.0.0.1:8772/v1/health` from inside the container: the outbox can be read through the `ControlBackend` at `GEN2_ENGINE_URL`, and the worker's last loop is within its interval | the consumer is alive | whether any connector's destination accepted anything |
 | `tier0` | model loaded, one fixed probe pair classified | the screen answers | — |
 | `gateway-db` | `pg_isready` | — | — |
 
 **A dependency's failure is a capability fact, never an unhealthy container**
-(flow §4.2; INVARIANTS H-2, RG-3). A failing Vault, a dead Qdrant, a 429 from a
+(flow §4.2; INVARIANTS H-2, RG-3). A failing Vault, a dead connector destination, a 429 from a
 provider and an unreachable Jev endpoint all leave their container healthy and
 raise a dated capability fact with `since`, last success, and affected lanes —
 which alerts on the *transition*. Restarting a container because a remote
@@ -143,7 +148,7 @@ documented operator act (§4).
 | `gen2/store/schema.sql` and its migrations | **baked** | rebuild + release, then a migration run | A store migration is an engine change with a data step. |
 | Schema files (`gen2/schema/*.schema.json`) and the router's validation boundary | **baked** | rebuild + release | The validators are code's contract with itself; a mounted schema would let a config edit widen what the router accepts. |
 | `ControlBackend` implementations (a second store backend) | **baked** | rebuild + release | "A new backend adapter is engine code and therefore an image change, not just a mounted DSN" — design review §5. |
-| Decision-provider adapters, tier-0 client, gateway client, export-sink adapters | **baked** | rebuild + release | Executable adapters require an image release (design review §6). Bespoke export sinks are reviewed code, not operator config (`EXPORT-SINKS.md` §5). |
+| Decision-provider adapters, tier-0 client, gateway client, reference connectors, extension connectors | **baked** | rebuild + release | Executable adapters require an image release (design review §6). An extension connector is reviewed code from its own package outside the core, never operator config (`EXPORT-API.md` §7; operator ruling 2026-09-26). |
 | Pinned provider CLIs used to launch model invocations (the model vendors' own command-line tools, at pinned versions) | **baked** | rebuild + release | An agent must never be able to introduce an executable. Pinning them in the image makes the set of runnable binaries a reviewed property of the release. |
 | `stations.yaml` (station roster, per-station model assignment, concurrency) | **mounted**, read-only | restart | Operator's fleet shape; no code depends on its contents being any particular value. |
 | Fleet policy / execution policy bundle (retry ceilings, heartbeats, timeouts, deadlines, checkpoint cadence, budgets) | **mounted**, read-only | restart | G-10: execution policy is data with a different owner than the contract's scientific protocol. |
@@ -155,7 +160,7 @@ documented operator act (§4).
 | Secrets (`.env` file, or Vault token files) | **mounted**, read-only, `0400` service-owned | restart (env) / ≤15 min (Vault cache) | §3. |
 | Per-provider agent auth homes | **mounted**, read-write, one volume per provider | live | §4. |
 | `wrappers/` | **mounted**, read-only, **operator-owned and explicitly operator-trusted** | restart | §4. The one place a non-image executable enters. |
-| Export-sink enablement and per-topic export options | **mounted**, read-only | restart | `EXPORT-SINKS.md` §4; connection strings are secrets, not config. |
+| Connector enablement and per-topic export options | **mounted**, read-only | restart | `EXPORT-API.md` §5; connection strings are secrets, not config. |
 
 **Versioned bundles, pinned in flight.** Every mounted configuration set is
 activated as a *versioned bundle*: it is validated on load, given a bundle
@@ -229,7 +234,7 @@ the image and the runtime happened to set, so the fallback resolves somewhere
 nobody chose, and a missing token file is indistinguishable from a missing key.
 Every service in this stack therefore sets its own token-file path explicitly —
 `RESEARCH_GATEWAY_VAULT_TOKEN_FILE` for the gateway, `GEN2_VAULT_TOKEN_FILE` for
-the engine and projector — each mounted read-only from a distinct path, each
+the engine and exporter — each mounted read-only from a distinct path, each
 `0400`. A service whose backend is `vault` and whose token-file variable is
 unset **refuses to start**; it does not fall back to a home directory. That
 refusal is a startup error with the variable named, not a silent degradation.
@@ -272,7 +277,7 @@ current gateway image breaks both rules. With `RESEARCH_GATEWAY_VAULT_TOKEN_FILE
 unset it falls back to `~/.vault-token` (`VaultBackend.__init__`). Every failed
 read (an unreadable token file, a transport error, a non-200, an unparseable
 payload) becomes `{}` and then `None`, the value of a missing key
-(`VaultBackend._read`, `get`). The engine's and projector's vault backend is
+(`VaultBackend._read`, `get`). The engine's and exporter's vault backend is
 gen-2 code that does not exist yet. Until the release below exists, the gen-2
 gateway runs with `RESEARCH_GATEWAY_SECRETS=env` and the engine with
 `GEN2_SECRETS=env`, both from the one mounted `.env` (§3.1).
@@ -280,7 +285,7 @@ gateway runs with `RESEARCH_GATEWAY_SECRETS=env` and the engine with
 **What makes it admissible.** For the gateway: a reviewed gateway release that
 keeps the outcome of every secret read (a failed read is not an absent one),
 requires an explicit token file, and has no home-directory fallback. For the
-engine and projector: the gen-2 secrets backend, built to §3.3. Each becomes
+engine and exporter: the gen-2 secrets backend, built to §3.3. Each becomes
 admissible only once it passes every test below with the vault backend selected.
 
 **Owner.** The gateway repair work in the adjudicated phase plan
@@ -381,7 +386,7 @@ operator-trusted**:
   agent-supplied code; `gen2/boundaries.toml` additionally refuses
   `eval`/`exec`/`compile`/`__import__` statically).
 - **Engine adapters stay image-baked.** `wrappers/` is not an extension point
-  for the engine. A new execution adapter, decision provider, sink or
+  for the engine. A new execution adapter, decision provider, connector or
   `ControlBackend` is engine code and needs an image release (design review §5,
   §6). A wrapper that starts making decisions has become engine code in the
   wrong place, and Gate A should say so.
@@ -433,7 +438,8 @@ changes — never first attempted during an incident):
    store to be repaired by hand.
 3. Reconcile counts and authority history against the last known-good report:
    topics, contract revisions and their approvals, receipts and ordinals (dense,
-   one per invocation), dossiers, open holds, publication generations per sink.
+   one per invocation), dossiers, open holds, export manifests and connector
+   watermarks.
    Record what did not reconcile. This is the same reconciliation Phase 4's
    import owes (INVARIANTS §12).
 4. Restore the matching spool generation and verify that every `artifacts`
@@ -446,17 +452,18 @@ changes — never first attempted during an incident):
    restore works.
 
 **Three facts stay separate during recovery** (S8 item 4, INVARIANTS P-4):
-historical scientific completion at a dossier revision, current publication
+historical scientific completion at a dossier revision, current export
 delivery, and surveillance currency as of a time. A restore that cannot
-re-deliver to a sink leaves publication *partial* and raises a capability
-incident; it does not undo completion and does not stop surveillance.
+re-deliver to a connector leaves export delivery *partial* and raises a
+capability incident; it does not undo completion and does not stop
+surveillance.
 
 ---
 
 ## 6. What this file does not settle
 
 - **No compose file, image or volume is committed by task 0c.** This is the
-  specification they are built against. The `engine`, `projector` and `tier0`
+  specification they are built against. The `engine`, `exporter` and `tier0`
   images do not exist yet. The gen-2 `gateway` runs the existing gateway image in
   the `env` secrets mode only.
 - **Vault mode for any service** waits for §3.4's acceptance tests. The gateway

@@ -29,6 +29,7 @@ is true. They check the derivation and the drift gate, nothing about the world.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -329,7 +330,7 @@ class CatalogToolTest(unittest.TestCase):
 
     def test_services_listen_on_their_container_interface(self):
         """Astra 0c review A6: a listener bound to 127.0.0.1 inside a container
-        is that container's own loopback, unreachable from the projector or
+        is that container's own loopback, unreachable from the exporter or
         through a host publication. Every listen address the example emits is
         the container's interfaces; host exposure is Compose's 127.0.0.1
         publication, not the bind. Literal oracle, from the port map in
@@ -338,10 +339,28 @@ class CatalogToolTest(unittest.TestCase):
         settings = dict(line.split("=", 1) for line in env.read_text(encoding="utf-8").splitlines()
                         if line and not line.startswith("#") and "=" in line)
         listens = {name: value for name, value in settings.items() if name.endswith("_LISTEN")}
-        self.assertEqual(listens, {"GEN2_OPERATOR_LISTEN": "0.0.0.0:8770", "GEN2_PROJECTOR_HEALTH_LISTEN": "0.0.0.0:8772",
+        self.assertEqual(listens, {"GEN2_OPERATOR_LISTEN": "0.0.0.0:8770", "GEN2_EXPORTER_HEALTH_LISTEN": "0.0.0.0:8772",
                                    "RESEARCH_GATEWAY_LISTEN": "0.0.0.0:8765"})
         self.assertEqual(settings.get("GEN2_ENGINE_URL"), "http://engine:8770",
-                         "the projector reaches the engine by its Compose service name, not by a loopback address")
+                         "the exporter reaches the engine by its Compose service name, not by a loopback address")
+
+    def test_the_engine_settings_name_no_export_destination(self):
+        """Operator ruling 2026-09-26 (task 0d): a database receives exports
+        through a connector named in mounted config, so the engine's own
+        settings name none — the exporter group has its token, health listener,
+        the connector config path and per-connector secrets only. Every GEN2_
+        variable the example emits, live or commented, against a hand-
+        enumerated list: a setting added for one particular store fails here."""
+        _, _, env = self.fixture_pair([variant()])
+        names = set(re.findall(r"^(?:# )?(GEN2_[A-Z0-9_]+)=", env.read_text(encoding="utf-8"), re.M))
+        self.assertEqual(names, {
+            "GEN2_CONTROL_STORE", "GEN2_SPOOL_DIR", "GEN2_CONFIG_BUNDLE_DIR", "GEN2_WRAPPERS_DIR", "GEN2_OPERATOR_LISTEN",
+            "GEN2_OPERATOR_TOKENS", "GEN2_SECRETS", "GEN2_VAULT_ADDR", "GEN2_VAULT_TOKEN_FILE", "GEN2_VAULT_MOUNT", "GEN2_VAULT_PREFIX",
+            "GEN2_VAULT_ALIASES", "GEN2_DECISION_ENABLED", "GEN2_DECISION_JEV_ENDPOINT", "GEN2_SECRET_JEV",
+            "GEN2_DECISION_FALLBACK_ENDPOINT", "GEN2_SECRET_DECISION_FALLBACK", "GEN2_TIER0_ENABLED", "GEN2_TIER0_URL",
+            "GEN2_GATEWAY_URL", "GEN2_SECRET_GATEWAY_TOKEN", "GEN2_EXPORTER_HEALTH_LISTEN", "GEN2_ENGINE_URL",
+            "GEN2_SECRET_EXPORTER_TOKEN", "GEN2_CONNECTORS_CONFIG", "GEN2_SECRET_CONNECTOR_WAREHOUSE", "GEN2_SECRET_CONNECTOR_HOOK",
+        })
 
     # ------------------------------------------ the real repository pair and its keys
 

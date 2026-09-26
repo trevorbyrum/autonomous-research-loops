@@ -1664,6 +1664,11 @@ MUTATIONS: list[Mutation] = [
     Mutation("0CR-operator-listen-on-container-loopback", "A6", "the review's defect restored: the engine binds its container's loopback",
              (SC + "test_services_listen_on_their_container_interface",), target="tools/gen_source_catalog.py",
              old='Key("GEN2_OPERATOR_LISTEN", "0.0.0.0:8770",', new='Key("GEN2_OPERATOR_LISTEN", "127.0.0.1:8770",'),
+    Mutation("0D-store-specific-setting-added", "0d", "the generator emits a setting for one particular export destination (operator ruling 2026-09-26)",
+             (SC + "test_the_engine_settings_name_no_export_destination",), target="tools/gen_source_catalog.py",
+             old='            Key("GEN2_CONNECTORS_CONFIG", "/etc/gen2/bundle/connectors.toml", "mounted read-only"),\n',
+             new='            Key("GEN2_CONNECTORS_CONFIG", "/etc/gen2/bundle/connectors.toml", "mounted read-only"),\n'
+                 '            Key("GEN2_GRAPH_STORE_URL", "https://graph-store.example.org"),\n'),
     Mutation("0CR-checker-errors-collapsed-to-a-set", "C1", "the schema check compares declared and actual errors as sets again, so two rules at one signature pass as one",
              ("test_check_ddl_rules.SchemaFixtureRuleTest.test_two_rules_reporting_one_signature_must_both_be_declared",),
              target="tools/check_gen2_schemas.py", old="            if actual != expected:", new="            if set(actual) != set(expected):"),

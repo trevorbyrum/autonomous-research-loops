@@ -39,7 +39,7 @@ The registry also records no **redistribution** permission. That question is per
 source (a CC0 metadata record can describe a copyrighted paper), and the gateway answers it per
 record: `gateway.record_sources` carries a `redistributable` flag and the content licence beside
 each contributing payload. Export bundles rely on that per-record answer, never on this file
-(`docs/gen2/EXPORT-SINKS.md`).
+(`docs/gen2/EXPORT-API.md`).
 
 ## Secrets index (15 variables across 13 secret names)
 
