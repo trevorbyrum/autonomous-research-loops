@@ -1,0 +1,5 @@
+{"fixture": {"schema": "export-bundle.schema.json", "expect": "invalid",
+  "tests": "V-5 / flow §6.6 (Astra 0c review A3): a conflict that names no hold has no owner for resolving it, so an empty list is refused - the base's mixed obligation OB-03 is valid and only its hold list is emptied",
+  "base": "valid-completed-topic.json",
+  "patch": [{"op": "replace", "path": "/obligations/2/open_adjudication_hold_ids", "value": []}],
+  "errors": [{"keyword": "minItems", "path": "/obligations/2/open_adjudication_hold_ids"}]}}

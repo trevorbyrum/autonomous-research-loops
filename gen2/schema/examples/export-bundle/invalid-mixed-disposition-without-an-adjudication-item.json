@@ -1,5 +1,5 @@
 {"fixture": {"schema": "export-bundle.schema.json", "expect": "invalid",
-  "tests": "V-4 / flow §6.6: a recorded disagreement is a typed adjudication item, never an average and never a bare label",
+  "tests": "V-5 / flow §6.6: a recorded disagreement is a typed adjudication item, never an average and never a bare label - the base's mixed obligation OB-03 is valid (it has its reason and one hold), and only the hold list is removed, so the refusal is the mixed-needs-a-hold-list rule alone (Astra 0c review C1)",
   "base": "valid-completed-topic.json",
-  "patch": [{"op": "replace", "path": "/obligations/0/disposition", "value": "mixed"}],
-  "errors": [{"keyword": "required", "path": "/obligations/0"}]}}
+  "patch": [{"op": "remove", "path": "/obligations/2/open_adjudication_hold_ids"}],
+  "errors": [{"keyword": "required", "path": "/obligations/2"}]}}

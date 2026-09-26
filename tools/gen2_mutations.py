@@ -76,6 +76,8 @@ FILE_TARGETS = {
     "gen2/importer/dry_run.py": ("module", "gen2.importer.dry_run"),
     "tools/gen2_trigger_order.py": ("attr", "test_trigger_order_tool", "TOOL"),
     "tools/gen_source_catalog.py": ("attr", "test_source_catalog", "TOOL"),
+    # A schema file: the whole schema tree is re-checked with this file replaced (0c-repair, C1).
+    "gen2/schema/export-bundle.schema.json": ("attr", "test_schema_counterfactuals", "EXPORT_BUNDLE_SCHEMA"),
 }
 
 H = "test_store_history."
@@ -99,6 +101,7 @@ CG = "test_store_ddl.ContractGovernanceTest."
 SG = "test_sqlite_gate."
 IB = "test_store_intake.IntakeBriefTest."
 SC = "test_source_catalog.CatalogToolTest."
+SF = "test_schema_counterfactuals.FixtureCounterfactualTest."
 
 MUTATIONS: list[Mutation] = [
     # --- A1: history cannot be rewritten ------------------------------------
@@ -1362,6 +1365,23 @@ MUTATIONS: list[Mutation] = [
           ("cost-cap-not-reported", "a recorded cost cap is not reported, so a metered source reads as uncapped",
            ("test_a_cost_cap_in_the_registry_is_reported_as_metered",),
            '    if rate.get("cost_cap_per_day"):', "    if False:"),
+      )),
+    # --- 0c-repair: schema rules, each with a negative that fails for it alone ----
+    # Astra 0c review C1: a negative whose declared (keyword, path) is also
+    # produced by another rule survives removal of its own rule. Each mutant
+    # deletes one rule from a schema; the whole tree is re-checked with the
+    # mutated file, and the named negative must stop behaving as declared (it
+    # validates). The bundle's mixed rule is two rules, mutated separately.
+    *(Mutation(f"0CR-{key}", finding, desc, tuple(SF + k for k in killers), target=target, old=old, new=new)
+      for key, finding, desc, killers, target, old, new in (
+          ("mixed-hold-list-not-required", "C1", "a mixed disposition no longer requires its hold list (the review's surviving mutant)",
+           ("test_a_mixed_disposition_without_its_hold_list_is_refused",), "gen2/schema/export-bundle.schema.json",
+           '"then": {"required": ["open_adjudication_hold_ids"], "properties": {"open_adjudication_hold_ids": {"minItems": 1}}}',
+           '"then": {"properties": {"open_adjudication_hold_ids": {"minItems": 1}}}'),
+          ("mixed-hold-list-may-be-empty", "A3", "a mixed disposition's hold list may be empty",
+           ("test_a_mixed_disposition_with_an_empty_hold_list_is_refused",), "gen2/schema/export-bundle.schema.json",
+           '"then": {"required": ["open_adjudication_hold_ids"], "properties": {"open_adjudication_hold_ids": {"minItems": 1}}}',
+           '"then": {"required": ["open_adjudication_hold_ids"]}'),
       )),
 ]
 

@@ -189,9 +189,9 @@
           "then": {"properties": {"supporting_claim_ids": {"maxItems": 0}}}
         },
         {
-          "description": "A recorded conflict has an open or recorded adjudication item, not a silent average.",
+          "description": "A recorded conflict names at least one adjudication hold that owns resolving it, not a silent average: the list is required and may not be empty. Whether each id names the right retained hold is the assembler's and the store's check (Phase 3); a schema cannot see the holds.",
           "if": {"properties": {"disposition": {"const": "mixed"}}},
-          "then": {"required": ["open_adjudication_hold_ids"]}
+          "then": {"required": ["open_adjudication_hold_ids"], "properties": {"open_adjudication_hold_ids": {"minItems": 1}}}
         }
       ]
     },
