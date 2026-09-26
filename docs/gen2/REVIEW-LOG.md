@@ -171,3 +171,16 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-0b-repair-2-astr
 **Phase 1 authorization — explicitly NOT granted by this report, and explicitly why:** "0b no longer blocks it... It is not authorized to begin now solely by this report: BUILD-STATE still lists 0c as queued, and this review neither completes that task nor supplies the operator's approval." This is Astra correctly declining to overstep — accepting 0b doesn't imply anything about 0c or the Phase 0→1 operator gate.
 
 **All open operator items reconfirmed, none decided:** internal gen-1 symlinks (unanswered), queues missing `version` (unanswered), files-never-examined (recorded in store README, not implemented — confirmed present), live-state authorization / SQLite-vs-export / `accepted_support` general policy / C-13's normative amendment (all still pending, none touched this round).
+
+## 2026-09-26 — 0c review (Astra, xhigh) — BLOCK (Gates A + C), Gate B PASS
+Full report: `~/work/research-loops-public/private/reviews/gen2-0c-astra-review-20260925.md`. The first dispatch (2026-09-25) died on a one-off Codex 401 (cause unknown; auth is OAuth). The redispatch ran clean.
+
+**Independently verified:** `make gen2-check` exit 0 unpiped; 307 tests, 589/589 declared mutants, 14 schemas / 51 valid + 150 invalid fixtures, 1,845 production lines; no gen-1, gateway or engine paths changed. Four catalog mutants were rebuilt by hand and all were killed, including the replacement "env not checked" mutant, which does isolate the check path.
+
+**Findings:** A1 (HIGH): the deployment contract requires the unmodified gateway, but that gateway still falls back to `~/.vault-token` and reports a failed secret read the same way as a missing one, so the contract can't be met. A2 (HIGH): an unreadable webhook response validates as a settled failure with no reconciliation. A3: a `mixed` disposition validates with an empty hold list. A4: a `partial_write` receipt can claim an observed total. A5: the spec has no path for replaying an SQL export at an equal ordering pair after a lost receipt. A6: `GEN2_OPERATOR_LISTEN` binds container loopback, which the Compose topology can't reach. C1 (HIGH, Gate C): the mixed-disposition fixture still passes after its rule is removed, because two missing properties collapse into one declared signature. Astra demonstrated this with a counterfactual whole-tree run.
+
+**Accepted:** export kept separate from publication (the design); generating from the registry seed; the credential-posture pricing; the service-key table; 28 catalog tests plus 12 positive and 44 negative fixtures, within their stated bounds.
+
+**Coder questions ruled:** (2) the disposition vocabulary may stand as proposed; (3) no `cost_tier` field is needed to accept 0c; (5) the reader freshness envelope stays unextended; (4) port availability is for Trevor to confirm at deploy time, but A6 gets fixed now; (1) the boundary amendment is escalated to Trevor with a recommendation to adopt it with refinements. It only needs deciding before a phase implements export (Phase 3), so it does not block 0c.
+
+**Routed:** task `docs/gen2/tasks/0c-repair.md` to an Opus 5.5 coder (agent 9eb1ac80). A1's owner is the gateway repair work already in the phase plan (Phases 2 and 3), so it isn't sent to Trevor. The repair is a spec fix only; `gateway/` is untouched.
