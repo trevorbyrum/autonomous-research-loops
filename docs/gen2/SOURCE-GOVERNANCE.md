@@ -122,10 +122,11 @@ a green build. That gate exists because the gap it closes was real:
 
 **Step 6 — the credential.** The operator obtains the key by the steps the
 proposal recorded, and puts it in the secrets surface: one variable in the
-mounted `.env`, or a Vault path. A *failed* read of it is a dated
-`secrets backend failing` capability fact; a *successful* read that finds nothing
-is "no secret configured". Those two are never collapsed
-(`DEPLOYMENT-CONTRACT.md` §3.3).
+mounted `.env`. A Vault path is an option only once vault mode is admissible
+(`DEPLOYMENT-CONTRACT.md` §3.4; the current gateway image's vault backend is
+not). Under that contract a *failed* read is a dated `secrets backend failing`
+capability fact; a *successful* read that finds nothing is "no secret
+configured". Those two are never collapsed (§3.3).
 
 ## What each actor may not do
 

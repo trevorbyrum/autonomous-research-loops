@@ -46,7 +46,7 @@ and reports a dated capability fact when it cannot.
 | Service | What it is | Image | Referenced or ours |
 |---|---|---|---|
 | `engine` | Router (sole writer, owns the control store) + station supervisor + composition root. The operator command service (CLI/HTTP/MCP behind one service, design review §10) is exposed from here. | baked gen-2 image | ours |
-| `gateway` | A second instance of the federated research gateway (`gateway/research_gateway`), the only door to external research sources. Run as a service and reached over HTTP; never imported (B-2). | the gateway's own image (`gateway/deploy/Dockerfile`), unmodified | ours (separate instance from gen-1's) |
+| `gateway` | A second instance of the federated research gateway (`gateway/research_gateway`), the only door to external research sources. Run as a service and reached over HTTP; never imported (B-2). | the gateway's own image (`gateway/deploy/Dockerfile`). The current image is admissible in the `env` secrets mode only; `vault` mode needs a reviewed gateway release (§3.4) | ours (separate instance from gen-1's) |
 | `projector` | Outbox consumer: publishes approved generations to Neo4j and Qdrant, and hands approved bundles to the enabled export sinks (`docs/gen2/EXPORT-SINKS.md`). | baked gen-2 image, same image as `engine`, different entrypoint | ours |
 | `tier0` | The local NLI claim-vs-span screen. Optional: with it absent the engine records a dated capability fact and verification proceeds without the screen (the screen never gated a load-bearing claim anyway — BOUNDARIES.md *Tier-0 checker*). | its own pinned image | ours |
 | `gateway-db` | PostgreSQL for the gen-2 gateway instance only. | `postgres` pinned | ours |
@@ -176,10 +176,14 @@ gate is a Phase 1+ obligation; this file states what it will be run against.
 
 ## 3. Secrets
 
-Two backends, exactly as the gateway already implements
+Two backends, with the gateway's names and read path
 (`gateway/research_gateway/core/secrets.py`), extended to the engine's own
 secrets. Logical secret names live in the registry and in `deploy/gen2.env.example`;
 values never do.
+
+**Only `env` is admissible today.** The `vault` backend is not admissible for any
+service until its implementation passes §3.4. The current gateway's vault backend
+breaks both rules in §3.3, and the engine's does not exist yet.
 
 ### 3.1 The `env` backend
 
@@ -187,13 +191,16 @@ One mounted file, `deploy/gen2.env`, gitignored, `0400`, owned by the service
 user, passed to the containers that need it. Every name in it, with its
 grouping and comments, is generated: `deploy/gen2.env.example` (see
 `docs/gen2/SOURCE-CATALOG.md`). Source keys are
-`RESEARCH_GATEWAY_SECRET_<NAME>[_<FIELD>]` — the gateway's own scheme, because
-the gen-2 stack runs the gateway unmodified.
+`RESEARCH_GATEWAY_SECRET_<NAME>[_<FIELD>]`, the gateway's own scheme, which the
+gen-2 stack keeps. In this mode the current gateway image meets this contract
+as it is. `EnvBackend.get` reads the process environment, so a value is either
+present or absent. No read can fail and be mistaken for an absence.
 
 ### 3.2 The `vault` backend
 
 `RESEARCH_GATEWAY_SECRETS=vault` selects Vault for the gateway; the engine's
-equivalent is `GEN2_SECRETS=vault`. Settings, never values:
+equivalent is `GEN2_SECRETS=vault`. Neither may be selected until §3.4 is met.
+Settings, never values:
 
 | Setting | Meaning |
 |---|---|
@@ -205,12 +212,15 @@ equivalent is `GEN2_SECRETS=vault`. Settings, never values:
 
 Reads are `GET {addr}/v1/{mount}/data/{prefix}/{name}`; redirects are refused so
 a token is never re-sent elsewhere; successful reads cache 15 minutes and
-failures 1 minute, so a rotated key lands without a restart.
+failures 1 minute, so a rotated key lands without a restart. That much the
+current gateway already does.
 
 ### 3.3 The two outage-hardening rules
 
 These are not recommendations. They are the two rules the 2026-09-21..24 vault
-outage produced, and both are testable.
+outage produced, and both are testable. They are requirements on a service's
+vault backend, and the current gateway image meets neither. §3.4 is what has to
+change before any service runs in vault mode.
 
 **Rule 1 — every service names its own token file explicitly.** The gateway's
 `VaultBackend` falls back to `os.path.expanduser("~/.vault-token")` when
@@ -223,13 +233,19 @@ the engine and projector — each mounted read-only from a distinct path, each
 `0400`. A service whose backend is `vault` and whose token-file variable is
 unset **refuses to start**; it does not fall back to a home directory. That
 refusal is a startup error with the variable named, not a silent degradation.
+Setting `RESEARCH_GATEWAY_VAULT_TOKEN_FILE` in a deployment keeps the current
+gateway off its fallback, but it does not give that gateway the refusal: with
+the variable unset, the current image still reads the home directory.
 
 **Rule 2 — a failed secrets read is a dated `secrets backend failing`
 capability fact, never "no key configured".** The failure surface is exact:
 `VaultBackend._read` catches `OSError`/`ValueError` and returns `{}`, and `get`
 then returns `None` — which is the same value a source with no key configured
-produces. Everything downstream reads "no key". Under this contract the
-distinction is carried, not collapsed:
+produces. Everything downstream reads "no key". Setting the token file does
+not fix this. The engine cannot repair it downstream either: by the time a
+lane's result reaches the engine over HTTP, the gateway has already turned the
+failure into an absence. Under this contract the distinction is carried, not
+collapsed:
 
 - A read that *fails* (transport error, non-200, 403, unreadable token file,
   unparseable payload) records a capability fact
@@ -246,7 +262,70 @@ distinction is carried, not collapsed:
   `secrets backend failing since Sep 21 19:47 (403); 9 lanes degraded`.
 
 A backend that cannot tell those two cases apart is not admissible as a secrets
-backend in this stack.
+backend in this stack, and today that includes the current gateway image's
+`vault` backend.
+
+### 3.4 Vault mode waits for a reviewed release that passes these tests
+
+**Status today.** No service in this stack may run with `vault` selected. The
+current gateway image breaks both rules. With `RESEARCH_GATEWAY_VAULT_TOKEN_FILE`
+unset it falls back to `~/.vault-token` (`VaultBackend.__init__`). Every failed
+read (an unreadable token file, a transport error, a non-200, an unparseable
+payload) becomes `{}` and then `None`, the value of a missing key
+(`VaultBackend._read`, `get`). The engine's and projector's vault backend is
+gen-2 code that does not exist yet. Until the release below exists, the gen-2
+gateway runs with `RESEARCH_GATEWAY_SECRETS=env` and the engine with
+`GEN2_SECRETS=env`, both from the one mounted `.env` (§3.1).
+
+**What makes it admissible.** For the gateway: a reviewed gateway release that
+keeps the outcome of every secret read (a failed read is not an absent one),
+requires an explicit token file, and has no home-directory fallback. For the
+engine and projector: the gen-2 secrets backend, built to §3.3. Each becomes
+admissible only once it passes every test below with the vault backend selected.
+
+**Owner.** The gateway repair work in the adjudicated phase plan
+(`docs/gen2/BUILD-STATE.md`, "Phase plan"). This belongs to Phase 2's "gateway
+observations repair", because the read outcome decides what a lane reports; any
+part that touches the gateway's budget or shutdown paths falls to Phase 3's
+"gateway budget/shutdown repairs". This contract names the requirement and
+grants no authority to change gateway code. Authorizing that work and accepting
+its release are Trevor's. The engine's backend belongs to whichever phase first
+builds the engine's secret reads, and it passes the same tests.
+
+**Acceptance tests the release must pass.** Each runs against the service in
+its container with the vault backend selected, and each is a fixture, not an
+inspection:
+
+1. *No fallback.* Token-file variable unset, with a valid `~/.vault-token` under
+   `HOME`: the service refuses to start, names the variable, and never opens the
+   home-directory file.
+2. *An explicit file that cannot be read.* Token-file variable set to a missing
+   path, then to an unreadable file, at startup and after the file is removed
+   while running: the service refuses to start, or records each read as
+   *failing*. Never as *absent*.
+3. *Transport and status failures.* Vault unreachable, timing out, answering 403,
+   answering 5xx, and answering 200 with an unparseable body: each read is
+   *failing*, distinct from *absent*. It is surfaced as a dated
+   `secrets backend failing` capability fact with `since` (the first failure),
+   `last_success_at` and the affected lanes, and it alerts on the transition.
+4. *Genuinely absent.* Vault answers 404 for the path, or 200 with an entry that
+   lacks the field: the read is *absent* ("no secret configured for this name"),
+   does not alarm, and is distinct from every case in test 3.
+5. *The outcome survives the HTTP boundary.* When a request's lanes needed a
+   failing secret, the gateway's response says so per lane
+   (`secrets_backend_failing`; never `searched_empty`, never "no key
+   configured"). The engine records it as a search observation with
+   `error_class = 'secrets_backend_failing'` and never counts a zero.
+6. *The cache does not launder a failure.* A failure cached for its retry
+   interval is replayed as *failing*, not as *absent*, and a recovery moves the
+   fact back with its `last_success_at`.
+7. *Redirects are still refused*, so a token is never re-sent elsewhere
+   (regression).
+8. *The outage replay.* Every read answers 403 from a fixed time. From the first
+   failed read on, operator status reads
+   `secrets backend failing since <that time> (403); N lanes degraded`, and no
+   lane in that window reports `searched_empty` or adds a zero to any count or
+   denominator (INVARIANTS H-2, RG-4, RG-U).
 
 ---
 
@@ -375,8 +454,10 @@ incident; it does not undo completion and does not stop surveillance.
 
 - **No compose file, image or volume is committed by task 0c.** This is the
   specification they are built against. The `engine`, `projector` and `tier0`
-  images do not exist yet; the gen-2 `gateway` image is the existing gateway's,
-  unchanged.
+  images do not exist yet. The gen-2 `gateway` runs the existing gateway image in
+  the `env` secrets mode only.
+- **Vault mode for any service** waits for §3.4's acceptance tests. The gateway
+  release it needs is Phase 2/3 repair work, and authorizing it is Trevor's.
 - **Port defaults are a starting point**, chosen against one observation of one
   host on 2026-09-25. The operator confirms them.
 - **Migration and cutover** (freeze, import, reconcile, single-writer cutover)

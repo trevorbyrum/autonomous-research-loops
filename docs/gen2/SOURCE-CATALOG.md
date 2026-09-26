@@ -19,8 +19,8 @@ how a source gets *into* the registry.
 - **Environment variable names** reproduce the gateway's own scheme
   (`gateway/research_gateway/core/secrets.py`, `EnvBackend`): `RESEARCH_GATEWAY_SECRET_<NAME>` with the logical
   secret name upper-cased and `-` replaced by `_`, plus a `_<FIELD>` suffix for the two multi-field
-  credentials. The gen-2 stack runs the gateway service unmodified, so the gateway's names are the
-  gen-2 names.
+  credentials. The gen-2 stack runs the gateway's own service and keeps its scheme, so the gateway's
+  names are the gen-2 names.
 - **Which fields a credential has** comes from the registry's `auth` value, checked against the
   adapters that read it. An `auth` value the generator does not know is a build failure, not a
   source emitted without its key.
