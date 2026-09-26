@@ -86,7 +86,13 @@ hand out:
   and version, with the invocation that assessed it — or `unknown` with a reason.
   There is no numeric field in either shape, so a probability is unrepresentable
   rather than discouraged. This schema does not adopt a certainty scale; the
-  scheme is declared by the contract revision.
+  scheme is declared by the contract revision. It does not borrow GRADE's
+  certainty bands either. The methodology synthesis anchors GRADE (Guyatt et
+  al. 2011, GRADE guidelines 2) for question framing and outcome importance. It
+  also mentions GRADE's consistency and certainty-of-evidence domains (§4, and
+  §10b, where they are canonical but unanchored). Neither passage gives an
+  operational or validated mapping from those domains to an obligation's
+  confidence, and without one the bands would be a borrowed label.
 
 **Licensing is enforced in the bundle, per record.** A source's commercial verdict
 is a per-source registry fact; whether a particular retrieved record's *content*
@@ -96,13 +102,21 @@ licence). The bundle honours the per-record answer: a `supporting_quote` require
 `redistributable: true` as a constant, so a quote from prohibited or
 unknown-licence content cannot be represented at all. It is omitted, and the
 omission is listed in `content_policy.omitted_for_licence` with a count — an
-export that is thinner than the record says why it is thinner.
+export that is thinner than the record says why it is thinner. The constant
+refuses a quote whose flag is false or absent. It cannot establish that the
+flag is true of the quoted bytes. Checking that the flag and licence belong to
+the exact contributing payload the quote came from is the assembler's job
+(Phase 3). The assembler also carries the licence and attribution obligations
+with the quote. A reusable-metadata flag never licenses the full text of the
+paper it describes.
 
 **Open point for review.** The obligation `disposition` vocabulary
 (`supported` / `not_supported` / `mixed` / `insufficient_evidence` / `unknown`)
 is **proposed**. The authoritative dossier document is Phase-2 work; if it lands a
 different vocabulary, this becomes `export-bundle/2` rather than being edited in
-place. The schema's `$comment` says so.
+place. The schema's `$comment` says so. Astra's 0c review ruled that it may stand
+as proposed. Phase 2 must reconcile it with the authoritative dossier and
+assessment scheme.
 
 ## 3. The ExportSink contract
 
@@ -340,8 +354,36 @@ never settled by assumption.
    stores (Neo4j and Qdrant, named as such)". Export adds destinations that are
    not those two. This task deliberately did **not** edit `BOUNDARIES.md`: the
    drift rule says code and that file disagree through the amendment path, not by
-   a coder's edit. The proposed wording is in this task's completion report for
-   Astra and the operator to rule on.
+   a coder's edit. The proposed wording follows. It includes the refinements
+   Astra recommended in the 0c review (amendment table). It is a proposal:
+   adopting it is Trevor's decision, and it must be decided before any phase
+   implements the expanded projector role.
+   - *Definition*, add: "…and that delivers the same approved publication
+     generations to the operator-enabled export sinks
+     (`docs/gen2/EXPORT-SINKS.md`). An export is of the exact approved
+     publication revision (its approved revision *is* its source revision), not
+     merely of work that carries an approval id. Publication sinks are a closed
+     set; export sinks are operator-configured by name and closed by type."
+   - *Owns*, add: "for export: delivery ordered by (publication generation,
+     export options revision), with equal-pair replay decided by the immutable
+     manifest id and bundle content hash; per-sink export receipts; the export
+     bundle assembled by code from committed state. Its authoritative records
+     (export manifests, receipts, watermarks) are persisted through the router's
+     controlled write interface. This ownership grants no direct store writes."
+   - *Must never*, add: "serve gen-2 research retrieval or accepted-evidence reads
+     from an export sink; change completion or surveillance because an export
+     delivery failed (delivery status is still reported per destination);
+     deliver source content unless the record says that exact exported content
+     or provenance member may be redistributed, keeping its licence and
+     attribution obligations."
+   - *Checked by*, add: "export fixtures for re-delivery, equal-pair replay after
+     a lost receipt (acknowledged without a rewrite; conflicting content refused
+     as a conflict), stale ordering pairs, ignored tombstones, unknown outcomes,
+     partial-count fidelity, licence omission, and the binding of publication
+     approval to exported content."
+   - Optional second amendment, *Operator / Owns*, add: "which export sinks are
+     enabled and what each topic exports; whether a proposed research source
+     enters the gateway's registry."
 3. **The adapters, with Gate C tests** whose failure modes are named up front:
    re-delivery of the same pair, an old retry after a newer one, a tombstone the
    sink ignores, a mid-transaction abort, a response that never arrives, a
