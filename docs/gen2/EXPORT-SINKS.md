@@ -189,7 +189,8 @@ The schema holds these rules. A failure's count must be known: a `partial` count
 for `partial_write`, an observed zero for every other class. An unknown cause
 appears only on an unknown outcome. What counts as authoritative depends on the
 adapter; §5 defines it for each shipped adapter, and a bespoke sink's review must
-define it for that sink.
+define it for that sink. For `webhook_http` it is a protocol the receiver must
+implement, because the engine cannot observe the receiver's store (§5.3).
 
 **A dead sink is a dated capability incident.** Every failure and every unknown
 outcome names a `capability_facts` row with its `since` time, and the projector
@@ -305,41 +306,163 @@ destination is mounted config; there is no credential.
 
 ### 5.3 `webhook_http`
 
-One POST per manifest, carrying the manifest and the bundle, with the manifest id
-as an `Idempotency-Key` header so the receiver can dedupe. Bearer token from the
-secrets surface; endpoint URL from mounted config. The adapter never follows a
-redirect (a redirect could re-send the bearer token elsewhere; the gateway's vault
-client already refuses redirects for the same reason).
+One POST per manifest, carrying the manifest and the bundle. The manifest id
+also travels as an `Idempotency-Key` header, for the receiver's logs; the
+receiver's dedupe is the atomic step below, not a key lookup. Bearer token from
+the secrets surface; endpoint URL from mounted config. The adapter never
+follows a redirect (a redirect could re-send the bearer token elsewhere; the
+gateway's vault client already refuses redirects for the same reason).
 
-**What is authoritative.** Only a final status line read in full from the
-configured endpoint, on the connection that carried this request, settles
-anything. A body is not needed, and a body the adapter cannot parse does not
-downgrade a readable 2xx or 4xx.
+An HTTP status by itself establishes nothing about what a receiver did. A
+`202 Accepted` can precede processing that later fails (RFC 9110 §15.3.3), a
+generic endpoint may answer 2xx to anything, and a 4xx can follow a partly
+applied request. The engine cannot see the receiver's store, so the §3
+ordering rule and the settlement rule must both be kept by the receiver.
+**A `webhook_http` sink is admissible only if its endpoint implements the
+receiver protocol below.** Admission needs evidence for the whole protocol
+before the sink is enabled; the acceptance cases at the end of this section
+say what is run live and what needs the receiver's own tests. Phase 3 builds
+the runner with the adapter. Anything the operator
+puts in front of the receiver (a proxy, an auth gateway) is part of the
+endpoint for this purpose. An endpoint that cannot meet the protocol is not
+an admissible webhook sink, whatever it answers. That includes one that only
+queues work, cannot keep the per-topic evidence, or cannot apply a manifest
+all at once. The no-stale-overwrite rule is not relaxed for it.
 
-| What the adapter observed | Authoritative? | Receipt |
-|---|---|---|
-| Nothing was sent: the name did not resolve, the connection was refused, or TLS setup or the connect failed or timed out before any byte of the request was written | not needed: known not applied | `failed`, `unreachable` or `timeout`, observed 0 |
-| A 2xx | **acknowledgement** of the whole request, tombstones included (they travel in it) | `delivered`; `written` is the number of records the request carried |
-| 401 or 403 | **refusal** | `failed`, `auth_failed`, observed 0 |
-| 429 | **refusal** | `failed`, `quota`, observed 0 |
-| 409 | **refusal**: the receiver holds a different request under this key | `failed`, `conflict`, observed 0 |
-| Any other 4xx | **refusal**: the receiver says it did not apply the request | `failed`, `refused`, observed 0 |
-| A 3xx (never followed) or a 5xx | **no**: a 303 can follow a POST that was processed, and a 5xx says nothing reliable about whether the receiver applied it | `outcome_unknown`, `unauthoritative_response` |
-| A response whose status line could not be read | **no** | `outcome_unknown`, `unreadable_response` |
-| No response after the request was sent (closed, reset, timed out) | **no** | `outcome_unknown`, `no_response_after_send` |
-| The projector stopped after sending and before reading | **no** | `outcome_unknown`, `terminated_after_send` |
+**The receiver protocol, `export-webhook/1`.**
 
-The engine holds no sink-side evidence of its own for a webhook. For the §3
-ordering rule, the projector compares the incoming pair with the highest pair
-this sink has *delivered* according to the engine's own receipts. A lower pair
-is `skipped_superseded` and is not sent; an equal or higher one is sent. The
-receiver's idempotency is what makes the equal case and reconciliation safe.
-The receiver contract is this: a repeated `Idempotency-Key` whose request was
-already applied is answered with a 2xx and not applied twice, and one whose
-stored request differs is answered with a 409. Reconciling an unknown outcome
-means re-sending the same request under the same key until an authoritative
-answer arrives. Until then the attempt stays `outcome_unknown` under its hold;
-it is never settled by assumption.
+1. *Retained evidence.* The receiver durably keeps, per topic, what §5.1's
+   `export_sink_generation` row keeps. That is the highest
+   `(generation, options_revision)` it has applied, which never decreases,
+   and the identity of the delivery that set it: `export_manifest_id`, the
+   bundle `content_hash`, `tombstone_count` and `tombstone_digest` (defined
+   as in §5.1). The records and tombstones it applied are kept beside it.
+2. *One atomic step per request.* The receiver reads that evidence, compares
+   the request's pair and identity with it, and takes exactly one of the §3
+   branches, in one atomic, durable step. The step is serialized per topic
+   against every other request for that topic; §5.1's transaction with its
+   checked conditional advance is one way to do it.
+   - **Lower:** nothing is applied.
+   - **Equal, all four identity members equal:** nothing is rewritten; the
+     earlier application stands.
+   - **Equal, any member different:** nothing is applied.
+   - **Greater, or nothing stored:** every record and every tombstone in the
+     manifest is applied, and the stored pair and identity advance, together.
+     Otherwise none of it happens.
+
+   Because the step is serialized, two requests for one topic never both
+   read the same stored pair and both advance: the second compares against
+   what the first stored. The result does not depend on the order requests
+   were dispatched or arrived in, or on any check the engine made before
+   sending.
+3. *Answers name the branch, and are sent only once its outcome is durable.*
+
+   | Receiver's branch | Response | Receipt |
+   |---|---|---|
+   | Greater, or nothing stored: applied now | `200`, header `Export-Webhook-Result: applied` | `delivered`; `written` is observed, the number of records the bundle carries; tombstones acknowledged |
+   | Equal, same identity: applied earlier | `200`, `Export-Webhook-Result: already_applied` | `delivered`, the same count, tombstones acknowledged. The stored identity is this manifest's, bundle hash and tombstone digest included, so what the receiver holds is this bundle, whole |
+   | Equal, different identity | `409`, `Export-Webhook-Result: conflict` | `failed`, `conflict`, observed 0, with a capability fact and a hold |
+   | Lower | `409`, `Export-Webhook-Result: superseded` | `skipped_superseded`, observed 0 |
+
+4. *A refusal means nothing of this request was applied.* The receiver
+   refuses only before the atomic step starts, or after that step rolled
+   back. The refusals are exactly these: `401` or `403` (the credential),
+   `429` (rate or quota), and `400`, `404`, `405`, `413`, `415` or `422`
+   (the request cannot be routed or read, or does not validate as
+   `export-manifest/1` with `export-bundle/1`, the latter including a bundle
+   whose last record fails after earlier ones were read). They need no
+   result header, because they claim nothing about the store beyond "none of
+   this".
+
+**What the adapter concludes.** The status line and the result header, read in
+full from the configured endpoint on the connection that carried this request,
+are all it reads. A body is not needed, and one it cannot parse changes
+nothing.
+
+| What the adapter observed | Receipt |
+|---|---|
+| Nothing was sent: the name did not resolve, the connection was refused, or TLS setup or the connect failed or timed out before any byte of the request was written | `failed`, `unreachable` or `timeout`, observed 0 |
+| `200` with `Export-Webhook-Result: applied` or `already_applied` | `delivered`, as in the protocol table |
+| `409` with `Export-Webhook-Result: conflict` | `failed`, `conflict`, observed 0 |
+| `409` with `Export-Webhook-Result: superseded` | `skipped_superseded`, observed 0 |
+| `401` or `403` | `failed`, `auth_failed`, observed 0 |
+| `429` | `failed`, `quota`, observed 0 |
+| `400`, `404`, `405`, `413`, `415` or `422` | `failed`, `refused`, observed 0 |
+| Anything else that was read: `202` or any other 2xx; a `200` or `409` whose result header is missing, unrecognised or does not match its status; any other 4xx; a 3xx (never followed); a 5xx | `outcome_unknown`, `unauthoritative_response` |
+| A response whose status line could not be read | `outcome_unknown`, `unreadable_response` |
+| No response after the request was sent (closed, reset, timed out) | `outcome_unknown`, `no_response_after_send` |
+| The projector stopped after sending and before reading | `outcome_unknown`, `terminated_after_send` |
+
+**Durable enqueueing is not delivery.** A receiver that has queued a request
+has not applied it, and `export-delivery-receipt/1` has no status that says
+"queued". An answer given once the request is queued but before the atomic
+step has committed is a `202`, or a response without a branch result. Either
+way the attempt is `outcome_unknown` with `unauthoritative_response`:
+`written` unknown, tombstones not acknowledged, a capability fact and a hold.
+A receiver may queue internally, but it may not answer `200` until the step
+has committed. Counting a durable enqueue as delivery would need its own
+status and count semantics in a new receipt version; this contract defines
+neither.
+
+**Ordering, crashes and reconciliation.** The receiver's step is the
+correctness boundary for §3. The projector may still skip a pair lower than
+one this sink has a `delivered` receipt for, recording `skipped_superseded`
+without sending. That is sound, because the receiver's stored pair never
+decreases, but it is only an optimization: it cannot fence a request already
+dispatched, and every equal or higher pair is sent for the receiver to decide.
+If the receiver crashes inside the step, nothing was applied; if it crashes
+after the commit and before answering, the application stands. The adapter
+cannot tell these apart, so both are `outcome_unknown`. Reconciling one is a
+new attempt that re-sends the same manifest and bundle, and the branch it
+lands in is the answer, as for SQL. `already_applied` means an earlier attempt
+of this manifest was applied, and `applied` means none was until now.
+`superseded` means newer material is held. `conflict` means this pair already
+names another export. Each re-send has its own receipt. The unknown receipt is
+never edited, and its hold stays until an attempt settles.
+
+**Webhook acceptance cases (Phase 3).** These run in full against the adapter
+with a test receiver whose store the test can read and whose step it can
+crash. Against a real endpoint, as its admission check, what can be driven
+from outside runs live: every answer in the two tables, both ordering traces
+(the older request is held by withholding the rest of its body until the
+newer one is answered), and re-sends answering `already_applied`. The rest,
+the store's contents and a crash inside the step, needs the receiver's own
+reviewed tests. The first case's receiver is deliberately non-conforming.
+
+- **Queued-then-rejected.** The receiver answers `202 Accepted` once it has
+  queued the request, applies nothing, and later rejects the queued work.
+  This is the re-review's counterexample. The receipt is `outcome_unknown`,
+  `unauthoritative_response`, `written` unknown, tombstones not acknowledged,
+  with a capability fact and a hold. It is never `delivered`, and the later
+  rejection edits nothing. A `200` with no result header, from a generic
+  endpoint, gives the same receipt. Either endpoint fails admission.
+- **Whole-request acknowledgement.** After `200 applied`, the receiver's
+  store holds every record and every tombstone of the manifest and the
+  advanced pair and identity, and the receipt's count equals the records the
+  bundle carries. A crash injected inside the step, after some records were
+  staged, leaves none of them, no tombstone and no advance; the receipt is
+  `outcome_unknown`, and a re-send answers `applied`. A crash after the
+  commit and before the answer is `outcome_unknown` too, and the re-send
+  answers `already_applied` without rewriting anything.
+- **Atomic refusal.** For each refusal the protocol lists, and for both `409`
+  results, the receiver's store is the same before and after. That includes
+  a bundle whose last record fails validation after the earlier ones were
+  read. The receipt is the mapped `failed` or `skipped_superseded`, observed 0.
+- **Equal pair, different manifest.** This is the re-review's first ordering
+  trace. M1 at `(3,2)` is applied with content A. M2 at `(3,2)`, with a
+  different manifest id, content B and a fresh key, is sent, since the
+  projector sends equal pairs. The receiver answers `409 conflict` and still
+  holds M1's content A; the receipt is `failed`, `conflict`, observed 0, with
+  a capability fact and a hold. The same manifest id and pair with a
+  different bundle hash, and a different tombstone digest alone, are
+  conflicts too.
+- **Older in-flight request lands after a newer one.** This is the
+  re-review's second trace. A request for `(3,1)` is dispatched and held
+  before the receiver's step. `(4,1)` is then applied and acknowledged, and
+  `(3,1)` is released. The receiver answers `409 superseded` and its state
+  stays at `(4,1)`; the receipt is `skipped_superseded`, observed 0. A second
+  run releases both requests into the step together, many times over, and
+  the final state is `(4,1)` every time.
 
 ## 6. What Phase 3 still owes
 
@@ -393,7 +516,10 @@ it is never settled by assumption.
    write reported as a total, equal-pair replay after a lost receipt
    (acknowledged without a rewrite, tombstones included), an equal pair with
    different content (refused as a conflict), two concurrent deliveries racing
-   for the watermark, a destination whose schema version does not match.
+   for the watermark, a destination whose schema version does not match. For
+   `webhook_http`, the five named receiver cases at the end of §5.3, which
+   are also the admission check run against each endpoint before it is
+   enabled.
 4. **The GraphRAG ingest replacement.** The external script the design review
    examined is what this contract exists to retire. Retiring it is a Phase-3
    cutover, and until it happens nothing here changes what that script does.
