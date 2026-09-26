@@ -2,14 +2,14 @@
   "fixture": {
     "schema": "export-delivery-receipt.schema.json",
     "expect": "valid",
-    "tests": "A5 (Astra 0c review): the sink already holds this ordering pair under a different manifest or bundle content hash. One pair may never name two exports, so the sink writes nothing and refuses: a settled failure of class conflict, an observed zero, a dated capability fact and a hold for the operator (EXPORT-SINKS.md §3, §5.1)"
+    "tests": "A5 (Astra 0c review): the destination already holds this ordering pair under a different manifest or bundle content hash. One pair may never name two exports, so the destination writes nothing and refuses: a settled failure of class conflict, an observed zero, a dated capability fact and a hold for the operator (EXPORT-API.md §4, §6.1)"
   },
   "instance": {
-    "receipt_version": "export-delivery-receipt/1",
+    "receipt_version": "export-delivery-receipt/2",
     "export_receipt_id": "exr_01J8ZQC8X1",
-    "export_manifest_id": "exm_01J8ZQC2J3",
+    "manifest_id": "man_01J8ZQC2J3",
     "topic_id": "fleet-a:intake-latency",
-    "sink": {"sink_id": "warehouse", "sink_type": "generic_sql"},
+    "connector": {"connector_id": "warehouse", "connector_type": "sql"},
     "generation": 3,
     "options_revision": 2,
     "attempt": 1,

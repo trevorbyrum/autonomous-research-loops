@@ -5,11 +5,11 @@
     "tests": "P-2: a delivered attempt acknowledges the tombstones, reports an observed count, carries no error and leaves nothing to reconcile"
   },
   "instance": {
-    "receipt_version": "export-delivery-receipt/1",
+    "receipt_version": "export-delivery-receipt/2",
     "export_receipt_id": "exr_01J8ZQB2R5",
-    "export_manifest_id": "exm_01J8ZQA1Q4",
+    "manifest_id": "man_01J8ZQA1Q4",
     "topic_id": "fleet-a:intake-latency",
-    "sink": {"sink_id": "warehouse", "sink_type": "generic_sql"},
+    "connector": {"connector_id": "warehouse", "connector_type": "sql"},
     "generation": 3,
     "options_revision": 2,
     "attempt": 1,

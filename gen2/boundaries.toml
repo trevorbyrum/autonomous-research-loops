@@ -72,7 +72,7 @@ restricted_stdlib = [
   "os.system", "os.popen", "os.fork", "os.forkpty", "os.kill", "os.killpg",
   "os.exec*", "os.spawn*", "os.posix_spawn*", "os.startfile",
   # network (Gateway is the only door to research sources; decision providers,
-  # the tier-0 service and projection sinks are the other declared endpoints)
+  # the tier-0 service and export connectors are the other declared endpoints)
   "socket", "_socket", "ssl", "_ssl", "http.client", "http.server",
   "urllib.request", "socketserver", "xmlrpc", "wsgiref", "ftplib", "smtplib",
   "imaplib", "poplib", "nntplib", "telnetlib",
@@ -158,10 +158,10 @@ may_import = ["core"]
 stdlib_capabilities = ["socket", "ssl", "http.client", "urllib.request"]
 third_party = []
 
-[modules.projector]
-path = "gen2/projector"
-purpose = "Outbox consumer publishing approved generations to the physical sinks (Neo4j, Qdrant); per-sink receipts are acknowledged through the ControlBackend protocol, never by writing the store."
-boundaries = ["Projector / publication"]
+[modules.exporter]
+path = "gen2/exporter"
+purpose = "Outbox consumer driving the one export API (docs/gen2/EXPORT-API.md; operator ruling 2026-09-26): delivers each approved manifest's bundle through the one connector contract to every connector the manifest names, identically. Ships the reference connectors only (sql, jsonl_file, webhook); a connector for any other database is a reviewed extension outside the core, so no database product is named or imported here. Delivery receipts are acknowledged through the ControlBackend protocol, never by writing the store, and nothing a connector holds is ever read back as research: no engine module may import this one except the composition root."
+boundaries = ["Exporter"]
 may_import = ["core"]
 stdlib_capabilities = ["socket", "ssl", "http.client", "urllib.request"]
 third_party = []
@@ -184,9 +184,9 @@ third_party = []
 
 [modules.app]
 path = "gen2/app"
-purpose = "Composition root: constructs the router (which owns its store) and hands the core ControlBackend protocol to supervisor, projector and operator. Exists so router and supervisor never import each other. No domain logic."
+purpose = "Composition root: constructs the router (which owns its store) and hands the core ControlBackend protocol to supervisor, exporter and operator. Exists so router and supervisor never import each other. No domain logic."
 boundaries = []
-may_import = ["core", "router", "supervisor", "decision", "tier0", "gateway_client", "projector", "operator"]
+may_import = ["core", "router", "supervisor", "decision", "tier0", "gateway_client", "exporter", "operator"]
 stdlib_capabilities = []
 third_party = []
 

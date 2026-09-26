@@ -22,8 +22,9 @@ That happens in one of two ways, and they prove different things:
 - An isolated negative declares one error, from its rule alone. The kill
   means the negative now validates: the mutant admits a bad document, and
   the negative depends on that rule. Every export negative except the
-  combined unreadable-response regression is of this kind, and so are the
-  three single-member identity negatives.
+  combined unreadable-response regression is of this kind (the manifest and
+  freshness-envelope negatives of task 0d included), and so are the three
+  single-member identity negatives.
 - A combined negative declares two or three errors, and the negative is
   still refused after the removal, only with fewer errors than declared. The
   kill means the checker noticed that rule's contribution go missing. It
@@ -60,11 +61,17 @@ ENV = {**os.environ, "PYTHONPATH": str(REPO)}
 # Module globals: tools/gen2_mutations.py points one at a mutated copy.
 EXPORT_BUNDLE_SCHEMA = SCHEMAS / "export-bundle.schema.json"
 EXPORT_RECEIPT_SCHEMA = SCHEMAS / "export-delivery-receipt.schema.json"
+EXPORT_MANIFEST_SCHEMA = SCHEMAS / "export-manifest.schema.json"
+FRESHNESS_SCHEMA = SCHEMAS / "freshness-envelope.schema.json"
+COMMON_SCHEMA = SCHEMAS / "common.schema.json"
 DECISION_RECEIPT_SCHEMA = SCHEMAS / "decision-receipt.schema.json"
 INVOCATION_SCHEMA = SCHEMAS / "invocation.schema.json"
 OVERRIDES = {
     "EXPORT_BUNDLE_SCHEMA": "export-bundle.schema.json",
     "EXPORT_RECEIPT_SCHEMA": "export-delivery-receipt.schema.json",
+    "EXPORT_MANIFEST_SCHEMA": "export-manifest.schema.json",
+    "FRESHNESS_SCHEMA": "freshness-envelope.schema.json",
+    "COMMON_SCHEMA": "common.schema.json",
     "DECISION_RECEIPT_SCHEMA": "decision-receipt.schema.json",
     "INVOCATION_SCHEMA": "invocation.schema.json",
 }
@@ -138,6 +145,85 @@ class FixtureCounterfactualTest(unittest.TestCase):
     def test_a_settled_result_carrying_an_unknown_cause_is_refused(self) -> None:
         self.assertBehaveAsDeclared("export-delivery-receipt", "valid-webhook-known-refusal.json",
                                     "invalid-settled-result-carrying-an-unknown-cause.json")
+
+    # --- export-manifest/2: the one outbound manifest (task 0d, operator ruling
+    # 2026-09-26). Every rule publication-manifest/1 and export-manifest/1 held
+    # keeps an isolated negative here; the connector vocabulary is closed.
+    def test_an_undeclared_connector_type_is_refused(self) -> None:
+        self.assertBehaveAsDeclared("export-manifest", "valid-correction-generation-2.json", "invalid-undeclared-connector-type.json")
+
+    def test_an_extension_connector_without_its_implementation_is_refused(self) -> None:
+        self.assertBehaveAsDeclared("export-manifest", "valid-superseding-options-revision-2.json",
+                                    "invalid-extension-without-an-implementation.json")
+
+    def test_a_reference_connector_claiming_an_implementation_is_refused(self) -> None:
+        self.assertBehaveAsDeclared("export-manifest", "valid-superseding-options-revision-2.json",
+                                    "invalid-reference-connector-claiming-an-implementation.json")
+
+    def test_a_connector_id_that_cannot_spell_its_variable_is_refused(self) -> None:
+        self.assertBehaveAsDeclared("export-manifest", "valid-first-export-generation-3.json", "valid-single-character-connector-id.json",
+                                    "invalid-connector-id-that-cannot-spell-its-variable.json")
+
+    def test_an_export_for_no_connector_is_refused(self) -> None:
+        self.assertBehaveAsDeclared("export-manifest", "valid-first-export-generation-3.json", "invalid-export-with-no-connectors.json")
+
+    def test_an_export_without_an_approval_is_refused(self) -> None:
+        self.assertBehaveAsDeclared("export-manifest", "valid-correction-generation-2.json", "invalid-export-without-an-approval.json")
+
+    def test_a_first_manifest_with_tombstones_is_refused(self) -> None:
+        self.assertBehaveAsDeclared("export-manifest", "valid-first-export-generation-3.json", "invalid-first-export-with-tombstones.json")
+
+    def test_generation_1_supersedes_only_generation_1(self) -> None:
+        """Both directions: generation 1 superseding generation 2 is refused,
+        and generation 1 superseding its own lower options revision is not (the
+        retired publication rule, 'generation 1 supersedes nothing', would
+        refuse that re-export)."""
+        self.assertBehaveAsDeclared("export-manifest", "valid-generation-1-options-revision-2.json",
+                                    "invalid-generation-1-superseding-a-later-generation.json")
+
+    def test_a_supersession_names_its_whole_pair(self) -> None:
+        self.assertBehaveAsDeclared("export-manifest", "valid-correction-generation-2.json",
+                                    "invalid-supersedes-without-its-options-revision.json")
+
+    def test_delivery_state_is_not_a_manifest_field(self) -> None:
+        self.assertBehaveAsDeclared("export-manifest", "valid-correction-generation-2.json", "invalid-delivery-state-in-manifest.json")
+
+    def test_the_retired_publication_manifest_version_is_refused(self) -> None:
+        self.assertBehaveAsDeclared("export-manifest", "valid-completion-generation-1.json",
+                                    "invalid-retired-publication-manifest-version.json")
+
+    # --- freshness-envelope/2: engine reads are served from the local record,
+    # and the three facts stay separate (task 0d re-scope).
+    def test_complete_export_delivery_needs_every_connector_delivered(self) -> None:
+        self.assertBehaveAsDeclared("freshness-envelope", "valid-partial-export-delivery.json", "invalid-complete-with-a-failed-connector.json")
+
+    def test_a_delivered_connector_names_its_pair(self) -> None:
+        self.assertBehaveAsDeclared("freshness-envelope", "valid-partial-export-delivery.json", "invalid-delivered-without-a-pair.json")
+
+    def test_a_read_cannot_claim_a_projected_revision(self) -> None:
+        self.assertBehaveAsDeclared("freshness-envelope", "valid-partial-export-delivery.json", "invalid-projected-revision-claimed.json")
+
+    def test_no_connectors_lists_none(self) -> None:
+        self.assertBehaveAsDeclared("freshness-envelope", "valid-no-connectors-enabled.json", "invalid-no-connectors-listing-one.json")
+
+    def test_a_delivery_status_is_about_at_least_one_connector(self) -> None:
+        self.assertBehaveAsDeclared("freshness-envelope", "valid-partial-export-delivery.json",
+                                    "invalid-partial-delivery-listing-no-connector.json")
+
+    def test_nothing_approved_means_nothing_served(self) -> None:
+        self.assertBehaveAsDeclared("freshness-envelope", "valid-partial-export-delivery.json", "invalid-served-without-an-approval.json")
+
+    def test_completion_is_at_a_dossier_revision(self) -> None:
+        self.assertBehaveAsDeclared("freshness-envelope", "valid-partial-export-delivery.json", "invalid-completed-without-dossier.json")
+
+    def test_an_overdue_feed_is_not_current(self) -> None:
+        self.assertBehaveAsDeclared("freshness-envelope", "valid-dead-feed-degraded.json", "invalid-current-with-overdue-feed.json")
+
+    def test_degraded_currency_names_a_feed(self) -> None:
+        self.assertBehaveAsDeclared("freshness-envelope", "valid-early-feed-failure-degraded.json", "invalid-degraded-without-reason.json")
+
+    def test_feed_issue_reasons_are_closed(self) -> None:
+        self.assertBehaveAsDeclared("freshness-envelope", "valid-early-feed-failure-degraded.json", "invalid-unlisted-feed-reason.json")
 
     # --- the 0c-repair audit: 0a negatives whose one declared signature hid
     # two or three errors. Now counted, each rule's removal is noticed.

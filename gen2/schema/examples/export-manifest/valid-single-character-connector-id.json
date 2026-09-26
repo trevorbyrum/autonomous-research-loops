@@ -1,0 +1,39 @@
+{
+  "fixture": {
+    "schema": "export-manifest.schema.json",
+    "expect": "valid",
+    "tests": "a one-character connector id is representable (GEN2_SECRET_CONNECTOR_S is a legal variable), so the id pattern does not silently impose a minimum length"
+  },
+  "instance": {
+    "manifest_version": "export-manifest/2",
+    "manifest_id": "man_01J8ZQ90C3",
+    "topic_id": "fleet-a:intake-latency",
+    "artifact_kind": "checkpoint_publication",
+    "generation": 2,
+    "options_revision": 1,
+    "source": {
+      "revision": 9,
+      "content_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "approval": {
+      "operator_decision_id": "opd_chkp0004",
+      "approved_revision": 9
+    },
+    "bundle": {
+      "bundle_id": "exb_01J8ZQ90C3",
+      "bundle_version": "export-bundle/1",
+      "content_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    "expected_connectors": {
+      "s": {
+        "connector_type": "jsonl_file"
+      }
+    },
+    "supersedes": null,
+    "tombstones": [],
+    "created_at": "2026-09-22T14:05:00Z",
+    "hash_contract": {
+      "canonicalization": "jcs-rfc8785/1"
+    }
+  }
+}

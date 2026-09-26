@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://research-loops.invalid/gen2/schema/freshness-envelope.schema.json",
-  "$comment": "flow: S8 publication contract items 3-5 (reader freshness envelope; three independent facts; unapproved material disclosed, not served); S8 surveillance liveness; §4.3 (absence is never zero) | boundaries: Projector / publication; Operator | design-review: §9 (readers honor the approved generation; completion and index-delivery health separately visible) | adjudication: (b)2 (replacement S8 publication contract, after the stale-projection incident); (a)K-A3 | methodology: §5 (canonical vs projected revision) | invariants: P-3; P-4; P-6; RG-U",
+  "$comment": "flow: S8 publication contract items 3-5 as amended by operator ruling 2026-09-26 (engine readers read the local record; three independent facts; unapproved material disclosed, not served); S8 surveillance liveness; §4.3 (absence is never zero) | boundaries: Exporter; Operator | design-review: §9 (readers honor the approved revision; completion and delivery health separately visible) | adjudication: (b)2 (replacement S8 publication contract, after the stale-projection incident); (a)K-A3 | methodology: §5 (canonical vs projected revision) | invariants: P-3; P-4; P-6; RG-U | note: freshness-envelope/2, re-scoped by operator ruling 2026-09-26. The engine never reads research back from any external database, so the envelope no longer describes a projection: /1's projected_revision and mixed_generation are retired (a read of the one local record, in one transaction, has no second copy to lag and cannot mix generations), and its physical-sink map becomes the per-connector export delivery fact. What keeps its meaning stays: which approved revision a read serves, whether newer unapproved material exists, and the three facts",
   "title": "Reader freshness envelope",
-  "description": "Returned with every read of published material. Scientific completion at a dossier revision, current publication delivery, and surveillance currency as of a time are three separate facts: a failed sink makes publication partial without touching completion, and a dead feed makes currency degraded or unknown without rewriting history. Unknown delivery or currency is reported as unknown, never as delivered/current.",
+  "description": "Returned with every engine read of a topic's approved material, which is always served from the engine's own record. Scientific completion at a dossier revision, current export delivery, and surveillance currency as of a time are three separate facts: a failed or unknown connector delivery makes export delivery partial or unknown without touching completion, and a dead feed makes currency degraded or unknown without rewriting history. Unknown delivery or currency is reported as unknown, never as delivered/current. Nothing here describes what an external database holds beyond what its connector's receipts establish, and no engine read is served from one.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -11,59 +11,32 @@
     "topic_id",
     "generated_at",
     "source_revision",
-    "projected_revision",
     "approval_status",
-    "manifest_generation_served",
-    "sinks",
-    "mixed_generation",
+    "approved_revision_served",
     "newer_unapproved_material",
     "facts"
   ],
   "properties": {
-    "envelope_version": {"const": "freshness-envelope/1"},
+    "envelope_version": {"const": "freshness-envelope/2"},
     "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
     "generated_at": {"$ref": "common.schema.json#/$defs/timestamp"},
-    "source_revision": {"$ref": "common.schema.json#/$defs/revision"},
-    "projected_revision": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/revision"}]},
+    "source_revision": {
+      "description": "The local record's current revision of the topic's publishable material, approved or not.",
+      "$ref": "common.schema.json#/$defs/revision"
+    },
     "approval_status": {"enum": ["approved", "no_approved_revision"]},
-    "manifest_generation_served": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/generation", "minimum": 1}]},
-    "sinks": {
-      "description": "Keyed by physical sink, so a sink cannot be reported twice with contradictory statuses.",
-      "type": "object",
-      "minProperties": 1,
-      "propertyNames": {"$ref": "common.schema.json#/$defs/sink"},
-      "additionalProperties": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["delivered_generation", "last_successful_delivery_at", "status"],
-        "properties": {
-          "delivered_generation": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/generation", "minimum": 1}]},
-          "last_successful_delivery_at": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/timestamp"}]},
-          "status": {"enum": ["delivered", "pending", "failed", "unknown"]}
-        },
-        "if": {"properties": {"status": {"const": "delivered"}}},
-        "then": {"properties": {"delivered_generation": {"type": "integer"}, "last_successful_delivery_at": {"type": "string"}}}
-      }
+    "approved_revision_served": {
+      "description": "The approved revision whose material this read serves, read from the local record. Every read names what it served (P-3).",
+      "oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/revision"}]
     },
-    "mixed_generation": {
-      "description": "Retrieval spanning generations is detected and either pinned to one coherent generation or reported degraded.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["detected", "resolution"],
-      "properties": {
-        "detected": {"type": "boolean"},
-        "resolution": {"enum": ["not_applicable", "pinned", "degraded"]}
-      },
-      "allOf": [
-        {"if": {"properties": {"detected": {"const": true}}}, "then": {"properties": {"resolution": {"enum": ["pinned", "degraded"]}}}},
-        {"if": {"properties": {"detected": {"const": false}}}, "then": {"properties": {"resolution": {"const": "not_applicable"}}}}
-      ]
+    "newer_unapproved_material": {
+      "description": "Newer material exists that is not approved. It is disclosed, never served as accepted evidence (P-5).",
+      "type": "boolean"
     },
-    "newer_unapproved_material": {"type": "boolean"},
     "facts": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["completion", "publication", "surveillance_currency"],
+      "required": ["completion", "export_delivery", "surveillance_currency"],
       "properties": {
         "completion": {
           "type": "object",
@@ -77,11 +50,59 @@
           "if": {"properties": {"status": {"const": "completed"}}},
           "then": {"properties": {"dossier_revision": {"type": "integer"}, "outcome": {"type": "string"}}}
         },
-        "publication": {
+        "export_delivery": {
+          "description": "The per-connector delivery fact, from the exporter's receipts and the connector watermarks - never from reading a connector's store. `no_connectors`: no connector is enabled, so nothing leaves the engine and nothing is pending.",
           "type": "object",
           "additionalProperties": false,
-          "required": ["status"],
-          "properties": {"status": {"enum": ["complete", "partial", "pending", "failed", "unknown"]}}
+          "required": ["status", "connectors"],
+          "properties": {
+            "status": {"enum": ["complete", "partial", "pending", "failed", "unknown", "no_connectors"]},
+            "connectors": {
+              "description": "Keyed by connector id, so a connector cannot be reported twice with contradictory statuses.",
+              "type": "object",
+              "maxProperties": 100,
+              "propertyNames": {"$ref": "common.schema.json#/$defs/connector_id"},
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["delivered", "last_successful_delivery_at", "status"],
+                "properties": {
+                  "delivered": {
+                    "description": "The highest ordering pair this connector has a delivered receipt for, or null.",
+                    "oneOf": [
+                      {"type": "null"},
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["generation", "options_revision"],
+                        "properties": {
+                          "generation": {"$ref": "common.schema.json#/$defs/generation", "minimum": 1},
+                          "options_revision": {"$ref": "common.schema.json#/$defs/revision"}
+                        }
+                      }
+                    ]
+                  },
+                  "last_successful_delivery_at": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/timestamp"}]},
+                  "status": {"enum": ["delivered", "pending", "failed", "unknown"]}
+                },
+                "if": {"properties": {"status": {"const": "delivered"}}},
+                "then": {"properties": {"delivered": {"type": "object"}, "last_successful_delivery_at": {"type": "string"}}}
+              }
+            }
+          },
+          "allOf": [
+            {
+              "description": "Export delivery is complete only if every connector delivered.",
+              "if": {"properties": {"status": {"const": "complete"}}},
+              "then": {"properties": {"connectors": {"additionalProperties": {"properties": {"status": {"const": "delivered"}}}}}}
+            },
+            {
+              "description": "No connector enabled means none is listed; any other status is about at least one.",
+              "if": {"properties": {"status": {"const": "no_connectors"}}},
+              "then": {"properties": {"connectors": {"maxProperties": 0}}},
+              "else": {"properties": {"connectors": {"minProperties": 1}}}
+            }
+          ]
         },
         "surveillance_currency": {
           "type": "object",
@@ -108,14 +129,9 @@
   },
   "allOf": [
     {
-      "description": "Publication is complete only if every sink delivered.",
-      "if": {"properties": {"facts": {"properties": {"publication": {"properties": {"status": {"const": "complete"}}}}}}},
-      "then": {"properties": {"sinks": {"additionalProperties": {"properties": {"status": {"const": "delivered"}}}}}}
-    },
-    {
       "description": "Nothing approved means nothing served.",
       "if": {"properties": {"approval_status": {"const": "no_approved_revision"}}},
-      "then": {"properties": {"manifest_generation_served": {"type": "null"}}}
+      "then": {"properties": {"approved_revision_served": {"type": "null"}}}
     }
   ]
 }

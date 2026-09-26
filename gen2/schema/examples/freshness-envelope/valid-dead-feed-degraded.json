@@ -5,29 +5,12 @@
     "tests": "P-6: a dead feed degrades currency without rewriting completion"
   },
   "instance": {
-    "envelope_version": "freshness-envelope/1",
+    "envelope_version": "freshness-envelope/2",
     "topic_id": "fleet-a:intake-latency",
     "generated_at": "2026-09-25T12:30:00Z",
     "source_revision": 14,
-    "projected_revision": 12,
     "approval_status": "approved",
-    "manifest_generation_served": 1,
-    "sinks": {
-      "neo4j": {
-        "delivered_generation": 2,
-        "last_successful_delivery_at": "2026-09-25T12:05:00Z",
-        "status": "delivered"
-      },
-      "qdrant": {
-        "delivered_generation": 1,
-        "last_successful_delivery_at": "2026-09-04T18:39:13Z",
-        "status": "failed"
-      }
-    },
-    "mixed_generation": {
-      "detected": true,
-      "resolution": "pinned"
-    },
+    "approved_revision_served": 12,
     "newer_unapproved_material": true,
     "facts": {
       "completion": {
@@ -35,8 +18,26 @@
         "dossier_revision": 5,
         "outcome": "completed_with_qualified_conclusions"
       },
-      "publication": {
-        "status": "partial"
+      "export_delivery": {
+        "status": "partial",
+        "connectors": {
+          "warehouse": {
+            "delivered": {
+              "generation": 2,
+              "options_revision": 1
+            },
+            "last_successful_delivery_at": "2026-09-25T12:05:00Z",
+            "status": "delivered"
+          },
+          "archive": {
+            "delivered": {
+              "generation": 1,
+              "options_revision": 1
+            },
+            "last_successful_delivery_at": "2026-09-04T18:39:13Z",
+            "status": "failed"
+          }
+        }
       },
       "surveillance_currency": {
         "status": "degraded",

@@ -1,5 +1,0 @@
-{"fixture": {"schema": "export-manifest.schema.json", "expect": "invalid",
-  "tests": "design review §6: a bespoke sink is engine code and arrives by image release, so it names its module and its review - it is never a name an operator added to mounted config",
-  "base": "valid-superseding-options-revision-2.json",
-  "patch": [{"op": "remove", "path": "/expected_sinks/partner-index/implementation"}],
-  "errors": [{"keyword": "required", "path": "/expected_sinks/partner-index"}]}}

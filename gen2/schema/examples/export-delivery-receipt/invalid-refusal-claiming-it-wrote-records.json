@@ -1,5 +1,5 @@
 {"fixture": {"schema": "export-delivery-receipt.schema.json", "expect": "invalid",
-  "tests": "A4: a failure other than a partial write applied nothing, so it cannot also report records written - a sink that applied part of a bundle reports partial_write",
+  "tests": "A4: a failure other than a partial write applied nothing, so it cannot also report records written - a destination that applied part of a bundle reports partial_write",
   "base": "valid-webhook-known-refusal.json",
   "patch": [{"op": "replace", "path": "/written/value", "value": 12}],
   "errors": [{"keyword": "const", "path": "/written/value"}]}}

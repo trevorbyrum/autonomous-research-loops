@@ -1,0 +1,43 @@
+{
+  "fixture": {
+    "schema": "export-manifest.schema.json",
+    "expect": "valid",
+    "tests": "generation 1 may supersede generation 1 itself at a lower options revision: the generation-1 rule forbids only an earlier generation, not a re-export (a stricter rule would refuse this)"
+  },
+  "instance": {
+    "manifest_version": "export-manifest/2",
+    "manifest_id": "man_01J8ZQ70M3",
+    "topic_id": "fleet-a:intake-latency",
+    "artifact_kind": "completion_publication",
+    "generation": 1,
+    "options_revision": 2,
+    "source": {
+      "revision": 12,
+      "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "approval": {
+      "operator_decision_id": "opd_comp0001",
+      "approved_revision": 12
+    },
+    "bundle": {
+      "bundle_id": "exb_01J8ZQ70M3",
+      "bundle_version": "export-bundle/1",
+      "content_hash": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+    },
+    "expected_connectors": {
+      "warehouse": {
+        "connector_type": "sql"
+      }
+    },
+    "supersedes": {
+      "manifest_id": "man_01J8ZQ70M1",
+      "generation": 1,
+      "options_revision": 1
+    },
+    "tombstones": [],
+    "created_at": "2026-09-25T12:10:00Z",
+    "hash_contract": {
+      "canonicalization": "jcs-rfc8785/1"
+    }
+  }
+}

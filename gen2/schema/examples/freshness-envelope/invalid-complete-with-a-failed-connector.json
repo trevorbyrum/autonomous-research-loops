@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "freshness-envelope.schema.json",
+    "expect": "invalid",
+    "tests": "P-4 (carries invalid-complete-with-failed-sink): export delivery is complete only if every connector delivered",
+    "base": "valid-partial-export-delivery.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/facts/export_delivery/status",
+        "value": "complete"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "const",
+        "path": "/facts/export_delivery/connectors/archive/status"
+      }
+    ]
+  }
+}

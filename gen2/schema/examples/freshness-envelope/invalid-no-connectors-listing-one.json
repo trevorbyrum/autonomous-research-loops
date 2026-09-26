@@ -1,0 +1,25 @@
+{
+  "fixture": {
+    "schema": "freshness-envelope.schema.json",
+    "expect": "invalid",
+    "tests": "no connector enabled means none is listed: a connector's status cannot hide under no_connectors",
+    "base": "valid-no-connectors-enabled.json",
+    "patch": [
+      {
+        "op": "add",
+        "path": "/facts/export_delivery/connectors/warehouse",
+        "value": {
+          "delivered": null,
+          "last_successful_delivery_at": null,
+          "status": "failed"
+        }
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "maxProperties",
+        "path": "/facts/export_delivery/connectors"
+      }
+    ]
+  }
+}

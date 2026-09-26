@@ -1,0 +1,32 @@
+{
+  "fixture": {
+    "schema": "freshness-envelope.schema.json",
+    "expect": "valid",
+    "tests": "operator ruling 2026-09-26: an engine with no connector enabled exports nothing and still answers its readers from the local record; export delivery says so rather than reporting pending or failed"
+  },
+  "instance": {
+    "envelope_version": "freshness-envelope/2",
+    "topic_id": "fleet-a:intake-latency",
+    "generated_at": "2026-09-25T12:30:00Z",
+    "source_revision": 14,
+    "approval_status": "approved",
+    "approved_revision_served": 12,
+    "newer_unapproved_material": true,
+    "facts": {
+      "completion": {
+        "status": "completed",
+        "dossier_revision": 5,
+        "outcome": "completed_with_qualified_conclusions"
+      },
+      "export_delivery": {
+        "status": "no_connectors",
+        "connectors": {}
+      },
+      "surveillance_currency": {
+        "status": "current",
+        "as_of": "2026-09-25T06:00:00Z",
+        "feed_issues": {}
+      }
+    }
+  }
+}

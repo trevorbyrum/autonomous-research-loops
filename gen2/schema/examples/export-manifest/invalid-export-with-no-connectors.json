@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "export-manifest.schema.json",
+    "expect": "invalid",
+    "tests": "an export committed for no connector is not an export; enabling no connector is a config state, and then nothing leaves the engine",
+    "base": "valid-first-export-generation-3.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/expected_connectors",
+        "value": {}
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "minProperties",
+        "path": "/expected_connectors"
+      }
+    ]
+  }
+}

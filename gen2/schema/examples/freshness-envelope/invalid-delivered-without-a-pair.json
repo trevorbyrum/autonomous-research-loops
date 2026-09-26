@@ -2,19 +2,19 @@
   "fixture": {
     "schema": "freshness-envelope.schema.json",
     "expect": "invalid",
-    "tests": "P-4/G-8: completion is always at a dossier revision",
+    "tests": "RG-U (carries invalid-delivered-without-generation): 'delivered' needs the ordering pair and the time it was acknowledged",
     "base": "valid-partial-export-delivery.json",
     "patch": [
       {
         "op": "replace",
-        "path": "/facts/completion/dossier_revision",
+        "path": "/facts/export_delivery/connectors/warehouse/delivered",
         "value": null
       }
     ],
     "errors": [
       {
         "keyword": "type",
-        "path": "/facts/completion/dossier_revision"
+        "path": "/facts/export_delivery/connectors/warehouse/delivered"
       }
     ]
   }

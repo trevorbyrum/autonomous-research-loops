@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "freshness-envelope.schema.json",
+    "expect": "invalid",
+    "tests": "a delivery status other than no_connectors is about at least one connector: 'partial' with none listed says nothing checkable",
+    "base": "valid-partial-export-delivery.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/facts/export_delivery/connectors",
+        "value": {}
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "minProperties",
+        "path": "/facts/export_delivery/connectors"
+      }
+    ]
+  }
+}

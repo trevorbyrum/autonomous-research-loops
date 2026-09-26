@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "export-manifest.schema.json",
+    "expect": "invalid",
+    "tests": "P-2 (carries publication-manifest's 'generation 1 supersedes nothing'): generation 1 is the first approved revision, so it can supersede only an earlier options revision of generation 1 itself - never another generation",
+    "base": "valid-generation-1-options-revision-2.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/supersedes/generation",
+        "value": 2
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "const",
+        "path": "/supersedes/generation"
+      }
+    ]
+  }
+}

@@ -80,6 +80,9 @@ FILE_TARGETS = {
     # A schema file: the whole schema tree is re-checked with this file replaced (0c-repair, C1).
     "gen2/schema/export-bundle.schema.json": ("attr", "test_schema_counterfactuals", "EXPORT_BUNDLE_SCHEMA"),
     "gen2/schema/export-delivery-receipt.schema.json": ("attr", "test_schema_counterfactuals", "EXPORT_RECEIPT_SCHEMA"),
+    "gen2/schema/export-manifest.schema.json": ("attr", "test_schema_counterfactuals", "EXPORT_MANIFEST_SCHEMA"),
+    "gen2/schema/freshness-envelope.schema.json": ("attr", "test_schema_counterfactuals", "FRESHNESS_SCHEMA"),
+    "gen2/schema/common.schema.json": ("attr", "test_schema_counterfactuals", "COMMON_SCHEMA"),
     "gen2/schema/decision-receipt.schema.json": ("attr", "test_schema_counterfactuals", "DECISION_RECEIPT_SCHEMA"),
     "gen2/schema/invocation.schema.json": ("attr", "test_schema_counterfactuals", "INVOCATION_SCHEMA"),
 }
@@ -107,6 +110,8 @@ IB = "test_store_intake.IntakeBriefTest."
 SC = "test_source_catalog.CatalogToolTest."
 SF = "test_schema_counterfactuals.FixtureCounterfactualTest."
 RECEIPT = "gen2/schema/export-delivery-receipt.schema.json"
+MANIFEST = "gen2/schema/export-manifest.schema.json"
+ENVELOPE = "gen2/schema/freshness-envelope.schema.json"
 IDENTITY = ("job_handle", "host_id", "container_id", "boot_id", "start_fingerprint")
 IDENTITY_KILLER = {  # each identity member's own one-error negative (0c-repair-2)
     "host_id": "test_a_process_identity_without_its_host_is_refused",
@@ -1448,6 +1453,87 @@ MUTATIONS: list[Mutation] = [
              '"required": ' + json.dumps([m for m in IDENTITY if m != dropped])
              + ',\n      "allOf": [{"required": ["' + doubled + '"]}],')
             for dropped, doubled in (("host_id", "boot_id"), ("boot_id", "start_fingerprint"), ("start_fingerprint", "host_id"))),
+      )),
+    # --- 0d: the one export API (operator ruling 2026-09-26) -------------------
+    # export-manifest/2 absorbs publication-manifest/1 and export-manifest/1;
+    # freshness-envelope/2 is re-scoped to engine reads of the local record.
+    # Each mutant removes one rule (or restores a retired one) and the named
+    # isolated negative must validate - or, for the over-restriction mutant, the
+    # positive it names must stop validating.
+    *(Mutation(f"0D-{key}", "0d", desc, tuple(SF + k for k in killers), target=target, old=old, new=new)
+      for key, desc, killers, target, old, new in (
+          ("connector-types-open-to-a-store-name", "the closed connector vocabulary gains a store kind (the retired 'GraphRAG as sink' shape)",
+           ("test_an_undeclared_connector_type_is_refused",), "gen2/schema/common.schema.json",
+           '"enum": ["sql", "jsonl_file", "webhook", "extension"]', '"enum": ["sql", "jsonl_file", "webhook", "extension", "graph_store"]'),
+          ("manifest-connector-type-any-string", "the manifest stops using the closed connector vocabulary",
+           ("test_an_undeclared_connector_type_is_refused",), MANIFEST,
+           '"connector_type": {"$ref": "common.schema.json#/$defs/connector_type"},', '"connector_type": {"type": "string"},'),
+          ("extension-implementation-not-required", "an extension connector need not name its implementation and review",
+           ("test_an_extension_connector_without_its_implementation_is_refused",), MANIFEST,
+           '{"if": {"properties": {"connector_type": {"const": "extension"}}}, "then": {"required": ["implementation"]}},\n', ''),
+          ("reference-connector-may-claim-an-implementation", "a reference connector may name a module and a review",
+           ("test_a_reference_connector_claiming_an_implementation_is_refused",), MANIFEST,
+           ',\n          {"if": {"properties": {"connector_type": {"enum": ["sql", "jsonl_file", "webhook"]}}},\n           "then": {"not": {"required": ["implementation"]}}}', ''),
+          ("connector-id-pattern-dropped", "a connector id need not spell its secret variable's suffix",
+           ("test_a_connector_id_that_cannot_spell_its_variable_is_refused",), MANIFEST,
+           '"propertyNames": {"$ref": "common.schema.json#/$defs/connector_id"},\n', ''),
+          ("export-for-no-connector", "a manifest may name no connector",
+           ("test_an_export_for_no_connector_is_refused",), MANIFEST,
+           '"minProperties": 1,\n      "maxProperties": 100,', '"maxProperties": 100,'),
+          ("approval-not-required", "a manifest need not name its approval (P-5)",
+           ("test_an_export_without_an_approval_is_refused",), MANIFEST,
+           '    "approval",\n    "bundle",\n', '    "bundle",\n'),
+          ("tombstones-without-supersession", "a first manifest may carry tombstones",
+           ("test_a_first_manifest_with_tombstones_is_refused",), MANIFEST,
+           '"then": {"properties": {"tombstones": {"maxItems": 0}}}', '"then": {}'),
+          ("generation-1-may-supersede-another-generation", "generation 1 may supersede a later generation",
+           ("test_generation_1_supersedes_only_generation_1",), MANIFEST,
+           '"then": {"properties": {"supersedes": {"properties": {"generation": {"const": 1}}}}}', '"then": {}'),
+          ("generation-1-supersedes-nothing-restored", "the retired publication rule restored: generation 1 supersedes nothing, refusing a re-export of generation 1",
+           ("test_generation_1_supersedes_only_generation_1",), MANIFEST,
+           '"then": {"properties": {"supersedes": {"properties": {"generation": {"const": 1}}}}}', '"then": {"properties": {"supersedes": {"type": "null"}}}'),
+          ("supersession-without-its-options-revision", "a supersession may name a generation without its options revision",
+           ("test_a_supersession_names_its_whole_pair",), MANIFEST,
+           '"required": ["manifest_id", "generation", "options_revision"],', '"required": ["manifest_id", "generation"],'),
+          ("delivery-state-admitted", "a manifest may carry fields it does not define (delivery state included)",
+           ("test_delivery_state_is_not_a_manifest_field",), MANIFEST,
+           '"type": "object",\n  "additionalProperties": false,\n  "required": [', '"type": "object",\n  "additionalProperties": true,\n  "required": ['),
+          ("publication-manifest-version-admitted", "the retired publication-manifest/1 version is accepted beside export-manifest/2",
+           ("test_the_retired_publication_manifest_version_is_refused",), MANIFEST,
+           '"manifest_version": {"const": "export-manifest/2"}', '"manifest_version": {"enum": ["export-manifest/2", "publication-manifest/1"]}'),
+          ("complete-without-every-connector", "export delivery may be complete while a connector failed (P-4)",
+           ("test_complete_export_delivery_needs_every_connector_delivered",), ENVELOPE,
+           '"then": {"properties": {"connectors": {"additionalProperties": {"properties": {"status": {"const": "delivered"}}}}}}', '"then": {}'),
+          ("delivered-without-its-pair", "a connector may be reported delivered without the pair it holds",
+           ("test_a_delivered_connector_names_its_pair",), ENVELOPE,
+           '"then": {"properties": {"delivered": {"type": "object"}, "last_successful_delivery_at": {"type": "string"}}}',
+           '"then": {"properties": {"last_successful_delivery_at": {"type": "string"}}}'),
+          ("projected-revision-restored", "the retired projected_revision field is back, so a read may claim a projection",
+           ("test_a_read_cannot_claim_a_projected_revision",), ENVELOPE,
+           '    "approval_status": {"enum": ["approved", "no_approved_revision"]},\n',
+           '    "approval_status": {"enum": ["approved", "no_approved_revision"]},\n    "projected_revision": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/revision"}]},\n'),
+          ("no-connectors-may-list-one", "no_connectors may list a connector",
+           ("test_no_connectors_lists_none",), ENVELOPE,
+           '"then": {"properties": {"connectors": {"maxProperties": 0}}},', '"then": {},'),
+          ("delivery-status-about-no-connector", "a delivery status other than no_connectors may list no connector",
+           ("test_a_delivery_status_is_about_at_least_one_connector",), ENVELOPE,
+           '"else": {"properties": {"connectors": {"minProperties": 1}}}', '"else": {}'),
+          ("served-without-an-approval", "a read may name an approved revision it served when nothing is approved (P-5)",
+           ("test_nothing_approved_means_nothing_served",), ENVELOPE,
+           '"then": {"properties": {"approved_revision_served": {"type": "null"}}}', '"then": {}'),
+          ("completion-without-a-dossier", "completed may carry no dossier revision (P-4)",
+           ("test_completion_is_at_a_dossier_revision",), ENVELOPE,
+           '"then": {"properties": {"dossier_revision": {"type": "integer"}, "outcome": {"type": "string"}}}', '"then": {"properties": {"outcome": {"type": "string"}}}'),
+          ("current-with-feed-issues", "current currency may list feed issues (P-6)",
+           ("test_an_overdue_feed_is_not_current",), ENVELOPE,
+           '"then": {"properties": {"as_of": {"type": "string"}, "feed_issues": {"maxProperties": 0}}}', '"then": {"properties": {"as_of": {"type": "string"}}}'),
+          ("degraded-without-a-feed", "degraded currency may name no feed (A11)",
+           ("test_degraded_currency_names_a_feed",), ENVELOPE,
+           '"then": {"properties": {"feed_issues": {"minProperties": 1}}}', '"then": {}'),
+          ("feed-reasons-open", "a feed issue may be any string (A11)",
+           ("test_feed_issue_reasons_are_closed",), ENVELOPE,
+           '"additionalProperties": {"enum": ["overdue", "failed_before_due", "never_ran", "unparseable_payload", "cursor_lost", "unknown"]}',
+           '"additionalProperties": {"type": "string"}'),
       )),
     Mutation("0CR-operator-listen-on-container-loopback", "A6", "the review's defect restored: the engine binds its container's loopback",
              (SC + "test_services_listen_on_their_container_interface",), target="tools/gen_source_catalog.py",

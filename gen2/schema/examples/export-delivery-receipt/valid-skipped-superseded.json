@@ -5,11 +5,11 @@
     "tests": "P-2: a late retry for a lower ordering pair is skipped rather than allowed to overwrite newer material - the one zero here is knowledge, so it is observed, not unknown"
   },
   "instance": {
-    "receipt_version": "export-delivery-receipt/1",
+    "receipt_version": "export-delivery-receipt/2",
     "export_receipt_id": "exr_01J8ZQB5U8",
-    "export_manifest_id": "exm_01J8ZQ90P3",
+    "manifest_id": "man_01J8ZQ90P3",
     "topic_id": "fleet-a:intake-latency",
-    "sink": {"sink_id": "warehouse", "sink_type": "generic_sql"},
+    "connector": {"connector_id": "warehouse", "connector_type": "sql"},
     "generation": 3,
     "options_revision": 1,
     "attempt": 4,

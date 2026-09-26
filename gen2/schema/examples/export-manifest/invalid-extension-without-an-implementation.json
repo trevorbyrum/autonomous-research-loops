@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "export-manifest.schema.json",
+    "expect": "invalid",
+    "tests": "design review §6: an extension connector is code outside the core that arrives by image release, so it names its module and its review - it is never a name an operator added to mounted config",
+    "base": "valid-superseding-options-revision-2.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/expected_connectors/partner-index/implementation"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": "/expected_connectors/partner-index"
+      }
+    ]
+  }
+}

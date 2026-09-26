@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "freshness-envelope.schema.json",
+    "expect": "invalid",
+    "tests": "P-3 (operator ruling 2026-09-26; retires invalid-mixed-generation-unresolved with the field it tested): no engine read is served from a projection or any external database, so an envelope cannot report a projected revision",
+    "base": "valid-partial-export-delivery.json",
+    "patch": [
+      {
+        "op": "add",
+        "path": "/projected_revision",
+        "value": 12
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "additionalProperties",
+        "path": ""
+      }
+    ]
+  }
+}

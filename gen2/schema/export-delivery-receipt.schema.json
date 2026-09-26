@@ -1,17 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://research-loops.invalid/gen2/schema/export-delivery-receipt.schema.json",
-  "$comment": "flow: S8 item 2 (per-sink receipts; supersession and tombstones acknowledged per sink); item 4 (three independent facts, never conflated: a failed sink leaves publication partial and raises a capability incident, and neither undoes completion nor stops surveillance); §4.2 (dated capability facts that alert on the transition); §4.3 (silence is never success) | boundaries: Projector / publication; Station supervisor; Operator | design-review: §9 (per-sink delivery receipts, partial delivery recovery); §6 (an ambiguous outcome is a visible reconciliation state with an owner, never a silent park) | adjudication: (a)G-A1 | invariants: P-2; P-4; RG-3; RG-4; RG-U; L-4; H-2 | note: what a delivery result may say about the world, and nothing more. There is no completion field and no currency field in this document - a sink cannot report, and a reader cannot infer from a receipt, that a topic is complete or current",
+  "$comment": "flow: S8 item 2 as amended by operator ruling 2026-09-26 (per-connector receipts; supersession and tombstones acknowledged per connector); item 4 (three independent facts, never conflated: a failed connector leaves export delivery partial and raises a capability incident, and neither undoes completion nor stops surveillance); §4.2 (dated capability facts that alert on the transition); §4.3 (silence is never success) | boundaries: Exporter; Station supervisor; Operator | design-review: §9 (per-destination delivery receipts, partial delivery recovery); §6 (an ambiguous outcome is a visible reconciliation state with an owner, never a silent park) | adjudication: (a)G-A1 | invariants: P-2; P-4; RG-3; RG-4; RG-U; L-4; H-2 | note: what a delivery result may say about the world, and nothing more. There is no completion field, no currency field and no research content in this document - a connector cannot report, and a reader cannot infer from a receipt, that a topic is complete or current, and nothing a connector returns is research the engine could read back. export-delivery-receipt/2 renames /1's sink to connector and export_manifest_id to manifest_id (the one manifest kind); every rule is unchanged",
   "title": "Export delivery receipt",
-  "description": "One attempt to deliver one export manifest's bundle to one sink. Returned by `deliver(manifest, bundle)` and recorded by the projector; a retry is a new attempt with a new receipt, never an edit of an old one. The ordering pair (generation, options_revision) is carried so a receipt says which material this attempt was about: a sink that already accepted a higher pair reports `skipped_superseded` instead of overwriting. The status records what is known about the attempt's effect on the sink, not the transport symptom: once a request may have been applied and no authoritative acknowledgement or refusal establishes its result, the attempt is `outcome_unknown` and must be reconciled — it is never read as delivered, never as failed, and never as a zero anywhere. What counts as authoritative is defined per adapter (docs/gen2/EXPORT-SINKS.md §5).",
+  "description": "One attempt to deliver one export manifest's bundle to one connector. Returned by `deliver(manifest, bundle)` and recorded by the exporter through the router; a retry is a new attempt with a new receipt, never an edit of an old one. The ordering pair (generation, options_revision) is carried so a receipt says which material this attempt was about: a connector that already holds a higher pair reports `skipped_superseded` instead of overwriting. The status records what is known about the attempt's effect on the connector's destination, not the transport symptom: once a request may have been applied and no authoritative acknowledgement or refusal establishes its result, the attempt is `outcome_unknown` and must be reconciled — it is never read as delivered, never as failed, and never as a zero anywhere. What counts as authoritative is defined per connector type (docs/gen2/EXPORT-API.md §6-7).",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "receipt_version",
     "export_receipt_id",
-    "export_manifest_id",
+    "manifest_id",
     "topic_id",
-    "sink",
+    "connector",
     "generation",
     "options_revision",
     "attempt",
@@ -23,17 +23,17 @@
     "acked_at"
   ],
   "properties": {
-    "receipt_version": {"const": "export-delivery-receipt/1"},
+    "receipt_version": {"const": "export-delivery-receipt/2"},
     "export_receipt_id": {"$ref": "common.schema.json#/$defs/export_receipt_id"},
-    "export_manifest_id": {"$ref": "common.schema.json#/$defs/export_manifest_id"},
+    "manifest_id": {"$ref": "common.schema.json#/$defs/manifest_id"},
     "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
-    "sink": {
+    "connector": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sink_id", "sink_type"],
+      "required": ["connector_id", "connector_type"],
       "properties": {
-        "sink_id": {"$ref": "common.schema.json#/$defs/export_sink_id"},
-        "sink_type": {"$ref": "common.schema.json#/$defs/export_sink_type"}
+        "connector_id": {"$ref": "common.schema.json#/$defs/connector_id"},
+        "connector_type": {"$ref": "common.schema.json#/$defs/connector_type"}
       }
     },
     "generation": {"$ref": "common.schema.json#/$defs/generation", "minimum": 1},
@@ -44,25 +44,25 @@
       "$ref": "common.schema.json#/$defs/invocation_id"
     },
     "status": {
-      "description": "delivered: the sink authoritatively acknowledged the whole bundle as applied, tombstones included (for webhook_http, only the receiver protocol's applied or already_applied answer; a request accepted for later processing is not applied) — on an equal-pair replay, from its retained evidence that this same manifest and bundle content hash were already applied (docs/gen2/EXPORT-SINKS.md §3). failed: the attempt's effect on the sink is established and the bundle was not delivered — nothing was applied (the request was never sent, or the sink authoritatively refused it), or the sink reported the part it did apply (`partial_write`). skipped_superseded: the sink already holds a higher ordering pair, so this attempt correctly wrote nothing. outcome_unknown: the request may have been applied and nothing authoritative establishes whether — the process stopped after sending, no response came, the response could not be read, or it was neither an acknowledgement nor a refusal. It needs reconciliation before anything may be concluded from it, and its diagnostic is `unknown_cause`, not an error class.",
+      "description": "delivered: the connector's destination authoritatively acknowledged the whole bundle as applied, tombstones included (for webhook, only the receiver protocol's applied or already_applied answer; a request accepted for later processing is not applied) — on an equal-pair replay, from its retained evidence that this same manifest and bundle content hash were already applied (docs/gen2/EXPORT-API.md §4). failed: the attempt's effect on the destination is established and the bundle was not delivered — nothing was applied (the request was never sent, or the destination authoritatively refused it), or the destination reported the part it did apply (`partial_write`). skipped_superseded: the destination already holds a higher ordering pair, so this attempt correctly wrote nothing. outcome_unknown: the request may have been applied and nothing authoritative establishes whether — the process stopped after sending, no response came, the response could not be read, or it was neither an acknowledgement nor a refusal. It needs reconciliation before anything may be concluded from it, and its diagnostic is `unknown_cause`, not an error class.",
       "enum": ["delivered", "failed", "skipped_superseded", "outcome_unknown"]
     },
     "written": {
-      "description": "How much of the bundle the sink took, as an observed count. A `partial_write` failure reports `partial` with what the sink said it wrote, which is a lower bound and never a total; every other failure applied nothing, so its count is an observed zero, and so is a deliberately skipped delivery's — those are the legitimate zeros. An unknown outcome reports `unknown` (or `partial`, when some writes are known and the rest are not).",
+      "description": "How much of the bundle the destination took, as an observed count. A `partial_write` failure reports `partial` with what the destination said it wrote, which is a lower bound and never a total; every other failure applied nothing, so its count is an observed zero, and so is a deliberately skipped delivery's — those are the legitimate zeros. An unknown outcome reports `unknown` (or `partial`, when some writes are known and the rest are not).",
       "$ref": "common.schema.json#/$defs/observed_count"
     },
     "tombstones_acknowledged": {"type": "boolean"},
     "reconciliation_required": {"type": "boolean"},
     "error_class": {
-      "description": "A typed class for a settled failure, not a message; every class names a known effect. unreachable: the request was never sent (name resolution, a refused connection, TLS setup). auth_failed: the sink authoritatively refused the credential. refused: the sink authoritatively refused the payload. schema_mismatch: the destination does not match the export schema version, and nothing was applied. quota: the sink authoritatively refused for quota or rate. timeout: the attempt timed out before any of the request was sent, or before a transaction was committed, so nothing was applied. conflict: the sink already holds different content under this same ordering pair, so it wrote nothing (docs/gen2/EXPORT-SINKS.md §3). partial_write: the sink reported the part it applied before it stopped. A cause that leaves the effect unknown — an unreadable response, a timeout after sending — is never a class here: that attempt is outcome_unknown, with its unknown_cause.",
+      "description": "A typed class for a settled failure, not a message; every class names a known effect. unreachable: the request was never sent (name resolution, a refused connection, TLS setup). auth_failed: the destination authoritatively refused the credential. refused: the destination authoritatively refused the payload. schema_mismatch: the destination does not match the export schema version, and nothing was applied. quota: the destination authoritatively refused for quota or rate. timeout: the attempt timed out before any of the request was sent, or before a transaction was committed, so nothing was applied. conflict: the destination already holds different content under this same ordering pair, so it wrote nothing (docs/gen2/EXPORT-API.md §4). partial_write: the destination reported the part it applied before it stopped. A cause that leaves the effect unknown — an unreadable response, a timeout after sending — is never a class here: that attempt is outcome_unknown, with its unknown_cause.",
       "enum": ["unreachable", "auth_failed", "refused", "schema_mismatch", "quota", "timeout", "conflict", "partial_write"]
     },
     "unknown_cause": {
-      "description": "Why the outcome is unknown: the diagnostic an unknown outcome keeps instead of an error class, which would claim a settled result (Astra 0c review A2). terminated_after_send: the delivering process stopped after the request, commit or rename was issued and before its result was read. no_response_after_send: the connection closed or timed out after the request was sent, before any response. unreadable_response: a response arrived but could not be read as one. unauthoritative_response: a response was read that is neither an acknowledgement nor a refusal as the adapter defines them (for webhook_http, docs/gen2/EXPORT-SINKS.md §5.3: a 202 or any other 2xx that is not the receiver protocol's applied or already_applied answer, since a queued request is not an applied one; a 200 or 409 whose Export-Webhook-Result header is missing or does not match; a 4xx the protocol does not list as a refusal; a 3xx, which is never followed; or a 5xx).",
+      "description": "Why the outcome is unknown: the diagnostic an unknown outcome keeps instead of an error class, which would claim a settled result (Astra 0c review A2). terminated_after_send: the delivering process stopped after the request, commit or rename was issued and before its result was read. no_response_after_send: the connection closed or timed out after the request was sent, before any response. unreadable_response: a response arrived but could not be read as one. unauthoritative_response: a response was read that is neither an acknowledgement nor a refusal as the connector type defines them (for webhook, docs/gen2/EXPORT-API.md §6.3: a 202 or any other 2xx that is not the receiver protocol's applied or already_applied answer, since a queued request is not an applied one; a 200 or 409 whose Export-Webhook-Result header is missing or does not match; a 4xx the protocol does not list as a refusal; a 3xx, which is never followed; or a 5xx).",
       "enum": ["terminated_after_send", "no_response_after_send", "unreadable_response", "unauthoritative_response"]
     },
     "capability_fact_id": {
-      "description": "The dated capability fact this failure raised (`capability_facts.fact_id`). Required for a failure and for an unknown outcome: a dead export sink is a visible, dated incident with a since-time, which is the rule the 2026-09-21..24 secrets outage produced (H-2). It is never, by itself, a reason to block completion.",
+      "description": "The dated capability fact this failure raised (`capability_facts.fact_id`). Required for a failure and for an unknown outcome: a dead connector is a visible, dated incident with a since-time, which is the rule the 2026-09-21..24 secrets outage produced (H-2). It is never, by itself, a reason to block completion.",
       "$ref": "common.schema.json#/$defs/short_text"
     },
     "hold_id": {
@@ -74,7 +74,7 @@
   },
   "allOf": [
     {
-      "description": "Delivered means the sink said so: an acknowledgement time, the tombstones acknowledged, an observed count, no error and nothing left to reconcile.",
+      "description": "Delivered means the destination said so: an acknowledgement time, the tombstones acknowledged, an observed count, no error and nothing left to reconcile.",
       "if": {"properties": {"status": {"const": "delivered"}}, "required": ["status"]},
       "then": {
         "properties": {
@@ -98,7 +98,7 @@
         },
         "allOf": [
           {
-            "description": "A partial write reports the part the sink applied as a partial count: a lower bound, never an observed total (Astra 0c review A4).",
+            "description": "A partial write reports the part the destination applied as a partial count: a lower bound, never an observed total (Astra 0c review A4).",
             "if": {"properties": {"error_class": {"const": "partial_write"}}, "required": ["error_class"]},
             "then": {"properties": {"written": {"properties": {"status": {"const": "partial"}}}}}
           },

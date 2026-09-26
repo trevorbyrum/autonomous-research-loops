@@ -2,14 +2,14 @@
   "fixture": {
     "schema": "export-delivery-receipt.schema.json",
     "expect": "valid",
-    "tests": "Astra 0c-repair re-review BLOCK 1: the receiver answered 202 Accepted after queuing the request, so nothing establishes that any of it was applied. A queued request is not an applied one (EXPORT-SINKS.md §5.3), so this is outcome_unknown with unauthoritative_response, an unknown count, tombstones not acknowledged, and reconciliation, a capability fact and a hold. It is shape only: no schema can see the status line, and the Phase-3 queued-then-rejected case tests the adapter"
+    "tests": "Astra 0c-repair re-review BLOCK 1: the receiver answered 202 Accepted after queuing the request, so nothing establishes that any of it was applied. A queued request is not an applied one (EXPORT-API.md §6.3), so this is outcome_unknown with unauthoritative_response, an unknown count, tombstones not acknowledged, and reconciliation, a capability fact and a hold. It is shape only: no schema can see the status line, and the Phase-3 queued-then-rejected case tests the adapter"
   },
   "instance": {
-    "receipt_version": "export-delivery-receipt/1",
+    "receipt_version": "export-delivery-receipt/2",
     "export_receipt_id": "exr_01J8ZQC9Y2",
-    "export_manifest_id": "exm_01J8ZQC1H2",
+    "manifest_id": "man_01J8ZQC1H2",
     "topic_id": "fleet-a:intake-latency",
-    "sink": {"sink_id": "hook", "sink_type": "webhook_http"},
+    "connector": {"connector_id": "hook", "connector_type": "webhook"},
     "generation": 3,
     "options_revision": 2,
     "attempt": 3,

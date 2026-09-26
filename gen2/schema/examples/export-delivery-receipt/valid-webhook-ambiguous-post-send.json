@@ -5,11 +5,11 @@
     "tests": "A2 (Astra 0c review) and L-4: a webhook POST was sent and its response could not be read, so the receiver may have applied it. That is outcome_unknown with reconciliation required and a capability fact; the transport symptom is kept as the typed unknown_cause, never as a failure class"
   },
   "instance": {
-    "receipt_version": "export-delivery-receipt/1",
+    "receipt_version": "export-delivery-receipt/2",
     "export_receipt_id": "exr_01J8ZQC7W0",
-    "export_manifest_id": "exm_01J8ZQC1H2",
+    "manifest_id": "man_01J8ZQC1H2",
     "topic_id": "fleet-a:intake-latency",
-    "sink": {"sink_id": "hook", "sink_type": "webhook_http"},
+    "connector": {"connector_id": "hook", "connector_type": "webhook"},
     "generation": 3,
     "options_revision": 2,
     "attempt": 2,

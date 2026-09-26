@@ -1,0 +1,51 @@
+{
+  "fixture": {
+    "schema": "export-manifest.schema.json",
+    "expect": "valid",
+    "tests": "P-1/P-2/P-5: an approved evidence correction is a new generation that supersedes the previous manifest's pair and names what it corrected; a webhook connector gets the same manifest as the SQL one"
+  },
+  "instance": {
+    "manifest_version": "export-manifest/2",
+    "manifest_id": "man_01J8ZQ70M2",
+    "topic_id": "fleet-a:intake-latency",
+    "artifact_kind": "evidence_correction",
+    "generation": 2,
+    "options_revision": 1,
+    "source": {
+      "revision": 14,
+      "content_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "approval": {
+      "operator_decision_id": "opd_corr0002",
+      "approved_revision": 14
+    },
+    "bundle": {
+      "bundle_id": "exb_01J8ZQ70M2",
+      "bundle_version": "export-bundle/1",
+      "content_hash": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+    },
+    "expected_connectors": {
+      "warehouse": {
+        "connector_type": "sql"
+      },
+      "hook": {
+        "connector_type": "webhook"
+      }
+    },
+    "supersedes": {
+      "manifest_id": "man_01J8ZQ70M1",
+      "generation": 1,
+      "options_revision": 1
+    },
+    "tombstones": [
+      {
+        "entity_id": "fleet-a:intake-latency/SRC-12",
+        "reason": "corrected"
+      }
+    ],
+    "created_at": "2026-09-25T12:30:00Z",
+    "hash_contract": {
+      "canonicalization": "jcs-rfc8785/1"
+    }
+  }
+}

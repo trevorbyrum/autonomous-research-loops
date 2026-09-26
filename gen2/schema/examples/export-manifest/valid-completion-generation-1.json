@@ -2,25 +2,25 @@
   "fixture": {
     "schema": "export-manifest.schema.json",
     "expect": "valid",
-    "tests": "connectors may be enabled at any point in a topic's life: the first manifest a topic has can be generation 3, and it supersedes nothing, so its tombstones are empty"
+    "tests": "P-1 (operator ruling 2026-09-26): the router commits the approved completion and this manifest together; the first generation supersedes nothing and tombstones nothing; two reference connectors, keyed by id, get the one manifest"
   },
   "instance": {
     "manifest_version": "export-manifest/2",
-    "manifest_id": "man_01J8ZQ90P3",
+    "manifest_id": "man_01J8ZQ70M1",
     "topic_id": "fleet-a:intake-latency",
     "artifact_kind": "completion_publication",
-    "generation": 3,
+    "generation": 1,
     "options_revision": 1,
     "source": {
-      "revision": 18,
-      "content_hash": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+      "revision": 12,
+      "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     },
     "approval": {
-      "operator_decision_id": "opd_comp0003",
-      "approved_revision": 18
+      "operator_decision_id": "opd_comp0001",
+      "approved_revision": 12
     },
     "bundle": {
-      "bundle_id": "exb_01J8ZQ90P3",
+      "bundle_id": "exb_01J8ZQ70M1",
       "bundle_version": "export-bundle/1",
       "content_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
     },
@@ -34,7 +34,7 @@
     },
     "supersedes": null,
     "tombstones": [],
-    "created_at": "2026-09-25T09:35:00Z",
+    "created_at": "2026-09-25T12:00:00Z",
     "hash_contract": {
       "canonicalization": "jcs-rfc8785/1"
     }

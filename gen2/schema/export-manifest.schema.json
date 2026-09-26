@@ -1,29 +1,63 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://research-loops.invalid/gen2/schema/export-manifest.schema.json",
-  "$comment": "flow: S8 item 1 (an immutable manifest committed with the approved revision); item 2 (idempotent, generation-aware updates; old retries never overwrite newer generations; supersession and tombstones acknowledged per sink); item 5 (approved corrections and checkpoint publications create new events) | boundaries: Router; Projector / publication; Operator | design-review: §6 (a new executable adapter requires an image release, so a bespoke sink is reviewed code and not operator config); §9 (per-sink receipts, supersession, stable ids) | adjudication: (a)G-A1 (mutable delivery state stored separately from the immutable manifest); (b)2 | invariants: P-1; P-2; P-5; G-13 | note: this manifest does not create a second approval path. It binds to an approved PUBLICATION generation, so export inherits P-5's approval gate instead of re-deciding it, and inherits one generation counter per topic instead of introducing a second. Delivery state is never a field here",
+  "$comment": "flow: S8 items 1, 2 and 5 as amended by operator ruling 2026-09-26 (one outbound path: the router commits the approved revision and an outbox event referencing this immutable manifest; every enabled connector is driven through one contract; corrections and checkpoint publications are new events) | boundaries: Router; Exporter; Operator | design-review: §6 (a new executable adapter requires an image release, so an extension connector is reviewed code and never operator config); §9 (outbox, stable ids, per-destination delivery, supersession/tombstones) | adjudication: (a)G-A1 (mutable delivery state stored separately from the immutable manifest); (b)2; (d)1 | invariants: P-1; P-2; P-5; G-13 | note: export-manifest/2 is the only outbound manifest. It absorbs publication-manifest/1 (retired with the hardwired stores it named) and export-manifest/1 (which bound to a publication generation beside it): one document, one generation stream per topic, one approval gate. Delivery state is never a field here. No /1 manifest was ever emitted - no export code exists - so the /1 versions retire without a migration",
   "title": "Export manifest",
-  "description": "The immutable record of one export: which bundle, built from which approved publication generation, under which export options, to which enabled sinks. It is what `deliver(manifest, bundle)` receives, and it is the sink's idempotency key. Ordering is the pair (generation, options_revision), compared in that order: a sink refuses a delivery whose pair is lower than what it has already accepted, so a retry that arrives late cannot overwrite newer material. At an equal pair, the manifest id and bundle.content_hash are the identity a sink compares: the same pair and identity is an export already applied (acknowledged without rewriting, e.g. after a lost receipt), and the same pair with a different identity is a conflict (docs/gen2/EXPORT-SINKS.md §3). JSON Schema cannot compare a manifest with its predecessor — that the superseded pair is strictly lower is checked where both are stored, exactly as it is for publication generations.",
+  "description": "The immutable record of one export: which approved revision, as which generation, assembled into which bundle under which export options, for which connectors. The router commits it as the outbox event's manifest in the same transaction as the approved publishable revision; the exporter hands it with its bundle to `deliver(manifest, bundle)` on every connector it names, and it is each connector's idempotency key. Ordering is the pair (generation, options_revision), compared in that order: a connector refuses a delivery whose pair is lower than what it already holds, so a late retry never overwrites newer material. At an equal pair, manifest_id and bundle.content_hash are the identity a connector compares: the same pair and identity is an export already applied (acknowledged without rewriting, e.g. after a lost receipt), and the same pair with a different identity is a conflict (docs/gen2/EXPORT-API.md §4). JSON Schema cannot compare two sibling values or a manifest with its predecessor: that approval.approved_revision equals source.revision, that the superseded pair is strictly lower, and that pairs strictly increase per topic are enforced where the manifest is stored (DDL outbox_events).",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "manifest_version",
-    "export_manifest_id",
+    "manifest_id",
     "topic_id",
-    "bundle",
-    "publication",
+    "artifact_kind",
     "generation",
     "options_revision",
-    "expected_sinks",
+    "source",
+    "approval",
+    "bundle",
+    "expected_connectors",
     "supersedes",
     "tombstones",
     "created_at",
     "hash_contract"
   ],
   "properties": {
-    "manifest_version": {"const": "export-manifest/1"},
-    "export_manifest_id": {"$ref": "common.schema.json#/$defs/export_manifest_id"},
+    "manifest_version": {"const": "export-manifest/2"},
+    "manifest_id": {"$ref": "common.schema.json#/$defs/manifest_id"},
     "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
+    "artifact_kind": {"enum": ["completion_publication", "evidence_correction", "checkpoint_publication"]},
+    "generation": {
+      "description": "The topic's approved-generation number: each approved publishable revision (a completion, an approved evidence correction, an approved checkpoint publication) is one generation. A re-export of the same generation under new export options keeps it and raises options_revision instead. Connectors may be enabled at any point in a topic's life, so the first manifest a topic has need not be generation 1, and a first manifest supersedes nothing.",
+      "$ref": "common.schema.json#/$defs/generation",
+      "minimum": 1
+    },
+    "options_revision": {
+      "description": "The revision of the mounted connector and export-options configuration the bundle was assembled under. It is the second half of the ordering pair: the same approved generation re-exported after the operator changes what an export contains, or enables another connector, is newer material rather than a duplicate to ignore.",
+      "$ref": "common.schema.json#/$defs/revision"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "content_hash"],
+      "properties": {
+        "revision": {"$ref": "common.schema.json#/$defs/revision"},
+        "content_hash": {"$ref": "common.schema.json#/$defs/sha256"}
+      }
+    },
+    "approval": {
+      "description": "Unapproved work is never exported. The approval is the operator's `publication_approval` decision about this exact source revision and content hash (P-5, G-13), checked where the manifest is stored.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operator_decision_id", "approved_revision"],
+      "properties": {
+        "operator_decision_id": {"$ref": "common.schema.json#/$defs/operator_decision_id"},
+        "approved_revision": {
+          "description": "Equal to source.revision by construction: an export is of the revision that was approved, not merely of work that carries an approval id. The DDL checks that the stored manifest's approved revision IS the row's source revision.",
+          "$ref": "common.schema.json#/$defs/revision"
+        }
+      }
+    },
     "bundle": {
       "type": "object",
       "additionalProperties": false,
@@ -34,60 +68,20 @@
         "content_hash": {"$ref": "common.schema.json#/$defs/sha256"}
       }
     },
-    "publication": {
-      "description": "The approved publication generation this export was built from. Unapproved work is never exported, and the approval is not re-decided here: it is the same `publication_approval` decision the outbox event required, about the same source revision and hash (P-5, G-13).",
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["manifest_id", "artifact_kind", "source", "approval"],
-      "properties": {
-        "manifest_id": {"$ref": "common.schema.json#/$defs/manifest_id"},
-        "artifact_kind": {"enum": ["completion_publication", "evidence_correction", "checkpoint_publication"]},
-        "source": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["revision", "content_hash"],
-          "properties": {
-            "revision": {"$ref": "common.schema.json#/$defs/revision"},
-            "content_hash": {"$ref": "common.schema.json#/$defs/sha256"}
-          }
-        },
-        "approval": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["operator_decision_id", "approved_revision"],
-          "properties": {
-            "operator_decision_id": {"$ref": "common.schema.json#/$defs/operator_decision_id"},
-            "approved_revision": {
-              "description": "Equal to publication.source.revision by construction: an export is of the revision that was approved. JSON Schema cannot compare two sibling values, so — exactly as for publication manifests, where the DDL checks that the stored manifest's approval revision IS the row's source_revision — the equality is enforced where both are stored. That is a Phase-3 obligation for the export tables, recorded here rather than assumed.",
-              "$ref": "common.schema.json#/$defs/revision"
-            }
-          }
-        }
-      }
-    },
-    "generation": {
-      "description": "The publication generation the bundle was assembled from — the same number the outbox event carries, not a second counter. Exports may be enabled at any point in a topic's life, so generation 1 is not required to be the first exported generation and a first export legitimately supersedes nothing.",
-      "$ref": "common.schema.json#/$defs/generation",
-      "minimum": 1
-    },
-    "options_revision": {
-      "description": "The revision of the mounted per-topic export options the bundle was assembled under. It is the second half of the ordering pair: the same approved generation re-exported after the operator changes what an export should contain is a new, higher options_revision, and the sink treats it as newer material rather than as a duplicate to ignore.",
-      "$ref": "common.schema.json#/$defs/revision"
-    },
-    "expected_sinks": {
-      "description": "Keyed by sink id, so one sink cannot appear twice with contradictory types. Enablement itself is mounted config; this records which enabled sinks this export was committed for.",
+    "expected_connectors": {
+      "description": "The enabled connectors this export was committed for, keyed by connector id so one connector cannot appear twice with contradictory types. Enablement itself is mounted config. Every connector gets the same manifest and the same bundle; a connector's type decides how it writes, never what it is given.",
       "type": "object",
       "minProperties": 1,
       "maxProperties": 100,
-      "propertyNames": {"$ref": "common.schema.json#/$defs/export_sink_id"},
+      "propertyNames": {"$ref": "common.schema.json#/$defs/connector_id"},
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["sink_type"],
+        "required": ["connector_type"],
         "properties": {
-          "sink_type": {"$ref": "common.schema.json#/$defs/export_sink_type"},
+          "connector_type": {"$ref": "common.schema.json#/$defs/connector_type"},
           "implementation": {
-            "description": "Required for a bespoke sink: the image-baked module that implements it and the review that accepted it. A bespoke sink is engine code, so it arrives by image release — never by an operator adding a name to mounted config (design review §6).",
+            "description": "Required for an extension connector: the module that implements it, packaged outside the core and baked into the image by a release, and the review that accepted it. An extension is engine-facing code, so it arrives by image release — never by an operator adding a name to mounted config (design review §6).",
             "type": "object",
             "additionalProperties": false,
             "required": ["module", "review_ref"],
@@ -98,22 +92,22 @@
           }
         },
         "allOf": [
-          {"if": {"properties": {"sink_type": {"const": "bespoke"}}}, "then": {"required": ["implementation"]}},
-          {"if": {"properties": {"sink_type": {"enum": ["generic_sql", "jsonl_file", "webhook_http"]}}},
+          {"if": {"properties": {"connector_type": {"const": "extension"}}}, "then": {"required": ["implementation"]}},
+          {"if": {"properties": {"connector_type": {"enum": ["sql", "jsonl_file", "webhook"]}}},
            "then": {"not": {"required": ["implementation"]}}}
         ]
       }
     },
     "supersedes": {
-      "description": "The export manifest this one replaces, with its ordering pair. Null when this is the first export of the topic (including when exports were enabled at a later generation).",
+      "description": "The manifest this one replaces, with its ordering pair. Null when this is the topic's first manifest (including when connectors were enabled at a later generation).",
       "oneOf": [
         {"type": "null"},
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["export_manifest_id", "generation", "options_revision"],
+          "required": ["manifest_id", "generation", "options_revision"],
           "properties": {
-            "export_manifest_id": {"$ref": "common.schema.json#/$defs/export_manifest_id"},
+            "manifest_id": {"$ref": "common.schema.json#/$defs/manifest_id"},
             "generation": {"$ref": "common.schema.json#/$defs/generation", "minimum": 1},
             "options_revision": {"$ref": "common.schema.json#/$defs/revision"}
           }
@@ -121,7 +115,7 @@
       ]
     },
     "tombstones": {
-      "description": "Entities removed or corrected relative to the superseded export; each sink acknowledges them, and a delivery that did not acknowledge them is not `delivered`.",
+      "description": "Entities removed or corrected relative to the superseded manifest; each connector acknowledges them, and a delivery that did not acknowledge them is not `delivered`.",
       "type": "array",
       "maxItems": 10000,
       "items": {
@@ -142,6 +136,11 @@
       "description": "Nothing to supersede means nothing to tombstone.",
       "if": {"properties": {"supersedes": {"type": "null"}}},
       "then": {"properties": {"tombstones": {"maxItems": 0}}}
+    },
+    {
+      "description": "Generation 1 is the first approved revision: nothing of an earlier generation exists for it to supersede, only an earlier options revision of generation 1 itself. (The full pair comparison is the DDL's.)",
+      "if": {"properties": {"generation": {"const": 1}}, "required": ["generation"]},
+      "then": {"properties": {"supersedes": {"properties": {"generation": {"const": 1}}}}}
     }
   ]
 }

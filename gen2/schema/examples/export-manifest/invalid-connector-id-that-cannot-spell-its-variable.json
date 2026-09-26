@@ -1,0 +1,27 @@
+{
+  "fixture": {
+    "schema": "export-manifest.schema.json",
+    "expect": "invalid",
+    "tests": "a connector id maps to GEN2_SECRET_CONNECTOR_<ID>, so an id that does not spell a legal variable suffix is refused rather than silently transformed",
+    "base": "valid-first-export-generation-3.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/expected_connectors/archive"
+      },
+      {
+        "op": "add",
+        "path": "/expected_connectors/cold_archive",
+        "value": {
+          "connector_type": "jsonl_file"
+        }
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "pattern",
+        "path": "/expected_connectors"
+      }
+    ]
+  }
+}

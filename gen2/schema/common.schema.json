@@ -62,7 +62,6 @@
     "claim_id": {"type": "string", "pattern": "^clm_[A-Za-z0-9_-]{8,64}$"},
     "work_id": {"type": "string", "pattern": "^wrk_[A-Za-z0-9_-]{8,64}$"},
     "export_bundle_id": {"type": "string", "pattern": "^exb_[A-Za-z0-9_-]{8,64}$"},
-    "export_manifest_id": {"type": "string", "pattern": "^exm_[A-Za-z0-9_-]{8,64}$"},
     "export_receipt_id": {"type": "string", "pattern": "^exr_[A-Za-z0-9_-]{8,64}$"},
     "source_proposal_id": {"type": "string", "pattern": "^srcp_[A-Za-z0-9_-]{8,64}$"},
     "revision": {"description": "A document revision number; revisions start at 1. Identity numbers are bounded BY VALUE to 2^53-1 (Astra re-review RA8): JSON Schema treats 9007199254740992, 9007199254740992.0 and 9007199254740992e0 alike as the integer 2^53, so `maximum` refuses all three; larger identities travel as strings (gen2/core/canonical.py identity_integer states the same bound).", "type": "integer", "minimum": 1, "maximum": 9007199254740991},
@@ -194,18 +193,14 @@
       "description": "shadow: logged, never shown or acted on. advisory: a recommendation a person or the primary disposes of. qualified: the router's policy may commit a reversible action; requires a qualification reference for this exact DecisionSpec (flow §2).",
       "enum": ["shadow", "advisory", "qualified"]
     },
-    "sink": {
-      "description": "Physical publication sinks, named as such — never 'GraphRAG' (flow S8 item 2). Closed by design: these are the stores gen-2's own readers read, and a publication manifest's expected_sinks admits nothing else. Operator-pluggable *export* destinations are a different surface with its own identifiers (export_sink_id / export_sink_type) — they are never added here.",
-      "enum": ["neo4j", "qdrant"]
-    },
-    "export_sink_id": {
-      "description": "An operator-configured export destination's stable name, from the mounted export-sink config (task 0c deliverable 3; docs/gen2/EXPORT-SINKS.md). Not a physical publication sink (see `sink`): nothing the engine serves reads from an export sink. The credential for sink `warehouse` is the environment variable GEN2_SECRET_EXPORT_SINK_WAREHOUSE — the id upper-cased with '-' replaced by '_' — so the pattern admits only what spells a legal variable suffix.",
+    "connector_id": {
+      "description": "An export connector's stable name, chosen by the operator in the mounted connector config (docs/gen2/EXPORT-API.md §5; operator ruling 2026-09-26: one standard export API that any database connects to, and no database product named in the core). The credential for connector `warehouse` is the environment variable GEN2_SECRET_CONNECTOR_WAREHOUSE — the id upper-cased with '-' replaced by '_' — so the pattern admits only what spells a legal variable suffix.",
       "type": "string",
       "pattern": "^[a-z]([a-z0-9-]{0,62}[a-z0-9])?$"
     },
-    "export_sink_type": {
-      "description": "The three shipped generic adapters, plus `bespoke` for a reviewed-code sink. A bespoke sink names its implementation and its review; it is never operator config alone (docs/gen2/EXPORT-SINKS.md §5).",
-      "enum": ["generic_sql", "jsonl_file", "webhook_http", "bespoke"]
+    "connector_type": {
+      "description": "Closed and reviewed (operator ruling 2026-09-26). The core ships three reference connectors: `sql` (portable SQL over a standard connection string), `jsonl_file` (files in a mounted directory) and `webhook` (the export-webhook/1 receiver protocol). A connector for any other database is an `extension`: reviewed code that lives outside the core, is baked into the image by a release, and names its implementation and its review in every manifest — it is never operator config alone, and no product is ever a value here (docs/gen2/EXPORT-API.md §6-7).",
+      "enum": ["sql", "jsonl_file", "webhook", "extension"]
     }
   }
 }

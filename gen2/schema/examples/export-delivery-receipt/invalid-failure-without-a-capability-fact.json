@@ -1,5 +1,5 @@
 {"fixture": {"schema": "export-delivery-receipt.schema.json", "expect": "invalid",
-  "tests": "H-2: a dead sink is a dated capability incident, not a line in a log",
+  "tests": "H-2: a dead connector is a dated capability incident, not a line in a log",
   "base": "valid-partial-write-failed.json",
   "patch": [{"op": "remove", "path": "/capability_fact_id"}],
   "errors": [{"keyword": "required", "path": ""}]}}

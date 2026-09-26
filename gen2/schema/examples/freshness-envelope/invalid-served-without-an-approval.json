@@ -2,19 +2,19 @@
   "fixture": {
     "schema": "freshness-envelope.schema.json",
     "expect": "invalid",
-    "tests": "P-4/G-8: completion is always at a dossier revision",
+    "tests": "P-5: nothing approved means nothing served - a read cannot name an approved revision it served when there is none",
     "base": "valid-partial-export-delivery.json",
     "patch": [
       {
         "op": "replace",
-        "path": "/facts/completion/dossier_revision",
-        "value": null
+        "path": "/approval_status",
+        "value": "no_approved_revision"
       }
     ],
     "errors": [
       {
         "keyword": "type",
-        "path": "/facts/completion/dossier_revision"
+        "path": "/approved_revision_served"
       }
     ]
   }

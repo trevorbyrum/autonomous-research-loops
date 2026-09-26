@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "export-manifest.schema.json",
+    "expect": "invalid",
+    "tests": "the ordering pair: a supersession names the whole pair it replaces, so a connector can compare it; a bare generation is not a pair",
+    "base": "valid-correction-generation-2.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/supersedes/options_revision"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "oneOf",
+        "path": "/supersedes"
+      }
+    ]
+  }
+}

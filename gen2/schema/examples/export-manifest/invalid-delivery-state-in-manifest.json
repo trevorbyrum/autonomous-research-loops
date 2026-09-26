@@ -1,15 +1,15 @@
 {
   "fixture": {
-    "schema": "publication-manifest.schema.json",
+    "schema": "export-manifest.schema.json",
     "expect": "invalid",
-    "tests": "P-1: delivery receipts are separate records; the manifest is immutable",
+    "tests": "P-1 (carries publication-manifest's negative): delivery receipts are separate records; the manifest is immutable and has no delivery field",
     "base": "valid-correction-generation-2.json",
     "patch": [
       {
         "op": "add",
         "path": "/delivered",
         "value": {
-          "neo4j": true
+          "warehouse": true
         }
       }
     ],

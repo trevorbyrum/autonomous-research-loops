@@ -1,5 +1,20 @@
-{"fixture": {"schema": "export-manifest.schema.json", "expect": "invalid",
-  "tests": "P-5: unapproved work is never exported, and the approval is named rather than assumed",
-  "base": "valid-first-export-generation-3.json",
-  "patch": [{"op": "remove", "path": "/publication/approval"}],
-  "errors": [{"keyword": "required", "path": "/publication"}]}}
+{
+  "fixture": {
+    "schema": "export-manifest.schema.json",
+    "expect": "invalid",
+    "tests": "P-5 (carries publication-manifest's 'unapproved' negative): unapproved work is never exported, and the approval is named rather than assumed",
+    "base": "valid-correction-generation-2.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/approval"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": ""
+      }
+    ]
+  }
+}

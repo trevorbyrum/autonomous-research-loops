@@ -2,48 +2,58 @@
   "fixture": {
     "schema": "export-manifest.schema.json",
     "expect": "valid",
-    "tests": "the ordering pair: the same approved generation re-exported under a higher options_revision is newer material, not a duplicate; tombstones ride with a supersession, including one removed for licence; a bespoke sink names its image-baked module and its review"
+    "tests": "the ordering pair: the same approved generation re-exported under a higher options_revision is newer material, not a duplicate; tombstones ride with a supersession, including one removed for licence; an extension connector - reviewed code outside the core - names its module and its review"
   },
   "instance": {
-    "manifest_version": "export-manifest/1",
-    "export_manifest_id": "exm_01J8ZQA1Q4",
+    "manifest_version": "export-manifest/2",
+    "manifest_id": "man_01J8ZQA1Q4",
     "topic_id": "fleet-a:intake-latency",
+    "artifact_kind": "completion_publication",
+    "generation": 3,
+    "options_revision": 2,
+    "source": {
+      "revision": 18,
+      "content_hash": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+    },
+    "approval": {
+      "operator_decision_id": "opd_comp0003",
+      "approved_revision": 18
+    },
     "bundle": {
       "bundle_id": "exb_01J8ZQA1Q4",
       "bundle_version": "export-bundle/1",
       "content_hash": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
     },
-    "publication": {
-      "manifest_id": "man_01J8ZQ70M1",
-      "artifact_kind": "completion_publication",
-      "source": {
-        "revision": 12,
-        "content_hash": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+    "expected_connectors": {
+      "warehouse": {
+        "connector_type": "sql"
       },
-      "approval": {"operator_decision_id": "opd_comp0001", "approved_revision": 12}
-    },
-    "generation": 3,
-    "options_revision": 2,
-    "expected_sinks": {
-      "warehouse": {"sink_type": "generic_sql"},
       "partner-index": {
-        "sink_type": "bespoke",
+        "connector_type": "extension",
         "implementation": {
-          "module": "gen2.projector.export.partner_index",
-          "review_ref": "reviews/gen2-partner-index-sink-review.md"
+          "module": "research_export_partner_index.connector",
+          "review_ref": "reviews/partner-index-connector-review.md"
         }
       }
     },
     "supersedes": {
-      "export_manifest_id": "exm_01J8ZQ90P3",
+      "manifest_id": "man_01J8ZQ90P3",
       "generation": 3,
       "options_revision": 1
     },
     "tombstones": [
-      {"entity_id": "clm_00000148", "reason": "corrected"},
-      {"entity_id": "quote:doi:10.1000/no-change-2026#1", "reason": "removed_for_licence"}
+      {
+        "entity_id": "clm_00000148",
+        "reason": "corrected"
+      },
+      {
+        "entity_id": "quote:doi:10.1000/no-change-2026#1",
+        "reason": "removed_for_licence"
+      }
     ],
     "created_at": "2026-09-25T10:05:00Z",
-    "hash_contract": {"canonicalization": "jcs-rfc8785/1"}
+    "hash_contract": {
+      "canonicalization": "jcs-rfc8785/1"
+    }
   }
 }
