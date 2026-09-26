@@ -2,7 +2,7 @@
   "fixture": {
     "schema": "decision-receipt.schema.json",
     "expect": "invalid",
-    "tests": "A7: a shadow receipt has no effect at all (the review's probe: a committed operation under shadow_log_only)",
+    "tests": "A7: a shadow receipt has no effect at all (the review's probe: a committed operation under shadow_log_only). Two rules refuse it and both are counted: shadow_log_only has no effect, and only commit_reversible_action carries a commit operation",
     "base": "valid-jev-screening-shadow.json",
     "patch": [
       {
@@ -12,6 +12,10 @@
       }
     ],
     "errors": [
+      {
+        "keyword": "type",
+        "path": "/outcome/commit_operation_id"
+      },
       {
         "keyword": "type",
         "path": "/outcome/commit_operation_id"

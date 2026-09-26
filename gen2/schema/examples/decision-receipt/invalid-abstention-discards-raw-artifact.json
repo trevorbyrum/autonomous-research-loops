@@ -2,7 +2,7 @@
   "fixture": {
     "schema": "decision-receipt.schema.json",
     "expect": "invalid",
-    "tests": "A7/D-10: an abstention keeps its raw response artifact for replay (the review's probe)",
+    "tests": "A7/D-10: an abstention keeps its raw response artifact for replay (the review's probe). Two rules refuse it and both are counted: an abstention carries its artifact, and a digest never travels without its artifact (Astra 0c review C1: one signature is not proof that one rule failed)",
     "base": "valid-truncated-input-abstains.json",
     "patch": [
       {
@@ -22,6 +22,10 @@
       }
     ],
     "errors": [
+      {
+        "keyword": "type",
+        "path": "/provider_response/raw_response_artifact"
+      },
       {
         "keyword": "type",
         "path": "/provider_response/raw_response_artifact"

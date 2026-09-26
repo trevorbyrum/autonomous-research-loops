@@ -1,15 +1,19 @@
-"""Black-box tests for the structural DDL rules in tools/check_gen2_schemas.py.
+"""Black-box tests for the structural rules in tools/check_gen2_schemas.py.
 
 Trace: Astra 0a review A1 (a table without a delete guard, or a connection
 without recursive_triggers, lets history be rewritten); INVARIANTS C-11;
-Astra third review ruling 4 (the build runs the store's SQLite gate).
+Astra third review ruling 4 (the build runs the store's SQLite gate);
+Astra 0c review C1 (a fixture's declared errors are counted, not collapsed).
 
-Each test writes a throwaway gen2/store/{schema,connection}.sql pair, runs
+Each DDL test writes a throwaway gen2/store/{schema,connection}.sql pair, runs
 `check_gen2_schemas.py --part ddl` as a subprocess, and asserts the exit code
-and the specific failure. The fixtures are literal SQL written here.
+and the specific failure. The fixtures are literal SQL written here. The
+fixture-rule test does the same with a literal one-file schema tree and
+`--part schemas`.
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -96,6 +100,46 @@ class DdlRuleTest(unittest.TestCase):
         result = self.run_check(GUARDED, connection="PRAGMA foreign_keys = ON;\n")
         self.assertEqual(result.returncode, 1)
         self.assertIn("PRAGMA recursive_triggers does not read back as 1", result.stderr)
+
+
+class SchemaFixtureRuleTest(unittest.TestCase):
+    """An invalid fixture declares every error it produces, counted."""
+
+    SCHEMA = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://research-loops.invalid/gen2/schema/t.schema.json",
+        "$comment": "flow: fixture | boundaries: Router",
+        "type": "object",
+        "allOf": [{"required": ["a"]}, {"required": ["b"]}],
+    }
+
+    def run_check(self, declared: list[dict]) -> subprocess.CompletedProcess:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "docs" / "gen2").mkdir(parents=True)
+            (root / "docs" / "gen2" / "BOUNDARIES.md").write_text("## Router\n", encoding="utf-8")
+            examples = root / "gen2" / "schema" / "examples" / "t"
+            examples.mkdir(parents=True)
+            (root / "gen2" / "schema" / "t.schema.json").write_text(json.dumps(self.SCHEMA), encoding="utf-8")
+            (examples / "valid-both.json").write_text(json.dumps(
+                {"fixture": {"schema": "t.schema.json", "expect": "valid", "tests": "positive control"},
+                 "instance": {"a": 1, "b": 2}}), encoding="utf-8")
+            (examples / "invalid-neither.json").write_text(json.dumps(
+                {"fixture": {"schema": "t.schema.json", "expect": "invalid", "tests": "two rules, one signature",
+                             "base": "valid-both.json", "patch": [{"op": "remove", "path": "/a"}, {"op": "remove", "path": "/b"}],
+                             "errors": declared}}), encoding="utf-8")
+            return subprocess.run([sys.executable, str(CHECKER), "--root", str(root), "--part", "schemas"],
+                                  capture_output=True, text=True, timeout=60, env=ENV)
+
+    def test_two_rules_reporting_one_signature_must_both_be_declared(self) -> None:
+        """Two rules fail at one (keyword, path). Declared once, the fixture
+        would survive removal of either rule, so the check refuses it;
+        declared twice, it passes (Astra 0c review C1)."""
+        once = self.run_check([{"keyword": "required", "path": ""}])
+        self.assertEqual(once.returncode, 1, msg=once.stdout)
+        self.assertIn("invalid-neither.json: expected exactly [('required', '')], got [('required', ''), ('required', '')]", once.stderr)
+        twice = self.run_check([{"keyword": "required", "path": ""}] * 2)
+        self.assertEqual(twice.returncode, 0, msg=twice.stderr)
 
 
 if __name__ == "__main__":

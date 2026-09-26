@@ -30,6 +30,7 @@ Astra 0a review, "Independent mutation record".
 from __future__ import annotations
 
 import argparse
+import json
 import multiprocessing
 import os
 import re
@@ -78,6 +79,8 @@ FILE_TARGETS = {
     "tools/gen_source_catalog.py": ("attr", "test_source_catalog", "TOOL"),
     # A schema file: the whole schema tree is re-checked with this file replaced (0c-repair, C1).
     "gen2/schema/export-bundle.schema.json": ("attr", "test_schema_counterfactuals", "EXPORT_BUNDLE_SCHEMA"),
+    "gen2/schema/decision-receipt.schema.json": ("attr", "test_schema_counterfactuals", "DECISION_RECEIPT_SCHEMA"),
+    "gen2/schema/invocation.schema.json": ("attr", "test_schema_counterfactuals", "INVOCATION_SCHEMA"),
 }
 
 H = "test_store_history."
@@ -1382,7 +1385,33 @@ MUTATIONS: list[Mutation] = [
            ("test_a_mixed_disposition_with_an_empty_hold_list_is_refused",), "gen2/schema/export-bundle.schema.json",
            '"then": {"required": ["open_adjudication_hold_ids"], "properties": {"open_adjudication_hold_ids": {"minItems": 1}}}',
            '"then": {"required": ["open_adjudication_hold_ids"]}'),
+          # The audit of every other negative for the same collapse found four
+          # (0a fixtures). The checker now counts errors (below); these show
+          # each hidden rule is noticed on its own. intake-brief's
+          # invalid-version-zero states one floor twice, so it has no mutant.
+          ("abstention-artifact-not-required", "C1-audit", "an abstention no longer needs its raw response artifact",
+           ("test_an_abstention_that_discards_its_raw_artifact_is_refused_by_both_rules",), "gen2/schema/decision-receipt.schema.json",
+           '"then": {"properties": {"raw_response_digest": {"type": "string"}, "raw_response_artifact": {"type": "object"}}}}',
+           '"then": {"properties": {"raw_response_digest": {"type": "string"}}}}'),
+          ("digest-without-artifact", "C1-audit", "a raw response digest may travel without its artifact",
+           ("test_an_abstention_that_discards_its_raw_artifact_is_refused_by_both_rules",), "gen2/schema/decision-receipt.schema.json",
+           '"then": {"properties": {"raw_response_artifact": {"type": "object"}}},\n          "else"', '"else"'),
+          ("shadow-may-commit", "C1-audit", "shadow_log_only no longer forbids a commit operation",
+           ("test_a_shadow_receipt_with_a_commit_is_refused_by_both_rules",), "gen2/schema/decision-receipt.schema.json",
+           '"then": {"properties": {"outcome": {"properties": {"commit_operation_id": {"type": "null"}, "proposal_ref": {"type": "null"}, "hold_id": {"type": "null"}}}}}}',
+           '"then": {"properties": {"outcome": {"properties": {"proposal_ref": {"type": "null"}, "hold_id": {"type": "null"}}}}}}'),
+          ("non-commit-action-may-commit", "C1-audit", "an action other than commit_reversible_action may carry a commit operation",
+           ("test_a_shadow_receipt_with_a_commit_is_refused_by_both_rules",), "gen2/schema/decision-receipt.schema.json",
+           ',\n         "else": {"properties": {"outcome": {"properties": {"commit_operation_id": {"type": "null"}}}}}}', "}"),
+          *((f"identity-{member.replace('_', '-')}-not-required", "C1-audit", f"a running invocation's identity no longer requires {member}",
+             ("test_a_bare_process_identity_is_refused_for_each_missing_member",), "gen2/schema/invocation.schema.json",
+             '"required": ["job_handle", "host_id", "container_id", "boot_id", "start_fingerprint"]',
+             '"required": ' + json.dumps([m for m in ("job_handle", "host_id", "container_id", "boot_id", "start_fingerprint") if m != member]))
+            for member in ("host_id", "boot_id", "start_fingerprint")),
       )),
+    Mutation("0CR-checker-errors-collapsed-to-a-set", "C1", "the schema check compares declared and actual errors as sets again, so two rules at one signature pass as one",
+             ("test_check_ddl_rules.SchemaFixtureRuleTest.test_two_rules_reporting_one_signature_must_both_be_declared",),
+             target="tools/check_gen2_schemas.py", old="            if actual != expected:", new="            if set(actual) != set(expected):"),
 ]
 
 

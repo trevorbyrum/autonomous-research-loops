@@ -2,7 +2,7 @@
   "fixture": {
     "schema": "intake-brief.schema.json",
     "expect": "invalid",
-    "tests": "flow S1: brief versions start at 1",
+    "tests": "flow S1: brief versions start at 1. The floor is stated twice (the property's own minimum and common revision's) and both refusals are counted",
     "base": "valid-brief-v1.json",
     "patch": [
       {
@@ -12,6 +12,10 @@
       }
     ],
     "errors": [
+      {
+        "keyword": "minimum",
+        "path": "/version"
+      },
       {
         "keyword": "minimum",
         "path": "/version"

@@ -10,9 +10,13 @@ Checks, in order (any failure exits 1; a missing validator exits 2):
   3. Fixtures under gen2/schema/examples/<schema stem>/:
        valid-*.json    must validate;
        invalid-*.json  are a valid base plus a JSON-patch mutation and must
-                       fail with EXACTLY the declared set of
-                       (keyword, instance path) errors — so a fixture that
-                       fails for an unrelated reason does not pass.
+                       fail with EXACTLY the declared (keyword, instance
+                       path) errors — so a fixture that fails for an
+                       unrelated reason does not pass. Errors are counted,
+                       not collapsed into a set: two errors with one
+                       signature are declared twice, because one signature
+                       is never proof that only one rule failed (Astra 0c
+                       review C1).
      Every schema needs at least one valid fixture.
   4. The SQLite this runs on passes the store's compatibility gate
      (gen2/store/compat.py: numeric version floor, JSON functions answering
@@ -37,6 +41,7 @@ Trace: task 0a deliverables 2-4.
 from __future__ import annotations
 
 import argparse
+import collections
 import copy
 import json
 import re
@@ -252,17 +257,18 @@ def check_schemas(root: Path, headings: set[str]) -> tuple[list[str], int, int]:
                 if base["fixture"]["schema"] != target or base["fixture"]["expect"] != "valid":
                     raise ValueError("base must be a valid fixture for the same schema target")
                 instance = apply_patch(base["instance"], meta["patch"])
-                expected = {(e["keyword"], e["path"]) for e in meta["errors"]}
+                expected = collections.Counter((e["keyword"], e["path"]) for e in meta["errors"])
             except (ValueError, KeyError, TypeError, IndexError, FileNotFoundError) as exc:
                 failures.append(f"{rel}: malformed invalid fixture: {exc}")
                 continue
             if not expected:
                 failures.append(f"{rel}: invalid fixture must declare its expected errors")
                 continue
-            actual = {error_signature(e) for e in validator.iter_errors(instance)}
+            actual = collections.Counter(error_signature(e) for e in validator.iter_errors(instance))
             if actual != expected:
                 failures.append(
-                    f"{rel}: expected exactly {sorted(expected)}, got {sorted(actual) or 'no errors (instance validated)'}"
+                    f"{rel}: expected exactly {sorted(expected.elements())}, "
+                    f"got {sorted(actual.elements()) or 'no errors (instance validated)'}"
                 )
             n_invalid += 1
         else:

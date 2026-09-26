@@ -39,8 +39,12 @@ ENV = {**os.environ, "PYTHONPATH": str(REPO)}
 
 # Module globals: tools/gen2_mutations.py points one at a mutated copy.
 EXPORT_BUNDLE_SCHEMA = SCHEMAS / "export-bundle.schema.json"
+DECISION_RECEIPT_SCHEMA = SCHEMAS / "decision-receipt.schema.json"
+INVOCATION_SCHEMA = SCHEMAS / "invocation.schema.json"
 OVERRIDES = {
     "EXPORT_BUNDLE_SCHEMA": "export-bundle.schema.json",
+    "DECISION_RECEIPT_SCHEMA": "decision-receipt.schema.json",
+    "INVOCATION_SCHEMA": "invocation.schema.json",
 }
 FAILURE = re.compile(r"^SCHEMA CHECK FAILURE: (\S+?): (.*)$")
 
@@ -81,6 +85,20 @@ class FixtureCounterfactualTest(unittest.TestCase):
     def test_a_mixed_disposition_with_an_empty_hold_list_is_refused(self) -> None:
         self.assertBehaveAsDeclared("export-bundle", "valid-completed-topic.json",
                                     "invalid-mixed-disposition-with-an-empty-adjudication-list.json")
+
+
+    # --- the 0c-repair audit: 0a negatives whose one declared signature hid
+    # two or three errors. Now counted, each rule's removal is noticed.
+    def test_an_abstention_that_discards_its_raw_artifact_is_refused_by_both_rules(self) -> None:
+        self.assertBehaveAsDeclared("decision-receipt", "valid-truncated-input-abstains.json",
+                                    "invalid-abstention-discards-raw-artifact.json")
+
+    def test_a_shadow_receipt_with_a_commit_is_refused_by_both_rules(self) -> None:
+        self.assertBehaveAsDeclared("decision-receipt", "valid-jev-screening-shadow.json",
+                                    "invalid-shadow-with-commit-effect.json")
+
+    def test_a_bare_process_identity_is_refused_for_each_missing_member(self) -> None:
+        self.assertBehaveAsDeclared("invocation", "valid-research-pass-running.json", "invalid-bare-identity.json")
 
 
 if __name__ == "__main__":

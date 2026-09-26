@@ -2,7 +2,7 @@
   "fixture": {
     "schema": "invocation.schema.json",
     "expect": "invalid",
-    "tests": "L-3: a running invocation's identity is job handle + host + boot identity + start fingerprint; a handle alone (the bare-PID pattern) is refused",
+    "tests": "L-3: a running invocation's identity is job handle + host + boot identity + start fingerprint; a handle alone (the bare-PID pattern) is refused. Each missing member is its own error and is counted, so dropping any one of them from `required` is noticed",
     "base": "valid-research-pass-running.json",
     "patch": [
       {
@@ -19,6 +19,14 @@
       }
     ],
     "errors": [
+      {
+        "keyword": "required",
+        "path": "/process_identity"
+      },
+      {
+        "keyword": "required",
+        "path": "/process_identity"
+      },
       {
         "keyword": "required",
         "path": "/process_identity"
