@@ -37,6 +37,7 @@ import unittest
 from pathlib import Path
 
 from gen2.core import canonical
+from gen2.core.instants import utc_instant_ns
 from gen2.supervisor import jobs
 from gen2.tests import children
 from gen2.tests import router_fixtures as rf
@@ -222,8 +223,13 @@ class LifecycleFaults:
         with self.assertRaises(Stop):
             self.make_supervisor(fault=stop).submit(self.order(self.KIND))
         self.x("UPDATE queue_entries SET paused_at = ? WHERE topic_id = ?", "2026-09-27T10:00:00Z", rf.TOPIC)
-        outcomes = [self.supervisor.advance(MAIN) for _ in range(5)]
+        outcomes = []
+        for _ in range(5):
+            outcomes.append(self.supervisor.advance(MAIN))
+            if len(outcomes) == 3:
+                self.assertIsNone(self.journal().get("exhausted"))  # within the budget: no incident
         self.assertEqual(outcomes, ["waiting_launch"] * 3 + ["cancelled", "cancelled"])
+        self.exhausted("launch", {"reason": "topic_paused"}, None)
         self.assertEqual(self.ended(), self.expected(state="cancelled", descendants_confirmed=True, transitions=["admitted", "cancelled"],
                                                      lease_release=released(self.KIND, "cancelled")))
         self.assertEqual(self.rows("SELECT cancel_requested_by FROM invocations WHERE invocation_id = ?", MAIN), [("supervisor",)])
@@ -396,6 +402,23 @@ class LifecycleFaults:
         self.assertEqual(self.ended()["reconciliations"], ["found_running"])
         self.assertFalse((job / "abandoned").exists())
 
+    def exhausted(self, budget: str, last_refusal: dict, result_ref: dict | None) -> None:
+        """An exhausted retry budget is an owned, deadlined incident with the
+        budget, the last refusal and the result it concerns (RG-3; Astra 1c
+        review A11) — visible through the supervisor, and still there after a
+        restart, which starts and sends nothing more."""
+        found = self.journal()["exhausted"]
+        self.assertEqual({k: found[k] for k in ("kind", "budget", "result_ref", "owner")},
+                         {"kind": "retry_exhausted", "budget": budget, "result_ref": result_ref, "owner": "supervisor:station-1"})
+        self.assertEqual({k: found["last_refusal"].get(k) for k in last_refusal}, last_refusal)
+        self.assertGreater(utc_instant_ns(found["deadline_at"]), utc_instant_ns(found["since"]))
+        self.assertEqual([i for i in self.supervisor.incidents() if i["invocation_id"] == MAIN], [{"invocation_id": MAIN, "blocking": False, **found}])
+        before, spawns, calls = self.state(exclude=()), self.spawns(), self.control.calls
+        restarted = self.make_supervisor()
+        self.assertEqual(restarted.recover()[MAIN], self.ended()["state"])
+        self.assertEqual((self.state(exclude=()), self.spawns(), self.journal()["exhausted"]), (before, spawns, found))
+        self.assertEqual(self.control.calls, calls + (1 if self.KIND == "delegate" else 0))  # settled: nothing sent (the parent still runs)
+
     def test_a_commit_refused_while_paused_is_resent_within_its_budget(self) -> None:
         for resume, outcomes, end in ((True, ["result_ready", "committed"], "committed"), (False, ["result_ready"] * 3 + ["failed"], "failed")):
             with self.subTest(resume=resume):
@@ -412,15 +435,23 @@ class LifecycleFaults:
                 self.assertEqual(seen, outcomes)
                 self.assertEqual(self.ended()["state"], end)
                 self.assertEqual(self.ended()["failure_class"], None if resume else "result_rejected")
+                if resume:
+                    self.assertIsNone(self.journal().get("exhausted"))  # resent within its budget: nothing exhausted
+                else:
+                    self.exhausted("commit", {"reason": "topic_paused"}, self.journal()["collected"]["result"])
 
     # -- budgets (L-6) ---------------------------------------------------------------------------
     def test_a_launcher_that_cannot_start_fails_within_the_spawn_budget(self) -> None:
         self.prepare(self.KIND)
         self.supervisor = self.make_supervisor(launcher=(str(self.root / "no-such-interpreter"),))
-        outcomes = [self.supervisor.submit(self.order(self.KIND))] + [self.supervisor.advance(MAIN) for _ in range(3)]
+        outcomes = [self.supervisor.submit(self.order(self.KIND))] + [self.supervisor.advance(MAIN)]
+        self.assertIsNone(self.journal().get("exhausted"))  # within the budget: no incident
+        outcomes += [self.supervisor.advance(MAIN) for _ in range(2)]
         self.assertEqual(outcomes, ["launching", "launching", "failed", "failed"])
         self.assertEqual(self.ended(), self.failed("spawn_failed", via=("admitted", "launching", "failed")))
         self.assertEqual(self.job_file("spawn.json"), {"attempts": 2, "failed": 2})
+        self.exhausted("spawn", {"reason": "spawn_refused"}, None)
+        self.assertIn("no-such-interpreter", self.journal()["exhausted"]["last_refusal"]["detail"])
 
     def test_a_retried_start_is_admitted_again(self) -> None:
         """A start the OS refused is retried on a later advance; the retry is

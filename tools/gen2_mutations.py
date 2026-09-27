@@ -2748,6 +2748,17 @@ MUTATIONS: list[Mutation] = [
            '                    journal["incident"] = None\n                    journal["budgets"]["router"] = 0\n                    self._save(job, journal)'),
           ("outage-untimed", "an outage is bounded by attempts only, however long it lasts",
            ("test_an_outage_is_also_bounded_in_time",), ' or self._past(self._after(self.policy.router_window_s, outage["since"]))', ''))),
+    # A11: an exhausted retry budget is an owned, deadlined incident with its budget, last refusal and result reference.
+    *(Mutation(f"1C-sup-{key}", "1c-A11", desc, tuple(p + k for k in killers for p in (SLR, SLD)), target=SPV, old=old, new=new)
+      for key, desc, killers, old, new in (
+          ("spawn-exhaustion-silent", "an exhausted spawn budget leaves no incident", ("test_a_launcher_that_cannot_start_fails_within_the_spawn_budget",),
+           '                self._exhausted(job, journal, "spawn", journal.get("spawn_refused"), None)\n', ''),
+          ("commit-exhaustion-silent", "an exhausted commit budget leaves no incident", ("test_a_commit_refused_while_paused_is_resent_within_its_budget",),
+           '            self._exhausted(job, journal, "commit", {"reason": response["reason"], "detail": response.get("detail")}, collected["result"])\n', ''),
+          ("commit-exhaustion-unreferenced", "an exhausted commit's incident names no result", ("test_a_commit_refused_while_paused_is_resent_within_its_budget",),
+           '{"reason": response["reason"], "detail": response.get("detail")}, collected["result"])', '{"reason": response["reason"], "detail": response.get("detail")}, None)'),
+          ("launch-exhaustion-silent", "an exhausted launch budget leaves no incident", ("test_pause_holds_launch_within_its_budget_then_cancels",),
+           '            self._exhausted(job, journal, "launch", {"reason": reason}, None)\n', ''))),
     # C2 (found intermittent): a lookup asks about the launcher's lock and never takes it.
     Mutation("1C-jobs-probe-takes-the-lock", "1c-C2", "a lookup probes the launcher's lock by taking it (a launcher locking meanwhile gives up)",
              (SJ + "LockProbeTest.test_a_lookup_never_holds_the_lock_a_launcher_needs", SJ + "LookupTest.test_each_verdict_from_the_facts_it_names"),

@@ -266,6 +266,13 @@ class Supervisor:
                         "deadline_at": self._after(self.policy.incident_window_s), **facts}
         self._save(job, journal)
 
+    def _exhausted(self, job: jobs.Job, journal: dict, budget: str, last_refusal: dict | None, result_ref: dict | None) -> None:
+        """A retry budget ran out (RG-3; Astra 1c review A11): which budget,
+        the last refusal and the result it concerns, owned and deadlined —
+        recorded before the job's end, once."""
+        if not journal.get("exhausted"):
+            self._incident(job, journal, "retry_exhausted", key="exhausted", budget=budget, last_refusal=last_refusal, result_ref=result_ref)
+
     def _write_failed(self, job: jobs.Job, failure: Exception) -> str:
         """A durable write failed — the spool full or refusing, a file-system
         error. What was durable before it stands (an observation kept in the
@@ -536,8 +543,10 @@ class Supervisor:
         """The launch-admission check refused: a paused topic is waited for
         within the launch budget, then (or for a lapsed lease) the work is
         cancelled by the supervisor — nothing was started (L-2, L-7)."""
-        if reason == "topic_paused" and self._spend(job, journal, "launch"):
-            raise Waiting("waiting_launch")
+        if reason == "topic_paused":
+            if self._spend(job, journal, "launch"):
+                raise Waiting("waiting_launch")
+            self._exhausted(job, journal, "launch", {"reason": reason}, None)
         return self._cancel_self(job, journal, grant, f"launch refused: {reason}")
 
     def _admitted(self, job, order, journal, grant, status) -> str:
@@ -556,12 +565,15 @@ class Supervisor:
             if refused is not None:  # recorded launch intent is not renewed authority: a recovery or a retried start is checked again
                 return self._refused_launch(job, journal, grant, refused["reason"])
             if not self._spend(job, journal, "spawn"):
+                self._exhausted(job, journal, "spawn", journal.get("spawn_refused"), None)
                 return self._end(job, order, journal, grant, "failed", self._unrun("spawn_failed", "the launcher could not be started within the spawn budget"),
                                  "job_handle_lookup")
             try:
                 self._children[job.handle] = job.spawn(list(self.launcher), before_start=lambda: self._fault("spawning"))
-            except OSError:
-                raise Waiting("launching") from None  # the start is recorded as refused (spawn.json): the next advance tries again, on budget
+            except OSError as refused:  # the start is recorded as refused (spawn.json): the next advance tries again, on budget
+                journal["spawn_refused"] = {"reason": "spawn_refused", "detail": f"{type(refused).__name__}: {refused}"[:500]}
+                self._save(job, journal)
+                raise Waiting("launching") from None
             self._fault("spawned")
             view = self._await_identity(job, self.policy.identity_grace_s)
         if view["identity"] is not None and job.handle in self._children:  # this process started it and saw its identity
@@ -677,11 +689,13 @@ class Supervisor:
         self._fault("commit_replied")
         if response["status"] in ("committed", "replayed"):
             return self._settle(job, journal, "committed")
-        if response["reason"] in ("state_revision_stale", "topic_paused") and self._spend(job, journal, "commit"):
-            if response["current_state_revision"] is not None:
-                journal["envelope"] = self._envelope(order, grant, collected, response["current_state_revision"])
-                self._save(job, journal)
-            raise Waiting("result_ready")
+        if response["reason"] in ("state_revision_stale", "topic_paused"):
+            if self._spend(job, journal, "commit"):
+                if response["current_state_revision"] is not None:
+                    journal["envelope"] = self._envelope(order, grant, collected, response["current_state_revision"])
+                    self._save(job, journal)
+                raise Waiting("result_ready")
+            self._exhausted(job, journal, "commit", {"reason": response["reason"], "detail": response.get("detail")}, collected["result"])
         observation = {**collected["observation"], "findings": ["result_rejected"]}  # the result stays in the spool, uncommitted (C-10)
         return self._end(job, order, journal, grant, "failed", observation, "exit_observed")
 
