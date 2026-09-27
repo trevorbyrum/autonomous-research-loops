@@ -253,7 +253,9 @@ class Supervisor:
         view = job.lookup()
         if view["verdict"] == "exited":
             self._collect(job, order, journal, view)
-        elif view["verdict"] == "running" and self._past(order["deadline_at"]):
+        elif self._past(order["deadline_at"]) and (view["verdict"] == "running" or (view["verdict"] == "vanished" and view["members"])):
+            # the deadline is local (C-10): a live group is ended at it whether or not its launcher survives, and whatever the
+            # router's state or reachability; the end is retained and reconciled once the router answers (Astra 1c review A9)
             self._terminate(job, order, journal, view, "timeout")
 
     def _process(self, identity: dict | None) -> dict | None:

@@ -291,6 +291,36 @@ class LifecycleFaults:
         self.assertEqual(self.supervisor.run(MAIN), "failed")
         self.assertEqual(self.ended(), self.failed("timeout"))
 
+    def test_the_deadline_ends_a_group_whose_launcher_vanished_while_the_router_is_away(self) -> None:
+        """Astra 1c review A9: the launcher dies (killed, reaped), leaving its
+        executor and a descendant in the group; the router is unreachable; the
+        deadline passes. The group is ended locally — every member dead
+        before the router is reachable again — and the end is retained, then
+        recorded once the router answers."""
+        self.assertEqual(self.submit(HANG_WITH_DESCENDANT), "running")
+        pid = self.descendant_pid()
+        identity = self.job_file("identity.json")
+        os.kill(identity["pid"], signal.SIGKILL)
+        deadline = time.monotonic() + 5
+        while alive(identity["pid"]) and time.monotonic() < deadline:
+            self.reap()
+            time.sleep(0.01)
+        self.control.down = True
+        self.assertEqual(self.supervisor.advance(MAIN), "router_unavailable")  # before the deadline nothing is ended locally
+        self.assertTrue(alive(pid))
+        self.clock.set(AFTER_DEADLINE)
+        outcomes = [self.supervisor.advance(MAIN) for _ in range(8)]
+        self.assertEqual((alive(pid), jobs.members(identity)), (False, []))  # dead before reconnecting
+        self.assertIn("stalled", outcomes)  # the router budget ran out meanwhile
+        self.assertEqual(self.journal()["collected"]["terminated"], "timeout")
+        self.control.down = False
+        self.assertEqual(self.supervisor.recover()[MAIN], "failed")
+        self.assertEqual(self.ended(), self.failed("timeout"))
+        record = self.evidence_record()
+        self.assertEqual((record["method"], record["termination"], record["exit"], record["descendants"]["handling"]),
+                         ("execution_group_termination", {"reason": "timeout"}, None, "terminated"))
+        self.assertGreaterEqual(record["descendants"]["count"], 2)  # the executor and its descendant (the launcher was already gone)
+
     # -- outcome_unknown (L-4) -----------------------------------------------------------------
     def test_a_launcher_gone_without_an_exit_is_reconciled_by_terminating_its_group(self) -> None:
         self.assertEqual(self.submit(HANG_WITH_DESCENDANT), "running")

@@ -2654,7 +2654,8 @@ MUTATIONS: list[Mutation] = [
           ("descendants-left-running", "descendants left after the primary exits are not ended (L-7)", ("test_a_primary_that_exits_leaving_a_descendant",),
            '        left = [pid for pid in jobs.members(identity) if pid != identity["pid"]]', "        left = []"),
           ("no-deadline", "a job past its deadline is left running", ("test_the_deadline_still_ends_work_while_the_router_is_away", "test_timeout_terminates_the_whole_group"),
-           '        elif view["verdict"] == "running" and self._past(order["deadline_at"]):', "        elif False:"),
+           '        elif self._past(order["deadline_at"]) and (view["verdict"] == "running" or (view["verdict"] == "vanished" and view["members"])):',
+           "        elif False:"),
           ("cancellation-ignored", "a requested cancellation does not end a running job", ("test_cancellation_terminates_the_group_then_releases_capacity",),
            '            if status["cancel_requested"] and view["verdict"] in ("running", "vanished"):', "            if False:"),
           ("spawn-before-launch-intent", "the launcher is started before launch intent is recorded (L-2)", ("test_pause_holds_launch_within_its_budget_then_cancels",),
@@ -2714,6 +2715,11 @@ MUTATIONS: list[Mutation] = [
     Mutation("1C-sup-cancelled-exit-unconfirmed", "1c-A2", "a cancellation of work that already exited is reconciled without confirming its group",
              (SCD + "test_cancellation_after_an_uncertain_spawn_of_work_that_already_exited", SCP + "test_cancellation_after_an_uncertain_spawn_of_work_that_already_exited"),
              target=SPV, old='            if cancel and observation["termination"] is None:\n', new='            if False:\n'),
+    # A9: the local deadline ends a live group whether or not its launcher survives, with no router response.
+    Mutation("1C-sup-vanished-group-outlives-deadline", "1c-A9", "a group whose launcher vanished outlives its deadline while the router is away",
+             (SLR + "test_the_deadline_ends_a_group_whose_launcher_vanished_while_the_router_is_away",
+              SLD + "test_the_deadline_ends_a_group_whose_launcher_vanished_while_the_router_is_away"), target=SPV,
+             old='(view["verdict"] == "running" or (view["verdict"] == "vanished" and view["members"]))', new='view["verdict"] == "running"'),
     # A6: a recorded hash is not topic authorization; each topic's own work authorizes it (artifact_topics).
     Mutation("1C-router-recorded-hash-any-topic", "1c-A6", "an embedded reference resolves to bytes recorded for any topic",
              (RC + "TopicAuthorizationTest.test_bytes_recorded_only_for_another_topic_are_not_referenced_by_hash",
