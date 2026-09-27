@@ -39,6 +39,7 @@ from gen2.tests import router_fixtures as rf
 
 KINDS = ("research_pass", "discovery", "delegate", "verification", "checkpoint")
 ARTIFACTS = "GEN2_TEST_ARTIFACTS"  # where a failed supervisor test's temporary tree is kept (default <tmp>/gen2-test-artifacts)
+EVIDENCE = "GEN2_TEST_EVIDENCE"  # "off": keep nothing (the mutation runner, whose mutants fail tests on purpose)
 JOB_RECORDS = ("order.json", "spawn.json", "identity.json", "exit.json", "abandoned", "journal.json", "launcher.log", "executor.log")
 FAST = Policy(identity_grace_s=10.0, start_grace_s=1.0, term_grace_s=0.5, kill_grace_s=5.0, poll_s=0.01)
 DEADLINE = "2026-09-27T12:00:00Z"   # the test's clock starts at 10:00 and moves only when told
@@ -153,7 +154,7 @@ class SupervisedTestCase(rf.RouterTestCase):
         self.supervisor = self.make_supervisor()
 
     def tearDown(self) -> None:
-        if getattr(self, "_failed", None):
+        if getattr(self, "_failed", None) and os.environ.get(EVIDENCE) != "off":
             self.keep_evidence()
         survivors = self.end_every_process()
         self.store.close()

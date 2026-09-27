@@ -3138,6 +3138,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"second layer (not independently killable): {guard}\n    first layer: {reason}")
         return 0
     sys.path[:0] = [str(TESTS), str(ROOT)]
+    os.environ["GEN2_TEST_EVIDENCE"] = "off"  # mutants fail tests on purpose: no failure evidence is kept (gen2/tests/supervisor_fixtures.py)
     import gen2.tests.store_fixtures as fx  # noqa: E402 (path set above)
 
     ddl0, conn0 = fx.DDL_TEXT, fx.CONNECTION_TEXT
