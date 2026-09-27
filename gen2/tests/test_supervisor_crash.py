@@ -43,22 +43,25 @@ from __future__ import annotations
 import unittest
 
 from gen2.tests import children
-from gen2.tests.supervisor_fixtures import MAIN, SupervisedTestCase, released, succeed
+from gen2.tests import router_fixtures as rf
+from gen2.tests.supervisor_fixtures import DEADLINE, MAIN, PARENT, SupervisedTestCase, released, succeed
 
 GATED = [{"op": "wait_for", "name": "gate", "seconds": 60}, *succeed()]
 HANG = [{"op": "hang"}]
 CLEAN = ["admitted", "launching", "running", "result_ready", "committed"]
 CHILD_CLOCK = "2026-09-27T10:30:00Z"
-SHORT_DEADLINE = "2026-09-27T10:30:00.300Z"  # passes while the child polls its running job (its clock reads a millisecond at a time)
+SHORT_DEADLINE = "2026-09-27T10:30:00.300Z"
+LAPSES = "2026-09-27T10:45:00Z"  # a lease expiring after the child's claim (10:30), before the restart (11:00)  # passes while the child polls its running job (its clock reads a millisecond at a time)
 
 
 class CrashFaults:
     KIND: str
 
-    def crash(self, point: str, steps: list[dict], *, deadline: str | None = None, clock: str = CHILD_CLOCK, prepare: bool = True) -> None:
+    def crash(self, point: str, steps: list[dict], *, deadline: str | None = None, clock: str = CHILD_CLOCK, prepare: bool = True,
+              lease_expires: str | None = None) -> None:
         if prepare:
-            self.prepare(self.KIND)
-            self.supervisor.prepare(self.order(self.KIND, steps, **({"deadline": deadline} if deadline else {})))
+            self.prepare(self.KIND, lease_expires)
+            self.supervisor.prepare(self.order(self.KIND, steps, lease_expires=lease_expires, **({"deadline": deadline} if deadline else {})))
         child = children.python(["-m", "gen2.tests.supervisor_child", str(self.root), MAIN, point, clock], capture_output=True, text=True, timeout=120)
         self.assertEqual(child.returncode, 137, f"the child did not die at {point}: {child.stdout} {child.stderr}")
 
@@ -87,6 +90,56 @@ class CrashFaults:
         self.assertEqual(self.supervisor.run(MAIN), "committed")
         self.assertEqual(self.ended(), self.committed())
         self.assertEqual(self.spawns(), 1)
+
+    # -- a recorded launch intent is not renewed authority to start (L-7; Astra 1c review A1) ------------
+    # Each: the supervisor dies once launch intent is recorded; the authority it had is withdrawn; the
+    # restarted supervisor must start nothing (no start recorded in the job directory, no identity) and
+    # the work ends cancelled by the supervisor. The positive control is the test above: the same crash,
+    # authority unchanged, starts once and commits.
+    def unlaunched(self, lease_release: str | None, by: str = "supervisor") -> None:
+        self.assertEqual(self.ended(), {**self.committed(["admitted", "launching", "cancelled"]), "state": "cancelled", "receipts": 0, "evidence": True,
+                                        "descendants_confirmed": True, "lease_release": lease_release})
+        self.assertEqual(self.value("SELECT cancel_requested_by FROM invocations WHERE invocation_id = ?", MAIN), by)
+        self.assertEqual((self.spawns(), self.job_file("identity.json")), (0, None))
+        self.assertEqual(self.evidence_record()["output"]["detail"], "cancelled before the launcher started")
+
+    def test_recovery_starts_nothing_in_a_topic_paused_meanwhile(self) -> None:
+        self.crash("launch_recorded", succeed())
+        self.x("UPDATE queue_entries SET paused_at = ? WHERE topic_id = ?", "2026-09-27T10:45:00Z", rf.TOPIC)
+        outcomes = [self.restart()[MAIN]] + [self.supervisor.advance(MAIN) for _ in range(4)]
+        self.assertEqual(outcomes, ["waiting_launch"] * 3 + ["cancelled"] * 2)  # the launch budget (3), then cancelled
+        self.unlaunched(released(self.KIND, "cancelled"))
+
+    def test_recovery_starts_nothing_once_the_lease_has_expired(self) -> None:
+        self.crash("launch_recorded", succeed(), lease_expires=LAPSES)  # the restart's clock (11:00) is past it; the deadline (12:00) is not
+        self.assertEqual(self.restart()[MAIN], "cancelled")
+        self.unlaunched(released(self.KIND, "cancelled"))
+
+    def test_recovery_starts_nothing_once_the_lease_is_released(self) -> None:
+        self.crash("launch_recorded", succeed())
+        lease = self.value("SELECT lease_id FROM invocations WHERE invocation_id = ?", PARENT if self.KIND == "delegate" else MAIN)
+        self.x("UPDATE leases SET released_at = ?, release_reason = 'expired' WHERE lease_id = ?", "2026-09-27T10:45:00Z", lease)
+        self.assertEqual(self.restart()[MAIN], "cancelled")
+        self.unlaunched("expired")
+
+    def test_recovery_starts_nothing_once_the_lease_is_replaced(self) -> None:
+        if self.KIND in ("research_pass", "delegate"):
+            self.skipTest("a research lease is not replaced while its topic is active (the router admits no second research claim); "
+                          "the released-lease case covers it")
+        self.crash("launch_recorded", succeed(), lease_expires=LAPSES)
+        self.clock.set("2026-09-27T11:00:00Z")
+        replacing = self.router.claim({"invocation_id": "inv_replace01", "kind": self.KIND, "topic_id": rf.TOPIC, "config_bundle_hash": rf.CONFIG,
+                                       "deadline_at": DEADLINE, "station_id": "station-2", "lease_expires_at": DEADLINE})
+        self.assertEqual(replacing["status"], "granted")  # a new generation of the scope; the lapsed lease is released as expired
+        self.supervisor = self.make_supervisor()
+        self.assertEqual(self.supervisor.recover()[MAIN], "cancelled")
+        self.unlaunched("expired")
+
+    def test_recovery_starts_nothing_once_cancellation_is_requested(self) -> None:
+        self.crash("launch_recorded", succeed())
+        self.assertEqual(self.router.request_cancel({"invocation_id": MAIN, "requested_by": "operator", "reason": "stop"})["status"], "recorded")
+        self.assertEqual(self.restart()[MAIN], "cancelled")
+        self.unlaunched(released(self.KIND, "cancelled"), by="operator")
 
     def test_crash_after_recording_a_start_that_never_happened(self) -> None:
         """The start is recorded, the launcher never ran: the lookup finds no

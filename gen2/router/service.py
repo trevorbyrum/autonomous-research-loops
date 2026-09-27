@@ -237,6 +237,27 @@ class Router(Lifecycle):
             raise Refusal("lease_not_current", f"{lease['lease_id']} expired at {lease['expires_at']}")
         return lease
 
+    def _launch_refusal(self, inv: dict, now: str) -> Refusal | None:
+        """L-7: the launch-admission check against current state — the lease
+        the invocation runs under is current (not released, replaced or
+        expired), its topic is not paused, its deadline has not passed and no
+        cancellation was requested. Checked when launch intent is recorded,
+        and reported by invocation_status before every actual start (task
+        1c-repair A1: a recorded launch intent is evidence of the earlier
+        intent, not renewed authority to start)."""
+        try:
+            self._require_current_lease(inv, now)
+        except Refusal as refusal:
+            return refusal
+        topic = self._one("queue_entries", {"topic_id": inv["topic_id"]})
+        if topic["paused_at"] is not None:
+            return Refusal("topic_paused", f"paused at {topic['paused_at']}")
+        if instant(now) >= instant(inv["deadline_at"]):
+            return Refusal("deadline_passed", f"deadline {inv['deadline_at']}")
+        if inv["cancel_requested_at"] is not None:
+            return Refusal("cancel_requested", f"cancellation was requested at {inv['cancel_requested_at']}")
+        return None
+
     def _capability(self, capability_id: str, invocation_id: str) -> dict:
         inv = self._one("invocations", {"capability_id": capability_id})
         if inv is None:
@@ -465,15 +486,9 @@ class Router(Lifecycle):
             raise Refusal("transition_not_allowed", f"{inv['invocation_id']} is already {target} (reached another way)")
         changes = {"state": target, "state_changed_at": now, **facts}
         if target == "launching":
-            # L-7: the final launch-admission check, against current state
-            self._require_current_lease(inv, now)
-            topic = self._one("queue_entries", {"topic_id": inv["topic_id"]})
-            if topic["paused_at"] is not None:
-                raise Refusal("topic_paused", f"paused at {topic['paused_at']}")
-            if instant(now) >= instant(inv["deadline_at"]):
-                raise Refusal("deadline_passed", f"deadline {inv['deadline_at']}")
-            if inv["cancel_requested_at"] is not None:
-                raise Refusal("cancel_requested", f"cancellation was requested at {inv['cancel_requested_at']}")
+            refusal = self._launch_refusal(inv, now)
+            if refusal is not None:
+                raise refusal
             changes["launch_intent_at"] = now
         if target == "result_ready":
             if inv["cancel_requested_at"] is not None:  # the cancellation won: the result stays retained, uncommitted (C-10)

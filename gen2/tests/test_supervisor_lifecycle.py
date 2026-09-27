@@ -392,6 +392,25 @@ class LifecycleFaults:
         self.assertEqual(self.ended(), self.failed("spawn_failed", via=("admitted", "launching", "failed")))
         self.assertEqual(self.job_file("spawn.json"), {"attempts": 2, "failed": 2})
 
+    def test_a_retried_start_is_admitted_again(self) -> None:
+        """A start the OS refused is retried on a later advance; the retry is
+        an actual start, so it passes the current launch-admission check
+        first (L-7; Astra 1c review A1). Paused meanwhile: nothing starts.
+        Positive control: the same retry once the pause is lifted starts once
+        and commits."""
+        self.prepare(self.KIND)
+        broken = self.make_supervisor(launcher=(str(self.root / "no-such-interpreter"),))
+        self.assertEqual(broken.submit(self.order(self.KIND)), "launching")
+        self.assertEqual(self.job_file("spawn.json"), {"attempts": 1, "failed": 1})
+        self.x("UPDATE queue_entries SET paused_at = ? WHERE topic_id = ?", "2026-09-27T10:00:00Z", rf.TOPIC)
+        self.assertEqual(self.supervisor.advance(MAIN), "waiting_launch")
+        self.assertEqual(self.job_file("spawn.json"), {"attempts": 1, "failed": 1})  # no second start was even tried
+        self.assertIsNone(self.job_file("identity.json"))
+        self.x("UPDATE queue_entries SET paused_at = NULL WHERE topic_id = ?", rf.TOPIC)
+        self.assertEqual(self.supervisor.run(MAIN), "committed")
+        self.assertEqual(self.job_file("spawn.json"), {"attempts": 2, "failed": 1})
+        self.assertEqual(self.ended()["transitions"], ["admitted", "launching", "running", "result_ready", "committed"])
+
 
 class ResearchPassLifecycleTest(LifecycleFaults, SupervisedTestCase):
     KIND = "research_pass"

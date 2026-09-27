@@ -313,6 +313,34 @@ class StatusAndSpoolTest(LifecycleTestCase):
         self.assertEqual(self.router.invocation_status({"capability_id": other["capability_id"], "invocation_id": "inv_research01"}).get("reason"),
                          "capability_invocation_mismatch")
 
+    def test_status_reports_the_current_launch_admission_check(self) -> None:
+        """Every actual start needs the launch-admission check as it stands
+        now, not as it stood when launch intent was recorded (L-7; Astra 1c
+        review A1). Status runs the same check the launching transition does,
+        against the router's clock, writes nothing, and reports each withdrawn
+        authority on its own; the unchanged invocation is admitted (None)."""
+        pending = self.claim("inv_checkpt01", "checkpoint", lease_expires_at="2026-11-01T00:00:00Z", deadline_at="2026-10-15T00:00:00Z")
+        self.assertEqual(self.transition("launching", pending, job_handle="job-inv_checkpt01")["status"], "recorded")
+
+        def admission() -> str | None:
+            before = self.state(exclude=())
+            status = self.router.invocation_status({"capability_id": pending["capability_id"], "invocation_id": "inv_checkpt01"})
+            self.assertEqual(self.state(exclude=()), before)
+            return status["launch_admission"] and status["launch_admission"]["reason"]
+        self.assertIsNone(admission())
+        self.x("UPDATE queue_entries SET paused_at = '2026-09-27T10:00:00Z' WHERE topic_id = ?", TOPIC)
+        self.assertEqual(admission(), "topic_paused")
+        self.x("UPDATE queue_entries SET paused_at = NULL WHERE topic_id = ?", TOPIC)
+        self.assertIsNone(admission())
+        for moment, reason in (("2026-10-15T00:00:00Z", "deadline_passed"), ("2026-11-01T00:00:00Z", "lease_not_current"), ("2026-10-01T00:00:00Z", None)):
+            with self.subTest(moment):
+                self.clock.set(moment)
+                self.assertEqual(admission(), reason)
+        self.router.request_cancel({"invocation_id": "inv_checkpt01", "requested_by": "operator", "reason": "stop"})
+        self.assertEqual(admission(), "cancel_requested")
+        self.x("UPDATE leases SET released_at = '2026-10-01T00:00:00Z', release_reason = 'expired' WHERE lease_id = ?", pending["lease"]["lease_id"])
+        self.assertEqual(admission(), "lease_released")
+
     def test_bytes_are_read_under_the_invocations_topic_with_the_spools_media_type(self) -> None:
         ref = {"content_hash": self.spool.put(b"a packet", media_type="text/plain"), "size_bytes": 8, "media_type": "text/html"}
         env = self.envelope(self.grant, "op_interim0001", empty_outcome("inv_research01", "interim_transition"), refs=[ref])

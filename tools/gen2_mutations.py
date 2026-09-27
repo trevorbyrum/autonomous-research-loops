@@ -2209,16 +2209,14 @@ MUTATIONS: list[Mutation] = [
            '        if parent["topic_id"] != topic["topic_id"]:', '        if False:'),
           # lifecycle facts (L-1, L-2, L-7)
           ("launch-when-paused", "launch skips the pause check (L-7)",
-           (RO + "TransitionTest.test_the_final_launch_admission_check",), SVC,
-           '            if topic["paused_at"] is not None:\n                raise Refusal("topic_paused", f"paused at {topic[\'paused_at\']}")\n            if instant(now) >= instant(inv["deadline_at"]):',
-           '            if instant(now) >= instant(inv["deadline_at"]):'),
+           (RO + "TransitionTest.test_the_final_launch_admission_check", LC + "StatusAndSpoolTest.test_status_reports_the_current_launch_admission_check"), SVC,
+           '        if topic["paused_at"] is not None:\n            return Refusal("topic_paused", f"paused at {topic[\'paused_at\']}")\n', ''),
           ("launch-without-lease", "launch skips the lease check (L-7)",
-           (RO + "TransitionTest.test_the_final_launch_admission_check",), SVC,
-           '            self._require_current_lease(inv, now)\n            topic = self._one("queue_entries", {"topic_id": inv["topic_id"]})\n            if topic["paused_at"]',
-           '            topic = self._one("queue_entries", {"topic_id": inv["topic_id"]})\n            if topic["paused_at"]'),
+           (RO + "TransitionTest.test_the_final_launch_admission_check", LC + "StatusAndSpoolTest.test_status_reports_the_current_launch_admission_check"), SVC,
+           '        try:\n            self._require_current_lease(inv, now)\n        except Refusal as refusal:\n            return refusal\n', ''),
           ("launch-after-deadline", "launch skips the deadline check (L-7)",
-           (RO + "TransitionTest.test_launch_after_the_deadline_is_refused",), SVC,
-           '            if instant(now) >= instant(inv["deadline_at"]):', '            if False:'),
+           (RO + "TransitionTest.test_launch_after_the_deadline_is_refused", LC + "StatusAndSpoolTest.test_status_reports_the_current_launch_admission_check"), SVC,
+           '        if instant(now) >= instant(inv["deadline_at"]):\n            return Refusal("deadline_passed"', '        if False:\n            return Refusal("deadline_passed"'),
           ("result-not-staged", "a result is recorded ready without its bytes staged (C-9)",
            (RO + "TransitionTest.test_a_result_is_ready_only_when_its_bytes_are_staged",), SVC,
            '                boundary.staged(self._spool, facts["result_payload_digest"], topic_id=inv["topic_id"], media_type="application/json")', '                pass'),
@@ -2467,9 +2465,12 @@ MUTATIONS: list[Mutation] = [
           ("reached-state-recorded-again", "a state reached by reconciliation is recorded again as a new fact",
            ("UnknownTest.test_found_result_needs_the_staged_result_of_a_clean_exit",), SVC,
            '        if inv["state"] == target:\n            raise Refusal("transition_not_allowed", f"{inv[\'invocation_id\']} is already {target} (reached another way)")\n', ""),
-          ("launch-after-cancel", "launch intent is recorded after a cancellation request (L-7)", ("CancellationTest.test_launch_after_a_cancellation_request_is_refused",), SVC,
-           '            if inv["cancel_requested_at"] is not None:\n                raise Refusal("cancel_requested", f"cancellation was requested at {inv[\'cancel_requested_at\']}")\n'
-           '            changes["launch_intent_at"] = now', '            changes["launch_intent_at"] = now'),
+          ("launch-after-cancel", "launch intent is recorded after a cancellation request (L-7)",
+           ("CancellationTest.test_launch_after_a_cancellation_request_is_refused", "StatusAndSpoolTest.test_status_reports_the_current_launch_admission_check"), SVC,
+           '        if inv["cancel_requested_at"] is not None:\n            return Refusal("cancel_requested"', '        if False:\n            return Refusal("cancel_requested"'),
+          ("status-hides-launch-refusal", "status reports every invocation admitted to launch whatever its current authority (A1)",
+           ("StatusAndSpoolTest.test_status_reports_the_current_launch_admission_check",), LIF,
+           '        refusal = self._launch_refusal(inv, self._now())', '        refusal = None'),
           ("result-after-cancel", "a result is staged ready after a cancellation request", ("CancellationTest.test_once_requested_no_result_observation_or_commit_is_accepted",), SVC,
            '            if inv["cancel_requested_at"] is not None:  # the cancellation won: the result stays retained, uncommitted (C-10)\n', '            if False:\n'),
           ("commit-after-cancel", "a commit is accepted after a cancellation request", ("CancellationTest.test_once_requested_no_result_observation_or_commit_is_accepted",), SVC,
@@ -2680,7 +2681,8 @@ MUTATIONS: list[Mutation] = [
            '        if view["verdict"] == "vanished" and not view["members"] and not cancel:', "        if False:"),
           ("unstarted-work-started", "work cancelled or past its deadline before any start is started anyway",
            ("test_cancellation_before_any_start_starts_nothing", "test_a_deadline_passed_before_any_start_starts_nothing"),
-           '            if status["cancel_requested"] or self._past(order["deadline_at"]):\n                return self._end_unlaunched',
+           '            if status["cancel_requested"] or self._past(order["deadline_at"]) or (refused and refused["reason"] == "deadline_passed"):\n'
+           '                return self._end_unlaunched',
            "            if False:\n                return self._end_unlaunched"))),
     *(Mutation(f"1C-sup-{key}", "1c", desc, (SCD + killer, SCP + killer), target=SPV, old=old, new=new)
       for key, desc, killer, old, new in (
@@ -2690,6 +2692,15 @@ MUTATIONS: list[Mutation] = [
           ("running-job-terminated", "a running job found after a restart is terminated instead of reconciled as running",
            "test_crash_between_spawn_and_identity_record_finds_the_job_running",
            '        if view["verdict"] == "running" and not cancel and not self._past(order["deadline_at"]):', "        if False:"))),
+    # Task 1c-repair. A1: recorded launch intent is not renewed authority; every actual start (a recovery, a retried start)
+    # passes the router's current launch-admission check first.
+    Mutation("1C-sup-start-without-admission", "1c-A1", "a recovered or retried start ignores the current launch-admission check",
+             (SLR + "test_a_retried_start_is_admitted_again", SLD + "test_a_retried_start_is_admitted_again",
+              *(p + k for k in ("test_recovery_starts_nothing_in_a_topic_paused_meanwhile", "test_recovery_starts_nothing_once_the_lease_has_expired",
+                                "test_recovery_starts_nothing_once_the_lease_is_released") for p in (SCD, SCP)),
+              SCD + "test_recovery_starts_nothing_once_the_lease_is_replaced"),
+             target=SPV, old='            if refused is not None:  # recorded launch intent is not renewed authority: a recovery or a retried start is checked again',
+             new='            if False:'),
 ]
 
 

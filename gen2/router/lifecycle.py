@@ -269,10 +269,12 @@ class Lifecycle:
         topic = self._one("queue_entries", {"topic_id": inv["topic_id"]})
         finals = [r["operation_id"] for r in self._store.select("operation_receipts", {"invocation_id": inv["invocation_id"]})
                   if r["operation_kind"] == "final_outcome"]
+        refusal = self._launch_refusal(inv, self._now())  # the current launch-admission check (L-7), for every actual start
         return {"status": "ok", "invocation_id": inv["invocation_id"], "kind": inv["kind"], "topic_id": inv["topic_id"], "state": inv["state"],
                 "deadline_at": inv["deadline_at"], "job_handle": inv["job_handle"], "identity": {k: inv[k] for k in IDENTITY},
                 "result_payload_digest": inv["result_payload_digest"], "failure_class": inv["failure_class"],
                 "cancel_requested": None if inv["cancel_requested_at"] is None else {"at": inv["cancel_requested_at"], "by": inv["cancel_requested_by"]},
                 "unknown_episode": inv["unknown_episode"], "outcome_unknown_since": inv["outcome_unknown_since"],
                 "lease": {"lease_id": lease["lease_id"], "generation": lease["generation"], "expires_at": lease["expires_at"], "released_at": lease["released_at"]},
-                "topic_paused": topic["paused_at"] is not None, "state_revision": topic["state_revision"], "final_operation_id": finals[0] if finals else None}
+                "topic_paused": topic["paused_at"] is not None, "state_revision": topic["state_revision"], "final_operation_id": finals[0] if finals else None,
+                "launch_admission": None if refusal is None else {"reason": refusal.reason, "detail": refusal.detail[:500]}}

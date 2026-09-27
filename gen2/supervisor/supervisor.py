@@ -394,20 +394,29 @@ class Supervisor:
             raise Waiting("launch_refused")
         return self._drive(job, job.read("order.json"), journal)
 
+    def _refused_launch(self, job, journal, grant, reason: str) -> str:
+        """The launch-admission check refused: a paused topic is waited for
+        within the launch budget, then (or for a lapsed lease) the work is
+        cancelled by the supervisor — nothing was started (L-2, L-7)."""
+        if reason == "topic_paused" and self._spend(job, journal, "launch"):
+            raise Waiting("waiting_launch")
+        return self._cancel_self(job, journal, grant, f"launch refused: {reason}")
+
     def _admitted(self, job, order, journal, grant, status) -> str:
         response = self._transition(job, journal, grant, "launching", job_handle=job.handle)
         if response["status"] == "refused":
-            if response["reason"] == "topic_paused" and self._spend(job, journal, "launch"):
-                raise Waiting("waiting_launch")
-            return self._cancel_self(job, journal, grant, f"launch refused: {response['reason']}")
+            return self._refused_launch(job, journal, grant, response["reason"])
         self._fault("launch_recorded")
         return self._launching(job, order, journal, grant, self._status(job, journal, grant))
 
     def _launching(self, job, order, journal, grant, status) -> str:
         view = job.lookup()
         if view["verdict"] == "not_started":  # launch intent is recorded and no start has happened: start it now
-            if status["cancel_requested"] or self._past(order["deadline_at"]):
+            refused = status["launch_admission"]  # the router's current launch-admission check, read before every actual start (L-7)
+            if status["cancel_requested"] or self._past(order["deadline_at"]) or (refused and refused["reason"] == "deadline_passed"):
                 return self._end_unlaunched(job, order, journal, grant, status)
+            if refused is not None:  # recorded launch intent is not renewed authority: a recovery or a retried start is checked again
+                return self._refused_launch(job, journal, grant, refused["reason"])
             if not self._spend(job, journal, "spawn"):
                 return self._end(job, order, journal, grant, "failed", self._unrun("spawn_failed", "the launcher could not be started within the spawn budget"),
                                  "job_handle_lookup")
