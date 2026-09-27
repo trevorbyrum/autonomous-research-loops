@@ -47,7 +47,7 @@
   - one live lease per (topic, scope), generations strictly increasing per topic, release write-once
   - ordinals only for research-pass final outcomes, dense, one per invocation
   - review-trigger identities unique, never deleted, handled-is-final
-- **Admission** (C-12, A4): every invocation pins `contract/1` (an approved revision) or `pre-contract/1` (a confirmed brief; discovery/delegate/research_pass; only before any approved contract); receipts carry exactly their invocation's pins and config; pre-contract receipts earn no ordinal. Scientific rows need the approved protocol, not just a contract foreign key (RA3): a screening assessment is recorded by a commit of contract-admitted work pinned to exactly the revision it names (and assessed by work with that pin), with that revision's framing and eligibility-protocol versions; a claim-source link is for a claim of its topic produced by work pinned to the revision whose obligation it names; a dossier is evaluated against a revision that passed approval, current or since superseded (RA3-R: its approving decision is recorded only by the draft → approved update, never on a draft alone or by draft → superseded). Scoping (observations, retrieval events, works, provisional claims) stays open to pre-contract work.
+- **Admission** (C-12, A4): every invocation pins `contract/1` (an approved revision) or `pre-contract/1` (a confirmed brief; discovery/delegate/research_pass; only before any approved contract); receipts carry exactly their invocation's pins and config; pre-contract receipts earn no ordinal. Scientific rows need the approved protocol, not just a contract foreign key (RA3): a screening assessment is recorded by a commit of contract-admitted work pinned to exactly the revision it names (and assessed by work with that pin), with that revision's framing and eligibility-protocol versions; a claim-source link is for a claim of its topic produced by work pinned to the revision whose obligation it names; a dossier is evaluated against a revision that passed approval, current or since superseded (RA3-R: its approving decision is recorded only by the draft → approved update, never on a draft alone or by draft → superseded). Scoping (observations, retrieval events, works, provisional claims) stays open to pre-contract work. Accepted support is general, not per consumer (V-10, task 1a): a claim revision reaches `accepted_support` only if contract-admitted work of its own topic produced it, and pre-contract output is adopted by a new revision that contract-admitted work produces.
 - **Leases and parentage** (L-8, R2.1, R2.2): a non-delegate owns one live lease of its topic and kind's scope; one owner per lease; delegates run under a running non-delegate parent of their topic with its pins; only delegates have a controlling parent; a causal requester is of the same topic.
 - **Lifecycle** (L-1–L-3):
   - invocations are inserted `admitted` and move only along the L-1 transitions
@@ -60,7 +60,7 @@
   - result counts exist only for `searched_ok` / `searched_empty` / `metadata_only`
   - degraded coverage states need an error class
   - retrieval events come only from successful searches
-- **Verification** (RG-5, V-2, V-4):
+- **Verification** (RG-5, V-2, V-4, V-10):
   - producer ≠ verifier
   - the verifier is a `verification` invocation of the same topic with no controlling parent (it may be *requested by* the producer — R2.2) and names the claim's real producer
   - no reliance on the producer's selected or unvalidated extraction; authenticated canonical bytes (gateway-call reference + staged artifact with the obtained hash) may be reused whoever acquired them
@@ -69,6 +69,7 @@
   - `supports` never exceeds the obtained tier
   - load-bearing claims reach `accepted_support` only with a supporting receipt requested for load-bearing use at the claim's *own* stored required tier, with every substantive check performed (re-read from the receipt JSON at promotion); a sampling receipt never qualifies and no adjudication waives an unperformed check (RA5)
   - a load-bearing-use receipt states its claim's own designation (the claim is load-bearing; the required tier is the claim's); a sampled receipt may audit any claim at any tier
+  - every claim, load-bearing or not, reaches `accepted_support` (from provisional or contested) only if contract-admitted work of its own topic produced that revision — a condition independent of the receipt (V-10, task 1a); a scoping claim is adopted by a new revision produced by contract-admitted work, and the scoping revision stays unpromotable
   - claims start provisional
 - **Decisions** (D-3, D-5):
   - a fallback answer carries no probability, distribution or confidence
@@ -189,7 +190,7 @@ Each vocabulary below is a draft: it may change only by amendment (a README/INVA
 | every non-retired state | retired | operator `retirement` decision at the state revision being left (G-13) |
 | retired | — | terminal (reviving a retired topic would be a new topic or an explicit amendment path — to confirm) |
 
-**Claim status** (`claims.status`; enforced by `claims_status_transitions`; owner: the router at commit): `provisional` (captured) → `accepted_support` (only with its verification receipt, V-4) / `contested` / `rejected` / `quarantined` / `superseded`; `accepted_support` → `contested` / `quarantined` / `superseded`; `contested` → `accepted_support` / `rejected` / `quarantined` / `superseded`; `quarantined` → `provisional` (re-capture) / `rejected` / `superseded`; `rejected` → `superseded`; `superseded` is terminal.
+**Claim status** (`claims.status`; enforced by `claims_status_transitions`; owner: the router at commit): `provisional` (captured) → `accepted_support` (a load-bearing claim only with its verification receipt, V-4; every claim only from contract-admitted production, V-10, from `contested` too) / `contested` / `rejected` / `quarantined` / `superseded`; `accepted_support` → `contested` / `quarantined` / `superseded`; `contested` → `accepted_support` / `rejected` / `quarantined` / `superseded`; `quarantined` → `provisional` (re-capture) / `rejected` / `superseded`; `rejected` → `superseded`; `superseded` is terminal.
 
 **Review-trigger reason codes** (`review_triggers.reason_code`): the seven method-fit codes of flow S5, the cadence floor, amendment/reframe/capability/facet-audit/calibration causes, and the mandatory `retraction` and `decision_record_change` signals (G-12), which only code policy or the operator may raise — never a model observation (CHECK). A trigger is handled once and stays handled (RG-1b(e)).
 
