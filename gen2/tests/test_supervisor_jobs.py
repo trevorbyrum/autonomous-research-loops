@@ -191,5 +191,34 @@ class TerminateTest(JobTestCase):
         self.wait(lambda: jobs.proc_stat(descendant) is None or jobs.proc_stat(descendant)[0] == "Z")
 
 
+
+class FakeExecutorMarkerTest(unittest.TestCase):
+    """Task 1c-repair C2. Under load, the mutation baseline errored in
+    test_timeout_terminates_the_whole_group with int(''): the test waits for
+    the descendant's pid file to exist, then reads it, and the fake
+    executor's descendant created that file before writing its pid. The
+    marker is now published whole (fake_executor.publish): written under a
+    temporary name, then renamed. Deterministic: the descendant is run in
+    this process, its rename observed, its endless sleep interrupted."""
+
+    def test_the_descendant_marker_appears_only_whole(self) -> None:
+        from unittest import mock
+
+        from gen2.supervisor import fake_executor
+
+        class Stop(Exception):
+            pass
+        with tempfile.TemporaryDirectory() as tmp:
+            marker, seen, replace = Path(tmp) / "descendant.pid", [], os.replace
+
+            def watched(src, dst):
+                seen.append((Path(dst) == marker, marker.exists(), Path(src).read_text()))
+                replace(src, dst)
+            with mock.patch.object(fake_executor.os, "replace", watched), mock.patch.object(fake_executor.time, "sleep", side_effect=Stop):
+                with self.assertRaises(Stop):
+                    fake_executor.descendant(str(marker))
+            self.assertEqual(seen, [(True, False, str(os.getpid()))])  # the name did not exist until the whole pid was there
+            self.assertEqual(marker.read_text(), str(os.getpid()))
+
 if __name__ == "__main__":
     unittest.main()

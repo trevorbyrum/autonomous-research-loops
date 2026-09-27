@@ -34,8 +34,18 @@ import time
 from pathlib import Path
 
 
+def publish(path: Path, text: str) -> None:
+    """Write a file others poll for, whole: its name appears only by rename,
+    after the content is written, so a reader that sees the name never reads
+    it empty (task 1c-repair C2: a test read descendant.pid the moment it
+    existed and, under load, found it empty)."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text)
+    os.replace(tmp, path)
+
+
 def descendant(marker: str) -> int:
-    Path(marker).write_text(str(os.getpid()))
+    publish(Path(marker), str(os.getpid()))
     while True:
         time.sleep(3600)
 
