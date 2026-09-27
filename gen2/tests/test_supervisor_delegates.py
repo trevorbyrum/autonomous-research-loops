@@ -179,7 +179,10 @@ class ParentEnds:
     def test_the_parent_waits_while_its_delegate_cannot_be_ended(self) -> None:
         """Control: the delegate's cancellation cannot be recorded (the
         router refuses the delegate's cancelled transition); the parent then
-        does not end and its lease stays held, whatever it asks."""
+        does not end and its lease stays held, whatever it asks. The refused
+        end is sent within the delegate's refusal budget (3), then the
+        delegate stalls with its incident (task 1c-repair-2); once the
+        refusal lifts, recover() resumes it."""
         self.start([*GATED, *succeed(PARENT)])
         refuse = self.watch
 
@@ -201,7 +204,11 @@ class ParentEnds:
         self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", PARENT), "result_ready")
         self.assertEqual(self.rows("SELECT released_at FROM leases WHERE lease_id = (SELECT lease_id FROM invocations WHERE invocation_id = ?)", PARENT), [(None,)])
         self.assertEqual(self.watch.seen, [])  # no releasing call was made for the parent
-        self.watching()  # the refusal lifts: the same parent ends, after its delegate
+        incident = self.journal()["incident"]
+        self.assertEqual((incident["kind"], incident["write"], incident["last_refusal"]["reason"], incident["final"]),
+                         ("lifecycle_write_refused", "end", "test_refuses", False))
+        self.watching()  # the refusal lifts: recovery resumes the delegate, and the same parent ends after it
+        self.assertEqual(self.supervisor.recover(), {PARENT: "delegates_pending", MAIN: "cancelled"})
         self.assertEqual(self.supervisor.run(PARENT, timeout_s=RUN_S), "committed")
         self.ended_after_its_delegate("committed", "final_outcome")
 
@@ -256,6 +263,41 @@ class ParentEnds:
     def test_a_delegate_stalled_on_its_cancellation_holds_its_parent_without_calls(self) -> None:
         self.restarted_without_recovery(self.stalled_delegate("request_cancel"))
         self.recovered()
+        self.ended_after_its_delegate("committed", "final_outcome")
+
+    def test_a_refused_delegate_cancellation_is_budgeted(self) -> None:
+        """The router refuses the cancellation the parent asks for its
+        delegate (task 1c-repair-2): it is asked again within the delegate's
+        refusal budget (3), then the delegate stalls with its incident and the
+        parent's advances ask nothing more, a restart included; once the
+        refusal lifts, recover() resumes the delegate and the parent ends it."""
+        self.start([*GATED, *succeed(PARENT)])
+        self.gate(PARENT)
+        self.wait_for_file("exit.json", PARENT)
+        refused = []
+
+        class RefusingCancel(Watch):
+            def __getattr__(self, name):
+                call = super().__getattr__(name)
+
+                def maybe(request):
+                    if name == "request_cancel" and request.get("invocation_id") == MAIN:
+                        refused.append(request)
+                        return {"status": "refused", "reason": "transition_not_allowed", "detail": "refused by the test"}
+                    return call(request)
+                return maybe
+        refusing = RefusingCancel(self.router, self.watch.identity)
+        self.assertEqual({self.make_supervisor(control=refusing).advance(PARENT) for _ in range(6)}, {"delegates_pending"})
+        self.assertEqual(len(refused), 4)  # the budget (3), then the one that stalled the delegate; none after
+        incident = self.journal()["incident"]
+        self.assertEqual((incident["kind"], incident["write"], incident["last_refusal"]["reason"]), ("lifecycle_write_refused", "cancel", "transition_not_allowed"))
+        self.clock.set("2026-09-27T10:30:00Z")
+        before = self.state(exclude=())
+        self.assertEqual({self.make_supervisor(control=refusing).advance(PARENT) for _ in range(6)}, {"delegates_pending"})
+        self.assertEqual((len(refused), self.journal()["incident"], self.state(exclude=())), (4, incident, before))
+        self.watching()
+        self.assertEqual(self.supervisor.recover(), {PARENT: "delegates_pending", MAIN: "running"})
+        self.assertEqual(self.supervisor.run(PARENT, timeout_s=RUN_S), "committed")
         self.ended_after_its_delegate("committed", "final_outcome")
 
     def test_a_stalled_delegate_is_still_ended_at_its_deadline(self) -> None:

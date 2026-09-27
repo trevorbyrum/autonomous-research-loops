@@ -2127,7 +2127,7 @@
    "test_supervisor_delegates.VerificationParentTest.test_a_stalled_delegate_is_still_ended_at_its_deadline",
    "test_supervisor_delegates.VerificationParentTest.test_the_parent_waits_while_its_delegate_cannot_be_ended"
   ],
-  "why": "all 40 candidates run under the mutant fail (0 of the 40 that take the path were not run): an over-restricting mutant refuses the accepted path, which every test tried needs (in its case or its fixture)"
+  "why": "all 40 candidates run under the mutant fail (4 of the 44 that take the path were not run): an over-restricting mutant refuses the accepted path, which every test tried needs (in its case or its fixture)"
  },
  "1C-router-entry-cause-unrecorded": {
   "controls": [
@@ -2214,7 +2214,7 @@
    "test_supervisor_lifecycle.VerificationLifecycleTest.test_a_deadline_passed_before_any_start_starts_nothing",
    "test_supervisor_lifecycle.VerificationLifecycleTest.test_cancellation_before_any_start_starts_nothing"
   ],
-  "why": "all 38 candidates run under the mutant fail (181 of the 219 that take the path were not run): the mutant changes what the accepted path does rather than removing a refusal"
+  "why": "all 38 candidates run under the mutant fail (215 of the 253 that take the path were not run): the mutant changes what the accepted path does rather than removing a refusal"
  },
  "1C-router-evidence-of-another-invocation": {
   "controls": [
@@ -2561,7 +2561,7 @@
    "test_supervisor_lifecycle.VerificationLifecycleTest.test_a_retried_start_is_admitted_again",
    "test_supervisor_lifecycle.VerificationLifecycleTest.test_an_unreachable_router_stalls_within_budget_and_delivery_resumes_by_replay"
   ],
-  "why": "all 38 candidates run under the mutant fail (145 of the 183 that take the path were not run): the mutant changes what the accepted path does rather than removing a refusal"
+  "why": "all 38 candidates run under the mutant fail (169 of the 207 that take the path were not run): the mutant changes what the accepted path does rather than removing a refusal"
  },
  "1C-shim-signal-as-code": {
   "controls": [
@@ -2669,43 +2669,49 @@
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [680, 682]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [741, 743]"
  },
  "1C-sup-cancelled-exit-unconfirmed": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_cancellation_after_an_uncertain_spawn_ends_the_live_group"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [756, 760]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [821, 825]"
  },
  "1C-sup-cancelled-work-not-ended": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [590, 592]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [650, 652]"
  },
  "1C-sup-commit-budget-unbounded": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_result_after_its_lease_is_lost_is_retained_not_committed"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [721, 722]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [785, 786]"
  },
  "1C-sup-commit-exhaustion-silent": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_result_after_its_lease_is_lost_is_retained_not_committed"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [721, 727]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [785, 791]"
  },
  "1C-sup-commit-exhaustion-unreferenced": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_result_after_its_lease_is_lost_is_retained_not_committed"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [721, 727]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [785, 791]"
  },
  "1C-sup-declared-digest-unchecked": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [437, 439, 441]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [492, 494, 496]"
+ },
+ "1C-sup-delegate-cancel-refusal-ignored": {
+  "controls": [
+   "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_that_completes"
+  ],
+  "why": "executes gen2/supervisor/supervisor.py line(s) [603, 607, 611, 612]"
  },
  "1C-sup-delegates-not-cancelled": {
   "controls": [
@@ -2717,98 +2723,115 @@
    "test_supervisor_delegates.DiscoveryParentTest.test_a_parent_that_is_cancelled",
    "test_supervisor_delegates.DiscoveryParentTest.test_a_parent_that_never_started",
    "test_supervisor_delegates.DiscoveryParentTest.test_a_parent_whose_supervisor_restarts",
+   "test_supervisor_delegates.DiscoveryParentTest.test_a_refused_delegate_cancellation_is_budgeted",
    "test_supervisor_delegates.DiscoveryParentTest.test_the_parent_waits_while_its_delegate_cannot_be_ended",
+   "test_supervisor_delegates.ResearchPassParentTest.test_a_delegate_stalled_on_its_cancellation_holds_its_parent_without_calls",
+   "test_supervisor_delegates.ResearchPassParentTest.test_a_delegate_stalled_on_its_status_read_holds_its_parent_without_calls",
    "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_reconciled_after_its_launcher_vanished",
    "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_that_is_cancelled",
    "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_that_never_started",
    "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_whose_supervisor_restarts",
-   "test_supervisor_delegates.ResearchPassParentTest.test_the_parent_waits_while_its_delegate_cannot_be_ended"
+   "test_supervisor_delegates.ResearchPassParentTest.test_a_refused_delegate_cancellation_is_budgeted",
+   "test_supervisor_delegates.ResearchPassParentTest.test_the_parent_waits_while_its_delegate_cannot_be_ended",
+   "test_supervisor_delegates.VerificationParentTest.test_a_parent_reconciled_after_its_launcher_vanished"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [548, 552, 553]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [603, 607, 608]"
  },
  "1C-sup-descendants-left-running": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [398]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [453]"
  },
  "1C-sup-empty-output-misclassed": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [437, 438]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [492, 493]"
+ },
+ "1C-sup-end-refusal-unbudgeted": {
+  "controls": [
+   "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_that_completes"
+  ],
+  "why": "executes gen2/supervisor/supervisor.py line(s) [768, 769]"
  },
  "1C-sup-exit-code-ignored": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [428, 430]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [483, 485]"
+ },
+ "1C-sup-final-refusal-retried": {
+  "controls": [
+   "test_supervisor_budgets.ResearchPassBudgetTest.test_a_refused_end_accepted_within_its_budget_refunds_it"
+  ],
+  "why": "executes gen2/supervisor/supervisor.py line(s) [341]"
  },
  "1C-sup-identity-a-bare-pid": {
   "controls": [
    "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_that_completes"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [608, 609]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [668, 669]"
  },
  "1C-sup-launch-budget-unbounded": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_retried_start_is_admitted_again"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [575, 576]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [635, 636]"
  },
  "1C-sup-launch-exhaustion-silent": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_retried_start_is_admitted_again"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [575, 578]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [635, 638]"
  },
  "1C-sup-no-abandon-handshake": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_cancellation_after_an_uncertain_spawn_ends_the_live_group"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [775, 776]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [840, 841]"
  },
  "1C-sup-no-deadline": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [371, 373]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [426, 428]"
  },
  "1C-sup-no-start-grace": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_group_gone_without_an_exit_is_reconciled_by_lookup"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [773, 774]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [838, 839]"
  },
  "1C-sup-observation-made-again": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [365]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [420]"
  },
  "1C-sup-outage-untimed": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [332, 335]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [387, 390]"
  },
  "1C-sup-parent-bypasses-stalled-delegate": {
   "controls": [
    "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_that_completes"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [548, 549]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [603, 604]"
  },
  "1C-sup-parent-commits-over-delegates": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [716, 717]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [780, 781]"
  },
  "1C-sup-parent-ends-over-delegates": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [692, 693]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [753, 754]"
  },
  "1C-sup-parent-reconciles-over-delegates": {
   "controls": [
@@ -2818,7 +2841,7 @@
    "test_supervisor_delegates.CheckpointParentTest.test_a_parent_reconciled_after_its_launcher_vanished",
    "test_supervisor_delegates.VerificationParentTest.test_a_parent_reconciled_after_its_launcher_vanished"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [805, 806]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [870, 871]"
  },
  "1C-sup-parent-unlaunched-end-over-delegates": {
   "controls": [
@@ -2828,7 +2851,7 @@
    "test_supervisor_delegates.CheckpointParentTest.test_a_parent_that_never_started",
    "test_supervisor_delegates.VerificationParentTest.test_a_parent_that_never_started"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [670, 671]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [731, 732]"
  },
  "1C-sup-pending-request-recomputed": {
   "controls": [
@@ -2839,49 +2862,84 @@
    "test_supervisor_budgets.DiscoveryBudgetTest.test_a_reconciliation_record_that_cannot_be_written_keeps_the_termination",
    "test_supervisor_budgets.VerificationBudgetTest.test_a_reconciliation_record_that_cannot_be_written_keeps_the_termination"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [652, 653]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [712, 713]"
  },
  "1C-sup-read-refunds-outage": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [339]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [394]"
  },
  "1C-sup-recovery-refills-router-budget": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_crash_after_launch_intent_before_any_start"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [201, 202, 203]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [210, 211, 212]"
  },
  "1C-sup-recovery-unbudgeted": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_crash_after_launch_intent_before_any_start"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [201]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [210]"
+ },
+ "1C-sup-refusal-never-refunded": {
+  "controls": [
+   "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
+  ],
+  "why": "executes gen2/supervisor/supervisor.py line(s) [351, 353]"
+ },
+ "1C-sup-refusal-unbudgeted": {
+  "controls": [
+   "test_supervisor_budgets.ResearchPassBudgetTest.test_a_refusal_no_retry_can_change_stalls_at_once"
+  ],
+  "why": "executes gen2/supervisor/supervisor.py line(s) [343]"
  },
  "1C-sup-refused-output-misclassed": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [437, 439, 440]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [492, 494, 495]"
+ },
+ "1C-sup-result-refusal-unbudgeted": {
+  "controls": [
+   "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
+  ],
+  "why": "executes gen2/supervisor/supervisor.py line(s) [755, 757, 767]"
  },
  "1C-sup-router-budget-unbounded": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [332, 335]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [387, 390]"
  },
  "1C-sup-running-job-terminated": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_cancellation_after_an_uncertain_spawn_ends_the_live_group"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [785]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [850]"
+ },
+ "1C-sup-self-cancel-refusal-unbudgeted": {
+  "controls": [
+   "test_supervisor_crash.VerificationCrashTest.test_recovery_starts_nothing_once_the_lease_is_released"
+  ],
+  "rejected": [
+   "test_supervisor_budgets.CheckpointBudgetTest.test_a_refused_cancellation_of_unlaunched_work_is_budgeted_too",
+   "test_supervisor_budgets.DiscoveryBudgetTest.test_a_refused_cancellation_of_unlaunched_work_is_budgeted_too",
+   "test_supervisor_budgets.VerificationBudgetTest.test_a_refused_cancellation_of_unlaunched_work_is_budgeted_too"
+  ],
+  "why": "executes gen2/supervisor/supervisor.py line(s) [626, 627]"
+ },
+ "1C-sup-sent-refusal-unbudgeted": {
+  "controls": [
+   "test_supervisor_budgets.ResearchPassBudgetTest.test_an_unknown_episode_reconciled_within_its_budget_refunds_it"
+  ],
+  "why": "executes gen2/supervisor/supervisor.py line(s) [726, 727]"
  },
  "1C-sup-signal-ignored": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [428, 429]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [483, 484]"
  },
  "1C-sup-spawn-before-launch-intent": {
   "controls": [
@@ -2895,73 +2953,104 @@
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record",
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_cancellation_terminates_the_group_then_releases_capacity"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [582]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [642]"
  },
  "1C-sup-spawn-budget-unbounded": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [590, 596]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [650, 656]"
  },
  "1C-sup-spawn-exhaustion-silent": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [590, 596, 597]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [650, 656, 657]"
  },
  "1C-sup-stall-ignored": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [246, 247]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [255, 256]"
  },
  "1C-sup-stalled-delegate-unobserved": {
   "controls": [
    "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_that_completes"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [557]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [616]"
  },
  "1C-sup-stalled-write-retried": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [364]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [419]"
  },
  "1C-sup-start-without-admission": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [590, 594]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [650, 654]"
+ },
+ "1C-sup-unknown-entry-refusal-unbudgeted": {
+  "controls": [
+   "test_supervisor_budgets.ResearchPassBudgetTest.test_an_unresolved_unknown_episode_is_also_bounded_in_time"
+  ],
+  "why": "executes gen2/supervisor/supervisor.py line(s) [806, 807]"
+ },
+ "1C-sup-unknown-never-refunded": {
+  "controls": [
+   "test_supervisor_budgets.ResearchPassBudgetTest.test_a_refused_outcome_unknown_entry_is_budgeted_too"
+  ],
+  "why": "executes gen2/supervisor/supervisor.py line(s) [882]"
+ },
+ "1C-sup-unknown-unbudgeted": {
+  "controls": [
+   "test_supervisor_budgets.ResearchPassBudgetTest.test_an_unknown_episode_reconciled_within_its_budget_refunds_it"
+  ],
+  "rejected": [
+   "test_supervisor_budgets.CheckpointBudgetTest.test_an_unresolved_unknown_episode_is_also_bounded_in_time",
+   "test_supervisor_budgets.DelegateBudgetTest.test_an_unresolved_unknown_episode_is_also_bounded_in_time",
+   "test_supervisor_budgets.DiscoveryBudgetTest.test_an_unresolved_unknown_episode_is_also_bounded_in_time",
+   "test_supervisor_budgets.ResearchPassBudgetTest.test_an_unresolved_unknown_episode_is_also_bounded_in_time",
+   "test_supervisor_budgets.VerificationBudgetTest.test_an_unresolved_unknown_episode_is_also_bounded_in_time"
+  ],
+  "why": "executes gen2/supervisor/supervisor.py line(s) [371]"
+ },
+ "1C-sup-unknown-untimed": {
+  "controls": [
+   "test_supervisor_budgets.ResearchPassBudgetTest.test_an_unknown_episode_reconciled_within_its_budget_refunds_it"
+  ],
+  "why": "executes gen2/supervisor/supervisor.py line(s) [371]"
  },
  "1C-sup-unstarted-work-past-deadline-cancelled": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [590, 592]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [650, 652]"
  },
  "1C-sup-unwritable-incident-swallowed": {
   "controls": [
    "test_supervisor_budgets.ResearchPassBudgetTest.test_enospc_from_the_spool_stalls_with_an_incident"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [303, 312, 313]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [312, 321, 322]"
  },
  "1C-sup-vanished-group-outlives-deadline": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [371, 373]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [426, 428]"
  },
  "1C-sup-vanished-group-terminated": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_launcher_gone_without_an_exit_is_reconciled_by_terminating_its_group"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [788]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [853]"
  },
  "1C-sup-write-budget-never-refunded": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [319]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [328]"
  },
  "1C-sup-write-retries-unbounded": {
   "controls": [
@@ -2974,7 +3063,7 @@
    "test_supervisor_budgets.ResearchPassBudgetTest.test_a_reconciliation_record_that_cannot_be_written_keeps_the_termination",
    "test_supervisor_budgets.ResearchPassBudgetTest.test_a_termination_record_that_cannot_be_written_keeps_the_termination"
   ],
-  "why": "executes gen2/supervisor/supervisor.py line(s) [304]"
+  "why": "executes gen2/supervisor/supervisor.py line(s) [313]"
  },
  "A1-D01-live-lease-replace": {
   "controls": [
@@ -5353,7 +5442,7 @@
    "test_router_ops.TransitionTest.test_each_state_is_recorded_with_exactly_its_facts",
    "test_router_ops.TransitionTest.test_the_final_launch_admission_check"
   ],
-  "why": "all 38 candidates run under the mutant fail (431 of the 469 that take the path were not run): the mutant changes what the accepted path does rather than removing a refusal"
+  "why": "all 38 candidates run under the mutant fail (485 of the 523 that take the path were not run): the mutant changes what the accepted path does rather than removing a refusal"
  },
  "R1-duplicate-keys-merged": {
   "controls": [

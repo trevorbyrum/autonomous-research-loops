@@ -56,7 +56,9 @@ for the DDL, a statement that failed), then those whose names state an
 accepted behaviour before those whose names state a refusal (NEGATIVE), then
 the fastest in the trace; for a mutant described as over-restricting the
 first two preferences are reversed (its paired control is a refusal that
-must still hold). The mutation run
+must still hold). A control already in the file stays chosen while it
+still qualifies, so a new trace does not trade verified controls for equal
+ones. The mutation run
 checks that each control passes under its mutant; `choose --run LOG` reads a
 run's log, keeps each control that did not pass as rejected for that mutant
 (in the file, so it stays rejected), and takes the next candidate.
@@ -643,7 +645,8 @@ def choose(trace_file: Path, runs: list[Path], probe_width: int = 0, jobs: int =
                 unpaired.append(m.mid)
         else:
             ranked, why = plans[m.mid]
-            picked = [] if m.mid in exhausted else [c for c in ranked if c not in rejected.get(m.mid, set())][:1]
+            kept = [c for c in previous.get(m.mid, {}).get("controls", ()) if c in ranked and c not in rejected.get(m.mid, set())][:1]
+            picked = [] if m.mid in exhausted else kept or [c for c in ranked if c not in rejected.get(m.mid, set())][:1]
             tried = len(rejected.get(m.mid, ()))
             effect = ("an over-restricting mutant refuses the accepted path, which every test tried needs (in its case or its fixture)"
                       if "over-restrict" in m.description else "the mutant changes what the accepted path does rather than removing a refusal")

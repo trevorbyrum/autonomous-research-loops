@@ -48,26 +48,28 @@ execution group terminated. Then it drives the router one step along L-1:
                     and reconcile the episode with the resolution the record
                     supports; what cannot be established stays unknown under
                     the episode's hold (owner, deadline)
-These retry paths draw on a declared budget kept in the journal, so a
+Every retry path draws on a declared budget kept in the journal, so a
 restart does not refill it (L-6): an outage (attempts and time, from its first
 failed call until a write the router answers — a read refunds nothing), a
-failing durable write, recover() resumptions, launch refusals, launcher
-starts and commit re-sends. Past the router or write budget the job stalls
-with an owned, deadlined incident, which only recover() — itself budgeted,
-and refilling nothing — resumes, whoever advances the job (a parent ending
-its stalled delegate sends it nothing); an exhausted launch, spawn or commit
-budget is recorded as an incident beside the job's end; a journal that
-cannot be written raises ControlFailure out of band (RG-3). Two retry paths
-are not budgeted and raise no incident (named, not repaired: task
-1c-repair-2): a lifecycle write the router answered with a refusal (an end,
-a reconciliation, entering outcome_unknown, the supervisor's own
-cancellation) is decided and sent afresh on each later advance; and an
-outcome_unknown episode that cannot be reconciled yet (a termination
-unconfirmed, a start still unresolved) is looked up or terminated again on
-each advance, under the episode's hold, which the router keeps with an
-owner and a deadline (L-4). Each advance is one step; run() is bounded by
-its timeout. Before a parent's capacity is released its delegate jobs are
-ended (L-7, L-8).
+failing durable write, a lifecycle write the router refused (an end, a
+reconciliation, entering outcome_unknown, a cancellation — until that write
+is accepted; a refusal no retry can change, such as a conflict, stops at
+once), an outcome_unknown episode that cannot be reconciled yet (attempts,
+and time from its first unresolved look, per episode), recover()
+resumptions, launch refusals, launcher starts and commit re-sends. Past the
+router, write, refusal or unknown budget the job stalls with an owned,
+deadlined incident naming the budget and what it last met, which only
+recover() — itself budgeted, and refilling nothing — resumes, whoever
+advances the job (a parent ending its stalled delegate sends it nothing); an
+unresolved episode keeps its hold, since only its reconciliation clears it
+(L-4). An exhausted launch, spawn or commit budget is recorded as an
+incident beside the job's end; a journal that cannot be written raises
+ControlFailure out of band (RG-3). Each advance is one step, and run() is
+bounded by its timeout. A parent waiting on its delegates retries nothing of
+its own: each advance reads its status and advances each delegate, whose own
+budgets apply, so a stalled delegate holds its parent at that delegate's
+incident. Before a parent's capacity is released its delegate jobs are ended
+(L-7, L-8).
 
 Structural limits: faults are what these processes can do to each other on
 one host (kills, exits, hangs, lost replies), not power loss or disk
@@ -98,6 +100,10 @@ SELF_REPORT = "status.json"      # an agent's own claim about itself: recorded, 
 DECLARED_DIGEST = "declared-digest"
 LAUNCHER = (sys.executable, str(Path(__file__).with_name("jobshim.py")))
 TERMINAL = ("committed", "failed", "cancelled")
+# Refusals of a lifecycle write that no retry can change: another fact is already recorded under the write-once key,
+# or the router does not know this capability for this invocation. They stop at once rather than spend the budget.
+FINAL_REFUSALS = frozenset({"transition_conflict", "reconciliation_conflict", "cancel_conflict",
+                            "unknown_invocation", "capability_invalid", "capability_invocation_mismatch"})
 DIGEST = re.compile(r"\Asha256:[0-9a-f]{64}\Z")
 
 
@@ -113,6 +119,9 @@ class Policy:
     launch_attempts: int = 3       # launch-admission refusals (a paused topic) before the admitted work is cancelled
     spawn_attempts: int = 2        # launcher starts that fail before the job fails as spawn_failed
     commit_attempts: int = 3       # sends of a result whose expected state revision went stale
+    refusal_attempts: int = 3      # sends of a lifecycle write the router refused (an end, a reconciliation, entering outcome_unknown, a cancellation)
+    unknown_attempts: int = 5      # looks at an outcome_unknown episode that cannot be reconciled yet
+    unknown_window_s: float = 600.0  # how long such an episode may stay unresolved, from its first unresolved look
     identity_grace_s: float = 5.0  # how long a launcher this process started may take to record its identity
     start_grace_s: float = 5.0     # how long a start found after a restart may take to show itself before it is abandoned
     term_grace_s: float = 2.0      # SIGTERM -> SIGKILL
@@ -318,6 +327,52 @@ class Supervisor:
         """The failing write made progress: its budget is spent no longer (saved by the caller)."""
         journal["budgets"].pop("write", None)
         journal.pop("write_failure", None)
+
+    def _refused(self, job: jobs.Job, journal: dict, write: str, response: dict):
+        """The router answered a lifecycle write — an end, a reconciliation,
+        entering outcome_unknown, a cancellation — with a refusal. It is
+        decided and sent afresh on a later advance within the refusal budget,
+        which only that write's acceptance refunds; a refusal no retry can
+        change (FINAL_REFUSALS) stops at once. Past either, the job stalls
+        with an owned, deadlined incident naming the budget, the write and the
+        last refusal, which only recover() resumes, refilling nothing (L-6,
+        RG-3)."""
+        refusal = {"reason": response.get("reason"), "detail": response.get("detail")}
+        final = refusal["reason"] in FINAL_REFUSALS
+        journal["refusal"] = {"write": write, **refusal}
+        if final or not self._spend(job, journal, "refusal"):
+            self._incident(job, journal, "lifecycle_write_refused", budget="refusal", write=write, last_refusal=refusal, final=final)
+            raise Waiting("stalled")
+        raise Waiting(f"{write}_refused:{refusal['reason']}")
+
+    def _accepted(self, job: jobs.Job, journal: dict, write: str) -> None:
+        """The router accepted a lifecycle write: if it is the one last
+        refused, the refusal budget it spent is spent no longer."""
+        if (journal.get("refusal") or {}).get("write") == write:
+            del journal["refusal"]
+            journal["budgets"].pop("refusal", None)
+            self._save(job, journal)
+
+    def _unresolved(self, job: jobs.Job, journal: dict, status: dict, finding: str):
+        """The current outcome_unknown episode cannot be reconciled yet: it is
+        looked at again on a later advance within the unknown budget —
+        attempts, and time from its first unresolved look — kept per episode.
+        Past either, the job stalls with an owned, deadlined incident naming
+        the episode and what was last found, which only recover() resumes,
+        refilling nothing; nothing is reconciled, so the episode's hold stays
+        with the router (L-4, L-6, RG-3)."""
+        episode = status["unknown_episode"]
+        tried = journal.get("unresolved")
+        if tried is None or tried["episode"] != episode:
+            tried = journal["unresolved"] = {"episode": episode, "since": self._now()}
+            journal["budgets"].pop("unknown", None)
+            self._save(job, journal)
+        tried["finding"] = finding
+        if not self._spend(job, journal, "unknown") or self._past(self._after(self.policy.unknown_window_s, tried["since"])):
+            self._incident(job, journal, "outcome_unknown_unresolved", budget="unknown", unknown_episode=episode,
+                           unresolved_since=tried["since"], last_finding=finding)
+            raise Waiting("stalled")
+        raise Waiting("unknown_unresolved")
 
     READS = frozenset({"invocation_status"})
 
@@ -550,8 +605,12 @@ class Supervisor:
                     grant = self._grant(delegate, dorder, djournal)
                     status = self._status(delegate, djournal, grant)
                     if status["state"] not in (*TERMINAL, "result_ready") and status["cancel_requested"] is None:
-                        self._call(delegate, djournal, "request_cancel", {"invocation_id": grant["invocation_id"], "requested_by": "supervisor",
-                                                                          "reason": f"its parent {order['invocation_id']} has ended", "capability_id": grant["capability_id"]})
+                        response = self._call(delegate, djournal, "request_cancel", {"invocation_id": grant["invocation_id"], "requested_by": "supervisor",
+                                                                                     "reason": f"its parent {order['invocation_id']} has ended",
+                                                                                     "capability_id": grant["capability_id"]})
+                        if response["status"] not in ("cancelled", "recorded", "replayed"):
+                            self._refused(delegate, djournal, "cancel", response)
+                        self._accepted(delegate, djournal, "cancel")
                 except Waiting:
                     pass
             if self.advance(dorder["invocation_id"]) not in (*TERMINAL, "not_admitted"):
@@ -565,7 +624,8 @@ class Supervisor:
         response = self._call(job, journal, "request_cancel", {"invocation_id": grant["invocation_id"], "requested_by": "supervisor",
                                                                 "reason": reason[:500], "capability_id": grant["capability_id"]})
         if response["status"] not in ("cancelled", "recorded", "replayed"):
-            raise Waiting("launch_refused")
+            self._refused(job, journal, "cancel", response)
+        self._accepted(job, journal, "cancel")
         return self._drive(job, job.read("order.json"), journal)
 
     def _refused_launch(self, job, journal, grant, reason: str) -> str:
@@ -658,13 +718,14 @@ class Supervisor:
             self._save(job, journal)
         return pending
 
-    def _sent(self, job: jobs.Job, journal: dict, response: dict, refused: str) -> None:
+    def _sent(self, job: jobs.Job, journal: dict, response: dict, write: str) -> None:
         """The pending request answered: kept no longer. A refusal lets the
-        next attempt decide afresh."""
+        next attempt decide afresh, within the refusal budget (_refused)."""
         journal.pop("pending", None)
         self._save(job, journal)
         if response["status"] not in ("recorded", "replayed"):
-            raise Waiting(f"{refused}:{response.get('reason')}")
+            self._refused(job, journal, write, response)
+        self._accepted(job, journal, write)
 
     def _end(self, job, order, journal, grant, to_state: str, observation: dict, method: str) -> str:
         self._settle_delegates(order)
@@ -672,7 +733,7 @@ class Supervisor:
         facts = {"end_evidence_ref": pending["record"]["content_hash"]}
         if to_state == "failed":
             facts["failure_class"] = pending["observation"]["findings"][0]
-        self._sent(job, journal, self._transition(job, journal, grant, to_state, **facts), "end_refused")
+        self._sent(job, journal, self._transition(job, journal, grant, to_state, **facts), "end")
         return self._settle(job, journal, to_state)
 
     def _running(self, job, order, journal, grant, status) -> str:
@@ -698,12 +759,15 @@ class Supervisor:
         else:
             response = self._transition(job, journal, grant, "result_ready", result_payload_digest=collected["result"]["content_hash"])
             if response["status"] in ("recorded", "replayed"):
+                self._accepted(job, journal, "result_ready")
                 self._fault("result_ready_recorded")
                 return self._result_ready(job, order, journal, grant, self._status(job, journal, grant))
             if response.get("reason") == "cancel_requested":  # the cancellation won the race: the result stays retained (C-10)
                 return self._drive(job, order, journal)
+            self._refused(job, journal, "result_ready", response)
         if response["status"] not in ("recorded", "replayed"):
-            raise Waiting(f"end_refused:{response.get('reason')}")
+            self._refused(job, journal, "end", response)
+        self._accepted(job, journal, "end")
         return self._settle(job, journal, response["state"])
 
     def _result_ready(self, job, order, journal, grant, status) -> str:
@@ -740,7 +804,8 @@ class Supervisor:
     def _enter_unknown(self, job, order, journal, grant, status, cause: str) -> str:
         response = self._transition(job, journal, grant, "outcome_unknown", unknown_episode=status["unknown_episode"] + 1, unknown_cause=cause)
         if response["status"] not in ("recorded", "replayed"):
-            raise Waiting(f"unknown_refused:{response.get('reason')}")
+            self._refused(job, journal, "unknown", response)
+        self._accepted(job, journal, "unknown")
         self._fault("unknown_recorded")
         return self._unknown(job, order, journal, grant, self._status(job, journal, grant))
 
@@ -756,14 +821,14 @@ class Supervisor:
         if collected is not None:
             observation = collected["observation"]
             if observation["descendants"]["handling"] == "unconfirmed":
-                raise Waiting("unknown_unresolved")
+                self._unresolved(job, journal, status, "the collected end's descendants are not confirmed ended")
             if cancel and observation["termination"] is None:
                 # a cancellation of work that already ended: the owned group is confirmed empty by the same idempotent
                 # operation that ends a live one — an empty group is signalled nothing (descendants none_found) — and the
                 # observed exit is kept as it was: nothing says the cancellation caused it (Q5 ruling; Astra 1c review A2)
                 ended = job.terminate(view["identity"], term_grace=self.policy.term_grace_s, kill_grace=self.policy.kill_grace_s, reap=self._reap)
                 if not ended["confirmed"]:
-                    raise Waiting("unknown_unresolved")
+                    self._unresolved(job, journal, status, "the group of work that already exited is not confirmed empty")
                 observation = {**observation, "termination": {"reason": "cancellation"}, "descendants": self._handled(ended)}
             if cancel or collected.get("terminated"):  # the group was ended by the supervisor: its end is a cancellation if one was asked for
                 return self._reconcile(job, order, journal, grant, status, "terminated_group", "execution_group_termination", observation)
@@ -773,15 +838,15 @@ class Supervisor:
         if view["verdict"] in ("starting", "unstarted"):
             view = self._await_identity(job, self.policy.start_grace_s)
         if view["verdict"] in ("not_started", "unstarted"):
-            if view["verdict"] == "unstarted" and not job.abandon():
-                raise Waiting("unknown_unresolved")  # a launcher got the lock first: its identity is next
+            if view["verdict"] == "unstarted" and not job.abandon():  # a launcher got the lock first: its identity is next
+                self._unresolved(job, journal, status, "a launcher took the lock before the start could be abandoned")
             if cancel:  # the group is confirmed empty: no launcher ever ran, and the abandoned mark keeps a late one from starting
                 return self._reconcile(job, order, journal, grant, status, "terminated_group", "execution_group_termination",
                                        {**self._unrun(None, "cancelled; the launcher never started and the job is abandoned: nothing was signalled"),
                                         "termination": {"reason": "cancellation"}})
             return self._reconcile(job, order, journal, grant, status, "confirmed_failed", "job_handle_lookup", self._unrun("never_started", "the launcher never started"))
-        if view["verdict"] in ("starting", "exited"):
-            raise Waiting("unknown_unresolved")  # still no identity after the grace; or an exit a moment ago (collected on the next advance)
+        if view["verdict"] in ("starting", "exited"):  # still no identity after the grace; or an exit a moment ago (collected on the next advance)
+            self._unresolved(job, journal, status, f"the launcher is {view['verdict']} after the start grace")
         if view["verdict"] == "running" and not cancel and not self._past(order["deadline_at"]):
             observation = {**self._unrun(None, "running"), "process": self._process(view["identity"])}
             return self._reconcile(job, order, journal, grant, status, "found_running", "job_handle_lookup", observation, identity=observation["process"])
@@ -792,7 +857,7 @@ class Supervisor:
         reason = "cancellation" if cancel else ("timeout" if self._past(order["deadline_at"]) else "reconciliation")
         ended = job.terminate(view["identity"], term_grace=self.policy.term_grace_s, kill_grace=self.policy.kill_grace_s, reap=self._reap)
         if not ended["confirmed"]:
-            raise Waiting("unknown_unresolved")
+            self._unresolved(job, journal, status, f"the group's termination ({reason}) is not confirmed")
         observation = {**self._unrun({"cancellation": None, "timeout": "timeout"}.get(reason, "no_exit_record"), None),
                        "process": self._process(view["identity"]), "exit": job.read("exit.json"), "termination": {"reason": reason},
                        "descendants": self._handled(ended)}
@@ -813,5 +878,8 @@ class Supervisor:
             request["result_payload_digest"] = pending["digest"]
         if pending["resolution"] in ("confirmed_failed", "terminated_group") and not (pending["resolution"] == "terminated_group" and status["cancel_requested"]):
             request["failure_class"] = pending["observation"]["findings"][0]
-        self._sent(job, journal, self._call(job, journal, "reconcile", request), "reconcile_refused")
+        self._sent(job, journal, self._call(job, journal, "reconcile", request), "reconcile")
+        if journal.pop("unresolved", None) is not None:  # the episode is reconciled: its unknown budget is spent no longer
+            journal["budgets"].pop("unknown", None)
+            self._save(job, journal)
         return self._drive(job, order, journal)

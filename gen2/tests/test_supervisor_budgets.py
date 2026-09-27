@@ -24,9 +24,24 @@ so a write that keeps failing while reads succeed stalls within its budget,
 by attempts or by time; recover() resumes a stalled job without refilling an
 exhausted budget.
 
+Refused lifecycle writes and unresolved outcome_unknown (task 1c-repair-2;
+L-6, RG-3, L-4): a write the router refuses — here a failure's end — is sent
+afresh within the refusal budget, then the job stalls with an owned,
+deadlined incident naming the budget, the write and the last refusal; a
+refusal no retry can change (a conflict) stalls at once. An outcome_unknown
+episode that cannot be reconciled — here a vanished launcher's group whose
+termination is never confirmed — is looked at again within the unknown
+budget, by attempts and by time, then stalls the same way while its hold
+stays open. For each: further advances and a restarted supervisor (no
+recover()) send and terminate nothing more and leave the incident, its
+deadline and the store as they were; controls: a refusal or an unresolved
+episode that clears within budget refunds it, and recover() resumes a
+stalled job once the router accepts or the group ends.
+
 Oracles: expected outcomes written by hand; the store read back by raw SQL
 (unchanged while the supervisor cannot deliver); the journal and spool read
-from disk; process death read from /proc.
+from disk; process death read from /proc; the calls and terminations counted
+where they are made.
 """
 from __future__ import annotations
 
@@ -75,6 +90,43 @@ class WritesDown(Unreachable):
                 raise ControlUnavailable(name)
             return call(request)
         return partial
+
+
+class Refusing(Unreachable):
+    """The router refuses the job's `to_state` transition (or, with `method`,
+    that call) with `reason`: the next `times` sends, or every one while
+    `times` is None. `refusals` counts the refused sends. Nests: the inner
+    one may refuse another write."""
+
+    def __init__(self, router, to_state: str | None, reason: str, times: int | None = None, method: str = "record_transition") -> None:
+        super().__init__(router)
+        self.to_state, self.reason, self.times, self.method, self.refusals = to_state, reason, times, method, 0
+
+    def __getattr__(self, name):
+        call = super().__getattr__(name)
+
+        def maybe(request):
+            if name == self.method and request.get("invocation_id") == MAIN and (self.to_state is None or request.get("to_state") == self.to_state) \
+                    and (self.times is None or self.refusals < self.times):
+                self.refusals += 1
+                return {"status": "refused", "reason": self.reason, "detail": "refused by the test"}
+            return call(request)
+        return maybe
+
+
+class Unconfirmed:
+    """jobs.Job.terminate for a group that will not end: nothing is signalled
+    and the group is never confirmed empty. `calls` counts the attempts."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def terminate(self, job, identity, **kwargs) -> dict:
+        self.calls += 1
+        return {"found": len(jobs.members(identity)), "confirmed": False}
+
+    def patched(self):
+        return mock.patch.object(jobs.Job, "terminate", lambda job, identity, **kwargs: self.terminate(job, identity, **kwargs))
 
 
 class BudgetFaults:
@@ -249,6 +301,170 @@ class BudgetFaults:
         self.clock.set("2027-01-01T00:00:00Z")  # past the outage window, two attempts into a budget of five
         self.assertEqual(supervisor.advance(MAIN), "stalled")
         self.assertEqual((partial.attempts, self.incident("router_unreachable")["outage_since"]), (2, since))
+
+    # -- a lifecycle write the router refuses (task 1c-repair-2) ----------------------------------------
+    def failed_end(self) -> None:
+        """The job exits 3: its end is a failure the supervisor records."""
+        self.assertEqual(self.submit([{"op": "exit", "code": 3}]), "running")
+        self.wait_for_file("exit.json")
+
+    def ended_failed(self) -> dict:
+        return {**self.ended_clean(), "state": "failed", "failure_class": "exit_nonzero", "evidence": True, "transitions": ["admitted", "launching", "running", "failed"],
+                "receipts": 0, "lease_release": released(self.KIND, "failed")}
+
+    def stalled_unchanged(self, control, count, advances: int = 3) -> dict:
+        """A restarted supervisor, half an hour later, recover() not run: it
+        sends nothing more, and the incident (its deadline included) and the
+        store stay as they were."""
+        found, before, done = self.journal()["incident"], self.state(exclude=()), count()
+        self.clock.set("2026-09-27T10:30:00Z")
+        restarted = self.make_supervisor(control=control)
+        self.assertEqual([restarted.advance(MAIN) for _ in range(advances)], ["stalled"] * advances)
+        self.assertEqual((count(), self.journal()["incident"], self.state(exclude=())), (done, found, before))
+        self.assertIn({"invocation_id": MAIN, "blocking": True, **found}, restarted.incidents())
+        return found
+
+    def test_a_refused_end_is_resent_within_its_budget_then_stalls(self) -> None:
+        self.failed_end()
+        before = self.state()
+        refusing = Refusing(self.router, "failed", "transition_not_allowed")
+        supervisor = self.make_supervisor(control=refusing)
+        outcomes = [supervisor.advance(MAIN) for _ in range(6)]
+        self.assertEqual(outcomes, ["end_refused:transition_not_allowed"] * 3 + ["stalled"] * 3)
+        self.assertEqual(refusing.refusals, 4)  # the budget (3), then the one that stalled; nothing after
+        found = self.incident("lifecycle_write_refused")
+        self.assertEqual({k: found[k] for k in ("budget", "write", "last_refusal", "final")},
+                         {"budget": "refusal", "write": "end", "last_refusal": {"reason": "transition_not_allowed", "detail": "refused by the test"}, "final": False})
+        self.assertEqual(self.state(), before)  # nothing recorded: the job is authoritatively running
+        self.stalled_unchanged(refusing, lambda: refusing.refusals)
+        self.assertEqual(self.make_supervisor().recover()[MAIN], "failed")  # the router accepts it: recovery delivers the end once
+        self.assertEqual(self.ended(), self.ended_failed())
+
+    def test_a_refusal_no_retry_can_change_stalls_at_once(self) -> None:
+        """A conflict: another fact is recorded under the write-once key, so
+        a retry would be refused the same way. It spends no budget."""
+        self.failed_end()
+        refusing = Refusing(self.router, "failed", "transition_conflict")
+        supervisor = self.make_supervisor(control=refusing)
+        self.assertEqual([supervisor.advance(MAIN) for _ in range(3)], ["stalled"] * 3)
+        self.assertEqual(refusing.refusals, 1)
+        found = self.incident("lifecycle_write_refused")
+        self.assertEqual((found["last_refusal"]["reason"], found["final"], self.journal()["budgets"].get("refusal")), ("transition_conflict", True, None))
+        self.stalled_unchanged(refusing, lambda: refusing.refusals)
+
+    def test_a_refused_end_accepted_within_its_budget_refunds_it(self) -> None:
+        self.failed_end()
+        refusing = Refusing(self.router, "failed", "transition_not_allowed", times=2)
+        supervisor = self.make_supervisor(control=refusing)
+        self.assertEqual([supervisor.advance(MAIN) for _ in range(3)], ["end_refused:transition_not_allowed"] * 2 + ["failed"])
+        journal = self.journal()
+        self.assertEqual((journal.get("incident"), journal["budgets"].get("refusal"), journal.get("refusal")), (None, None, None))
+        self.assertEqual(self.ended(), self.ended_failed())
+
+    def refused_write_stalls(self, supervisor, refusing: Refusing, write: str, first: str | None = None) -> None:
+        """Each refused send spends the refusal budget (3); the next stalls
+        the job with its incident; a restart then sends nothing more."""
+        outcomes = ([first] if first else []) + [supervisor.advance(MAIN) for _ in range(4 - bool(first))]
+        self.assertEqual(outcomes, [f"{write}_refused:transition_not_allowed"] * 3 + ["stalled"])
+        self.assertEqual(refusing.refusals, 4)
+        self.assertEqual(self.incident("lifecycle_write_refused")["write"], write)
+        self.stalled_unchanged(refusing, lambda: refusing.refusals)
+
+    def test_a_refused_result_is_budgeted_too(self) -> None:
+        self.exited()
+        refusing = Refusing(self.router, "result_ready", "transition_not_allowed")
+        self.refused_write_stalls(self.make_supervisor(control=refusing), refusing, "result_ready")
+        self.assertEqual(self.make_supervisor().recover()[MAIN], "committed")
+
+    def test_a_refused_outcome_unknown_entry_is_budgeted_too(self) -> None:
+        self.vanished()
+        refusing = Refusing(self.router, "outcome_unknown", "transition_not_allowed")
+        self.refused_write_stalls(self.make_supervisor(control=refusing), refusing, "unknown")
+        self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN), "running")
+        self.assertEqual(self.make_supervisor().recover()[MAIN], "failed")
+        self.ended_reconciled()
+
+    def test_a_refused_reconciliation_is_budgeted_too(self) -> None:
+        self.vanished()
+        refusing = Refusing(self.router, None, "transition_not_allowed", method="reconcile")
+        self.refused_write_stalls(self.make_supervisor(control=refusing), refusing, "reconcile")
+        self.unknown_held()
+        self.assertEqual(self.make_supervisor().recover()[MAIN], "failed")
+        self.ended_reconciled("confirmed_failed")  # the first attempt ended the group; each refusal lets the next decide afresh
+
+    def test_a_refused_cancellation_of_unlaunched_work_is_budgeted_too(self) -> None:
+        """Launch admission refuses (the lease is not current), so the
+        supervisor cancels the admitted work itself; the router refuses that
+        cancellation too."""
+        self.prepare(self.KIND)
+        refusing = Refusing(Refusing(self.router, "launching", "lease_not_current"), None, "transition_not_allowed", method="request_cancel")
+        supervisor = self.make_supervisor(control=refusing)
+        first = supervisor.submit(self.order(self.KIND))
+        self.refused_write_stalls(supervisor, refusing, "cancel", first=first)
+        self.assertEqual((self.spawns(), self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN)), (0, "admitted"))
+
+    # -- an outcome_unknown episode that cannot be reconciled yet (task 1c-repair-2) ----------------------
+    def vanished(self) -> dict:
+        """The job's launcher is killed and reaped, its executor and
+        descendant left: the next advance enters outcome_unknown and
+        reconciles by terminating the group."""
+        self.assertEqual(self.submit(HANG_WITH_DESCENDANT), "running")
+        self.wait_for_file("scratch/descendant.pid")
+        identity = self.job_file("identity.json")
+        os.kill(identity["pid"], signal.SIGKILL)
+        deadline = time.monotonic() + 5
+        while alive(identity["pid"]) and time.monotonic() < deadline:
+            self.reap()
+            time.sleep(0.01)
+        return identity
+
+    def unknown_held(self) -> None:
+        """The episode is entered and nothing reconciled it: its hold is open."""
+        self.assertEqual({k: v for k, v in self.ended().items() if k in ("state", "episodes", "open_holds", "reconciliations")},
+                         {"state": "outcome_unknown", "episodes": 1, "open_holds": 1, "reconciliations": []})
+
+    def ended_reconciled(self, resolution: str = "terminated_group") -> None:
+        self.assertEqual({k: v for k, v in self.ended().items() if k in ("state", "failure_class", "episodes", "open_holds", "cleared_holds", "reconciliations")},
+                         {"state": "failed", "failure_class": "no_exit_record", "episodes": 1, "open_holds": 0, "cleared_holds": 1,
+                          "reconciliations": [resolution]})
+
+    def test_an_unresolved_unknown_episode_stalls_within_its_budget_and_keeps_its_hold(self) -> None:
+        identity = self.vanished()
+        unconfirmed = Unconfirmed()
+        with unconfirmed.patched():
+            outcomes = [self.supervisor.advance(MAIN) for _ in range(7)]
+            self.assertEqual(outcomes, ["unknown_unresolved"] * 5 + ["stalled"] * 2)
+            self.assertEqual(unconfirmed.calls, 6)  # the budget (5), then the one that stalled; nothing after
+            found = self.incident("outcome_unknown_unresolved")
+            self.assertEqual({k: found[k] for k in ("budget", "unknown_episode", "last_finding")},
+                             {"budget": "unknown", "unknown_episode": 1, "last_finding": "the group's termination (reconciliation) is not confirmed"})
+            self.unknown_held()
+            self.stalled_unchanged(self.control, lambda: unconfirmed.calls)
+        self.assertNotEqual(jobs.members(identity), [])  # the group was never ended meanwhile
+        self.assertEqual(self.make_supervisor().recover()[MAIN], "failed")  # the group can be ended: recovery reconciles the episode
+        self.ended_reconciled()
+        self.assertEqual(jobs.members(identity), [])
+
+    def test_an_unresolved_unknown_episode_is_also_bounded_in_time(self) -> None:
+        self.vanished()
+        unconfirmed = Unconfirmed()
+        with unconfirmed.patched():
+            self.assertEqual(self.supervisor.advance(MAIN), "unknown_unresolved")
+            since = self.journal()["unresolved"]["since"]
+            self.clock.set("2026-09-27T10:20:00Z")  # past the unknown window (600 s), one attempt into a budget of five
+            self.assertEqual(self.supervisor.advance(MAIN), "stalled")
+            self.assertEqual((unconfirmed.calls, self.incident("outcome_unknown_unresolved")["unresolved_since"]), (2, since))
+            self.unknown_held()
+
+    def test_an_unknown_episode_reconciled_within_its_budget_refunds_it(self) -> None:
+        self.vanished()
+        unconfirmed = Unconfirmed()
+        with unconfirmed.patched():
+            self.assertEqual([self.supervisor.advance(MAIN) for _ in range(2)], ["unknown_unresolved"] * 2)
+        self.assertEqual(self.supervisor.advance(MAIN), "failed")  # the group ends now: the episode is reconciled
+        journal = self.journal()
+        self.assertEqual((journal.get("incident"), journal.get("unresolved"), journal["budgets"].get("unknown")), (None, None, None))
+        self.ended_reconciled()
 
 
 class ResearchPassBudgetTest(BudgetFaults, SupervisedTestCase):

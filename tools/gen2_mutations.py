@@ -2927,8 +2927,8 @@ MUTATIONS: list[Mutation] = [
            '        pending = self._pending(job, order, journal, f"end:{to_state}"'),
           ("delegates-not-cancelled", "a parent's end waits on its delegates without asking them to end",
            ("test_a_parent_that_completes", "test_a_parent_that_fails"),
-           '                    if status["state"] not in (*TERMINAL, "result_ready") and status["cancel_requested"] is None:\n                        self._call(delegate',
-           '                    if False:\n                        self._call(delegate'))),
+           '                    if status["state"] not in (*TERMINAL, "result_ready") and status["cancel_requested"] is None:\n                        response = self._call(delegate',
+           '                    if False:\n                        response = self._call(delegate'))),
     # A5-R (1c-repair-2): a delegate stalled on an incident passes its own stall gate when its parent ends it — no control call
     # until recover(), its incident kept as raised — and is still advanced, so its deadline is still observed locally.
     *(Mutation(f"1C-sup-{key}", "1c-A5R", desc, tuple(p + k for k in killers for p in (SDR, SDD)), target=SPV, old=old, new=new)
@@ -2941,6 +2941,49 @@ MUTATIONS: list[Mutation] = [
            ("test_a_stalled_delegate_is_still_ended_at_its_deadline",),
            '            if self.advance(dorder["invocation_id"]) not in (*TERMINAL, "not_admitted"):',
            '            if djournal.get("incident") or self.advance(dorder["invocation_id"]) not in (*TERMINAL, "not_admitted"):'))),
+    # 1c-repair-2 (L-6, RG-3): a lifecycle write the router refuses is re-sent within the refusal budget, a conflict stops at
+    # once, and exhaustion stalls the job with an owned, deadlined incident; every refusal site draws on that budget.
+    *(Mutation(f"1C-sup-{key}", "1c-L6", desc, tuple(p + k for k in killers for p in prefixes), target=SPV, old=old, new=new)
+      for key, desc, killers, prefixes, old, new in (
+          ("refusal-unbudgeted", "a refused lifecycle write is re-sent on every advance, never stalling",
+           ("test_a_refused_end_is_resent_within_its_budget_then_stalls",), (SBR, SBD),
+           '        if final or not self._spend(job, journal, "refusal"):', '        if final:'),
+          ("final-refusal-retried", "a refusal no retry can change (a conflict) spends the budget instead of stalling at once",
+           ("test_a_refusal_no_retry_can_change_stalls_at_once",), (SBR, SBD),
+           '        final = refusal["reason"] in FINAL_REFUSALS', '        final = False'),
+          ("refusal-never-refunded", "a refused write that is then accepted keeps its refusal budget spent",
+           ("test_a_refused_end_accepted_within_its_budget_refunds_it",), (SBR, SBD),
+           '            journal["budgets"].pop("refusal", None)\n', ''),
+          ("end-refusal-unbudgeted", "a refused end (failed or cancelled) is re-sent on every advance",
+           ("test_a_refused_end_is_resent_within_its_budget_then_stalls",), (SBR, SBD),
+           '            self._refused(job, journal, "end", response)', '            raise Waiting(f"end_refused:{response.get(\'reason\')}")'),
+          ("result-refusal-unbudgeted", "a refused result_ready is re-sent on every advance",
+           ("test_a_refused_result_is_budgeted_too",), (SBR, SBD),
+           '            self._refused(job, journal, "result_ready", response)', '            raise Waiting(f"result_ready_refused:{response.get(\'reason\')}")'),
+          ("unknown-entry-refusal-unbudgeted", "a refused outcome_unknown entry is re-sent on every advance",
+           ("test_a_refused_outcome_unknown_entry_is_budgeted_too",), (SBR, SBD),
+           '            self._refused(job, journal, "unknown", response)', '            raise Waiting(f"unknown_refused:{response.get(\'reason\')}")'),
+          ("sent-refusal-unbudgeted", "a refused pending end or reconciliation is re-sent on every advance",
+           ("test_a_refused_reconciliation_is_budgeted_too",), (SBR, SBD),
+           '            self._refused(job, journal, write, response)', '            raise Waiting(f"{write}_refused:{response.get(\'reason\')}")'),
+          ("self-cancel-refusal-unbudgeted", "the supervisor's refused cancellation of unlaunched work is re-sent on every advance",
+           ("test_a_refused_cancellation_of_unlaunched_work_is_budgeted_too",), (SBR, SBD),
+           '            self._refused(job, journal, "cancel", response)', '            raise Waiting("launch_refused")'),
+          ("delegate-cancel-refusal-ignored", "a delegate's refused cancellation is asked again on every parent advance",
+           ("test_a_refused_delegate_cancellation_is_budgeted",), (SDR, SDD),
+           '                        if response["status"] not in ("cancelled", "recorded", "replayed"):\n                            self._refused(delegate',
+           '                        if False:\n                            self._refused(delegate'),
+          # an outcome_unknown episode that cannot be reconciled yet: attempts and time, per episode; its hold stays (L-4)
+          ("unknown-unbudgeted", "an unresolved outcome_unknown episode is looked at again on every advance, never stalling",
+           ("test_an_unresolved_unknown_episode_stalls_within_its_budget_and_keeps_its_hold",), (SBR, SBD),
+           '        if not self._spend(job, journal, "unknown") or self._past(self._after(self.policy.unknown_window_s, tried["since"])):',
+           '        if False:'),
+          ("unknown-untimed", "an unresolved episode is bounded by attempts only, however long it lasts",
+           ("test_an_unresolved_unknown_episode_is_also_bounded_in_time",), (SBR, SBD),
+           ' or self._past(self._after(self.policy.unknown_window_s, tried["since"]))', ''),
+          ("unknown-never-refunded", "a reconciled episode keeps its unknown budget spent",
+           ("test_an_unknown_episode_reconciled_within_its_budget_refunds_it",), (SBR, SBD),
+           '        if journal.pop("unresolved", None) is not None:', '        if False:'))),
 ]
 
 
