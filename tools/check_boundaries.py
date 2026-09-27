@@ -22,6 +22,13 @@ scope that binds them (module, function, class, comprehension; `global` and
 `nonlocal` honoured, including an import that rebinds a nonlocal name), so an
 alias reused in another function cannot hide a restricted module.
 
+The store's write capability (rule 9, task 1b) is checked on the same
+static names: outside `store_writers` (and the module that defines them), no
+module may reach a name in `store_write_primitives` — the Store class and its
+methods, and every route that yields a Store or a raw store connection —
+whatever its `may_import` grant says. So a later grant of `store` to another
+module (a read path for the importer, say) is not also a write grant.
+
 What it structurally cannot see, and so leaves to runtime isolation and
 review: names reached through reflection (getattr/globals/vars/sys.modules),
 assignment of a module to another variable, code run by a child interpreter,
@@ -70,6 +77,9 @@ class Config:
     modules: dict[str, Module]
     unmapped_components: dict[str, str]
     errors: list[str] = field(default_factory=list)
+    store_write_primitives: list[str] = field(default_factory=list)
+    store_writers: list[str] = field(default_factory=list)
+    store_writer_exempt: list[str] = field(default_factory=list)
 
 
 def _str_list(table: dict, key: str, where: str, errors: list[str]) -> list[str]:
@@ -141,6 +151,9 @@ def load_config(root: Path, config_rel: str) -> Config:
         forbidden_sql=forbidden_sql,
         forbidden_sql_exempt=_str_list(raw, "forbidden_sql_exempt_modules", config_rel, errors) if "forbidden_sql_exempt_modules" in raw else [],
         modules=modules,
+        store_write_primitives=_str_list(raw, "store_write_primitives", config_rel, errors) if "store_write_primitives" in raw else [],
+        store_writers=_str_list(raw, "store_writers", config_rel, errors) if "store_writers" in raw else [],
+        store_writer_exempt=_str_list(raw, "store_writer_exempt_modules", config_rel, errors) if "store_writer_exempt_modules" in raw else [],
         unmapped_components=unmapped,
         errors=errors,
     )
@@ -162,6 +175,15 @@ def validate_config(cfg: Config, headings: list[str], config_rel: str) -> list[s
     for name in cfg.forbidden_sql_exempt:
         if name not in names:
             errors.append(f"{config_rel}: forbidden_sql_exempt_modules names undeclared module {name!r}")
+    for key, listed in (("store_writers", cfg.store_writers), ("store_writer_exempt_modules", cfg.store_writer_exempt)):
+        for name in listed:
+            if name not in names:
+                errors.append(f"{config_rel}: {key} names undeclared module {name!r}")
+    if cfg.store_write_primitives and not cfg.store_writers:
+        errors.append(f"{config_rel}: store_write_primitives without store_writers would forbid every writer")
+    for primitive in cfg.store_write_primitives:
+        if not primitive.startswith(cfg.package_root + ".") or module_of_import(primitive, cfg) is None:
+            errors.append(f"{config_rel}: store_write_primitives entry {primitive!r} is not inside a declared module")
     for mod in cfg.modules.values():
         where = f"{config_rel}: modules.{mod.name}"
         for dep in mod.may_import:
@@ -559,6 +581,27 @@ def forbidden_sql_uses(tree: ast.Module, patterns: list[re.Pattern]) -> list[tup
     return hits
 
 
+def store_write_violations(rel: str, mod: Module, refs: list[tuple[int, str, str, str]], cfg: Config) -> list[str]:
+    """Rule 9: outside the store writers, the module defining the primitive
+    and the exempt modules, any import or attribute chain that reaches a
+    store write primitive (the name itself or anything below it)."""
+    if mod.name in cfg.store_writers or mod.name in cfg.store_writer_exempt:
+        return []
+    found: list[str] = []
+    seen: set[tuple[int, str]] = set()  # one report per line and primitive (a.b.c also yields a.b)
+    for lineno, target, kind, _ in refs:
+        if kind == "builtin":
+            continue
+        for primitive in cfg.store_write_primitives:
+            owner = module_of_import(primitive, cfg)
+            if (owner is not None and owner.name != mod.name and (lineno, primitive) not in seen
+                    and (target == primitive or target.startswith(primitive + "."))):
+                seen.add((lineno, primitive))
+                found.append(f"{rel}:{lineno}: {mod.name} reaches store write primitive {primitive} (via {target}); "
+                             f"only {', '.join(cfg.store_writers)} writes the store (INVARIANTS C-1)")
+    return found
+
+
 def check_file(root: Path, rel: str, mod: Module, cfg: Config) -> list[str]:
     try:
         source = (root / rel).read_text(encoding="utf-8")
@@ -571,6 +614,7 @@ def check_file(root: Path, rel: str, mod: Module, cfg: Config) -> list[str]:
     if mod.name not in cfg.forbidden_sql_exempt:
         for lineno, pattern in forbidden_sql_uses(tree, cfg.forbidden_sql):
             violations.append(f"{rel}:{lineno}: {mod.name} has SQL matching forbidden pattern {pattern!r}: conflict resolution by REPLACE rewrites stored rows (INVARIANTS C-11)")
+    violations.extend(store_write_violations(rel, mod, refs, cfg))
     stdlib = sys.stdlib_module_names
     seen: set[tuple[int, str]] = set()
     for lineno, target, kind, base in refs:

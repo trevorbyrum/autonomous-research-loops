@@ -20,6 +20,9 @@
 #   7. The declared `may_import` graph is acyclic.
 #   8. No string literal matches `forbidden_sql` (REPLACE conflict resolution)
 #      outside `forbidden_sql_exempt_modules`.
+#   9. Outside `store_writers` (and the module defining them), nothing
+#      reaches a name in `store_write_primitives` by import or attribute
+#      chain, whatever `may_import` grants (task 1b; INVARIANTS C-1).
 # What this graph is: an architectural lint over the static names a module can
 # reach. What it is not: a security sandbox, a proof that a network endpoint
 # is the right one, or a check on filesystem I/O — reflection, runtime path
@@ -54,6 +57,18 @@ forbidden_calls = ["eval", "exec", "compile", "__import__"]
 # tests are exempt because they issue REPLACE to prove the guards hold.
 forbidden_sql = ['\bOR\s+REPLACE\b', '\bREPLACE\s+INTO\b', '\bON\s+CONFLICT\s+REPLACE\b']
 forbidden_sql_exempt_modules = ["tests"]
+
+# The store's write capability (INVARIANTS C-1: one writer; task 1b). The
+# Store class and its methods, and every route to a Store or to a raw store
+# connection. Only the router may reach them; the store module defines them;
+# tests exercise the store directly and are exempt. Today this is a second
+# layer behind may_import (only the router may import store); it is what keeps
+# a later read grant of `store` from also being a write grant. It sees static
+# names only: a Store instance handed to another module at runtime, or the
+# router's private attribute reached by reflection, is review's to catch.
+store_write_primitives = ["gen2.store.api.Store", "gen2.store.api.open_store", "gen2.store.api.adopt_in_memory", "gen2.store.db.connect"]
+store_writers = ["router"]
+store_writer_exempt_modules = ["tests"]
 
 # Capability-bearing stdlib surfaces. An entry matches the dotted name itself
 # and anything below it; a trailing "*" matches by prefix.

@@ -36,7 +36,14 @@ RESTRICTED = ["sqlite3", "subprocess", "os.system", "os.exec*", "urllib.request"
 FORBIDDEN_SQL = [r"\bOR\s+REPLACE\b", r"\bREPLACE\s+INTO\b"]
 
 
-def render_config(modules: dict[str, dict], unmapped: dict[str, str] | None = None) -> str:
+STORE_RULE = [  # rule 9 (task 1b), as the real config states it
+    'store_write_primitives = ["gen2.store.api.Store", "gen2.store.api.open_store", "gen2.store.api.adopt_in_memory", "gen2.store.db.connect"]',
+    'store_writers = ["router"]',
+    'store_writer_exempt_modules = ["tests"]',
+]
+
+
+def render_config(modules: dict[str, dict], unmapped: dict[str, str] | None = None, store_rule: list[str] | None = None) -> str:
     lines = [
         "schema_version = 1",
         'package_root = "gen2"',
@@ -46,6 +53,7 @@ def render_config(modules: dict[str, dict], unmapped: dict[str, str] | None = No
         f"restricted_stdlib = {json.dumps(RESTRICTED)}",
         f"forbidden_sql = {json.dumps(FORBIDDEN_SQL)}",
         'forbidden_sql_exempt_modules = ["tests"]',
+        *(store_rule or []),
     ]
     for name, spec in modules.items():
         lines.append(f"[modules.{name}]")
@@ -67,6 +75,7 @@ class BoundaryCheckerTest(unittest.TestCase):
         self.modules = json.loads(json.dumps(BASE_MODULES))
         self.headings = list(DOC_HEADINGS)
         self.unmapped: dict[str, str] | None = None
+        self.store_rule: list[str] | None = None
 
     def tearDown(self) -> None:
         self._tmp.cleanup()
@@ -77,7 +86,7 @@ class BoundaryCheckerTest(unittest.TestCase):
         path.write_text(textwrap.dedent(text), encoding="utf-8")
 
     def run_checker(self) -> subprocess.CompletedProcess:
-        self.write("gen2/boundaries.toml", render_config(self.modules, self.unmapped))
+        self.write("gen2/boundaries.toml", render_config(self.modules, self.unmapped, self.store_rule))
         self.write("docs/gen2/BOUNDARIES.md", "# Contract\n\n" + "".join(f"## {h}\n- text\n\n" for h in self.headings))
         return subprocess.run([sys.executable, str(CHECKER), "--root", str(self.root)], capture_output=True, text=True, timeout=60)
 
@@ -445,6 +454,71 @@ class BoundaryCheckerTest(unittest.TestCase):
     def test_drift_unmapped_entry_missing_from_doc(self) -> None:
         self.unmapped = {"Verifier": "invocation kind", "Oracle": "not real"}
         self.assertViolation(self.run_checker(), "unmapped_components entry 'Oracle' is not a `## ` heading", code=2)
+
+    # -- rule 9: the store's write capability (task 1b) ---------------------
+    STORE_PROBE = """\
+        from gen2.store.api import open_store
+        from gen2.store import api
+        api.Store.insert(None, 'queue_entries', {})
+        import gen2.store.db as d
+        d.connect('store.sqlite3')
+        from gen2.store.api import StoreWriteError
+        x = api.adopt_in_memory
+        from gen2.store.api import Store as S
+        """
+
+    def test_only_the_store_writers_reach_store_write_primitives(self) -> None:
+        """A module granted `store` in may_import (so rule 2 is silent) still
+        cannot reach a write primitive: by import (1, 8) or attribute chain
+        (3, 5, 7). Importing the module (2, 4) or a name that merely starts
+        like a primitive (6) is not reaching one. The router, the store module
+        itself and the exempt tests are silent."""
+        self.store_rule = list(STORE_RULE)
+        self.modules["importer"] = {"path": "gen2/importer", "boundaries": [], "may_import": ["core", "store"], "stdlib_capabilities": []}
+        self.write("gen2/importer/load.py", self.STORE_PROBE)
+        self.write("gen2/router/commit.py", self.STORE_PROBE)
+        self.write("gen2/store/api.py", "from gen2.store import db\nclass Store:\n    def insert(self): pass\ndef open_store(p):\n    db.connect(p)\n    return Store()\n")
+        self.write("gen2/tests/test_store.py", self.STORE_PROBE)
+        result = self.run_checker()
+        self.assertEqual(result.returncode, 1, result.stderr)
+        for line, primitive in ((1, "open_store"), (3, "Store"), (5, "connect"), (7, "adopt_in_memory"), (8, "Store")):
+            with self.subTest(line=line):
+                self.assertIn(f"gen2/importer/load.py:{line}: importer reaches store write primitive gen2.store.", result.stderr)
+                self.assertRegex(result.stderr, f"load.py:{line}: .*primitive gen2\\.store\\.(api|db)\\.{primitive} ")
+        for line in (2, 4, 6):
+            self.assertNotIn(f"load.py:{line}:", result.stderr)
+        self.assertNotIn("importer imports store", result.stderr)
+        for silent in ("gen2/router/", "gen2/store/", "gen2/tests/"):
+            self.assertNotIn(silent, result.stderr)
+        self.assertEqual(result.stderr.count("BOUNDARY VIOLATION"), 5)
+
+    def test_without_the_rule_the_same_tree_passes(self) -> None:
+        """The control: rule 9 is what reports it (the import grant allows it)."""
+        self.modules["importer"] = {"path": "gen2/importer", "boundaries": [], "may_import": ["core", "store"], "stdlib_capabilities": []}
+        self.write("gen2/importer/load.py", self.STORE_PROBE)
+        self.assertEqual(self.run_checker().returncode, 0)
+
+    def test_store_rule_configuration_is_checked(self) -> None:
+        for rule, fragment in ((['store_write_primitives = ["gen2.store.api.Store"]', 'store_writers = ["routr"]'], "store_writers names undeclared module 'routr'"),
+                               (['store_write_primitives = ["gen2.nowhere.Store"]', 'store_writers = ["router"]'], "is not inside a declared module"),
+                               (['store_write_primitives = ["gen2.store.api.Store"]'], "without store_writers")):
+            with self.subTest(fragment):
+                self.store_rule = rule
+                self.assertViolation(self.run_checker(), fragment, code=2)
+
+    def test_store_writes_are_the_routers_under_the_real_graph(self) -> None:
+        """Under the REAL gen2/boundaries.toml: the router may reach the write
+        primitives; the composition root may not — reported by rule 2 (it may
+        not import store) and, independently, by rule 9."""
+        self.real_graph()
+        self.write("gen2/router/writes.py", "from gen2.store.api import open_store, adopt_in_memory\nfrom gen2.store import db\ndb.connect('p')\n")
+        self.write("gen2/app/main.py", "from gen2.store.api import open_store\n")
+        result = subprocess.run([sys.executable, str(CHECKER), "--root", str(self.root)], capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("gen2/app/main.py:1: app imports store", result.stderr)
+        self.assertIn("gen2/app/main.py:1: app reaches store write primitive gen2.store.api.open_store", result.stderr)
+        self.assertIn("only router writes the store", result.stderr)
+        self.assertNotIn("gen2/router/", result.stderr)
 
     def test_missing_config_file(self) -> None:
         self.write("docs/gen2/BOUNDARIES.md", "## Router\n")
