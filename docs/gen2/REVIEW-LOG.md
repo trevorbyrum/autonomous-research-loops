@@ -295,3 +295,14 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-1b-astra-review-
 No operator decision is needed.
 
 **Routed:** `docs/gen2/tasks/1b-repair.md` → Opus 5.5 coder.
+
+## 2026-09-27: 1b-repair re-review (Astra, xhigh): BLOCK, narrow (one path)
+Full report: `~/work/research-loops-public/private/reviews/gen2-1b-repair-astra-review-20260927.md`.
+
+**Closed:** A1–A4 and C1–C3. Astra rebuilt every reproduction.
+
+**Rulings:** both probe adjustments were legitimate. The coder's added hold rule (a named hold must exist and belong to the manifest's topic) is ACCEPTED. Leaving `invocation_id` unchecked is ACCEPTED for this phase; the exporter relationship is Phase 3. The 31 DDL mutants are sound.
+
+**Remaining:** A5-R (MEDIUM). `record_transition` requires staged bytes before it looks up the recorded transition. As a result, a historical `result_ready` replay after commit and restart, with the bytes gone, is refused as `payload_missing` when it should be `replayed`. A changed unstaged digest also returns `payload_missing` instead of `transition_conflict`. Astra reproduced this on a durable store in a fresh process; the store rows were unchanged.
+
+No operator decision is needed. **Routed:** `docs/gen2/tasks/1b-repair-2.md` to an Opus 5.5 coder.
