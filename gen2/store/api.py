@@ -47,8 +47,9 @@ connection a test fixture built, through the same compatibility gate and
 schema-identity check). The constructor refuses any other caller, so a raw
 connection plus a caller-supplied "compatibility" dict is not a store.
 
-Not here (Phase 1+): commit_outcome, routing, scheduling, decisions,
-hash-truth recomputation (the router boundary's).
+Not here: commit_outcome, routing, scheduling, decisions, hash-truth
+recomputation — gen2/router (task 1b), the only module that may call the
+write primitives below (tools/check_boundaries.py, `store_writers`).
 """
 from __future__ import annotations
 
@@ -85,6 +86,13 @@ FROZEN_HASH_CONTRACTS = {
 
 class StoreWriteError(ValueError):
     """A write refused by the store module before any SQL ran."""
+
+
+# A write the DDL refused (task 1b): the same class, re-exported so the router
+# can tell a refusal from an infrastructure failure without holding sqlite3
+# itself (boundaries.toml grants sqlite3 to this module only). Nothing is
+# wrapped or translated; the DDL's message is the diagnosis.
+ConstraintViolation = sqlite3.IntegrityError
 
 
 class IdentityBoundError(StoreWriteError):
