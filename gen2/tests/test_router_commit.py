@@ -485,6 +485,7 @@ class BoundaryValidationTest(CommitCase):
             with self.subTest(their_media):
                 ours_ref = self.artifact(f"identical bytes {n}".encode(), "text/html")
                 their_ref = {**ours_ref, "media_type": their_media}
+                self.spool.put(f"identical bytes {n}".encode(), media_type=their_media, topic=OTHER)  # the other topic's own spool entry (C-9)
                 ours = {**empty_outcome("inv_research01", "interim_transition"),
                         "claims": [{"claim_id": f"clm_ours000{n}", "revision": 1, "text_ref": ours_ref, "load_bearing": False, "required_access_tier": None}]}
                 their_outcome = {**empty_outcome("inv_other001", "interim_transition", topic=OTHER),

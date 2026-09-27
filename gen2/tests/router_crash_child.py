@@ -41,14 +41,19 @@ class FileSpool:
         self.directory = directory
         directory.mkdir(exist_ok=True)
 
-    def put(self, raw: bytes) -> str:
+    def put(self, raw: bytes, label: str | None = None, media_type: str = "application/json") -> str:
         digest = canonical.bytes_digest(raw)
         (self.directory / digest.replace(":", "_")).write_bytes(raw)
+        (self.directory / (digest.replace(":", "_") + ".media")).write_text(media_type)
         return digest
 
-    def read(self, content_hash: str) -> bytes | None:
+    def read(self, content_hash: str, *, topic_id: str) -> bytes | None:
         path = self.directory / content_hash.replace(":", "_")
         return path.read_bytes() if path.is_file() else None
+
+    def media_type(self, content_hash: str, *, topic_id: str) -> str | None:
+        path = self.directory / (content_hash.replace(":", "_") + ".media")
+        return path.read_text() if path.is_file() and self.read(content_hash, topic_id=topic_id) is not None else None
 
     def remove(self, content_hash: str) -> None:
         (self.directory / content_hash.replace(":", "_")).unlink()

@@ -33,8 +33,9 @@ Where later tasks attach (hooks named, not implemented here):
     apply_operator_decision's contract approval is where impact
     identification runs (_approve_contract);
   * config-bundle registry, reservations, retry budgets, scheduling (1d);
-  * outcome_unknown, reconciliation, cancellation, the spool (1c);
   * the operator transport and its authentication (1e).
+Task 1c's lifecycle operations (cancellation, reconciliation, status) are in
+lifecycle.py.
 """
 from __future__ import annotations
 
@@ -46,19 +47,23 @@ from typing import Callable, Mapping
 from gen2.core import canonical, instants
 from gen2.router import boundary
 from gen2.router.boundary import Refusal, instant
+from gen2.router.lifecycle import LIFECYCLE_COMMANDS, Lifecycle
 from gen2.router.schemas import SchemaSet
 from gen2.store import api
 
 VALIDATOR_VERSION = "router-boundary/1"
 POLICY_VERSION = "router-policy/1"  # the engine policy bundle's version once 1d mounts it
 ENVELOPE_MAX_BYTES = 64 * 1024
-LIFECYCLE_FACTS = {  # target state -> the facts that record it (L-2, L-3, C-9)
+LIFECYCLE_FACTS = {  # target state -> the facts that record it (L-2, L-3, C-9; task 1c: L-4, L-5, L-7, L-9)
     "launching": ("job_handle",),
     "running": ("host_id", "container_id", "boot_id", "start_fingerprint"),
     "result_ready": ("result_payload_digest",),
-    "failed": (),
+    "failed": ("failure_class", "end_evidence_ref"),
+    "cancelled": ("end_evidence_ref",),
+    "outcome_unknown": ("unknown_episode",),
 }
-LIFECYCLE_CAUSE = {"launching": "launch_intent", "running": "identity_recorded", "result_ready": "result_staged", "failed": "failed"}
+LIFECYCLE_CAUSE = {"launching": "launch_intent", "running": "identity_recorded", "result_ready": "result_staged", "failed": "failed",
+                   "cancelled": "cancelled", "outcome_unknown": "outcome_unknown"}
 
 _ID = {"$ref": "common.schema.json#/$defs/short_text"}
 _OPT = {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/short_text"}]}
@@ -83,7 +88,11 @@ COMMANDS = {  # the router's own request shapes (commands, not stored documents)
             "properties": {
                 "capability_id": _CAP, "invocation_id": _INV, "to_state": {"enum": sorted(LIFECYCLE_FACTS)},
                 "job_handle": _ID, "host_id": _ID, "container_id": _OPT, "boot_id": _ID, "start_fingerprint": _ID,
-                "result_payload_digest": {"$ref": "common.schema.json#/$defs/sha256"}}},
+                "result_payload_digest": {"$ref": "common.schema.json#/$defs/sha256"},
+                "failure_class": {"$ref": "execution-record.schema.json#/properties/findings/items"},
+                "end_evidence_ref": {"$ref": "common.schema.json#/$defs/sha256"},
+                "unknown_episode": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+                "unknown_cause": {"enum": ["spawn_uncertain", "contact_lost", "termination_unconfirmed"]}}},
         "observation": {
             "type": "object", "additionalProperties": False, "required": ["capability_id", "invocation_id", "observation", "retrieval_events"],
             "properties": {
@@ -166,7 +175,7 @@ def _short(text: str) -> str:
     return (text or "refused")[:500]
 
 
-class Router:
+class Router(Lifecycle):
     """The ControlBackend (gen2/core/control.py) over one store. Construct
     with a Store (Router.open for a durable one); the router owns it and hands
     it to no one."""
@@ -180,7 +189,7 @@ class Router:
         self._qualifications = qualifications or NoQualifications()
         self._extensions = extensions or NoExtensions()
         self._fault = fault or (lambda point: None)
-        self._schemas = schemas or SchemaSet(extra={"router-commands": COMMANDS})
+        self._schemas = schemas or SchemaSet(extra={"router-commands": {"$defs": {**COMMANDS["$defs"], **LIFECYCLE_COMMANDS}}})
 
     @classmethod
     def open(cls, path: str | Path, spool, **kwargs) -> "Router":
@@ -394,21 +403,26 @@ class Router:
         try:
             req = boundary.normalize(request, "request_invalid")
             boundary.require_schema(self._schemas, req, "router-commands#/$defs/transition", "request_invalid")
-            facts = {k: v for k, v in req.items() if k not in ("capability_id", "invocation_id", "to_state")}
-            wanted = set(LIFECYCLE_FACTS[req["to_state"]])
-            if set(facts) - wanted or wanted - {"container_id"} - set(facts):
-                raise Refusal("request_invalid", f"{req['to_state']} is recorded with exactly {sorted(wanted)} (container_id optional)")
-            facts = {k: facts.get(k) for k in LIFECYCLE_FACTS[req["to_state"]]}  # an omitted container_id is recorded, and compared, as none
-            if req["to_state"] == "result_ready":
-                # A recorded result answers from its recorded facts before any
-                # byte is asked for: once committed, its staged copy may be gone
-                # (C-9), and a changed digest is a conflict whether or not it
-                # is staged (Astra 1b-repair review A5-R).
-                replay = self._recorded_transition(req, facts)
-                if replay is not None:
-                    return replay
-                boundary.staged(self._spool, facts["result_payload_digest"])  # C-9: the new result the supervisor retained is really staged
-            return self._guarded("transition_not_allowed", lambda now: self._transition_in_transaction(req, facts, now))
+            target = req["to_state"]
+            facts = {k: v for k, v in req.items() if k not in ("capability_id", "invocation_id", "to_state", "unknown_cause")}
+            wanted = set(LIFECYCLE_FACTS[target])
+            if set(facts) - wanted or wanted - {"container_id"} - set(facts) or ("unknown_cause" in req) != (target == "outcome_unknown"):
+                raise Refusal("request_invalid", f"{target} is recorded with exactly {sorted(wanted)} (container_id optional; unknown_cause with outcome_unknown)")
+            facts = {k: facts.get(k) for k in LIFECYCLE_FACTS[target]}  # an omitted container_id is recorded, and compared, as none
+            # A recorded fact answers from its recorded facts before any byte
+            # is asked for: once committed, a result's staged copy may be gone
+            # (C-9), and a changed fact is a conflict whether or not its bytes
+            # are staged (Astra 1b-repair review A5-R).
+            replay = self._recorded_transition(req, facts)
+            if replay is not None:
+                return replay
+            inv = self._capability(req["capability_id"], req["invocation_id"])  # its topic and job handle are write-once
+            evidence = None
+            if target == "result_ready":  # C-9: the new result the supervisor retained is really staged, as JSON, for this topic
+                boundary.staged(self._spool, facts["result_payload_digest"], topic_id=inv["topic_id"], media_type="application/json")
+            elif facts.get("end_evidence_ref") is not None:
+                evidence = self._evidence(inv, facts["end_evidence_ref"])
+            return self._guarded("transition_not_allowed", lambda now: self._transition_in_transaction(req, facts, evidence, now))
         except Refusal as refusal:
             return {"status": "refused", "reason": refusal.reason, "detail": _short(refusal.detail)}
 
@@ -418,12 +432,21 @@ class Router:
         whatever state the invocation has reached since, before any check of
         current authority (a lost launch reply after the lease ended is still
         that launch), and its facts are write-once (DDL), so the row holds them
-        (Astra 1b review A5). A re-entry out of outcome_unknown (1c) is
-        recorded under its episode with its own cause (L-4, RA4), so it is
-        never taken for this fact. The transition row is read first, so outside
-        a transaction too the invocation row read after it already holds the
-        facts written with it."""
+        (Astra 1b review A5). An entry into outcome_unknown is keyed by its
+        episode: an episode the invocation has entered replays, the next one
+        is new, and one beyond it is a conflict (RA4). An exit out of
+        outcome_unknown is recorded by reconcile, under its own cause, so it
+        is never taken for this fact. The transition row is read first, so
+        outside a transaction too the invocation row read after it already
+        holds the facts written with it."""
         target = req["to_state"]
+        if target == "outcome_unknown":
+            inv = self._capability(req["capability_id"], req["invocation_id"])
+            if facts["unknown_episode"] <= inv["unknown_episode"]:
+                return {"status": "replayed", "invocation_id": inv["invocation_id"], "state": target, "unknown_episode": facts["unknown_episode"]}
+            if facts["unknown_episode"] > inv["unknown_episode"] + 1:
+                raise Refusal("transition_conflict", f"{inv['invocation_id']} has entered episode {inv['unknown_episode']}; the next is {inv['unknown_episode'] + 1}")
+            return None
         recorded = self._one("invocation_transitions", {"invocation_id": req["invocation_id"], "to_state": target, "cause": LIFECYCLE_CAUSE[target]})
         if recorded is None:
             return None
@@ -432,12 +455,14 @@ class Router:
             raise Refusal("transition_conflict", f"{inv['invocation_id']} recorded {target} with other facts")
         return {"status": "replayed", "invocation_id": inv["invocation_id"], "state": target}
 
-    def _transition_in_transaction(self, req: dict, facts: dict, now: str) -> dict:
+    def _transition_in_transaction(self, req: dict, facts: dict, evidence: dict | None, now: str) -> dict:
         replay = self._recorded_transition(req, facts)  # again under the lock: the same fact may have been recorded meanwhile
         if replay is not None:
             return replay
         inv = self._capability(req["capability_id"], req["invocation_id"])
         target = req["to_state"]
+        if inv["state"] == target:
+            raise Refusal("transition_not_allowed", f"{inv['invocation_id']} is already {target} (reached another way)")
         changes = {"state": target, "state_changed_at": now, **facts}
         if target == "launching":
             # L-7: the final launch-admission check, against current state
@@ -447,23 +472,31 @@ class Router:
                 raise Refusal("topic_paused", f"paused at {topic['paused_at']}")
             if instant(now) >= instant(inv["deadline_at"]):
                 raise Refusal("deadline_passed", f"deadline {inv['deadline_at']}")
+            if inv["cancel_requested_at"] is not None:
+                raise Refusal("cancel_requested", f"cancellation was requested at {inv['cancel_requested_at']}")
             changes["launch_intent_at"] = now
         if target == "result_ready":
+            if inv["cancel_requested_at"] is not None:  # the cancellation won: the result stays retained, uncommitted (C-10)
+                raise Refusal("cancel_requested", f"cancellation was requested at {inv['cancel_requested_at']}")
             changes["result_staged_at"] = now
+        if target in ("failed", "cancelled"):
+            self._bind_evidence(inv, evidence, failure_class=facts.get("failure_class"))
+            self._record_artifact(inv, evidence, now)
+        if target == "cancelled":
+            if inv["cancel_requested_at"] is None:
+                raise Refusal("transition_not_allowed", f"no cancellation of {inv['invocation_id']} was requested")
+            changes["descendants_confirmed_at"] = now  # the evidence confirms them handled (L-7)
+        if target == "outcome_unknown":
+            changes["outcome_unknown_since"] = now
         self._store.update("invocations", {"invocation_id": inv["invocation_id"]}, changes)
         self._transition_row(inv["invocation_id"], inv["state"], target, now, LIFECYCLE_CAUSE[target])
-        if target == "failed" and inv["kind"] != "delegate":
-            self._release_after_failure(inv, now)
-        self._audit("transition", now, {"from": inv["state"], "to": target}, topic_id=inv["topic_id"], invocation_id=inv["invocation_id"])
+        if target in ("failed", "cancelled"):
+            self._release_capacity(inv, now, target)
+        if target == "outcome_unknown":
+            self._open_unknown_hold(inv, facts["unknown_episode"], req["unknown_cause"], now)
+        self._audit("transition", now, {"from": inv["state"], "to": target, **({"cause": req["unknown_cause"]} if target == "outcome_unknown" else {})},
+                    topic_id=inv["topic_id"], invocation_id=inv["invocation_id"])
         return {"status": "recorded", "invocation_id": inv["invocation_id"], "state": target}
-
-    def _release_after_failure(self, inv: dict, now: str) -> None:
-        lease = self._one("leases", {"lease_id": inv["lease_id"]})
-        if lease["released_at"] is None:
-            self._store.update("leases", {"lease_id": lease["lease_id"]}, {"released_at": now, "release_reason": "failed"})
-            topic = self._one("queue_entries", {"topic_id": inv["topic_id"]})
-            if lease["scope"] == "research" and topic["status"] == "active":
-                self._set_topic(topic, now, "queued")
 
     # -- observations ----------------------------------------------------------
     def record_observation(self, request: Mapping) -> dict:
@@ -489,6 +522,8 @@ class Router:
         inv = self._capability(req["capability_id"], req["invocation_id"])
         if inv["state"] != "running":
             raise Refusal("invocation_state_invalid", f"observations are recorded while running, not {inv['state']}")
+        if inv["cancel_requested_at"] is not None:
+            raise Refusal("invocation_state_invalid", f"cancellation was requested at {inv['cancel_requested_at']}")
         self._require_current_lease(inv, now)
         topic = self._one("queue_entries", {"topic_id": inv["topic_id"]})
         if topic["paused_at"] is not None:
@@ -561,7 +596,7 @@ class Router:
         inv = self._capability(env["capability_id"], env["invocation_id"])
         if env["topic_id"] != inv["topic_id"]:
             raise Refusal("cross_topic", f"{inv['invocation_id']} is of topic {inv['topic_id']}")
-        raw = boundary.staged(self._spool, env["payload_digest"], env["payload_size_bytes"])
+        raw = boundary.staged(self._spool, env["payload_digest"], env["payload_size_bytes"], topic_id=inv["topic_id"])
         payload = boundary.normalize(raw, "payload_invalid")
         boundary.require_schema(self._schemas, payload, "outcome-document.schema.json", "payload_invalid")
         if payload["invocation_id"] != inv["invocation_id"]:
@@ -576,13 +611,16 @@ class Router:
         artifacts = {env["payload_digest"]: {"size_bytes": len(raw), "media_type": "application/json"}}
         staged = {env["payload_digest"]: raw}
         for ref in env["result_refs"]:
-            staged[ref["content_hash"]] = boundary.staged(self._spool, ref["content_hash"], ref["size_bytes"])
+            staged[ref["content_hash"]] = boundary.staged(self._spool, ref["content_hash"], ref["size_bytes"], topic_id=inv["topic_id"])
             if artifacts.setdefault(ref["content_hash"], ref) is not ref and artifacts[ref["content_hash"]]["media_type"] != ref["media_type"]:
                 raise Refusal("payload_invalid", f"{ref['content_hash']} is referenced with two media types")
         for content_hash, ref in artifacts.items():
             stored = self._one("artifacts", {"content_hash": content_hash})
             if stored is not None and (stored["size_bytes"], stored["media_type"]) != (ref["size_bytes"], ref["media_type"]):
                 raise Refusal("payload_invalid", f"{content_hash} is recorded as {stored['size_bytes']} bytes of {stored['media_type']} (A10)")
+            spooled = self._spool.media_type(content_hash, topic_id=inv["topic_id"])
+            if spooled != ref["media_type"]:  # the spool's own record of what it staged for this topic (task 1c)
+                raise Refusal("payload_invalid", f"{content_hash} is staged as {spooled}, not the {ref['media_type']} declared")
 
         def available(content_hash: str) -> bool:
             return content_hash in staged or self._one("artifacts", {"content_hash": content_hash}) is not None
@@ -666,6 +704,8 @@ class Router:
         if topic["paused_at"] is not None:
             raise Refusal("topic_paused", f"paused at {topic['paused_at']}")
         self._require_current_pins(inv)
+        if inv["cancel_requested_at"] is not None:  # a cancellation, once requested, admits no further effect (L-7; task 1c)
+            raise Refusal("invocation_state_invalid", f"cancellation of {inv['invocation_id']} was requested at {inv['cancel_requested_at']}")
         if final:
             finals = [r for r in self._store.select("operation_receipts", {"invocation_id": inv["invocation_id"]}) if r["operation_kind"] == "final_outcome"]
             if finals:

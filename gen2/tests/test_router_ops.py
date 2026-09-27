@@ -194,11 +194,12 @@ class TransitionTest(RouterTestCase):
     def test_a_failure_releases_the_lease_and_requeues(self) -> None:
         self.running(self.grant)
         revision = self.state_revision()
-        self.assertEqual(self.transition("failed")["status"], "recorded")
+        facts = {"failure_class": "exit_nonzero", "end_evidence_ref": self.evidence(self.grant)}
+        self.assertEqual(self.transition("failed", **facts)["status"], "recorded")
         self.assertEqual(self.rows("SELECT release_reason FROM leases WHERE lease_id = ?", self.grant["lease"]["lease_id"]), [("failed",)])
         self.assertEqual((self.status(), self.state_revision()), ("queued", revision + 1))
         before = self.state(exclude=())
-        self.assertEqual(self.transition("failed")["status"], "replayed")
+        self.assertEqual(self.transition("failed", **facts)["status"], "replayed")
         self.assertEqual(self.state(exclude=()), before)
 
     def test_only_the_invocations_capability_records_its_facts(self) -> None:
@@ -293,8 +294,8 @@ class ObservationTest(RouterTestCase):
         self.refused(self.observe(1, ended_at="2026-09-27T09:59:59Z"), "payload_invalid", before, "ended before")
 
     def test_only_a_running_invocation_records_observations(self) -> None:
-        self.assertEqual(self.router.record_transition({"capability_id": self.grant["capability_id"], "invocation_id": "inv_discover1", "to_state": "failed"})["status"],
-                         "recorded")
+        self.assertEqual(self.router.record_transition({"capability_id": self.grant["capability_id"], "invocation_id": "inv_discover1", "to_state": "failed",
+                                                        "failure_class": "exit_nonzero", "end_evidence_ref": self.evidence(self.grant)})["status"], "recorded")
         before = self.state(exclude=())
         self.refused(self.observe(1), "invocation_state_invalid", before, "failed")
 

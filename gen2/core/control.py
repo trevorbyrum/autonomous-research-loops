@@ -16,10 +16,17 @@ operation's uniqueness, fencing and atomicity are stated on it below; the
 implementation is gen2/router/service.py (the only one; design review §5:
 another backend must pass the same behavioural tests first).
 
+The supervisor (task 1c) reaches the router only through this protocol,
+wired by the composition root; it never imports the router or the store.
+When the router cannot be reached, a backend raises ControlUnavailable and
+nothing is known to have happened: the caller keeps what it holds and sends
+the same request again under the same key, within its declared budget
+(C-10, L-6).
+
 The collaborators the router reads through (supplied by the composition
 root) are protocols here too, so the router needs no import of the modules
 that implement them:
-  * StagedBytes: the protected spool's read side (task 1c builds the spool);
+  * StagedBytes: the protected spool's read side (gen2/supervisor/spool.py);
   * QualificationRegistry: which (provider, class, spec) may act at
     qualified authority (task 1d loads fake records; Phase 3 real ones);
   * ExtensionRegistry: which reviewed extension connectors the image carries
@@ -32,11 +39,24 @@ from __future__ import annotations
 from typing import Mapping, Protocol
 
 
+class ControlUnavailable(Exception):
+    """The router could not be reached. Nothing is known to have happened;
+    every operation is idempotent under its key, so the same request is sent
+    again (C-10). Raised by a transport (task 1e), never by the router."""
+
+
 class StagedBytes(Protocol):
-    def read(self, content_hash: str) -> bytes | None:
-        """The bytes staged under this content hash, or None if nothing is.
-        The router recomputes the digest itself; a wrong answer here is
-        refused, never trusted (C-9, hash truth)."""
+    """The spool is topic-scoped (C-9): an artifact is staged for one topic
+    and read only under it."""
+
+    def read(self, content_hash: str, *, topic_id: str) -> bytes | None:
+        """The bytes staged for this topic under this content hash, or None
+        if nothing is. The router recomputes the digest itself; a wrong
+        answer here is refused, never trusted (C-9, hash truth)."""
+
+    def media_type(self, content_hash: str, *, topic_id: str) -> str | None:
+        """The media type the spool recorded when these bytes were staged for
+        this topic, or None if nothing is staged."""
 
 
 class QualificationRegistry(Protocol):
@@ -71,11 +91,41 @@ class ControlBackend(Protocol):
 
     def record_transition(self, request: Mapping) -> dict:
         """Record a lifecycle fact the supervisor observed (launch intent,
-        process identity, staged result, failure, cancellation) under the
-        invocation's capability, along L-1 only. Key: (invocation, target
-        state): repeating a recorded fact is a replay whatever state the
-        invocation has reached since, and the same key with other facts is
-        a conflict."""
+        process identity, staged result, failure with its structural class
+        and execution record, cancellation with its confirmed descendant
+        handling, entry into outcome_unknown) under the invocation's
+        capability, along L-1 only. Key: (invocation, target state), and for
+        outcome_unknown (invocation, episode): repeating a recorded fact is a
+        replay whatever state the invocation has reached since, and the same
+        key with other facts is a conflict. A failure or cancellation
+        releases the invocation's lease only once its evidence confirms the
+        execution group's descendants were handled (L-7); entering
+        outcome_unknown opens the episode's router hold, owned by the
+        station, with a deadline (L-4, RG-3)."""
+
+    def request_cancel(self, request: Mapping) -> dict:
+        """Record that an invocation is to be cancelled, and by whom
+        (operator, router or supervisor). Key: invocation. Work never
+        launched is cancelled at once (nothing was spawned: L-2); launched
+        work keeps its lease until the supervisor records `cancelled` with
+        its evidence; once requested, no result, observation or commit of
+        that invocation is accepted. A result already staged (result_ready)
+        or an end already recorded is refused as not cancellable: the
+        cancellation lost the race."""
+
+    def reconcile(self, request: Mapping) -> dict:
+        """Leave the current outcome_unknown episode through its durable
+        reconciliation record: the method, the supervisor's execution record
+        as evidence, and the resolution that evidence supports (L-4). Key:
+        (invocation, episode); the identical record replays, another is a
+        conflict. Clears the episode's hold; a terminal resolution releases
+        the lease."""
+
+    def invocation_status(self, request: Mapping) -> dict:
+        """Read one invocation's lifecycle state under its capability: state,
+        cancellation request, unknown episode, deadline, lease currency,
+        pause, recorded facts and the topic's state revision. A fresh copy of
+        committed rows; reading it authorizes nothing."""
 
     def record_observation(self, request: Mapping) -> dict:
         """Record one search observation and the retrieval events captured

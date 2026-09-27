@@ -108,7 +108,7 @@ class RestartTest(unittest.TestCase):
         fact decides), not payload_missing; nothing is written."""
         request, before = self.committed_result()
         changed = {**request, "result_payload_digest": rf.h("8")}
-        self.assertIsNone(self.world.spool.read(changed["result_payload_digest"]))
+        self.assertIsNone(self.world.spool.read(changed["result_payload_digest"], topic_id=rf.TOPIC))
         for where, out in zip(("fresh process", "reopened router"), self.resent(changed)):
             with self.subTest(where):
                 self.assertEqual((out["status"], out.get("reason")), ("refused", "transition_conflict"), out)

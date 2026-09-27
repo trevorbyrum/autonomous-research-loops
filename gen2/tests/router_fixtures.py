@@ -77,22 +77,37 @@ class Ids:
 
 
 class Spool:
-    """The spool's read side (C-9): bytes by content hash. `reads` records
-    whether each read happened with a store transaction open (C-3, C-8)."""
+    """The spool's read side (C-9): bytes and media type by content hash.
+    `reads` records whether each read happened with a store transaction open
+    (C-3, C-8); `read_topics` the topic each read asked under. This double
+    does not scope by topic itself: the router asking under the invocation's
+    topic is checked here, the spool refusing another topic's bytes in
+    test_supervisor_spool.py."""
 
     def __init__(self) -> None:
         self.blobs: dict[str, bytes] = {}
+        self.media: dict[tuple[str | None, str], str] = {}
         self.reads: list[tuple[str, bool]] = []
+        self.read_topics: list[str] = []
         self.conn: sqlite3.Connection | None = None
 
-    def put(self, raw: bytes, label: str | None = None) -> str:
+    def put(self, raw: bytes, label: str | None = None, media_type: str = "application/json", topic: str | None = None) -> str:
+        """Stage bytes; a media type recorded for one `topic` is that topic's
+        (a real spool keeps one entry per topic), otherwise any topic's."""
         digest = label or canonical.bytes_digest(raw)
         self.blobs[digest] = raw
+        self.media[(topic, digest)] = media_type
         return digest
 
-    def read(self, content_hash: str) -> bytes | None:
+    def read(self, content_hash: str, *, topic_id: str) -> bytes | None:
         self.reads.append((content_hash, bool(self.conn is not None and self.conn.in_transaction)))
+        self.read_topics.append(topic_id)
         return self.blobs.get(content_hash)
+
+    def media_type(self, content_hash: str, *, topic_id: str) -> str | None:
+        if content_hash not in self.blobs:
+            return None
+        return self.media.get((topic_id, content_hash), self.media.get((None, content_hash)))
 
 
 class Registry:
@@ -253,7 +268,22 @@ class RouterTestCase(unittest.TestCase):
         return env
 
     def artifact(self, text: bytes, media_type: str = "text/plain") -> dict:
-        return {"content_hash": self.spool.put(text), "size_bytes": len(text), "media_type": media_type}
+        return {"content_hash": self.spool.put(text, media_type=media_type), "size_bytes": len(text), "media_type": media_type}
+
+    def evidence(self, grant: dict, findings=("exit_nonzero",), *, handling: str = "none_found", method: str = "exit_observed", **overrides) -> str:
+        """Stage the supervisor's execution record (execution-record/1) for the
+        invocation's job as the running() fixture launched it, and return its
+        hash: the evidence an end names (task 1c)."""
+        inv = grant["invocation_id"]
+        record = {"record_version": "execution-record/1", "invocation_id": inv, "topic_id": grant["topic_id"], "job_handle": "job-" + inv,
+                  "method": method, "observed_at": "2026-09-27T10:20:00Z",
+                  "process": {"host_id": "host-1", "container_id": None, "boot_id": "boot-1", "start_fingerprint": "ticks=1"},
+                  "exit": {"code": 1, "signal": None}, "termination": None,
+                  "descendants": {"handling": handling, "count": 0 if handling == "none_found" else 1},
+                  "output": {"status": "not_collected", "content_hash": None, "size_bytes": None, "declared_digest": None, "detail": None},
+                  "self_report": None, "findings": list(findings)}
+        record.update(overrides)
+        return self.spool.put(jcs(record))
 
     def finish(self, grant: dict, op: str, outcome: dict | None = None, *, refs=(), **overrides) -> dict:
         """Stage the final outcome, mark the result staged, and commit it."""

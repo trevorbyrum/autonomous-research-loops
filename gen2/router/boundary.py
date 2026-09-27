@@ -75,12 +75,15 @@ def require_schema(schemas, value: object, target: str, reason: str) -> None:
         raise Refusal(reason, f"{target}: {'; '.join(errors[:3])}")
 
 
-def staged(spool, content_hash: str, size: int | None = None) -> bytes:
-    """The staged bytes under `content_hash`, re-hashed here (hash truth):
-    the label must be the SHA-256 of the bytes, and `size` their length."""
-    raw = spool.read(content_hash)
+def staged(spool, content_hash: str, size: int | None = None, *, topic_id: str, media_type: str | None = None) -> bytes:
+    """The bytes staged for `topic_id` under `content_hash`, re-hashed here
+    (hash truth): the label must be the SHA-256 of the bytes, and `size`
+    their length. The spool is topic-scoped (C-9), so another topic's bytes
+    are not staged for this one. With `media_type`, the spool's own record of
+    the bytes' media type must be it (task 1c)."""
+    raw = spool.read(content_hash, topic_id=topic_id)
     if raw is None:
-        raise Refusal("payload_missing", f"nothing is staged under {content_hash}")
+        raise Refusal("payload_missing", f"nothing is staged for {topic_id} under {content_hash}")
     try:
         digest = canonical.bytes_digest(raw)
     except TypeError:
@@ -89,6 +92,8 @@ def staged(spool, content_hash: str, size: int | None = None) -> bytes:
         raise Refusal("payload_digest_mismatch", f"the bytes staged under {content_hash} hash to {digest}")
     if size is not None and len(raw) != size:
         raise Refusal("payload_digest_mismatch", f"{content_hash} is {len(raw)} bytes staged, not the {size} declared")
+    if media_type is not None and spool.media_type(content_hash, topic_id=topic_id) != media_type:
+        raise Refusal("payload_invalid", f"{content_hash} is staged as {spool.media_type(content_hash, topic_id=topic_id)}, not {media_type}")
     return bytes(raw)
 
 
