@@ -163,6 +163,29 @@ class UnknownHoldTest(SupervisionTestCase):
                 self.hold(hid, "invocation:inv_pppppppp#unknown:1", authority=authority)
                 self.rejects("clears only the router hold of its own", self.clear(hid))
 
+    def test_an_episode_hold_clears_only_through_a_reconciliation(self) -> None:
+        """Astra 1c review A7: the converse of the tests above. An approved
+        hold_clearance decision about the episode hold, and a committed
+        operation, each clear nothing, each shown on its own; the episode's
+        record does (test_the_episode_record_clears_its_hold). Controls: the
+        same two paths clear an ordinary router hold."""
+        self.decision("opd_clear0001", "hold_clearance", ref="hold_unknown01")
+        self.receipt("op_clear00001", "inv_pppppppp", kind="interim_transition")
+        before = self.rows("SELECT * FROM holds ORDER BY hold_id")
+        for path, column, value in (("decision", "cleared_by_decision_id", "opd_clear0001"), ("operation", "cleared_by_operation_id", "op_clear00001")):
+            with self.subTest(path):
+                self.rejects("clears only through its reconciliation record", f"UPDATE holds SET cleared_at = ?, {column} = ? WHERE hold_id = 'hold_unknown01'", T, value)
+                self.assertEqual(self.rows("SELECT * FROM holds ORDER BY hold_id"), before)
+        self.x("INSERT INTO holds (hold_id, topic_id, subject_ref, hold_class, cause, recoverability, required_authority, owner, deadline_at, clears_when, created_at) "
+               "VALUES ('hold_ordinary1', ?, 'export:warehouse', 'transient', 'c', 'retry_within_budget', 'router', 'router', ?, 'w', ?), "
+               "('hold_ordinary2', ?, 'export:warehouse', 'transient', 'c', 'retry_within_budget', 'router', 'router', ?, 'w', ?)", TOPIC, T, T, TOPIC, T, T)
+        self.decision("opd_clear0002", "hold_clearance", ref="hold_ordinary1")
+        self.x("UPDATE holds SET cleared_at = ?, cleared_by_decision_id = 'opd_clear0002' WHERE hold_id = 'hold_ordinary1'", T)
+        self.x("UPDATE holds SET cleared_at = ?, cleared_by_operation_id = 'op_clear00001' WHERE hold_id = 'hold_ordinary2'", T)
+        self.assertEqual(self.rows("SELECT hold_id FROM holds WHERE cleared_at IS NOT NULL ORDER BY hold_id"), [("hold_ordinary1",), ("hold_ordinary2",)])
+        self.x(self.clear("hold_unknown01"))  # and the episode's own record clears it
+        self.assertEqual(self.value("SELECT cleared_by_reconciliation_id FROM holds WHERE hold_id = 'hold_unknown01'"), "rec_pppppppp1")
+
     def test_a_cleared_hold_stays_cleared(self) -> None:
         self.x(self.clear("hold_unknown01"))
         self.rejects("a cleared hold is final", "UPDATE holds SET cleared_at = NULL, cleared_by_reconciliation_id = NULL WHERE hold_id = 'hold_unknown01'")

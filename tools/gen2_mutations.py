@@ -2768,6 +2768,15 @@ MUTATIONS: list[Mutation] = [
              (SLR + "test_the_deadline_ends_a_group_whose_launcher_vanished_while_the_router_is_away",
               SLD + "test_the_deadline_ends_a_group_whose_launcher_vanished_while_the_router_is_away"), target=SPV,
              old='(view["verdict"] == "running" or (view["verdict"] == "vanished" and view["members"]))', new='view["verdict"] == "running"'),
+    # A7: an outcome_unknown episode's hold clears only through its reconciliation, in the store and in the router.
+    Mutation("1C-ddl-episode-hold-cleared-by-anything", "1c-A7", "an episode hold is cleared by a decision or an operation",
+             (SS + "UnknownHoldTest.test_an_episode_hold_clears_only_through_a_reconciliation",), drop_trigger="holds_episode_cleared_only_by_reconciliation"),
+    Mutation("1C-ddl-episode-hold-cleared-by-operation", "1c-A7", "an episode hold is cleared by an operation (only decisions refused)",
+             (SS + "UnknownHoldTest.test_an_episode_hold_clears_only_through_a_reconciliation",), scope="holds_episode_cleared_only_by_reconciliation",
+             old="  AND NEW.cleared_by_reconciliation_id IS NULL\n", new="  AND NEW.cleared_by_decision_id IS NOT NULL\n"),
+    Mutation("1C-router-episode-hold-cleared-by-decision", "1c-A7", "the router applies an operator hold_clearance to an episode hold (left to the store)",
+             (LC + "UnknownTest.test_an_episode_hold_is_not_cleared_by_an_operator_decision",), target=SVC,
+             old="            if hold is not None and is_episode_hold(hold):", new="            if False:"),
     # A6: a recorded hash is not topic authorization; each topic's own work authorizes it (artifact_topics).
     Mutation("1C-router-recorded-hash-any-topic", "1c-A6", "an embedded reference resolves to bytes recorded for any topic",
              (RC + "TopicAuthorizationTest.test_bytes_recorded_only_for_another_topic_are_not_referenced_by_hash",

@@ -1644,6 +1644,20 @@ BEGIN
   SELECT RAISE(ABORT, 'a reconciliation record clears only the router hold of its own outcome_unknown episode (L-4)');
 END;
 
+-- Task 1c-repair (Astra 1c review A7): the converse. The router hold of an
+-- outcome_unknown episode clears only through a reconciliation record (the
+-- trigger above binds it to that episode's own): an operator decision or an
+-- operation clears nothing here, whatever API writes the clearing. Other
+-- holds keep their decision and operation clearing.
+CREATE TRIGGER holds_episode_cleared_only_by_reconciliation
+BEFORE UPDATE OF cleared_at ON holds
+WHEN NEW.cleared_at IS NOT NULL AND OLD.cleared_at IS NULL
+  AND OLD.required_authority = 'router' AND OLD.subject_ref GLOB 'invocation:*#unknown:*'
+  AND NEW.cleared_by_reconciliation_id IS NULL
+BEGIN
+  SELECT RAISE(ABORT, 'an outcome_unknown episode hold clears only through its reconciliation record (L-4)');
+END;
+
 -- A2: a clearing decision is an approved hold_clearance about THIS hold (same
 -- topic, subject = this hold id); a decision about anything else clears
 -- nothing.

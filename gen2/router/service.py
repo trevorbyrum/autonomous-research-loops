@@ -47,7 +47,7 @@ from typing import Callable, Mapping
 from gen2.core import canonical, instants
 from gen2.router import boundary
 from gen2.router.boundary import Refusal, instant
-from gen2.router.lifecycle import LIFECYCLE_COMMANDS, Lifecycle
+from gen2.router.lifecycle import LIFECYCLE_COMMANDS, Lifecycle, is_episode_hold
 from gen2.router.schemas import SchemaSet
 from gen2.store import api
 
@@ -965,6 +965,9 @@ class Router(Lifecycle):
             moves = {} if topic["status"] == "retired" else {topic["status"]: "retired"}
             return self._move(topic, now, moves, required=True, status_decision_id=d["decision_id"])
         if kind == "hold_clearance":
+            hold = self._one("holds", {"hold_id": d["subject_ref"]})
+            if hold is not None and is_episode_hold(hold):
+                raise Refusal("decision_refused", f"{hold['hold_id']} holds an outcome_unknown episode: it clears only through that episode's reconciliation record (L-4)")
             self._store.update("holds", {"hold_id": d["subject_ref"]}, {"cleared_at": now, "cleared_by_decision_id": d["decision_id"]})
             return {"hold_cleared": d["subject_ref"]}
         return {}  # rating, publication, blind and advised decisions are records their consumers read

@@ -79,6 +79,14 @@ def unknown_hold_subject(invocation_id: str, episode: int) -> str:
     return f"invocation:{invocation_id}#unknown:{episode}"
 
 
+def is_episode_hold(hold: dict) -> bool:
+    """A router hold with an episode's subject: it clears only through that
+    episode's reconciliation record (DDL holds_episode_cleared_only_by_reconciliation,
+    whose GLOB 'invocation:*#unknown:*' this matches; Astra 1c review A7)."""
+    subject = hold["subject_ref"]
+    return hold["required_authority"] == "router" and subject.startswith("invocation:") and "#unknown:" in subject[len("invocation:"):]
+
+
 class Lifecycle:
     # -- evidence ------------------------------------------------------------
     def _evidence(self, inv: dict, content_hash: str) -> dict:

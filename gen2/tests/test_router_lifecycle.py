@@ -292,6 +292,25 @@ class UnknownTest(LifecycleTestCase):
         self.assertEqual(self.rows("SELECT descendants_confirmed_at IS NOT NULL FROM invocation_reconciliations"), [(1,)])
         self.assertEqual(self.rows("SELECT cleared_at IS NOT NULL FROM holds"), [(1,)])
 
+    def test_an_episode_hold_is_not_cleared_by_an_operator_decision(self) -> None:
+        """Astra 1c review A7: an approved hold_clearance about the episode's
+        own hold is refused whole — the decision is not recorded, the hold
+        stays open, the invocation stays unknown — while the same decision
+        clears an ordinary hold; the episode's reconciliation clears it."""
+        self.assertEqual(self.unknown()["status"], "recorded")
+        episode_hold = self.value("SELECT hold_id FROM holds WHERE subject_ref = 'invocation:inv_research01#unknown:1'")
+        before = self.state(exclude=())
+        out = self.decide("opd_unknown01", "hold_clearance", {"kind": "hold", "ref": episode_hold})
+        self.assertEqual((out["status"], out.get("reason")), ("rejected", "decision_refused"), out)
+        self.assertIn("holds an outcome_unknown episode", out.get("detail", ""))  # the router's own refusal, before the store's (DDL) second layer
+        self.assertEqual(self.state(exclude=()), before)
+        other = self.started("inv_checkpt01", "checkpoint")
+        self.hold(other, "hold_ordinary01")  # an operator-authority judgment hold its commit created
+        self.assertEqual(self.decide("opd_ordinary1", "hold_clearance", {"kind": "hold", "ref": "hold_ordinary01"})["status"], "applied")
+        self.assertEqual(self.rows("SELECT cleared_by_decision_id FROM holds WHERE hold_id = 'hold_ordinary01'"), [("opd_ordinary1",)])
+        self.assertEqual(self.reconcile("found_running", self.lookup(), **IDENTITY)["status"], "recorded")
+        self.assertEqual(self.rows("SELECT cleared_by_decision_id, cleared_by_reconciliation_id IS NOT NULL FROM holds WHERE hold_id = ?", episode_hold), [(None, 1)])
+
     def test_termination_ends_cancelled_only_when_cancellation_was_requested(self) -> None:
         """A terminated group ends failed with its failure class, or — when a
         cancellation was requested — cancelled, with none: no failure class is
