@@ -116,8 +116,8 @@ class FailureTest(LifecycleTestCase):
         env["expected_state_revision"] = self.state_revision()
         before = self.state()
         response = self.router.commit_outcome(env)
-        self.assertEqual((response["status"], response["reason"]), ("rejected", "invocation_state_invalid"), response)
-        self.assertIn("inv_deleg001", response["detail"])
+        self.assertEqual((response["status"], response.get("reason")), ("rejected", "invocation_state_invalid"), response)
+        self.assertIn("inv_deleg001", response.get("detail", ""))
         self.assertEqual(self.state(), before)  # the rejection is audited, nothing else changes
         self.assertEqual(self.lease_row(), (0, None))
         self.assertEqual(self.transition("failed", delegate, failure_class="exit_nonzero", end_evidence_ref=self.evidence(delegate))["status"], "recorded")
