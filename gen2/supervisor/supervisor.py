@@ -295,8 +295,9 @@ class Supervisor:
                 journal["write_failure"] = {"at": self._now(), "error": error}
                 self._save(job, journal)
                 return "write_failed"
-            self._incident(job, journal, "durable_write_failed", phase="delivery" if journal.get("collected") or journal.get("pending") else "collection",
-                           error=error)
+            if not journal.get("incident"):  # an incident already open stays as it was raised
+                self._incident(job, journal, "durable_write_failed", phase="delivery" if journal.get("collected") or journal.get("pending") else "collection",
+                               error=error)
             return "stalled"
         except OSError as unwritable:
             raise ControlFailure(f"{job.handle}: a durable write failed ({error}) and its incident cannot be written "
@@ -350,8 +351,11 @@ class Supervisor:
     def _observe(self, job: jobs.Job, order: dict, journal: dict) -> None:
         if journal.get("collected"):
             return
+        stalled_on_a_write = (journal.get("incident") or {}).get("kind") == "durable_write_failed"  # recover() retries it, nothing else does
         if "observation" in journal.get("observing", {}):  # an end already observed, its record not yet staged: never observed again
-            return self._retain(job, order, journal)
+            return None if stalled_on_a_write else self._retain(job, order, journal)
+        if stalled_on_a_write and journal.get("observing"):
+            return  # the collection that failed to write waits for recover()
         self._reap()
         view = job.lookup()
         if view["verdict"] == "exited":

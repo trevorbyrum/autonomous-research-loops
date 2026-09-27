@@ -90,7 +90,8 @@ class BudgetFaults:
                 "other_tables": []}
 
     def incident(self, kind: str) -> dict:
-        found = self.journal()["incident"]
+        found = self.journal().get("incident")
+        self.assertIsNotNone(found, f"no {kind} incident")
         self.assertEqual((found["kind"], found["owner"]), (kind, "supervisor:station-1"))
         self.assertGreater(utc_instant_ns(found["deadline_at"]), utc_instant_ns(found["since"]))  # owned and deadlined (RG-3)
         return found
@@ -131,10 +132,20 @@ class BudgetFaults:
             if b'"record_version":"execution-record/1"' in payload:
                 raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
             return real(dir_fd, name, payload)
-        with mock.patch.object(spool_module, "_write_once", full_for_records):
+        attempts = []
+
+        def counted(dir_fd, name, payload):
+            if b'"record_version":"execution-record/1"' in payload:
+                attempts.append(name)
+            return full_for_records(dir_fd, name, payload)
+        with mock.patch.object(spool_module, "_write_once", counted):
             outcomes = [self.supervisor.advance(MAIN) for _ in range(4)]
-        self.assertEqual(outcomes, ["write_failed"] * 3 + ["stalled"])
-        self.assertIn("No space left on device", self.incident("durable_write_failed")["error"])
+            raised = self.incident("durable_write_failed")
+            outcomes += [self.supervisor.advance(MAIN) for _ in range(3)]
+        self.assertEqual(outcomes, ["write_failed"] * 3 + ["stalled"] * 4)
+        self.assertEqual(len(attempts), 4)  # the budget (3), then the one that stalled; a stalled job retries nothing until recover()
+        self.assertEqual(self.incident("durable_write_failed"), raised)  # and its incident stays as it was raised
+        self.assertIn("No space left on device", raised["error"])
         self.assertEqual(self.state(), before)
         self.assertEqual(self.supervisor.recover()[MAIN], "committed")
         self.assertEqual(self.ended(), self.ended_clean())

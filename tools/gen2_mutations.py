@@ -2764,6 +2764,9 @@ MUTATIONS: list[Mutation] = [
           ("unwritable-incident-swallowed", "a journal that cannot be written is reported as an ordinary retry, not a control failure",
            ("test_a_journal_that_cannot_be_written_is_an_out_of_band_control_failure",),
            '        except OSError as unwritable:\n            raise ControlFailure(', '        except OSError as unwritable:\n            return "write_failed"\n            raise ControlFailure('),
+          ("stalled-write-retried", "a job stalled on a failed write retries it on every advance (unbounded), not only on recover()",
+           ("test_enospc_from_the_spool_stalls_with_an_incident",),
+           '        stalled_on_a_write = (journal.get("incident") or {}).get("kind") == "durable_write_failed"', '        stalled_on_a_write = False'),
           ("write-budget-never-refunded", "a write that made progress keeps its budget spent",
            ("test_an_execution_record_over_the_quota_stalls_with_the_result_kept",), '        journal["budgets"].pop("write", None)\n', ''))),
     # A5: an outage's budget belongs to the pending write: a read refunds nothing, recovery refills nothing, and time counts too.
