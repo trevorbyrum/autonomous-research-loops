@@ -2497,10 +2497,15 @@ END;
 -- connector receipts; supersession/tombstones acknowledged per connector);
 -- BOUNDARIES.md Exporter; schema export-delivery-receipt.schema.json;
 -- adjudication (a)G-A1 (mutable delivery receipts stored separately);
--- INVARIANTS P-2, P-4, P-7, H-2.
+-- INVARIANTS P-2, P-4, P-7, H-2, RG-U; EXPORT-API.md §9 item 3; Astra 1b
+-- review A2.
 -- Exporter-owned records, written through the router's ack_delivery. One
 -- row per attempt; a retry or a reconciliation is a new attempt, never an
--- edit. The status rules are the receipt schema's.
+-- edit. The status rules are the receipt schema's. The receipt document is
+-- stored whole (JCS), and every column is a projection bound to it, so no
+-- part of what the connector reported — the written count in each of its
+-- three states, the hold, the invocation — is lost, and a column cannot say
+-- anything its document does not.
 CREATE TABLE export_delivery_receipts (
   export_receipt_id TEXT PRIMARY KEY CHECK (export_receipt_id GLOB 'exr_*'),
   manifest_id TEXT NOT NULL REFERENCES outbox_events (manifest_id),
@@ -2513,9 +2518,40 @@ CREATE TABLE export_delivery_receipts (
   error_class TEXT CHECK (error_class IN ('unreachable', 'auth_failed', 'refused', 'schema_mismatch', 'quota', 'timeout', 'conflict', 'partial_write')),
   unknown_cause TEXT CHECK (unknown_cause IN ('terminated_after_send', 'no_response_after_send', 'unreadable_response', 'unauthoritative_response')),
   capability_fact_id TEXT REFERENCES capability_facts (fact_id),
+  written_status TEXT NOT NULL CHECK (written_status IN ('observed', 'partial', 'unknown')),
+  written_value INTEGER CHECK (written_value >= 0),
+  hold_id TEXT REFERENCES holds (hold_id),
   attempted_at TEXT NOT NULL,
   acked_at TEXT,
+  receipt TEXT NOT NULL CHECK (json_valid(receipt)),
   UNIQUE (manifest_id, connector_id, attempt),
+  CHECK (json_extract(receipt, '$.receipt_version') IS 'export-delivery-receipt/2'
+     AND json_extract(receipt, '$.export_receipt_id') IS export_receipt_id
+     AND json_extract(receipt, '$.manifest_id') IS manifest_id
+     AND json_extract(receipt, '$.connector.connector_id') IS connector_id
+     AND json_extract(receipt, '$.connector.connector_type') IS connector_type
+     AND json_extract(receipt, '$.attempt') IS attempt
+     AND json_extract(receipt, '$.status') IS status
+     AND json_extract(receipt, '$.tombstones_acknowledged') IS tombstones_acknowledged
+     AND json_extract(receipt, '$.reconciliation_required') IS reconciliation_required
+     AND json_extract(receipt, '$.error_class') IS error_class
+     AND json_extract(receipt, '$.unknown_cause') IS unknown_cause
+     AND json_extract(receipt, '$.capability_fact_id') IS capability_fact_id
+     AND json_extract(receipt, '$.written.status') IS written_status
+     AND json_extract(receipt, '$.written.value') IS written_value
+     AND json_extract(receipt, '$.hold_id') IS hold_id
+     AND json_extract(receipt, '$.attempted_at') IS attempted_at
+     AND json_extract(receipt, '$.acked_at') IS acked_at),
+  -- The written count (observed_count; RG-U): unknown has no value and is
+  -- never zero. A delivery observed what it wrote; a skipped delivery and a
+  -- failure that applied nothing observed zero; a partial write reports a
+  -- partial lower bound; an unknown outcome claims no observed count.
+  CHECK ((written_value IS NULL) = (written_status = 'unknown')),
+  CHECK (status NOT IN ('delivered', 'skipped_superseded') OR written_status = 'observed'),
+  CHECK (status != 'skipped_superseded' OR written_value = 0),
+  CHECK (status != 'failed' OR error_class IS NOT 'partial_write' OR written_status = 'partial'),
+  CHECK (status != 'failed' OR error_class IS 'partial_write' OR (written_status = 'observed' AND written_value = 0)),
+  CHECK (status != 'outcome_unknown' OR written_status IN ('unknown', 'partial')),
   CHECK (status != 'failed' OR error_class IS NOT NULL),
   CHECK (error_class IS NULL OR status = 'failed'),
   CHECK (status != 'delivered' OR (acked_at IS NOT NULL AND tombstones_acknowledged = 1)),
@@ -2537,6 +2573,21 @@ WHEN NOT EXISTS (
     AND json_extract(j.value, '$.connector_type') IS NEW.connector_type)
 BEGIN
   SELECT RAISE(ABORT, 'delivery receipt for a connector the manifest does not name');
+END;
+-- A receipt is about its manifest's material: the topic and ordering pair it
+-- reports are the manifest's (P-2), and a hold it names owns this topic's
+-- delivery (H-3).
+CREATE TRIGGER export_delivery_receipts_describe_their_manifest
+BEFORE INSERT ON export_delivery_receipts
+WHEN NOT EXISTS (
+  SELECT 1 FROM outbox_events e
+  WHERE e.manifest_id = NEW.manifest_id
+    AND e.topic_id IS json_extract(NEW.receipt, '$.topic_id')
+    AND e.generation IS json_extract(NEW.receipt, '$.generation')
+    AND e.options_revision IS json_extract(NEW.receipt, '$.options_revision')
+    AND (NEW.hold_id IS NULL OR EXISTS (SELECT 1 FROM holds h WHERE h.hold_id = NEW.hold_id AND h.topic_id = e.topic_id)))
+BEGIN
+  SELECT RAISE(ABORT, 'a delivery receipt describes its manifest: its topic and ordering pair, and any hold it names, are the manifest''s topic''s (P-2)');
 END;
 CREATE TRIGGER export_delivery_receipts_immutable_u BEFORE UPDATE ON export_delivery_receipts
 BEGIN

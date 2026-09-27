@@ -23,6 +23,7 @@ import json
 import sqlite3
 import unittest
 from datetime import datetime, timezone
+from pathlib import Path
 
 from gen2.core import canonical
 from gen2.core.instants import utc_instant_ns
@@ -30,6 +31,7 @@ from gen2.router import service
 from gen2.store import api
 from gen2.tests import store_fixtures
 
+EXAMPLES = Path(__file__).resolve().parents[1] / "schema" / "examples"
 TOPIC = "fleet-a:t1"
 OTHER = "fleet-a:t2"
 CONFIG = "sha256:" + "c" * 64
@@ -260,3 +262,49 @@ class RouterTestCase(unittest.TestCase):
         self.ready(grant, env["payload_digest"])
         env["expected_state_revision"] = self.state_revision(grant["topic_id"]) if "expected_state_revision" not in overrides else overrides["expected_state_revision"]
         return self.router.commit_outcome(env)
+
+    # -- exports and holds -----------------------------------------------------
+    def export(self, grant: dict, generation: int) -> None:
+        """Commit, under `grant` (a running checkpoint of TOPIC), manifest
+        man_gen<generation> of an approved publication: its bundle staged, its
+        pair (generation, 1), superseding generation 1 after the first."""
+        bundle = json.loads((EXAMPLES / "export-bundle" / "valid-completed-topic.json").read_text())["instance"]
+        bundle.update(topic_id=TOPIC, bundle_id=f"exb_gen{generation:08d}")
+        raw = jcs(bundle)
+        bundle_ref = {"content_hash": self.spool.put(raw), "size_bytes": len(raw), "media_type": "application/json"}
+        source = h(str(generation))
+        self.decide(f"opd_publish{generation:03d}", "publication_approval", {"kind": "publication_source", "ref": "dossier-1", "revision": generation, "hash": source})
+        manifest = json.loads((EXAMPLES / "export-manifest" / "valid-completion-generation-1.json").read_text())["instance"]
+        manifest.update(manifest_id=f"man_gen{generation:08d}", topic_id=TOPIC, generation=generation, source={"revision": generation, "content_hash": source},
+                        approval={"operator_decision_id": f"opd_publish{generation:03d}", "approved_revision": generation},
+                        bundle={"bundle_id": f"exb_gen{generation:08d}", "bundle_version": "export-bundle/1", "content_hash": bundle_ref["content_hash"]},
+                        supersedes=None if generation == 1 else {"manifest_id": "man_gen00000001", "generation": 1, "options_revision": 1})
+        outcome = empty_outcome(grant["invocation_id"], "interim_transition")
+        outcome["exports"] = [manifest]
+        response = self.router.commit_outcome(self.envelope(grant, f"op_export{generation:05d}", outcome, refs=[bundle_ref]))
+        assert response["status"] == "committed", response
+
+    def hold(self, grant: dict, hold_id: str) -> None:
+        """Commit, under `grant`, a judgment hold of its topic."""
+        outcome = empty_outcome(grant["invocation_id"], "interim_transition", topic=grant["topic_id"])
+        outcome["holds"] = [{"hold_id": hold_id, "subject_ref": "export:warehouse", "hold_class": "judgment", "cause": "delivery unsettled",
+                             "recoverability": "needs_decision", "required_authority": "operator", "owner": "user", "deadline_at": "2026-10-01T00:00:00Z",
+                             "clears_when": "the delivery is reconciled", "capability_fact_id": None}]
+        response = self.router.commit_outcome(self.envelope(grant, "op_" + hold_id[5:], outcome))
+        assert response["status"] == "committed", response
+
+    def delivery_receipt(self, rid: str, status: str = "delivered", *, generation: int = 1, attempt: int = 1, connector: str = "warehouse", **extra) -> dict:
+        """An export-delivery-receipt/2 for manifest man_gen<generation>, valid
+        for its status, unless `extra` says otherwise."""
+        doc = {"receipt_version": "export-delivery-receipt/2", "export_receipt_id": rid, "manifest_id": f"man_gen{generation:08d}", "topic_id": TOPIC,
+               "connector": {"connector_id": connector, "connector_type": "sql" if connector == "warehouse" else "jsonl_file"},
+               "generation": generation, "options_revision": 1, "attempt": attempt, "status": status,
+               "written": {"status": "observed", "value": 12}, "tombstones_acknowledged": status == "delivered",
+               "reconciliation_required": status == "outcome_unknown", "attempted_at": "2026-09-27T12:00:00Z",
+               "acked_at": "2026-09-27T12:00:01Z" if status == "delivered" else None}
+        if status == "failed":
+            doc.update(error_class="unreachable", written={"status": "observed", "value": 0})
+        if status == "outcome_unknown":
+            doc.update(unknown_cause="no_response_after_send", written={"status": "unknown", "reason": "no response"})
+        doc.update(extra)
+        return doc

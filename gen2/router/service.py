@@ -891,21 +891,20 @@ class Router:
                     "reason": refusal.reason, "detail": _short(refusal.detail)}
 
     def _ack_in_transaction(self, doc: dict, now: str) -> dict:
-        """One attempt of one connector: recorded once, for a committed
+        """One attempt of one connector: recorded once, whole, for a committed
         manifest's own connector, pair and topic; a failure or unknown outcome
         raises its dated capability fact (H-2, P-7); a delivery advances the
-        connector's watermark, which never regresses (P-2)."""
-        rid, connector = doc["export_receipt_id"], doc["connector"]
-        row = {"export_receipt_id": rid, "manifest_id": doc["manifest_id"], "connector_id": connector["connector_id"],
-               "connector_type": connector["connector_type"], "attempt": doc["attempt"], "status": doc["status"],
-               "tombstones_acknowledged": doc["tombstones_acknowledged"], "reconciliation_required": doc["reconciliation_required"],
-               "error_class": doc.get("error_class"), "unknown_cause": doc.get("unknown_cause"), "capability_fact_id": doc.get("capability_fact_id"),
-               "attempted_at": doc["attempted_at"], "acked_at": doc["acked_at"]}
+        connector's watermark, which never regresses (P-2). The receipt
+        document is stored as it came (JCS) beside the columns projected
+        from it (EXPORT-API.md §9 item 3), so the written count keeps its
+        observed, partial or unknown state and the hold and invocation it
+        names are kept (Astra 1b review A2). Which invocation a delivery runs
+        under is the exporter's (Phase 3): the router keeps that reference
+        and does not yet check what it names."""
+        rid, connector, written = doc["export_receipt_id"], doc["connector"], doc["written"]
         existing = self._one("export_delivery_receipts", {"export_receipt_id": rid})
-        if existing is not None:
-            stored = {k: existing[k] for k in row}
-            stored["tombstones_acknowledged"], stored["reconciliation_required"] = bool(stored["tombstones_acknowledged"]), bool(stored["reconciliation_required"])
-            if stored != row:
+        if existing is not None:  # the key replays exactly the document it recorded, every field of it
+            if canonical.canonical_bytes(existing["receipt"]) != canonical.canonical_bytes(doc):
                 raise Refusal("export_receipt_id_conflict", f"{rid} was recorded with different content")
             return {"status": "replayed", "export_receipt_id": rid}
         event = self._one("outbox_events", {"manifest_id": doc["manifest_id"]})
@@ -913,6 +912,9 @@ class Router:
             raise Refusal("unknown_manifest", f"{doc['manifest_id']} is not a committed manifest")
         if doc["topic_id"] != event["topic_id"] or (doc["generation"], doc["options_revision"]) != (event["generation"], event["options_revision"]):
             raise Refusal("delivery_refused", f"{rid} does not describe {doc['manifest_id']}'s topic and ordering pair")
+        hold = doc.get("hold_id")
+        if hold is not None and self._one("holds", {"hold_id": hold, "topic_id": event["topic_id"]}) is None:
+            raise Refusal("delivery_refused", f"{rid}: {hold} is not a recorded hold of {event['topic_id']} (H-3)")
         attempts = self._store.select("export_delivery_receipts", {"manifest_id": doc["manifest_id"], "connector_id": connector["connector_id"]})
         if doc["attempt"] != len(attempts) + 1:
             raise Refusal("delivery_refused", f"the next attempt for {connector['connector_id']} is {len(attempts) + 1}")
@@ -920,7 +922,13 @@ class Router:
         if doc["status"] in ("failed", "outcome_unknown"):
             self._record_fact(capability, doc["capability_fact_id"], "failing" if doc["status"] == "failed" else "unknown",
                               doc.get("error_class") or doc.get("unknown_cause"), doc["attempted_at"], now)
-        self._store.insert("export_delivery_receipts", row)
+        self._store.insert("export_delivery_receipts", {
+            "export_receipt_id": rid, "manifest_id": doc["manifest_id"], "connector_id": connector["connector_id"],
+            "connector_type": connector["connector_type"], "attempt": doc["attempt"], "status": doc["status"],
+            "tombstones_acknowledged": doc["tombstones_acknowledged"], "reconciliation_required": doc["reconciliation_required"],
+            "error_class": doc.get("error_class"), "unknown_cause": doc.get("unknown_cause"), "capability_fact_id": doc.get("capability_fact_id"),
+            "written_status": written["status"], "written_value": written.get("value"), "hold_id": hold,
+            "attempted_at": doc["attempted_at"], "acked_at": doc["acked_at"], "receipt": doc})
         if doc["status"] == "delivered":
             self._advance_watermark(event, connector["connector_id"], doc["acked_at"])
             self._record_fact(capability, None, "healthy", "delivered", doc["acked_at"], now)

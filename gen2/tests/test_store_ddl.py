@@ -1349,15 +1349,6 @@ class ExportOutboxTest(StoreTestCase):
         self.x("INSERT INTO capability_facts (fact_id, capability, state, detail, since, affected_lanes, recorded_at) "
                "VALUES ('cf-1', 'export.connector.warehouse', 'failing', 'connection refused', ?, '[]', ?)", T, T)
 
-    def delivery(self, **row) -> None:
-        """One export_delivery_receipts row: a delivered attempt of connector
-        `warehouse` (sql) for man_00000001 unless `row` says otherwise."""
-        full = {"export_receipt_id": "exr_00000001", "manifest_id": "man_00000001", "connector_id": "warehouse", "connector_type": "sql",
-                "attempt": 1, "status": "delivered", "tombstones_acknowledged": 1, "reconciliation_required": 0, "error_class": None,
-                "unknown_cause": None, "capability_fact_id": None, "attempted_at": T, "acked_at": T}
-        full.update(row)
-        self.x(f"INSERT INTO export_delivery_receipts ({', '.join(full)}) VALUES ({', '.join('?' * len(full))})", *full.values())
-
     def test_only_approved_work_is_exported(self) -> None:
         """D46 rewrite (A2), carried from the publication outbox unchanged: the
         approval must be an approved publication_approval of this topic about
@@ -1546,6 +1537,88 @@ class ExportOutboxTest(StoreTestCase):
         for attempt, row in enumerate(valid.values(), start=1):
             self.delivery(export_receipt_id=f"exr_0000000{attempt}", attempt=attempt, **row)
         self.assertEqual(self.rows("SELECT count(*) FROM export_delivery_receipts"), [(4,)])
+
+    def delivering(self) -> None:
+        self.decision("opd_00000002", "publication_approval", rev=3, hsh=h("5"))
+        self.capability_fact()
+        self.outbox("obx_00000001", "man_00000001", 1, None, "opd_00000002", h("1"), connectors={"warehouse": "sql"})
+
+    def test_receipt_document_matches_its_columns(self) -> None:
+        """Astra 1b review A2 (EXPORT-API.md §9 item 3): the receipt is stored
+        whole, and each column is bound to it — one probe per column, each a
+        document that differs from its row in that field alone. What no column
+        holds (the count's reason, the invocation) is kept in the document."""
+        self.delivering()
+        for override in ({"receipt_version": "export-delivery-receipt/1"}, {"export_receipt_id": "exr_00000009"}, {"manifest_id": "man_00000009"},
+                         {"connector": {"connector_id": "archive", "connector_type": "sql"}}, {"connector": {"connector_id": "warehouse", "connector_type": "jsonl_file"}},
+                         {"attempt": 2}, {"status": "skipped_superseded"}, {"tombstones_acknowledged": False}, {"reconciliation_required": True},
+                         {"error_class": "timeout"}, {"unknown_cause": "unreadable_response"}, {"capability_fact_id": "cf-1"},
+                         {"written": {"status": "partial", "value": 12, "reason": "r"}}, {"written": {"status": "observed", "value": 11}},
+                         {"hold_id": "hold_00000001"}, {"attempted_at": "2026-09-25T12:00:01Z"}, {"acked_at": None}):
+            with self.subTest(override=override):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.delivery(receipt_overrides=override)
+                self.assertIn("CHECK constraint failed", str(ctx.exception))
+        self.delivery(status="outcome_unknown", tombstones_acknowledged=0, reconciliation_required=1, unknown_cause="no_response_after_send",
+                      capability_fact_id="cf-1", acked_at=None, written_status="partial", written_value=7, receipt_overrides={"invocation_id": "inv_pppppppp"})
+        self.assertEqual(self.rows("SELECT written_status, written_value, json_extract(receipt, '$.written.reason'), json_extract(receipt, '$.invocation_id') "
+                                   "FROM export_delivery_receipts"), [("partial", 7, "not every write was acknowledged", "inv_pppppppp")])
+
+    def test_written_count_rules(self) -> None:
+        """The receipt schema's count rules (observed_count; RG-U: unknown is
+        never zero), now that the count is a column: each probe breaks one
+        rule of an otherwise valid receipt of that status; the six valid
+        shapes are accepted after them."""
+        self.delivering()
+        failed = {"status": "failed", "tombstones_acknowledged": 0, "error_class": "timeout", "capability_fact_id": "cf-1", "acked_at": None}
+        unknown = {"status": "outcome_unknown", "tombstones_acknowledged": 0, "reconciliation_required": 1, "unknown_cause": "no_response_after_send",
+                   "capability_fact_id": "cf-1", "acked_at": None}
+        valid = {
+            "delivered": {},
+            "failed": failed,
+            "partial_write": {**failed, "error_class": "partial_write"},
+            "unknown": unknown,
+            "unknown_partial": {**unknown, "written_status": "partial", "written_value": 3},
+            "skipped": {"status": "skipped_superseded", "tombstones_acknowledged": 0, "acked_at": None},
+        }
+        probes = (
+            ("an unknown count with a value", "unknown", {"written_status": "unknown", "written_value": 0}),
+            ("an observed count without a value", "delivered", {"written_status": "observed", "written_value": None}),
+            ("a delivery reporting a partial count", "delivered", {"written_status": "partial", "written_value": 12}),
+            ("a skipped delivery whose count is unknown", "skipped", {"written_status": "unknown", "written_value": None}),
+            ("a skipped delivery that wrote records", "skipped", {"written_status": "observed", "written_value": 3}),
+            ("a partial write claiming an observed total", "partial_write", {"written_status": "observed", "written_value": 7}),
+            ("a refusal claiming it wrote records", "failed", {"written_status": "observed", "written_value": 3}),
+            ("a refusal reporting a partial count", "failed", {"written_status": "partial", "written_value": 0}),
+            ("an unknown outcome claiming an observed count", "unknown", {"written_status": "observed", "written_value": 0}),
+        )
+        for name, shape, change in probes:
+            with self.subTest(probe=name):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.delivery(**{**valid[shape], **change})
+                self.assertIn("CHECK constraint failed", str(ctx.exception))
+        for attempt, row in enumerate(valid.values(), start=1):
+            self.delivery(export_receipt_id=f"exr_0000000{attempt}", attempt=attempt, **row)
+        self.assertEqual(self.rows("SELECT written_status, written_value FROM export_delivery_receipts ORDER BY attempt"),
+                         [("observed", 12), ("observed", 0), ("partial", 7), ("unknown", None), ("partial", 3), ("observed", 0)])
+
+    def test_receipt_describes_its_manifest(self) -> None:
+        """A receipt's topic and ordering pair are its manifest's (P-2), and a
+        hold it names is a recorded hold of that topic (H-3): one probe each,
+        then the receipt naming this topic's hold is accepted."""
+        self.delivering()
+        insert = ("INSERT INTO holds (hold_id, topic_id, subject_ref, hold_class, cause, recoverability, required_authority, owner, deadline_at, clears_when, capability_fact_id, created_at) "
+                  "VALUES (?, ?, 'export:warehouse', 'capability', 'connector down', 'needs_remediation', 'router', 'router', ?, 'connector healthy', 'cf-1', ?)")
+        self.x(insert, "hold_00000001", TOPIC, T, T)
+        self.x(insert, "hold_00000002", OTHER, T, T)
+        for name, change in (("another topic", {"receipt_overrides": {"topic_id": OTHER}}), ("another generation", {"receipt_overrides": {"generation": 2}}),
+                             ("another options revision", {"receipt_overrides": {"options_revision": 2}}),
+                             ("a hold of another topic", {"hold_id": "hold_00000002"}), ("a hold never recorded", {"hold_id": "hold_00000009"})):
+            with self.subTest(probe=name):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.delivery(**change)
+                self.assertIn("describes its manifest", str(ctx.exception))
+        self.delivery(hold_id="hold_00000001")
 
     def test_connector_watermark_never_regresses(self) -> None:
         """Carries test_sink_generation_never_regresses to the pair: an idempotent

@@ -699,11 +699,14 @@ currentness from the engine.
    transaction stays short (C-8); validating each manifest against
    `export-manifest/2` before it is admitted to the outbox, because the
    extension implementation/review rule is the schema's, not the store's (§5).
-3. **Receipt storage in full.** The store now holds every status rule of the
-   receipt (§4). Persisting the whole receipt document beside its row, with the
-   written count and hold id bound to the columns the way the manifest is, lands
-   with the router's `ack_delivery`. So does advancing a connector watermark
-   only from a delivered receipt.
+3. **Receipt storage in full — landed in task 1b.** The store holds every
+   status rule of the receipt (§4), and the router's `ack_delivery` persists the
+   whole receipt document beside its row, with every column (the written count
+   and hold id included) bound to it the way the manifest is. A connector
+   watermark advances only from a delivered receipt. An export receipt id
+   replays only the identical document. What Phase 3 still owes here is the
+   exporter that produces receipts, and deciding what the optional
+   `invocation_id` must name; the router keeps it and does not yet check it.
 4. **Extension loading:** the boundary amendment that lets the image register a
    reviewed extension with the exporter (§7). Registration must match the module
    a manifest names to one the image actually carries; the schema only requires

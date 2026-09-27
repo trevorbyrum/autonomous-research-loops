@@ -577,10 +577,38 @@ class StoreTestCase(unittest.TestCase):
         self.decision_receipt("dec_00000001", "inv_pppppppp", jev)
         self.decision("opd_publish01", "publication_approval", ref="dossier-1", rev=1, hsh=h("3"))
         self.outbox("obx_00000001", "man_00000001", 1, None, "opd_publish01", h("6"), source_rev=1, source_hash=h("3"), connectors={"warehouse": "sql"})
-        self.x("INSERT INTO export_delivery_receipts (export_receipt_id, manifest_id, connector_id, connector_type, attempt, status, tombstones_acknowledged, reconciliation_required, attempted_at, acked_at) "
-               "VALUES ('exr_00000001', 'man_00000001', 'warehouse', 'sql', 1, 'delivered', 1, 0, ?, ?)", T, T)
+        self.delivery()
         self.x("INSERT INTO connector_watermarks (topic_id, connector_id, generation, options_revision, delivered_at) VALUES (?, 'warehouse', 1, 1, ?)", TOPIC, T)
         self.x("INSERT INTO audit_events (audit_event_id, at, kind, topic_id, detail) VALUES ('aud_00000001', ?, 'commit', ?, '{}')", T, TOPIC)
+
+    def delivery(self, *, receipt_overrides: dict | None = None, **row) -> None:
+        """One export_delivery_receipts row: a delivered attempt of connector
+        `warehouse` (sql) for man_00000001 unless `row` says otherwise, stored
+        with its receipt document. The document is built from the row (and
+        reports man_00000001's default topic and pair, TOPIC (1, 1)), so it
+        agrees with the columns unless `receipt_overrides` says otherwise.
+        Unless given, the written count follows the status: a delivery
+        observed 12, a partial write 7 partial, an unknown outcome unknown,
+        anything else an observed 0."""
+        full = {"export_receipt_id": "exr_00000001", "manifest_id": "man_00000001", "connector_id": "warehouse", "connector_type": "sql",
+                "attempt": 1, "status": "delivered", "tombstones_acknowledged": 1, "reconciliation_required": 0, "error_class": None,
+                "unknown_cause": None, "capability_fact_id": None, "hold_id": None, "attempted_at": T, "acked_at": T}
+        full.update(row)
+        if "written_status" not in full:
+            full["written_status"], full["written_value"] = (
+                ("partial", 7) if full["error_class"] == "partial_write" else ("unknown", None) if full["status"] == "outcome_unknown"
+                else ("observed", 12) if full["status"] == "delivered" else ("observed", 0))
+        written = {"status": full["written_status"], **({} if full["written_value"] is None else {"value": full["written_value"]}),
+                   **({} if full["written_status"] == "observed" else {"reason": "not every write was acknowledged"})}
+        receipt = {"receipt_version": "export-delivery-receipt/2", "export_receipt_id": full["export_receipt_id"], "manifest_id": full["manifest_id"],
+                   "topic_id": TOPIC, "connector": {"connector_id": full["connector_id"], "connector_type": full["connector_type"]},
+                   "generation": 1, "options_revision": 1, "attempt": full["attempt"], "status": full["status"], "written": written,
+                   "tombstones_acknowledged": bool(full["tombstones_acknowledged"]), "reconciliation_required": bool(full["reconciliation_required"]),
+                   "attempted_at": full["attempted_at"], "acked_at": full["acked_at"],
+                   **{k: full[k] for k in ("error_class", "unknown_cause", "capability_fact_id", "hold_id") if full[k] is not None}}
+        receipt.update(receipt_overrides or {})
+        full["receipt"] = json.dumps(receipt)
+        self.x(f"INSERT INTO export_delivery_receipts ({', '.join(full)}) VALUES ({', '.join('?' * len(full))})", *full.values())
 
     def outbox(self, eid: str, mid: str, gen: int, sup: int | None, decision: str, manifest_hash: str, *, source_rev: int = 3,
                source_hash: str | None = None, connectors: dict | None = None, kind: str = "completion_publication",

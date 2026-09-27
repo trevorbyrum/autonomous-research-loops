@@ -20,13 +20,9 @@ real station/gateway that produces observations is 1c/Phase 2.
 from __future__ import annotations
 
 import copy
-import json
-from pathlib import Path
 
 from gen2.core import canonical
 from gen2.tests.router_fixtures import CONFIG, DEADLINE, EXPIRES, OTHER, TOPIC, RouterTestCase, empty_outcome, h, jcs
-
-EXAMPLES = Path(__file__).resolve().parents[1] / "schema" / "examples"
 
 
 class ClaimTest(RouterTestCase):
@@ -440,38 +436,10 @@ class AckDeliveryTest(RouterTestCase):
         self.to_queued()
         self.checkpoint = self.started("inv_checkpt01", "checkpoint")
         for generation in (1, 2):
-            self.export(generation)
+            self.export(self.checkpoint, generation)
 
-    def export(self, generation: int) -> None:
-        bundle = json.loads((EXAMPLES / "export-bundle" / "valid-completed-topic.json").read_text())["instance"]
-        bundle.update(topic_id=TOPIC, bundle_id=f"exb_gen{generation:08d}")
-        raw = jcs(bundle)
-        bundle_ref = {"content_hash": self.spool.put(raw), "size_bytes": len(raw), "media_type": "application/json"}
-        source = h(str(generation))
-        self.decide(f"opd_publish{generation:03d}", "publication_approval", {"kind": "publication_source", "ref": "dossier-1", "revision": generation, "hash": source})
-        manifest = json.loads((EXAMPLES / "export-manifest" / "valid-completion-generation-1.json").read_text())["instance"]
-        manifest.update(manifest_id=f"man_gen{generation:08d}", topic_id=TOPIC, generation=generation, source={"revision": generation, "content_hash": source},
-                        approval={"operator_decision_id": f"opd_publish{generation:03d}", "approved_revision": generation},
-                        bundle={"bundle_id": f"exb_gen{generation:08d}", "bundle_version": "export-bundle/1", "content_hash": bundle_ref["content_hash"]},
-                        supersedes=None if generation == 1 else {"manifest_id": "man_gen00000001", "generation": 1, "options_revision": 1})
-        outcome = empty_outcome("inv_checkpt01", "interim_transition")
-        outcome["exports"] = [manifest]
-        response = self.router.commit_outcome(self.envelope(self.checkpoint, f"op_export{generation:05d}", outcome, refs=[bundle_ref]))
-        self.assertEqual(response["status"], "committed", response)
-
-    def receipt(self, rid: str, status: str = "delivered", *, generation: int = 1, attempt: int = 1, connector: str = "warehouse", **extra) -> dict:
-        doc = {"receipt_version": "export-delivery-receipt/2", "export_receipt_id": rid, "manifest_id": f"man_gen{generation:08d}", "topic_id": TOPIC,
-               "connector": {"connector_id": connector, "connector_type": "sql" if connector == "warehouse" else "jsonl_file"},
-               "generation": generation, "options_revision": 1, "attempt": attempt, "status": status,
-               "written": {"status": "observed", "value": 12}, "tombstones_acknowledged": status == "delivered",
-               "reconciliation_required": status == "outcome_unknown", "attempted_at": "2026-09-27T12:00:00Z",
-               "acked_at": "2026-09-27T12:00:01Z" if status == "delivered" else None}
-        if status == "failed":
-            doc.update(error_class="unreachable", written={"status": "observed", "value": 0})
-        if status == "outcome_unknown":
-            doc.update(unknown_cause="no_response_after_send", written={"status": "unknown", "reason": "no response"})
-        doc.update(extra)
-        return doc
+    def receipt(self, rid: str, status: str = "delivered", **extra) -> dict:
+        return self.delivery_receipt(rid, status, **extra)
 
     def ack(self, doc: dict) -> dict:
         return self.router.ack_delivery(doc)
@@ -485,6 +453,67 @@ class AckDeliveryTest(RouterTestCase):
         conflict = self.ack(self.receipt("exr_000000000001", attempted_at="2026-09-27T12:00:00.5Z"))
         self.assertEqual((conflict["status"], conflict.get("reason")), ("rejected", "export_receipt_id_conflict"))
         self.assertEqual(self.state(exclude=()), before)
+
+    def test_the_whole_receipt_is_recorded(self) -> None:
+        """Astra 1b review A2 (EXPORT-API.md §9 item 3): the receipt is stored
+        as it came, byte for byte in its JCS form, beside its columns. The
+        written count keeps each of its three states (a partial lower bound is
+        not an unknown, an unknown is not a zero), and the hold and invocation
+        a receipt names are kept."""
+        self.hold(self.checkpoint, "hold_000000000001")
+        docs = [self.receipt("exr_000000000001", "outcome_unknown", attempt=1, capability_fact_id="fact_warehouse01", hold_id="hold_000000000001",
+                             invocation_id="inv_checkpt01", written={"status": "partial", "value": 7, "reason": "seven rows acknowledged, the rest unknown"}),
+                self.receipt("exr_000000000002", "outcome_unknown", attempt=2, capability_fact_id="fact_warehouse01"),
+                self.receipt("exr_000000000003", attempt=3)]
+        for doc in docs:
+            self.assertEqual(self.ack(doc)["status"], "recorded")
+        self.assertEqual(self.rows("SELECT receipt, written_status, written_value, hold_id FROM export_delivery_receipts ORDER BY attempt"),
+                         [(jcs(docs[0]).decode(), "partial", 7, "hold_000000000001"), (jcs(docs[1]).decode(), "unknown", None, None),
+                          (jcs(docs[2]).decode(), "observed", 12, None)])
+
+    def test_a_replay_is_the_same_document(self) -> None:
+        """Astra 1b review A2: an export receipt id replays exactly the
+        document it recorded. The same document (in any key order) replays
+        with nothing written, audit included; a document differing in any one
+        field — the topic and ordering pair it repeats from its manifest, the
+        written count, an optional reference added, changed or left out — is a
+        conflict, and no watermark, fact or row moves."""
+        self.hold(self.checkpoint, "hold_000000000001")
+        self.hold(self.checkpoint, "hold_000000000002")
+        doc = self.receipt("exr_000000000001", "outcome_unknown", capability_fact_id="fact_warehouse01", hold_id="hold_000000000001",
+                           invocation_id="inv_checkpt01", written={"status": "partial", "value": 7, "reason": "seven rows acknowledged, the rest unknown"})
+        self.assertEqual(self.ack(doc)["status"], "recorded")
+        self.assertEqual(self.ack(self.receipt("exr_000000000002", attempt=2))["status"], "recorded")
+        before = self.state(exclude=())
+        self.assertEqual(self.ack(dict(reversed(list(copy.deepcopy(doc).items())))), {"status": "replayed", "export_receipt_id": "exr_000000000001"})
+        self.assertEqual(self.state(exclude=()), before)
+        changes = {"topic_id": OTHER, "generation": 2, "options_revision": 2,
+                   "written": {"status": "partial", "value": 999, "reason": "seven rows acknowledged, the rest unknown"},
+                   "hold_id": "hold_000000000002", "invocation_id": "inv_research01", "unknown_cause": "unreadable_response", "attempted_at": "2026-09-27T12:00:00.5Z"}
+        variants = [(field, {**copy.deepcopy(doc), field: value}) for field, value in changes.items()]
+        variants.append(("written unknown", {**copy.deepcopy(doc), "written": {"status": "unknown", "reason": "no counts observed"}}))
+        variants += [(f"without {field}", {k: v for k, v in copy.deepcopy(doc).items() if k != field}) for field in ("hold_id", "invocation_id")]
+        for name, changed in variants:
+            with self.subTest(name):
+                out = self.ack(changed)
+                self.assertEqual((out["status"], out.get("reason")), ("rejected", "export_receipt_id_conflict"), out)
+                self.assertEqual(self.state(exclude=()), before)
+
+    def test_a_named_hold_is_one_of_the_manifests_topic(self) -> None:
+        """H-3: a receipt's hold owns this topic's delivery, so it is a
+        recorded hold of the manifest's topic; nothing is written otherwise."""
+        self.to_queued(OTHER)
+        self.hold(self.started("inv_checkpt02", "checkpoint", tid=OTHER), "hold_000000000009")
+        self.hold(self.checkpoint, "hold_000000000001")
+        before = self.state(exclude=())
+        for hold in ("hold_000000000009", "hold_000000000404"):
+            with self.subTest(hold):
+                out = self.ack(self.receipt("exr_000000000001", "failed", capability_fact_id="fact_warehouse01", hold_id=hold))
+                self.assertEqual((out["status"], out.get("reason")), ("rejected", "delivery_refused"), out)
+                self.assertIn("is not a recorded hold of", out.get("detail", ""))
+                self.assertEqual(self.state(exclude=()), before)
+        self.assertEqual(self.ack(self.receipt("exr_000000000001", "failed", capability_fact_id="fact_warehouse01", hold_id="hold_000000000001"))["status"],
+                         "recorded")
 
     def test_a_receipt_must_describe_its_manifest(self) -> None:
         before = self.state(exclude=())

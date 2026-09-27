@@ -58,6 +58,32 @@ class RestartTest(unittest.TestCase):
         self.assertEqual((out["status"], out.get("reason")), ("refused", "transition_conflict"))
         self.assertEqual(self.world.state(exclude=()), before)
 
+    def test_delivery_receipts_read_back_whole_after_a_restart(self) -> None:
+        """Astra 1b review A2: what a connector reported survives a restart
+        exactly — the stored document is the receipt's JCS bytes, the count
+        keeps its state, the references are kept — and after the restart the
+        same document replays while a changed one conflicts."""
+        checkpoint = self.world.started("inv_checkpt01", "checkpoint")
+        self.world.export(checkpoint, 1)
+        self.world.hold(checkpoint, "hold_000000000001")
+        docs = [self.world.delivery_receipt("exr_000000000001", "outcome_unknown", capability_fact_id="fact_warehouse01", hold_id="hold_000000000001",
+                                            invocation_id="inv_checkpt01", written={"status": "partial", "value": 7, "reason": "seven rows acknowledged"}),
+                self.world.delivery_receipt("exr_000000000002", "outcome_unknown", attempt=2, capability_fact_id="fact_warehouse01"),
+                self.world.delivery_receipt("exr_000000000003", attempt=3)]
+        for doc in docs:
+            self.assertEqual(self.world.router.ack_delivery(doc)["status"], "recorded")
+        self.restart()
+        self.assertEqual(self.world.rows("SELECT receipt, written_status, written_value, hold_id FROM export_delivery_receipts ORDER BY attempt"),
+                         [(rf.jcs(docs[0]).decode(), "partial", 7, "hold_000000000001"), (rf.jcs(docs[1]).decode(), "unknown", None, None),
+                          (rf.jcs(docs[2]).decode(), "observed", 12, None)])
+        before = self.world.state(exclude=())
+        for doc in docs:
+            self.assertEqual(self.world.router.ack_delivery(doc)["status"], "replayed")
+        self.assertEqual(self.world.state(exclude=()), before)
+        out = self.world.router.ack_delivery({**docs[0], "written": {"status": "unknown", "reason": "no counts observed"}})
+        self.assertEqual((out["status"], out.get("reason")), ("rejected", "export_receipt_id_conflict"))
+        self.assertEqual(self.world.state(exclude=()), before)
+
 
 if __name__ == "__main__":
     unittest.main()
