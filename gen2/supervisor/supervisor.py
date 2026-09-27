@@ -1,0 +1,592 @@
+"""The station supervisor: the one lifecycle implementation for every
+invocation kind — research pass, discovery, delegate, verification and
+checkpoint (task 1c). Nothing below branches on the kind except the claim
+request a delegate makes under its parent (L-8).
+
+Trace: BOUNDARIES.md Station supervisor (owns launch intent before spawn,
+process identity, deadlines, cancellation, descendant handling, result
+retention and durable delivery; must never trust agent self-reported
+completion, let an agent write authoritative state or the spool destination,
+or treat outcome_unknown as anything without reconciliation); design review
+§5 ("Artifacts and the sole-writer promise", "Router outage", "Crash
+fencing"), §6; INVARIANTS L-1..L-9, C-8, C-9, C-10, RG-2, RG-3;
+gen2/core/control.py (the only way it reaches the router: it imports neither
+router nor store, gen2/boundaries.toml).
+
+One job per invocation, under its stable handle "job-<invocation id>"
+(jobs.py). What the supervisor knows lives in three places, each durable:
+the job directory (the order, what the launcher recorded, the journal of
+what the supervisor observed, retained and sent), the spool (the result and
+every execution record, content-addressed), and the router (the
+authoritative lifecycle). advance() rebuilds its view from all three every
+time, so a supervisor that restarts (recover()) continues each job from its
+handle: nothing it needs is only in memory.
+
+Each advance first observes the job locally, needing no router (C-10): an
+exit is collected (descendants handled, the output checked structurally and
+staged, the execution record written); a job past its deadline has its
+execution group terminated. Then it drives the router one step along L-1:
+  admitted          launch intent first (the router's final launch-admission
+                    check, L-2, L-7); a refusal for a paused topic is retried
+                    within the launch budget, then the admitted work is
+                    cancelled (supervisor); a lapsed lease or deadline cancels it
+  launching         start the launcher (spawn budget); record its identity
+                    once it has recorded it (L-3). A start this process did
+                    not see through — a crash between spawn and identity —
+                    enters outcome_unknown and is reconciled (L-4)
+  running           a collected end is delivered: a structural finding is a
+                    failure with its class and record (L-5, L-9); a clean end
+                    stages result_ready; a cancellation request terminates
+                    the group, then records cancelled once descendants are
+                    confirmed (L-7); a launcher gone without an exit record
+                    is outcome_unknown
+  result_ready      commit_outcome with the retained result and its execution
+                    record; a stale state revision is re-sent within the
+                    commit budget; any other refusal is a failure
+                    (result_rejected), the result staying retained (C-10)
+  outcome_unknown   look the job up by its handle, or terminate its group,
+                    and reconcile the episode with the resolution the record
+                    supports; what cannot be established stays unknown under
+                    the episode's hold (owner, deadline)
+Every retry path draws on a declared budget kept in the journal, so a
+restart does not refill it (L-6). A router that stays unreachable past its
+budget leaves a local incident and a stalled job, which only recover() —
+itself budgeted — resumes.
+
+Structural limits: faults are what these processes can do to each other on
+one host (kills, exits, hangs, lost replies), not power loss or disk
+corruption; fencing protects commits and does not undo an orphan's external
+effects (L-7); a descendant that leaves the job's session is not seen
+(jobs.py). The supervisor trusts its own observations: the router binds the
+execution record to what it supports, not to whether it is true.
+"""
+from __future__ import annotations
+
+import hashlib
+import re
+import sys
+import time
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Callable, Mapping
+
+from gen2.core import canonical, instants
+from gen2.core.control import ControlUnavailable
+from gen2.supervisor import jobs
+from gen2.supervisor.spool import Spool, SpoolFull, read_scratch
+
+OUTPUT = "outcome.json"          # the executor's one result file; its name is the supervisor's (C-9)
+SELF_REPORT = "status.json"      # an agent's own claim about itself: recorded, never used (L-5)
+DECLARED_DIGEST = "declared-digest"
+LAUNCHER = (sys.executable, str(Path(__file__).with_name("jobshim.py")))
+TERMINAL = ("committed", "failed", "cancelled")
+DIGEST = re.compile(r"\Asha256:[0-9a-f]{64}\Z")
+
+
+@dataclass(frozen=True)
+class Policy:
+    """Execution policy (G-10: the mounted policy bundle's once 1d loads
+    bundles). Every retry path draws on one of these (L-6)."""
+    router_attempts: int = 5       # sends while the router is unreachable, per outage
+    recovery_attempts: int = 3     # recover() resumptions of a job stalled on the router
+    launch_attempts: int = 3       # launch-admission refusals (a paused topic) before the admitted work is cancelled
+    spawn_attempts: int = 2        # launcher starts that fail before the job fails as spawn_failed
+    commit_attempts: int = 3       # sends of a result whose expected state revision went stale
+    identity_grace_s: float = 5.0  # how long a launcher this process started may take to record its identity
+    start_grace_s: float = 5.0     # how long a start found after a restart may take to show itself before it is abandoned
+    term_grace_s: float = 2.0      # SIGTERM -> SIGKILL
+    kill_grace_s: float = 2.0      # SIGKILL -> the group confirmed empty, or not
+    poll_s: float = 0.02
+
+
+@dataclass(frozen=True)
+class WorkOrder:
+    """One invocation for this supervisor to run. The invocation id is the
+    stable job identity: the claim, every lifecycle fact and every reconnect
+    use it (L-8)."""
+    invocation_id: str
+    kind: str
+    topic_id: str
+    config_bundle_hash: str
+    deadline_at: str
+    command: tuple[str, ...]
+    lease_expires_at: str | None = None
+    parent_invocation_id: str | None = None      # a delegate: its parent, another job of this supervisor
+    requested_by_invocation_id: str | None = None
+    env: Mapping[str, str] = field(default_factory=dict)
+
+
+class Waiting(Exception):
+    """This advance cannot proceed now; the job keeps everything it holds."""
+
+
+class Supervisor:
+    def __init__(self, control, spool: Spool, jobs_root: str | Path, *, station_id: str, host_id: str, container_id: str | None = None,
+                 policy: Policy = Policy(), clock: Callable[[], str], launcher: tuple[str, ...] = LAUNCHER,
+                 fault: Callable[[str], None] | None = None) -> None:
+        self.control = control
+        self.spool = spool
+        self.jobs_root = Path(jobs_root)
+        self.jobs_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self.station_id, self.host_id, self.container_id = station_id, host_id, container_id
+        self.policy = policy
+        self._clock = clock
+        self.launcher = tuple(launcher)
+        self._fault = fault or (lambda point: None)
+        self._children: dict[str, object] = {}  # launchers this process started: reaped here, and trusted to be this session's own start
+
+    # -- public ----------------------------------------------------------------
+    def job(self, invocation_id: str) -> jobs.Job:
+        return jobs.Job(self.jobs_root, "job-" + invocation_id)
+
+    def prepare(self, order: WorkOrder) -> None:
+        """Make the order durable under its job handle (the claim is sent from
+        the stored order, so a restart re-sends the same claim, L-8)."""
+        self.job(order.invocation_id).prepare({**asdict(order), "command": list(order.command), "env": dict(order.env)})
+
+    def submit(self, order: WorkOrder) -> str:
+        self.prepare(order)
+        return self.advance(order.invocation_id)
+
+    def recover(self) -> dict[str, str]:
+        """After a restart, or once the router is back: every job this
+        supervisor holds, advanced from what its handle finds. A job stalled
+        on the router resumes here, drawing on its recovery budget."""
+        outcomes = {}
+        for path in sorted(self.jobs_root.iterdir()):
+            order = jobs.Job(self.jobs_root, path.name).read("order.json")
+            if order is None:
+                continue
+            job, journal = self.job(order["invocation_id"]), self._journal(self.job(order["invocation_id"]))
+            if journal.get("incident") and not journal.get("settled"):
+                if self._spend(job, journal, "recovery"):
+                    journal["incident"] = None
+                    journal["budgets"]["router"] = 0
+                    self._save(job, journal)
+            outcomes[order["invocation_id"]] = self.advance(order["invocation_id"])
+        return outcomes
+
+    def run(self, invocation_id: str, *, timeout_s: float = 60.0, until: tuple[str, ...] = TERMINAL + ("not_admitted",)) -> str:
+        """Advance until an outcome in `until`, or `timeout_s` of wall time."""
+        deadline = time.monotonic() + timeout_s
+        while True:
+            outcome = self.advance(invocation_id)
+            if outcome in until or time.monotonic() >= deadline:
+                return outcome
+            time.sleep(self.policy.poll_s)
+
+    def advance(self, invocation_id: str) -> str:
+        job = self.job(invocation_id)
+        order = job.read("order.json")
+        if order is None:
+            raise KeyError(f"no job for {invocation_id}")
+        journal = self._journal(job)
+        if journal.get("settled"):
+            return journal["settled"]
+        try:
+            self._observe(job, order, journal)
+            if journal.get("incident"):
+                return "stalled"
+            return self._drive(job, order, journal)
+        except Waiting as waiting:
+            return str(waiting)
+
+    # -- journal and budgets ---------------------------------------------------
+    def _journal(self, job: jobs.Job) -> dict:
+        journal = job.read("journal.json") or {}
+        journal.setdefault("budgets", {})
+        return journal
+
+    def _save(self, job: jobs.Job, journal: dict) -> None:
+        job.write("journal.json", journal)
+
+    def _spend(self, job: jobs.Job, journal: dict, path: str) -> bool:
+        """Draw one attempt from this job's budget for `path`; False once it is
+        spent. Recorded before the attempt, so a crash does not refund it."""
+        used = journal["budgets"].get(path, 0)
+        if used >= getattr(self.policy, f"{path}_attempts"):
+            return False
+        journal["budgets"][path] = used + 1
+        self._save(job, journal)
+        return True
+
+    def _settle(self, job: jobs.Job, journal: dict, state: str) -> str:
+        journal["settled"] = state
+        self._save(job, journal)
+        return state
+
+    def _call(self, job: jobs.Job, journal: dict, method: str, request: dict) -> dict:
+        """One router call. Unreachable: the same request is sent again on a
+        later advance, within the router budget; past it the job stalls with
+        a local incident until recover() (C-10, L-6). A success ends the
+        outage."""
+        try:
+            response = getattr(self.control, method)(request)
+        except ControlUnavailable:
+            if not self._spend(job, journal, "router"):
+                journal["incident"] = {"kind": "router_unreachable", "since": self._now(), "owner": f"supervisor:{self.station_id}",
+                                       "deadline_at": job.read("order.json")["deadline_at"]}
+                self._save(job, journal)
+                raise Waiting("stalled") from None
+            raise Waiting("router_unavailable") from None
+        if journal["budgets"].get("router"):
+            journal["budgets"]["router"] = 0
+            self._save(job, journal)
+        return response
+
+    # -- time ------------------------------------------------------------------
+    def _now(self) -> str:
+        return self._clock()
+
+    def _past(self, instant: str) -> bool:
+        return instants.utc_instant_ns(self._now()) >= instants.utc_instant_ns(instant)
+
+    def _reap(self) -> None:
+        for popen in self._children.values():
+            popen.poll()
+
+    # -- local observation (needs no router) -----------------------------------
+    def _observe(self, job: jobs.Job, order: dict, journal: dict) -> None:
+        if journal.get("collected"):
+            return
+        self._reap()
+        view = job.lookup()
+        if view["verdict"] == "exited":
+            self._collect(job, order, journal, view)
+        elif view["verdict"] == "running" and self._past(order["deadline_at"]):
+            self._terminate(job, order, journal, view, "timeout")
+
+    def _process(self, identity: dict | None) -> dict | None:
+        if identity is None:
+            return None
+        return {"host_id": self.host_id, "container_id": self.container_id, "boot_id": identity["boot_id"], "start_fingerprint": jobs.fingerprint(identity)}
+
+    @staticmethod
+    def _agent_text(job: jobs.Job, name: str) -> str | None:
+        """A small file the agent may have written, read as data (bounded, no
+        symlink, never staged): recorded, never trusted (L-5)."""
+        found = read_scratch(job.scratch, name, 4096)
+        return found["data"][:500].decode("utf-8", "replace").strip() or None if found["status"] == "present" else None
+
+    def _descendants(self, job: jobs.Job, identity: dict) -> tuple[dict, dict | None]:
+        """After the primary ended: wait for the launcher to leave (it has
+        recorded the exit), then end whatever else is left of the group and
+        confirm it gone (L-7). The launcher is not counted as a descendant."""
+        deadline = time.monotonic() + self.policy.kill_grace_s
+        while identity["pid"] in jobs.members(identity) and time.monotonic() < deadline:
+            self._reap()
+            time.sleep(0.005)
+        left = [pid for pid in jobs.members(identity) if pid != identity["pid"]]
+        if not left and identity["pid"] not in jobs.members(identity):
+            return {"handling": "none_found", "count": 0}, None
+        ended = job.terminate(identity, term_grace=self.policy.term_grace_s, kill_grace=self.policy.kill_grace_s, reap=self._reap)
+        if not left and ended["confirmed"]:  # only a lingering launcher was ended: no descendant
+            return {"handling": "none_found", "count": 0}, None
+        return self._handled({**ended, "found": len(left)}), {"reason": "descendants_after_exit"}
+
+    @staticmethod
+    def _handled(ended: dict) -> dict:
+        """The descendants field of an execution record, from a termination."""
+        if not ended["confirmed"]:
+            return {"handling": "unconfirmed", "count": ended["found"]}
+        return {"handling": "terminated", "count": ended["found"]} if ended["found"] else {"handling": "none_found", "count": 0}
+
+    def _collect(self, job: jobs.Job, order: dict, journal: dict, view: dict) -> None:
+        """The structural checks: the exit, what is on disk, and the rest of the
+        group. The agent's self-report and declared digest are data (L-5)."""
+        descendants, termination = self._descendants(job, view["identity"])
+        exit_record, findings = view["exit"], []
+        if exit_record["signal"] is not None:
+            findings.append("killed")
+        elif exit_record["code"] != 0:
+            findings.append("exit_nonzero")
+        try:
+            found = self.spool.collect(order["topic_id"], job.scratch, OUTPUT, "application/json")
+        except SpoolFull as full:  # an infrastructure failure, never a completion (C-10): the output stays in scratch
+            journal["incident"] = {"kind": "spool_full", "since": self._now(), "owner": f"supervisor:{self.station_id}", "detail": str(full)[:500],
+                                   "deadline_at": order["deadline_at"]}
+            self._save(job, journal)
+            raise Waiting("stalled") from None
+        declared = self._agent_text(job, DECLARED_DIGEST)
+        output = {"status": found["status"], "content_hash": None, "size_bytes": None,
+                  "declared_digest": declared if declared and DIGEST.match(declared) else None, "detail": found["detail"]}
+        result = None
+        if found["status"] in ("absent", "empty"):
+            findings.append("empty_output")
+        elif found["status"] == "refused":
+            findings.append("output_refused")
+        elif declared is not None and declared != found["ref"]["content_hash"]:
+            output.update(status="digest_mismatch", detail=f"the executor declared {declared[:80]}; the bytes hash to {found['ref']['content_hash']}")
+            findings.append("output_digest_mismatch")
+        else:
+            output.update(content_hash=found["ref"]["content_hash"], size_bytes=found["ref"]["size_bytes"])
+            result = found["ref"] if not findings else None
+        observation = {"process": self._process(view["identity"]), "exit": exit_record, "termination": termination, "descendants": descendants,
+                       "output": output, "self_report": self._agent_text(job, SELF_REPORT), "findings": findings}
+        journal["collected"] = {"observation": observation, "result": result, "record": self._record(order, "exit_observed", observation)}
+        self._save(job, journal)
+        self._fault("collected")
+
+    def _terminate(self, job: jobs.Job, order: dict, journal: dict, view: dict, reason: str) -> None:
+        """End the execution group (timeout or cancellation) and record it."""
+        ended = job.terminate(view["identity"], term_grace=self.policy.term_grace_s, kill_grace=self.policy.kill_grace_s, reap=self._reap)
+        observation = {"process": self._process(view["identity"]), "exit": job.read("exit.json"), "termination": {"reason": reason},
+                       "descendants": self._handled(ended),
+                       "output": {"status": "not_collected", "content_hash": None, "size_bytes": None, "declared_digest": None, "detail": None},
+                       "self_report": None, "findings": ["timeout"] if reason == "timeout" else []}
+        journal["collected"] = {"observation": observation, "result": None, "record": self._record(order, "execution_group_termination", observation),
+                                "terminated": reason}
+        self._save(job, journal)
+        self._fault("terminated")
+
+    def _record(self, order: dict, method: str, observation: dict) -> dict:
+        """Stage an execution record (execution-record/1) for this job."""
+        doc = {"record_version": "execution-record/1", "invocation_id": order["invocation_id"], "topic_id": order["topic_id"],
+               "job_handle": "job-" + order["invocation_id"], "method": method, "observed_at": self._now(), **observation}
+        return self.spool.stage(order["topic_id"], canonical.canonical_bytes(doc), "application/json")
+
+    # -- driving the router ------------------------------------------------------
+    def _grant(self, job: jobs.Job, order: dict, journal: dict) -> dict:
+        if journal.get("grant"):
+            return journal["grant"]
+        request = {"invocation_id": order["invocation_id"], "kind": order["kind"], "topic_id": order["topic_id"],
+                   "config_bundle_hash": order["config_bundle_hash"], "deadline_at": order["deadline_at"]}
+        if order["kind"] == "delegate":
+            parent = self.job(order["parent_invocation_id"])
+            request["parent_capability_id"] = self._grant(parent, parent.read("order.json"), self._journal(parent))["capability_id"]
+        else:
+            request.update(station_id=self.station_id, lease_expires_at=order["lease_expires_at"] or order["deadline_at"])
+        if order["requested_by_invocation_id"]:
+            request["requested_by_invocation_id"] = order["requested_by_invocation_id"]
+        grant = self._call(job, journal, "claim", request)
+        self._fault("claimed")
+        if grant["status"] not in ("granted", "replayed"):
+            journal["refused"] = {"reason": grant.get("reason"), "detail": grant.get("detail")}
+            self._settle(job, journal, "not_admitted")
+            raise Waiting("not_admitted")
+        journal["grant"] = grant
+        self._save(job, journal)
+        return grant
+
+    def _status(self, job: jobs.Job, journal: dict, grant: dict) -> dict:
+        return self._call(job, journal, "invocation_status", {"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"]})
+
+    def _transition(self, job: jobs.Job, journal: dict, grant: dict, to_state: str, **facts) -> dict:
+        return self._call(job, journal, "record_transition", {"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"],
+                                                              "to_state": to_state, **facts})
+
+    def _drive(self, job: jobs.Job, order: dict, journal: dict) -> str:
+        grant = self._grant(job, order, journal)
+        status = self._status(job, journal, grant)
+        state = status["state"]
+        if state in TERMINAL:
+            return self._settle(job, journal, state)
+        step = {"admitted": self._admitted, "launching": self._launching, "running": self._running,
+                "result_ready": self._result_ready, "outcome_unknown": self._unknown}[state]
+        return step(job, order, journal, grant, status)
+
+    def _cancel_self(self, job: jobs.Job, journal: dict, grant: dict, reason: str) -> str:
+        """Admitted work this supervisor may not launch is cancelled, by the
+        supervisor, under its capability (nothing was spawned, L-2)."""
+        response = self._call(job, journal, "request_cancel", {"invocation_id": grant["invocation_id"], "requested_by": "supervisor",
+                                                                "reason": reason[:500], "capability_id": grant["capability_id"]})
+        if response["status"] not in ("cancelled", "recorded", "replayed"):
+            raise Waiting("launch_refused")
+        return self._drive(job, job.read("order.json"), journal)
+
+    def _admitted(self, job, order, journal, grant, status) -> str:
+        response = self._transition(job, journal, grant, "launching", job_handle=job.handle)
+        if response["status"] == "refused":
+            if response["reason"] == "topic_paused" and self._spend(job, journal, "launch"):
+                raise Waiting("waiting_launch")
+            return self._cancel_self(job, journal, grant, f"launch refused: {response['reason']}")
+        self._fault("launch_recorded")
+        return self._launching(job, order, journal, grant, self._status(job, journal, grant))
+
+    def _launching(self, job, order, journal, grant, status) -> str:
+        view = job.lookup()
+        if view["verdict"] == "not_started":  # launch intent is recorded and no start has happened: start it now
+            if status["cancel_requested"] or self._past(order["deadline_at"]):
+                return self._end_unlaunched(job, order, journal, grant, status)
+            if not self._spend(job, journal, "spawn"):
+                return self._end(job, order, journal, grant, "failed", self._unrun("spawn_failed", "the launcher could not be started within the spawn budget"),
+                                 "job_handle_lookup")
+            try:
+                self._children[job.handle] = job.spawn(list(self.launcher), before_start=lambda: self._fault("spawning"))
+            except OSError:
+                raise Waiting("launching") from None  # the start is recorded as refused (spawn.json): the next advance tries again, on budget
+            self._fault("spawned")
+            view = self._await_identity(job, self.policy.identity_grace_s)
+        if view["identity"] is not None and job.handle in self._children:  # this process started it and saw its identity
+            response = self._transition(job, journal, grant, "running", **{k: v for k, v in self._process(view["identity"]).items()})
+            if response["status"] in ("recorded", "replayed"):
+                self._fault("running_recorded")
+                return "running"
+        # a start this process did not see through (a crash between spawn and identity record, or a launcher that
+        # never recorded one): the outcome is unknown until the job is looked up or its group terminated (L-3, L-4)
+        return self._enter_unknown(job, order, journal, grant, status, "spawn_uncertain")
+
+    def _await_identity(self, job: jobs.Job, grace: float) -> dict:
+        """Wait, within `grace`, for a launcher to record its identity. Before
+        it takes the lock a launcher looks unstarted, so that is final only
+        for a launcher this process started and has seen end; a start found
+        after a restart is given the grace (jobs.Job.lookup)."""
+        deadline = time.monotonic() + grace
+        child = self._children.get(job.handle)
+        while True:
+            self._reap()
+            view = job.lookup()
+            ended = view["verdict"] == "unstarted" and child is not None and child.returncode is not None
+            if view["verdict"] not in ("starting", "unstarted") or ended or time.monotonic() >= deadline:
+                return view
+            time.sleep(0.005)
+
+    @staticmethod
+    def _unrun(finding: str | None, detail: str) -> dict:
+        return {"process": None, "exit": None, "termination": None, "descendants": {"handling": "none_found", "count": 0},
+                "output": {"status": "not_collected", "content_hash": None, "size_bytes": None, "declared_digest": None, "detail": detail},
+                "self_report": None, "findings": [finding] if finding else []}
+
+    def _end_unlaunched(self, job, order, journal, grant, status) -> str:
+        """Launch intent recorded, nothing ever started: cancelled if that was
+        asked for, otherwise the deadline passed first."""
+        if status["cancel_requested"]:
+            return self._end(job, order, journal, grant, "cancelled", self._unrun(None, "cancelled before the launcher started"), "job_handle_lookup")
+        return self._end(job, order, journal, grant, "failed", self._unrun("never_started", "the deadline passed before the launcher started"), "job_handle_lookup")
+
+    def _end(self, job, order, journal, grant, to_state: str, observation: dict, method: str) -> str:
+        record = self._record(order, method, observation)
+        facts = {"end_evidence_ref": record["content_hash"]}
+        if to_state == "failed":
+            facts["failure_class"] = observation["findings"][0]
+        response = self._transition(job, journal, grant, to_state, **facts)
+        if response["status"] not in ("recorded", "replayed"):
+            raise Waiting(f"end_refused:{response.get('reason')}")
+        return self._settle(job, journal, to_state)
+
+    def _running(self, job, order, journal, grant, status) -> str:
+        collected = journal.get("collected")
+        if collected is None:
+            view = job.lookup()
+            if status["cancel_requested"] and view["verdict"] in ("running", "vanished"):
+                self._terminate(job, order, journal, view, "cancellation")
+                return self._running(job, order, journal, grant, status)
+            if view["verdict"] == "vanished":
+                return self._enter_unknown(job, order, journal, grant, status, "contact_lost")
+            return "running"
+        observation = collected["observation"]
+        if observation["descendants"]["handling"] == "unconfirmed":  # capacity is not released on an unconfirmed group (L-7)
+            return self._enter_unknown(job, order, journal, grant, status, "termination_unconfirmed")
+        facts = {"end_evidence_ref": collected["record"]["content_hash"]}
+        if status["cancel_requested"]:
+            response = self._transition(job, journal, grant, "cancelled", **facts)
+        elif observation["findings"]:
+            response = self._transition(job, journal, grant, "failed", failure_class=observation["findings"][0], **facts)
+        else:
+            response = self._transition(job, journal, grant, "result_ready", result_payload_digest=collected["result"]["content_hash"])
+            if response["status"] in ("recorded", "replayed"):
+                self._fault("result_ready_recorded")
+                return self._result_ready(job, order, journal, grant, self._status(job, journal, grant))
+            if response.get("reason") == "cancel_requested":  # the cancellation won the race: the result stays retained (C-10)
+                return self._drive(job, order, journal)
+        if response["status"] not in ("recorded", "replayed"):
+            raise Waiting(f"end_refused:{response.get('reason')}")
+        return self._settle(job, journal, response["state"])
+
+    def _result_ready(self, job, order, journal, grant, status) -> str:
+        collected = journal["collected"]
+        envelope = journal.get("envelope")
+        if envelope is None:
+            envelope = self._envelope(order, grant, collected, status["state_revision"])
+            journal["envelope"] = envelope
+            self._save(job, journal)
+        response = self._call(job, journal, "commit_outcome", envelope)
+        self._fault("commit_replied")
+        if response["status"] in ("committed", "replayed"):
+            return self._settle(job, journal, "committed")
+        if response["reason"] in ("state_revision_stale", "topic_paused") and self._spend(job, journal, "commit"):
+            if response["current_state_revision"] is not None:
+                journal["envelope"] = self._envelope(order, grant, collected, response["current_state_revision"])
+                self._save(job, journal)
+            raise Waiting("result_ready")
+        observation = {**collected["observation"], "findings": ["result_rejected"]}  # the result stays in the spool, uncommitted (C-10)
+        return self._end(job, order, journal, grant, "failed", observation, "exit_observed")
+
+    def _envelope(self, order: dict, grant: dict, collected: dict, state_revision: int) -> dict:
+        result, record = collected["result"], collected["record"]
+        return {"envelope_version": "commit-outcome/1", "operation_id": "op_f" + hashlib.sha256(order["invocation_id"].encode()).hexdigest()[:40],
+                "operation_kind": "final_outcome", "invocation_id": grant["invocation_id"], "capability_id": grant["capability_id"],
+                "topic_id": grant["topic_id"], "admission": grant["admission"], "config_bundle_hash": grant["config_bundle_hash"],
+                "lease": {"lease_id": grant["lease"]["lease_id"], "generation": grant["lease"]["generation"]}, "expected_state_revision": state_revision,
+                "payload_digest": result["content_hash"], "payload_size_bytes": result["size_bytes"], "result_refs": [record], "submitted_at": self._now()}
+
+    # -- outcome_unknown -----------------------------------------------------------
+    def _enter_unknown(self, job, order, journal, grant, status, cause: str) -> str:
+        response = self._transition(job, journal, grant, "outcome_unknown", unknown_episode=status["unknown_episode"] + 1, unknown_cause=cause)
+        if response["status"] not in ("recorded", "replayed"):
+            raise Waiting(f"unknown_refused:{response.get('reason')}")
+        self._fault("unknown_recorded")
+        return self._unknown(job, order, journal, grant, self._status(job, journal, grant))
+
+    def _unknown(self, job, order, journal, grant, status) -> str:
+        """Reconcile the current episode from what the job's handle finds (and
+        what this supervisor already collected from it); what cannot be
+        established stays unknown under the episode's hold (L-4)."""
+        cancel = status["cancel_requested"] is not None
+        view = job.lookup()
+        if view["verdict"] == "exited" and not journal.get("collected"):
+            self._collect(job, order, journal, view)
+        collected = journal.get("collected")
+        if collected is not None:
+            observation = collected["observation"]
+            if observation["descendants"]["handling"] == "unconfirmed":
+                raise Waiting("unknown_unresolved")
+            if cancel or collected.get("terminated"):  # the group was ended (or is being ended, under the cancellation)
+                observation = {**observation, "termination": observation["termination"] or {"reason": "cancellation"},
+                               "findings": [] if cancel else observation["findings"]}
+                return self._reconcile(job, order, journal, grant, status, "terminated_group", "execution_group_termination", observation)
+            if observation["findings"]:
+                return self._reconcile(job, order, journal, grant, status, "confirmed_failed", "job_handle_lookup", observation)
+            return self._reconcile(job, order, journal, grant, status, "found_result", "job_handle_lookup", observation, digest=collected["result"]["content_hash"])
+        if view["verdict"] in ("starting", "unstarted"):
+            view = self._await_identity(job, self.policy.start_grace_s)
+        if view["verdict"] in ("not_started", "unstarted"):
+            if view["verdict"] == "unstarted" and not job.abandon():
+                raise Waiting("unknown_unresolved")  # a launcher got the lock first: its identity is next
+            if cancel:
+                return self._reconcile(job, order, journal, grant, status, "terminated_group", "execution_group_termination",
+                                       {**self._unrun(None, "cancelled; the launcher never started"), "termination": {"reason": "cancellation"}})
+            return self._reconcile(job, order, journal, grant, status, "confirmed_failed", "job_handle_lookup", self._unrun("never_started", "the launcher never started"))
+        if view["verdict"] in ("starting", "exited"):
+            raise Waiting("unknown_unresolved")  # still no identity after the grace; or an exit a moment ago (collected on the next advance)
+        if view["verdict"] == "running" and not cancel and not self._past(order["deadline_at"]):
+            observation = {**self._unrun(None, "running"), "process": self._process(view["identity"])}
+            return self._reconcile(job, order, journal, grant, status, "found_running", "job_handle_lookup", observation, identity=observation["process"])
+        if view["verdict"] == "vanished" and not view["members"] and not cancel:  # the launcher is gone, and nothing of its group is left
+            observation = {**self._unrun("no_exit_record", "the launcher is gone without an exit record"), "process": self._process(view["identity"])}
+            return self._reconcile(job, order, journal, grant, status, "confirmed_failed", "job_handle_lookup", observation)
+        # running under cancellation or past its deadline, or vanished leaving members: end the group, then reconcile by termination
+        reason = "cancellation" if cancel else ("timeout" if self._past(order["deadline_at"]) else "reconciliation")
+        ended = job.terminate(view["identity"], term_grace=self.policy.term_grace_s, kill_grace=self.policy.kill_grace_s, reap=self._reap)
+        if not ended["confirmed"]:
+            raise Waiting("unknown_unresolved")
+        observation = {**self._unrun({"cancellation": None, "timeout": "timeout"}.get(reason, "no_exit_record"), None),
+                       "process": self._process(view["identity"]), "exit": job.read("exit.json"), "termination": {"reason": reason},
+                       "descendants": self._handled(ended)}
+        return self._reconcile(job, order, journal, grant, status, "terminated_group", "execution_group_termination", observation)
+
+    def _reconcile(self, job, order, journal, grant, status, resolution: str, method: str, observation: dict, *, identity: dict | None = None,
+                   digest: str | None = None) -> str:
+        record = self._record(order, method, observation)
+        request = {"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"], "unknown_episode": status["unknown_episode"],
+                   "resolution": resolution, "method": method, "evidence_ref": record["content_hash"]}
+        if identity is not None:
+            request.update(identity)
+        if digest is not None:
+            request["result_payload_digest"] = digest
+        if resolution in ("confirmed_failed", "terminated_group") and not (resolution == "terminated_group" and status["cancel_requested"]):
+            request["failure_class"] = observation["findings"][0]
+        response = self._call(job, journal, "reconcile", request)
+        if response["status"] not in ("recorded", "replayed"):
+            raise Waiting(f"reconcile_refused:{response.get('reason')}")
+        return self._drive(job, order, journal)
