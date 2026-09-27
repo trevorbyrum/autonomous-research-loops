@@ -52,9 +52,11 @@ paired controls, which must pass — kept apart, because a control is not
 expected to fail. The controls come from tools/gen2_mutation_controls.json:
 tests that are not the mutant's killers and that, in a traced unmutated run,
 took an accepted path through the code the mutant changes (that tool's
-docstring says what counts). A control passing under the mutant shows the
-mutant left that path working, so the killers' failure is the guard's
-absence rather than a broken path. A killer is not assumed to hold its own
+docstring says what counts: for Python, a changed line itself, or the guard
+directly governing a changed statement, passed where the change is a
+refusal — never a branch enclosing the guard; task 1c-repair-3). A control
+passing under the mutant shows the mutant left that path working, so the
+killers' failure is the guard's absence rather than a broken path. A killer is not assumed to hold its own
 accepted case: some do, many do not. Where only a killer takes that path,
 the file may instead credit the killer with its own accepted case, read and
 recorded as running under the mutant too (in_killer). A mutant with no entry

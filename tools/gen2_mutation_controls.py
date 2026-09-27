@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Paired positive controls for the gen-2 mutation inventory (task
-1c-repair-2 C4; Astra 1c re-review C4).
+1c-repair-2 C4; Astra 1c re-review C4; the evidence rule tightened in task
+1c-repair-3, Astra 1c re-review 2 BLOCK 2).
 
 A mutant's killers are the tests that must fail under it. Its paired
 controls are tests that must pass under it: tests that are not its killers
@@ -16,17 +17,39 @@ refuses a mutant with no entry, and a control that is not exactly one test).
   choose   pick each mutant's controls from a trace -> the controls file
 
 What counts as taking a path through the mutated code, per kind of target:
-  * Python: the test executes a line the mutation changes, inside a function,
-    or the test of an if/while that governs a changed branch, or the start
-    of a try whose handler changed (a changed refusal branch is passed
-    through by deciding against it); a changed statement of a module's own
-    program counts as it is, a def line (run at import) does not, and a
-    changed module or class constant counts where a function reads it. Its own process is traced
-    with sys.monitoring; a child it starts runs a copy that carries a
-    tracing prologue (the child tree for gen2/ modules and scripts, the
-    path-handed copy for a tool) and its lines are credited to the test
-    running when it recorded them. Line numbers are those of the repository
-    file: the prologue shares an existing line.
+  * Python (requirements()): the lines the mutant changes, found by difflib
+    over the whole file (a line of `old` it leaves as it was is not one).
+    Inside a function each belongs to the innermost statement whose own
+    lines hold it (an if's or while's test, a for's header, an except
+    clause; a simple statement whole), and the test must
+      - for a changed refusal — a raise (not of FLOW, the exceptions raised to
+        return an outcome), or a call to a function of the same file whose
+        last statement is such a raise — pass the guard that directly
+        governs it: leave that if's or while's test, that loop's header, or
+        that try's body (whose handler holds the refusal), within one frame,
+        for a line outside the refusal (or return from it); a changed if or
+        while whose own branch is a refusal is passed the same way, having
+        executed its changed line;
+      - for any other changed statement, an if or while included, execute
+        its changed line (a line with no instruction of its own, which no
+        traced run executes, falls back to its statement's first), or the
+        test of the if or while that directly holds it in a branch: the
+        guard deciding whether it runs, either way;
+      - for a changed except clause, or a changed statement directly in its
+        handler, also the try completing: its body left for a line outside
+        the try (or returning from it), the path on which no handler runs.
+    An enclosing if, while or try is never evidence: reaching the branch
+    around a guard is not reaching the guard. A refusal that no guard in its
+    function governs has no accepted path through it, and no control. A
+    changed statement of a module's own program counts as it is, a def line
+    (run at import) does not, and a changed module or class constant counts
+    where a function reads it. Its own process is traced with
+    sys.monitoring, recording each line and each arc (a line and the next
+    one run in the same frame, or its return); a child it starts runs a copy
+    that carries a tracing prologue (the child tree for gen2/ modules and
+    scripts, the path-handed copy for a tool) and its lines and arcs are
+    credited to the test running when it recorded them. Line numbers are
+    those of the repository file: the prologue shares an existing line.
   * a DDL trigger: a statement that succeeds enters the trigger (its WHEN is
     evaluated), in an instrumented copy of the DDL (the store suite only —
     the DDL mutants reach no other tests).
@@ -49,30 +72,49 @@ runner points at the mutant: a path-handed tool reaches only the module
 holding its path, and a DDL mutant only the store suite. For the
 supervisor's own files the canonical accepted-path tests (PREFERRED: a clean
 end commits, a regular file is staged as found, ...) are taken first where
-they are candidates. Otherwise candidates in a killer's class come first, then its module, then the rest; within those,
-the tests that took the fewest refusal or error paths in the target (an
-exception raised inside the file — a refusal, or an error it handles — or,
-for the DDL, a statement that failed), then those whose names state an
-accepted behaviour before those whose names state a refusal (NEGATIVE), then
-the fastest in the trace; for a mutant described as over-restricting the
-first two preferences are reversed (its paired control is a refusal that
-must still hold). A control already in the file stays chosen while it
-still qualifies, so a new trace does not trade verified controls for equal
-ones. The mutation run
+they are candidates. Otherwise the tests that took no refusal or error path
+in the target at all (no exception raised inside the file — a refusal, or
+an error it handles — nor, for the DDL, a statement that failed: every path
+they took through it was accepted, as far as a raise shows) come first
+(task 1c-repair-3); then candidates in a killer's class, then its module,
+then the rest; within those, the fewest such paths, then those whose names
+state an accepted behaviour before those whose names state a refusal
+(NEGATIVE), then the fastest in the trace — the same for a mutant that
+over-restricts: its control too is an accepted path the mutant still
+accepts (until task 1c-repair-3 it preferred a refusal that still held). A
+control already in the file stays chosen while it still qualifies under the
+rule above, unless it took a refusal path and a candidate that took none
+exists, so a new trace does not trade verified controls for equal ones. The
+mutation run
 checks that each control passes under its mutant; `choose --run LOG` reads a
 run's log, keeps each control that did not pass as rejected for that mutant
 (in the file, so it stays rejected), and takes the next candidate.
 
-What this cannot show: that the accepted path is the one the guard exists
-for. A line executed on a path that ends in another refusal, which the test
-expects, also counts; so does a statement that enters a trigger whose WHEN
-is false for a reason other than the guard's. A mutant with no candidate is
-recorded with an empty list and its reason, and the runner reports it.
+What the rule establishes, for a Python mutant with a paired control: in
+an unmutated traced run the control executed a line the mutant changes, or
+passed the guard directly governing a changed refusal without taking it;
+the mutation run then shows it passing under the mutant. What it does not
+establish: that the accepted path is the one the guard exists for, or that
+the test's assertions depend on that evaluation (a control that reaches the
+changed line and later fails on something else is not a control — the run
+rejects it — but one that reaches it and asserts nothing about it passes);
+which operand of a compound condition decided it; that the passing
+evaluation is the same one that executed a changed line of a multi-line
+guard; a refusal expressed as a returned value rather than a raise, which
+is treated as an ordinary statement (executed, not passed); and a line or
+arc run by a child that dies before its prologue, or between the tests'
+time windows. For the DDL: a statement that enters a trigger whose WHEN is
+false for a reason other than the guard's also counts. By-hand entries
+(MANUAL, READ_IN_KILLER) are judgments, each with its reason. A mutant with
+no candidate is recorded with an empty list and its reason, and the runner
+reports it.
 """
 from __future__ import annotations
 
 import argparse
 import ast
+import bisect
+import difflib
 import importlib
 import json
 import os
@@ -90,6 +132,10 @@ ROOT = Path(__file__).resolve().parent.parent
 TESTS = ROOT / "gen2" / "tests"
 CONTROLS = ROOT / "tools" / "gen2_mutation_controls.json"
 TOOL_ID = 3  # a sys.monitoring tool id no one else in the suite uses
+# Exceptions raised to return an outcome from inside a step, not to refuse: the supervisor's Waiting ("launching",
+# "waiting_launch", ...). Neither a refusal in the rule nor a refusal path in the ranking. Its subclass Held, the
+# router-call chokepoint's refusal, is raised by its own name and stays one.
+FLOW = frozenset({"Waiting"})
 
 # Mutants whose code the tracing cannot reach, with their controls and why.
 _REAL_GRAPH = "loads the same real gen2/boundaries.toml through the checker and shows what it grants still accepted"
@@ -170,26 +216,47 @@ def _watch(path, rel, out, at, shift):
     mon = sys.monitoring
     state = getattr(sys, "_gen2_controls_trace", None)
     if state is None:
-        state = sys._gen2_controls_trace = {"files": {}, "fd": os.open(out, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)}
+        state = sys._gen2_controls_trace = {"files": {}, "fd": os.open(out, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600), "last": {}, "seen": set()}
+        def emit(key, record):
+            if key not in state["seen"]:  # each line and each arc once per process: its time places it in a test's window
+                state["seen"].add(key)
+                os.write(state["fd"], (json.dumps({"t": time.time_ns(), **record}) + "\n").encode())
         def on_line(code, line):
             known = state["files"].get(code.co_filename)
             if known is None:
                 return mon.DISABLE
             rel, at, shift = known
             line = line - shift if line > at else line
-            os.write(state["fd"], (json.dumps({"t": time.time_ns(), "rel": rel, "line": line}) + "\n").encode())
-            return mon.DISABLE
+            frame = id(sys._getframe(1))
+            prev, state["last"][frame] = state["last"].get(frame), line
+            emit((rel, line), {"rel": rel, "line": line})
+            if prev is not None:
+                emit((rel, prev, line), {"rel": rel, "arc": [prev, line]})
+        def on_start(code, offset):
+            if code.co_filename not in state["files"]:
+                return mon.DISABLE
+            state["last"].pop(id(sys._getframe(1)), None)
+        def on_return(code, offset, value):
+            known = state["files"].get(code.co_filename)
+            if known is None:
+                return mon.DISABLE
+            prev = state["last"].pop(id(sys._getframe(1)), None)
+            if prev is not None:
+                emit((known[0], prev, -1), {"rel": known[0], "arc": [prev, -1]})
         try:
             mon.use_tool_id(4, "gen2-controls-child")
         except ValueError:
             pass
         def on_raise(code, offset, exc):
             known = state["files"].get(code.co_filename)
-            if known is not None:
+            if known is not None and type(exc).__name__ not in FLOW:
                 os.write(state["fd"], (json.dumps({"t": time.time_ns(), "rel": known[0], "raise": 1}) + "\n").encode())
-        mon.register_callback(4, mon.events.LINE, on_line)
-        mon.register_callback(4, mon.events.RAISE, on_raise)
-        mon.set_events(4, mon.events.LINE | mon.events.RAISE)
+        events = mon.events
+        mon.register_callback(4, events.LINE, on_line)
+        mon.register_callback(4, events.RAISE, on_raise)
+        mon.register_callback(4, events.PY_START, on_start)
+        mon.register_callback(4, events.PY_RETURN, on_return)
+        mon.set_events(4, events.LINE | events.RAISE | events.PY_START | events.PY_RETURN)
     state["files"][path] = (rel, at, shift)
 _watch(*WATCH)
 '''
@@ -213,7 +280,7 @@ def _traced_copy(text: str, path: Path, rel: str, helper: Path, out: Path) -> st
         else:
             break
     call = (f'__import__("runpy").run_path({str(helper)!r}, init_globals={{"WATCH": ({str(path)!r}, {rel!r}, {str(out)!r}, '
-            f'{line if line else 0}, {0 if line else 1})}})')
+            f'{line if line else 0}, {0 if line else 1}), "FLOW": {sorted(FLOW)!r}}})')
     lines = text.splitlines(keepends=True)
     if not line:
         return call + "\n" + text
@@ -359,25 +426,46 @@ def trace(out: Path) -> int:
     files.update(copies)
     current: dict = {"test": None}
     lines: dict[str, set] = defaultdict(set)
+    arcs: dict[str, set] = defaultdict(set)  # per test, (file, line, next line) within one frame; next -1: it returned from that line
+    last: dict[int, int] = {}  # a target frame's last line, by frame id (dropped when a frame starts or returns)
     mon = sys.monitoring
 
     def on_line(code, line):
         rel = files.get(code.co_filename)
         if rel is None:
             return mon.DISABLE
+        frame = id(sys._getframe(1))  # the monitored frame: the callback runs on top of it
+        prev, last[frame] = last.get(frame), line
         if current["test"] is not None:
             lines[current["test"]].add((rel, line))
-        return mon.DISABLE
+            if prev is not None:
+                arcs[current["test"]].add((rel, prev, line))
+
+    def on_start(code, offset):
+        if code.co_filename not in files:
+            return mon.DISABLE
+        last.pop(id(sys._getframe(1)), None)
+
+    def on_return(code, offset, value):
+        rel = files.get(code.co_filename)
+        if rel is None:
+            return mon.DISABLE
+        prev = last.pop(id(sys._getframe(1)), None)
+        if prev is not None and current["test"] is not None:
+            arcs[current["test"]].add((rel, prev, -1))
     raises: dict[str, dict] = defaultdict(lambda: defaultdict(int))  # per test, exceptions raised inside each target file
 
     def on_raise(code, offset, exc):
         rel = files.get(code.co_filename)
-        if rel is not None and current["test"] is not None:
+        if rel is not None and current["test"] is not None and type(exc).__name__ not in FLOW:
             raises[current["test"]][rel] += 1
     mon.use_tool_id(TOOL_ID, "gen2-controls")
-    mon.register_callback(TOOL_ID, mon.events.LINE, on_line)
-    mon.register_callback(TOOL_ID, mon.events.RAISE, on_raise)
-    mon.set_events(TOOL_ID, mon.events.LINE | mon.events.RAISE)
+    events = mon.events
+    mon.register_callback(TOOL_ID, events.LINE, on_line)
+    mon.register_callback(TOOL_ID, events.RAISE, on_raise)
+    mon.register_callback(TOOL_ID, events.PY_START, on_start)
+    mon.register_callback(TOOL_ID, events.PY_RETURN, on_return)
+    mon.set_events(TOOL_ID, events.LINE | events.RAISE | events.PY_START | events.PY_RETURN)
     windows, outcomes = {}, {}
     suite = unittest.defaultTestLoader.discover(str(TESTS), pattern="test_*.py")
     started = time.monotonic()
@@ -388,16 +476,20 @@ def trace(out: Path) -> int:
           f"{sorted(t for t, o in outcomes.items() if o != 'pass')}", flush=True)
     # a child's lines, to the test whose window holds them
     spans = sorted((w[0], w[1], t) for t, w in windows.items() if w[1] is not None)
+    starts = [span[0] for span in spans]
     if records.exists():
         for raw in records.read_text(encoding="utf-8").splitlines():
             rec = json.loads(raw)
-            for start, end, test in spans:
-                if start <= rec["t"] <= end:
-                    if "raise" in rec:
-                        raises[test][rec["rel"]] += 1
-                    else:
-                        lines[test].add((rec["rel"], rec["line"]))
-                    break
+            at = bisect.bisect_right(starts, rec["t"]) - 1
+            if at < 0 or rec["t"] > spans[at][1]:
+                continue  # between tests
+            test = spans[at][2]
+            if "raise" in rec:
+                raises[test][rec["rel"]] += 1
+            elif "arc" in rec:
+                arcs[test].add((rec["rel"], *rec["arc"]))
+            else:
+                lines[test].add((rec["rel"], rec["line"]))
     # the store suite again over the instrumented DDL: triggers entered and rows written by statements that succeed
     fx = importlib.import_module("gen2.tests.store_fixtures")
     ddl0 = fx.DDL_TEXT
@@ -412,6 +504,7 @@ def trace(out: Path) -> int:
     durations = {t: (w[1] - w[0]) / 1e9 for t, w in windows.items() if w[1] is not None}
     doc = {"outcomes": outcomes, "durations": durations, "store_outcomes": store_outcomes,
            "lines": {t: sorted([r, n] for r, n in s) for t, s in lines.items()},
+           "arcs": {t: sorted([r, a, b] for r, a, b in s) for t, s in arcs.items()},
            "raises": {t: dict(d) for t, d in raises.items()},
            "sql": {t: sorted([k, n] for k, n in s) for t, s in found.items()}}
     out.write_text(json.dumps(doc), encoding="utf-8")
@@ -421,49 +514,190 @@ def trace(out: Path) -> int:
 
 
 # -- choose --------------------------------------------------------------------------------------
-def _span_lines(text: str, old: str) -> set[int]:
-    at = text.find(old)
-    first = text.count("\n", 0, at) + 1
-    return set(range(first, first + old.count("\n") + (0 if old.endswith("\n") else 1)))
+def changed_lines(text: str, mutated: str) -> set[int]:
+    """The lines of the repository file a mutant changes, by difflib over
+    the whole file: each line it replaces or deletes, and for an insertion
+    the line the inserted code runs before (the previous one at a blank).
+    A line inside `old` that the mutant leaves as it was is not counted."""
+    before, after = text.splitlines(), mutated.splitlines()
+    out: set[int] = set()
+    for tag, i1, i2, _j1, _j2 in difflib.SequenceMatcher(None, before, after, autojunk=False).get_opcodes():
+        if tag in ("replace", "delete"):
+            out.update(range(i1 + 1, i2 + 1))
+        elif tag == "insert":
+            out.add(i1 + 1 if i1 < len(before) and before[i1].strip() else i1)
+    return out
 
 
-def evidence_lines(text: str, changed: set[int]) -> set[int]:
-    """The lines whose execution takes a path through the changed code: each
-    changed line inside a function body, and the test line of each if/while
-    that governs one (a changed refusal branch is passed through by the test
-    that decides against it) and the first line of each try whose handler
-    holds one (the path through it is the try body completing); for a
-    changed module or class assignment, the lines inside functions that read
-    the names it binds; a changed statement of a module's own program (not a
-    def, class, import or assignment) as it is. A def or class line, run at
-    import, is not counted."""
+def _span(nodes) -> set[int]:
+    return set().union(*(set(range(n.lineno, n.end_lineno + 1)) for n in nodes)) if nodes else set()
+
+
+def _own(node) -> set[int]:
+    """A statement's own lines: an if's or while's test, a for's target and
+    iterable, a with's items, an except clause; a simple statement whole. A
+    compound statement's body is its children's."""
+    if isinstance(node, (ast.If, ast.While)):
+        return set(range(node.test.lineno, node.test.end_lineno + 1))
+    if isinstance(node, (ast.For, ast.AsyncFor)):
+        return set(range(node.lineno, node.iter.end_lineno + 1))
+    if isinstance(node, (ast.With, ast.AsyncWith)):
+        return set(range(node.lineno, node.items[-1].context_expr.end_lineno + 1))
+    if isinstance(node, ast.ExceptHandler):
+        return set(range(node.lineno, (node.type.end_lineno if node.type else node.lineno) + 1))
+    if isinstance(node, (ast.Try, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return {node.lineno}
+    return set(range(node.lineno, node.end_lineno + 1))
+
+
+def requirements(text: str, changed: set[int]) -> list[tuple]:
+    """What a traced run must show to take an accepted path through the
+    code a mutant changes (module docstring, "What counts"); a control
+    meets any one of them.
+      ("line", lines, fallback)          it executed one of `lines`, the
+                                         changed ones or a direct guard's
+                                         test (or, where no traced run
+                                         executes any of them — a line with
+                                         no instruction of its own — one of
+                                         `fallback`, the statement's first)
+      ("pass", from_lines, lines, need)  it left one of from_lines, within
+                                         one frame, for a line not among
+                                         `lines` (or returned from it), and
+                                         executed a changed line of the guard
+                                         (`need`, where a traced run does)
+    Inside a function each changed line belongs to the innermost statement
+    whose own lines hold it. A changed refusal — a raise, or a call to a
+    function of the file that ends by raising — is passed: the guard that
+    directly governs it (the if or while whose branch holds it, the loop
+    whose body does, or the try whose handler does) must be left without
+    taking it; a changed if or while whose branch is a refusal likewise; any
+    other changed statement, an if or while included, must be executed.
+    Nothing encloses a guard in this: an outer branch reached is never
+    evidence. Outside functions: a changed module or class assignment, the
+    lines inside functions that read the names it binds; a changed statement
+    of a module's own program, as it is."""
     tree = ast.parse(text)
+    parent: dict = {}
+    for node in ast.walk(tree):
+        for field, value in ast.iter_fields(node):
+            for child in value if isinstance(value, list) else ():
+                if isinstance(child, ast.AST):
+                    parent[child] = (node, field)
     bodies = []  # (first, last) line of each function body
+    raising: set[str] = set()  # functions of the file whose last statement raises (a refusal: not FLOW)
+
+    def refusal(stmt) -> bool:
+        if isinstance(stmt, ast.Raise):
+            raised = stmt.exc.func if isinstance(stmt.exc, ast.Call) else stmt.exc
+            return getattr(raised, "id", getattr(raised, "attr", None)) not in FLOW
+        call = stmt.value if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call) else None
+        name = call and (call.func.attr if isinstance(call.func, ast.Attribute) else getattr(call.func, "id", None))
+        return name in raising
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             body = node.body if isinstance(node.body, list) else [node.body]
             bodies.append((body[0].lineno, max(getattr(n, "end_lineno", n.lineno) for n in body)))
+            if not isinstance(node, ast.Lambda) and isinstance(node.body[-1], ast.Raise) and refusal(node.body[-1]):
+                raising.add(node.name)
     inside = lambda n: any(a <= n <= b for a, b in bodies)
-    span = lambda nodes: set().union(*(set(range(n.lineno, n.end_lineno + 1)) for n in nodes)) if nodes else set()
-    keep = {n for n in changed if inside(n)}
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.If, ast.While)) and inside(node.lineno) and changed & (span(node.body) | span(node.orelse)):
-            keep.update(range(node.test.lineno, node.test.end_lineno + 1))
-        if isinstance(node, ast.Try) and inside(node.lineno) and changed & span(node.handlers):
-            keep.add(node.body[0].lineno)
+
+    def refused(block) -> bool:
+        return bool(block) and refusal(block[-1])
+
+    owners = [n for n in ast.walk(tree) if isinstance(n, (ast.stmt, ast.ExceptHandler)) and inside(n.lineno)]
+
+    def owner(line: int):
+        holding = [n for n in owners if line in _own(n)]
+        return max(holding, key=lambda n: (n.lineno, -n.end_lineno)) if holding else None
+
+    def passed(stmt):
+        """The guard directly governing a changed refusal, and what taking
+        it means; None for a refusal no guard in its function governs."""
+        node = stmt
+        while node in parent:
+            above, field = parent[node]
+            if isinstance(above, (ast.If, ast.While)) and field in ("body", "orelse"):
+                own = _own(above)
+                return ("pass", frozenset(own), frozenset(own | _span(getattr(above, field))), frozenset())
+            if isinstance(above, (ast.For, ast.AsyncFor)) and field == "body":
+                own = _own(above)
+                return ("pass", frozenset(own), frozenset(own | _span(above.body)), frozenset())
+            if isinstance(above, ast.ExceptHandler):
+                attempt = parent[above][0]
+                return ("pass", frozenset(_span(attempt.body)), frozenset(range(attempt.lineno, attempt.end_lineno + 1)), frozenset())
+            if isinstance(above, (ast.Try, ast.With, ast.AsyncWith)):  # no branch: the guard is further out
+                node = above
+                continue
+            return None
+        return None
+
+    def governing(stmt):
+        """The if or while that directly holds a statement in a branch (a with
+        or a try body between them decides nothing); None for any other."""
+        node = stmt
+        while node in parent:
+            above, field = parent[node]
+            if isinstance(above, (ast.If, ast.While)) and field in ("body", "orelse"):
+                return above
+            if not (isinstance(above, (ast.With, ast.AsyncWith)) or (isinstance(above, ast.Try) and field == "body")):
+                return None
+            node = above
+        return None
+
+    reqs: list[tuple] = []
+    for stmt in sorted({o for o in map(owner, sorted(n for n in changed if inside(n))) if o is not None}, key=lambda n: n.lineno):
+        mine = frozenset(_own(stmt) & changed)
+        if isinstance(stmt, (ast.If, ast.While)):
+            branch = stmt.body if refused(stmt.body) else stmt.orelse if refused(stmt.orelse) else None
+            reqs.append(("pass", frozenset(_own(stmt)), frozenset(_own(stmt) | _span(branch)), mine) if branch else
+                        ("line", mine or frozenset({stmt.lineno}), frozenset({stmt.lineno})))
+        elif refusal(stmt):
+            guard = passed(stmt)
+            if guard is not None:
+                reqs.append(guard)
+        else:
+            reqs.append(("line", mine or frozenset({stmt.lineno}), frozenset({stmt.lineno})))
+        guard = None if refusal(stmt) or isinstance(stmt, (ast.If, ast.While)) else governing(stmt)  # a changed guard is its own
+        if guard is not None:  # the guard deciding whether a changed statement runs, evaluated either way
+            reqs.append(("line", frozenset(_own(guard)), frozenset({guard.lineno})))
+        handler = stmt if isinstance(stmt, ast.ExceptHandler) else parent.get(stmt, (None,))[0]
+        if isinstance(handler, ast.ExceptHandler):  # a changed handler, or its clause: the try completing needs none
+            attempt = parent[handler][0]
+            reqs.append(("pass", frozenset(_span(attempt.body)), frozenset(range(attempt.lineno, attempt.end_lineno + 1)), frozenset()))
     for node in tree.body:
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Import, ast.ImportFrom, ast.Assign, ast.AnnAssign)):
-            keep |= changed & span([node])
+            if changed & _span([node]):
+                reqs.append(("line", frozenset(changed & _span([node])), frozenset({node.lineno})))
     names = set()
     for node in ast.walk(tree):
         if isinstance(node, (ast.Assign, ast.AnnAssign)) and not inside(node.lineno) and changed & set(range(node.lineno, node.end_lineno + 1)):
             for target in (node.targets if isinstance(node, ast.Assign) else [node.target]):
                 names.update(n.id for n in ast.walk(target) if isinstance(n, ast.Name))
-    for node in ast.walk(tree):
-        if (isinstance(node, ast.Name) and node.id in names) or (isinstance(node, ast.Attribute) and node.attr in names):
-            if inside(node.lineno):
-                keep.add(node.lineno)
-    return keep
+    reading = {node.lineno for node in ast.walk(tree) if ((isinstance(node, ast.Name) and node.id in names) or (isinstance(node, ast.Attribute) and node.attr in names))
+               and inside(node.lineno)}
+    if reading:
+        reqs.append(("line", frozenset(reading), frozenset(reading)))
+    return list(dict.fromkeys(reqs))
+
+
+def describe(target: str, reqs: list[tuple]) -> str:
+    """A requirement list in words, for the controls file."""
+    def lines(found) -> str:
+        found = sorted(found)
+        runs, start = [], found[0]
+        for a, b in zip(found, found[1:] + [None]):
+            if b != a + 1:
+                runs.append(f"{start}" if start == a else f"{start}-{a}")
+                start = b
+        return ", ".join(runs)
+    parts = []
+    for req in reqs:
+        if req[0] == "line":
+            parts.append(f"executes line {lines(req[1])}" + (f" (else {lines(req[2])})" if req[2] != req[1] else ""))
+        else:
+            parts.append(f"leaves line {lines(req[1])} for a line outside {lines(req[2])} (or returns)"
+                         + (f", having executed line {lines(req[3])}" if req[3] and req[3] != req[1] else ""))
+    return f"{target}: " + "; or ".join(parts)
 
 
 def _ddl_guard(ddl: str, m) -> tuple[str, str] | None:
@@ -541,6 +775,10 @@ def choose(trace_file: Path, runs: list[Path], probe_width: int = 0, jobs: int =
     for test, pairs in tr["lines"].items():
         for rel, n in pairs:
             by_line[(rel, n)].add(test)
+    by_from: dict[tuple[str, int], dict[int, set]] = defaultdict(lambda: defaultdict(set))  # (file, line) -> next line -> tests
+    for test, found in tr["arcs"].items():
+        for rel, a, b in found:
+            by_from[(rel, a)][b].add(test)
     by_sql: dict[tuple[str, str], set] = defaultdict(set)
     for test, pairs in tr["sql"].items():
         for kind, name in pairs:
@@ -586,12 +824,18 @@ def choose(trace_file: Path, runs: list[Path], probe_width: int = 0, jobs: int =
                     cands, why = by_sql[("update", guard[1])] & store_passing, f"a statement that succeeds updates a row of {guard[1]}"
         elif m.target.endswith(".py"):
             text = (ROOT / m.target).read_text(encoding="utf-8")
-            changed = set()
-            for old in [m.old, *(o for o, _ in m.also)]:
-                changed |= _span_lines(text, old)
-            wanted = evidence_lines(text, changed)
-            cands = set().union(*(by_line[(m.target, n)] for n in wanted)) & passing if wanted else set()
-            why = f"executes {m.target} line(s) {sorted(wanted)}"
+            reqs = requirements(text, changed_lines(text, g.mutate(text, m)))
+            ran = lambda found: set().union(*(by_line[(m.target, n)] for n in found))  # the tests that executed one of these lines
+            cands = set()
+            for req in reqs:
+                if req[0] == "line":
+                    cands |= ran(req[1]) or ran(req[2])
+                else:
+                    passers = {t for n in req[1] for nxt, tests in by_from[(m.target, n)].items() if nxt not in req[2] for t in tests}
+                    cands |= passers & ran(req[3]) if ran(req[3]) else passers
+            cands &= passing
+            why = (describe(m.target, reqs) if reqs else
+                   f"{m.target}: the changed code is a refusal that no guard in its function governs, so no accepted path passes through it")
             if how[0] == "attr":
                 cands = {t for t in cands if t.split(".")[0] == how[1]}  # only that module is handed the mutant's path
         elif m.target.startswith("gen2/schema/") and m.target.endswith(".schema.json"):
@@ -609,11 +853,9 @@ def choose(trace_file: Path, runs: list[Path], probe_width: int = 0, jobs: int =
         classes = {k.rsplit(".", 1)[0] for k in m.killers}
         modules = {k.split(".")[0] for k in m.killers}
         preferred = PREFERRED.get(m.target, ())
-        # an over-restricting mutant refuses what should be accepted: its paired control is a refusal that must still hold
-        sign = -1 if "over-restrict" in m.description else 1
-        rank = lambda t: (preferred.index(t) if t in preferred else len(preferred),
-                          0 if t.rsplit(".", 1)[0] in classes else 1 if t.split(".")[0] in modules else 2, sign * refusals(t, m.target),
-                          sign * bool(NEGATIVE.search(t.rsplit(".", 1)[1])), tr["durations"].get(t, 99.0), t)
+        rank = lambda t: (preferred.index(t) if t in preferred else len(preferred), refusals(t, m.target) > 0,
+                          0 if t.rsplit(".", 1)[0] in classes else 1 if t.split(".")[0] in modules else 2, refusals(t, m.target),
+                          bool(NEGATIVE.search(t.rsplit(".", 1)[1])), tr["durations"].get(t, 99.0), t)
         plans[m.mid] = (sorted(cands, key=rank), why)
     to_probe = {mid for mid in rejected if mid in plans and rejected[mid] - set(previous.get(mid, {}).get("rejected", ()))} if probe_width else set()
     to_probe |= set(reprobe)
@@ -645,8 +887,11 @@ def choose(trace_file: Path, runs: list[Path], probe_width: int = 0, jobs: int =
                 unpaired.append(m.mid)
         else:
             ranked, why = plans[m.mid]
-            kept = [c for c in previous.get(m.mid, {}).get("controls", ()) if c in ranked and c not in rejected.get(m.mid, set())][:1]
-            picked = [] if m.mid in exhausted else kept or [c for c in ranked if c not in rejected.get(m.mid, set())][:1]
+            fresh = [c for c in ranked if c not in rejected.get(m.mid, set())]
+            kept = [c for c in previous.get(m.mid, {}).get("controls", ()) if c in fresh][:1]
+            if kept and fresh and refusals(kept[0], m.target) and not refusals(fresh[0], m.target):
+                kept = []  # a kept control that took a refusal path yields to one that took none
+            picked = [] if m.mid in exhausted else kept or fresh[:1]
             tried = len(rejected.get(m.mid, ()))
             effect = ("an over-restricting mutant refuses the accepted path, which every test tried needs (in its case or its fixture)"
                       if "over-restrict" in m.description else "the mutant changes what the accepted path does rather than removing a refusal")
