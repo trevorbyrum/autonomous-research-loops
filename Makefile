@@ -62,8 +62,11 @@ gen2-catalog: gen2-venv
 gen2-catalog-check: gen2-venv
 	$(PYTHON) tools/gen_source_catalog.py --check
 
+# Verbose, with the whole output kept in a log file whose path it prints
+# (tools/gen2_test.py; GEN2_TEST_LOG names it). No pipe: the exit status is
+# unittest's own.
 gen2-test: gen2-venv
-	$(PYTHON) -m unittest discover -s gen2/tests -p 'test_*.py'
+	$(PYTHON) tools/gen2_test.py
 
 # The whole store suite again with every trigger re-created in reverse order;
 # every test and subtest must have the same outcome (task 0b cleanup 2: no
