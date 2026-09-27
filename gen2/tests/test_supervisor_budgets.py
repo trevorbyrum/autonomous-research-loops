@@ -24,6 +24,13 @@ so a write that keeps failing while reads succeed stalls within its budget,
 by attempts or by time; recover() resumes a stalled job without refilling an
 exhausted budget.
 
+A write failing while the job is stalled on another incident (task
+1c-repair-3; Astra 1c re-review 2, L-6): a job stalled on an outage whose
+deadline passes still ends its group locally; when that termination's record
+cannot be staged, the write is retried within its budget and then waits for
+recover() too, and the incident the job stalled on stays as raised (kind,
+since and deadline).
+
 Refused lifecycle writes and unresolved outcome_unknown (task 1c-repair-2;
 L-6, RG-3, L-4): a write the router refuses — here a failure's end — is sent
 afresh within the refusal budget, then the job stalls with an owned,
@@ -274,6 +281,27 @@ class BudgetFaults:
         self.assertEqual(self.state(), before)
         self.assertEqual(self.supervisor.run(MAIN), "committed")  # the journal writable again: nothing was lost
         self.assertEqual(self.ended(), self.ended_clean())
+
+    def test_a_write_failing_while_stalled_is_bounded_and_keeps_the_incident(self) -> None:
+        self.assertEqual(self.submit(HANG_WITH_DESCENDANT), "running")
+        self.wait_for_file("scratch/descendant.pid")
+        identity = self.job_file("identity.json")
+        self.control.down = True
+        self.assertEqual([self.supervisor.advance(MAIN) for _ in range(6)], ["router_unavailable"] * 5 + ["stalled"])
+        raised, before = self.incident("router_unreachable"), self.state()
+        self.spool.quota_bytes = self.spool.usage()
+        staged, stage = [], self.spool.stage
+        self.spool.stage = lambda *args, **kwargs: staged.append(args[0]) or stage(*args, **kwargs)
+        self.clock.set(AFTER_DEADLINE)
+        self.assertEqual([self.supervisor.advance(MAIN) for _ in range(6)], ["write_failed"] * 3 + ["stalled"] * 3)
+        self.assertEqual(jobs.members(identity), [])  # ended at its deadline, whatever the router and the spool
+        self.assertEqual(len(staged), 3)  # the write budget (3); spent while the job is stalled, the write waits for recover()
+        self.assertEqual((self.journal()["incident"], self.journal()["budgets"]["write"], self.control.refused), (raised, 3, 6))
+        self.assertEqual(self.state(), before)
+        self.spool.quota_bytes = 1 << 30
+        self.control.down = False
+        self.assertEqual(self.supervisor.recover()[MAIN], "failed")
+        self.assertEqual(self.value("SELECT failure_class FROM invocations WHERE invocation_id = ?", MAIN), "timeout")
 
     # -- A5: the router budget belongs to the operation, not to whichever call answers ------------------
     def test_a_write_that_keeps_failing_stalls_although_reads_succeed(self) -> None:

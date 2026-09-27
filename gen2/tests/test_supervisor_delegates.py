@@ -29,6 +29,20 @@ the journal's incident compared whole, the store read back whole. The
 control: once the router is reachable, recover() and the parent's run end
 the delegate and then the parent, as above.
 
+The router-call chokepoint (task 1c-repair-3; Astra 1c re-review 2, L-6):
+a parent stalled on its claim through an outage is claimed again by no
+caller — its own advance, its delegate's advance needing its capability (the
+recursive grant, Astra's reproduction), a caller holding another job and a
+stale copy of its journal, for every control method, or recover() once no
+recovery attempt is left — and the same holds for a delegate stalled under
+an ended parent, with its parent ending it among the callers. Oracles: the
+calls counted at the ControlBackend, the incident and budgets compared
+whole, the store read back whole; a stale caller of the incident writer
+renews nothing. The control: the router back, recover() starts the parent
+and then its delegate. A parent that ended not_admitted is never claimed
+again for its delegate (a later claim could admit work no job will run): the
+delegate is not admitted either, and nothing is sent.
+
 What this cannot show: a delegate that left its own session (jobs.py), or
 delegates held by another supervisor (a delegate is always a job of its
 parent's supervisor, WorkOrder).
@@ -42,6 +56,7 @@ import unittest
 from gen2.core.control import ControlUnavailable
 from gen2.core.instants import utc_instant_ns
 from gen2.supervisor import jobs
+from gen2.supervisor.supervisor import Held, Waiting
 from gen2.tests import children
 from gen2.tests import router_fixtures as rf
 from gen2.tests.supervisor_fixtures import AFTER_DEADLINE, MAIN, PARENT, SupervisedTestCase, Unreachable, succeed
@@ -49,6 +64,7 @@ from gen2.tests.supervisor_fixtures import AFTER_DEADLINE, MAIN, PARENT, Supervi
 HANG_WITH_DESCENDANT = [{"op": "spawn_descendant", "marker": "descendant.pid"}, {"op": "hang"}]
 GATED = [{"op": "wait_for", "name": "gate", "seconds": 60}]
 RUN_S = 10.0  # a parent's end with its delegate takes well under a second; a mutant that never ends it costs this per test
+METHODS = ("invocation_status", "claim", "record_transition", "request_cancel", "reconcile", "commit_outcome")  # every control call
 
 
 class Watch(Unreachable):
@@ -322,6 +338,128 @@ class ParentEnds:
                                             "open_holds": 0, "cleared_holds": 0, "reconciliations": [], "other_tables": []})
         record = self.evidence_record(MAIN)
         self.assertEqual((record["termination"], record["descendants"]["handling"]), ({"reason": "timeout"}, "terminated"))
+
+
+    # -- the router-call chokepoint (task 1c-repair-3; Astra 1c re-review 2, L-6) ------------------------
+    def stalled_parent(self) -> dict:
+        """The parent's claim cannot reach the router: its advances spend its
+        outage budget (5), then it stalls on an incident; its delegate's order
+        is prepared, needing the parent's capability to be claimed."""
+        self.control.down = True
+        self.supervisor.prepare(self.order(self.KIND, [{"op": "hang"}], inv=PARENT, deadline=rf.DEADLINE))
+        self.assertEqual([self.supervisor.advance(PARENT) for _ in range(6)], ["router_unavailable"] * 5 + ["stalled"])
+        incident = self.journal(PARENT)["incident"]
+        self.assertEqual((incident["kind"], incident["method"], self.control.refused), ("router_unreachable", "claim", 6))
+        self.supervisor.prepare(self.order("delegate", HANG_WITH_DESCENDANT))
+        return incident
+
+    def nothing_sent(self, inv: str, calls: int, incident: dict, budgets: dict, before: dict) -> None:
+        """No control call made, the stalled job's incident (its since and
+        deadline included) and budgets as they were, the store unchanged."""
+        self.assertEqual(self.control.calls, calls)
+        self.assertEqual((self.journal(inv)["incident"], self.journal(inv)["budgets"]), (incident, budgets))
+        self.assertEqual(self.state(exclude=()), before)
+
+    def refused_at_the_chokepoint(self, supervisor, caller: str, inv: str) -> None:
+        """Every control method for `inv`, called as another job holding a
+        stale copy of the journal: refused (Held), whatever the caller holds."""
+        for method in METHODS:
+            with self.assertRaises(Waiting) as raised:
+                supervisor._call(supervisor.job(caller), {"budgets": {}}, method, {"invocation_id": inv})
+            self.assertIsInstance(raised.exception, Held, method)
+        supervisor._incident(supervisor.job(inv), {"budgets": {}}, "router_unreachable")  # nor is it renewed by a stale caller of the writer
+
+    def test_a_delegate_does_not_retry_its_stalled_parents_claim(self) -> None:
+        """Astra's reproduction (1c re-review 2, BLOCK 1): a restarted
+        supervisor, recover() not run, half an hour later. Each of the
+        delegate's advances needs its parent's capability, and the parent's
+        claim is refused at the chokepoint: no call, the parent's incident
+        (deadline included) and budgets as they were, the delegate spending
+        nothing, the store unchanged. Control: the router back, recover()
+        starts the parent, then the delegate."""
+        incident = self.stalled_parent()
+        calls, budgets, before = self.control.calls, self.journal(PARENT)["budgets"], self.state(exclude=())
+        self.clock.set("2026-09-27T10:30:00Z")
+        supervisor = self.make_supervisor()
+        self.assertEqual({supervisor.advance(MAIN) for _ in range(12)}, {"parent_stalled"})
+        self.nothing_sent(PARENT, calls, incident, budgets, before)
+        self.assertIsNone(self.job_file("journal.json"))  # the delegate kept nothing: it spent no budget, it holds no incident
+        self.control.down = False
+        self.assertEqual(self.make_supervisor().recover(), {PARENT: "running", MAIN: "running"})
+        self.assertEqual(self.journal(PARENT)["budgets"]["recovery"], 1)
+        self.wait_for_file("scratch/descendant.pid")
+
+    def test_no_caller_makes_a_stalled_parents_control_call(self) -> None:
+        """Whoever calls for the parent stalled on its claim — its own advance,
+        its delegate's advance (the recursive grant), another job holding a
+        stale copy of its journal, recover() with no recovery attempt left —
+        nothing is sent and its incident stays as raised."""
+        incident = self.stalled_parent()
+        calls, budgets, before = self.control.calls, self.journal(PARENT)["budgets"], self.state(exclude=())
+        self.clock.set("2026-09-27T10:30:00Z")
+        supervisor = self.make_supervisor()
+        with self.subTest(caller="its own advance"):
+            self.assertEqual({supervisor.advance(PARENT) for _ in range(3)}, {"stalled"})
+            self.nothing_sent(PARENT, calls, incident, budgets, before)
+        with self.subTest(caller="its delegate's advance: the recursive grant"):
+            self.assertEqual({supervisor.advance(MAIN) for _ in range(3)}, {"parent_stalled"})
+            self.nothing_sent(PARENT, calls, incident, budgets, before)
+        with self.subTest(caller="another job, holding a stale copy of its journal"):
+            self.refused_at_the_chokepoint(supervisor, MAIN, PARENT)
+            self.nothing_sent(PARENT, calls, incident, budgets, before)
+        with self.subTest(caller="recover(), with no recovery attempt left"):
+            for attempt in (1, 2, 3):  # still down: each resumption makes its claim once and stalls again at once
+                self.assertEqual(supervisor.recover(), {PARENT: "stalled", MAIN: "parent_stalled"})
+                self.assertEqual((self.control.calls, self.journal(PARENT)["budgets"]["recovery"]), (calls + attempt, attempt))
+            incident, budgets, before = self.journal(PARENT)["incident"], self.journal(PARENT)["budgets"], self.state(exclude=())
+            self.assertEqual(supervisor.recover(), {PARENT: "stalled", MAIN: "parent_stalled"})
+            self.nothing_sent(PARENT, calls + 3, incident, budgets, before)
+
+    def test_no_caller_makes_a_stalled_delegates_control_call(self) -> None:
+        """The same for a delegate stalled on its status read under an ended
+        parent: its parent ending it (A5-R), its own advance, another job
+        holding a stale copy of its journal, recover() with no recovery
+        attempt left."""
+        incident = self.stalled_delegate("invocation_status")
+        self.clock.set("2026-09-27T10:30:00Z")
+        supervisor = self.make_supervisor(control=self.down)
+        budgets, before = self.journal()["budgets"], self.state(exclude=())
+
+        def nothing_sent(failing: int) -> None:
+            self.assertEqual((self.down.failing, self.journal()["incident"], self.journal()["budgets"]), (failing, incident, budgets))
+            self.assertEqual(self.state(exclude=()), before)
+        with self.subTest(caller="its parent ending it"):
+            self.assertEqual({supervisor.advance(PARENT) for _ in range(3)}, {"delegates_pending"})
+            nothing_sent(6)
+        with self.subTest(caller="its own advance"):
+            self.assertEqual({supervisor.advance(MAIN) for _ in range(3)}, {"stalled"})
+            nothing_sent(6)
+        with self.subTest(caller="another job, holding a stale copy of its journal"):
+            self.refused_at_the_chokepoint(supervisor, PARENT, MAIN)
+            nothing_sent(6)
+        with self.subTest(caller="recover(), with no recovery attempt left"):
+            for attempt in (1, 2, 3):  # its status read still fails: each resumption makes it once and stalls again at once
+                self.assertEqual(supervisor.recover(), {PARENT: "delegates_pending", MAIN: "stalled"})
+                self.assertEqual((self.down.failing, self.journal()["budgets"]["recovery"]), (6 + attempt, attempt))
+            incident, budgets, before = self.journal()["incident"], self.journal()["budgets"], self.state(exclude=())
+            self.assertEqual(supervisor.recover(), {PARENT: "delegates_pending", MAIN: "stalled"})
+            nothing_sent(9)
+
+    def test_a_parent_not_admitted_is_never_claimed_again_for_its_delegate(self) -> None:
+        """The parent's claim is refused (its topic paused) and it ends
+        not_admitted. The pause lifts; its delegate needs its capability, and
+        the chokepoint sends nothing for a settled job: a second claim would
+        admit work that no job will ever run, holding a lease. The delegate is
+        not admitted either, with the reason, and nothing is sent for it."""
+        self.x("UPDATE queue_entries SET paused_at = ? WHERE topic_id = ?", "2026-09-27T10:00:00Z", rf.TOPIC)
+        self.assertEqual(self.supervisor.submit(self.order(self.KIND, [{"op": "hang"}], inv=PARENT, deadline=rf.DEADLINE)), "not_admitted")
+        self.x("UPDATE queue_entries SET paused_at = NULL WHERE topic_id = ?", rf.TOPIC)
+        calls, before = self.control.calls, self.state(exclude=())
+        self.assertEqual([self.make_supervisor().submit(self.order("delegate", HANG_WITH_DESCENDANT)), self.supervisor.advance(MAIN)], ["not_admitted"] * 2)
+        self.assertEqual((self.control.calls, self.state(exclude=())), (calls, before))
+        self.assertEqual(self.rows("SELECT invocation_id FROM invocations"), [])
+        self.assertEqual((self.journal()["settled"], self.journal()["refused"]["reason"]), ("not_admitted", "parent_not_admitted"))
+        self.assertIsNone(self.journal().get("grant"))
 
 
 class ResearchPassParentTest(ParentEnds, SupervisedTestCase):

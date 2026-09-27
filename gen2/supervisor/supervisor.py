@@ -59,12 +59,19 @@ and time from its first unresolved look, per episode), recover()
 resumptions, launch refusals, launcher starts and commit re-sends. Past the
 router, write, refusal or unknown budget the job stalls with an owned,
 deadlined incident naming the budget and what it last met, which only
-recover() — itself budgeted, and refilling nothing — resumes, whoever
-advances the job (a parent ending its stalled delegate sends it nothing); an
-unresolved episode keeps its hold, since only its reconciliation clears it
-(L-4). An exhausted launch, spawn or commit budget is recorded as an
-incident beside the job's end; a journal that cannot be written raises
-ControlFailure out of band (RG-3). Each advance is one step, and run() is
+recover() — itself budgeted, and refilling nothing — closes. An unresolved
+episode keeps its hold, since only its reconciliation clears it (L-4). An
+exhausted launch, spawn or commit budget is recorded as an incident beside
+the job's end; a journal that cannot be written raises ControlFailure out of
+band (RG-3).
+Every router call goes through one chokepoint, _call(), which makes none for
+a job stalled on an open incident or settled — as that job's own durable
+journal says, whoever asks: its own advance, its parent ending it, its
+delegate needing its capability, a recover() with no recovery attempt left.
+So a stalled job's spent budget stays spent until recover() closes its
+incident, and a settled job is never claimed again. An open incident is
+write-once: nothing renews its kind, since or deadline (L-6, RG-3; Astra 1c
+re-review 2, L-6). Each advance is one step, and run() is
 bounded by its timeout. A parent waiting on its delegates retries nothing of
 its own: each advance reads its status and advances each delegate, whose own
 budgets apply, so a stalled delegate holds its parent at that delegate's
@@ -150,6 +157,16 @@ class Waiting(Exception):
     """This advance cannot proceed now; the job keeps everything it holds."""
 
 
+class Held(Waiting):
+    """The chokepoint made no router call (Supervisor._call): the job the
+    request is for is stalled on an open incident ("stalled"), or settled
+    (`settled`: its end). Nothing was written."""
+
+    def __init__(self, handle: str, settled: str | None) -> None:
+        super().__init__("stalled" if settled is None else settled)
+        self.handle, self.settled = handle, settled
+
+
 class ControlFailure(Exception):
     """Out of band (RG-3: failed incident persistence is a control failure):
     a durable write failed and the job's own record of it — its journal,
@@ -193,10 +210,13 @@ class Supervisor:
     def recover(self) -> dict[str, str]:
         """After a restart, or once the router is back: every job this
         supervisor holds, advanced from what its handle finds. A job stalled
-        on an incident resumes here, drawing on its recovery budget; the
-        budget that ran out stays spent (an outage or a failing write is
-        exhausted until that operation makes progress), so a resumption that
-        fails again stalls again at once (L-6; Astra 1c review A5). A job
+        on an incident resumes here, drawing on its recovery budget: that
+        closes its incident, the only way its calls pass the chokepoint again
+        (_call). The budget that ran out stays spent (an outage or a failing
+        write is exhausted until that operation makes progress), so a
+        resumption that fails again stalls again at once (L-6; Astra 1c
+        review A5). With no recovery attempt left the incident stays open as
+        raised, and the job's calls stay refused. A job
         whose journal cannot be written is reported as control_failure, and
         once every job was tried ControlFailure is raised naming them."""
         outcomes, failures = {}, []
@@ -251,10 +271,8 @@ class Supervisor:
         if journal.get("settled"):
             return journal["settled"]
         try:
-            self._observe(job, order, journal)
-            if journal.get("incident"):
-                return "stalled"
-            return self._drive(job, order, journal)
+            self._observe(job, order, journal)  # local: a stalled job's deadline is still enforced (C-10)
+            return self._drive(job, order, journal)  # a stalled job's first router call is refused at the chokepoint: "stalled"
         except Waiting as waiting:
             return str(waiting)
         except (SpoolFull, OSError) as failure:  # a durable write failed: an infrastructure failure, never a completion (C-10)
@@ -287,7 +305,15 @@ class Supervisor:
     def _incident(self, job: jobs.Job, journal: dict, kind: str, key: str = "incident", **facts) -> None:
         """An owned, deadlined control incident (RG-3), kept in the job's
         journal: "incident" is the one a stalled job waits on until recover();
-        "exhausted" records a retry budget that ran out, beside the job's end."""
+        "exhausted" records a retry budget that ran out, beside the job's end.
+        Write-once while open: one already raised in the job's durable journal
+        — whatever copy the caller holds — is kept as it was, kind, since and
+        deadline included, and nothing is written; only recover() closes an
+        incident (L-6, RG-3; Astra 1c re-review 2, L-6)."""
+        raised = (job.read("journal.json") or {}).get(key)
+        if raised:
+            journal[key] = raised
+            return
         journal[key] = {"kind": kind, "since": self._now(), "owner": f"supervisor:{self.station_id}",
                         "deadline_at": self._after(self.policy.incident_window_s), **facts}
         self._save(job, journal)
@@ -295,9 +321,8 @@ class Supervisor:
     def _exhausted(self, job: jobs.Job, journal: dict, budget: str, last_refusal: dict | None, result_ref: dict | None) -> None:
         """A retry budget ran out (RG-3; Astra 1c review A11): which budget,
         the last refusal and the result it concerns, owned and deadlined —
-        recorded before the job's end, once."""
-        if not journal.get("exhausted"):
-            self._incident(job, journal, "retry_exhausted", key="exhausted", budget=budget, last_refusal=last_refusal, result_ref=result_ref)
+        recorded before the job's end, once (the first stays: _incident)."""
+        self._incident(job, journal, "retry_exhausted", key="exhausted", budget=budget, last_refusal=last_refusal, result_ref=result_ref)
 
     def _write_failed(self, job: jobs.Job, failure: Exception) -> str:
         """A durable write failed — the spool full or refusing, a file-system
@@ -305,8 +330,11 @@ class Supervisor:
         journal is never made again), and the write is retried on later
         advances within the write budget; exhausted, the job stalls with an
         owned, deadlined incident until recover() (C-10, RG-3; Astra 1c
-        review A4). When the journal itself cannot be written the incident
-        cannot be kept either: ControlFailure, out of band."""
+        review A4) — or, stalled on another incident already (a record of a
+        termination made while the router was away, say), keeps that one as
+        raised and waits with it (_observe). When the journal itself cannot
+        be written the incident cannot be kept either: ControlFailure, out of
+        band."""
         error = f"{type(failure).__name__}: {failure}"[:500]
         try:
             journal = self._journal(job)  # what is durable: the failed operation's unsaved changes are dropped
@@ -314,9 +342,8 @@ class Supervisor:
                 journal["write_failure"] = {"at": self._now(), "error": error}
                 self._save(job, journal)
                 return "write_failed"
-            if not journal.get("incident"):  # an incident already open stays as it was raised
-                self._incident(job, journal, "durable_write_failed", phase="delivery" if journal.get("collected") or journal.get("pending") else "collection",
-                               error=error)
+            self._incident(job, journal, "durable_write_failed", phase="delivery" if journal.get("collected") or journal.get("pending") else "collection",
+                           error=error)
             return "stalled"
         except OSError as unwritable:
             raise ControlFailure(f"{job.handle}: a durable write failed ({error}) and its incident cannot be written "
@@ -377,12 +404,25 @@ class Supervisor:
     READS = frozenset({"invocation_status"})
 
     def _call(self, job: jobs.Job, journal: dict, method: str, request: dict) -> dict:
-        """One router call. Unreachable: the same request is sent again on a
-        later advance. An outage is budgeted from its first failed call until
-        a write the router answers — a successful read refunds nothing (Astra
-        1c review A5) — by attempts and by time; past either, the job stalls
-        with an owned, deadlined incident until recover(), which does not
-        refill it (C-10, L-6)."""
+        """One router call: the chokepoint every control call goes through.
+        None is made for a job stalled on an open incident, or settled — the
+        job the request is for, as its own durable journal says, whatever
+        job or journal copy the caller holds — whoever calls: its advance,
+        its parent ending it, its delegate needing its capability, recover()
+        with no recovery attempt left. Held is raised and nothing is written:
+        the incident stays as raised, its budget spent, until recover() closes
+        it; a settled job is never sent anything again (L-6, RG-3; Astra 1c
+        re-review 2, L-6).
+        Unreachable: the same request is sent again on a later advance. An
+        outage is budgeted from its first failed call until a write the
+        router answers — a successful read refunds nothing (Astra 1c review
+        A5) — by attempts and by time; past either, the job stalls with an
+        owned, deadlined incident until recover(), which does not refill it
+        (C-10, L-6)."""
+        owner = self.job(request["invocation_id"])
+        held = owner.read("journal.json") or {}
+        if held.get("incident") or held.get("settled"):
+            raise Held(owner.handle, held.get("settled"))
         try:
             response = getattr(self.control, method)(request)
         except ControlUnavailable:
@@ -416,7 +456,8 @@ class Supervisor:
     def _observe(self, job: jobs.Job, order: dict, journal: dict) -> None:
         if journal.get("collected"):
             return
-        stalled_on_a_write = (journal.get("incident") or {}).get("kind") == "durable_write_failed"  # recover() retries it, nothing else does
+        # a write whose budget ran out while the job is stalled (on it, or on another incident): recover() retries it, nothing else does
+        stalled_on_a_write = bool(journal.get("incident")) and journal["budgets"].get("write", 0) >= self.policy.write_attempts
         if "observation" in journal.get("observing", {}):  # an end already observed, its record not yet staged: never observed again
             return None if stalled_on_a_write else self._retain(job, order, journal)
         if stalled_on_a_write and journal.get("observing"):
@@ -543,7 +584,15 @@ class Supervisor:
                    "config_bundle_hash": order["config_bundle_hash"], "deadline_at": order["deadline_at"]}
         if order["kind"] == "delegate":
             parent = self.job(order["parent_invocation_id"])
-            request["parent_capability_id"] = self._grant(parent, parent.read("order.json"), self._journal(parent))["capability_id"]
+            try:  # the parent's grant: kept, or its claim — which its own chokepoint refuses while it is stalled or settled
+                request["parent_capability_id"] = self._grant(parent, parent.read("order.json"), self._journal(parent))["capability_id"]
+            except Held as held:
+                if held.settled is None:  # stalled: it waits for recover(), and the delegate sends nothing meanwhile
+                    raise Waiting("parent_stalled") from None
+                journal["refused"] = {"reason": "parent_not_admitted",
+                                      "detail": f"its parent {order['parent_invocation_id']} ended {held.settled} without a capability"}
+                self._settle(job, journal, "not_admitted")
+                raise Waiting("not_admitted") from None
         else:
             request.update(station_id=self.station_id, lease_expires_at=order["lease_expires_at"] or order["deadline_at"])
         if order["requested_by_invocation_id"]:
@@ -584,11 +633,12 @@ class Supervisor:
         requested, its group terminated, or its already staged result
         delivered — and the router confirms it ended (L-7; Astra 1c review A3).
         Until then the parent waits; the router refuses the release anyway.
-        A delegate stalled on an incident passes the same gate as its own
-        advance: its parent makes none of its control calls, so its exhausted
-        budget stays spent and its incident (and deadline) stays as raised,
-        until recover() resumes it; it is still advanced, so its deadline is
-        still observed locally (L-6, C-10; Astra 1c re-review A5-R)."""
+        A delegate stalled on an incident passes the same chokepoint as its
+        own advance (_call): its parent makes none of its control calls, so
+        its exhausted budget stays spent and its incident (and deadline) stays
+        as raised, until recover() resumes it; it is still advanced, so its
+        deadline is still observed locally (L-6, C-10; Astra 1c re-review
+        A5-R)."""
         if order["kind"] == "delegate":
             return
         pending = []
@@ -600,19 +650,18 @@ class Supervisor:
             djournal = self._journal(delegate)
             if djournal.get("settled"):
                 continue
-            if not djournal.get("incident"):
-                try:  # its capability: the grant kept, or replayed (a claim lost in a crash), or a fresh claim, cancelled below at once
-                    grant = self._grant(delegate, dorder, djournal)
-                    status = self._status(delegate, djournal, grant)
-                    if status["state"] not in (*TERMINAL, "result_ready") and status["cancel_requested"] is None:
-                        response = self._call(delegate, djournal, "request_cancel", {"invocation_id": grant["invocation_id"], "requested_by": "supervisor",
-                                                                                     "reason": f"its parent {order['invocation_id']} has ended",
-                                                                                     "capability_id": grant["capability_id"]})
-                        if response["status"] not in ("cancelled", "recorded", "replayed"):
-                            self._refused(delegate, djournal, "cancel", response)
-                        self._accepted(delegate, djournal, "cancel")
-                except Waiting:
-                    pass
+            try:  # its capability: the grant kept, or replayed (a claim lost in a crash), or a fresh claim, cancelled below at once
+                grant = self._grant(delegate, dorder, djournal)
+                status = self._status(delegate, djournal, grant)
+                if status["state"] not in (*TERMINAL, "result_ready") and status["cancel_requested"] is None:
+                    response = self._call(delegate, djournal, "request_cancel", {"invocation_id": grant["invocation_id"], "requested_by": "supervisor",
+                                                                                 "reason": f"its parent {order['invocation_id']} has ended",
+                                                                                 "capability_id": grant["capability_id"]})
+                    if response["status"] not in ("cancelled", "recorded", "replayed"):
+                        self._refused(delegate, djournal, "cancel", response)
+                    self._accepted(delegate, djournal, "cancel")
+            except Waiting:  # a stalled delegate's calls are refused at the chokepoint (Held): nothing is sent
+                pass
             if self.advance(dorder["invocation_id"]) not in (*TERMINAL, "not_admitted"):
                 pending.append(dorder["invocation_id"])
         if pending:

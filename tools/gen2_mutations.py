@@ -2723,8 +2723,9 @@ MUTATIONS: list[Mutation] = [
            '"running", **{**self._process(view["identity"]), "start_fingerprint": str(view["identity"]["pid"])})'),
           ("router-budget-unbounded", "an unreachable router is retried without end (L-6)", ("test_an_unreachable_router_stalls_within_budget_and_delivery_resumes_by_replay",),
            'if not self._spend(job, journal, "router") or self._past(', "if False or self._past("),
-          ("stall-ignored", "a stalled job keeps calling the router", ("test_an_unreachable_router_stalls_within_budget_and_delivery_resumes_by_replay",),
-           '            if journal.get("incident"):\n                return "stalled"\n', ""),
+          ("stall-ignored", "a stalled job keeps calling the router (the chokepoint's stall gate, task 1c-repair-3)",
+           ("test_an_unreachable_router_stalls_within_budget_and_delivery_resumes_by_replay",),
+           '        if held.get("incident") or held.get("settled"):', '        if held.get("settled"):'),
           ("recovery-unbudgeted", "resuming a stalled job draws on no budget", ("test_an_unreachable_router_stalls_within_budget_and_delivery_resumes_by_replay",),
            'and not journal.get("settled") and self._spend(job, journal, "recovery"):', 'and not journal.get("settled"):'),
           ("launch-budget-unbounded", "a refused launch is retried without end", ("test_pause_holds_launch_within_its_budget_then_cancels",),
@@ -2790,7 +2791,8 @@ MUTATIONS: list[Mutation] = [
            '        except OSError as unwritable:\n            raise ControlFailure(', '        except OSError as unwritable:\n            return "write_failed"\n            raise ControlFailure('),
           ("stalled-write-retried", "a job stalled on a failed write retries it on every advance (unbounded), not only on recover()",
            ("test_enospc_from_the_spool_stalls_with_an_incident",),
-           '        stalled_on_a_write = (journal.get("incident") or {}).get("kind") == "durable_write_failed"', '        stalled_on_a_write = False'),
+           '        stalled_on_a_write = bool(journal.get("incident")) and journal["budgets"].get("write", 0) >= self.policy.write_attempts',
+           '        stalled_on_a_write = False'),
           ("write-budget-never-refunded", "a write that made progress keeps its budget spent",
            ("test_an_execution_record_over_the_quota_stalls_with_the_result_kept",), '        journal["budgets"].pop("write", None)\n', ''))),
     # A5: an outage's budget belongs to the pending write: a read refunds nothing, recovery refills nothing, and time counts too.
@@ -2927,16 +2929,17 @@ MUTATIONS: list[Mutation] = [
            '        pending = self._pending(job, order, journal, f"end:{to_state}"'),
           ("delegates-not-cancelled", "a parent's end waits on its delegates without asking them to end",
            ("test_a_parent_that_completes", "test_a_parent_that_fails"),
-           '                    if status["state"] not in (*TERMINAL, "result_ready") and status["cancel_requested"] is None:\n                        response = self._call(delegate',
-           '                    if False:\n                        response = self._call(delegate'))),
+           '                if status["state"] not in (*TERMINAL, "result_ready") and status["cancel_requested"] is None:\n                    response = self._call(delegate',
+           '                if False:\n                    response = self._call(delegate'))),
     # A5-R (1c-repair-2): a delegate stalled on an incident passes its own stall gate when its parent ends it — no control call
     # until recover(), its incident kept as raised — and is still advanced, so its deadline is still observed locally.
     *(Mutation(f"1C-sup-{key}", "1c-A5R", desc, tuple(p + k for k in killers for p in (SDR, SDD)), target=SPV, old=old, new=new)
       for key, desc, killers, old, new in (
-          ("parent-bypasses-stalled-delegate", "a parent's end makes a stalled delegate's control calls (its spent budget bypassed, its incident renewed)",
+          ("parent-bypasses-stalled-delegate", "a parent's end makes a stalled delegate's control calls (its spent budget bypassed, its incident renewed; "
+           "the chokepoint's stall gate, task 1c-repair-3)",
            ("test_a_delegate_stalled_on_its_status_read_holds_its_parent_without_calls",
             "test_a_delegate_stalled_on_its_cancellation_holds_its_parent_without_calls"),
-           '            if not djournal.get("incident"):\n                try:', '            if True:\n                try:'),
+           '        if held.get("incident") or held.get("settled"):', '        if held.get("settled"):'),
           ("stalled-delegate-unobserved", "a parent waits on a stalled delegate without advancing it (its deadline not observed)",
            ("test_a_stalled_delegate_is_still_ended_at_its_deadline",),
            '            if self.advance(dorder["invocation_id"]) not in (*TERMINAL, "not_admitted"):',
@@ -2971,8 +2974,8 @@ MUTATIONS: list[Mutation] = [
            '            self._refused(job, journal, "cancel", response)', '            raise Waiting("launch_refused")'),
           ("delegate-cancel-refusal-ignored", "a delegate's refused cancellation is asked again on every parent advance",
            ("test_a_refused_delegate_cancellation_is_budgeted",), (SDR, SDD),
-           '                        if response["status"] not in ("cancelled", "recorded", "replayed"):\n                            self._refused(delegate',
-           '                        if False:\n                            self._refused(delegate'),
+           '                    if response["status"] not in ("cancelled", "recorded", "replayed"):\n                        self._refused(delegate',
+           '                    if False:\n                        self._refused(delegate'),
           # an outcome_unknown episode that cannot be reconciled yet: attempts and time, per episode; its hold stays (L-4)
           ("unknown-unbudgeted", "an unresolved outcome_unknown episode is looked at again on every advance, never stalling",
            ("test_an_unresolved_unknown_episode_stalls_within_its_budget_and_keeps_its_hold",), (SBR, SBD),
@@ -2984,6 +2987,35 @@ MUTATIONS: list[Mutation] = [
           ("unknown-never-refunded", "a reconciled episode keeps its unknown budget spent",
            ("test_an_unknown_episode_reconciled_within_its_budget_refunds_it",), (SBR, SBD),
            '        if journal.pop("unresolved", None) is not None:', '        if False:'))),
+    # 1c-repair-3 (L-6, RG-3; Astra 1c re-review 2): every router call goes through one chokepoint, which makes none for a job
+    # stalled on an open incident, or settled, as that job's own durable journal says, whoever calls; an open incident is
+    # write-once. The stall gate's removal is also 1C-sup-stall-ignored (the job's own advance) and
+    # 1C-sup-parent-bypasses-stalled-delegate (its parent ending it): the same edit, checked here against the other callers.
+    *(Mutation(f"1C-sup-{key}", "1c-L6R", desc, tuple(p + k for k in killers for p in prefixes), target=SPV, old=old, new=new)
+      for key, desc, killers, prefixes, old, new in (
+          ("stalled-parent-claimed-for-its-delegate", "a stalled job's calls are made for other callers: its delegate's grant retries its claim",
+           ("test_a_delegate_does_not_retry_its_stalled_parents_claim", "test_no_caller_makes_a_stalled_parents_control_call",
+            "test_no_caller_makes_a_stalled_delegates_control_call"), (SDR, SDD),
+           '        if held.get("incident") or held.get("settled"):', '        if held.get("settled"):'),
+          ("settled-job-claimed-again", "a job settled not_admitted is claimed again for its delegate",
+           ("test_a_parent_not_admitted_is_never_claimed_again_for_its_delegate",), (SDR, SDD),
+           '        if held.get("incident") or held.get("settled"):', '        if held.get("incident"):'),
+          ("chokepoint-trusts-the-callers-copy", "the chokepoint reads the caller's job and journal copy, not the durable journal of the job called for",
+           ("test_no_caller_makes_a_stalled_parents_control_call", "test_no_caller_makes_a_stalled_delegates_control_call"), (SDR, SDD),
+           '        owner = self.job(request["invocation_id"])\n        held = owner.read("journal.json") or {}\n', '        owner, held = job, journal\n'),
+          ("unadmitted-parent-strands-its-delegate", "a delegate whose parent ended not_admitted waits on it for ever",
+           ("test_a_parent_not_admitted_is_never_claimed_again_for_its_delegate",), (SDR, SDD),
+           '                if held.settled is None:', '                if True:'),
+          ("incident-renewed", "the incident writer replaces an open incident (a new kind, since and deadline)",
+           ("test_no_caller_makes_a_stalled_parents_control_call", "test_no_caller_makes_a_stalled_delegates_control_call"), (SDR, SDD),
+           '        if raised:\n            journal[key] = raised\n            return\n', ''),
+          ("incident-writer-trusts-the-callers-copy", "the incident writer reads the caller's journal copy, not the durable journal",
+           ("test_no_caller_makes_a_stalled_parents_control_call", "test_no_caller_makes_a_stalled_delegates_control_call"), (SDR, SDD),
+           '        raised = (job.read("journal.json") or {}).get(key)', '        raised = journal.get(key)'),
+          ("stalled-write-retried-under-another-incident", "a failed write is retried on every advance while the job is stalled on another incident",
+           ("test_a_write_failing_while_stalled_is_bounded_and_keeps_the_incident",), (SBR, SBD),
+           'bool(journal.get("incident")) and journal["budgets"].get("write", 0) >= self.policy.write_attempts',
+           '(journal.get("incident") or {}).get("kind") == "durable_write_failed"'))),
 ]
 
 
