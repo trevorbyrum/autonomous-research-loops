@@ -775,10 +775,7 @@ class Supervisor:
         kept = journal.get("pending") if (journal.get("pending") or {}).get("purpose") == purpose else None  # a request already fixed is sent as it was
         if (kept or {"resolution": resolution})["resolution"] in ("confirmed_failed", "terminated_group"):
             self._settle_delegates(order)
-        pending = kept or self._pending(job, order, journal, purpose, resolution=resolution, method=method, observation=observation,
-                                        identity=identity, digest=digest)
-        if pending["record"] is None:
-            pending = self._pending(job, order, journal, purpose)
+        pending = self._pending(job, order, journal, purpose, resolution=resolution, method=method, observation=observation, identity=identity, digest=digest)
         request = {"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"], "unknown_episode": status["unknown_episode"],
                    "resolution": pending["resolution"], "method": pending["method"], "evidence_ref": pending["record"]["content_hash"]}
         if pending["identity"] is not None:

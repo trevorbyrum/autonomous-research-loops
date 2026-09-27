@@ -407,7 +407,8 @@ class LifecycleFaults:
         budget, the last refusal and the result it concerns (RG-3; Astra 1c
         review A11) — visible through the supervisor, and still there after a
         restart, which starts and sends nothing more."""
-        found = self.journal()["exhausted"]
+        found = self.journal().get("exhausted")
+        self.assertIsNotNone(found, f"no incident for the exhausted {budget} budget")
         self.assertEqual({k: found[k] for k in ("kind", "budget", "result_ref", "owner")},
                          {"kind": "retry_exhausted", "budget": budget, "result_ref": result_ref, "owner": "supervisor:station-1"})
         self.assertEqual({k: found["last_refusal"].get(k) for k in last_refusal}, last_refusal)
