@@ -402,7 +402,9 @@ class Supervisor:
 
     def _collect(self, job: jobs.Job, order: dict, journal: dict, view: dict) -> None:
         """The structural checks: the exit, what is on disk, and the rest of the
-        group. The agent's self-report and declared digest are data (L-5).
+        group. The agent's self-report is data; its declared digest is checked
+        data that cannot establish success — one the bytes do not have refuses
+        the output, one they have adds nothing (L-5).
         What cannot be done twice is kept in the journal before the next step
         — the descendants handled, then the observation with its staged
         result — so a durable write that fails is retried without observing
