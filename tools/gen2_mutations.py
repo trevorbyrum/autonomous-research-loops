@@ -2,8 +2,8 @@
 """Mutation harness for the gen-2 store DDL and its connection contract.
 
 Each mutation below removes or weakens exactly one guard in memory (never on
-disk), reruns every gen2/tests/test_store_*.py test against the mutated
-schema, and checks that the guard's own tests catch it:
+disk), reruns the guard's declared killer tests against the mutant, and
+checks that they catch it:
 
   KILLED    at least one test fails, and every test listed in `killers` is
             among the failures. A failure is an assertion failure, or an
@@ -44,7 +44,20 @@ and dies before its prologue runs, and tools run by explicit path ("attr"
 targets), which are handed the mutated copy by path. `--no-disk` turns the
 child tree off, to show what an in-memory-only run misses.
 
-Exit 0 only if the unmutated baseline passes and every mutation is KILLED.
+Which tests run (task 1c-repair, runtime; Astra 1c review "Mutation
+runtime"): per mutant, exactly its declared killers — each such test holds
+its own accepted case beside the refusal it checks, so an over-restricting
+mutant fails it too. A killer name that does not resolve to exactly one test
+stops the run. The unmutated baselines run once per loading mode, not once
+per target: the whole store suite (the DDL and connection mutants'
+baseline); every module and disk target's killers together over one
+unmutated child tree; and each path-handed ("attr") target's killers over
+its own unmutated copy. The whole unmutated suite runs once per build, in
+make gen2-test. Workers are bounded (default: one fewer than the cores, a
+core left for the children the killers start), and each verdict is printed
+as its worker finishes; no test timeout is changed.
+
+Exit 0 only if the unmutated baselines pass and every mutation is KILLED.
 The inventory is the reviewable claim: Astra's Gate C re-runs it
 (`make gen2-mutation`) instead of trusting a count. A kill proves the named
 tests notice the guard's absence; it does not prove the guard is the right
@@ -3027,10 +3040,42 @@ def load_suite() -> unittest.TestSuite:
     return unittest.defaultTestLoader.discover(str(TESTS), pattern="test_store_*.py")
 
 
-def run(fx, ddl: str, connection: str) -> _Collector:
+def killer_suite(names, modules: dict | None = None) -> unittest.TestSuite:
+    """Exactly the named tests (module.Class.method), each once, loaded from
+    the given module objects where one is named (a reloaded killer module
+    must be the one run), else imported."""
+    import importlib
+
+    suite = unittest.TestSuite()
+    for name in dict.fromkeys(names):
+        module_name, _, rest = name.partition(".")
+        module = (modules or {}).get(module_name) or importlib.import_module(module_name)
+        suite.addTest(unittest.defaultTestLoader.loadTestsFromName(rest, module))
+    return suite
+
+
+def unresolved_killers(mutations) -> list[str]:
+    """Killer names that do not resolve to exactly one test of that name."""
+    def ids(suite):
+        for test in suite:
+            yield from ids(test) if isinstance(test, unittest.TestSuite) else [test.id()]
+    bad = []
+    for name in sorted({k for m in mutations for k in m.killers}):
+        try:
+            found = list(ids(killer_suite([name])))
+        except (ImportError, AttributeError) as exc:
+            found = [repr(exc)]
+        if found != [name]:
+            bad.append(name)
+    return bad
+
+
+def run(fx, ddl: str, connection: str, killers=None) -> _Collector:
+    """The store tests over this DDL and connection text: the named killers,
+    or (killers None) the whole store suite."""
     fx.DDL_TEXT, fx.CONNECTION_TEXT = ddl, connection
     result = _Collector()
-    load_suite().run(result)
+    (load_suite() if killers is None else killer_suite(killers)).run(result)
     return result
 
 
@@ -3132,7 +3177,7 @@ def _run_file_mutation(m: Mutation) -> _Collector:
             for dependent in how[2:]:  # modules that bound names from the mutated one at import
                 importlib.reload(importlib.import_module(dependent))
             loaded = [importlib.reload(importlib.import_module(name)) for name in modules]
-        suite = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromModule(mod) for mod in loaded)
+        suite = killer_suite(m.killers, {mod.__name__: mod for mod in loaded})
         result = _Collector()
         suite.run(result)
         if tree is not None:
@@ -3172,11 +3217,13 @@ class _child_root:
 
 
 def _run_file_mutation_unmutated(m: Mutation) -> _Collector:
-    """The file target's killer modules against the file as it is (a mutation
-    that finds its text is only meaningful if these pass unmutated). An "attr"
-    target is run from an unmodified temp copy, exactly as its mutants are, so
-    a file that only works from its own location (an import resolved relative
-    to itself) fails here instead of letting every mutant "die" of it."""
+    """The killers against the file as it is (a mutation that finds its text
+    is only meaningful if they pass unmutated), in the loading mode its
+    mutants use: a module or disk target over an unmutated child tree (one
+    run covers every such target, main()); an "attr" target from an
+    unmodified temp copy, exactly as its mutants are, so a file that only
+    works from its own location (an import resolved relative to itself)
+    fails here instead of letting every mutant "die" of it."""
     import importlib
     import tempfile
 
@@ -3191,7 +3238,7 @@ def _run_file_mutation_unmutated(m: Mutation) -> _Collector:
             original = getattr(holder, how[2])
             setattr(holder, how[2], path)
         try:
-            suite = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromModule(mod) for mod in loaded)
+            suite = killer_suite(m.killers, {mod.__name__: mod for mod in loaded})
             result = _Collector()
             suite.run(result)
         finally:
@@ -3226,7 +3273,7 @@ def _evaluate(m: Mutation) -> str:
             ddl = mutate(ddl0, m) if m.target == "ddl" else ddl0
             conn = mutate(conn0, m) if m.target == "connection" else conn0
             try:
-                res = run(fx, ddl, conn)
+                res = run(fx, ddl, conn, m.killers)
             finally:
                 fx.DDL_TEXT, fx.CONNECTION_TEXT = ddl0, conn0
     except ValueError as exc:
@@ -3251,7 +3298,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--only", help="run only mutations whose id starts with this prefix (several: comma-separated)")
     parser.add_argument("--list", action="store_true", help="print the inventory and exit")
-    parser.add_argument("--jobs", type=int, default=os.cpu_count() or 1, help="worker processes (default: all cores)")
+    parser.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 1),
+                        help="worker processes (default: one fewer than the cores, one left for the killers' children)")
     parser.add_argument("--no-disk", action="store_true", help="swap modules in memory only; children import the unmutated tree (shows the 1b gap)")
     args = parser.parse_args(argv)
     global DISK
@@ -3273,12 +3321,23 @@ def main(argv: list[str] | None = None) -> int:
         print(f"BASELINE NOT GREEN: failed={sorted(base.failed)} errored={base.errored}", file=sys.stderr)
         return 1
     selected = [m for m in MUTATIONS if not args.only or m.mid.startswith(tuple(args.only.split(",")))]
-    for target in sorted({m.target for m in selected if m.target in FILE_TARGETS}):
-        clean = Mutation("baseline", "-", "unmutated", tuple(k for m in selected if m.target == target for k in m.killers), target=target, old="", new="")
+    unresolved = unresolved_killers(selected)
+    if unresolved:
+        print(f"UNRESOLVED KILLERS (no single test of that name): {unresolved}", file=sys.stderr)
+        return 1
+    tree_targets = sorted({m.target for m in selected if FILE_TARGETS.get(m.target, ("",))[0] in ("module", "disk")})
+    baselines = [Mutation("baseline", "-", "unmutated", tuple(k for m in selected if m.target in tree_targets for k in m.killers), target=tree_targets[0])] \
+        if tree_targets else []  # one unmutated child tree covers every module and disk target: the same loading mode
+    baselines += [Mutation("baseline", "-", "unmutated", tuple(k for m in selected if m.target == target for k in m.killers), target=target)
+                  for target in sorted({m.target for m in selected if FILE_TARGETS.get(m.target, ("",))[0] == "attr"})]
+    for clean in baselines:
         res = _run_file_mutation_unmutated(clean)
         if res.failed or res.errored:
-            print(f"BASELINE NOT GREEN for {target}: failed={sorted(res.failed)} errored={res.errored}", file=sys.stderr)
+            print(f"BASELINE NOT GREEN ({clean.target if FILE_TARGETS[clean.target][0] == 'attr' else 'the child tree'}): "
+                  f"failed={sorted(res.failed)} errored={res.errored}", file=sys.stderr)
             return 1
+    print(f"gen2 mutation run: baselines green ({base.testsRun} store tests; {len(baselines)} file-target baseline(s)); "
+          f"{len(selected)} mutants on {args.jobs} worker(s)", flush=True)
     ids = [m.mid for m in MUTATIONS]
     if len(set(ids)) != len(ids):
         print("duplicate mutation ids", file=sys.stderr)
@@ -3288,17 +3347,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"UNCOVERED TRIGGERS (add a mutant or document a second layer): {missing}", file=sys.stderr)
         return 1
     _FX = fx
+    bad = 0
+
+    def report(verdict: str) -> None:  # as each worker finishes
+        nonlocal bad
+        bad += not verdict.startswith("KILLED")
+        print(verdict, flush=True)
     if args.jobs > 1 and len(selected) > 1:
         with multiprocessing.get_context("fork").Pool(args.jobs, maxtasksperchild=1) as pool:
-            verdicts = pool.map(_evaluate, selected, chunksize=1)
+            for verdict in pool.imap_unordered(_evaluate, selected, chunksize=1):
+                report(verdict)
     else:
-        verdicts = [_evaluate(m) for m in selected if m.target not in FILE_TARGETS]
-        verdicts += [_evaluate(m) for m in selected if m.target in FILE_TARGETS]  # these may rebind modules: run last
-    bad = 0
-    for verdict in verdicts:
-        if not verdict.startswith("KILLED"):
-            bad += 1
-        print(verdict)
+        for m in [m for m in selected if m.target not in FILE_TARGETS] + [m for m in selected if m.target in FILE_TARGETS]:  # file targets may rebind modules: last
+            report(_evaluate(m))
     coverage = "" if args.only else f"every DDL trigger covered (second layers: {len(SECOND_LAYER_TRIGGERS)}), "
     print(f"gen2 mutation run: {len(selected) - bad}/{len(selected)} killed, baseline {base.testsRun} tests green, {coverage}{time.monotonic() - started:.1f}s")
     return 1 if bad else 0

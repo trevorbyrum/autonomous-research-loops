@@ -141,6 +141,9 @@ class KillAttestationTest(unittest.TestCase):
         cls.runner = sys.modules[spec.name] = importlib.util.module_from_spec(spec)  # dataclasses look the module up while it loads
         cls.addClassCleanup(sys.modules.pop, spec.name, None)
         spec.loader.exec_module(cls.runner)
+        if str(TESTS) not in sys.path:  # the runner resolves killers as it runs them: test modules by their top-level names
+            sys.path.insert(0, str(TESTS))
+            cls.addClassCleanup(sys.path.remove, str(TESTS))
 
     def test_a_kill_is_credited_only_to_attested_mutant_bytes(self) -> None:
         runner, tree, sha = self.runner, Path("/tmp/child-tree"), "a" * 64
@@ -157,6 +160,19 @@ class KillAttestationTest(unittest.TestCase):
         self.assertIn("no child that executed the mutant", judge(disk, [{**good, "pid": 1}]))  # this interpreter is not a child
         self.assertIn("other bytes", judge(disk, [good, {**good, "sha256": "b" * 64}]))  # the unmutated file, or anything else
         self.assertIn("other bytes", judge(module, [{**good, "file": str(children.REPO / "gen2/supervisor/jobs.py")}]))  # outside the tree
+
+
+    def test_every_killer_names_exactly_one_test(self) -> None:
+        """A mutant runs only its declared killers (task 1c-repair runtime):
+        a killer name that is not exactly one test would run nothing, so it
+        stops the run (unresolved_killers). The whole inventory resolves."""
+        runner = self.runner
+        typo = runner.Mutation("X-typo", "t", "a misspelt killer", ("test_children.KillAttestationTest.test_no_such_test",), target="ddl", old="x")
+        whole_class = runner.Mutation("X-class", "t", "a class, not a test", ("test_children.KillAttestationTest",), target="ddl", old="x")
+        real = runner.Mutation("X-real", "t", "a real killer", ("test_children.KillAttestationTest.test_every_killer_names_exactly_one_test",), target="ddl", old="x")
+        self.assertEqual(runner.unresolved_killers([typo, whole_class, real]),
+                         ["test_children.KillAttestationTest", "test_children.KillAttestationTest.test_no_such_test"])
+        self.assertEqual(runner.unresolved_killers(runner.MUTATIONS), [])
 
 
 if __name__ == "__main__":
