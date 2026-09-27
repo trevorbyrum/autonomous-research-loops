@@ -48,16 +48,26 @@ execution group terminated. Then it drives the router one step along L-1:
                     and reconcile the episode with the resolution the record
                     supports; what cannot be established stays unknown under
                     the episode's hold (owner, deadline)
-Every retry path draws on a declared budget kept in the journal, so a
+These retry paths draw on a declared budget kept in the journal, so a
 restart does not refill it (L-6): an outage (attempts and time, from its first
 failed call until a write the router answers — a read refunds nothing), a
 failing durable write, recover() resumptions, launch refusals, launcher
 starts and commit re-sends. Past the router or write budget the job stalls
 with an owned, deadlined incident, which only recover() — itself budgeted,
-and refilling nothing — resumes; an exhausted launch, spawn or commit budget
-is recorded as an incident beside the job's end; a journal that cannot be
-written raises ControlFailure out of band (RG-3). Before a parent's capacity
-is released its delegate jobs are ended (L-7, L-8).
+and refilling nothing — resumes, whoever advances the job (a parent ending
+its stalled delegate sends it nothing); an exhausted launch, spawn or commit
+budget is recorded as an incident beside the job's end; a journal that
+cannot be written raises ControlFailure out of band (RG-3). Two retry paths
+are not budgeted and raise no incident (named, not repaired: task
+1c-repair-2): a lifecycle write the router answered with a refusal (an end,
+a reconciliation, entering outcome_unknown, the supervisor's own
+cancellation) is decided and sent afresh on each later advance; and an
+outcome_unknown episode that cannot be reconciled yet (a termination
+unconfirmed, a start still unresolved) is looked up or terminated again on
+each advance, under the episode's hold, which the router keeps with an
+owner and a deadline (L-4). Each advance is one step; run() is bounded by
+its timeout. Before a parent's capacity is released its delegate jobs are
+ended (L-7, L-8).
 
 Structural limits: faults are what these processes can do to each other on
 one host (kills, exits, hangs, lost replies), not power loss or disk
