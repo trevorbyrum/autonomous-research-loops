@@ -2905,8 +2905,20 @@ MUTATIONS: list[Mutation] = [
            '        pending = self._pending(job, order, journal, f"end:{to_state}"'),
           ("delegates-not-cancelled", "a parent's end waits on its delegates without asking them to end",
            ("test_a_parent_that_completes", "test_a_parent_that_fails"),
-           '                if status["state"] not in (*TERMINAL, "result_ready") and status["cancel_requested"] is None:\n                    self._call(delegate',
-           '                if False:\n                    self._call(delegate'))),
+           '                    if status["state"] not in (*TERMINAL, "result_ready") and status["cancel_requested"] is None:\n                        self._call(delegate',
+           '                    if False:\n                        self._call(delegate'))),
+    # A5-R (1c-repair-2): a delegate stalled on an incident passes its own stall gate when its parent ends it — no control call
+    # until recover(), its incident kept as raised — and is still advanced, so its deadline is still observed locally.
+    *(Mutation(f"1C-sup-{key}", "1c-A5R", desc, tuple(p + k for k in killers for p in (SDR, SDD)), target=SPV, old=old, new=new)
+      for key, desc, killers, old, new in (
+          ("parent-bypasses-stalled-delegate", "a parent's end makes a stalled delegate's control calls (its spent budget bypassed, its incident renewed)",
+           ("test_a_delegate_stalled_on_its_status_read_holds_its_parent_without_calls",
+            "test_a_delegate_stalled_on_its_cancellation_holds_its_parent_without_calls"),
+           '            if not djournal.get("incident"):\n                try:', '            if True:\n                try:'),
+          ("stalled-delegate-unobserved", "a parent waits on a stalled delegate without advancing it (its deadline not observed)",
+           ("test_a_stalled_delegate_is_still_ended_at_its_deadline",),
+           '            if self.advance(dorder["invocation_id"]) not in (*TERMINAL, "not_admitted"):',
+           '            if djournal.get("incident") or self.advance(dorder["invocation_id"]) not in (*TERMINAL, "not_admitted"):'))),
 ]
 
 

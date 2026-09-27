@@ -17,6 +17,18 @@ ControlBackend reads /proc for the delegate's execution group, and none of
 it may be alive; the delegate's end, the lease and their order are read back
 by raw SQL. Expected ends are written by hand.
 
+A delegate stalled on a router incident (Astra 1c re-review A5-R): the
+parent has ended, and one of the delegate's calls (its status read, or its
+cancellation) cannot reach the router while the parent's can — a partial
+outage — until the delegate's outage budget is spent. Then, from a
+restarted supervisor that has not run recover(), the parent's advances make
+none of the delegate's calls, the delegate's incident (its deadline
+included) stays as raised and the store is unchanged; its deadline is still
+observed locally. Oracles: the failing calls counted at the ControlBackend,
+the journal's incident compared whole, the store read back whole. The
+control: once the router is reachable, recover() and the parent's run end
+the delegate and then the parent, as above.
+
 What this cannot show: a delegate that left its own session (jobs.py), or
 delegates held by another supervisor (a delegate is always a job of its
 parent's supervisor, WorkOrder).
@@ -27,11 +39,12 @@ import os
 import signal
 import unittest
 
+from gen2.core.control import ControlUnavailable
 from gen2.core.instants import utc_instant_ns
 from gen2.supervisor import jobs
 from gen2.tests import children
 from gen2.tests import router_fixtures as rf
-from gen2.tests.supervisor_fixtures import MAIN, PARENT, SupervisedTestCase, Unreachable, succeed
+from gen2.tests.supervisor_fixtures import AFTER_DEADLINE, MAIN, PARENT, SupervisedTestCase, Unreachable, succeed
 
 HANG_WITH_DESCENDANT = [{"op": "spawn_descendant", "marker": "descendant.pid"}, {"op": "hang"}]
 GATED = [{"op": "wait_for", "name": "gate", "seconds": 60}]
@@ -56,6 +69,25 @@ class Watch(Unreachable):
                 self.seen.append((name, jobs.members(self.identity())))
             return call(request)
         return watched
+
+
+class DelegateDown(Watch):
+    """A partial outage: the delegate's `method` calls do not reach the
+    router; every other call does. `failing` counts the ones that did not."""
+
+    def __init__(self, router, delegate_identity, method: str) -> None:
+        super().__init__(router, delegate_identity)
+        self.method, self.failing = method, 0
+
+    def __getattr__(self, name):
+        call = super().__getattr__(name)
+
+        def partial(request):
+            if name == self.method and request.get("invocation_id") == MAIN:
+                self.failing += 1
+                raise ControlUnavailable(name)
+            return call(request)
+        return partial
 
 
 class ParentEnds:
@@ -172,6 +204,82 @@ class ParentEnds:
         self.watching()  # the refusal lifts: the same parent ends, after its delegate
         self.assertEqual(self.supervisor.run(PARENT, timeout_s=RUN_S), "committed")
         self.ended_after_its_delegate("committed", "final_outcome")
+
+
+    # -- a delegate stalled on an incident (Astra 1c re-review A5-R) -----------------------------------
+    def stalled_delegate(self, method: str) -> dict:
+        """The parent has ended; its delegate's `method` calls cannot reach the
+        router. The parent's advances spend the delegate's outage budget, then
+        the delegate stalls with an incident; its parent waits."""
+        self.start([*GATED, *succeed(PARENT)])
+        self.gate(PARENT)
+        self.wait_for_file("exit.json", PARENT)
+        self.down = DelegateDown(self.router, self.watch.identity, method)
+        supervisor = self.make_supervisor(control=self.down)
+        self.assertEqual({supervisor.advance(PARENT) for _ in range(6)}, {"delegates_pending"})
+        self.assertEqual(self.down.failing, 6)  # the budget (5), then the call that stalled the delegate; none after
+        incident = self.journal()["incident"]
+        self.assertEqual((incident["kind"], incident["method"], incident["owner"]), ("router_unreachable", method, "supervisor:station-1"))
+        return incident
+
+    def parent_waits(self, supervisor, advances: int, incident: dict) -> None:
+        """The parent's advances make none of the stalled delegate's calls:
+        its incident stays as raised, deadline included; nothing changes."""
+        before = self.state(exclude=())
+        self.assertEqual({supervisor.advance(PARENT) for _ in range(advances)}, {"delegates_pending"})
+        self.assertEqual(self.down.failing, 6)
+        self.assertEqual(self.journal()["incident"], incident)
+        self.assertEqual(self.journal()["budgets"].get("recovery"), None)
+        self.assertEqual(self.state(exclude=()), before)
+        self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", PARENT), "result_ready")
+        self.assertEqual(self.rows("SELECT released_at FROM leases WHERE lease_id = (SELECT lease_id FROM invocations WHERE invocation_id = ?)", PARENT), [(None,)])
+
+    def restarted_without_recovery(self, incident: dict) -> None:
+        """A restarted supervisor, recover() not run, half an hour later."""
+        self.clock.set("2026-09-27T10:30:00Z")
+        self.parent_waits(self.make_supervisor(control=self.down), 12, incident)
+        self.assertNotEqual(jobs.members(self.job_file("identity.json")), [])  # the delegate runs on: its deadline has not come
+
+    def recovered(self) -> None:
+        """Control: the router reachable again, recover() resumes the delegate
+        (one recovery attempt); the parent then ends it, and ends."""
+        self.watching()
+        self.assertEqual(self.supervisor.recover(), {PARENT: "delegates_pending", MAIN: "running"})
+        self.assertEqual(self.journal()["budgets"]["recovery"], 1)
+        self.assertEqual(self.supervisor.run(PARENT, timeout_s=RUN_S), "committed")
+
+    def test_a_delegate_stalled_on_its_status_read_holds_its_parent_without_calls(self) -> None:
+        self.restarted_without_recovery(self.stalled_delegate("invocation_status"))
+        self.recovered()
+        self.ended_after_its_delegate("committed", "final_outcome")
+
+    def test_a_delegate_stalled_on_its_cancellation_holds_its_parent_without_calls(self) -> None:
+        self.restarted_without_recovery(self.stalled_delegate("request_cancel"))
+        self.recovered()
+        self.ended_after_its_delegate("committed", "final_outcome")
+
+    def test_a_stalled_delegate_is_still_ended_at_its_deadline(self) -> None:
+        """Local deadline observation goes on while the delegate is stalled
+        (C-10): its group is ended with no router call, and the termination is
+        delivered once it is recovered."""
+        incident = self.stalled_delegate("invocation_status")
+        identity = self.job_file("identity.json")
+        self.clock.set(AFTER_DEADLINE)  # the delegate's deadline; the parent's is later
+        self.parent_waits(self.make_supervisor(control=self.down), 1, incident)
+        self.assertEqual(jobs.members(identity), [])
+        self.assertEqual(self.journal()["collected"]["terminated"], "timeout")
+        self.recovered_after_timeout()
+
+    def recovered_after_timeout(self) -> None:
+        self.watching()
+        self.assertEqual(self.supervisor.recover(), {PARENT: "delegates_pending", MAIN: "failed"})
+        self.assertEqual(self.supervisor.run(PARENT, timeout_s=RUN_S), "committed")
+        self.assertEqual([(name, alive) for name, alive in self.watch.seen if alive], [])
+        self.assertEqual(self.ended(MAIN), {"state": "failed", "failure_class": "timeout", "evidence": True, "descendants_confirmed": False, "episodes": 0,
+                                            "transitions": ["admitted", "launching", "running", "failed"], "receipts": 0, "lease_release": "final_outcome",
+                                            "open_holds": 0, "cleared_holds": 0, "reconciliations": [], "other_tables": []})
+        record = self.evidence_record(MAIN)
+        self.assertEqual((record["termination"], record["descendants"]["handling"]), ({"reason": "timeout"}, "terminated"))
 
 
 class ResearchPassParentTest(ParentEnds, SupervisedTestCase):

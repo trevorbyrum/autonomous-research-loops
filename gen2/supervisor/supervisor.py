@@ -518,7 +518,12 @@ class Supervisor:
         every delegate job of it held here is ended — its cancellation
         requested, its group terminated, or its already staged result
         delivered — and the router confirms it ended (L-7; Astra 1c review A3).
-        Until then the parent waits; the router refuses the release anyway."""
+        Until then the parent waits; the router refuses the release anyway.
+        A delegate stalled on an incident passes the same gate as its own
+        advance: its parent makes none of its control calls, so its exhausted
+        budget stays spent and its incident (and deadline) stays as raised,
+        until recover() resumes it; it is still advanced, so its deadline is
+        still observed locally (L-6, C-10; Astra 1c re-review A5-R)."""
         if order["kind"] == "delegate":
             return
         pending = []
@@ -530,14 +535,15 @@ class Supervisor:
             djournal = self._journal(delegate)
             if djournal.get("settled"):
                 continue
-            try:  # its capability: the grant kept, or replayed (a claim lost in a crash), or a fresh claim, cancelled below at once
-                grant = self._grant(delegate, dorder, djournal)
-                status = self._status(delegate, djournal, grant)
-                if status["state"] not in (*TERMINAL, "result_ready") and status["cancel_requested"] is None:
-                    self._call(delegate, djournal, "request_cancel", {"invocation_id": grant["invocation_id"], "requested_by": "supervisor",
-                                                                      "reason": f"its parent {order['invocation_id']} has ended", "capability_id": grant["capability_id"]})
-            except Waiting:
-                pass
+            if not djournal.get("incident"):
+                try:  # its capability: the grant kept, or replayed (a claim lost in a crash), or a fresh claim, cancelled below at once
+                    grant = self._grant(delegate, dorder, djournal)
+                    status = self._status(delegate, djournal, grant)
+                    if status["state"] not in (*TERMINAL, "result_ready") and status["cancel_requested"] is None:
+                        self._call(delegate, djournal, "request_cancel", {"invocation_id": grant["invocation_id"], "requested_by": "supervisor",
+                                                                          "reason": f"its parent {order['invocation_id']} has ended", "capability_id": grant["capability_id"]})
+                except Waiting:
+                    pass
             if self.advance(dorder["invocation_id"]) not in (*TERMINAL, "not_admitted"):
                 pending.append(dorder["invocation_id"])
         if pending:
