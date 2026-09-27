@@ -30,14 +30,13 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
+from gen2.tests import children
 from gen2.tests.router_crash_child import tables
 from gen2.tests.router_fixtures import RouterTestCase, empty_outcome
 
-ROOT = Path(__file__).resolve().parents[2]
 BOUNDARIES = ("before_validation", "after_validation", "in_transaction:start", "in_transaction:fenced", "in_transaction:receipt",
               "in_transaction:evidence", "in_transaction:end", "after_commit", "after_reply")
 TRIGGER = {"reason_code": "persistent_contradiction", "cause_ref": "c", "source_revision": 1, "observed_at": "2026-09-27T10:00:00Z"}
@@ -112,8 +111,7 @@ class CrashMatrixTest(RouterTestCase):
 
 class KilledProcessTest(RouterTestCase):
     def child(self, directory: Path, *args: str) -> subprocess.CompletedProcess:
-        return subprocess.run([sys.executable, "-m", "gen2.tests.router_crash_child", str(directory), *args], cwd=ROOT,
-                              capture_output=True, text=True, timeout=120)
+        return children.python(["-m", "gen2.tests.router_crash_child", str(directory), *args], capture_output=True, text=True, timeout=120)
 
     def test_a_process_killed_inside_the_transaction_leaves_nothing(self) -> None:
         for point in ("in_transaction:receipt", "in_transaction:evidence", "in_transaction:end"):

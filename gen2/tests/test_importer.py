@@ -39,7 +39,6 @@ import json
 import os
 import shutil
 import stat
-import subprocess
 import sys
 import tempfile
 import tomllib
@@ -48,6 +47,7 @@ from pathlib import Path
 from unittest import mock
 
 from gen2.importer import dry_run
+from gen2.tests import children
 
 ROOT = Path(__file__).resolve().parents[2]
 LOCK = "a" * 64
@@ -703,10 +703,19 @@ class CommandTest(ImporterTestCase):
         self.assertEqual(json.loads(out)["blocking"][0]["code"], "managed-store-not-read")
 
     def test_python_dash_m_runs_the_importer(self) -> None:
-        result = subprocess.run([sys.executable, "-m", "gen2.importer", "--gen1-root", str(self.root), "--fleet", "fleet-a"],
-                                cwd=ROOT, capture_output=True, text=True, timeout=60)
+        result = children.python(["-m", "gen2.importer", "--gen1-root", str(self.root), "--fleet", "fleet-a"], capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["fleet_id"], "fleet-a")
+
+    def test_python_dash_m_exits_with_the_importers_status(self) -> None:
+        """The command's exit status is the report's verdict, through the
+        module entry point too: a managed store the importer cannot read is
+        blocking (1), whatever `python -m` would otherwise return (task 1c:
+        a child-only killer of gen2/importer/__main__.py)."""
+        write(self.root / "state" / "control.sqlite3", "")
+        result = children.python(["-m", "gen2.importer", "--gen1-root", str(self.root), "--fleet", "fleet-a"], capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["blocking"][0]["code"], "managed-store-not-read")
 
     def test_an_unrepresentable_gen1_value_is_surfaced_not_fatal(self) -> None:
         queue = json.loads((self.root / "state" / "queue.json").read_text(encoding="utf-8"))

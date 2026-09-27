@@ -18,6 +18,16 @@ schema, and checks that the guard's own tests catch it:
             tolerated when every listed killer failed in its body: an
             over-restricting mutant can also break a shared fixture.
 
+Children (task 1c). A Python-module or disk target is also written into a
+temporary copy of the gen2/ tree, named in GEN2_CHILD_ROOT for the run of its
+killers: every test child starts through gen2/tests/children.py, which runs
+it from that tree, so a fresh interpreter imports the mutant too (Astra's
+1b-repair-2 review: in-memory swaps never reached a child). Before the
+killers run, a child started through the same helper must report that it
+loaded exactly the mutant's bytes (the loading control); a mutation whose
+child would load anything else is INVALID. `--no-disk` turns this off, to
+show what an in-memory-only run misses.
+
 Exit 0 only if the unmutated baseline passes and every mutation is KILLED.
 The inventory is the reviewable claim: Astra's Gate C re-runs it
 (`make gen2-mutation`) instead of trusting a count. A kill proves the named
@@ -64,7 +74,10 @@ class Mutation:
 # module, name): the file is written to a temp dir and module.name is set to
 # its path (tests that run tools as subprocesses or read config files);
 # ("module", dotted): the mutated source is loaded as that module and the
-# killer test modules are reloaded so their imports rebind to it.
+# killer test modules are reloaded so their imports rebind to it, and it is
+# also written into the child tree (module docstring, "Children");
+# ("disk",): a file only children run (a script started by path); the
+# mutant exists only in the child tree.
 FILE_TARGETS = {
     "tools/check_boundaries.py": ("attr", "test_check_boundaries", "CHECKER"),
     "gen2/boundaries.toml": ("attr", "test_check_boundaries", "REAL_BOUNDARIES"),
@@ -75,6 +88,7 @@ FILE_TARGETS = {
     "gen2/store/db.py": ("module", "gen2.store.db"),
     "gen2/store/api.py": ("module", "gen2.store.api"),
     "gen2/importer/dry_run.py": ("module", "gen2.importer.dry_run"),
+    "gen2/importer/__main__.py": ("disk",),  # `python -m gen2.importer` runs it; only children do
     # task 1b. A router module's dependents (named after the dotted module) are
     # reloaded over the mutant, in order, before the killers are.
     "gen2/router/service.py": ("module", "gen2.router.service", "gen2.tests.router_fixtures"),
@@ -2326,6 +2340,23 @@ MUTATIONS: list[Mutation] = [
              (CB + "test_store_writes_are_the_routers_under_the_real_graph",), target="gen2/boundaries.toml",
              old='store_write_primitives = ["gen2.store.api.Store", "gen2.store.api.open_store", "gen2.store.api.adopt_in_memory", "gen2.store.db.connect"]',
              new='store_write_primitives = []\nstore_writers_unused = ["gen2.store.api.Store"]'),
+    # task 1c: kills that rest on a child. Each killer below checks what only a
+    # fresh interpreter runs (a command's entry point, or the router's replay
+    # as seen by a process that shares nothing with the one that committed);
+    # with --no-disk the child imports the unmutated tree and each is INVALID
+    # (its listed killer passes). Module docstring, "Children".
+    Mutation("1C-child-gate-refusal-silent", "1c-runner", "the SQLite gate command refuses without saying so on stderr",
+             (SG + "GateCommandTest.test_refusing_gate_exits_nonzero_loudly",), target="gen2/store/compat.py",
+             old='    if status:\n        print(f"gen2 SQLite gate REFUSED:', new='    if False:\n        print(f"gen2 SQLite gate REFUSED:'),
+    Mutation("1C-child-gate-report-dropped", "1c-runner", "the SQLite gate command drops its --report record",
+             (SG + "GateCommandTest.test_passing_gate_exits_zero_and_records_the_version",), target="gen2/store/compat.py",
+             old='            handle.write(f"### gen-2 SQLite compatibility gate', new='            (lambda _: None)(f"### gen-2 SQLite compatibility gate'),
+    Mutation("1C-child-importer-status-dropped", "1c-runner", "`python -m gen2.importer` exits 0 whatever the report's verdict",
+             ("test_importer.CommandTest.test_python_dash_m_exits_with_the_importers_status",), target="gen2/importer/__main__.py",
+             old="raise SystemExit(main())", new="main()"),
+    Mutation("1C-child-router-replay-reads-committed", "1c-runner", "a replayed commit is reported as newly committed",
+             ("test_router_crash.KilledProcessTest.test_a_process_killed_after_commit_has_committed_once",), target=SVC,
+             old='        return {"status": "replayed", "receipt": row["receipt"]}', new='        return {"status": "committed", "receipt": row["receipt"]}'),
 ]
 
 
@@ -2463,6 +2494,37 @@ def run(fx, ddl: str, connection: str) -> _Collector:
 _FX = None  # the fixtures module, bound in main() before workers fork
 
 
+DISK = True  # --no-disk clears it (module docstring, "Children")
+CHILD_ROOT = "GEN2_CHILD_ROOT"  # gen2/tests/children.py ROOT_VARIABLE
+
+
+def _child_tree(tmp: str) -> Path:
+    """A copy of the gen2/ package that children import instead of the
+    repository's (no bytecode, so nothing compiled from the original is
+    reused)."""
+    import shutil
+
+    tree = Path(tmp) / "tree"
+    shutil.copytree(ROOT / "gen2", tree / "gen2", ignore=shutil.ignore_patterns("__pycache__"))
+    return tree
+
+
+def _loading_control(tree: Path, m: Mutation, text: str) -> None:
+    """A child started through gen2/tests/children.py, as the killers start
+    theirs, must load exactly the mutant's bytes; otherwise its kills would
+    not be about this mutant (ValueError: INVALID)."""
+    from gen2.tests import children
+
+    how = FILE_TARGETS[m.target]
+    if how[0] == "module":
+        probe = children.python(["-c", f"import {how[1]} as m, sys; sys.stdout.write(m.__file__)"], capture_output=True, text=True, timeout=60)
+        loaded = Path(probe.stdout) if probe.returncode == 0 else None
+    else:
+        loaded = children.path(m.target)
+    if loaded is None or not loaded.resolve().is_relative_to(tree.resolve()) or loaded.read_text(encoding="utf-8") != text:
+        raise ValueError(f"loading control: a child loads {loaded}, not the mutant in {tree}")
+
+
 def _run_file_mutation(m: Mutation) -> _Collector:
     """Mutate a Python/config file into a temp copy, point the killers' test
     modules at it, run just those modules. Runs in a forked worker (or at the
@@ -2474,15 +2536,17 @@ def _run_file_mutation(m: Mutation) -> _Collector:
     text = mutate((ROOT / m.target).read_text(encoding="utf-8"), m)
     how = FILE_TARGETS[m.target]
     modules = sorted({k.split(".")[0] for k in m.killers})
-    with tempfile.TemporaryDirectory() as tmp:
-        if how[0] == "attr":
+    with tempfile.TemporaryDirectory() as tmp, _child_root(tmp, m, text) as tree:
+        if how[0] == "disk":
+            loaded = [importlib.import_module(name) for name in modules]
+        elif how[0] == "attr":
             path = Path(tmp) / Path(m.target).name
             path.write_text(text, encoding="utf-8")
             loaded = [importlib.import_module(name) for name in modules]
             setattr(importlib.import_module(how[1]), how[2], path)
         else:
             mutant = types.ModuleType(how[1])
-            mutant.__file__ = str(ROOT / m.target)
+            mutant.__file__ = str((tree or ROOT) / m.target)  # file-relative paths (a script it starts) resolve in the child tree
             exec(compile(text, str(ROOT / m.target), "exec"), mutant.__dict__)
             sys.modules[how[1]] = mutant
             parent, _, leaf = how[1].rpartition(".")
@@ -2496,6 +2560,34 @@ def _run_file_mutation(m: Mutation) -> _Collector:
         return result
 
 
+class _child_root:
+    """For a module or disk target (with DISK on): the child tree with the
+    mutant written in, named in GEN2_CHILD_ROOT and checked by the loading
+    control; restored on exit (a serial run reuses this process). Yields the
+    tree, or None when children are not redirected."""
+
+    def __init__(self, tmp: str, m: Mutation, text: str | None) -> None:
+        self.tmp, self.m, self.text = tmp, m, text
+
+    def __enter__(self) -> Path | None:
+        self.saved = os.environ.get(CHILD_ROOT)
+        if not DISK or FILE_TARGETS[self.m.target][0] == "attr":
+            return None
+        tree = _child_tree(self.tmp)
+        if self.text is not None:
+            (tree / self.m.target).write_text(self.text, encoding="utf-8")
+        os.environ[CHILD_ROOT] = str(tree)
+        if self.text is not None:
+            _loading_control(tree, self.m, self.text)
+        return tree
+
+    def __exit__(self, *exc) -> None:
+        if self.saved is None:
+            os.environ.pop(CHILD_ROOT, None)
+        else:
+            os.environ[CHILD_ROOT] = self.saved
+
+
 def _run_file_mutation_unmutated(m: Mutation) -> _Collector:
     """The file target's killer modules against the file as it is (a mutation
     that finds its text is only meaningful if these pass unmutated). An "attr"
@@ -2507,7 +2599,7 @@ def _run_file_mutation_unmutated(m: Mutation) -> _Collector:
 
     modules = sorted({k.split(".")[0] for k in m.killers})
     how = FILE_TARGETS[m.target]
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory() as tmp, _child_root(tmp, m, None):  # children run from an unmutated copy, as the mutants' do
         loaded = [importlib.import_module(name) for name in modules]
         if how[0] == "attr":
             path = Path(tmp) / Path(m.target).name
@@ -2557,7 +2649,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--only", help="run only mutations whose id starts with this prefix")
     parser.add_argument("--list", action="store_true", help="print the inventory and exit")
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 1, help="worker processes (default: all cores)")
+    parser.add_argument("--no-disk", action="store_true", help="swap modules in memory only; children import the unmutated tree (shows the 1b gap)")
     args = parser.parse_args(argv)
+    global DISK
+    DISK = not args.no_disk
     if args.list:
         for m in MUTATIONS:
             print(f"{m.mid:45} {m.finding:6} {m.description}")

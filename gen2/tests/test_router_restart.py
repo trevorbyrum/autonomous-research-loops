@@ -22,17 +22,15 @@ nothing in memory); a killed process is test_router_crash.py.
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 from gen2.router import service
+from gen2.tests import children
 from gen2.tests import router_crash_child  # not its World by name: the loader would collect it
 from gen2.tests import router_fixtures as rf
 
-ROOT = Path(__file__).resolve().parents[2]
 LAPSED = "2026-09-27T10:30:00Z"  # a lease and deadline every restart below comes after (the child's clock starts at 11:00)
 
 
@@ -68,8 +66,8 @@ class RestartTest(unittest.TestCase):
     def resent(self, request: dict) -> list[dict]:
         """The request answered by a fresh process, then by a router reopened
         here with its clock past LAPSED."""
-        child = subprocess.run([sys.executable, "-m", "gen2.tests.router_crash_child", str(self.world.directory), "transition"], cwd=ROOT,
-                               input=json.dumps(request), capture_output=True, text=True, timeout=120)
+        child = children.python(["-m", "gen2.tests.router_crash_child", str(self.world.directory), "transition"],
+                                input=json.dumps(request), capture_output=True, text=True, timeout=120)
         self.assertEqual(child.returncode, 0, child.stderr)
         self.world.clock.set("2026-09-27T11:00:00Z")
         self.restart()

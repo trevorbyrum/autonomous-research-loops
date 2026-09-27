@@ -14,7 +14,6 @@ fixture-rule test does the same with a literal one-file schema tree and
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 import tempfile
@@ -22,12 +21,14 @@ import textwrap
 import unittest
 from pathlib import Path
 
+from gen2.tests import children
+
 REPO = Path(__file__).resolve().parents[2]
 CHECKER = REPO / "tools" / "check_gen2_schemas.py"
 # The checker imports the store's SQLite gate (gen2.store.compat) from the
-# repository; the mutation harness runs a copy of the checker from a temp dir,
-# so the import path is given explicitly rather than derived from its location.
-ENV = {**os.environ, "PYTHONPATH": str(REPO)}
+# code tree; the mutation harness runs a copy of the checker from a temp dir,
+# so the import path is given explicitly (children.env(): the repository, or
+# the harness's mutant tree) rather than derived from its location.
 CONNECTION = "PRAGMA foreign_keys = ON;\nPRAGMA recursive_triggers = ON;\n"
 GUARDED = """\
 -- trace: fixture
@@ -52,7 +53,7 @@ class DdlRuleTest(unittest.TestCase):
         store.mkdir(parents=True, exist_ok=True)
         (store / "schema.sql").write_text(textwrap.dedent(schema), encoding="utf-8")
         (store / "connection.sql").write_text(connection, encoding="utf-8")
-        return subprocess.run([sys.executable, str(CHECKER), "--root", str(self.root), "--part", "ddl"], capture_output=True, text=True, timeout=60, env=ENV)
+        return subprocess.run([sys.executable, str(CHECKER), "--root", str(self.root), "--part", "ddl"], capture_output=True, text=True, timeout=60, env=children.env())
 
     def test_refused_sqlite_fails_the_ddl_check(self) -> None:
         """The build route runs the store's gate: a SQLite it refuses fails
@@ -64,7 +65,7 @@ class DdlRuleTest(unittest.TestCase):
         (store / "connection.sql").write_text(CONNECTION, encoding="utf-8")
         code = ("import runpy, sys, gen2.store.compat as c\nc.SQLITE_FLOOR = (99, 0, 0)\n"
                 f"sys.argv = [{str(CHECKER)!r}, '--root', {str(self.root)!r}, '--part', 'ddl']\nrunpy.run_path({str(CHECKER)!r}, run_name='__main__')")
-        result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60, env=ENV)
+        result = children.python(["-c", code], capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 1, msg=result.stderr)
         self.assertIn("SQLite compatibility gate refused this build's SQLite", result.stderr)
         self.assertIn("below the supported floor 99.0.0", result.stderr)
@@ -129,7 +130,7 @@ class SchemaFixtureRuleTest(unittest.TestCase):
                              "base": "valid-both.json", "patch": [{"op": "remove", "path": "/a"}, {"op": "remove", "path": "/b"}],
                              "errors": declared}}), encoding="utf-8")
             return subprocess.run([sys.executable, str(CHECKER), "--root", str(root), "--part", "schemas"],
-                                  capture_output=True, text=True, timeout=60, env=ENV)
+                                  capture_output=True, text=True, timeout=60, env=children.env())
 
     def test_two_rules_reporting_one_signature_must_both_be_declared(self) -> None:
         """Two rules fail at one (keyword, path). Declared once, the fixture

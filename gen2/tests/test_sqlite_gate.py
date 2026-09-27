@@ -23,7 +23,6 @@ from __future__ import annotations
 import json
 import sqlite3
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -32,6 +31,7 @@ from unittest import mock
 from gen2.core.instants import is_utc_instant
 from gen2.store import api, compat, db
 from gen2.store.compat import StoreCompatibilityError
+from gen2.tests import children
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -333,7 +333,7 @@ class GateCommandTest(unittest.TestCase):
 
     def run_gate(self, prelude: str = "", *args: str) -> subprocess.CompletedProcess:
         code = f"import sys, gen2.store.compat as c\n{prelude}\nsys.exit(c.main({list(args)!r}))"
-        return subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, timeout=60)
+        return children.python(["-c", code], capture_output=True, text=True, timeout=60)
 
     def test_passing_gate_exits_zero_and_records_the_version(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
