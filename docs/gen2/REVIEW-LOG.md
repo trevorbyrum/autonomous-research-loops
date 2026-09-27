@@ -257,3 +257,14 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-0d-repair-astra-
 1. **Operator name removed.** Every mention of the operator's personal name in the build now reads "user" / "the user". That covers governance, deployment, task and history docs, and the synthetic test operator IDs, which changed from `'trevor'` to `'user'`. A grep finds neither the name nor any home-directory path anywhere in `gen2 tools docs/gen2 deploy Makefile .github`. The orchestrator's independent `make gen2-check` exited 0: 356 tests, 680/680 mutants.
 2. **C-13 ratified.** The sentence fixing the hash-contract versions recorded on commit and decision receipts is now part of the frozen rule. INVARIANTS C-13 is updated.
 3. **Phase 1 APPROVED**, conditional on item 1, which is now done. The first task is 1a: the `accepted_support` generalization.
+
+## 2026-09-27 — 1a review (Astra, xhigh) — **PASS all gates. 1a ACCEPTED (first round).**
+Full report: `~/work/research-loops-public/private/reviews/gen2-1a-astra-review-20260927.md`.
+
+**Independent verification:** `make gen2-check` exits 0, with 363 tests and 691/691 mutants. All 9 V10 mutants and both importer mutants were reconstructed independently, and all were killed. 70 reviewer-authored probes ran against real SQLite, covering admission, promotion, isolation, supersession, delegate inheritance, the consumers and the importer.
+
+**What it establishes:** "admission already checked approval" holds under the supported store contract. After supersession, the historical producer still passes. That is consistent with C-12's retained pins and with V-10's limit on amendment impact.
+
+**Carried into Phase 1:**
+- the router must bind actual production and adoption to authenticated, atomic commits and their receipts (task 1b);
+- amendment handling must apply G-1's impact and stale-work rules before Phase 1 is accepted (task 1d).
