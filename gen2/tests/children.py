@@ -18,10 +18,13 @@ path is refused. test_children.ChildLaunchRuleTest is a narrow lint of the
 literal launch it recognises; the mutation runner, not the lint, attests
 which bytes a killing child executed (tools/gen2_mutations.py, "Children").
 
-Tools run as children with an explicit file path (tools/check_boundaries.py
-and the like) are not gen-2 code trees: the runner already hands their tests
-a mutated copy by path. They may still import gen2 (the DDL checker imports
-gen2.store.compat), so env() gives them the same import path.
+Scripts a test runs by path — the launcher and the fake executor, also
+through a shell as the slow-start test does — are taken from path(), the
+same tree, and inherit the test's environment. Tools run as children with an
+explicit file path (tools/check_boundaries.py and the like) are not gen-2
+code trees: the runner already hands their tests a mutated copy by path.
+They may still import gen2 (the DDL checker imports gen2.store.compat), so
+env() gives them the same import path.
 """
 from __future__ import annotations
 
