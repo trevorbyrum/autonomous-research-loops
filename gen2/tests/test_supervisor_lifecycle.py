@@ -34,6 +34,7 @@ import subprocess
 import sys
 import time
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 from gen2.core import canonical
@@ -386,8 +387,14 @@ class LifecycleFaults:
 
     def test_a_slow_start_found_after_a_restart_is_given_its_grace(self) -> None:
         """A start recorded by a supervisor that then died, whose launcher takes
-        0.3 s to appear: the restarted supervisor waits its start grace (1 s
-        here) for it instead of abandoning it, and finds it running."""
+        0.3 s (plus an interpreter's start) to appear: the restarted
+        supervisor waits its start grace for it instead of abandoning it, and
+        finds it running. The grace here is 20 s, far above the delay: under
+        load an interpreter took longer than the suite's 1 s (task 1c-repair
+        C2: found with its evidence kept — the launcher held its lock with no
+        identity yet when a 1 s grace ended, and the supervisor rightly
+        answered unknown_unresolved). The wait ends when the identity
+        appears, so the normal cost is the delay."""
         self.prepare(self.KIND)
         self.supervisor.prepare(self.order(self.KIND, [*GATED, *succeed()]))
         self.stop_at("spawning")
@@ -395,7 +402,7 @@ class LifecycleFaults:
         late = subprocess.Popen(["sh", "-c", f'sleep 0.3; exec "{sys.executable}" "{children.path("gen2/supervisor/jobshim.py")}" "{job}"'],
                                 start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.addCleanup(late.wait)
-        self.supervisor = self.make_supervisor()
+        self.supervisor = self.make_supervisor(policy=replace(self.POLICY, start_grace_s=20.0))
         self.assertEqual(self.supervisor.recover()[MAIN], "running")
         self.gate()
         self.assertEqual(self.supervisor.run(MAIN), "committed")
