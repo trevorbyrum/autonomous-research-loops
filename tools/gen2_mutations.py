@@ -216,7 +216,7 @@ MUTATIONS: list[Mutation] = [
                       "operator_decisions_immutable_u", "outbox_events_immutable_u", "quote_checks_immutable_u",
                       "record_work_links_immutable_u", "research_ordinals_immutable_u", "retrieval_events_immutable_u",
                       "screening_assessments_immutable_u", "search_observations_immutable_u",
-                      "export_delivery_receipts_immutable_u", "verification_receipts_immutable_u")),
+                      "export_delivery_receipts_immutable_u", "verification_receipts_immutable_u", "artifact_topics_immutable_u")),
     # --- A2: decisions bound to their exact subject ---------------------------
     # Each gate is mutated per binding dimension (naming, kind, disposition,
     # topic, subject, currency, protocol); each dimension has a near-miss probe
@@ -1388,7 +1388,7 @@ MUTATIONS: list[Mutation] = [
                       "decision_specs_immutable_d", "dossiers_immutable_d", "holds_no_delete", "invocation_transitions_append_only_d", "invocations_no_delete",
                       "leases_no_delete", "obligations_no_delete", "operator_decisions_immutable_d", "outbox_events_immutable_d", "research_ordinals_immutable_d",
                       "retrieval_events_immutable_d", "review_episodes_no_delete", "screening_assessments_immutable_d", "search_observations_immutable_d",
-                      "verification_receipts_immutable_d")),
+                      "verification_receipts_immutable_d", "artifact_topics_immutable_d")),
     *(Mutation(f"cov-{trigger}", "0a", f"drop {trigger} (a pre-existing 0a guard)", tuple(killers), drop_trigger=trigger)
       for trigger, killers in (
           ("operation_receipts_fenced", (D + "CommitFencingTest.test_stale_generation_rejected", D + "CommitFencingTest.test_released_lease_cannot_commit",
@@ -2714,6 +2714,30 @@ MUTATIONS: list[Mutation] = [
     Mutation("1C-sup-cancelled-exit-unconfirmed", "1c-A2", "a cancellation of work that already exited is reconciled without confirming its group",
              (SCD + "test_cancellation_after_an_uncertain_spawn_of_work_that_already_exited", SCP + "test_cancellation_after_an_uncertain_spawn_of_work_that_already_exited"),
              target=SPV, old='            if cancel and observation["termination"] is None:\n', new='            if False:\n'),
+    # A6: a recorded hash is not topic authorization; each topic's own work authorizes it (artifact_topics).
+    Mutation("1C-router-recorded-hash-any-topic", "1c-A6", "an embedded reference resolves to bytes recorded for any topic",
+             (RC + "TopicAuthorizationTest.test_bytes_recorded_only_for_another_topic_are_not_referenced_by_hash",
+              RC + "AuthorityTest.test_canonical_bytes_recorded_only_for_another_topic_are_not_this_topics",
+              RC + "TopicAuthorizationTest.test_bytes_another_topic_records_meanwhile_do_not_become_this_topics",
+              "test_supervisor_spool.RouterReadsThisSpoolTest.test_another_topics_recorded_bytes_are_not_this_topics"), target=SVC,
+             old='            return self._recorded_for(content_hash, inv["topic_id"])', new='            return self._one("artifacts", {"content_hash": content_hash})'),
+    Mutation("1C-router-recorded-for-unscoped", "1c-A6", "the recorded-for-this-topic lookup does not look at the topic",
+             (RC + "TopicAuthorizationTest.test_bytes_recorded_only_for_another_topic_are_not_referenced_by_hash",
+              RC + "AuthorityTest.test_canonical_bytes_recorded_only_for_another_topic_are_not_this_topics"), target=SVC,
+             old='        if self._one("artifact_topics", {"content_hash": content_hash, "topic_id": topic_id}) is None:\n            return None\n', new=''),
+    Mutation("1C-router-staging-authorizes-nothing", "1c-A6", "bytes a topic staged with its commit are not recorded as that topic's",
+             (RC + "TopicAuthorizationTest.test_bytes_recorded_for_this_topic_are_referenced_by_hash",
+              RC + "TopicAuthorizationTest.test_the_same_bytes_staged_by_this_topic_are_its_own"), target=SVC,
+             old="            self._authorize_artifact(content_hash, inv, now)  # staged in this topic's spool with this commit", new="            pass  #"),
+    Mutation("1C-router-dedup-authorizes-only-the-first", "1c-A6", "a second topic staging recorded bytes is not authorized for them (dedup over-restricts)",
+             (RC + "TopicAuthorizationTest.test_the_same_bytes_staged_by_this_topic_are_its_own",), target=SVC,
+             old="            self._authorize_artifact(content_hash, inv, now)  # staged in this topic's spool with this commit",
+             new="                self._authorize_artifact(content_hash, inv, now)  # staged in this topic's spool with this commit"),
+    Mutation("1C-router-evidence-authorizes-nothing", "1c-A6", "evidence staged in the invocation's topic is not recorded as that topic's",
+             (LC + "FailureTest.test_a_failure_records_its_class_and_evidence_and_releases_capacity",), target=LIF,
+             old='        self._authorize_artifact(evidence["content_hash"], inv, now)', new='        pass'),
+    Mutation("1C-ddl-artifact-topic-by-anyone", "1c-A6", "any invocation authorizes an artifact for any topic",
+             (SS + "ArtifactTopicTest.test_a_topic_is_authorized_only_by_its_own_work",), drop_trigger="artifact_topics_by_the_topics_own_work"),
     # A3: a parent's lease is its delegates' too; it is released only once every delegate has ended.
     Mutation("1C-router-parent-release-ignores-delegates", "1c-A3", "a parent's failure, cancellation or terminal reconciliation releases the lease a live delegate runs under",
              (LC + "FailureTest.test_a_parents_lease_is_not_released_while_a_delegate_is_live",

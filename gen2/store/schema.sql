@@ -1097,6 +1097,39 @@ BEGIN
   SELECT RAISE(ABORT, 'artifact records are never deleted (retention is a separate, explicit policy)');
 END;
 
+-- trace: design review §5 ("Artifacts and the sole-writer promise":
+-- topic-scoped uploads, no cross-topic access); INVARIANTS C-9, RG-5; Astra
+-- 1c review A6 and its Q6 ruling (content identity alone cannot authorize
+-- another topic's use). Supporting table (see README "Supporting tables").
+-- An artifacts row is the physical, content-addressed record, deduplicated
+-- across topics; the topics that may reference it are recorded here, one row
+-- per (artifact, topic). The router adds a topic's row only for bytes staged
+-- in that topic's spool and recorded by that topic's own commit or evidence,
+-- and resolves a reference to already-recorded bytes only through its
+-- topic's row. Written once, never deleted.
+CREATE TABLE artifact_topics (
+  content_hash TEXT NOT NULL REFERENCES artifacts (content_hash),
+  topic_id TEXT NOT NULL REFERENCES queue_entries (topic_id),
+  recorded_by_invocation_id TEXT NOT NULL REFERENCES invocations (invocation_id),
+  recorded_at TEXT NOT NULL,
+  PRIMARY KEY (content_hash, topic_id)
+) STRICT;
+
+CREATE TRIGGER artifact_topics_by_the_topics_own_work
+BEFORE INSERT ON artifact_topics
+WHEN NOT EXISTS (SELECT 1 FROM invocations i WHERE i.invocation_id = NEW.recorded_by_invocation_id AND i.topic_id = NEW.topic_id)
+BEGIN
+  SELECT RAISE(ABORT, 'an artifact is authorized for a topic only by that topic''s own invocation (C-9)');
+END;
+CREATE TRIGGER artifact_topics_immutable_u BEFORE UPDATE ON artifact_topics
+BEGIN
+  SELECT RAISE(ABORT, 'artifact topic authorizations are immutable');
+END;
+CREATE TRIGGER artifact_topics_immutable_d BEFORE DELETE ON artifact_topics
+BEGIN
+  SELECT RAISE(ABORT, 'artifact topic authorizations are never deleted');
+END;
+
 -- trace: design review §5 (normalized rows: operator decisions), §8 (approval
 -- bound to an exact dossier revision); flow S1 (brief confirmation), S3
 -- (framework/ratings/set/method approval), S7, §2 (blind samples: initial

@@ -546,6 +546,7 @@ class StoreTestCase(unittest.TestCase):
         self.lease("lease_aaaaaaaa", 1)
         self.invocation("inv_pppppppp")
         self.to_running("inv_pppppppp")
+        self.x("INSERT INTO artifact_topics (content_hash, topic_id, recorded_by_invocation_id, recorded_at) VALUES (?, ?, 'inv_pppppppp', ?)", h("7"), TOPIC, T)
         self.x("INSERT INTO invocation_transitions (invocation_id, seq, from_state, to_state, at, cause) VALUES ('inv_pppppppp', 1, NULL, 'admitted', ?, 'admit')", T)
         self.to_unknown("inv_pppppppp")
         self.reconcile("inv_pppppppp", "found_running")

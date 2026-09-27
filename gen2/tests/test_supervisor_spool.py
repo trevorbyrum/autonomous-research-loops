@@ -185,6 +185,37 @@ class RouterReadsThisSpoolTest(RouterTestCase):
         self.spool.stage(TOPIC, outcome, "application/json")
         self.assertEqual(self.router.record_transition(request)["status"], "recorded")
 
+    def commit(self, grant: dict, op: str, outcome: dict, refs=()) -> dict:
+        """Stage the outcome for the grant's topic in the real spool and commit it (an interim transition)."""
+        raw = jcs(outcome)
+        payload = self.spool.stage(grant["topic_id"], raw, "application/json")
+        return self.router.commit_outcome({
+            "envelope_version": "commit-outcome/1", "operation_id": op, "operation_kind": outcome["operation_kind"], "invocation_id": grant["invocation_id"],
+            "capability_id": grant["capability_id"], "topic_id": grant["topic_id"], "admission": grant["admission"],
+            "config_bundle_hash": grant["config_bundle_hash"], "lease": {"lease_id": grant["lease"]["lease_id"], "generation": grant["lease"]["generation"]},
+            "expected_state_revision": self.state_revision(grant["topic_id"]), "payload_digest": payload["content_hash"],
+            "payload_size_bytes": payload["size_bytes"], "result_refs": list(refs), "submitted_at": "2026-09-27T10:30:00Z"})
+
+    def test_another_topics_recorded_bytes_are_not_this_topics(self) -> None:
+        """Astra 1c review A6: text staged and recorded only for topic B is
+        not topic A's by its hash — this topic's spool does not hold it, and
+        the router no longer takes the global artifact row for it."""
+        self.to_queued(OTHER)
+        theirs = self.started("inv_other001", "checkpoint", tid=OTHER)
+        text = self.spool.stage(OTHER, b"their claim text", "text/plain")
+
+        def claiming(grant: dict, claim_id: str) -> dict:
+            return {**empty_outcome(grant["invocation_id"], "interim_transition", topic=grant["topic_id"]),
+                    "claims": [{"claim_id": claim_id, "revision": 1, "text_ref": text, "load_bearing": False, "required_access_tier": None}]}
+        self.assertEqual(self.commit(theirs, "op_theirs0001", claiming(theirs, "clm_theirs001"), refs=[text])["status"], "committed")
+        self.assertIsNone(self.spool.read(text["content_hash"], topic_id=TOPIC))
+        before = self.state()
+        out = self.commit(self.grant, "op_ours0000001", claiming(self.grant, "clm_ours0001"))
+        self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_missing"), out)
+        self.assertEqual(self.state(), before)
+        self.spool.stage(TOPIC, b"their claim text", "text/plain")  # the same bytes, staged for this topic by its own work
+        self.assertEqual(self.commit(self.grant, "op_ours0000002", claiming(self.grant, "clm_ours0002"), refs=[text])["status"], "committed")
+
     def test_a_result_staged_as_another_media_type_is_refused(self) -> None:
         outcome = jcs(empty_outcome("inv_research01"))
         self.spool.stage(TOPIC, outcome, "text/plain")

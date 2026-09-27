@@ -69,6 +69,8 @@ class FailureTest(LifecycleTestCase):
         self.assertEqual((self.status(), self.state_revision()), ("queued", revision + 1))
         self.assertEqual(self.rows("SELECT media_type, topic_id, staged_by_invocation_id FROM artifacts WHERE content_hash = ?", evidence),
                          [("application/json", TOPIC, "inv_research01")])
+        self.assertEqual(self.rows("SELECT topic_id, recorded_by_invocation_id FROM artifact_topics WHERE content_hash = ?", evidence),
+                         [(TOPIC, "inv_research01")])  # evidence staged in the invocation's topic is that topic's (A6)
         before = self.state(exclude=())
         self.assertEqual(self.transition("failed", failure_class="empty_output", end_evidence_ref=evidence)["status"], "replayed")
         self.assertEqual(self.state(exclude=()), before)

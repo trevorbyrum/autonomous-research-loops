@@ -166,3 +166,22 @@ class UnknownHoldTest(SupervisionTestCase):
     def test_a_cleared_hold_stays_cleared(self) -> None:
         self.x(self.clear("hold_unknown01"))
         self.rejects("a cleared hold is final", "UPDATE holds SET cleared_at = NULL, cleared_by_reconciliation_id = NULL WHERE hold_id = 'hold_unknown01'")
+
+
+class ArtifactTopicTest(SupervisionTestCase):
+    """Task 1c-repair A6: an artifact row is the physical record of its bytes,
+    shared by every topic that staged them; which topics may reference it is
+    recorded separately, per topic, and only by that topic's own work (C-9)."""
+
+    def test_a_topic_is_authorized_only_by_its_own_work(self) -> None:
+        self.invocation("inv_oooooooo", tid=OTHER, lease="lease_oooooooo")
+        ins = "INSERT INTO artifact_topics (content_hash, topic_id, recorded_by_invocation_id, recorded_at) VALUES (?, ?, ?, ?)"
+        before = self.rows("SELECT * FROM artifact_topics")
+        self.rejects("own invocation", ins, EVIDENCE, TOPIC, "inv_oooooooo", T)  # another topic's work authorizes nothing here
+        self.rejects("own invocation", ins, EVIDENCE, OTHER, "inv_pppppppp", T)
+        self.assertEqual(self.rows("SELECT * FROM artifact_topics"), before)
+        self.x(ins, EVIDENCE, TOPIC, "inv_pppppppp", T)
+        self.x(ins, EVIDENCE, OTHER, "inv_oooooooo", T)  # the same bytes, one physical row, a second topic's own authorization
+        self.assertEqual(self.rows("SELECT topic_id, recorded_by_invocation_id FROM artifact_topics WHERE content_hash = ? ORDER BY topic_id", EVIDENCE),
+                         [(TOPIC, "inv_pppppppp"), (OTHER, "inv_oooooooo")])
+        self.assertEqual(self.value("SELECT count(*) FROM artifacts WHERE content_hash = ?", EVIDENCE), 1)

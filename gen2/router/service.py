@@ -258,6 +258,23 @@ class Router(Lifecycle):
             return Refusal("cancel_requested", f"cancellation was requested at {inv['cancel_requested_at']}")
         return None
 
+    def _authorize_artifact(self, content_hash: str, inv: dict, now: str) -> None:
+        """Record that the invocation's topic may reference these bytes: they
+        were staged in its spool and are recorded by its own work (C-9). The
+        artifact row is shared by every topic that staged the same bytes;
+        the authorization is per topic (Astra 1c review A6)."""
+        if self._one("artifact_topics", {"content_hash": content_hash, "topic_id": inv["topic_id"]}) is None:
+            self._store.insert("artifact_topics", {"content_hash": content_hash, "topic_id": inv["topic_id"],
+                                                   "recorded_by_invocation_id": inv["invocation_id"], "recorded_at": now})
+
+    def _recorded_for(self, content_hash: str, topic_id: str) -> dict | None:
+        """The artifact row of bytes already recorded for this topic, or None.
+        Bytes recorded only for other topics are not this topic's: content
+        identity is not topic authorization (C-9, RG-5; Q6 ruling)."""
+        if self._one("artifact_topics", {"content_hash": content_hash, "topic_id": topic_id}) is None:
+            return None
+        return self._one("artifacts", {"content_hash": content_hash})
+
     def _capability(self, capability_id: str, invocation_id: str) -> dict:
         inv = self._one("invocations", {"capability_id": capability_id})
         if inv is None:
@@ -637,18 +654,23 @@ class Router(Lifecycle):
             if spooled != ref["media_type"]:  # the spool's own record of what it staged for this topic (task 1c)
                 raise Refusal("payload_invalid", f"{content_hash} is staged as {spooled}, not the {ref['media_type']} declared")
 
+        def recorded_here(content_hash: str) -> dict | None:  # a topic's authorization is write-once (DDL artifact_topics): what validation finds stands
+            return self._recorded_for(content_hash, inv["topic_id"])
+
         def available(content_hash: str) -> bool:
-            return content_hash in staged or self._one("artifacts", {"content_hash": content_hash}) is not None
+            return content_hash in staged or recorded_here(content_hash) is not None
 
         def bind(ref: dict, what: str) -> None:
             """The one rule for an artifact reference a document embeds (A10;
             Astra 1b review A4): its bytes are staged with this commit or
-            already recorded, and its size and media type are theirs — the
-            staged declaration (its size checked against the bytes) or the
-            recorded row."""
-            known = artifacts.get(ref["content_hash"]) or self._one("artifacts", {"content_hash": ref["content_hash"]})
+            already recorded for this topic (A6), and its size and media type
+            are theirs — the staged declaration (its size checked against the
+            bytes) or the recorded row."""
+            known = artifacts.get(ref["content_hash"]) or recorded_here(ref["content_hash"])
             if known is None:
-                raise Refusal("payload_missing", f"{what} {ref['content_hash']} is neither staged with this commit nor recorded")
+                elsewhere = self._one("artifacts", {"content_hash": ref["content_hash"]}) is not None
+                raise Refusal("payload_missing", f"{what} {ref['content_hash']} is neither staged with this commit nor recorded for {inv['topic_id']}"
+                                                 + ("; it is recorded only for another topic, and content identity is not topic authorization (C-9)" if elsewhere else ""))
             if (known["size_bytes"], known["media_type"]) != (ref["size_bytes"], ref["media_type"]):
                 raise Refusal("payload_invalid", f"{what}: its reference disagrees with the artifact's size or media type "
                                                  f"({known['size_bytes']} bytes of {known['media_type']})")
@@ -777,6 +799,7 @@ class Router(Lifecycle):
             if self._one("artifacts", {"content_hash": content_hash}) is None:
                 self._store.insert("artifacts", {"content_hash": content_hash, "size_bytes": ref["size_bytes"], "media_type": ref["media_type"],
                                                  "topic_id": inv["topic_id"], "staged_by_invocation_id": inv["invocation_id"], "staged_at": now})
+            self._authorize_artifact(content_hash, inv, now)  # staged in this topic's spool with this commit: this topic's, whoever recorded the bytes first
         lease_id = lease["lease_id"]
         self._store.insert("operation_receipts", {
             "operation_id": env["operation_id"], "receipt_id": receipt_id, "operation_kind": env["operation_kind"], "invocation_id": inv["invocation_id"],

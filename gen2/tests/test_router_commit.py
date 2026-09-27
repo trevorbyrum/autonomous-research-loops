@@ -356,6 +356,32 @@ class AuthorityTest(CommitCase):
         self.assertRejected(self.router.commit_outcome(env), "payload_missing", before, audits, "canonical bytes are not staged")
         self.assertEqual(self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own, refs=[acquired]))["status"], "committed")
 
+    def test_canonical_bytes_recorded_only_for_another_topic_are_not_this_topics(self) -> None:
+        """Astra 1c review A6: the same receipt path, the obtained bytes
+        recorded only by another topic's commit. Content identity is not
+        topic authorization: refused as not staged here, nothing written;
+        staged with this commit (in this topic's spool) they are accepted."""
+        text = self.artifact(b"a load-bearing claim")
+        outcome = empty_outcome("inv_research01", "interim_transition")
+        outcome["claims"] = [{"claim_id": "clm_00000001", "revision": 1, "text_ref": text, "load_bearing": True, "required_access_tier": "full_text"}]
+        self.assertEqual(self.router.commit_outcome(self.envelope(self.grant, "op_capture0001", outcome, refs=[text]))["status"], "committed")
+        self.to_queued(OTHER)
+        theirs = self.started("inv_other001", "checkpoint", tid=OTHER)
+        raw = b"the source's canonical bytes"
+        acquired = {"content_hash": self.spool.put(raw, media_type="application/pdf", topic=OTHER), "size_bytes": len(raw), "media_type": "application/pdf"}
+        self.assertEqual(self.router.commit_outcome(self.envelope(theirs, "op_theirs0001", empty_outcome("inv_other001", "interim_transition", topic=OTHER),
+                                                                  refs=[acquired]))["status"], "committed")
+        verifier = self.started("inv_verify01", "verification")
+        receipt = self.verification_receipt(verifier)
+        receipt.update(obtained_content_hash=acquired["content_hash"],
+                       extraction={"method": "canonical_bytes", "extractor": "x-1", "produced_by_invocation_id": "inv_research01", "validation_ref": None})
+        own = {**empty_outcome("inv_verify01", "interim_transition"), "verification_receipts": [receipt]}
+        before, audits = self.snapshot()
+        self.assertRejected(self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own)), "payload_missing", before, audits, "canonical bytes are not staged")
+        self.spool.put(raw, media_type="application/pdf", topic=TOPIC)
+        self.assertEqual(self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own, refs=[acquired]))["status"], "committed")
+        self.assertEqual(self.rows("SELECT topic_id FROM artifact_topics WHERE content_hash = ? ORDER BY topic_id", acquired["content_hash"]), [(TOPIC,), (OTHER,)])
+
     def verification_receipt(self, verifier: dict) -> dict:
         return {"receipt_version": "verification-receipt/1", "verification_receipt_id": "ver_000000000001", "topic_id": TOPIC,
                 "claim": {"claim_id": "clm_00000001", "claim_revision": 1}, "source": {"work_id": "wrk_00000001", "source_version": "v1"},
@@ -499,6 +525,8 @@ class BoundaryValidationTest(CommitCase):
                 self.assertEqual(out["status"], ours_expected, out)
                 self.assertEqual(self.rows("SELECT media_type FROM artifacts WHERE content_hash = ?", ours_ref["content_hash"]), [(their_media,)])
                 self.assertEqual(self.value("SELECT count(*) FROM claims WHERE claim_id = ?", f"clm_ours000{n}"), 1 if ours_expected == "committed" else 0)
+                self.assertEqual(self.rows("SELECT topic_id FROM artifact_topics WHERE content_hash = ? ORDER BY topic_id", ours_ref["content_hash"]),
+                                 [(TOPIC,), (OTHER,)] if ours_expected == "committed" else [(OTHER,)])  # A6: each topic's own authorization
                 if ours_expected == "rejected":
                     self.assertEqual((out["reason"], self.value("SELECT count(*) FROM operation_receipts WHERE operation_id = ?", ours_env["operation_id"])),
                                      ("payload_invalid", 0))
@@ -519,6 +547,72 @@ class BoundaryValidationTest(CommitCase):
         self.assertEqual((response.get("reason"), response.get("current_state_revision")), ("cross_topic", None))  # never 0 (RG-U)
         known = self.router.commit_outcome({**env, "expected_state_revision": 0})
         self.assertEqual((known.get("reason"), known.get("current_state_revision")), ("state_revision_stale", self.state_revision()))
+
+
+class TopicAuthorizationTest(CommitCase):
+    """Astra 1c review A6 and the Q6 ruling (C-9, RG-5): an artifact reference
+    resolves to bytes staged with the commit or recorded for the committing
+    invocation's own topic. The artifacts row is one physical record shared
+    by every topic that staged the same bytes; which topics may reference it
+    is recorded separately (artifact_topics), by each topic's own work.
+    Oracles: expected outcomes written by hand; raw SQL read-back."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.to_queued(OTHER)
+        self.theirs = self.started("inv_other001", "checkpoint", tid=OTHER)
+
+    def claiming(self, grant: dict, op: str, claim_id: str, ref: dict, *, refs=()) -> dict:
+        outcome = {**empty_outcome(grant["invocation_id"], "interim_transition", topic=grant["topic_id"]),
+                   "claims": [{"claim_id": claim_id, "revision": 1, "text_ref": ref, "load_bearing": False, "required_access_tier": None}]}
+        return self.envelope(grant, op, outcome, refs=refs)
+
+    def recorded_for_other(self, text: bytes) -> dict:
+        ref = {"content_hash": self.spool.put(text, media_type="text/plain", topic=OTHER), "size_bytes": len(text), "media_type": "text/plain"}
+        self.assertEqual(self.router.commit_outcome(self.claiming(self.theirs, "op_theirs0001", "clm_theirs001", ref, refs=[ref]))["status"], "committed")
+        return ref
+
+    def test_bytes_recorded_only_for_another_topic_are_not_referenced_by_hash(self) -> None:
+        ref = self.recorded_for_other(b"their claim text")
+        before, audits = self.snapshot()
+        self.assertRejected(self.router.commit_outcome(self.claiming(self.grant, "op_ours0000001", "clm_ours0001", ref)), "payload_missing", before, audits,
+                            "recorded only for another topic")
+        self.assertEqual(self.rows("SELECT topic_id FROM artifact_topics WHERE content_hash = ?", ref["content_hash"]), [(OTHER,)])
+
+    def test_bytes_recorded_for_this_topic_are_referenced_by_hash(self) -> None:
+        text = b"our claim text"
+        ref = {"content_hash": self.spool.put(text, media_type="text/plain", topic=TOPIC), "size_bytes": len(text), "media_type": "text/plain"}
+        self.assertEqual(self.router.commit_outcome(self.claiming(self.grant, "op_ours0000001", "clm_ours0001", ref, refs=[ref]))["status"], "committed")
+        self.assertEqual(self.rows("SELECT topic_id, recorded_by_invocation_id FROM artifact_topics WHERE content_hash = ?", ref["content_hash"]),
+                         [(TOPIC, "inv_research01")])
+        self.assertEqual(self.router.commit_outcome(self.claiming(self.grant, "op_ours0000002", "clm_ours0002", ref))["status"], "committed")  # by hash alone
+
+    def test_the_same_bytes_staged_by_this_topic_are_its_own(self) -> None:
+        ref = self.recorded_for_other(b"shared text")
+        self.spool.put(b"shared text", media_type="text/plain", topic=TOPIC)  # this topic's own spool entry of the same bytes
+        self.assertEqual(self.router.commit_outcome(self.claiming(self.grant, "op_ours0000001", "clm_ours0001", ref, refs=[ref]))["status"], "committed")
+        self.assertEqual(self.rows("SELECT topic_id, staged_by_invocation_id FROM artifacts WHERE content_hash = ?", ref["content_hash"]),
+                         [(OTHER, "inv_other001")])  # one physical record: the first stager's
+        self.assertEqual(self.rows("SELECT topic_id, recorded_by_invocation_id FROM artifact_topics WHERE content_hash = ? ORDER BY topic_id", ref["content_hash"]),
+                         [(TOPIC, "inv_research01"), (OTHER, "inv_other001")])
+
+    def test_bytes_another_topic_records_meanwhile_do_not_become_this_topics(self) -> None:
+        """Concurrent insertion: another topic records the bytes just before
+        this commit validates its reference by hash. Refused (they are that
+        topic's); the other commit stands. Control: the same interleaving,
+        this commit staging the bytes itself, commits both."""
+        text = b"racing text"
+        ref = {"content_hash": self.spool.put(text, media_type="text/plain", topic=OTHER), "size_bytes": len(text), "media_type": "text/plain"}
+        theirs = self.claiming(self.theirs, "op_theirs0001", "clm_theirs001", ref, refs=[ref])
+        other_router, interleaved = self.make_router(), []
+        router = self.make_router(fault=lambda point: interleaved.append(other_router.commit_outcome(theirs)["status"]) if point == "before_validation" else None)
+        out = router.commit_outcome(self.claiming(self.grant, "op_ours0000001", "clm_ours0001", ref))
+        self.assertEqual((interleaved, out["status"], out.get("reason")), (["committed"], "rejected", "payload_missing"))
+        self.assertEqual(self.value("SELECT count(*) FROM claims WHERE claim_id = 'clm_ours0001'"), 0)
+        self.spool.put(text, media_type="text/plain", topic=TOPIC)
+        out = self.router.commit_outcome(self.claiming(self.grant, "op_ours0000002", "clm_ours0002", ref, refs=[ref]))
+        self.assertEqual(out["status"], "committed")
+        self.assertEqual(self.rows("SELECT topic_id FROM artifact_topics WHERE content_hash = ? ORDER BY topic_id", ref["content_hash"]), [(TOPIC,), (OTHER,)])
 
 
 class AtomicityTest(CommitCase):

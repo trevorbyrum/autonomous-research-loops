@@ -112,6 +112,7 @@ class Lifecycle:
                                              "topic_id": inv["topic_id"], "staged_by_invocation_id": inv["invocation_id"], "staged_at": now})
         elif (stored["size_bytes"], stored["media_type"]) != (evidence["size_bytes"], "application/json"):
             raise Refusal("evidence_refused", f"{evidence['content_hash']} is recorded as {stored['size_bytes']} bytes of {stored['media_type']}")
+        self._authorize_artifact(evidence["content_hash"], inv, now)  # staged in the invocation's topic (_evidence reads it there)
 
     # -- capacity and holds --------------------------------------------------
     def _require_delegates_ended(self, inv: dict) -> None:

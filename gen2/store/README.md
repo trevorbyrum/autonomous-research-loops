@@ -35,6 +35,7 @@
 
 **Supporting tables not named in the brief:**
 - `artifacts`, `dossiers`, `decision_specs`, `audit_events` exist because listed tables reference them. Completion approvals bind to a dossier revision; decision receipts bind to an immutable spec; step 4 of `commit_outcome` records an audit event; content is referenced by hash.
+- `artifact_topics` (task 1c-repair, Astra 1c review A6): an `artifacts` row is the physical record of its bytes, shared by every topic that staged them; which topics may reference it is recorded here, one write-once row per (artifact, topic), inserted only by that topic's own invocation (DDL). The router records a topic's row when bytes staged in that topic's spool are recorded by its commit or evidence, and resolves a reference to already-recorded bytes only through it: content identity is not topic authorization (C-9, Q6 ruling).
 - `capability_facts` is a **deviation proposal**. Flow §4.2 and BOUNDARIES.md *Gateway* make dated capability facts first-class. Capability holds and failed secrets reads (`search_observations.error_class = 'secrets_backend_failing'`) reference one. Remove it, and those two checks, if the proposal is rejected.
 
 ## What the DDL enforces
