@@ -356,3 +356,23 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-1c-astra-review-
 Mutation-runtime recommendations have been recorded. No operator decision is needed.
 
 **Routed:** `docs/gen2/tasks/1c-repair.md` to an Opus 5.5 coder.
+
+## 2026-09-27: 1c-repair re-review (Astra, xhigh): BLOCK, narrow
+Full report: `~/work/research-loops-public/private/reviews/gen2-1c-repair-astra-review-20260927.md`.
+
+**Independent verification:** `make gen2-check` exit 0: 894 tests, 1040/1040 mutants, mutation step 737 s under load. All 637 tracked-file hashes were unchanged.
+
+**CLOSED:**
+- A1–A4 and A6–A11, each rebuilt against the original reproductions.
+- C1: child attestation holds, and the rebuilt probe that goes around it is refused.
+- C2: two concrete races were diagnosed with deterministic regressions. The original failure is not retrospectively identified, but the investigation meets the standard.
+- C3.
+- Most of B1.
+
+**Remaining:**
+- A5-R (MEDIUM): parent cleanup of a stalled delegate bypasses the delegate's outage budget and pushes its incident deadline later. Reproduced 8/8.
+- C4: mutation selection omits paired positive controls.
+- C5: the "replaced lease" skip excludes reachable delegate cases (discovery, verification and checkpoint parents).
+- B: the bounded-retry and positive-control claims are overstated, and the 7-minute runtime is one recorded run, not a dependable figure. Observed runs: 434, 737 and 1,219 s.
+
+No operator decision needed. **Routed:** `docs/gen2/tasks/1c-repair-2.md`.
