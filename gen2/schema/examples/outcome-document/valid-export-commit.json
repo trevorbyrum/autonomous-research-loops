@@ -1,0 +1,58 @@
+{
+  "fixture": {
+    "schema": "outcome-document.schema.json",
+    "expect": "valid",
+    "tests": "P-1: an export manifest is committed to the outbox through commit_outcome"
+  },
+  "instance": {
+    "outcome_version": "outcome/1",
+    "invocation_id": "inv_01J8ZQ7CHK",
+    "topic_id": "fleet-a:intake-latency",
+    "operation_kind": "interim_transition",
+    "next_queue_state": null,
+    "claims": [],
+    "claim_promotions": [],
+    "verification_receipts": [],
+    "decision_receipts": [],
+    "screening_assessments": [],
+    "review_triggers": [],
+    "holds": [],
+    "exports": [
+      {
+        "manifest_version": "export-manifest/2",
+        "manifest_id": "man_01J8ZQ70M1",
+        "topic_id": "fleet-a:intake-latency",
+        "artifact_kind": "completion_publication",
+        "generation": 1,
+        "options_revision": 1,
+        "source": {
+          "revision": 12,
+          "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "approval": {
+          "operator_decision_id": "opd_comp0001",
+          "approved_revision": 12
+        },
+        "bundle": {
+          "bundle_id": "exb_01J8ZQ70M1",
+          "bundle_version": "export-bundle/1",
+          "content_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+        },
+        "expected_connectors": {
+          "warehouse": {
+            "connector_type": "sql"
+          },
+          "archive": {
+            "connector_type": "jsonl_file"
+          }
+        },
+        "supersedes": null,
+        "tombstones": [],
+        "created_at": "2026-09-25T12:00:00Z",
+        "hash_contract": {
+          "canonicalization": "jcs-rfc8785/1"
+        }
+      }
+    ]
+  }
+}

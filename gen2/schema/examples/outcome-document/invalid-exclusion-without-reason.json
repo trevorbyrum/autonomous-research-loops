@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "outcome-document.schema.json",
+    "expect": "invalid",
+    "tests": "E-9: an exclusion is reason-coded",
+    "base": "valid-research-final.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/screening_assessments/0/decision",
+        "value": "exclude"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/screening_assessments/0/reason_code"
+      }
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json#/$defs/response",
+    "expect": "invalid",
+    "tests": "C-5: a rejection names its current state revision (or null for no stored topic); it is not omitted",
+    "base": "valid-response-rejected.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/current_state_revision"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": ""
+      }
+    ]
+  }
+}

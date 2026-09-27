@@ -1,0 +1,14 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json#/$defs/response",
+    "expect": "valid",
+    "tests": "C-2/RG-U (task 1b): an envelope naming no stored topic is rejected as envelope_invalid, and its unknown state revision is null, never 0"
+  },
+  "instance": {
+    "status": "rejected",
+    "operation_id": "op_01J8ZQ4K7M",
+    "reason": "envelope_invalid",
+    "detail": "commit-outcome.schema.json: /role: no value is allowed here",
+    "current_state_revision": null
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "outcome-document.schema.json",
+    "expect": "invalid",
+    "tests": "C-2: a role label in the outcome document is refused, not ignored",
+    "base": "valid-research-final.json",
+    "patch": [
+      {
+        "op": "add",
+        "path": "/role",
+        "value": "verifier"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "additionalProperties",
+        "path": ""
+      }
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json#/$defs/response",
+    "expect": "invalid",
+    "tests": "RG-U: a rejection never reports an unknown state revision as a negative or made-up number",
+    "base": "valid-response-rejected.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/current_state_revision",
+        "value": -1
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "oneOf",
+        "path": "/current_state_revision"
+      }
+    ]
+  }
+}

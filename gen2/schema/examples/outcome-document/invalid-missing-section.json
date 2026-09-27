@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "outcome-document.schema.json",
+    "expect": "invalid",
+    "tests": "C-2: every section is present, empty when unused",
+    "base": "valid-research-final.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/exports"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": ""
+      }
+    ]
+  }
+}

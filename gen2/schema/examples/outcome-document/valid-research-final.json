@@ -1,0 +1,74 @@
+{
+  "fixture": {
+    "schema": "outcome-document.schema.json",
+    "expect": "valid",
+    "tests": "C-4/V-10: a research pass's final outcome proposes capture, promotion, screening, a trigger, a hold and its next queue state; no producer or recorder field exists"
+  },
+  "instance": {
+    "outcome_version": "outcome/1",
+    "invocation_id": "inv_01J8ZQ3W2X",
+    "topic_id": "fleet-a:intake-latency",
+    "operation_kind": "final_outcome",
+    "next_queue_state": "resting",
+    "claims": [
+      {
+        "claim_id": "clm_01J8ZQ5C1A",
+        "revision": 1,
+        "text_ref": {
+          "content_hash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "size_bytes": 812,
+          "media_type": "text/plain"
+        },
+        "load_bearing": false,
+        "required_access_tier": null
+      }
+    ],
+    "claim_promotions": [
+      {
+        "claim_id": "clm_01J8ZQ11C1",
+        "revision": 2
+      }
+    ],
+    "verification_receipts": [],
+    "decision_receipts": [],
+    "screening_assessments": [
+      {
+        "assessment_id": "asm_01J8ZQ5D2B",
+        "work_id": "wrk_01J8ZQ5E3C",
+        "stage": "abstract",
+        "decision": "include",
+        "reason_code": null,
+        "criterion_results": {
+          "C-1": "met",
+          "C-2": "unknown"
+        },
+        "actor_kind": "primary",
+        "decision_receipt_id": null,
+        "supersedes_assessment_id": null
+      }
+    ],
+    "review_triggers": [
+      {
+        "reason_code": "persistent_contradiction",
+        "cause_ref": "clm_01J8ZQ5C1A contradicts clm_01J8ZQ5C9Z",
+        "source_revision": 41,
+        "observed_at": "2026-09-25T11:01:59Z"
+      }
+    ],
+    "holds": [
+      {
+        "hold_id": "hold_01J8ZQ5H1A",
+        "subject_ref": "obligation:O-3",
+        "hold_class": "judgment",
+        "cause": "two sources disagree on the effect's sign",
+        "recoverability": "needs_decision",
+        "required_authority": "primary",
+        "owner": "primary:station-1",
+        "deadline_at": "2026-09-27T11:02:00Z",
+        "clears_when": "an adjudication records which reading holds",
+        "capability_fact_id": null
+      }
+    ],
+    "exports": []
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "outcome-document.schema.json",
+    "expect": "invalid",
+    "tests": "D-2: a decision-provider assessment names the receipt whose committed action it is",
+    "base": "valid-research-final.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/screening_assessments/0/actor_kind",
+        "value": "decision_provider"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/screening_assessments/0/decision_receipt_id"
+      }
+    ]
+  }
+}

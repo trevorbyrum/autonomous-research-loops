@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/outcome-document.schema.json",
+  "$comment": "flow: S4 step 7 (the result is committed through commit_outcome as typed proposals, never as agent-written state); S4 steps 3, 6, 8, 9 (screening, provisional capture, verification, accepted support at the commit boundary); §3 step 4 (a decision action commits through the same path); S8 item 1 (the outbox event is committed atomically) | boundaries: Router; Station supervisor; Primary agent (per-station frontier LLM); Verifier; Secondary/delegate agents | design-review: §5 commit_outcome steps 1-4 (the typed outcome document lives in the protected spool, addressed by payload_digest, and is validated outside the write transaction) | invariants: C-2; C-3; C-4; C-7; C-9; C-12; V-4; V-10; RG-5; G-12; P-1; D-2 | note: added by task 1b. The document the router reads, by digest, for one commit. It carries only proposals whose authority the router derives from the committing capability: there is no producer, verifier, recorder, signal-source or role field, because the router fills each of those in from the invocation the capability names. Which sections an invocation kind may carry is the router's rule (gen2/router/boundary.py SECTION_KINDS), not this schema's",
+  "title": "commit_outcome outcome document",
+  "description": "Staged by trusted station code in the protected spool and named by the commit envelope's payload_digest (the bytes are hashed exactly as staged). Every section is present, empty when unused, so a missing section is a malformed document rather than a silent default. Identity fields repeat the envelope's so the document cannot be replayed under another invocation, topic or operation kind.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "outcome_version",
+    "invocation_id",
+    "topic_id",
+    "operation_kind",
+    "next_queue_state",
+    "claims",
+    "claim_promotions",
+    "verification_receipts",
+    "decision_receipts",
+    "screening_assessments",
+    "review_triggers",
+    "holds",
+    "exports"
+  ],
+  "properties": {
+    "outcome_version": {"const": "outcome/1"},
+    "invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
+    "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
+    "operation_kind": {"enum": ["final_outcome", "interim_transition"]},
+    "next_queue_state": {
+      "description": "A research pass's proposal for its topic when its final outcome releases the lease: rest or requeue. The router applies it only to an active topic (gen2/store/README.md queue table: active -> resting / queued, router). Null otherwise.",
+      "enum": [null, "resting", "queued"]
+    },
+    "claims": {
+      "description": "Provisional capture (flow S4 step 6). The producer of each revision is the committing invocation, never a field here (INVARIANTS V-10: production and adoption are bound to the commit and its receipt). Adopting a scoping claim is writing its next revision.",
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["claim_id", "revision", "text_ref", "load_bearing", "required_access_tier"],
+        "properties": {
+          "claim_id": {"$ref": "common.schema.json#/$defs/claim_id"},
+          "revision": {"$ref": "common.schema.json#/$defs/revision"},
+          "text_ref": {"$ref": "common.schema.json#/$defs/artifact_ref"},
+          "load_bearing": {"type": "boolean"},
+          "required_access_tier": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/access_tier"}]}
+        },
+        "if": {"properties": {"load_bearing": {"const": true}}},
+        "then": {"properties": {"required_access_tier": {"type": "string"}}}
+      }
+    },
+    "claim_promotions": {
+      "description": "Claim revisions of the committing invocation's topic proposed for accepted support; the store's V-4 and V-10 gates decide.",
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["claim_id", "revision"],
+        "properties": {
+          "claim_id": {"$ref": "common.schema.json#/$defs/claim_id"},
+          "revision": {"$ref": "common.schema.json#/$defs/revision"}
+        }
+      }
+    },
+    "verification_receipts": {
+      "description": "Committed only by the verification invocation the receipt names as its verifier, under that invocation's own capability (RG-5).",
+      "type": "array",
+      "maxItems": 64,
+      "items": {"$ref": "verification-receipt.schema.json"}
+    },
+    "decision_receipts": {
+      "description": "Receipts of decision-provider calls made inside the committing invocation (flow §3 step 4).",
+      "type": "array",
+      "maxItems": 64,
+      "items": {"$ref": "decision-receipt.schema.json"}
+    },
+    "screening_assessments": {
+      "description": "Unit 3 (assessed candidates). The contract revision, framing and eligibility-protocol versions are the committing invocation's pinned revision's, filled in by the router; criterion ids must be that protocol's.",
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["assessment_id", "work_id", "stage", "decision", "reason_code", "criterion_results", "actor_kind", "decision_receipt_id", "supersedes_assessment_id"],
+        "properties": {
+          "assessment_id": {"$ref": "#/$defs/assessment_id"},
+          "work_id": {"$ref": "common.schema.json#/$defs/work_id"},
+          "stage": {"enum": ["metadata", "abstract", "full_text"]},
+          "decision": {"enum": ["include", "exclude", "borderline"]},
+          "reason_code": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/local_id"}]},
+          "criterion_results": {
+            "description": "Per criterion of the pinned eligibility protocol: met, not_met, or unknown (missing information is unknown, never an exclusion).",
+            "type": "object",
+            "maxProperties": 100,
+            "propertyNames": {"$ref": "common.schema.json#/$defs/local_id"},
+            "additionalProperties": {"enum": ["met", "not_met", "unknown"]}
+          },
+          "actor_kind": {"enum": ["code", "primary", "decision_provider"]},
+          "decision_receipt_id": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/decision_receipt_id"}]},
+          "supersedes_assessment_id": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/assessment_id"}]}
+        },
+        "allOf": [
+          {"if": {"properties": {"decision": {"const": "exclude"}}}, "then": {"properties": {"reason_code": {"type": "string"}}}},
+          {"if": {"properties": {"actor_kind": {"const": "decision_provider"}}},
+           "then": {"properties": {"decision_receipt_id": {"type": "string"}}},
+           "else": {"properties": {"decision_receipt_id": {"type": "null"}}}}
+        ]
+      }
+    },
+    "review_triggers": {
+      "description": "Semantic trigger observations of the primary (flow S5). The identity is the router's hash of (topic, reason, cause, source revision), so a replayed trigger collides instead of re-opening; mandatory retraction and decision-record signals are raised by code policy or the operator, never by a commit (G-12).",
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reason_code", "cause_ref", "source_revision", "observed_at"],
+        "properties": {
+          "reason_code": {"enum": [
+            "persistent_contradiction", "yield_exhaustion_open_obligations", "cross_context_heterogeneity",
+            "definitional_disagreement", "evidence_type_mismatch", "inapplicable_synthesis_plan", "out_of_frame_concepts"]},
+          "cause_ref": {"$ref": "common.schema.json#/$defs/short_text"},
+          "source_revision": {"$ref": "common.schema.json#/$defs/state_revision"},
+          "observed_at": {"$ref": "common.schema.json#/$defs/timestamp"}
+        }
+      }
+    },
+    "holds": {
+      "description": "Typed, owned, deadlined holds created open by this commit (H-3).",
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["hold_id", "subject_ref", "hold_class", "cause", "recoverability", "required_authority", "owner", "deadline_at", "clears_when", "capability_fact_id"],
+        "properties": {
+          "hold_id": {"$ref": "common.schema.json#/$defs/hold_id"},
+          "subject_ref": {"$ref": "common.schema.json#/$defs/short_text"},
+          "hold_class": {"$ref": "common.schema.json#/$defs/hold_class"},
+          "cause": {"$ref": "common.schema.json#/$defs/short_text"},
+          "recoverability": {"enum": ["retry_within_budget", "needs_remediation", "needs_decision", "unknown"]},
+          "required_authority": {"$ref": "common.schema.json#/$defs/required_authority"},
+          "owner": {"$ref": "common.schema.json#/$defs/short_text"},
+          "deadline_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+          "clears_when": {"$ref": "common.schema.json#/$defs/short_text"},
+          "capability_fact_id": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/short_text"}]}
+        },
+        "if": {"properties": {"hold_class": {"const": "capability"}}},
+        "then": {"properties": {"capability_fact_id": {"type": "string"}}}
+      }
+    },
+    "exports": {
+      "description": "Export manifests committed to the outbox with this commit (P-1; EXPORT-API.md §3). Each is validated against export-manifest/2 and its extension connectors admitted before it is written (EXPORT-API.md §5).",
+      "type": "array",
+      "maxItems": 16,
+      "items": {"$ref": "export-manifest.schema.json"}
+    }
+  },
+  "$defs": {
+    "assessment_id": {"type": "string", "pattern": "^asm_[A-Za-z0-9_-]{8,64}$"}
+  },
+  "allOf": [
+    {
+      "description": "Only a final outcome releases a lease, so only it proposes what the topic does next.",
+      "if": {"properties": {"operation_kind": {"const": "interim_transition"}}},
+      "then": {"properties": {"next_queue_state": {"type": "null"}}}
+    }
+  ]
+}

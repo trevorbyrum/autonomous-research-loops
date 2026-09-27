@@ -179,7 +179,7 @@
       "then": {"properties": {"effects": {"properties": {"research_ordinal": {"type": "null"}, "lease_release": {"type": "null"}}}}}
     },
     "response": {
-      "description": "committed and replayed carry the (same) receipt; rejected carries no receipt and means nothing changed (step 3: reject before mutation).",
+      "description": "committed and replayed carry the (same) receipt; rejected carries no receipt and means nothing changed (step 3: reject before mutation). Task 1b added two reasons: envelope_invalid (the envelope fails this schema, its byte cap or C-13 canonicalization, so none of its fields can be trusted) and invocation_state_invalid (the invocation is not in the state the operation needs: result_ready with this payload staged for a final outcome, running for an interim transition).",
       "type": "object",
       "required": ["status"],
       "properties": {"status": {"enum": ["committed", "replayed", "rejected"]}},
@@ -220,11 +220,16 @@
                   "payload_digest_mismatch",
                   "payload_invalid",
                   "kind_not_permitted",
-                  "final_outcome_exists"
+                  "final_outcome_exists",
+                  "envelope_invalid",
+                  "invocation_state_invalid"
                 ]
               },
               "detail": {"$ref": "common.schema.json#/$defs/short_text"},
-              "current_state_revision": {"$ref": "common.schema.json#/$defs/state_revision"}
+              "current_state_revision": {
+                "description": "The state revision of the topic the envelope names, so the caller can re-read before resubmitting. Null when the envelope names no stored topic: an unknown revision is never reported as 0 (RG-U).",
+                "oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/state_revision"}]
+              }
             }
           }
         }

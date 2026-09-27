@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "outcome-document.schema.json",
+    "expect": "invalid",
+    "tests": "H-2/H-3: a capability hold cites its capability fact",
+    "base": "valid-research-final.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/holds/0/hold_class",
+        "value": "capability"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/holds/0/capability_fact_id"
+      }
+    ]
+  }
+}

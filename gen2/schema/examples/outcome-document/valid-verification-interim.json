@@ -1,0 +1,87 @@
+{
+  "fixture": {
+    "schema": "outcome-document.schema.json",
+    "expect": "valid",
+    "tests": "RG-5: a verifier's interim commit carries its own verification receipt"
+  },
+  "instance": {
+    "outcome_version": "outcome/1",
+    "invocation_id": "inv_01J8ZQ6VER",
+    "topic_id": "fleet-a:intake-latency",
+    "operation_kind": "interim_transition",
+    "next_queue_state": null,
+    "claims": [],
+    "claim_promotions": [],
+    "verification_receipts": [
+      {
+        "receipt_version": "verification-receipt/1",
+        "verification_receipt_id": "ver_01J8ZQ60V1",
+        "topic_id": "fleet-a:intake-latency",
+        "claim": {
+          "claim_id": "clm_01J8ZQ11C1",
+          "claim_revision": 2
+        },
+        "source": {
+          "work_id": "wrk_01J8ZQ00W1",
+          "source_version": "doi:10.1177/1088868311417243@publisher-2012"
+        },
+        "cited_spans": [
+          {
+            "start": 10412,
+            "end": 10688,
+            "locator": {
+              "kind": "section",
+              "value": "Results"
+            }
+          }
+        ],
+        "obtained_content_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "access_tier": "full_text",
+        "requested_for": {
+          "use": "load_bearing",
+          "required_access_tier": "full_text"
+        },
+        "acquisition": {
+          "route": "gateway:crossref->publisher",
+          "retrieved_at": "2026-09-25T11:10:00Z",
+          "gateway_call_ref": "call-99812",
+          "cache_reuse": true
+        },
+        "extraction": {
+          "method": "verifier_extraction",
+          "extractor": "pdf-text/2.1",
+          "produced_by_invocation_id": "inv_01J8ZQ6VER",
+          "validation_ref": null
+        },
+        "producer_invocation_id": "inv_01J8ZQ3W2X",
+        "verifier_invocation_id": "inv_01J8ZQ6VER",
+        "verifier_capability_id": "cap_01J8ZQ6VER",
+        "quote_check_id": "qc-01J8QUOTE1",
+        "checks": {
+          "exact_quote": {
+            "status": "matched",
+            "normalization_version": "nfkc-ws/1",
+            "source_artifact_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          "numeric_units": "checked_ok",
+          "denominators": "checked_ok",
+          "negation": "not_applicable",
+          "qualifications": "checked_ok",
+          "tier0": {
+            "checker": "minicheck-local",
+            "checker_version": "2024.1",
+            "signal": "pass"
+          }
+        },
+        "adjudication": null,
+        "verdict": "supports",
+        "verified_at": "2026-09-25T11:12:00Z"
+      }
+    ],
+    "decision_receipts": [],
+    "screening_assessments": [],
+    "review_triggers": [],
+    "holds": [],
+    "exports": []
+  }
+}

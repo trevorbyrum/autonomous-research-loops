@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "outcome-document.schema.json",
+    "expect": "invalid",
+    "tests": "V-4: a load-bearing claim carries its required access tier",
+    "base": "valid-research-final.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/claims/0/load_bearing",
+        "value": true
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/claims/0/required_access_tier"
+      }
+    ]
+  }
+}

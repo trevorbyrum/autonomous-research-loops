@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "outcome-document.schema.json",
+    "expect": "invalid",
+    "tests": "V-10: the producer of a claim revision is the committing invocation; a document cannot name one",
+    "base": "valid-research-final.json",
+    "patch": [
+      {
+        "op": "add",
+        "path": "/claims/0/producer_invocation_id",
+        "value": "inv_01J8ZQ6VER"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "additionalProperties",
+        "path": "/claims/0"
+      }
+    ]
+  }
+}
