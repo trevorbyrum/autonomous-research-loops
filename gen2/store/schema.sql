@@ -784,6 +784,13 @@ END;
 -- kinds discovery, delegate, research_pass) is pinned to a confirmed intake
 -- brief (id, version, hash and the operator's brief_confirmation) and is
 -- admissible only while the topic has never had an approved contract.
+-- Ends (task 1c; BOUNDARIES.md Station supervisor; INVARIANTS L-5, L-7, L-9):
+-- a failure records its structural class — what the supervisor's checks
+-- found, never the agent's self-report — and a failure or a cancellation of
+-- launched work names the supervisor's execution record (an artifact) as its
+-- evidence. Cancellation is requested by the operator, the router, or the
+-- supervisor (work it may not launch: its launch-admission check keeps
+-- refusing). Every one of these facts is write-once.
 CREATE TABLE invocations (
   invocation_id TEXT PRIMARY KEY CHECK (invocation_id GLOB 'inv_*'),
   kind TEXT NOT NULL CHECK (kind IN ('research_pass', 'discovery', 'delegate', 'verification', 'checkpoint')),
@@ -809,13 +816,16 @@ CREATE TABLE invocations (
   boot_id TEXT,
   start_fingerprint TEXT,
   cancel_requested_at TEXT,
-  cancel_requested_by TEXT CHECK (cancel_requested_by IN ('router', 'operator')),
+  cancel_requested_by TEXT CHECK (cancel_requested_by IN ('router', 'operator', 'supervisor')),
   descendants_confirmed_at TEXT,
   result_payload_digest TEXT,
   result_staged_at TEXT,
   outcome_unknown_since TEXT,
   unknown_episode INTEGER NOT NULL DEFAULT 0 CHECK (unknown_episode >= 0),
   state_changed_at TEXT NOT NULL,
+  failure_class TEXT CHECK (failure_class IN ('spawn_failed', 'never_started', 'exit_nonzero', 'killed', 'timeout', 'empty_output',
+                                              'output_refused', 'output_digest_mismatch', 'result_rejected', 'no_exit_record')),
+  end_evidence_ref TEXT REFERENCES artifacts (content_hash),
   FOREIGN KEY (topic_id, contract_revision) REFERENCES contract_revisions (topic_id, revision),
   CHECK ((kind = 'delegate') = (parent_invocation_id IS NOT NULL)),
   CHECK ((kind = 'delegate') = (lease_id IS NULL)),
@@ -830,7 +840,9 @@ CREATE TABLE invocations (
   CHECK (state NOT IN ('result_ready', 'committed') OR (result_payload_digest IS NOT NULL AND result_staged_at IS NOT NULL)),
   CHECK (state != 'cancelled' OR descendants_confirmed_at IS NOT NULL),
   CHECK (state != 'outcome_unknown' OR (outcome_unknown_since IS NOT NULL AND unknown_episode >= 1)),
-  CHECK ((cancel_requested_at IS NULL) = (cancel_requested_by IS NULL))
+  CHECK ((cancel_requested_at IS NULL) = (cancel_requested_by IS NULL)),
+  CHECK (failure_class IS NULL OR state = 'failed'),
+  CHECK (end_evidence_ref IS NULL OR state IN ('failed', 'cancelled'))
 ) STRICT;
 
 CREATE UNIQUE INDEX invocations_one_owner_per_lease ON invocations (lease_id) WHERE lease_id IS NOT NULL;
@@ -940,8 +952,12 @@ WHEN NEW.invocation_id IS NOT OLD.invocation_id
   OR (OLD.boot_id IS NOT NULL AND NEW.boot_id IS NOT OLD.boot_id)
   OR (OLD.start_fingerprint IS NOT NULL AND NEW.start_fingerprint IS NOT OLD.start_fingerprint)
   OR (OLD.result_payload_digest IS NOT NULL AND NEW.result_payload_digest IS NOT OLD.result_payload_digest)
+  OR (OLD.cancel_requested_at IS NOT NULL AND (NEW.cancel_requested_at IS NOT OLD.cancel_requested_at OR NEW.cancel_requested_by IS NOT OLD.cancel_requested_by))
+  OR (OLD.descendants_confirmed_at IS NOT NULL AND NEW.descendants_confirmed_at IS NOT OLD.descendants_confirmed_at)
+  OR (OLD.failure_class IS NOT NULL AND NEW.failure_class IS NOT OLD.failure_class)
+  OR (OLD.end_evidence_ref IS NOT NULL AND NEW.end_evidence_ref IS NOT OLD.end_evidence_ref)
 BEGIN
-  SELECT RAISE(ABORT, 'invocation identity, admission pins, launch intent, process identity and staged result are write-once');
+  SELECT RAISE(ABORT, 'invocation identity, admission pins, launch intent, process identity, staged result, cancellation request, descendant confirmation and failure record are write-once');
 END;
 
 -- L-4 (Astra re-review RA4): every outcome_unknown episode has its own,
@@ -1561,16 +1577,38 @@ CREATE TABLE holds (
   cleared_at TEXT,
   cleared_by_decision_id TEXT REFERENCES operator_decisions (decision_id),
   cleared_by_operation_id TEXT REFERENCES operation_receipts (operation_id),
+  cleared_by_reconciliation_id TEXT REFERENCES invocation_reconciliations (reconciliation_id),
   CHECK (hold_class != 'capability' OR capability_fact_id IS NOT NULL),
-  CHECK (cleared_at IS NULL OR cleared_by_decision_id IS NOT NULL OR cleared_by_operation_id IS NOT NULL),
+  CHECK (cleared_at IS NULL OR cleared_by_decision_id IS NOT NULL OR cleared_by_operation_id IS NOT NULL OR cleared_by_reconciliation_id IS NOT NULL),
   CHECK (required_authority != 'operator' OR cleared_at IS NULL OR cleared_by_decision_id IS NOT NULL)
 ) STRICT;
 
 CREATE TRIGGER holds_created_open
 BEFORE INSERT ON holds
 WHEN NEW.cleared_at IS NOT NULL OR NEW.cleared_by_decision_id IS NOT NULL OR NEW.cleared_by_operation_id IS NOT NULL
+  OR NEW.cleared_by_reconciliation_id IS NOT NULL
 BEGIN
   SELECT RAISE(ABORT, 'a hold is created open; clearing is a separate update (A2: no terminal insertion)');
+END;
+
+-- Task 1c (L-4; design review §6: "ambiguous outcomes create a visible
+-- diagnostic/reconciliation state with an owner and deadline"): entering
+-- outcome_unknown opens a router-authority hold whose subject is that
+-- episode, 'invocation:<invocation id>#unknown:<episode>'. The episode's
+-- reconciliation record clears it, and clears nothing else: a record of
+-- another invocation, another episode or another topic, or a hold another
+-- authority must clear.
+CREATE TRIGGER holds_reconciliation_clears_its_episode
+BEFORE UPDATE OF cleared_by_reconciliation_id ON holds
+WHEN NEW.cleared_by_reconciliation_id IS NOT NULL
+  AND NEW.cleared_by_reconciliation_id IS NOT OLD.cleared_by_reconciliation_id
+  AND NOT (NEW.required_authority = 'router' AND EXISTS (
+    SELECT 1 FROM invocation_reconciliations r JOIN invocations i ON i.invocation_id = r.invocation_id
+    WHERE r.reconciliation_id = NEW.cleared_by_reconciliation_id
+      AND i.topic_id IS NEW.topic_id
+      AND NEW.subject_ref = 'invocation:' || r.invocation_id || '#unknown:' || r.unknown_episode))
+BEGIN
+  SELECT RAISE(ABORT, 'a reconciliation record clears only the router hold of its own outcome_unknown episode (L-4)');
 END;
 
 -- A2: a clearing decision is an approved hold_clearance about THIS hold (same

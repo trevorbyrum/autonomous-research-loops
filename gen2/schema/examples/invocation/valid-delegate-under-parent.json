@@ -37,6 +37,7 @@
     "cancellation": null,
     "result": null,
     "reconciliation": null,
+    "failure": null,
     "transitions": [
       {
         "seq": 1,

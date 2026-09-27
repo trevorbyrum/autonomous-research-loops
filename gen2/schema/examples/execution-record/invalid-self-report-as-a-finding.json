@@ -1,0 +1,23 @@
+{
+  "fixture": {
+    "schema": "execution-record.schema.json",
+    "expect": "invalid",
+    "tests": "L-5: findings are structural classes, not the agent's word",
+    "base": "valid-exited-with-output.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/findings",
+        "value": [
+          "agent_reported_success"
+        ]
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "enum",
+        "path": "/findings/0"
+      }
+    ]
+  }
+}

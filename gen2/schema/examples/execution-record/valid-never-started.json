@@ -1,0 +1,22 @@
+{
+  "fixture": {
+    "schema": "execution-record.schema.json",
+    "expect": "valid",
+    "tests": "L-3/L-4: a job looked up by its handle after a crash between launch intent and spawn: no process was ever observed"
+  },
+  "instance": {
+    "record_version": "execution-record/1",
+    "invocation_id": "inv_01J8ZQ3W2X",
+    "topic_id": "fleet-a:intake-latency",
+    "job_handle": "job-inv_01J8ZQ3W2X",
+    "method": "job_handle_lookup",
+    "observed_at": "2026-09-27T10:12:00Z",
+    "process": null,
+    "exit": null,
+    "termination": null,
+    "descendants": {"handling": "none_found", "count": 0},
+    "output": {"status": "not_collected", "content_hash": null, "size_bytes": null, "declared_digest": null, "detail": "the job's launcher never started"},
+    "self_report": null,
+    "findings": ["never_started"]
+  }
+}

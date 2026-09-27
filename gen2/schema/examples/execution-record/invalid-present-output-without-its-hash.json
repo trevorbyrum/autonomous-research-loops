@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "execution-record.schema.json",
+    "expect": "invalid",
+    "tests": "L-5: output present means the supervisor hashed it",
+    "base": "valid-exited-with-output.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/output/content_hash",
+        "value": null
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/output/content_hash"
+      }
+    ]
+  }
+}

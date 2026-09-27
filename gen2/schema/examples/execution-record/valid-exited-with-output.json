@@ -1,0 +1,22 @@
+{
+  "fixture": {
+    "schema": "execution-record.schema.json",
+    "expect": "valid",
+    "tests": "L-5: an exit the supervisor observed, its output hashed by the supervisor; a leftover descendant terminated and confirmed gone (L-7)"
+  },
+  "instance": {
+    "record_version": "execution-record/1",
+    "invocation_id": "inv_01J8ZQ3W2X",
+    "topic_id": "fleet-a:intake-latency",
+    "job_handle": "job-inv_01J8ZQ3W2X",
+    "method": "exit_observed",
+    "observed_at": "2026-09-27T10:12:00Z",
+    "process": {"host_id": "station-host-1", "container_id": null, "boot_id": "3ceeb4ac-8544-4ce8-a2bb-647c778d2ef5", "start_fingerprint": "pid=4242;starttime=991231"},
+    "exit": {"code": 0, "signal": null},
+    "termination": {"reason": "descendants_after_exit"},
+    "descendants": {"handling": "terminated", "count": 1},
+    "output": {"status": "present", "content_hash": "sha256:9a1f0c3b1e5d2a7c4b8e6f0d3c2b1a09f8e7d6c5b4a39281706f5e4d3c2b1a00", "size_bytes": 412, "declared_digest": null, "detail": null},
+    "self_report": "completed",
+    "findings": []
+  }
+}

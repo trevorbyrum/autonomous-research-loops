@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "execution-record.schema.json",
+    "expect": "invalid",
+    "tests": "L-7: terminated descendants are counted",
+    "base": "valid-exited-with-output.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/descendants/count",
+        "value": 0
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "minimum",
+        "path": "/descendants/count"
+      }
+    ]
+  }
+}

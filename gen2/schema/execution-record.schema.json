@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/execution-record.schema.json",
+  "$comment": "flow: S4 step 7 (agent self-reported completion is never accepted; the station's structural checks and the commit protocol decide what happened); §4.3 (silence is never success) | boundaries: Station supervisor; Router | design-review: §5 (crash fencing: job lookup or termination of the owned execution group, never PID adoption; confirmed descendant handling before capacity is released); §6 (the station reports structural failure independently of the agent) | invariants: L-3; L-4; L-5; L-7; L-9; C-9 | note: task 1c. Written by the supervisor, staged in the protected spool, and named as evidence by a failure, a cancellation or a reconciliation (the router binds it to the invocation and to what it supports) and committed with a final outcome as a result reference. self_report is the agent's own claim, kept as data and never used to decide anything",
+  "title": "Execution record",
+  "description": "What the station supervisor observed about one job of one invocation: the process identity it verified, how the primary ended, what happened to the rest of the execution group, and what the output was on disk, with the structural findings those observations support.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["record_version", "invocation_id", "topic_id", "job_handle", "method", "observed_at", "process", "exit", "termination", "descendants", "output", "self_report", "findings"],
+  "properties": {
+    "record_version": {"const": "execution-record/1"},
+    "invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
+    "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
+    "job_handle": {"$ref": "common.schema.json#/$defs/short_text"},
+    "method": {
+      "description": "exit_observed: the job's own exit record was read; job_handle_lookup: the job was looked up by its stable handle after the supervisor lost track of it; execution_group_termination: the supervisor ended the job's execution group (L-4 methods).",
+      "enum": ["exit_observed", "job_handle_lookup", "execution_group_termination"]
+    },
+    "observed_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+    "process": {
+      "description": "The job's process identity as verified (never a bare PID, L-3), or null when no process of this job was ever observed.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["host_id", "container_id", "boot_id", "start_fingerprint"],
+      "properties": {
+        "host_id": {"$ref": "common.schema.json#/$defs/short_text"},
+        "container_id": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/short_text"}]},
+        "boot_id": {"$ref": "common.schema.json#/$defs/short_text"},
+        "start_fingerprint": {"$ref": "common.schema.json#/$defs/short_text"}
+      }
+    },
+    "exit": {
+      "description": "How the primary ended: an exit code, or the signal that ended it; null when no exit was observed.",
+      "oneOf": [
+        {"type": "null"},
+        {"type": "object", "additionalProperties": false, "required": ["code", "signal"],
+         "properties": {"code": {"type": "integer", "minimum": 0, "maximum": 255}, "signal": {"type": "null"}}},
+        {"type": "object", "additionalProperties": false, "required": ["code", "signal"],
+         "properties": {"code": {"type": "null"}, "signal": {"type": "integer", "minimum": 1, "maximum": 127}}}
+      ]
+    },
+    "termination": {
+      "description": "Set when the supervisor ended the execution group itself, and why.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["reason"],
+      "properties": {
+        "reason": {"enum": ["timeout", "cancellation", "descendants_after_exit", "reconciliation"]}
+      }
+    },
+    "descendants": {
+      "description": "Members of the execution group other than the primary found alive after it ended (or at termination): none found, terminated and confirmed gone, or not confirmed. Capacity is released only after confirmed handling (L-7).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["handling", "count"],
+      "properties": {
+        "handling": {"enum": ["none_found", "terminated", "unconfirmed"]},
+        "count": {"type": "integer", "minimum": 0, "maximum": 100000}
+      },
+      "allOf": [
+        {"if": {"properties": {"handling": {"const": "none_found"}}}, "then": {"properties": {"count": {"const": 0}}}},
+        {"if": {"properties": {"handling": {"const": "terminated"}}}, "then": {"properties": {"count": {"minimum": 1}}}}
+      ]
+    },
+    "output": {
+      "description": "The outcome document as found in the job's scratch directory. present: a regular file within the size bound, hashed by the supervisor; absent or empty: none, or zero bytes (L-9); refused: not a regular file of the scratch directory (a symlink, a hard link, a special file) or over the bound (C-9); digest_mismatch: the executor declared a digest the bytes do not have; not_collected: the job did not end in a way that is collected.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "content_hash", "size_bytes", "declared_digest", "detail"],
+      "properties": {
+        "status": {"enum": ["present", "absent", "empty", "refused", "digest_mismatch", "not_collected"]},
+        "content_hash": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/sha256"}]},
+        "size_bytes": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1, "maximum": 9007199254740991}]},
+        "declared_digest": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/sha256"}]},
+        "detail": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/short_text"}]}
+      },
+      "if": {"properties": {"status": {"const": "present"}}},
+      "then": {"properties": {"content_hash": {"type": "string"}, "size_bytes": {"type": "integer"}}},
+      "else": {"properties": {"content_hash": {"type": "null"}, "size_bytes": {"type": "null"}}}
+    },
+    "self_report": {
+      "description": "What the agent said about itself (for example a status file claiming completion). Recorded, never trusted (L-5).",
+      "oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/short_text"}]
+    },
+    "findings": {
+      "description": "The structural failure classes these observations support; empty when none. A failure names one of them (DDL invocations.failure_class).",
+      "type": "array",
+      "maxItems": 10,
+      "uniqueItems": true,
+      "items": {"enum": ["spawn_failed", "never_started", "exit_nonzero", "killed", "timeout", "empty_output", "output_refused", "output_digest_mismatch", "result_rejected", "no_exit_record"]}
+    }
+  },
+  "allOf": [
+    {
+      "description": "Terminating the execution group is recorded as a termination, with its reason.",
+      "if": {"properties": {"method": {"const": "execution_group_termination"}}},
+      "then": {"properties": {"termination": {"type": "object"}}}
+    }
+  ]
+}

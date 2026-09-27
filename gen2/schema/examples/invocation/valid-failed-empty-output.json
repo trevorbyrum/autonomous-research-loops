@@ -2,7 +2,7 @@
   "fixture": {
     "schema": "invocation.schema.json",
     "expect": "valid",
-    "tests": "L-4: outcome_unknown carries a pending reconciliation"
+    "tests": "L-5/L-9: a failure records the structural class the supervisor found and the execution record behind it"
   },
   "instance": {
     "record_version": "invocation/1",
@@ -23,7 +23,7 @@
         "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       }
     },
-    "state": "outcome_unknown",
+    "state": "failed",
     "admitted_at": "2026-09-25T10:40:00Z",
     "deadline_at": "2026-09-25T11:40:00Z",
     "launch_intent": {
@@ -39,17 +39,11 @@
     },
     "cancellation": null,
     "result": null,
-    "reconciliation": {
-      "episode": 1,
-      "unknown_since": "2026-09-25T10:41:00Z",
-      "resolved_at": null,
-      "resolution": "pending",
-      "method": null,
-      "evidence_ref": null,
-      "result_payload_digest": null,
-      "descendants_confirmed_at": null
+    "reconciliation": null,
+    "failure": {
+      "class": "empty_output",
+      "evidence_ref": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
     },
-    "failure": null,
     "transitions": [
       {
         "seq": 1,
@@ -75,9 +69,9 @@
       {
         "seq": 4,
         "from": "running",
-        "to": "outcome_unknown",
-        "at": "2026-09-25T10:41:00Z",
-        "cause": "supervisor_restart"
+        "to": "failed",
+        "at": "2026-09-27T10:20:00Z",
+        "cause": "failed"
       }
     ]
   }

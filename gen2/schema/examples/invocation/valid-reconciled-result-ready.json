@@ -53,6 +53,7 @@
       "result_payload_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
       "descendants_confirmed_at": null
     },
+    "failure": null,
     "transitions": [
       {
         "seq": 1,

@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "invocation.schema.json",
+    "expect": "invalid",
+    "tests": "L-9: a failure is never a bare state",
+    "base": "valid-failed-empty-output.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/failure",
+        "value": null
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/failure"
+      }
+    ]
+  }
+}

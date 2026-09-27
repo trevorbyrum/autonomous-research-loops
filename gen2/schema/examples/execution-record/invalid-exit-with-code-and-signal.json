@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "execution-record.schema.json",
+    "expect": "invalid",
+    "tests": "L-3: an exit is a code or a signal, not both",
+    "base": "valid-exited-with-output.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/exit/signal",
+        "value": 9
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "oneOf",
+        "path": "/exit"
+      }
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "invocation.schema.json",
+    "expect": "invalid",
+    "tests": "L-5: only a failed invocation carries a failure record",
+    "base": "valid-failed-empty-output.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/state",
+        "value": "running"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/failure"
+      }
+    ]
+  }
+}

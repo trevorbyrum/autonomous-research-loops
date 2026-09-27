@@ -1,0 +1,26 @@
+{
+  "fixture": {
+    "schema": "execution-record.schema.json",
+    "expect": "invalid",
+    "tests": "L-4: a group termination records why",
+    "base": "valid-exited-with-output.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/method",
+        "value": "execution_group_termination"
+      },
+      {
+        "op": "replace",
+        "path": "/termination",
+        "value": null
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/termination"
+      }
+    ]
+  }
+}
