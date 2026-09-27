@@ -113,7 +113,7 @@ class CanonicalStorageTest(WriterTestCase):
                 if rev == 1:
                     s.insert("operator_decisions", {"decision_id": "opd_rate0001", "topic_id": TOPIC, "kind": "rating_approval", "disposition": "approved",
                                                     "subject_kind": "contract_revision", "subject_ref": TOPIC, "subject_revision": 1, "subject_hash": h("1"),
-                                                    "operator_id": "trevor", "decided_at": T,
+                                                    "operator_id": "user", "decided_at": T,
                                                     "payload": {"obligations": {}, "facets": {"F-1": {"score": 8, "band": "critical"}}}})
             s.insert("facets", {"topic_id": TOPIC, "contract_revision": 2, "facet_id": "F-1", "operator_importance_band": "critical",
                                 "operator_importance_score": 8, "operator_rating_decision_id": "opd_rate0001"})

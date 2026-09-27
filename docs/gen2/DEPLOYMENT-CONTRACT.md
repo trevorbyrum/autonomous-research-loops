@@ -293,7 +293,7 @@ observations repair", because the read outcome decides what a lane reports; any
 part that touches the gateway's budget or shutdown paths falls to Phase 3's
 "gateway budget/shutdown repairs". This contract names the requirement and
 grants no authority to change gateway code. Authorizing that work and accepting
-its release are Trevor's. The engine's backend belongs to whichever phase first
+its release are the user's. The engine's backend belongs to whichever phase first
 builds the engine's secret reads, and it passes the same tests.
 
 **Acceptance tests the release must pass.** Each runs against the service in
@@ -466,7 +466,7 @@ surveillance.
   images do not exist yet. The gen-2 `gateway` runs the existing gateway image in
   the `env` secrets mode only.
 - **Vault mode for any service** waits for §3.4's acceptance tests. The gateway
-  release it needs is Phase 2/3 repair work, and authorizing it is Trevor's.
+  release it needs is Phase 2/3 repair work, and authorizing it is the user's.
 - **Port defaults are only defaults** (§1.1). Whether each is free is checked
   at every deployment, on the host being deployed to.
 - **Migration and cutover** (freeze, import, reconcile, single-writer cutover)

@@ -151,7 +151,7 @@ class StoreTestCase(unittest.TestCase):
             ref = tid if sk in ("contract_revision", "dossier", "topic") else "ref-" + did
         if kind == "rating_approval" and payload is None:
             payload = {"facets": {}, "obligations": {}}
-        self.x("INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_revision, subject_hash, operator_id, decided_at, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'trevor', ?, ?)",
+        self.x("INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_revision, subject_hash, operator_id, decided_at, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'user', ?, ?)",
                did, tid, kind, disposition, sk, ref, rev, hsh, T, None if payload is None else json.dumps(payload))
         return did
 
@@ -294,7 +294,7 @@ class StoreTestCase(unittest.TestCase):
         return "sha256:" + (tid + "/" + brief).encode().hex()[:52].ljust(52, "0") + f"{version:012d}"
 
     def brief(self, tid: str = TOPIC, brief: str = "brief-1", version: int = 1, parent: int | None = None, *,
-              content_hash: str | None = None, owner: str = "trevor", deadline: str = T) -> str:
+              content_hash: str | None = None, owner: str = "user", deadline: str = T) -> str:
         """An intake brief version, written awaiting confirmation; its
         document's identity fields agree with its columns. Returns its hash."""
         content = content_hash or self.brief_hash(tid, brief, version)

@@ -13,7 +13,7 @@ Read first: `~/work/research-loops-public/private/reviews/gen2-0c-astra-review-2
 
 ## Also (small, from the review)
 - Gate B wording: where 0c docs justify not adopting GRADE certainty bands, use the review's narrower formulation (the synthesis mentions GRADE consistency/certainty domains in §4/§10b but gives no validated mapping to obligation confidence), not "only anchored for importance".
-- Don't edit `BOUNDARIES.md`. The amendment is Trevor's decision. Update the proposed amendment text kept in `EXPORT-SINKS.md` §6 (or wherever it lives) to carry Astra's refinements from the review's amendment table (narrowed "must never serve gen-2 research retrieval or accepted-evidence reads from an export sink"; router-mediated writes; licence bound to the exact exported member; equal-pair replay in Checked-by).
+- Don't edit `BOUNDARIES.md`. The amendment is the user's decision. Update the proposed amendment text kept in `EXPORT-SINKS.md` §6 (or wherever it lives) to carry Astra's refinements from the review's amendment table (narrowed "must never serve gen-2 research retrieval or accepted-evidence reads from an export sink"; router-mediated writes; licence bound to the exact exported member; equal-pair replay in Checked-by).
 
 ## Constraints (unchanged)
 Branch gen2 only; no engine logic; never touch `gateway/`, gen-1, running services or main; small commits with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`; never mask `make`'s exit status; every new rule gets a negative fixture that fails for that rule alone.

@@ -50,19 +50,19 @@ class IntakeBriefTest(StoreTestCase):
         doc = json.dumps({"topic_id": TOPIC, "brief_id": "brief-1", "version": 1, "parent_version": None, "created_at": T, "content_hash": h("b")})
         for case, row in (("confirmed", ("confirmed", T, None, None, None, None, None)),
                           ("overdue", ("awaiting_confirmation", T, T, None, None, None, None)),
-                          ("cancelled", ("cancelled", T, None, None, "trevor", T, "dup")),
-                          ("archived", ("archived", T, None, None, "trevor", T, "done"))):
+                          ("cancelled", ("cancelled", T, None, None, "user", T, "dup")),
+                          ("archived", ("archived", T, None, None, "user", T, "done"))):
             with self.subTest(inserted=case):
-                self.rejects("written awaiting confirmation", ins, TOPIC, h("b"), doc, "trevor", row[0], T, row[1], row[2], row[3], row[4], row[5], row[6])
+                self.rejects("written awaiting confirmation", ins, TOPIC, h("b"), doc, "user", row[0], T, row[1], row[2], row[3], row[4], row[5], row[6])
         with self.subTest(owner="empty"):
             self.rejects("CHECK constraint failed", ins, TOPIC, h("b"), doc, "", "awaiting_confirmation", T, T, None, None, None, None, None)
         base = json.loads(doc)
         for field, value in (("topic_id", OTHER), ("brief_id", "brief-2"), ("version", 2), ("parent_version", 1), ("created_at", LATER), ("content_hash", h("c"))):
             with self.subTest(document_field=field):
-                self.rejects("CHECK constraint failed", ins, TOPIC, h("b"), json.dumps(dict(base, **{field: value})), "trevor", "awaiting_confirmation", T, T, None, None, None, None, None)
+                self.rejects("CHECK constraint failed", ins, TOPIC, h("b"), json.dumps(dict(base, **{field: value})), "user", "awaiting_confirmation", T, T, None, None, None, None, None)
         self.assertEqual(self.rows("SELECT count(*) FROM intake_briefs"), [(0,)])
-        self.x(ins, TOPIC, h("b"), doc, "trevor", "awaiting_confirmation", T, LATER, None, None, None, None, None)
-        self.assertEqual(self.rows("SELECT owner_operator_id, status, review_deadline FROM intake_briefs"), [("trevor", "awaiting_confirmation", LATER)])
+        self.x(ins, TOPIC, h("b"), doc, "user", "awaiting_confirmation", T, LATER, None, None, None, None, None)
+        self.assertEqual(self.rows("SELECT owner_operator_id, status, review_deadline FROM intake_briefs"), [("user", "awaiting_confirmation", LATER)])
 
     def test_confirmation_names_an_approved_decision_about_exactly_this_version(self) -> None:
         """Near-misses, one dimension each: no decision, a rejected one, one
@@ -104,7 +104,7 @@ class IntakeBriefTest(StoreTestCase):
         self.rejects(refused, leave, TOPIC)
         self.x(UPDATE.format("overdue_since = ?"), T, TOPIC, 1)
         self.rejects(refused, leave, TOPIC)
-        self.x(UPDATE.format("status = 'cancelled', closed_by = 'trevor', closed_at = ?, close_reason = 'duplicate ask'"), T, TOPIC, 1)
+        self.x(UPDATE.format("status = 'cancelled', closed_by = 'user', closed_at = ?, close_reason = 'duplicate ask'"), T, TOPIC, 1)
         self.rejects(refused, leave, TOPIC)
         self.brief(OTHER)
         self.confirm_brief(OTHER, "brief-1", 1, did="opd_otherbrf")
@@ -135,7 +135,7 @@ class IntakeBriefTest(StoreTestCase):
 
     def test_cancellation_and_archival_are_explicit_and_final(self) -> None:
         b1 = self.brief(TOPIC)
-        cancel = UPDATE.format("status = 'cancelled', closed_by = 'trevor', closed_at = ?, close_reason = 'superseded by a new topic'")
+        cancel = UPDATE.format("status = 'cancelled', closed_by = 'user', closed_at = ?, close_reason = 'superseded by a new topic'")
         self.rejects("CHECK constraint failed", UPDATE.format("status = 'cancelled'"), TOPIC, 1)  # no actor, time or reason
         self.rejects("CHECK constraint failed", UPDATE.format("status = 'cancelled', closed_at = ?, close_reason = 'x'"), T, TOPIC, 1)  # no actor
         self.x(cancel, T, TOPIC, 1)
@@ -149,10 +149,10 @@ class IntakeBriefTest(StoreTestCase):
                 self.assertEqual(self.status(), ("cancelled", None, None, T))
         b = self.brief(TOPIC, "brief-2", 1)
         self.decision("opd_confirmb", "brief_confirmation", ref="brief-2", rev=1, hsh=b)
-        archive = "UPDATE intake_briefs SET status = 'archived', closed_by = 'trevor', closed_at = ?, close_reason = 'topic retired' WHERE topic_id = ? AND brief_id = 'brief-2'"
+        archive = "UPDATE intake_briefs SET status = 'archived', closed_by = 'user', closed_at = ?, close_reason = 'topic retired' WHERE topic_id = ? AND brief_id = 'brief-2'"
         self.rejects("intake brief status moves", archive, T, TOPIC)  # archival is for a confirmed brief; an unconfirmed one is cancelled
         self.x("UPDATE intake_briefs SET status = 'confirmed', confirmed_by_decision_id = 'opd_confirmb' WHERE topic_id = ? AND brief_id = 'brief-2'", TOPIC)
-        self.rejects("intake brief status moves", "UPDATE intake_briefs SET status = 'cancelled', closed_by = 'trevor', closed_at = ?, close_reason = 'x' WHERE topic_id = ? AND brief_id = 'brief-2'", T, TOPIC)
+        self.rejects("intake brief status moves", "UPDATE intake_briefs SET status = 'cancelled', closed_by = 'user', closed_at = ?, close_reason = 'x' WHERE topic_id = ? AND brief_id = 'brief-2'", T, TOPIC)
         self.x(archive, T, TOPIC)
         self.assertEqual(self.rows("SELECT status, confirmed_by_decision_id FROM intake_briefs WHERE brief_id = 'brief-2'"), [("archived", "opd_confirmb")])
         self.rejects_any(("never changes", "intake brief status moves"),  # both guards refuse; which reports first is trigger order

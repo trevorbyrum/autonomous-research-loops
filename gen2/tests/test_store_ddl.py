@@ -1161,7 +1161,7 @@ class HoldTest(StoreTestCase):
 
     def test_decision_subject_must_exist_with_its_topic(self) -> None:
         self.x(self.INSERT, "hold_00000001", TOPIC, "scope", "operator", "operator", T, "c", None, T)
-        ins = "INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_revision, subject_hash, operator_id, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'trevor', ?)"
+        ins = "INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_revision, subject_hash, operator_id, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'user', ?)"
         self.rejects("existing subject", ins, "opd_x", TOPIC, "hold_clearance", "approved", "hold", "hold_nothere", None, None, T)
         self.rejects("existing subject", ins, "opd_x", OTHER, "hold_clearance", "approved", "hold", "hold_00000001", None, None, T)  # another topic's decision about this hold
         self.rejects("existing subject", ins, "opd_x", TOPIC, "blind_initial_disposition", "recorded", "decision_receipt", "dec_nothere", None, None, T)
@@ -1173,7 +1173,7 @@ class HoldTest(StoreTestCase):
 
     def test_decision_subject_shape(self) -> None:
         """A2: each decision kind admits one subject kind with its identifying fields."""
-        ins = "INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_revision, subject_hash, operator_id, decided_at) VALUES ('opd_x', ?, ?, ?, ?, ?, ?, ?, 'trevor', ?)"
+        ins = "INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_revision, subject_hash, operator_id, decided_at) VALUES ('opd_x', ?, ?, ?, ?, ?, ?, ?, 'user', ?)"
         ch = self.content_hash_of(TOPIC, 1)
         self.x(self.INSERT, "hold_00000001", TOPIC, "scope", "operator", "operator", T, "c", None, T)
         # (rows chosen so the subject-existence trigger, which fires first, passes)
@@ -1473,7 +1473,7 @@ class ContractGovernanceTest(StoreTestCase):
         for did in ("opd_ratingxx", "opd_rejected", "opd_otherrev", "opd_othertop"):
             with self.subTest(decision=did):
                 self.rejects("exact topic, revision and content hash", approve, did, TOPIC)
-        self.rejects("existing subject", "INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_revision, subject_hash, operator_id, decided_at) VALUES ('opd_wronghsh', ?, 'contract_approval', 'approved', 'contract_revision', ?, 1, ?, 'trevor', ?)", TOPIC, TOPIC, h("0"), T)
+        self.rejects("existing subject", "INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_revision, subject_hash, operator_id, decided_at) VALUES ('opd_wronghsh', ?, 'contract_approval', 'approved', 'contract_revision', ?, 1, ?, 'user', ?)", TOPIC, TOPIC, h("0"), T)
         self.decision("opd_00000001", "contract_approval", rev=1, hsh=self.content_hash_of(TOPIC, 1))
         self.rejects("exact topic, revision and content hash", approve, "opd_rejected", TOPIC)  # a valid approval exists, but is not the one named
         self.x(approve, "opd_00000001", TOPIC)
@@ -1729,7 +1729,7 @@ class ContractGovernanceTest(StoreTestCase):
         no other kind, and rates only entries of the draft it is about, each
         with a band from the vocabulary."""
         ins = ("INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_revision, subject_hash, operator_id, decided_at, payload) "
-               "VALUES ('opd_x', ?, ?, 'approved', 'contract_revision', ?, ?, ?, 'trevor', ?, ?)")
+               "VALUES ('opd_x', ?, ?, 'approved', 'contract_revision', ?, ?, ?, 'user', ?, ?)")
         draft = self.rate("opd_00000001", facets=(facet("F-1"),), obligations=(obligation("O-1", ("F-1",)),))
         ch = self.chash(TOPIC, draft)
         ok = json.dumps({"facets": {"F-1": {"band": "limited"}}, "obligations": {"O-1": {"band": "important", "score": 5}}})
@@ -1792,7 +1792,7 @@ class ContractGovernanceTest(StoreTestCase):
         self.rejects(refused, complete, "opd_stale001", TOPIC)
         self.decision("opd_rejected", "completion_approval", disposition="rejected", rev=2, hsh=h("4"))
         self.rejects(refused, complete, "opd_rejected", TOPIC)
-        self.rejects("existing subject", "INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_revision, subject_hash, operator_id, decided_at) VALUES ('opd_wronghsh', ?, 'completion_approval', 'approved', 'dossier', ?, 2, ?, 'trevor', ?)", TOPIC, TOPIC, h("3"), T)
+        self.rejects("existing subject", "INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_revision, subject_hash, operator_id, decided_at) VALUES ('opd_wronghsh', ?, 'completion_approval', 'approved', 'dossier', ?, 2, ?, 'user', ?)", TOPIC, TOPIC, h("3"), T)
         for rev in (2, 3, 4, 5):
             self.contract(TOPIC, rev)
         self.dossier(5, 1, self.content_hash_of(TOPIC, 5))  # current dossier carrying contract 5's hash
@@ -1949,7 +1949,7 @@ class AdmissionAndLeaseTest(StoreTestCase):
                          ("another hash", dict(ref=brief, rev=version, hsh=h("9"))), ("another topic", dict(tid=OTHER, ref=brief, rev=version, hsh=bhash))):
             with self.subTest(unrecordable=case):
                 self.rejects("must name an existing subject", "INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_revision, subject_hash, operator_id, decided_at) "
-                             "VALUES ('opd_nosubject', ?, 'brief_confirmation', 'approved', 'intake_brief', ?, ?, ?, 'trevor', ?)", kw.get("tid", TOPIC), kw["ref"], kw["rev"], kw["hsh"], T)
+                             "VALUES ('opd_nosubject', ?, 'brief_confirmation', 'approved', 'intake_brief', ?, ?, ?, 'user', ?)", kw.get("tid", TOPIC), kw["ref"], kw["rev"], kw["hsh"], T)
         self.decision("opd_rejected", "brief_confirmation", disposition="rejected", ref=brief, rev=version, hsh=bhash)
         self.decision("opd_second00", "brief_confirmation", ref=brief, rev=version, hsh=bhash)
         self.decision("opd_wrongknd", "scope_approval", ref=brief, rev=version, hsh=bhash)

@@ -16,7 +16,7 @@ Fix: catch this failure and route it into the same input-error/reporting path as
 - If you have time: a `boundaries.toml`-adjacent clarifying comment (not a normative change — that still requires separate routing) describing the actual read model (descriptor-relative, no-follow, refuses links) more precisely than bare "read-only." Optional, non-blocking.
 
 ## Explicitly NOT in scope
-Everything already resolved (A1–A4) — don't touch. The two Trevor-only factual questions (internal gen-1 symlinks, queues missing `version`) — still unanswered, still not yours to guess at. `accepted_support` policy, live-state access, C-13's normative amendment — all still pending, untouched.
+Everything already resolved (A1–A4) — don't touch. The two user-only factual questions (internal gen-1 symlinks, queues missing `version`) — still unanswered, still not yours to guess at. `accepted_support` policy, live-state access, C-13's normative amendment — all still pending, untouched.
 
 ## Constraints (unchanged)
 Branch gen2 only; no engine logic beyond these fixes; never touch gen-1/live state (synthetic fixtures only, matching the review's own reproductions); never touch running services/main; small commits, `Co-Authored-By: Claude Opus <noreply@anthropic.com>`; never mask `make`'s exit status; every fix independently mutation-testable.

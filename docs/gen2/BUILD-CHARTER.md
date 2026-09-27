@@ -6,7 +6,7 @@ Operator-authorized 2026-09-25. Governs the background build loop until the oper
 - **Orchestrator — Fable (this session's loop).** Sequences phases, writes task briefs, dispatches coders and reviewers, maintains BUILD-STATE.md and REVIEW-LOG.md, reports to the operator. Never writes engine code, never merges to main, never overrides a review verdict. Scope questions and authority changes escalate to the operator.
 - **Coder — Claude Opus (paseo `claude` provider; target model claude-opus-5-5, fallback claude-opus-5).** One coding agent at a time on this shared working tree, branch `gen2` only. Implements exactly its task brief; every brief names the flow-doc sections and BOUNDARIES.md entries it touches. Deviations from the brief are proposals in the completion report, not silent changes. Commits carry the standard attribution lines.
 - **Reviewer — Astra (gpt-6-astra, xhigh, codex provider).** Gates below. Read-only on code + its own report file. A gate verdict of BLOCK stops the phase until resolved; the orchestrator may not soften a verdict, only route it (fix task, or escalate to operator).
-- **Operator — Trevor.** Merges to main; approves phase transitions flagged `operator-gate`; resolves anything the charter doesn't settle.
+- **Operator — the user.** Merges to main; approves phase transitions flagged `operator-gate`; resolves anything the charter doesn't settle.
 
 ## Source-of-truth documents (reviewers check against these, in this order)
 1. `gen2-flow-architecture-20260924.md` (amended 2026-09-25) — stages, boundaries, decision ladder, observability.
