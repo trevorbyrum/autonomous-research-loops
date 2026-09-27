@@ -55,7 +55,10 @@ class ControlBackend(Protocol):
     """Every authoritative state change goes through one of these (C-1).
     Each is one short transaction with no subprocess or network call inside
     it (C-4, C-8), and each is idempotent under its own key, so a caller that
-    lost a reply resubmits the same request."""
+    lost a reply resubmits the same request. Leases, deadlines and expiry are
+    judged against the clock read inside that transaction, once the write
+    lock is held, so time spent waiting for the lock counts; a lease or
+    deadline at instant E is over at E."""
 
     def claim(self, request: Mapping) -> dict:
         """Admit one invocation. Key: invocation_id (the supervisor's stable
@@ -70,7 +73,9 @@ class ControlBackend(Protocol):
         """Record a lifecycle fact the supervisor observed (launch intent,
         process identity, staged result, failure, cancellation) under the
         invocation's capability, along L-1 only. Key: (invocation, target
-        state); repeating a recorded fact is a replay."""
+        state): repeating a recorded fact is a replay whatever state the
+        invocation has reached since, and the same key with other facts is
+        a conflict."""
 
     def record_observation(self, request: Mapping) -> dict:
         """Record one search observation and the retrieval events captured
@@ -92,6 +97,6 @@ class ControlBackend(Protocol):
         in the same transaction (G-13). Key: decision_id."""
 
     def ack_delivery(self, receipt: Mapping) -> dict:
-        """Record one export-delivery-receipt/2 for a committed manifest and
-        advance the connector's watermark from a delivered one. Key:
-        export_receipt_id."""
+        """Record one export-delivery-receipt/2, whole, for a committed
+        manifest and advance the connector's watermark from a delivered one.
+        Key: export_receipt_id; only the identical document replays."""

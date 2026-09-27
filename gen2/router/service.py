@@ -13,7 +13,8 @@ gen2/core/control.py (the protocol implemented here); gen2/store/README.md
 Shape of every operation: normalize and validate the request (schemas,
 timestamps, hash truth, the A10 comparisons) with no transaction open —
 reading staged bytes happens only here (C-3, C-8) — then one short
-transaction that fences against current state and writes, then the reply.
+transaction that reads the clock once the write lock is held, fences
+against current state and writes, then the reply.
 The DDL's guards stay the second layer: a write they refuse rolls the whole
 transaction back and is reported as a refusal, never retried.
 
