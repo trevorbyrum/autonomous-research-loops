@@ -17,6 +17,7 @@ schedules named.
 """
 from __future__ import annotations
 
+from gen2.core import canonical
 from gen2.tests.router_fixtures import TOPIC, RouterTestCase, empty_outcome, h, jcs
 
 IDENTITY = {"host_id": "host-1", "boot_id": "boot-1", "start_fingerprint": "ticks=1"}
@@ -84,8 +85,8 @@ class FailureTest(LifecycleTestCase):
         cases = {
             "not staged": (h("9"), "payload_missing", "nothing is staged"),
             "staged as text": (self.spool.put(jcs({"x": 1}), media_type="text/plain"), "payload_invalid", "not application/json"),
-            "not a record": (self.spool.put(jcs({"record_version": "execution-record/1"})), "evidence_refused", "execution-record"),
-            "another invocation's": (self.evidence(other), "evidence_refused", "inv_verify001"),
+            "not a record": (self.evidence(self.grant, ("exit_nonzero", "agent_gave_up")), "evidence_refused", "execution-record"),
+            "another invocation's": (self.evidence(other, job_handle="job-inv_research01"), "evidence_refused", "inv_verify001"),
             "another job's": (self.evidence(self.grant, job_handle="job-elsewhere"), "evidence_refused", "job-elsewhere"),
             "another finding": (self.evidence(self.grant, ("timeout",)), "evidence_refused", "not among"),
             "descendants unconfirmed": (self.evidence(self.grant, handling="unconfirmed"), "evidence_refused", "L-7"),
@@ -148,6 +149,14 @@ class CancellationTest(LifecycleTestCase):
         before = self.state(exclude=())
         self.refused(self.transition("result_ready", result_payload_digest=digest), "cancel_requested", before)
         self.assertIsNotNone(self.spool.read(digest, topic_id=TOPIC))  # the result stays retained (C-10)
+        request = {"lane": "crossref", "query": "q", "cursor": None}
+        observation = {"observation_id": "obs_000000000001", "request": request, "request_identity": canonical.logical_hash(request), "attempt": 1,
+                       "lane": "crossref", "obligation_ids": [], "started_at": "2026-09-27T10:00:00Z", "ended_at": "2026-09-27T10:00:05Z",
+                       "coverage_state": "searched_empty", "result_count": 0, "completeness": "complete", "error_class": None, "capability_fact_id": None,
+                       "policy_version": "gw-policy/1", "cost_units": None, "gateway_call_ref": "call-1"}
+        response = self.router.record_observation({"capability_id": self.grant["capability_id"], "invocation_id": "inv_research01",
+                                                   "observation": observation, "retrieval_events": []})
+        self.refused(response, "invocation_state_invalid", before, "cancellation")
 
     def test_a_staged_result_wins_the_race(self) -> None:
         digest, _ = self.stage(empty_outcome("inv_research01"))
@@ -223,6 +232,8 @@ class UnknownTest(LifecycleTestCase):
         self.refused(self.reconcile("found_result", self.evidence(self.grant, (), **clean), result_payload_digest=h("4")), "payload_missing", before)
         self.assertEqual(self.reconcile("found_result", self.evidence(self.grant, (), **clean), result_payload_digest=digest)["status"], "recorded")
         self.assertEqual(self.inv("state", "result_payload_digest"), ("result_ready", digest))
+        before = self.state(exclude=())  # a state reached by reconciliation is not recorded again as a new fact
+        self.refused(self.transition("result_ready", result_payload_digest=digest), "transition_not_allowed", before, "already result_ready")
         env = self.envelope(self.grant, "op_final000001", empty_outcome("inv_research01"))
         self.assertEqual(self.router.commit_outcome(env)["status"], "committed")
 
@@ -263,6 +274,7 @@ class UnknownTest(LifecycleTestCase):
         self.assertEqual(self.reconcile("found_running", first, **IDENTITY)["status"], "recorded")
         self.assertEqual(self.unknown(2)["status"], "recorded")
         before = self.state(exclude=())
+        self.assertEqual(self.unknown(1)["status"], "replayed")  # an episode entered earlier replays; it is not entered again
         self.assertEqual(self.reconcile("found_running", first, **IDENTITY)["status"], "replayed")  # episode 1's record answers for episode 1 only
         self.assertEqual(self.state(exclude=()), before)
         self.assertEqual(self.inv("state", "unknown_episode"), ("outcome_unknown", 2))

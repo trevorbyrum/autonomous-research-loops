@@ -192,8 +192,8 @@ class Router(Lifecycle):
         self._schemas = schemas or SchemaSet(extra={"router-commands": {"$defs": {**COMMANDS["$defs"], **LIFECYCLE_COMMANDS}}})
 
     @classmethod
-    def open(cls, path: str | Path, spool, **kwargs) -> "Router":
-        return cls(api.open_store(path), spool, **kwargs)
+    def open(cls, path: str | Path, spool, *, create: bool = False, **kwargs) -> "Router":
+        return cls(api.open_store(path, create=create), spool, **kwargs)
 
     def close(self) -> None:
         self._store.close()

@@ -233,8 +233,6 @@ class Lifecycle:
             changes.update(result_payload_digest=req["result_payload_digest"], result_staged_at=now)
         elif resolution == "terminated_group" and doc["termination"] is None:
             raise Refusal("evidence_refused", "terminated_group needs the record of the termination")
-        elif target == "failed" and not doc["findings"]:
-            raise Refusal("evidence_refused", "a failure needs a structural finding")
         if terminal:
             changes["end_evidence_ref"] = evidence["content_hash"]
             if target == "failed":
