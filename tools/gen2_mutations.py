@@ -2775,6 +2775,13 @@ MUTATIONS: list[Mutation] = [
     Mutation("1C-spool-link-count-unrechecked", "1c-A10", "a link added while the file is read is not seen as a link",
              (SP + "CollectTest.test_a_file_changed_while_it_is_read_is_refused",), target=SPL,
              old='STABLE = ("st_dev", "st_ino", "st_nlink", ', new='STABLE = ("st_dev", "st_ino", '),
+    Mutation("1C-spool-scratch-name-unchecked", "1c-C3", "a scratch name that is not one chosen component (a path, a dot-file) is opened",
+             (SP + "CollectTest.test_the_name_is_one_component_the_supervisor_chose",), target=SPL,
+             old="    if not NAME.match(name):\n        raise ValueError", new="    if False:\n        raise ValueError"),
+    Mutation("1C-spool-topic-dir-followed", "1c-C3", "a symlinked topic directory is followed",
+             (SP + "StageTest.test_a_symlinked_topic_directory_is_not_followed",), target=SPL,
+             old="                return os.open(topic_id, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root_fd)",
+             new="                return os.open(topic_id, os.O_RDONLY | os.O_DIRECTORY, dir_fd=root_fd)"),
     # A8: a recorded lifecycle fact replays only as the identical, complete request; rechecked under the transaction.
     Mutation("1C-router-reconciliation-compares-columns-only", "1c-A8", "a replayed reconciliation is compared on its four columns (identity and class ignored)",
              (LC + "UnknownTest.test_a_reconciled_episode_replays_only_its_identical_facts", LC + "UnknownTest.test_a_failure_class_is_part_of_the_recorded_facts"),
