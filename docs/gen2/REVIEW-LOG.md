@@ -317,3 +317,42 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-1b-repair-2-astr
 **Non-blocking, carried into 1c:** the mutation runner only swaps modules in the current interpreter, so kills that happen inside a fresh child process are invisible to it. The inventory audit found no named kill that depends only on such a child. 1c relies heavily on subprocesses, so 1c must add disk mutation first.
 
 **Routed:** task 1c (supervisor, spool, fake executors, lifecycle fault set) to an Opus 5.5 coder.
+
+## 2026-09-27: 1c review (Astra, xhigh). BLOCK on all gates (A, B-claims, C)
+Full report: `~/work/research-loops-public/private/reviews/gen2-1c-astra-review-20260927.md`. The first review session was killed by OpenAI's cybersecurity content filter because of offensive-sounding task wording. That was a provider stop, not a finding. The task was reworded and re-dispatched fresh.
+
+**Independent checks:**
+- `make gen2-check` exit 0: 756 tests, 990/990 mutants. The mutation step took 35 minutes.
+- Five full-suite runs under load, all green.
+- Rerun matrices, all passing: 90 lifecycle cases and 50 crash cases.
+- 8 independent mutants, all killed.
+- `--no-disk` audit: exactly 8 mutants depend on the new child-tree propagation.
+
+**Findings (all reproduced):**
+- A1 (HIGH): recovery starts executors after a pause or lease expiry. Reproduced 10/10.
+- A3 (HIGH): the parent lease is released while an owned delegate is still running. Reproduced 8/8.
+- A6 (HIGH): a recorded hash bypasses topic authorization. Inherited from 1b; this is Q6, rejected.
+- A9 (HIGH): losing the launcher during a router outage defeats the local deadline.
+- A2 (HIGH): cancellation after an uncertain spawn can never reconcile, because of a `failure_class` contract mismatch.
+- A4 (HIGH): failed evidence and journal writes escape without an incident.
+- A5 (HIGH): unrelated successful reads refill a failing write's retry budget.
+- A7 (HIGH): generic hold clearance clears an `outcome_unknown` episode hold without reconciliation.
+- A8 (MEDIUM): conflicting lifecycle facts are reported as a replay.
+- A10 (MEDIUM): changes to a scratch file made after it was opened go undetected.
+- A11 (MEDIUM): exhausted spawn and commit retries leave no owned, deadlined incident.
+- C1: the mutation preflight doesn't attest the executing child, and `children.py` `setdefault(cwd)` can import unmutated code.
+- C2: the unidentified intermittent failure is still unresolved.
+- C3: two guards have no bound mutants.
+- B1: README claims are overstated.
+
+**Rulings on the coder's questions:**
+- Q1 ACCEPT.
+- Q2: no blanket hold, but exhausted, pending and persistence failures need an owned, deadlined incident.
+- Q3 ACCEPT in principle.
+- Q4 ACCEPT as interim, with an incident on exhaustion.
+- Q5: accept cancellation only after factual confirmation that the group is empty.
+- Q6 REJECT.
+
+Mutation-runtime recommendations have been recorded. No operator decision is needed.
+
+**Routed:** `docs/gen2/tasks/1c-repair.md` to an Opus 5.5 coder.
