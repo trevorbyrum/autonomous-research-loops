@@ -88,6 +88,25 @@ class ProductionAndAdoptionTest(EvidenceCase):
         self.assertEqual((audit["claims"], audit["claim_promotions"]), ([["clm_00000001", 2]], [["clm_00000001", 2]]))
         self.assertEqual(self.value("SELECT invocation_id FROM operation_receipts WHERE operation_id = 'op_adopt000001'"), "inv_research01")
 
+    def test_scoping_work_promotes_nothing(self) -> None:
+        """C-12: a pre-contract commit carries no promotion at all (refused at
+        the section, before the store's V-10 gate would refuse it)."""
+        self.to_scoping()
+        scoping = self.started("inv_scoping01")
+        text = self.artifact(b"a scoping claim")
+        outcome = {**empty_outcome("inv_scoping01", "interim_transition"), "claims": [self.claim_entry("clm_00000001", 1, text)],
+                   "claim_promotions": [{"claim_id": "clm_00000001", "revision": 1}]}
+        self.refused(scoping, "op_scoping0001", outcome, "kind_not_permitted", refs=[text], detail="scoping material only")
+
+    def test_only_a_provisional_or_contested_revision_is_promoted(self) -> None:
+        self.to_queued()
+        grant = self.started("inv_research01")
+        text = self.artifact(b"the claim")
+        self.committed(grant, "op_capture0001", {**empty_outcome("inv_research01", "interim_transition"), "claims": [self.claim_entry("clm_00000001", 1, text)],
+                                                 "claim_promotions": [{"claim_id": "clm_00000001", "revision": 1}]}, refs=[text])
+        self.refused(grant, "op_promote0001", {**empty_outcome("inv_research01", "interim_transition"),
+                                               "claim_promotions": [{"claim_id": "clm_00000001", "revision": 1}]}, "payload_invalid", detail="is accepted_support")
+
     def test_a_claims_text_is_staged_or_recorded(self) -> None:
         self.to_queued()
         grant = self.started("inv_research01")
@@ -209,6 +228,24 @@ class ProviderScreeningTest(ScreeningBase):
         self.qualify()
         self.refused(self.grant, "op_screen00001", self.provider(), "payload_invalid", refs=[self.raw], detail="does not hash to")
 
+    def test_a_receipt_records_a_call_of_the_committing_invocation(self) -> None:
+        other = self.started("inv_checkpt01", "checkpoint")
+        receipt = {**self.decision_receipt("op_screen00001"), "invocation_id": "inv_checkpt01"}
+        outcome = self.screen(self.assessment(actor="decision_provider", receipt="dec_000000000001"), receipts=[receipt])
+        self.refused(self.grant, "op_screen00001", outcome, "capability_invocation_mismatch", refs=[self.raw], detail="inv_checkpt01")
+        self.assertEqual(other["status"], "granted")
+
+    def test_an_abstention_hold_is_one_this_commit_creates_or_one_recorded(self) -> None:
+        receipt = self.decision_receipt("op_screen00001", authority="advisory")
+        receipt.update(action="abstain_hold", outcome={"commit_operation_id": None, "proposal_ref": None, "hold_id": "hold_000000000001"})
+        hold = {"hold_id": "hold_000000000001", "subject_ref": "work:wrk_00000001", "hold_class": "judgment", "cause": "low confidence",
+                "recoverability": "needs_decision", "required_authority": "primary", "owner": "primary", "deadline_at": "2026-10-01T00:00:00Z",
+                "clears_when": "the primary screens it", "capability_fact_id": None}
+        outcome = self.screen(receipts=[receipt])
+        self.refused(self.grant, "op_screen00001", outcome, "payload_invalid", refs=[self.raw], detail="neither created here nor recorded")
+        self.committed(self.grant, "op_screen00001", {**outcome, "holds": [hold]}, refs=[self.raw])
+        self.assertEqual(self.rows("SELECT action, hold_id FROM decision_receipts"), [("abstain_hold", "hold_000000000001")])
+
     def test_the_raw_response_must_be_staged(self) -> None:
         self.refused(self.grant, "op_screen00001", self.provider(), "payload_missing")
 
@@ -270,6 +307,12 @@ class ExportTest(EvidenceCase):
                                                                                       "content_hash": broken_ref["content_hash"]})),
                      "payload_invalid", refs=[broken_ref], detail="export-bundle.schema.json")
 
+    def test_the_staged_bundle_is_the_one_the_manifest_names(self) -> None:
+        other = jcs({**self.bundle, "bundle_id": "exb_other0001"})
+        other_ref = self.artifact(other, "application/json")
+        manifest = self.manifest(bundle={"bundle_id": "exb_gen00000001", "bundle_version": "export-bundle/1", "content_hash": other_ref["content_hash"]})
+        self.refused(self.grant, "op_export00001", self.exporting(manifest), "payload_invalid", refs=[other_ref], detail="the staged bundle is exb_other0001")
+
     def test_unapproved_or_foreign_material_is_not_exported(self) -> None:
         self.refused(self.grant, "op_export00001", self.exporting(self.manifest(source={"revision": 2, "content_hash": h("2")},
                                                                                approval={"operator_decision_id": "opd_publish001", "approved_revision": 2})),
@@ -284,6 +327,10 @@ class ExportTest(EvidenceCase):
 
 class TriggerAndOrdinalTest(EvidenceCase):
     TRIGGER = {"reason_code": "persistent_contradiction", "cause_ref": "clm_a vs clm_b", "source_revision": 4, "observed_at": T}
+
+    def ordinal(self, response: dict):
+        self.assertEqual(response["status"], "committed", response)
+        return response["receipt"]["effects"]["research_ordinal"]
 
     def test_a_replayed_trigger_opens_nothing_new(self) -> None:
         """RG-1b(e): once handled, the same trigger identity is never recorded
@@ -307,16 +354,16 @@ class TriggerAndOrdinalTest(EvidenceCase):
         """C-7 / C-12."""
         self.to_scoping()
         scoping = self.started("inv_scoping01")
-        self.assertIsNone(self.finish(scoping, "op_scoping0001")["receipt"]["effects"]["research_ordinal"])
+        self.assertEqual(self.ordinal(self.finish(scoping, "op_scoping0001")), None)
         self.to_queued("fleet-a:t2")
-        for n, kind in enumerate(("discovery", "verification", "checkpoint")):
+        for kind in ("discovery", "verification", "checkpoint"):
             grant = self.started(f"inv_{kind[:8]}01", kind, tid="fleet-a:t2")
-            self.assertIsNone(self.finish(grant, f"op_{kind[:8]}0001")["receipt"]["effects"]["research_ordinal"], kind)
+            self.assertEqual(self.ordinal(self.finish(grant, f"op_{kind[:8]}0001")), None, kind)
         first = self.started("inv_research01", tid="fleet-a:t2")
-        self.assertEqual(self.finish(first, "op_research0001")["receipt"]["effects"]["research_ordinal"], 1)
+        self.assertEqual(self.ordinal(self.finish(first, "op_research0001")), 1)
         self.x("UPDATE queue_entries SET status = 'queued', state_revision = state_revision + 1 WHERE topic_id = 'fleet-a:t2' AND status = 'resting'")
         second = self.started("inv_research02", tid="fleet-a:t2")
-        self.assertEqual(self.finish(second, "op_research0002")["receipt"]["effects"]["research_ordinal"], 2)
+        self.assertEqual(self.ordinal(self.finish(second, "op_research0002")), 2)
         self.assertEqual(self.rows("SELECT ordinal, invocation_id FROM research_ordinals ORDER BY ordinal"), [(1, "inv_research01"), (2, "inv_research02")])
 
 

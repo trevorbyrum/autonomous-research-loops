@@ -282,9 +282,6 @@ class Router:
             req = boundary.normalize(request, "request_invalid")
             boundary.require_schema(self._schemas, req, "router-commands#/$defs/claim", "request_invalid")
             now = self._now()
-            for field in ("deadline_at", "lease_expires_at"):
-                if field in req and instant(req[field]) <= instant(now):
-                    raise Refusal("request_invalid", f"{field} {req[field]} is not after {now}")
             return self._guarded("request_invalid", lambda: self._claim_in_transaction(req, now))
         except Refusal as refusal:
             return {"status": "refused", "invocation_id": request.get("invocation_id") if isinstance(request, Mapping) else None,
@@ -293,7 +290,10 @@ class Router:
     def _claim_in_transaction(self, req: dict, now: str) -> dict:
         existing = self._one("invocations", {"invocation_id": req["invocation_id"]})
         if existing is not None:
-            return self._claim_replay(req, existing)
+            return self._claim_replay(req, existing)  # a lost reply gets its grant back, whatever the time now
+        for field in ("deadline_at", "lease_expires_at"):
+            if field in req and instant(req[field]) <= instant(now):
+                raise Refusal("request_invalid", f"{field} {req[field]} is not after {now}")
         topic = self._one("queue_entries", {"topic_id": req["topic_id"]})
         if topic is None:
             raise Refusal("unknown_topic", req["topic_id"])

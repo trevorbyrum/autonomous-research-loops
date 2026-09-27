@@ -39,7 +39,7 @@ class ClaimTest(RouterTestCase):
         self.assertEqual(first["status"], "granted")
         before = self.state(exclude=())
         second = self.claim("inv_verify002", "verification")
-        self.assertEqual((second["status"], second["reason"]), ("refused", "lease_held"))
+        self.assertEqual((second["status"], second.get("reason")), ("refused", "lease_held"))
         self.assertEqual(self.state(exclude=()), before)
 
     def test_scopes_coexist_and_generations_strictly_increase(self) -> None:
@@ -64,57 +64,59 @@ class ClaimTest(RouterTestCase):
         self.assertEqual(again["status"], "replayed")
         self.assertEqual({k: v for k, v in again.items() if k != "status"}, {k: v for k, v in first.items() if k != "status"})
         self.assertEqual(self.state(exclude=()), before)
+        self.clock.set("2026-12-30T12:00:00Z")  # past the deadline: the replay still returns the grant it made
+        self.assertEqual(self.claim("inv_research01")["status"], "replayed")
         for field, value in (("station_id", "station-2"), ("deadline_at", "2026-12-29T00:00:00Z"), ("config_bundle_hash", h("d")), ("kind", "checkpoint")):
             with self.subTest(field):
                 conflict = self.claim("inv_research01", **{field: value}) if field != "kind" else self.claim("inv_research01", "checkpoint")
-                self.assertEqual((conflict["status"], conflict["reason"]), ("refused", "invocation_id_conflict"))
+                self.assertEqual((conflict["status"], conflict.get("reason")), ("refused", "invocation_id_conflict"))
                 self.assertEqual(self.state(exclude=()), before)
 
     def test_a_research_claim_activates_the_topic(self) -> None:
         revision = self.state_revision()
         self.assertEqual(self.claim("inv_research01")["status"], "granted")
         self.assertEqual((self.status(), self.state_revision()), ("active", revision + 1))
-        self.assertEqual(self.claim("inv_research02")["reason"], "topic_not_claimable")  # active: the status gate refuses before the lease check
+        self.assertEqual(self.claim("inv_research02").get("reason"), "topic_not_claimable")  # active: the status gate refuses before the lease check
 
     def test_admission_comes_from_state_not_from_the_request(self) -> None:
         refused = self.router.claim({"invocation_id": "inv_research01", "kind": "research_pass", "topic_id": TOPIC, "config_bundle_hash": CONFIG,
                                      "deadline_at": DEADLINE, "station_id": "s", "lease_expires_at": EXPIRES,
                                      "admission": {"context": "pre-contract/1"}})
-        self.assertEqual((refused["status"], refused["reason"]), ("refused", "request_invalid"))
-        self.assertIn("/admission", refused["detail"])
+        self.assertEqual((refused["status"], refused.get("reason")), ("refused", "request_invalid"))
+        self.assertIn("/admission", refused.get("detail", ""))
         grant = self.claim("inv_research01")
         self.assertEqual(grant["admission"]["context"], "contract/1")
         self.assertEqual(self.rows("SELECT admission_context, contract_revision FROM invocations WHERE invocation_id = 'inv_research01'"), [("contract/1", 1)])
 
     def test_topic_state_gates_claims(self) -> None:
         self.x("UPDATE queue_entries SET paused_at = '2026-09-27T09:59:00Z' WHERE topic_id = ?", TOPIC)
-        self.assertEqual(self.claim("inv_research01")["reason"], "topic_paused")
-        self.assertEqual(self.claim("inv_research01", tid="fleet-a:nowhere")["reason"], "unknown_topic")
-        self.assertEqual(self.claim("inv_research01", tid=OTHER)["reason"], "not_admissible")  # OTHER is at intake: no brief, no contract
+        self.assertEqual(self.claim("inv_research01").get("reason"), "topic_paused")
+        self.assertEqual(self.claim("inv_research01", tid="fleet-a:nowhere").get("reason"), "unknown_topic")
+        self.assertEqual(self.claim("inv_research01", tid=OTHER).get("reason"), "not_admissible")  # OTHER is at intake: no brief, no contract
         self.x("UPDATE queue_entries SET paused_at = NULL, status = 'held', state_revision = state_revision + 1 WHERE topic_id = ?", TOPIC)
-        self.assertEqual(self.claim("inv_research01")["reason"], "topic_not_claimable")
-        self.assertIn("deadline_at", self.claim("inv_research01", deadline_at="2026-09-01T00:00:00Z")["detail"])
+        self.assertEqual(self.claim("inv_research01").get("reason"), "topic_not_claimable")
+        self.assertIn("deadline_at", self.claim("inv_research01", deadline_at="2026-09-01T00:00:00Z").get("detail", ""))
 
     def test_pre_contract_admission_is_for_scoping_kinds_only(self) -> None:
         self.to_scoping(OTHER)
         grant = self.claim("inv_scoping01", "discovery", tid=OTHER)
         self.assertEqual(grant["admission"]["context"], "pre-contract/1")
         self.assertEqual(grant["admission"]["brief"]["brief_id"], "brief-1")
-        self.assertEqual(self.claim("inv_verify001", "verification", tid=OTHER)["reason"], "not_admissible")
+        self.assertEqual(self.claim("inv_verify001", "verification", tid=OTHER).get("reason"), "not_admissible")
         self.assertEqual(self.status(OTHER), "scoping")
 
     def test_a_delegate_runs_under_its_running_parent(self) -> None:
         parent = self.claim("inv_research01")
-        self.assertEqual(self.claim("inv_deleg001", "delegate", parent=parent)["reason"], "parent_not_running")
+        self.assertEqual(self.claim("inv_deleg001", "delegate", parent=parent).get("reason"), "parent_not_running")
         self.running(parent)
         delegate = self.claim("inv_deleg001", "delegate", parent=parent)
         self.assertEqual(delegate["status"], "granted")
         self.assertEqual(delegate["lease"], parent["lease"])
         self.assertEqual(self.rows("SELECT lease_id, parent_invocation_id, contract_revision FROM invocations WHERE invocation_id = 'inv_deleg001'"),
                          [(None, "inv_research01", 1)])
-        self.assertEqual(self.claim("inv_deleg002", "delegate", parent=parent, config_bundle_hash=h("d"))["reason"], "config_bundle_mismatch")
+        self.assertEqual(self.claim("inv_deleg002", "delegate", parent=parent, config_bundle_hash=h("d")).get("reason"), "config_bundle_mismatch")
         self.to_queued(OTHER)
-        self.assertEqual(self.claim("inv_deleg003", "delegate", tid=OTHER, parent=parent)["reason"], "cross_topic")
+        self.assertEqual(self.claim("inv_deleg003", "delegate", tid=OTHER, parent=parent).get("reason"), "cross_topic")
 
 
 class TransitionTest(RouterTestCase):
@@ -129,11 +131,11 @@ class TransitionTest(RouterTestCase):
     def test_the_lifecycle_moves_along_l1_only(self) -> None:
         before = self.state(exclude=())
         out = self.transition("running", host_id="h", boot_id="b", start_fingerprint="s")
-        self.assertEqual((out["status"], out["reason"]), ("refused", "transition_not_allowed"))  # admitted -> running skips launch intent (L-2)
+        self.assertEqual((out["status"], out.get("reason")), ("refused", "transition_not_allowed"))  # admitted -> running skips launch intent (L-2)
         self.assertEqual(self.state(exclude=()), before)
         self.assertEqual(self.transition("launching", job_handle="job-1")["status"], "recorded")
         self.assertEqual(self.transition("launching", job_handle="job-1")["status"], "replayed")
-        self.assertEqual(self.transition("launching", job_handle="job-2")["reason"], "transition_conflict")
+        self.assertEqual(self.transition("launching", job_handle="job-2").get("reason"), "transition_conflict")
         self.assertEqual(self.transition("running", host_id="h", boot_id="b", start_fingerprint="s")["status"], "recorded")
         self.assertEqual(self.rows("SELECT seq, from_state, to_state, cause FROM invocation_transitions WHERE invocation_id = 'inv_research01' ORDER BY seq"),
                          [(1, None, "admitted", "claim"), (2, "admitted", "launching", "launch_intent"), (3, "launching", "running", "identity_recorded")])
@@ -142,23 +144,29 @@ class TransitionTest(RouterTestCase):
         for facts, fragment in (({}, "exactly"), ({"job_handle": "j", "host_id": "h"}, "exactly"), ({"job_handle": "j", "role": "supervisor"}, "/role")):
             with self.subTest(facts):
                 out = self.transition("launching", **facts)
-                self.assertEqual(out["reason"], "request_invalid")
-                self.assertIn(fragment, out["detail"])
+                self.assertEqual(out.get("reason"), "request_invalid")
+                self.assertIn(fragment, out.get("detail", ""))
 
     def test_the_final_launch_admission_check(self) -> None:
         """L-7: launch needs a current lease, an unpaused topic and a live deadline."""
         self.x("UPDATE queue_entries SET paused_at = '2026-09-27T10:00:00Z' WHERE topic_id = ?", TOPIC)
-        self.assertEqual(self.transition("launching", job_handle="job-1")["reason"], "topic_paused")
+        self.assertEqual(self.transition("launching", job_handle="job-1").get("reason"), "topic_paused")
         self.x("UPDATE queue_entries SET paused_at = NULL WHERE topic_id = ?", TOPIC)
         self.clock.set(EXPIRES)
-        self.assertEqual(self.transition("launching", job_handle="job-1")["reason"], "lease_not_current")
+        self.assertEqual(self.transition("launching", job_handle="job-1").get("reason"), "lease_not_current")
+
+    def test_launch_after_the_deadline_is_refused(self) -> None:
+        late = self.claim("inv_verify001", "verification", deadline_at="2026-11-01T00:00:00Z")
+        self.clock.set("2026-11-01T00:00:00Z")
+        out = self.router.record_transition({"capability_id": late["capability_id"], "invocation_id": "inv_verify001", "to_state": "launching", "job_handle": "j"})
+        self.assertEqual(out.get("reason"), "deadline_passed")
 
     def test_a_result_is_ready_only_when_its_bytes_are_staged(self) -> None:
         self.running(self.grant)
         missing = h("4")
-        self.assertEqual(self.transition("result_ready", result_payload_digest=missing)["reason"], "payload_missing")
+        self.assertEqual(self.transition("result_ready", result_payload_digest=missing).get("reason"), "payload_missing")
         self.spool.blobs[missing] = b"not these bytes"
-        self.assertEqual(self.transition("result_ready", result_payload_digest=missing)["reason"], "payload_digest_mismatch")
+        self.assertEqual(self.transition("result_ready", result_payload_digest=missing).get("reason"), "payload_digest_mismatch")
         digest, _ = self.stage(empty_outcome("inv_research01"))
         self.assertEqual(self.transition("result_ready", result_payload_digest=digest)["status"], "recorded")
 
@@ -172,7 +180,7 @@ class TransitionTest(RouterTestCase):
     def test_only_the_invocations_capability_records_its_facts(self) -> None:
         other = self.claim("inv_verify001", "verification")
         out = self.router.record_transition({"capability_id": other["capability_id"], "invocation_id": "inv_research01", "to_state": "launching", "job_handle": "j"})
-        self.assertEqual(out["reason"], "capability_invocation_mismatch")
+        self.assertEqual(out.get("reason"), "capability_invocation_mismatch")
 
 
 class ObservationTest(RouterTestCase):
@@ -198,8 +206,8 @@ class ObservationTest(RouterTestCase):
                                                "observation": observation, "retrieval_events": events})
 
     def refused(self, out: dict, reason: str, before: dict, detail: str) -> None:
-        self.assertEqual((out["status"], out["reason"]), ("refused", reason), out)
-        self.assertIn(detail, out["detail"])
+        self.assertEqual((out["status"], out.get("reason")), ("refused", reason), out)
+        self.assertIn(detail, out.get("detail", ""))
         self.assertEqual(self.state(exclude=()), before)
 
     def test_a_complete_count_is_its_captured_identities(self) -> None:
@@ -231,6 +239,21 @@ class ObservationTest(RouterTestCase):
         before = self.state(exclude=())
         self.refused(self.observe(1, identity=canonical.logical_hash({"lane": "crossref", "query": "something else", "cursor": None})), "payload_invalid", before, "request_identity is not the hash")
         self.assertEqual(self.observe(1)["status"], "recorded")
+
+    def test_a_record_is_captured_once_per_observation(self) -> None:
+        before = self.state(exclude=())
+        out = self.router.record_observation({"capability_id": self.grant["capability_id"], "invocation_id": "inv_discover1",
+                                              "observation": {**self.observation_doc(2)}, "retrieval_events": [
+                                                  {"event_id": "rev_000000000001", "provider_record_id": "rec-1", "rank": 1, "captured_at": "2026-09-27T10:00:04Z"},
+                                                  {"event_id": "rev_000000000002", "provider_record_id": "rec-1", "rank": 2, "captured_at": "2026-09-27T10:00:04Z"}]})
+        self.refused(out, "payload_invalid", before, "captured twice")
+
+    def observation_doc(self, count: int) -> dict:
+        request = {"lane": "crossref", "query": "intake latency", "cursor": None}
+        return {"observation_id": "obs_000000000001", "request": request, "request_identity": canonical.logical_hash(request), "attempt": 1,
+                "lane": "crossref", "obligation_ids": [], "started_at": "2026-09-27T10:00:00Z", "ended_at": "2026-09-27T10:00:05Z",
+                "coverage_state": "searched_ok", "result_count": count, "completeness": "complete", "error_class": None, "capability_fact_id": None,
+                "policy_version": "gw-policy/1", "cost_units": None, "gateway_call_ref": "call-1"}
 
     def test_replay_and_conflict_by_observation_id(self) -> None:
         self.assertEqual(self.observe(2)["status"], "recorded")
@@ -264,7 +287,7 @@ class OperatorDecisionTest(RouterTestCase):
         self.assertEqual(self.decide("opd_brief0001", "brief_confirmation", subject)["status"], "replayed")
         self.assertEqual(self.state(exclude=()), before)
         conflict = self.decide("opd_brief0001", "brief_confirmation", subject, disposition="rejected")
-        self.assertEqual((conflict["status"], conflict["reason"]), ("rejected", "decision_id_conflict"))
+        self.assertEqual((conflict["status"], conflict.get("reason")), ("rejected", "decision_id_conflict"))
         self.assertEqual(self.state(exclude=()), before)
 
     def test_a_decision_about_a_near_miss_subject_records_nothing(self) -> None:
@@ -275,8 +298,8 @@ class OperatorDecisionTest(RouterTestCase):
                         {"kind": "intake_brief", "ref": "brief-2", "revision": 1, "hash": bhash}):
             with self.subTest(subject):
                 out = self.decide("opd_brief0001", "brief_confirmation", subject)
-                self.assertEqual((out["status"], out["reason"]), ("rejected", "decision_refused"))
-                self.assertIn("existing subject", out["detail"])
+                self.assertEqual((out["status"], out.get("reason")), ("rejected", "decision_refused"))
+                self.assertIn("existing subject", out.get("detail", ""))
                 self.assertEqual(self.state(exclude=()), before)
 
     def test_approval_binds_to_a_hash_that_is_true_of_the_stored_document(self) -> None:
@@ -289,7 +312,7 @@ class OperatorDecisionTest(RouterTestCase):
         self.assertEqual(self.decide("opd_scope0001", "scope_approval", {"kind": "scoping_report", "ref": "s", "revision": 1, "hash": h("5")})["status"], "applied")
         before = self.state(exclude=())
         out = self.decide("opd_cntr0001", "contract_approval", {"kind": "contract_revision", "revision": 1, "hash": forged})
-        self.assertEqual((out["status"], out["reason"]), ("rejected", "subject_hash_untrue"))
+        self.assertEqual((out["status"], out.get("reason")), ("rejected", "subject_hash_untrue"))
         self.assertEqual(self.state(exclude=()), before)
 
     def test_contract_approval_queues_the_topic_and_an_amendment_supersedes(self) -> None:
@@ -297,6 +320,7 @@ class OperatorDecisionTest(RouterTestCase):
         self.assertEqual(self.rows("SELECT status, active_contract_revision FROM queue_entries WHERE topic_id = ?", TOPIC), [("queued", 1)])
         chash = self.contract_draft(TOPIC, 2)
         out = self.decide("opd_amend0001", "amendment_approval", {"kind": "contract_revision", "revision": 2, "hash": chash})
+        self.assertEqual(out["status"], "applied", out)
         self.assertEqual((out["effects"]["contract_approved"], out["effects"]["contract_superseded"]), (2, [1]))
         self.assertEqual(self.rows("SELECT revision, status FROM contract_revisions WHERE topic_id = ? ORDER BY revision", TOPIC), [(1, "superseded"), (2, "approved")])
         self.assertEqual(self.value("SELECT active_contract_revision FROM queue_entries WHERE topic_id = ?", TOPIC), 2)
@@ -305,8 +329,8 @@ class OperatorDecisionTest(RouterTestCase):
         self.to_scoping()
         before = self.state(exclude=())
         out = self.decide("opd_scope0001", "scope_approval", {"kind": "scoping_report", "ref": "s", "revision": 1, "hash": h("5")})
-        self.assertEqual((out["status"], out["reason"]), ("rejected", "decision_refused"))  # scoping, not awaiting scope approval
-        self.assertIn("moves it only from", out["detail"])
+        self.assertEqual((out["status"], out.get("reason")), ("rejected", "decision_refused"))  # scoping, not awaiting scope approval
+        self.assertIn("moves it only from", out.get("detail", ""))
         self.assertEqual(self.state(exclude=()), before)
 
     def test_retirement_is_bound_to_the_state_revision_being_left(self) -> None:
@@ -314,11 +338,31 @@ class OperatorDecisionTest(RouterTestCase):
         stale = self.state_revision() - 1
         before = self.state(exclude=())
         out = self.decide("opd_retire001", "retirement", {"kind": "topic", "revision": stale})
-        self.assertEqual(out["reason"], "decision_refused")
-        self.assertIn("current state revision", out["detail"])
+        self.assertEqual(out.get("reason"), "decision_refused")
+        self.assertIn("current state revision", out.get("detail", ""))
         self.assertEqual(self.state(exclude=()), before)
         out = self.decide("opd_retire001", "retirement", {"kind": "topic", "revision": self.state_revision()})
         self.assertEqual((out["status"], self.status()), ("applied", "retired"))
+
+    def test_completion_binds_to_the_current_dossier(self) -> None:
+        """G-8 through the router: completion names an approved completion
+        approval of the current dossier revision; a decision about a dossier
+        that is not stored records nothing; the approved one completes the
+        topic and becomes its authorizing decision."""
+        self.to_queued()
+        self.started("inv_research01")  # active
+        before = self.state(exclude=())
+        missing = self.decide("opd_complete01", "completion_approval", {"kind": "dossier", "revision": 1, "hash": h("3")})
+        self.assertEqual((missing["status"], missing.get("reason")), ("rejected", "decision_refused"))
+        self.assertIn("existing subject", missing.get("detail", ""))
+        self.assertEqual(self.state(exclude=()), before)
+        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'application/json', ?)", h("7"), "2026-09-27T09:00:00Z")
+        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) "
+               "VALUES (?, 1, 1, 1, 'eval-1', ?, ?, '2026-09-27T09:00:00Z')", TOPIC, h("3"), h("7"))  # dossier assembly is Phase 2
+        out = self.decide("opd_complete01", "completion_approval", {"kind": "dossier", "revision": 1, "hash": h("3")})
+        self.assertEqual(out["effects"]["queue_transition"], {"from": "active", "to": "completed_with_qualified_conclusions"})
+        self.assertEqual(self.rows("SELECT status, status_decision_id FROM queue_entries WHERE topic_id = ?", TOPIC),
+                         [("completed_with_qualified_conclusions", "opd_complete01")])
 
     def test_a_rejected_decision_is_recorded_and_changes_nothing_else(self) -> None:
         bhash = self.brief()
@@ -394,7 +438,7 @@ class AckDeliveryTest(RouterTestCase):
         self.assertEqual(self.ack(self.receipt("exr_000000000001"))["status"], "replayed")
         self.assertEqual(self.state(exclude=()), before)
         conflict = self.ack(self.receipt("exr_000000000001", attempted_at="2026-09-27T12:00:00.5Z"))
-        self.assertEqual((conflict["status"], conflict["reason"]), ("rejected", "export_receipt_id_conflict"))
+        self.assertEqual((conflict["status"], conflict.get("reason")), ("rejected", "export_receipt_id_conflict"))
         self.assertEqual(self.state(exclude=()), before)
 
     def test_a_receipt_must_describe_its_manifest(self) -> None:
@@ -406,17 +450,20 @@ class AckDeliveryTest(RouterTestCase):
                                       (self.receipt("exr_000000000001", connector="lake"), "delivery_refused", "does not name")):
             with self.subTest(fragment=fragment):
                 out = self.ack(doc)
-                self.assertEqual((out["status"], out["reason"]), ("rejected", reason), out)
-                self.assertIn(fragment, out["detail"])
+                self.assertEqual((out["status"], out.get("reason")), ("rejected", reason), out)
+                self.assertIn(fragment, out.get("detail", ""))
                 self.assertEqual(self.state(exclude=()), before)
 
     def test_the_watermark_never_regresses(self) -> None:
+        self.assertEqual(self.ack(self.receipt("exr_000000000001", generation=1))["status"], "recorded")
         self.assertEqual(self.ack(self.receipt("exr_000000000002", generation=2))["status"], "recorded")
+        self.assertEqual(self.rows("SELECT generation, options_revision FROM connector_watermarks WHERE connector_id = 'warehouse'"), [(2, 1)])
         before = self.state(exclude=())
-        out = self.ack(self.receipt("exr_000000000001", generation=1))
-        self.assertEqual((out["status"], out["reason"]), ("rejected", "watermark_regression"))
+        out = self.ack(self.receipt("exr_000000000009", generation=1, attempt=2))
+        self.assertEqual((out["status"], out.get("reason")), ("rejected", "watermark_regression"))
         self.assertEqual(self.state(exclude=()), before)
-        self.assertEqual(self.ack(self.receipt("exr_000000000003", generation=1, status="skipped_superseded", written={"status": "observed", "value": 0},
+        self.assertIn("already holds (2, 1)", out.get("detail", ""))
+        self.assertEqual(self.ack(self.receipt("exr_000000000003", generation=1, attempt=2, status="skipped_superseded", written={"status": "observed", "value": 0},
                                                tombstones_acknowledged=False, acked_at=None))["status"], "recorded")
 
     def test_failures_raise_capability_facts_on_transitions(self) -> None:
@@ -427,8 +474,8 @@ class AckDeliveryTest(RouterTestCase):
         self.assertEqual(self.ack(self.receipt("exr_000000000002", "failed", attempt=2, capability_fact_id="fact_warehouse01"))["status"], "recorded")
         before = self.state(exclude=())
         out = self.ack(self.receipt("exr_000000000003", "failed", attempt=3, capability_fact_id="fact_warehouse02"))
-        self.assertEqual((out["status"], out["reason"]), ("rejected", "delivery_refused"))
-        self.assertIn("already failing", out["detail"])
+        self.assertEqual((out["status"], out.get("reason")), ("rejected", "delivery_refused"))
+        self.assertIn("already failing", out.get("detail", ""))
         self.assertEqual(self.state(exclude=()), before)
         # an unknown outcome is a transition of its own (P-7)
         self.assertEqual(self.ack(self.receipt("exr_000000000003", "outcome_unknown", attempt=3, capability_fact_id="fact_warehouse02"))["status"], "recorded")
