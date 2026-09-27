@@ -2737,7 +2737,8 @@ MUTATIONS: list[Mutation] = [
              (SLR + "test_a_retried_start_is_admitted_again", SLD + "test_a_retried_start_is_admitted_again",
               *(p + k for k in ("test_recovery_starts_nothing_in_a_topic_paused_meanwhile", "test_recovery_starts_nothing_once_the_lease_has_expired",
                                 "test_recovery_starts_nothing_once_the_lease_is_released") for p in (SCD, SCP)),
-              SCD + "test_recovery_starts_nothing_once_the_lease_is_replaced"),
+              SCD + "test_recovery_starts_nothing_once_the_lease_is_replaced",
+              "test_supervisor_crash.DelegateUnderDiscoveryReplacementTest.test_recovery_starts_no_delegate_once_its_parents_lease_is_replaced"),
              target=SPV, old='            if refused is not None:  # recorded launch intent is not renewed authority: a recovery or a retried start is checked again',
              new='            if False:'),
     # A2: a cancellation after an uncertain spawn reconciles through the owned group, with no failure class invented.

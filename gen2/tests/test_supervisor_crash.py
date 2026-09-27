@@ -34,6 +34,18 @@ terminated (the group ended at its deadline, the failure not yet recorded)
 and unknown_recorded (outcome_unknown entered by a restarted supervisor,
 not yet reconciled: a second crash).
 
+A delegate's replaced lease (Astra 1c re-review C5): a delegate runs under
+its parent's lease, and a research pass's lease is not replaced while its
+topic is active, so the per-kind fixture above (a delegate under a research
+pass) cannot reach that case. DelegateReplacementFaults runs it under each
+parent kind whose scope can be claimed again — discovery, verification,
+checkpoint: the supervisor dies once the delegate's launch intent is
+recorded, the parent's lease lapses and a new generation of its scope is
+granted; the restarted supervisor starts no executor and the delegate ends
+cancelled. Beside it, the unchanged-authority control: the same crash under
+the same parent kind, its lease still held, starts the delegate once and
+commits.
+
 What this cannot show: power loss or a torn write (a killed process leaves
 the page cache and every completed write), or a crash inside a router
 transaction (test_router_crash.py).
@@ -125,9 +137,12 @@ class CrashFaults:
         self.unlaunched("expired")
 
     def test_recovery_starts_nothing_once_the_lease_is_replaced(self) -> None:
-        if self.KIND in ("research_pass", "delegate"):
+        if self.KIND == "research_pass":
             self.skipTest("a research lease is not replaced while its topic is active (the router admits no second research claim); "
                           "the released-lease case covers it")
+        if self.KIND == "delegate":
+            self.skipTest("this fixture's delegate runs under a research pass, whose lease is not replaced (as above); a delegate under "
+                          "a parent whose lease can be replaced is DelegateReplacementFaults' (Astra 1c re-review C5)")
         self.crash("launch_recorded", succeed(), lease_expires=LAPSES)
         self.clock.set("2026-09-27T11:00:00Z")
         replacing = self.router.claim({"invocation_id": "inv_replace01", "kind": self.KIND, "topic_id": rf.TOPIC, "config_bundle_hash": rf.CONFIG,
@@ -272,6 +287,48 @@ class CrashFaults:
         self.assertEqual(self.ended(), self.committed(["admitted", "launching", "outcome_unknown", "running", "result_ready", "committed"],
                                                       episodes=1, cleared_holds=1, reconciliations=["found_running"]))
         self.assertEqual(self.spawns(), 1)
+
+
+class DelegateReplacementFaults:
+    """A delegate whose supervisor died once its launch intent was recorded,
+    under a parent of PARENT_KIND (module docstring; Astra 1c re-review C5)."""
+    KIND = "delegate"
+    PARENT_KIND: str
+    crash, restart, committed, unlaunched = CrashFaults.crash, CrashFaults.restart, CrashFaults.committed, CrashFaults.unlaunched
+
+    def crashed_at_launch_intent(self, parent_lease_expires: str | None = None) -> None:
+        self.assertEqual(self.supervisor.submit(self.order(self.PARENT_KIND, HANG, inv=PARENT, lease_expires=parent_lease_expires)), "running")
+        self.supervisor.prepare(self.order("delegate", succeed()))
+        self.crash("launch_recorded", succeed(), prepare=False)
+
+    def test_recovery_starts_no_delegate_once_its_parents_lease_is_replaced(self) -> None:
+        self.crashed_at_launch_intent(LAPSES)
+        self.clock.set("2026-09-27T11:00:00Z")
+        replacing = self.router.claim({"invocation_id": "inv_replace01", "kind": self.PARENT_KIND, "topic_id": rf.TOPIC, "config_bundle_hash": rf.CONFIG,
+                                       "deadline_at": DEADLINE, "station_id": "station-2", "lease_expires_at": DEADLINE})
+        self.assertEqual((replacing["status"], replacing["lease"]["generation"]), ("granted", 2))  # the parent's lapsed lease is released as expired
+        self.supervisor = self.make_supervisor()
+        self.assertEqual(self.supervisor.recover()[MAIN], "cancelled")
+        self.unlaunched("expired")  # no start recorded, no identity: no executor started
+
+    def test_recovery_starts_the_delegate_once_under_unchanged_authority(self) -> None:
+        self.crashed_at_launch_intent()
+        self.assertEqual(self.restart()[MAIN], "running")
+        self.assertEqual(self.supervisor.run(MAIN), "committed")
+        self.assertEqual(self.ended(), self.committed())
+        self.assertEqual(self.spawns(), 1)
+
+
+class DelegateUnderDiscoveryReplacementTest(DelegateReplacementFaults, SupervisedTestCase):
+    PARENT_KIND = "discovery"
+
+
+class DelegateUnderVerificationReplacementTest(DelegateReplacementFaults, SupervisedTestCase):
+    PARENT_KIND = "verification"
+
+
+class DelegateUnderCheckpointReplacementTest(DelegateReplacementFaults, SupervisedTestCase):
+    PARENT_KIND = "checkpoint"
 
 
 class ResearchPassCrashTest(CrashFaults, SupervisedTestCase):
