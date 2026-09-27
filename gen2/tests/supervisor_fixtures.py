@@ -172,9 +172,11 @@ class SupervisedTestCase(rf.RouterTestCase):
     def end_every_process(self) -> list[int]:
         """SIGKILL every member of every job's group, and every marked
         descendant; returns any pid still alive after that."""
-        left = []
+        left, own = [], os.getsid(0)
         for identity_file in (self.root / "jobs").glob("*/identity.json"):
             identity = json.loads(identity_file.read_text())
+            if identity["session"] == own:  # never this process's own session (a launcher started without one would name it)
+                continue
             for pid in jobs.members(identity):
                 try:
                     os.kill(pid, signal.SIGKILL)
@@ -183,6 +185,8 @@ class SupervisedTestCase(rf.RouterTestCase):
         deadline = time.monotonic() + 5
         for identity_file in (self.root / "jobs").glob("*/identity.json"):
             identity = json.loads(identity_file.read_text())
+            if identity["session"] == own:
+                continue
             while jobs.members(identity) and time.monotonic() < deadline:
                 self.reap()
                 time.sleep(0.01)

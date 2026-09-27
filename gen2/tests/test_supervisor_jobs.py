@@ -53,7 +53,7 @@ class JobTestCase(unittest.TestCase):
 
     def tearDown(self) -> None:
         identity = self.job.read("identity.json")
-        if identity is not None and identity["pid"] != os.getpid():
+        if identity is not None and identity["pid"] != os.getpid() and identity["session"] != os.getsid(0):  # never this process's own session
             self.job.terminate(identity, term_grace=0.2, kill_grace=5, reap=self.reap)
         self.reap()
         self._tmp.cleanup()
@@ -199,7 +199,8 @@ class LockProbeTest(JobTestCase):
         def launch_inside_the_probe(fd: int) -> None:
             if not launched:  # the lookup's first close is its probe's; the launch's own closes pass straight through
                 launched.append(None)
-                launched[0] = subprocess.run([sys.executable, str(children.path("gen2/supervisor/jobshim.py")), str(self.job.dir)], timeout=60).returncode
+                launched[0] = subprocess.run([sys.executable, str(children.path("gen2/supervisor/jobshim.py")), str(self.job.dir)],
+                                             start_new_session=True, timeout=60).returncode  # its own session, as Job.spawn starts it
             close(fd)
         with mock.patch.object(jobs.os, "close", launch_inside_the_probe):
             self.job.lookup()
