@@ -18,15 +18,31 @@ schema, and checks that the guard's own tests catch it:
             tolerated when every listed killer failed in its body: an
             over-restricting mutant can also break a shared fixture.
 
-Children (task 1c). A Python-module or disk target is also written into a
-temporary copy of the gen2/ tree, named in GEN2_CHILD_ROOT for the run of its
-killers: every test child starts through gen2/tests/children.py, which runs
-it from that tree, so a fresh interpreter imports the mutant too (Astra's
-1b-repair-2 review: in-memory swaps never reached a child). Before the
-killers run, a child started through the same helper must report that it
-loaded exactly the mutant's bytes (the loading control); a mutation whose
-child would load anything else is INVALID. `--no-disk` turns this off, to
-show what an in-memory-only run misses.
+Children (task 1c; attestation task 1c-repair, Astra 1c review C1). A
+Python-module or disk target is also written into a temporary copy of the
+gen2/ tree, named in GEN2_CHILD_ROOT for the run of its killers; children
+started through gen2/tests/children.py import that tree alone (their import
+root is fixed there, whatever working directory a caller passes). The copy
+written there carries a one-line prologue: a child that executes it appends
+an attestation — the test running (GEN2_ATTEST_TEST, set as each test
+starts), its pid, the file, the SHA-256 of the file's bytes — to the run's
+attestation file. What is checked:
+  * before the killers, for a module target, a probe child started through
+    the helper imports the module and must attest exactly the mutant's
+    bytes (the loading control; a disk target, a script only children run,
+    is checked on the killers' own children below);
+  * after the killers, every attestation must name the tree's copy and the
+    mutant's bytes: a child that executed other bytes of the target makes
+    the mutation INVALID;
+  * a kill that rests on a child — every disk target, and a module target
+    marked via_child — needs, for each declared killer, an attestation from
+    a child that executed the mutant during that very test; a killer that
+    failed without one is not credited (INVALID).
+An in-process kill needs none: the killers run in this interpreter over the
+in-memory mutant. What this does not cover: a child that executes the target
+and dies before its prologue runs, and tools run by explicit path ("attr"
+targets), which are handed the mutated copy by path. `--no-disk` turns the
+child tree off, to show what an in-memory-only run misses.
 
 Exit 0 only if the unmutated baseline passes and every mutation is KILLED.
 The inventory is the reviewable claim: Astra's Gate C re-runs it
@@ -40,6 +56,7 @@ Astra 0a review, "Independent mutation record".
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import multiprocessing
 import os
@@ -68,6 +85,7 @@ class Mutation:
     target: str = "ddl"  # ddl | connection | a repo-relative file in FILE_TARGETS
     also: tuple[tuple[str, str], ...] = ()  # further (old, new) edits applied with this one (a dimension-level mutation)
     scope: str | None = None  # apply the edits only inside this trigger or table (CREATE TRIGGER <scope> ... END; / CREATE TABLE <scope> ... STRICT;)
+    via_child: bool = False  # a module target whose kill rests on a child: each killer needs a child's attestation (module docstring, "Children")
 
 
 # File targets: how the named tests are pointed at a mutated copy. ("attr",
@@ -2372,16 +2390,16 @@ MUTATIONS: list[Mutation] = [
     # (its listed killer passes). Module docstring, "Children".
     Mutation("1C-child-gate-refusal-silent", "1c-runner", "the SQLite gate command refuses without saying so on stderr",
              (SG + "GateCommandTest.test_refusing_gate_exits_nonzero_loudly",), target="gen2/store/compat.py",
-             old='    if status:\n        print(f"gen2 SQLite gate REFUSED:', new='    if False:\n        print(f"gen2 SQLite gate REFUSED:'),
+             old='    if status:\n        print(f"gen2 SQLite gate REFUSED:', new='    if False:\n        print(f"gen2 SQLite gate REFUSED:', via_child=True),
     Mutation("1C-child-gate-report-dropped", "1c-runner", "the SQLite gate command drops its --report record",
              (SG + "GateCommandTest.test_passing_gate_exits_zero_and_records_the_version",), target="gen2/store/compat.py",
-             old='            handle.write(f"### gen-2 SQLite compatibility gate', new='            (lambda _: None)(f"### gen-2 SQLite compatibility gate'),
+             old='            handle.write(f"### gen-2 SQLite compatibility gate', new='            (lambda _: None)(f"### gen-2 SQLite compatibility gate', via_child=True),
     Mutation("1C-child-importer-status-dropped", "1c-runner", "`python -m gen2.importer` exits 0 whatever the report's verdict",
              ("test_importer.CommandTest.test_python_dash_m_exits_with_the_importers_status",), target="gen2/importer/__main__.py",
              old="raise SystemExit(main())", new="main()"),
     Mutation("1C-child-router-replay-reads-committed", "1c-runner", "a replayed commit is reported as newly committed",
              ("test_router_crash.KilledProcessTest.test_a_process_killed_after_commit_has_committed_once",), target=SVC,
-             old='        return {"status": "replayed", "receipt": row["receipt"]}', new='        return {"status": "committed", "receipt": row["receipt"]}'),
+             old='        return {"status": "replayed", "receipt": row["receipt"]}', new='        return {"status": "committed", "receipt": row["receipt"]}', via_child=True),
     # --- task 1c: supervisor, spool, jobs, and the router's lifecycle ends -----------------------------------------
     # Store: how an invocation ended; the episode hold a reconciliation clears (test_store_supervision).
     Mutation("1C-ddl-failure-class-open", "1c", "a failure may carry any class, the agent's own word included",
@@ -2612,7 +2630,7 @@ MUTATIONS: list[Mutation] = [
           ("hash-unchecked", "a content hash is used as a path without being one", (SP + "StageTest.test_a_topic_or_hash_that_is_not_one_is_refused",),
            "        if not isinstance(content_hash, str) or not DIGEST.match(content_hash):", "        if not isinstance(content_hash, str):"))),
     # The job layer (jobs.py in process; jobshim.py only ever runs in a child: its mutants are killed through the child tree).
-    *(Mutation(f"1C-jobs-{key}", "1c", desc, tuple(killers), target=JBS, old=old, new=new)
+    *(Mutation(f"1C-jobs-{key}", "1c", desc, tuple(killers), target=JBS, old=old, new=new, via_child=key == "start-unrecorded")
       for key, desc, killers, old, new in (
           ("pid-alone", "a live pid is taken for the launcher whatever its start time (PID adoption, L-3)", (SJ + "IdentityTest.test_a_pid_alone_is_not_the_job",),
            '        alive = stat is not None and stat[0] != "Z" and stat[2] == identity["starttime"]', '        alive = stat is not None and stat[0] != "Z"'),
@@ -2801,9 +2819,6 @@ MUTATIONS: list[Mutation] = [
              (SS + "RecordedRequestTest.test_a_reconciliation_keeps_the_request_its_columns_record",), scope="invocation_reconciliations",
              old="  CHECK (json_extract(request, '$.resolution') IS resolution AND json_extract(request, '$.method') IS method\n"
                  "         AND json_extract(request, '$.evidence_ref') IS evidence_ref AND json_extract(request, '$.result_payload_digest') IS result_payload_digest),\n", new=""),
-    Mutation("1C-ddl-reconciliation-request-any-json", "1c-A8", "a reconciliation's recorded request may be any JSON value",
-             (SS + "RecordedRequestTest.test_a_reconciliation_keeps_the_request_its_columns_record",), scope="invocation_reconciliations",
-             old="CHECK (json_valid(request) AND json_type(request) = 'object')", new="CHECK (json_valid(request))"),
     Mutation("1C-ddl-transition-facts-any-json", "1c-A8", "a transition's facts may be any JSON value",
              (SS + "RecordedRequestTest.test_a_transition_keeps_its_facts_as_an_object_or_none",), scope="invocation_transitions",
              old="(json_valid(facts) AND json_type(facts) = 'object')", new="(json_valid(facts))"),
@@ -2882,6 +2897,10 @@ MUTATIONS: list[Mutation] = [
 # their removal alone. Listed so a reviewer does not mistake them for missed
 # coverage; each names the first layer (which IS in the inventory).
 SECOND_LAYER = {
+    "invocation_reconciliations CHECK: request's json_type(request) = 'object' conjunct (1c-repair A8)":
+        "the column-agreement CHECK reads the request's resolution, method, evidence and digest with json_extract, which is NULL for any "
+        "non-object JSON, so a non-object request is refused there first (1C-ddl-reconciliation-request-unbound drops that CHECK; "
+        "RecordedRequestTest pins the refusal of an array request)",
     "export_delivery_receipts CHECK (connector_type IN ('sql', 'jsonl_file', 'webhook', 'extension')) (0d)":
         "a receipt is refused unless its manifest names that connector with that type (export_delivery_receipts_expected_connector, "
         "D48-*), and a manifest names only declared types (outbox_events_connectors_declared, 0D-connectors-*); the trigger fires before "
@@ -2952,6 +2971,13 @@ class _Collector(unittest.TestResult):
         super().__init__()
         self.failed: set[str] = set()
         self.errored: dict[str, str] = {}
+        self.attestations: list[dict] = []  # what the killers' children attested (module docstring, "Children")
+        self.expected: str | None = None     # the SHA-256 of the mutant as written into the child tree
+        self.tree: Path | None = None
+
+    def startTest(self, test) -> None:  # noqa: N802 (unittest API)
+        os.environ[ATTEST_TEST] = test.id()  # inherited by every child the test starts from here on
+        super().startTest(test)
 
     def addFailure(self, test, err) -> None:  # noqa: N802 (unittest API)
         self.failed.add(test.id())
@@ -3013,6 +3039,33 @@ _FX = None  # the fixtures module, bound in main() before workers fork
 
 DISK = True  # --no-disk clears it (module docstring, "Children")
 CHILD_ROOT = "GEN2_CHILD_ROOT"  # gen2/tests/children.py ROOT_VARIABLE
+ATTEST_FILE, ATTEST_TEST = "GEN2_ATTEST_FILE", "GEN2_ATTEST_TEST"
+PROLOGUE = ('(lambda os, json, hashlib: os.environ.get("GEN2_ATTEST_FILE") and open(os.environ["GEN2_ATTEST_FILE"], "a").write(json.dumps('
+            '{"test": os.environ.get("GEN2_ATTEST_TEST"), "pid": os.getpid(), "file": __file__, '
+            '"sha256": hashlib.sha256(open(__file__, "rb").read()).hexdigest()}) + "\\n"))(__import__("os"), __import__("json"), __import__("hashlib"))'
+            '  # gen2_mutations attestation\n')
+
+
+def attested(text: str) -> str:
+    """The mutant as written into the child tree: its prologue placed after
+    the module docstring and any __future__ imports (which must stay first)."""
+    import ast
+
+    body, line = ast.parse(text).body, 0
+    for node in body:
+        docstring = node is body[0] and isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)
+        if docstring or (isinstance(node, ast.ImportFrom) and node.module == "__future__"):
+            line = node.end_lineno
+        else:
+            break
+    lines = text.splitlines(keepends=True)
+    return "".join(lines[:line]) + PROLOGUE + "".join(lines[line:])
+
+
+def attestations(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 def _child_tree(tmp: str) -> Path:
@@ -3027,19 +3080,27 @@ def _child_tree(tmp: str) -> Path:
 
 
 def _loading_control(tree: Path, m: Mutation, text: str) -> None:
-    """A child started through gen2/tests/children.py, as the killers start
-    theirs, must load exactly the mutant's bytes; otherwise its kills would
-    not be about this mutant (ValueError: INVALID)."""
+    """Before the killers: a child started through gen2/tests/children.py, as
+    the killers start theirs, must execute exactly the mutant's bytes — for a
+    module target, a probe child imports it and must attest them; a disk
+    target (a script only children run) must be the tree's copy, and is
+    attested on the killers' own children (_evaluate). Otherwise its kills
+    would not be about this mutant (ValueError: INVALID)."""
     from gen2.tests import children
 
-    how = FILE_TARGETS[m.target]
+    how, expected = FILE_TARGETS[m.target], hashlib.sha256(text.encode("utf-8")).hexdigest()
     if how[0] == "module":
-        probe = children.python(["-c", f"import {how[1]} as m, sys; sys.stdout.write(m.__file__)"], capture_output=True, text=True, timeout=60)
-        loaded = Path(probe.stdout) if probe.returncode == 0 else None
-    else:
-        loaded = children.path(m.target)
-    if loaded is None or not loaded.resolve().is_relative_to(tree.resolve()) or loaded.read_text(encoding="utf-8") != text:
-        raise ValueError(f"loading control: a child loads {loaded}, not the mutant in {tree}")
+        record = Path(os.environ[ATTEST_FILE])
+        before = len(attestations(record))
+        os.environ[ATTEST_TEST] = "loading-control"
+        probe = children.python(["-c", f"import {how[1]}"], capture_output=True, text=True, timeout=60)
+        attested_now = attestations(record)[before:]
+        if probe.returncode != 0 or not any(a["sha256"] == expected and Path(a["file"]).resolve().is_relative_to(tree.resolve()) for a in attested_now):
+            raise ValueError(f"loading control: a probe child did not attest the mutant in {tree} (exit {probe.returncode}, attested {attested_now})")
+        return
+    loaded = children.path(m.target)
+    if not loaded.resolve().is_relative_to(tree.resolve()) or loaded.read_text(encoding="utf-8") != text:
+        raise ValueError(f"loading control: a child runs {loaded}, not the mutant in {tree}")
 
 
 def _run_file_mutation(m: Mutation) -> _Collector:
@@ -3074,6 +3135,9 @@ def _run_file_mutation(m: Mutation) -> _Collector:
         suite = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromModule(mod) for mod in loaded)
         result = _Collector()
         suite.run(result)
+        if tree is not None:
+            result.tree, result.expected = tree, hashlib.sha256((tree / m.target).read_bytes()).hexdigest()
+            result.attestations = attestations(Path(tmp) / "attest.jsonl")
         return result
 
 
@@ -3087,22 +3151,24 @@ class _child_root:
         self.tmp, self.m, self.text = tmp, m, text
 
     def __enter__(self) -> Path | None:
-        self.saved = os.environ.get(CHILD_ROOT)
+        self.saved = {name: os.environ.get(name) for name in (CHILD_ROOT, ATTEST_FILE, ATTEST_TEST)}
         if not DISK or FILE_TARGETS[self.m.target][0] == "attr":
             return None
         tree = _child_tree(self.tmp)
-        if self.text is not None:
-            (tree / self.m.target).write_text(self.text, encoding="utf-8")
         os.environ[CHILD_ROOT] = str(tree)
+        os.environ[ATTEST_FILE] = str(Path(self.tmp) / "attest.jsonl")
         if self.text is not None:
-            _loading_control(tree, self.m, self.text)
+            text = attested(self.text) if self.m.target.endswith(".py") else self.text
+            (tree / self.m.target).write_text(text, encoding="utf-8")
+            _loading_control(tree, self.m, text)
         return tree
 
     def __exit__(self, *exc) -> None:
-        if self.saved is None:
-            os.environ.pop(CHILD_ROOT, None)
-        else:
-            os.environ[CHILD_ROOT] = self.saved
+        for name, value in self.saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 def _run_file_mutation_unmutated(m: Mutation) -> _Collector:
@@ -3134,6 +3200,22 @@ def _run_file_mutation_unmutated(m: Mutation) -> _Collector:
     return result
 
 
+def judge_children(m: Mutation, attested: list[dict], tree: Path, expected: str, own_pid: int) -> str | None:
+    """Why the killers' children do not support this mutant's kills, or None
+    (module docstring, "Children"): a child that executed other bytes of the
+    target, or — for a kill that rests on a child — a declared killer with no
+    child that executed the mutant during it."""
+    children = [a for a in attested if a["pid"] != own_pid]
+    foreign = [a for a in children if a["sha256"] != expected or not Path(a["file"]).resolve().is_relative_to(tree.resolve())]
+    if foreign:
+        return f"a child executed other bytes than the mutant: {foreign[0]}"
+    if m.via_child or FILE_TARGETS[m.target][0] == "disk":
+        unattested = [k for k in m.killers if not any(a["test"] and (a["test"] == k or a["test"].endswith("." + k)) for a in children)]
+        if unattested:
+            return f"killer(s) with no child that executed the mutant: {unattested}"
+    return None
+
+
 def _evaluate(m: Mutation) -> str:
     fx = _FX
     ddl0, conn0 = fx.DDL_TEXT, fx.CONNECTION_TEXT
@@ -3150,6 +3232,10 @@ def _evaluate(m: Mutation) -> str:
     except ValueError as exc:
         return f"INVALID   {m.mid}: {exc}"
     missing = [k for k in m.killers if not any(f == k or f.endswith("." + k) for f in res.failed)]
+    if res.tree is not None:
+        refused = judge_children(m, res.attestations, res.tree, res.expected, os.getpid())
+        if refused:
+            return f"INVALID   {m.mid}: {refused}"
     if res.errored and (missing or not m.killers):
         return f"INVALID   {m.mid}: {len(res.errored)} test error(s), e.g. {next(iter(res.errored.items()))}"
     if not res.failed:

@@ -8,11 +8,15 @@ unmutated files from disk, so no kill resting on a child was real).
 
 The tree is the repository by default. The mutation runner copies gen2/ into
 a temporary directory, writes the mutant there, and names that directory in
-GEN2_CHILD_ROOT; a child started through these helpers runs with that
-directory as its working directory and first import path, so `-m gen2...`,
-`-c "import gen2..."` and a script under gen2/ all load the mutant. A test
-that starts a gen-2 child any other way is refused by
-test_children.ChildLaunchRuleTest.
+GEN2_CHILD_ROOT; a child started through these helpers has that tree alone on
+its import path, with PYTHONSAFEPATH set so that neither its working
+directory nor a script's own directory is put in front of it (task 1c-repair
+C1: a working directory holding another gen2/ used to win). So `-m gen2...`,
+`-c "import gen2..."` and a script under gen2/ all load the mutant, whatever
+working directory a caller passes; an environment that names another import
+path is refused. test_children.ChildLaunchRuleTest is a narrow lint of the
+literal launch it recognises; the mutation runner, not the lint, attests
+which bytes a killing child executed (tools/gen2_mutations.py, "Children").
 
 Tools run as children with an explicit file path (tools/check_boundaries.py
 and the like) are not gen-2 code trees: the runner already hands their tests
@@ -42,16 +46,27 @@ def path(relative: str) -> Path:
     return code_root() / relative
 
 
+IMPORT_ROOT = ("PYTHONPATH", "PYTHONSAFEPATH")  # what fixes where a child imports gen2 from
+
+
 def env(base: dict | None = None) -> dict:
-    """The child's environment: the code tree alone on its import path."""
+    """The child's environment: the code tree alone on its import path, and
+    nothing put in front of it (PYTHONSAFEPATH: not the working directory,
+    not a script's directory). A caller's environment that sets either to
+    something else is refused, not overridden silently."""
+    wanted = {"PYTHONPATH": str(code_root()), "PYTHONSAFEPATH": "1"}  # alone: gen2 is a namespace package, and a second tree would merge into it
+    if base is not None:
+        conflicting = sorted(name for name in IMPORT_ROOT if name in base and base[name] != wanted[name])
+        if conflicting:
+            raise ValueError(f"a gen-2 child imports from the code tree alone; this environment sets {conflicting} otherwise")
     out = dict(os.environ if base is None else base)
-    out["PYTHONPATH"] = str(code_root())  # alone: gen2 is a namespace package, and a second tree on the path would merge into it
-    out["PYTHONDONTWRITEBYTECODE"] = "1"
+    out.update(wanted, PYTHONDONTWRITEBYTECODE="1")
     return out
 
 
 def python(args: list[str], **kwargs) -> subprocess.CompletedProcess:
-    """Run `python <args>` from the code tree and wait for it."""
+    """Run `python <args>` from the code tree and wait for it (a working
+    directory the caller passes changes nothing it imports)."""
     kwargs.setdefault("cwd", code_root())
     kwargs["env"] = env(kwargs.get("env"))
     return subprocess.run([sys.executable, *args], **kwargs)
