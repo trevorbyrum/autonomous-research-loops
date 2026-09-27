@@ -268,3 +268,30 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-1a-astra-review-
 **Carried into Phase 1:**
 - the router must bind actual production and adoption to authenticated, atomic commits and their receipts (task 1b);
 - amendment handling must apply G-1's impact and stale-work rules before Phase 1 is accepted (task 1d).
+
+## 2026-09-27: 1b review (Astra, xhigh). BLOCK (Gates A + C); Gate B PASS
+Full report: `~/work/research-loops-public/private/reviews/gen2-1b-astra-review-20260927.md`.
+
+**Independent verification:** `make gen2-check` exit 0 (485 tests, 822/822 mutants). The schema differential compared 244 fixtures and 26,780 instances with zero disagreements. Astra rebuilt 9 declared mutants independently; all 9 were killed.
+
+**Findings:**
+- **A1 (HIGH):** claim, launch and observation sample the clock before acquiring the write lock, so a lease or deadline that expires during a lock wait is accepted.
+- **A2 (HIGH):** delivery receipts discard content, and conflicting receipts replay.
+- **A3 (HIGH):** a qualified screening spec can name a different contract than the admitted one.
+- **A4 (MEDIUM):** nested artifact references skip the metadata binding, and there is no in-transaction recheck.
+- **A5 (MEDIUM):** transition replay fails once the target is no longer current.
+- **C1:** an exact-expiry `>=`→`>` mutant survives all 31 relevant tests.
+- **C2:** the payload-digest negative is not isolated.
+- **C3:** the provider-screening fixtures are invalid as positive controls.
+
+**Proposals:** 9 ACCEPTED; #8 (screening consistency) MODIFY, which is A3.
+
+**Scope rulings:**
+- Rule 9 is architectural lint, not runtime isolation. Acceptable, but the README must list the re-export/alias gaps.
+- Bearer capabilities are acceptable for trusted in-process use only until 1e authenticates principals.
+- **Bootstrap:** creating topics, contract drafts and works can stay in Phase 2. Seeded fixtures suffice for Phase 1. **1d must add minimal router-owned brief/amendment version commands**, which 1e then exposes.
+- Intermediate non-green commits are non-blocking; the charter imposes no per-commit bisectability.
+
+No operator decision is needed.
+
+**Routed:** `docs/gen2/tasks/1b-repair.md` → Opus 5.5 coder.
