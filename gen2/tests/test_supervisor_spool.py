@@ -130,7 +130,9 @@ class CollectTest(SpoolTestCase):
     def test_a_file_changed_while_it_is_read_is_refused(self) -> None:
         """Astra 1c review A10: the same inode rewritten (same size) or given
         a second link after the checks and before the bytes are read is
-        refused, unstaged; the unchanged file, and a renamed scratch
+        refused, unstaged; so is the path replaced by a symlink after the
+        open (the opened file then has no link; the replacement is never
+        followed or read). The unchanged file, and a renamed scratch
         directory (the descriptor still names the same file), are read."""
         def rewrite(path: Path) -> None:
             with open(path, "r+b") as handle:  # the same inode, the same size
@@ -148,6 +150,17 @@ class CollectTest(SpoolTestCase):
                 for leftover in (self.scratch / "outcome.json", self.root / "elsewhere"):
                     if leftover.exists():
                         leftover.unlink()
+        outside = self.root / "outside.json"
+        outside.write_bytes(b"replaced")
+
+        def replace_path(path: Path) -> None:  # the name now a symlink elsewhere; the opened file unlinked (0 links)
+            os.symlink(outside, self.scratch / "swap")
+            os.rename(self.scratch / "swap", path)
+        found = self.collect_changing(replace_path)
+        self.assertEqual((found["status"], found["ref"]), ("refused", None))  # the unlinked original is a change; the replacement is never read
+        self.assertIn("st_nlink", found["detail"])
+        self.assertEqual(self.entries(), [])
+        (self.scratch / "outcome.json").unlink()
         found = self.collect_changing(lambda path: None)
         self.assertEqual((found["status"], found["ref"]["content_hash"]), ("present", sha(b"original")))
         (self.scratch / "outcome.json").unlink()
