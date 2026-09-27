@@ -160,6 +160,8 @@ SLD = "test_supervisor_lifecycle.DelegateLifecycleTest."
 SCD = "test_supervisor_crash.DiscoveryCrashTest."
 SCP = "test_supervisor_crash.DelegateCrashTest."
 SDR = "test_supervisor_delegates.ResearchPassParentTest."
+SBR = "test_supervisor_budgets.ResearchPassBudgetTest."
+SBD = "test_supervisor_budgets.DelegateBudgetTest."
 SDD = "test_supervisor_delegates.DiscoveryParentTest."
 BND = "gen2/router/boundary.py"
 RECEIPT = "gen2/schema/export-delivery-receipt.schema.json"
@@ -2665,11 +2667,11 @@ MUTATIONS: list[Mutation] = [
            '"running", **{k: v for k, v in self._process(view["identity"]).items()})',
            '"running", **{**self._process(view["identity"]), "start_fingerprint": str(view["identity"]["pid"])})'),
           ("router-budget-unbounded", "an unreachable router is retried without end (L-6)", ("test_an_unreachable_router_stalls_within_budget_and_delivery_resumes_by_replay",),
-           '            if not self._spend(job, journal, "router"):', "            if False:"),
+           'if not self._spend(job, journal, "router") or self._past(', "if False or self._past("),
           ("stall-ignored", "a stalled job keeps calling the router", ("test_an_unreachable_router_stalls_within_budget_and_delivery_resumes_by_replay",),
            '            if journal.get("incident"):\n                return "stalled"\n', ""),
           ("recovery-unbudgeted", "resuming a stalled job draws on no budget", ("test_an_unreachable_router_stalls_within_budget_and_delivery_resumes_by_replay",),
-           '                if self._spend(job, journal, "recovery"):', "                if True:"),
+           'and not journal.get("settled") and self._spend(job, journal, "recovery"):', 'and not journal.get("settled"):'),
           ("launch-budget-unbounded", "a refused launch is retried without end", ("test_pause_holds_launch_within_its_budget_then_cancels",),
            '            if response["reason"] == "topic_paused" and self._spend(job, journal, "launch"):', '            if response["reason"] == "topic_paused":'),
           ("spawn-budget-unbounded", "a launcher that cannot start is retried without end", ("test_a_launcher_that_cannot_start_fails_within_the_spawn_budget",),
@@ -2682,11 +2684,12 @@ MUTATIONS: list[Mutation] = [
           ("vanished-group-terminated", "a group gone without an exit is reconciled by a termination that ends nothing",
            ("test_a_group_gone_without_an_exit_is_reconciled_by_lookup",),
            '        if view["verdict"] == "vanished" and not view["members"] and not cancel:', "        if False:"),
-          ("unstarted-work-started", "work cancelled or past its deadline before any start is started anyway",
-           ("test_cancellation_before_any_start_starts_nothing", "test_a_deadline_passed_before_any_start_starts_nothing"),
-           '            if status["cancel_requested"] or self._past(order["deadline_at"]) or (refused and refused["reason"] == "deadline_passed"):\n'
-           '                return self._end_unlaunched',
-           "            if False:\n                return self._end_unlaunched"))),
+          ("cancelled-work-not-ended", "work cancelled before any start is not ended as cancelled",
+           ("test_cancellation_before_any_start_starts_nothing",),
+           '            if status["cancel_requested"] or self._past(order["deadline_at"])', '            if self._past(order["deadline_at"])'),
+          ("unstarted-work-past-deadline-cancelled", "work past its deadline before any start is cancelled instead of failed as never started",
+           ("test_a_deadline_passed_before_any_start_starts_nothing",),
+           ' or self._past(order["deadline_at"]) or (refused and refused["reason"] == "deadline_passed"):\n', ':\n'))),
     *(Mutation(f"1C-sup-{key}", "1c", desc, (SCD + killer, SCP + killer), target=SPV, old=old, new=new)
       for key, desc, killer, old, new in (
           ("no-abandon-handshake", "a start that left no identity is settled without marking the job abandoned",
@@ -2715,6 +2718,36 @@ MUTATIONS: list[Mutation] = [
     Mutation("1C-sup-cancelled-exit-unconfirmed", "1c-A2", "a cancellation of work that already exited is reconciled without confirming its group",
              (SCD + "test_cancellation_after_an_uncertain_spawn_of_work_that_already_exited", SCP + "test_cancellation_after_an_uncertain_spawn_of_work_that_already_exited"),
              target=SPV, old='            if cancel and observation["termination"] is None:\n', new='            if False:\n'),
+    # A4: a durable write that fails is budgeted, keeps what was observed, and ends in an owned incident or ControlFailure.
+    *(Mutation(f"1C-sup-{key}", "1c-A4", desc, tuple(p + k for k in killers for p in (SBR, SBD)), target=SPV, old=old, new=new)
+      for key, desc, killers, old, new in (
+          ("write-retries-unbounded", "a failing durable write is retried without end, no incident",
+           ("test_an_execution_record_over_the_quota_stalls_with_the_result_kept", "test_enospc_from_the_spool_stalls_with_an_incident"),
+           '            if self._spend(job, journal, "write"):', '            if True:'),
+          ("observation-made-again", "a termination whose record failed is observed again (its facts lost) instead of retained",
+           ("test_a_termination_record_that_cannot_be_written_keeps_the_termination",),
+           '        if "observation" in journal.get("observing", {}):', '        if False:'),
+          ("pending-request-recomputed", "a reconciliation whose record failed is decided afresh (a different request) instead of resent",
+           ("test_a_reconciliation_record_that_cannot_be_written_keeps_the_termination",),
+           'kept = journal.get("pending") if (journal.get("pending") or {}).get("purpose") == purpose else None', 'kept = None'),
+          ("unwritable-incident-swallowed", "a journal that cannot be written is reported as an ordinary retry, not a control failure",
+           ("test_a_journal_that_cannot_be_written_is_an_out_of_band_control_failure",),
+           '        except OSError as unwritable:\n            raise ControlFailure(', '        except OSError as unwritable:\n            return "write_failed"\n            raise ControlFailure('),
+          ("write-budget-never-refunded", "a write that made progress keeps its budget spent",
+           ("test_an_execution_record_over_the_quota_stalls_with_the_result_kept",), '        journal["budgets"].pop("write", None)\n', ''))),
+    # A5: an outage's budget belongs to the pending write: a read refunds nothing, recovery refills nothing, and time counts too.
+    *(Mutation(f"1C-sup-{key}", "1c-A5", desc, tuple(p + k for k in killers for p in (SBR, SBD)), target=SPV, old=old, new=new)
+      for key, desc, killers, old, new in (
+          ("read-refunds-outage", "a successful status read refunds a failing write's router budget",
+           ("test_a_write_that_keeps_failing_stalls_although_reads_succeed",),
+           '        if method not in self.READS and (journal["budgets"].get("router") or journal.get("outage")):',
+           '        if journal["budgets"].get("router") or journal.get("outage"):'),
+          ("recovery-refills-router-budget", "recover() refills an exhausted router budget",
+           ("test_a_write_that_keeps_failing_stalls_although_reads_succeed",),
+           '                    journal["incident"] = None\n                    self._save(job, journal)',
+           '                    journal["incident"] = None\n                    journal["budgets"]["router"] = 0\n                    self._save(job, journal)'),
+          ("outage-untimed", "an outage is bounded by attempts only, however long it lasts",
+           ("test_an_outage_is_also_bounded_in_time",), ' or self._past(self._after(self.policy.router_window_s, outage["since"]))', ''))),
     # C2 (found intermittent): a lookup asks about the launcher's lock and never takes it.
     Mutation("1C-jobs-probe-takes-the-lock", "1c-C2", "a lookup probes the launcher's lock by taking it (a launcher locking meanwhile gives up)",
              (SJ + "LockProbeTest.test_a_lookup_never_holds_the_lock_a_launcher_needs", SJ + "LookupTest.test_each_verdict_from_the_facts_it_names"),
@@ -2776,8 +2809,8 @@ MUTATIONS: list[Mutation] = [
            '        if resolution in ("confirmed_failed", "terminated_group"):\n            self._settle_delegates(order)\n', ''),
           ("parent-unlaunched-end-over-delegates", "a parent that never started ends while its delegate still runs",
            ("test_a_parent_that_never_started",),
-           '        self._settle_delegates(order)\n        record = self._record(order, method, observation)\n        facts = {"end_evidence_ref": record["content_hash"]}',
-           '        record = self._record(order, method, observation)\n        facts = {"end_evidence_ref": record["content_hash"]}'),
+           '        self._settle_delegates(order)\n        pending = self._pending(job, order, journal, f"end:{to_state}"',
+           '        pending = self._pending(job, order, journal, f"end:{to_state}"'),
           ("delegates-not-cancelled", "a parent's end waits on its delegates without asking them to end",
            ("test_a_parent_that_completes", "test_a_parent_that_fails"),
            '                if status["state"] not in (*TERMINAL, "result_ready") and status["cancel_requested"] is None:\n                    self._call(delegate',

@@ -67,6 +67,7 @@ import re
 import sys
 import time
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Mapping
 
@@ -87,8 +88,11 @@ DIGEST = re.compile(r"\Asha256:[0-9a-f]{64}\Z")
 class Policy:
     """Execution policy (G-10: the mounted policy bundle's once 1d loads
     bundles). Every retry path draws on one of these (L-6)."""
-    router_attempts: int = 5       # sends while the router is unreachable, per outage
-    recovery_attempts: int = 3     # recover() resumptions of a job stalled on the router
+    router_attempts: int = 5       # sends while the router is unreachable, per outage (until a write it answers)
+    router_window_s: float = 600.0 # how long an outage may last before the job stalls, whatever attempts remain
+    recovery_attempts: int = 3     # recover() resumptions of a job stalled on an incident
+    write_attempts: int = 3        # advances a failing durable write (a record, a result, the spool) is retried on
+    incident_window_s: float = 3600.0  # an incident's deadline: how long its owner has to act on it
     launch_attempts: int = 3       # launch-admission refusals (a paused topic) before the admitted work is cancelled
     spawn_attempts: int = 2        # launcher starts that fail before the job fails as spawn_failed
     commit_attempts: int = 3       # sends of a result whose expected state revision went stale
@@ -118,6 +122,18 @@ class WorkOrder:
 
 class Waiting(Exception):
     """This advance cannot proceed now; the job keeps everything it holds."""
+
+
+class ControlFailure(Exception):
+    """Out of band (RG-3: failed incident persistence is a control failure):
+    a durable write failed and the job's own record of it — its journal,
+    where its incident lives — could not be written either. Raised to the
+    caller of advance()/recover(); nothing changed beyond what was already
+    durable. `outcomes`: recover()'s outcome for every job it tried."""
+
+    def __init__(self, message: str, outcomes: dict | None = None) -> None:
+        super().__init__(message)
+        self.outcomes = outcomes or {}
 
 
 class Supervisor:
@@ -151,20 +167,45 @@ class Supervisor:
     def recover(self) -> dict[str, str]:
         """After a restart, or once the router is back: every job this
         supervisor holds, advanced from what its handle finds. A job stalled
-        on the router resumes here, drawing on its recovery budget."""
-        outcomes = {}
+        on an incident resumes here, drawing on its recovery budget; the
+        budget that ran out stays spent (an outage or a failing write is
+        exhausted until that operation makes progress), so a resumption that
+        fails again stalls again at once (L-6; Astra 1c review A5). A job
+        whose journal cannot be written is reported as control_failure, and
+        once every job was tried ControlFailure is raised naming them."""
+        outcomes, failures = {}, []
         for path in sorted(self.jobs_root.iterdir()):
             order = jobs.Job(self.jobs_root, path.name).read("order.json")
             if order is None:
                 continue
-            job, journal = self.job(order["invocation_id"]), self._journal(self.job(order["invocation_id"]))
-            if journal.get("incident") and not journal.get("settled"):
-                if self._spend(job, journal, "recovery"):
+            job = self.job(order["invocation_id"])
+            try:
+                journal = self._journal(job)
+                if journal.get("incident") and not journal.get("settled") and self._spend(job, journal, "recovery"):
                     journal["incident"] = None
-                    journal["budgets"]["router"] = 0
                     self._save(job, journal)
-            outcomes[order["invocation_id"]] = self.advance(order["invocation_id"])
+                outcomes[order["invocation_id"]] = self.advance(order["invocation_id"])
+            except (ControlFailure, OSError) as failure:
+                outcomes[order["invocation_id"]] = "control_failure"
+                failures.append(f"{job.handle}: {failure}")
+        if failures:
+            raise ControlFailure("; ".join(failures), outcomes)
         return outcomes
+
+    def incidents(self) -> list[dict]:
+        """Every open control incident of this supervisor's jobs (RG-3:
+        visible, owned, deadlined): the one a stalled job waits on
+        (blocking), and each exhausted retry budget (kept beside the job's
+        end, which it does not block). Read from the journals; changes
+        nothing."""
+        found = []
+        for path in sorted(self.jobs_root.iterdir()):
+            job = jobs.Job(self.jobs_root, path.name)
+            order, journal = job.read("order.json"), job.read("journal.json") or {}
+            for key in ("incident", "exhausted"):
+                if order is not None and journal.get(key):
+                    found.append({"invocation_id": order["invocation_id"], "blocking": key == "incident", **journal[key]})
+        return found
 
     def run(self, invocation_id: str, *, timeout_s: float = 60.0, until: tuple[str, ...] = TERMINAL + ("not_admitted",)) -> str:
         """Advance until an outcome in `until`, or `timeout_s` of wall time."""
@@ -190,6 +231,8 @@ class Supervisor:
             return self._drive(job, order, journal)
         except Waiting as waiting:
             return str(waiting)
+        except (SpoolFull, OSError) as failure:  # a durable write failed: an infrastructure failure, never a completion (C-10)
+            return self._write_failed(job, failure)
 
     # -- journal and budgets ---------------------------------------------------
     def _journal(self, job: jobs.Job) -> dict:
@@ -215,22 +258,62 @@ class Supervisor:
         self._save(job, journal)
         return state
 
+    def _incident(self, job: jobs.Job, journal: dict, kind: str, key: str = "incident", **facts) -> None:
+        """An owned, deadlined control incident (RG-3), kept in the job's
+        journal: "incident" is the one a stalled job waits on until recover();
+        "exhausted" records a retry budget that ran out, beside the job's end."""
+        journal[key] = {"kind": kind, "since": self._now(), "owner": f"supervisor:{self.station_id}",
+                        "deadline_at": self._after(self.policy.incident_window_s), **facts}
+        self._save(job, journal)
+
+    def _write_failed(self, job: jobs.Job, failure: Exception) -> str:
+        """A durable write failed — the spool full or refusing, a file-system
+        error. What was durable before it stands (an observation kept in the
+        journal is never made again), and the write is retried on later
+        advances within the write budget; exhausted, the job stalls with an
+        owned, deadlined incident until recover() (C-10, RG-3; Astra 1c
+        review A4). When the journal itself cannot be written the incident
+        cannot be kept either: ControlFailure, out of band."""
+        error = f"{type(failure).__name__}: {failure}"[:500]
+        try:
+            journal = self._journal(job)  # what is durable: the failed operation's unsaved changes are dropped
+            if self._spend(job, journal, "write"):
+                journal["write_failure"] = {"at": self._now(), "error": error}
+                self._save(job, journal)
+                return "write_failed"
+            self._incident(job, journal, "durable_write_failed", phase="delivery" if journal.get("collected") or journal.get("pending") else "collection",
+                           error=error)
+            return "stalled"
+        except OSError as unwritable:
+            raise ControlFailure(f"{job.handle}: a durable write failed ({error}) and its incident cannot be written "
+                                 f"({type(unwritable).__name__}: {unwritable})") from failure
+
+    @staticmethod
+    def _wrote(journal: dict) -> None:
+        """The failing write made progress: its budget is spent no longer (saved by the caller)."""
+        journal["budgets"].pop("write", None)
+        journal.pop("write_failure", None)
+
+    READS = frozenset({"invocation_status"})
+
     def _call(self, job: jobs.Job, journal: dict, method: str, request: dict) -> dict:
         """One router call. Unreachable: the same request is sent again on a
-        later advance, within the router budget; past it the job stalls with
-        a local incident until recover() (C-10, L-6). A success ends the
-        outage."""
+        later advance. An outage is budgeted from its first failed call until
+        a write the router answers — a successful read refunds nothing (Astra
+        1c review A5) — by attempts and by time; past either, the job stalls
+        with an owned, deadlined incident until recover(), which does not
+        refill it (C-10, L-6)."""
         try:
             response = getattr(self.control, method)(request)
         except ControlUnavailable:
-            if not self._spend(job, journal, "router"):
-                journal["incident"] = {"kind": "router_unreachable", "since": self._now(), "owner": f"supervisor:{self.station_id}",
-                                       "deadline_at": job.read("order.json")["deadline_at"]}
-                self._save(job, journal)
+            outage = journal.setdefault("outage", {"since": self._now()})
+            if not self._spend(job, journal, "router") or self._past(self._after(self.policy.router_window_s, outage["since"])):
+                self._incident(job, journal, "router_unreachable", method=method, outage_since=outage["since"])
                 raise Waiting("stalled") from None
             raise Waiting("router_unavailable") from None
-        if journal["budgets"].get("router"):
+        if method not in self.READS and (journal["budgets"].get("router") or journal.get("outage")):  # the router answered a write: progress
             journal["budgets"]["router"] = 0
+            journal.pop("outage", None)
             self._save(job, journal)
         return response
 
@@ -241,6 +324,10 @@ class Supervisor:
     def _past(self, instant: str) -> bool:
         return instants.utc_instant_ns(self._now()) >= instants.utc_instant_ns(instant)
 
+    def _after(self, seconds: float, start: str | None = None) -> str:
+        ns = instants.utc_instant_ns(start or self._now()) + int(seconds * 10**9)
+        return datetime.fromtimestamp(ns // 10**9, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + f".{ns % 10**9 // 1000:06d}Z"
+
     def _reap(self) -> None:
         for popen in self._children.values():
             popen.poll()
@@ -249,6 +336,8 @@ class Supervisor:
     def _observe(self, job: jobs.Job, order: dict, journal: dict) -> None:
         if journal.get("collected"):
             return
+        if "observation" in journal.get("observing", {}):  # an end already observed, its record not yet staged: never observed again
+            return self._retain(job, order, journal)
         self._reap()
         view = job.lookup()
         if view["verdict"] == "exited":
@@ -295,20 +384,22 @@ class Supervisor:
 
     def _collect(self, job: jobs.Job, order: dict, journal: dict, view: dict) -> None:
         """The structural checks: the exit, what is on disk, and the rest of the
-        group. The agent's self-report and declared digest are data (L-5)."""
-        descendants, termination = self._descendants(job, view["identity"])
+        group. The agent's self-report and declared digest are data (L-5).
+        What cannot be done twice is kept in the journal before the next step
+        — the descendants handled, then the observation with its staged
+        result — so a durable write that fails is retried without observing
+        again (C-10; Astra 1c review A4)."""
+        seen = journal.get("observing") or {}
+        if "descendants" not in seen:
+            descendants, termination = self._descendants(job, view["identity"])
+            seen = journal["observing"] = {"descendants": descendants, "termination": termination}
+            self._save(job, journal)
         exit_record, findings = view["exit"], []
         if exit_record["signal"] is not None:
             findings.append("killed")
         elif exit_record["code"] != 0:
             findings.append("exit_nonzero")
-        try:
-            found = self.spool.collect(order["topic_id"], job.scratch, OUTPUT, "application/json")
-        except SpoolFull as full:  # an infrastructure failure, never a completion (C-10): the output stays in scratch
-            journal["incident"] = {"kind": "spool_full", "since": self._now(), "owner": f"supervisor:{self.station_id}", "detail": str(full)[:500],
-                                   "deadline_at": order["deadline_at"]}
-            self._save(job, journal)
-            raise Waiting("stalled") from None
+        found = self.spool.collect(order["topic_id"], job.scratch, OUTPUT, "application/json")  # a full spool fails the write (advance): the output stays in scratch
         declared = self._agent_text(job, DECLARED_DIGEST)
         output = {"status": found["status"], "content_hash": None, "size_bytes": None,
                   "declared_digest": declared if declared and DIGEST.match(declared) else None, "detail": found["detail"]}
@@ -323,23 +414,35 @@ class Supervisor:
         else:
             output.update(content_hash=found["ref"]["content_hash"], size_bytes=found["ref"]["size_bytes"])
             result = found["ref"] if not findings else None
-        observation = {"process": self._process(view["identity"]), "exit": exit_record, "termination": termination, "descendants": descendants,
+        observation = {"process": self._process(view["identity"]), "exit": exit_record, "termination": seen["termination"], "descendants": seen["descendants"],
                        "output": output, "self_report": self._agent_text(job, SELF_REPORT), "findings": findings}
-        journal["collected"] = {"observation": observation, "result": result, "record": self._record(order, "exit_observed", observation)}
+        journal["observing"] = {**seen, "observation": observation, "result": result, "method": "exit_observed"}
         self._save(job, journal)
-        self._fault("collected")
+        self._retain(job, order, journal)
 
     def _terminate(self, job: jobs.Job, order: dict, journal: dict, view: dict, reason: str) -> None:
-        """End the execution group (timeout or cancellation) and record it."""
+        """End the execution group (timeout or cancellation) and record it;
+        the termination is kept before its record is staged (A4)."""
         ended = job.terminate(view["identity"], term_grace=self.policy.term_grace_s, kill_grace=self.policy.kill_grace_s, reap=self._reap)
         observation = {"process": self._process(view["identity"]), "exit": job.read("exit.json"), "termination": {"reason": reason},
                        "descendants": self._handled(ended),
                        "output": {"status": "not_collected", "content_hash": None, "size_bytes": None, "declared_digest": None, "detail": None},
                        "self_report": None, "findings": ["timeout"] if reason == "timeout" else []}
-        journal["collected"] = {"observation": observation, "result": None, "record": self._record(order, "execution_group_termination", observation),
-                                "terminated": reason}
+        journal["observing"] = {"observation": observation, "result": None, "method": "execution_group_termination", "terminated": reason}
         self._save(job, journal)
-        self._fault("terminated")
+        self._retain(job, order, journal)
+
+    def _retain(self, job: jobs.Job, order: dict, journal: dict) -> None:
+        """Stage the kept observation's execution record, then keep the end as
+        collected: retained until it is delivered (C-10)."""
+        seen = journal["observing"]
+        record = self._record(order, seen["method"], seen["observation"])
+        journal["collected"] = {"observation": seen["observation"], "result": seen["result"], "record": record,
+                                **({"terminated": seen["terminated"]} if seen.get("terminated") else {})}
+        del journal["observing"]
+        self._wrote(journal)
+        self._save(job, journal)
+        self._fault("terminated" if seen.get("terminated") else "collected")
 
     def _record(self, order: dict, method: str, observation: dict) -> dict:
         """Stage an execution record (execution-record/1) for this job."""
@@ -498,15 +601,37 @@ class Supervisor:
             return self._end(job, order, journal, grant, "cancelled", self._unrun(None, "cancelled before the launcher started"), "job_handle_lookup")
         return self._end(job, order, journal, grant, "failed", self._unrun("never_started", "the deadline passed before the launcher started"), "job_handle_lookup")
 
+    def _pending(self, job: jobs.Job, order: dict, journal: dict, purpose: str, **facts) -> dict:
+        """The request an end or a reconciliation sends, fixed once: its facts
+        and observation are kept in the journal before its execution record is
+        staged, and the staged record with them, so a retry — after a failed
+        write or a lost reply — sends the identical request (a changed one
+        would be a conflict, not a replay: C-5, L-4; Astra 1c review A4)."""
+        pending = journal.get("pending")
+        if pending is None or pending["purpose"] != purpose:
+            pending = journal["pending"] = {"purpose": purpose, "record": None, **facts}
+            self._save(job, journal)
+        if pending["record"] is None:
+            pending["record"] = self._record(order, pending["method"], pending["observation"])
+            self._wrote(journal)
+            self._save(job, journal)
+        return pending
+
+    def _sent(self, job: jobs.Job, journal: dict, response: dict, refused: str) -> None:
+        """The pending request answered: kept no longer. A refusal lets the
+        next attempt decide afresh."""
+        journal.pop("pending", None)
+        self._save(job, journal)
+        if response["status"] not in ("recorded", "replayed"):
+            raise Waiting(f"{refused}:{response.get('reason')}")
+
     def _end(self, job, order, journal, grant, to_state: str, observation: dict, method: str) -> str:
         self._settle_delegates(order)
-        record = self._record(order, method, observation)
-        facts = {"end_evidence_ref": record["content_hash"]}
+        pending = self._pending(job, order, journal, f"end:{to_state}", method=method, observation=observation)
+        facts = {"end_evidence_ref": pending["record"]["content_hash"]}
         if to_state == "failed":
-            facts["failure_class"] = observation["findings"][0]
-        response = self._transition(job, journal, grant, to_state, **facts)
-        if response["status"] not in ("recorded", "replayed"):
-            raise Waiting(f"end_refused:{response.get('reason')}")
+            facts["failure_class"] = pending["observation"]["findings"][0]
+        self._sent(job, journal, self._transition(job, journal, grant, to_state, **facts), "end_refused")
         return self._settle(job, journal, to_state)
 
     def _running(self, job, order, journal, grant, status) -> str:
@@ -632,18 +757,21 @@ class Supervisor:
 
     def _reconcile(self, job, order, journal, grant, status, resolution: str, method: str, observation: dict, *, identity: dict | None = None,
                    digest: str | None = None) -> str:
-        if resolution in ("confirmed_failed", "terminated_group"):
+        purpose = f"reconcile:{status['unknown_episode']}"
+        kept = journal.get("pending") if (journal.get("pending") or {}).get("purpose") == purpose else None  # a request already fixed is sent as it was
+        if (kept or {"resolution": resolution})["resolution"] in ("confirmed_failed", "terminated_group"):
             self._settle_delegates(order)
-        record = self._record(order, method, observation)
+        pending = kept or self._pending(job, order, journal, purpose, resolution=resolution, method=method, observation=observation,
+                                        identity=identity, digest=digest)
+        if pending["record"] is None:
+            pending = self._pending(job, order, journal, purpose)
         request = {"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"], "unknown_episode": status["unknown_episode"],
-                   "resolution": resolution, "method": method, "evidence_ref": record["content_hash"]}
-        if identity is not None:
-            request.update(identity)
-        if digest is not None:
-            request["result_payload_digest"] = digest
-        if resolution in ("confirmed_failed", "terminated_group") and not (resolution == "terminated_group" and status["cancel_requested"]):
-            request["failure_class"] = observation["findings"][0]
-        response = self._call(job, journal, "reconcile", request)
-        if response["status"] not in ("recorded", "replayed"):
-            raise Waiting(f"reconcile_refused:{response.get('reason')}")
+                   "resolution": pending["resolution"], "method": pending["method"], "evidence_ref": pending["record"]["content_hash"]}
+        if pending["identity"] is not None:
+            request.update(pending["identity"])
+        if pending["digest"] is not None:
+            request["result_payload_digest"] = pending["digest"]
+        if pending["resolution"] in ("confirmed_failed", "terminated_group") and not (pending["resolution"] == "terminated_group" and status["cancel_requested"]):
+            request["failure_class"] = pending["observation"]["findings"][0]
+        self._sent(job, journal, self._call(job, journal, "reconcile", request), "reconcile_refused")
         return self._drive(job, order, journal)
