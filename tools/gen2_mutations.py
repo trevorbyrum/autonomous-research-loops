@@ -1297,6 +1297,17 @@ MUTATIONS: list[Mutation] = [
            ("CommandTest.test_numerals_the_parser_cannot_convert_are_reported_not_fatal",), "    except InvalidOperation:\n        raise Gen1ParseError(", "    except ZeroDivisionError:\n        raise Gen1ParseError("),
           ("A5R2-overflow-unparseable", "an exponent so large the number overflows makes the file unparseable instead of an inexact numeral on its record",
            ("CommandTest.test_numerals_the_parser_cannot_convert_are_reported_not_fatal",), '    if value != value or value in (float("inf"), float("-inf")):\n        return InexactNumeral(token)\n', ""))),
+    # --- task 1a / V-10: a gen-1 disposition never imports as accepted support ---
+    *(Mutation(f"V10-importer-{key}", "1a", desc, ("test_importer.DryRunMappingTest.test_no_gen1_disposition_imports_as_accepted_support",),
+               target="gen2/importer/dry_run.py", old=old, new=new)
+      for key, desc, old, new in (
+          ("maps-disposition", "gen-1's agent-written 'supported' disposition is mapped as an accepted-support claim status",
+           '"obligations", {"obligation_id": oid, "text": text if isinstance(text, TEXT_OR_NULL) else None}, issues))',
+           '"obligations", {"obligation_id": oid, "text": text if isinstance(text, TEXT_OR_NULL) else None, '
+           '"claim_status": "accepted_support" if disposition == "supported" else "provisional"}, issues))'),
+          ("report-omits-admission", "the report states only the receipt condition, not contract-admitted production",
+           '"contract-admitted production (V-10) and, for a load-bearing claim, a verification receipt (V-4), and gen-1 work has neither"',
+           '"a verification receipt (V-4)"'))),
     *(Mutation(f"IMP-graph-{key}", "0b-importer", desc, (CB + "test_importer_cannot_reach_a_store_under_the_real_graph",), target="gen2/boundaries.toml",
                old='may_import = ["core"]\nstdlib_capabilities = []\nthird_party = []\n\n[modules.operator]', new=new)
       for key, desc, new in (

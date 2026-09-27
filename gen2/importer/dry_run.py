@@ -664,8 +664,9 @@ def map_semantic_state(reader: Gen1Reader, topic_dir: PurePosixPath, gen1_id: st
         issues += [i for i in (_shape(obl, f, TEXT_OR_NULL, where) for f in ("text", "disposition")) if i]
         disposition = obl.get("disposition")
         if isinstance(disposition, str) and disposition != "open":
-            issues.append(_issue("disposition-is-not-verification", f"gen-1 disposition {disposition!r} is an agent-written state; gen-2 accepted support needs a verification receipt (V-4)",
-                                 "import claims provisional at most; re-verify"))
+            issues.append(_issue("disposition-is-not-verification", f"gen-1 disposition {disposition!r} is an agent-written state; gen-2 accepted support needs "
+                                 "contract-admitted production (V-10) and, for a load-bearing claim, a verification receipt (V-4), and gen-1 work has neither",
+                                 "import claims provisional at most; adopt under an approved contract and re-verify"))
         extra = _unmapped_fields(obl, OBLIGATION_MAPPED)
         if extra:
             issues.append(_issue("fields-not-mapped", f"obligation fields with no mapping in this skeleton: {', '.join(extra)}", "Phase 4 decision (reported, not dropped)"))

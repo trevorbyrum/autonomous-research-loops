@@ -303,6 +303,36 @@ class DryRunMappingTest(ImporterTestCase):
         events = find(dry_run.dry_run(self.root, "fleet-a")["other"], "history", "events.jsonl")
         self.assertEqual(events["mapping"], {"lines": 2, "malformed_lines": 1})
 
+    def test_no_gen1_disposition_imports_as_accepted_support(self) -> None:
+        """V-10 (task 1a): gen-1 work was never admitted under a gen-2
+        contract, so the mapping cannot prove admission and a gen-1 claim is
+        provisional at most. The fixture's obligation 9-bad carries the
+        agent-written disposition 'supported': no record in the whole report
+        targets claims or maps any value to accepted_support, the obligation's
+        mapping carries no status, and its issue names both conditions and
+        says provisional at most."""
+        report = dry_run.dry_run(self.root, "fleet-a")
+
+        def values(node):
+            if isinstance(node, dict):
+                for value in node.values():
+                    yield from values(value)
+            elif isinstance(node, list):
+                for value in node:
+                    yield from values(value)
+            else:
+                yield node
+
+        records = [r for t in report["topics"] for r in t["records"]] + report["other"]
+        self.assertNotIn("claims", {r["gen2_target"] for r in records})
+        self.assertNotIn("accepted_support", set(values([r["mapping"] for r in records])))
+        bad = find(records_of(report, "latency"), "obligation", "9-bad")
+        self.assertEqual(bad["mapping"], {"obligation_id": "9-bad", "text": "Supported claim"})
+        [issue] = [i for i in bad["issues"] if i["code"] == "disposition-is-not-verification"]
+        self.assertIn("contract-admitted production (V-10)", issue["detail"])
+        self.assertIn("verification receipt (V-4)", issue["detail"])
+        self.assertIn("provisional at most", issue["needs"])
+
     def test_malformed_fields_are_reported_and_the_report_is_still_produced(self) -> None:
         """Astra 0b review A5: a queue item with status [] and a semantic
         state with obligations 3 raised uncaught TypeErrors. Each wrong-typed
