@@ -166,9 +166,14 @@ class AbandonTest(JobTestCase):
         self.assertFalse((self.job.scratch / "ran").exists())
 
     def test_a_launcher_with_an_identity_is_never_abandoned(self) -> None:
-        self.prepare([{"op": "hang"}])
+        """Alive (its lock held) or gone (the lock free): a launcher that
+        recorded its identity may have started the executor."""
+        self.prepare([{"op": "wait_for", "name": "gate", "seconds": 60}])
         self.start()
         self.wait(lambda: self.job.read("identity.json") is not None)
+        self.assertFalse(self.job.abandon())
+        (self.job.scratch / "gate").write_text("open")
+        self.wait(lambda: self.popens[-1].poll() is not None)
         self.assertFalse(self.job.abandon())
 
 

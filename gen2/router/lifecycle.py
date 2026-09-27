@@ -231,8 +231,8 @@ class Lifecycle:
             if inv["cancel_requested_at"] is not None:
                 raise Refusal("cancel_requested", f"cancellation was requested at {inv['cancel_requested_at']}; the result stays retained")
             changes.update(result_payload_digest=req["result_payload_digest"], result_staged_at=now)
-        elif resolution == "terminated_group" and doc["termination"] is None:
-            raise Refusal("evidence_refused", "terminated_group needs the record of the termination")
+        # terminated_group: the record's method is execution_group_termination (checked above), which the schema
+        # admits only with its termination recorded (execution-record.schema.json allOf)
         if terminal:
             changes["end_evidence_ref"] = evidence["content_hash"]
             if target == "failed":

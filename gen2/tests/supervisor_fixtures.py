@@ -56,6 +56,15 @@ def launcher() -> tuple[str, ...]:
     return (sys.executable, str(children.path("gen2/supervisor/jobshim.py")))
 
 
+class TestSupervisor(Supervisor):
+    """A supervisor whose run() gives up after 20 s of wall time (not 60): a
+    normal job ends in well under a second, and a mutant that leaves a job
+    running should cost each test 20 s, not a minute."""
+
+    def run(self, invocation_id: str, *, timeout_s: float = 20.0, **kwargs) -> str:
+        return super().run(invocation_id, timeout_s=timeout_s, **kwargs)
+
+
 class Unreachable:
     """A ControlBackend between the supervisor and the router that can be
     made unreachable (C-10): while down, every call raises
@@ -106,7 +115,7 @@ class SupervisedTestCase(rf.RouterTestCase):
     def make_supervisor(self, **overrides) -> Supervisor:
         kwargs = dict(station_id="station-1", host_id="host-test", policy=self.POLICY, clock=self.clock, launcher=launcher())
         kwargs.update(overrides)
-        supervisor = Supervisor(kwargs.pop("control", self.control), self.spool, self.root / "jobs", **kwargs)
+        supervisor = TestSupervisor(kwargs.pop("control", self.control), self.spool, self.root / "jobs", **kwargs)
         self._supervisors.append(supervisor)
         return supervisor
 

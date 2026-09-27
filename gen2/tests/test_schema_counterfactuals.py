@@ -67,6 +67,7 @@ FRESHNESS_SCHEMA = SCHEMAS / "freshness-envelope.schema.json"
 COMMON_SCHEMA = SCHEMAS / "common.schema.json"
 DECISION_RECEIPT_SCHEMA = SCHEMAS / "decision-receipt.schema.json"
 INVOCATION_SCHEMA = SCHEMAS / "invocation.schema.json"
+EXECUTION_RECORD_SCHEMA = SCHEMAS / "execution-record.schema.json"
 OVERRIDES = {
     "EXPORT_BUNDLE_SCHEMA": "export-bundle.schema.json",
     "EXPORT_RECEIPT_SCHEMA": "export-delivery-receipt.schema.json",
@@ -75,6 +76,7 @@ OVERRIDES = {
     "COMMON_SCHEMA": "common.schema.json",
     "DECISION_RECEIPT_SCHEMA": "decision-receipt.schema.json",
     "INVOCATION_SCHEMA": "invocation.schema.json",
+    "EXECUTION_RECORD_SCHEMA": "execution-record.schema.json",
 }
 FAILURE = re.compile(r"^SCHEMA CHECK FAILURE: (\S+?): (.*)$")
 
@@ -283,6 +285,34 @@ class FixtureCounterfactualTest(unittest.TestCase):
     def test_a_process_identity_without_its_start_fingerprint_is_refused(self) -> None:
         self.assertBehaveAsDeclared("invocation", "valid-research-pass-running.json",
                                     "invalid-identity-without-start-fingerprint.json")
+
+    # --- task 1c: an invocation's failure record, and the supervisor's execution record (isolated negatives)
+    def test_a_failed_invocation_carries_its_failure_record(self) -> None:
+        self.assertBehaveAsDeclared("invocation", "valid-failed-empty-output.json", "invalid-failed-without-a-failure-record.json")
+
+    def test_only_a_failed_invocation_carries_a_failure_record(self) -> None:
+        self.assertBehaveAsDeclared("invocation", "valid-research-pass-running.json", "invalid-failure-record-on-running-work.json")
+
+    def test_a_failure_class_is_a_structural_finding(self) -> None:
+        self.assertBehaveAsDeclared("invocation", "valid-failed-empty-output.json", "invalid-failure-class-from-the-agent.json")
+
+    def test_collected_output_names_its_hash(self) -> None:
+        self.assertBehaveAsDeclared("execution-record", "valid-exited-with-output.json", "invalid-present-output-without-its-hash.json")
+
+    def test_output_not_collected_names_no_hash(self) -> None:
+        self.assertBehaveAsDeclared("execution-record", "valid-empty-output-despite-self-report.json", "invalid-absent-output-with-a-hash.json")
+
+    def test_findings_are_structural_classes(self) -> None:
+        self.assertBehaveAsDeclared("execution-record", "valid-empty-output-despite-self-report.json", "invalid-self-report-as-a-finding.json")
+
+    def test_a_group_termination_records_its_reason(self) -> None:
+        self.assertBehaveAsDeclared("execution-record", "valid-never-started.json", "invalid-termination-without-a-reason.json")
+
+    def test_terminated_descendants_are_counted(self) -> None:
+        self.assertBehaveAsDeclared("execution-record", "valid-exited-with-output.json", "invalid-descendants-terminated-none.json")
+
+    def test_an_exit_is_a_code_or_a_signal(self) -> None:
+        self.assertBehaveAsDeclared("execution-record", "valid-exited-with-output.json", "invalid-exit-with-code-and-signal.json")
 
 
 if __name__ == "__main__":

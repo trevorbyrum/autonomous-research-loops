@@ -142,8 +142,8 @@ class CancellationTest(LifecycleTestCase):
         self.assertEqual(self.cancel()["status"], "recorded")
         before = self.state()
         response = self.router.commit_outcome(env)
-        self.assertEqual((response["status"], response["reason"]), ("rejected", "invocation_state_invalid"))
-        self.assertIn("cancellation", response["detail"])
+        self.assertEqual((response["status"], response.get("reason")), ("rejected", "invocation_state_invalid"))
+        self.assertIn("cancellation", response.get("detail", ""))
         self.assertEqual(self.state(), before)
         digest, _ = self.stage(empty_outcome("inv_research01"))
         before = self.state(exclude=())
@@ -262,7 +262,7 @@ class UnknownTest(LifecycleTestCase):
                     self.router.request_cancel({"invocation_id": "inv_research01", "requested_by": "operator", "reason": "stop"})
                 before = self.state(exclude=())
                 self.refused(self.reconcile("terminated_group", self.evidence(self.grant, ("killed",), **{**terminated, "termination": None}), failure_class="killed"),
-                             "evidence_refused", before)
+                             "evidence_refused", before)  # the schema's rule: a group termination records why
                 out = self.reconcile("terminated_group", self.evidence(self.grant, ("killed",), handling="terminated", **terminated), failure_class="killed")
                 self.assertEqual((out["status"], out["state"]), ("recorded", target))
                 self.assertEqual(self.inv("state", "failure_class"), (target, "killed" if target == "failed" else None))
@@ -310,7 +310,7 @@ class StatusAndSpoolTest(LifecycleTestCase):
         self.assertEqual((status["state"], status["cancel_requested"]["by"], status["unknown_episode"], status["job_handle"], status["topic_paused"],
                           status["state_revision"], status["lease"]["released_at"]), ("running", "operator", 0, "job-inv_research01", False, self.state_revision(), None))
         other = self.claim("inv_verify001", "verification")
-        self.assertEqual(self.router.invocation_status({"capability_id": other["capability_id"], "invocation_id": "inv_research01"})["reason"],
+        self.assertEqual(self.router.invocation_status({"capability_id": other["capability_id"], "invocation_id": "inv_research01"}).get("reason"),
                          "capability_invocation_mismatch")
 
     def test_bytes_are_read_under_the_invocations_topic_with_the_spools_media_type(self) -> None:
@@ -318,8 +318,8 @@ class StatusAndSpoolTest(LifecycleTestCase):
         env = self.envelope(self.grant, "op_interim0001", empty_outcome("inv_research01", "interim_transition"), refs=[ref])
         before = self.state()
         response = self.router.commit_outcome(env)
-        self.assertEqual((response["status"], response["reason"]), ("rejected", "payload_invalid"))
-        self.assertIn("staged as text/plain", response["detail"])
+        self.assertEqual((response["status"], response.get("reason")), ("rejected", "payload_invalid"))
+        self.assertIn("staged as text/plain", response.get("detail", ""))
         self.assertEqual(self.state(), before)
         env = self.envelope(self.grant, "op_interim0002", empty_outcome("inv_research01", "interim_transition"), refs=[{**ref, "media_type": "text/plain"}])
         self.assertEqual(self.router.commit_outcome(env)["status"], "committed")

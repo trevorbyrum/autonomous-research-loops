@@ -54,6 +54,7 @@ class StageTest(SpoolTestCase):
         ref = self.spool.stage(TOPIC, b"a claim's text", "text/plain")
         self.assertEqual(ref, {"content_hash": sha(b"a claim's text"), "size_bytes": 14, "media_type": "text/plain"})
         path = self.root / "spool" / TOPIC / ref["content_hash"][7:]
+        self.assertTrue(path.is_file(), f"not staged under its topic and hash: {self.entries()}")
         info = os.lstat(path)
         self.assertEqual((stat.S_ISREG(info.st_mode), stat.S_IMODE(info.st_mode) & 0o222, info.st_nlink), (True, 0, 1))
         self.assertEqual(self.spool.read(ref["content_hash"], topic_id=TOPIC), b"a claim's text")
@@ -135,7 +136,10 @@ class CollectTest(SpoolTestCase):
                 elif target.exists() or target.is_symlink():
                     target.unlink()
                 make(target)
-                found = self.spool.collect(TOPIC, self.scratch, "outcome.json", "application/json")
+                try:
+                    found = self.spool.collect(TOPIC, self.scratch, "outcome.json", "application/json")
+                except (SpoolFull, OSError) as exc:  # refused here means refused before staging, as a finding, not an infrastructure failure
+                    found = {"status": type(exc).__name__, "ref": None}
                 self.assertEqual((found["status"], found["ref"]), ("refused", None), found)
         self.assertEqual(self.entries(), [])
         self.assertIsNone(self.spool.read(sha(b'{"secret": 1}'), topic_id=TOPIC))
@@ -176,7 +180,7 @@ class RouterReadsThisSpoolTest(RouterTestCase):
         self.spool.stage(OTHER, outcome, "application/json")
         request = {"capability_id": self.grant["capability_id"], "invocation_id": "inv_research01", "to_state": "result_ready", "result_payload_digest": sha(outcome)}
         before = self.state(exclude=())
-        self.assertEqual(self.router.record_transition(request)["reason"], "payload_missing")
+        self.assertEqual(self.router.record_transition(request).get("reason"), "payload_missing")
         self.assertEqual(self.state(exclude=()), before)
         self.spool.stage(TOPIC, outcome, "application/json")
         self.assertEqual(self.router.record_transition(request)["status"], "recorded")
@@ -186,7 +190,7 @@ class RouterReadsThisSpoolTest(RouterTestCase):
         self.spool.stage(TOPIC, outcome, "text/plain")
         request = {"capability_id": self.grant["capability_id"], "invocation_id": "inv_research01", "to_state": "result_ready", "result_payload_digest": sha(outcome)}
         before = self.state(exclude=())
-        self.assertEqual(self.router.record_transition(request)["reason"], "payload_invalid")
+        self.assertEqual(self.router.record_transition(request).get("reason"), "payload_invalid")
         self.assertEqual(self.state(exclude=()), before)
 
 
