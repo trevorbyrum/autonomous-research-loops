@@ -113,16 +113,18 @@
 
 ## What stays router logic (not expressible, or deliberately not in DDL)
 
-- **Replay vs conflict on operation-ID reuse.** This compares `request_fingerprint`; the DDL only guarantees the ID cannot be committed twice.
-- **The compare-and-set on `expected_state_revision`** (`UPDATE … WHERE state_revision = ?`); the DDL guarantees only +1 steps and one commit per revision.
-- **Authority from capability**, payload validation and the step-2 validation binding.
+Task 1b built this boundary in `gen2/router/` (the sole writer). Its README lists, item by item, what is enforced there now and what is deferred with its phase.
+
+- **Replay vs conflict on operation-ID reuse.** This compares `request_fingerprint`; the DDL only guarantees the ID cannot be committed twice. *1b: `Router.commit_outcome`.*
+- **The compare-and-set on `expected_state_revision`** (`UPDATE … WHERE state_revision = ?`); the DDL guarantees only +1 steps and one commit per revision. *1b.*
+- **Authority from capability**, payload validation and the step-2 validation binding. *1b: authority is the router-minted capability; the kind, topic, pins and lease come from the invocation's row.*
 - **Deterministic contract-approval checks the DDL cannot see:** template slot completeness, framework-link and decision-record references, coverage-matrix cell consistency. (Facet coverage by obligations, facet referential integrity and rating completeness are DDL, above.)
 - **Stopping-rule evaluation and dossier assembly** (accounting); freshness-envelope computation (exporter, from receipts and watermarks).
 - **Byte-level quote matching and normalization;** tier-0 invocation.
 - **Operational behavior:** transition alerts on capability facts, hold deadline escalation, verification capacity reservation, retry budgets.
-- **Consistency of the JSON documents beyond their bound fields** — validated against `gen2/schema/` at the router boundary.
+- **Consistency of the JSON documents beyond their bound fields** — validated against `gen2/schema/` at the router boundary (*1b: `gen2/router/schemas.py`, checked against the pinned `jsonschema` by `tools/gen2_schema_oracle.py`*).
 - **Hash truth (RA6):** that a stored `content_hash`, `spec_hash`, manifest hash, `request_fingerprint` or payload digest is the hash of the stored or staged bytes is recomputed at the router boundary (Phase 1, `gen2/core/canonical.py`); the DDL binds the representations to each other, not to the truth of a hash label. **Timestamps** are validated there as real calendar instants by `gen2/core/instants.py` (the schema's `date-time` format; the pattern alone admits February 31); the DDL stores router-validated text and does not re-validate (A11).
-- **Semantic comparisons the DDL cannot make (A10) — router contract, to be tested before these rows feed accounting (Phase 1/2):**
+- **Semantic comparisons the DDL cannot make (A10) — router contract, to be tested before these rows feed accounting (Phase 1/2).** *1b enforces the first two, payload digests and sizes, and media types against the recorded artifact; the rest stay deferred with the phases below and in `gen2/router/README.md`:*
   - a search observation's `result_count` against the retrieval events actually captured for it (complete / partial / unknown capture kept distinct from zero);
   - a screening receipt's selected option against the assessment's include/exclude/borderline decision, and its criterion results against the eligibility protocol version;
   - a DecisionSpec's question/rubric/input-builder versions against the registry (question registry: format frozen in 0, loaded in Phase 1 — ruling R3);

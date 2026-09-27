@@ -345,6 +345,13 @@ must pass (Phase 1), and of the manifest commit and extension loading that §9 i
 neither that the module exists nor that the review accepted it. That is the
 extension's admission (§7).
 
+*Task 1b:* the router's part is in place. Before a manifest enters the outbox,
+the router validates it against `export-manifest/2`. It asks an extension
+registry to admit each extension connector, and the bundle must be staged with
+the commit, canonical, valid `export-bundle/1`, and the one the manifest
+names (`gen2/router/README.md`). No registry is loaded until Phase 3's
+extension loading exists, so until then no extension connector is admitted.
+
 ## 6. The reference connectors
 
 The core ships exactly these three. They are the Phase-3 implementation
