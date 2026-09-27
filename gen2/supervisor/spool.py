@@ -36,9 +36,10 @@ Structural limits: the spool is protected by being a directory the station
 owns and agents are never given; nothing here isolates it from another
 process of the same user (OS-level isolation is deployment's, 1e). Retention
 and pruning are not implemented: entries stay until an explicit, audited
-retention policy exists (C-11). A quota counts staged bytes as they are
-written by this process; bytes staged by another process on the same root
-are counted once this process lists the root again (usage()).
+retention policy exists (C-11). The aggregate quota is per Spool instance:
+it counts the bytes this instance staged and those it found when it last
+listed the root (usage()), so two instances writing one root can exceed it
+together. One writer per spool root is a deployment restriction.
 """
 from __future__ import annotations
 

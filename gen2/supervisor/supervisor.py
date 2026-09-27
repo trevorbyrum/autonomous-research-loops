@@ -49,16 +49,23 @@ execution group terminated. Then it drives the router one step along L-1:
                     supports; what cannot be established stays unknown under
                     the episode's hold (owner, deadline)
 Every retry path draws on a declared budget kept in the journal, so a
-restart does not refill it (L-6). A router that stays unreachable past its
-budget leaves a local incident and a stalled job, which only recover() —
-itself budgeted — resumes.
+restart does not refill it (L-6): an outage (attempts and time, from its first
+failed call until a write the router answers — a read refunds nothing), a
+failing durable write, recover() resumptions, launch refusals, launcher
+starts and commit re-sends. Past the router or write budget the job stalls
+with an owned, deadlined incident, which only recover() — itself budgeted,
+and refilling nothing — resumes; an exhausted launch, spawn or commit budget
+is recorded as an incident beside the job's end; a journal that cannot be
+written raises ControlFailure out of band (RG-3). Before a parent's capacity
+is released its delegate jobs are ended (L-7, L-8).
 
 Structural limits: faults are what these processes can do to each other on
 one host (kills, exits, hangs, lost replies), not power loss or disk
 corruption; fencing protects commits and does not undo an orphan's external
-effects (L-7); a descendant that leaves the job's session is not seen
-(jobs.py). The supervisor trusts its own observations: the router binds the
-execution record to what it supports, not to whether it is true.
+effects (L-7); a descendant that leaves the job's session is not seen, and a
+listed pid can be reused before it is signalled (jobs.py). The supervisor
+trusts its own observations: the router binds the execution record to what
+it supports, not to whether it is true. The README states what is proven.
 """
 from __future__ import annotations
 

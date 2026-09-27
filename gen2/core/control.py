@@ -97,9 +97,11 @@ class ControlBackend(Protocol):
         capability, along L-1 only. Key: (invocation, target state), and for
         outcome_unknown (invocation, episode): repeating a recorded fact is a
         replay whatever state the invocation has reached since, and the same
-        key with other facts is a conflict. A failure or cancellation
-        releases the invocation's lease only once its evidence confirms the
-        execution group's descendants were handled (L-7); entering
+        key with other facts (an outcome_unknown entry's cause included) is
+        a conflict. A failure or cancellation releases the invocation's lease
+        only once its evidence confirms the execution group's descendants
+        were handled (L-7), and a parent's only once no delegate of it is
+        live (L-8); entering
         outcome_unknown opens the episode's router hold, owned by the
         station, with a deadline (L-4, RG-3)."""
 
@@ -116,16 +118,23 @@ class ControlBackend(Protocol):
     def reconcile(self, request: Mapping) -> dict:
         """Leave the current outcome_unknown episode through its durable
         reconciliation record: the method, the supervisor's execution record
-        as evidence, and the resolution that evidence supports (L-4). Key:
-        (invocation, episode); the identical record replays, another is a
-        conflict. Clears the episode's hold; a terminal resolution releases
-        the lease."""
+        as evidence, and the resolution that evidence supports (L-4). A
+        confirmed failure names its failure class; a terminated group names
+        one exactly when it ends failed — under a cancellation request it
+        ends cancelled, with none. Key: (invocation, episode); the identical
+        complete request replays, any changed fact (identity, class, evidence)
+        is a conflict. Clears the episode's hold (the only way it clears); a
+        terminal resolution releases the lease, once no delegate of it is
+        live."""
 
     def invocation_status(self, request: Mapping) -> dict:
         """Read one invocation's lifecycle state under its capability: state,
         cancellation request, unknown episode, deadline, lease currency,
-        pause, recorded facts and the topic's state revision. A fresh copy of
-        committed rows; reading it authorizes nothing."""
+        pause, recorded facts, the topic's state revision, and
+        launch_admission: the launch-admission check as it stands now (None,
+        or the refusal), which the supervisor reads before every actual
+        start. A fresh copy of committed rows; reading it authorizes
+        nothing."""
 
     def record_observation(self, request: Mapping) -> dict:
         """Record one search observation and the retrieval events captured

@@ -29,7 +29,9 @@ matching a command line (INVARIANTS §11.2).
 Structural limits: a descendant that leaves the session (setsid) is not a
 member and is neither seen nor terminated; a pid reused by a new session
 leader started after the launcher, within the job's life, would be counted
-as a member; a process in uninterruptible sleep is not confirmed gone within
+as a member; members are listed, then signalled by pid, and in between a
+listed pid can exit and be reused by an unrelated process, which would then
+receive the signal; a process in uninterruptible sleep is not confirmed gone within
 the grace periods, and the supervisor then says so (unconfirmed) instead of
 releasing capacity. Linux only (/proc). A kill is not power loss: a host
 reboot ends every member, which lookup reports as a boot mismatch.
