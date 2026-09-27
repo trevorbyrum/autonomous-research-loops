@@ -306,3 +306,14 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-1b-repair-astra-
 **Remaining:** A5-R (MEDIUM). `record_transition` requires staged bytes before it looks up the recorded transition. As a result, a historical `result_ready` replay after commit and restart, with the bytes gone, is refused as `payload_missing` when it should be `replayed`. A changed unstaged digest also returns `payload_missing` instead of `transition_conflict`. Astra reproduced this on a durable store in a fresh process; the store rows were unchanged.
 
 No operator decision is needed. **Routed:** `docs/gen2/tasks/1b-repair-2.md` to an Opus 5.5 coder.
+
+## 2026-09-27 — 1b-repair-2 re-review (Astra, xhigh) — **1b ACCEPTED** (3 review rounds)
+Full report: `~/work/research-loops-public/private/reviews/gen2-1b-repair-2-astra-review-20260927.md`.
+
+**A5-R closed.** Astra reran its original probe unchanged: 2/2 pass. Each case commits, restarts in a fresh process past expiry, and replays. An identical request returns `replayed`, a changed digest returns `transition_conflict`, and every row stays unchanged.
+
+**New race probe:** 8/8 schedules pass, using separate connections and event-synchronized with no timing sleeps. Astra also reconstructed 5 mutations on disk; all are killed and keep their meaning.
+
+**Non-blocking, carried into 1c:** the mutation runner only swaps modules in the current interpreter, so kills that happen inside a fresh child process are invisible to it. The inventory audit found no named kill that depends only on such a child. 1c relies heavily on subprocesses, so 1c must add disk mutation first.
+
+**Routed:** task 1c (supervisor, spool, fake executors, lifecycle fault set) to an Opus 5.5 coder.
