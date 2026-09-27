@@ -41,10 +41,13 @@ class CommitCase(RouterTestCase):
     def assertResponse(self, response: dict) -> None:
         self.assertTrue(ORACLE(response, "commit-outcome.schema.json#/$defs/response"), response)
 
-    def assertRejected(self, response: dict, reason: str, before: dict, audits_before: int) -> None:
+    def assertRejected(self, response: dict, reason: str, before: dict, audits_before: int, detail: str | None = None) -> None:
+        """`detail` pins a generic reason to the rule that must have fired."""
         self.assertResponse(response)
         self.assertEqual(response["status"], "rejected", response)
         self.assertEqual(response["reason"], reason, response)
+        if detail is not None:
+            self.assertIn(detail, response.get("detail", ""))
         self.assertNotIn("receipt", response)
         self.assertEqual(self.state(), before)  # nothing changed ...
         self.assertEqual(self.value("SELECT count(*) FROM audit_events"), audits_before + 1)  # ... but the refusal is logged
@@ -131,7 +134,7 @@ class FencingTest(CommitCase):
         """DR §3: an unminted run with generation -1, and a lease that was never minted."""
         env = self.final_envelope()
         before, audits = self.snapshot()
-        self.assertRejected(self.router.commit_outcome({**env, "lease": {**env["lease"], "generation": -1}}), "envelope_invalid", before, audits)
+        self.assertRejected(self.router.commit_outcome({**env, "lease": {**env["lease"], "generation": -1}}), "envelope_invalid", before, audits, "/lease/generation")
         self.assertRejected(self.router.commit_outcome({**env, "lease": {"lease_id": "lease_neverminted", "generation": 7}}), "lease_not_current", before, audits + 1)
 
     def test_an_expired_lease_is_fenced_by_its_successor(self) -> None:
@@ -248,7 +251,7 @@ class AuthorityTest(CommitCase):
         before, audits = self.snapshot()
         for label in ({"role": "router"}, {"actor": "operator"}, {"authority": "qualified"}):
             with self.subTest(label):
-                self.assertRejected(self.router.commit_outcome({**env, **label}), "envelope_invalid", before, audits)
+                self.assertRejected(self.router.commit_outcome({**env, **label}), "envelope_invalid", before, audits, "/" + next(iter(label)))
                 audits += 1
         self.assertEqual(self.router.commit_outcome(env)["status"], "committed")
 
@@ -256,7 +259,7 @@ class AuthorityTest(CommitCase):
         outcome = {**empty_outcome("inv_research01", "interim_transition"), "role": "verifier"}
         env = self.envelope(self.grant, "op_interim0001", outcome)
         before, audits = self.snapshot()
-        self.assertRejected(self.router.commit_outcome(env), "payload_invalid", before, audits)
+        self.assertRejected(self.router.commit_outcome(env), "payload_invalid", before, audits, "/role")
 
     def test_a_capability_acts_only_for_its_own_invocation(self) -> None:
         other = self.started("inv_verify01", "verification")
@@ -265,7 +268,7 @@ class AuthorityTest(CommitCase):
         self.assertRejected(self.router.commit_outcome({**env, "capability_id": other["capability_id"]}), "capability_invocation_mismatch", before, audits)
         self.assertRejected(self.router.commit_outcome({**env, "capability_id": "cap_forgedforged"}), "capability_invalid", before, audits + 1)
         del env["capability_id"]
-        self.assertRejected(self.router.commit_outcome(env), "envelope_invalid", before, audits + 2)
+        self.assertRejected(self.router.commit_outcome(env), "envelope_invalid", before, audits + 2, "missing required 'capability_id'")
 
     def test_a_producer_cannot_verify_its_own_work(self) -> None:
         """RG-5: a research pass (the producer) cannot commit a verification
@@ -358,30 +361,30 @@ class BoundaryValidationTest(CommitCase):
         del outcome["exports"]
         env = self.envelope(self.grant, "op_interim0001", outcome)
         before, audits = self.snapshot()
-        self.assertRejected(self.router.commit_outcome(env), "payload_invalid", before, audits)
+        self.assertRejected(self.router.commit_outcome(env), "payload_invalid", before, audits, "missing required 'exports'")
         duplicate = b'{"outcome_version": "outcome/1", "outcome_version": "outcome/1"}'  # a duplicate key (C-13)
         self.assertRejected(self.router.commit_outcome({**env, "payload_digest": self.spool.put(duplicate), "payload_size_bytes": len(duplicate)}),
-                            "payload_invalid", before, audits + 1)
+                            "payload_invalid", before, audits + 1, "duplicate object key")
 
     def test_an_impossible_timestamp_is_refused(self) -> None:
         outcome = empty_outcome("inv_research01", "interim_transition")
         outcome["review_triggers"] = [{"reason_code": "persistent_contradiction", "cause_ref": "c", "source_revision": 1, "observed_at": "2026-02-29T00:00:00Z"}]
         before, audits = self.snapshot()
-        self.assertRejected(self.router.commit_outcome(self.envelope(self.grant, "op_interim0001", outcome)), "payload_invalid", before, audits)
+        self.assertRejected(self.router.commit_outcome(self.envelope(self.grant, "op_interim0001", outcome)), "payload_invalid", before, audits, "observed_at")
         outcome["review_triggers"][0]["observed_at"] = "2028-02-29T00:00:00Z"  # a real leap day
         self.assertEqual(self.router.commit_outcome(self.envelope(self.grant, "op_interim0001", outcome))["status"], "committed")
         env = self.final_envelope()
         before, audits = self.snapshot()
-        self.assertRejected(self.router.commit_outcome({**env, "submitted_at": "2026-02-31T10:30:00Z"}), "envelope_invalid", before, audits)
+        self.assertRejected(self.router.commit_outcome({**env, "submitted_at": "2026-02-31T10:30:00Z"}), "envelope_invalid", before, audits, "submitted_at")
         self.assertEqual(self.router.commit_outcome(env)["status"], "committed")
 
     def test_an_oversized_or_non_canonical_envelope_is_refused(self) -> None:
         env = self.final_envelope()
         before, audits = self.snapshot()
         refs = [{"content_hash": "sha256:" + f"{i:064x}", "size_bytes": 1, "media_type": "text/" + "x" * 300} for i in range(256)]  # schema-valid, > 64 KiB
-        self.assertRejected(self.router.commit_outcome({**env, "result_refs": refs}), "envelope_invalid", before, audits)
-        self.assertRejected(self.router.commit_outcome({**env, "expected_state_revision": float("nan")}), "envelope_invalid", before, audits + 1)
-        self.assertRejected(self.router.commit_outcome({**env, "expected_state_revision": 2**53}), "envelope_invalid", before, audits + 2)
+        self.assertRejected(self.router.commit_outcome({**env, "result_refs": refs}), "envelope_invalid", before, audits, "exceeds")
+        self.assertRejected(self.router.commit_outcome({**env, "expected_state_revision": float("nan")}), "envelope_invalid", before, audits + 1, "C-13")
+        self.assertRejected(self.router.commit_outcome({**env, "expected_state_revision": 2**53}), "envelope_invalid", before, audits + 2, "C-13")
 
     def test_an_envelope_without_an_operation_id_is_not_answered(self) -> None:
         env = self.final_envelope()
@@ -448,7 +451,7 @@ class AtomicityTest(CommitCase):
         outcome["claims"][0].update(load_bearing=True, required_access_tier="full_text")
         env = self.final_envelope(outcome=outcome, result_refs=refs)
         before, audits = self.snapshot()
-        self.assertRejected(self.router.commit_outcome(env), "payload_invalid", before, audits)
+        self.assertRejected(self.router.commit_outcome(env), "payload_invalid", before, audits, "V-4")
         self.assertIn("V-4", self.value("SELECT json_extract(detail, '$.detail') FROM audit_events ORDER BY rowid DESC LIMIT 1"))
 
     def test_staged_bytes_are_read_only_outside_transactions(self) -> None:

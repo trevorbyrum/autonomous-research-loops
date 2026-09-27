@@ -192,8 +192,8 @@ def check_observation(observation: dict, events: list[dict]) -> None:
     if len(set(records)) != len(records):
         raise Refusal("payload_invalid", f"{oid}: a provider record is captured twice")
     if observation["completeness"] == "unobserved":
-        if events:
-            raise Refusal("payload_invalid", f"{oid}: an unobserved result set has no captured records")
+        if events or observation["result_count"] is not None:
+            raise Refusal("payload_invalid", f"{oid}: an unobserved result set has no captured records and no count; unknown is not zero (RG-U)")
         return
     if observation["result_count"] != len(events):
         raise Refusal("payload_invalid", f"{oid}: result_count {observation['result_count']} is not the {len(events)} retrieval events captured "
