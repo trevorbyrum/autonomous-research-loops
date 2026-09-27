@@ -23,7 +23,8 @@ import json
 from pathlib import Path
 
 from gen2.core import canonical
-from gen2.tests.router_fixtures import TOPIC, Registry, RouterTestCase, empty_outcome, h, jcs
+from gen2.tests.router_fixtures import OTHER, TOPIC, Registry, RouterTestCase, empty_outcome, h, jcs
+from gen2.tests.test_router_schemas import verdicts  # the jsonschema oracle, as a subprocess (a function: nothing here is collected twice)
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "schema" / "examples"
 T = "2026-09-27T10:00:00Z"
@@ -123,19 +124,33 @@ class ScreeningBase(EvidenceCase):
 
     def setUp(self) -> None:
         super().setUp()
-        self.to_queued()
+        self.contract_hash = self.to_queued()  # the admitted revision 1's hash, as the fixture computed it from the document it stored
         self.grant = self.started("inv_research01")
         self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000001', 'doi', '10.1/x', ?)", T)
         self.spec_hash = self.spec()
         self.raw = self.artifact(b'{"selected":"include"}', "application/json")
 
-    def spec(self, *, protocol_version: int = 1, true_hash: bool = True) -> str:
-        doc = {"spec_version": "decision-spec/1", "spec_id": self.SPEC, "decision_class": "screening", "provider": "jev", "primitive": "choice",
-               "action_policy": {"policy_id": "P1", "version": 1}, "options": {"include": {"criteria": "eligible"}, "exclude": {"criteria": "not"}},
-               "protocol": {"topic_id": TOPIC, "contract": {"revision": 1, "content_hash": h("a")}, "eligibility_protocol_version": protocol_version}}
+    def spec_document(self, spec_id: str | None = None, **protocol) -> dict:
+        """A complete decision-spec/1 screening spec (every required field;
+        test_every_spec_here_is_a_complete_decision_spec checks it with the
+        jsonschema oracle), pinned to exactly the invocation's admission:
+        topic TOPIC, contract revision 1 under the fixture's own hash of it,
+        eligibility protocol version 1 — unless `protocol` changes one pin."""
+        pins = {"topic_id": TOPIC, "contract": {"revision": 1, "content_hash": self.contract_hash}, "eligibility_protocol_version": 1}
+        pins.update(protocol)
+        return {"spec_version": "decision-spec/1", "spec_id": spec_id or self.SPEC, "decision_class": "screening", "provider": "jev",
+                "model": {"requested": "jev-1.13", "resolved_version": "jev-1.13.0"}, "primitive": "choice",
+                "output_semantics": "Include or exclude against the eligibility protocol's criteria.",
+                "question": {"question_id": "Q-screen", "version": 1, "content_hash": h("9")}, "rubric": None,
+                "input_builder": {"builder_id": "B-screen-snapshot", "version": 1, "max_input_tokens": 30000},
+                "protocol": pins, "action_policy": {"policy_id": "P1", "version": 1},
+                "options": {"include": {"criteria": "eligible"}, "exclude": {"criteria": "not eligible"}}}
+
+    def spec(self, spec_id: str | None = None, *, true_hash: bool = True, **protocol) -> str:
+        doc = self.spec_document(spec_id, **protocol)
         spec_hash = canonical.logical_hash(doc) if true_hash else h("6")
         self.x("INSERT INTO decision_specs (spec_hash, spec_id, decision_class, provider, primitive, policy_id, policy_version, protocol_topic_id, document, created_at) "
-               "VALUES (?, ?, 'screening', 'jev', 'choice', 'P1', 1, ?, ?, ?)", spec_hash, self.SPEC, TOPIC, json.dumps(doc), T)
+               "VALUES (?, ?, 'screening', 'jev', 'choice', 'P1', 1, ?, ?, ?)", spec_hash, doc["spec_id"], doc["protocol"]["topic_id"], json.dumps(doc), T)
         return spec_hash
 
     def assessment(self, decision: str = "include", results=None, *, stage: str = "abstract", actor: str = "primary", receipt: str | None = None,
@@ -144,12 +159,15 @@ class ScreeningBase(EvidenceCase):
                 "reason_code": reason or ("C-1" if decision == "exclude" else None), "criterion_results": {"C-1": "met"} if results is None else results,
                 "actor_kind": actor, "decision_receipt_id": receipt, "supersedes_assessment_id": None}
 
-    def decision_receipt(self, op: str, option: str = "include", *, work: str = "wrk_00000001", authority: str = "qualified") -> dict:
+    def decision_receipt(self, op: str, option: str = "include", *, work: str = "wrk_00000001", authority: str = "qualified", spec: tuple | None = None,
+                         raw: dict | None = None) -> dict:
+        spec_id, spec_hash = spec or (self.SPEC, self.spec_hash)
+        raw = raw or self.raw
         return {"receipt_version": "decision-receipt/1", "decision_receipt_id": "dec_000000000001", "invocation_id": "inv_research01", "topic_id": TOPIC,
-                "decided_at": T, "hash_contract": {"canonicalization": "jcs-rfc8785/1"}, "spec": {"spec_id": self.SPEC, "spec_hash": self.spec_hash},
+                "decided_at": T, "hash_contract": {"canonicalization": "jcs-rfc8785/1"}, "spec": {"spec_id": spec_id, "spec_hash": spec_hash},
                 "decision_class": "screening", "provider": "jev", "subject": {"kind": "work", "ref": work},
                 "input_manifest": {"snapshot_digest": h("6"), "input_record_ids": [], "input_status": "complete"},
-                "provider_response": {"status": "answered", "raw_response_digest": self.raw["content_hash"], "raw_response_artifact": self.raw,
+                "provider_response": {"status": "answered", "raw_response_digest": raw["content_hash"], "raw_response_artifact": raw,
                                       "answer": {"primitive": "choice", "selected_option_id": option, "distribution": {"include": 0.8, "exclude": 0.2}, "confidence": 0.7}},
                 "policy": {"policy_id": "P1", "version": 1}, "authorization": {"authority_level": authority, "qualification_ref": "qual-1" if authority == "qualified" else None},
                 "action": "commit_reversible_action" if authority == "qualified" else "attach_proposal",
@@ -189,51 +207,90 @@ class ScreeningTest(ScreeningBase):
 
 
 class ProviderScreeningTest(ScreeningBase):
-    """A10 / D-2 / D-4: a provider-written assessment is exactly its qualified
-    screening receipt's committed answer, about this work, under a spec (whose
-    hash is true) for this protocol version; without a registry entry there
-    is no qualified authority."""
+    """A10 / D-2 / D-4 / C-12: a provider-written assessment is exactly its
+    qualified screening receipt's committed answer, about this work, under a
+    spec (whose hash is true) for this invocation's topic, admitted contract
+    revision and hash, and protocol version; without a registry entry there
+    is no qualified authority.
+
+    Astra 1b review C3: the fixture is a complete, correctly pinned spec, its
+    pins taken from the fixture's own world, never from the router. Each
+    negative is the positive control's outcome with exactly one defect (a
+    spec differing in one pin is a spec of its own, qualified like the
+    first), and each ends by committing the positive control's outcome under
+    the same operation id: the input without its one defect commits."""
 
     def setUp(self) -> None:
         super().setUp()
-        self.qualify()
+        self.qualify(self.spec_hash)
 
-    def qualify(self) -> None:
-        self.router = self.make_router(qualifications=Registry({("jev", "screening", self.spec_hash, "qual-1")}))
+    def qualify(self, *spec_hashes: str) -> None:
+        self.router = self.make_router(qualifications=Registry({("jev", "screening", sh, "qual-1") for sh in spec_hashes}))
 
     def provider(self, op: str = "op_screen00001", **kwargs) -> dict:
         return self.screen(self.assessment(kwargs.pop("decision", "include"), actor="decision_provider", receipt="dec_000000000001"),
                            receipts=[self.decision_receipt(op, **kwargs)])
 
+    def only_this_defect(self, outcome: dict, reason: str, detail: str, refs=None) -> None:
+        refs = [self.raw] if refs is None else refs
+        self.refused(self.grant, "op_screen00001", outcome, reason, refs=refs, detail=detail)
+        self.committed(self.grant, "op_screen00001", self.provider(), refs=[self.raw])
+
+    def test_every_spec_here_is_a_complete_decision_spec(self) -> None:
+        """The fixture and every one-pin variant satisfy decision-spec/1 in
+        the independent jsonschema oracle (not the router's validator), and
+        so does the positive control's outcome document."""
+        docs = [(self.spec_document(), "decision-spec.schema.json")]
+        docs += [(self.spec_document(**pin), "decision-spec.schema.json") for pin, _ in self.pins().values()]
+        docs.append((self.provider(), "outcome-document.schema.json"))
+        self.assertEqual(verdicts(*docs), [{"oracle": True, "router": True}] * len(docs))
+
     def test_a_qualified_receipts_committed_answer(self) -> None:
         self.committed(self.grant, "op_screen00001", self.provider(), refs=[self.raw])
         self.assertEqual(self.rows("SELECT decision_receipt_id, commit_operation_id FROM decision_receipts"), [("dec_000000000001", "op_screen00001")])
-        self.assertEqual(self.rows("SELECT actor_kind, decision_receipt_id FROM screening_assessments"), [("decision_provider", "dec_000000000001")])
+        self.assertEqual(self.rows("SELECT actor_kind, decision_receipt_id, contract_revision, eligibility_protocol_version FROM screening_assessments"),
+                         [("decision_provider", "dec_000000000001", 1, 1)])
 
     def test_the_assessment_must_be_the_receipts_answer(self) -> None:
-        self.refused(self.grant, "op_screen00001", self.provider(option="exclude"), "payload_invalid", refs=[self.raw], detail="committed answer about this work")
-        self.refused(self.grant, "op_screen00001", self.provider(work="wrk_00000002"), "payload_invalid", refs=[self.raw], detail="committed answer about this work")
+        for op, (name, kwargs) in (("op_screen00002", ("another option", {"option": "exclude"})), ("op_screen00003", ("another work", {"work": "wrk_00000002"}))):
+            with self.subTest(name):  # an operation id each: under a mutant, one probe committing does not make the next a conflict
+                self.refused(self.grant, op, self.provider(op, **kwargs), "payload_invalid", refs=[self.raw], detail="committed answer about this work")
+        self.committed(self.grant, "op_screen00001", self.provider(), refs=[self.raw])
 
     def test_no_registry_entry_means_no_qualified_authority(self) -> None:
         self.router = self.make_router()  # the default registry: nothing is qualified
         self.refused(self.grant, "op_screen00001", self.provider(), "payload_invalid", refs=[self.raw], detail="no qualification registry")
+        self.qualify(self.spec_hash)
+        self.committed(self.grant, "op_screen00001", self.provider(), refs=[self.raw])
 
-    def test_the_spec_must_hash_to_its_label_and_be_for_this_protocol(self) -> None:
-        self.SPEC = "dspec_screen0002"  # specs are immutable: each probe is a spec of its own
-        self.spec_hash = self.spec(protocol_version=2)
-        self.qualify()
-        self.refused(self.grant, "op_screen00001", self.provider(), "payload_invalid", refs=[self.raw], detail="not for eligibility protocol version 1")
-        self.SPEC = "dspec_screen0003"
-        self.spec_hash = self.spec(true_hash=False)
-        self.qualify()
-        self.refused(self.grant, "op_screen00001", self.provider(), "payload_invalid", refs=[self.raw], detail="does not hash to")
+    def pins(self) -> dict:
+        """One pin of the spec's protocol changed, and the detail each must be
+        refused with (Astra 1b review A3)."""
+        return {"topic": ({"topic_id": OTHER}, f"is for topic {OTHER}"),
+                "contract revision": ({"contract": {"revision": 999, "content_hash": self.contract_hash}}, "contract revision 999"),
+                "contract hash": ({"contract": {"revision": 1, "content_hash": h("9")}}, "pins contract hash " + h("9")),
+                "protocol version": ({"eligibility_protocol_version": 2}, "not for eligibility protocol version 1")}
+
+    def test_the_spec_is_for_this_invocations_admission(self) -> None:
+        for n, (name, (pin, detail)) in enumerate(self.pins().items(), start=2):
+            with self.subTest(name):
+                spec = (f"dspec_screen000{n}", self.spec(f"dspec_screen000{n}", **pin))  # specs are immutable: each probe is a spec of its own
+                self.qualify(self.spec_hash, spec[1])
+                op = f"op_screen0000{n}"  # an operation id each, as above
+                self.refused(self.grant, op, self.provider(op, spec=spec), "payload_invalid", refs=[self.raw], detail=detail)
+        self.committed(self.grant, "op_screen00001", self.provider(), refs=[self.raw])
+
+    def test_the_spec_must_hash_to_its_label(self) -> None:
+        spec = ("dspec_screen0009", self.spec("dspec_screen0009", true_hash=False))
+        self.qualify(self.spec_hash, spec[1])
+        self.only_this_defect(self.provider(spec=spec), "payload_invalid", "does not hash to")
 
     def test_a_receipt_records_a_call_of_the_committing_invocation(self) -> None:
         other = self.started("inv_checkpt01", "checkpoint")
         receipt = {**self.decision_receipt("op_screen00001"), "invocation_id": "inv_checkpt01"}
         outcome = self.screen(self.assessment(actor="decision_provider", receipt="dec_000000000001"), receipts=[receipt])
-        self.refused(self.grant, "op_screen00001", outcome, "capability_invocation_mismatch", refs=[self.raw], detail="inv_checkpt01")
         self.assertEqual(other["status"], "granted")
+        self.only_this_defect(outcome, "capability_invocation_mismatch", "inv_checkpt01")
 
     def test_an_abstention_hold_is_one_this_commit_creates_or_one_recorded(self) -> None:
         receipt = self.decision_receipt("op_screen00001", authority="advisory")
@@ -247,10 +304,27 @@ class ProviderScreeningTest(ScreeningBase):
         self.assertEqual(self.rows("SELECT action, hold_id FROM decision_receipts"), [("abstain_hold", "hold_000000000001")])
 
     def test_the_raw_response_must_be_staged(self) -> None:
-        self.refused(self.grant, "op_screen00001", self.provider(), "payload_missing")
+        self.only_this_defect(self.provider(), "payload_missing", "its raw response", refs=[])
+
+    # Astra 1b review A4: the raw response's embedded reference is bound like
+    # every other one. The artifact staged with the commit is 22 bytes of
+    # application/json; each test changes one thing the receipt says about it.
+    RAW_DISAGREES = "its raw response: its reference disagrees with the artifact's size or media type (22 bytes of application/json)"
+
+    def test_the_raw_response_reference_has_the_artifacts_size(self) -> None:
+        self.only_this_defect(self.provider(raw={**self.raw, "size_bytes": 999}), "payload_invalid", self.RAW_DISAGREES)
+
+    def test_the_raw_response_reference_has_the_artifacts_media_type(self) -> None:
+        self.only_this_defect(self.provider(raw={**self.raw, "media_type": "application/pdf"}), "payload_invalid", self.RAW_DISAGREES)
+
+    def test_the_raw_response_digest_is_its_artifacts_hash(self) -> None:
+        receipt = self.decision_receipt("op_screen00001")
+        receipt["provider_response"]["raw_response_digest"] = h("5")
+        outcome = self.screen(self.assessment(actor="decision_provider", receipt="dec_000000000001"), receipts=[receipt])
+        self.only_this_defect(outcome, "payload_invalid", "is not its raw response artifact's hash")
 
     def test_a_receipt_committed_by_another_operation_is_refused(self) -> None:
-        self.refused(self.grant, "op_screen00001", self.provider(op="op_elsewhere01"), "payload_invalid", refs=[self.raw], detail="recorded by op_elsewhere01")
+        self.only_this_defect(self.provider(op="op_elsewhere01"), "payload_invalid", "recorded by op_elsewhere01")
 
 
 class ExportTest(EvidenceCase):

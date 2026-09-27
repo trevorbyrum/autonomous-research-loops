@@ -23,11 +23,13 @@ that the process presenting it is who it claims (no transport yet, 1e).
 from __future__ import annotations
 
 import copy
+import json
 
 from gen2.core import canonical
 from gen2.router.schemas import SchemaSet
 from gen2.router.service import MalformedRequest
 from gen2.tests.router_fixtures import OTHER, TOPIC, RouterTestCase, empty_outcome, h, jcs
+from gen2.tests.test_router_schemas import verdicts  # the jsonschema oracle, as a subprocess (a function: nothing here is collected twice)
 
 SCHEMAS = SchemaSet()
 
@@ -390,13 +392,21 @@ class AuthorityTest(CommitCase):
 
 class BoundaryValidationTest(CommitCase):
     def test_a_payload_digest_that_does_not_match_the_bytes_is_refused(self) -> None:
+        """Astra 1b review C2: three separate defects of one committable
+        envelope. The wrong-hash bytes are themselves a schema-valid outcome
+        document (the research pass proposing `queued` instead of null, which
+        it may) of exactly the declared size, so the digest is all that is
+        wrong; then the right bytes under a wrong size; then no bytes. The
+        right bytes commit."""
         env = self.final_envelope()
         good = self.spool.blobs[env["payload_digest"]]
+        other = good.replace(b'"next_queue_state":null', b'"next_queue_state":"queued"')
+        self.assertEqual(verdicts((json.loads(other), "outcome-document.schema.json")), [{"oracle": True, "router": True}])
         before, audits = self.snapshot()
-        self.spool.blobs[env["payload_digest"]] = good.replace(b"final_outcome", b"final_outcomf")  # bytes changed, label kept
-        self.assertRejected(self.router.commit_outcome(env), "payload_digest_mismatch", before, audits)
+        self.spool.blobs[env["payload_digest"]] = other  # bytes changed, label kept, size declared truly
+        self.assertRejected(self.router.commit_outcome({**env, "payload_size_bytes": len(other)}), "payload_digest_mismatch", before, audits, "hash to")
         self.spool.blobs[env["payload_digest"]] = good
-        self.assertRejected(self.router.commit_outcome({**env, "payload_size_bytes": len(good) - 1}), "payload_digest_mismatch", before, audits + 1)
+        self.assertRejected(self.router.commit_outcome({**env, "payload_size_bytes": len(good) - 1}), "payload_digest_mismatch", before, audits + 1, "declared")
         del self.spool.blobs[env["payload_digest"]]
         self.assertRejected(self.router.commit_outcome(env), "payload_missing", before, audits + 2)
         self.spool.blobs[env["payload_digest"]] = good
@@ -418,9 +428,12 @@ class BoundaryValidationTest(CommitCase):
         env = self.envelope(self.grant, "op_interim0001", outcome)
         before, audits = self.snapshot()
         self.assertRejected(self.router.commit_outcome(env), "payload_invalid", before, audits, "missing required 'exports'")
-        duplicate = b'{"outcome_version": "outcome/1", "outcome_version": "outcome/1"}'  # a duplicate key (C-13)
+        complete = empty_outcome("inv_research01", "interim_transition")
+        duplicate = jcs(complete).replace(b"{", b'{"claims":[],', 1)  # the complete document with one key given twice (C-13), Astra 1b review C2
+        self.assertEqual(json.loads(duplicate), complete)  # read leniently, it is the document that commits below: the duplicate is its only defect
         self.assertRejected(self.router.commit_outcome({**env, "payload_digest": self.spool.put(duplicate), "payload_size_bytes": len(duplicate)}),
                             "payload_invalid", before, audits + 1, "duplicate object key")
+        self.assertEqual(self.router.commit_outcome(self.envelope(self.grant, "op_interim0001", complete))["status"], "committed")
 
     def test_an_impossible_timestamp_is_refused(self) -> None:
         outcome = empty_outcome("inv_research01", "interim_transition")
@@ -456,6 +469,39 @@ class BoundaryValidationTest(CommitCase):
         second = self.envelope(self.grant, "op_interim0002", empty_outcome("inv_research01", "interim_transition"), refs=[{**ref, "media_type": "text/html"}])
         before, audits = self.snapshot()
         self.assertRejected(self.router.commit_outcome(second), "payload_invalid", before, audits, "is recorded as")
+
+    def test_an_artifact_recorded_meanwhile_is_held_to_what_was_validated(self) -> None:
+        """Astra 1b review A4: two topics stage the same bytes. This commit
+        validates them as text/html while no artifact row exists; before its
+        transaction, another topic's commit records them. Inside the
+        transaction the recorded metadata is compared again (a row read; no
+        bytes are read or hashed there): recorded as text/plain, this commit
+        is refused and the other stands; recorded as text/html, the same
+        interleaving commits both. Different topics, so no state-revision
+        fence hides the race."""
+        self.to_queued(OTHER)
+        theirs = self.started("inv_other001", "checkpoint", tid=OTHER)
+        for n, (their_media, ours_expected) in enumerate((("text/plain", "rejected"), ("text/html", "committed")), start=1):
+            with self.subTest(their_media):
+                ours_ref = self.artifact(f"identical bytes {n}".encode(), "text/html")
+                their_ref = {**ours_ref, "media_type": their_media}
+                ours = {**empty_outcome("inv_research01", "interim_transition"),
+                        "claims": [{"claim_id": f"clm_ours000{n}", "revision": 1, "text_ref": ours_ref, "load_bearing": False, "required_access_tier": None}]}
+                their_outcome = {**empty_outcome("inv_other001", "interim_transition", topic=OTHER),
+                                 "claims": [{"claim_id": f"clm_their00{n}", "revision": 1, "text_ref": their_ref, "load_bearing": False, "required_access_tier": None}]}
+                their_env = self.envelope(theirs, f"op_theirs000{n}", their_outcome, refs=[their_ref])
+                ours_env = self.envelope(self.grant, f"op_ours00000{n}", ours, refs=[ours_ref])
+                other_router, interleaved = self.make_router(), []
+                router = self.make_router(fault=lambda point: interleaved.append(other_router.commit_outcome(their_env)["status"]) if point == "after_validation" else None)
+                out = router.commit_outcome(ours_env)
+                self.assertEqual(interleaved, ["committed"])
+                self.assertEqual(out["status"], ours_expected, out)
+                self.assertEqual(self.rows("SELECT media_type FROM artifacts WHERE content_hash = ?", ours_ref["content_hash"]), [(their_media,)])
+                self.assertEqual(self.value("SELECT count(*) FROM claims WHERE claim_id = ?", f"clm_ours000{n}"), 1 if ours_expected == "committed" else 0)
+                if ours_expected == "rejected":
+                    self.assertEqual((out["reason"], self.value("SELECT count(*) FROM operation_receipts WHERE operation_id = ?", ours_env["operation_id"])),
+                                     ("payload_invalid", 0))
+                    self.assertIn("recorded meanwhile as 17 bytes of text/plain", out.get("detail", ""))
 
     def test_an_envelope_without_an_operation_id_is_not_answered(self) -> None:
         env = self.final_envelope()

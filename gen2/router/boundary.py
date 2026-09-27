@@ -140,14 +140,19 @@ def check_decision_receipt(doc: dict, spec_document: dict | None, *, invocation_
         raise Refusal("payload_invalid", f"{rid}: its committed action is recorded by {doc['outcome']['commit_operation_id']}, not by this operation (D-2)")
 
 
-def check_screening(assessment: dict, protocol: dict, receipt: dict | None, spec_document: dict | None) -> None:
+def check_screening(assessment: dict, protocol: dict, receipt: dict | None, spec_document: dict | None, admitted: dict) -> None:
     """A10: an assessment's criterion results are the pinned eligibility
     protocol's criteria, each assessed no earlier than its stage allows;
     an exclusion rests on a criterion not met (missing information is
     unknown, never excluded — the protocol's `unknown_not_excluded`); an
     inclusion has none not met. A provider-written assessment is exactly the
-    answer of its screening receipt, about this work, under a spec for this
-    protocol version."""
+    answer of its screening receipt, about this work, under a spec whose
+    protocol context is the committing invocation's admission: its topic,
+    its contract revision and that revision's content hash (`admitted`:
+    {"topic_id", "contract": {"revision", "content_hash"}}), and this
+    protocol version. Qualification makes a provider an authority for one
+    spec; it does not make that spec apply to another contract (C-12, D-1,
+    D-4; Astra 1b review A3)."""
     aid = assessment["assessment_id"]
     criteria = {c["criterion_id"]: c for c in protocol["criteria"]}
     version = protocol["protocol_version"]
@@ -171,7 +176,17 @@ def check_screening(assessment: dict, protocol: dict, receipt: dict | None, spec
     if (receipt["decision_class"] != "screening" or receipt["subject"] != {"kind": "work", "ref": assessment["work_id"]}
             or answer.get("selected_option_id") != assessment["decision"] or receipt["action"] != "commit_reversible_action"):
         raise Refusal("payload_invalid", f"{aid}: the assessment is not its screening receipt's committed answer about this work (A10)")
-    if ((spec_document or {}).get("protocol") or {}).get("eligibility_protocol_version") != version:
+    spec_protocol = (spec_document or {}).get("protocol") or {}
+    if spec_protocol.get("topic_id") != admitted["topic_id"]:
+        raise Refusal("payload_invalid", f"{aid}: its receipt's spec is for topic {spec_protocol.get('topic_id')}, not {admitted['topic_id']} (A10)")
+    contract = spec_protocol.get("contract") or {}
+    if contract.get("revision") != admitted["contract"]["revision"]:
+        raise Refusal("payload_invalid", f"{aid}: its receipt's spec is for contract revision {contract.get('revision')}, "
+                                         f"not the admitted revision {admitted['contract']['revision']} (A10)")
+    if contract.get("content_hash") != admitted["contract"]["content_hash"]:
+        raise Refusal("payload_invalid", f"{aid}: its receipt's spec pins contract hash {contract.get('content_hash')}, "
+                                         f"not the admitted revision's {admitted['contract']['content_hash']} (A10)")
+    if spec_protocol.get("eligibility_protocol_version") != version:
         raise Refusal("payload_invalid", f"{aid}: its receipt's spec is not for eligibility protocol version {version} (A10)")
 
 

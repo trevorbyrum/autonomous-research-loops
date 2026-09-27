@@ -568,13 +568,21 @@ class Router:
         def available(content_hash: str) -> bool:
             return content_hash in staged or self._one("artifacts", {"content_hash": content_hash}) is not None
 
-        for claim in payload["claims"]:
-            text = claim["text_ref"]
-            known = artifacts.get(text["content_hash"]) or self._one("artifacts", {"content_hash": text["content_hash"]})
+        def bind(ref: dict, what: str) -> None:
+            """The one rule for an artifact reference a document embeds (A10;
+            Astra 1b review A4): its bytes are staged with this commit or
+            already recorded, and its size and media type are theirs — the
+            staged declaration (its size checked against the bytes) or the
+            recorded row."""
+            known = artifacts.get(ref["content_hash"]) or self._one("artifacts", {"content_hash": ref["content_hash"]})
             if known is None:
-                raise Refusal("payload_missing", f"{claim['claim_id']}: its text {text['content_hash']} is neither staged with this commit nor recorded")
-            if (known["size_bytes"], known["media_type"]) != (text["size_bytes"], text["media_type"]):
-                raise Refusal("payload_invalid", f"{claim['claim_id']}: its text reference disagrees with the artifact's size or media type")
+                raise Refusal("payload_missing", f"{what} {ref['content_hash']} is neither staged with this commit nor recorded")
+            if (known["size_bytes"], known["media_type"]) != (ref["size_bytes"], ref["media_type"]):
+                raise Refusal("payload_invalid", f"{what}: its reference disagrees with the artifact's size or media type "
+                                                 f"({known['size_bytes']} bytes of {known['media_type']})")
+
+        for claim in payload["claims"]:
+            bind(claim["text_ref"], f"{claim['claim_id']}: its text")
         for doc in payload["verification_receipts"]:
             boundary.check_verification_receipt(doc, inv["invocation_id"], env["capability_id"], inv["topic_id"])
             if doc["extraction"]["method"] == "canonical_bytes" and not available(doc["obtained_content_hash"]):
@@ -587,9 +595,11 @@ class Router:
             specs[doc["decision_receipt_id"]] = None if spec is None else spec["document"]
             boundary.check_decision_receipt(doc, specs[doc["decision_receipt_id"]], invocation_id=inv["invocation_id"], topic_id=inv["topic_id"],
                                             operation_id=env["operation_id"], qualifications=self._qualifications)
-            digest = doc["provider_response"]["raw_response_digest"]
-            if digest is not None and not available(digest):
-                raise Refusal("payload_missing", f"{doc['decision_receipt_id']}: its raw response {digest} is not staged (D-1)")
+            response = doc["provider_response"]
+            if response["raw_response_artifact"] is not None:  # D-1: response bytes are retained, and the reference is to them
+                if response["raw_response_digest"] != response["raw_response_artifact"]["content_hash"]:
+                    raise Refusal("payload_invalid", f"{doc['decision_receipt_id']}: its raw response digest is not its raw response artifact's hash")
+                bind(response["raw_response_artifact"], f"{doc['decision_receipt_id']}: its raw response")
             hold = doc["outcome"]["hold_id"]
             if hold is not None and hold not in hold_ids and self._one("holds", {"hold_id": hold}) is None:
                 raise Refusal("payload_invalid", f"{doc['decision_receipt_id']}: its hold {hold} is neither created here nor recorded")
@@ -598,9 +608,10 @@ class Router:
         if payload["screening_assessments"]:
             contract = self._one("contract_revisions", {"topic_id": inv["topic_id"], "revision": inv["contract_revision"]})
             protocol = contract["document"]["eligibility_protocol"]
+            admitted = {"topic_id": inv["topic_id"], "contract": {"revision": inv["contract_revision"], "content_hash": contract["content_hash"]}}
             for assessment in payload["screening_assessments"]:
                 rid = assessment["decision_receipt_id"]
-                boundary.check_screening(assessment, protocol, receipts.get(rid), specs.get(rid))
+                boundary.check_screening(assessment, protocol, receipts.get(rid), specs.get(rid), admitted)
         manifests = []
         for manifest in payload["exports"]:
             bundle_hash = manifest["bundle"]["content_hash"]
@@ -644,6 +655,10 @@ class Router:
                 raise Refusal("invocation_state_invalid", f"a final outcome commits the result staged by a result_ready invocation ({inv['state']})")
         elif inv["state"] != "running":
             raise Refusal("invocation_state_invalid", f"an interim transition is committed while running, not {inv['state']}")
+        for content_hash, ref in checked["artifacts"].items():  # recorded since validation, by another commit? then as validated (A10; Astra 1b review A4)
+            stored = self._one("artifacts", {"content_hash": content_hash})
+            if stored is not None and (stored["size_bytes"], stored["media_type"]) != (ref["size_bytes"], ref["media_type"]):
+                raise Refusal("payload_invalid", f"{content_hash} was recorded meanwhile as {stored['size_bytes']} bytes of {stored['media_type']} (A10)")
         self._fault("in_transaction:fenced")
 
         # effects, decided before the receipt so the receipt records them all
