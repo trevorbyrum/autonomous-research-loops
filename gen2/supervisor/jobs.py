@@ -40,11 +40,13 @@ import fcntl
 import json
 import os
 import signal
+import struct
 import subprocess
 import time
 from pathlib import Path
 
 PROC = Path("/proc")
+FLOCK = "hhqqi4x"  # struct flock on Linux: l_type, l_whence, l_start, l_len, l_pid (jobshim.py takes the job's lock with the same layout)
 
 
 def boot_id() -> str:
@@ -135,15 +137,17 @@ class Job:
             raise
 
     def _lock_free(self) -> bool:
-        """True if no launcher holds the job's lock (taking and dropping it)."""
+        """True if no launcher holds the job's lock. The lock is asked about
+        (F_OFD_GETLK), never taken: a probe that took it, however briefly,
+        would make a launcher locking at that moment believe another launcher
+        of this job is alive, and exit without starting (task 1c-repair C2:
+        found as an intermittent never-started job under load)."""
         fd = os.open(self.dir / "lock", os.O_RDWR | os.O_CREAT, 0o600)
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            return False
+            answer = fcntl.fcntl(fd, fcntl.F_OFD_GETLK, struct.pack(FLOCK, fcntl.F_WRLCK, os.SEEK_SET, 0, 0, 0))
         finally:
-            os.close(fd)  # closing drops a lock taken here
-        return True
+            os.close(fd)
+        return struct.unpack(FLOCK, answer)[0] == fcntl.F_UNLCK
 
     def lookup(self) -> dict:
         """What this job is, from its handle alone (idempotent; writes

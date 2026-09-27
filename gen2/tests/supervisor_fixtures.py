@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import signal
 import sqlite3
 import sys
@@ -37,6 +38,8 @@ from gen2.tests import children, store_fixtures
 from gen2.tests import router_fixtures as rf
 
 KINDS = ("research_pass", "discovery", "delegate", "verification", "checkpoint")
+ARTIFACTS = "GEN2_TEST_ARTIFACTS"  # where a failed supervisor test's temporary tree is kept (default <tmp>/gen2-test-artifacts)
+JOB_RECORDS = ("order.json", "spawn.json", "identity.json", "exit.json", "abandoned", "journal.json", "launcher.log", "executor.log")
 FAST = Policy(identity_grace_s=10.0, start_grace_s=1.0, term_grace_s=0.5, kill_grace_s=5.0, poll_s=0.01)
 DEADLINE = "2026-09-27T12:00:00Z"   # the test's clock starts at 10:00 and moves only when told
 AFTER_DEADLINE = "2026-09-27T12:00:01Z"
@@ -91,6 +94,45 @@ class Unreachable:
 class SupervisedTestCase(rf.RouterTestCase):
     POLICY = FAST
 
+    def run(self, result=None):
+        """Run the test, noting whether it fails (an assertion, an error or a
+        failing subtest), so tearDown can keep the evidence: an intermittent
+        failure must carry its own diagnosis (task 1c-repair C2)."""
+        self._failed: list[str] = []
+        if result is None:
+            return super().run(result)
+        hooks = ("addFailure", "addError", "addSubTest")
+        for name in hooks:
+            def recording(*args, _original=getattr(result, name), _name=name):
+                if _name != "addSubTest" or args[-1] is not None:  # addSubTest(test, subtest, None) is a passing subtest
+                    self._failed.append(_name)
+                return _original(*args)
+            setattr(result, name, recording)
+        try:
+            return super().run(result)
+        finally:
+            for name in hooks:
+                result.__dict__.pop(name, None)
+
+    def keep_evidence(self) -> None:
+        """Print what this test's jobs left — each job's records and logs, the
+        exit status of every launcher its supervisors started, every child
+        supervisor's output — and keep its whole temporary tree."""
+        base = Path(os.environ.get(ARTIFACTS) or Path(tempfile.gettempdir()) / "gen2-test-artifacts")
+        dest = base / f"{self.id()}-{os.getpid()}-{time.time_ns()}"
+        special = lambda folder, names: [n for n in names if not (os.path.islink(os.path.join(folder, n)) or os.path.isdir(os.path.join(folder, n))
+                                                                  or os.path.isfile(os.path.join(folder, n)))]  # a FIFO would block the copy
+        shutil.copytree(self.root, dest, symlinks=True, ignore=special)
+        lines = [f"=== evidence of the failure of {self.id()}, kept at {dest}"]
+        for supervisor in getattr(self, "_supervisors", []):
+            lines += [f"launcher {handle}: pid {popen.pid}, exit status {popen.poll()}" for handle, popen in supervisor._children.items()]
+        lines += [f"child {run}" for run in getattr(self, "child_runs", [])]
+        for job in sorted((self.root / "jobs").glob("*")):
+            for name in JOB_RECORDS:
+                if (job / name).is_file():
+                    lines.append(f"{job.name}/{name}: {(job / name).read_text(errors='replace')[-4000:]}")
+        print("\n".join(lines), file=sys.stderr)
+
     def setUp(self) -> None:  # not the in-memory setUp: a durable store, the real spool
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name)
@@ -107,9 +149,12 @@ class SupervisedTestCase(rf.RouterTestCase):
         self.to_queued()
         self._baseline = self.state(exclude=())  # the world before any job: ended() reports every other table that changed since
         self._supervisors: list[Supervisor] = []  # every supervisor a test made, so tearDown reaps every launcher it started
+        self.child_runs: list[tuple] = []  # (what, exit status, stdout, stderr) of every child supervisor the test ran
         self.supervisor = self.make_supervisor()
 
     def tearDown(self) -> None:
+        if getattr(self, "_failed", None):
+            self.keep_evidence()
         survivors = self.end_every_process()
         self.store.close()
         self.db.close()

@@ -2715,6 +2715,10 @@ MUTATIONS: list[Mutation] = [
     Mutation("1C-sup-cancelled-exit-unconfirmed", "1c-A2", "a cancellation of work that already exited is reconciled without confirming its group",
              (SCD + "test_cancellation_after_an_uncertain_spawn_of_work_that_already_exited", SCP + "test_cancellation_after_an_uncertain_spawn_of_work_that_already_exited"),
              target=SPV, old='            if cancel and observation["termination"] is None:\n', new='            if False:\n'),
+    # C2 (found intermittent): a lookup asks about the launcher's lock and never takes it.
+    Mutation("1C-jobs-probe-takes-the-lock", "1c-C2", "a lookup probes the launcher's lock by taking it (a launcher locking meanwhile gives up)",
+             (SJ + "LockProbeTest.test_a_lookup_never_holds_the_lock_a_launcher_needs", SJ + "LookupTest.test_each_verdict_from_the_facts_it_names"),
+             target=JBS, old="fcntl.fcntl(fd, fcntl.F_OFD_GETLK,", new="fcntl.fcntl(fd, fcntl.F_OFD_SETLK,"),
     # A9: the local deadline ends a live group whether or not its launcher survives, with no router response.
     Mutation("1C-sup-vanished-group-outlives-deadline", "1c-A9", "a group whose launcher vanished outlives its deadline while the router is away",
              (SLR + "test_the_deadline_ends_a_group_whose_launcher_vanished_while_the_router_is_away",

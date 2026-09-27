@@ -64,6 +64,7 @@ class CrashFaults:
             self.prepare(self.KIND, lease_expires)
             self.supervisor.prepare(self.order(self.KIND, steps, lease_expires=lease_expires, **({"deadline": deadline} if deadline else {})))
         child = children.python(["-m", "gen2.tests.supervisor_child", str(self.root), MAIN, point, clock], capture_output=True, text=True, timeout=120)
+        self.child_runs.append((point, child.returncode, child.stdout, child.stderr))
         self.assertEqual(child.returncode, 137, f"the child did not die at {point}: {child.stdout} {child.stderr}")
 
     def restart(self) -> dict:

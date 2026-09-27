@@ -113,6 +113,7 @@ class ParentEnds:
         self.wait_for_file("exit.json", PARENT)
         child = children.python(["-m", "gen2.tests.supervisor_child", str(self.root), PARENT, "collected", "2026-09-27T10:30:00Z"],
                                 capture_output=True, text=True, timeout=120)
+        self.child_runs.append(("collected", child.returncode, child.stdout, child.stderr))
         self.assertEqual(child.returncode, 137, f"the child did not die at collected: {child.stdout} {child.stderr}")
         self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN), "running")
         self.clock.set("2026-09-27T11:00:00Z")

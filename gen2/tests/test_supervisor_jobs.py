@@ -26,11 +26,14 @@ import fcntl
 import json
 import os
 import signal
+import struct
+import subprocess
 import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from gen2.supervisor import jobs
 from gen2.tests import children
@@ -109,7 +112,7 @@ class LookupTest(JobTestCase):
         self.job.write("spawn.json", {"attempts": 1, "failed": 0})
         self.assertEqual(self.job.lookup()["verdict"], "unstarted")  # a start recorded, no launcher, no identity
         lock = os.open(self.job.dir / "lock", os.O_RDWR | os.O_CREAT, 0o600)
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        fcntl.fcntl(lock, fcntl.F_OFD_SETLK, struct.pack(jobs.FLOCK, fcntl.F_WRLCK, os.SEEK_SET, 0, 0, 0))  # held as a launcher holds it
         try:
             self.assertEqual(self.job.lookup()["verdict"], "starting")  # a launcher holds the lock, identity not yet written
         finally:
@@ -147,7 +150,7 @@ class AbandonTest(JobTestCase):
         self.prepare([{"op": "hang"}])
         self.job.write("spawn.json", {"attempts": 1, "failed": 0})
         lock = os.open(self.job.dir / "lock", os.O_RDWR | os.O_CREAT, 0o600)
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        fcntl.fcntl(lock, fcntl.F_OFD_SETLK, struct.pack(jobs.FLOCK, fcntl.F_WRLCK, os.SEEK_SET, 0, 0, 0))  # held as a launcher holds it
         try:
             self.assertFalse(self.job.abandon())  # a launcher holds the lock: it is starting
         finally:
@@ -175,6 +178,35 @@ class AbandonTest(JobTestCase):
         (self.job.scratch / "gate").write_text("open")
         self.wait(lambda: self.popens[-1].poll() is not None)
         self.assertFalse(self.job.abandon())
+
+
+class LockProbeTest(JobTestCase):
+    def test_a_lookup_never_holds_the_lock_a_launcher_needs(self) -> None:
+        """Task 1c-repair C2 (found intermittent: a delegate's first advance
+        ended failed, never started, in test_supervisor_delegates under
+        load). A lookup of a job whose start is recorded but whose identity
+        is not probes the launcher's lock, and the supervisor polls lookup
+        while it waits for the identity. A probe that takes the lock, however
+        briefly, makes a launcher locking inside that window take it for a
+        live launcher of the same job: it exits 75 without an identity, and
+        the job is settled as never started. The probe must only ask.
+        Deterministic: a real launcher is started, and waited for, inside
+        the probe (at the moment the probe closes its descriptor)."""
+        self.prepare([{"op": "write", "name": "ran", "text": "yes"}])
+        self.job.write("spawn.json", {"attempts": 1, "failed": 0})
+        launched, close = [], os.close
+
+        def launch_inside_the_probe(fd: int) -> None:
+            if not launched:  # the lookup's first close is its probe's; the launch's own closes pass straight through
+                launched.append(None)
+                launched[0] = subprocess.run([sys.executable, str(children.path("gen2/supervisor/jobshim.py")), str(self.job.dir)], timeout=60).returncode
+            close(fd)
+        with mock.patch.object(jobs.os, "close", launch_inside_the_probe):
+            self.job.lookup()
+        self.assertEqual(launched, [0])  # 75: it found the lock held by the probe
+        self.assertIsNotNone(self.job.read("identity.json"))
+        self.assertEqual(self.job.read("exit.json"), {"code": 0, "signal": None})
+        self.assertTrue((self.job.scratch / "ran").exists())
 
 
 class TerminateTest(JobTestCase):

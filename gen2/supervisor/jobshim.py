@@ -7,8 +7,10 @@ outside any harness's child lifetime).
 The supervisor starts this in a new session, so the session is the job's
 execution group: the executor and every descendant that does not leave the
 session belong to it. In order, and only in this order:
-  1. take the job's lock (held for this process's life: "a launcher is
-     alive" is "the lock is held");
+  1. take the job's lock, an open-file-description write lock on `lock`
+     held for this process's life: "a launcher is alive" is "the lock is
+     held" (a lookup only asks whether it is held, F_OFD_GETLK, and never
+     takes it, so no lookup can make a launcher give up);
   2. give up if the supervisor has abandoned the job (it looked the job up,
      found no launcher and no identity, and recorded that the executor never
      started — it wrote `abandoned` before taking the lock itself, so a
@@ -23,12 +25,16 @@ free lock means it never did.
 """
 from __future__ import annotations
 
+import errno
 import fcntl
 import json
 import os
+import struct
 import subprocess
 import sys
 from pathlib import Path
+
+FLOCK = "hhqqi4x"  # struct flock on Linux (jobs.py asks about this lock with the same layout)
 
 
 def starttime(pid: int) -> int:
@@ -55,9 +61,11 @@ def main(argv: list[str]) -> int:
     job = Path(argv[1])
     lock = os.open(job / "lock", os.O_RDWR | os.O_CREAT, 0o600)
     try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        return 75  # another launcher of this job is alive
+        fcntl.fcntl(lock, fcntl.F_OFD_SETLK, struct.pack(FLOCK, fcntl.F_WRLCK, os.SEEK_SET, 0, 0, 0))
+    except OSError as exc:
+        if exc.errno in (errno.EAGAIN, errno.EACCES):
+            return 75  # another launcher of this job is alive
+        raise
     if (job / "abandoned").exists():
         return 0
     order = json.loads((job / "order.json").read_text(encoding="utf-8"))
