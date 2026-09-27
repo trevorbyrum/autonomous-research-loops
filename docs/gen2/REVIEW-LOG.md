@@ -376,3 +376,23 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-1c-repair-astra-
 - B: the bounded-retry and positive-control claims are overstated, and the 7-minute runtime is one recorded run, not a dependable figure. Observed runs: 434, 737 and 1,219 s.
 
 No operator decision needed. **Routed:** `docs/gen2/tasks/1c-repair-2.md`.
+
+## 2026-09-27: 1c-repair-2 re-review (Astra, xhigh). BLOCK, narrow
+Full report: `~/work/research-loops-public/private/reviews/gen2-1c-repair-2-astra-review-20260927.md`.
+
+**Independent verification:** `make gen2-check` exit 0, 970 tests, 1054/1054 mutants.
+
+**CLOSED:**
+- A5-R: original 8/8 regression passes, plus an extended delegate-deadline regression 8/8.
+- C5.
+- Both new budgets: 13 policy probes across all kinds and all six immediate-stop reasons.
+
+**ACCEPTED:** the collected-end cleanup gap (descendants never confirmed gone). It stalls with a visible incident that needs an operator, which is acceptable under L-7/RG-3.
+
+**Remaining:**
+- BLOCK 1 (L-6/RG-3): a recursive `_grant()` re-claims a parent stalled on an incident. That is a third call path bypassing the stall gate, after A5 and A5-R. Reproduced 4/4 with 12 extra calls each; the deadline gets renewed.
+- BLOCK 2 (C4): the tracer credits enclosing branch conditions, so controls can pass without executing the changed guard (3 examples). Astra also built passing controls for 3 of the 9 "no control possible" mutants.
+
+**Orchestrator routing decision:** this is the third path of the same kind, so 1c-repair-3 closes the class structurally. The gate goes at the router-call chokepoint, and an open incident's deadline becomes write-once. No per-site patch.
+
+No operator decision needed.
