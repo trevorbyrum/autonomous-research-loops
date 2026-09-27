@@ -114,13 +114,25 @@ class Lifecycle:
             raise Refusal("evidence_refused", f"{evidence['content_hash']} is recorded as {stored['size_bytes']} bytes of {stored['media_type']}")
 
     # -- capacity and holds --------------------------------------------------
+    def _require_delegates_ended(self, inv: dict) -> None:
+        """A non-delegate's lease is its delegates' too (L-8): it is released
+        only once every delegate admitted under it has ended (committed,
+        failed or cancelled) — the parent's own descendant check cannot see a
+        delegate, which runs in its own supervisor-owned session (L-7; Astra
+        1c review A3)."""
+        live = sorted(d["invocation_id"] for d in self._store.select("invocations", {"parent_invocation_id": inv["invocation_id"]})
+                      if d["state"] not in ("committed", "failed", "cancelled"))
+        if live:
+            raise Refusal("delegates_live", f"{inv['invocation_id']}'s delegates {', '.join(live)} have not ended; its lease is theirs too (L-7, L-8)")
+
     def _release_capacity(self, inv: dict, now: str, reason: str) -> None:
         """A failed or cancelled non-delegate releases its lease (a delegate
         runs under its parent's); a research lease returns an active topic to
         the queue. Called only once the end's descendant handling is
-        confirmed (L-7)."""
+        confirmed (L-7), and refused while a delegate still runs under it."""
         if inv["kind"] == "delegate":
             return
+        self._require_delegates_ended(inv)
         lease = self._one("leases", {"lease_id": inv["lease_id"]})
         if lease["released_at"] is None:
             self._store.update("leases", {"lease_id": lease["lease_id"]}, {"released_at": now, "release_reason": reason})

@@ -98,6 +98,45 @@ class FailureTest(LifecycleTestCase):
         self.assertEqual(self.lease_row(), (0, None))
         self.assertEqual(self.transition("failed", failure_class="exit_nonzero", end_evidence_ref=self.evidence(self.grant))["status"], "recorded")
 
+    def test_a_parents_lease_is_not_released_while_a_delegate_is_live(self) -> None:
+        """The parent's lease is its delegates' too (L-8); a live delegate
+        runs in its own session, which the parent's evidence cannot account
+        for (L-7; Astra 1c review A3). Each releasing end of the parent — a
+        failure, a cancellation, a terminal reconciliation, the final commit
+        — is refused on its own while the delegate is live, with every table
+        unchanged; once the delegate has ended, the same end is accepted."""
+        delegate = self.started("inv_deleg001", "delegate", parent=self.grant)
+        before = self.state(exclude=())
+        failure = self.evidence(self.grant, ("exit_nonzero",))
+        self.refused(self.transition("failed", failure_class="exit_nonzero", end_evidence_ref=failure), "delegates_live", before, "inv_deleg001")
+        env = self.envelope(self.grant, "op_parentfinal", empty_outcome("inv_research01"))
+        self.ready(self.grant, env["payload_digest"])
+        env["expected_state_revision"] = self.state_revision()
+        before = self.state()
+        response = self.router.commit_outcome(env)
+        self.assertEqual((response["status"], response["reason"]), ("rejected", "invocation_state_invalid"), response)
+        self.assertIn("inv_deleg001", response["detail"])
+        self.assertEqual(self.state(), before)  # the rejection is audited, nothing else changes
+        self.assertEqual(self.lease_row(), (0, None))
+        self.assertEqual(self.transition("failed", delegate, failure_class="exit_nonzero", end_evidence_ref=self.evidence(delegate))["status"], "recorded")
+        self.assertEqual(self.router.commit_outcome(env)["status"], "committed")
+        self.assertEqual(self.lease_row(), (1, "final_outcome"))
+
+    def test_a_parents_cancellation_or_reconciliation_waits_for_its_delegates(self) -> None:
+        delegate = self.started("inv_deleg001", "delegate", parent=self.grant)
+        self.router.request_cancel({"invocation_id": "inv_research01", "requested_by": "operator", "reason": "stop"})
+        termination = self.evidence(self.grant, (), method="execution_group_termination", termination={"reason": "cancellation"})
+        before = self.state(exclude=())
+        self.refused(self.transition("cancelled", end_evidence_ref=termination), "delegates_live", before, "inv_deleg001")
+        self.assertEqual(self.transition("outcome_unknown", unknown_episode=1, unknown_cause="contact_lost")["status"], "recorded")
+        before = self.state(exclude=())
+        self.refused(self.reconcile("terminated_group", termination), "delegates_live", before, "inv_deleg001")
+        self.router.request_cancel({"invocation_id": "inv_deleg001", "requested_by": "operator", "reason": "stop"})
+        ended = self.evidence(delegate, (), method="execution_group_termination", termination={"reason": "cancellation"})
+        self.assertEqual(self.transition("cancelled", delegate, end_evidence_ref=ended)["status"], "recorded")
+        self.assertEqual(self.reconcile("terminated_group", termination)["status"], "recorded")
+        self.assertEqual(self.lease_row(), (1, "cancelled"))
+
     def test_a_delegate_failure_releases_nothing(self) -> None:
         delegate = self.started("inv_deleg001", "delegate", parent=self.grant)
         self.assertEqual(self.transition("failed", delegate, failure_class="exit_nonzero", end_evidence_ref=self.evidence(delegate))["status"], "recorded")

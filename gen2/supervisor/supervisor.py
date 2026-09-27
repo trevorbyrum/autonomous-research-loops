@@ -385,6 +385,39 @@ class Supervisor:
                 "result_ready": self._result_ready, "outcome_unknown": self._unknown}[state]
         return step(job, order, journal, grant, status)
 
+    def _settle_delegates(self, order: dict) -> None:
+        """A parent's lease is its delegates' too (L-8), and a delegate runs in
+        its own supervisor-owned session, which the parent's descendant check
+        cannot see. So before anything that releases a parent's capacity (a
+        failure, a cancellation, a terminal reconciliation, the final commit)
+        every delegate job of it held here is ended — its cancellation
+        requested, its group terminated, or its already staged result
+        delivered — and the router confirms it ended (L-7; Astra 1c review A3).
+        Until then the parent waits; the router refuses the release anyway."""
+        if order["kind"] == "delegate":
+            return
+        pending = []
+        for path in sorted(self.jobs_root.iterdir()):
+            delegate = jobs.Job(self.jobs_root, path.name)
+            dorder = delegate.read("order.json")
+            if dorder is None or dorder.get("parent_invocation_id") != order["invocation_id"]:
+                continue
+            djournal = self._journal(delegate)
+            if djournal.get("settled"):
+                continue
+            try:  # its capability: the grant kept, or replayed (a claim lost in a crash), or a fresh claim, cancelled below at once
+                grant = self._grant(delegate, dorder, djournal)
+                status = self._status(delegate, djournal, grant)
+                if status["state"] not in (*TERMINAL, "result_ready") and status["cancel_requested"] is None:
+                    self._call(delegate, djournal, "request_cancel", {"invocation_id": grant["invocation_id"], "requested_by": "supervisor",
+                                                                      "reason": f"its parent {order['invocation_id']} has ended", "capability_id": grant["capability_id"]})
+            except Waiting:
+                pass
+            if self.advance(dorder["invocation_id"]) not in (*TERMINAL, "not_admitted"):
+                pending.append(dorder["invocation_id"])
+        if pending:
+            raise Waiting("delegates_pending")
+
     def _cancel_self(self, job: jobs.Job, journal: dict, grant: dict, reason: str) -> str:
         """Admitted work this supervisor may not launch is cancelled, by the
         supervisor, under its capability (nothing was spawned, L-2)."""
@@ -464,6 +497,7 @@ class Supervisor:
         return self._end(job, order, journal, grant, "failed", self._unrun("never_started", "the deadline passed before the launcher started"), "job_handle_lookup")
 
     def _end(self, job, order, journal, grant, to_state: str, observation: dict, method: str) -> str:
+        self._settle_delegates(order)
         record = self._record(order, method, observation)
         facts = {"end_evidence_ref": record["content_hash"]}
         if to_state == "failed":
@@ -487,6 +521,8 @@ class Supervisor:
         if observation["descendants"]["handling"] == "unconfirmed":  # capacity is not released on an unconfirmed group (L-7)
             return self._enter_unknown(job, order, journal, grant, status, "termination_unconfirmed")
         facts = {"end_evidence_ref": collected["record"]["content_hash"]}
+        if status["cancel_requested"] or observation["findings"]:
+            self._settle_delegates(order)
         if status["cancel_requested"]:
             response = self._transition(job, journal, grant, "cancelled", **facts)
         elif observation["findings"]:
@@ -509,6 +545,7 @@ class Supervisor:
             envelope = self._envelope(order, grant, collected, status["state_revision"])
             journal["envelope"] = envelope
             self._save(job, journal)
+        self._settle_delegates(order)
         response = self._call(job, journal, "commit_outcome", envelope)
         self._fault("commit_replied")
         if response["status"] in ("committed", "replayed"):
@@ -593,6 +630,8 @@ class Supervisor:
 
     def _reconcile(self, job, order, journal, grant, status, resolution: str, method: str, observation: dict, *, identity: dict | None = None,
                    digest: str | None = None) -> str:
+        if resolution in ("confirmed_failed", "terminated_group"):
+            self._settle_delegates(order)
         record = self._record(order, method, observation)
         request = {"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"], "unknown_episode": status["unknown_episode"],
                    "resolution": resolution, "method": method, "evidence_ref": record["content_hash"]}

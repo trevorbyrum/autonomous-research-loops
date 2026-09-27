@@ -159,6 +159,8 @@ SLR = "test_supervisor_lifecycle.ResearchPassLifecycleTest."
 SLD = "test_supervisor_lifecycle.DelegateLifecycleTest."
 SCD = "test_supervisor_crash.DiscoveryCrashTest."
 SCP = "test_supervisor_crash.DelegateCrashTest."
+SDR = "test_supervisor_delegates.ResearchPassParentTest."
+SDD = "test_supervisor_delegates.DiscoveryParentTest."
 BND = "gen2/router/boundary.py"
 RECEIPT = "gen2/schema/export-delivery-receipt.schema.json"
 MANIFEST = "gen2/schema/export-manifest.schema.json"
@@ -2712,6 +2714,40 @@ MUTATIONS: list[Mutation] = [
     Mutation("1C-sup-cancelled-exit-unconfirmed", "1c-A2", "a cancellation of work that already exited is reconciled without confirming its group",
              (SCD + "test_cancellation_after_an_uncertain_spawn_of_work_that_already_exited", SCP + "test_cancellation_after_an_uncertain_spawn_of_work_that_already_exited"),
              target=SPV, old='            if cancel and observation["termination"] is None:\n', new='            if False:\n'),
+    # A3: a parent's lease is its delegates' too; it is released only once every delegate has ended.
+    Mutation("1C-router-parent-release-ignores-delegates", "1c-A3", "a parent's failure, cancellation or terminal reconciliation releases the lease a live delegate runs under",
+             (LC + "FailureTest.test_a_parents_lease_is_not_released_while_a_delegate_is_live",
+              LC + "FailureTest.test_a_parents_cancellation_or_reconciliation_waits_for_its_delegates"), target=LIF,
+             old='        self._require_delegates_ended(inv)\n        lease = self._one("leases", {"lease_id": inv["lease_id"]})',
+             new='        lease = self._one("leases", {"lease_id": inv["lease_id"]})'),
+    Mutation("1C-router-final-commit-ignores-delegates", "1c-A3", "a parent's final commit releases the lease a live delegate runs under",
+             (LC + "FailureTest.test_a_parents_lease_is_not_released_while_a_delegate_is_live",), target=SVC,
+             old='            if inv["kind"] != "delegate":  # the lease a final outcome releases is its delegates\' too (L-7, L-8; task 1c-repair A3)\n',
+             new='            if False:\n'),
+    Mutation("1C-router-ended-delegate-counts-live", "1c-A3", "a failed or cancelled delegate still holds its parent's lease (over-restricts)",
+             (LC + "FailureTest.test_a_parents_lease_is_not_released_while_a_delegate_is_live",
+              LC + "FailureTest.test_a_parents_cancellation_or_reconciliation_waits_for_its_delegates"), target=LIF,
+             old='if d["state"] not in ("committed", "failed", "cancelled"))', new='if d["state"] != "committed")'),
+    *(Mutation(f"1C-sup-{key}", "1c-A3", desc, tuple(p + k for k in killers for p in (SDR, SDD)), target=SPV, old=old, new=new)
+      for key, desc, killers, old, new in (
+          ("parent-commits-over-delegates", "a parent's final commit is sent while its delegate still runs",
+           ("test_a_parent_that_completes", "test_a_parent_whose_supervisor_restarts"),
+           '        self._settle_delegates(order)\n        response = self._call(job, journal, "commit_outcome", envelope)',
+           '        response = self._call(job, journal, "commit_outcome", envelope)'),
+          ("parent-ends-over-delegates", "a parent's failure or cancellation is recorded while its delegate still runs",
+           ("test_a_parent_that_fails", "test_a_parent_that_is_cancelled"),
+           '        if status["cancel_requested"] or observation["findings"]:\n            self._settle_delegates(order)\n', ''),
+          ("parent-reconciles-over-delegates", "a parent's terminal reconciliation is sent while its delegate still runs",
+           ("test_a_parent_reconciled_after_its_launcher_vanished",),
+           '        if resolution in ("confirmed_failed", "terminated_group"):\n            self._settle_delegates(order)\n', ''),
+          ("parent-unlaunched-end-over-delegates", "a parent that never started ends while its delegate still runs",
+           ("test_a_parent_that_never_started",),
+           '        self._settle_delegates(order)\n        record = self._record(order, method, observation)\n        facts = {"end_evidence_ref": record["content_hash"]}',
+           '        record = self._record(order, method, observation)\n        facts = {"end_evidence_ref": record["content_hash"]}'),
+          ("delegates-not-cancelled", "a parent's end waits on its delegates without asking them to end",
+           ("test_a_parent_that_completes", "test_a_parent_that_fails"),
+           '                if status["state"] not in (*TERMINAL, "result_ready") and status["cancel_requested"] is None:\n                    self._call(delegate',
+           '                if False:\n                    self._call(delegate'))),
 ]
 
 
@@ -3001,7 +3037,7 @@ def _evaluate(m: Mutation) -> str:
 def main(argv: list[str] | None = None) -> int:
     global _FX
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--only", help="run only mutations whose id starts with this prefix")
+    parser.add_argument("--only", help="run only mutations whose id starts with this prefix (several: comma-separated)")
     parser.add_argument("--list", action="store_true", help="print the inventory and exit")
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 1, help="worker processes (default: all cores)")
     parser.add_argument("--no-disk", action="store_true", help="swap modules in memory only; children import the unmutated tree (shows the 1b gap)")
@@ -3023,7 +3059,7 @@ def main(argv: list[str] | None = None) -> int:
     if base.failed or base.errored or not base.testsRun:
         print(f"BASELINE NOT GREEN: failed={sorted(base.failed)} errored={base.errored}", file=sys.stderr)
         return 1
-    selected = [m for m in MUTATIONS if not args.only or m.mid.startswith(args.only)]
+    selected = [m for m in MUTATIONS if not args.only or m.mid.startswith(tuple(args.only.split(",")))]
     for target in sorted({m.target for m in selected if m.target in FILE_TARGETS}):
         clean = Mutation("baseline", "-", "unmutated", tuple(k for m in selected if m.target == target for k in m.killers), target=target, old="", new="")
         res = _run_file_mutation_unmutated(clean)

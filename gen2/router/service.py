@@ -727,6 +727,11 @@ class Router(Lifecycle):
                 raise Refusal("final_outcome_exists", f"{inv['invocation_id']} finalized with {finals[0]['operation_id']}")
             if inv["state"] != "result_ready" or inv["result_payload_digest"] != env["payload_digest"]:
                 raise Refusal("invocation_state_invalid", f"a final outcome commits the result staged by a result_ready invocation ({inv['state']})")
+            if inv["kind"] != "delegate":  # the lease a final outcome releases is its delegates' too (L-7, L-8; task 1c-repair A3)
+                try:
+                    self._require_delegates_ended(inv)
+                except Refusal as refusal:
+                    raise Refusal("invocation_state_invalid", refusal.detail) from None
         elif inv["state"] != "running":
             raise Refusal("invocation_state_invalid", f"an interim transition is committed while running, not {inv['state']}")
         for content_hash, ref in checked["artifacts"].items():  # recorded since validation, by another commit? then as validated (A10; Astra 1b review A4)
