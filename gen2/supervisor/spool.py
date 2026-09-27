@@ -24,7 +24,13 @@ scratch directory relative to a directory descriptor, refusing a symlink
 (O_NOFOLLOW, on the directory and on the file), anything that is not a
 regular file (a FIFO would block, a device is not output), a file with other
 hard links (it may be a file the agent does not own), and anything over the
-size bound; it reads at most bound + 1 bytes.
+size bound; it reads at most bound + 1 bytes. The read must be stable: the
+descriptor's identity, link count, size, modification and change times are
+read before and after it, and any difference — or a read whose length is
+not the size — refuses the file (Astra 1c review A10). By then the job's
+group has been ended (supervisor.py), so a change needs a process outside
+it; a change that leaves size and both times as they were (within one
+file-system timestamp tick of the previous write) is not seen.
 
 Structural limits: the spool is protected by being a directory the station
 owns and agents are never given; nothing here isolates it from another
@@ -90,13 +96,16 @@ def _read_bounded(fd: int, bound: int) -> bytes:
     return b"".join(chunks)
 
 
+STABLE = ("st_dev", "st_ino", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")  # what a stable read keeps unchanged
+
+
 def read_scratch(scratch: str | Path, name: str, bound: int) -> dict:
     """Read the file `name` of a job's scratch directory, as found, without
     following anything. {"status": present | absent | empty | refused, "data",
     "detail"}; refused covers a symlink (on the directory or the file), a
-    non-regular file, a hard-linked file and a file over `bound` (C-9). The
-    agent chose neither path: the scratch directory is the job's, the name
-    the supervisor's."""
+    non-regular file, a hard-linked file, a file over `bound` (C-9) and a
+    file that changed while it was read (A10). The agent chose neither path:
+    the scratch directory is the job's, the name the supervisor's."""
     if not NAME.match(name):
         raise ValueError(f"{name!r} is not one component of a scratch directory")
     try:
@@ -119,10 +128,14 @@ def read_scratch(scratch: str | Path, name: str, bound: int) -> dict:
             if info.st_nlink != 1:
                 return {"status": "refused", "data": None, "detail": f"{name} has {info.st_nlink} links"}
             data = _read_bounded(fd, bound)
+            after = os.fstat(fd)
         finally:
             os.close(fd)
     finally:
         os.close(dir_fd)
+    changed = [field for field in STABLE if getattr(info, field) != getattr(after, field)]
+    if changed or (len(data) <= bound and len(data) != after.st_size):
+        return {"status": "refused", "data": None, "detail": f"{name} changed while it was read ({', '.join(changed) or 'its length'})"}
     if len(data) > bound:
         return {"status": "refused", "data": None, "detail": f"{name} exceeds the {bound}-byte bound"}
     return {"status": "present" if data else "empty", "data": data or None, "detail": None}

@@ -25,7 +25,9 @@ import stat
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from gen2.supervisor import spool as spool_module
 from gen2.supervisor.spool import Spool, SpoolConflict, SpoolFull, read_scratch
 from gen2.tests.router_fixtures import OTHER, TOPIC, RouterTestCase, empty_outcome, jcs
 
@@ -106,6 +108,54 @@ class StageTest(SpoolTestCase):
 
 
 class CollectTest(SpoolTestCase):
+    def collect_changing(self, change) -> dict:
+        """Collect outcome.json while `change` runs on it at the moment the
+        validated descriptor starts to be read (a deterministic race: the
+        checks before the read have passed). The file was last modified long
+        ago, so any modification moves its times."""
+        path = self.scratch / "outcome.json"
+        path.write_bytes(b"original")
+        os.utime(path, ns=(10**18, 10**18))
+        real, done = spool_module._read_bounded, []
+
+        def racing(fd: int, bound: int) -> bytes:
+            if not done:
+                done.append(change(path))
+            return real(fd, bound)
+        with mock.patch.object(spool_module, "_read_bounded", racing):
+            found = self.spool.collect(TOPIC, self.scratch, "outcome.json", "application/json")
+        self.assertEqual(len(done), 1)
+        return found
+
+    def test_a_file_changed_while_it_is_read_is_refused(self) -> None:
+        """Astra 1c review A10: the same inode rewritten (same size) or given
+        a second link after the checks and before the bytes are read is
+        refused, unstaged; the unchanged file, and a renamed scratch
+        directory (the descriptor still names the same file), are read."""
+        def rewrite(path: Path) -> None:
+            with open(path, "r+b") as handle:  # the same inode, the same size
+                handle.write(b"changed!")
+
+        def link(path: Path) -> None:
+            os.link(path, self.root / "elsewhere")
+        for name, change, detail in (("rewritten", rewrite, "st_mtime_ns"), ("linked", link, "st_nlink")):
+            with self.subTest(name):
+                found = self.collect_changing(change)
+                self.assertEqual((found["status"], found["ref"]), ("refused", None))
+                self.assertIn("changed while it was read", found["detail"])
+                self.assertIn(detail, found["detail"])
+                self.assertEqual(self.entries(), [])
+                for leftover in (self.scratch / "outcome.json", self.root / "elsewhere"):
+                    if leftover.exists():
+                        leftover.unlink()
+        found = self.collect_changing(lambda path: None)
+        self.assertEqual((found["status"], found["ref"]["content_hash"]), ("present", sha(b"original")))
+        (self.scratch / "outcome.json").unlink()
+        moved = self.root / "moved-scratch"
+        found = self.collect_changing(lambda path: os.rename(self.scratch, moved))
+        self.assertEqual((found["status"], found["ref"]["content_hash"]), ("present", sha(b"original")))  # descriptor-relative: the opened file
+        os.rename(moved, self.scratch)
+
     def test_a_regular_file_is_staged_as_found(self) -> None:
         (self.scratch / "outcome.json").write_bytes(b'{"ok": 1}')
         found = self.spool.collect(TOPIC, self.scratch, "outcome.json", "application/json")

@@ -2768,6 +2768,13 @@ MUTATIONS: list[Mutation] = [
              (SLR + "test_the_deadline_ends_a_group_whose_launcher_vanished_while_the_router_is_away",
               SLD + "test_the_deadline_ends_a_group_whose_launcher_vanished_while_the_router_is_away"), target=SPV,
              old='(view["verdict"] == "running" or (view["verdict"] == "vanished" and view["members"]))', new='view["verdict"] == "running"'),
+    # A10: a scratch read must be stable (the descriptor unchanged across it); C3: the two guards Astra removed by hand.
+    Mutation("1C-spool-read-unchecked-after", "1c-A10", "a file changed while it is read (rewritten, linked) is staged",
+             (SP + "CollectTest.test_a_file_changed_while_it_is_read_is_refused",), target=SPL,
+             old="    if changed or (len(data) <= bound and len(data) != after.st_size):", new="    if False:"),
+    Mutation("1C-spool-link-count-unrechecked", "1c-A10", "a link added while the file is read is not seen as a link",
+             (SP + "CollectTest.test_a_file_changed_while_it_is_read_is_refused",), target=SPL,
+             old='STABLE = ("st_dev", "st_ino", "st_nlink", ', new='STABLE = ("st_dev", "st_ino", '),
     # A8: a recorded lifecycle fact replays only as the identical, complete request; rechecked under the transaction.
     Mutation("1C-router-reconciliation-compares-columns-only", "1c-A8", "a replayed reconciliation is compared on its four columns (identity and class ignored)",
              (LC + "UnknownTest.test_a_reconciled_episode_replays_only_its_identical_facts", LC + "UnknownTest.test_a_failure_class_is_part_of_the_recorded_facts"),
