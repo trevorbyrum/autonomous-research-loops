@@ -70,7 +70,8 @@ class CrashFaults:
 
     def committed(self, transitions=tuple(CLEAN), **extra) -> dict:
         base = {"state": "committed", "failure_class": None, "evidence": False, "descendants_confirmed": False, "episodes": 0, "transitions": list(transitions),
-                "receipts": 1, "lease_release": released(self.KIND, "final_outcome"), "open_holds": 0, "cleared_holds": 0, "reconciliations": []}
+                "receipts": 1, "lease_release": released(self.KIND, "final_outcome"), "open_holds": 0, "cleared_holds": 0, "reconciliations": [],
+                "other_tables": []}
         return {**base, **extra}
 
     def test_crash_before_the_grant_is_kept(self) -> None:

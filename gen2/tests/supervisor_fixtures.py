@@ -42,6 +42,9 @@ DEADLINE = "2026-09-27T12:00:00Z"   # the test's clock starts at 10:00 and moves
 AFTER_DEADLINE = "2026-09-27T12:00:01Z"
 PARENT = "inv_parent0001"
 MAIN = "inv_subject001"
+# The tables a lifecycle writes. Any other table changing in a fault test is an unexpected write ("other_tables" in ended()).
+LIFECYCLE_TABLES = frozenset({"invocations", "invocation_transitions", "invocation_reconciliations", "leases", "queue_entries", "artifacts",
+                              "operation_receipts", "research_ordinals", "holds", "audit_events"})
 
 
 def outcome_text(invocation_id: str, topic: str = rf.TOPIC) -> str:
@@ -102,6 +105,7 @@ class SupervisedTestCase(rf.RouterTestCase):
             self.x("INSERT INTO queue_entries (topic_id, fleet_id, priority, status, created_at, updated_at) VALUES (?, 'fleet-a', 1, 'awaiting_brief_confirmation', ?, ?)",
                    tid, "2026-09-27T09:00:00Z", "2026-09-27T09:00:00Z")
         self.to_queued()
+        self._baseline = self.state(exclude=())  # the world before any job: ended() reports every other table that changed since
         self._supervisors: list[Supervisor] = []  # every supervisor a test made, so tearDown reaps every launcher it started
         self.supervisor = self.make_supervisor()
 
@@ -195,7 +199,8 @@ class SupervisedTestCase(rf.RouterTestCase):
                 "lease_release": self.rows("SELECT release_reason FROM leases WHERE lease_id = ?", lease_id)[0][0],
                 "open_holds": self.value("SELECT count(*) FROM holds WHERE subject_ref LIKE ? AND cleared_at IS NULL", f"invocation:{inv}#%"),
                 "cleared_holds": self.value("SELECT count(*) FROM holds WHERE subject_ref LIKE ? AND cleared_at IS NOT NULL", f"invocation:{inv}#%"),
-                "reconciliations": [r[0] for r in self.rows("SELECT resolution FROM invocation_reconciliations WHERE invocation_id = ? ORDER BY unknown_episode", inv)]}
+                "reconciliations": [r[0] for r in self.rows("SELECT resolution FROM invocation_reconciliations WHERE invocation_id = ? ORDER BY unknown_episode", inv)],
+                "other_tables": sorted(name for name, rows in self.state(exclude=()).items() if name not in LIFECYCLE_TABLES and rows != self._baseline.get(name))}
 
     def evidence_record(self, inv: str = MAIN) -> dict:
         digest = self.value("SELECT end_evidence_ref FROM invocations WHERE invocation_id = ?", inv)

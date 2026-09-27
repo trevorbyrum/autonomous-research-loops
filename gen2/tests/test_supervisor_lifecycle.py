@@ -67,7 +67,7 @@ class LifecycleFaults:
 
     def expected(self, **fields) -> dict:
         base = {"state": None, "failure_class": None, "evidence": False, "descendants_confirmed": False, "episodes": 0, "transitions": [],
-                "receipts": 0, "lease_release": None, "open_holds": 0, "cleared_holds": 0, "reconciliations": []}
+                "receipts": 0, "lease_release": None, "open_holds": 0, "cleared_holds": 0, "reconciliations": [], "other_tables": []}
         return {**base, **fields}
 
     def failed(self, failure_class: str, *, via=("admitted", "launching", "running", "failed")) -> dict:
