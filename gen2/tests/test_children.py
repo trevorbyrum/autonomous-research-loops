@@ -169,9 +169,10 @@ class KillAttestationTest(unittest.TestCase):
 
 
     def test_every_killer_names_exactly_one_test(self) -> None:
-        """A mutant runs only its declared killers (task 1c-repair runtime):
-        a killer name that is not exactly one test would run nothing, so it
-        stops the run (unresolved_killers). The whole inventory resolves."""
+        """A mutant runs its declared killers and its paired controls, and
+        nothing else (task 1c-repair runtime; 1c-repair-2 C4): a killer name
+        that is not exactly one test would run nothing, so it stops the run
+        (unresolved_killers). The whole inventory resolves."""
         runner = self.runner
         typo = runner.Mutation("X-typo", "t", "a misspelt killer", ("test_children.KillAttestationTest.test_no_such_test",), target="ddl", old="x")
         whole_class = runner.Mutation("X-class", "t", "a class, not a test", ("test_children.KillAttestationTest",), target="ddl", old="x")
