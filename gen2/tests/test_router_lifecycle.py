@@ -252,7 +252,14 @@ class UnknownTest(LifecycleTestCase):
         self.assertEqual(self.rows("SELECT cleared_at IS NOT NULL FROM holds"), [(1,)])
 
     def test_termination_ends_cancelled_only_when_cancellation_was_requested(self) -> None:
-        terminated = dict(method="execution_group_termination", termination={"reason": "reconciliation"}, exit={"code": None, "signal": 9})
+        """A terminated group ends failed with its failure class, or — when a
+        cancellation was requested — cancelled, with none: no failure class is
+        invented for a cancellation (Astra 1c review A2; Q5 ruling). The
+        requests are the supervisor's own shapes (Supervisor._unknown): a
+        timeout's termination with its finding; a cancellation's with no
+        finding. Each mismatch is refused on its own, the store unchanged."""
+        timeout = dict(method="execution_group_termination", termination={"reason": "timeout"}, exit=None, handling="terminated")
+        cancelled = dict(method="execution_group_termination", termination={"reason": "cancellation"}, exit=None, handling="terminated")
         for requested, target in ((False, "failed"), (True, "cancelled")):
             with self.subTest(requested=requested):
                 self.tearDown()
@@ -261,11 +268,17 @@ class UnknownTest(LifecycleTestCase):
                 if requested:
                     self.router.request_cancel({"invocation_id": "inv_research01", "requested_by": "operator", "reason": "stop"})
                 before = self.state(exclude=())
-                self.refused(self.reconcile("terminated_group", self.evidence(self.grant, ("killed",), **{**terminated, "termination": None}), failure_class="killed"),
+                self.refused(self.reconcile("terminated_group", self.evidence(self.grant, ("timeout",), **{**timeout, "termination": None}), failure_class="timeout"),
                              "evidence_refused", before)  # the schema's rule: a group termination records why
-                out = self.reconcile("terminated_group", self.evidence(self.grant, ("killed",), handling="terminated", **terminated), failure_class="killed")
+                if requested:
+                    self.refused(self.reconcile("terminated_group", self.evidence(self.grant, ("timeout",), **timeout), failure_class="timeout"),
+                                 "cancel_requested", before, "no failure class")
+                    out = self.reconcile("terminated_group", self.evidence(self.grant, (), **cancelled))
+                else:
+                    self.refused(self.reconcile("terminated_group", self.evidence(self.grant, (), **cancelled)), "request_invalid", before, "no cancellation")
+                    out = self.reconcile("terminated_group", self.evidence(self.grant, ("timeout",), **timeout), failure_class="timeout")
                 self.assertEqual((out["status"], out["state"]), ("recorded", target))
-                self.assertEqual(self.inv("state", "failure_class"), (target, "killed" if target == "failed" else None))
+                self.assertEqual(self.inv("state", "failure_class"), (target, "timeout" if target == "failed" else None))
                 self.assertEqual(self.lease_row(), (1, target))
 
     def test_an_episode_is_reconciled_only_by_its_own_record(self) -> None:

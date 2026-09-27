@@ -2701,6 +2701,17 @@ MUTATIONS: list[Mutation] = [
               SCD + "test_recovery_starts_nothing_once_the_lease_is_replaced"),
              target=SPV, old='            if refused is not None:  # recorded launch intent is not renewed authority: a recovery or a retried start is checked again',
              new='            if False:'),
+    # A2: a cancellation after an uncertain spawn reconciles through the owned group, with no failure class invented.
+    Mutation("1C-router-terminated-group-class-unbound", "1c-A2", "a terminated group's failure class is not bound to whether a cancellation was requested",
+             (LC + "UnknownTest.test_termination_ends_cancelled_only_when_cancellation_was_requested",), target=LIF,
+             old='        if resolution == "terminated_group" and ("failure_class" in req) != (target == "failed"):\n', new='        if False:\n'),
+    Mutation("1C-router-cancellation-needs-a-class", "1c-A2", "a cancelled group's reconciliation must name a failure class (the supervisor's request is refused)",
+             (LC + "UnknownTest.test_termination_ends_cancelled_only_when_cancellation_was_requested",
+              SCD + "test_cancellation_after_an_uncertain_spawn_ends_the_live_group", SCP + "test_cancellation_after_an_uncertain_spawn_ends_the_live_group"),
+             target=LIF, old='("failure_class" in req) != (target == "failed"):', new='("failure_class" not in req):'),
+    Mutation("1C-sup-cancelled-exit-unconfirmed", "1c-A2", "a cancellation of work that already exited is reconciled without confirming its group",
+             (SCD + "test_cancellation_after_an_uncertain_spawn_of_work_that_already_exited", SCP + "test_cancellation_after_an_uncertain_spawn_of_work_that_already_exited"),
+             target=SPV, old='            if cancel and observation["termination"] is None:\n', new='            if False:\n'),
 ]
 
 

@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import unittest
 
+from gen2.supervisor import jobs
 from gen2.tests import children
 from gen2.tests import router_fixtures as rf
 from gen2.tests.supervisor_fixtures import DEADLINE, MAIN, PARENT, SupervisedTestCase, released, succeed
@@ -140,6 +141,52 @@ class CrashFaults:
         self.assertEqual(self.router.request_cancel({"invocation_id": MAIN, "requested_by": "operator", "reason": "stop"})["status"], "recorded")
         self.assertEqual(self.restart()[MAIN], "cancelled")
         self.unlaunched(released(self.KIND, "cancelled"), by="operator")
+
+    # -- cancellation after an uncertain spawn (L-4, L-7; Astra 1c review A2, Q5 ruling) --------------------
+    # The supervisor dies at the spawn gap; the operator then cancels. The restarted supervisor enters
+    # outcome_unknown and reconciles the episode through the owned group, sending its real request (no
+    # failure class for a cancellation), and the invocation ends cancelled. The record holds what was
+    # found: the observed exit as the launcher recorded it, and how many members were signalled (none,
+    # for an empty group). A second restart replays nothing and changes nothing.
+    def cancelled_after_the_gap(self) -> dict:
+        self.assertEqual(self.router.request_cancel({"invocation_id": MAIN, "requested_by": "operator", "reason": "stop"})["status"], "recorded")
+        self.assertEqual(self.restart()[MAIN], "cancelled")
+        self.assertEqual(self.ended(), {**self.committed(["admitted", "launching", "outcome_unknown", "cancelled"]), "state": "cancelled", "receipts": 0,
+                                        "evidence": True, "descendants_confirmed": True, "episodes": 1, "cleared_holds": 1,
+                                        "lease_release": released(self.KIND, "cancelled"), "reconciliations": ["terminated_group"]})
+        self.assertEqual(self.value("SELECT failure_class FROM invocations WHERE invocation_id = ?", MAIN), None)
+        record = self.evidence_record()
+        before = self.state(exclude=())
+        self.supervisor = self.make_supervisor()
+        self.assertEqual(self.supervisor.recover()[MAIN], "cancelled")
+        self.assertEqual(self.state(exclude=()), before)
+        return record
+
+    def test_cancellation_after_an_uncertain_spawn_ends_the_live_group(self) -> None:
+        self.crash("spawned", HANG)
+        self.wait_for_file("identity.json")
+        identity = self.job_file("identity.json")
+        record = self.cancelled_after_the_gap()
+        self.assertEqual((record["method"], record["termination"], record["descendants"]["handling"], record["findings"]),
+                         ("execution_group_termination", {"reason": "cancellation"}, "terminated", []))
+        self.assertGreaterEqual(record["descendants"]["count"], 2)  # the launcher and its executor, signalled
+        self.assertEqual(jobs.members(identity), [])
+
+    def test_cancellation_after_an_uncertain_spawn_of_work_that_already_exited(self) -> None:
+        self.crash("spawned", succeed())
+        self.wait_for_file("exit.json")
+        record = self.cancelled_after_the_gap()
+        self.assertEqual((record["exit"], record["termination"], record["descendants"], record["findings"]),
+                         ({"code": 0, "signal": None}, {"reason": "cancellation"}, {"handling": "none_found", "count": 0}, []))
+        self.assertIsNotNone(self.spool.read(record["output"]["content_hash"], topic_id=rf.TOPIC))  # the result stays retained, uncommitted
+
+    def test_cancellation_after_a_start_that_never_happened(self) -> None:
+        self.crash("spawning", succeed())
+        record = self.cancelled_after_the_gap()
+        self.assertEqual((record["process"], record["exit"], record["termination"], record["descendants"]),
+                         (None, None, {"reason": "cancellation"}, {"handling": "none_found", "count": 0}))
+        self.assertTrue((self.root / "jobs" / f"job-{MAIN}" / "abandoned").exists())
+        self.assertIsNone(self.job_file("identity.json"))
 
     def test_crash_after_recording_a_start_that_never_happened(self) -> None:
         """The start is recorded, the launcher never ran: the lookup finds no

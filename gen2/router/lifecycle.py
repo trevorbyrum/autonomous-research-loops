@@ -180,9 +180,13 @@ class Lifecycle:
             boundary.require_schema(self._schemas, req, "router-commands#/$defs/reconcile", "request_invalid")
             identity = {k: req.get(k) for k in IDENTITY if k in req}
             wants_identity = req["resolution"] == "found_running"
+            # a failure class is a confirmed failure's, never a found process's or result's; a terminated group carries one
+            # exactly when it ends failed — under a cancellation request it ends cancelled, with none (checked in the
+            # transaction, against the row: Astra 1c review A2)
             if (req["resolution"] == "found_result") != ("result_payload_digest" in req) or bool(identity) != wants_identity \
                     or (wants_identity and set(identity) - {"container_id"} != {"host_id", "boot_id", "start_fingerprint"}) \
-                    or ("failure_class" in req) != (req["resolution"] in ("confirmed_failed", "terminated_group")):
+                    or ("failure_class" in req and req["resolution"] in ("found_running", "found_result")) \
+                    or ("failure_class" not in req and req["resolution"] == "confirmed_failed"):
                 raise Refusal("request_invalid", f"{req['resolution']} carries exactly the facts it resolves to (identity, result digest or failure class)")
             replay = self._recorded_reconciliation(req)  # before any byte: a recorded episode answers from its row (as A5-R)
             if replay is not None:
@@ -217,6 +221,10 @@ class Lifecycle:
         if doc["method"] != req["method"]:
             raise Refusal("evidence_refused", f"the execution record's method is {doc['method']}, not {req['method']}")
         target = RESOLUTION_TARGET.get(resolution) or ("cancelled" if inv["cancel_requested_at"] is not None else "failed")
+        if resolution == "terminated_group" and ("failure_class" in req) != (target == "failed"):
+            if target == "cancelled":  # no failure class is invented for a cancellation (Q5 ruling)
+                raise Refusal("cancel_requested", f"cancellation was requested at {inv['cancel_requested_at']}: the group's end is a cancellation, with no failure class")
+            raise Refusal("request_invalid", "no cancellation was requested: a terminated group ends failed, with its failure class")
         terminal = target in ("failed", "cancelled")
         self._bind_evidence(inv, evidence, failure_class=req.get("failure_class") if target == "failed" else None, terminal=terminal)
         changes = {"state": target, "state_changed_at": now}

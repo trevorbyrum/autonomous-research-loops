@@ -550,9 +550,15 @@ class Supervisor:
             observation = collected["observation"]
             if observation["descendants"]["handling"] == "unconfirmed":
                 raise Waiting("unknown_unresolved")
-            if cancel or collected.get("terminated"):  # the group was ended (or is being ended, under the cancellation)
-                observation = {**observation, "termination": observation["termination"] or {"reason": "cancellation"},
-                               "findings": [] if cancel else observation["findings"]}
+            if cancel and observation["termination"] is None:
+                # a cancellation of work that already ended: the owned group is confirmed empty by the same idempotent
+                # operation that ends a live one — an empty group is signalled nothing (descendants none_found) — and the
+                # observed exit is kept as it was: nothing says the cancellation caused it (Q5 ruling; Astra 1c review A2)
+                ended = job.terminate(view["identity"], term_grace=self.policy.term_grace_s, kill_grace=self.policy.kill_grace_s, reap=self._reap)
+                if not ended["confirmed"]:
+                    raise Waiting("unknown_unresolved")
+                observation = {**observation, "termination": {"reason": "cancellation"}, "descendants": self._handled(ended)}
+            if cancel or collected.get("terminated"):  # the group was ended by the supervisor: its end is a cancellation if one was asked for
                 return self._reconcile(job, order, journal, grant, status, "terminated_group", "execution_group_termination", observation)
             if observation["findings"]:
                 return self._reconcile(job, order, journal, grant, status, "confirmed_failed", "job_handle_lookup", observation)
@@ -562,9 +568,10 @@ class Supervisor:
         if view["verdict"] in ("not_started", "unstarted"):
             if view["verdict"] == "unstarted" and not job.abandon():
                 raise Waiting("unknown_unresolved")  # a launcher got the lock first: its identity is next
-            if cancel:
+            if cancel:  # the group is confirmed empty: no launcher ever ran, and the abandoned mark keeps a late one from starting
                 return self._reconcile(job, order, journal, grant, status, "terminated_group", "execution_group_termination",
-                                       {**self._unrun(None, "cancelled; the launcher never started"), "termination": {"reason": "cancellation"}})
+                                       {**self._unrun(None, "cancelled; the launcher never started and the job is abandoned: nothing was signalled"),
+                                        "termination": {"reason": "cancellation"}})
             return self._reconcile(job, order, journal, grant, status, "confirmed_failed", "job_handle_lookup", self._unrun("never_started", "the launcher never started"))
         if view["verdict"] in ("starting", "exited"):
             raise Waiting("unknown_unresolved")  # still no identity after the grace; or an exit a moment ago (collected on the next advance)
