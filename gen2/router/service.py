@@ -267,12 +267,15 @@ class Router:
         self._store.update("queue_entries", {"topic_id": topic["topic_id"]}, changes, expect={"state_revision": before})
         return before + 1
 
-    def _guarded(self, reason: str, body: Callable[[], object]) -> object:
+    def _guarded(self, reason: str, body: Callable[[str], object]) -> object:
         """Run one transaction; a write the store refuses is a refusal (nothing
-        was written), never retried."""
+        was written), never retried. The body gets the clock read once the
+        write lock is held (BEGIN IMMEDIATE has returned), so time spent
+        waiting for the lock counts against every lease, deadline and expiry
+        it checks (L-7; Astra 1b review A1)."""
         try:
             with self._store.transaction():
-                return body()
+                return body(self._now())
         except (api.ConstraintViolation, api.StoreWriteError) as exc:
             raise Refusal(reason, f"the store refused the write: {exc}") from None
 
@@ -281,8 +284,7 @@ class Router:
         try:
             req = boundary.normalize(request, "request_invalid")
             boundary.require_schema(self._schemas, req, "router-commands#/$defs/claim", "request_invalid")
-            now = self._now()
-            return self._guarded("request_invalid", lambda: self._claim_in_transaction(req, now))
+            return self._guarded("request_invalid", lambda now: self._claim_in_transaction(req, now))
         except Refusal as refusal:
             return {"status": "refused", "invocation_id": request.get("invocation_id") if isinstance(request, Mapping) else None,
                     "reason": refusal.reason, "detail": _short(refusal.detail)}
@@ -395,19 +397,27 @@ class Router:
             wanted = set(LIFECYCLE_FACTS[req["to_state"]])
             if set(facts) - wanted or wanted - {"container_id"} - set(facts):
                 raise Refusal("request_invalid", f"{req['to_state']} is recorded with exactly {sorted(wanted)} (container_id optional)")
+            facts = {k: facts.get(k) for k in LIFECYCLE_FACTS[req["to_state"]]}  # an omitted container_id is recorded, and compared, as none
             if req["to_state"] == "result_ready":
                 boundary.staged(self._spool, facts["result_payload_digest"])  # C-9: the result the supervisor retained is really staged
-            now = self._now()
-            return self._guarded("transition_not_allowed", lambda: self._transition_in_transaction(req, facts, now))
+            return self._guarded("transition_not_allowed", lambda now: self._transition_in_transaction(req, facts, now))
         except Refusal as refusal:
             return {"status": "refused", "reason": refusal.reason, "detail": _short(refusal.detail)}
 
     def _transition_in_transaction(self, req: dict, facts: dict, now: str) -> dict:
         inv = self._capability(req["capability_id"], req["invocation_id"])
         target = req["to_state"]
-        if inv["state"] == target:
+        # The key is (invocation, target state): a fact this operation recorded
+        # replays whatever state the invocation has reached since, before any
+        # check of current authority (a lost launch reply after the lease
+        # ended is still that launch), and its facts are write-once (DDL), so
+        # the row holds them (Astra 1b review A5). A re-entry out of
+        # outcome_unknown (1c) is recorded under its episode with its own
+        # cause (L-4, RA4), so it is never taken for this fact.
+        recorded = self._one("invocation_transitions", {"invocation_id": inv["invocation_id"], "to_state": target, "cause": LIFECYCLE_CAUSE[target]}) is not None
+        if recorded:
             if any(inv[k] != v for k, v in facts.items()):
-                raise Refusal("transition_conflict", f"{inv['invocation_id']} is already {target} with other facts")
+                raise Refusal("transition_conflict", f"{inv['invocation_id']} recorded {target} with other facts")
             return {"status": "replayed", "invocation_id": inv["invocation_id"], "state": target}
         changes = {"state": target, "state_changed_at": now, **facts}
         if target == "launching":
@@ -442,8 +452,7 @@ class Router:
             req = boundary.normalize(request, "request_invalid")
             boundary.require_schema(self._schemas, req, "router-commands#/$defs/observation", "request_invalid")
             boundary.check_observation(req["observation"], req["retrieval_events"])
-            now = self._now()
-            return self._guarded("payload_invalid", lambda: self._observation_in_transaction(req, now))
+            return self._guarded("payload_invalid", lambda now: self._observation_in_transaction(req, now))
         except Refusal as refusal:
             return {"status": "refused", "reason": refusal.reason, "detail": _short(refusal.detail)}
 
@@ -490,7 +499,7 @@ class Router:
             self._fault("before_validation")
             checked = self._validate_commit(env)
             self._fault("after_validation")
-            status, receipt = self._guarded("payload_invalid", lambda: self._commit_in_transaction(env, fingerprint, checked))
+            status, receipt = self._guarded("payload_invalid", lambda now: self._commit_in_transaction(env, fingerprint, checked, now))
             if status == "committed":
                 self._fault("after_commit")
             return {"status": status, "receipt": receipt}
@@ -518,8 +527,8 @@ class Router:
                     "current_state_revision": None if topic is None else topic["state_revision"]}
         if refusal.detail:
             response["detail"] = _short(refusal.detail)
-        now = self._now()
         with self._store.transaction():
+            now = self._now()
             self._audit("commit_rejected", now, {"reason": refusal.reason, "detail": _short(refusal.detail)},
                         topic_id=topic_id if topic is not None else None, operation_id=op_id,
                         invocation_id=env.get("invocation_id") if isinstance(env, dict) and isinstance(env.get("invocation_id"), str) else None)
@@ -606,14 +615,13 @@ class Router:
         return {"invocation": inv, "payload": payload, "artifacts": artifacts, "manifests": manifests, "protocol": protocol,
                 "validation": {"validator_version": VALIDATOR_VERSION, "policy_version": POLICY_VERSION, "validated_hashes": validated}}
 
-    def _commit_in_transaction(self, env: dict, fingerprint: str, checked: dict) -> tuple[str, dict]:
+    def _commit_in_transaction(self, env: dict, fingerprint: str, checked: dict, now: str) -> tuple[str, dict]:
         """Steps 3-4: replay or reject, fence against current state, then
         record everything the validated outcome authorizes, atomically."""
         replay = self._replay(env["operation_id"], fingerprint)
         if replay is not None:
             return "replayed", replay["receipt"]
         self._fault("in_transaction:start")
-        now = self._now()
         inv = self._one("invocations", {"invocation_id": env["invocation_id"]})
         topic = self._one("queue_entries", {"topic_id": inv["topic_id"]})
         payload, final = checked["payload"], env["operation_kind"] == "final_outcome"
@@ -782,7 +790,7 @@ class Router:
         try:
             req = boundary.normalize(request, "request_invalid")
             boundary.require_schema(self._schemas, req, "router-commands#/$defs/operator_decision", "request_invalid")
-            return self._guarded("decision_refused", lambda: self._decision_in_transaction(req, self._now()))
+            return self._guarded("decision_refused", lambda now: self._decision_in_transaction(req, now))
         except Refusal as refusal:
             return {"status": "rejected", "decision_id": request.get("decision_id") if isinstance(request, Mapping) else None,
                     "reason": refusal.reason, "detail": _short(refusal.detail)}
@@ -877,7 +885,7 @@ class Router:
         try:
             doc = boundary.normalize(receipt, "request_invalid")
             boundary.require_schema(self._schemas, doc, "export-delivery-receipt.schema.json", "request_invalid")
-            return self._guarded("delivery_refused", lambda: self._ack_in_transaction(doc, self._now()))
+            return self._guarded("delivery_refused", lambda now: self._ack_in_transaction(doc, now))
         except Refusal as refusal:
             return {"status": "rejected", "export_receipt_id": receipt.get("export_receipt_id") if isinstance(receipt, Mapping) else None,
                     "reason": refusal.reason, "detail": _short(refusal.detail)}

@@ -140,6 +140,31 @@ class TransitionTest(RouterTestCase):
         self.assertEqual(self.rows("SELECT seq, from_state, to_state, cause FROM invocation_transitions WHERE invocation_id = 'inv_research01' ORDER BY seq"),
                          [(1, None, "admitted", "claim"), (2, "admitted", "launching", "launch_intent"), (3, "launching", "running", "identity_recorded")])
 
+    def test_a_recorded_fact_replays_after_the_invocation_moves_on(self) -> None:
+        """Astra 1b review A5: the key is (invocation, target state), not the
+        current state. A lost reply of each earlier fact, resent after the
+        invocation advanced and after its lease ended, replays with nothing
+        written (state, timestamps, history, audit); the same key with any
+        other fact, or with an optional fact left out, conflicts."""
+        identity = {"host_id": "h", "container_id": "c", "boot_id": "b", "start_fingerprint": "s"}
+        digest, _ = self.stage(empty_outcome("inv_research01"))
+        other, _ = self.stage(empty_outcome("inv_research01", "interim_transition"))
+        facts = (("launching", {"job_handle": "job-1"}), ("running", identity), ("result_ready", {"result_payload_digest": digest}))
+        for to_state, recorded in facts:
+            self.assertEqual(self.transition(to_state, **recorded)["status"], "recorded")
+        before = self.state(exclude=())
+        self.clock.set(EXPIRES)  # the lease has ended: a replay needs no current authority
+        for to_state, recorded in facts:
+            with self.subTest(to_state):
+                self.assertEqual(self.transition(to_state, **recorded), {"status": "replayed", "invocation_id": "inv_research01", "state": to_state})
+                self.assertEqual(self.state(exclude=()), before)
+        for to_state, changed in (("launching", {"job_handle": "job-2"}), ("running", {**identity, "boot_id": "b2"}),
+                                  ("running", {k: v for k, v in identity.items() if k != "container_id"}), ("result_ready", {"result_payload_digest": other})):
+            with self.subTest(to_state, changed=changed):
+                out = self.transition(to_state, **changed)
+                self.assertEqual((out["status"], out.get("reason")), ("refused", "transition_conflict"), out)
+                self.assertEqual(self.state(exclude=()), before)
+
     def test_each_state_is_recorded_with_exactly_its_facts(self) -> None:
         for facts, fragment in (({}, "exactly"), ({"job_handle": "j", "host_id": "h"}, "exactly"), ({"job_handle": "j", "role": "supervisor"}, "/role")):
             with self.subTest(facts):
@@ -176,6 +201,9 @@ class TransitionTest(RouterTestCase):
         self.assertEqual(self.transition("failed")["status"], "recorded")
         self.assertEqual(self.rows("SELECT release_reason FROM leases WHERE lease_id = ?", self.grant["lease"]["lease_id"]), [("failed",)])
         self.assertEqual((self.status(), self.state_revision()), ("queued", revision + 1))
+        before = self.state(exclude=())
+        self.assertEqual(self.transition("failed")["status"], "replayed")
+        self.assertEqual(self.state(exclude=()), before)
 
     def test_only_the_invocations_capability_records_its_facts(self) -> None:
         other = self.claim("inv_verify001", "verification")
@@ -268,11 +296,28 @@ class ObservationTest(RouterTestCase):
         self.refused(self.observe(1, started_at="2026-02-29T10:00:00Z"), "request_invalid", before, "started_at")
         self.refused(self.observe(1, ended_at="2026-09-27T09:59:59Z"), "payload_invalid", before, "ended before")
 
-    def test_observations_come_from_running_work_under_a_current_lease(self) -> None:
+    def test_only_a_running_invocation_records_observations(self) -> None:
         self.assertEqual(self.router.record_transition({"capability_id": self.grant["capability_id"], "invocation_id": "inv_discover1", "to_state": "failed"})["status"],
                          "recorded")
         before = self.state(exclude=())
         self.refused(self.observe(1), "invocation_state_invalid", before, "failed")
+
+    def test_a_running_invocation_past_its_lease_records_nothing(self) -> None:
+        """Astra 1b review C1: the invocation is still running, so only the
+        lease can refuse; the same observation records once the clock is back
+        inside the lease. (Exact expiry and a lock wait: test_router_time.)"""
+        self.clock.set(EXPIRES)
+        before = self.state(exclude=())
+        self.refused(self.observe(1), "lease_not_current", before, "expired at")
+        self.clock.set("2026-09-27T11:00:00Z")
+        self.assertEqual(self.observe(1)["status"], "recorded")
+
+    def test_a_paused_topic_records_no_observation(self) -> None:
+        self.x("UPDATE queue_entries SET paused_at = '2026-09-27T10:00:00Z' WHERE topic_id = ?", TOPIC)
+        before = self.state(exclude=())
+        self.refused(self.observe(1), "topic_paused", before, "paused at")
+        self.x("UPDATE queue_entries SET paused_at = NULL WHERE topic_id = ?", TOPIC)
+        self.assertEqual(self.observe(1)["status"], "recorded")
 
 
 class OperatorDecisionTest(RouterTestCase):
