@@ -43,7 +43,7 @@ AFTER_DEADLINE = "2026-09-27T12:00:01Z"
 PARENT = "inv_parent0001"
 MAIN = "inv_subject001"
 # The tables a lifecycle writes. Any other table changing in a fault test is an unexpected write ("other_tables" in ended()).
-LIFECYCLE_TABLES = frozenset({"invocations", "invocation_transitions", "invocation_reconciliations", "leases", "queue_entries", "artifacts",
+LIFECYCLE_TABLES = frozenset({"invocations", "invocation_transitions", "invocation_reconciliations", "leases", "queue_entries", "artifacts", "artifact_topics",
                               "operation_receipts", "research_ordinals", "holds", "audit_events"})
 
 
