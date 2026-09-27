@@ -163,8 +163,9 @@ class ParentEnds:
         self.watch = RefusingDelegateEnd(self.router, refuse.identity)
         self.supervisor = self.make_supervisor(control=self.watch)
         self.gate(PARENT)
+        self.wait_for_file("exit.json", PARENT)  # the parent has ended (without this, a loaded host still shows it running)
         outcomes = [self.supervisor.advance(PARENT) for _ in range(5)]
-        self.assertEqual(set(outcomes[1:]), {"delegates_pending"}, outcomes)
+        self.assertEqual(set(outcomes), {"delegates_pending"}, outcomes)
         self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", PARENT), "result_ready")
         self.assertEqual(self.rows("SELECT released_at FROM leases WHERE lease_id = (SELECT lease_id FROM invocations WHERE invocation_id = ?)", PARENT), [(None,)])
         self.assertEqual(self.watch.seen, [])  # no releasing call was made for the parent
