@@ -4,156 +4,126 @@ Trace: task 1b ("validate every JSON document against gen2/schema/");
 gen2/router/schemas.py; INVARIANTS C-2, A11 (timestamps are real instants).
 
 Oracle: the pinned `jsonschema` 4.10.3 (gen2/requirements-dev.txt), an
-independent implementation, with the same date-time format rule the schema
-checker registers (tools/check_gen2_schemas.py). The router's validator must
-give the same valid/invalid verdict on every committed fixture and on
-systematic mutations of every valid fixture. The two places where the router
-is deliberately stricter are asserted separately, with the oracle's own
-(laxer) verdict shown beside it.
+independent implementation, reached through tools/gen2_schema_oracle.py as a
+subprocess (no gen2 module is granted the package, tests included). The
+router's validator must give the same valid/invalid verdict on every
+committed fixture and on single-point mutations of every valid fixture, and
+the documents the router itself emits (commit responses and receipts) must
+satisfy the oracle. The two places where the router is deliberately stricter
+are asserted separately, with the oracle's own laxer verdict beside them.
 
 What this cannot show: agreement on inputs no fixture or mutation reaches,
-or that the schemas themselves say the right thing (their fixtures' Gate C
-review does that).
+or that the schemas themselves say the right thing (their fixtures' own Gate
+C review does that).
 """
 from __future__ import annotations
 
-import copy
+import json
+import subprocess
 import sys
 import unittest
 from pathlib import Path
 
-import jsonschema
-
-from gen2.core.instants import is_utc_instant
 from gen2.router import schemas as router_schemas
+from gen2.tests.router_fixtures import RouterTestCase, empty_outcome, h
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "tools"))
-import check_gen2_schemas as checker  # noqa: E402 (the fixture patch format lives there)
-
-SCHEMA_DIR = ROOT / "gen2" / "schema"
+TOOL = ROOT / "tools" / "gen2_schema_oracle.py"
+VALIDATOR = ROOT / "gen2" / "router" / "schemas.py"  # module global: tools/gen2_mutations.py points it at mutated copies
 
 
-def oracle():
-    docs = {}
-    for path in sorted(SCHEMA_DIR.glob("*.schema.json")):
-        doc = checker.load_json(path)
-        docs[doc["$id"]] = doc
-    formats = jsonschema.FormatChecker(formats=())
-
-    @formats.checks("date-time")
-    def _instant(instance) -> bool:
-        return not isinstance(instance, str) or is_utc_instant(instance)
-
-    validators = {}
-
-    def valid(instance, target: str) -> bool:
-        if target not in validators:
-            name, _, fragment = target.partition("#")
-            sid = router_schemas.ID_BASE + name
-            resolver = jsonschema.RefResolver(base_uri=sid, referrer=docs[sid], store=docs)
-            schema = resolver.resolve(f"{sid}#{fragment}")[1] if fragment else docs[sid]
-            validators[target] = jsonschema.Draft202012Validator(schema, resolver=resolver, format_checker=formats)
-        return validators[target].is_valid(instance)
-
-    return valid
+def run_tool(mode: str, cases: list | None = None) -> tuple[int, object]:
+    result = subprocess.run([sys.executable, str(TOOL), mode, "--validator", str(VALIDATOR)], input=None if cases is None else json.dumps(cases),
+                            capture_output=True, text=True, timeout=600, cwd=ROOT)
+    try:
+        report = json.loads(result.stdout)
+    except ValueError:
+        report = None
+    if result.returncode not in (0, 1) or report is None:  # a failure, not an error: the comparison could not be made
+        raise AssertionError(f"oracle tool failed ({result.returncode}): {result.stderr[-2000:]}")
+    return result.returncode, report
 
 
-def fixtures():
-    for path in sorted((SCHEMA_DIR / "examples").rglob("*.json")):
-        fixture = checker.load_json(path)
-        meta = fixture["fixture"]
-        if meta["expect"] == "valid":
-            instance = fixture["instance"]
-        else:
-            base = checker.load_json(path.parent / meta["base"])
-            instance = checker.apply_patch(base["instance"], meta["patch"])
-        yield path.relative_to(SCHEMA_DIR).as_posix(), meta["schema"], meta["expect"], instance
-
-
-def mutations(value, path=()):
-    """Single-point mutations of a JSON value: drop each key, add an unknown
-    key, and swap each leaf for values of other types and near-miss values."""
-    if isinstance(value, dict):
-        yield path + ("+",), {**value, "zz_unexpected": 1}
-        for key in value:
-            yield path + (key, "-"), {k: v for k, v in value.items() if k != key}
-            for sub_path, sub in mutations(value[key], path + (key,)):
-                yield sub_path, {**value, key: sub}
-    elif isinstance(value, list):
-        if value:
-            yield path + ("dup",), value + [copy.deepcopy(value[0])]
-            yield path + ("empty",), []
-        for index, item in enumerate(value):
-            for sub_path, sub in mutations(item, path + (index,)):
-                yield sub_path, value[:index] + [sub] + value[index + 1:]
-    else:
-        for replacement in (None, True, 0, -1, 1.5, 2**53, "", "x", "2026-02-30T00:00:00Z", [], {}):
-            if type(replacement) is not type(value) or replacement != value:
-                yield path + (repr(replacement),), replacement
-        if isinstance(value, str):
-            yield path + ("suffix",), value + "!"
-        if isinstance(value, int) and not isinstance(value, bool):
-            yield path + ("+1",), value + 1
-            yield path + ("float",), float(value)
+def verdicts(*cases: tuple[object, str]) -> list[dict]:
+    code, out = run_tool("check", [{"instance": instance, "target": target} for instance, target in cases])
+    assert code == 0
+    return out
 
 
 class DifferentialTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self.mine = router_schemas.SchemaSet()
-        self.oracle = oracle()
-
-    def test_every_fixture_gets_the_oracles_verdict(self) -> None:
-        count = 0
-        for name, target, expect, instance in fixtures():
-            count += 1
-            with self.subTest(name):
-                self.assertEqual(self.oracle(instance, target), expect == "valid")  # the fixture is what it says (oracle)
-                self.assertEqual(not self.mine.errors(instance, target), expect == "valid")
-        self.assertGreater(count, 240)
-
-    def test_mutations_of_every_valid_fixture_get_the_oracles_verdict(self) -> None:
-        """~tens of thousands of near-miss instances; the verdicts must agree
-        except where a mutation reaches one of the documented stricter rules
-        (none of these mutations adds a trailing newline or a non-ASCII
-        digit, so none may disagree)."""
-        compared = disagreements = 0
-        for name, target, expect, instance in fixtures():
-            if expect != "valid":
-                continue
-            for where, mutant in mutations(instance):
-                compared += 1
-                theirs, ours = self.oracle(mutant, target), not self.mine.errors(mutant, target)
-                if theirs != ours:
-                    disagreements += 1
-                    self.fail(f"{name} at {where}: oracle says {'valid' if theirs else 'invalid'}, router says {'valid' if ours else 'invalid'}")
-        self.assertGreater(compared, 10000)
-        self.assertEqual(disagreements, 0)
+    def test_every_fixture_and_its_mutations_get_the_oracles_verdict(self) -> None:
+        code, report = run_tool("differential")
+        self.assertEqual(report["fixture_disagreements"], [])
+        self.assertEqual(report["disagreements"][:5], [])
+        self.assertEqual(code, 0)
+        self.assertGreater(report["fixtures"], 240)
+        self.assertGreater(report["compared"], 20000)
 
 
 class StricterThanOracleTest(unittest.TestCase):
-    """The two deliberate differences (gen2/router/schemas.py docstring)."""
-
-    def setUp(self) -> None:
-        self.mine = router_schemas.SchemaSet()
-        self.oracle = oracle()
+    """The deliberate differences (gen2/router/schemas.py docstring)."""
 
     def test_a_trailing_newline_does_not_satisfy_an_anchored_pattern(self) -> None:
         target = "common.schema.json#/$defs/invocation_id"
-        self.assertTrue(self.oracle("inv_abcdefgh\n", target))  # Python's `$` matches before a final newline
-        self.assertTrue(self.mine.errors("inv_abcdefgh\n", target))
-        self.assertFalse(self.mine.errors("inv_abcdefgh", target))
+        newline, plain = verdicts(("inv_abcdefgh\n", target), ("inv_abcdefgh", target))
+        self.assertEqual(newline, {"oracle": True, "router": False})  # Python's `$` matches before a final newline; ECMA's does not
+        self.assertEqual(plain, {"oracle": True, "router": True})
 
     def test_digit_classes_are_ascii(self) -> None:
-        schema = {"pattern": "^\\d+$"}
-        extra = router_schemas.SchemaSet(extra={"probe": {"$defs": {"d": schema}}})
+        extra = router_schemas.SchemaSet(extra={"probe": {"$defs": {"d": {"pattern": "^\\d+$"}}}})
         self.assertTrue(extra.errors("١٢٣", "probe#/$defs/d"))  # Arabic-Indic digits
         self.assertFalse(extra.errors("123", "probe#/$defs/d"))
 
     def test_date_time_is_a_real_instant(self) -> None:
         target = "common.schema.json#/$defs/timestamp"
-        self.assertTrue(self.mine.errors("2026-02-29T00:00:00Z", target))  # 2026 is not a leap year
-        self.assertFalse(self.mine.errors("2028-02-29T00:00:00Z", target))
+        feb29, leap = verdicts(("2026-02-29T00:00:00Z", target), ("2028-02-29T00:00:00Z", target))
+        self.assertEqual((feb29, leap), ({"oracle": False, "router": False}, {"oracle": True, "router": True}))
+
+
+class BoundsTest(unittest.TestCase):
+    """Length, count and exclusive bounds at their edges, and an untyped
+    const, judged by both validators (single-point mutations rarely reach a
+    maximum, and elsewhere a type check hides const's JSON equality)."""
+
+    def test_bounds_at_their_edges(self) -> None:
+        promotions = [{"claim_id": f"clm_{i:08d}", "revision": 1} for i in range(257)]
+        connectors = {f"c{i}": {"connector_type": "sql"} for i in range(101)}
+        recall = "contract-v2.schema.json#/$defs/stopping_rule/allOf/4/then/properties/params/properties/target_recall"
+        generation_one = "export-manifest.schema.json#/allOf/1/then/properties/supersedes/properties/generation"
+        cases = [
+            ("x" * 500, "common.schema.json#/$defs/short_text", True), ("x" * 501, "common.schema.json#/$defs/short_text", False),
+            (promotions[:256], "outcome-document.schema.json#/properties/claim_promotions", True),
+            (promotions, "outcome-document.schema.json#/properties/claim_promotions", False),
+            (dict(list(connectors.items())[:100]), "export-manifest.schema.json#/properties/expected_connectors", True),
+            (connectors, "export-manifest.schema.json#/properties/expected_connectors", False),
+            (0.5, recall, True), (0, recall, False), (1, recall, False),
+            (2**53 - 1, "common.schema.json#/$defs/revision", True), (2**53, "common.schema.json#/$defs/revision", False),
+            (1, generation_one, True), (True, generation_one, False),  # an untyped const: true is not 1
+        ]
+        results = verdicts(*((instance, target) for instance, target, _ in cases))
+        for (instance, target, expected), result in zip(cases, results):
+            with self.subTest(target=target, expected=expected):
+                self.assertEqual(result, {"oracle": expected, "router": expected})
+
+
+class RouterDocumentsSatisfyTheOracleTest(RouterTestCase):
+    """What the router emits is judged by the oracle, not only by the
+    validator that produced it: committed and replayed responses (with their
+    receipts) and rejections, including the null revision of an unknown topic."""
+
+    def test_commit_responses(self) -> None:
+        self.to_queued()
+        grant = self.started("inv_research01")
+        env = self.envelope(grant, "op_final000001", empty_outcome("inv_research01"))
+        self.ready(grant, env["payload_digest"])
+        env["expected_state_revision"] = self.state_revision()
+        responses = [self.router.commit_outcome({**env, "topic_id": "fleet-a:nowhere"}), self.router.commit_outcome({**env, "role": "router"}),
+                     self.router.commit_outcome({**env, "expected_state_revision": 0}), self.router.commit_outcome(env), self.router.commit_outcome(env),
+                     self.router.commit_outcome({**env, "payload_digest": h("0")})]
+        self.assertEqual([r["status"] for r in responses], ["rejected", "rejected", "rejected", "committed", "replayed", "rejected"])
+        results = verdicts(*((r, "commit-outcome.schema.json#/$defs/response") for r in responses),
+                           (responses[3]["receipt"], "commit-outcome.schema.json#/$defs/receipt"))
+        self.assertEqual(results, [{"oracle": True, "router": True}] * 7)
 
 
 class FailClosedTest(unittest.TestCase):

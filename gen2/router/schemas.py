@@ -69,9 +69,8 @@ def _is_type(value: object, name: str) -> bool:
 
 
 def json_equal(a: object, b: object) -> bool:
-    """JSON value equality: 1 == 1.0, but true is not 1."""
-    if isinstance(a, bool) or isinstance(b, bool):
-        return isinstance(a, bool) and isinstance(b, bool) and a == b
+    """JSON value equality: 1 == 1.0, but true is not 1 (a bool is no
+    number here, so it falls through to the same-type comparison)."""
     if _is_number(a) and _is_number(b):
         return a == b
     if isinstance(a, dict) and isinstance(b, dict):
@@ -152,9 +151,12 @@ class SchemaSet:
                 raise SchemaError(f"$ref {ref!r}: only JSON-pointer fragments are supported")
             for token in fragment[1:].split("/"):
                 token = token.replace("~1", "/").replace("~0", "~")
-                if not isinstance(node, dict) or token not in node:
+                if isinstance(node, list) and token.isdigit() and int(token) < len(node):
+                    node = node[int(token)]
+                elif isinstance(node, dict) and token in node:
+                    node = node[token]
+                else:
                     raise SchemaError(f"$ref {ref!r} from {base} does not resolve")
-                node = node[token]
         return name, node
 
     def errors(self, instance: object, target: str) -> list[str]:

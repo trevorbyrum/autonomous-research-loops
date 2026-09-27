@@ -7,11 +7,13 @@ capability; no caller-supplied role label).
 
 Each rule has an isolated negative — one field of an otherwise committable
 envelope changed — and the positive control of the same envelope unchanged.
-Oracles: hand-written expected reasons; the store read back with raw SQL
-(`state()` compares every table but the audit log, which a rejection
-appends to by design: exactly one `commit_rejected` row is asserted); and
-every response validated by the independent `jsonschema` package against
-commit-outcome.schema.json#/$defs/response.
+Oracles: hand-written expected reasons, each generic one pinned to its rule
+by the refusal's detail; the store read back with raw SQL (`state()`
+compares every table but the audit log, which a rejection appends to by
+design: exactly one `commit_rejected` row is asserted). Responses are also
+checked against commit-outcome.schema.json#/$defs/response here with the
+router's own validator; the independent jsonschema check of what the router
+emits is test_router_schemas.RouterDocumentsSatisfyTheOracleTest.
 
 Structural limits: the store is in memory and faults are raised exceptions
 (test_router_crash.py kills a real process); the capability is a bearer
@@ -22,14 +24,12 @@ from __future__ import annotations
 
 import copy
 
-import jsonschema
-
 from gen2.core import canonical
+from gen2.router.schemas import SchemaSet
 from gen2.router.service import MalformedRequest
 from gen2.tests.router_fixtures import OTHER, TOPIC, RouterTestCase, empty_outcome, h, jcs
-from gen2.tests.test_router_schemas import oracle
 
-ORACLE = oracle()
+SCHEMAS = SchemaSet()
 
 
 class CommitCase(RouterTestCase):
@@ -39,13 +39,13 @@ class CommitCase(RouterTestCase):
         self.grant = self.started("inv_research01")
 
     def assertResponse(self, response: dict) -> None:
-        self.assertTrue(ORACLE(response, "commit-outcome.schema.json#/$defs/response"), response)
+        self.assertEqual(SCHEMAS.errors(response, "commit-outcome.schema.json#/$defs/response"), [], response)
 
     def assertRejected(self, response: dict, reason: str, before: dict, audits_before: int, detail: str | None = None) -> None:
         """`detail` pins a generic reason to the rule that must have fired."""
         self.assertResponse(response)
         self.assertEqual(response["status"], "rejected", response)
-        self.assertEqual(response["reason"], reason, response)
+        self.assertEqual(response.get("reason"), reason, response)
         if detail is not None:
             self.assertIn(detail, response.get("detail", ""))
         self.assertNotIn("receipt", response)
@@ -218,6 +218,31 @@ class FencingTest(CommitCase):
         before, audits = self.snapshot()
         self.assertRejected(self.router.commit_outcome(env), "amendment_pending", before, audits)
 
+    def test_work_pinned_to_a_superseded_brief_is_not_committed(self) -> None:
+        """The same hook before any contract: a pre-contract pass pinned to
+        brief v1 does not commit once v2 is the confirmed version."""
+        scoping_topic = OTHER
+        self.to_scoping(scoping_topic)
+        grant = self.started("inv_scoping01", tid=scoping_topic)
+        env = self.final_envelope(grant=grant, outcome=empty_outcome("inv_scoping01", topic=scoping_topic))
+        v2 = self.brief(scoping_topic, version=2)
+        self.assertEqual(self.decide("opd_brief0002", "brief_confirmation", {"kind": "intake_brief", "ref": "brief-1", "revision": 2, "hash": v2}, scoping_topic)["status"],
+                         "applied")
+        self.assertEqual(self.rows("SELECT version, status FROM intake_briefs WHERE topic_id = ? ORDER BY version", scoping_topic), [(1, "superseded"), (2, "confirmed")])
+        env["expected_state_revision"] = self.state_revision(scoping_topic)
+        before, audits = self.snapshot()
+        self.assertRejected(self.router.commit_outcome(env), "amendment_pending", before, audits, "brief-1 v1 is superseded")
+
+    def test_a_held_topic_is_left_held(self) -> None:
+        """A research pass finishing after its topic was held releases its
+        lease into the hold and moves the topic nowhere."""
+        env = self.final_envelope(outcome={**empty_outcome("inv_research01"), "next_queue_state": "queued"})
+        self.x("UPDATE queue_entries SET status = 'held', state_revision = state_revision + 1 WHERE topic_id = ?", TOPIC)
+        env["expected_state_revision"] = self.state_revision()
+        receipt = self.router.commit_outcome(env)["receipt"]
+        self.assertEqual((receipt["effects"]["queue_transition"], receipt["effects"]["lease_release"]["rest_state"]), (None, "held"))
+        self.assertEqual(self.status(), "held")
+
     def test_one_final_outcome_per_invocation(self) -> None:
         """A delegate's lease is its parent's, so its first final outcome does
         not release it: the second final is refused by the final-outcome
@@ -261,6 +286,19 @@ class AuthorityTest(CommitCase):
         before, audits = self.snapshot()
         self.assertRejected(self.router.commit_outcome(env), "payload_invalid", before, audits, "/role")
 
+    def test_an_outcome_document_is_its_own_invocations(self) -> None:
+        """Replaying another invocation's document under this capability is refused."""
+        env = self.envelope(self.grant, "op_interim0001", empty_outcome("inv_research99", "interim_transition"))
+        before, audits = self.snapshot()
+        self.assertRejected(self.router.commit_outcome(env), "capability_invocation_mismatch", before, audits, "inv_research99")
+
+    def test_only_a_research_pass_proposes_the_next_queue_state(self) -> None:
+        checkpoint = self.started("inv_checkpt01", "checkpoint")
+        outcome = {**empty_outcome("inv_checkpt01"), "next_queue_state": "queued"}
+        env = self.final_envelope(outcome=outcome, grant=checkpoint)
+        before, audits = self.snapshot()
+        self.assertRejected(self.router.commit_outcome(env), "kind_not_permitted", before, audits, "next queue state")
+
     def test_a_capability_acts_only_for_its_own_invocation(self) -> None:
         other = self.started("inv_verify01", "verification")
         env = self.final_envelope()
@@ -297,6 +335,24 @@ class AuthorityTest(CommitCase):
         own["verification_receipts"] = [receipt]
         self.assertEqual(self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own))["status"], "committed")
         self.assertEqual(self.rows("SELECT verifier_invocation_id, producer_invocation_id FROM verification_receipts"), [("inv_verify01", "inv_research01")])
+
+    def test_canonical_bytes_are_staged_or_recorded(self) -> None:
+        """V-3: reused canonical bytes are authenticated acquired bytes — the
+        receipt's obtained hash must be staged with the commit or recorded."""
+        text = self.artifact(b"a load-bearing claim")
+        outcome = empty_outcome("inv_research01", "interim_transition")
+        outcome["claims"] = [{"claim_id": "clm_00000001", "revision": 1, "text_ref": text, "load_bearing": True, "required_access_tier": "full_text"}]
+        self.assertEqual(self.router.commit_outcome(self.envelope(self.grant, "op_capture0001", outcome, refs=[text]))["status"], "committed")
+        verifier = self.started("inv_verify01", "verification")
+        acquired = self.artifact(b"the source's canonical bytes", "application/pdf")
+        receipt = self.verification_receipt(verifier)
+        receipt.update(obtained_content_hash=acquired["content_hash"],
+                       extraction={"method": "canonical_bytes", "extractor": "x-1", "produced_by_invocation_id": "inv_research01", "validation_ref": None})
+        own = {**empty_outcome("inv_verify01", "interim_transition"), "verification_receipts": [receipt]}
+        env = self.envelope(verifier, "op_verify0001", own)
+        before, audits = self.snapshot()
+        self.assertRejected(self.router.commit_outcome(env), "payload_missing", before, audits, "canonical bytes are not staged")
+        self.assertEqual(self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own, refs=[acquired]))["status"], "committed")
 
     def verification_receipt(self, verifier: dict) -> dict:
         return {"receipt_version": "verification-receipt/1", "verification_receipt_id": "ver_000000000001", "topic_id": TOPIC,
@@ -386,6 +442,21 @@ class BoundaryValidationTest(CommitCase):
         self.assertRejected(self.router.commit_outcome({**env, "expected_state_revision": float("nan")}), "envelope_invalid", before, audits + 1, "C-13")
         self.assertRejected(self.router.commit_outcome({**env, "expected_state_revision": 2**53}), "envelope_invalid", before, audits + 2, "C-13")
 
+    def test_the_document_is_for_the_envelopes_operation_kind(self) -> None:
+        env = self.envelope(self.grant, "op_interim0001", empty_outcome("inv_research01", "final_outcome"), operation_kind="interim_transition")
+        before, audits = self.snapshot()
+        self.assertRejected(self.router.commit_outcome(env), "payload_invalid", before, audits, "another operation kind")
+
+    def test_an_artifact_is_one_record_whoever_references_it(self) -> None:
+        """A10: a reference to recorded bytes must agree with the recorded
+        size and media type."""
+        ref = self.artifact(b"packet")
+        first = self.envelope(self.grant, "op_interim0001", empty_outcome("inv_research01", "interim_transition"), refs=[ref])
+        self.assertEqual(self.router.commit_outcome(first)["status"], "committed")
+        second = self.envelope(self.grant, "op_interim0002", empty_outcome("inv_research01", "interim_transition"), refs=[{**ref, "media_type": "text/html"}])
+        before, audits = self.snapshot()
+        self.assertRejected(self.router.commit_outcome(second), "payload_invalid", before, audits, "is recorded as")
+
     def test_an_envelope_without_an_operation_id_is_not_answered(self) -> None:
         env = self.final_envelope()
         for bad in (None, "op_short", "inv_abcdefgh", 7):
@@ -398,9 +469,9 @@ class BoundaryValidationTest(CommitCase):
         env = self.final_envelope()
         response = self.router.commit_outcome({**env, "topic_id": "fleet-a:nowhere"})
         self.assertResponse(response)
-        self.assertEqual((response["reason"], response["current_state_revision"]), ("cross_topic", None))  # never 0 (RG-U)
+        self.assertEqual((response.get("reason"), response.get("current_state_revision")), ("cross_topic", None))  # never 0 (RG-U)
         known = self.router.commit_outcome({**env, "expected_state_revision": 0})
-        self.assertEqual((known["reason"], known["current_state_revision"]), ("state_revision_stale", self.state_revision()))
+        self.assertEqual((known.get("reason"), known.get("current_state_revision")), ("state_revision_stale", self.state_revision()))
 
 
 class AtomicityTest(CommitCase):
