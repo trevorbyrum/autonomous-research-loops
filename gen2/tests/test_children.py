@@ -18,6 +18,12 @@ killing test, which bytes its children executed (tools/gen2_mutations.py,
 (HelperImportRootTest). Oracle: the AST of the test sources, read here; the
 positive control is a synthetic source in each recognised spelling, and the
 tuple spelling it does not recognise is pinned as unrecognised.
+
+KillAttestationTest also pins the runner's verdict rules for a mutant's
+paired controls (task 1c-repair-2 C4): each must pass under the mutant, a
+disk target's through a child, and the inventory's controls must all be
+runnable. Oracle: synthetic results written here, one defect each, beside the
+accepted one.
 """
 from __future__ import annotations
 
@@ -173,6 +179,47 @@ class KillAttestationTest(unittest.TestCase):
         self.assertEqual(runner.unresolved_killers([typo, whole_class, real]),
                          ["test_children.KillAttestationTest", "test_children.KillAttestationTest.test_no_such_test"])
         self.assertEqual(runner.unresolved_killers(runner.MUTATIONS), [])
+
+    def test_a_kill_needs_its_paired_controls_passing(self) -> None:
+        """Killers must fail and paired controls must pass under the mutant:
+        a control that failed, erred, was skipped or never ran makes the
+        mutation INVALID, however its killers did (task 1c-repair-2 C4)."""
+        runner = self.runner
+        m = runner.Mutation("X-paired", "t", "a guard", ("test_m.T.test_killer",), target="ddl", old="x")
+        controls = ("test_m.T.test_control",)
+
+        def result(failed=(), errored=(), skipped=(), ran=("test_m.T.test_killer", "test_m.T.test_control")):
+            res = runner._Collector()
+            res.failed, res.errored, res.skipped, res.ran = set(failed), {t: "boom" for t in errored}, set(skipped), set(ran)
+            return res
+        killed = runner.verdict(m, result(failed=["test_m.T.test_killer"]), controls)
+        self.assertTrue(killed.startswith("KILLED    X-paired by 1 test(s), 1 paired control(s) passing"), killed)
+        for broken in (result(failed=["test_m.T.test_killer", "test_m.T.test_control"]), result(failed=["test_m.T.test_killer"], errored=["test_m.T.test_control"]),
+                       result(failed=["test_m.T.test_killer"], skipped=["test_m.T.test_control"]), result(failed=["test_m.T.test_killer"], ran=["test_m.T.test_killer"])):
+            self.assertIn("paired control(s) did not pass under the mutant", runner.verdict(m, broken, controls))
+        self.assertTrue(runner.verdict(m, result(), controls).startswith("SURVIVED"))
+        self.assertTrue(runner.verdict(m, result(failed=["test_m.T.test_control"]), controls).startswith("INVALID"))
+
+    def test_a_disk_targets_control_needs_a_child_that_met_the_mutant(self) -> None:
+        runner, tree, sha = self.runner, Path("/tmp/child-tree"), "a" * 64
+        disk = runner.Mutation("X-disk", "t", "a script only children run", ("test_m.T.test_killer",), target="gen2/supervisor/jobshim.py", old="x")
+        killer = {"test": "test_m.T.test_killer", "pid": 2, "file": str(tree / "gen2/supervisor/jobshim.py"), "sha256": sha}
+        judge = lambda attested: runner.judge_children(disk, attested, tree, sha, 1, ("test_m.T.test_control",))
+        self.assertIsNone(judge([killer, {**killer, "test": "test_m.T.test_control"}]))
+        self.assertIn("paired control(s) with no child that executed the mutant", judge([killer]))
+
+    def test_every_mutant_has_runnable_paired_controls(self) -> None:
+        """Every mutant has an entry in the controls file; each control is
+        exactly one test and not one of its killers (control_problems)."""
+        runner = self.runner
+        m = runner.Mutation("X-m", "t", "a guard", ("test_children.KillAttestationTest.test_every_killer_names_exactly_one_test",), target="ddl", old="x")
+        self.assertEqual(runner.control_problems([m], {}), [f"X-m: no entry in {runner.CONTROLS_FILE.name}"])
+        self.assertEqual(runner.control_problems([m], {"X-m": {"controls": list(m.killers)}}),
+                         [f"X-m: {m.killers[0]} is both a killer and a control"])
+        self.assertEqual(runner.control_problems([m], {"X-m": {"controls": ["test_children.KillAttestationTest.test_no_such_test"]}}),
+                         ["control test_children.KillAttestationTest.test_no_such_test is not exactly one test"])
+        self.assertEqual(runner.control_problems([m], {"X-m": {"controls": ["test_children.KillAttestationTest.test_a_kill_needs_its_paired_controls_passing"]}}), [])
+        self.assertEqual(runner.control_problems(runner.MUTATIONS, runner.load_controls()), [])
 
 
 if __name__ == "__main__":

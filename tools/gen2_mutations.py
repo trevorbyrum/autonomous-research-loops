@@ -2,21 +2,23 @@
 """Mutation harness for the gen-2 store DDL and its connection contract.
 
 Each mutation below removes or weakens exactly one guard in memory (never on
-disk), reruns the guard's declared killer tests against the mutant, and
-checks that they catch it:
+disk), reruns the guard's declared killer tests and its paired controls
+against the mutant, and checks that the killers catch it while the controls
+still pass:
 
-  KILLED    at least one test fails, and every test listed in `killers` is
-            among the failures. A failure is an assertion failure, or an
+  KILLED    every test listed in `killers` fails, and every paired control
+            passes. A failure is an assertion failure, or an
             sqlite3.IntegrityError raised in a test body outside setUp (a
-            write the test expects to succeed — its positive control — was
-            refused, i.e. the mutant over-restricts);
-  SURVIVED  no test fails — the guard is untested;
+            write the test expects to succeed was refused, i.e. the mutant
+            over-restricts);
+  SURVIVED  no killer fails — the guard is untested;
   INVALID   the mutation text was not found exactly once, a listed killer
-            did not fail, or tests errored (setup broke rather than an
-            assertion catching the mutant) while some listed killer did not
-            fail in its own body. Setup errors elsewhere are reported but
-            tolerated when every listed killer failed in its body: an
-            over-restricting mutant can also break a shared fixture.
+            did not fail, a paired control did not pass (it failed, erred,
+            was skipped or did not run), or tests errored (setup broke
+            rather than an assertion catching the mutant) while some listed
+            killer did not fail in its own body. Setup errors elsewhere are
+            reported but tolerated when every listed killer failed in its
+            body: an over-restricting mutant can also break a shared fixture.
 
 Children (task 1c; attestation task 1c-repair, Astra 1c review C1). A
 Python-module or disk target is also written into a temporary copy of the
@@ -44,18 +46,36 @@ and dies before its prologue runs, and tools run by explicit path ("attr"
 targets), which are handed the mutated copy by path. `--no-disk` turns the
 child tree off, to show what an in-memory-only run misses.
 
-Which tests run (task 1c-repair, runtime; Astra 1c review "Mutation
-runtime"): per mutant, exactly its declared killers — each such test holds
-its own accepted case beside the refusal it checks, so an over-restricting
-mutant fails it too. A killer name that does not resolve to exactly one test
-stops the run. The unmutated baselines run once per loading mode, not once
-per target: the whole store suite (the DDL and connection mutants'
-baseline); every module and disk target's killers together over one
-unmutated child tree; and each path-handed ("attr") target's killers over
-its own unmutated copy. The whole unmutated suite runs once per build, in
-make gen2-test. Workers are bounded (default: one fewer than the cores, a
-core left for the children the killers start), and each verdict is printed
-as its worker finishes; no test timeout is changed.
+Which tests run (task 1c-repair, runtime; task 1c-repair-2 C4, Astra 1c
+re-review C4): per mutant, its declared killers, which must fail, and its
+paired controls, which must pass — kept apart, because a control is not
+expected to fail. The controls come from tools/gen2_mutation_controls.json:
+tests that are not the mutant's killers and that, in a traced unmutated run,
+took an accepted path through the code the mutant changes (that tool's
+docstring says what counts). A control passing under the mutant shows the
+mutant left that path working, so the killers' failure is the guard's
+absence rather than a broken path. A killer is not assumed to hold its own
+accepted case: some do, many do not. Where only a killer takes that path,
+the file may instead credit the killer with its own accepted case, read and
+recorded as running under the mutant too (in_killer). A mutant with no entry
+in that file, a killer or control name that does not resolve to exactly one
+test, a test that is both, or an in_killer test that is not its killer stops
+the run; a mutant with neither is listed in the file with its reason, and
+the run names it. Controls that rest
+on a child (a disk target's) need a child's attestation, as killers do.
+Other tests do not run under a mutant: what they would have observed is not
+evidence for it (broader discovery is a separate run when the mapping
+changes). The unmutated baselines run once per loading mode, not once per
+target: the whole store suite (the DDL and connection mutants' baseline,
+their controls included); every module and disk target's killers and
+controls together over one unmutated child tree; and each path-handed
+("attr") target's killers and controls over its own unmutated copy. The
+whole unmutated suite runs once per build, in make gen2-test. Workers are
+bounded (default: one fewer than the cores, a core left for the children the
+killers start), and each verdict is printed as its worker finishes; no test
+timeout is changed. How long a run takes depends on the host's load and is
+not a property of the inventory: recorded runs of the same inventory before
+the controls took 434 s on an idle host and 737 s and 1,219 s under load.
 
 Exit 0 only if the unmutated baselines pass and every mutation is KILLED.
 The inventory is the reviewable claim: Astra's Gate C re-runs it
@@ -84,6 +104,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TESTS = ROOT / "gen2" / "tests"
+CONTROLS_FILE = ROOT / "tools" / "gen2_mutation_controls.json"  # written by tools/gen2_mutation_controls.py
 
 
 @dataclass(frozen=True)
@@ -3005,10 +3026,16 @@ class _Collector(unittest.TestResult):
         self.attestations: list[dict] = []  # what the killers' children attested (module docstring, "Children")
         self.expected: str | None = None     # the SHA-256 of the mutant as written into the child tree
         self.tree: Path | None = None
+        self.ran: set[str] = set()
+        self.skipped: set[str] = set()
 
     def startTest(self, test) -> None:  # noqa: N802 (unittest API)
         os.environ[ATTEST_TEST] = test.id()  # inherited by every child the test starts from here on
+        self.ran.add(test.id())
         super().startTest(test)
+
+    def addSkip(self, test, reason) -> None:  # noqa: N802
+        self.skipped.add(test.id())
 
     def addFailure(self, test, err) -> None:  # noqa: N802 (unittest API)
         self.failed.add(test.id())
@@ -3072,13 +3099,43 @@ def killer_suite(names, modules: dict | None = None) -> unittest.TestSuite:
     return suite
 
 
+def load_controls(path: Path = CONTROLS_FILE) -> dict[str, dict]:
+    """Each mutant's paired controls and why they were chosen (module
+    docstring, "Which tests run")."""
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+
+_CONTROLS: dict[str, dict] = {}  # bound in main() before workers fork
+
+
+def controls_of(m: Mutation, controls: dict | None = None) -> tuple[str, ...]:
+    return tuple(((_CONTROLS if controls is None else controls).get(m.mid) or {}).get("controls", ()))
+
+
+def control_problems(mutations, controls: dict) -> list[str]:
+    """Why these mutants' paired controls cannot run: a mutant with no entry,
+    a control that is also its killer, a control name that is not exactly
+    one test."""
+    bad = [f"{m.mid}: no entry in {CONTROLS_FILE.name}" for m in mutations if m.mid not in controls]
+    bad += [f"{m.mid}: {c} is both a killer and a control" for m in mutations for c in controls_of(m, controls) if c in m.killers]
+    bad += [f"{m.mid}: {k} holds the accepted case but is not its killer" for m in mutations for k in (controls.get(m.mid) or {}).get("in_killer", ())
+            if k not in m.killers]
+    bad += [f"control {name} is not exactly one test" for name in unresolved_tests(c for m in mutations for c in controls_of(m, controls))]
+    return bad
+
+
 def unresolved_killers(mutations) -> list[str]:
     """Killer names that do not resolve to exactly one test of that name."""
+    return unresolved_tests(k for m in mutations for k in m.killers)
+
+
+def unresolved_tests(names) -> list[str]:
+    """Test names that do not resolve to exactly one test of that name."""
     def ids(suite):
         for test in suite:
             yield from ids(test) if isinstance(test, unittest.TestSuite) else [test.id()]
     bad = []
-    for name in sorted({k for m in mutations for k in m.killers}):
+    for name in sorted(set(names)):
         try:
             found = list(ids(killer_suite([name])))
         except (ImportError, AttributeError) as exc:
@@ -3176,7 +3233,8 @@ def _run_file_mutation(m: Mutation) -> _Collector:
 
     text = mutate((ROOT / m.target).read_text(encoding="utf-8"), m)
     how = FILE_TARGETS[m.target]
-    modules = sorted({k.split(".")[0] for k in m.killers})
+    names = (*m.killers, *controls_of(m))
+    modules = sorted({k.split(".")[0] for k in names})
     with tempfile.TemporaryDirectory() as tmp, _child_root(tmp, m, text) as tree:
         if how[0] == "disk":
             loaded = [importlib.import_module(name) for name in modules]
@@ -3195,7 +3253,7 @@ def _run_file_mutation(m: Mutation) -> _Collector:
             for dependent in how[2:]:  # modules that bound names from the mutated one at import
                 importlib.reload(importlib.import_module(dependent))
             loaded = [importlib.reload(importlib.import_module(name)) for name in modules]
-        suite = killer_suite(m.killers, {mod.__name__: mod for mod in loaded})
+        suite = killer_suite(names, {mod.__name__: mod for mod in loaded})
         result = _Collector()
         suite.run(result)
         if tree is not None:
@@ -3265,20 +3323,52 @@ def _run_file_mutation_unmutated(m: Mutation) -> _Collector:
     return result
 
 
-def judge_children(m: Mutation, attested: list[dict], tree: Path, expected: str, own_pid: int) -> str | None:
+def judge_children(m: Mutation, attested: list[dict], tree: Path, expected: str, own_pid: int, controls: tuple[str, ...] = ()) -> str | None:
     """Why the killers' children do not support this mutant's kills, or None
     (module docstring, "Children"): a child that executed other bytes of the
     target, or — for a kill that rests on a child — a declared killer with no
-    child that executed the mutant during it."""
+    child that executed the mutant during it; for a disk target, whose mutant
+    only children run, a paired control with none either (it would pass
+    without meeting the mutant)."""
     children = [a for a in attested if a["pid"] != own_pid]
     foreign = [a for a in children if a["sha256"] != expected or not Path(a["file"]).resolve().is_relative_to(tree.resolve())]
     if foreign:
         return f"a child executed other bytes than the mutant: {foreign[0]}"
+    ran_it = lambda name: any(a["test"] and _named(a["test"], name) for a in children)
     if m.via_child or FILE_TARGETS[m.target][0] == "disk":
-        unattested = [k for k in m.killers if not any(a["test"] and (a["test"] == k or a["test"].endswith("." + k)) for a in children)]
+        unattested = [k for k in m.killers if not ran_it(k)]
         if unattested:
             return f"killer(s) with no child that executed the mutant: {unattested}"
+    if FILE_TARGETS[m.target][0] == "disk":
+        unattested = [c for c in controls if not ran_it(c)]
+        if unattested:
+            return f"paired control(s) with no child that executed the mutant: {unattested}"
     return None
+
+
+def _named(test_id: str, name: str) -> bool:
+    return test_id == name or test_id.endswith("." + name)
+
+
+def verdict(m: Mutation, res: _Collector, controls: tuple[str, ...], own_pid: int | None = None) -> str:
+    """The verdict on one mutant from what its killers and its paired
+    controls did under it (module docstring)."""
+    missing = [k for k in m.killers if not any(_named(f, k) for f in res.failed)]
+    if res.tree is not None:
+        refused = judge_children(m, res.attestations, res.tree, res.expected, os.getpid() if own_pid is None else own_pid, controls)
+        if refused:
+            return f"INVALID   {m.mid}: {refused}"
+    broken = [c for c in controls if not any(_named(t, c) for t in res.ran) or any(_named(t, c) for t in (*res.failed, *res.errored, *res.skipped))]
+    if broken:
+        return f"INVALID   {m.mid}: paired control(s) did not pass under the mutant: {broken}"
+    if res.errored and (missing or not m.killers):
+        return f"INVALID   {m.mid}: {len(res.errored)} test error(s), e.g. {next(iter(res.errored.items()))}"
+    if not res.failed:
+        return f"SURVIVED  {m.mid}: {m.description}"
+    if missing:
+        return f"INVALID   {m.mid}: listed killer(s) did not fail: {missing}"
+    note = f" ({len(res.errored)} other test(s) errored in setup: the mutant also breaks a shared fixture)" if res.errored else ""
+    return f"KILLED    {m.mid} by {len(res.failed)} test(s), {len(controls)} paired control(s) passing{note}"
 
 
 def _evaluate(m: Mutation) -> str:
@@ -3291,24 +3381,12 @@ def _evaluate(m: Mutation) -> str:
             ddl = mutate(ddl0, m) if m.target == "ddl" else ddl0
             conn = mutate(conn0, m) if m.target == "connection" else conn0
             try:
-                res = run(fx, ddl, conn, m.killers)
+                res = run(fx, ddl, conn, (*m.killers, *controls_of(m)))
             finally:
                 fx.DDL_TEXT, fx.CONNECTION_TEXT = ddl0, conn0
     except ValueError as exc:
         return f"INVALID   {m.mid}: {exc}"
-    missing = [k for k in m.killers if not any(f == k or f.endswith("." + k) for f in res.failed)]
-    if res.tree is not None:
-        refused = judge_children(m, res.attestations, res.tree, res.expected, os.getpid())
-        if refused:
-            return f"INVALID   {m.mid}: {refused}"
-    if res.errored and (missing or not m.killers):
-        return f"INVALID   {m.mid}: {len(res.errored)} test error(s), e.g. {next(iter(res.errored.items()))}"
-    if not res.failed:
-        return f"SURVIVED  {m.mid}: {m.description}"
-    if missing:
-        return f"INVALID   {m.mid}: listed killer(s) did not fail: {missing}"
-    note = f" ({len(res.errored)} other test(s) errored in setup: the mutant also breaks a shared fixture)" if res.errored else ""
-    return f"KILLED    {m.mid} by {len(res.failed)} test(s){note}"
+    return verdict(m, res, controls_of(m))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -3343,10 +3421,17 @@ def main(argv: list[str] | None = None) -> int:
     if unresolved:
         print(f"UNRESOLVED KILLERS (no single test of that name): {unresolved}", file=sys.stderr)
         return 1
+    global _CONTROLS
+    _CONTROLS = load_controls()
+    problems = control_problems(selected, _CONTROLS)
+    if problems:
+        print(f"PAIRED CONTROLS NOT RUNNABLE (tools/gen2_mutation_controls.py writes them): {problems}", file=sys.stderr)
+        return 1
+    tested = lambda m: (*m.killers, *controls_of(m))
     tree_targets = sorted({m.target for m in selected if FILE_TARGETS.get(m.target, ("",))[0] in ("module", "disk")})
-    baselines = [Mutation("baseline", "-", "unmutated", tuple(k for m in selected if m.target in tree_targets for k in m.killers), target=tree_targets[0])] \
+    baselines = [Mutation("baseline", "-", "unmutated", tuple(k for m in selected if m.target in tree_targets for k in tested(m)), target=tree_targets[0])] \
         if tree_targets else []  # one unmutated child tree covers every module and disk target: the same loading mode
-    baselines += [Mutation("baseline", "-", "unmutated", tuple(k for m in selected if m.target == target for k in m.killers), target=target)
+    baselines += [Mutation("baseline", "-", "unmutated", tuple(k for m in selected if m.target == target for k in tested(m)), target=target)
                   for target in sorted({m.target for m in selected if FILE_TARGETS.get(m.target, ("",))[0] == "attr"})]
     for clean in baselines:
         res = _run_file_mutation_unmutated(clean)
@@ -3354,8 +3439,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"BASELINE NOT GREEN ({clean.target if FILE_TARGETS[clean.target][0] == 'attr' else 'the child tree'}): "
                   f"failed={sorted(res.failed)} errored={res.errored}", file=sys.stderr)
             return 1
+    held = [m.mid for m in selected if not controls_of(m) and (_CONTROLS.get(m.mid) or {}).get("in_killer")]
+    unpaired = [m.mid for m in selected if not controls_of(m) and m.mid not in held]
     print(f"gen2 mutation run: baselines green ({base.testsRun} store tests; {len(baselines)} file-target baseline(s)); "
-          f"{len(selected)} mutants on {args.jobs} worker(s)", flush=True)
+          f"{len(selected)} mutants on {args.jobs} worker(s); {len(selected) - len(held) - len(unpaired)} with paired controls, "
+          f"{len(held)} whose killer holds its accepted case, {len(unpaired)} with neither (reasons in {CONTROLS_FILE.name}): {unpaired}", flush=True)
     ids = [m.mid for m in MUTATIONS]
     if len(set(ids)) != len(ids):
         print("duplicate mutation ids", file=sys.stderr)
@@ -3367,9 +3455,12 @@ def main(argv: list[str] | None = None) -> int:
     _FX = fx
     bad = 0
 
+    paired = 0
+
     def report(verdict: str) -> None:  # as each worker finishes
-        nonlocal bad
+        nonlocal bad, paired
         bad += not verdict.startswith("KILLED")
+        paired += verdict.startswith("KILLED") and ", 0 paired control(s)" not in verdict
         print(verdict, flush=True)
     if args.jobs > 1 and len(selected) > 1:
         with multiprocessing.get_context("fork").Pool(args.jobs, maxtasksperchild=1) as pool:
@@ -3379,7 +3470,8 @@ def main(argv: list[str] | None = None) -> int:
         for m in [m for m in selected if m.target not in FILE_TARGETS] + [m for m in selected if m.target in FILE_TARGETS]:  # file targets may rebind modules: last
             report(_evaluate(m))
     coverage = "" if args.only else f"every DDL trigger covered (second layers: {len(SECOND_LAYER_TRIGGERS)}), "
-    print(f"gen2 mutation run: {len(selected) - bad}/{len(selected)} killed, baseline {base.testsRun} tests green, {coverage}{time.monotonic() - started:.1f}s")
+    print(f"gen2 mutation run: {len(selected) - bad}/{len(selected)} killed, {paired} of them with paired controls passing, "
+          f"baseline {base.testsRun} tests green, {coverage}{time.monotonic() - started:.1f}s")
     return 1 if bad else 0
 
 

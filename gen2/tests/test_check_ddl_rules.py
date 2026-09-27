@@ -134,11 +134,16 @@ class SchemaFixtureRuleTest(unittest.TestCase):
 
     def test_two_rules_reporting_one_signature_must_both_be_declared(self) -> None:
         """Two rules fail at one (keyword, path). Declared once, the fixture
-        would survive removal of either rule, so the check refuses it;
-        declared twice, it passes (Astra 0c review C1)."""
+        would survive removal of either rule, so the check refuses it (Astra
+        0c review C1); declared twice, it passes (the next test)."""
         once = self.run_check([{"keyword": "required", "path": ""}])
         self.assertEqual(once.returncode, 1, msg=once.stdout)
         self.assertIn("invalid-neither.json: expected exactly [('required', '')], got [('required', ''), ('required', '')]", once.stderr)
+
+    def test_two_rules_reporting_one_signature_pass_when_both_are_declared(self) -> None:
+        """The previous test's accepted case, apart, so that it runs whether
+        or not the refusal is noticed (task 1c-repair-2 C4: a paired control
+        must pass under the mutant it is paired with)."""
         twice = self.run_check([{"keyword": "required", "path": ""}] * 2)
         self.assertEqual(twice.returncode, 0, msg=twice.stderr)
 
