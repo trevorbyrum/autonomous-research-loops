@@ -529,8 +529,9 @@ class StoreTestCase(unittest.TestCase):
         method = method or ("execution_group_termination" if resolution == "terminated_group" else "job_handle_lookup")
         if descendants is None and resolution in ("confirmed_failed", "terminated_group"):
             descendants = T
-        self.x("INSERT INTO invocation_reconciliations (reconciliation_id, invocation_id, unknown_episode, unknown_since, resolution, method, evidence_ref, result_payload_digest, descendants_confirmed_at, resolved_at) "
-               "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rid or f"rec_{iid[4:]}e{episode}", iid, episode, since, resolution, method, h("7"), digest, descendants, T)
+        request = {"resolution": resolution, "method": method, "evidence_ref": h("7"), "result_payload_digest": digest}
+        self.x("INSERT INTO invocation_reconciliations (reconciliation_id, invocation_id, unknown_episode, unknown_since, resolution, method, evidence_ref, result_payload_digest, descendants_confirmed_at, resolved_at, request) "
+               "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rid or f"rec_{iid[4:]}e{episode}", iid, episode, since, resolution, method, h("7"), digest, descendants, T, json.dumps(request))
 
     # -- one coherent row in every table -------------------------------------
     def populate_every_table(self) -> None:

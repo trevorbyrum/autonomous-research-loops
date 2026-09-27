@@ -21,6 +21,8 @@ supervisor suites).
 """
 from __future__ import annotations
 
+import json
+
 from gen2.tests.store_fixtures import TOPIC, OTHER, StoreTestCase, T, h
 
 EVIDENCE = h("e")
@@ -208,3 +210,36 @@ class ArtifactTopicTest(SupervisionTestCase):
         self.assertEqual(self.rows("SELECT topic_id, recorded_by_invocation_id FROM artifact_topics WHERE content_hash = ? ORDER BY topic_id", EVIDENCE),
                          [(TOPIC, "inv_pppppppp"), (OTHER, "inv_oooooooo")])
         self.assertEqual(self.value("SELECT count(*) FROM artifacts WHERE content_hash = ?", EVIDENCE), 1)
+
+
+class RecordedRequestTest(SupervisionTestCase):
+    """Task 1c-repair A8: a reconciliation keeps its complete normalized
+    request (a JSON object whose resolution, method, evidence and result
+    digest are its columns'); a transition keeps the facts it recorded as a
+    JSON object, or none."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.to_unknown("inv_pppppppp")
+
+    def insert(self, request: str) -> str:
+        return ("INSERT INTO invocation_reconciliations (reconciliation_id, invocation_id, unknown_episode, unknown_since, resolution, method, evidence_ref, "
+                "result_payload_digest, resolved_at, request) SELECT 'rec_pppppppp1', 'inv_pppppppp', 1, outcome_unknown_since, 'found_running', "
+                f"'job_handle_lookup', '{EVIDENCE}', NULL, '{T}', '{request}' FROM invocations WHERE invocation_id = 'inv_pppppppp'")
+
+    def test_a_reconciliation_keeps_the_request_its_columns_record(self) -> None:
+        agreeing = {"resolution": "found_running", "method": "job_handle_lookup", "evidence_ref": EVIDENCE, "result_payload_digest": None,
+                    "failure_class": None, "host_id": "h", "container_id": None, "boot_id": "b", "start_fingerprint": "f"}
+        for field, value in (("resolution", "found_result"), ("method", "execution_group_termination"), ("evidence_ref", h("9")), ("result_payload_digest", h("d"))):
+            with self.subTest(field):
+                self.rejects("CHECK constraint failed", self.insert(json.dumps({**agreeing, field: value})))
+        self.rejects("CHECK constraint failed", self.insert(json.dumps([agreeing])))
+        self.assertEqual(self.rows("SELECT count(*) FROM invocation_reconciliations"), [(0,)])
+        self.x(self.insert(json.dumps(agreeing)))
+        self.assertEqual(self.value("SELECT json_extract(request, '$.boot_id') FROM invocation_reconciliations"), "b")
+
+    def test_a_transition_keeps_its_facts_as_an_object_or_none(self) -> None:
+        ins = "INSERT INTO invocation_transitions (invocation_id, seq, from_state, to_state, at, cause, facts) VALUES ('inv_pppppppp', 90, 'running', 'outcome_unknown', ?, 'outcome_unknown', ?)"
+        self.rejects("CHECK constraint failed", ins, T, "[1]")
+        self.x(ins, T, '{"unknown_episode": 1, "unknown_cause": "contact_lost"}')
+        self.x(ins.replace(", 90,", ", 91,"), T, None)

@@ -212,6 +212,7 @@ class Lifecycle:
             replay = self._recorded_reconciliation(req)  # before any byte: a recorded episode answers from its row (as A5-R)
             if replay is not None:
                 return replay
+            self._fault("reconcile_checked")
             inv = self._capability(req["capability_id"], req["invocation_id"])
             evidence = self._evidence(inv, req["evidence_ref"])
             if req["resolution"] == "found_result":
@@ -220,15 +221,20 @@ class Lifecycle:
         except Refusal as refusal:
             return {"status": "refused", "reason": refusal.reason, "detail": refusal.detail[:500]}
 
+    @staticmethod
+    def _reconciliation_facts(req: dict) -> dict:
+        """The complete normalized factual request of a reconciliation: every
+        fact it asserts, absent ones as none (Astra 1c review A8)."""
+        return {k: req.get(k) for k in ("resolution", "method", "evidence_ref", "result_payload_digest", "failure_class", *IDENTITY)}
+
     def _recorded_reconciliation(self, req: dict) -> dict | None:
         row = self._one("invocation_reconciliations", {"invocation_id": req["invocation_id"], "unknown_episode": req["unknown_episode"]})
         if row is None:
             return None
         inv = self._capability(req["capability_id"], req["invocation_id"])
-        same = (row["resolution"], row["method"], row["evidence_ref"], row["result_payload_digest"]) == (
-            req["resolution"], req["method"], req["evidence_ref"], req.get("result_payload_digest"))
-        if not same:
-            raise Refusal("reconciliation_conflict", f"episode {req['unknown_episode']} of {inv['invocation_id']} was reconciled otherwise")
+        if row["request"] != self._reconciliation_facts(req):  # the identical request replays; any other fact is a conflict, not a replay
+            changed = sorted(k for k, v in self._reconciliation_facts(req).items() if row["request"].get(k) != v)
+            raise Refusal("reconciliation_conflict", f"episode {req['unknown_episode']} of {inv['invocation_id']} was reconciled otherwise ({', '.join(changed)})")
         return {"status": "replayed", "invocation_id": inv["invocation_id"], "unknown_episode": req["unknown_episode"], "resolution": row["resolution"]}
 
     def _reconcile_in_transaction(self, req: dict, identity: dict, evidence: dict, now: str) -> dict:
@@ -273,7 +279,8 @@ class Lifecycle:
         self._store.insert("invocation_reconciliations", {
             "reconciliation_id": reconciliation_id, "invocation_id": inv["invocation_id"], "unknown_episode": inv["unknown_episode"],
             "unknown_since": inv["outcome_unknown_since"], "resolution": resolution, "method": req["method"], "evidence_ref": evidence["content_hash"],
-            "result_payload_digest": req.get("result_payload_digest"), "descendants_confirmed_at": now if terminal else None, "resolved_at": now})
+            "result_payload_digest": req.get("result_payload_digest"), "descendants_confirmed_at": now if terminal else None, "resolved_at": now,
+            "request": self._reconciliation_facts(req)})
         self._store.update("invocations", {"invocation_id": inv["invocation_id"]}, changes)
         self._transition_row(inv["invocation_id"], "outcome_unknown", target, now, "reconciled")
         subject = unknown_hold_subject(inv["invocation_id"], inv["unknown_episode"])

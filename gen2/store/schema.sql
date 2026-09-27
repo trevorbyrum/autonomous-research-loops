@@ -1016,7 +1016,11 @@ END;
 -- identity, RA4 — a start time can recur, an episode number cannot),
 -- recorded while the invocation is still in that episode.
 -- The evidence is the retained lookup/termination record, never a bare
--- digest; terminal resolutions confirm descendant handling.
+-- digest; terminal resolutions confirm descendant handling. `request` keeps
+-- the reconciliation's complete normalized factual request (resolution,
+-- method, evidence, result digest, failure class, process identity) so a
+-- replay is compared with every fact it asserted, not only those with
+-- columns (Astra 1c review A8); its first four agree with the columns.
 CREATE TABLE invocation_reconciliations (
   reconciliation_id TEXT PRIMARY KEY CHECK (reconciliation_id GLOB 'rec_*'),
   invocation_id TEXT NOT NULL REFERENCES invocations (invocation_id),
@@ -1028,7 +1032,10 @@ CREATE TABLE invocation_reconciliations (
   result_payload_digest TEXT CHECK (result_payload_digest IS NULL OR result_payload_digest GLOB 'sha256:*'),
   descendants_confirmed_at TEXT,
   resolved_at TEXT NOT NULL,
+  request TEXT NOT NULL CHECK (json_valid(request) AND json_type(request) = 'object'),
   UNIQUE (invocation_id, unknown_episode),
+  CHECK (json_extract(request, '$.resolution') IS resolution AND json_extract(request, '$.method') IS method
+         AND json_extract(request, '$.evidence_ref') IS evidence_ref AND json_extract(request, '$.result_payload_digest') IS result_payload_digest),
   CHECK ((resolution = 'found_result') = (result_payload_digest IS NOT NULL)),
   CHECK (resolution NOT IN ('confirmed_failed', 'terminated_group') OR descendants_confirmed_at IS NOT NULL),
   CHECK ((resolution = 'terminated_group') = (method = 'execution_group_termination'))
@@ -1052,7 +1059,10 @@ BEGIN
   SELECT RAISE(ABORT, 'reconciliation records are never deleted (C-11)');
 END;
 
--- trace: INVARIANTS L-1 (transition audit); flow §4.1.
+-- trace: INVARIANTS L-1 (transition audit); flow §4.1. `facts`: the normalized
+-- facts of the lifecycle request a transition recorded (record_transition),
+-- among them an outcome_unknown entry's episode and cause, so a replay is
+-- compared with all of them (Astra 1c review A8); none for the router's own.
 CREATE TABLE invocation_transitions (
   invocation_id TEXT NOT NULL REFERENCES invocations (invocation_id),
   seq INTEGER NOT NULL CHECK (seq >= 1),
@@ -1060,6 +1070,7 @@ CREATE TABLE invocation_transitions (
   to_state TEXT NOT NULL,
   at TEXT NOT NULL,
   cause TEXT NOT NULL,
+  facts TEXT CHECK (facts IS NULL OR (json_valid(facts) AND json_type(facts) = 'object')),
   PRIMARY KEY (invocation_id, seq)
 ) STRICT;
 

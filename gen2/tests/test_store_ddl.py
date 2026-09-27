@@ -150,8 +150,8 @@ class InvocationLifecycleTest(StoreTestCase):
                             self.rejects("invocation state transition not allowed", attempt, iid)
         self.assertEqual(n, 5 * 8 * 7)
 
-    RECONCILE = ("INSERT INTO invocation_reconciliations (reconciliation_id, invocation_id, unknown_episode, unknown_since, resolution, method, evidence_ref, result_payload_digest, resolved_at) "
-                 "VALUES (?, ?, ?, ?, ?, 'job_handle_lookup', ?, ?, ?)")
+    RECONCILE = ("INSERT INTO invocation_reconciliations (reconciliation_id, invocation_id, unknown_episode, unknown_since, resolution, method, evidence_ref, result_payload_digest, resolved_at, request) "
+                 "VALUES (?1, ?2, ?3, ?4, ?5, 'job_handle_lookup', ?6, ?7, ?8, json_object('resolution', ?5, 'method', 'job_handle_lookup', 'evidence_ref', ?6, 'result_payload_digest', ?7))")
 
     def test_outcome_unknown_is_reconciled_not_skipped(self) -> None:
         """D07 rewrite (A5), extended for RA4. First half: leaving
@@ -264,8 +264,8 @@ class InvocationLifecycleTest(StoreTestCase):
         self.to_running("inv_pppppppp")
         self.to_unknown("inv_pppppppp", T)
         self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'application/json', ?)", h("7"), T)
-        ins = ("INSERT INTO invocation_reconciliations (reconciliation_id, invocation_id, unknown_episode, unknown_since, resolution, method, evidence_ref, descendants_confirmed_at, resolved_at) "
-               "VALUES ('rec_00000001', 'inv_pppppppp', 1, ?, ?, ?, ?, ?, ?)")
+        ins = ("INSERT INTO invocation_reconciliations (reconciliation_id, invocation_id, unknown_episode, unknown_since, resolution, method, evidence_ref, descendants_confirmed_at, resolved_at, request) "
+               "VALUES ('rec_00000001', 'inv_pppppppp', 1, ?1, ?2, ?3, ?4, ?5, ?6, json_object('resolution', ?2, 'method', ?3, 'evidence_ref', ?4, 'result_payload_digest', NULL))")
         self.rejects("CHECK constraint failed", ins, T, "confirmed_failed", "job_handle_lookup", h("7"), None, T)  # descendants unconfirmed
         self.rejects("CHECK constraint failed", ins, T, "terminated_group", "job_handle_lookup", h("7"), T, T)  # termination is its own method
         self.rejects("CHECK constraint failed", ins, T, "found_running", "execution_group_termination", h("7"), None, T)

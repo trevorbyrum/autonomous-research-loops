@@ -215,10 +215,10 @@ class Router(Lifecycle):
                                             "invocation_id": invocation_id, "operation_id": operation_id, "detail": detail})
         return audit_id
 
-    def _transition_row(self, invocation_id: str, from_state: str | None, to_state: str, at: str, cause: str) -> None:
+    def _transition_row(self, invocation_id: str, from_state: str | None, to_state: str, at: str, cause: str, facts: dict | None = None) -> None:
         seq = self._store.next_in_sequence("invocation_transitions", "seq", {"invocation_id": invocation_id})
         self._store.insert("invocation_transitions", {"invocation_id": invocation_id, "seq": seq, "from_state": from_state,
-                                                      "to_state": to_state, "at": at, "cause": cause})
+                                                      "to_state": to_state, "at": at, "cause": cause, "facts": facts})
 
     def _lease_of(self, inv: dict) -> dict:
         """A non-delegate's own lease; a delegate's parent's (L-8)."""
@@ -454,6 +454,7 @@ class Router(Lifecycle):
             replay = self._recorded_transition(req, facts)
             if replay is not None:
                 return replay
+            self._fault("transition_checked")
             inv = self._capability(req["capability_id"], req["invocation_id"])  # its topic and job handle are write-once
             evidence = None
             if target == "result_ready":  # C-9: the new result the supervisor retained is really staged, as JSON, for this topic
@@ -480,7 +481,13 @@ class Router(Lifecycle):
         target = req["to_state"]
         if target == "outcome_unknown":
             inv = self._capability(req["capability_id"], req["invocation_id"])
-            if facts["unknown_episode"] <= inv["unknown_episode"]:
+            if facts["unknown_episode"] <= inv["unknown_episode"]:  # an entry recorded: replayed only with the cause it was recorded with (A8)
+                entries = [row["facts"] for row in self._store.select("invocation_transitions", {"invocation_id": inv["invocation_id"], "to_state": target,
+                                                                                                 "cause": LIFECYCLE_CAUSE[target]})]
+                recorded = next((f for f in entries if f is not None and f.get("unknown_episode") == facts["unknown_episode"]), None)
+                if recorded is None or recorded.get("unknown_cause") != req["unknown_cause"]:
+                    raise Refusal("transition_conflict", f"episode {facts['unknown_episode']} of {inv['invocation_id']} was entered "
+                                                         f"{'with cause ' + str(recorded.get('unknown_cause')) if recorded else 'with no recorded cause'}")
                 return {"status": "replayed", "invocation_id": inv["invocation_id"], "state": target, "unknown_episode": facts["unknown_episode"]}
             if facts["unknown_episode"] > inv["unknown_episode"] + 1:
                 raise Refusal("transition_conflict", f"{inv['invocation_id']} has entered episode {inv['unknown_episode']}; the next is {inv['unknown_episode'] + 1}")
@@ -521,7 +528,8 @@ class Router(Lifecycle):
         if target == "outcome_unknown":
             changes["outcome_unknown_since"] = now
         self._store.update("invocations", {"invocation_id": inv["invocation_id"]}, changes)
-        self._transition_row(inv["invocation_id"], inv["state"], target, now, LIFECYCLE_CAUSE[target])
+        self._transition_row(inv["invocation_id"], inv["state"], target, now, LIFECYCLE_CAUSE[target],
+                             {**facts, **({"unknown_cause": req["unknown_cause"]} if target == "outcome_unknown" else {})})
         if target in ("failed", "cancelled"):
             self._release_capacity(inv, now, target)
         if target == "outcome_unknown":

@@ -255,6 +255,96 @@ class UnknownTest(LifecycleTestCase):
         self.refused(self.reconcile("found_running", self.lookup(pending, observed_at="2026-09-27T10:21:00Z"), grant=pending, **IDENTITY),
                      "reconciliation_conflict", before)
 
+    # -- A8: a recorded fact replays only as the identical request -----------------------------------------
+    def replays_only_identically(self, send, identical: dict, changes: dict, conflict: str) -> None:
+        """`identical` replays, every table unchanged; each one-field change
+        in `changes` is refused on its own as `conflict`, every table
+        unchanged — also once the evidence bytes are gone (the answer comes
+        from the recorded row before any byte is asked for), after a later
+        episode, and from a restarted router."""
+        def check(label: str) -> None:
+            before = self.state(exclude=())
+            self.assertEqual(send(**identical)["status"], "replayed", label)
+            self.assertEqual(self.state(exclude=()), before)
+            for field, value in changes.items():
+                with self.subTest(label, field=field):
+                    self.refused(send(**{**identical, field: value}), conflict, before)
+        check("recorded")
+        self.spool.blobs.clear()  # no staged byte is needed to answer a recorded fact
+        check("bytes gone")
+        self.assertEqual(self.unknown(2)["status"], "recorded")  # a later episode
+        check("after a later episode")
+        self.router = self.make_router()  # a restarted router: nothing in memory
+        check("after restart")
+
+    def test_a_reconciled_episode_replays_only_its_identical_facts(self) -> None:
+        """Astra 1c review A8: process identity is part of found_running's
+        recorded request; a changed host, container, boot or fingerprint is a
+        conflicting fact, not the same reconciliation."""
+        self.unknown()
+        evidence = self.lookup()
+        self.assertEqual(self.reconcile("found_running", evidence, **IDENTITY)["status"], "recorded")
+        self.assertEqual(self.rows("SELECT request FROM invocation_reconciliations"),
+                         [(canonical.canonical_bytes({"resolution": "found_running", "method": "job_handle_lookup", "evidence_ref": evidence,
+                                                      "result_payload_digest": None, "failure_class": None, "container_id": None, **IDENTITY}).decode(),)])
+        self.replays_only_identically(lambda **req: self.reconcile("found_running", evidence, episode=1, **req), dict(IDENTITY),
+                                      {"host_id": "host-2", "boot_id": "boot-2", "start_fingerprint": "ticks=2", "container_id": "container-2"},
+                                      "reconciliation_conflict")
+
+    def test_a_failure_class_is_part_of_the_recorded_facts(self) -> None:
+        self.unknown()
+        evidence = self.lookup(findings=("exit_nonzero", "killed"), exit={"code": 3, "signal": None})
+        self.assertEqual(self.reconcile("confirmed_failed", evidence, failure_class="exit_nonzero")["status"], "recorded")
+        before = self.state(exclude=())
+        self.assertEqual(self.reconcile("confirmed_failed", evidence, failure_class="exit_nonzero")["status"], "replayed")
+        self.assertEqual(self.state(exclude=()), before)
+        self.refused(self.reconcile("confirmed_failed", evidence, failure_class="killed"), "reconciliation_conflict", before, "failure_class")
+        self.router = self.make_router()
+        self.refused(self.reconcile("confirmed_failed", evidence, failure_class="killed"), "reconciliation_conflict", before, "failure_class")
+        self.assertEqual(self.reconcile("confirmed_failed", evidence, failure_class="exit_nonzero")["status"], "replayed")
+
+    def test_an_entry_replays_only_with_its_recorded_cause(self) -> None:
+        """Astra 1c review A8: an outcome_unknown entry is keyed by its
+        episode, and its cause is part of what it recorded."""
+        self.assertEqual(self.unknown(cause="contact_lost")["status"], "recorded")
+        self.assertEqual(self.rows("SELECT facts FROM invocation_transitions WHERE invocation_id = 'inv_research01' AND to_state = 'outcome_unknown'"),
+                         [('{"unknown_cause":"contact_lost","unknown_episode":1}',)])
+        self.assertEqual(self.reconcile("found_running", self.lookup(), **IDENTITY)["status"], "recorded")
+        self.replays_only_identically(lambda cause: self.unknown(1, cause=cause), {"cause": "contact_lost"},
+                                      {"cause": "spawn_uncertain"}, "transition_conflict")
+
+    def test_a_conflicting_fact_recorded_meanwhile_is_a_conflict(self) -> None:
+        """The recheck under the transaction: another router records the
+        episode (or the entry) between this request's check and its
+        transaction. The identical request then replays; a request with one
+        fact changed is a conflict, and the first record stands."""
+        other = self.make_router()
+        for identity, expected in ((IDENTITY, "replayed"), ({**IDENTITY, "boot_id": "boot-2"}, "reconciliation_conflict")):
+            with self.subTest(expected):
+                self.tearDown()
+                self.setUp()
+                self.unknown()
+                ours = self.lookup(process={"host_id": identity["host_id"], "container_id": None, "boot_id": identity["boot_id"],
+                                            "start_fingerprint": identity["start_fingerprint"]})
+                theirs = self.lookup()
+                request = {"capability_id": self.grant["capability_id"], "invocation_id": "inv_research01", "unknown_episode": 1, "resolution": "found_running",
+                           "method": "job_handle_lookup"}
+                other = self.make_router()
+                router = self.make_router(fault=lambda point: other.reconcile({**request, "evidence_ref": theirs, **IDENTITY}) if point == "reconcile_checked" else None)
+                out = router.reconcile({**request, "evidence_ref": theirs if expected == "replayed" else ours, **identity})
+                self.assertEqual(out.get("reason", out["status"]), expected, out)
+                self.assertEqual(self.rows("SELECT evidence_ref, json_extract(request, '$.boot_id') FROM invocation_reconciliations"), [(theirs, "boot-1")])
+        for cause, expected in (("contact_lost", "replayed"), ("spawn_uncertain", "transition_conflict")):
+            with self.subTest(cause):
+                self.tearDown()
+                self.setUp()
+                entry = {"capability_id": self.grant["capability_id"], "invocation_id": "inv_research01", "to_state": "outcome_unknown", "unknown_episode": 1}
+                other = self.make_router()
+                router = self.make_router(fault=lambda point: other.record_transition({**entry, "unknown_cause": "contact_lost"}) if point == "transition_checked" else None)
+                out = router.record_transition({**entry, "unknown_cause": cause})
+                self.assertEqual(out.get("reason", out["status"]), expected, out)
+                self.assertEqual(self.value("SELECT count(*) FROM holds WHERE subject_ref = 'invocation:inv_research01#unknown:1'"), 1)
+
     def test_found_result_needs_the_staged_result_of_a_clean_exit(self) -> None:
         self.unknown()
         digest, size = self.stage(empty_outcome("inv_research01"))
