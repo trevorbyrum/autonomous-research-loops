@@ -19,7 +19,7 @@ years included; any year 0001-9999) and the time must be a real time of day
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date, datetime
 
 # ASCII digits only ([0-9], not \d, which matches every Unicode decimal digit
 # and so would admit what the schema's ASCII pattern refuses — Astra
@@ -39,3 +39,18 @@ def is_utc_instant(value: object) -> bool:
     except ValueError:
         return False
     return True
+
+
+def utc_instant_ns(value: object) -> int:
+    """The instant as exact nanoseconds since 1970-01-01T00:00:00Z, for
+    comparing instants (task 1b: lease expiry, deadlines). Text order is not
+    time order once fractions differ in length ("...:00.5Z" sorts after
+    "...:00.25Z" but so does "...:00Z" after "...:00.1Z"), and a float would
+    round a 9-digit fraction, so the fraction is kept as an integer.
+    ValueError unless is_utc_instant(value)."""
+    if not is_utc_instant(value):
+        raise ValueError(f"{value!r} is not an RFC 3339 UTC instant")
+    year, month, day, hour, minute, second = (int(part) for part in _SHAPE.match(value).groups())
+    fraction = value[20:-1] if value[19] == "." else ""
+    days = (date(year, month, day) - date(1970, 1, 1)).days
+    return (days * 86400 + hour * 3600 + minute * 60 + second) * 10**9 + int(fraction.ljust(9, "0"))
