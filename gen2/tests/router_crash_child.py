@@ -10,7 +10,12 @@
       cleanup runs in this process;
   python -m gen2.tests.router_crash_child <dir> resubmit
       open the store and submit the same envelope again, printing the
-      response.
+      response;
+  python -m gen2.tests.router_crash_child <dir> transition
+      open the store and submit the record_transition request read from
+      stdin, printing the response (test_router_restart.py: a lost lifecycle
+      reply resent from a process that shares nothing with the one that
+      recorded it).
 
 The world and the outcome are the same as the in-memory tests': a queued
 topic, a running contract-admitted research pass, and a final outcome that
@@ -44,6 +49,9 @@ class FileSpool:
     def read(self, content_hash: str) -> bytes | None:
         path = self.directory / content_hash.replace(":", "_")
         return path.read_bytes() if path.is_file() else None
+
+    def remove(self, content_hash: str) -> None:
+        (self.directory / content_hash.replace(":", "_")).unlink()
 
 
 def tables(path: Path) -> dict:
@@ -110,6 +118,9 @@ def main(argv: list[str]) -> int:
     directory, action = Path(argv[1]), argv[2]
     if action == "prepare":
         prepare(directory)
+        return 0
+    if action == "transition":
+        print(json.dumps(router_for(directory).record_transition(json.loads(sys.stdin.read()))))
         return 0
     envelope = json.loads((directory / "envelope.json").read_text())
     if action == "crash":

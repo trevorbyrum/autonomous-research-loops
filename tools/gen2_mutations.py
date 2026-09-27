@@ -2187,6 +2187,13 @@ MUTATIONS: list[Mutation] = [
           ("result-not-staged", "a result is recorded ready without its bytes staged (C-9)",
            (RO + "TransitionTest.test_a_result_is_ready_only_when_its_bytes_are_staged",), SVC,
            '                boundary.staged(self._spool, facts["result_payload_digest"])', '                pass'),
+          ("result-staged-before-replay", "a recorded result_ready is asked for its staged bytes before it replays or conflicts (Astra 1b-repair review A5-R)",
+           (RR + "RestartTest.test_a_committed_result_replays_without_its_staged_bytes",
+            RR + "RestartTest.test_a_committed_result_resent_with_an_unstaged_digest_conflicts"), SVC,
+           '                replay = self._recorded_transition(req, facts)\n                if replay is not None:\n                    return replay\n'
+           '                boundary.staged(self._spool, facts["result_payload_digest"])',
+           '                boundary.staged(self._spool, facts["result_payload_digest"])\n'
+           '                replay = self._recorded_transition(req, facts)\n                if replay is not None:\n                    return replay'),
           ("failure-keeps-lease", "a failed invocation keeps its lease and its topic active",
            (RO + "TransitionTest.test_a_failure_releases_the_lease_and_requeues",), SVC,
            '        if target == "failed" and inv["kind"] != "delegate":', '        if False:'),
@@ -2195,14 +2202,15 @@ MUTATIONS: list[Mutation] = [
            '            if set(facts) - wanted or wanted - {"container_id"} - set(facts):', '            if False:'),
           ("transition-replay-current-only", "a recorded fact replays only while it is the current state (Astra 1b review A5)",
            (RO + "TransitionTest.test_a_recorded_fact_replays_after_the_invocation_moves_on", RR + "RestartTest.test_recorded_facts_replay_after_a_restart"), SVC,
-           '        recorded = self._one("invocation_transitions", {"invocation_id": inv["invocation_id"], "to_state": target, "cause": LIFECYCLE_CAUSE[target]}) is not None',
-           '        recorded = inv["state"] == target'),
+           '        recorded = self._one("invocation_transitions", {"invocation_id": req["invocation_id"], "to_state": target, "cause": LIFECYCLE_CAUSE[target]})\n'
+           '        if recorded is None:\n            return None\n        inv = self._capability(req["capability_id"], req["invocation_id"])\n',
+           '        inv = self._capability(req["capability_id"], req["invocation_id"])\n        if inv["state"] != target:\n            return None\n'),
           ("transition-omitted-fact-ignored", "a replay that leaves out a recorded optional fact (container_id) is taken for the same fact",
            (RO + "TransitionTest.test_a_recorded_fact_replays_after_the_invocation_moves_on",), SVC,
            '            facts = {k: facts.get(k) for k in LIFECYCLE_FACTS[req["to_state"]]}  # an omitted container_id is recorded, and compared, as none\n', ''),
           ("transition-conflict-replayed", "a recorded fact is replaced by a conflicting one as a replay",
            (RO + "TransitionTest.test_the_lifecycle_moves_along_l1_only",), SVC,
-           '            if any(inv[k] != v for k, v in facts.items()):', '            if False:'),
+           '        if any(inv[k] != v for k, v in facts.items()):', '        if False:'),
           # operator decisions (G-13, RA6)
           ("subject-hash-untrue", "a stored subject's hash label is not recomputed before approval (RA6)",
            (RO + "OperatorDecisionTest.test_approval_binds_to_a_hash_that_is_true_of_the_stored_document",), SVC,

@@ -400,26 +400,44 @@ class Router:
                 raise Refusal("request_invalid", f"{req['to_state']} is recorded with exactly {sorted(wanted)} (container_id optional)")
             facts = {k: facts.get(k) for k in LIFECYCLE_FACTS[req["to_state"]]}  # an omitted container_id is recorded, and compared, as none
             if req["to_state"] == "result_ready":
-                boundary.staged(self._spool, facts["result_payload_digest"])  # C-9: the result the supervisor retained is really staged
+                # A recorded result answers from its recorded facts before any
+                # byte is asked for: once committed, its staged copy may be gone
+                # (C-9), and a changed digest is a conflict whether or not it
+                # is staged (Astra 1b-repair review A5-R).
+                replay = self._recorded_transition(req, facts)
+                if replay is not None:
+                    return replay
+                boundary.staged(self._spool, facts["result_payload_digest"])  # C-9: the new result the supervisor retained is really staged
             return self._guarded("transition_not_allowed", lambda now: self._transition_in_transaction(req, facts, now))
         except Refusal as refusal:
             return {"status": "refused", "reason": refusal.reason, "detail": _short(refusal.detail)}
 
+    def _recorded_transition(self, req: dict, facts: dict) -> dict | None:
+        """The answer to a lifecycle fact already recorded, or None. The key is
+        (invocation, target state): a fact this operation recorded replays
+        whatever state the invocation has reached since, before any check of
+        current authority (a lost launch reply after the lease ended is still
+        that launch), and its facts are write-once (DDL), so the row holds them
+        (Astra 1b review A5). A re-entry out of outcome_unknown (1c) is
+        recorded under its episode with its own cause (L-4, RA4), so it is
+        never taken for this fact. The transition row is read first, so outside
+        a transaction too the invocation row read after it already holds the
+        facts written with it."""
+        target = req["to_state"]
+        recorded = self._one("invocation_transitions", {"invocation_id": req["invocation_id"], "to_state": target, "cause": LIFECYCLE_CAUSE[target]})
+        if recorded is None:
+            return None
+        inv = self._capability(req["capability_id"], req["invocation_id"])
+        if any(inv[k] != v for k, v in facts.items()):
+            raise Refusal("transition_conflict", f"{inv['invocation_id']} recorded {target} with other facts")
+        return {"status": "replayed", "invocation_id": inv["invocation_id"], "state": target}
+
     def _transition_in_transaction(self, req: dict, facts: dict, now: str) -> dict:
+        replay = self._recorded_transition(req, facts)  # again under the lock: the same fact may have been recorded meanwhile
+        if replay is not None:
+            return replay
         inv = self._capability(req["capability_id"], req["invocation_id"])
         target = req["to_state"]
-        # The key is (invocation, target state): a fact this operation recorded
-        # replays whatever state the invocation has reached since, before any
-        # check of current authority (a lost launch reply after the lease
-        # ended is still that launch), and its facts are write-once (DDL), so
-        # the row holds them (Astra 1b review A5). A re-entry out of
-        # outcome_unknown (1c) is recorded under its episode with its own
-        # cause (L-4, RA4), so it is never taken for this fact.
-        recorded = self._one("invocation_transitions", {"invocation_id": inv["invocation_id"], "to_state": target, "cause": LIFECYCLE_CAUSE[target]}) is not None
-        if recorded:
-            if any(inv[k] != v for k, v in facts.items()):
-                raise Refusal("transition_conflict", f"{inv['invocation_id']} recorded {target} with other facts")
-            return {"status": "replayed", "invocation_id": inv["invocation_id"], "state": target}
         changes = {"state": target, "state_changed_at": now, **facts}
         if target == "launching":
             # L-7: the final launch-admission check, against current state
