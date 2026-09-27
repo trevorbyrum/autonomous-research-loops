@@ -764,6 +764,143 @@ class VerificationTest(StoreTestCase):
         self.verify("ver_00000001")
 
 
+class ContractAdmittedSupportTest(StoreTestCase):
+    """V-10 (task 1a): accepted support needs contract-admitted production, for
+    every claim, from provisional or contested, independently of V-4's
+    receipt. The history: a scoping research pass (pre-contract, pinned to the
+    confirmed brief; the topic has only a draft contract) captures
+    load-bearing, full-text claim clm_00000001 revision 1; the contract is
+    then approved, and a contract-admitted research pass and a verification
+    invocation are admitted. The expected outcome of every promotion is
+    written by hand, and each refusal is read back."""
+
+    SET_STATUS = "UPDATE claims SET status = ? WHERE claim_id = ? AND revision = ?"
+    NEEDS_ADMISSION = "accepted support needs contract-admitted production"
+    NEEDS_RECEIPT = "needs a supporting load-bearing-use verification receipt"
+    SCOPING, ADMITTED = "inv_scoping1", "inv_pppppppp"
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'text/plain', ?)", h("7"), T)
+        self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000001', 'doi', '10.1/x', ?)", T)
+        self.lease("lease_rrrrrrrr", 1)
+        self.invocation(self.SCOPING, lease="lease_rrrrrrrr", pre_contract=True)
+        self.claim("clm_00000001", 1, self.SCOPING)
+        self.approve_contract(TOPIC, 1)
+        self.x("UPDATE leases SET released_at = ?, release_reason = 'finalized' WHERE lease_id = 'lease_rrrrrrrr'", T)
+        self.lease("lease_aaaaaaaa", 2)
+        self.invocation(self.ADMITTED, lease="lease_aaaaaaaa")
+        self.lease("lease_vvvvvvvv", 3, scope="verification")
+        self.invocation("inv_vvvvvvvv", kind="verification", lease="lease_vvvvvvvv")
+        self.assertEqual(self.rows("SELECT invocation_id, admission_context FROM invocations WHERE invocation_id IN (?, ?) ORDER BY invocation_id", self.SCOPING, self.ADMITTED),
+                         [(self.ADMITTED, "contract/1"), (self.SCOPING, "pre-contract/1")])
+
+    def claim(self, cid: str, rev: int, producer: str, *, load_bearing: bool = True, tid: str = TOPIC) -> None:
+        self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) "
+               "VALUES (?, ?, ?, ?, ?, ?, ?, 'provisional', ?)", cid, rev, tid, h("7"), producer, int(load_bearing), "full_text" if load_bearing else None, T)
+
+    def qualifying_receipt(self, rid: str, cid: str, rev: int, producer: str) -> None:
+        """A receipt meeting V-4 in full for a load-bearing full-text claim:
+        requested for load-bearing use at full text, obtained at full text,
+        every substantive check performed and passed, a matched quote check of
+        this claim revision, verdict supports, by the separate verifier."""
+        self.quote_check("qc-" + rid, claim=(cid, rev))
+        self.verify(rid, claim=(cid, rev), producer=producer, quote=("matched", "qc-" + rid))
+
+    def status(self, cid: str, rev: int = 1) -> str:
+        return self.rows("SELECT status FROM claims WHERE claim_id = ? AND revision = ?", cid, rev)[0][0]
+
+    def test_pre_contract_claim_with_a_qualifying_receipt_is_refused(self) -> None:
+        """First isolated negative. The scoping claim gets a receipt that meets
+        V-4 in full; only admission is missing, so promotion is refused and
+        the claim reads back provisional. Control: the same receipt shape
+        promotes a claim the contract-admitted pass produced."""
+        self.qualifying_receipt("ver_00000001", "clm_00000001", 1, self.SCOPING)
+        self.rejects(self.NEEDS_ADMISSION, self.SET_STATUS, "accepted_support", "clm_00000001", 1)
+        self.assertEqual(self.status("clm_00000001"), "provisional")
+        self.claim("clm_00000002", 1, self.ADMITTED)
+        self.qualifying_receipt("ver_00000002", "clm_00000002", 1, self.ADMITTED)
+        self.x(self.SET_STATUS, "accepted_support", "clm_00000002", 1)
+        self.assertEqual(self.status("clm_00000002"), "accepted_support")
+
+    def test_every_claim_needs_admission_not_only_load_bearing(self) -> None:
+        """V-4's receipt rule reads load-bearing claims only; V-10 reads every
+        claim. A non-load-bearing scoping claim, which no receipt rule
+        touches, is refused; the same claim by the contract-admitted pass
+        promotes."""
+        self.claim("clm_00000004", 1, self.SCOPING, load_bearing=False)
+        self.rejects(self.NEEDS_ADMISSION, self.SET_STATUS, "accepted_support", "clm_00000004", 1)
+        self.assertEqual(self.status("clm_00000004"), "provisional")
+        self.claim("clm_00000005", 1, self.ADMITTED, load_bearing=False)
+        self.x(self.SET_STATUS, "accepted_support", "clm_00000005", 1)
+
+    def test_contract_admitted_claim_without_a_receipt_is_refused(self) -> None:
+        """Second isolated negative: V-10 does not replace V-4. The
+        contract-admitted pass's load-bearing claim, with no receipt, is
+        refused for want of one. A non-load-bearing claim of the same pass
+        promotes, so this producer meets V-10 and the receipt is the only
+        thing missing. With a qualifying receipt the load-bearing claim
+        promotes."""
+        self.claim("clm_00000002", 1, self.ADMITTED)
+        self.claim("clm_00000003", 1, self.ADMITTED, load_bearing=False)
+        self.x(self.SET_STATUS, "accepted_support", "clm_00000003", 1)
+        self.rejects(self.NEEDS_RECEIPT, self.SET_STATUS, "accepted_support", "clm_00000002", 1)
+        self.assertEqual(self.status("clm_00000002"), "provisional")
+        self.qualifying_receipt("ver_00000002", "clm_00000002", 1, self.ADMITTED)
+        self.x(self.SET_STATUS, "accepted_support", "clm_00000002", 1)
+        self.assertEqual(self.status("clm_00000002"), "accepted_support")
+
+    def test_adopted_pre_contract_claim_with_a_receipt_is_allowed(self) -> None:
+        """Adoption (Astra ruling 4 on RA3): the contract-admitted pass writes
+        revision 2 of the scoping claim, same text, as its own production;
+        with a qualifying receipt of revision 2 it promotes. Adoption is per
+        revision: revision 1, with a qualifying receipt of its own, is still
+        refused, and so is revision 3, which only relabels the scoping pass as
+        a new revision's producer. Every revision is kept."""
+        self.claim("clm_00000001", 2, self.ADMITTED)
+        self.qualifying_receipt("ver_00000002", "clm_00000001", 2, self.ADMITTED)
+        self.x(self.SET_STATUS, "accepted_support", "clm_00000001", 2)
+        self.qualifying_receipt("ver_00000001", "clm_00000001", 1, self.SCOPING)
+        self.rejects(self.NEEDS_ADMISSION, self.SET_STATUS, "accepted_support", "clm_00000001", 1)
+        self.claim("clm_00000001", 3, self.SCOPING)
+        self.qualifying_receipt("ver_00000003", "clm_00000001", 3, self.SCOPING)
+        self.rejects(self.NEEDS_ADMISSION, self.SET_STATUS, "accepted_support", "clm_00000001", 3)
+        self.assertEqual(self.rows("SELECT revision, producer_invocation_id, status FROM claims WHERE claim_id = 'clm_00000001' ORDER BY revision"),
+                         [(1, self.SCOPING, "provisional"), (2, self.ADMITTED, "accepted_support"), (3, self.SCOPING, "provisional")])
+
+    def test_contested_to_accepted_support_follows_the_same_rule(self) -> None:
+        """From contested as from provisional. The scoping claim, with a
+        qualifying receipt, is contested (allowed) and then refused
+        contested -> accepted_support, staying contested. The
+        contract-admitted pass's claim, with a qualifying receipt, makes the
+        same moves and is promoted."""
+        self.qualifying_receipt("ver_00000001", "clm_00000001", 1, self.SCOPING)
+        self.x(self.SET_STATUS, "contested", "clm_00000001", 1)
+        self.rejects(self.NEEDS_ADMISSION, self.SET_STATUS, "accepted_support", "clm_00000001", 1)
+        self.assertEqual(self.status("clm_00000001"), "contested")
+        self.claim("clm_00000002", 1, self.ADMITTED)
+        self.qualifying_receipt("ver_00000002", "clm_00000002", 1, self.ADMITTED)
+        self.x(self.SET_STATUS, "contested", "clm_00000002", 1)
+        self.x(self.SET_STATUS, "accepted_support", "clm_00000002", 1)
+        self.assertEqual(self.status("clm_00000002"), "accepted_support")
+
+    def test_the_producer_is_work_of_the_claims_own_topic(self) -> None:
+        """Another topic's contract-admitted work is not this topic's
+        contract-admitted production. The claims table does not bind a
+        producer's topic when a claim is written, so a claim of this topic
+        naming the other topic's admitted pass can exist; its promotion is
+        refused (not load-bearing, so V-4 plays no part). The same producer's
+        claim in its own topic promotes."""
+        self.approved_revision(OTHER)
+        self.lease("lease_zzzzzzzz", 1, tid=OTHER)
+        self.invocation("inv_oooooooo", tid=OTHER, lease="lease_zzzzzzzz")
+        self.claim("clm_00000006", 1, "inv_oooooooo", load_bearing=False)
+        self.rejects(self.NEEDS_ADMISSION, self.SET_STATUS, "accepted_support", "clm_00000006", 1)
+        self.assertEqual(self.status("clm_00000006"), "provisional")
+        self.claim("clm_00000007", 1, "inv_oooooooo", load_bearing=False, tid=OTHER)
+        self.x(self.SET_STATUS, "accepted_support", "clm_00000007", 1)
+
+
 class ObservationTest(StoreTestCase):
     INSERT = ("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, error_class, capability_fact_id, policy_version, completeness) "
               "VALUES (?, 'inv_pppppppp', ?, ?, 1, 'crossref', '{}', '[]', ?, ?, ?, ?, ?, 'pol1', ?)")

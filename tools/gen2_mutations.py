@@ -93,6 +93,7 @@ FI = "test_store_ddl.FacetImportanceTest."
 AD = "test_store_ddl.AdmissionAndLeaseTest."
 IL = "test_store_ddl.InvocationLifecycleTest."
 VT = "test_store_ddl.VerificationTest."
+CS = "test_store_ddl.ContractAdmittedSupportTest."
 LT = "test_store_ddl.InvocationLifecycleTest."
 DC = "test_store_ddl.DecisionReceiptConsistencyTest."
 SD = "test_store_ddl.ScreeningAndDecisionTest."
@@ -555,6 +556,47 @@ MUTATIONS: list[Mutation] = [
     Mutation("RA5-use-matches-claim-tier", "RA5", "a load-bearing-use receipt may name another required tier than its claim's",
              (VT + "test_load_bearing_receipt_states_its_claims_designation",), scope="verification_receipts_use_matches_claim",
              old="\n    AND c.required_access_tier = NEW.required_access_tier)", new=")"),
+    # --- task 1a / V-10: accepted support needs contract-admitted production ---------
+    Mutation("V10-dropped", "1a", "the limited-consumer rule restored: pre-contract (scoping) output becomes accepted support",
+             (CS + "test_pre_contract_claim_with_a_qualifying_receipt_is_refused", CS + "test_every_claim_needs_admission_not_only_load_bearing",
+              CS + "test_adopted_pre_contract_claim_with_a_receipt_is_allowed", CS + "test_contested_to_accepted_support_follows_the_same_rule",
+              CS + "test_the_producer_is_work_of_the_claims_own_topic"), drop_trigger="claims_accepted_support_needs_contract_admission"),
+    *(Mutation(f"V10-{key}", "1a", desc, tuple(CS + k for k in killers), scope=scope, old=old, new=new)
+      for key, desc, killers, scope, old, new in (
+          ("admission-context", "any producer of the claim's topic qualifies, pre-contract (scoping) work included",
+           ("test_pre_contract_claim_with_a_qualifying_receipt_is_refused", "test_every_claim_needs_admission_not_only_load_bearing",
+            "test_adopted_pre_contract_claim_with_a_receipt_is_allowed", "test_contested_to_accepted_support_follows_the_same_rule"),
+           "claims_accepted_support_needs_contract_admission", "\n    AND p.admission_context = 'contract/1'", ""),
+          ("producer-topic", "another topic's contract-admitted work qualifies as this topic's production",
+           ("test_the_producer_is_work_of_the_claims_own_topic",),
+           "claims_accepted_support_needs_contract_admission", "\n    AND p.topic_id = NEW.topic_id)", ")"),
+          ("load-bearing-only", "the rule narrowed to V-4's scope: only load-bearing claims need admission",
+           ("test_every_claim_needs_admission_not_only_load_bearing",),
+           "claims_accepted_support_needs_contract_admission", "WHEN NEW.status = 'accepted_support' AND NOT EXISTS (",
+           "WHEN NEW.status = 'accepted_support' AND NEW.load_bearing = 1 AND NOT EXISTS ("),
+          ("contested-exempt", "contested -> accepted_support skips the admission rule",
+           ("test_contested_to_accepted_support_follows_the_same_rule",),
+           "claims_accepted_support_needs_contract_admission", "WHEN NEW.status = 'accepted_support' AND NOT EXISTS (",
+           "WHEN NEW.status = 'accepted_support' AND OLD.status IS NOT 'contested' AND NOT EXISTS ("),
+          ("receipt-substitutes-for-admission", "the two conditions merged: a supporting load-bearing receipt stands in for contract admission",
+           ("test_pre_contract_claim_with_a_qualifying_receipt_is_refused",),
+           "claims_accepted_support_needs_contract_admission", "WHEN NEW.status = 'accepted_support' AND NOT EXISTS (",
+           "WHEN NEW.status = 'accepted_support' AND NOT EXISTS (SELECT 1 FROM verification_receipts v WHERE v.claim_id = NEW.claim_id "
+           "AND v.claim_revision = NEW.revision AND v.use = 'load_bearing' AND v.verdict = 'supports') AND NOT EXISTS ("),
+          ("admission-substitutes-for-receipt", "the two conditions merged: contract admission stands in for the verification receipt",
+           ("test_contract_admitted_claim_without_a_receipt_is_refused",),
+           "claims_accepted_support_needs_receipt", "WHEN NEW.status = 'accepted_support' AND NEW.load_bearing = 1 AND NOT EXISTS (",
+           "WHEN NEW.status = 'accepted_support' AND NEW.load_bearing = 1 AND NOT EXISTS (SELECT 1 FROM invocations p "
+           "WHERE p.invocation_id = NEW.producer_invocation_id AND p.admission_context = 'contract/1') AND NOT EXISTS ("),
+          ("adoption-per-claim", "adoption read per claim id, not per revision: an adopted revision admits the scoping revision and a relabelled one too",
+           ("test_adopted_pre_contract_claim_with_a_receipt_is_allowed",),
+           "claims_accepted_support_needs_contract_admission", "  WHERE p.invocation_id = NEW.producer_invocation_id\n",
+           "  WHERE p.invocation_id IN (SELECT producer_invocation_id FROM claims WHERE claim_id = NEW.claim_id)\n"),
+          ("adoption-refused", "over-restriction: a claim with any pre-contract revision can never become accepted support (no adoption)",
+           ("test_adopted_pre_contract_claim_with_a_receipt_is_allowed",),
+           "claims_accepted_support_needs_contract_admission", "\n    AND p.topic_id = NEW.topic_id)",
+           "\n    AND p.topic_id = NEW.topic_id\n    AND NOT EXISTS (SELECT 1 FROM claims o JOIN invocations q ON q.invocation_id = o.producer_invocation_id "
+           "WHERE o.claim_id = NEW.claim_id AND q.admission_context = 'pre-contract/1'))"))),
     # --- RA3: scientific rows only under contract-admitted work and approved pins -------
     *(Mutation(f"RA3-{key}", "RA3", desc, tuple(AD + k for k in killers), drop_trigger=trigger)
       for key, desc, killers, trigger in (
@@ -1289,7 +1331,7 @@ MUTATIONS: list[Mutation] = [
       for trigger, killers in (
           ("operation_receipts_fenced", (D + "CommitFencingTest.test_stale_generation_rejected", D + "CommitFencingTest.test_released_lease_cannot_commit",
                                          D + "CommitFencingTest.test_cross_topic_commit_rejected", D + "CommitFencingTest.test_commit_under_another_invocations_lease_rejected")),
-          ("claims_accepted_support_needs_receipt", (VT + "test_accepted_support_needs_receipt_at_required_tier",)),
+          ("claims_accepted_support_needs_receipt", (VT + "test_accepted_support_needs_receipt_at_required_tier", CS + "test_contract_admitted_claim_without_a_receipt_is_refused")),
           ("connector_watermarks_never_regress", (D + "ExportOutboxTest.test_connector_watermark_never_regresses",)),
           ("invocations_start_admitted", (LT + "test_invocations_start_admitted",)),
           ("leases_generation_increases", (D + "LeaseFencingTest.test_generation_strictly_increases_per_topic",)),

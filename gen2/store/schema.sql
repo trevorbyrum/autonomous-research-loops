@@ -1854,11 +1854,14 @@ BEGIN
 END;
 
 -- trace: flow S4 steps 6 and 9 (provisional capture vs accepted support),
--- §5 (hybrid verification: inline for load-bearing claims); design review
--- §9; adjudication (b)7, (d)3; INVARIANTS E-3 (unit 4: accepted claims),
--- V-2, V-4.
+-- S8 item 5 (unapproved work is never silently promoted), §5 (hybrid
+-- verification: inline for load-bearing claims); design review §9;
+-- adjudication (b)7, (d)3; INVARIANTS E-3 (unit 4: accepted claims), V-2,
+-- V-4, V-10, C-12.
 -- Claims start provisional. A load-bearing claim becomes accepted support
--- only with a supporting verification receipt at or above its required tier.
+-- only with a supporting verification receipt at or above its required tier;
+-- every claim becomes accepted support only if contract-admitted work of its
+-- topic produced that revision (V-10).
 CREATE TABLE claims (
   claim_id TEXT NOT NULL CHECK (claim_id GLOB 'clm_*'),
   revision INTEGER NOT NULL CHECK (revision >= 1),
@@ -1881,7 +1884,8 @@ BEGIN
 END;
 
 -- Ruling R2.5: draft claim-status transitions (owner: the router at commit;
--- accepted_support additionally needs its verification receipt, below).
+-- accepted_support additionally needs its verification receipt and
+-- contract-admitted production, below).
 -- provisional is capture; quarantined returns to provisional only by
 -- re-capture; rejected can only be superseded; superseded is terminal.
 CREATE TRIGGER claims_status_transitions
@@ -1921,6 +1925,34 @@ WHEN NEW.status = 'accepted_support' AND NEW.load_bearing = 1 AND NOT EXISTS (
     AND coalesce(json_extract(v.receipt, '$.checks.qualifications'), 'missing') NOT IN ('not_checked', 'unavailable', 'missing'))
 BEGIN
   SELECT RAISE(ABORT, 'a load-bearing claim needs a supporting load-bearing-use verification receipt at its own required tier with every check performed (V-2, V-4, V-8)');
+END;
+
+-- V-10 (task 1a; Astra 0a-repair-2 ruling 5, settled design): accepted
+-- support is a globally reusable evidence status, so every promotion to it —
+-- from provisional or contested, load-bearing or not — needs the claim
+-- revision to have been produced under an approved contract revision's
+-- admission context: its producing invocation is contract-admitted work of
+-- the claim's own topic. (A contract-revision pin exists only under
+-- contract/1, and admission checked that it was approved — a delegate
+-- inherits its parent's checked pins — so the pin is not re-read here.)
+-- Pre-contract (scoping) output is adopted by a new claim revision whose
+-- producer is the contract-admitted work that adopts it (ruling 4 on RA3):
+-- that invocation, with its write-once pins and its commit receipt, is the
+-- audited record of the adoption. The old revision keeps its lineage and
+-- never becomes accepted support itself. Independent of
+-- claims_accepted_support_needs_receipt: a receipt does not establish
+-- protocol admissibility, admission does not establish support, and where
+-- both apply both must hold. The protocol-consuming rows keep their own
+-- checks (screening assessments, claim-source links, dossiers).
+CREATE TRIGGER claims_accepted_support_needs_contract_admission
+BEFORE UPDATE OF status ON claims
+WHEN NEW.status = 'accepted_support' AND NOT EXISTS (
+  SELECT 1 FROM invocations p
+  WHERE p.invocation_id = NEW.producer_invocation_id
+    AND p.admission_context = 'contract/1'
+    AND p.topic_id = NEW.topic_id)
+BEGIN
+  SELECT RAISE(ABORT, 'accepted support needs contract-admitted production: the claim revision''s producer must be contract-admitted work of its topic; pre-contract output is adopted by a new revision (V-10, C-12)');
 END;
 
 CREATE TRIGGER claims_identity_immutable
