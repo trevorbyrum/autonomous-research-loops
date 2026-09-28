@@ -30,7 +30,9 @@ tests exercise with real processes.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+import math
+from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Mapping
 
 from gen2.core import instants
@@ -64,10 +66,15 @@ LIFECYCLE_COMMANDS = {
 IDENTITY = ("host_id", "container_id", "boot_id", "start_fingerprint")
 
 
-def _after(now: str, delta: timedelta) -> str:
-    seconds, rest = divmod(instants.utc_instant_ns(now), 10**9)
-    moment = datetime.fromtimestamp(seconds, timezone.utc) + delta
-    return moment.strftime("%Y-%m-%dT%H:%M:%S") + f".{rest // 1000:06d}Z"
+def _after(now: str, seconds: float) -> str:
+    """The instant `seconds` after `now`, in exact nanoseconds: a duration's
+    fraction of a second is kept and carries into the seconds (a hold window
+    of 0.5 s is half a second, Astra 1d review finding 4). A duration is the
+    decimal it is written as (config-bundle/1 seconds); a fraction finer than
+    a nanosecond rounds up, so a positive window is never zero."""
+    total = instants.utc_instant_ns(now) + math.ceil(Decimal(repr(seconds)) * 10**9)
+    whole, rest = divmod(total, 10**9)
+    return datetime.fromtimestamp(whole, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + f".{rest:09d}Z"
 
 
 def unknown_hold_subject(invocation_id: str, episode: int) -> str:
@@ -152,7 +159,7 @@ class Lifecycle:
         invocation is pinned to (G-10, RG-9; shipped default one hour) (H-3,
         RG-3)."""
         station = self._lease_of(inv)["station_id"]
-        window = timedelta(seconds=self._router_policy(inv["config_bundle_hash"])["hold_window_s"])
+        window = self._router_policy(inv["config_bundle_hash"])["hold_window_s"]
         self._store.insert("holds", {
             "hold_id": self._new_id("hold_"), "topic_id": inv["topic_id"], "subject_ref": unknown_hold_subject(inv["invocation_id"], episode),
             "hold_class": "unknown", "cause": f"outcome_unknown ({cause})", "recoverability": "unknown", "required_authority": "router",

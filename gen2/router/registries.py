@@ -22,7 +22,9 @@ superseding the last. New work pins the active bundle (the claim names it);
 admitted work keeps the bundle it was admitted under, which stays recorded
 and resolvable, so its policy survives a restart and a later activation
 (RG-9). A refused bundle leaves the active one as it was and raises a dated
-capability fact, on the transition only (H-2).
+capability fact, on the transition only (H-2); the next activation that
+succeeds — a new bundle, or the active one mounted again (a replay) —
+records the recovery, the failure staying in the fact history.
 
 Questions: a (question id, version) has one content forever, the entry's
 content hash (C-13). A DecisionSpec resolves against the registry when it is
@@ -93,6 +95,8 @@ class Registries:
         if stored is not None:
             if stored["status"] != "active":
                 raise Refusal("bundle_superseded", f"version {doc['version']} was superseded; a superseded bundle is never reactivated")
+            # the usable bundle mounted again: a failure since is recovered from (a transition only, H-2; the failure stays history)
+            self._fact(BUNDLE_CAPABILITY, "healthy", f"bundle version {doc['version']} active", now)
             return {"status": "replayed", "bundle_hash": bundle_hash, "version": doc["version"]}
         recorded = self._store.select("config_bundles", {})
         newest = max((b["version"] for b in recorded), default=0)
@@ -120,6 +124,12 @@ class Registries:
         Reading it authorizes nothing."""
         row = self._one("config_bundles", {"bundle_hash": bundle_hash})
         return None if row is None else row["document"]
+
+    def active_config_bundle(self) -> str | None:
+        """The active bundle's hash (None before any is activated): what a
+        start with nothing mounted restores. Reading it authorizes nothing."""
+        active = self._active_bundle()
+        return None if active is None else active["bundle_hash"]
 
     def _bundle(self, bundle_hash: str) -> dict:
         return self._one("config_bundles", {"bundle_hash": bundle_hash})["document"]

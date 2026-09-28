@@ -106,6 +106,19 @@ class ConfigBundleTest(RouterTestCase):
         self.assertEqual(self.rows("SELECT state, superseded_by_fact_id IS NULL FROM capability_facts WHERE capability = 'config-bundle' ORDER BY rowid"),
                          [("failing", 0), ("healthy", 1)])
 
+    def test_the_active_bundle_mounted_again_after_a_refusal_is_a_recovery(self) -> None:
+        """H-2, RG-9: restoring the valid active bundle — a replay, no new
+        version — records the recovery once; the failure stays history, and
+        a healthy replay after that records nothing."""
+        self.assertEqual(self.activate(bundle(2, policy={"supervisor": {"launch_attempt": 1}}))["status"], "refused")
+        self.assertEqual(self.activate(copy.deepcopy(BUNDLE)), {"status": "replayed", "bundle_hash": CONFIG, "version": 1})
+        facts = self.rows("SELECT fact_id, state, superseded_by_fact_id FROM capability_facts WHERE capability = 'config-bundle' ORDER BY rowid")
+        self.assertEqual([(state, superseded is None) for _, state, superseded in facts], [("failing", False), ("healthy", True)])
+        self.assertEqual(facts[0][2], facts[1][0])  # the failure is superseded by the recovery, not rewritten
+        before = self.state()
+        self.assertEqual(self.activate(copy.deepcopy(BUNDLE))["status"], "replayed")
+        self.assertEqual(self.state(), before)
+
     def test_new_work_pins_the_active_bundle(self) -> None:
         self.to_queued()
         second = bundle(2)
@@ -165,6 +178,29 @@ class ConfigBundleTest(RouterTestCase):
                                                  "unknown_episode": 1, "unknown_cause": "contact_lost"})
             self.assertEqual(out["status"], "recorded", out)
         self.assertEqual((self.hold_window("inv_research01"), self.hold_window("inv_checkpt01")), (3600, 120))
+
+    def test_a_fractional_hold_window_is_kept_exactly(self) -> None:
+        """Astra 1d review finding 4: config-bundle/1 admits fractional
+        seconds, and an episode's hold is that long to the nanosecond — its
+        fraction kept, carrying into the next second (0.5 s from .800 s), not
+        dropped; a nanosecond-level window is not rounded away, and a finer
+        one rounds up to a nanosecond rather than to no window at all."""
+        self.to_queued()
+        for version, (window, inv, kind, at) in enumerate((
+                (0.5, "inv_research01", "research_pass", "2026-09-27T10:00:00.800Z"),
+                (2.000000001, "inv_checkpt01", "checkpoint", "2026-09-27T10:00:05.100Z"),
+                (1e-10, "inv_verify01", "verification", "2026-09-27T10:00:09.100Z")), start=2):
+            with self.subTest(window=window):
+                self.activate(bundle(version, policy={"router": {"hold_window_s": window}}))
+                grant = self.started(inv, kind, config_bundle_hash=canonical.logical_hash(bundle(version, policy={"router": {"hold_window_s": window}})))
+                self.clock.set(at)
+                out = self.router.record_transition({"capability_id": grant["capability_id"], "invocation_id": inv, "to_state": "outcome_unknown",
+                                                     "unknown_episode": 1, "unknown_cause": "contact_lost"})
+                self.assertEqual(out["status"], "recorded", out)
+                created, deadline = (instants.utc_instant_ns(t) for t in self.rows(
+                    "SELECT created_at, deadline_at FROM holds WHERE subject_ref = ?", f"invocation:{inv}#unknown:1")[0])
+                self.assertEqual(deadline - created, {0.5: 500_000_000, 2.000000001: 2_000_000_001, 1e-10: 1}[window])  # finer than 1 ns: up, never zero
+                self.assertEqual(deadline // 10**9 - created // 10**9, {0.5: 1, 2.000000001: 2, 1e-10: 0}[window])  # the fraction carries
 
 
 class QuestionPinTest(ScreeningBase):

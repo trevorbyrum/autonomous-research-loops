@@ -45,7 +45,6 @@ cooldown; the fixed cadence floor, and any pending mandatory signal
 """
 from __future__ import annotations
 
-from datetime import timedelta
 from typing import Mapping
 
 from gen2.router import boundary
@@ -123,7 +122,7 @@ class Scheduling:
                     "hold_id": hold_id, "topic_id": inv["topic_id"], "subject_ref": subject, "hold_class": "transient",
                     "cause": f"retry budget exhausted at attempt {attempt - 1} of {inv['invocation_id']}", "recoverability": "needs_decision",
                     "required_authority": "operator", "owner": "operator",
-                    "deadline_at": _after(now, timedelta(seconds=self._router_policy(inv["config_bundle_hash"])["hold_window_s"])),
+                    "deadline_at": _after(now, self._router_policy(inv["config_bundle_hash"])["hold_window_s"]),
                     "clears_when": "an operator hold_clearance; then the operator re-queues the work or leaves it ended",
                     "capability_fact_id": None, "created_at": now, "created_by_operation_id": None})
                 self._audit("retry_budget_exhausted", now, {"hold_id": hold_id, "attempt": attempt - 1}, topic_id=inv["topic_id"], invocation_id=inv["invocation_id"])

@@ -137,6 +137,21 @@ class RequeueTest(PolicyCase):
         created, deadline = self.rows("SELECT created_at, deadline_at FROM holds WHERE hold_id = ?", hold_id)[0]
         self.assertEqual((utc_instant_ns(deadline) - utc_instant_ns(created)) // 10**9, 600)
 
+    def test_a_fractional_exhaustion_hold_window_is_kept_exactly(self) -> None:
+        """Astra 1d review finding 4, for the retry-exhaustion hold: a pinned
+        window of 0.25 s is a quarter second, carried across a second."""
+        quarter = {**POLICY, "version": 3, "policy": {"router": {**POLICY["policy"]["router"], "hold_window_s": 0.25}}}
+        self.assertEqual(self.router.activate_config_bundle(quarter)["status"], "activated")
+        pinned = canonical.logical_hash(quarter)
+        self.fail_work(first := self.started("inv_discov01", "discovery", config_bundle_hash=pinned))
+        self.requeue(first["invocation_id"])
+        second = self.started("inv_discov02", "discovery", retry_of=first["invocation_id"], config_bundle_hash=pinned)
+        self.fail_work(second)
+        self.clock.set("2026-09-27T10:00:30.900Z")
+        hold_id = self.requeue(second["invocation_id"]).get("hold_id")
+        created, deadline = (utc_instant_ns(t) for t in self.rows("SELECT created_at, deadline_at FROM holds WHERE hold_id = ?", hold_id)[0])
+        self.assertEqual((deadline - created, deadline // 10**9 - created // 10**9), (250_000_000, 1))
+
     def test_policy_requeues_only_transient_ends(self) -> None:
         """L-6: a semantic failure, or a cancellation the operator made, is the
         operator's to diagnose; a failure class the bundle lists, or a

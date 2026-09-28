@@ -46,7 +46,7 @@
           "additionalProperties": false,
           "properties": {
             "hold_window_s": {
-              "description": "The deadline of a hold the router opens (an outcome_unknown episode's, an exhausted retry budget's): how long its owner has before it is overdue. Shipped default 3600.",
+              "description": "The deadline of a hold the router opens (an outcome_unknown episode's, an exhausted retry budget's): how long its owner has before it is overdue, in seconds, fractions kept: the deadline is the hold's creation instant plus exactly this duration, to the nanosecond, a finer fraction rounding up (so a positive window is never zero). Shipped default 3600.",
               "$ref": "#/$defs/seconds"
             },
             "retry": {
