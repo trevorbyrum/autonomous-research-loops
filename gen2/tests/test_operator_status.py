@@ -3,12 +3,14 @@
 StatusWorld constructs, through the router (and raw SQL only where the
 router has no path), one of each waiting state the task names: a brief
 overdue, a scope approval, a contract draft, an open judgment hold, an
-outcome_unknown episode with its hold, a result awaiting its commit, work
+outcome_unknown episode with its hold (beside a hold already cleared), a
+result awaiting its commit, work
 fenced by an amendment (amendment_pending), a lane waiting for its re-queue,
 one re-queued and not yet claimed, one held by its exhausted budget, a paused
 topic's admitted work, work past its deadline and lease, pending signals, an
-open review, an open reservation, the config bundles active and pinned, a
-refused bundle's capability fact, and the station's incidents — a real
+open review, an open reservation (beside one an amendment closed), the config bundles
+active and pinned, a refused bundle's capability fact (after a failure and a
+recovery before it), and the station's incidents — a real
 retry_exhausted (the supervisor cancelling admitted work its paused topic
 kept from launching) and a stalled job's collected-end incident. Status is
 read over HTTP; each test states by hand which reason must name which item,
@@ -55,8 +57,9 @@ class StatusWorld(of.OperatorTestCase):
         self.build_other_topics()
         self.build_station()
         assert self.router.activate_config_bundle(LATER_BUNDLE)["status"] == "activated"  # the work above stays pinned to POLICY
-        refused = self.router.activate_config_bundle({**LATER_BUNDLE, "version": 4, "policy": {"router": {"hold_window_s": 0}}})
-        assert refused["status"] == "refused", refused  # the active bundle stays, with a dated fact
+        for version, policy, outcome in ((4, {"router": {"hold_window_s": 0}}, "refused"), (4, {}, "activated"), (5, {"router": {"hold_window_s": 0}}, "refused")):
+            out = self.router.activate_config_bundle({**LATER_BUNDLE, "version": version, "policy": policy})
+            assert out["status"] == outcome, out  # failing, recovered, failing again: three facts, the last one current
         self.clock.set("2026-09-27T11:00:00Z")  # the short deadline and lease below are over
 
     def store_draft(self, doc: dict) -> None:
@@ -73,6 +76,8 @@ class StatusWorld(of.OperatorTestCase):
         self.fenced = self.started("inv_fenced00001")
         checkpoint = self.started("inv_ready000001", kind="checkpoint")
         self.hold(checkpoint, "hold_judgment01")
+        self.hold(checkpoint, "hold_cleared001")
+        assert self.decide("opd_clear0001", "hold_clearance", {"kind": "hold", "ref": "hold_cleared001"})["status"] == "applied"
         env = self.envelope(checkpoint, "op_ready0001", rf.empty_outcome(checkpoint["invocation_id"]))
         self.ready(checkpoint, env["payload_digest"])
         unknown = self.started("inv_unknown0001", kind="verification")
@@ -81,13 +86,16 @@ class StatusWorld(of.OperatorTestCase):
         assert out["status"] == "recorded", out
         self.ended(self.started("inv_requeued001", kind="discovery"))
         assert self.router.requeue({"invocation_id": "inv_requeued001", "requested_by": "operator", "reason": "diagnosed"})["status"] == "requeued"
+        assert self.router.open_reservation({"reservation_id": "rsv_before00001", "topic_id": TOPIC, "purpose": "protected_exploration"})["status"] == "opened"
         changed = self.amend.contract_doc(3, 2, edit=self.amend.protocol_changed)
         assert self.router.propose_amendment({"document": changed})["status"] == "recorded"
         assert self.amend.ContractWorld.approve(self, changed)["status"] == "applied"  # fences the research pass pinned to revision 2
         assert self.router.open_reservation({"reservation_id": "rsv_explore0001", "topic_id": TOPIC, "purpose": "protected_exploration"})["status"] == "opened"
         draft = self.amend.contract_doc(4, 3, edit=lambda d: (self.amend.protocol_changed(d), self.amend.compatible(d)))
         assert self.router.propose_amendment({"document": draft})["status"] == "recorded"
-        assert self.router.open_review({"episode_id": "rev_cadence0001", "topic_id": TOPIC, "kind": "fixed_cadence"})["status"] == "opened"
+        self.x("INSERT INTO review_triggers (trigger_identity, topic_id, reason_code, signal_source, cause_ref, observed_at) VALUES (?, ?, 'retraction', 'deterministic', 'doi:10.1/w', ?)",
+               h("6"), TOPIC, "2026-09-27T10:00:00Z")
+        assert self.router.open_review({"episode_id": "rev_cadence0001", "topic_id": TOPIC, "kind": "fixed_cadence"})["status"] == "opened"  # takes h("6")
         self.x("INSERT INTO review_triggers (trigger_identity, topic_id, reason_code, signal_source, cause_ref, observed_at) VALUES (?, ?, 'retraction', 'deterministic', 'doi:10.1/x', ?)",
                h("7"), TOPIC, "2026-09-27T10:00:00Z")
 
@@ -212,9 +220,11 @@ class TopicWaitingTest(StatusWorld):
     def test_signals_and_an_open_review_are_listed(self) -> None:
         topic = self.topic_status()
         self.assertEqual([(s["trigger_identity"], s["reason_code"]) for s in self.one(topic, "signals")["pending"]], [(h("7"), "retraction")])
+        self.assertEqual(self.value("SELECT episode_id FROM review_triggers WHERE trigger_identity = ?", h("6")), "rev_cadence0001")
         self.assertEqual({k: v for k, v in self.one(topic, "review").items() if k != "opened_at"}, {"reason": "review", "episode_id": "rev_cadence0001", "kind": "fixed_cadence"})
 
     def test_the_open_reservation_stands_with_its_units(self) -> None:
+        self.assertEqual(self.rows("SELECT reservation_id, closed_at IS NOT NULL FROM reservations ORDER BY 1"), [("rsv_before00001", 1), ("rsv_explore0001", 0)])
         reservations = self.topic_status()["reservations"]
         self.assertEqual([{k: r[k] for k in ("reservation_id", "purpose", "contract_revision", "units", "drawn")} for r in reservations],
                          [{"reservation_id": "rsv_explore0001", "purpose": "protected_exploration", "contract_revision": 3, "units": 2, "drawn": 0}])
@@ -270,7 +280,7 @@ class EngineWideTest(StatusWorld):
         bundles = self.status_doc()["config_bundles"]
         active = self.rows("SELECT bundle_hash, version FROM config_bundles WHERE status = 'active'")
         self.assertEqual((bundles["active"]["bundle_hash"], bundles["active"]["version"]), active[0])
-        self.assertEqual(active[0][1], 3)
+        self.assertEqual(active[0][1], 4)
         pinned = {p["bundle_hash"]: p for p in bundles["pinned"]}
         self.assertEqual(sorted(pinned), [POLICY])
         self.assertEqual((pinned[POLICY]["status"], pinned[POLICY]["invocations"]),
@@ -280,7 +290,7 @@ class EngineWideTest(StatusWorld):
         facts = [f for f in self.status_doc()["capability_facts"] if f["capability"] == "config-bundle"]
         row = self.rows("SELECT fact_id, state, since FROM capability_facts WHERE capability = 'config-bundle' AND superseded_by_fact_id IS NULL")
         self.assertEqual([(f["fact_id"], f["state"], f["since"]) for f in facts], row)
-        self.assertEqual(row[0][1], "failing")
+        self.assertEqual((row[0][1], self.value("SELECT count(*) FROM capability_facts WHERE capability = 'config-bundle'")), ("failing", 3))
 
     def test_the_station_incidents_are_listed_and_named_on_their_items(self) -> None:
         doc = self.status_doc()

@@ -39,20 +39,27 @@ from typing import Callable
 
 from gen2.app.station import Station, StationRefused, open_station
 from gen2.operator.auth import Credentials, CredentialsRefused
-from gen2.operator.service import OperatorService
+from gen2.operator.service import COMMANDS, OperatorService
 from gen2.router.service import utc_now
 
 ANSWER_TIMEOUT_S = 60.0
+DRAIN_MAX = 64 * 1024
 
 
 class _Owned:
-    """The router, called on its owner thread: `name(...)` runs there and its
-    answer is returned here."""
+    """The router as the operator service sees it: only the operations its
+    routes call (core.control.OperatorBackend's, the COMMANDS table's), each
+    run on the owner thread and its answer returned here. Nothing else of the
+    router — its store least of all — is reachable through it."""
+
+    OPERATIONS = frozenset(COMMANDS) | {"status", "healthy"}
 
     def __init__(self, owner: ThreadPoolExecutor, target) -> None:
         self._owner, self._target = owner, target
 
     def __getattr__(self, name: str):
+        if name not in self.OPERATIONS:
+            raise AttributeError(f"{name} is not an operation of the operator surface")
         method = getattr(self._target, name)
         return lambda *args: self._owner.submit(method, *args).result(timeout=ANSWER_TIMEOUT_S)
 
@@ -111,9 +118,16 @@ def _handler(service: OperatorService, log: Callable[[str], None]):
             self._serve()
 
         def _serve(self) -> None:
+            consumed = 0
+
+            def read(size: int) -> bytes:
+                nonlocal consumed
+                data = self.rfile.read(size)
+                consumed += len(data)
+                return data
+            length = self.headers.get("Content-Length")
             try:
-                code, reply = service.handle(self.command, self.path, self.headers.get("Authorization"), self.headers.get("Content-Length"),
-                                             self.rfile.read)
+                code, reply = service.handle(self.command, self.path, self.headers.get("Authorization"), length, read)
             except Exception as exc:  # a fault behind the service: answered, logged by type only, never with the request
                 log(f"- {self.command} {self.path.partition('?')[0]} -> 500 {type(exc).__name__}")
                 code, reply = 500, {"status": "error", "reason": "internal"}
@@ -126,6 +140,22 @@ def _handler(service: OperatorService, log: Callable[[str], None]):
                 self.send_header("WWW-Authenticate", 'Bearer realm="gen2-engine"')
             self.end_headers()
             self.wfile.write(raw)
+            self.wfile.flush()
+            self._discard(length, consumed)
+
+        def _discard(self, length: str | None, consumed: int) -> None:
+            """After the answer, the rest of a small declared body the service
+            never read (a refusal before it: 401, 403, 404) is read and thrown
+            away, unparsed, so the connection closes cleanly: closing with
+            unread bytes makes the kernel reset it, and a client still sending
+            loses the answer. A larger remainder is not waited for."""
+            remaining = int(length) - consumed if length is not None and length.isascii() and length.isdigit() else 0
+            if 0 < remaining <= DRAIN_MAX:
+                try:
+                    self.connection.settimeout(1.0)
+                    self.rfile.read(remaining)
+                except OSError:
+                    pass
 
         def log_message(self, format: str, *args) -> None:  # noqa: A002 - the service logs each request itself; this would add the raw request line
             pass

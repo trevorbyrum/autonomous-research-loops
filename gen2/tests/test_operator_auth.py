@@ -21,6 +21,7 @@ import unittest
 from gen2.operator.auth import Credentials, CredentialsRefused, Principal
 from gen2.tests import operator_fixtures as of
 from gen2.tests import router_fixtures as rf
+from gen2.tests.router_fixtures import TOPIC
 
 OPERATOR_COMMANDS = ("apply_operator_decision", "request_cancel", "requeue", "close_brief", "activate_config_bundle", "version_brief",
                      "mark_brief_overdue", "propose_amendment")
@@ -52,7 +53,7 @@ class HealthTest(of.OperatorTestCase):
 
 class AuthenticationTest(of.CommandWorld):
     BAD = {"no header": None, "a wrong token": "Bearer op-token-mallory-0123456789abcdef", "a token's prefix": f"Bearer {of.OPERATOR_TOKEN[:-1]}",
-           "a token with a suffix": f"Bearer {of.OPERATOR_TOKEN}x", "another scheme": f"Basic {of.OPERATOR_TOKEN}", "an empty bearer": "Bearer ",
+           "a token with a suffix": f"Bearer {of.OPERATOR_TOKEN}x", "another scheme": f"Basic {of.OPERATOR_TOKEN}", "another scheme, as long as Bearer": f"Digest {of.OPERATOR_TOKEN}", "an empty bearer": "Bearer ",
            "the token alone": of.OPERATOR_TOKEN}
 
     def send(self, method: str, path: str, authorization: str | None, raw: bytes | None = None, headers: dict | None = None):
@@ -189,6 +190,22 @@ class AuthorizationTest(of.CommandWorld):
         self.assertEqual(self.router.record_transition(launch)["status"], "recorded")  # the supervisor's own path
 
 
+class BackendSurfaceTest(of.OperatorTestCase):
+    def test_the_service_reaches_only_the_operator_operations(self) -> None:
+        """What the composition root hands the service (gen2/app/engine.py
+        _Owned) answers the operations its routes call and nothing else of the
+        router: not its store, not a capability-bearing call, not a trusted
+        command no route names."""
+        backend = self.engine.service._backend
+        self.assertIs(backend.healthy(), True)
+        self.assertEqual(backend.status({"topic_id": TOPIC})["status"], "ok")
+        for name in ("_store", "claim", "record_transition", "commit_outcome", "reconcile", "invocation_status", "record_observation",
+                     "record_qualification", "open_reservation", "open_review", "restore_config_bundle", "close"):
+            with self.subTest(name=name):
+                with self.assertRaises(AttributeError):
+                    getattr(backend, name)
+
+
 class AuthorityFieldTest(of.CommandWorld):
     def test_who_acts_is_never_taken_from_the_request(self) -> None:
         """Each field naming who acts, in the one command it belongs to: refused
@@ -221,11 +238,16 @@ class BodyTest(of.CommandWorld):
         for label, raw, headers, expected in (
                 ("duplicate keys", text[:-1].encode() + b', "reason": "again"}', None, (400, "request_invalid")),
                 ("not an object", b"[1]", None, (400, "request_invalid")),
-                ("a non-finite number", text[:-1].encode() + b', "n": NaN}', None, (400, "request_invalid")),
-                ("too large", b" " * (1024 * 1024 + 1), None, (413, "body_too_large"))):
+                ("a non-finite number", text[:-1].encode() + b', "n": NaN}', None, (400, "request_invalid"))):
             with self.subTest(label=label):
                 code, reply, _ = self.http("POST", "/v1/commands/request_cancel", raw=raw, headers=headers)
                 self.assertEqual((code, reply["reason"]), expected)
+        host, port = self.engine.address
+        with socket.create_connection((host, port), timeout=10) as conn:  # declared, never sent: refused unread
+            conn.sendall(f"POST /v1/commands/request_cancel HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {of.OPERATOR_TOKEN}\r\n"
+                         f"Content-Length: {1024 * 1024 + 1}\r\n\r\n".encode())
+            answer = conn.recv(4096).decode("latin-1")
+        self.assertTrue(answer.startswith("HTTP/1.0 413"), answer)
         self.assertEqual(self.state(exclude=()), before)
         self.assertEqual(self.command("request_cancel", body)[1]["status"], "recorded")
 
