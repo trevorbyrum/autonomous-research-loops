@@ -254,7 +254,7 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-0d-repair-astra-
 **The user at the Phase 0→1 gate (final):** (1) ratify C-13; (2) approve opening Phase 1. Nothing else. `accepted_support` goes early in Phase 1. Merge and push remain the user's actions and are not prerequisites for the gate.
 
 ## 2026-09-27: OPERATOR DECISIONS at the Phase 0→1 gate
-1. **Operator name removed.** Every mention of the operator's personal name in the build now reads "user" / "the user". That covers governance, deployment, task and history docs, and the synthetic test operator IDs, which changed from `'trevor'` to `'user'`. A grep finds neither the name nor any home-directory path anywhere in `gen2 tools docs/gen2 deploy Makefile .github`. The orchestrator's independent `make gen2-check` exited 0: 356 tests, 680/680 mutants.
+1. **Operator name removed.** Every mention of the operator's personal name in the build now reads "user" / "the user". That covers governance, deployment, task and history docs, and the synthetic test operator IDs, which now read `'user'`. A grep finds neither the name nor any home-directory path anywhere in `gen2 tools docs/gen2 deploy Makefile .github`. The orchestrator's independent `make gen2-check` exited 0: 356 tests, 680/680 mutants.
 2. **C-13 ratified.** The sentence fixing the hash-contract versions recorded on commit and decision receipts is now part of the frozen rule. INVARIANTS C-13 is updated.
 3. **Phase 1 APPROVED**, conditional on item 1, which is now done. The first task is 1a: the `accepted_support` generalization.
 
@@ -420,3 +420,15 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-1c-repair-4-astr
 **Stated limits (documented, accepted):** the serialization guarantee is per job, across cooperating threads and processes on one Linux host — not cross-host; the journal revision check is a backstop, not independent mutual exclusion; `busy` is transient, creates no incident and spends no budget.
 
 **1c totals:** 5 review rounds (BLOCK 15 findings → 3 → 2 → 2 → ACCEPT). Every finding was reproduced before repair and independently re-verified after. Production 5,771/10,000 lines; 1,065 tests; 1,071/1,071 mutants killed, 1,058 with paired controls.
+
+## 2026-09-28 — Scope audit (Astra, xhigh, operator-requested): production CONFORMS; two doc slips fixed
+Full report: `~/work/research-loops-public/private/reviews/gen2-scope-audit-astra-20260928.md`. Requested by the operator: "make sure the agents are not over-engineering or going outside of the architectural doc other than what's been approved."
+
+**Verdict:** no production mechanism lacks an architectural or recorded-ruling basis; no banned construct (event bus, DSL, orchestration framework) exists in any form; nothing needs removal. The "beyond the brief" repair additions are each the minimal closure of a real defect, not accumulated untracked scope.
+
+**Must-fix (documentation only, both fixed by the orchestrator same session):** BUILD-STATE still headed the state as Phase 0 with a stale operator-gate line (now: Phase 0 complete, Phase 1 open); one REVIEW-LOG entry repeated the removed personal identifier while claiming none remained (now generic). A full grep confirms the identifier appears nowhere in the build.
+
+**Taste (recorded, no action now):** stop growing the control-selection tracer — prefer explicit reviewed pairings when next touched (folded into the 1d brief); keep the router's bounded schema validator bounded — if the vocabulary grows materially, seek a reviewed dependency grant instead; label the root README as describing gen-1 (queued for 1e's doc pass).
+
+## 2026-09-28 — Task 1d dispatched (registries, config bundles, reservations, brief/amendment versioning, G-1 impact)
+Brief: `docs/gen2/tasks/1d.md`, scoped to INVARIANTS §13's Phase 1 column and the store README deferrals, carrying the 1a-review G-1 obligation, the 1b bootstrap ruling, the 1b proposal-3 interim (`amendment_pending` → real impact handling), and the 1c policy-bundle/scheduling deferrals. Coder: Opus 5.5 agent 7a61b979.
