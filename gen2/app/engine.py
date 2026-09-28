@@ -17,8 +17,10 @@ opened on a single worker thread and every call into it — each request's
 operation, status and health, the supervisor's incident list and the
 operator's recovery of a stalled job — runs there, one at a time, in arrival
 order; the listener's request threads only wait for their answer. The
-service (gen2/operator/service.py) decides every answer; this module only
-moves bytes. Nothing it logs or answers repeats the request's own text: a
+service (gen2/operator/service.py) decides every answer and writes its bytes
+(OperatorService.encode: the answer's text checked for credentials as it is
+written; Astra 1e-repair-2 re-review finding 1); this module only moves
+them. Nothing it logs or answers repeats the request's own text: a
 fault behind the service is logged by its type and the service's labels, the
 parser's own refusals are fixed replies, a connection fault is one line
 naming its type (Astra 1e review finding 3); and a body answered unread is
@@ -156,10 +158,11 @@ def _handler(service: OperatorService, log: Callable[[str], None]):
             length = self.headers.get("Content-Length")
             try:
                 code, reply = service.handle(self.command, self.path, self.headers.get("Authorization"), length, read)
-            except Exception as exc:  # a fault behind the service: answered, logged by type and the service's labels, never with the request
+                raw = service.encode(reply)
+            except Exception as exc:  # a fault behind the service (auth.Unwritable included): answered, logged by type and the service's labels, never with the request
                 log("- {} {} -> 500 {}".format(*label(self.command, self.path), type(exc).__name__))
-                code, reply = 500, {"status": "error", "reason": "internal"}
-            self._write(code, reply)
+                code, raw = 500, service.encode({"status": "error", "reason": "internal"})
+            self._write(code, raw)
             self._discard(length, consumed)
 
         def send_error(self, code: int, message: str | None = None, explain: str | None = None) -> None:
@@ -171,10 +174,9 @@ def _handler(service: OperatorService, log: Callable[[str], None]):
             repeated here, and the connection closes."""
             self.close_connection = True
             log(f"- ? ? -> {code} refused")
-            self._write(code, {"status": "refused", "reason": PARSER_REFUSALS.get(code, "bad_request")}, close=True)
+            self._write(code, service.encode({"status": "refused", "reason": PARSER_REFUSALS.get(code, "bad_request")}), close=True)
 
-        def _write(self, code: int, reply: dict, *, close: bool = False) -> None:
-            raw = json.dumps(reply, sort_keys=True).encode("utf-8")
+        def _write(self, code: int, raw: bytes, *, close: bool = False) -> None:
             self.send_response(code)  # the standard reason phrase for the code, never a message
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(raw)))

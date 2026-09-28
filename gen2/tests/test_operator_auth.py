@@ -22,7 +22,8 @@ import time
 import unittest
 from unittest import mock
 
-from gen2.operator.auth import Credentials, CredentialsRefused, Principal
+from gen2.operator import auth
+from gen2.operator.auth import REDACTED, Credentials, CredentialsRefused, Principal, Unwritable
 from gen2.operator.service import OperatorService
 from gen2.tests import operator_fixtures as of
 from gen2.tests import router_fixtures as rf
@@ -521,12 +522,15 @@ class CarriedFormsTest(of.CommandWorld):
     """A configured token a request carries reaches no reply, log or header
     in any form a reply can carry it (Astra 1e-repair re-review finding 2):
     JSON-escaped inside the tool text MCP nests in its reply, as the digits
-    of a numeric JSON-RPC id, percent-encoded in an id. Each answer is read
+    of a numeric JSON-RPC id, percent-encoded in an id; nor any its answer's
+    text would be written with, though no value holds it (Astra 1e-repair-2
+    re-review finding 1): an escape or a quote that serialization writes, a
+    JSON escape an id carries, percent-encoded or not. Each answer is read
     off the wire — status line, headers, body — and both JSON layers are
-    decoded: every one must be free of the token as it is and escaped, and
-    so must the engine's log. The tokens here are synthetic ones the
-    visible-ASCII policy accepts; each set is configured afresh (a restart
-    with the same store)."""
+    decoded, each of which must parse: every one must be free of the token
+    as it is and escaped, and so must the engine's log. The tokens here are
+    synthetic ones the visible-ASCII policy accepts; each set is configured
+    afresh (a restart with the same store)."""
     # every visible-ASCII mark that JSON escapes (" and \) or that percent-encoding and JSON pointers treat specially
     ESCAPING = ('credential-with-quote-"-12345', "credential-with-backslash-\\-12345", "credential-every-mark-!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
     NUMERIC = "1234567890123456"
@@ -536,7 +540,14 @@ class CarriedFormsTest(of.CommandWorld):
         body = raw_body if raw_body is not None else json.dumps(message).encode()
         answer = raw_exchange(self.engine, f"POST {path} HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {of.OPERATOR_TOKEN}\r\n"
                                            f"Content-Length: {len(body)}\r\n\r\n".encode() + body).decode("latin-1")
-        return answer, json.loads(answer.partition("\r\n\r\n")[2])
+        return answer, self.decoded(answer.partition("\r\n\r\n")[2])
+
+    def decoded(self, text: str):
+        """text parsed as JSON: a failure, not an error, if it is not JSON."""
+        try:
+            return json.loads(text)
+        except ValueError:
+            self.fail(f"not JSON: {text[:200]!r}")
 
     def assert_absent(self, token: str, answer: str, *documents) -> None:
         """Neither the token nor its JSON-escaped form in the wire answer, in
@@ -625,6 +636,127 @@ class CarriedFormsTest(of.CommandWorld):
                                                            {"status": "refused", "reason": "request_invalid", "detail": "/[credential]: no value is allowed here"}))
         self.assert_absent(token, text)
 
+    def test_an_id_whose_answer_would_be_written_with_a_token_is_refused_before_dispatch(self) -> None:
+        """An MCP id that holds no configured token, but whose answer would
+        be written with one — completed by the escape serialization writes
+        before a quote, a backslash, a newline or a non-ASCII character, or
+        by the quote it writes before the id or the quote and comma after —
+        or that shows one only once a JSON escape it carries is decoded (the
+        escape percent-encoded, as it is, percent-encoding inside it,
+        escaped twice): each is refused as an invalid request with a null
+        id, the call it names not made, and no byte of the answer nor the
+        log holds the token. Beside each, the same call with an id one
+        character off is made and its id echoed exactly. At the id's bound,
+        an encoded one is refused at 199, 200 and 201 characters, an
+        ordinary one echoed at 199 and 200 and refused at 201."""
+        esc, quoted = "\\", 'credential-with-quote-"-12345'
+        cancel = self.bodies()["request_cancel"]
+        refused = {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "invalid request", "data": {"status": "refused", "reason": "request_invalid"}}}
+        for label, token, ident in (
+                ("the escape before a quote", "credential-" + esc + '"-12345', 'credential-"-12345'),
+                ("the escape before a backslash", "credential-" + esc * 2 + "-12345", "credential-" + esc + "-12345"),
+                ("a newline's escape", "credential-" + esc + "n-12345", "credential-\n-12345"),
+                ("a non-ASCII character's escape", "credential-" + esc + "u00e9-1234", "credential-" + chr(0xE9) + "-1234"),
+                ("the quote before the id", '"abcdefghijklmnop', "abcdefghijklmnop"),
+                ("the quote and comma after it", 'abcdefghijklmnop",', "abcdefghijklmnop"),
+                ("a JSON escape, percent-encoded", quoted, quoted.replace('"', "%5Cu0022")),
+                ("a JSON escape", quoted, quoted.replace('"', esc + "u0022")),
+                ("percent-encoding inside a JSON escape", quoted, quoted.replace('"', esc + "u00%32%32")),
+                ("a JSON escape, escaped", quoted, quoted.replace('"', esc * 2 + "u0022"))):
+            with self.subTest(label=label):
+                self.restart(Credentials({"alice": of.OPERATOR_TOKEN}, token))
+                before = self.state(exclude=())
+                self.logs.clear()
+                answer, reply = self.exchange("/mcp", self.tool_call(cancel, ident=ident))
+                self.assertTrue(answer.startswith("HTTP/1.0 400 "), answer[:80])
+                self.assertEqual(reply, refused)
+                self.assert_absent(token, answer, reply)
+                self.assertEqual((self.logs, self.state(exclude=())), (["operator:alice POST /mcp -> 400 None"], before))
+                control = ident[:-1] + ("6" if ident.endswith("5") else "q")
+                answer, reply = self.exchange("/mcp", self.tool_call(cancel, ident=control))
+                inner = self.decoded(reply["result"]["content"][0]["text"])
+                self.assertEqual((reply["id"], inner["status"] in ("recorded", "replayed")), (control, True), answer[:200])
+                self.assert_absent(token, answer, reply, inner)
+        self.assertEqual(self.value("SELECT cancel_requested_by FROM invocations WHERE invocation_id = ?", of.RUNNING), "operator")  # a control's
+        self.restart(Credentials({"alice": of.OPERATOR_TOKEN}, quoted))
+        encoded = quoted.replace('"', "%5Cu0022")
+        for n in (199, 200, 201):
+            with self.subTest(length=n):
+                self.assertEqual(self.exchange("/mcp", self.tool_call(cancel, ident="x" * (n - len(encoded)) + encoded))[1], refused)
+                self.assertEqual(self.exchange("/mcp", self.tool_call(cancel, ident="x" * n))[1]["id"], "x" * n if n <= 200 else None)
+
+    def test_a_value_its_answer_would_write_as_a_token_is_replaced_whole_the_answer_still_json(self) -> None:
+        """Refusals echoing what the request carried — an unknown topic,
+        whole; a body key the router refuses, inside its detail — where no
+        value holds a configured token but the answer's text would: the
+        quote written before the topic, or the quote and comma after it; the
+        escape written before a quote in the key. Over REST and over MCP
+        that value is replaced whole by [credential], never the text's bytes:
+        both JSON layers still parse, to the refusal expected; no byte of the
+        answer, neither decoded layer and not the log holds the token; and
+        nothing changes. Escaped once more, as MCP nests the tool's text, an
+        escape before an escaped quote makes a token only there: the tool's
+        text replaces the value, while REST, whose text holds none, keeps it
+        exactly. The control: the same calls without the echo are answered."""
+        esc, topic = "\\", "x:abcdefghijklmnop"
+        cancel = self.bodies()["request_cancel"]
+        key = 'credential-"-12345'
+        unknown = {"status": "refused", "reason": "unknown_topic", "detail": REDACTED}
+        detail = f"router-commands#/$defs/cancel: /{key}: no value is allowed here"
+        before = self.state(exclude=())
+        for label, token, rest_call, tool, arguments, rest_expected, tool_expected in (
+                ("the quote before a topic", '"' + topic, ("GET", f"/v1/status?topic={topic}"), "status", {"topic": topic}, unknown, unknown),
+                ("the quote and comma after it", topic + '",', ("GET", f"/v1/status?topic={topic}"), "status", {"topic": topic}, unknown, unknown),
+                ("the escape before a quote", "credential-" + esc + '"-12345', ("POST", "/v1/commands/request_cancel"), "request_cancel", {**cancel, key: 1},
+                 {"status": "refused", "reason": "request_invalid", "detail": REDACTED}, {"status": "refused", "reason": "request_invalid", "detail": REDACTED}),
+                ("the escape before an escaped quote, nested", "credential-" + esc * 3 + '"-12345', ("POST", "/v1/commands/request_cancel"), "request_cancel",
+                 {**cancel, key: 1}, {"status": "refused", "reason": "request_invalid", "detail": detail},
+                 {"status": "refused", "reason": "request_invalid", "detail": REDACTED})):
+            with self.subTest(label=label):
+                self.restart(Credentials({"alice": of.OPERATOR_TOKEN}, token))
+                self.logs.clear()
+                method, path = rest_call
+                body = json.dumps(arguments).encode() if method == "POST" else b""
+                rest_answer = raw_exchange(self.engine, f"{method} {path} HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {of.OPERATOR_TOKEN}\r\n"
+                                                        f"Content-Length: {len(body)}\r\n\r\n".encode() + body).decode("latin-1")
+                rest = self.decoded(rest_answer.partition("\r\n\r\n")[2])
+                mcp_answer, mcp = self.exchange("/mcp", self.tool_call(arguments, tool=tool))
+                inner = self.decoded(mcp["result"]["content"][0]["text"])
+                self.assertEqual((rest_answer[:13], rest, mcp["id"], inner, mcp["result"]["isError"]), ("HTTP/1.0 200 ", rest_expected, 1, tool_expected, True))
+                self.assert_absent(token, rest_answer, rest)
+                self.assert_absent(token, mcp_answer, mcp, inner)
+                self.assertEqual(self.logs, [f"operator:alice {method} {path.partition('?')[0]} -> 200 refused", f"operator:alice POST /mcp:{tool} -> 200 None"])
+                self.assertEqual(self.state(exclude=()), before)
+        self.assertEqual(self.http("GET", f"/v1/status?topic={rf.TOPIC}")[1]["status"], "ok")  # the controls
+        control_answer, control = self.exchange("/mcp", self.tool_call(cancel))
+        self.assertEqual(self.decoded(control["result"]["content"][0]["text"])["status"], "recorded", control_answer)
+
+    def test_an_answer_no_redaction_of_its_values_writes_is_the_fixed_fault(self) -> None:
+        """A token made of JSON's punctuation and the placeholder itself
+        (`"[credential]"},`), which a reply whose redacted value closes an
+        object before another member shows whatever is replaced: that
+        answer is not written, over REST or MCP; the fixed fault is, 500,
+        its line naming Unwritable. The same reply under another token is
+        written, redacted (the control)."""
+        reply = {"status": "refused", "reason": "request_invalid", "detail": {"key": of.OPERATOR_TOKEN}}
+        cancel = self.bodies()["request_cancel"]
+        for token in ('"[credential]"},', of.EXPORTER_TOKEN):
+            with self.subTest(token=token):
+                self.restart(Credentials({"alice": of.OPERATOR_TOKEN}, token))
+                self.logs.clear()
+                with mock.patch.object(self.engine.station.router, "request_cancel", return_value=reply):
+                    rest_answer, rest = self.exchange("/v1/commands/request_cancel", cancel)
+                    mcp_answer, mcp = self.exchange("/mcp", self.tool_call(cancel))
+                if token == of.EXPORTER_TOKEN:
+                    self.assertEqual((rest_answer[:13], rest), ("HTTP/1.0 200 ", {**reply, "detail": {"key": REDACTED}}))
+                    self.assertEqual(self.decoded(mcp["result"]["content"][0]["text"]), rest)
+                    continue
+                fault = {"status": "error", "reason": "internal"}
+                self.assertEqual((rest_answer[:13], rest, mcp_answer[:13], mcp), ("HTTP/1.0 500 ", fault, "HTTP/1.0 500 ", fault))
+                self.assertEqual(self.logs, ["operator:alice POST /v1/commands/request_cancel -> 200 refused", "- POST /v1/commands/request_cancel -> 500 Unwritable",
+                                             "- POST /mcp -> 500 Unwritable"])
+                self.assert_absent(token, rest_answer + mcp_answer, rest, mcp)
+
 
 class CredentialsTest(unittest.TestCase):
     ENV = {"GEN2_SECRETS": "env", "GEN2_OPERATOR_TOKENS": f"alice={of.OPERATOR_TOKEN}, bob={of.OTHER_OPERATOR_TOKEN}",
@@ -652,20 +784,75 @@ class CredentialsTest(unittest.TestCase):
     def test_redact_takes_out_each_form_a_reply_can_carry(self) -> None:
         """A token JSON-escaped inside JSON text is replaced where it stands;
         a string that shows one only percent-decoded (in any case, in part,
-        twice) and a number whose digits hold one are replaced whole. What
-        carries none — a prefix, other encoded text, another number, a
-        boolean — is kept exactly (Astra 1e-repair re-review finding 2)."""
+        twice) or JSON-unescaped (a `\\u0022` escape as it is, percent-encoded,
+        percent-encoding inside it, escaped twice), one whose replacement
+        makes another token, and a number whose digits hold one are replaced
+        whole. What carries none — a prefix, other encoded or escaped text,
+        another number, a boolean — is kept exactly (Astra 1e-repair
+        re-review finding 2; 1e-repair-2 re-review finding 1)."""
         quoted, numeric = 'credential-with-quote-"-12345', "1234567890123456"
         creds = Credentials({"alice": of.OPERATOR_TOKEN, "carol": numeric}, quoted)
         nested = json.dumps({"detail": f"/{quoted}: no value is allowed here"})
-        self.assertEqual(json.loads(creds.redact(nested)), {"detail": "/[credential]: no value is allowed here"})
+        self.assertEqual(creds.redact(nested), json.dumps({"detail": "/[credential]: no value is allowed here"}))
+        esc = "\\"
         carried = [percent(of.OPERATOR_TOKEN), percent(of.OPERATOR_TOKEN, upper=True), percent(of.OPERATOR_TOKEN, every=4),
                    percent(percent(of.OPERATOR_TOKEN)), f"id-{percent(quoted)}-1", percent(json.dumps(quoted)[1:-1]),
-                   int(numeric), -int(numeric), float(numeric)]
+                   quoted.replace('"', esc + "u0022"), quoted.replace('"', "%5Cu0022"), quoted.replace('"', esc + "u00%32%32"),
+                   quoted.replace('"', esc * 2 + "u0022"), int(numeric), -int(numeric), float(numeric)]
         self.assertEqual(creds.redact(carried), ["[credential]"] * len(carried))
-        kept = [of.OPERATOR_TOKEN[:12], percent("request-seven"), "100%", int(numeric[:-1]), 5, 2.5, True, None]
+        kept = [of.OPERATOR_TOKEN[:12], percent("request-seven"), "100%", "C:" + esc + "new", quoted.replace('"', esc + "u0027"),
+                quoted.replace('"', "%5Cu0027"), int(numeric[:-1]), 5, 2.5, True, None]
         self.assertEqual(creds.redact(kept), kept)
         self.assertEqual([type(value) for value in creds.redact(kept)], [type(value) for value in kept])
+        reformed = Credentials({"alice": of.OPERATOR_TOKEN, "carol": "x" + REDACTED + "yyy"})  # a token the replacement itself makes
+        self.assertEqual(reformed.redact(["x" + of.OPERATOR_TOKEN + "yyy", "x" + of.OPERATOR_TOKEN + "yy"]), [REDACTED, "x[credential]yy"])
+
+    def test_dumps_writes_no_token_its_serialization_would_make(self) -> None:
+        """dumps() writes json.dumps's text, keys sorted, where that text
+        shows no configured token (the control: every kind of value, near
+        misses among them, written exactly). Where it would — the escape it
+        writes before a quote or a non-ASCII character, a quote, brace or
+        bracket it joins to a string, a key or a number — that value alone
+        is replaced by [credential], and the text is still JSON. Nested, a
+        text that shows one only once escaped into other JSON is checked so
+        too, and written as it is when not nested."""
+        esc = "\\"
+        kept = {"a": ["bcdefghijklmnop", 5, 2.5, True, None, [], {}], "credential-'-12345": "credential-" + esc + "-12346", "x:abcdefghijklmnoq": chr(0xE9)}
+        for token, value, written in (
+                ("credential-" + esc + '"-12345', {"detail": 'credential-"-12345', "n": 1}, {"detail": REDACTED, "n": 1}),
+                ("credential-" + esc + "u00e9-1234", {"detail": "credential-" + chr(0xE9) + "-1234"}, {"detail": REDACTED}),
+                ('"abcdefghijklmnop', {"detail": "abcdefghijklmnop", "n": 1}, {"detail": REDACTED, "n": 1}),
+                ('abcdefghijklmnop"}', {"n": 1, "z": "abcdefghijklmnop"}, {"n": 1, "z": REDACTED}),
+                ('{"abcdefghijklmnop', {"abcdefghijklmnop": 1, "b": 2}, {REDACTED: 1, "b": 2}),
+                ("[[1234567890123456", {"n": [[1234567890123456, 1]]}, {"n": [[REDACTED, 1]]})):
+            with self.subTest(token=token):
+                creds = Credentials({"alice": of.OPERATOR_TOKEN}, token)
+                self.assertEqual(creds.redact(value), value)  # no value holds it
+                self.assertEqual(creds.dumps(value), json.dumps(written, sort_keys=True))
+                self.assertEqual(creds.dumps(kept), json.dumps(kept, sort_keys=True))
+        creds = Credentials({"alice": of.OPERATOR_TOKEN}, "credential-" + esc * 3 + '"-12345')
+        value = {"detail": 'credential-"-12345'}
+        self.assertEqual((creds.dumps(value), creds.dumps(value, nested=True)), (json.dumps(value), json.dumps({"detail": REDACTED})))
+
+    def test_an_answer_left_showing_a_token_is_unwritable(self) -> None:
+        """A token that REDACTED and the punctuation joined to it make
+        (`"[credential]"},`) stands in the text whatever values are replaced:
+        dumps() refuses to write it. The same value closed differently
+        (`"[credential]"}}`) is written (the control)."""
+        creds = Credentials({"alice": of.OPERATOR_TOKEN}, '"[credential]"},')
+        with self.assertRaises(Unwritable):
+            creds.dumps(creds.redact({"detail": {"key": of.OPERATOR_TOKEN}, "status": "refused"}))
+        self.assertEqual(creds.dumps(creds.redact({"detail": {"key": of.OPERATOR_TOKEN}})), '{"detail": {"key": "[credential]"}}')
+
+    def test_past_the_decoding_bound_a_text_counts_as_carrying_a_token(self) -> None:
+        """A text with more decodings than MAX_DECODINGS is read no further
+        and counts as carrying a token: redacted whole. With the bound at
+        its decodings' number, it is read to the end and kept (the
+        control). `%252525` has four: itself, `%2525`, `%25` and `%`."""
+        creds = Credentials({"alice": of.OPERATOR_TOKEN})
+        for bound, redacted in ((3, REDACTED), (4, "%252525")):
+            with self.subTest(bound=bound), mock.patch.object(auth, "MAX_DECODINGS", bound):
+                self.assertEqual(creds.redact("%252525"), redacted)
 
     def test_unusable_secrets_refuse_the_start(self) -> None:
         """Each defect alone, beside ENV, which starts (the control); no

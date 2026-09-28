@@ -73,11 +73,15 @@ reply and log line passes through Credentials.redact() before it leaves, so
 no configured token a request carries — in its path, its query or its body,
 echoed by a refusal — is written back or logged; a tool's reply over MCP
 passes through it before it is nested as text, and an MCP id carrying one is
-refused (_mcp; Astra 1e-repair re-review finding 2).
+refused (_mcp; Astra 1e-repair re-review finding 2). Serialization can
+re-form a token no value holds, so each JSON text is checked as the text it
+is — a tool's nested text as it is nested (_mcp), every answer as the
+transport writes it (encode()) — and an id whose answer would be written
+with one is refused before anything is dispatched (Credentials.dumps and
+writes; Astra 1e-repair-2 re-review finding 1).
 """
 from __future__ import annotations
 
-import json
 import re
 from typing import Callable
 from urllib.parse import parse_qs
@@ -227,10 +231,16 @@ class OperatorService:
         (never null, a float, a boolean or a structure); params, where
         present, an object (-32600 Invalid Request otherwise). An id that
         carries a configured token, in any form redaction takes out (auth.py
-        Credentials.redact: as it is, percent-encoded, an integer's digits),
-        is refused the same way and answered with a null id: echoing it
+        Credentials.redact: as it is, JSON-escaped, percent-decoded or
+        JSON-unescaped, an integer's digits), or that is written with one —
+        its answer's text showing one the id alone does not, where the id
+        stands after `"id": ` and before `, "jsonrpc"` (Credentials.writes:
+        the quote written before an id `abc...` completes a token `"abc...`)
+        — is refused the same way, before anything is dispatched, and
+        answered with a null id: echoing it
         would repeat the credential, and replacing it would answer another
-        request's id (Astra 1e-repair re-review finding 2). A message
+        request's id (Astra 1e-repair re-review finding 2, 1e-repair-2
+        re-review finding 1). A message
         without an id is a notification: a notifications/ method is accepted
         (202) and does nothing; any other method needs an id (-32600). Each
         method's params carry only its members, each of its type, the
@@ -243,9 +253,10 @@ class OperatorService:
         named, an unknown or capability-bearing tool, the arguments, the
         router's own — is an in-band tool error carrying its reply, redacted
         before it is serialized into the tool's text (redaction after would
-        see the token JSON-escaped, and miss it)."""
+        see the token JSON-escaped, and miss it), and that text checked as it
+        is nested (Credentials.dumps)."""
         has_id, ident = "id" in message, message.get("id")
-        usable = has_id and _request_id(ident) and self._credentials.redact(ident) == ident
+        usable = has_id and _request_id(ident) and self._credentials.writes({"id": ident, "jsonrpc": "2.0"})
         if set(message) - JSONRPC_MEMBERS or message.get("jsonrpc") != "2.0" or not isinstance(message.get("method"), str) \
                 or (has_id and not usable) or ("params" in message and not isinstance(message["params"], dict)):
             return self._rpc_refusal(ident if usable else None, -32600, "invalid request")
@@ -277,7 +288,7 @@ class OperatorService:
         else:
             code, reply = 404, {"status": "refused", "reason": "no_such_route"}
         failed = code != 200 or reply.get("status") in ("refused", "rejected")
-        return 200, answer({"content": [{"type": "text", "text": json.dumps(self._credentials.redact(reply), sort_keys=True)}], "isError": failed}), \
+        return 200, answer({"content": [{"type": "text", "text": self._credentials.dumps(self._credentials.redact(reply), nested=True)}], "isError": failed}), \
             f"/mcp:{tool if tool in (*COMMANDS, 'status') else '?'}"
 
     @staticmethod
@@ -304,3 +315,9 @@ class OperatorService:
         outcome = reply.get("status") if isinstance(reply, dict) else None
         self._log(self._credentials.redact(f"{who} {method} {route} -> {code} {outcome}"))
         return code, self._credentials.redact(reply)
+
+    def encode(self, reply: dict) -> bytes:
+        """An answer as the transport writes it: its JSON text, checked as
+        that text (Credentials.dumps: a value its serialization would make
+        a token of is replaced whole), in UTF-8."""
+        return self._credentials.dumps(reply).encode("utf-8")

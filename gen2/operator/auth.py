@@ -28,8 +28,10 @@ out of whatever the listener is about to write — a reply, a log line — so a
 token a request carries in its path or body is not reflected back or logged
 (Astra 1e review finding 3), in each form a reply can carry it: as it is,
 JSON-escaped (a token holding `"` or `\\`, inside JSON text a reply nests),
-percent-encoded, or as the decimal digits of a number (Astra 1e-repair
-re-review finding 2).
+percent-encoded, JSON-unescaped, or as the decimal digits of a number (Astra
+1e-repair re-review finding 2); and dumps() checks the JSON text itself as it
+is written, where serialization can re-form a token no value holds (Astra
+1e-repair-2 re-review finding 1).
 
 Persistence (RG-9): the principal set is the mounted secrets', read at every
 start. A restart or a replacement with the same mount keeps every principal,
@@ -49,11 +51,20 @@ NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 MIN_TOKEN = 16
 SCHEME = "bearer "
 REDACTED = "[credential]"
+MAX_DECODINGS = 256  # the most decodings of one text _carries() reads: past them, the text counts as showing a token
+ESCAPE = re.compile(r'\\(?:u([0-9A-Fa-f]{4})|(["\\/bfnrt]))')  # a JSON string's escape
+ESCAPED = {'"': '"', "\\": "\\", "/": "/", "b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t"}
 
 
 class CredentialsRefused(ValueError):
     """The mounted secrets give no usable principal set: the engine does not
     start. The message names the variable or principal, never a token."""
+
+
+class Unwritable(ValueError):
+    """An answer no redaction of its values writes without a configured
+    token (dumps()): only a token made of JSON's punctuation and REDACTED
+    can stand in what is left. It is not written."""
 
 
 class Principal(NamedTuple):
@@ -67,6 +78,12 @@ def _digest(token: str) -> bytes:
 
 def _usable(token: str) -> bool:
     return len(token) >= MIN_TOKEN and all("\x21" <= c <= "\x7e" for c in token)
+
+
+def _unescape(text: str) -> str:
+    """text with each JSON escape in it decoded, as json.loads reads a
+    string's content; a backslash that starts none is kept."""
+    return ESCAPE.sub(lambda m: chr(int(m[1], 16)) if m[1] else ESCAPED[m[2]], text)
 
 
 class Credentials:
@@ -109,14 +126,15 @@ class Credentials:
         """`value` — a JSON value (dicts, lists, strings, numbers) or a log
         line — with every configured token taken out wherever it appears in
         a string, a key included: as it is or JSON-escaped, replaced by
-        REDACTED; a string that shows one only once percent-decoded (again
-        and again, until nothing changes), and a number whose decimal text
-        holds one, replaced whole by REDACTED. A value that carries no
-        configured token is returned as it was."""
+        REDACTED; a string that still shows one — only once decoded
+        (_carries()), or re-formed by those replacements — and a number
+        whose decimal text holds one, replaced whole by REDACTED. A value
+        that carries no configured token is returned as it was. These are
+        the values; dumps() checks the text they are written as."""
         if isinstance(value, str):
             for form in self._forms:
                 value = value.replace(form, REDACTED)
-            return REDACTED if self._encoded(value) else value
+            return REDACTED if self._carries(value) else value
         if isinstance(value, dict):
             return {self.redact(k): self.redact(v) for k, v in value.items()}
         if isinstance(value, list):
@@ -125,11 +143,74 @@ class Credentials:
             return REDACTED
         return value
 
-    def _encoded(self, text: str) -> bool:
-        while "%" in text and (decoded := unquote(text)) != text:
-            if any(form in decoded for form in self._forms):
+    def writes(self, value) -> bool:
+        """Whether value is written as it is: nothing in its JSON text for
+        dumps() to take out — which holds whatever redact() would take out
+        of it, the text unescaping to the value itself."""
+        return not self._shows(json.dumps(value, sort_keys=True), False)
+
+    def dumps(self, value, *, nested: bool = False) -> str:
+        """value's JSON text (json.dumps, keys sorted), checked as the text
+        it is: serialization can re-form a token no value holds — with an
+        escape it writes (the `\\` before a `"` or a `\\`, `\\n`, `\\u00e9`)
+        or the punctuation it joins to a value (a `"`, `{`, `[`, `]`, `}`,
+        `,` or `:`). Each value — a key, a string, a number, true, false,
+        null, an empty object or list — whose run shows one (_shows()) is
+        replaced whole by REDACTED and the text written again, until none
+        does: never the text's bytes, which would cut through its
+        punctuation and leave it no JSON. `nested`: the text is to be
+        nested as a string in other JSON (a tool's reply in MCP's answer),
+        and is checked escaped once more as well. Unwritable if replacing
+        values leaves one standing (Astra 1e-repair-2 re-review finding 1)."""
+        text = json.dumps(value, sort_keys=True)
+        while self._shows(text, nested):
+            redacted = self._runs_redacted(value, nested, "", "")
+            if redacted == value:
+                raise Unwritable("no redaction of the answer's values writes it without a configured token")
+            value, text = redacted, json.dumps(redacted, sort_keys=True)
+        return text
+
+    def _runs_redacted(self, value, nested: bool, before: str, after: str):
+        """value with each of its values whose run shows a token replaced by
+        REDACTED; a value's run is its JSON text with the punctuation
+        json.dumps joins to it: `before`, the `{` and `[` that open on it,
+        `after`, the `}` and `]` that close after it and the `,` or `:`."""
+        if isinstance(value, dict) and value:
+            keys, redacted = sorted(value), {}
+            for i, key in enumerate(keys):
+                shown = self._shows((before + "{" if i == 0 else "") + json.dumps(key) + ":", nested)
+                redacted[REDACTED if shown else key] = self._runs_redacted(value[key], nested, "", "}" + after if i == len(keys) - 1 else ",")
+            return redacted
+        if isinstance(value, list) and value:
+            return [self._runs_redacted(item, nested, before + "[" if i == 0 else "", "]" + after if i == len(value) - 1 else ",")
+                    for i, item in enumerate(value)]
+        return REDACTED if self._shows(before + json.dumps(value) + after, nested) else value
+
+    def _shows(self, text: str, nested: bool) -> bool:
+        """Whether JSON text shows a token in a run of it — the text between
+        two spaces, the most a token can span: a token holds no space, JSON
+        writes one after each `,` and `:`, and no decoding takes one out —
+        as the run is (_carries()) or, nested, escaped once more."""
+        return any(self._carries(run) or (nested and self._carries(json.dumps(run)[1:-1])) for run in text.split(" "))
+
+    def _carries(self, text: str) -> bool:
+        """Whether text shows a configured token, as it is or JSON-escaped,
+        itself or once decoded: percent-decoded and JSON-unescaped, each
+        again and again, in every order (`%5Cu0022` is a `"` only
+        percent-decoded, then unescaped). Each decoding is shorter than what
+        it decodes, so there are finitely many; past MAX_DECODINGS the text
+        counts as showing one."""
+        seen, pending = {text}, [text]
+        while pending:
+            current = pending.pop()
+            if any(form in current for form in self._forms):
                 return True
-            text = decoded
+            for decoded in (unquote(current), _unescape(current)):
+                if decoded not in seen:
+                    if len(seen) >= MAX_DECODINGS:
+                        return True
+                    seen.add(decoded)
+                    pending.append(decoded)
         return False
 
     @classmethod
