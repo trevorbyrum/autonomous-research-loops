@@ -19,11 +19,10 @@ one at a time, in arrival order; the listener's request threads only wait
 for their answer. The service (gen2/operator/service.py) decides every
 answer; this module only moves bytes and never logs a header.
 
-What is not here: MCP (DEPLOYMENT-CONTRACT.md §1.1 lists `POST /mcp` on this
-listener; it needs no dependency, but it is a second transport over the same
-service and is deployment work, with the compose file), TLS (the listener is
-published on host loopback only), and a scheduler loop driving the
-supervisor (Phase 2).
+What is not here: TLS (the listener is published on host loopback only),
+and a scheduler loop driving the supervisor (Phase 2). `POST /mcp`
+(DEPLOYMENT-CONTRACT.md §1.1) is a route of the same service, not a
+transport of its own.
 """
 from __future__ import annotations
 

@@ -127,6 +127,8 @@ class AuthorizationTest(of.CommandWorld):
         for name in OPERATOR_COMMANDS:
             with self.subTest(command=name):
                 self.assertEqual(self.command(name, bodies[name], token=of.EXPORTER_TOKEN), (403, {"status": "refused", "reason": "forbidden"}))
+                code, reply, _ = self.http("POST", f"/v1/commands/{name}", raw=b"{not json", token=of.EXPORTER_TOKEN)  # refused before its body is parsed
+                self.assertEqual((code, reply["reason"]), (403, "forbidden"))
         self.assertEqual(self.state(exclude=()), before)
         for name in OPERATOR_COMMANDS:
             with self.subTest(control=name):

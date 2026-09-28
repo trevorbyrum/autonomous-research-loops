@@ -27,15 +27,17 @@ imports core only and is granted no capability).
 
 Routes: GET /v1/health; GET /v1/status[?topic=<topic_id>]; POST
 /v1/commands/<operation>, where <operation> is the router operation's own
-name (COMMANDS). Checks, in order — a missing or invalid token is refused
-before anything but the route is read:
+name (COMMANDS); POST /mcp, stateless MCP over HTTP whose tools are the same
+status and commands (_mcp). Checks, in order — a missing or invalid token is
+refused before anything but the route is read:
   1. GET /v1/health needs no token and answers {"status": "ok"}, or 503
      {"status": "unavailable"}: nothing else (no state leak).
   2. The bearer token names a principal (auth.py), or 401. The body is not
      read, whatever it declares.
   3. The route is a command or status (404 otherwise), and the principal's
      role is the one it needs (403 otherwise): status and every command but
-     one need the operator; ack_delivery needs the exporter.
+     one need the operator; ack_delivery needs the exporter. (Over MCP the
+     tool is named in the body, so this is checked once it is parsed.)
   4. The body: a declared length (411 without one, 413 over MAX_BODY), strict
      JSON (C-13: duplicate keys and non-finite numbers refused) holding an
      object (400 otherwise).
@@ -64,6 +66,7 @@ body.
 """
 from __future__ import annotations
 
+import json
 import re
 from typing import Callable
 from urllib.parse import parse_qs
@@ -113,27 +116,75 @@ class OperatorService:
         if principal is None:
             return self._answer(None, method, path, 401, {"status": "refused", "reason": "unauthenticated"})
         if path == "/v1/status" and method == "GET":
-            if principal.role != "operator":
-                return self._answer(principal, method, path, 403, {"status": "refused", "reason": "forbidden"})
             topics = parse_qs(query).get("topic", [])
-            facts = self._backend.status({"topic_id": topics[0]} if topics else {})
-            reply = status_view.compose(facts, self._incidents()) if facts.get("status") == "ok" else facts
-            return self._answer(principal, method, path, 200, reply)
-        command = COMMANDS.get(path[len(COMMAND_PREFIX):]) if path.startswith(COMMAND_PREFIX) and method == "POST" else None
-        if command is None:
+            return self._answer(principal, method, path, *self._status(principal, topics[0] if topics else None))
+        if path == "/mcp" and method == "POST":
+            body, error = self._body(length, read)
+            if error is not None:
+                return self._answer(principal, method, path, error[0], {"status": "refused", "reason": error[1]})
+            code, reply, route = self._mcp(principal, body)
+            return self._answer(principal, method, route, code, reply)
+        name = path[len(COMMAND_PREFIX):] if path.startswith(COMMAND_PREFIX) and method == "POST" else None
+        if name not in COMMANDS:
             return self._answer(principal, method, path, 404, {"status": "refused", "reason": "no_such_route"})
-        role, supplied = command
-        if principal.role != role:
+        if principal.role != COMMANDS[name][0]:
             return self._answer(principal, method, path, 403, {"status": "refused", "reason": "forbidden"})
         body, error = self._body(length, read)
         if error is not None:
             return self._answer(principal, method, path, error[0], {"status": "refused", "reason": error[1]})
+        return self._answer(principal, method, path, *self._command(principal, name, body))
+
+    def _status(self, principal: Principal, topic: str | None) -> tuple[int, dict]:
+        if principal.role != "operator":
+            return 403, {"status": "refused", "reason": "forbidden"}
+        facts = self._backend.status({} if topic is None else {"topic_id": topic})
+        return 200, status_view.compose(facts, self._incidents()) if facts.get("status") == "ok" else facts
+
+    def _command(self, principal: Principal, name: str, body: dict) -> tuple[int, dict]:
+        """One command, the same for every transport: the role it needs, who
+        acts from the principal, then the router's operation."""
+        role, supplied = COMMANDS[name]
+        if principal.role != role:
+            return 403, {"status": "refused", "reason": "forbidden"}
         named = sorted(field for field in (*supplied, "capability_id") if field in body)
         if named:
-            return self._answer(principal, method, path, 400, {"status": "refused", "reason": "authority_in_request",
-                                                               "detail": f"{', '.join(named)}: who acts is the authenticated principal, never the request"})
+            return 400, {"status": "refused", "reason": "authority_in_request",
+                         "detail": f"{', '.join(named)}: who acts is the authenticated principal, never the request"}
         request = {**body, **{field: value(principal) for field, value in supplied.items()}}
-        return self._answer(principal, method, path, 200, getattr(self._backend, path[len(COMMAND_PREFIX):])(request))
+        return 200, getattr(self._backend, name)(request)
+
+    def _mcp(self, principal: Principal, message: dict) -> tuple[int, dict, str]:
+        """Stateless MCP over HTTP (DEPLOYMENT-CONTRACT.md §1.1: one JSON-RPC
+        message per request, the gateway's shape): tools/list names the tools
+        the principal's role may call; tools/call runs the same _status and
+        _command as the routes, so MCP is a transport, not a second path. A
+        refusal, at any step, is an in-band tool error carrying its reply."""
+        method, params = message.get("method"), message.get("params") or {}
+        if "id" not in message:
+            return 202, {}, "/mcp"  # a notification: nothing to answer
+        answer = lambda result: {"jsonrpc": "2.0", "id": message["id"], "result": result}  # noqa: E731
+        if method == "initialize":
+            return 200, answer({"protocolVersion": params.get("protocolVersion", "2024-11-05"), "capabilities": {"tools": {}},
+                                "serverInfo": {"name": "gen2-engine", "version": "1e"}}), "/mcp"
+        if method == "ping":
+            return 200, answer({}), "/mcp"
+        if method == "tools/list":
+            names = ["status"] * (principal.role == "operator") + [name for name, (role, _) in COMMANDS.items() if role == principal.role]
+            return 200, answer({"tools": [{"name": name, "description": f"POST /v1/commands/{name}" if name in COMMANDS else "GET /v1/status",
+                                           "inputSchema": {"type": "object"}} for name in names]}), "/mcp"
+        if method == "tools/call":
+            tool, arguments = params.get("name"), params.get("arguments") or {}
+            if not isinstance(arguments, dict):
+                code, reply = 400, {"status": "refused", "reason": "request_invalid"}
+            elif tool == "status":
+                code, reply = self._status(principal, arguments.get("topic"))
+            elif tool in COMMANDS:
+                code, reply = self._command(principal, tool, arguments)
+            else:
+                code, reply = 404, {"status": "refused", "reason": "no_such_route"}
+            failed = code != 200 or reply.get("status") in ("refused", "rejected")
+            return 200, answer({"content": [{"type": "text", "text": json.dumps(reply, sort_keys=True)}], "isError": failed}), f"/mcp:{tool}"
+        return 200, {"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32601, "message": "method not found"}}, "/mcp"
 
     def _body(self, length: str | None, read: Callable[[int], bytes]) -> tuple[dict | None, tuple[int, str] | None]:
         if length is None:

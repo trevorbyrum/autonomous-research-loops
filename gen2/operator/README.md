@@ -16,11 +16,11 @@ The operator's commands and status, behind one service (`service.py`, design rev
 
 ## Routes and checks (`service.py`)
 
-`GET /v1/health`, `GET /v1/status[?topic=<topic_id>]`, `POST /v1/commands/<operation>`. In order — a missing or invalid token is refused before anything but the route is read:
+`GET /v1/health`, `GET /v1/status[?topic=<topic_id>]`, `POST /v1/commands/<operation>`, and `POST /mcp` (below). In order — a missing or invalid token is refused before anything but the route is read:
 
 1. `GET /v1/health` needs no token and answers `{"status": "ok"}` (the router can take its store's write lock now) or 503 `{"status": "unavailable"}`, nothing else.
 2. The bearer token names a principal, or 401 (the same reply for every failure). The body is not read, whatever length it declares.
-3. The route is status or a command, or 404; the principal's role is the one it needs, or 403.
+3. The route is status or a command, or 404; the principal's role is the one it needs, or 403 (over MCP the tool is in the body, so this follows step 4).
 4. The body: a declared length (411 without, 413 over 1 MiB), strict JSON (C-13: duplicate keys and non-finite numbers refused), an object; 400 otherwise.
 5. Who acts is the principal's, never the request's: a body naming `operator_id`, `requested_by`, `closed_by` or `capability_id` is refused (400 `authority_in_request`), and the first three are set from the principal.
 6. The router's operation answers (200), whatever it decided: `status` in its reply says what happened, a refusal included.
@@ -36,6 +36,8 @@ The operator's commands and status, behind one service (`service.py`, design rev
 | `ack_delivery` | exporter | — | `ack_delivery` |
 
 **Authorization per class.** Privileged commands need an operator; the exporter's token authorizes delivery acknowledgement only (no operator command, status included), and an operator's token does not acknowledge a delivery. **Capability-bearing calls** (claim, `record_transition`, `record_observation`, `commit_outcome`, `reconcile`, `invocation_status`, a supervisor's cancellation) are not routes here: the supervisor makes them in the engine's own process under the invocation's capability, and no principal the deployment contract defines holds invocation authority. So an operator's token cannot drive an invocation (404), and a capability — never a bearer token here (401), never accepted in a command body (400) — cannot issue an operator command. The Phase 3 exporter, which will run under an invocation, adds its capability-bearing calls needing both its token and that capability.
+
+**MCP** (`POST /mcp`; DEPLOYMENT-CONTRACT.md §1.1: stateless MCP over HTTP, one JSON-RPC message per request, the gateway's shape). The same token and checks; `initialize`, `ping`, `tools/list` (the tools the principal's role may call: for an operator, `status` and the operator commands; for the exporter, `ack_delivery`) and `tools/call`, which runs the same `_status`/`_command` the routes run, so it is a transport and not a second path. Any refusal — the role, who acts named, an unknown or capability-bearing tool, the router's own — is an in-band tool error (`isError`) carrying its reply. No dependency: JSON-RPC over the same listener.
 
 **Logging.** One line per request — principal (`role:name`, or `-`), method, route, HTTP status, the reply's status — and nothing else: never a header, a token, a query or a body. The engine logs its principals at start as `role:name`.
 
@@ -55,11 +57,12 @@ All over real HTTP on loopback (`gen2/tests/operator_fixtures.py`: the engine ov
 - `test_operator_auth.py`: health; missing, wrong, malformed and rotated-out tokens refused before the body is read; the exporter's token on every operator command and status; an operator's token on delivery acknowledgement and on every capability-bearing call; a capability as a bearer and in a body; each field naming who acts; strict bodies; no token in any log, reply or header; the credential rules.
 - `test_operator_commands.py`: each command applied and refused against the real store.
 - `test_operator_status.py`: one of each waiting state the task names, each reason on its item with owner and deadline read back from the store; status changes nothing.
+- `test_operator_mcp.py`: MCP needs the token, lists only the role's tools, and its tool calls are the routes' own commands, refusals included.
 - `test_operator_restart.py`: a restart in process, and a replacement process driven by the CLI process, keep principals, permissions, pins and the waiting answers; a rotated token is refused; an engine without usable secrets does not start and prints no token; the CLI's exit codes.
 
 ## Not here, and structural limits
 
-- **MCP** (`POST /mcp` in DEPLOYMENT-CONTRACT.md §1.1) is not built. It needs no dependency (stateless JSON-RPC over the same listener), but it is a second transport over this service and belongs with the deployment (compose file, image): deployment/Phase 3. **TLS** is not built: the listener is published on host loopback only.
+- **TLS** is not built: the listener is published on host loopback only. MCP is the stateless subset above (tools only: no resources, prompts, sessions or streaming).
 - **Clearing a station incident** is `Supervisor.recover()`, not a router operation, and no route calls it: status shows the incident with its owner and deadline; the engine does not drive the supervisor until Phase 2's scheduler loop, where recovery is exposed.
 - **Tokens live in the engine's environment.** A process running as the same OS user can read another's environment (`/proc/<pid>/environ`); agents get a scrubbed environment (`gen2/supervisor/jobshim.py`), but keeping them from the engine's process is OS-level isolation — another user or container — which is deployment's.
 - **The router trusts the surface's names.** It records the `operator_id` and `closed_by` it is handed; it does not check a name against the principal set. What makes them authenticated is that only this surface reaches those operations across a process boundary (the composition root wires it; the boundary graph keeps the store the router's).
