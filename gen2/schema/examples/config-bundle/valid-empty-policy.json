@@ -1,0 +1,13 @@
+{
+  "fixture": {
+    "schema": "config-bundle.schema.json",
+    "expect": "valid",
+    "tests": "G-10: a bundle naming no policy value keeps every shipped default; no question is registered"
+  },
+  "instance": {
+    "bundle_version": "config-bundle/1",
+    "version": 1,
+    "policy": {},
+    "questions": []
+  }
+}

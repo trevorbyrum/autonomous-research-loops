@@ -148,7 +148,8 @@ class EveryTableSweepTest(StoreTestCase):
     APPEND_ONLY = ("artifact_topics", "artifacts", "audit_events", "claim_source_links", "decision_receipts", "decision_specs", "dossiers",
                    "facets", "invocation_reconciliations", "invocation_transitions", "obligations", "operation_receipts", "operator_decisions", "outbox_events",
                    "quote_checks", "record_work_links", "research_ordinals", "retrieval_events", "screening_assessments",
-                   "search_observations", "export_delivery_receipts", "verification_receipts")
+                   "search_observations", "export_delivery_receipts", "verification_receipts",
+                   "questions", "reservation_draws", "amendment_impacts")  # task 1d
 
     def test_append_only_tables_reject_every_update(self) -> None:
         for table in self.APPEND_ONLY:
@@ -170,8 +171,16 @@ class EveryTableSweepTest(StoreTestCase):
         self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_lonely01', 1, ?, ?, 'inv_pppppppp', 0, NULL, 'provisional', ?)", TOPIC, h("7"), T)
         self.decision("opd_publish02", "publication_approval", ref="dossier-1", rev=1, hsh=h("3"))
         self.outbox("obx_lonely01", "man_lonely01", 2, 1, "opd_publish02", h("8"), source_rev=1, source_hash=h("3"), connectors={"warehouse": "sql"})
+        # task 1d: a bundle no invocation, question or reservation pins, and a reservation nothing drew on
+        self.x("UPDATE config_bundles SET status = 'superseded' WHERE bundle_hash = ?", h("c"))
+        self.x("INSERT INTO config_bundles (bundle_hash, version, document, status, activated_at) VALUES (?, 2, ?, 'active', ?)", h("d"),
+               '{"bundle_version": "config-bundle/1", "version": 2, "policy": {}, "questions": []}', T)
+        rev = self.rows("SELECT revision FROM contract_revisions WHERE topic_id = ? AND status = 'approved'", TOPIC)[0][0]
+        self.x("INSERT INTO reservations (reservation_id, topic_id, purpose, contract_revision, units, min_band, bundle_hash, opened_at) VALUES ('rsv_lonely01', ?, 'auto_promotion', ?, 2, 'critical', ?, ?)",
+               TOPIC, rev, h("c"), T)
         for table, where in (("leases", "lease_id = 'lease_lonely01'"), ("invocations", "invocation_id = 'inv_lonely01'"),
-                             ("claims", "claim_id = 'clm_lonely01'"), ("outbox_events", "outbox_event_id = 'obx_lonely01'")):
+                             ("claims", "claim_id = 'clm_lonely01'"), ("outbox_events", "outbox_event_id = 'obx_lonely01'"),
+                             ("config_bundles", f"bundle_hash = '{h('d')}'"), ("reservations", "reservation_id = 'rsv_lonely01'")):
             with self.subTest(table=table):
                 before = self.snapshot(table)
                 with self.assertRaises(sqlite3.IntegrityError):

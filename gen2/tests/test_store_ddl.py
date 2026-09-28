@@ -1034,7 +1034,7 @@ class ScreeningAndDecisionTest(StoreTestCase):
         self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev)  # shadow
         with self.assertRaises(sqlite3.IntegrityError):
             self.x(self.SCREEN, "sa1", TOPIC, "include", None, "decision_provider", "dec_00000001", T)
-        self.decision_receipt("dec_00000002", "inv_pppppppp", self.jev, authority="qualified", qualification="qual-screen-1", action="commit_reversible_action", commit_op="op_00000001")
+        self.decision_receipt("dec_00000002", "inv_pppppppp", self.jev, authority="qualified", qualification="qual_screen01", action="commit_reversible_action", commit_op="op_00000001")
         self.x(self.SCREEN, "sa1", TOPIC, "include", None, "decision_provider", "dec_00000002", T)
 
     def test_provider_assessment_is_exactly_its_receipts_committed_action(self) -> None:
@@ -1044,9 +1044,10 @@ class ScreeningAndDecisionTest(StoreTestCase):
         self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000002', 'doi', '10.1/y', ?)", T)
         self.receipt("op_00000002", "inv_pppppppp", kind="interim_transition", before=1)
         pre = self.spec("dspec_prefil01", cls="relevance_prefilter")
-        q = dict(authority="qualified", qualification="qual-screen-1")
+        q = dict(authority="qualified", qualification="qual_screen01")
         self.decision_receipt("dec_otherwrk", "inv_pppppppp", self.jev, action="commit_reversible_action", commit_op="op_00000001", subject=("work", "wrk_00000002"), **q)
-        self.decision_receipt("dec_othercls", "inv_pppppppp", pre, action="commit_reversible_action", commit_op="op_00000001", cls="relevance_prefilter", **q)
+        self.decision_receipt("dec_othercls", "inv_pppppppp", pre, action="commit_reversible_action", commit_op="op_00000001", cls="relevance_prefilter",
+                              **{**q, "qualification": "qual_prefil01"})
         self.decision_receipt("dec_othercom", "inv_pppppppp", self.jev, action="commit_reversible_action", commit_op="op_00000002", **q)
         self.decision_receipt("dec_proposal", "inv_pppppppp", self.jev, action="attach_proposal", proposal="prop-1", **q)
         self.decision_receipt("dec_othersub", "inv_pppppppp", self.jev, action="commit_reversible_action", commit_op="op_00000001", subject=("claim", "wrk_00000001"), **q)
@@ -1131,7 +1132,7 @@ class DecisionReceiptConsistencyTest(StoreTestCase):
         self.jev = self.spec()
 
     def test_action_fixes_the_outcome_shape(self) -> None:
-        q = dict(authority="qualified", qualification="qual-1")
+        q = dict(authority="qualified", qualification="qual_00000001")
         bad = {
             "shadow with a committed operation (the review's probe)": dict(commit_op="op_00000001"),
             "shadow with a hold": dict(hold="hold_00000001"),
@@ -2483,6 +2484,7 @@ class ZeroContractDiscoveryTest(StoreTestCase):
 
     def setUp(self) -> None:
         self.db = connect(self.APPLY_CONNECTION_CONTRACT)
+        self.seed_configuration()
         for tid in (TOPIC, OTHER):
             self.x("INSERT INTO queue_entries (topic_id, fleet_id, priority, status, created_at, updated_at) VALUES (?, 'fleet-a', 1, 'awaiting_brief_confirmation', ?, ?)", tid, T, T)
 

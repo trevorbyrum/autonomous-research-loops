@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "config-bundle.schema.json",
+    "expect": "invalid",
+    "tests": "D-1: a registry entry carries its content hash",
+    "base": "valid-full-bundle.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/questions/0/content_hash"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": "/questions/0"
+      }
+    ]
+  }
+}

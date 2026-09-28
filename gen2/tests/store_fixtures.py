@@ -85,17 +85,32 @@ def connect(apply_connection_contract: bool = True) -> sqlite3.Connection:
     return db
 
 
+# The config bundle every fixture invocation pins (config_bundle_hash h("c")),
+# the question its specs pin (the example spec's too) and the reservations
+# it sizes; hash labels, whose truth is the router's.
+QUESTION = {"question_id": "Q-screen", "version": 1, "text": "Does this work meet the pinned eligibility criteria?", "content_hash": h("9")}
+BUNDLE = {"bundle_version": "config-bundle/1", "version": 1, "questions": [QUESTION],
+          "policy": {"router": {"reservations": {"protected_exploration": {"units": 2}, "auto_promotion": {"units": 2, "min_band": "critical"}}}}}
+
+
 class StoreTestCase(unittest.TestCase):
     APPLY_CONNECTION_CONTRACT = True
 
     def setUp(self) -> None:
         self.db = connect(self.APPLY_CONNECTION_CONTRACT)
+        self.seed_configuration()
         for tid in (TOPIC, OTHER):
             self.x("INSERT INTO queue_entries (topic_id, fleet_id, priority, status, created_at, updated_at) VALUES (?, 'fleet-a', 1, 'awaiting_brief_confirmation', ?, ?)", tid, T, T)
             self.contract(tid, 1)
 
     def tearDown(self) -> None:
         self.db.close()
+
+    def seed_configuration(self) -> None:
+        """BUNDLE recorded active under h("c"), and its question registered."""
+        self.x("INSERT INTO config_bundles (bundle_hash, version, document, status, activated_at) VALUES (?, 1, ?, 'active', ?)", h("c"), json.dumps(BUNDLE), T)
+        self.x("INSERT INTO questions (question_id, version, content_hash, document, registered_by_bundle_hash, registered_at) VALUES ('Q-screen', 1, ?, ?, ?, ?)",
+               h("9"), json.dumps(QUESTION), h("c"), T)
 
     def x(self, sql: str, *params):
         return self.db.execute(sql, params)
@@ -458,6 +473,7 @@ class StoreTestCase(unittest.TestCase):
         protocol = None if protocol_topic is None else {"topic_id": protocol_topic, "contract": {"revision": 1, "content_hash": h("a")},
                                                          "eligibility_protocol_version": 1 if cls == "screening" else None}
         doc = {"spec_version": "decision-spec/1", "spec_id": spec_id, "decision_class": cls, "provider": provider, "primitive": primitive,
+               "question": {"question_id": "Q-screen", "version": 1, "content_hash": h("9")},
                "action_policy": {"policy_id": policy[0], "version": policy[1]}, "protocol": protocol,
                "options": {o: {"criteria": f"criteria for {o}"} for o in options}}
         doc.update(document_overrides or {})
@@ -476,10 +492,18 @@ class StoreTestCase(unittest.TestCase):
                          qualification: str | None = None, action: str = "shadow_log_only", commit_op: str | None = None, hold: str | None = None,
                          cls: str = "screening", tid: str = TOPIC, *, subject: tuple = ("work", "wrk_00000001"), proposal: str | None = None,
                          status: str = "answered", input_status: str = "complete", raw: str | None = "5", policy: tuple = ("P1", 1),
-                         blind: bool = False, stage_raw: bool = True, receipt_overrides: dict | None = None, column_overrides: dict | None = None) -> None:
+                         blind: bool = False, stage_raw: bool = True, receipt_overrides: dict | None = None, column_overrides: dict | None = None,
+                         live_qualification: bool = True) -> None:
         """A decision receipt whose JSON (decision-receipt.schema.json shape) and
         columns come from the same values; the raw response bytes are a staged
-        artifact whose hash is the digest (pass raw=None for no bytes)."""
+        artifact whose hash is the digest (pass raw=None for no bytes). A
+        qualified receipt's reference names a live fake qualification of this
+        provider, class and spec, recorded here first unless it exists or
+        `live_qualification` is False (task 1d)."""
+        if authority == "qualified" and qualification is not None and live_qualification \
+                and not self.rows("SELECT 1 FROM qualifications WHERE qualification_id = ?", qualification):
+            self.x("INSERT INTO qualifications (qualification_id, provider, decision_class, spec_hash, evaluation_ref, granted_by, granted_at) VALUES (?, ?, ?, ?, 'eval-1', 'user', ?)",
+                   qualification, provider, cls, spec_hash, T)
         if answer is None and status == "answered":
             answer = {"primitive": "choice", "selected_option_id": "include", "distribution": {"include": 0.8, "exclude": 0.2}, "confidence": 0.7}
         digest = None if raw is None else (self.raw_artifact(h(raw)) if stage_raw else h(raw))
@@ -577,6 +601,18 @@ class StoreTestCase(unittest.TestCase):
         self.x("UPDATE claims SET status = 'accepted_support' WHERE claim_id = 'clm_00000001' AND revision = 1")
         jev = self.spec()
         self.decision_receipt("dec_00000001", "inv_pppppppp", jev)
+        # task 1d: a fake qualification, a reservation and its draw, a re-queue of cancelled work, an impact record
+        self.x("INSERT INTO qualifications (qualification_id, provider, decision_class, spec_hash, evaluation_ref, granted_by, granted_at) VALUES ('qual_00000001', 'jev', 'screening', ?, 'eval-1', 'user', ?)", jev, T)
+        self.x("INSERT INTO reservations (reservation_id, topic_id, purpose, contract_revision, units, bundle_hash, opened_at) VALUES ('rsv_00000001', ?, 'protected_exploration', ?, 2, ?, ?)", TOPIC, rev, h("c"), T)
+        self.x("INSERT INTO reservation_draws (invocation_id, reservation_id, drawn_at) VALUES ('inv_pppppppp', 'rsv_00000001', ?)", T)
+        self.lease("lease_ffffffff", 3, scope="checkpoint")
+        self.invocation("inv_ffffffff", kind="checkpoint", lease="lease_ffffffff")
+        self.x("UPDATE invocations SET state = 'cancelled', cancel_requested_at = ?, cancel_requested_by = 'operator', descendants_confirmed_at = ? WHERE invocation_id = 'inv_ffffffff'", T, T)
+        self.x("UPDATE leases SET released_at = ?, release_reason = 'cancelled' WHERE lease_id = 'lease_ffffffff'", T)
+        self.x("INSERT INTO retries (invocation_id, topic_id, attempt, requested_by, reason, requested_at) VALUES ('inv_ffffffff', ?, 2, 'operator', 'retry it', ?)", TOPIC, T)
+        confirmation = self.confirm_brief(TOPIC)[3]
+        self.x("INSERT INTO amendment_impacts (decision_id, topic_id, kind, classification, document, recorded_at) VALUES (?, ?, 'brief', 'lineage_only', ?, ?)",
+               confirmation, TOPIC, json.dumps({"decision_id": confirmation, "topic_id": TOPIC, "kind": "brief", "classification": "lineage_only"}), T)
         self.decision("opd_publish01", "publication_approval", ref="dossier-1", rev=1, hsh=h("3"))
         self.outbox("obx_00000001", "man_00000001", 1, None, "opd_publish01", h("6"), source_rev=1, source_hash=h("3"), connectors={"warehouse": "sql"})
         self.delivery()

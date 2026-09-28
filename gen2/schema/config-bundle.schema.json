@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/config-bundle.schema.json",
+  "$comment": "flow: §5 (Jev question storage: a versioned question registry, mounted; rewording is a visible calibration event and a restart, not a rebuild); S5 (one coalesced signal queue, per-topic budget/cooldown); S6 (protected exploration budget); §6.4 (auto-promotion bound to the remaining auto-budget reservation) | boundaries: Router; Station supervisor | design-review: §4 (retry ceilings, heartbeats, timeouts, cadence and budgets belong to the engine's mounted policy bundle, owned apart from the scientific protocol); §6 (configuration is mounted, validated and activated as versioned bundles; in-flight work retains its pinned bundle) | invariants: G-10; RG-9; C-12; L-6; D-1; G-5; G-12 | note: task 1d. DEPLOYMENT-CONTRACT.md §2 (baked versus mounted). The bundle's identity is the JCS hash of the whole document (it carries no hash of its own). Every policy value is optional: an absent supervisor or router value is the shipped default (gen2/supervisor/supervisor.py Policy; the router's hold window), so a bundle overrides only what it names. The newer policies (retry, reservations, signal queue) have no shipped default: while absent, the operation they govern is refused, never unbounded. additionalProperties false throughout: a misspelt value is a refused bundle, not a silent default",
+  "title": "Engine configuration bundle",
+  "description": "One mounted engine configuration set, activated by the router as a versioned bundle (config-bundle/1): the execution policy the supervisor and the router apply, and the question registry DecisionSpecs pin to. New work pins the active bundle; work already admitted keeps the one it was admitted under.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["bundle_version", "version", "policy", "questions"],
+  "properties": {
+    "bundle_version": {"const": "config-bundle/1"},
+    "version": {
+      "description": "Strictly above every bundle activated before it; activating the active bundle again is a replay.",
+      "$ref": "common.schema.json#/$defs/revision"
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "supervisor": {
+          "description": "Overrides of the supervisor's Policy fields (gen2/supervisor/supervisor.py); each absent one keeps its shipped default.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "router_attempts": {"$ref": "#/$defs/attempts"},
+            "router_window_s": {"$ref": "#/$defs/seconds"},
+            "recovery_attempts": {"$ref": "#/$defs/attempts"},
+            "write_attempts": {"$ref": "#/$defs/attempts"},
+            "incident_window_s": {"$ref": "#/$defs/seconds"},
+            "launch_attempts": {"$ref": "#/$defs/attempts"},
+            "spawn_attempts": {"$ref": "#/$defs/attempts"},
+            "commit_attempts": {"$ref": "#/$defs/attempts"},
+            "refusal_attempts": {"$ref": "#/$defs/attempts"},
+            "unknown_attempts": {"$ref": "#/$defs/attempts"},
+            "unknown_window_s": {"$ref": "#/$defs/seconds"},
+            "lock_wait_s": {"$ref": "#/$defs/seconds"},
+            "identity_grace_s": {"$ref": "#/$defs/seconds"},
+            "start_grace_s": {"$ref": "#/$defs/seconds"},
+            "term_grace_s": {"$ref": "#/$defs/seconds"},
+            "kill_grace_s": {"$ref": "#/$defs/seconds"},
+            "poll_s": {"$ref": "#/$defs/seconds"}
+          }
+        },
+        "router": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "hold_window_s": {
+              "description": "The deadline of a hold the router opens (an outcome_unknown episode's, an exhausted retry budget's): how long its owner has before it is overdue. Shipped default 3600.",
+              "$ref": "#/$defs/seconds"
+            },
+            "retry": {
+              "description": "Policy-driven re-queue of failed or cancelled work (L-6): known transient failure classes are re-queued within the budget; anything else is the operator's.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["attempts", "failure_classes"],
+              "properties": {
+                "attempts": {"description": "Re-runs a policy may request after the first attempt.", "type": "integer", "minimum": 0, "maximum": 1000},
+                "failure_classes": {"type": "array", "uniqueItems": true, "maxItems": 20, "items": {"$ref": "execution-record.schema.json#/properties/findings/items"}}
+              }
+            },
+            "reservations": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "protected_exploration": {
+                  "type": "object", "additionalProperties": false, "required": ["units"],
+                  "properties": {"units": {"$ref": "#/$defs/units"}}
+                },
+                "auto_promotion": {
+                  "type": "object", "additionalProperties": false, "required": ["units", "min_band"],
+                  "properties": {
+                    "units": {"$ref": "#/$defs/units"},
+                    "min_band": {"description": "The declared threshold: an operator-confirmed facet rating at or above it (G-5).", "enum": ["critical", "important", "limited"]}
+                  }
+                }
+              }
+            },
+            "signal_queue": {
+              "description": "The coalesced signal queue (flow S5): at most `budget` signal-driven reviews per topic within `window_s`, none within `cooldown_s` of the last. Mandatory signals and the fixed cadence floor are never held back by it (G-12).",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["budget", "window_s", "cooldown_s"],
+              "properties": {
+                "budget": {"type": "integer", "minimum": 1, "maximum": 1000},
+                "window_s": {"$ref": "#/$defs/seconds"},
+                "cooldown_s": {"type": "number", "minimum": 0, "maximum": 604800}
+              }
+            }
+          }
+        }
+      }
+    },
+    "questions": {
+      "description": "The question registry entries this bundle carries (flow §5). A question version has one content forever: its content_hash is the JCS hash of the entry minus itself (C-13).",
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["question_id", "version", "text", "content_hash"],
+        "properties": {
+          "question_id": {"$ref": "common.schema.json#/$defs/local_id"},
+          "version": {"$ref": "common.schema.json#/$defs/revision"},
+          "text": {"$ref": "common.schema.json#/$defs/long_text"},
+          "content_hash": {"$ref": "common.schema.json#/$defs/sha256"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "attempts": {"type": "integer", "minimum": 1, "maximum": 1000},
+    "seconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 604800},
+    "units": {"description": "Admissions the reservation holds.", "type": "integer", "minimum": 1, "maximum": 1000000}
+  }
+}

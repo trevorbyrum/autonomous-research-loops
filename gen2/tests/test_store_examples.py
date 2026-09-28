@@ -53,6 +53,7 @@ def with_field(document: dict, path: str, value) -> dict:
 class ExampleWorldTest(StoreTestCase):
     def setUp(self) -> None:
         self.db = connect()
+        self.seed_configuration()
         self.contract_doc = example("contract-v2/valid-two-obligations.json")
         self.receipt_doc = example("commit-outcome/valid-receipt-final.json")
         self.spec_doc = example("decision-spec/valid-jev-screening-choice.json")

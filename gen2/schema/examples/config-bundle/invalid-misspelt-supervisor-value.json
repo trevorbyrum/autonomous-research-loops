@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "config-bundle.schema.json",
+    "expect": "invalid",
+    "tests": "G-10: a misspelt policy value is a refused bundle, never a silent default",
+    "base": "valid-full-bundle.json",
+    "patch": [
+      {
+        "op": "add",
+        "path": "/policy/supervisor/refusal_attempt",
+        "value": 3
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "additionalProperties",
+        "path": "/policy/supervisor"
+      }
+    ]
+  }
+}

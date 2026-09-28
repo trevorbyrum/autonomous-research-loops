@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "config-bundle.schema.json",
+    "expect": "invalid",
+    "tests": "L-6: a retryable failure class is one of the supervisor's structural findings",
+    "base": "valid-full-bundle.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/policy/router/retry/failure_classes/0",
+        "value": "flaky"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "enum",
+        "path": "/policy/router/retry/failure_classes/0"
+      }
+    ]
+  }
+}

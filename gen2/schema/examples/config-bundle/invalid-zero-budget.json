@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "config-bundle.schema.json",
+    "expect": "invalid",
+    "tests": "L-6: an attempt budget is at least one attempt",
+    "base": "valid-full-bundle.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/policy/supervisor/refusal_attempts",
+        "value": 0
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "minimum",
+        "path": "/policy/supervisor/refusal_attempts"
+      }
+    ]
+  }
+}

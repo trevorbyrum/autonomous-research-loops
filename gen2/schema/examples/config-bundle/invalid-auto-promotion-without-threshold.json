@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "config-bundle.schema.json",
+    "expect": "invalid",
+    "tests": "G-5: an auto-promotion reservation declares its rating threshold",
+    "base": "valid-full-bundle.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/policy/router/reservations/auto_promotion/min_band"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": "/policy/router/reservations/auto_promotion"
+      }
+    ]
+  }
+}

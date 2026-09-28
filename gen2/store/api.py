@@ -74,7 +74,7 @@ IDENTITY_COLUMNS = frozenset({
 })
 FLAG_COLUMNS = frozenset({"load_bearing", "blind_sample", "exploratory", "quote_quarantined", "tombstones_acknowledged", "reconciliation_required"})
 SCORE_COLUMNS = frozenset({"proposed_importance_score", "operator_importance_score"})  # 1-9, the DDL's CHECKs
-MEASURE_COLUMNS = frozenset({"size_bytes", "priority", "result_count", "cost_units", "rank", "span_start", "span_end", "written_value"})
+MEASURE_COLUMNS = frozenset({"size_bytes", "priority", "result_count", "cost_units", "rank", "span_start", "span_end", "written_value", "units"})
 
 # The hashing contracts each receipt table's JSON records (INVARIANTS C-13).
 # Verification receipts hold byte digests only, so they record none.
