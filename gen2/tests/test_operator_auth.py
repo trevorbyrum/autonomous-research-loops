@@ -21,6 +21,7 @@ import socket
 import time
 import unittest
 from unittest import mock
+from urllib.parse import unquote
 
 from gen2.operator import auth
 from gen2.operator.auth import REDACTED, Credentials, CredentialsRefused, Principal, Unwritable
@@ -513,6 +514,20 @@ class DiagnosticSecrecyTest(of.CommandWorld):
         self.assertEqual((self.logs, stderr.getvalue()), (["- ? ? -> connection ConnectionResetError"], ""))
 
 
+def decodings(text: str) -> int:
+    """How many texts `text` is, itself and decoded — percent-decoded and
+    JSON-unescaped, again and again, in every order — counted to the end,
+    with no bound: the texts auth._carries() reads."""
+    seen, pending = {text}, [text]
+    while pending:
+        current = pending.pop()
+        for decoded in (unquote(current), auth._unescape(current)):
+            if decoded not in seen:
+                seen.add(decoded)
+                pending.append(decoded)
+    return len(seen)
+
+
 def percent(text: str, upper: bool = False, every: int = 1) -> str:
     """`text` percent-encoded: every `every`-th character as %xx (lower-case hex unless `upper`), the rest as they are."""
     return "".join((f"%{ord(c):02X}" if upper else f"%{ord(c):02x}") if i % every == 0 else c for i, c in enumerate(text))
@@ -757,6 +772,128 @@ class CarriedFormsTest(of.CommandWorld):
                                              "- POST /mcp -> 500 Unwritable"])
                 self.assert_absent(token, rest_answer + mcp_answer, rest, mcp)
 
+    def id_in_two_runs(self, depth: int, counts: tuple[int, list[int]]) -> None:
+        """A cancellation whose id is two runs — percent-encoding `depth`
+        deep, then a JSON escape escaped fifteen deep — each with no more
+        decodings than MAX_DECODINGS, the two read whole more or not
+        (`counts`: the whole id's and each run's): its call is made and the
+        id echoed exactly, off the wire; the log is the call's."""
+        ident = "%" + "25" * depth + " " + "\\" + "u005c" * 15 + "-end"
+        self.assertEqual((decodings(ident), [decodings(run) for run in ident.split(" ")]), counts)
+        answer, reply = self.exchange("/mcp", self.tool_call(self.bodies()["request_cancel"], ident=ident))
+        self.assertEqual((answer[:13], reply.get("id")), ("HTTP/1.0 200 ", ident), answer[:200])
+        self.assertIn('{"id": ' + json.dumps(ident) + ", ", answer)
+        inner = self.decoded(reply["result"]["content"][0]["text"])
+        self.assertEqual((inner["status"], reply["result"]["isError"]), ("recorded", False))
+        self.assertEqual(self.value("SELECT cancel_requested_by FROM invocations WHERE invocation_id = ?", of.RUNNING), "operator")
+        self.assertEqual(self.logs, ["operator:alice POST /mcp:request_cancel -> 200 None"])
+
+    def test_an_id_read_run_by_run_is_echoed_exactly_though_read_whole_it_passes_the_bound(self) -> None:
+        """The id's check and the redaction its answer then takes read the
+        same runs: neither changes an id the other took (Astra 1e-repair-3
+        re-review finding 1: taken, the cancellation recorded, and answered
+        with id "[credential]")."""
+        self.assertLess(auth.MAX_DECODINGS, 272)
+        self.id_in_two_runs(16, (272, [17, 16]))
+
+    def test_an_id_read_whole_within_the_bound_is_echoed_exactly(self) -> None:
+        """One level shallower, read whole within the bound (the control)."""
+        self.assertGreaterEqual(auth.MAX_DECODINGS, 256)
+        self.id_in_two_runs(15, (256, [16, 16]))
+
+    def status_with_deep_facts(self, depth: int, past_bound: bool) -> None:
+        """Two capability facts whose details carry no token in any
+        decoding — percent-encoding `depth` deep, a JSON escape escaped
+        fourteen deep — each run of the MCP status tool's text with no more
+        decodings than MAX_DECODINGS, the whole text more or not
+        (`past_bound`): over REST and over MCP, off the wire, the status
+        document holds both facts as written, the tool's text is JSON and is
+        that document, the call's id is echoed, and nothing changes."""
+        details = {"deep-percent": "%" + "25" * depth, "deep-escape": "\\" + "u005c" * 14}
+        for capability, detail in details.items():
+            self.x("INSERT INTO capability_facts (fact_id, capability, state, detail, since, affected_lanes, recorded_at) VALUES (?, ?, 'failing', ?, ?, '[]', ?)",
+                   "cf-" + capability, capability, detail, "2026-09-27T09:00:00Z", "2026-09-27T09:00:00Z")
+        before = self.state(exclude=())
+        rest_answer = raw_exchange(self.engine, f"GET /v1/status HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {of.OPERATOR_TOKEN}\r\n\r\n".encode()).decode("latin-1")
+        rest = self.decoded(rest_answer.partition("\r\n\r\n")[2])
+        mcp_answer, mcp = self.exchange("/mcp", self.tool_call({}, ident="status-1", tool="status"))
+        self.assertEqual((rest_answer[:13], mcp_answer[:13], mcp.get("id")), ("HTTP/1.0 200 ", "HTTP/1.0 200 ", "status-1"), mcp_answer[:200])
+        text = mcp["result"]["content"][0]["text"]
+        inner = self.decoded(text)
+        self.assertIs(mcp["result"]["isError"], False)
+        self.assertEqual({fact["capability"]: fact["detail"] for fact in rest["capability_facts"]}, details)
+        self.assertEqual({**inner, "at": rest["at"]}, rest)
+        self.assertGreaterEqual(inner["at"], rest["at"])
+        self.assertEqual((decodings(text) > auth.MAX_DECODINGS, max(decodings(run) for run in text.split(" ")) <= auth.MAX_DECODINGS), (past_bound, True))
+        self.assertEqual(self.state(exclude=()), before)
+        self.assertEqual(self.logs, ["operator:alice GET /v1/status -> 200 ok", "operator:alice POST /mcp:status -> 200 None"])
+
+    def test_a_tool_text_read_run_by_run_stays_its_json_though_read_whole_it_passes_the_bound(self) -> None:
+        """The tool's text as it was nested and the redaction MCP's answer
+        then takes read the same runs: the text stays the JSON it was
+        (Astra 1e-repair-3 re-review finding 1: 200, isError false, the
+        text "[credential]", the status gone)."""
+        self.status_with_deep_facts(15, True)
+
+    def test_a_tool_text_read_whole_within_the_bound_stays_its_json(self) -> None:
+        """One level shallower, read whole within the bound (the control)."""
+        self.status_with_deep_facts(14, False)
+
+    def test_an_id_showing_a_token_its_written_text_does_not_is_refused_before_dispatch(self) -> None:
+        """An id that shows a configured token only decoded, where the quote
+        written after it takes the token's last character for its escape:
+        `credential-1234%5Cu0035%5C` percent-decodes to
+        `credential-1234\\u0035\\` and unescapes to the token
+        `credential-12345\\`, while its written text ends `%5C",`, which
+        decodes to `\\",` and then `",` — the text shows no token, the id
+        does. It is refused as an invalid request with a null id, the call
+        not made, the token in no byte of the answer nor the log (Astra
+        1e-repair-3 re-review finding 1: taken on its text alone, the call
+        was made and the id answered as "[credential]"). One character off,
+        the id is echoed exactly and its call made (the control)."""
+        token, ident = "credential-12345\\", "credential-1234%5Cu0035%5C"
+        creds = Credentials({"alice": of.OPERATOR_TOKEN}, token)
+        self.assertEqual((creds.writes({"id": ident, "jsonrpc": "2.0"}), creds.redact(ident)), (True, REDACTED))
+        self.restart(creds)
+        cancel, before = self.bodies()["request_cancel"], self.state(exclude=())
+        answer, reply = self.exchange("/mcp", self.tool_call(cancel, ident=ident))
+        self.assertTrue(answer.startswith("HTTP/1.0 400 "), answer[:80])
+        self.assertEqual(reply, {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "invalid request",
+                                                                         "data": {"status": "refused", "reason": "request_invalid"}}})
+        self.assert_absent(token, answer, reply)
+        self.assertEqual((self.logs, self.state(exclude=())), (["operator:alice POST /mcp -> 400 None"], before))
+        control = ident.replace("u0035", "u0036")
+        answer, reply = self.exchange("/mcp", self.tool_call(cancel, ident=control))
+        self.assertEqual((answer[:13], reply.get("id")), ("HTTP/1.0 200 ", control), answer[:200])
+        self.assertEqual(self.decoded(reply["result"]["content"][0]["text"])["status"], "recorded")
+        self.assertEqual(self.value("SELECT cancel_requested_by FROM invocations WHERE invocation_id = ?", of.RUNNING), "operator")
+
+    def test_a_tool_text_its_answer_would_write_with_a_token_is_the_fixed_fault(self) -> None:
+        """A token made of the text MCP's answer writes where a tool's text
+        opens — the quote before it, then its first run escaped
+        (`"{\\"invocation_id\\":`) — which the text as nested never shows:
+        written, the whole text would be replaced and the answer report
+        success with no JSON in it. The answer is the fixed fault, 500, its
+        line naming Unwritable, the token in no byte of it; the call itself
+        was made (Astra 1e-repair-3 re-review finding 1). Over REST, whose
+        text has no such quote, the same call is answered with its reply.
+        Under another token, the MCP call is answered with the tool's text,
+        JSON (the control)."""
+        token, cancel = '"{\\"invocation_id\\":', self.bodies()["request_cancel"]
+        self.restart(Credentials({"alice": of.OPERATOR_TOKEN}, token))
+        mcp_answer, mcp = self.exchange("/mcp", self.tool_call(cancel))
+        self.assertEqual((mcp_answer[:13], mcp), ("HTTP/1.0 500 ", {"status": "error", "reason": "internal"}))
+        self.assertEqual(self.logs, ["- POST /mcp -> 500 Unwritable"])
+        self.assert_absent(token, mcp_answer, mcp)
+        self.assertEqual(self.value("SELECT cancel_requested_by FROM invocations WHERE invocation_id = ?", of.RUNNING), "operator")
+        rest_answer, rest = self.exchange("/v1/commands/request_cancel", cancel)
+        self.assertEqual((rest_answer[:13], rest.get("invocation_id"), rest.get("status")), ("HTTP/1.0 200 ", of.RUNNING, "replayed"), rest_answer[:200])
+        self.restart(Credentials({"alice": of.OPERATOR_TOKEN}, of.EXPORTER_TOKEN))
+        control_answer, control = self.exchange("/mcp", self.tool_call(cancel))
+        self.assertEqual((control_answer[:13], control.get("id")), ("HTTP/1.0 200 ", 1), control_answer[:200])
+        inner = self.decoded(control["result"]["content"][0]["text"])
+        self.assertEqual((inner["invocation_id"], inner["status"]), (of.RUNNING, "replayed"))
+
 
 class CredentialsTest(unittest.TestCase):
     ENV = {"GEN2_SECRETS": "env", "GEN2_OPERATOR_TOKENS": f"alice={of.OPERATOR_TOKEN}, bob={of.OTHER_OPERATOR_TOKEN}",
@@ -853,6 +990,18 @@ class CredentialsTest(unittest.TestCase):
         for bound, redacted in ((3, REDACTED), (4, "%252525")):
             with self.subTest(bound=bound), mock.patch.object(auth, "MAX_DECODINGS", bound):
                 self.assertEqual(creds.redact("%252525"), redacted)
+
+    def test_a_string_is_read_run_by_run_against_the_decoding_bound(self) -> None:
+        """redact() reads a string a run at a time — the text between two
+        spaces — as dumps() reads the text it writes: with the bound at
+        three, `%2525` (itself, `%25`, `%`) and `\\u005cu005c` (itself,
+        `\\u005c`, `\\`) are kept, and so is the two together, whose nine
+        decodings the bound would cut short read whole (Astra 1e-repair-3
+        re-review finding 1); a run with four (`%252525`) beside another is
+        still read no further, and the string replaced whole."""
+        creds, runs = Credentials({"alice": of.OPERATOR_TOKEN}), ["%2525", "\\u005cu005c", "%2525 \\u005cu005c"]
+        with mock.patch.object(auth, "MAX_DECODINGS", 3):
+            self.assertEqual(creds.redact([*runs, "%2525 %252525"]), [*runs, REDACTED])
 
     def test_unusable_secrets_refuse_the_start(self) -> None:
         """Each defect alone, beside ENV, which starts (the control); no

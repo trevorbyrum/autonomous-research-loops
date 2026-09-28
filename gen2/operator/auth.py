@@ -31,7 +31,10 @@ JSON-escaped (a token holding `"` or `\\`, inside JSON text a reply nests),
 percent-encoded, JSON-unescaped, or as the decimal digits of a number (Astra
 1e-repair re-review finding 2); and dumps() checks the JSON text itself as it
 is written, where serialization can re-form a token no value holds (Astra
-1e-repair-2 re-review finding 1).
+1e-repair-2 re-review finding 1). Both read a text a run at a time — the text
+between two spaces, which no token spans — so the bound on decodings is a
+run's, and a text dumps() wrote is one redact() keeps (Astra 1e-repair-3
+re-review finding 1).
 
 Persistence (RG-9): the principal set is the mounted secrets', read at every
 start. A restart or a replacement with the same mount keeps every principal,
@@ -126,15 +129,19 @@ class Credentials:
         """`value` — a JSON value (dicts, lists, strings, numbers) or a log
         line — with every configured token taken out wherever it appears in
         a string, a key included: as it is or JSON-escaped, replaced by
-        REDACTED; a string that still shows one — only once decoded
-        (_carries()), or re-formed by those replacements — and a number
-        whose decimal text holds one, replaced whole by REDACTED. A value
-        that carries no configured token is returned as it was. These are
-        the values; dumps() checks the text they are written as."""
+        REDACTED; a string that still shows one in a run of it — only once
+        decoded (_carries()), or re-formed by those replacements — and a
+        number whose decimal text holds one, replaced whole by REDACTED. A
+        value that carries no configured token is returned as it was. These
+        are the values; dumps() checks the text they are written as. A
+        string is read run by run, as _shows() reads that text: read whole,
+        runs each within MAX_DECODINGS could pass it together, and a tool's
+        text dumps() wrote, or an id _mcp took, be replaced after the fact
+        (Astra 1e-repair-3 re-review finding 1)."""
         if isinstance(value, str):
             for form in self._forms:
                 value = value.replace(form, REDACTED)
-            return REDACTED if self._carries(value) else value
+            return REDACTED if any(self._carries(run) for run in value.split(" ")) else value
         if isinstance(value, dict):
             return {self.redact(k): self.redact(v) for k, v in value.items()}
         if isinstance(value, list):
@@ -145,8 +152,10 @@ class Credentials:
 
     def writes(self, value) -> bool:
         """Whether value is written as it is: nothing in its JSON text for
-        dumps() to take out — which holds whatever redact() would take out
-        of it, the text unescaping to the value itself."""
+        dumps() to take out. Not whether redact() keeps it: the quote written
+        after a string can end the escape a decoding of it leaves (`..%5C`,
+        written `..%5C"`, decodes to `..\\"`), and a token the string shows
+        ending in that `\\` is not in its text."""
         return not self._shows(json.dumps(value, sort_keys=True), False)
 
     def dumps(self, value, *, nested: bool = False) -> str:

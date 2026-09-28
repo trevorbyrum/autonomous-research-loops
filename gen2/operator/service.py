@@ -78,7 +78,10 @@ re-form a token no value holds, so each JSON text is checked as the text it
 is — a tool's nested text as it is nested (_mcp), every answer as the
 transport writes it (encode()) — and an id whose answer would be written
 with one is refused before anything is dispatched (Credentials.dumps and
-writes; Astra 1e-repair-2 re-review finding 1).
+writes; Astra 1e-repair-2 re-review finding 1). No later pass changes what an
+earlier one let through: an id taken is echoed as it came, and a tool's text
+stays the JSON it was nested as, or the answer is the fixed fault (_mcp;
+Astra 1e-repair-3 re-review finding 1).
 """
 from __future__ import annotations
 
@@ -88,7 +91,7 @@ from urllib.parse import parse_qs
 
 from gen2.core import canonical
 from gen2.operator import status as status_view
-from gen2.operator.auth import Credentials, Principal
+from gen2.operator.auth import Credentials, Principal, Unwritable
 
 MAX_BODY = 1024 * 1024
 LENGTH = re.compile(r"[0-9]{1,12}")
@@ -240,7 +243,11 @@ class OperatorService:
         answered with a null id: echoing it
         would repeat the credential, and replacing it would answer another
         request's id (Astra 1e-repair re-review finding 2, 1e-repair-2
-        re-review finding 1). A message
+        re-review finding 1). Both are checked, redaction's (whose pass the
+        answer then takes, and must leave the id as it came) and the written
+        text's: the quote written after an id can end the escape a decoding
+        of it leaves, keeping from its text a token the id shows (Astra
+        1e-repair-3 re-review finding 1). A message
         without an id is a notification: a notifications/ method is accepted
         (202) and does nothing; any other method needs an id (-32600). Each
         method's params carry only its members, each of its type, the
@@ -254,9 +261,13 @@ class OperatorService:
         router's own — is an in-band tool error carrying its reply, redacted
         before it is serialized into the tool's text (redaction after would
         see the token JSON-escaped, and miss it), and that text checked as it
-        is nested (Credentials.dumps)."""
+        is nested (Credentials.dumps). The answer is then checked as the
+        transport writes it: a token the text shows only beside the quote
+        MCP writes before or after it would have the whole text replaced
+        there, leaving no JSON in it — that answer is Unwritable, the fixed
+        fault (Astra 1e-repair-3 re-review finding 1)."""
         has_id, ident = "id" in message, message.get("id")
-        usable = has_id and _request_id(ident) and self._credentials.writes({"id": ident, "jsonrpc": "2.0"})
+        usable = has_id and _request_id(ident) and self._credentials.redact(ident) == ident and self._credentials.writes({"id": ident, "jsonrpc": "2.0"})
         if set(message) - JSONRPC_MEMBERS or message.get("jsonrpc") != "2.0" or not isinstance(message.get("method"), str) \
                 or (has_id and not usable) or ("params" in message and not isinstance(message["params"], dict)):
             return self._rpc_refusal(ident if usable else None, -32600, "invalid request")
@@ -288,8 +299,10 @@ class OperatorService:
         else:
             code, reply = 404, {"status": "refused", "reason": "no_such_route"}
         failed = code != 200 or reply.get("status") in ("refused", "rejected")
-        return 200, answer({"content": [{"type": "text", "text": self._credentials.dumps(self._credentials.redact(reply), nested=True)}], "isError": failed}), \
-            f"/mcp:{tool if tool in (*COMMANDS, 'status') else '?'}"
+        nested = answer({"content": [{"type": "text", "text": self._credentials.dumps(self._credentials.redact(reply), nested=True)}], "isError": failed})
+        if not self._credentials.writes(nested):
+            raise Unwritable("the tool's text is written in MCP's answer with a configured token")
+        return 200, nested, f"/mcp:{tool if tool in (*COMMANDS, 'status') else '?'}"
 
     @staticmethod
     def _rpc_refusal(ident, code: int, message: str) -> tuple[int, dict, str]:
