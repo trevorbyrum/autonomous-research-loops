@@ -55,11 +55,12 @@ took an accepted path through the code the mutant changes (that tool's
 docstring says what counts: for Python, a changed line itself, or the guard
 directly governing a changed statement, passed where the change is a
 refusal — never a branch enclosing the guard; task 1c-repair-3). A control
-passing under the mutant shows the mutant left that path working, so the
-killers' failure is the guard's absence rather than a broken path. A killer is not assumed to hold its own
-accepted case: some do, many do not. Where only a killer takes that path,
-the file may instead credit the killer with its own accepted case, read and
-recorded as running under the mutant too (in_killer). A mutant with no entry
+passing under the mutant shows the mutant left that path working; it does
+not by itself show why a killer failed (that tool's docstring, "What the
+rule establishes"). A killer is not assumed to hold its own accepted
+case: some do, many do not. Where only a killer takes that path, the file
+may instead credit the killer with its own accepted case, read and recorded
+as running under the mutant too (in_killer). A mutant with no entry
 in that file, a killer or control name that does not resolve to exactly one
 test, a test that is both, or an in_killer test that is not its killer stops
 the run; a mutant with neither is listed in the file with its reason, and
@@ -217,6 +218,9 @@ SDR = "test_supervisor_delegates.ResearchPassParentTest."
 SBR = "test_supervisor_budgets.ResearchPassBudgetTest."
 SBD = "test_supervisor_budgets.DelegateBudgetTest."
 SDD = "test_supervisor_delegates.DiscoveryParentTest."
+SSR = "test_supervisor_serialization.ResearchPassSerializedTest."
+SSD = "test_supervisor_serialization.DiscoverySerializedTest."
+SSB = "test_supervisor_serialization.BackstopAndCrashTest."
 BND = "gen2/router/boundary.py"
 RECEIPT = "gen2/schema/export-delivery-receipt.schema.json"
 MANIFEST = "gen2/schema/export-manifest.schema.json"
@@ -2806,8 +2810,8 @@ MUTATIONS: list[Mutation] = [
            '        if journal["budgets"].get("router") or journal.get("outage"):'),
           ("recovery-refills-router-budget", "recover() refills an exhausted router budget",
            ("test_a_write_that_keeps_failing_stalls_although_reads_succeed",),
-           '                    journal["incident"] = None\n                    self._save(job, journal)',
-           '                    journal["incident"] = None\n                    journal["budgets"]["router"] = 0\n                    self._save(job, journal)'),
+           '                        journal["incident"] = None\n                        self._save(job, journal)',
+           '                        journal["incident"] = None\n                        journal["budgets"]["router"] = 0\n                        self._save(job, journal)'),
           ("outage-untimed", "an outage is bounded by attempts only, however long it lasts",
            ("test_an_outage_is_also_bounded_in_time",), ' or self._past(self._after(self.policy.router_window_s, outage["since"]))', ''))),
     # A11: an exhausted retry budget is an owned, deadlined incident with its budget, last refusal and result reference.
@@ -2931,8 +2935,8 @@ MUTATIONS: list[Mutation] = [
            '        pending = self._pending(job, order, journal, f"end:{to_state}"'),
           ("delegates-not-cancelled", "a parent's end waits on its delegates without asking them to end",
            ("test_a_parent_that_completes", "test_a_parent_that_fails"),
-           '                if status["state"] not in (*TERMINAL, "result_ready") and status["cancel_requested"] is None:\n                    response = self._call(delegate',
-           '                if False:\n                    response = self._call(delegate'))),
+           '                    if status["state"] not in (*TERMINAL, "result_ready") and status["cancel_requested"] is None:\n                        response = self._call(delegate',
+           '                    if False:\n                        response = self._call(delegate'))),
     # A5-R (1c-repair-2): a delegate stalled on an incident passes its own stall gate when its parent ends it — no control call
     # until recover(), its incident kept as raised — and is still advanced, so its deadline is still observed locally.
     *(Mutation(f"1C-sup-{key}", "1c-A5R", desc, tuple(p + k for k in killers for p in (SDR, SDD)), target=SPV, old=old, new=new)
@@ -2944,8 +2948,8 @@ MUTATIONS: list[Mutation] = [
            '        if held.get("incident") or held.get("settled"):', '        if held.get("settled"):'),
           ("stalled-delegate-unobserved", "a parent waits on a stalled delegate without advancing it (its deadline not observed)",
            ("test_a_stalled_delegate_is_still_ended_at_its_deadline",),
-           '            if self.advance(dorder["invocation_id"]) not in (*TERMINAL, "not_admitted"):',
-           '            if djournal.get("incident") or self.advance(dorder["invocation_id"]) not in (*TERMINAL, "not_admitted"):'))),
+           '                if self.advance(dorder["invocation_id"]) not in (*TERMINAL, "not_admitted"):',
+           '                if djournal.get("incident") or self.advance(dorder["invocation_id"]) not in (*TERMINAL, "not_admitted"):'))),
     # 1c-repair-2 (L-6, RG-3): a lifecycle write the router refuses is re-sent within the refusal budget, a conflict stops at
     # once, and exhaustion stalls the job with an owned, deadlined incident; every refusal site draws on that budget.
     *(Mutation(f"1C-sup-{key}", "1c-L6", desc, tuple(p + k for k in killers for p in prefixes), target=SPV, old=old, new=new)
@@ -2976,8 +2980,8 @@ MUTATIONS: list[Mutation] = [
            '            self._refused(job, journal, "cancel", response)', '            raise Waiting("launch_refused")'),
           ("delegate-cancel-refusal-ignored", "a delegate's refused cancellation is asked again on every parent advance",
            ("test_a_refused_delegate_cancellation_is_budgeted",), (SDR, SDD),
-           '                    if response["status"] not in ("cancelled", "recorded", "replayed"):\n                        self._refused(delegate',
-           '                    if False:\n                        self._refused(delegate'),
+           '                        if response["status"] not in ("cancelled", "recorded", "replayed"):\n                            self._refused(delegate',
+           '                        if False:\n                            self._refused(delegate'),
           # an outcome_unknown episode that cannot be reconciled yet: attempts and time, per episode; its hold stays (L-4)
           ("unknown-unbudgeted", "an unresolved outcome_unknown episode is looked at again on every advance, never stalling",
            ("test_an_unresolved_unknown_episode_stalls_within_its_budget_and_keeps_its_hold",), (SBR, SBD),
@@ -3018,6 +3022,54 @@ MUTATIONS: list[Mutation] = [
            ("test_a_write_failing_while_stalled_is_bounded_and_keeps_the_incident",), (SBR, SBD),
            'bool(journal.get("incident")) and journal["budgets"].get("write", 0) >= self.policy.write_attempts',
            '(journal.get("incident") or {}).get("kind") == "durable_write_failed"'))),
+    # 1c-repair-4 (L-6, RG-3; Astra 1c re-review 3, BLOCK 1): every read-modify-write of a job's journal is one caller's — a
+    # per-job lock across the threads and processes of a host, a delegate's parent's taken first — and a write resting on
+    # a copy older than the durable journal is refused (the backstop). The locks, their order, and the snapshot under them.
+    *(Mutation(f"1C-sup-{key}", "1c-L6S", desc, tuple(p + k for k in killers for p in prefixes), target=SPV, old=old, new=new)
+      for key, desc, killers, prefixes, old, new in (
+          ("advance-unlocked", "an advance holds no lock: another advance reads the job's journal meanwhile and writes over it",
+           ("test_overlapping_advances_on_one_supervisor_paused_in_the_chokepoint", "test_overlapping_advances_on_two_supervisors_paused_in_the_chokepoint",
+            "test_overlapping_advances_on_one_supervisor_paused_after_the_snapshot", "test_overlapping_advances_on_two_supervisors_paused_after_the_snapshot"),
+           (SSR, SSD),
+           '            with self._exclusive(order):\n                journal = self._journal(job)  # read under the lock',
+           '            with contextlib.nullcontext():\n                journal = self._journal(job)  # read under the lock'),
+          ("journal-read-before-the-lock", "an advance reads its journal before it takes the lock: its writes rest on a copy another advance may change",
+           ("test_overlapping_advances_on_one_supervisor_paused_after_the_snapshot", "test_overlapping_advances_on_two_supervisors_paused_after_the_snapshot"),
+           (SSR, SSD),
+           '            with self._exclusive(order):\n                journal = self._journal(job)  # read under the lock: every write of this advance rests on it (_save)\n',
+           '            journal = self._journal(job)  # read under the lock: every write of this advance rests on it (_save)\n            with self._exclusive(order):\n'),
+          ("recover-unlocked", "recover() resumes a job holding no lock: another recovery's attempt is lost, and a busy job's budget spent",
+           ("test_overlapping_recoveries_are_two_recovery_attempts", "test_waiting_for_the_lock_is_bounded_and_spends_nothing"), (SSR, SSD),
+           '                with self._exclusive(order):\n                    journal = self._journal(job)  # read under the lock, as advance() reads it',
+           '                with contextlib.nullcontext():\n                    journal = self._journal(job)  # read under the lock, as advance() reads it'),
+          ("recover-reads-before-the-lock", "recover() reads the journal it resumes from before it takes the lock",
+           ("test_overlapping_recoveries_are_two_recovery_attempts",), (SSR, SSD),
+           '                with self._exclusive(order):\n                    journal = self._journal(job)  # read under the lock, as advance() reads it\n',
+           '                journal = self._journal(job)  # read under the lock, as advance() reads it\n                with self._exclusive(order):\n'),
+          ("delegate-locks-only-itself", "a delegate's advance takes its own lock only, then writes its parent's journal (its grant) unlocked",
+           ("test_a_parent_ending_first_holds_its_delegate_off_then_cancels_it", "test_a_delegate_claiming_first_holds_its_parent_off_then_is_ended_by_it"),
+           (SSR, SSD),
+           '        while parent is not None and parent not in seen:', '        while False:'),
+          ("reap-walks-the-live-dict", "reaping walks the live table of launchers another thread's advance may add to",
+           ("test_reaping_while_another_advance_starts_a_launcher",), (SSB,),
+           '        for popen in list(self._children.values()):', '        for popen in self._children.values():'))),
+    Mutation("1C-sup-stale-journal-saved", "1c-L6S", "a journal write resting on an older copy replaces the newer journal (the backstop gone)",
+             (SSR + "test_a_caller_not_taking_the_lock_cannot_save_over_the_incident", SSD + "test_a_caller_not_taking_the_lock_cannot_save_over_the_incident",
+              SSB + "test_a_write_resting_on_an_older_copy_of_the_journal_is_refused"), target=SPV,
+             old='        if durable != revision:\n            raise StaleJournal(', new='        if False:\n            raise StaleJournal('),
+    *(Mutation(f"1C-jobs-{key}", "1c-L6S", desc, tuple(p + k for k in killers for p in prefixes), target=JBS, old=old, new=new)
+      for key, desc, killers, prefixes, old, new in (
+          ("lock-not-taken", "the journal lock is asked about, never taken: no caller excludes another",
+           ("test_overlapping_advances_on_one_supervisor_paused_in_the_chokepoint", "test_overlapping_advances_on_two_supervisors_paused_in_the_chokepoint"),
+           (SSR, SSD),
+           '                    fcntl.fcntl(fd, fcntl.F_OFD_SETLK, struct.pack(FLOCK, fcntl.F_WRLCK, os.SEEK_SET, 0, 0, 0))\n                    break',
+           '                    fcntl.fcntl(fd, fcntl.F_OFD_GETLK, struct.pack(FLOCK, fcntl.F_WRLCK, os.SEEK_SET, 0, 0, 0))\n                    break'),
+          ("lock-wait-unbounded", "a caller waits for a held journal lock for ever",
+           ("test_waiting_for_the_lock_is_bounded_and_spends_nothing",), (SSR, SSD),
+           '                if time.monotonic() >= deadline:\n                    raise Taken(self.handle)\n', ''),
+          ("lock-not-nested", "a caller holding a job's lock waits on itself when it takes it again (a parent ending its delegates, recover())",
+           ("test_a_parent_that_completes",), (SDR, SDD),
+           '            if key in held:\n                yield\n                return\n', ''))),
 ]
 
 
@@ -3026,6 +3078,11 @@ MUTATIONS: list[Mutation] = [
 # their removal alone. Listed so a reviewer does not mistake them for missed
 # coverage; each names the first layer (which IS in the inventory).
 SECOND_LAYER = {
+    "gen2/supervisor/supervisor.py _settle_delegates: the delegate's own lock, taken under its parent's (1c-repair-4)":
+        "every caller that writes a delegate's journal holds its parent's lock first (_exclusive: a delegate's advance and recover() take "
+        "the parent's, then the delegate's; a parent ends its delegates holding its own), so no second caller can hold the delegate's while a "
+        "parent holds its own and settles it; the parent's lock is the first layer (1C-sup-delegate-locks-only-itself, 1C-jobs-lock-not-taken). "
+        "It is taken so the rule reads the same for every journal, and holds if a future path takes a delegate's lock alone",
     "invocation_reconciliations CHECK: request's json_type(request) = 'object' conjunct (1c-repair A8)":
         "the column-agreement CHECK reads the request's resolution, method, evidence and digest with json_extract, which is NULL for any "
         "non-object JSON, so a non-object request is refused there first (1C-ddl-reconciliation-request-unbound drops that CHECK; "

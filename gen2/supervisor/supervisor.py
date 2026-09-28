@@ -71,23 +71,41 @@ delegate needing its capability, a recover() with no recovery attempt left.
 So a stalled job's spent budget stays spent until recover() closes its
 incident, and a settled job is never claimed again. An open incident is
 write-once: nothing renews its kind, since or deadline (L-6, RG-3; Astra 1c
-re-review 2, L-6). Each advance is one step, and run() is
-bounded by its timeout. A parent waiting on its delegates retries nothing of
-its own: each advance reads its status and advances each delegate, whose own
-budgets apply, so a stalled delegate holds its parent at that delegate's
-incident. Before a parent's capacity is released its delegate jobs are ended
-(L-7, L-8).
+re-review 2, L-6).
+One caller at a time per job (task 1c-repair-4; Astra 1c re-review 3,
+BLOCK 1): advance() and each job's step of recover() hold the job's lock
+(jobs.Job.hold) from the read of its journal to its last write; a
+delegate's advance takes its parent's lock first, as its grant claims the
+parent's; a parent ending its delegates takes each one's under its own. One
+order for every caller, parent before delegate, so no two wait on each
+other. So no caller reads a journal another is changing, nor writes an older
+copy over a newer one, and what is said here of budgets and incidents holds
+for overlapping callers — threads sharing a supervisor, supervisors sharing
+the jobs directory — as for sequential ones. Waiting for a lock spends no
+budget and is bounded (Policy.lock_wait_s; then "busy"). A write resting on
+an older copy of the journal is refused (StaleJournal, out of band): a
+backstop, not a lock. The lock is per job, across the processes and threads
+of one host; nothing is claimed across hosts.
+Each advance is one step, and run() is bounded by its timeout. A parent
+waiting on its delegates retries nothing of its own: each advance reads its
+status and advances each delegate, whose own budgets apply, so a stalled
+delegate holds its parent at that delegate's incident. Before a parent's
+capacity is released its delegate jobs are ended (L-7, L-8).
 
 Structural limits: faults are what these processes can do to each other on
 one host (kills, exits, hangs, lost replies), not power loss or disk
 corruption; fencing protects commits and does not undo an orphan's external
 effects (L-7); a descendant that leaves the job's session is not seen, and a
-listed pid can be reused before it is signalled (jobs.py). The supervisor
-trusts its own observations: the router binds the execution record to what
-it supports, not to whether it is true. The README states what is proven.
+listed pid can be reused before it is signalled (jobs.py); supervisors on
+different hosts sharing a jobs directory are not known to be excluded by the
+job's lock (it may not be seen there; then only the StaleJournal backstop
+stands between them, and it does not stop a call). The supervisor trusts its own observations: the router binds
+the execution record to what it supports, not to whether it is true. The
+README states what is proven.
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import re
 import sys
@@ -129,6 +147,7 @@ class Policy:
     refusal_attempts: int = 3      # sends of a lifecycle write the router refused (an end, a reconciliation, entering outcome_unknown, a cancellation)
     unknown_attempts: int = 5      # looks at an outcome_unknown episode that cannot be reconciled yet
     unknown_window_s: float = 600.0  # how long such an episode may stay unresolved, from its first unresolved look
+    lock_wait_s: float = 30.0      # how long an advance waits for another caller holding its job's lock before answering "busy"
     identity_grace_s: float = 5.0  # how long a launcher this process started may take to record its identity
     start_grace_s: float = 5.0     # how long a start found after a restart may take to show itself before it is abandoned
     term_grace_s: float = 2.0      # SIGTERM -> SIGKILL
@@ -157,6 +176,17 @@ class Waiting(Exception):
     """This advance cannot proceed now; the job keeps everything it holds."""
 
 
+class Busy(Waiting):
+    """The job's lock, or its parent's (taken first), stayed another's for the
+    whole wait (lock_wait_s): nothing read, sent or written, no budget spent.
+    (A delegate's lock inside its parent's step is held by no one else then:
+    every holder takes the parent's first.) The next advance tries again."""
+
+    def __init__(self, handle: str) -> None:
+        super().__init__("busy")
+        self.handle = handle
+
+
 class Held(Waiting):
     """The chokepoint made no router call (Supervisor._call): the job the
     request is for is stalled on an open incident ("stalled"), or settled
@@ -177,6 +207,12 @@ class ControlFailure(Exception):
     def __init__(self, message: str, outcomes: dict | None = None) -> None:
         super().__init__(message)
         self.outcomes = outcomes or {}
+
+
+class StaleJournal(ControlFailure):
+    """A journal write rested on a copy older than the durable journal: some
+    writer changed it after that copy was read. Refused, nothing written
+    (the backstop behind the job's lock, Supervisor._save)."""
 
 
 class Supervisor:
@@ -216,9 +252,12 @@ class Supervisor:
         write is exhausted until that operation makes progress), so a
         resumption that fails again stalls again at once (L-6; Astra 1c
         review A5). With no recovery attempt left the incident stays open as
-        raised, and the job's calls stay refused. A job
-        whose journal cannot be written is reported as control_failure, and
-        once every job was tried ControlFailure is raised naming them."""
+        raised, and the job's calls stay refused. Each job's resumption and
+        its advance are one hold of its lock (_exclusive): a job whose lock
+        another caller keeps past the wait is reported busy, its recovery
+        budget untouched. A job whose journal cannot be written is reported
+        as control_failure, and once every job was tried ControlFailure is
+        raised naming them."""
         outcomes, failures = {}, []
         for path in sorted(self.jobs_root.iterdir()):
             order = jobs.Job(self.jobs_root, path.name).read("order.json")
@@ -226,11 +265,14 @@ class Supervisor:
                 continue
             job = self.job(order["invocation_id"])
             try:
-                journal = self._journal(job)
-                if journal.get("incident") and not journal.get("settled") and self._spend(job, journal, "recovery"):
-                    journal["incident"] = None
-                    self._save(job, journal)
-                outcomes[order["invocation_id"]] = self.advance(order["invocation_id"])
+                with self._exclusive(order):
+                    journal = self._journal(job)  # read under the lock, as advance() reads it
+                    if journal.get("incident") and not journal.get("settled") and self._spend(job, journal, "recovery"):
+                        journal["incident"] = None
+                        self._save(job, journal)
+                    outcomes[order["invocation_id"]] = self.advance(order["invocation_id"])
+            except Busy as busy:
+                outcomes[order["invocation_id"]] = str(busy)
             except (ControlFailure, OSError) as failure:
                 outcomes[order["invocation_id"]] = "control_failure"
                 failures.append(f"{job.handle}: {failure}")
@@ -263,11 +305,24 @@ class Supervisor:
             time.sleep(self.policy.poll_s)
 
     def advance(self, invocation_id: str) -> str:
+        """One step of the job, holding its lock — a delegate's parent's
+        first (_exclusive) — from the read of its journal to its last write,
+        so no other caller reads that journal meanwhile or writes over it:
+        another thread, or another supervisor sharing the jobs directory on
+        this host (L-6, RG-3; Astra 1c re-review 3, BLOCK 1). Waiting for the
+        lock spends nothing and is bounded (Busy: "busy")."""
         job = self.job(invocation_id)
         order = job.read("order.json")
         if order is None:
             raise KeyError(f"no job for {invocation_id}")
-        journal = self._journal(job)
+        try:
+            with self._exclusive(order):
+                journal = self._journal(job)  # read under the lock: every write of this advance rests on it (_save)
+                return self._advance(job, order, journal)
+        except Busy as busy:
+            return str(busy)
+
+    def _advance(self, job: jobs.Job, order: dict, journal: dict) -> str:
         if journal.get("settled"):
             return journal["settled"]
         try:
@@ -278,6 +333,44 @@ class Supervisor:
         except (SpoolFull, OSError) as failure:  # a durable write failed: an infrastructure failure, never a completion (C-10)
             return self._write_failed(job, failure)
 
+    # -- the job's lock -------------------------------------------------------
+    def _lineage(self, order: dict) -> list[jobs.Job]:
+        """The job and its ancestors, root first: a delegate's parent, then
+        the delegate (L-8 allows no deeper chain; one would be followed)."""
+        lineage, seen, parent = [self.job(order["invocation_id"])], {order["invocation_id"]}, order.get("parent_invocation_id")
+        while parent is not None and parent not in seen:
+            ancestor = self.job(parent)
+            ancestor_order = ancestor.read("order.json")
+            if ancestor_order is None:
+                break
+            lineage.insert(0, ancestor)
+            seen.add(parent)
+            parent = ancestor_order.get("parent_invocation_id")
+        return lineage
+
+    @contextlib.contextmanager
+    def _exclusive(self, order: dict):
+        """Hold the lock of every job whose journal a step of this one may
+        read and write (jobs.Job.hold): its parent's — a delegate's grant
+        claims its parent's — then its own. A parent ending its delegates
+        acts on their journals holding its own lock first. So every caller
+        takes them in one order, parent before delegate, and no two wait on
+        each other. One deadline (Policy.lock_wait_s) bounds the whole wait:
+        past it, Busy: no journal read or written, no budget spent. A
+        caller that holds one already (a parent advancing its delegate)
+        holds it again at once. Per job, across the processes and threads of
+        one host; nothing is claimed across hosts (jobs.py)."""
+        deadline = time.monotonic() + self.policy.lock_wait_s
+        with contextlib.ExitStack() as held:
+            for job in self._lineage(order):
+                try:
+                    held.enter_context(job.hold(deadline, self.policy.poll_s))
+                except jobs.Taken:
+                    raise Busy(job.handle) from None
+                except OSError as failure:
+                    raise ControlFailure(f"{job.handle}: its lock cannot be taken ({type(failure).__name__}: {failure})") from failure
+            yield
+
     # -- journal and budgets ---------------------------------------------------
     def _journal(self, job: jobs.Job) -> dict:
         journal = job.read("journal.json") or {}
@@ -285,7 +378,17 @@ class Supervisor:
         return journal
 
     def _save(self, job: jobs.Job, journal: dict) -> None:
-        job.write("journal.json", journal)
+        """Write the job's journal one revision on from the copy it rests on.
+        Under the job's lock that copy is the durable journal; a copy that is
+        not — read before another writer changed it — is refused
+        (StaleJournal) and nothing is written, so no write puts older state
+        over newer. The check and the write are two steps: a backstop behind
+        the lock, not a lock."""
+        revision, durable = journal.get("revision", 0), (job.read("journal.json") or {}).get("revision", 0)
+        if durable != revision:
+            raise StaleJournal(f"{job.handle}: this write rests on journal revision {revision}; the journal is at {durable}")
+        job.write("journal.json", {**journal, "revision": revision + 1})
+        journal["revision"] = revision + 1
 
     def _spend(self, job: jobs.Job, journal: dict, path: str) -> bool:
         """Draw one attempt from this job's budget for `path`; False once it is
@@ -449,7 +552,7 @@ class Supervisor:
         return datetime.fromtimestamp(ns // 10**9, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + f".{ns % 10**9 // 1000:06d}Z"
 
     def _reap(self) -> None:
-        for popen in self._children.values():
+        for popen in list(self._children.values()):  # a copy: another thread's advance of another job may start one meanwhile
             popen.poll()
 
     # -- local observation (needs no router) -----------------------------------
@@ -647,23 +750,24 @@ class Supervisor:
             dorder = delegate.read("order.json")
             if dorder is None or dorder.get("parent_invocation_id") != order["invocation_id"]:
                 continue
-            djournal = self._journal(delegate)
-            if djournal.get("settled"):
-                continue
-            try:  # its capability: the grant kept, or replayed (a claim lost in a crash), or a fresh claim, cancelled below at once
-                grant = self._grant(delegate, dorder, djournal)
-                status = self._status(delegate, djournal, grant)
-                if status["state"] not in (*TERMINAL, "result_ready") and status["cancel_requested"] is None:
-                    response = self._call(delegate, djournal, "request_cancel", {"invocation_id": grant["invocation_id"], "requested_by": "supervisor",
-                                                                                 "reason": f"its parent {order['invocation_id']} has ended",
-                                                                                 "capability_id": grant["capability_id"]})
-                    if response["status"] not in ("cancelled", "recorded", "replayed"):
-                        self._refused(delegate, djournal, "cancel", response)
-                    self._accepted(delegate, djournal, "cancel")
-            except Waiting:  # a stalled delegate's calls are refused at the chokepoint (Held): nothing is sent
-                pass
-            if self.advance(dorder["invocation_id"]) not in (*TERMINAL, "not_admitted"):
-                pending.append(dorder["invocation_id"])
+            with self._exclusive(dorder):  # its journal, under its own lock: this parent's is held already (parent before delegate)
+                djournal = self._journal(delegate)
+                if djournal.get("settled"):
+                    continue
+                try:  # its capability: the grant kept, or replayed (a claim lost in a crash), or a fresh claim, cancelled below at once
+                    grant = self._grant(delegate, dorder, djournal)
+                    status = self._status(delegate, djournal, grant)
+                    if status["state"] not in (*TERMINAL, "result_ready") and status["cancel_requested"] is None:
+                        response = self._call(delegate, djournal, "request_cancel", {"invocation_id": grant["invocation_id"], "requested_by": "supervisor",
+                                                                                     "reason": f"its parent {order['invocation_id']} has ended",
+                                                                                     "capability_id": grant["capability_id"]})
+                        if response["status"] not in ("cancelled", "recorded", "replayed"):
+                            self._refused(delegate, djournal, "cancel", response)
+                        self._accepted(delegate, djournal, "cancel")
+                except Waiting:  # a stalled delegate's calls are refused at the chokepoint (Held): nothing is sent
+                    pass
+                if self.advance(dorder["invocation_id"]) not in (*TERMINAL, "not_admitted"):
+                    pending.append(dorder["invocation_id"])
         if pending:
             raise Waiting("delegates_pending")
 

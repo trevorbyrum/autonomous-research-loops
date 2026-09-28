@@ -18,7 +18,8 @@ directory, the only place it writes), lock (held by a live launcher),
 spawn.json (written immediately before each launcher start), identity.json
 and exit.json (written by the launcher, jobshim.py), abandoned (written by a
 lookup that found the job never started), journal.json (the supervisor's own
-record of what it has observed and delivered).
+record of what it has observed and delivered), journal.lock (held by the one
+supervisor caller advancing or recovering the job: Job.hold).
 
 Lookup reads only these files and /proc: a job is found by its handle, its
 launcher verified by pid, start time and boot id together, its execution
@@ -38,17 +39,25 @@ reboot ends every member, which lookup reports as a boot mismatch.
 """
 from __future__ import annotations
 
+import contextlib
+import errno
 import fcntl
 import json
 import os
 import signal
 import struct
 import subprocess
+import threading
 import time
 from pathlib import Path
 
 PROC = Path("/proc")
 FLOCK = "hhqqi4x"  # struct flock on Linux: l_type, l_whence, l_start, l_len, l_pid (jobshim.py takes the job's lock with the same layout)
+_HELD = threading.local()  # the journal locks this thread holds, by (device, inode): Job.hold
+
+
+class Taken(Exception):
+    """Another holder kept a job's journal lock until the wait's deadline."""
 
 
 def boot_id() -> str:
@@ -137,6 +146,42 @@ class Job:
         except OSError:
             self.write("spawn.json", {**record, "failed": record["failed"] + 1})  # this start is known not to have happened
             raise
+
+    @contextlib.contextmanager
+    def hold(self, deadline: float, poll_s: float):
+        """Hold the job's journal lock: an open-file-description write lock on
+        journal.lock, so one holder at a time across the processes and the
+        threads of this host. It is released when its holder lets go or
+        dies (the kernel drops it with the holder's last descriptor), so a
+        crashed holder leaves nothing to clean up. Waits, polling every
+        poll_s, until `deadline` (time.monotonic()), then raises Taken. A
+        thread holding it already holds it again at once, released by its
+        outermost hold. One host only: whether another host's lock on a
+        shared file system is seen depends on that file system."""
+        fd = os.open(self.dir / "journal.lock", os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
+        try:
+            stat = os.fstat(fd)
+            key, held = (stat.st_dev, stat.st_ino), _HELD.__dict__.setdefault("keys", set())
+            if key in held:
+                yield
+                return
+            while True:
+                try:
+                    fcntl.fcntl(fd, fcntl.F_OFD_SETLK, struct.pack(FLOCK, fcntl.F_WRLCK, os.SEEK_SET, 0, 0, 0))
+                    break
+                except OSError as busy:
+                    if busy.errno not in (errno.EAGAIN, errno.EACCES):
+                        raise
+                if time.monotonic() >= deadline:
+                    raise Taken(self.handle)
+                time.sleep(min(poll_s, max(0.0, deadline - time.monotonic())))  # the last try at the deadline, not after it
+            held.add(key)
+            try:
+                yield
+            finally:
+                held.discard(key)
+        finally:
+            os.close(fd)  # the lock's last descriptor: released
 
     def _lock_free(self) -> bool:
         """True if no launcher holds the job's lock. The lock is asked about
