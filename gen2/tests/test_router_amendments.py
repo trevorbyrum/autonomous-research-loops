@@ -5,7 +5,9 @@ fake-executor lifecycle of briefs, confirmation/amendment fencing, owner
 reassignment and deadline extension); the 1b review's bootstrap ruling
 (minimal router-owned brief and amendment version commands) and its ruling
 on proposal 3 (amendment_pending was interim fail-closed); the 1a review
-(G-1 impact before Phase 1 acceptance); gen2/router/amendments.py.
+(G-1 impact before Phase 1 acceptance); the 1d review's findings 1 (framing
+content, version binding, no revival of stale pins) and 6 (each half of a
+version's lineage refused alone); gen2/router/amendments.py.
 
 The contract world: revision 1 is the draft the operator rated (a fixture,
 contract construction being Phase 2), revision 2 carries those ratings and
@@ -14,14 +16,18 @@ through the router. Documents follow the schema-valid example contract.
 
 Oracles: hand-written expectations and dispositions; raw SQL read-back of
 the whole store (every table but the audit log) around each refusal; the
-compatibility of each edit is stated by the test that makes it.
+class of each contract edit comes from DESIGN_ORACLE, which cites the
+governing design (G-1, G-2, G-5, G-6, G-7, RG-6, the flow architecture and
+the methodology synthesis) for every section, not from amendments.py.
 
 Structural limits: work is exercised at the router, with fixture
 invocations standing in for executors (the supervisor's side of a
 cancellation is test_supervisor_*'s); the compatibility rule is structural,
-so these tests show which edits it classes as which, not that the classes
-are semantically right (a harmless edit to protocol text is still
-incompatible, by design).
+so these tests show which edits it classes as which by section, not that a
+given edit is semantically harmful (a harmless edit to protocol or framing
+text is still incompatible, by design). A revision written around the
+router (raw SQL) stands in for history the router itself refuses to write,
+such as a framing label used again.
 """
 from __future__ import annotations
 
@@ -56,8 +62,10 @@ def contract_doc(revision: int, parent: int | None, *, rated: bool = True, edit=
 
 
 def compatible(doc: dict) -> None:
-    """A decision-record edit: no framing, protocol or obligation changes."""
-    doc["decision_record"]["feeds"]["description"] = "Intake station design for the six-station fleet."
+    """A surveillance-policy edit — when a completed topic is re-checked
+    (flow S8) — with no framing, protocol or obligation change
+    (CompatibilityRuleTest states why it is compatible)."""
+    doc["surveillance_policy"]["freshness_requirement"]["max_currency_age_days"] = 90
 
 
 def protocol_changed(doc: dict) -> None:
@@ -66,8 +74,13 @@ def protocol_changed(doc: dict) -> None:
     doc["eligibility_protocol"]["criteria"][1]["description"] = "Reports an omission, coverage or cost outcome for elicited requirements."
 
 
+REFRAMED_QUESTION = "Which facets does intake design cause to be missed, and at what operator cost?"
+
+
 def reframed(doc: dict) -> None:
+    """A reframe: a framework link's key question reworded, under the next framing version (G-6)."""
     doc["facet_map"]["framing_version"] = 2
+    doc["facet_map"]["analytic_framework"]["links"][0]["key_question"] = REFRAMED_QUESTION
 
 
 def columns(entry: dict) -> tuple:
@@ -283,6 +296,22 @@ class ImpactTest(ContractWorld):
         self.assertEqual(self.value("SELECT status FROM claims WHERE claim_id = 'clm_00000001'"), "accepted_support")
         self.assertIsNotNone(verifier)
 
+    def test_a_compatible_amendment_lets_every_kind_complete_under_its_pins(self) -> None:
+        """All five kinds, a delegate among them, admitted under revision 2
+        and running through a compatible approval, commit under revision 2."""
+        parent = self.started("inv_research01")
+        grants = [parent, *(self.started(f"inv_{kind[:6]}01", kind) for kind in ("discovery", "verification", "checkpoint"))]
+        delegate = self.started("inv_deleg001", "delegate", parent=parent)
+        self.approve(self.propose(3, compatible))
+        record = self.impact("opd_amend0003")
+        self.assertEqual({w["invocation_id"]: (w["disposition"], w["cancel_requested"]) for w in record["work"]},
+                         {g["invocation_id"]: ("completes_under_pins", False) for g in (*grants, delegate)})
+        for n, grant in enumerate((delegate, *grants[1:], parent)):  # the delegate before its parent's final outcome
+            with self.subTest(grant["kind"]):
+                response = self.finish(grant, f"op_kind{n:07d}")
+                self.assertEqual(response["status"], "committed", response)
+                self.assertEqual(response["receipt"]["admission"]["contract"]["revision"], 2)
+
     def test_a_protocol_change_fences_admitted_work_of_every_kind(self) -> None:
         """All kinds, a delegate among them: running work has its cancellation
         requested, admitted work is cancelled at once (nothing was spawned),
@@ -362,6 +391,8 @@ class ImpactTest(ContractWorld):
         record = self.impact("opd_amend0004")
         self.assertEqual((record["classification"], record["superseded"], record["current"]["revision"]),
                          ("compatible", {"revision": 3, "content_hash": self.value("SELECT content_hash FROM contract_revisions WHERE revision = 3")}, 4))
+        self.assertEqual((self.impact("opd_amend0003")["standing"], record["standing"]),
+                         ([{"revision": 2, "classification": "reframed"}], [{"revision": 3, "classification": "compatible"}]))
         self.assertEqual((record["screening_labels"], record["claims"], record["coverage"]), ([], [], []))
         self.assertEqual([w["disposition"] for w in record["work"]], ["fenced"])  # the pass pinned to 2 is still admitted: still incompatible, still fenced
 
@@ -371,6 +402,143 @@ class ImpactTest(ContractWorld):
         self.assertEqual(self.rows("SELECT decision_id, kind, classification FROM amendment_impacts"), [("opd_amend0003", "contract", "compatible")])
         before = self.state()
         self.assertEqual(self.approve(r3)["status"], "replayed")
+        self.assertEqual(self.state(), before)
+
+
+class VersionBindingTest(ContractWorld):
+    """G-6, C-12: in a topic's history a framing version names one framing,
+    and a protocol revision one protocol (amendments.py, "Versions name
+    content"). Each refusal leaves the whole store as it was; each has an
+    accepted twin differing from it in the label alone."""
+
+    def test_a_changed_framing_needs_a_new_framing_version(self) -> None:
+        for name, expected, basis, edit in DESIGN_ORACLE:
+            if expected != FRAMING or name == "the framing version alone":
+                continue
+            with self.subTest(name, basis=basis):  # the review's probe (a key question reworded, the label kept) among them
+                self.refused_command("propose_amendment", {"document": contract_doc(3, 2, edit=edit)}, "request_invalid",
+                                     "a changed framing takes a new framing version, above every recorded one (1)")
+        twin = contract_doc(3, 2, edit=lambda d: (d["facet_map"]["analytic_framework"]["links"][0].update(key_question=REFRAMED_QUESTION),
+                                                  d["facet_map"].update(framing_version=2)))
+        self.assertEqual(self.router.propose_amendment({"document": twin}), {"status": "recorded", "topic_id": TOPIC, "revision": 3, "against_approved": "reframed"})
+
+    def test_an_unchanged_framing_keeps_its_version(self) -> None:
+        self.refused_command("propose_amendment", {"document": contract_doc(3, 2, edit=lambda d: d["facet_map"].update(framing_version=2))},
+                             "request_invalid", "the framing is the approved revision's, so it keeps framing version 1")
+        self.assertEqual(self.router.propose_amendment({"document": contract_doc(3, 2, edit=compatible)})["against_approved"], "compatible")
+
+    def test_a_framing_version_never_names_another_framing(self) -> None:
+        self.approve(self.propose(3, reframed), "reframe_approval")
+        back = contract_doc(4, 3)  # revision 2's framing, under its old label
+        self.refused_command("propose_amendment", {"document": back}, "request_invalid", "above every recorded one (2)")
+        other = contract_doc(4, 3, edit=lambda d: (reframed(d), d["facet_map"]["analytic_framework"]["links"][1].update(key_question="Another question.")))
+        self.refused_command("propose_amendment", {"document": other}, "request_invalid", "above every recorded one (2)")  # label 2, not revision 3's framing
+        twin = contract_doc(4, 3, edit=lambda d: d["facet_map"].update(framing_version=3))  # revision 2's framing back, as a new framing version
+        self.assertEqual(self.router.propose_amendment({"document": twin})["against_approved"], "reframed")
+
+    def test_a_protocol_revision_names_one_protocol(self) -> None:
+        criterion = lambda d: d["eligibility_protocol"]["criteria"][1].update(description="Reports cost.")  # noqa: E731
+        self.refused_command("propose_amendment", {"document": contract_doc(3, 2, edit=criterion)}, "request_invalid",
+                             "a changed protocol takes a new protocol revision, above every recorded one (1)")
+        self.refused_command("propose_amendment", {"document": contract_doc(3, 2, edit=lambda d: d.update(protocol_revision=2))}, "request_invalid",
+                             "the protocol is the approved revision's, so it keeps protocol revision 1")
+        self.approve(self.propose(3, protocol_changed))
+        self.refused_command("propose_amendment", {"document": contract_doc(4, 3)}, "request_invalid", "above every recorded one (2)")  # revision 2's protocol, its old label
+        twin = contract_doc(4, 3, edit=lambda d: d.update(protocol_revision=3))
+        self.assertEqual(self.router.propose_amendment({"document": twin})["against_approved"], "protocol_changed")
+
+
+class StandingTest(ContractWorld):
+    """G-1: incompatible results are never silently reused. What a recorded
+    impact made stale stays stale when a later revision matches it again;
+    only new work under the current revision restores authority (V-10).
+    The oracle: the impact records (raw SQL) and hand-written refusals; the
+    pairwise rule is asserted to call the two revisions compatible, so the
+    refusal is the record's."""
+
+    def promote_revision_one(self, grant: dict, op: str) -> dict:
+        outcome = {**empty_outcome(grant["invocation_id"], "interim_transition"), "claim_promotions": [{"claim_id": "clm_00000001", "revision": 1}]}
+        before = self.state()
+        response = self.router.commit_outcome(self.envelope(grant, op, outcome))
+        self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
+        self.assertIn("contract-admitted work adopts it as a new revision", response.get("detail"))
+        self.assertEqual(self.state(), before)
+        return response
+
+    def adopt(self, grant: dict) -> None:
+        text = self.artifact(b"a load-bearing claim")
+        adopt = {**empty_outcome(grant["invocation_id"], "interim_transition"),
+                 "claims": [{"claim_id": "clm_00000001", "revision": 2, "text_ref": text, "load_bearing": False, "required_access_tier": None}],
+                 "claim_promotions": [{"claim_id": "clm_00000001", "revision": 2}]}
+        self.assertEqual(self.router.commit_outcome(self.envelope(grant, "op_adopt000001", adopt, refs=[text]))["status"], "committed")
+        self.assertEqual(self.rows("SELECT revision, status FROM claims ORDER BY revision"), [(1, "provisional"), (2, "accepted_support")])
+
+    def test_a_framing_label_written_back_revives_no_claim(self) -> None:
+        """The review's history: a claim under framing 1, a reframe to 2,
+        then revision 2's very document again as revision 4 — framing 1's
+        label and content. The router refuses that label (VersionBindingTest),
+        so this draft is written around it; its approval is a reframe."""
+        from gen2.router.amendments import contract_compatibility
+        self.assertEqual(self.finish(self.research(load_bearing=False), "op_finish0001")["status"], "committed")
+        self.approve(self.propose(3, reframed), "reframe_approval")
+        back = contract_doc(4, 3)
+        self.store_draft(back)
+        self.assertEqual(self.approve(back, "reframe_approval")["status"], "applied")
+        self.assertEqual(contract_compatibility(contract_doc(2, 1), back), "compatible")
+        third, fourth = self.impact("opd_amend0003"), self.impact("opd_amend0004")
+        self.assertEqual((third["standing"], [(c["claim_id"], c["disposition"]) for c in third["claims"]]),
+                         ([{"revision": 2, "classification": "reframed"}], [("clm_00000001", "stale_under_new_framing")]))
+        self.assertEqual((fourth["standing"], fourth["claims"], fourth["screening_labels"], fourth["coverage"], fourth["reopened_exclusions"]),
+                         ([{"revision": 3, "classification": "reframed"}], [], [], [], []))  # revision 2 stays as the third impact left it
+        promoter = self.started("inv_research02")
+        self.promote_revision_one(promoter, "op_promote0001")
+        self.adopt(promoter)
+
+    def test_a_restored_obligation_revives_no_work_or_claim(self) -> None:
+        """Through the router alone: revision 3 redefines an obligation
+        (protocol_changed), revision 4 restores revision 2's definition
+        (protocol_changed from 3). Pairwise, 2 and 4 are compatible."""
+        from gen2.router.amendments import contract_compatibility
+        grant = self.research(load_bearing=False)  # running under revision 2, with a provisional claim
+        redefined = {"text": "Compare missed-facet rates at matched operator cost only.", "importance": {"proposed": None, "operator_rating": None}}  # unrated: its rating was of the old one (G-2)
+        self.approve(self.propose(3, lambda d: d["obligations"][0].update(redefined)))
+        self.assertEqual(self.approve(self.propose(4))["status"], "applied")
+        self.assertEqual(contract_compatibility(contract_doc(2, 1), contract_doc(4, 3)), "compatible")
+        fourth = self.impact("opd_amend0004")
+        self.assertEqual((fourth["classification"], fourth["standing"], [(w["invocation_id"], w["disposition"]) for w in fourth["work"]]),
+                         ("protocol_changed", [{"revision": 3, "classification": "protocol_changed"}], [("inv_research01", "fenced")]))
+        before = self.state()
+        response = self.router.commit_outcome(self.envelope(grant, "op_final000001", empty_outcome("inv_research01")))
+        self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
+        self.assertIn("contract revision 2 was superseded (protocol_changed)", response.get("detail"))
+        self.assertEqual(self.state(), before)
+        ended = self.router.record_transition({"capability_id": grant["capability_id"], "invocation_id": "inv_research01", "to_state": "cancelled",
+                                               "end_evidence_ref": self.evidence(grant, ())})
+        self.assertEqual(ended["status"], "recorded", ended)
+        self.assertEqual(self.router.requeue({"invocation_id": "inv_research01", "requested_by": "operator", "reason": "re-run under revision 4"})["status"], "requeued")
+        adopter = self.started("inv_research02", retry_of="inv_research01")
+        self.promote_revision_one(adopter, "op_promote0001")
+        self.adopt(adopter)
+
+    def test_a_version_no_impact_lists_is_not_reused(self) -> None:
+        """Fail closed: an impact recorded without standing (the shape before
+        it was recorded) leaves the version it superseded unjudged, and its
+        work is fenced as `unrecorded`, not taken to be compatible."""
+        grant = self.research()
+        insert = self.router._store.insert
+
+        def without_standing(table: str, row: dict) -> None:
+            if table == "amendment_impacts":
+                row = {**row, "document": {k: v for k, v in row["document"].items() if k != "standing"}}
+            insert(table, row)
+        self.router._store.insert = without_standing
+        self.approve(self.propose(3, compatible))
+        self.router._store.insert = insert
+        self.assertNotIn("standing", self.impact("opd_amend0003"))
+        before = self.state()
+        response = self.router.commit_outcome(self.envelope(grant, "op_final000001", empty_outcome("inv_research01")))
+        self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
+        self.assertIn("(unrecorded)", response.get("detail"))
         self.assertEqual(self.state(), before)
 
 
@@ -424,14 +592,18 @@ class BriefVersionTest(RouterTestCase):
         untrue["document"]["feeds"] = "edited after hashing"
         future = self.version(2)
         future["document"] = self.brief_document(TOPIC, 2, created_at="2026-09-28T00:00:00Z")
-        cases = (("another version number", self.version(3), "request_invalid", "the next version of brief-1 is 2"),
-                 ("another parent", {**good, "document": {**self.brief_document(TOPIC, 2), "parent_version": None}}, "request_invalid", None),
+        lineage = "the next version of brief-1 is 2, with parent 1"
+        cases = (("another version number, the parent right", {**good, "document": self.brief_document(TOPIC, 3, parent_version=1)}, "request_invalid", lineage),
+                 ("another parent, the version right", {**good, "document": self.brief_document(TOPIC, 2, parent_version=None)}, "request_invalid", lineage),
+                 ("the version as its own parent", {**good, "document": self.brief_document(TOPIC, 2, parent_version=2)}, "request_invalid", lineage),
                  ("a hash that is not its content's", untrue, "request_invalid", "does not hash to its content hash"),
                  ("created after now", future, "request_invalid", "created by now"),
                  ("a deadline not after now", self.version(2, deadline="2026-09-27T10:00:00Z"), "request_invalid", "reviewed after now"),
                  ("a document the schema refuses", {**good, "document": {k: v for k, v in good["document"].items() if k != "feeds"}}, "request_invalid", "intake-brief.schema.json"))
         for name, request, reason, detail in cases:
             with self.subTest(name):
+                if detail == lineage:  # its lineage alone is wrong: the document hashes true, so only the lineage check can refuse it
+                    self.assertEqual(canonical.content_hash(request["document"]), request["document"]["content_hash"])
                 self.refused_command(request, reason, detail)
         self.clock.set("2026-10-04T23:59:59.999Z")  # the next reading is the requested deadline itself: over at that instant, so refused
         self.refused_command(self.version(2, deadline="2026-10-05T00:00:00Z"), "request_invalid", "reviewed after now")
@@ -523,6 +695,75 @@ class BriefImpactTest(RouterTestCase):
         self.assertEqual(self.state(), before)
 
 
+    def test_a_brief_restored_revives_no_scoping_work(self) -> None:
+        """G-1 before any contract: v2 changes the content, v3 restores v1's.
+        Pairwise v1 and v3 differ in lineage alone; v1's work stays fenced."""
+        from gen2.router.amendments import brief_compatibility
+        self.to_scoping()
+        grant = self.started("inv_scoping01")
+        self.confirm(2, "opd_brief0002", feeds="rebuild, or buy")
+        out = self.confirm(3, "opd_brief0003")
+        self.assertEqual(brief_compatibility(self.brief_document(TOPIC, 1), self.brief_document(TOPIC, 3)), "lineage_only")
+        self.assertEqual(out.get("effects", {}).get("impact"), {"classification": "content_changed", "work": [
+            {"invocation_id": "inv_scoping01", "state": "running", "disposition": "fenced", "cancel_requested": False}]})  # requested already, by v2's
+        record = json.loads(self.value("SELECT document FROM amendment_impacts WHERE decision_id = 'opd_brief0003'"))
+        self.assertEqual((record["brief_id"], record["standing"]), ("brief-1", [{"version": 2, "classification": "content_changed"}]))
+        before = self.state()
+        response = self.router.commit_outcome(self.envelope(grant, "op_scope00001", empty_outcome("inv_scoping01")))
+        self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
+        self.assertIn("brief brief-1 v1 was superseded (content_changed)", response.get("detail"))
+        self.assertEqual(self.state(), before)
+
+
+class BriefLineageTest(RouterTestCase):
+    """G-1 before any contract, with two briefs in one topic's history (one
+    confirmed at a time, DDL): a pin is judged by its own brief's lineage
+    and that brief's impacts only."""
+
+    def second_brief(self, version: int, did: str, **changes) -> dict:
+        """brief-2 (raw SQL for its first version: intake's, Phase 2), confirmed."""
+        doc = self.brief_document(TOPIC, version, brief_id="brief-2", objective_in_operator_words="is intake the bottleneck", **changes)
+        if version == 1:
+            self.x("INSERT INTO intake_briefs (topic_id, brief_id, version, parent_version, content_hash, document, owner_operator_id, status, created_at, review_deadline) "
+                   "VALUES (?, 'brief-2', 1, NULL, ?, ?, 'user', 'awaiting_confirmation', ?, ?)", TOPIC, doc["content_hash"], json.dumps(doc), doc["created_at"],
+                   "2026-10-01T00:00:00Z")
+        else:
+            request = {"document": doc, "owner_operator_id": "user-2", "review_deadline": "2026-10-05T00:00:00Z"}
+            assert self.router.version_brief(request)["status"] == "recorded"
+        out = self.decide(did, "brief_confirmation", {"kind": "intake_brief", "ref": "brief-2", "revision": version, "hash": doc["content_hash"]})
+        assert out["status"] == "applied", out
+        return out
+
+    def first_brief_v2(self, **changes) -> None:
+        doc = self.brief_document(TOPIC, 2, **changes)
+        assert self.router.version_brief({"document": doc, "owner_operator_id": "user-2", "review_deadline": "2026-10-05T00:00:00Z"})["status"] == "recorded"
+        assert self.decide("opd_brief0102", "brief_confirmation", {"kind": "intake_brief", "ref": "brief-1", "revision": 2, "hash": doc["content_hash"]})["status"] == "applied"
+        self.x("UPDATE intake_briefs SET status = 'archived', closed_by = 'user', closed_at = ?, close_reason = 'replaced by brief-2' "
+               "WHERE brief_id = 'brief-1' AND version = 2", "2026-09-27T10:00:00Z")
+
+    def test_a_pin_whose_brief_is_no_longer_current_is_fenced(self) -> None:
+        self.to_scoping()
+        grant = self.started("inv_scoping01")  # pinned to brief-1 v1
+        self.first_brief_v2()  # lineage only: the pass could complete under v1 while brief-1 is current
+        self.second_brief(1, "opd_brief0201")  # brief-1 archived, brief-2 now the topic's confirmed brief
+        before = self.state()
+        response = self.router.commit_outcome(self.envelope(grant, "op_scope00001", empty_outcome("inv_scoping01")))
+        self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
+        self.assertIn("brief brief-1 v1 was superseded (superseded)", response.get("detail"))
+        self.assertEqual(self.state(), before)
+
+    def test_another_briefs_impacts_do_not_judge_a_pin(self) -> None:
+        self.to_scoping()
+        self.first_brief_v2(feeds="rebuild, or buy")  # brief-1's impact lists its version 1 stale (content_changed)
+        self.second_brief(1, "opd_brief0201")
+        grant = self.started("inv_scoping01")  # pinned to brief-2 v1
+        self.second_brief(2, "opd_brief0202")  # lineage only: brief-2 v1 still stands
+        response = self.finish(grant, "op_scope00001", empty_outcome("inv_scoping01"))
+        self.assertEqual(response["status"], "committed", response)
+        brief = response["receipt"]["admission"]["brief"]
+        self.assertEqual((brief["brief_id"], brief["version"]), ("brief-2", 1))
+
+
 class AmendmentRestartTest(ContractWorld):
     """RG-9: impact records and the pins they judge survive a restart; a
     reopened router still fences what an approval made incompatible."""
@@ -564,31 +805,102 @@ class AmendmentRestartTest(ContractWorld):
         env["payload_digest"], env["payload_size_bytes"] = staged, size
         self.assertEqual(self.router.commit_outcome(env).get("reason"), "amendment_pending")
 
+    def test_standing_survives_a_restart(self) -> None:
+        """What an impact made stale is still stale after reopening, with a
+        revision matching it again current."""
+        grant = self.research(load_bearing=False)
+        redefined = {"text": "Compare missed-facet rates at matched operator cost only.", "importance": {"proposed": None, "operator_rating": None}}
+        self.approve(self.propose(3, lambda d: d["obligations"][0].update(redefined)))
+        self.approve(self.propose(4))  # revision 2's obligation again
+        self.reopen()
+        response = self.router.commit_outcome(self.envelope(grant, "op_final000001", empty_outcome("inv_research01")))
+        self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
+        self.assertIn("contract revision 2 was superseded (protocol_changed)", response.get("detail"))
+
+
+def gap_filled(doc: dict) -> None:
+    """A new obligation filling the example's one gap cell (F-cost x effect),
+    the cell now covered by it: a sub-question inside an existing facet."""
+    doc["obligations"].append({**copy.deepcopy(doc["obligations"][1]), "obligation_id": "O-3", "text": "Compare omission rates on the cost facet.",
+                               "importance": {"proposed": None, "operator_rating": None}})
+    cell = next(c for c in doc["facet_map"]["coverage_matrix"]["cells"] if c["state"] == "gap")
+    cell.pop("rationale")
+    cell.update(state="covered", obligation_ids=["O-3"])
+
+
+# Each edit of the example contract, the class the governing design gives it
+# (not the router's docstring), and where the design says so. F = flow
+# architecture, M = methodology synthesis, INV = docs/gen2/INVARIANTS.md.
+FRAMING, PROTOCOL = "reframed", "protocol_changed"
+DESIGN_ORACLE = (
+    # The framing: G-6 / F §6.5 "a reframe versions the facet map"; M §2 step 1 the analytic framework is drawn from the
+    # decision and "each link generates a key question"; M §5 "decision record + framing version + facet map ... what changed
+    # at each reframe"; M §2 taxonomy: "replace the framing ... the decision question is not answerable as formulated".
+    ("the decision record's objective reworded", FRAMING, "M §5, M §2 taxonomy (changed objective)",
+     lambda d: d["decision_record"]["objective"].update(operator_words="Decide whether intake needs any audit at all.")),
+    ("what the decision feeds", FRAMING, "M §5; F S1/S3 (the decision record is what every obligation traces to)",
+     lambda d: d["decision_record"]["feeds"].update(description="Intake station design for the six-station fleet.")),
+    ("a key question reworded, the framing version kept", FRAMING, "G-6, M §2 step 1 (a link's key question is the framing)",
+     lambda d: d["facet_map"]["analytic_framework"]["links"][0].update(key_question=REFRAMED_QUESTION)),
+    ("a framework node added", FRAMING, "G-6, M §2 step 1",
+     lambda d: d["facet_map"]["analytic_framework"]["nodes"].append({"node_id": "N-cost", "label": "Operator cost", "kind": "decision_outcome"})),
+    ("a facet redefined", FRAMING, "G-6 (the facet map), G-5 (a new facet always needs an amendment)",
+     lambda d: d["facet_map"]["facets"][0].update(label="Effect of design on decision quality")),
+    ("a facet added", FRAMING, "G-5, G-6",
+     lambda d: d["facet_map"]["facets"].append({**copy.deepcopy(d["facet_map"]["facets"][1]), "facet_id": "F-latency", "label": "Latency"})),
+    ("a coverage question type added", FRAMING, "G-6; M §2 step 4 (the facet x question-type matrix)",
+     lambda d: d["facet_map"]["coverage_matrix"]["question_types"].append("mechanism")),
+    ("what is deliberately out", FRAMING, "G-6; F S1 (scope)",
+     lambda d: d["facet_map"]["deliberately_out"].clear()),
+    ("the framing version alone", FRAMING, "G-6 (a declared reframe is a reframe)",
+     lambda d: d["facet_map"].update(framing_version=2)),
+    # The protocol: G-1 "hash-locked with its protocol revision ... the eligibility/stopping/applicability protocol" and "the
+    # approved inventory"; G-7 "eligibility, estimand, required access tier, or stopping interpretation"; RG-6 "labels made under
+    # the old protocol do not count under the new one".
+    ("the protocol revision alone", PROTOCOL, "G-1", lambda d: d.update(protocol_revision=2)),
+    ("an eligibility criterion", PROTOCOL, "G-1, G-7, RG-6", lambda d: d["eligibility_protocol"]["criteria"][1].update(description="Reports cost.")),
+    ("the required access tier", PROTOCOL, "G-7", lambda d: d["eligibility_protocol"]["required_access_tier"].update(other="full_text")),
+    ("a stopping profile", PROTOCOL, "G-1, G-7 (stopping interpretation)", lambda d: d["stopping_profiles"][0].update(profile_id="SP-other")),
+    ("the applicability rules", PROTOCOL, "G-1", lambda d: d["applicability_rules"][0].update(target_context="Any intake.")),
+    ("a shared obligation redefined", PROTOCOL, "G-1 (the approved inventory; a claim answers its obligation)",
+     lambda d: d["obligations"][0].update(text="Compare cost only.")),
+    ("a shared obligation's slots", PROTOCOL, "G-1", lambda d: d["obligations"][0]["slots"].update(comparator="No intake review")),
+    # Neither, so compatible: what earlier results were produced against is untouched.
+    ("an obligation added in an existing facet, filling a gap cell", "compatible",
+     "G-5 (a sub-question inside an existing facet, even auto-promoted); M §2 taxonomy ('fill a known gap': none needed)", gap_filled),
+    ("an obligation removed, its cell marked out", "compatible", "G-1 keeps the inventory versioned, and a result for it stays what it was",
+     lambda d: (d["obligations"].pop(1), next(c for c in d["facet_map"]["coverage_matrix"]["cells"] if c.get("obligation_ids") == ["O-2"]).update(
+         state="deliberately_out", obligation_ids=[], rationale="Costing dropped."))),
+    ("a facet's importance", "compatible", "G-2 (a rating is authority for later actions, given by its own decision)",
+     lambda d: d["facet_map"]["facets"][1]["importance"]["operator_rating"].update(band="limited")),
+    ("an obligation's importance", "compatible", "G-2", lambda d: d["obligations"][1]["importance"]["operator_rating"].update(band="limited")),
+    ("the surveillance policy", "compatible", "F S8 (when a completed topic reopens), design review §4", compatible),
+    ("the method design's envelope", "compatible", "F S5, G-7 (the envelope bounds self-serve adjustment, not results)",
+     lambda d: d["method_design"]["operational_envelope"]["permitted_adjustments"].append("Add a citation-chaining lane")),
+)
+
 
 class CompatibilityRuleTest(RouterTestCase):
-    """The structural rule, one dimension at a time, on the example contract:
-    each edit and the class a hand reading of the module docstring gives it."""
+    """G-1, G-6, G-7: the rule, one section of the example contract at a
+    time. The oracle is DESIGN_ORACLE: each edit's class from the governing
+    design, with its citation, written independently of the router's
+    docstring. Structural limit: these are the sections the design names;
+    the rule is structural, so it does not judge whether an edit is harmless
+    in meaning (a harmless reframe is still a reframe)."""
 
-    def test_each_dimension_decides_alone(self) -> None:
-        from gen2.router.amendments import brief_compatibility, contract_compatibility
+    def test_each_section_is_classed_as_the_design_says(self) -> None:
+        from gen2.router.amendments import contract_compatibility
         base = contract_doc(2, 1)
+        for name, expected, basis, edit in DESIGN_ORACLE:
+            with self.subTest(name, basis=basis):
+                doc = copy.deepcopy(base)
+                edit(doc)
+                self.assertNotEqual(doc, base)
+                self.assertEqual(contract_compatibility(base, doc), expected)
+                self.assertEqual(contract_compatibility(doc, base), expected)  # the rule is symmetric: a revert is the same change
 
-        def edited(edit) -> dict:
-            doc = copy.deepcopy(base)
-            edit(doc)
-            return doc
-        cases = (("a decision-record edit", compatible, "compatible"),
-                 ("an importance change only", lambda d: d["obligations"][1]["importance"]["operator_rating"].update(band="limited"), "compatible"),
-                 ("a new obligation (inventory)", lambda d: d["obligations"].append({**copy.deepcopy(d["obligations"][1]), "obligation_id": "O-3"}), "compatible"),
-                 ("the protocol revision alone", lambda d: d.update(protocol_revision=2), "protocol_changed"),
-                 ("an eligibility criterion alone", lambda d: d["eligibility_protocol"]["criteria"][1].update(description="Reports cost."), "protocol_changed"),
-                 ("a stopping profile alone", lambda d: d["stopping_profiles"][0].update(profile_id="SP-other"), "protocol_changed"),
-                 ("the applicability rules alone", lambda d: d.update(applicability_rules=d["applicability_rules"][:1] + d["applicability_rules"][:1]), "protocol_changed"),
-                 ("a shared obligation redefined", lambda d: d["obligations"][0].update(text="Compare cost only."), "protocol_changed"),
-                 ("the framing version", reframed, "reframed"))
-        for name, edit, expected in cases:
-            with self.subTest(name):
-                self.assertEqual(contract_compatibility(base, edited(edit)), expected)
+    def test_a_brief_is_compatible_only_in_its_lineage(self) -> None:
+        from gen2.router.amendments import brief_compatibility
         v1 = self.brief_document(TOPIC, 1)
         self.assertEqual(brief_compatibility(v1, self.brief_document(TOPIC, 2)), "lineage_only")
         self.assertEqual(brief_compatibility(v1, self.brief_document(TOPIC, 2, feeds="rebuild, or buy")), "content_changed")

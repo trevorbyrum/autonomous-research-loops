@@ -28,16 +28,51 @@ contract revision as a draft whose parent is the approved revision, with its
 facet and obligation rows. Approval stays an operator decision
 (amendment_approval, reframe_approval: service.Router._approve_contract).
 
-Compatibility, deterministic and structural: work, labels and claims pinned
-to a superseded contract revision stay valid under the current one only if
-its framing version, protocol revision and protocol sections (eligibility,
-stopping profiles, applicability rules) are identical and every obligation
-the two share is defined identically (its importance aside). Anything else is
-`reframed` or `protocol_changed`: incompatible. A brief version is
-compatible with its successor only if they differ in lineage alone
-(version, parent, creation time). The rule is conservative: an edit that is
-harmless in meaning is still incompatible; an edit it calls compatible
-changes no protocol text at all.
+Compatibility, deterministic and structural: whether work, labels and claims
+pinned to a superseded contract revision stay valid under the current one,
+section by section of Contract v2 (flow S3), each class taken from the
+governing design:
+  framing   the decision record; the facet map's analytic framework, its
+            facets as defined (their importance aside), its coverage
+            question types and what it leaves deliberately out. G-6 and flow
+            §6.5: a reframe versions the facet map; methodology §2 step 1
+            (the framework is drawn from the decision, each link generating
+            a key question) and §5 (decision record, framing version and
+            facet map are one versioned formulation: "what changed at each
+            reframe"); methodology §2's revision taxonomy (replacing the
+            framing is the changed-objective boundary). Any change of these,
+            or of the framing version, is `reframed`.
+  protocol  the protocol revision, eligibility protocol, stopping profiles
+            and applicability rules (G-1: the lock covers that protocol;
+            G-7: eligibility, required access tier, stopping
+            interpretation; RG-6: labels under an old protocol do not count
+            under the new one), and every obligation the two revisions
+            share, as defined, importance aside (G-1: the lock covers the
+            approved inventory; a claim answers its obligation). Any change
+            is `protocol_changed`.
+  neither   `compatible`: obligations added or removed (a sub-question
+            inside the framing, G-5; in methodology §2's taxonomy, filling a
+            known gap or testing a competing explanation needs no reframe),
+            the coverage matrix's cells (which obligations cover which facet
+            and question type: the plan, not the question), importance
+            ratings (G-2: authority for later actions, given by their own
+            decision), the surveillance policy (when a completed topic
+            reopens, flow S8) and the method design (how the work proceeds;
+            its envelope bounds self-serve adjustment, flow S5).
+The rule is conservative: an edit harmless in meaning is still
+incompatible (a reworded key question is a reframe), and no edit of a
+framing or protocol section is compatible. A brief version is compatible
+with its successor only if they differ in lineage alone (version, parent,
+creation time).
+
+Versions name content (G-6; C-12: labels carry their framing and protocol
+versions). An amendment whose framing (protocol) is the approved revision's
+keeps that framing version (protocol revision); one whose framing
+(protocol) changed takes a new one, above every one the topic has recorded.
+So a label never names two contents and never comes back: returning to an
+earlier framing is a new framing version. Compatibility compares the
+content itself as well as the label, so a revision written around the
+router is classed by what it contains.
 
 An approval that supersedes a revision (or a confirmed brief version)
 records, in its own transaction, its impact (DDL amendment_impacts): every
@@ -52,6 +87,18 @@ it as a new revision (V-10); dossiers under a superseded revision are not
 current (G-8); a reframe marks the old revision's coverage stale; open
 reservations bound to the superseded revision close (G-5). The record lists;
 it rewrites and deletes nothing it lists.
+
+Standing (G-1: incompatible results are never silently reused). The impact
+also records, for each earlier version that still stood, its class against
+the new current version (`standing`). Pins are judged by those records, not
+by comparing documents again: once a recorded impact has classed a version
+incompatible, what is pinned to it stays incompatible — no later approval
+judges it again, even one whose content matches it once more. Its work stays
+fenced and its claims unpromoted; authority returns only through new work
+under the current version: adoption as a new claim revision (V-10),
+re-screening, a re-queue. (Phase 1 has no reconciliation record restoring
+it.) A superseded version that no recorded impact lists is treated as
+incompatible (`unrecorded`).
 """
 from __future__ import annotations
 
@@ -89,14 +136,35 @@ def _obligations(doc: dict) -> dict:
     return {o["obligation_id"]: {k: v for k, v in o.items() if k != "importance"} for o in doc["obligations"]}
 
 
+def framing(doc: dict) -> dict:
+    """What a framing version names (module docstring): the decision record
+    and the facet map, but for the version label itself, the facets'
+    importance and the coverage matrix's cells. (A section a document
+    written around the router lacks is compared as absent.)"""
+    facet_map = doc["facet_map"]
+    return {"decision_record": doc.get("decision_record"), "analytic_framework": facet_map.get("analytic_framework"),
+            "facets": [{k: v for k, v in facet.items() if k != "importance"} for facet in facet_map.get("facets", ())],
+            "question_types": (facet_map.get("coverage_matrix") or {}).get("question_types"), "deliberately_out": facet_map.get("deliberately_out")}
+
+
+def protocol(doc: dict) -> dict:
+    """What a protocol revision names: the eligibility protocol, stopping profiles and applicability rules."""
+    return {k: doc.get(k) for k in PROTOCOL_SECTIONS}
+
+
+# (what, its label's name, the label, the content it names): a label names one content (module docstring)
+VERSIONED = (("framing", "framing version", lambda doc: doc["facet_map"]["framing_version"], framing),
+             ("protocol", "protocol revision", lambda doc: doc["protocol_revision"], protocol))
+
+
 def contract_compatibility(pinned: dict, current: dict) -> str:
     """Whether results produced under the `pinned` contract document stay
     valid under the `current` one (G-1, G-6): compatible, reframed or
-    protocol_changed (module docstring)."""
-    if pinned["facet_map"]["framing_version"] != current["facet_map"]["framing_version"]:
+    protocol_changed (module docstring). Labels and content both count."""
+    if pinned["facet_map"]["framing_version"] != current["facet_map"]["framing_version"] or not _same(framing(pinned), framing(current)):
         return "reframed"
     old, new = _obligations(pinned), _obligations(current)
-    if pinned["protocol_revision"] != current["protocol_revision"] or any(not _same(pinned.get(k), current.get(k)) for k in PROTOCOL_SECTIONS) \
+    if pinned["protocol_revision"] != current["protocol_revision"] or not _same(protocol(pinned), protocol(current)) \
             or any(not _same(old[o], new[o]) for o in old.keys() & new.keys()):
         return "protocol_changed"
     return "compatible"
@@ -204,6 +272,13 @@ class Amendments:
         newest = max(c["revision"] for c in revisions)
         if (doc["revision"], doc["parent_revision"]) != (newest + 1, approved["revision"]):
             raise Refusal("request_invalid", f"an amendment is revision {newest + 1}, with the approved revision {approved['revision']} as its parent")
+        for what, name, label, content in VERSIONED:  # a label names one content (module docstring)
+            kept, recorded = label(approved["document"]), max(label(c["document"]) for c in revisions)
+            if _same(content(doc), content(approved["document"])):
+                if label(doc) != kept:
+                    raise Refusal("request_invalid", f"the {what} is the approved revision's, so it keeps {name} {kept} (G-6)")
+            elif label(doc) <= recorded:
+                raise Refusal("request_invalid", f"a changed {what} takes a new {name}, above every recorded one ({recorded}): a label never names two (G-6)")
         self._store.insert("contract_revisions", {"topic_id": tid, "revision": doc["revision"], "parent_revision": doc["parent_revision"],
                                                   "protocol_revision": doc["protocol_revision"], "framing_version": doc["facet_map"]["framing_version"],
                                                   "content_hash": doc["content_hash"], "document": doc, "status": "draft", "created_at": doc["created_at"]})
@@ -221,18 +296,34 @@ class Amendments:
     # -- pins ----------------------------------------------------------------------
     def _pin_status(self, inv: dict) -> str:
         """`current`, or how the invocation's pinned contract revision (or,
-        before any contract, brief version) stands against the topic's current
-        one (module docstring); a closed brief carries no work."""
+        before any contract, brief version) stands now, as the recorded
+        impacts say (_standing); a closed brief carries no work, nor does a
+        brief whose lineage is no longer the topic's confirmed one."""
         if inv["admission_context"] == "contract/1":
             pinned = self._one("contract_revisions", {"topic_id": inv["topic_id"], "revision": inv["contract_revision"]})
             if pinned["status"] == "approved":
                 return "current"
-            return contract_compatibility(pinned["document"], self._one("contract_revisions", {"topic_id": inv["topic_id"], "status": "approved"})["document"])
+            return self._standing("contract", inv["topic_id"], inv["contract_revision"]) or "compatible"
         pinned = self._one("intake_briefs", {"topic_id": inv["topic_id"], "brief_id": inv["brief_ref"], "version": inv["brief_version"]})
         current = self._one("intake_briefs", {"topic_id": inv["topic_id"], "status": "confirmed"})
         if pinned["status"] == "confirmed":
             return "current"
-        return brief_compatibility(pinned["document"], current["document"]) if pinned["status"] == "superseded" and current is not None else pinned["status"]
+        if pinned["status"] == "superseded" and current is not None and current["brief_id"] == inv["brief_ref"]:  # its own lineage is current
+            return self._standing("brief", inv["topic_id"], inv["brief_version"], inv["brief_ref"]) or "lineage_only"
+        return pinned["status"]
+
+    def _standing(self, kind: str, topic_id: str, version: int, brief_id: str | None = None) -> str | None:
+        """How what is pinned to a superseded `version` stands, as the impacts
+        recorded since its supersession list it (module docstring): None
+        while every one classed it compatible; otherwise the first
+        incompatible class one gave it, which no later approval undoes; or
+        `unrecorded` if none lists it."""
+        key = "revision" if kind == "contract" else "version"
+        listed = [entry["classification"] for impact in self._store.select("amendment_impacts", {"topic_id": topic_id, "kind": kind})
+                  if impact["document"].get("brief_id") == brief_id for entry in impact["document"].get("standing", ()) if entry[key] == version]
+        if not listed:
+            return "unrecorded"
+        return next((c for c in listed if c not in COMPATIBLE), None)
 
     def _require_current_pins(self, inv: dict) -> None:
         """A commit of work whose pins an approval has since superseded lands
@@ -251,23 +342,27 @@ class Amendments:
         after the approval itself (module docstring)."""
         tid = d["topic_id"]
         if kind == "contract":
-            key, compat, rows = "revision", contract_compatibility, [c for c in self._store.select("contract_revisions", {"topic_id": tid}) if c["approved_by_decision_id"]]
+            key, compat, brief_id, rows = "revision", contract_compatibility, None, [c for c in self._store.select("contract_revisions", {"topic_id": tid}) if c["approved_by_decision_id"]]
             pin = lambda inv: inv["contract_revision"] if inv["admission_context"] == "contract/1" else None  # noqa: E731
         else:
-            key, compat, rows = "version", brief_compatibility, [b for b in self._store.select("intake_briefs", {"topic_id": tid, "brief_id": superseded["brief_id"]})
-                                                                 if b["confirmed_by_decision_id"]]
-            pin = lambda inv: inv["brief_version"] if inv["brief_ref"] == superseded["brief_id"] else None  # noqa: E731
-        status = {r[key]: compat(r["document"], current["document"]) for r in rows if r[key] != current[key]}
-        # what stood until now: the superseded version and those it had left compatible (anything older was listed stale before)
-        stood = {v for v, r in ((r[key], r) for r in rows) if v in status and (v == superseded[key] or compat(r["document"], superseded["document"]) in COMPATIBLE)}
+            key, compat, brief_id = "version", brief_compatibility, superseded["brief_id"]
+            rows = [b for b in self._store.select("intake_briefs", {"topic_id": tid, "brief_id": brief_id}) if b["confirmed_by_decision_id"]]
+            pin = lambda inv: inv["brief_version"] if inv["brief_ref"] == brief_id else None  # noqa: E731
+        # how each earlier version stood until now: the superseded one stood; any other as the recorded impacts say — what one made stale stays stale
+        prior = {r[key]: None if r[key] == superseded[key] else self._standing(kind, tid, r[key], brief_id) for r in rows if r[key] != current[key]}
+        status = {r[key]: prior[r[key]] or compat(r["document"], current["document"]) for r in rows if r[key] in prior}
+        stood = {v for v, was in prior.items() if was is None}
         invocations = self._store.select("invocations", {"topic_id": tid})
         pinned = {i["invocation_id"]: pin(i) for i in invocations}
         doc = {"impact_version": "amendment-impact/1", "decision_id": d["decision_id"], "topic_id": tid, "kind": kind, "classification": status[superseded[key]],
                "superseded": {key: superseded[key], "content_hash": superseded["content_hash"]}, "current": {key: current[key], "content_hash": current["content_hash"]},
+               "standing": [{key: v, "classification": status[v]} for v in sorted(stood)],
                "work": [self._fence(i, status[pinned[i["invocation_id"]]], d, now) for i in invocations
                         if i["state"] not in ENDED and pinned[i["invocation_id"]] in status],
                "coverage": [{"observation_id": o["observation_id"], "disposition": DISPOSITION[status[pinned[o["invocation_id"]]]]}
                             for o in self._store.select("search_observations", {"topic_id": tid}) if pinned[o["invocation_id"]] in stood]}
+        if kind == "brief":
+            doc["brief_id"] = brief_id  # the brief its standing is of
         if kind == "contract":
             listed = lambda rev: rev in stood  # noqa: E731
             doc["screening_labels"] = [{"assessment_id": a["assessment_id"], "contract_revision": a["contract_revision"], "decision": a["decision"],
