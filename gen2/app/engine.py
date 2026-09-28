@@ -32,6 +32,7 @@ import json
 import os
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable
@@ -42,7 +43,9 @@ from gen2.operator.service import COMMANDS, OperatorService, label
 from gen2.router.service import utc_now
 
 ANSWER_TIMEOUT_S = 60.0
-DRAIN_MAX = 64 * 1024
+DRAIN_MAX = 64 * 1024  # the most of an unread body the listener discards after its answer
+DRAIN_IDLE_S = 1.0     # ... waiting at most this long for each next byte
+DRAIN_TOTAL_S = 2.0    # ... and this long in all
 # The parser's own refusals (http.server calls send_error): each a fixed answer, repeating nothing of the request
 PARSER_REFUSALS = {400: "bad_request", 414: "uri_too_long", 431: "headers_too_large", 501: "method_not_supported", 505: "version_not_supported"}
 
@@ -178,18 +181,30 @@ def _handler(service: OperatorService, log: Callable[[str], None]):
             self.wfile.flush()
 
         def _discard(self, length: str | None, consumed: int) -> None:
-            """After the answer, the rest of a small declared body the service
-            never read (a refusal before it: 401, 403, 404) is read and thrown
-            away, unparsed, so the connection closes cleanly: closing with
-            unread bytes makes the kernel reset it, and a client still sending
-            loses the answer. A larger remainder is not waited for."""
+            """After the answer, the rest of a declared body the service never
+            read (a refusal before it: 401, 403, 404, 413) is read and thrown
+            away, unparsed — only if it is at most DRAIN_MAX bytes, and only
+            while each next byte comes within DRAIN_IDLE_S and the whole within
+            DRAIN_TOTAL_S. The service has refused before parsing, and nothing
+            read here is looked at. Its purpose: a connection closed with
+            unread bytes is reset by the kernel, so a client still sending a
+            small body would lose the answer it was already sent (Astra 1e
+            review finding 8). A larger remainder, or a client too slow, is
+            not waited for: the connection is closed, and such a client may
+            see its send fail after the answer was sent."""
             remaining = int(length) - consumed if length is not None and length.isascii() and length.isdigit() else 0
-            if 0 < remaining <= DRAIN_MAX:
-                try:
-                    self.connection.settimeout(1.0)
-                    self.rfile.read(remaining)
-                except OSError:
-                    pass
+            if not 0 < remaining <= DRAIN_MAX:
+                return
+            deadline = time.monotonic() + DRAIN_TOTAL_S
+            try:
+                while remaining > 0 and (left := deadline - time.monotonic()) > 0:
+                    self.connection.settimeout(min(DRAIN_IDLE_S, left))
+                    data = self.rfile.read1(remaining)
+                    if not data:
+                        return
+                    remaining -= len(data)
+            except OSError:  # a timeout or a reset: stop discarding
+                pass
 
         def log_message(self, format: str, *args) -> None:  # noqa: A002 - the service logs each request itself; this would add the raw request line
             pass

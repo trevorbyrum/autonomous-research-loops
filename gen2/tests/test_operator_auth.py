@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import socket
+import time
 import unittest
 from unittest import mock
 
@@ -103,6 +104,119 @@ class AuthenticationTest(of.CommandWorld):
         code, reply, _ = self.send("GET", "/v1/status", f"bearer {of.OPERATOR_TOKEN}")
         self.assertEqual((code, reply["status"]), (200, "ok"))
         self.assertEqual(self.send("GET", "/v1/status", f"Bearer {of.OPERATOR_TOKEN} ")[0], 401)
+
+
+UNAUTHENTICATED_ANSWER = b'{"reason": "unauthenticated", "status": "refused"}'
+
+
+def read_answer(conn: socket.socket) -> tuple[bytes, bytes]:
+    """One whole HTTP answer from `conn`: (its head, its body of the declared length)."""
+    received = b""
+    while b"\r\n\r\n" not in received:
+        chunk = conn.recv(4096)
+        if not chunk:
+            break
+        received += chunk
+    head, _, body = received.partition(b"\r\n\r\n")
+    declared = next(int(line.split(b":")[1]) for line in head.split(b"\r\n") if line.lower().startswith(b"content-length:"))
+    while len(body) < declared:
+        body += conn.recv(declared - len(body))
+    return head, body
+
+
+def send_after_the_answer(engine, declared: int, *, fragment: int = 8192, pause: float = 0.015, limit_s: float = 8.0) -> dict:
+    """The review's client (Astra 1e review finding 8): an unauthenticated POST
+    declaring `declared` bytes and sending none; its whole answer read; then
+    0.3 s to see whether the engine closes (its FIN); then the body in
+    `fragment`-byte pieces `pause` apart, for at most `limit_s`; then the end
+    of the connection read. The listener discards a small unread body after
+    its answer, so this client's sends succeed and the connection ends
+    cleanly; closing without that makes the kernel reset it at the client's
+    next fragment."""
+    host, port = engine.address
+    with socket.create_connection((host, port), timeout=5) as conn:
+        conn.sendall(f"POST /v1/commands/request_cancel HTTP/1.1\r\nHost: x\r\nContent-Length: {declared}\r\n\r\n".encode())
+        head, body = read_answer(conn)
+        answered = time.monotonic()
+        conn.settimeout(0.3)
+        try:
+            closed_at_once = conn.recv(1) == b""
+        except TimeoutError:
+            closed_at_once = False
+        except ConnectionResetError:
+            closed_at_once = True
+        sent, error = 0, None
+        try:
+            while sent < declared and time.monotonic() - answered < limit_s:
+                time.sleep(pause)
+                piece = b"x" * min(fragment, declared - sent)
+                conn.sendall(piece)
+                sent += len(piece)
+                if fragment == 1:  # a slow client: it notices the engine closing between its bytes
+                    try:
+                        if conn.recv(1) == b"":
+                            break
+                    except TimeoutError:
+                        pass
+        except OSError as failure:
+            error = type(failure).__name__
+        conn.settimeout(5)
+        try:
+            end = "eof" if conn.recv(1) == b"" else "more"
+        except OSError as failure:
+            end = type(failure).__name__
+        return {"status": head.split(b"\r\n")[0], "body": body, "closed_at_once": closed_at_once, "sent": sent, "error": error, "end": end,
+                "held_s": time.monotonic() - answered}
+
+
+class UnreadBodyTest(of.CommandWorld):
+    """What the listener does with a body it answered without reading (Astra
+    1e review finding 8). The service refuses before parsing; after its
+    answer the listener reads and throws away at most DRAIN_MAX (64 KiB) of
+    it, while each next byte comes within 1 s and the whole within 2 s, so a
+    client still sending a small body completes its send and the connection
+    closes cleanly. Over the ceiling, or past the time bound, it is not
+    waited for: the connection closes, and a client still sending sees its
+    send fail — after the whole answer was sent."""
+
+    def assert_answered(self, found: dict) -> None:
+        self.assertEqual((found["status"], found["body"]), (b"HTTP/1.0 401 Unauthorized", UNAUTHENTICATED_ANSWER))
+
+    def test_a_small_body_sent_after_the_answer_is_discarded_and_the_connection_ends_cleanly(self) -> None:
+        before = self.state(exclude=())
+        found = send_after_the_answer(self.engine, 64 * 1024)
+        self.assert_answered(found)
+        self.assertEqual({k: found[k] for k in ("closed_at_once", "sent", "error", "end")},
+                         {"closed_at_once": False, "sent": 64 * 1024, "error": None, "end": "eof"})
+        self.assertEqual(self.state(exclude=()), before)
+        self.assertEqual(self.command("request_cancel", self.bodies()["request_cancel"])[1]["status"], "recorded")
+
+    def test_a_body_over_the_ceiling_is_not_waited_for(self) -> None:
+        found = send_after_the_answer(self.engine, 64 * 1024 + 1)
+        self.assert_answered(found)
+        self.assertTrue(found["closed_at_once"])
+        self.assertLess(found["sent"], 64 * 1024 + 1)
+        self.assertIn(found["error"], ("BrokenPipeError", "ConnectionResetError"))
+
+    def test_a_client_too_slow_is_not_waited_for(self) -> None:
+        """One byte every 0.3 s — never idle for the 1 s the discard allows,
+        so only its 2 s in all ends it: the engine closes about 2 s after its
+        answer, having been sent a few of the 100 bytes declared."""
+        found = send_after_the_answer(self.engine, 100, fragment=1, pause=0.3)
+        self.assert_answered(found)
+        self.assertFalse(found["closed_at_once"])
+        self.assertLess(found["sent"], 100)
+        self.assertTrue(1.5 < found["held_s"] < 5.0, found)
+
+    def test_a_refusal_with_no_body_closes_cleanly(self) -> None:
+        for declared in ("0", None):
+            with self.subTest(declared=declared):
+                host, port = self.engine.address
+                with socket.create_connection((host, port), timeout=5) as conn:
+                    conn.sendall(("POST /v1/commands/request_cancel HTTP/1.1\r\nHost: x\r\n" + ("" if declared is None else f"Content-Length: {declared}\r\n")
+                                  + "\r\n").encode())
+                    head, body = read_answer(conn)
+                    self.assertEqual((head.split(b"\r\n")[0], body, conn.recv(1)), (b"HTTP/1.0 401 Unauthorized", UNAUTHENTICATED_ANSWER, b""))
 
 
 class ExpiredTokenTest(of.CommandWorld):
