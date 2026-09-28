@@ -1,0 +1,296 @@
+"""Authentication and authorization on the engine's listener (task 1e).
+
+Every request here is real HTTP over loopback to the engine
+(operator_fixtures). Each negative changes exactly one thing from a request
+that is applied — the token, the route or one field of the body — and is
+paired with that applied request (the control), sent after it and shown to
+succeed; "nothing changed" is read back as every table's rows, audit events
+included, on the test's own connection.
+
+What the tests cannot show: that the comparison takes constant time (a
+timing property; auth.py compares SHA-256 digests with hmac.compare_digest
+over every configured token, which review checks, not a test), and anything
+about a listener exposed beyond loopback (deployment).
+"""
+from __future__ import annotations
+
+import json
+import socket
+import unittest
+
+from gen2.operator.auth import Credentials, CredentialsRefused, Principal
+from gen2.tests import operator_fixtures as of
+from gen2.tests import router_fixtures as rf
+
+OPERATOR_COMMANDS = ("apply_operator_decision", "request_cancel", "requeue", "close_brief", "activate_config_bundle", "version_brief",
+                     "mark_brief_overdue", "propose_amendment")
+APPLIED = {"apply_operator_decision": "applied", "request_cancel": "recorded", "requeue": "requeued", "close_brief": "closed",
+           "activate_config_bundle": "activated", "version_brief": "recorded", "mark_brief_overdue": "marked", "propose_amendment": "recorded"}
+UNAUTHENTICATED = {"status": "refused", "reason": "unauthenticated"}
+
+
+class HealthTest(of.OperatorTestCase):
+    def test_health_needs_no_token_and_says_only_that_the_router_can_commit(self) -> None:
+        for token in (None, "not-a-token-of-anyone-at-all"):
+            with self.subTest(token=token):
+                code, reply, headers = self.http("GET", "/v1/health", token=token)
+                self.assertEqual((code, reply), (200, {"status": "ok"}))
+                self.assertNotIn("www-authenticate", headers)
+
+    def test_health_is_unavailable_when_the_router_cannot_commit(self) -> None:
+        self.engine.call(lambda station: station.router.close())  # the store gone from under the router
+        code, reply, _ = self.http("GET", "/v1/health", token=None)
+        self.assertEqual((code, reply), (503, {"status": "unavailable"}))
+
+    def test_health_is_a_read(self) -> None:
+        before = self.state(exclude=())
+        code, reply, _ = self.http("POST", "/v1/health", {"status": "down"}, token=None)
+        self.assertEqual((code, reply["reason"]), (405, "method_not_allowed"))
+        self.assertEqual(self.http("GET", "/v1/health", token=None)[0], 200)
+        self.assertEqual(self.state(exclude=()), before)
+
+
+class AuthenticationTest(of.CommandWorld):
+    BAD = {"no header": None, "a wrong token": "Bearer op-token-mallory-0123456789abcdef", "a token's prefix": f"Bearer {of.OPERATOR_TOKEN[:-1]}",
+           "a token with a suffix": f"Bearer {of.OPERATOR_TOKEN}x", "another scheme": f"Basic {of.OPERATOR_TOKEN}", "an empty bearer": "Bearer ",
+           "the token alone": of.OPERATOR_TOKEN}
+
+    def send(self, method: str, path: str, authorization: str | None, raw: bytes | None = None, headers: dict | None = None):
+        sent = dict(headers or {})
+        if authorization is not None:
+            sent["Authorization"] = authorization
+        return self.http(method, path, token=None, raw=raw, headers=sent)
+
+    def test_a_missing_or_invalid_token_is_refused_before_the_body_is_read(self) -> None:
+        """Every route but health, each bad credential, and a body that is not
+        even JSON: 401 with the same reply every time (no oracle), nothing
+        written. A body the service parsed would have been a 400."""
+        before = self.state(exclude=())
+        routes = [("GET", "/v1/status")] + [("POST", f"/v1/commands/{name}") for name in (*OPERATOR_COMMANDS, "ack_delivery", "no_such_operation")]
+        for label, header in self.BAD.items():
+            for method, path in routes:
+                with self.subTest(label=label, path=path):
+                    code, reply, headers = self.send(method, path, header, raw=b"{not json" if method == "POST" else None)
+                    self.assertEqual((code, reply), (401, UNAUTHENTICATED))
+                    self.assertEqual(headers.get("www-authenticate"), 'Bearer realm="gen2-engine"')
+        self.assertEqual(self.state(exclude=()), before)
+        code, reply = self.command("request_cancel", self.bodies()["request_cancel"])  # the control: the same route, the right token
+        self.assertEqual((code, reply["status"]), (200, "recorded"))
+
+    def test_an_unread_body_is_never_waited_for(self) -> None:
+        """A wrong token declaring a large body it never sends is answered at
+        once: the service does not read what an unauthenticated caller says it
+        will send."""
+        host, port = self.engine.address
+        with socket.create_connection((host, port), timeout=10) as conn:
+            conn.sendall(b"POST /v1/commands/request_cancel HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer op-token-mallory-0123456789abcdef\r\n"
+                         b"Content-Length: 900000\r\n\r\n")
+            answer = conn.recv(4096).decode("latin-1")
+        self.assertTrue(answer.startswith("HTTP/1.0 401"), answer)
+
+    def test_the_bearer_scheme_is_matched_without_case_and_the_token_exactly(self) -> None:
+        code, reply, _ = self.send("GET", "/v1/status", f"bearer {of.OPERATOR_TOKEN}")
+        self.assertEqual((code, reply["status"]), (200, "ok"))
+        self.assertEqual(self.send("GET", "/v1/status", f"Bearer {of.OPERATOR_TOKEN} ")[0], 401)
+
+
+class ExpiredTokenTest(of.CommandWorld):
+    def test_a_token_rotated_out_of_the_mount_is_refused_after_the_restart(self) -> None:
+        """An env-backend token expires by rotation: the mount changes and the
+        engine restarts (DEPLOYMENT-CONTRACT.md §2). The old token is refused;
+        the rotated one authenticates the same principal, whose earlier
+        decision stays attributed to it."""
+        body = self.bodies()["apply_operator_decision"]
+        self.assertEqual(self.command("apply_operator_decision", body)[1]["status"], "applied")
+        rotated = "op-token-alice-rotated-0123456789"
+        self.restart(of.credentials({"alice": rotated, "bob": of.OTHER_OPERATOR_TOKEN}))
+        before = self.state(exclude=())
+        self.assertEqual(self.http("GET", "/v1/status")[0:2], (401, UNAUTHENTICATED))
+        self.assertEqual(self.command("close_brief", self.bodies()["close_brief"]), (401, UNAUTHENTICATED))
+        self.assertEqual(self.state(exclude=()), before)
+        code, reply = self.command("close_brief", self.bodies()["close_brief"], token=rotated)
+        self.assertEqual((code, reply["status"]), (200, "closed"))
+        self.assertEqual(self.rows("SELECT operator_id FROM operator_decisions WHERE decision_id = 'opd_brief_other'"), [("alice",)])
+        self.assertEqual(self.rows("SELECT closed_by FROM intake_briefs WHERE topic_id = ? AND brief_id = 'brief-1' AND version = 1", rf.TOPIC), [("alice",)])
+
+
+class AuthorizationTest(of.CommandWorld):
+    def test_the_exporter_token_authorizes_no_operator_command(self) -> None:
+        """Each operator command with a body the operator's token gets applied
+        (the controls, sent after): 403 for the exporter, nothing written. Its
+        token never carries operator authority (DEPLOYMENT-CONTRACT.md §1.1),
+        status included."""
+        bodies = self.bodies()
+        before = self.state(exclude=())
+        self.assertEqual(self.http("GET", "/v1/status", token=of.EXPORTER_TOKEN)[0:2], (403, {"status": "refused", "reason": "forbidden"}))
+        for name in OPERATOR_COMMANDS:
+            with self.subTest(command=name):
+                self.assertEqual(self.command(name, bodies[name], token=of.EXPORTER_TOKEN), (403, {"status": "refused", "reason": "forbidden"}))
+        self.assertEqual(self.state(exclude=()), before)
+        for name in OPERATOR_COMMANDS:
+            with self.subTest(control=name):
+                code, reply = self.command(name, bodies[name])
+                self.assertEqual((code, reply["status"]), (200, APPLIED[name]), reply)
+
+    def test_only_the_exporter_token_acknowledges_a_delivery(self) -> None:
+        receipt = self.bodies()["ack_delivery"]
+        before = self.state(exclude=())
+        for token in (of.OPERATOR_TOKEN, of.OTHER_OPERATOR_TOKEN):
+            with self.subTest(token=token[:8]):
+                self.assertEqual(self.command("ack_delivery", receipt, token=token), (403, {"status": "refused", "reason": "forbidden"}))
+        self.assertEqual(self.state(exclude=()), before)
+        code, reply = self.command("ack_delivery", receipt, token=of.EXPORTER_TOKEN)
+        self.assertEqual((code, reply["status"]), (200, "recorded"))
+        self.assertEqual(self.rows("SELECT status FROM export_delivery_receipts WHERE export_receipt_id = 'exr_000000000001'"), [("delivered",)])
+
+    def test_a_capability_is_never_a_bearer_token(self) -> None:
+        capability = self.run_grant["capability_id"]
+        before = self.state(exclude=())
+        self.assertEqual(self.http("GET", "/v1/status", token=capability)[0:2], (401, UNAUTHENTICATED))
+        self.assertEqual(self.command("request_cancel", self.bodies()["request_cancel"], token=capability), (401, UNAUTHENTICATED))
+        self.assertEqual(self.state(exclude=()), before)
+
+    def test_a_capability_in_a_command_body_is_refused(self) -> None:
+        """A capability never stands in for the principal: a body carrying
+        one is refused before the router, for the cancellation it would make
+        a supervisor's, and for a command whose schema has no such field."""
+        bodies = self.bodies()
+        before = self.state(exclude=())
+        for name, extra in (("request_cancel", {"capability_id": self.run_grant["capability_id"]}),
+                            ("apply_operator_decision", {"capability_id": self.run_grant["capability_id"]})):
+            with self.subTest(command=name):
+                code, reply = self.command(name, {**bodies[name], **extra})
+                self.assertEqual((code, reply["reason"]), (400, "authority_in_request"))
+        self.assertEqual(self.state(exclude=()), before)
+        for name in ("request_cancel", "apply_operator_decision"):
+            self.assertEqual(self.command(name, bodies[name])[1]["status"], APPLIED[name])
+
+    def test_the_operator_token_drives_no_invocation(self) -> None:
+        """The capability-bearing calls are not routes of this surface: the
+        operator's token with a request naming a real capability, which the
+        supervisor's in-process call gets recorded (the control), is 404 and
+        records nothing."""
+        grant = self.claim("inv_newpass0001", kind="verification")
+        self.assertEqual(grant["status"], "granted", grant)
+        launch = {"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"], "to_state": "launching", "job_handle": "job-new"}
+        calls = {"record_transition": launch, "invocation_status": {"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"]},
+                 "claim": {"invocation_id": "inv_other000001", "kind": "verification", "topic_id": rf.TOPIC, "config_bundle_hash": rf.CONFIG,
+                           "deadline_at": rf.DEADLINE, "station_id": "station-1", "lease_expires_at": rf.EXPIRES},
+                 "reconcile": {"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"], "unknown_episode": 1,
+                               "resolution": "terminated_group", "method": "execution_group_termination", "evidence_ref": rf.h("1")},
+                 "record_observation": {"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"], "observation": {}, "retrieval_events": []},
+                 "commit_outcome": {"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"]}}
+        before = self.state(exclude=())
+        for name, body in calls.items():
+            with self.subTest(call=name):
+                self.assertEqual(self.command(name, body), (404, {"status": "refused", "reason": "no_such_route"}))
+                self.assertEqual(self.command(name, body, token=of.EXPORTER_TOKEN)[0], 404)
+        self.assertEqual(self.state(exclude=()), before)
+        self.assertEqual(self.router.record_transition(launch)["status"], "recorded")  # the supervisor's own path
+
+
+class AuthorityFieldTest(of.CommandWorld):
+    def test_who_acts_is_never_taken_from_the_request(self) -> None:
+        """Each field naming who acts, in the one command it belongs to: refused
+        (400) with nothing written; without it, the command is applied and the
+        principal is what the router records."""
+        bodies = self.bodies()
+        cases = (("apply_operator_decision", "operator_id", "mallory"), ("request_cancel", "requested_by", "supervisor"),
+                 ("requeue", "requested_by", "policy"), ("close_brief", "closed_by", "mallory"))
+        before = self.state(exclude=())
+        for name, field, value in cases:
+            with self.subTest(command=name, field=field):
+                code, reply = self.command(name, {**bodies[name], field: value})
+                self.assertEqual((code, reply["reason"]), (400, "authority_in_request"))
+                self.assertIn(field, reply["detail"])
+        self.assertEqual(self.state(exclude=()), before)
+        for name, _, _ in cases:
+            self.assertEqual(self.command(name, bodies[name], token=of.OTHER_OPERATOR_TOKEN)[1]["status"], APPLIED[name])
+        self.assertEqual(self.rows("SELECT operator_id FROM operator_decisions WHERE decision_id = 'opd_brief_other'"), [("bob",)])
+        self.assertEqual(self.rows("SELECT cancel_requested_by FROM invocations WHERE invocation_id = ?", of.RUNNING), [("operator",)])
+        self.assertEqual(self.rows("SELECT requested_by FROM retries WHERE invocation_id = ?", of.FAILED), [("operator",)])
+        self.assertEqual(self.rows("SELECT closed_by, status FROM intake_briefs WHERE topic_id = ? AND brief_id = 'brief-1' AND version = 1", rf.TOPIC),
+                         [("bob", "archived")])
+
+
+class BodyTest(of.CommandWorld):
+    def test_a_body_is_strict_json_of_a_declared_length(self) -> None:
+        body = self.bodies()["request_cancel"]
+        text = json.dumps(body)
+        before = self.state(exclude=())
+        for label, raw, headers, expected in (
+                ("duplicate keys", text[:-1].encode() + b', "reason": "again"}', None, (400, "request_invalid")),
+                ("not an object", b"[1]", None, (400, "request_invalid")),
+                ("a non-finite number", text[:-1].encode() + b', "n": NaN}', None, (400, "request_invalid")),
+                ("too large", b" " * (1024 * 1024 + 1), None, (413, "body_too_large"))):
+            with self.subTest(label=label):
+                code, reply, _ = self.http("POST", "/v1/commands/request_cancel", raw=raw, headers=headers)
+                self.assertEqual((code, reply["reason"]), expected)
+        self.assertEqual(self.state(exclude=()), before)
+        self.assertEqual(self.command("request_cancel", body)[1]["status"], "recorded")
+
+    def test_a_body_without_a_length_is_refused(self) -> None:
+        host, port = self.engine.address
+        with socket.create_connection((host, port), timeout=10) as conn:
+            conn.sendall(f"POST /v1/commands/request_cancel HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {of.OPERATOR_TOKEN}\r\n"
+                         "Transfer-Encoding: chunked\r\n\r\n".encode())  # no chunk sent: the answer comes without reading one
+            answer = conn.recv(4096).decode("latin-1")
+        self.assertTrue(answer.startswith("HTTP/1.0 411"), answer)
+
+
+class SecrecyTest(of.CommandWorld):
+    def test_no_token_reaches_a_log_a_reply_or_a_header(self) -> None:
+        """Every route, with every configured token, a wrong one, and bodies
+        that fail at each check: no configured or presented token appears in
+        any log line, reply or response header."""
+        presented = "op-token-mallory-0123456789abcdef"
+        seen = []
+        bodies = self.bodies()
+        for token in (*of.TOKENS, presented, None):
+            for method, path, body in (("GET", "/v1/status", None), ("GET", "/v1/health", None), ("POST", "/v1/commands/no_such", {}),
+                                       ("POST", "/v1/commands/request_cancel", {**bodies["request_cancel"], "requested_by": "x"}),
+                                       ("POST", "/v1/commands/ack_delivery", bodies["ack_delivery"]),
+                                       ("POST", "/v1/commands/apply_operator_decision", {"decision_id": 1})):
+                code, reply, headers = self.http(method, path, body, token=token)
+                seen.append(json.dumps([code, reply, headers]))
+        seen += self.logs
+        self.assertTrue(any("-> 401" in line for line in self.logs) and any("-> 403" in line for line in self.logs))
+        for token in (*of.TOKENS, presented):
+            self.assertFalse([s for s in seen if token in s], f"a token ({token[:6]}...) appeared")
+
+
+class CredentialsTest(unittest.TestCase):
+    ENV = {"GEN2_SECRETS": "env", "GEN2_OPERATOR_TOKENS": f"alice={of.OPERATOR_TOKEN}, bob={of.OTHER_OPERATOR_TOKEN}",
+           "GEN2_SECRET_EXPORTER_TOKEN": of.EXPORTER_TOKEN}
+
+    def test_the_mounted_names_configure_the_principals(self) -> None:
+        creds = Credentials.from_environ(self.ENV)
+        self.assertEqual(creds.principals, [Principal("alice", "operator"), Principal("bob", "operator"), Principal("exporter", "exporter")])
+        self.assertEqual(creds.authenticate(f"Bearer {of.OTHER_OPERATOR_TOKEN}"), Principal("bob", "operator"))
+        self.assertEqual(creds.authenticate(f"Bearer {of.EXPORTER_TOKEN}"), Principal("exporter", "exporter"))
+        self.assertIsNone(Credentials.from_environ({**self.ENV, "GEN2_SECRET_EXPORTER_TOKEN": ""}).authenticate(f"Bearer {of.EXPORTER_TOKEN}"))
+
+    def test_unusable_secrets_refuse_the_start(self) -> None:
+        """Each defect alone, beside ENV, which starts (the control); no
+        refusal names a token."""
+        self.assertEqual(len(Credentials.from_environ(self.ENV).principals), 3)
+        short = "short-token-15ch"[:15]
+        cases = {"no operator token": {"GEN2_OPERATOR_TOKENS": ""}, "the variable absent": {"GEN2_OPERATOR_TOKENS": None},
+                 "vault is not admissible": {"GEN2_SECRETS": "vault"}, "an entry that is not name=token": {"GEN2_OPERATOR_TOKENS": of.OPERATOR_TOKEN},
+                 "a name twice": {"GEN2_OPERATOR_TOKENS": f"alice={of.OPERATOR_TOKEN},alice={of.OTHER_OPERATOR_TOKEN}"},
+                 "two principals, one token": {"GEN2_SECRET_EXPORTER_TOKEN": of.OPERATOR_TOKEN},
+                 "a short token": {"GEN2_OPERATOR_TOKENS": f"alice={short}"},
+                 "a token with a space": {"GEN2_OPERATOR_TOKENS": "alice=op token with a space in it"},
+                 "a short exporter token": {"GEN2_SECRET_EXPORTER_TOKEN": short},
+                 "a name that is not one": {"GEN2_OPERATOR_TOKENS": f"al ice={of.OPERATOR_TOKEN}"}}
+        for label, change in cases.items():
+            with self.subTest(label=label):
+                env = {k: v for k, v in {**self.ENV, **change}.items() if v is not None}
+                with self.assertRaises(CredentialsRefused) as refused:
+                    Credentials.from_environ(env)
+                for token in (*of.TOKENS, short, "op token with a space in it"):
+                    self.assertNotIn(token, str(refused.exception))
+
+
+if __name__ == "__main__":
+    unittest.main()
