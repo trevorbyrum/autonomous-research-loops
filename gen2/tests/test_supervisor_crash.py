@@ -34,6 +34,13 @@ terminated (the group ended at its deadline, the failure not yet recorded)
 and unknown_recorded (outcome_unknown entered by a restarted supervisor,
 not yet reconciled: a second crash).
 
+Beside the start that never happened (the job marked abandoned before it is
+reconciled as never started), the accepted alternative its guard admits
+(Astra 1c re-review 3, BLOCK 2): starts the OS refused leave no start, so
+nothing to abandon; an outcome_unknown episode over them, recorded through
+the router's own operation, is reconciled as never started with no
+abandoned mark.
+
 A delegate's replaced lease (Astra 1c re-review C5): a delegate runs under
 its parent's lease, and a research pass's lease is not replaced while its
 topic is active, so the per-kind fixture above (a delegate under a research
@@ -216,6 +223,31 @@ class CrashFaults:
                                         "lease_release": released(self.KIND, "failed"), "reconciliations": ["confirmed_failed"]})
         self.assertIsNone(self.job_file("identity.json"))
         self.assertTrue((self.root / "jobs" / f"job-{MAIN}" / "abandoned").exists())
+
+    def test_an_unknown_episode_over_starts_the_os_refused_reconciles_as_never_started(self) -> None:
+        """The accepted path beside the abandonment handshake (Astra 1c
+        re-review 3, BLOCK 2): every start refused by the OS (the launcher's
+        interpreter is missing) leaves the job not_started — no start
+        happened, so there is nothing to abandon. An outcome_unknown episode
+        is recorded for it through the router's own operation (this seeds
+        that state; it does not say the supervisor enters it after an OS
+        refusal), and the restarted supervisor reconciles it as never
+        started, by lookup: the episode's hold cleared, the lease released,
+        no identity and no abandoned mark."""
+        self.prepare(self.KIND)
+        refused = self.make_supervisor(launcher=(str(self.root / "missing-interpreter"),))
+        self.assertEqual(refused.submit(self.order(self.KIND, succeed())), "launching")
+        self.assertEqual(refused.job(MAIN).lookup()["verdict"], "not_started")
+        grant = self.journal()["grant"]
+        self.assertEqual(self.router.record_transition({"capability_id": grant["capability_id"], "invocation_id": MAIN, "to_state": "outcome_unknown",
+                                                         "unknown_episode": 1, "unknown_cause": "spawn_uncertain"})["status"], "recorded")
+        self.assertEqual(self.restart()[MAIN], "failed")
+        self.assertEqual(self.ended(), {**self.committed(["admitted", "launching", "outcome_unknown", "failed"]), "state": "failed", "receipts": 0,
+                                        "failure_class": "never_started", "evidence": True, "episodes": 1, "cleared_holds": 1,
+                                        "lease_release": released(self.KIND, "failed"), "reconciliations": ["confirmed_failed"]})
+        self.assertEqual(self.evidence_record()["output"]["detail"], "the launcher never started")
+        self.assertIsNone(self.job_file("identity.json"))
+        self.assertFalse((self.root / "jobs" / f"job-{MAIN}" / "abandoned").exists())
 
     def test_crash_between_spawn_and_identity_record_finds_the_job_running(self) -> None:
         """RG-2's spawn/receipt uncertainty: the launcher is running, its

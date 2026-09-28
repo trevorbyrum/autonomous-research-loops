@@ -381,6 +381,21 @@ class OperatorDecisionTest(RouterTestCase):
         self.assertEqual((out["status"], out.get("reason")), ("rejected", "subject_hash_untrue"))
         self.assertEqual(self.state(exclude=()), before)
 
+    def test_a_first_contract_approval_supersedes_nothing(self) -> None:
+        """The alternative the supersession loop admits (task 1c-repair-4, the
+        C4 re-check): the topic's first approval finds no approved revision,
+        supersedes nothing, and approves exactly this one."""
+        self.to_scoping()
+        chash = self.contract_draft(TOPIC, 1)
+        self.x("UPDATE queue_entries SET status = 'awaiting_scope_approval', state_revision = state_revision + 1 WHERE topic_id = ?", TOPIC)
+        out = self.decide(f"opd_scope{TOPIC[-2:]}01", "scope_approval", {"kind": "scoping_report", "ref": "scope-1", "revision": 1, "hash": h("5")})
+        self.assertEqual(out["status"], "applied", out)
+        out = self.decide(f"opd_cntr{TOPIC[-2:]}01", "contract_approval", {"kind": "contract_revision", "revision": 1, "hash": chash})
+        self.assertEqual(out["status"], "applied", out)
+        self.assertEqual((out["effects"]["contract_approved"], out["effects"]["contract_superseded"]), (1, []))
+        self.assertEqual(self.rows("SELECT revision, status FROM contract_revisions WHERE topic_id = ? ORDER BY revision", TOPIC), [(1, "approved")])
+        self.assertEqual(self.rows("SELECT status, active_contract_revision FROM queue_entries WHERE topic_id = ?", TOPIC), [("queued", 1)])
+
     def test_contract_approval_queues_the_topic_and_an_amendment_supersedes(self) -> None:
         self.to_queued()
         self.assertEqual(self.rows("SELECT status, active_contract_revision FROM queue_entries WHERE topic_id = ?", TOPIC), [("queued", 1)])

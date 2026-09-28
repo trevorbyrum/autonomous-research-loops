@@ -6,7 +6,8 @@
 A mutant's killers are the tests that must fail under it. Its paired
 controls are tests that must pass under it: tests that are not its killers
 and that take an accepted path through the code the mutant changes, so that
-its kill is the guard's absence and not a path the mutant broke.
+a kill does not rest on that path being broken (what this does and does not
+establish: below).
 tools/gen2_mutations.py runs both, per mutant, and reads the controls from
 tools/gen2_mutation_controls.json, which this tool writes. It is not part of
 the build: it is rerun when the inventory or the tests change (the runner
@@ -33,8 +34,10 @@ What counts as taking a path through the mutated code, per kind of target:
       - for any other changed statement, an if or while included, execute
         its changed line (a line with no instruction of its own, which no
         traced run executes, falls back to its statement's first), or the
-        test of the if or while that directly holds it in a branch: the
-        guard deciding whether it runs, either way;
+        test of the if or while that directly holds it in a branch, or the
+        header of the for loop whose body directly holds it (as for a
+        refusal; task 1c-repair-4): the guard deciding whether it runs,
+        either way — a loop over nothing included;
       - for a changed except clause, or a changed statement directly in its
         handler, also the try completing: its body left for a line outside
         the try (or returning from it), the path on which no handler runs.
@@ -91,11 +94,18 @@ run's log, keeps each control that did not pass as rejected for that mutant
 (in the file, so it stays rejected), and takes the next candidate.
 
 What the rule establishes, for a Python mutant with a paired control: in
-an unmutated traced run the control executed a line the mutant changes, or
-passed the guard directly governing a changed refusal without taking it;
-the mutation run then shows it passing under the mutant. What it does not
-establish: that the accepted path is the one the guard exists for, or that
-the test's assertions depend on that evaluation (a control that reaches the
+an unmutated traced run the control executed a line the mutant changes; or
+evaluated the guard directly governing a changed statement that is not a
+refusal (the if or while holding it in a branch, the for loop holding it in
+its body), either way, without necessarily running the statement (Astra 1c
+re-review 3: evidence-not-recorded's control evaluates its guard and never
+runs the changed line); or passed the guard directly governing a changed
+refusal without taking it. The mutation run then shows it passing under the
+mutant. What it does not establish: why a killer failed (a control passing
+beside it shows that path still works under the mutant, not that the
+guard's absence is what the killer caught); that the accepted path is the
+one the guard exists for, or that the test's assertions depend on that
+evaluation (a control that reaches the
 changed line and later fails on something else is not a control — the run
 rejects it — but one that reaches it and asserts nothing about it passes);
 which operand of a compound condition decided it; that the passing
@@ -174,12 +184,37 @@ MANUAL: dict[str, dict] = {
         "controls": ["test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_commit_refused_while_paused_commits_once_the_pause_lifts"],
         "why": "executes gen2/supervisor/supervisor.py's commit-budget guard (if self._spend(job, journal, \"commit\")) on its accepted path: "
                "the commit refused once while paused is resent within budget and commits"},
+    # task 1c-repair-4 (the C4 re-check): the traced candidates reach the supersession loop's header only through a fixture's
+    # first approval; the accepted case it admits was split out of the killer as a test of its own, added after the trace
+    "1B-approval-without-supersession": {
+        "controls": ["test_router_ops.OperatorDecisionTest.test_a_first_contract_approval_supersedes_nothing"],
+        "why": "evaluates gen2/router/service.py's supersession loop header (line 990: for each approved revision) with none approved, "
+               "runs none of its body, and asserts the alternative it admits: nothing superseded, exactly this revision approved, the "
+               "topic queued"},
+    # task 1c-repair-4 (the C4 re-check): every traced candidate (143) needs an approval, which this over-restricting mutant
+    # refuses; the one alternative the trigger's own WHEN admits without an approval was written as a test of its own
+    "RA3R-approval-refused-too": {
+        "controls": ["test_store_ddl.ContractGovernanceTest.test_an_update_recording_no_approval_pointer_passes_its_guard"],
+        "why": "a statement that succeeds enters trigger contract_approval_pointer_set_by_approval with its WHEN false on its own "
+               "NEW-pointer conjunct (a draft's pointer written as NULL: nothing recorded), the alternative it admits without the removed "
+               "approved-status exemption; no write path makes that statement. The other alternative, restating a pointer already "
+               "recorded, needs an approval first, which the mutant refuses: all 143 traced candidates fail under it"},
+    # task 1c-repair-4 (the C4 re-check): the changed return is governed by an early return, which the traced rule does not
+    # treat as a guard (it credits an if only for what its branch holds); read, it is the guard deciding whether a replay is sent
+    "1C-child-router-replay-reads-committed": {
+        "controls": ["test_router_commit.FencingTest.test_positive_control"],
+        "why": "a first commit passes gen2/router/service.py's replay guard the other way (line 609: no receipt for the operation id, so "
+               "line 610 returns and the commit proceeds; line 613 is never reached) and asserts the status the mutant confuses: a new "
+               "commit is reported committed. Paired by hand: the guard is an early return rather than a branch holding line 613"},
     # a race, not a removed guard: which test notices it depends on timing
     "1C-jobs-probe-takes-the-lock": {
         "controls": [],
-        "why": "the mutant is a race any job start can lose (a lookup takes the lock a starting launcher needs), so whether a test that "
-               "takes this path notices it depends on timing: of 13 candidates run under it, one passed in one run and failed the next; "
-               "none passes dependably, so none is paired"},
+        "why": "the changed line is the probe itself, under no guard of its own, and no execution of it answers as the original does: a "
+               "free lock reads as held (F_OFD_SETLK hands back the F_WRLCK it was given), a held one raises EAGAIN, and taking the lock "
+               "can make a launcher locking at that moment give up. So there is no accepted alternative through it (re-checked in task "
+               "1c-repair-4 against Astra 1c re-review 3, BLOCK 2's standard); a test through it passes only where its answer does not "
+               "matter and no launcher is locking just then, which is timing: of 13 candidates run under it, one passed in one run and "
+               "failed the next; none passes dependably, so none is paired"},
     "TO-differences-ignored": {
         "controls": [], "in_killer": ["test_trigger_order_tool.TriggerOrderToolTest.test_outcomes_must_be_green_and_identical"],
         "why": "the killer asserts the accepted case (identical green outcomes: no problem) before the refusals; " + _ORDER},
@@ -577,7 +612,9 @@ def requirements(text: str, changed: set[int]) -> list[tuple]:
     directly governs it (the if or while whose branch holds it, the loop
     whose body does, or the try whose handler does) must be left without
     taking it; a changed if or while whose branch is a refusal likewise; any
-    other changed statement, an if or while included, must be executed.
+    other changed statement, an if or while included, must be executed, or
+    the guard directly holding it (the if or while whose branch holds it,
+    the for loop whose body does) evaluated either way.
     Nothing encloses a guard in this: an outer branch reached is never
     evidence. Outside functions: a changed module or class assignment, the
     lines inside functions that read the names it binds; a changed statement
@@ -638,12 +675,15 @@ def requirements(text: str, changed: set[int]) -> list[tuple]:
         return None
 
     def governing(stmt):
-        """The if or while that directly holds a statement in a branch (a with
-        or a try body between them decides nothing); None for any other."""
+        """The if or while that directly holds a statement in a branch, or the
+        for loop whose body does (a with or a try body between them decides
+        nothing); None for any other."""
         node = stmt
         while node in parent:
             above, field = parent[node]
             if isinstance(above, (ast.If, ast.While)) and field in ("body", "orelse"):
+                return above
+            if isinstance(above, (ast.For, ast.AsyncFor)) and field == "body":
                 return above
             if not (isinstance(above, (ast.With, ast.AsyncWith)) or (isinstance(above, ast.Try) and field == "body")):
                 return None

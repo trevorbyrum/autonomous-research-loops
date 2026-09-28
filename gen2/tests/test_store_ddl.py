@@ -1738,6 +1738,20 @@ class ContractGovernanceTest(StoreTestCase):
         self.x("UPDATE contract_revisions SET status = 'superseded' WHERE topic_id = ? AND revision = 1", TOPIC)
         self.x("UPDATE contract_revisions SET status = 'approved', approved_by_decision_id = 'opd_00000002' WHERE topic_id = ? AND revision = 2", TOPIC)
 
+    def test_an_update_recording_no_approval_pointer_passes_its_guard(self) -> None:
+        """The alternative contract_approval_pointer_set_by_approval's own WHEN
+        admits without its approved-status exemption (task 1c-repair-4, the
+        C4 re-check): an update of a draft that names the pointer column but
+        records no pointer (it stays NULL) enters the trigger and passes, the
+        draft unchanged. No write path makes this statement; it is the only
+        such alternative that needs no approval (restating a pointer already
+        recorded needs one first)."""
+        stored = self.snapshot("contract_revisions")
+        self.x("UPDATE contract_revisions SET approved_by_decision_id = NULL WHERE topic_id = ? AND revision = 1", TOPIC)
+        self.assertEqual(self.snapshot("contract_revisions"), stored)
+        self.assertEqual(self.rows("SELECT status, approved_by_decision_id FROM contract_revisions WHERE topic_id = ? AND revision = 1", TOPIC),
+                         [("draft", None)])
+
     def test_approval_pointer_is_set_only_by_the_approval_transition(self) -> None:
         """RA3-R: a retained approving decision is evidence that its revision
         passed the draft -> approved transition, whose gate checks rows,

@@ -63,7 +63,7 @@
   "rejected": [
    "test_source_catalog.CatalogToolTest.test_the_committed_pair_is_current_for_the_real_registry"
   ],
-  "why": "tools/gen_source_catalog.py: executes line 589"
+  "why": "tools/gen_source_catalog.py: executes line 589; or executes line 584"
  },
  "0C-required-fields-unchecked": {
   "controls": [
@@ -681,12 +681,14 @@
   "why": "gen2/router/service.py: leaves line 301 for a line outside 301-302 (or returns)"
  },
  "1B-approval-without-supersession": {
-  "controls": [],
-  "exhausted": 1,
+  "by_hand": true,
+  "controls": [
+   "test_router_ops.OperatorDecisionTest.test_a_first_contract_approval_supersedes_nothing"
+  ],
   "rejected": [
    "test_router_commit.FencingTest.test_work_pinned_to_a_superseded_contract_is_not_committed"
   ],
-  "why": "all 1 candidates run under the mutant fail (0 of the 1 that take the path were not run): the mutant changes what the accepted path does rather than removing a refusal"
+  "why": "evaluates gen2/router/service.py's supersession loop header (line 990: for each approved revision) with none approved, runs none of its body, and asserts the alternative it admits: nothing superseded, exactly this revision approved, the topic queued"
  },
  "1B-artifact-metadata-unchecked": {
   "controls": [
@@ -734,7 +736,7 @@
   "controls": [
    "test_router_evidence.ExportTest.test_an_approved_manifest_enters_the_outbox_with_its_hash"
   ],
-  "why": "gen2/router/service.py: leaves line 720 for a line outside 720-721 (or returns); or leaves line 720 for a line outside 720-721 (or returns); or executes line 722"
+  "why": "gen2/router/service.py: leaves line 720 for a line outside 720-721 (or returns); or leaves line 720 for a line outside 720-721 (or returns); or executes line 722; or executes line 718"
  },
  "1B-bundle-schema-skipped": {
   "controls": [
@@ -920,8 +922,9 @@
   "why": "gen2/router/service.py: leaves line 587 for a line outside 587-588 (or returns)"
  },
  "1B-expired-lease-kept": {
-  "controls": [],
-  "exhausted": 8,
+  "controls": [
+   "test_router_ops.ClaimTest.test_scopes_coexist_and_generations_strictly_increase"
+  ],
   "rejected": [
    "test_router_commit.FencingTest.test_an_expired_lease_is_fenced_by_its_successor",
    "test_router_time.ExactInstantTest.test_a_lease_is_superseded_at_its_expiry_and_not_before",
@@ -932,7 +935,7 @@
    "test_supervisor_crash.DiscoveryCrashTest.test_recovery_starts_nothing_once_the_lease_is_replaced",
    "test_supervisor_crash.VerificationCrashTest.test_recovery_starts_nothing_once_the_lease_is_replaced"
   ],
-  "why": "all 8 candidates run under the mutant fail (0 of the 8 that take the path were not run): the mutant changes what the accepted path does rather than removing a refusal"
+  "why": "gen2/router/service.py: executes line 363; or executes line 360"
  },
  "1B-expiry-at-the-instant": {
   "controls": [
@@ -1539,7 +1542,7 @@
   "controls": [
    "test_router_commit.TopicAuthorizationTest.test_the_same_bytes_staged_by_this_topic_are_its_own"
   ],
-  "why": "gen2/router/service.py: executes line 687"
+  "why": "gen2/router/service.py: executes line 687; or executes line 686"
  },
  "1B-transition-clock-before-lock": {
   "controls": [
@@ -1800,8 +1803,10 @@
   "why": "gen2/importer/__main__.py: executes line 4"
  },
  "1C-child-router-replay-reads-committed": {
-  "controls": [],
-  "exhausted": 11,
+  "by_hand": true,
+  "controls": [
+   "test_router_commit.FencingTest.test_positive_control"
+  ],
   "rejected": [
    "test_router_commit.AtomicityTest.test_a_fault_at_each_point_leaves_nothing_or_everything",
    "test_router_commit.ReplayAndIdentityTest.test_a_lost_reply_is_recovered_by_operation_id",
@@ -1815,7 +1820,7 @@
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_delivered_result_replays_and_changes_nothing",
    "test_supervisor_lifecycle.VerificationLifecycleTest.test_a_delivered_result_replays_and_changes_nothing"
   ],
-  "why": "all 11 candidates run under the mutant fail (0 of the 11 that take the path were not run): the mutant changes what the accepted path does rather than removing a refusal"
+  "why": "a first commit passes gen2/router/service.py's replay guard the other way (line 609: no receipt for the operation id, so line 610 returns and the commit proceeds; line 613 is never reached) and asserts the status the mutant confuses: a new commit is reported committed. Paired by hand: the guard is an early return rather than a branch holding line 613"
  },
  "1C-ddl-anyone-cancels": {
   "controls": [
@@ -1957,31 +1962,49 @@
   "controls": [
    "test_supervisor_jobs.AbandonTest.test_a_launcher_started_after_abandonment_starts_nothing"
   ],
-  "why": "gen2/supervisor/jobs.py: executes line 192"
+  "why": "gen2/supervisor/jobs.py: executes line 237"
  },
  "1C-jobs-abandon-ignores-lock": {
   "controls": [
    "test_supervisor_jobs.AbandonTest.test_a_launcher_started_after_abandonment_starts_nothing"
   ],
-  "why": "gen2/supervisor/jobs.py: executes line 192"
+  "why": "gen2/supervisor/jobs.py: executes line 237"
  },
  "1C-jobs-any-boot": {
   "controls": [
    "test_supervisor_jobs.TerminateTest.test_the_whole_group_is_ended_and_confirmed_gone"
   ],
-  "why": "gen2/supervisor/jobs.py: executes line 75"
+  "why": "gen2/supervisor/jobs.py: executes line 84"
+ },
+ "1C-jobs-lock-not-nested": {
+  "controls": [
+   "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
+  ],
+  "why": "gen2/supervisor/jobs.py: executes line 165; or executes line 166; or executes line 167"
+ },
+ "1C-jobs-lock-not-taken": {
+  "controls": [
+   "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
+  ],
+  "why": "gen2/supervisor/jobs.py: executes line 170; or executes line 168"
+ },
+ "1C-jobs-lock-wait-unbounded": {
+  "controls": [
+   "test_supervisor_serialization.DiscoverySerializedTest.test_overlapping_recoveries_are_two_recovery_attempts"
+  ],
+  "why": "gen2/supervisor/jobs.py: leaves line 175 for a line outside 175-176 (or returns); or leaves line 175 for a line outside 175-176 (or returns)"
  },
  "1C-jobs-members-predate": {
   "controls": [
    "test_supervisor_jobs.TerminateTest.test_the_whole_group_is_ended_and_confirmed_gone"
   ],
-  "why": "gen2/supervisor/jobs.py: executes line 81"
+  "why": "gen2/supervisor/jobs.py: executes line 90"
  },
  "1C-jobs-pid-alone": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/jobs.py: executes line 172"
+  "why": "gen2/supervisor/jobs.py: executes line 217"
  },
  "1C-jobs-probe-takes-the-lock": {
   "by_hand": true,
@@ -2011,19 +2034,19 @@
    "test_supervisor_lifecycle.VerificationLifecycleTest.test_a_cancellation_requested_before_the_result_wins",
    "test_supervisor_lifecycle.VerificationLifecycleTest.test_an_unreachable_router_stalls_within_budget_and_delivery_resumes_by_replay"
   ],
-  "why": "the mutant is a race any job start can lose (a lookup takes the lock a starting launcher needs), so whether a test that takes this path notices it depends on timing: of 13 candidates run under it, one passed in one run and failed the next; none passes dependably, so none is paired"
+  "why": "the changed line is the probe itself, under no guard of its own, and no execution of it answers as the original does: a free lock reads as held (F_OFD_SETLK hands back the F_WRLCK it was given), a held one raises EAGAIN, and taking the lock can make a launcher locking at that moment give up. So there is no accepted alternative through it (re-checked in task 1c-repair-4 against Astra 1c re-review 3, BLOCK 2's standard); a test through it passes only where its answer does not matter and no launcher is locking just then, which is timing: of 13 candidates run under it, one passed in one run and failed the next; none passes dependably, so none is paired"
  },
  "1C-jobs-refused-starts-count": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/jobs.py: executes line 166"
+  "why": "gen2/supervisor/jobs.py: executes line 211"
  },
  "1C-jobs-start-unrecorded": {
   "controls": [
    "test_supervisor_jobs.TerminateTest.test_the_whole_group_is_ended_and_confirmed_gone"
   ],
-  "why": "gen2/supervisor/jobs.py: executes line 131"
+  "why": "gen2/supervisor/jobs.py: executes line 140"
  },
  "1C-router-cancel-requester-replaced": {
   "controls": [
@@ -2071,7 +2094,7 @@
   "controls": [
    "test_router_commit.TopicAuthorizationTest.test_bytes_recorded_for_this_topic_are_referenced_by_hash"
   ],
-  "why": "gen2/router/service.py: executes line 810"
+  "why": "gen2/router/service.py: executes line 810; or executes line 806"
  },
  "1C-router-delegate-releases-its-parents-lease": {
   "controls": [
@@ -2412,7 +2435,7 @@
    "test_router_commit.TopicAuthorizationTest.test_bytes_another_topic_records_meanwhile_do_not_become_this_topics",
    "test_router_commit.TopicAuthorizationTest.test_bytes_recorded_only_for_another_topic_are_not_referenced_by_hash"
   ],
-  "why": "gen2/router/service.py: executes line 810"
+  "why": "gen2/router/service.py: executes line 810; or executes line 806"
  },
  "1C-router-status-hides-launch-refusal": {
   "controls": [
@@ -2695,29 +2718,35 @@
   ],
   "why": "gen2/supervisor/spool.py: executes line 72"
  },
+ "1C-sup-advance-unlocked": {
+  "controls": [
+   "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
+  ],
+  "why": "gen2/supervisor/supervisor.py: executes line 319"
+ },
  "1C-sup-cancellation-ignored": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 792"
+  "why": "gen2/supervisor/supervisor.py: executes line 896"
  },
  "1C-sup-cancelled-exit-unconfirmed": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_crash_between_spawn_and_identity_record_finds_the_result"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 874"
+  "why": "gen2/supervisor/supervisor.py: executes line 978"
  },
  "1C-sup-cancelled-work-not-ended": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 701"
+  "why": "gen2/supervisor/supervisor.py: executes line 805"
  },
  "1C-sup-chokepoint-trusts-the-callers-copy": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 422; or executes line 423"
+  "why": "gen2/supervisor/supervisor.py: executes line 525; or executes line 526"
  },
  "1C-sup-commit-budget-unbounded": {
   "by_hand": true,
@@ -2735,25 +2764,31 @@
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_result_after_its_lease_is_lost_is_retained_not_committed"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 840; or executes line 834"
+  "why": "gen2/supervisor/supervisor.py: executes line 944; or executes line 938"
  },
  "1C-sup-commit-exhaustion-unreferenced": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_result_after_its_lease_is_lost_is_retained_not_committed"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 840; or executes line 834"
+  "why": "gen2/supervisor/supervisor.py: executes line 944; or executes line 938"
  },
  "1C-sup-declared-digest-unchecked": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 537"
+  "why": "gen2/supervisor/supervisor.py: executes line 640"
  },
  "1C-sup-delegate-cancel-refusal-ignored": {
   "controls": [
    "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_that_completes"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 660"
+  "why": "gen2/supervisor/supervisor.py: executes line 764"
+ },
+ "1C-sup-delegate-locks-only-itself": {
+  "controls": [
+   "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
+  ],
+  "why": "gen2/supervisor/supervisor.py: executes line 341"
  },
  "1C-sup-delegates-not-cancelled": {
   "controls": [
@@ -2794,55 +2829,61 @@
    "test_supervisor_delegates.VerificationParentTest.test_a_refused_delegate_cancellation_is_budgeted",
    "test_supervisor_delegates.VerificationParentTest.test_the_parent_waits_while_its_delegate_cannot_be_ended"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 656"
+  "why": "gen2/supervisor/supervisor.py: executes line 760"
  },
  "1C-sup-descendants-left-running": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 494"
+  "why": "gen2/supervisor/supervisor.py: executes line 597"
  },
  "1C-sup-empty-output-misclassed": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 534; or executes line 533"
+  "why": "gen2/supervisor/supervisor.py: executes line 637; or executes line 636"
  },
  "1C-sup-end-refusal-unbudgeted": {
   "controls": [
    "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_that_completes"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 818; or executes line 817"
+  "why": "gen2/supervisor/supervisor.py: executes line 922; or executes line 921"
  },
  "1C-sup-exit-code-ignored": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 526"
+  "why": "gen2/supervisor/supervisor.py: executes line 629"
  },
  "1C-sup-final-refusal-retried": {
   "controls": [
    "test_supervisor_budgets.ResearchPassBudgetTest.test_a_refused_end_accepted_within_its_budget_refunds_it"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 368"
+  "why": "gen2/supervisor/supervisor.py: executes line 471"
  },
  "1C-sup-identity-a-bare-pid": {
   "controls": [
    "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_that_completes"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 718; or executes line 717"
+  "why": "gen2/supervisor/supervisor.py: executes line 822; or executes line 821"
  },
  "1C-sup-incident-renewed": {
   "controls": [
    "test_supervisor_crash.ResearchPassCrashTest.test_recovery_starts_nothing_in_a_topic_paused_meanwhile"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 314; or executes line 315; or executes line 316"
+  "why": "gen2/supervisor/supervisor.py: executes line 417; or executes line 418; or executes line 419"
  },
  "1C-sup-incident-writer-trusts-the-callers-copy": {
   "controls": [
    "test_supervisor_crash.ResearchPassCrashTest.test_recovery_starts_nothing_in_a_topic_paused_meanwhile"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 313"
+  "why": "gen2/supervisor/supervisor.py: executes line 416"
+ },
+ "1C-sup-journal-read-before-the-lock": {
+  "controls": [
+   "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
+  ],
+  "why": "gen2/supervisor/supervisor.py: executes line 319; or executes line 320"
  },
  "1C-sup-launch-budget-unbounded": {
   "controls": [
@@ -2858,17 +2899,18 @@
    "test_supervisor_lifecycle.DiscoveryLifecycleTest.test_pause_holds_launch_within_its_budget_then_cancels",
    "test_supervisor_lifecycle.VerificationLifecycleTest.test_pause_holds_launch_within_its_budget_then_cancels"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 685"
+  "why": "gen2/supervisor/supervisor.py: executes line 789"
  },
  "1C-sup-launch-exhaustion-silent": {
   "controls": [
    "test_supervisor_crash.CheckpointCrashTest.test_recovery_starts_nothing_once_the_lease_has_expired"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 687; or executes line 684"
+  "why": "gen2/supervisor/supervisor.py: executes line 791; or executes line 788"
  },
  "1C-sup-no-abandon-handshake": {
-  "controls": [],
-  "exhausted": 8,
+  "controls": [
+   "test_supervisor_crash.DiscoveryCrashTest.test_an_unknown_episode_over_starts_the_os_refused_reconciles_as_never_started"
+  ],
   "rejected": [
    "test_supervisor_crash.CheckpointCrashTest.test_cancellation_after_a_start_that_never_happened",
    "test_supervisor_crash.CheckpointCrashTest.test_crash_after_recording_a_start_that_never_happened",
@@ -2879,49 +2921,49 @@
    "test_supervisor_crash.VerificationCrashTest.test_cancellation_after_a_start_that_never_happened",
    "test_supervisor_crash.VerificationCrashTest.test_crash_after_recording_a_start_that_never_happened"
   ],
-  "why": "all 8 candidates run under the mutant fail (0 of the 8 that take the path were not run): the mutant changes what the accepted path does rather than removing a refusal"
+  "why": "gen2/supervisor/supervisor.py: executes line 994"
  },
  "1C-sup-no-deadline": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 469"
+  "why": "gen2/supervisor/supervisor.py: executes line 572"
  },
  "1C-sup-no-start-grace": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_group_gone_without_an_exit_is_reconciled_by_lookup"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 888; or executes line 887"
+  "why": "gen2/supervisor/supervisor.py: executes line 992; or executes line 991"
  },
  "1C-sup-observation-made-again": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 461"
+  "why": "gen2/supervisor/supervisor.py: executes line 564"
  },
  "1C-sup-outage-untimed": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 430; or leaves line 427 for a line outside 426-433 (or returns)"
+  "why": "gen2/supervisor/supervisor.py: executes line 533; or leaves line 530 for a line outside 529-536 (or returns)"
  },
  "1C-sup-parent-bypasses-stalled-delegate": {
   "controls": [
    "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_that_completes"
   ],
-  "why": "gen2/supervisor/supervisor.py: leaves line 424 for a line outside 424-425 (or returns)"
+  "why": "gen2/supervisor/supervisor.py: leaves line 527 for a line outside 527-528 (or returns)"
  },
  "1C-sup-parent-commits-over-delegates": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 829"
+  "why": "gen2/supervisor/supervisor.py: executes line 933"
  },
  "1C-sup-parent-ends-over-delegates": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 802; or executes line 803"
+  "why": "gen2/supervisor/supervisor.py: executes line 906; or executes line 907"
  },
  "1C-sup-parent-reconciles-over-delegates": {
   "controls": [
@@ -2931,7 +2973,7 @@
    "test_supervisor_delegates.CheckpointParentTest.test_a_parent_reconciled_after_its_launcher_vanished",
    "test_supervisor_delegates.VerificationParentTest.test_a_parent_reconciled_after_its_launcher_vanished"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 919; or executes line 920"
+  "why": "gen2/supervisor/supervisor.py: executes line 1023; or executes line 1024"
  },
  "1C-sup-parent-unlaunched-end-over-delegates": {
   "controls": [
@@ -2941,7 +2983,7 @@
    "test_supervisor_delegates.CheckpointParentTest.test_a_parent_that_never_started",
    "test_supervisor_delegates.VerificationParentTest.test_a_parent_that_never_started"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 780"
+  "why": "gen2/supervisor/supervisor.py: executes line 884"
  },
  "1C-sup-pending-request-recomputed": {
   "controls": [
@@ -2952,61 +2994,79 @@
    "test_supervisor_budgets.DiscoveryBudgetTest.test_a_reconciliation_record_that_cannot_be_written_keeps_the_termination",
    "test_supervisor_budgets.VerificationBudgetTest.test_a_reconciliation_record_that_cannot_be_written_keeps_the_termination"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 761"
+  "why": "gen2/supervisor/supervisor.py: executes line 865"
  },
  "1C-sup-read-refunds-outage": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 434"
+  "why": "gen2/supervisor/supervisor.py: executes line 537"
+ },
+ "1C-sup-reap-walks-the-live-dict": {
+  "controls": [
+   "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
+  ],
+  "why": "gen2/supervisor/supervisor.py: executes line 555"
+ },
+ "1C-sup-recover-reads-before-the-lock": {
+  "controls": [
+   "test_supervisor_crash.DiscoveryCrashTest.test_crash_after_launch_intent_before_any_start"
+  ],
+  "why": "gen2/supervisor/supervisor.py: executes line 268; or executes line 262; or executes line 269"
+ },
+ "1C-sup-recover-unlocked": {
+  "controls": [
+   "test_supervisor_crash.DiscoveryCrashTest.test_crash_after_launch_intent_before_any_start"
+  ],
+  "why": "gen2/supervisor/supervisor.py: executes line 268; or executes line 262"
  },
  "1C-sup-recovery-refills-router-budget": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_crash_after_launch_intent_before_any_start"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 232; or executes line 230"
+  "why": "gen2/supervisor/supervisor.py: executes line 272; or executes line 270"
  },
  "1C-sup-recovery-unbudgeted": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_crash_after_launch_intent_before_any_start"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 230"
+  "why": "gen2/supervisor/supervisor.py: executes line 270"
  },
  "1C-sup-refusal-never-refunded": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 380; or executes line 378"
+  "why": "gen2/supervisor/supervisor.py: executes line 483; or executes line 481"
  },
  "1C-sup-refusal-unbudgeted": {
   "controls": [
    "test_supervisor_budgets.ResearchPassBudgetTest.test_a_refused_end_accepted_within_its_budget_refunds_it"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 370"
+  "why": "gen2/supervisor/supervisor.py: executes line 473"
  },
  "1C-sup-refused-output-misclassed": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 536; or executes line 535"
+  "why": "gen2/supervisor/supervisor.py: executes line 639; or executes line 638"
  },
  "1C-sup-result-refusal-unbudgeted": {
   "controls": [
    "test_supervisor_lifecycle.VerificationLifecycleTest.test_timeout_terminates_the_whole_group"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 816; or executes line 806"
+  "why": "gen2/supervisor/supervisor.py: executes line 920; or executes line 910"
  },
  "1C-sup-router-budget-unbounded": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 430; or leaves line 427 for a line outside 426-433 (or returns)"
+  "why": "gen2/supervisor/supervisor.py: executes line 533; or leaves line 530 for a line outside 529-536 (or returns)"
  },
  "1C-sup-running-job-terminated": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_cancellation_after_an_uncertain_spawn_ends_the_live_group"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 899"
+  "why": "gen2/supervisor/supervisor.py: executes line 1003"
  },
  "1C-sup-self-cancel-refusal-unbudgeted": {
   "controls": [
@@ -3017,25 +3077,25 @@
    "test_supervisor_budgets.DiscoveryBudgetTest.test_a_refused_cancellation_of_unlaunched_work_is_budgeted_too",
    "test_supervisor_budgets.VerificationBudgetTest.test_a_refused_cancellation_of_unlaunched_work_is_budgeted_too"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 676; or executes line 675"
+  "why": "gen2/supervisor/supervisor.py: executes line 780; or executes line 779"
  },
  "1C-sup-sent-refusal-unbudgeted": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_recovery_starts_nothing_once_cancellation_is_requested"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 776; or executes line 775"
+  "why": "gen2/supervisor/supervisor.py: executes line 880; or executes line 879"
  },
  "1C-sup-settled-job-claimed-again": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: leaves line 424 for a line outside 424-425 (or returns)"
+  "why": "gen2/supervisor/supervisor.py: leaves line 527 for a line outside 527-528 (or returns)"
  },
  "1C-sup-signal-ignored": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 524"
+  "why": "gen2/supervisor/supervisor.py: executes line 627"
  },
  "1C-sup-spawn-before-launch-intent": {
   "controls": [
@@ -3049,73 +3109,79 @@
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record",
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_cancellation_terminates_the_group_then_releases_capacity"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 691"
+  "why": "gen2/supervisor/supervisor.py: executes line 795"
  },
  "1C-sup-spawn-budget-unbounded": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 705"
+  "why": "gen2/supervisor/supervisor.py: executes line 809"
  },
  "1C-sup-spawn-exhaustion-silent": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 706; or executes line 705"
+  "why": "gen2/supervisor/supervisor.py: executes line 810; or executes line 809"
+ },
+ "1C-sup-stale-journal-saved": {
+  "controls": [
+   "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
+  ],
+  "why": "gen2/supervisor/supervisor.py: leaves line 388 for a line outside 388-389 (or returns)"
  },
  "1C-sup-stall-ignored": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: leaves line 424 for a line outside 424-425 (or returns)"
+  "why": "gen2/supervisor/supervisor.py: leaves line 527 for a line outside 527-528 (or returns)"
  },
  "1C-sup-stalled-delegate-unobserved": {
   "controls": [
    "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_that_completes"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 665"
+  "why": "gen2/supervisor/supervisor.py: executes line 769"
  },
  "1C-sup-stalled-parent-claimed-for-its-delegate": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: leaves line 424 for a line outside 424-425 (or returns)"
+  "why": "gen2/supervisor/supervisor.py: leaves line 527 for a line outside 527-528 (or returns)"
  },
  "1C-sup-stalled-write-retried": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 460"
+  "why": "gen2/supervisor/supervisor.py: executes line 563"
  },
  "1C-sup-stalled-write-retried-under-another-incident": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 460"
+  "why": "gen2/supervisor/supervisor.py: executes line 563"
  },
  "1C-sup-start-without-admission": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 703"
+  "why": "gen2/supervisor/supervisor.py: executes line 807"
  },
  "1C-sup-unadmitted-parent-strands-its-delegate": {
   "controls": [
    "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_that_completes"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 590; or leaves line 588 for a line outside 587-595 (or returns)"
+  "why": "gen2/supervisor/supervisor.py: executes line 693; or leaves line 691 for a line outside 690-698 (or returns)"
  },
  "1C-sup-unknown-entry-refusal-unbudgeted": {
   "controls": [
    "test_supervisor_crash.ResearchPassCrashTest.test_cancellation_after_an_uncertain_spawn_ends_the_live_group"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 856; or executes line 855"
+  "why": "gen2/supervisor/supervisor.py: executes line 960; or executes line 959"
  },
  "1C-sup-unknown-never-refunded": {
   "controls": [
    "test_supervisor_crash.ResearchPassCrashTest.test_cancellation_after_an_uncertain_spawn_ends_the_live_group"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 931"
+  "why": "gen2/supervisor/supervisor.py: executes line 1035"
  },
  "1C-sup-unknown-unbudgeted": {
   "controls": [
@@ -3128,43 +3194,43 @@
    "test_supervisor_budgets.ResearchPassBudgetTest.test_an_unresolved_unknown_episode_is_also_bounded_in_time",
    "test_supervisor_budgets.VerificationBudgetTest.test_an_unresolved_unknown_episode_is_also_bounded_in_time"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 398"
+  "why": "gen2/supervisor/supervisor.py: executes line 501"
  },
  "1C-sup-unknown-untimed": {
   "controls": [
    "test_supervisor_budgets.ResearchPassBudgetTest.test_an_unknown_episode_reconciled_within_its_budget_refunds_it"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 398"
+  "why": "gen2/supervisor/supervisor.py: executes line 501"
  },
  "1C-sup-unstarted-work-past-deadline-cancelled": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 701"
+  "why": "gen2/supervisor/supervisor.py: executes line 805"
  },
  "1C-sup-unwritable-incident-swallowed": {
   "controls": [
    "test_supervisor_budgets.ResearchPassBudgetTest.test_enospc_from_the_spool_stalls_with_an_incident"
   ],
-  "why": "gen2/supervisor/supervisor.py: leaves line 340-347 for a line outside 339-350 (or returns)"
+  "why": "gen2/supervisor/supervisor.py: leaves line 443-450 for a line outside 442-453 (or returns)"
  },
  "1C-sup-vanished-group-outlives-deadline": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 469"
+  "why": "gen2/supervisor/supervisor.py: executes line 572"
  },
  "1C-sup-vanished-group-terminated": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_launcher_gone_without_an_exit_is_reconciled_by_terminating_its_group"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 902"
+  "why": "gen2/supervisor/supervisor.py: executes line 1006"
  },
  "1C-sup-write-budget-never-refunded": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 355"
+  "why": "gen2/supervisor/supervisor.py: executes line 458"
  },
  "1C-sup-write-retries-unbounded": {
   "controls": [
@@ -3177,7 +3243,7 @@
    "test_supervisor_budgets.ResearchPassBudgetTest.test_a_reconciliation_record_that_cannot_be_written_keeps_the_termination",
    "test_supervisor_budgets.ResearchPassBudgetTest.test_a_termination_record_that_cannot_be_written_keeps_the_termination"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 341"
+  "why": "gen2/supervisor/supervisor.py: executes line 444"
  },
  "A1-D01-live-lease-replace": {
   "controls": [
@@ -5232,7 +5298,7 @@
   "controls": [
    "test_importer.DryRunMappingTest.test_every_record_is_classified_and_every_gap_is_surfaced"
   ],
-  "why": "gen2/importer/dry_run.py: executes line 664"
+  "why": "gen2/importer/dry_run.py: executes line 664; or executes line 649"
  },
  "IMP-A5-obligation-id-unchecked": {
   "controls": [
@@ -5289,7 +5355,7 @@
   "controls": [
    "test_importer.CommandTest.test_python_dash_m_exits_with_the_importers_status"
   ],
-  "why": "gen2/importer/dry_run.py: executes line 866"
+  "why": "gen2/importer/dry_run.py: executes line 866; or executes line 865"
  },
  "IMP-A5R1-escape-not-reversible": {
   "controls": [
@@ -5313,7 +5379,7 @@
   "controls": [
    "test_importer.CommandTest.test_python_dash_m_exits_with_the_importers_status"
   ],
-  "why": "gen2/importer/dry_run.py: executes line 249"
+  "why": "gen2/importer/dry_run.py: executes line 249; or executes line 248"
  },
  "IMP-A5R1-item-id-unchecked": {
   "controls": [
@@ -6063,8 +6129,10 @@
   "why": "a statement that succeeds enters trigger screening_assessments_under_approved_protocol"
  },
  "RA3R-approval-refused-too": {
-  "controls": [],
-  "exhausted": 71,
+  "by_hand": true,
+  "controls": [
+   "test_store_ddl.ContractGovernanceTest.test_an_update_recording_no_approval_pointer_passes_its_guard"
+  ],
   "rejected": [
    "test_store_ddl.AdmissionAndLeaseTest.test_admission_pins_are_exclusive",
    "test_store_ddl.AdmissionAndLeaseTest.test_contract_admission_needs_an_approved_revision",
@@ -6078,9 +6146,11 @@
    "test_store_ddl.CommitFencingTest.test_delegate_commits_under_parent_lease",
    "test_store_ddl.CommitFencingTest.test_one_commit_per_state_revision",
    "test_store_ddl.CommitFencingTest.test_one_final_outcome_per_invocation",
+   "test_store_ddl.CommitFencingTest.test_operation_id_reuse_rejected_and_receipts_immutable",
    "test_store_ddl.CommitFencingTest.test_released_lease_cannot_commit",
    "test_store_ddl.CommitFencingTest.test_stale_generation_rejected",
    "test_store_ddl.CommitFencingTest.test_state_revision_advances_by_exactly_one",
+   "test_store_ddl.ContractAdmittedSupportTest.test_adopted_pre_contract_claim_with_a_receipt_is_allowed",
    "test_store_ddl.ContractAdmittedSupportTest.test_contested_to_accepted_support_follows_the_same_rule",
    "test_store_ddl.ContractAdmittedSupportTest.test_contract_admitted_claim_without_a_receipt_is_refused",
    "test_store_ddl.ContractAdmittedSupportTest.test_every_claim_needs_admission_not_only_load_bearing",
@@ -6091,6 +6161,7 @@
    "test_store_ddl.ContractGovernanceTest.test_one_approved_revision_per_topic",
    "test_store_ddl.ContractGovernanceTest.test_proposed_importance_cites_an_importance_receipt",
    "test_store_ddl.ContractGovernanceTest.test_retirement_needs_operator_decision",
+   "test_store_ddl.DecisionReceiptConsistencyTest.test_abstention_retains_the_raw_response",
    "test_store_ddl.DecisionReceiptConsistencyTest.test_action_fixes_the_outcome_shape",
    "test_store_ddl.DecisionReceiptConsistencyTest.test_receipt_matches_its_spec",
    "test_store_ddl.DecisionReceiptConsistencyTest.test_receipt_row_matches_its_json",
@@ -6098,32 +6169,71 @@
    "test_store_ddl.DraftVocabularyTransitionTest.test_claim_status_transitions",
    "test_store_ddl.DraftVocabularyTransitionTest.test_queue_status_transitions",
    "test_store_ddl.ExportOutboxTest.test_connector_ids_are_well_formed",
+   "test_store_ddl.ExportOutboxTest.test_connector_watermark_never_regresses",
+   "test_store_ddl.ExportOutboxTest.test_delivery_receipt_only_for_named_connectors",
    "test_store_ddl.ExportOutboxTest.test_manifest_json_matches_its_columns",
+   "test_store_ddl.ExportOutboxTest.test_manifest_names_only_declared_connector_types",
+   "test_store_ddl.ExportOutboxTest.test_one_generation_is_one_approved_revision",
+   "test_store_ddl.ExportOutboxTest.test_only_approved_work_is_exported",
+   "test_store_ddl.ExportOutboxTest.test_ordering_pairs_strictly_increase",
+   "test_store_ddl.ExportOutboxTest.test_receipt_describes_its_manifest",
    "test_store_ddl.ExportOutboxTest.test_receipt_document_matches_its_columns",
    "test_store_ddl.ExportOutboxTest.test_receipt_status_rules",
+   "test_store_ddl.ExportOutboxTest.test_supersession_names_a_lower_pair",
    "test_store_ddl.ExportOutboxTest.test_written_count_rules",
+   "test_store_ddl.FacetImportanceTest.test_approval_needs_complete_rows_and_every_facet_rated",
    "test_store_ddl.FacetImportanceTest.test_critical_facet_with_zero_obligations_is_representable_and_blocks_approval",
+   "test_store_ddl.FacetImportanceTest.test_facet_proposal_cites_an_importance_receipt",
+   "test_store_ddl.HashContractTest.test_commit_receipt_records_the_frozen_contracts",
+   "test_store_ddl.HashContractTest.test_decision_receipt_records_the_frozen_canonicalization_only",
    "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper",
+   "test_store_ddl.HoldTest.test_decision_subject_must_exist_with_its_topic",
+   "test_store_ddl.HoldTest.test_operator_hold_cleared_only_by_operator_decision",
    "test_store_ddl.InvocationLifecycleTest.test_capability_is_unique_per_invocation",
+   "test_store_ddl.InvocationLifecycleTest.test_delegate_inherits_a_running_parent_of_its_topic",
    "test_store_ddl.InvocationLifecycleTest.test_delegate_names_its_parent",
+   "test_store_ddl.InvocationLifecycleTest.test_every_exit_needs_its_own_episodes_record",
    "test_store_ddl.InvocationLifecycleTest.test_found_committed_needs_the_final_receipt",
    "test_store_ddl.InvocationLifecycleTest.test_full_chain_allowed_but_skips_rejected",
    "test_store_ddl.InvocationLifecycleTest.test_invocations_start_admitted",
+   "test_store_ddl.InvocationLifecycleTest.test_launching_requires_launch_intent",
    "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle",
    "test_store_ddl.InvocationLifecycleTest.test_outcome_unknown_is_reconciled_not_skipped",
    "test_store_ddl.InvocationLifecycleTest.test_process_identity_is_write_once",
    "test_store_ddl.InvocationLifecycleTest.test_reconciliation_resolutions_and_evidence",
    "test_store_ddl.InvocationLifecycleTest.test_running_requires_process_identity_not_a_pid",
    "test_store_ddl.InvocationLifecycleTest.test_terminal_states_are_final",
+   "test_store_ddl.ObservationTest.test_degraded_search_cannot_report_zero",
    "test_store_ddl.ObservationTest.test_observation_invocation_is_of_its_topic",
    "test_store_ddl.ObservationTest.test_one_current_capability_fact_supersede_to_transition",
+   "test_store_ddl.ObservationTest.test_partial_results_are_kept_and_marked_incomplete",
+   "test_store_ddl.ObservationTest.test_retrieval_events_only_from_successful_searches",
+   "test_store_ddl.ObservationTest.test_searched_empty_is_exactly_zero_and_searched_ok_has_results",
    "test_store_ddl.ObservationTest.test_secrets_failure_is_a_dated_capability_fact",
+   "test_store_ddl.OrdinalAndTriggerTest.test_only_research_pass_final_outcomes_get_ordinals",
+   "test_store_ddl.OrdinalAndTriggerTest.test_ordinals_dense_and_once_per_invocation",
+   "test_store_ddl.OrdinalAndTriggerTest.test_trigger_identity_unique_and_handled_is_final",
+   "test_store_ddl.ScreeningAndDecisionTest.test_assessment_operation_invocation_and_reversal_are_of_its_topic",
+   "test_store_ddl.ScreeningAndDecisionTest.test_exclusion_requires_reason_code",
+   "test_store_ddl.ScreeningAndDecisionTest.test_fallback_label_cannot_carry_probability",
+   "test_store_ddl.ScreeningAndDecisionTest.test_missing_confidence_or_primitive_is_rejected_not_defaulted",
+   "test_store_ddl.ScreeningAndDecisionTest.test_provider_assessment_is_exactly_its_receipts_committed_action",
    "test_store_ddl.ScreeningAndDecisionTest.test_receipt_provider_must_match_spec",
    "test_store_ddl.ScreeningAndDecisionTest.test_shadow_decision_provider_cannot_write_authoritative_screening",
+   "test_store_ddl.ScreeningAndDecisionTest.test_unqualified_authority_is_capped",
+   "test_store_ddl.VerificationTest.test_absent_keys_are_not_passes",
+   "test_store_ddl.VerificationTest.test_accepted_support_needs_receipt_at_required_tier",
    "test_store_ddl.VerificationTest.test_claims_start_provisional",
+   "test_store_ddl.VerificationTest.test_load_bearing_receipt_states_its_claims_designation",
+   "test_store_ddl.VerificationTest.test_nli_alarm_quarantines_the_quote",
+   "test_store_ddl.VerificationTest.test_producer_cannot_verify_itself",
+   "test_store_ddl.VerificationTest.test_producer_unvalidated_extraction_rejected",
+   "test_store_ddl.VerificationTest.test_quote_check_binding",
    "test_store_ddl.VerificationTest.test_receipt_must_name_the_claims_real_producer",
    "test_store_ddl.VerificationTest.test_receipt_names_the_verifiers_own_capability",
    "test_store_ddl.VerificationTest.test_receipt_row_matches_its_json",
+   "test_store_ddl.VerificationTest.test_requested_by_is_same_topic_and_never_self",
+   "test_store_ddl.VerificationTest.test_sampling_never_qualifies_a_load_bearing_claim",
    "test_store_ddl.VerificationTest.test_support_needs_successful_checks_or_adjudication",
    "test_store_ddl.VerificationTest.test_supports_cannot_exceed_obtained_tier",
    "test_store_ddl.VerificationTest.test_truthful_unsuccessful_verdicts_may_record_unperformed_checks",
@@ -6133,12 +6243,42 @@
    "test_store_examples.ExampleWorldTest.test_obligation_rows_cannot_contradict_the_example_document",
    "test_store_examples.ExampleWorldTest.test_review_ra2r_self_parent_contract_cannot_rate_itself",
    "test_store_examples.ExampleWorldTest.test_the_example_documents_are_stored_whole",
+   "test_store_history.EveryTableSweepTest.test_append_only_tables_reject_every_update",
    "test_store_history.EveryTableSweepTest.test_every_table_is_populated",
+   "test_store_history.EveryTableSweepTest.test_no_table_can_be_deleted_from_or_replaced_into",
+   "test_store_history.EveryTableSweepTest.test_unreferenced_rows_cannot_be_deleted_either",
+   "test_store_history.RecordIdentityTest.test_claim_content_is_immutable_per_revision",
+   "test_store_history.RecordIdentityTest.test_hold_identity_class_and_authority_are_immutable",
+   "test_store_history.RecordIdentityTest.test_review_episode_closes_once",
+   "test_store_history.RecordIdentityTest.test_topic_identity_is_immutable",
+   "test_store_history.RecordIdentityTest.test_work_identity_is_immutable",
+   "test_store_history.ReplaceAndDeleteTest.test_connector_watermark_cannot_regress_by_delete_reinsert_or_replace",
+   "test_store_history.ReplaceAndDeleteTest.test_handled_trigger_replayed_after_its_episode_closed_stays_handled",
+   "test_store_history.ReplaceAndDeleteTest.test_replace_cannot_rewrite_a_receipt_on_any_key",
+   "test_store_history.ReplaceAndDeleteTest.test_update_or_replace_cannot_delete_the_approved_contract",
    "test_store_history.WithoutRecursiveTriggersTest.test_replace_rewrites_a_receipt_when_the_connection_contract_is_skipped",
+   "test_store_supervision.ArtifactTopicTest.test_a_topic_is_authorized_only_by_its_own_work",
+   "test_store_supervision.CancellationRecordTest.test_descendant_confirmation_is_write_once",
+   "test_store_supervision.CancellationRecordTest.test_the_cancellation_request_is_write_once",
+   "test_store_supervision.CancellationRecordTest.test_the_supervisor_may_request_a_cancellation",
+   "test_store_supervision.FailureRecordTest.test_a_failure_class_exists_only_on_a_failed_row",
+   "test_store_supervision.FailureRecordTest.test_a_failure_class_is_one_of_the_structural_findings",
+   "test_store_supervision.FailureRecordTest.test_end_evidence_exists_only_on_a_failed_or_cancelled_row",
+   "test_store_supervision.FailureRecordTest.test_end_evidence_is_a_recorded_artifact",
    "test_store_supervision.FailureRecordTest.test_every_listed_class_is_accepted",
+   "test_store_supervision.FailureRecordTest.test_the_failure_record_is_write_once",
+   "test_store_supervision.RecordedRequestTest.test_a_reconciliation_keeps_the_request_its_columns_record",
+   "test_store_supervision.RecordedRequestTest.test_a_transition_keeps_its_facts_as_an_object_or_none",
+   "test_store_supervision.UnknownHoldTest.test_a_cleared_hold_stays_cleared",
+   "test_store_supervision.UnknownHoldTest.test_a_hold_another_authority_clears_is_not_cleared",
+   "test_store_supervision.UnknownHoldTest.test_a_hold_is_not_created_cleared_by_a_record",
+   "test_store_supervision.UnknownHoldTest.test_an_episode_hold_clears_only_through_a_reconciliation",
+   "test_store_supervision.UnknownHoldTest.test_another_episode_is_not_cleared",
+   "test_store_supervision.UnknownHoldTest.test_another_invocations_hold_is_not_cleared",
+   "test_store_supervision.UnknownHoldTest.test_another_topics_hold_is_not_cleared",
    "test_store_supervision.UnknownHoldTest.test_the_episode_record_clears_its_hold"
   ],
-  "why": "all 71 candidates run under the mutant fail (72 of the 143 that take the path were not run): an over-restricting mutant refuses the accepted path, which every test tried needs (in its case or its fixture)"
+  "why": "a statement that succeeds enters trigger contract_approval_pointer_set_by_approval with its WHEN false on its own NEW-pointer conjunct (a draft's pointer written as NULL: nothing recorded), the alternative it admits without the removed approved-status exemption; no write path makes that statement. The other alternative, restating a pointer already recorded, needs an approval first, which the mutant refuses: all 143 traced candidates fail under it"
  },
  "RA3R-dropped": {
   "controls": [
@@ -6542,7 +6682,7 @@
   "controls": [
    "test_importer.DryRunMappingTest.test_every_record_is_classified_and_every_gap_is_surfaced"
   ],
-  "why": "gen2/importer/dry_run.py: executes line 674"
+  "why": "gen2/importer/dry_run.py: executes line 674; or executes line 649"
  },
  "V10-importer-report-omits-admission": {
   "controls": [
