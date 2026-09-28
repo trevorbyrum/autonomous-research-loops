@@ -23,6 +23,7 @@ import unittest
 from unittest import mock
 
 from gen2.operator.auth import Credentials, CredentialsRefused, Principal
+from gen2.operator.service import OperatorService
 from gen2.tests import operator_fixtures as of
 from gen2.tests import router_fixtures as rf
 from gen2.tests.router_fixtures import TOPIC
@@ -589,7 +590,7 @@ class CarriedFormsTest(of.CommandWorld):
                 ("percent-encoded", json.dumps(percent(of.OPERATOR_TOKEN)), of.OPERATOR_TOKEN),
                 ("upper-case percent", json.dumps(percent(of.OPERATOR_TOKEN, upper=True)), of.OPERATOR_TOKEN),
                 ("partly percent-encoded", json.dumps(percent(of.OPERATOR_TOKEN, every=3)), of.OPERATOR_TOKEN),
-                ("percent-encoded twice", json.dumps(percent(percent(of.OPERATOR_TOKEN))), of.OPERATOR_TOKEN),
+                ("percent-encoded twice", json.dumps(percent(percent(of.OPERATOR_TOKEN[:2])) + of.OPERATOR_TOKEN[2:]), of.OPERATOR_TOKEN),  # within the id's 200
                 ("encoded inside other text", json.dumps("req-" + percent(of.OTHER_OPERATOR_TOKEN) + "-7"), of.OTHER_OPERATOR_TOKEN)):
             with self.subTest(label=label):
                 self.logs.clear()
@@ -606,6 +607,23 @@ class CarriedFormsTest(of.CommandWorld):
                 self.assertEqual((reply["id"], reply["result"]["isError"]), (ident, False), answer[:200])
         answer, reply = self.exchange("/mcp", self.tool_call(cancel, ident="req-8"))
         self.assertEqual((reply["id"], json.loads(reply["result"]["content"][0]["text"])["status"]), ("req-8", "recorded"))
+
+    def test_the_tool_text_is_redacted_before_it_is_nested_whatever_the_boundary_does(self) -> None:
+        """The layer on its own, before the reply's own pass at the boundary
+        (which also takes out a JSON-escaped token): the service's MCP answer
+        as _mcp builds it, for a backend whose reply names the token, holds
+        the token in no form in the nested text, and the text decodes to the
+        redacted reply."""
+        token = self.ESCAPING[0]
+        creds = Credentials({"alice": of.OPERATOR_TOKEN}, token)
+        backend = mock.Mock()
+        backend.request_cancel.return_value = {"status": "refused", "reason": "request_invalid", "detail": f"/{token}: no value is allowed here"}
+        service = OperatorService(backend, creds)
+        code, answer, route = service._mcp(Principal("alice", "operator"), self.tool_call({"invocation_id": of.RUNNING, "reason": "stop"}))
+        text = answer["result"]["content"][0]["text"]
+        self.assertEqual((code, route, json.loads(text)), (200, "/mcp:request_cancel",
+                                                           {"status": "refused", "reason": "request_invalid", "detail": "/[credential]: no value is allowed here"}))
+        self.assert_absent(token, text)
 
 
 class CredentialsTest(unittest.TestCase):
