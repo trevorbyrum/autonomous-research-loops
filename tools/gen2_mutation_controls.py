@@ -237,7 +237,28 @@ MANUAL: dict[str, dict] = {
          "passes gen2/router/scheduling.py's threshold guard (line 193) without taking it: a facet rated critical meets the threshold"),
         ("1D-sched-review-conflict-replayed", "test_router_scheduling.SignalQueueTest.test_the_same_review_again_replays",
          "passes gen2/router/scheduling.py's review-conflict guard (line 201) without taking it: the identical review replays"),
+        ("1D-sched-policy-budget-unbounded", "test_router_scheduling.RequeueTest.test_policy_requeues_within_a_larger_budget",
+         "passes gen2/router/scheduling.py's budget guard (if policy is None or attempt - 1 > attempts) without taking it, a first retry "
+         "within a budget of two, and is re-queued"),
+        ("1D-sched-policy-budget-short", "test_router_scheduling.RequeueTest.test_policy_requeues_within_a_larger_budget",
+         "passes the same guard clear of its boundary (one retry spent of two), where > and >= agree"),
+        ("1D-sched-exhaustion-without-hold", "test_router_scheduling.RequeueTest.test_policy_past_its_budget_requeues_nothing",
+         "executes the exhausted branch, the changed hold insert included, and asserts what the branch does besides the hold: the "
+         "answer is exhausted and nothing is re-queued"),
+        ("1D-sched-lane-gate-never", "test_router_scheduling.ReservationTest.test_a_reservation_is_sized_by_the_bundle_and_drawn_within_its_units",
+         "passes gen2/router/scheduling.py's lane guard with each lane's last work absent or live, for claims naming no retry"),
     )},
+    # task 1d: no accepted path exists through these changed statements
+    "1D-registry-revocation-not-recorded": {
+        "controls": [],
+        "why": "the changed statement is the revocation's write itself (gen2/router/registries.py, the qualifications update), under no guard "
+               "of its own: its only effect is the write, so every test through it asserts or relies on the recorded revocation (a replay, "
+               "the refusal it causes, the restart that keeps it) and none can pass under a mutant that drops it"},
+    "1D-amend-amendment-without-facets": {
+        "controls": [],
+        "why": "the changed loop writes an amendment's facet rows; contract-v2 requires facets and the DDL admits an obligation row only when "
+               "the facets it tags are rows of its revision, so no amendment is recorded without them: every proposal through the loop "
+               "fails under the mutant (probed: 0 of 12 candidates pass), and the loop has no accepted alternative to pair"},
     "TO-differences-ignored": {
         "controls": [], "in_killer": ["test_trigger_order_tool.TriggerOrderToolTest.test_outcomes_must_be_green_and_identical"],
         "why": "the killer asserts the accepted case (identical green outcomes: no problem) before the refusals; " + _ORDER},

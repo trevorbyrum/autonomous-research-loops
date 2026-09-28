@@ -51,7 +51,7 @@ class PolicyCase(RouterTestCase):
         extra.setdefault("config_bundle_hash", POLICY_HASH)  # new work pins the active bundle
         return super().claim(inv, kind, tid, **extra)
 
-    def fail(self, grant: dict, failure_class: str = "killed") -> None:
+    def fail_work(self, grant: dict, failure_class: str = "killed") -> None:
         out = self.router.record_transition({"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"], "to_state": "failed",
                                              "failure_class": failure_class, "end_evidence_ref": self.evidence(grant, (failure_class,))})
         assert out["status"] == "recorded", out
@@ -80,7 +80,7 @@ class RequeueTest(PolicyCase):
         for kind in KINDS:
             with self.subTest(kind):
                 first = self.started(f"inv_{kind[:6]}01", kind)
-                self.fail(first)
+                self.fail_work(first)
                 before = self.state()
                 self.refused(self.claim(f"inv_{kind[:6]}02", kind), "requeue_required", before, f"{first['invocation_id']}, the last")
                 self.refused(self.claim(f"inv_{kind[:6]}02", kind, retry_of=first["invocation_id"]), "requeue_required", before)  # named, not yet re-queued
@@ -92,7 +92,7 @@ class RequeueTest(PolicyCase):
                 self.assertEqual(self.rows("SELECT attempt, requested_by, retry_invocation_id FROM retries WHERE invocation_id = ?", first["invocation_id"]),
                                  [(2, "policy", second["invocation_id"])])
                 self.running(second)
-                self.fail(second)
+                self.fail_work(second)
                 out = self.requeue(second["invocation_id"])  # attempt 3 is past a budget of one retry
                 self.assertEqual(out["status"], "exhausted", out)
                 self.assertEqual(self.rows("SELECT subject_ref, hold_class, required_authority, owner, cleared_at FROM holds WHERE hold_id = ?", out.get("hold_id")),
@@ -108,11 +108,31 @@ class RequeueTest(PolicyCase):
                 self.assertEqual(self.finish(third, f"op_{kind[:6]}0003")["status"], "committed")
                 self.assertEqual(self.claim(f"inv_{kind[:6]}04", kind)["status"], "granted")  # a lane whose last work committed takes fresh work
 
+    def test_policy_requeues_within_a_larger_budget(self) -> None:
+        """The budget guard's accepted path, clear of its boundary: under a
+        budget of two retries, the first policy re-queue is well within it."""
+        wider = {**POLICY, "version": 3, "policy": {"router": {**POLICY["policy"]["router"], "retry": {"attempts": 2, "failure_classes": ["killed"]}}}}
+        self.assertEqual(self.router.activate_config_bundle(wider).get("status"), "activated")
+        first = self.started("inv_discov01", "discovery", config_bundle_hash=canonical.logical_hash(wider))
+        self.fail_work(first)
+        self.assertEqual(self.requeue("inv_discov01"), {"status": "requeued", "invocation_id": "inv_discov01", "attempt": 2})
+
+    def test_policy_past_its_budget_requeues_nothing(self) -> None:
+        """Past the budget, policy's answer is exhausted and no re-queue is
+        written (the hold it opens is test_every_kinds_lane_...'s)."""
+        first = self.started("inv_discov01", "discovery")
+        self.fail_work(first)
+        self.requeue("inv_discov01")
+        second = self.started("inv_discov02", "discovery", retry_of="inv_discov01")
+        self.fail_work(second)
+        self.assertEqual(self.requeue("inv_discov02").get("status"), "exhausted")
+        self.assertEqual(self.rows("SELECT invocation_id FROM retries ORDER BY rowid"), [("inv_discov01",)])
+
     def test_the_hold_deadline_is_the_pinned_bundles_window(self) -> None:
-        self.fail(first := self.started("inv_discov01", "discovery"))
+        self.fail_work(first := self.started("inv_discov01", "discovery"))
         self.requeue(first["invocation_id"])
         second = self.started("inv_discov02", "discovery", retry_of=first["invocation_id"])
-        self.fail(second)
+        self.fail_work(second)
         hold_id = self.requeue(second["invocation_id"]).get("hold_id")
         created, deadline = self.rows("SELECT created_at, deadline_at FROM holds WHERE hold_id = ?", hold_id)[0]
         self.assertEqual((utc_instant_ns(deadline) - utc_instant_ns(created)) // 10**9, 600)
@@ -121,7 +141,7 @@ class RequeueTest(PolicyCase):
         """L-6: a semantic failure, or a cancellation the operator made, is the
         operator's to diagnose; a failure class the bundle lists, or a
         cancellation the supervisor or the router made, is policy's."""
-        cases = (("an empty output", "discovery", lambda g: self.fail(g, "empty_output"), False),
+        cases = (("an empty output", "discovery", lambda g: self.fail_work(g, "empty_output"), False),
                  ("an operator's cancellation", "checkpoint", lambda g: self.router.request_cancel(
                      {"invocation_id": g["invocation_id"], "requested_by": "operator", "reason": "stop"}), False),
                  ("the supervisor's cancellation", "verification", lambda g: self.router.request_cancel(
@@ -168,10 +188,10 @@ class RequeueTest(PolicyCase):
         self.running(first)
         self.clock.set("2026-09-27T10:31:00Z")
         second = self.started("inv_discov02", "discovery")  # the expired lease is released and replaced
-        self.fail(first)
+        self.fail_work(first)
         before = self.state()
         self.refused(self.requeue("inv_discov01"), "not_requeueable", before, "only the last work of a lane")
-        self.fail(second)
+        self.fail_work(second)
         self.assertEqual(self.requeue("inv_discov02")["status"], "requeued")
 
     def test_the_same_requeue_again_replays(self) -> None:

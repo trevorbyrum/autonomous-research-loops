@@ -3259,8 +3259,8 @@
   "why": "passes gen2/router/amendments.py's amendment-conflict guard (line 196) without taking it: the identical revision replays"
  },
  "1D-amend-amendment-without-facets": {
+  "by_hand": true,
   "controls": [],
-  "exhausted": 13,
   "rejected": [
    "test_router_amendments.AmendmentApprovalTest.test_a_framing_change_is_approved_as_a_reframe_and_only_as_one",
    "test_router_amendments.AmendmentApprovalTest.test_an_amendment_revises_the_approved_revision",
@@ -3276,7 +3276,7 @@
    "test_router_amendments.ImpactTest.test_the_record_lists_what_stood_until_now",
    "test_router_scheduling.ReservationTest.test_an_amendment_closes_the_reservations_of_the_revision_it_supersedes"
   ],
-  "why": "all 13 candidates run under the mutant fail (0 of the 13 that take the path were not run): the mutant changes what the accepted path does rather than removing a refusal"
+  "why": "the changed loop writes an amendment's facet rows; contract-v2 requires facets and the DDL admits an obligation row only when the facets it tags are rows of its revision, so no amendment is recorded without them: every proposal through the loop fails under the mutant (probed: 0 of 12 candidates pass), and the loop has no accepted alternative to pair"
  },
  "1D-amend-amendment-without-obligations": {
   "controls": [
@@ -3900,14 +3900,14 @@
   "why": "passes gen2/router/registries.py's revocation-conflict guard (line 180) without taking it: the identical revocation replays"
  },
  "1D-registry-revocation-not-recorded": {
+  "by_hand": true,
   "controls": [],
-  "exhausted": 3,
   "rejected": [
    "test_router_registries.QualificationRecordTest.test_a_revocation_between_validation_and_the_write_is_seen",
    "test_router_registries.QualificationRecordTest.test_revocation_replays_conflicts_and_needs_a_record",
    "test_router_registries.RegistryRestartTest.test_a_revocation_survives_a_restart"
   ],
-  "why": "all 3 candidates run under the mutant fail (0 of the 3 that take the path were not run): the mutant changes what the accepted path does rather than removing a refusal"
+  "why": "the changed statement is the revocation's write itself (gen2/router/registries.py, the qualifications update), under no guard of its own: its only effect is the write, so every test through it asserts or relies on the recorded revocation (a replay, the refusal it causes, the restart that keeps it) and none can pass under a mutant that drops it"
  },
  "1D-registry-revoked-still-qualified": {
   "controls": [
@@ -4061,21 +4061,25 @@
   "why": "gen2/router/service.py: leaves line 891 for a line outside 891-893 (or returns)"
  },
  "1D-sched-budget-unbounded": {
-  "controls": [],
+  "controls": [
+   "test_router_scheduling.SignalQueueTest.test_the_same_review_again_replays"
+  ],
   "rejected": [
    "test_router_scheduling.SignalQueueTest.test_the_cadence_floor_and_mandatory_signals_are_never_held_back"
   ],
-  "why": "no candidate: gen2/router/scheduling.py: leaves line 216 for a line outside 216-217 (or returns)"
+  "why": "gen2/router/scheduling.py: leaves line 216 for a line outside 216-217 (or returns)"
  },
  "1D-sched-budget-windowless": {
   "controls": [
-   "test_router_scheduling.SignalQueueTest.test_the_cadence_floor_and_mandatory_signals_are_never_held_back"
+   "test_router_scheduling.SignalQueueTest.test_the_same_review_again_replays"
   ],
   "why": "gen2/router/scheduling.py: executes line 215; or executes line 207"
  },
  "1D-sched-cooldown-ignored": {
-  "controls": [],
-  "why": "no candidate: gen2/router/scheduling.py: leaves line 218 for a line outside 218-219 (or returns)"
+  "controls": [
+   "test_router_scheduling.SignalQueueTest.test_the_same_review_again_replays"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 218 for a line outside 218-219 (or returns)"
  },
  "1D-sched-draw-below-threshold": {
   "by_hand": true,
@@ -4085,73 +4089,89 @@
   "why": "passes gen2/router/scheduling.py's threshold guard (line 193) without taking it: a facet rated critical meets the threshold"
  },
  "1D-sched-draw-beyond-units": {
-  "controls": [],
-  "why": "no candidate: gen2/router/scheduling.py: leaves line 190 for a line outside 190-191 (or returns)"
+  "controls": [
+   "test_router_scheduling.ReservationTest.test_an_auto_promotion_draw_inside_a_critical_facet"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 190 for a line outside 190-191 (or returns)"
  },
  "1D-sched-draw-closed": {
-  "controls": [],
-  "why": "no candidate: gen2/router/scheduling.py: leaves line 188 for a line outside 188-189 (or returns)"
+  "controls": [
+   "test_router_scheduling.ReservationTest.test_an_auto_promotion_draw_inside_a_critical_facet"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 188 for a line outside 188-189 (or returns)"
  },
  "1D-sched-exhausted-left-open": {
   "controls": [
-   "test_router_scheduling.ReservationTest.test_a_reservation_is_sized_by_the_bundle_and_drawn_within_its_units"
+   "test_router_scheduling.ReservationTest.test_the_same_reservation_again_replays"
   ],
   "why": "gen2/router/scheduling.py: executes line 175; or executes line 172"
  },
  "1D-sched-exhaustion-without-hold": {
-  "controls": [],
-  "exhausted": 1,
+  "by_hand": true,
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_policy_past_its_budget_requeues_nothing"
+  ],
   "rejected": [
    "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
   ],
-  "why": "all 1 candidates run under the mutant fail (0 of the 1 that take the path were not run): the mutant changes what the accepted path does rather than removing a refusal"
+  "why": "executes the exhausted branch, the changed hold insert included, and asserts what the branch does besides the hold: the answer is exhausted and nothing is re-queued"
  },
  "1D-sched-floor-held-back": {
   "controls": [
-   "test_router_scheduling.SignalQueueTest.test_reviews_coalesce_within_budget_and_cooldown_and_drop_nothing"
+   "test_router_scheduling.SignalQueueTest.test_the_same_review_again_replays"
   ],
   "why": "gen2/router/scheduling.py: executes line 207"
  },
  "1D-sched-lane-claimed-unnamed": {
-  "controls": [],
-  "why": "no candidate: gen2/router/scheduling.py: leaves line 149 for a line outside 149-150 (or returns)"
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 149 for a line outside 149-150 (or returns)"
  },
  "1D-sched-lane-claimed-unrequeued": {
-  "controls": [],
-  "why": "no candidate: gen2/router/scheduling.py: leaves line 149 for a line outside 149-150 (or returns)"
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 149 for a line outside 149-150 (or returns)"
  },
  "1D-sched-lane-gate-never": {
-  "controls": [],
-  "exhausted": 4,
+  "by_hand": true,
+  "controls": [
+   "test_router_scheduling.ReservationTest.test_a_reservation_is_sized_by_the_bundle_and_drawn_within_its_units"
+  ],
   "rejected": [
    "test_router_amendments.ImpactTest.test_a_stale_claim_is_not_promoted_and_an_adopted_revision_is",
    "test_router_scheduling.RequeueTest.test_a_retry_names_only_the_lanes_waiting_work",
    "test_router_scheduling.RequeueTest.test_only_a_lanes_last_ended_non_delegate_work_is_requeued",
    "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
   ],
-  "why": "all 4 candidates run under the mutant fail (0 of the 4 that take the path were not run): the mutant changes what the accepted path does rather than removing a refusal"
+  "why": "passes gen2/router/scheduling.py's lane guard with each lane's last work absent or live, for claims naming no retry"
  },
  "1D-sched-mandatory-held-back": {
   "controls": [
-   "test_router_scheduling.SignalQueueTest.test_reviews_coalesce_within_budget_and_cooldown_and_drop_nothing"
+   "test_router_scheduling.SignalQueueTest.test_the_same_review_again_replays"
   ],
   "why": "gen2/router/scheduling.py: executes line 207"
  },
  "1D-sched-policy-budget-short": {
-  "controls": [],
-  "exhausted": 1,
+  "by_hand": true,
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_policy_requeues_within_a_larger_budget"
+  ],
   "rejected": [
    "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
   ],
-  "why": "all 1 candidates run under the mutant fail (0 of the 1 that take the path were not run): the mutant changes what the accepted path does rather than removing a refusal"
+  "why": "passes the same guard clear of its boundary (one retry spent of two), where > and >= agree"
  },
  "1D-sched-policy-budget-unbounded": {
-  "controls": [],
-  "exhausted": 1,
+  "by_hand": true,
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_policy_requeues_within_a_larger_budget"
+  ],
   "rejected": [
    "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
   ],
-  "why": "all 1 candidates run under the mutant fail (0 of the 1 that take the path were not run): the mutant changes what the accepted path does rather than removing a refusal"
+  "why": "passes gen2/router/scheduling.py's budget guard (if policy is None or attempt - 1 > attempts) without taking it, a first retry within a budget of two, and is re-queued"
  },
  "1D-sched-policy-requeues-any-failure": {
   "controls": [
@@ -4166,8 +4186,10 @@
   "why": "gen2/router/scheduling.py: executes line 116; or executes line 114"
  },
  "1D-sched-queue-unconfigured-unbounded": {
-  "controls": [],
-  "why": "no candidate: gen2/router/scheduling.py: leaves line 212 for a line outside 212-213 (or returns); or leaves line 212 for a line outside 212-213 (or returns)"
+  "controls": [
+   "test_router_scheduling.SignalQueueTest.test_the_same_review_again_replays"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 212 for a line outside 212-213 (or returns); or leaves line 212 for a line outside 212-213 (or returns)"
  },
  "1D-sched-requeue-conflict-replayed": {
   "by_hand": true,
@@ -4177,16 +4199,22 @@
   "why": "passes gen2/router/scheduling.py's re-queue conflict guard (line 103) without taking it: the identical re-queue replays"
  },
  "1D-sched-requeue-ignores-incident": {
-  "controls": [],
-  "why": "no candidate: gen2/router/scheduling.py: leaves line 110 for a line outside 110-111 (or returns)"
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_same_requeue_again_replays"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 110 for a line outside 110-111 (or returns)"
  },
  "1D-sched-requeue-live-work": {
-  "controls": [],
-  "why": "no candidate: gen2/router/scheduling.py: leaves line 107 for a line outside 107-108 (or returns)"
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_same_requeue_again_replays"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 107 for a line outside 107-108 (or returns)"
  },
  "1D-sched-requeue-not-the-lanes-last": {
-  "controls": [],
-  "why": "no candidate: gen2/router/scheduling.py: leaves line 107 for a line outside 107-108 (or returns)"
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_same_requeue_again_replays"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 107 for a line outside 107-108 (or returns)"
  },
  "1D-sched-reservation-conflict-replayed": {
   "by_hand": true,
@@ -4203,16 +4231,22 @@
   "why": "passes gen2/router/scheduling.py's open-reservation guard (line 172) without taking it: the open one has no units left, so it closes and the next opens"
  },
  "1D-sched-reservation-unsized": {
-  "controls": [],
-  "why": "no candidate: gen2/router/scheduling.py: leaves line 169 for a line outside 169-170 (or returns); or leaves line 169 for a line outside 169-170 (or returns)"
+  "controls": [
+   "test_router_scheduling.ReservationTest.test_the_same_reservation_again_replays"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 169 for a line outside 169-170 (or returns); or leaves line 169 for a line outside 169-170 (or returns)"
  },
  "1D-sched-reservation-without-approval": {
-  "controls": [],
-  "why": "no candidate: gen2/router/scheduling.py: leaves line 165 for a line outside 165-166 (or returns); or leaves line 165 for a line outside 165-166 (or returns)"
+  "controls": [
+   "test_router_scheduling.ReservationTest.test_the_same_reservation_again_replays"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 165 for a line outside 165-166 (or returns); or leaves line 165 for a line outside 165-166 (or returns)"
  },
  "1D-sched-retry-of-anything": {
-  "controls": [],
-  "why": "no candidate: gen2/router/scheduling.py: leaves line 152 for a line outside 152-153 (or returns)"
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_same_requeue_again_replays"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 152 for a line outside 152-153 (or returns)"
  },
  "1D-sched-review-conflict-replayed": {
   "by_hand": true,
@@ -4222,12 +4256,14 @@
   "why": "passes gen2/router/scheduling.py's review-conflict guard (line 201) without taking it: the identical review replays"
  },
  "1D-sched-review-without-signal": {
-  "controls": [],
-  "why": "no candidate: gen2/router/scheduling.py: leaves line 208 for a line outside 208-209 (or returns)"
+  "controls": [
+   "test_router_scheduling.SignalQueueTest.test_the_same_review_again_replays"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 208 for a line outside 208-209 (or returns)"
  },
  "1D-sched-signals-dropped": {
   "controls": [
-   "test_router_scheduling.SignalQueueTest.test_the_cadence_floor_and_mandatory_signals_are_never_held_back"
+   "test_router_scheduling.SignalQueueTest.test_the_same_review_again_replays"
   ],
   "why": "gen2/router/scheduling.py: executes line 221"
  },
