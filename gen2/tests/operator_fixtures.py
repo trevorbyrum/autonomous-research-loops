@@ -21,7 +21,10 @@ from __future__ import annotations
 
 import http.client
 import json
+import os
+import select
 import sqlite3
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -30,6 +33,7 @@ from gen2.app.station import open_station
 from gen2.operator.auth import Credentials
 from gen2.store import api
 from gen2.supervisor.spool import Spool
+from gen2.tests import children
 from gen2.tests import router_fixtures as rf
 from gen2.tests import store_fixtures
 
@@ -152,6 +156,86 @@ class OperatorTestCase(rf.RouterTestCase):
         out = self.router.record_transition({"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"], "to_state": "failed",
                                              "failure_class": failure_class, "end_evidence_ref": evidence})
         assert out["status"] == "recorded", out
+
+
+class EngineProcesses:
+    """For an OperatorTestCase whose engines are processes of their own
+    (`python -m gen2.app.engine`, or a child module serving it), started
+    through children.py so each imports the code tree under test, with the
+    deployment contract's environment names; and the CLI as its own process.
+
+    Every engine process's whole output is collected when it is stopped
+    (stop()) — its stderr log, and every byte of its stdout: the line read
+    at its start to learn its address, and what followed — and every
+    assertion about that output is made after the collection: each started
+    engine stopped and collected, none empty, each saying what it should
+    (Astra 1e review finding 7: a check run before the collection passed on
+    nothing; Astra 1e-repair re-review finding 3: the line read at the start
+    was left out of it)."""
+    ENV = {"GEN2_SECRETS": "env", "GEN2_OPERATOR_LISTEN": "127.0.0.1:0", "GEN2_OPERATOR_TOKENS": f"alice={OPERATOR_TOKEN},bob={OTHER_OPERATOR_TOKEN}",
+           "GEN2_SECRET_EXPORTER_TOKEN": EXPORTER_TOKEN}
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.started = 0  # engine processes started: each writes its own log
+        self.running: dict[subprocess.Popen, tuple] = {}  # started and not yet stopped: the process -> (its log, the stdout read from it so far)
+        self.engines: list[str] = []  # each stopped engine's whole output, in the order they stopped
+        self.clis: list[str] = []  # each CLI run's stdout and stderr
+
+    def spawn(self, args: list[str] | None = None, **env) -> tuple[subprocess.Popen, str | None]:
+        """Start an engine process — `python -m gen2.app.engine` over this
+        test's root, or `args` — and read its first stdout line; (the
+        process, its URL), or (the process, None) if that line names no
+        address. The line read is kept as the start of its stdout."""
+        self.started += 1
+        log = open(self.root / f"engine-{self.started}.log", "w+")
+        environ = {k: v for k, v in {**os.environ, **self.ENV, **env}.items() if v is not None}
+        process = children.popen(args or ["-m", "gen2.app.engine", "--root", str(self.root), "--station-id", "station-1", "--host-id", "host-1"],
+                                 env=environ, stdout=subprocess.PIPE, stderr=log, text=True)
+        read: list[str] = []
+        self.running[process] = (log, read)
+        self.addCleanup(self.stop, process)  # a test failing before it stops an engine
+        ready, _, _ = select.select([process.stdout], [], [], 30)
+        line = process.stdout.readline() if ready else ""
+        read.append(line)
+        return process, (f"http://{line.split()[-1]}" if line.startswith("listening on ") else None)
+
+    def stop(self, process: subprocess.Popen) -> str:
+        """End the engine — SIGTERM ends it where it stands; one that ended
+        by itself is reaped — and collect its whole output: its log, then
+        its stdout from its first byte. Once per process."""
+        log, read = self.running.pop(process, (None, None))
+        if log is None:
+            return ""
+        if process.poll() is None:
+            process.terminate()
+        process.wait(timeout=30)
+        with log:
+            log.seek(0)
+            output = log.read() + "".join(read) + (process.stdout.read() or "")
+        process.stdout.close()
+        self.engines.append(output)
+        return output
+
+    def cli(self, url: str, token: str | None, *args: str, body: dict | None = None) -> tuple[int, object]:
+        environ = {**os.environ, "GEN2_OPERATOR_URL": url, "GEN2_OPERATOR_TOKEN": token or ""}
+        done = children.python(["-m", "gen2.app.cli", *args], env=environ, input=None if body is None else json.dumps(body),
+                               capture_output=True, text=True, timeout=60)
+        self.clis.append(done.stdout + done.stderr)
+        return done.returncode, json.loads(done.stdout) if done.stdout.strip() else None
+
+    def assert_collected(self, count: int, says: str) -> None:
+        """Every engine this test started was stopped and its output
+        collected — `count` of them, none empty — and each says `says`."""
+        self.assertEqual((self.started, len(self.engines), self.running), (count, count, {}))
+        for output in self.engines:
+            self.assertIn(says, output)
+
+    def assert_no_token_in_any_output(self, *extra: str) -> None:
+        self.assertTrue(self.engines and all(self.engines), "no engine output was collected to check")
+        for output in (*self.engines, *self.clis):
+            for token in (*TOKENS, *extra):
+                self.assertNotIn(token, output)
 
 
 # The world CommandWorld builds, by name: each operator command has a body the

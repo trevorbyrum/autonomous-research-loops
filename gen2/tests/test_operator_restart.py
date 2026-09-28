@@ -17,9 +17,7 @@ from __future__ import annotations
 import io
 import json
 import os
-import select
 import socket
-import subprocess
 import threading
 import unittest
 
@@ -50,61 +48,16 @@ class RestartTest(of.CommandWorld):
         self.assertEqual(self.rows("SELECT closed_by FROM intake_briefs WHERE topic_id = ? AND status = 'archived'", TOPIC), [("bob",)])
 
 
-class ReplacementTest(of.OperatorTestCase):
-    """Every engine process's whole output — its stderr log and what is left
-    of its stdout — is collected when it is stopped (stop()), and every
-    assertion about it is made after that: each started engine stopped and
-    collected, none empty, each saying what it should (Astra 1e review
-    finding 7: a check run before the collection passed on nothing)."""
-    ENV = {"GEN2_SECRETS": "env", "GEN2_OPERATOR_LISTEN": "127.0.0.1:0", "GEN2_OPERATOR_TOKENS": f"alice={of.OPERATOR_TOKEN},bob={of.OTHER_OPERATOR_TOKEN}",
-           "GEN2_SECRET_EXPORTER_TOKEN": of.EXPORTER_TOKEN}
+class ReplacementTest(of.EngineProcesses, of.OperatorTestCase):
+    """Engine processes and the CLI as processes of their own; every
+    engine's whole output collected before it is checked
+    (of.EngineProcesses)."""
 
     def setUp(self) -> None:
         super().setUp()
         self.engine.close()  # this test's engines are processes of their own
         self.engine = None
         self.brief()
-        self.started = 0  # engine processes started: each writes its own log
-        self.running: dict[subprocess.Popen, object] = {}  # started and not yet stopped: the process -> its log
-        self.engines: list[str] = []  # each stopped engine's whole output, in the order they stopped
-        self.clis: list[str] = []  # each CLI run's stdout and stderr
-
-    def spawn(self, **env) -> tuple[subprocess.Popen, str | None]:
-        """Start the engine process; (the process, its URL), or (the process,
-        None) if it printed no address."""
-        self.started += 1
-        log = open(self.root / f"engine-{self.started}.log", "w+")
-        environ = {k: v for k, v in {**os.environ, **self.ENV, **env}.items() if v is not None}
-        process = children.popen(["-m", "gen2.app.engine", "--root", str(self.root), "--station-id", "station-1", "--host-id", "host-1"],
-                                 env=environ, stdout=subprocess.PIPE, stderr=log, text=True)
-        self.running[process] = log
-        self.addCleanup(self.stop, process)  # a test failing before it stops an engine
-        ready, _, _ = select.select([process.stdout], [], [], 30)
-        line = process.stdout.readline() if ready else ""
-        return process, (f"http://{line.split()[-1]}" if line.startswith("listening on ") else None)
-
-    def stop(self, process: subprocess.Popen) -> str:
-        """End the engine — SIGTERM ends it where it stands; one that ended
-        by itself is reaped — and collect its whole output. Once per process."""
-        log = self.running.pop(process, None)
-        if log is None:
-            return ""
-        if process.poll() is None:
-            process.terminate()
-        process.wait(timeout=30)
-        with log:
-            log.seek(0)
-            output = log.read() + (process.stdout.read() or "")
-        process.stdout.close()
-        self.engines.append(output)
-        return output
-
-    def cli(self, url: str, token: str | None, *args: str, body: dict | None = None) -> tuple[int, object]:
-        environ = {**os.environ, "GEN2_OPERATOR_URL": url, "GEN2_OPERATOR_TOKEN": token or ""}
-        done = children.python(["-m", "gen2.app.cli", *args], env=environ, input=None if body is None else json.dumps(body),
-                               capture_output=True, text=True, timeout=60)
-        self.clis.append(done.stdout + done.stderr)
-        return done.returncode, json.loads(done.stdout) if done.stdout.strip() else None
 
     def test_a_replacement_process_serves_the_same_principals_permissions_and_state(self) -> None:
         confirm = self.decision("opd_brief0001", "brief_confirmation", {"kind": "intake_brief", "ref": "brief-1", "revision": 1,
@@ -150,19 +103,6 @@ class ReplacementTest(of.OperatorTestCase):
                 self.stop(process)
         self.assert_collected(3, "gen2 engine refused to start: ")
         self.assert_no_token_in_any_output()
-
-    def assert_collected(self, count: int, says: str) -> None:
-        """Every engine this test started was stopped and its output
-        collected — `count` of them, none empty — and each says `says`."""
-        self.assertEqual((self.started, len(self.engines), self.running), (count, count, {}))
-        for output in self.engines:
-            self.assertIn(says, output)
-
-    def assert_no_token_in_any_output(self, *extra: str) -> None:
-        self.assertTrue(self.engines and all(self.engines), "no engine output was collected to check")
-        for output in (*self.engines, *self.clis):
-            for token in (*of.TOKENS, *extra):
-                self.assertNotIn(token, output)
 
 
 class CliTest(of.CommandWorld):
