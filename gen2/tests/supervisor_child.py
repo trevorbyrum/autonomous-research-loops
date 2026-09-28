@@ -37,7 +37,7 @@ def main(argv: list[str]) -> int:
                 print("holding", flush=True)
                 time.sleep(120)
             os._exit(137)
-    station = open_station(root, station_id="station-1", host_id="host-test", clock=rf.Clock(start), policy=FAST,
+    station = open_station(root, station_id="station-1", host_id="host-test", clock=rf.Clock(start), fixture_policy=FAST,
                            supervisor_options={"launcher": launcher(), "fault": die})
     print(station.supervisor.run(invocation_id, timeout_s=60))
     return 3

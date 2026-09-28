@@ -1,21 +1,29 @@
 """The composition root with a mounted config bundle (task 1d): the router
 activates it at start, and the supervisor takes each job's policy from the
-bundle that job was admitted under — across a restart onto a newer bundle.
+bundle that job was admitted under — across a restart onto a newer bundle,
+and across a restart with nothing mounted (the active bundle restored; with
+none, no start). Through the station too: a failed job's re-queued retry
+runs, a mounted fractional hold window is kept, and a restored bundle
+clears the failure a refused one raised (task 1d-repair, Astra 1d review
+findings 2-5).
 
-Trace: INVARIANTS G-10, RG-9, C-12; DEPLOYMENT-CONTRACT.md §2 ("in-flight
-work keeps the bundle it was admitted under ... a mounted edit applies to
-the next admission"; "the engine does not start on an invalid bundle");
-gen2/app/station.py; gen2/supervisor/supervisor.py (Supervisor._policy).
+Trace: INVARIANTS G-10, RG-9, C-12, L-6, H-2; DEPLOYMENT-CONTRACT.md §2
+("in-flight work keeps the bundle it was admitted under ... a mounted edit
+applies to the next admission"; "the engine does not start on an invalid
+bundle"; restart preserves configuration pins); gen2/app/station.py;
+gen2/supervisor/supervisor.py (Supervisor._policy, WorkOrder).
 
 Oracle: behaviour, not the resolved object. The launch budget decides how
 many advances a paused topic's admitted job waits before the supervisor
 cancels it; the two bundles give it 1 and 4, so the count of waits says
 which bundle governed the job.
 
-Structural limits: the job never launches (its topic is paused), so no
-executor runs; the other budgets are pinned by the same resolution
-(Supervisor._policy), which test_supervisor_* exercise with the station's
-own policy.
+Structural limits: in the budget cases the job never launches (its topic
+is paused), so no executor runs; the other budgets are pinned by the same
+resolution (Supervisor._policy), which test_supervisor_* exercise with the
+station's own policy. The scheduling cases run a command that writes no
+output, so every execution ends failed (L-9); test_supervisor_requeue has
+the committed retries.
 """
 from __future__ import annotations
 
@@ -28,6 +36,7 @@ from pathlib import Path
 
 from gen2.app.station import StationRefused, open_station
 from gen2.core import canonical
+from gen2.core.instants import utc_instant_ns
 from gen2.supervisor.supervisor import Policy, WorkOrder, supervisor_policy
 from gen2.tests import router_fixtures as rf, store_fixtures
 
@@ -112,12 +121,116 @@ class PinnedPolicyTest(StationWorld):
         self.station.close()
         with self.assertRaises(StationRefused):
             self.open({**B1, "policy": {"supervisor": {"launch_attempt": 1}}, "version": 3})
-        self.station = self.open(B1)  # the active bundle is still bundle 1: its activation replays
+        self.assertEqual(self.rows("SELECT state FROM capability_facts WHERE capability = 'config-bundle' AND superseded_by_fact_id IS NULL"), [("failing",)])
+        self.station = self.open(B1)  # the active bundle is still bundle 1: its activation replays, and the capability has recovered
         self.router = self.station.router
         self.assertEqual(self.rows("SELECT version, status FROM config_bundles"), [(1, "active")])
-        self.assertEqual(self.rows("SELECT state FROM capability_facts WHERE capability = 'config-bundle' AND superseded_by_fact_id IS NULL"), [("failing",)])
+        self.assertEqual(self.rows("SELECT state, superseded_by_fact_id IS NULL FROM capability_facts WHERE capability = 'config-bundle' ORDER BY rowid"),
+                         [("failing", 0), ("healthy", 1)])  # the refusal stays history (H-2)
         with self.assertRaises(ValueError):
-            open_station(self.root, station_id="station-1", host_id="host-test", clock=self.clock, config_bundle=B1, policy=Policy())
+            open_station(self.root, station_id="station-1", host_id="host-test", clock=self.clock, config_bundle=B1, fixture_policy=Policy())
+
+
+class StationSchedulingTest(StationWorld):
+    """The review's station probes for findings 3 and 4: a failed job's
+    re-queued retry runs through the station's supervisor as a new
+    execution; the mounted bundle's fractional hold window is the exhaustion
+    hold's, exactly."""
+
+    RETRYING = {**B2, "policy": {"supervisor": B2["policy"]["supervisor"],
+                                 "router": {"hold_window_s": 0.5, "retry": {"attempts": 1, "failure_classes": ["empty_output"]}}}}
+
+    def test_a_requeued_failure_runs_again_through_the_station(self) -> None:
+        self.station.supervisor.prepare(self.order("inv_probe0001", B1))
+        self.assertEqual(self.station.supervisor.run("inv_probe0001"), "failed")
+        self.assertEqual(self.station.supervisor.submit(self.order("inv_probe0002", B1)), "not_admitted")  # the lane waits for its re-queue
+        self.assertEqual(self.router.requeue({"invocation_id": "inv_probe0001", "requested_by": "operator", "reason": "diagnosed"})["status"], "requeued")
+        self.station.supervisor.prepare(replace(self.order("inv_probe0003", B1), retry_of="inv_probe0001"))
+        self.assertEqual(self.station.supervisor.run("inv_probe0003"), "failed")  # a new execution (this command writes no output, L-9)
+        self.assertEqual(self.rows("SELECT invocation_id, state, failure_class FROM invocations ORDER BY admitted_at"),
+                         [("inv_probe0001", "failed", "empty_output"), ("inv_probe0003", "failed", "empty_output")])
+        self.assertEqual(self.rows("SELECT invocation_id, attempt, retry_invocation_id FROM retries"), [("inv_probe0001", 2, "inv_probe0003")])
+
+    def test_a_mounted_fractional_hold_window_is_kept(self) -> None:
+        self.reopen(self.RETRYING)
+        self.station.supervisor.prepare(self.order("inv_probe0001", self.RETRYING))
+        self.assertEqual(self.station.supervisor.run("inv_probe0001"), "failed")
+        self.assertEqual(self.router.requeue({"invocation_id": "inv_probe0001", "requested_by": "policy", "reason": "transient"})["status"], "requeued")
+        self.station.supervisor.prepare(replace(self.order("inv_probe0002", self.RETRYING), retry_of="inv_probe0001"))
+        self.assertEqual(self.station.supervisor.run("inv_probe0002"), "failed")
+        self.assertEqual(self.router.requeue({"invocation_id": "inv_probe0002", "requested_by": "policy", "reason": "transient"})["status"], "exhausted")
+        created, deadline = self.rows("SELECT created_at, deadline_at FROM holds")[0]
+        self.assertEqual(utc_instant_ns(deadline) - utc_instant_ns(created), 500_000_000)
+
+
+class RestartPolicyTest(StationWorld):
+    """RG-9, G-10 on every start (Astra 1d review finding 2): a restart with
+    nothing mounted restores the active bundle and still runs each admitted
+    job under the bundle it pins; with nothing to restore the station does
+    not start; an injected policy is a named fixture, never a fallback."""
+
+    def admit_and_stop(self, inv: str, bundle: dict) -> None:
+        """Admit a job under `bundle`, stop the supervisor right after the
+        claim, and pause the topic so every launch request is refused."""
+        def stop(point: str) -> None:
+            if point == "claimed":
+                raise Stop(point)
+        self.reopen(bundle, supervisor_options={"fault": stop})
+        with self.assertRaises(Stop):
+            self.station.supervisor.submit(self.order(inv, bundle))
+        self.x("UPDATE queue_entries SET paused_at = ? WHERE topic_id = ?", "2026-09-27T10:00:00Z", rf.TOPIC)
+
+    def restart_unmounted(self, **options) -> None:
+        self.station.close()
+        self.station = open_station(self.root, station_id="station-1", host_id="host-test", clock=self.clock, **options)
+        self.router = self.station.router
+
+    def test_a_restart_with_nothing_mounted_keeps_every_pin(self) -> None:
+        self.admit_and_stop("inv_discov01", B1)
+        self.reopen(B2)  # bundle 2 becomes the active one
+        self.restart_unmounted()
+        self.assertEqual(self.station.supervisor.policy, supervisor_policy(B2))  # the station's own: the active bundle, restored
+        self.assertEqual([self.station.supervisor.advance("inv_discov01") for _ in range(3)], ["waiting_launch", "cancelled", "cancelled"])  # B1's one refusal
+        self.assertEqual(self.rows("SELECT version, status FROM config_bundles ORDER BY version"), [(1, "superseded"), (2, "active")])
+
+    def test_the_reviewers_restart_with_nothing_mounted(self) -> None:
+        """The review's probe: admitted under the active B1, restarted with no bundle argument."""
+        self.admit_and_stop("inv_discov01", B1)
+        self.restart_unmounted()
+        self.assertEqual([self.station.supervisor.advance("inv_discov01") for _ in range(3)], ["waiting_launch", "cancelled", "cancelled"])
+
+    def test_fresh_work_after_an_unmounted_restart_pins_the_active_bundle(self) -> None:
+        self.reopen(B2)
+        self.restart_unmounted()
+        self.station.supervisor.prepare(self.order("inv_discov02", B2))
+        self.assertEqual(self.station.supervisor.run("inv_discov02"), "failed")  # admitted and run to its end (no output: L-9)
+        self.assertEqual(self.rows("SELECT config_bundle_hash FROM invocations"), [(canonical.logical_hash(B2),)])
+        self.assertEqual(self.station.supervisor.submit(self.order("inv_discov03", B1)), "not_admitted")  # the superseded bundle admits nothing new
+
+    def test_nothing_mounted_and_nothing_recorded_does_not_start(self) -> None:
+        fresh = self.root / "fresh"
+        try:
+            open_station(fresh, station_id="station-1", host_id="host-test", clock=self.clock, create=True)
+            raised = None
+        except Exception as refusal:  # whatever it raises is asserted: a station started, or failed otherwise, is this test's failure
+            raised = refusal
+        self.assertIsInstance(raised, StationRefused)
+        self.assertIn("no config bundle is mounted and none is recorded active", str(raised))
+        self.assertFalse((fresh / "jobs").exists())  # no supervisor was made
+        self.station.close()
+        self.station = open_station(fresh, station_id="station-1", host_id="host-test", clock=self.clock, config_bundle=B1)  # mounting one starts it
+        self.router = self.station.router
+        self.assertEqual(self.station.supervisor.policy, supervisor_policy(B1))
+
+    def test_a_fallback_policy_is_only_a_named_fixture(self) -> None:
+        """No production parameter takes a replacement policy; the fixture
+        one says what it is, overrides every pin, and takes no mount."""
+        self.admit_and_stop("inv_discov01", B1)
+        self.station.close()
+        with self.assertRaises(TypeError):
+            open_station(self.root, station_id="station-1", host_id="host-test", clock=self.clock, policy=Policy())
+        self.restart_unmounted(fixture_policy=replace(Policy(), launch_attempts=5))
+        self.assertEqual([self.station.supervisor.advance("inv_discov01") for _ in range(4)], ["waiting_launch"] * 4)  # the fixture's five, not B1's one or the shipped three
 
 
 if __name__ == "__main__":

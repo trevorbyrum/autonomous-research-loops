@@ -178,6 +178,11 @@ class WorkOrder:
     parent_invocation_id: str | None = None      # a delegate: its parent, another job of this supervisor
     requested_by_invocation_id: str | None = None
     env: Mapping[str, str] = field(default_factory=dict)
+    # The claim's scheduling context (task 1d): the lane's ended work this order re-runs as its re-queued retry (L-6), and the
+    # reservation it draws on ({reservation_id, facet_id?}; G-5). Stored with the order and sent with every claim, so a restart
+    # or a lost reply re-sends the same request. The router refuses either for a delegate (it holds no lane of its own).
+    retry_of: str | None = None
+    reservation: Mapping[str, str] | None = None
 
 
 class Waiting(Exception):
@@ -251,7 +256,8 @@ class Supervisor:
         before anything is written."""
         if self._policies is not None:
             self._policies(order.config_bundle_hash)
-        self.job(order.invocation_id).prepare({**asdict(order), "command": list(order.command), "env": dict(order.env)})
+        self.job(order.invocation_id).prepare({**asdict(order), "command": list(order.command), "env": dict(order.env),
+                                               "reservation": None if order.reservation is None else dict(order.reservation)})
 
     def submit(self, order: WorkOrder) -> str:
         self.prepare(order)
@@ -724,6 +730,9 @@ class Supervisor:
             request.update(station_id=self.station_id, lease_expires_at=order["lease_expires_at"] or order["deadline_at"])
         if order["requested_by_invocation_id"]:
             request["requested_by_invocation_id"] = order["requested_by_invocation_id"]
+        for context in ("retry_of", "reservation"):  # the stored order's scheduling context, whatever the kind: the router judges it
+            if order.get(context) is not None:
+                request[context] = order[context]
         grant = self._call(job, journal, "claim", request)
         self._fault("claimed")
         if grant["status"] not in ("granted", "replayed"):

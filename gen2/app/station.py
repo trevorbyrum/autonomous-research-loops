@@ -40,33 +40,51 @@ class Station:
 
 
 def open_station(root: str | Path, *, station_id: str, host_id: str, clock: Callable[[], str], container_id: str | None = None,
-                 config_bundle: Mapping | None = None, policy: Policy | None = None, control: Callable[[Router], object] = lambda router: router,
+                 config_bundle: Mapping | None = None, fixture_policy: Policy | None = None, control: Callable[[Router], object] = lambda router: router,
                  create: bool = False, router_options: dict | None = None, supervisor_options: dict | None = None) -> Station:
     """<root>/store.sqlite3, <root>/spool and <root>/jobs, wired together.
-    With `config_bundle` (the mounted config-bundle/1 document) the router
-    activates it — a replay if it is already the active one — and the
-    supervisor takes its own policy from it and each job's from the bundle
-    that job is pinned to, which a restart resolves the same way (G-10,
-    RG-9). Without one, `policy` is the supervisor's for every job."""
+
+    Every start — a first one, a restart, a replacement — takes the
+    supervisor's policies from recorded config bundles (G-10, RG-9;
+    DEPLOYMENT-CONTRACT.md §2: restart preserves configuration pins): each
+    job's from the bundle its order pins, the one it was admitted under,
+    whatever is active now; the station's own from `config_bundle`, the
+    mounted config-bundle/1 document, which the router activates first (a
+    replay if it is already the active one), or, with none mounted, from the
+    bundle the router has active (the persisted configuration). With none
+    mounted and none recorded active the station does not start
+    (StationRefused): there is no unpinned fallback policy.
+
+    `fixture_policy` is a test fixture outside that guarantee: every job runs
+    under it, whatever bundle it pins. It cannot be combined with a mounted
+    bundle."""
     root = Path(root)
     spool = Spool(root / "spool")
     router = Router.open(root / "store.sqlite3", spool, create=create, clock=clock, **(router_options or {}))
-    policies = None
-    if config_bundle is not None:
-        if policy is not None:
+    if fixture_policy is not None:
+        if config_bundle is not None:
             router.close()
             raise ValueError("with a config bundle, the supervisor's policy is the bundle's")
+        supervisor = Supervisor(control(router), spool, root / "jobs", station_id=station_id, host_id=host_id, container_id=container_id,
+                                policy=fixture_policy, policies=None, clock=clock, **(supervisor_options or {}))
+        return Station(router, spool, supervisor)
+    if config_bundle is not None:
         activated = router.activate_config_bundle(config_bundle)
         if activated["status"] not in ("activated", "replayed"):
             router.close()
             raise StationRefused(f"the config bundle was refused ({activated['reason']}): {activated['detail']}")
+        own = activated["bundle_hash"]
+    else:
+        own = router.active_config_bundle()
+        if own is None:
+            router.close()
+            raise StationRefused("no config bundle is mounted and none is recorded active: the station has no policy to start under")
 
-        def policies(bundle_hash: str) -> Policy:
-            bundle = router.config_bundle(bundle_hash)
-            if bundle is None:
-                raise KeyError(f"config bundle {bundle_hash} is not recorded")
-            return supervisor_policy(bundle)
-        policy = policies(activated["bundle_hash"])
+    def policies(bundle_hash: str) -> Policy:
+        bundle = router.config_bundle(bundle_hash)
+        if bundle is None:
+            raise KeyError(f"config bundle {bundle_hash} is not recorded")
+        return supervisor_policy(bundle)
     supervisor = Supervisor(control(router), spool, root / "jobs", station_id=station_id, host_id=host_id, container_id=container_id,
-                            policy=policy or Policy(), policies=policies, clock=clock, **(supervisor_options or {}))
+                            policy=policies(own), policies=policies, clock=clock, **(supervisor_options or {}))
     return Station(router, spool, supervisor)
