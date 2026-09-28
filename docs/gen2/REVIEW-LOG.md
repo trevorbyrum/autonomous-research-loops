@@ -466,3 +466,10 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-1e-astra-review-
 **Accepted:** the four bounded architecture choices (close_brief + read-only status; app's http grant; capabilities off the listener; auth-persistence-as-reread) and the invariant locator repairs. **§13 accounting:** everything Phase 1 owes is judged satisfied at mechanical scope except the operator-surface findings and finding 1.
 
 **Routed:** findings 2–8 → `docs/gen2/tasks/1e-repair.md` (Opus 5.5). Finding 1 → the operator.
+
+## 2026-09-28 — 1e-repair re-review (Astra, xhigh, fresh session after a second content-filter stop) — BLOCK, narrow
+Full report: `~/work/research-loops-public/private/reviews/gen2-1e-repair-astra-review-20260928.md`. The first session was cut off by the provider's cyber filter mid-review; its one open lead was preserved in the retry's task file, and the fresh session **confirmed it as the HIGH finding**: `recover_incident` saves `incident: null`/`outcome: null` before advancing, so a crash before reconciliation leaves retries returning `replayed` with nothing done — episode `outcome_unknown`, open hold, unreleased lease, incident invisible. Reproduced with a real engine process, `os._exit(71)` fault injection, and a replacement engine.
+
+**Closed:** original findings 4 (MCP strictness), 5 (incident attribution), 6 (CLI exit classes), 8 (unread-body regression, with the 2 s bound accepted). **Remaining:** the recovery-replay defect above; MCP serialization/numeric-ID credential escape; startup secrecy tests discarding the first stdout line.
+
+**Routed:** `docs/gen2/tasks/1e-repair-2.md` to an Opus 5.5 coder. Finding 1 of the original review (auth-volume demonstration) remains with the operator, recommendation already presented: amend the phasing to "before any live provider execution."
