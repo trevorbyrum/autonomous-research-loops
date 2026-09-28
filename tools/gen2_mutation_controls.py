@@ -188,9 +188,9 @@ MANUAL: dict[str, dict] = {
     # first approval; the accepted case it admits was split out of the killer as a test of its own, added after the trace
     "1B-approval-without-supersession": {
         "controls": ["test_router_ops.OperatorDecisionTest.test_a_first_contract_approval_supersedes_nothing"],
-        "why": "evaluates gen2/router/service.py's supersession loop header (line 990: for each approved revision) with none approved, "
-               "runs none of its body, and asserts the alternative it admits: nothing superseded, exactly this revision approved, the "
-               "topic queued"},
+        "why": "evaluates gen2/router/service.py's supersession guard (if previous is not None: the approved revision, task 1d) with none "
+               "approved, runs none of its body, and asserts the alternative it admits: nothing superseded, exactly this revision approved, "
+               "the topic queued"},
     # task 1c-repair-4 (the C4 re-check): every traced candidate (143) needs an approval, which this over-restricting mutant
     # refuses; the one alternative the trigger's own WHEN admits without an approval was written as a test of its own
     "RA3R-approval-refused-too": {
@@ -215,6 +215,29 @@ MANUAL: dict[str, dict] = {
                "1c-repair-4 against Astra 1c re-review 3, BLOCK 2's standard); a test through it passes only where its answer does not "
                "matter and no launcher is locking just then, which is timing: of 13 candidates run under it, one passed in one run and "
                "failed the next; none passes dependably, so none is paired"},
+    # task 1d: each guard's accepted case, which only its killer took in the trace, split out as a test of its own and paired by hand
+    **{mid: {"controls": [control], "why": why} for mid, control, why in (
+        ("1D-registry-revocation-conflict-replayed", "test_router_registries.QualificationRecordTest.test_the_same_revocation_again_replays",
+         "passes gen2/router/registries.py's revocation-conflict guard (line 180) without taking it: the identical revocation replays"),
+        ("1D-amend-brief-conflict-replayed", "test_router_amendments.BriefVersionTest.test_the_same_version_again_replays",
+         "passes gen2/router/amendments.py's brief-version conflict guard (line 154) without taking it: the identical version replays"),
+        ("1D-amend-amendment-conflict-replayed", "test_router_amendments.AmendmentProposalTest.test_the_same_amendment_again_replays",
+         "passes gen2/router/amendments.py's amendment-conflict guard (line 196) without taking it: the identical revision replays"),
+        ("1D-amend-reservations-left-open", "test_router_scheduling.ReservationTest.test_an_amendment_leaves_a_closed_reservation_as_it_was",
+         "executes gen2/router/amendments.py line 285 (the impact's closing guard) for a reservation already closed and passes it over; "
+         "asserts only that the closed reservation is kept as it was"),
+        ("1D-sched-requeue-conflict-replayed", "test_router_scheduling.RequeueTest.test_the_same_requeue_again_replays",
+         "passes gen2/router/scheduling.py's re-queue conflict guard (line 103) without taking it: the identical re-queue replays"),
+        ("1D-sched-reservation-conflict-replayed", "test_router_scheduling.ReservationTest.test_the_same_reservation_again_replays",
+         "passes gen2/router/scheduling.py's reservation-conflict guard (line 159) without taking it: the identical reservation replays"),
+        ("1D-sched-reservation-reopened", "test_router_scheduling.ReservationTest.test_an_exhausted_reservation_is_closed_when_the_next_opens",
+         "passes gen2/router/scheduling.py's open-reservation guard (line 172) without taking it: the open one has no units left, so it closes "
+         "and the next opens"),
+        ("1D-sched-draw-below-threshold", "test_router_scheduling.ReservationTest.test_an_auto_promotion_draw_inside_a_critical_facet",
+         "passes gen2/router/scheduling.py's threshold guard (line 193) without taking it: a facet rated critical meets the threshold"),
+        ("1D-sched-review-conflict-replayed", "test_router_scheduling.SignalQueueTest.test_the_same_review_again_replays",
+         "passes gen2/router/scheduling.py's review-conflict guard (line 201) without taking it: the identical review replays"),
+    )},
     "TO-differences-ignored": {
         "controls": [], "in_killer": ["test_trigger_order_tool.TriggerOrderToolTest.test_outcomes_must_be_green_and_identical"],
         "why": "the killer asserts the accepted case (identical green outcomes: no problem) before the refusals; " + _ORDER},

@@ -621,31 +621,31 @@
   "controls": [
    "test_router_evidence.ProviderScreeningTest.test_a_qualified_receipts_committed_answer"
   ],
-  "why": "gen2/router/service.py: leaves line 706 for a line outside 706-707 (or returns)"
+  "why": "gen2/router/service.py: leaves line 697 for a line outside 697-698 (or returns)"
  },
  "1B-ack-attempt-order": {
   "controls": [
    "test_router_ops.AckDeliveryTest.test_the_whole_receipt_is_recorded"
   ],
-  "why": "gen2/router/service.py: leaves line 1047 for a line outside 1047-1048 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1064 for a line outside 1064-1065 (or returns)"
  },
  "1B-ack-hold-any-topic": {
   "controls": [
    "test_router_ops.AckDeliveryTest.test_the_whole_receipt_is_recorded"
   ],
-  "why": "gen2/router/service.py: leaves line 1044 for a line outside 1044-1045 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1061 for a line outside 1061-1062 (or returns)"
  },
  "1B-ack-hold-unchecked": {
   "controls": [
    "test_router_ops.AckDeliveryTest.test_the_whole_receipt_is_recorded"
   ],
-  "why": "gen2/router/service.py: leaves line 1044 for a line outside 1044-1045 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1061 for a line outside 1061-1062 (or returns)"
  },
  "1B-ack-manifest-description": {
   "controls": [
    "test_router_ops.AckDeliveryTest.test_the_whole_receipt_is_recorded"
   ],
-  "why": "gen2/router/service.py: leaves line 1041 for a line outside 1041-1042 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1058 for a line outside 1058-1059 (or returns)"
  },
  "1B-ack-replay-any-content": {
   "controls": [
@@ -654,31 +654,31 @@
   "rejected": [
    "test_router_restart.RestartTest.test_delivery_receipts_read_back_whole_after_a_restart"
   ],
-  "why": "gen2/router/service.py: leaves line 1035 for a line outside 1035-1036 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1052 for a line outside 1052-1053 (or returns)"
  },
  "1B-ack-replay-projection-only": {
   "controls": [
    "test_router_ops.AckDeliveryTest.test_the_same_receipt_again_replays"
   ],
-  "why": "gen2/router/service.py: leaves line 1035 for a line outside 1035-1036 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1052 for a line outside 1052-1053 (or returns)"
  },
  "1B-admission-any-kind": {
   "controls": [
    "test_router_ops.ObservationTest.test_the_same_observation_again_replays"
   ],
-  "why": "gen2/router/service.py: leaves line 384 for a line outside 384-385 (or returns)"
+  "why": "gen2/router/service.py: leaves line 370 for a line outside 370-371 (or returns)"
  },
  "1B-admission-ignored": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: leaves line 745 for a line outside 745-746 (or returns)"
+  "why": "gen2/router/service.py: leaves line 736 for a line outside 736-737 (or returns)"
  },
  "1B-amendment-ignored": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: leaves line 301 for a line outside 301-302 (or returns)"
+  "why": "gen2/router/amendments.py: executes line 230; or executes line 226"
  },
  "1B-approval-without-supersession": {
   "by_hand": true,
@@ -688,190 +688,190 @@
   "rejected": [
    "test_router_commit.FencingTest.test_work_pinned_to_a_superseded_contract_is_not_committed"
   ],
-  "why": "evaluates gen2/router/service.py's supersession loop header (line 990: for each approved revision) with none approved, runs none of its body, and asserts the alternative it admits: nothing superseded, exactly this revision approved, the topic queued"
+  "why": "evaluates gen2/router/service.py's supersession guard (if previous is not None: the approved revision, task 1d) with none approved, runs none of its body, and asserts the alternative it admits: nothing superseded, exactly this revision approved, the topic queued"
  },
  "1B-artifact-metadata-unchecked": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: leaves line 659 for a line outside 659-660 (or returns)"
+  "why": "gen2/router/service.py: leaves line 648 for a line outside 648-649 (or returns)"
  },
  "1B-artifact-recheck-dropped": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: leaves line 769 for a line outside 769-770 (or returns)"
+  "why": "gen2/router/service.py: leaves line 760 for a line outside 760-761 (or returns)"
  },
  "1B-artifact-ref-metadata": {
   "controls": [
    "test_router_evidence.ProviderScreeningTest.test_a_qualified_receipts_committed_answer"
   ],
-  "why": "gen2/router/service.py: leaves line 682 for a line outside 682-684 (or returns)"
+  "why": "gen2/router/service.py: leaves line 671 for a line outside 671-673 (or returns)"
  },
  "1B-artifact-ref-unstaged": {
   "controls": [
    "test_router_evidence.ProviderScreeningTest.test_a_qualified_receipts_committed_answer"
   ],
-  "why": "gen2/router/service.py: executes line 677"
+  "why": "gen2/router/service.py: executes line 666"
  },
  "1B-brief-amendment-ignored": {
   "controls": [
-   "test_router_evidence.TriggerAndOrdinalTest.test_only_contract_research_passes_earn_ordinals"
+   "test_router_amendments.BriefImpactTest.test_a_lineage_only_version_lets_scoping_work_complete"
   ],
-  "why": "gen2/router/service.py: leaves line 305 for a line outside 305-306 (or returns)"
+  "why": "gen2/router/amendments.py: executes line 235"
  },
  "1B-bundle-identity": {
   "controls": [
    "test_router_evidence.ExportTest.test_an_approved_manifest_enters_the_outbox_with_its_hash"
   ],
-  "why": "gen2/router/boundary.py: leaves line 241 for a line outside 241-242 (or returns)"
+  "why": "gen2/router/boundary.py: leaves line 250 for a line outside 250-251 (or returns)"
  },
  "1B-bundle-not-canonical": {
   "controls": [
    "test_router_evidence.ExportTest.test_an_approved_manifest_enters_the_outbox_with_its_hash"
   ],
-  "why": "gen2/router/boundary.py: leaves line 238 for a line outside 238-239 (or returns)"
+  "why": "gen2/router/boundary.py: leaves line 247 for a line outside 247-248 (or returns)"
  },
  "1B-bundle-not-with-commit": {
   "controls": [
    "test_router_evidence.ExportTest.test_an_approved_manifest_enters_the_outbox_with_its_hash"
   ],
-  "why": "gen2/router/service.py: leaves line 720 for a line outside 720-721 (or returns); or leaves line 720 for a line outside 720-721 (or returns); or executes line 722; or executes line 718"
+  "why": "gen2/router/service.py: leaves line 711 for a line outside 711-712 (or returns); or leaves line 711 for a line outside 711-712 (or returns); or executes line 713; or executes line 709"
  },
  "1B-bundle-schema-skipped": {
   "controls": [
    "test_router_evidence.ExportTest.test_an_approved_manifest_enters_the_outbox_with_its_hash"
   ],
-  "why": "gen2/router/boundary.py: executes line 240"
+  "why": "gen2/router/boundary.py: executes line 249"
  },
  "1B-canonical-bytes-unstaged": {
   "controls": [
-   "test_router_commit.AuthorityTest.test_a_producer_cannot_verify_its_own_work"
+   "test_router_amendments.ImpactTest.test_a_compatible_amendment_lets_admitted_work_complete_under_its_pins"
   ],
   "rejected": [
    "test_router_commit.AuthorityTest.test_canonical_bytes_recorded_only_for_another_topic_are_not_this_topics"
   ],
-  "why": "gen2/router/service.py: leaves line 690 for a line outside 690-691 (or returns)"
+  "why": "gen2/router/service.py: leaves line 679 for a line outside 679-680 (or returns)"
  },
  "1B-capability-any-invocation": {
   "controls": [
    "test_router_ops.TransitionTest.test_a_failure_releases_the_lease_and_requeues"
   ],
-  "why": "gen2/router/service.py: leaves line 282 for a line outside 282-283 (or returns)"
+  "why": "gen2/router/service.py: leaves line 275 for a line outside 275-276 (or returns)"
  },
  "1B-claim-clock-before-lock": {
   "controls": [
    "test_router_ops.ClaimTest.test_an_expired_lease_is_released_and_superseded"
   ],
-  "why": "gen2/router/service.py: executes line 335"
+  "why": "gen2/router/service.py: executes line 313"
  },
  "1B-claim-cross-topic-revision": {
   "controls": [
    "test_router_commit.TopicAuthorizationTest.test_bytes_recorded_for_this_topic_are_referenced_by_hash"
   ],
-  "why": "gen2/router/service.py: leaves line 844 for a line outside 844-845 (or returns)"
+  "why": "gen2/router/service.py: leaves line 841 for a line outside 841-842 (or returns)"
  },
  "1B-claim-replay-after-time-checks": {
   "controls": [
    "test_router_ops.ClaimTest.test_an_expired_lease_is_released_and_superseded"
   ],
-  "why": "gen2/router/service.py: executes line 342; or executes line 343; or executes line 347"
+  "why": "gen2/router/service.py: executes line 320; or executes line 321; or executes line 325"
  },
  "1B-claim-replay-any-request": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_crash_before_the_grant_is_kept"
   ],
-  "why": "gen2/router/service.py: leaves line 426 for a line outside 426-427 (or returns)"
+  "why": "gen2/router/service.py: leaves line 415 for a line outside 415-416 (or returns)"
  },
  "1B-claim-revision-gap": {
   "controls": [
    "test_router_commit.TopicAuthorizationTest.test_the_same_bytes_staged_by_this_topic_are_its_own"
   ],
-  "why": "gen2/router/service.py: leaves line 846 for a line outside 846-847 (or returns)"
+  "why": "gen2/router/service.py: leaves line 843 for a line outside 843-844 (or returns)"
  },
  "1B-claim-status-gate": {
   "controls": [
    "test_router_ops.ClaimTest.test_an_expired_lease_is_released_and_superseded"
   ],
-  "why": "gen2/router/service.py: leaves line 358 for a line outside 358-359 (or returns)"
+  "why": "gen2/router/service.py: leaves line 339 for a line outside 339-340 (or returns)"
  },
  "1B-claim-times-at-the-instant": {
   "controls": [
    "test_router_ops.ClaimTest.test_an_expired_lease_is_released_and_superseded"
   ],
-  "why": "gen2/router/service.py: leaves line 345 for a line outside 345-346 (or returns)"
+  "why": "gen2/router/service.py: leaves line 323 for a line outside 323-324 (or returns)"
  },
  "1B-clock-before-lock": {
   "controls": [
    "test_router_ops.OperatorDecisionTest.test_the_same_decision_again_replays"
   ],
-  "why": "gen2/router/service.py: executes line 325; or executes line 326"
+  "why": "gen2/router/service.py: executes line 303; or executes line 304"
  },
  "1B-commit-clock-before-lock": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: executes line 596"
+  "why": "gen2/router/service.py: executes line 585"
  },
  "1B-config-ignored": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: leaves line 747 for a line outside 747-748 (or returns)"
+  "why": "gen2/router/service.py: leaves line 738 for a line outside 738-739 (or returns)"
  },
  "1B-deadline-at-the-instant": {
   "controls": [
    "test_router_ops.ObservationTest.test_the_same_observation_again_replays"
   ],
-  "why": "gen2/router/service.py: executes line 255"
+  "why": "gen2/router/service.py: executes line 248"
  },
  "1B-decision-commit-elsewhere": {
   "controls": [
    "test_router_evidence.ProviderScreeningTest.test_an_abstention_hold_is_one_this_commit_creates_or_one_recorded"
   ],
-  "why": "gen2/router/boundary.py: leaves line 144 for a line outside 144-145 (or returns)"
+  "why": "gen2/router/boundary.py: leaves line 153 for a line outside 153-154 (or returns)"
  },
  "1B-decision-move-optional": {
   "controls": [
    "test_router_ops.OperatorDecisionTest.test_contract_approval_queues_the_topic_and_an_amendment_supersedes"
   ],
-  "why": "gen2/router/service.py: leaves line 1004 for a line outside 1004-1005 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1021 for a line outside 1021-1022 (or returns)"
  },
  "1B-decision-other-invocation": {
   "controls": [
    "test_router_evidence.ProviderScreeningTest.test_an_abstention_hold_is_one_this_commit_creates_or_one_recorded"
   ],
-  "why": "gen2/router/boundary.py: leaves line 132 for a line outside 132-133 (or returns)"
+  "why": "gen2/router/boundary.py: leaves line 137 for a line outside 137-138 (or returns)"
  },
  "1B-decision-replay-any-content": {
   "controls": [
    "test_router_ops.OperatorDecisionTest.test_the_same_decision_again_replays"
   ],
-  "why": "gen2/router/service.py: leaves line 930 for a line outside 930-931 (or returns)"
+  "why": "gen2/router/service.py: leaves line 931 for a line outside 931-932 (or returns)"
  },
  "1B-delegate-config": {
   "controls": [
    "test_supervisor_lifecycle.DelegateLifecycleTest.test_a_deadline_passed_before_any_start_starts_nothing"
   ],
-  "why": "gen2/router/service.py: leaves line 411 for a line outside 411-412 (or returns)"
+  "why": "gen2/router/service.py: leaves line 397 for a line outside 397-398 (or returns)"
  },
  "1B-delegate-cross-topic": {
   "controls": [
    "test_supervisor_lifecycle.DelegateLifecycleTest.test_a_deadline_passed_before_any_start_starts_nothing"
   ],
-  "why": "gen2/router/service.py: leaves line 407 for a line outside 407-408 (or returns)"
+  "why": "gen2/router/service.py: leaves line 393 for a line outside 393-394 (or returns)"
  },
  "1B-delegate-parent-state": {
   "controls": [
    "test_supervisor_lifecycle.DelegateLifecycleTest.test_a_deadline_passed_before_any_start_starts_nothing"
   ],
-  "why": "gen2/router/service.py: leaves line 409 for a line outside 409-410 (or returns)"
+  "why": "gen2/router/service.py: leaves line 395 for a line outside 395-396 (or returns)"
  },
  "1B-delegate-releases-parent-lease": {
   "controls": [
    "test_router_crash.KilledProcessTest.test_a_process_killed_after_commit_has_committed_once"
   ],
-  "why": "gen2/router/service.py: executes line 783"
+  "why": "gen2/router/service.py: executes line 780"
  },
  "1B-digest-unchecked": {
   "controls": [
@@ -883,19 +883,19 @@
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: leaves line 642 for a line outside 642-643 (or returns)"
+  "why": "gen2/router/service.py: leaves line 631 for a line outside 631-632 (or returns)"
  },
  "1B-document-cross-topic": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: leaves line 644 for a line outside 644-645 (or returns)"
+  "why": "gen2/router/service.py: leaves line 633 for a line outside 633-634 (or returns)"
  },
  "1B-document-schema-skipped": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: executes line 641"
+  "why": "gen2/router/service.py: executes line 630"
  },
  "1B-duplicate-keys-merged-at-the-boundary": {
   "controls": [
@@ -907,19 +907,19 @@
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: leaves line 637 for a line outside 637-638 (or returns)"
+  "why": "gen2/router/service.py: leaves line 626 for a line outside 626-627 (or returns)"
  },
  "1B-envelope-schema-skipped": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: executes line 586"
+  "why": "gen2/router/service.py: executes line 575"
  },
  "1B-envelope-unbounded": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: leaves line 587 for a line outside 587-588 (or returns)"
+  "why": "gen2/router/service.py: leaves line 576 for a line outside 576-577 (or returns)"
  },
  "1B-expired-lease-kept": {
   "controls": [
@@ -935,79 +935,79 @@
    "test_supervisor_crash.DiscoveryCrashTest.test_recovery_starts_nothing_once_the_lease_is_replaced",
    "test_supervisor_crash.VerificationCrashTest.test_recovery_starts_nothing_once_the_lease_is_replaced"
   ],
-  "why": "gen2/router/service.py: executes line 363; or executes line 360"
+  "why": "gen2/router/service.py: executes line 345; or executes line 342"
  },
  "1B-expiry-at-the-instant": {
   "controls": [
    "test_router_ops.ObservationTest.test_the_same_observation_again_replays"
   ],
-  "why": "gen2/router/service.py: leaves line 236 for a line outside 236-237 (or returns)"
+  "why": "gen2/router/service.py: leaves line 229 for a line outside 229-230 (or returns)"
  },
  "1B-expiry-ignored": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: leaves line 236 for a line outside 236-237 (or returns)"
+  "why": "gen2/router/service.py: leaves line 229 for a line outside 229-230 (or returns)"
  },
  "1B-extension-admitted-by-name": {
   "controls": [
    "test_router_evidence.ExportTest.test_an_admitted_extension_connector_is_exported"
   ],
-  "why": "gen2/router/boundary.py: leaves line 234 for a line outside 234-236 (or returns)"
+  "why": "gen2/router/boundary.py: leaves line 243 for a line outside 243-245 (or returns)"
  },
  "1B-fact-not-transition-only": {
   "controls": [
    "test_router_ops.AckDeliveryTest.test_the_whole_receipt_is_recorded"
   ],
-  "why": "gen2/router/service.py: leaves line 1093 for a line outside 1093-1094 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1110 for a line outside 1110-1111 (or returns)"
  },
  "1B-fact-recovery-dropped": {
   "controls": [
    "test_router_ops.AckDeliveryTest.test_the_whole_receipt_is_recorded"
   ],
-  "why": "gen2/router/service.py: executes line 1086"
+  "why": "gen2/router/service.py: executes line 1103"
  },
  "1B-failure-keeps-lease": {
   "controls": [
    "test_router_ops.ObservationTest.test_the_same_observation_again_replays"
   ],
-  "why": "gen2/router/service.py: executes line 533; or executes line 534"
+  "why": "gen2/router/service.py: executes line 522; or executes line 523"
  },
  "1B-final-other-document": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: leaves line 758 for a line outside 758-759 (or returns)"
+  "why": "gen2/router/service.py: leaves line 749 for a line outside 749-750 (or returns)"
  },
  "1B-final-twice": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: leaves line 756 for a line outside 756-757 (or returns)"
+  "why": "gen2/router/service.py: leaves line 747 for a line outside 747-748 (or returns)"
  },
  "1B-final-without-result": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: leaves line 758 for a line outside 758-759 (or returns)"
+  "why": "gen2/router/service.py: leaves line 749 for a line outside 749-750 (or returns)"
  },
  "1B-generation-ignored": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: leaves line 234 for a line outside 234-235 (or returns)"
+  "why": "gen2/router/service.py: leaves line 227 for a line outside 227-228 (or returns)"
  },
  "1B-held-rest-state": {
   "controls": [
    "test_router_commit.TopicAuthorizationTest.test_the_same_bytes_staged_by_this_topic_are_its_own"
   ],
-  "why": "gen2/router/service.py: executes line 781"
+  "why": "gen2/router/service.py: executes line 778"
  },
  "1B-hold-fact-unrecorded": {
   "controls": [
    "test_router_ops.OperatorDecisionTest.test_hold_clearance"
   ],
-  "why": "gen2/router/service.py: leaves line 725 for a line outside 725-726 (or returns)"
+  "why": "gen2/router/service.py: leaves line 716 for a line outside 716-717 (or returns)"
  },
  "1B-instant-fraction-dropped": {
   "controls": [
@@ -1034,139 +1034,139 @@
   "controls": [
    "test_router_commit.TopicAuthorizationTest.test_the_same_bytes_staged_by_this_topic_are_its_own"
   ],
-  "why": "gen2/router/service.py: leaves line 765 for a line outside 765-766 (or returns)"
+  "why": "gen2/router/service.py: leaves line 756 for a line outside 756-757 (or returns)"
  },
  "1B-launch-after-deadline": {
   "controls": [
    "test_router_ops.TransitionTest.test_a_failure_releases_the_lease_and_requeues"
   ],
-  "why": "gen2/router/service.py: executes line 255"
+  "why": "gen2/router/service.py: executes line 248"
  },
  "1B-launch-when-paused": {
   "controls": [
    "test_router_ops.TransitionTest.test_a_failure_releases_the_lease_and_requeues"
   ],
-  "why": "gen2/router/service.py: executes line 253; or executes line 254"
+  "why": "gen2/router/service.py: executes line 246; or executes line 247"
  },
  "1B-launch-without-lease": {
   "controls": [
    "test_router_ops.TransitionTest.test_a_failure_releases_the_lease_and_requeues"
   ],
-  "why": "gen2/router/service.py: executes line 248; or executes line 249; or executes line 250; or leaves line 249 for a line outside 248-251 (or returns); or executes line 251"
+  "why": "gen2/router/service.py: executes line 241; or executes line 242; or executes line 243; or leaves line 242 for a line outside 241-244 (or returns); or executes line 244"
  },
  "1B-lease-any": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: leaves line 230 for a line outside 230-231 (or returns)"
+  "why": "gen2/router/service.py: leaves line 223 for a line outside 223-224 (or returns)"
  },
  "1B-lease-held-at-the-instant": {
   "controls": [
    "test_router_ops.ClaimTest.test_an_expired_lease_is_released_and_superseded"
   ],
-  "why": "gen2/router/service.py: leaves line 361 for a line outside 361-362 (or returns)"
+  "why": "gen2/router/service.py: leaves line 343 for a line outside 343-344 (or returns)"
  },
  "1B-lease-held-ignored": {
   "controls": [
    "test_router_ops.ClaimTest.test_an_expired_lease_is_released_and_superseded"
   ],
-  "why": "gen2/router/service.py: leaves line 361 for a line outside 361-362 (or returns)"
+  "why": "gen2/router/service.py: leaves line 343 for a line outside 343-344 (or returns)"
  },
  "1B-lease-kept-after-final": {
   "controls": [
    "test_router_commit.ReplayAndIdentityTest.test_replaying_a_committed_operation_returns_the_identical_receipt"
   ],
-  "why": "gen2/router/service.py: executes line 783"
+  "why": "gen2/router/service.py: executes line 780"
  },
  "1B-lease-released-ignored": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: leaves line 232 for a line outside 232-233 (or returns)"
+  "why": "gen2/router/service.py: leaves line 225 for a line outside 225-226 (or returns)"
  },
  "1B-manifest-cross-topic": {
   "controls": [
    "test_router_evidence.ExportTest.test_an_approved_manifest_enters_the_outbox_with_its_hash"
   ],
-  "why": "gen2/router/boundary.py: leaves line 229 for a line outside 229-230 (or returns)"
+  "why": "gen2/router/boundary.py: leaves line 238 for a line outside 238-239 (or returns)"
  },
  "1B-next-state-any-kind": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: leaves line 648 for a line outside 648-649 (or returns)"
+  "why": "gen2/router/service.py: leaves line 637 for a line outside 637-638 (or returns)"
  },
  "1B-observation-clock-before-lock": {
   "controls": [
    "test_router_ops.ObservationTest.test_the_same_observation_again_replays"
   ],
-  "why": "gen2/router/service.py: executes line 547"
+  "why": "gen2/router/service.py: executes line 536"
  },
  "1B-observation-conflict": {
   "controls": [
    "test_router_ops.ObservationTest.test_the_same_observation_again_replays"
   ],
-  "why": "gen2/router/service.py: leaves line 559 for a line outside 559-560 (or returns)"
+  "why": "gen2/router/service.py: leaves line 548 for a line outside 548-549 (or returns)"
  },
  "1B-observation-count": {
   "controls": [
    "test_router_ops.ObservationTest.test_a_running_invocation_past_its_lease_records_nothing"
   ],
-  "why": "gen2/router/boundary.py: leaves line 218 for a line outside 218-220 (or returns)"
+  "why": "gen2/router/boundary.py: leaves line 227 for a line outside 227-229 (or returns)"
  },
  "1B-observation-duplicate-record": {
   "controls": [
    "test_router_ops.ObservationTest.test_a_running_invocation_past_its_lease_records_nothing"
   ],
-  "why": "gen2/router/boundary.py: leaves line 212 for a line outside 212-213 (or returns)"
+  "why": "gen2/router/boundary.py: leaves line 221 for a line outside 221-222 (or returns)"
  },
  "1B-observation-lease-unchecked": {
   "controls": [
    "test_router_ops.ObservationTest.test_the_same_observation_again_replays"
   ],
-  "why": "gen2/router/service.py: executes line 567"
+  "why": "gen2/router/service.py: executes line 556"
  },
  "1B-observation-pause-unchecked": {
   "controls": [
    "test_router_ops.ObservationTest.test_the_same_observation_again_replays"
   ],
-  "why": "gen2/router/service.py: leaves line 569 for a line outside 569-570 (or returns); or leaves line 569 for a line outside 569-570 (or returns)"
+  "why": "gen2/router/service.py: leaves line 558 for a line outside 558-559 (or returns); or leaves line 558 for a line outside 558-559 (or returns)"
  },
  "1B-observation-running-only": {
   "controls": [
    "test_router_ops.ObservationTest.test_the_same_observation_again_replays"
   ],
-  "why": "gen2/router/service.py: leaves line 563 for a line outside 563-564 (or returns)"
+  "why": "gen2/router/service.py: leaves line 552 for a line outside 552-553 (or returns)"
  },
  "1B-observation-time-order": {
   "controls": [
    "test_router_ops.ObservationTest.test_a_running_invocation_past_its_lease_records_nothing"
   ],
-  "why": "gen2/router/boundary.py: leaves line 209 for a line outside 209-210 (or returns)"
+  "why": "gen2/router/boundary.py: leaves line 218 for a line outside 218-219 (or returns)"
  },
  "1B-observation-unobserved": {
   "controls": [
    "test_router_ops.ObservationTest.test_an_unobserved_result_set_is_recorded_with_no_count"
   ],
-  "why": "gen2/router/boundary.py: leaves line 215 for a line outside 215-216 (or returns)"
+  "why": "gen2/router/boundary.py: leaves line 224 for a line outside 224-225 (or returns)"
  },
  "1B-operation-kind-unchecked": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: leaves line 646 for a line outside 646-647 (or returns)"
+  "why": "gen2/router/service.py: leaves line 635 for a line outside 635-636 (or returns)"
  },
  "1B-ordinal-any-kind": {
   "controls": [
    "test_router_evidence.TriggerAndOrdinalTest.test_a_replayed_trigger_opens_nothing_new"
   ],
-  "why": "gen2/router/service.py: executes line 775"
+  "why": "gen2/router/service.py: executes line 772"
  },
  "1B-pause-ignored": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: leaves line 749 for a line outside 749-750 (or returns); or leaves line 749 for a line outside 749-750 (or returns)"
+  "why": "gen2/router/service.py: leaves line 740 for a line outside 740-741 (or returns); or leaves line 740 for a line outside 740-741 (or returns)"
  },
  "1B-pre-contract-sections": {
   "controls": [
@@ -1184,37 +1184,37 @@
   "controls": [
    "test_router_commit.AtomicityTest.test_the_commit_binds_the_bytes_it_validated"
   ],
-  "why": "gen2/router/service.py: leaves line 891 for a line outside 891-892 (or returns)"
+  "why": "gen2/router/service.py: leaves line 888 for a line outside 888-889 (or returns)"
  },
  "1B-promotion-cross-topic": {
   "controls": [
    "test_router_commit.AtomicityTest.test_the_commit_binds_the_bytes_it_validated"
   ],
-  "why": "gen2/router/service.py: leaves line 889 for a line outside 889-890 (or returns)"
+  "why": "gen2/router/service.py: leaves line 886 for a line outside 886-887 (or returns)"
  },
  "1B-qualification-unchecked": {
   "controls": [
    "test_router_evidence.ProviderScreeningTest.test_an_abstention_hold_is_one_this_commit_creates_or_one_recorded"
   ],
-  "why": "gen2/router/boundary.py: leaves line 139-141 for a line outside 139-143 (or returns), having executed line 139"
+  "why": "gen2/router/boundary.py: leaves line 148-150 for a line outside 148-152 (or returns), having executed line 148"
  },
  "1B-queue-transition-dropped": {
   "controls": [
    "test_router_commit.AtomicityTest.test_the_commit_binds_the_bytes_it_validated"
   ],
-  "why": "gen2/router/service.py: executes line 778"
+  "why": "gen2/router/service.py: executes line 775"
  },
  "1B-raw-digest-not-its-artifact": {
   "controls": [
    "test_router_evidence.ProviderScreeningTest.test_a_qualified_receipts_committed_answer"
   ],
-  "why": "gen2/router/service.py: leaves line 702 for a line outside 702-703 (or returns)"
+  "why": "gen2/router/service.py: leaves line 693 for a line outside 693-694 (or returns)"
  },
  "1B-raw-response-not-bound": {
   "controls": [
    "test_router_evidence.ProviderScreeningTest.test_a_qualified_receipts_committed_answer"
   ],
-  "why": "gen2/router/service.py: executes line 704; or executes line 701"
+  "why": "gen2/router/service.py: executes line 695; or executes line 692"
  },
  "1B-real-graph-primitives-dropped": {
   "by_hand": true,
@@ -1260,37 +1260,37 @@
    "test_router_commit.FencingTest.test_work_pinned_to_a_superseded_contract_is_not_committed",
    "test_router_commit.TopicAuthorizationTest.test_bytes_recorded_only_for_another_topic_are_not_referenced_by_hash"
   ],
-  "why": "gen2/router/service.py: executes line 626"
+  "why": "gen2/router/service.py: executes line 615"
  },
  "1B-replay-any-fingerprint": {
   "controls": [
    "test_router_commit.ReplayAndIdentityTest.test_replaying_a_committed_operation_returns_the_identical_receipt"
   ],
-  "why": "gen2/router/service.py: leaves line 611 for a line outside 611-612 (or returns)"
+  "why": "gen2/router/service.py: leaves line 600 for a line outside 600-601 (or returns)"
  },
  "1B-replay-never": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: executes line 609"
+  "why": "gen2/router/service.py: executes line 598"
  },
  "1B-request-identity": {
   "controls": [
    "test_router_ops.ObservationTest.test_a_running_invocation_past_its_lease_records_nothing"
   ],
-  "why": "gen2/router/boundary.py: leaves line 207 for a line outside 207-208 (or returns)"
+  "why": "gen2/router/boundary.py: leaves line 216 for a line outside 216-217 (or returns)"
  },
  "1B-result-not-staged": {
   "controls": [
    "test_router_ops.TransitionTest.test_a_failure_releases_the_lease_and_requeues"
   ],
-  "why": "gen2/router/service.py: executes line 461; or executes line 460"
+  "why": "gen2/router/service.py: executes line 450; or executes line 449"
  },
  "1B-result-staged-before-replay": {
   "controls": [
    "test_router_ops.ObservationTest.test_the_same_observation_again_replays"
   ],
-  "why": "gen2/router/service.py: executes line 454; or executes line 457; or executes line 458"
+  "why": "gen2/router/service.py: executes line 443; or executes line 446; or executes line 447"
  },
  "1B-schema-additional-properties": {
   "controls": [
@@ -1422,61 +1422,61 @@
   "controls": [
    "test_router_evidence.ProviderScreeningTest.test_a_qualified_receipts_committed_answer"
   ],
-  "why": "gen2/router/boundary.py: leaves line 181-182 for a line outside 181-183 (or returns), having executed line 182"
+  "why": "gen2/router/boundary.py: leaves line 190-191 for a line outside 190-192 (or returns), having executed line 191"
  },
  "1B-screening-exclusion-on-unknown": {
   "controls": [
    "test_router_evidence.ScreeningTest.test_a_primary_assessment_under_the_pinned_protocol"
   ],
-  "why": "gen2/router/boundary.py: leaves line 172 for a line outside 172-173 (or returns)"
+  "why": "gen2/router/boundary.py: leaves line 181 for a line outside 181-182 (or returns)"
  },
  "1B-screening-foreign-criteria": {
   "controls": [
    "test_router_evidence.ScreeningTest.test_a_primary_assessment_under_the_pinned_protocol"
   ],
-  "why": "gen2/router/boundary.py: executes line 162"
+  "why": "gen2/router/boundary.py: executes line 171"
  },
  "1B-screening-inclusion-with-not-met": {
   "controls": [
    "test_router_evidence.ScreeningTest.test_a_primary_assessment_under_the_pinned_protocol"
   ],
-  "why": "gen2/router/boundary.py: leaves line 174 for a line outside 174-175 (or returns)"
+  "why": "gen2/router/boundary.py: leaves line 183 for a line outside 183-184 (or returns)"
  },
  "1B-screening-spec-contract-hash": {
   "controls": [
    "test_router_evidence.ProviderScreeningTest.test_a_qualified_receipts_committed_answer"
   ],
-  "why": "gen2/router/boundary.py: leaves line 191 for a line outside 191-193 (or returns)"
+  "why": "gen2/router/boundary.py: leaves line 200 for a line outside 200-202 (or returns)"
  },
  "1B-screening-spec-contract-revision": {
   "controls": [
    "test_router_evidence.ProviderScreeningTest.test_a_qualified_receipts_committed_answer"
   ],
-  "why": "gen2/router/boundary.py: leaves line 188 for a line outside 188-190 (or returns)"
+  "why": "gen2/router/boundary.py: leaves line 197 for a line outside 197-199 (or returns)"
  },
  "1B-screening-spec-protocol": {
   "controls": [
    "test_router_evidence.ProviderScreeningTest.test_a_qualified_receipts_committed_answer"
   ],
-  "why": "gen2/router/boundary.py: leaves line 194 for a line outside 194-195 (or returns)"
+  "why": "gen2/router/boundary.py: leaves line 203 for a line outside 203-204 (or returns)"
  },
  "1B-screening-spec-topic": {
   "controls": [
    "test_router_evidence.ProviderScreeningTest.test_a_qualified_receipts_committed_answer"
   ],
-  "why": "gen2/router/boundary.py: leaves line 185 for a line outside 185-186 (or returns)"
+  "why": "gen2/router/boundary.py: leaves line 194 for a line outside 194-195 (or returns)"
  },
  "1B-screening-stage": {
   "controls": [
    "test_router_evidence.ScreeningTest.test_a_primary_assessment_under_the_pinned_protocol"
   ],
-  "why": "gen2/router/boundary.py: leaves line 169 for a line outside 169-170 (or returns)"
+  "why": "gen2/router/boundary.py: leaves line 178 for a line outside 178-179 (or returns)"
  },
  "1B-screening-subject": {
   "controls": [
    "test_router_evidence.ProviderScreeningTest.test_a_qualified_receipts_committed_answer"
   ],
-  "why": "gen2/router/boundary.py: leaves line 181-182 for a line outside 181-183 (or returns), having executed line 181"
+  "why": "gen2/router/boundary.py: leaves line 190-191 for a line outside 190-192 (or returns), having executed line 190"
  },
  "1B-sections-any-kind": {
   "controls": [
@@ -1494,19 +1494,19 @@
   "controls": [
    "test_router_evidence.ProviderScreeningTest.test_an_abstention_hold_is_one_this_commit_creates_or_one_recorded"
   ],
-  "why": "gen2/router/boundary.py: leaves line 136 for a line outside 136-137 (or returns)"
+  "why": "gen2/router/boundary.py: leaves line 141 for a line outside 141-142 (or returns)"
  },
  "1B-state-revision-ignored": {
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/service.py: leaves line 742 for a line outside 742-743 (or returns)"
+  "why": "gen2/router/service.py: leaves line 733 for a line outside 733-734 (or returns)"
  },
  "1B-store-refusal-swallowed": {
   "controls": [
    "test_router_commit.AtomicityTest.test_the_commit_binds_the_bytes_it_validated"
   ],
-  "why": "gen2/router/service.py: executes line 327; or leaves line 325-326 for a line outside 324-328 (or returns)"
+  "why": "gen2/router/service.py: executes line 305; or leaves line 303-304 for a line outside 302-306 (or returns)"
  },
  "1B-store-writer-attribute-chains-ignored": {
   "controls": [
@@ -1536,49 +1536,49 @@
   "controls": [
    "test_router_ops.OperatorDecisionTest.test_contract_approval_queues_the_topic_and_an_amendment_supersedes"
   ],
-  "why": "gen2/router/service.py: leaves line 951 for a line outside 951-952 (or returns)"
+  "why": "gen2/router/service.py: leaves line 952 for a line outside 952-953 (or returns)"
  },
  "1B-text-ref-not-bound": {
   "controls": [
    "test_router_commit.TopicAuthorizationTest.test_the_same_bytes_staged_by_this_topic_are_its_own"
   ],
-  "why": "gen2/router/service.py: executes line 687; or executes line 686"
+  "why": "gen2/router/service.py: executes line 676; or executes line 675"
  },
  "1B-transition-clock-before-lock": {
   "controls": [
    "test_router_ops.ObservationTest.test_the_same_observation_again_replays"
   ],
-  "why": "gen2/router/service.py: executes line 464"
+  "why": "gen2/router/service.py: executes line 453"
  },
  "1B-transition-conflict-replayed": {
   "controls": [
    "test_router_ops.TransitionTest.test_a_failure_releases_the_lease_and_requeues"
   ],
-  "why": "gen2/router/service.py: leaves line 499 for a line outside 499-500 (or returns)"
+  "why": "gen2/router/service.py: leaves line 488 for a line outside 488-489 (or returns)"
  },
  "1B-transition-facts-unchecked": {
   "controls": [
    "test_router_ops.TransitionTest.test_a_failure_releases_the_lease_and_requeues"
   ],
-  "why": "gen2/router/service.py: leaves line 447 for a line outside 447-448 (or returns)"
+  "why": "gen2/router/service.py: leaves line 436 for a line outside 436-437 (or returns)"
  },
  "1B-transition-omitted-fact-ignored": {
   "controls": [
    "test_router_ops.TransitionTest.test_a_failure_releases_the_lease_and_requeues"
   ],
-  "why": "gen2/router/service.py: executes line 449"
+  "why": "gen2/router/service.py: executes line 438"
  },
  "1B-transition-replay-current-only": {
   "controls": [
    "test_router_ops.TransitionTest.test_a_failure_releases_the_lease_and_requeues"
   ],
-  "why": "gen2/router/service.py: executes line 495; or executes line 496; or executes line 498"
+  "why": "gen2/router/service.py: executes line 484; or executes line 485; or executes line 487"
  },
  "1B-trigger-reinserted": {
   "controls": [
    "test_router_evidence.TriggerAndOrdinalTest.test_only_contract_research_passes_earn_ordinals"
   ],
-  "why": "gen2/router/service.py: executes line 787"
+  "why": "gen2/router/service.py: executes line 784"
  },
  "1B-verifier-not-committer": {
   "controls": [
@@ -1590,13 +1590,13 @@
   "controls": [
    "test_router_ops.AckDeliveryTest.test_a_delivery_of_the_pair_the_watermark_holds_leaves_it"
   ],
-  "why": "gen2/router/service.py: executes line 1072"
+  "why": "gen2/router/service.py: executes line 1089"
  },
  "1B-watermark-regression": {
   "controls": [
    "test_router_ops.AckDeliveryTest.test_a_delivery_of_the_pair_the_watermark_holds_leaves_it"
   ],
-  "why": "gen2/router/service.py: leaves line 1074 for a line outside 1074-1076 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1091 for a line outside 1091-1093 (or returns)"
  },
  "1BR-receipt-binds-acked-at": {
   "controls": [
@@ -2052,61 +2052,61 @@
   "controls": [
    "test_router_lifecycle.CancellationTest.test_a_cancellation_asked_again_by_its_requester_replays"
   ],
-  "why": "gen2/router/lifecycle.py: leaves line 180 for a line outside 180-181 (or returns)"
+  "why": "gen2/router/lifecycle.py: leaves line 179 for a line outside 179-180 (or returns)"
  },
  "1C-router-cancellation-keeps-capacity": {
   "controls": [
    "test_router_lifecycle.CancellationTest.test_a_cancellation_asked_again_by_its_requester_replays"
   ],
-  "why": "gen2/router/service.py: executes line 533"
+  "why": "gen2/router/service.py: executes line 522"
  },
  "1C-router-cancellation-needs-a-class": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_crash_between_spawn_and_identity_record_finds_the_result"
   ],
-  "why": "gen2/router/lifecycle.py: leaves line 251 for a line outside 251-254 (or returns)"
+  "why": "gen2/router/lifecycle.py: leaves line 250 for a line outside 250-253 (or returns)"
  },
  "1C-router-cancelled-without-request": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_cancellation_before_any_start_starts_nothing"
   ],
-  "why": "gen2/router/service.py: leaves line 525 for a line outside 525-526 (or returns); or leaves line 525 for a line outside 525-526 (or returns)"
+  "why": "gen2/router/service.py: leaves line 514 for a line outside 514-515 (or returns); or leaves line 514 for a line outside 514-515 (or returns)"
  },
  "1C-router-capacity-on-unconfirmed-descendants": {
   "controls": [
    "test_router_lifecycle.FailureTest.test_a_delegate_failure_releases_nothing"
   ],
-  "why": "gen2/router/lifecycle.py: leaves line 111 for a line outside 111-112 (or returns)"
+  "why": "gen2/router/lifecycle.py: leaves line 107 for a line outside 107-108 (or returns)"
  },
  "1C-router-class-not-a-finding": {
   "controls": [
    "test_router_lifecycle.FailureTest.test_a_delegate_failure_releases_nothing"
   ],
-  "why": "gen2/router/lifecycle.py: leaves line 113 for a line outside 113-114 (or returns)"
+  "why": "gen2/router/lifecycle.py: leaves line 109 for a line outside 109-110 (or returns)"
  },
  "1C-router-commit-after-cancel": {
   "controls": [
    "test_router_lifecycle.FailureTest.test_a_committed_delegate_lets_its_parents_end_release_the_lease"
   ],
-  "why": "gen2/router/service.py: leaves line 752 for a line outside 752-753 (or returns)"
+  "why": "gen2/router/service.py: leaves line 743 for a line outside 743-744 (or returns)"
  },
  "1C-router-dedup-authorizes-only-the-first": {
   "controls": [
    "test_router_commit.TopicAuthorizationTest.test_bytes_recorded_for_this_topic_are_referenced_by_hash"
   ],
-  "why": "gen2/router/service.py: executes line 810; or executes line 806"
+  "why": "gen2/router/service.py: executes line 807; or executes line 803"
  },
  "1C-router-delegate-releases-its-parents-lease": {
   "controls": [
    "test_router_lifecycle.FailureTest.test_a_failure_records_its_class_and_evidence_and_releases_capacity"
   ],
-  "why": "gen2/router/lifecycle.py: executes line 142; or executes line 143; or executes line 144; or executes line 145"
+  "why": "gen2/router/lifecycle.py: executes line 138; or executes line 139; or executes line 140; or executes line 141"
  },
  "1C-router-end-evidence-unbound": {
   "controls": [
    "test_router_lifecycle.FailureTest.test_a_delegate_failure_releases_nothing"
   ],
-  "why": "gen2/router/service.py: executes line 522; or executes line 521"
+  "why": "gen2/router/service.py: executes line 511; or executes line 510"
  },
  "1C-router-ended-delegate-counts-live": {
   "controls": [
@@ -2158,49 +2158,49 @@
    "test_supervisor_delegates.VerificationParentTest.test_a_stalled_delegate_is_still_ended_at_its_deadline",
    "test_supervisor_delegates.VerificationParentTest.test_the_parent_waits_while_its_delegate_cannot_be_ended"
   ],
-  "why": "gen2/router/lifecycle.py: executes line 133 (else 132)"
+  "why": "gen2/router/lifecycle.py: executes line 129 (else 128)"
  },
  "1C-router-entry-cause-unrecorded": {
   "controls": [
    "test_router_lifecycle.UnknownTest.test_found_running_records_the_identity_and_clears_the_hold"
   ],
-  "why": "gen2/router/service.py: executes line 532 (else 531)"
+  "why": "gen2/router/service.py: executes line 521 (else 520)"
  },
  "1C-router-entry-replays-any-cause": {
   "controls": [
    "test_router_lifecycle.UnknownTest.test_an_episode_is_reconciled_only_by_its_own_record"
   ],
-  "why": "gen2/router/service.py: leaves line 488 for a line outside 488-490 (or returns)"
+  "why": "gen2/router/service.py: leaves line 477 for a line outside 477-479 (or returns)"
  },
  "1C-router-episode-hold-cleared-by-decision": {
   "controls": [
    "test_router_ops.OperatorDecisionTest.test_hold_clearance"
   ],
-  "why": "gen2/router/service.py: leaves line 977 for a line outside 977-978 (or returns)"
+  "why": "gen2/router/service.py: leaves line 983 for a line outside 983-984 (or returns)"
  },
  "1C-router-episode-replay-current-only": {
   "controls": [
    "test_router_lifecycle.UnknownTest.test_found_running_records_the_identity_and_clears_the_hold"
   ],
-  "why": "gen2/router/service.py: executes line 484"
+  "why": "gen2/router/service.py: executes line 473"
  },
  "1C-router-episode-skips-ahead": {
   "controls": [
    "test_router_lifecycle.UnknownTest.test_found_running_records_the_identity_and_clears_the_hold"
   ],
-  "why": "gen2/router/service.py: leaves line 492 for a line outside 492-493 (or returns)"
+  "why": "gen2/router/service.py: leaves line 481 for a line outside 481-482 (or returns)"
  },
  "1C-router-evidence-any-media-type": {
   "controls": [
    "test_router_lifecycle.FailureTest.test_a_delegate_failure_releases_nothing"
   ],
-  "why": "gen2/router/lifecycle.py: executes line 95"
+  "why": "gen2/router/lifecycle.py: executes line 91"
  },
  "1C-router-evidence-authorizes-nothing": {
   "controls": [
    "test_router_lifecycle.FailureTest.test_a_delegate_failure_releases_nothing"
   ],
-  "why": "gen2/router/lifecycle.py: executes line 123"
+  "why": "gen2/router/lifecycle.py: executes line 119"
  },
  "1C-router-evidence-not-recorded": {
   "controls": [
@@ -2250,25 +2250,25 @@
    "test_supervisor_lifecycle.VerificationLifecycleTest.test_a_deadline_passed_before_any_start_starts_nothing",
    "test_supervisor_lifecycle.VerificationLifecycleTest.test_cancellation_before_any_start_starts_nothing"
   ],
-  "why": "gen2/router/lifecycle.py: executes line 119; or executes line 118"
+  "why": "gen2/router/lifecycle.py: executes line 115; or executes line 114"
  },
  "1C-router-evidence-of-another-invocation": {
   "controls": [
    "test_router_lifecycle.FailureTest.test_a_delegate_failure_releases_nothing"
   ],
-  "why": "gen2/router/lifecycle.py: leaves line 98 for a line outside 98-99 (or returns)"
+  "why": "gen2/router/lifecycle.py: leaves line 94 for a line outside 94-95 (or returns)"
  },
  "1C-router-evidence-of-another-job": {
   "controls": [
    "test_router_lifecycle.FailureTest.test_a_delegate_failure_releases_nothing"
   ],
-  "why": "gen2/router/lifecycle.py: leaves line 109 for a line outside 109-110 (or returns)"
+  "why": "gen2/router/lifecycle.py: leaves line 105 for a line outside 105-106 (or returns)"
  },
  "1C-router-evidence-unvalidated": {
   "controls": [
    "test_router_lifecycle.FailureTest.test_a_delegate_failure_releases_nothing"
   ],
-  "why": "gen2/router/lifecycle.py: executes line 97"
+  "why": "gen2/router/lifecycle.py: executes line 93"
  },
  "1C-router-failure-without-record": {
   "controls": [
@@ -2282,103 +2282,103 @@
    "test_router_lifecycle.FailureTest.test_evidence_already_recorded_as_an_artifact_is_bound_again",
    "test_router_lifecycle.FailureTest.test_the_evidence_must_be_this_jobs_record_and_support_the_class"
   ],
-  "why": "gen2/router/service.py: executes line 446, 449"
+  "why": "gen2/router/service.py: executes line 435, 438"
  },
  "1C-router-final-commit-ignores-delegates": {
   "controls": [
    "test_router_lifecycle.FailureTest.test_a_committed_delegate_lets_its_parents_end_release_the_lease"
   ],
-  "why": "gen2/router/service.py: executes line 760"
+  "why": "gen2/router/service.py: executes line 751"
  },
  "1C-router-found-result-after-cancel": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_crash_between_spawn_and_identity_record_finds_the_result"
   ],
-  "why": "gen2/router/lifecycle.py: leaves line 266 for a line outside 266-267 (or returns); or leaves line 266 for a line outside 266-267 (or returns)"
+  "why": "gen2/router/lifecycle.py: leaves line 265 for a line outside 265-266 (or returns); or leaves line 265 for a line outside 265-266 (or returns)"
  },
  "1C-router-found-result-dirty-exit": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_crash_between_spawn_and_identity_record_finds_the_result"
   ],
-  "why": "gen2/router/lifecycle.py: leaves line 264 for a line outside 264-265 (or returns)"
+  "why": "gen2/router/lifecycle.py: leaves line 263 for a line outside 263-264 (or returns)"
  },
  "1C-router-found-result-other-digest": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_crash_between_spawn_and_identity_record_finds_the_result"
   ],
-  "why": "gen2/router/lifecycle.py: leaves line 264 for a line outside 264-265 (or returns)"
+  "why": "gen2/router/lifecycle.py: leaves line 263 for a line outside 263-264 (or returns)"
  },
  "1C-router-found-result-with-finding": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_crash_between_spawn_and_identity_record_finds_the_result"
   ],
-  "why": "gen2/router/lifecycle.py: leaves line 264 for a line outside 264-265 (or returns)"
+  "why": "gen2/router/lifecycle.py: leaves line 263 for a line outside 263-264 (or returns)"
  },
  "1C-router-found-running-unverified": {
   "controls": [
    "test_router_lifecycle.UnknownTest.test_an_episode_hold_is_not_cleared_by_an_operator_decision"
   ],
-  "why": "gen2/router/lifecycle.py: leaves line 259 for a line outside 259-260 (or returns)"
+  "why": "gen2/router/lifecycle.py: leaves line 258 for a line outside 258-259 (or returns)"
  },
  "1C-router-launch-after-cancel": {
   "controls": [
    "test_router_lifecycle.CancellationTest.test_a_cancellation_asked_again_by_its_requester_replays"
   ],
-  "why": "gen2/router/service.py: executes line 257"
+  "why": "gen2/router/service.py: executes line 250"
  },
  "1C-router-observation-after-cancel": {
   "controls": [
    "test_router_ops.ObservationTest.test_the_same_observation_again_replays"
   ],
-  "why": "gen2/router/service.py: leaves line 565 for a line outside 565-566 (or returns); or leaves line 565 for a line outside 565-566 (or returns)"
+  "why": "gen2/router/service.py: leaves line 554 for a line outside 554-555 (or returns); or leaves line 554 for a line outside 554-555 (or returns)"
  },
  "1C-router-parent-release-ignores-delegates": {
   "controls": [
    "test_router_lifecycle.FailureTest.test_a_failure_records_its_class_and_evidence_and_releases_capacity"
   ],
-  "why": "gen2/router/lifecycle.py: executes line 144"
+  "why": "gen2/router/lifecycle.py: executes line 140"
  },
  "1C-router-reached-state-recorded-again": {
   "controls": [
    "test_router_lifecycle.UnknownTest.test_found_running_records_the_identity_and_clears_the_hold"
   ],
-  "why": "gen2/router/service.py: leaves line 509 for a line outside 509-510 (or returns); or leaves line 509 for a line outside 509-510 (or returns)"
+  "why": "gen2/router/service.py: leaves line 498 for a line outside 498-499 (or returns); or leaves line 498 for a line outside 498-499 (or returns)"
  },
  "1C-router-reconcile-any-episode": {
   "controls": [
    "test_router_lifecycle.UnknownTest.test_an_episode_hold_is_not_cleared_by_an_operator_decision"
   ],
-  "why": "gen2/router/lifecycle.py: leaves line 245 for a line outside 245-246 (or returns)"
+  "why": "gen2/router/lifecycle.py: leaves line 244 for a line outside 244-245 (or returns)"
  },
  "1C-router-reconcile-method-unbound": {
   "controls": [
    "test_router_lifecycle.UnknownTest.test_an_episode_hold_is_not_cleared_by_an_operator_decision"
   ],
-  "why": "gen2/router/lifecycle.py: leaves line 248 for a line outside 248-249 (or returns)"
+  "why": "gen2/router/lifecycle.py: leaves line 247 for a line outside 247-248 (or returns)"
  },
  "1C-router-reconcile-no-transaction-recheck": {
   "controls": [
    "test_router_lifecycle.UnknownTest.test_an_episode_hold_is_not_cleared_by_an_operator_decision"
   ],
-  "why": "gen2/router/lifecycle.py: executes line 241; or executes line 242; or executes line 243"
+  "why": "gen2/router/lifecycle.py: executes line 240; or executes line 241; or executes line 242"
  },
  "1C-router-reconciliation-compares-columns-only": {
   "controls": [
    "test_router_lifecycle.UnknownTest.test_found_running_records_the_identity_and_clears_the_hold"
   ],
-  "why": "gen2/router/lifecycle.py: leaves line 235 for a line outside 235-237 (or returns)"
+  "why": "gen2/router/lifecycle.py: leaves line 234 for a line outside 234-236 (or returns)"
  },
  "1C-router-reconciliation-conflict-replayed": {
   "controls": [
    "test_router_lifecycle.UnknownTest.test_an_episode_is_reconciled_only_by_its_own_record"
   ],
-  "why": "gen2/router/lifecycle.py: leaves line 235 for a line outside 235-237 (or returns)"
+  "why": "gen2/router/lifecycle.py: leaves line 234 for a line outside 234-236 (or returns)"
  },
  "1C-router-reconciliation-keeps-capacity": {
   "controls": [
    "test_router_lifecycle.UnknownTest.test_an_episode_hold_is_not_cleared_by_an_operator_decision"
   ],
-  "why": "gen2/router/lifecycle.py: executes line 290"
+  "why": "gen2/router/lifecycle.py: executes line 289"
  },
  "1C-router-reconciliation-keeps-hold": {
   "controls": [
@@ -2389,31 +2389,31 @@
    "test_router_lifecycle.UnknownTest.test_an_episode_hold_is_not_cleared_by_an_operator_decision",
    "test_router_lifecycle.UnknownTest.test_an_episode_is_reconciled_only_by_its_own_record"
   ],
-  "why": "gen2/router/lifecycle.py: executes line 288"
+  "why": "gen2/router/lifecycle.py: executes line 287"
  },
  "1C-router-recorded-for-unscoped": {
   "controls": [
    "test_router_commit.TopicAuthorizationTest.test_bytes_recorded_for_this_topic_are_referenced_by_hash"
   ],
-  "why": "gen2/router/service.py: executes line 274; or executes line 275"
+  "why": "gen2/router/service.py: executes line 267; or executes line 268"
  },
  "1C-router-recorded-hash-any-topic": {
   "controls": [
    "test_router_commit.TopicAuthorizationTest.test_bytes_recorded_for_this_topic_are_referenced_by_hash"
   ],
-  "why": "gen2/router/service.py: executes line 666"
+  "why": "gen2/router/service.py: executes line 655"
  },
  "1C-router-result-after-cancel": {
   "controls": [
    "test_router_lifecycle.FailureTest.test_a_committed_delegate_lets_its_parents_end_release_the_lease"
   ],
-  "why": "gen2/router/service.py: leaves line 518 for a line outside 518-519 (or returns)"
+  "why": "gen2/router/service.py: leaves line 507 for a line outside 507-508 (or returns)"
  },
  "1C-router-spool-media-type-unchecked": {
   "controls": [
    "test_router_lifecycle.FailureTest.test_a_committed_delegate_lets_its_parents_end_release_the_lease"
   ],
-  "why": "gen2/router/service.py: leaves line 662 for a line outside 662-663 (or returns)"
+  "why": "gen2/router/service.py: leaves line 651 for a line outside 651-652 (or returns)"
  },
  "1C-router-staged-media-type-unchecked": {
   "controls": [
@@ -2425,7 +2425,7 @@
   "controls": [
    "test_router_lifecycle.CancellationTest.test_once_requested_no_result_observation_or_commit_is_accepted"
   ],
-  "why": "gen2/router/lifecycle.py: leaves line 183 for a line outside 183-184 (or returns)"
+  "why": "gen2/router/lifecycle.py: leaves line 182 for a line outside 182-183 (or returns)"
  },
  "1C-router-staging-authorizes-nothing": {
   "controls": [
@@ -2435,49 +2435,49 @@
    "test_router_commit.TopicAuthorizationTest.test_bytes_another_topic_records_meanwhile_do_not_become_this_topics",
    "test_router_commit.TopicAuthorizationTest.test_bytes_recorded_only_for_another_topic_are_not_referenced_by_hash"
   ],
-  "why": "gen2/router/service.py: executes line 810; or executes line 806"
+  "why": "gen2/router/service.py: executes line 807; or executes line 803"
  },
  "1C-router-status-hides-launch-refusal": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_deadline_passed_before_any_start_starts_nothing"
   ],
-  "why": "gen2/router/lifecycle.py: executes line 308"
+  "why": "gen2/router/lifecycle.py: executes line 307"
  },
  "1C-router-status-without-capability": {
   "controls": [
    "test_router_lifecycle.StatusAndSpoolTest.test_status_reports_the_current_launch_admission_check"
   ],
-  "why": "gen2/router/lifecycle.py: executes line 301"
+  "why": "gen2/router/lifecycle.py: executes line 300"
  },
  "1C-router-supervisor-cancels-without-capability": {
   "controls": [
    "test_router_lifecycle.CancellationTest.test_once_requested_no_result_observation_or_commit_is_accepted"
   ],
-  "why": "gen2/router/lifecycle.py: executes line 177; or executes line 178"
+  "why": "gen2/router/lifecycle.py: executes line 176; or executes line 177"
  },
  "1C-router-terminated-group-class-unbound": {
   "controls": [
    "test_router_lifecycle.UnknownTest.test_an_episode_hold_is_not_cleared_by_an_operator_decision"
   ],
-  "why": "gen2/router/lifecycle.py: leaves line 251 for a line outside 251-254 (or returns)"
+  "why": "gen2/router/lifecycle.py: leaves line 250 for a line outside 250-253 (or returns)"
  },
  "1C-router-termination-ignores-cancellation": {
   "controls": [
    "test_router_lifecycle.UnknownTest.test_an_episode_hold_is_not_cleared_by_an_operator_decision"
   ],
-  "why": "gen2/router/lifecycle.py: executes line 250"
+  "why": "gen2/router/lifecycle.py: executes line 249"
  },
  "1C-router-unknown-hold-already-due": {
   "controls": [
    "test_router_lifecycle.UnknownTest.test_an_episode_hold_is_not_cleared_by_an_operator_decision"
   ],
-  "why": "gen2/router/lifecycle.py: executes line 160 (else 157)"
+  "why": "gen2/router/lifecycle.py: executes line 159 (else 156)"
  },
  "1C-router-unknown-hold-unowned": {
   "controls": [
    "test_router_lifecycle.UnknownTest.test_an_episode_hold_is_not_cleared_by_an_operator_decision"
   ],
-  "why": "gen2/router/lifecycle.py: executes line 160 (else 157)"
+  "why": "gen2/router/lifecycle.py: executes line 159 (else 156)"
  },
  "1C-router-unknown-without-hold": {
   "controls": [
@@ -2488,13 +2488,13 @@
    "test_router_lifecycle.UnknownTest.test_an_episode_is_reconciled_only_by_its_own_record",
    "test_router_lifecycle.UnknownTest.test_found_running_records_the_identity_and_clears_the_hold"
   ],
-  "why": "gen2/router/service.py: executes line 536; or executes line 535"
+  "why": "gen2/router/service.py: executes line 525; or executes line 524"
  },
  "1C-router-unlaunched-not-cancelled": {
   "controls": [
    "test_router_lifecycle.CancellationTest.test_once_requested_no_result_observation_or_commit_is_accepted"
   ],
-  "why": "gen2/router/lifecycle.py: executes line 186; or executes line 187"
+  "why": "gen2/router/lifecycle.py: executes line 185; or executes line 186"
  },
  "1C-schema-absent-output-hashed": {
   "controls": [
@@ -2722,31 +2722,31 @@
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 319"
+  "why": "gen2/supervisor/supervisor.py: executes line 333"
  },
  "1C-sup-cancellation-ignored": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 896"
+  "why": "gen2/supervisor/supervisor.py: executes line 920"
  },
  "1C-sup-cancelled-exit-unconfirmed": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_crash_between_spawn_and_identity_record_finds_the_result"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 978"
+  "why": "gen2/supervisor/supervisor.py: executes line 1002"
  },
  "1C-sup-cancelled-work-not-ended": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 805"
+  "why": "gen2/supervisor/supervisor.py: executes line 829"
  },
  "1C-sup-chokepoint-trusts-the-callers-copy": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 525; or executes line 526"
+  "why": "gen2/supervisor/supervisor.py: executes line 549; or executes line 550"
  },
  "1C-sup-commit-budget-unbounded": {
   "by_hand": true,
@@ -2764,31 +2764,31 @@
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_result_after_its_lease_is_lost_is_retained_not_committed"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 944; or executes line 938"
+  "why": "gen2/supervisor/supervisor.py: executes line 968; or executes line 962"
  },
  "1C-sup-commit-exhaustion-unreferenced": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_result_after_its_lease_is_lost_is_retained_not_committed"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 944; or executes line 938"
+  "why": "gen2/supervisor/supervisor.py: executes line 968; or executes line 962"
  },
  "1C-sup-declared-digest-unchecked": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 640"
+  "why": "gen2/supervisor/supervisor.py: executes line 664"
  },
  "1C-sup-delegate-cancel-refusal-ignored": {
   "controls": [
    "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_that_completes"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 764"
+  "why": "gen2/supervisor/supervisor.py: executes line 788"
  },
  "1C-sup-delegate-locks-only-itself": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 341"
+  "why": "gen2/supervisor/supervisor.py: executes line 355"
  },
  "1C-sup-delegates-not-cancelled": {
   "controls": [
@@ -2829,61 +2829,61 @@
    "test_supervisor_delegates.VerificationParentTest.test_a_refused_delegate_cancellation_is_budgeted",
    "test_supervisor_delegates.VerificationParentTest.test_the_parent_waits_while_its_delegate_cannot_be_ended"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 760"
+  "why": "gen2/supervisor/supervisor.py: executes line 784"
  },
  "1C-sup-descendants-left-running": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 597"
+  "why": "gen2/supervisor/supervisor.py: executes line 621"
  },
  "1C-sup-empty-output-misclassed": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 637; or executes line 636"
+  "why": "gen2/supervisor/supervisor.py: executes line 661; or executes line 660"
  },
  "1C-sup-end-refusal-unbudgeted": {
   "controls": [
    "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_that_completes"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 922; or executes line 921"
+  "why": "gen2/supervisor/supervisor.py: executes line 946; or executes line 945"
  },
  "1C-sup-exit-code-ignored": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 629"
+  "why": "gen2/supervisor/supervisor.py: executes line 653"
  },
  "1C-sup-final-refusal-retried": {
   "controls": [
    "test_supervisor_budgets.ResearchPassBudgetTest.test_a_refused_end_accepted_within_its_budget_refunds_it"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 471"
+  "why": "gen2/supervisor/supervisor.py: executes line 495"
  },
  "1C-sup-identity-a-bare-pid": {
   "controls": [
    "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_that_completes"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 822; or executes line 821"
+  "why": "gen2/supervisor/supervisor.py: executes line 846; or executes line 845"
  },
  "1C-sup-incident-renewed": {
   "controls": [
    "test_supervisor_crash.ResearchPassCrashTest.test_recovery_starts_nothing_in_a_topic_paused_meanwhile"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 417; or executes line 418; or executes line 419"
+  "why": "gen2/supervisor/supervisor.py: executes line 441; or executes line 442; or executes line 443"
  },
  "1C-sup-incident-writer-trusts-the-callers-copy": {
   "controls": [
    "test_supervisor_crash.ResearchPassCrashTest.test_recovery_starts_nothing_in_a_topic_paused_meanwhile"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 416"
+  "why": "gen2/supervisor/supervisor.py: executes line 440"
  },
  "1C-sup-journal-read-before-the-lock": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 319; or executes line 320"
+  "why": "gen2/supervisor/supervisor.py: executes line 333; or executes line 334"
  },
  "1C-sup-launch-budget-unbounded": {
   "controls": [
@@ -2899,13 +2899,13 @@
    "test_supervisor_lifecycle.DiscoveryLifecycleTest.test_pause_holds_launch_within_its_budget_then_cancels",
    "test_supervisor_lifecycle.VerificationLifecycleTest.test_pause_holds_launch_within_its_budget_then_cancels"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 789"
+  "why": "gen2/supervisor/supervisor.py: executes line 813"
  },
  "1C-sup-launch-exhaustion-silent": {
   "controls": [
    "test_supervisor_crash.CheckpointCrashTest.test_recovery_starts_nothing_once_the_lease_has_expired"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 791; or executes line 788"
+  "why": "gen2/supervisor/supervisor.py: executes line 815; or executes line 812"
  },
  "1C-sup-no-abandon-handshake": {
   "controls": [
@@ -2921,49 +2921,49 @@
    "test_supervisor_crash.VerificationCrashTest.test_cancellation_after_a_start_that_never_happened",
    "test_supervisor_crash.VerificationCrashTest.test_crash_after_recording_a_start_that_never_happened"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 994"
+  "why": "gen2/supervisor/supervisor.py: executes line 1018"
  },
  "1C-sup-no-deadline": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 572"
+  "why": "gen2/supervisor/supervisor.py: executes line 596"
  },
  "1C-sup-no-start-grace": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_group_gone_without_an_exit_is_reconciled_by_lookup"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 992; or executes line 991"
+  "why": "gen2/supervisor/supervisor.py: executes line 1016; or executes line 1015"
  },
  "1C-sup-observation-made-again": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 564"
+  "why": "gen2/supervisor/supervisor.py: executes line 588"
  },
  "1C-sup-outage-untimed": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 533; or leaves line 530 for a line outside 529-536 (or returns)"
+  "why": "gen2/supervisor/supervisor.py: executes line 557; or leaves line 554 for a line outside 553-560 (or returns)"
  },
  "1C-sup-parent-bypasses-stalled-delegate": {
   "controls": [
    "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_that_completes"
   ],
-  "why": "gen2/supervisor/supervisor.py: leaves line 527 for a line outside 527-528 (or returns)"
+  "why": "gen2/supervisor/supervisor.py: leaves line 551 for a line outside 551-552 (or returns)"
  },
  "1C-sup-parent-commits-over-delegates": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 933"
+  "why": "gen2/supervisor/supervisor.py: executes line 957"
  },
  "1C-sup-parent-ends-over-delegates": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 906; or executes line 907"
+  "why": "gen2/supervisor/supervisor.py: executes line 930; or executes line 931"
  },
  "1C-sup-parent-reconciles-over-delegates": {
   "controls": [
@@ -2973,7 +2973,7 @@
    "test_supervisor_delegates.CheckpointParentTest.test_a_parent_reconciled_after_its_launcher_vanished",
    "test_supervisor_delegates.VerificationParentTest.test_a_parent_reconciled_after_its_launcher_vanished"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 1023; or executes line 1024"
+  "why": "gen2/supervisor/supervisor.py: executes line 1047; or executes line 1048"
  },
  "1C-sup-parent-unlaunched-end-over-delegates": {
   "controls": [
@@ -2983,7 +2983,7 @@
    "test_supervisor_delegates.CheckpointParentTest.test_a_parent_that_never_started",
    "test_supervisor_delegates.VerificationParentTest.test_a_parent_that_never_started"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 884"
+  "why": "gen2/supervisor/supervisor.py: executes line 908"
  },
  "1C-sup-pending-request-recomputed": {
   "controls": [
@@ -2994,79 +2994,79 @@
    "test_supervisor_budgets.DiscoveryBudgetTest.test_a_reconciliation_record_that_cannot_be_written_keeps_the_termination",
    "test_supervisor_budgets.VerificationBudgetTest.test_a_reconciliation_record_that_cannot_be_written_keeps_the_termination"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 865"
+  "why": "gen2/supervisor/supervisor.py: executes line 889"
  },
  "1C-sup-read-refunds-outage": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 537"
+  "why": "gen2/supervisor/supervisor.py: executes line 561"
  },
  "1C-sup-reap-walks-the-live-dict": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 555"
+  "why": "gen2/supervisor/supervisor.py: executes line 579"
  },
  "1C-sup-recover-reads-before-the-lock": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_crash_after_launch_intent_before_any_start"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 268; or executes line 262; or executes line 269"
+  "why": "gen2/supervisor/supervisor.py: executes line 282; or executes line 276; or executes line 283"
  },
  "1C-sup-recover-unlocked": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_crash_after_launch_intent_before_any_start"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 268; or executes line 262"
+  "why": "gen2/supervisor/supervisor.py: executes line 282; or executes line 276"
  },
  "1C-sup-recovery-refills-router-budget": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_crash_after_launch_intent_before_any_start"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 272; or executes line 270"
+  "why": "gen2/supervisor/supervisor.py: executes line 286; or executes line 284"
  },
  "1C-sup-recovery-unbudgeted": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_crash_after_launch_intent_before_any_start"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 270"
+  "why": "gen2/supervisor/supervisor.py: executes line 284"
  },
  "1C-sup-refusal-never-refunded": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 483; or executes line 481"
+  "why": "gen2/supervisor/supervisor.py: executes line 507; or executes line 505"
  },
  "1C-sup-refusal-unbudgeted": {
   "controls": [
    "test_supervisor_budgets.ResearchPassBudgetTest.test_a_refused_end_accepted_within_its_budget_refunds_it"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 473"
+  "why": "gen2/supervisor/supervisor.py: executes line 497"
  },
  "1C-sup-refused-output-misclassed": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 639; or executes line 638"
+  "why": "gen2/supervisor/supervisor.py: executes line 663; or executes line 662"
  },
  "1C-sup-result-refusal-unbudgeted": {
   "controls": [
    "test_supervisor_lifecycle.VerificationLifecycleTest.test_timeout_terminates_the_whole_group"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 920; or executes line 910"
+  "why": "gen2/supervisor/supervisor.py: executes line 944; or executes line 934"
  },
  "1C-sup-router-budget-unbounded": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 533; or leaves line 530 for a line outside 529-536 (or returns)"
+  "why": "gen2/supervisor/supervisor.py: executes line 557; or leaves line 554 for a line outside 553-560 (or returns)"
  },
  "1C-sup-running-job-terminated": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_cancellation_after_an_uncertain_spawn_ends_the_live_group"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 1003"
+  "why": "gen2/supervisor/supervisor.py: executes line 1027"
  },
  "1C-sup-self-cancel-refusal-unbudgeted": {
   "controls": [
@@ -3077,25 +3077,25 @@
    "test_supervisor_budgets.DiscoveryBudgetTest.test_a_refused_cancellation_of_unlaunched_work_is_budgeted_too",
    "test_supervisor_budgets.VerificationBudgetTest.test_a_refused_cancellation_of_unlaunched_work_is_budgeted_too"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 780; or executes line 779"
+  "why": "gen2/supervisor/supervisor.py: executes line 804; or executes line 803"
  },
  "1C-sup-sent-refusal-unbudgeted": {
   "controls": [
    "test_supervisor_crash.DiscoveryCrashTest.test_recovery_starts_nothing_once_cancellation_is_requested"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 880; or executes line 879"
+  "why": "gen2/supervisor/supervisor.py: executes line 904; or executes line 903"
  },
  "1C-sup-settled-job-claimed-again": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: leaves line 527 for a line outside 527-528 (or returns)"
+  "why": "gen2/supervisor/supervisor.py: leaves line 551 for a line outside 551-552 (or returns)"
  },
  "1C-sup-signal-ignored": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 627"
+  "why": "gen2/supervisor/supervisor.py: executes line 651"
  },
  "1C-sup-spawn-before-launch-intent": {
   "controls": [
@@ -3109,79 +3109,79 @@
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record",
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_cancellation_terminates_the_group_then_releases_capacity"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 795"
+  "why": "gen2/supervisor/supervisor.py: executes line 819"
  },
  "1C-sup-spawn-budget-unbounded": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 809"
+  "why": "gen2/supervisor/supervisor.py: executes line 833"
  },
  "1C-sup-spawn-exhaustion-silent": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 810; or executes line 809"
+  "why": "gen2/supervisor/supervisor.py: executes line 834; or executes line 833"
  },
  "1C-sup-stale-journal-saved": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: leaves line 388 for a line outside 388-389 (or returns)"
+  "why": "gen2/supervisor/supervisor.py: leaves line 412 for a line outside 412-413 (or returns)"
  },
  "1C-sup-stall-ignored": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: leaves line 527 for a line outside 527-528 (or returns)"
+  "why": "gen2/supervisor/supervisor.py: leaves line 551 for a line outside 551-552 (or returns)"
  },
  "1C-sup-stalled-delegate-unobserved": {
   "controls": [
    "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_that_completes"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 769"
+  "why": "gen2/supervisor/supervisor.py: executes line 793"
  },
  "1C-sup-stalled-parent-claimed-for-its-delegate": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: leaves line 527 for a line outside 527-528 (or returns)"
+  "why": "gen2/supervisor/supervisor.py: leaves line 551 for a line outside 551-552 (or returns)"
  },
  "1C-sup-stalled-write-retried": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 563"
+  "why": "gen2/supervisor/supervisor.py: executes line 587"
  },
  "1C-sup-stalled-write-retried-under-another-incident": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 563"
+  "why": "gen2/supervisor/supervisor.py: executes line 587"
  },
  "1C-sup-start-without-admission": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 807"
+  "why": "gen2/supervisor/supervisor.py: executes line 831"
  },
  "1C-sup-unadmitted-parent-strands-its-delegate": {
   "controls": [
    "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_that_completes"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 693; or leaves line 691 for a line outside 690-698 (or returns)"
+  "why": "gen2/supervisor/supervisor.py: executes line 717; or leaves line 715 for a line outside 714-722 (or returns)"
  },
  "1C-sup-unknown-entry-refusal-unbudgeted": {
   "controls": [
    "test_supervisor_crash.ResearchPassCrashTest.test_cancellation_after_an_uncertain_spawn_ends_the_live_group"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 960; or executes line 959"
+  "why": "gen2/supervisor/supervisor.py: executes line 984; or executes line 983"
  },
  "1C-sup-unknown-never-refunded": {
   "controls": [
    "test_supervisor_crash.ResearchPassCrashTest.test_cancellation_after_an_uncertain_spawn_ends_the_live_group"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 1035"
+  "why": "gen2/supervisor/supervisor.py: executes line 1059"
  },
  "1C-sup-unknown-unbudgeted": {
   "controls": [
@@ -3194,43 +3194,43 @@
    "test_supervisor_budgets.ResearchPassBudgetTest.test_an_unresolved_unknown_episode_is_also_bounded_in_time",
    "test_supervisor_budgets.VerificationBudgetTest.test_an_unresolved_unknown_episode_is_also_bounded_in_time"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 501"
+  "why": "gen2/supervisor/supervisor.py: executes line 525"
  },
  "1C-sup-unknown-untimed": {
   "controls": [
    "test_supervisor_budgets.ResearchPassBudgetTest.test_an_unknown_episode_reconciled_within_its_budget_refunds_it"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 501"
+  "why": "gen2/supervisor/supervisor.py: executes line 525"
  },
  "1C-sup-unstarted-work-past-deadline-cancelled": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 805"
+  "why": "gen2/supervisor/supervisor.py: executes line 829"
  },
  "1C-sup-unwritable-incident-swallowed": {
   "controls": [
    "test_supervisor_budgets.ResearchPassBudgetTest.test_enospc_from_the_spool_stalls_with_an_incident"
   ],
-  "why": "gen2/supervisor/supervisor.py: leaves line 443-450 for a line outside 442-453 (or returns)"
+  "why": "gen2/supervisor/supervisor.py: leaves line 467-474 for a line outside 466-477 (or returns)"
  },
  "1C-sup-vanished-group-outlives-deadline": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 572"
+  "why": "gen2/supervisor/supervisor.py: executes line 596"
  },
  "1C-sup-vanished-group-terminated": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_launcher_gone_without_an_exit_is_reconciled_by_terminating_its_group"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 1006"
+  "why": "gen2/supervisor/supervisor.py: executes line 1030"
  },
  "1C-sup-write-budget-never-refunded": {
   "controls": [
    "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 458"
+  "why": "gen2/supervisor/supervisor.py: executes line 482"
  },
  "1C-sup-write-retries-unbounded": {
   "controls": [
@@ -3243,13 +3243,1018 @@
    "test_supervisor_budgets.ResearchPassBudgetTest.test_a_reconciliation_record_that_cannot_be_written_keeps_the_termination",
    "test_supervisor_budgets.ResearchPassBudgetTest.test_a_termination_record_that_cannot_be_written_keeps_the_termination"
   ],
-  "why": "gen2/supervisor/supervisor.py: executes line 444"
+  "why": "gen2/supervisor/supervisor.py: executes line 468"
+ },
+ "1D-amend-amendment-any-lineage": {
+  "controls": [
+   "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
+  ],
+  "why": "gen2/router/amendments.py: leaves line 205 for a line outside 205-206 (or returns)"
+ },
+ "1D-amend-amendment-conflict-replayed": {
+  "by_hand": true,
+  "controls": [
+   "test_router_amendments.AmendmentProposalTest.test_the_same_amendment_again_replays"
+  ],
+  "why": "passes gen2/router/amendments.py's amendment-conflict guard (line 196) without taking it: the identical revision replays"
+ },
+ "1D-amend-amendment-without-facets": {
+  "controls": [
+   "test_router_amendments.AmendmentProposalTest.test_the_proposal_is_classed_against_the_approved_revision"
+  ],
+  "why": "gen2/router/amendments.py: executes line 210"
+ },
+ "1D-amend-amendment-without-obligations": {
+  "controls": [
+   "test_router_amendments.AmendmentProposalTest.test_the_proposal_is_classed_against_the_approved_revision"
+  ],
+  "why": "gen2/router/amendments.py: executes line 212"
+ },
+ "1D-amend-awaiting-not-superseded": {
+  "controls": [
+   "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
+  ],
+  "why": "gen2/router/amendments.py: executes line 171"
+ },
+ "1D-amend-brief-any-lineage": {
+  "controls": [
+   "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
+  ],
+  "why": "gen2/router/amendments.py: leaves line 161 for a line outside 161-162 (or returns)"
+ },
+ "1D-amend-brief-closed-reopened": {
+  "controls": [
+   "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
+  ],
+  "why": "gen2/router/amendments.py: leaves line 163 for a line outside 163-164 (or returns)"
+ },
+ "1D-amend-brief-conflict-replayed": {
+  "by_hand": true,
+  "controls": [
+   "test_router_amendments.BriefVersionTest.test_the_same_version_again_replays"
+  ],
+  "why": "passes gen2/router/amendments.py's brief-version conflict guard (line 154) without taking it: the identical version replays"
+ },
+ "1D-amend-brief-content-ignored": {
+  "controls": [
+   "test_router_amendments.BriefImpactTest.test_a_lineage_only_version_lets_scoping_work_complete"
+  ],
+  "why": "gen2/router/amendments.py: executes line 107"
+ },
+ "1D-amend-brief-created-later": {
+  "controls": [
+   "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
+  ],
+  "why": "gen2/router/amendments.py: leaves line 165 for a line outside 165-166 (or returns)"
+ },
+ "1D-amend-brief-deadline-past": {
+  "controls": [
+   "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
+  ],
+  "why": "gen2/router/amendments.py: leaves line 165 for a line outside 165-166 (or returns)"
+ },
+ "1D-amend-brief-first-version": {
+  "controls": [
+   "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
+  ],
+  "why": "gen2/router/amendments.py: leaves line 159 for a line outside 159-160 (or returns); or leaves line 159 for a line outside 159-160 (or returns)"
+ },
+ "1D-amend-compatible-fenced": {
+  "controls": [
+   "test_router_amendments.ImpactTest.test_an_impact_is_recorded_once_with_its_approval"
+  ],
+  "why": "gen2/router/amendments.py: executes line 243, 262, 298"
+ },
+ "1D-amend-confirmed-superseded-early": {
+  "controls": [
+   "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
+  ],
+  "why": "gen2/router/amendments.py: executes line 171"
+ },
+ "1D-amend-document-hash-untrue": {
+  "controls": [
+   "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
+  ],
+  "why": "gen2/router/amendments.py: leaves line 135 for a line outside 135-136 (or returns)"
+ },
+ "1D-amend-everything-listed-again": {
+  "controls": [
+   "test_router_amendments.ImpactTest.test_an_impact_is_recorded_once_with_its_approval"
+  ],
+  "why": "gen2/router/amendments.py: executes line 262"
+ },
+ "1D-amend-exclusions-not-reopened": {
+  "controls": [
+   "test_router_amendments.ImpactTest.test_an_impact_is_recorded_once_with_its_approval"
+  ],
+  "why": "gen2/router/amendments.py: executes line 276; or executes line 271"
+ },
+ "1D-amend-fenced-not-cancelled": {
+  "controls": [
+   "test_router_amendments.ImpactTest.test_a_compatible_amendment_lets_admitted_work_complete_under_its_pins"
+  ],
+  "why": "gen2/router/amendments.py: executes line 301; or executes line 300"
+ },
+ "1D-amend-framing-ignored": {
+  "controls": [
+   "test_router_amendments.ImpactTest.test_an_impact_is_recorded_once_with_its_approval"
+  ],
+  "why": "gen2/router/amendments.py: executes line 96; or executes line 97"
+ },
+ "1D-amend-importance-counted": {
+  "controls": [
+   "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
+  ],
+  "why": "gen2/router/amendments.py: executes line 89"
+ },
+ "1D-amend-obligations-ignored": {
+  "controls": [
+   "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
+  ],
+  "why": "gen2/router/amendments.py: executes line 99-100 (else 99)"
+ },
+ "1D-amend-overdue-any-status": {
+  "controls": [
+   "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
+  ],
+  "why": "gen2/router/amendments.py: leaves line 183 for a line outside 183-184 (or returns)"
+ },
+ "1D-amend-overdue-before-deadline": {
+  "controls": [
+   "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
+  ],
+  "why": "gen2/router/amendments.py: leaves line 185 for a line outside 185-186 (or returns)"
+ },
+ "1D-amend-overdue-deadline-exclusive": {
+  "controls": [
+   "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
+  ],
+  "why": "gen2/router/amendments.py: leaves line 185 for a line outside 185-186 (or returns)"
+ },
+ "1D-amend-overdue-not-replayed": {
+  "controls": [
+   "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
+  ],
+  "why": "gen2/router/amendments.py: executes line 181; or executes line 182"
+ },
+ "1D-amend-pins-unchecked": {
+  "controls": [
+   "test_router_commit.FencingTest.test_a_held_topic_is_left_held"
+  ],
+  "why": "gen2/router/amendments.py: leaves line 243 for a line outside 243-245 (or returns)"
+ },
+ "1D-amend-protocol-revision-ignored": {
+  "controls": [
+   "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
+  ],
+  "why": "gen2/router/amendments.py: executes line 99"
+ },
+ "1D-amend-protocol-sections-ignored": {
+  "controls": [
+   "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
+  ],
+  "why": "gen2/router/amendments.py: executes line 99"
+ },
+ "1D-amend-reservations-left-open": {
+  "by_hand": true,
+  "controls": [
+   "test_router_scheduling.ReservationTest.test_an_amendment_leaves_a_closed_reservation_as_it_was"
+  ],
+  "why": "executes gen2/router/amendments.py line 285 (the impact's closing guard) for a reservation already closed and passes it over; asserts only that the closed reservation is kept as it was"
+ },
+ "1D-amend-staged-result-cancelled": {
+  "controls": [
+   "test_router_amendments.ImpactTest.test_a_compatible_amendment_lets_admitted_work_complete_under_its_pins"
+  ],
+  "why": "gen2/router/amendments.py: executes line 300"
+ },
+ "1D-ddl-bundle-activation-rewritable": {
+  "controls": [
+   "test_store_registries.ConfigBundleTest.test_a_bundle_row_is_its_document"
+  ],
+  "why": "a statement that succeeds enters trigger config_bundles_immutable"
+ },
+ "1D-ddl-bundle-document-rewritable": {
+  "controls": [
+   "test_store_registries.ConfigBundleTest.test_a_bundle_row_is_its_document"
+  ],
+  "why": "a statement that succeeds enters trigger config_bundles_immutable"
+ },
+ "1D-ddl-bundle-hash-rewritable": {
+  "controls": [
+   "test_store_registries.ConfigBundleTest.test_a_bundle_row_is_its_document"
+  ],
+  "why": "a statement that succeeds enters trigger config_bundles_immutable"
+ },
+ "1D-ddl-bundle-json-kind": {
+  "controls": [
+   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+  ],
+  "why": "a statement that succeeds inserts a row into config_bundles"
+ },
+ "1D-ddl-bundle-json-version": {
+  "controls": [
+   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+  ],
+  "why": "a statement that succeeds inserts a row into config_bundles"
+ },
+ "1D-ddl-bundle-questions-altered-dropped": {
+  "controls": [
+   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+  ],
+  "why": "a statement that succeeds enters trigger config_bundles_questions_unaltered"
+ },
+ "1D-ddl-bundle-reactivated": {
+  "controls": [
+   "test_store_registries.ConfigBundleTest.test_a_bundle_row_is_its_document"
+  ],
+  "why": "a statement that succeeds enters trigger config_bundles_immutable"
+ },
+ "1D-ddl-bundle-recorded-older": {
+  "controls": [
+   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+  ],
+  "why": "a statement that succeeds enters trigger config_bundles_recorded_active_and_newest"
+ },
+ "1D-ddl-bundle-recorded-superseded": {
+  "controls": [
+   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+  ],
+  "why": "a statement that succeeds enters trigger config_bundles_recorded_active_and_newest"
+ },
+ "1D-ddl-bundle-version-rewritable": {
+  "controls": [
+   "test_store_registries.ConfigBundleTest.test_a_bundle_row_is_its_document"
+  ],
+  "why": "a statement that succeeds enters trigger config_bundles_immutable"
+ },
+ "1D-ddl-config-two-active": {
+  "controls": [
+   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+  ],
+  "why": "a statement that succeeds inserts a row into config_bundles"
+ },
+ "1D-ddl-draw-below-threshold": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger reservation_draws_within_and_revision_bound"
+ },
+ "1D-ddl-draw-beyond-units": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger reservation_draws_within_and_revision_bound"
+ },
+ "1D-ddl-draw-by-a-delegate": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger reservation_draws_within_and_revision_bound"
+ },
+ "1D-ddl-draw-closed": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger reservation_draws_within_and_revision_bound"
+ },
+ "1D-ddl-draw-facet-any-purpose": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger reservation_draws_within_and_revision_bound"
+ },
+ "1D-ddl-draw-other-revision": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger reservation_draws_within_and_revision_bound"
+ },
+ "1D-ddl-draw-other-topic": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger reservation_draws_within_and_revision_bound"
+ },
+ "1D-ddl-draw-superseded-revision": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger reservation_draws_within_and_revision_bound"
+ },
+ "1D-ddl-impact-any-classification": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds inserts a row into amendment_impacts"
+ },
+ "1D-ddl-impact-document-unbound": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds inserts a row into amendment_impacts"
+ },
+ "1D-ddl-impact-of-a-rejection": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger amendment_impacts_of_an_approval"
+ },
+ "1D-ddl-impact-of-another-topic": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger amendment_impacts_of_an_approval"
+ },
+ "1D-ddl-impact-of-any-kind": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger amendment_impacts_of_an_approval"
+ },
+ "1D-ddl-invocation-pins-any-bundle": {
+  "controls": [
+   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+  ],
+  "why": "a statement that succeeds inserts a row into invocations"
+ },
+ "1D-ddl-qualification-any-class": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger qualifications_created_live_for_their_spec"
+ },
+ "1D-ddl-qualification-any-provider": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger qualifications_created_live_for_their_spec"
+ },
+ "1D-ddl-qualification-born-revoked": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger qualifications_created_live_for_their_spec"
+ },
+ "1D-ddl-qualification-evaluation-rewritable": {
+  "controls": [
+   "test_store_registries.QualificationTest.test_qualified_authority_rests_on_a_live_record_of_exactly_its_spec"
+  ],
+  "why": "a statement that succeeds enters trigger qualifications_revoked_once"
+ },
+ "1D-ddl-qualification-revocation-partial": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds inserts a row into qualifications"
+ },
+ "1D-ddl-qualification-revoked-twice": {
+  "controls": [
+   "test_store_registries.QualificationTest.test_qualified_authority_rests_on_a_live_record_of_exactly_its_spec"
+  ],
+  "why": "a statement that succeeds enters trigger qualifications_revoked_once"
+ },
+ "1D-ddl-qualification-spec-rewritable": {
+  "controls": [
+   "test_store_registries.QualificationTest.test_qualified_authority_rests_on_a_live_record_of_exactly_its_spec"
+  ],
+  "why": "a statement that succeeds enters trigger qualifications_revoked_once"
+ },
+ "1D-ddl-qualified-by-another-spec": {
+  "controls": [
+   "test_store_examples.ExampleWorldTest.test_the_example_documents_are_stored_whole"
+  ],
+  "why": "a statement that succeeds enters trigger decision_receipts_qualification_live"
+ },
+ "1D-ddl-qualified-by-any-string": {
+  "controls": [
+   "test_store_examples.ExampleWorldTest.test_the_example_documents_are_stored_whole"
+  ],
+  "why": "a statement that succeeds enters trigger decision_receipts_qualification_live"
+ },
+ "1D-ddl-qualified-by-revoked": {
+  "controls": [
+   "test_store_examples.ExampleWorldTest.test_the_example_documents_are_stored_whole"
+  ],
+  "why": "a statement that succeeds enters trigger decision_receipts_qualification_live"
+ },
+ "1D-ddl-question-not-its-bundles-dropped": {
+  "controls": [
+   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+  ],
+  "why": "a statement that succeeds enters trigger questions_carried_by_their_bundle"
+ },
+ "1D-ddl-question-row-hash": {
+  "controls": [
+   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+  ],
+  "why": "a statement that succeeds inserts a row into questions"
+ },
+ "1D-ddl-question-row-id": {
+  "controls": [
+   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+  ],
+  "why": "a statement that succeeds inserts a row into questions"
+ },
+ "1D-ddl-question-row-version": {
+  "controls": [
+   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+  ],
+  "why": "a statement that succeeds inserts a row into questions"
+ },
+ "1D-ddl-question-version-rewordable": {
+  "controls": [
+   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+  ],
+  "why": "a statement that succeeds inserts a row into questions"
+ },
+ "1D-ddl-reservation-any-size": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger reservations_opened_under_the_approved_revision"
+ },
+ "1D-ddl-reservation-any-threshold": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger reservations_opened_under_the_approved_revision"
+ },
+ "1D-ddl-reservation-born-closed": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger reservations_opened_under_the_approved_revision"
+ },
+ "1D-ddl-reservation-closed-without-reason": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds inserts a row into reservations"
+ },
+ "1D-ddl-reservation-open-twice": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds inserts a row into reservations"
+ },
+ "1D-ddl-reservation-reclosed": {
+  "controls": [
+   "test_store_registries.ReservationTest.test_a_facet_below_the_threshold_is_refused"
+  ],
+  "why": "a statement that succeeds enters trigger reservations_close_once"
+ },
+ "1D-ddl-reservation-resized": {
+  "controls": [
+   "test_store_registries.ReservationTest.test_a_facet_below_the_threshold_is_refused"
+  ],
+  "why": "a statement that succeeds enters trigger reservations_close_once"
+ },
+ "1D-ddl-reservation-threshold-any-purpose": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds inserts a row into reservations"
+ },
+ "1D-ddl-reservation-under-a-draft": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger reservations_opened_under_the_approved_revision"
+ },
+ "1D-ddl-retry-attempt-uncounted": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger retries_of_ended_work_counted"
+ },
+ "1D-ddl-retry-born-claimed": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger retries_of_ended_work_counted"
+ },
+ "1D-ddl-retry-claimed-by-another-kind": {
+  "controls": [
+   "test_store_registries.RetryTest.test_a_retry_counts_along_its_chain"
+  ],
+  "why": "a statement that succeeds enters trigger retries_claimed_once"
+ },
+ "1D-ddl-retry-claimed-by-another-topic": {
+  "controls": [
+   "test_store_registries.RetryTest.test_a_retry_counts_along_its_chain"
+  ],
+  "why": "a statement that succeeds enters trigger retries_claimed_once"
+ },
+ "1D-ddl-retry-claimed-twice": {
+  "controls": [
+   "test_store_registries.RetryTest.test_a_retry_counts_along_its_chain"
+  ],
+  "why": "a statement that succeeds enters trigger retries_claimed_once"
+ },
+ "1D-ddl-retry-of-a-delegate": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger retries_of_ended_work_counted"
+ },
+ "1D-ddl-retry-of-live-work": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger retries_of_ended_work_counted"
+ },
+ "1D-ddl-retry-other-topic": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger retries_of_ended_work_counted"
+ },
+ "1D-ddl-retry-rewritable": {
+  "controls": [
+   "test_store_registries.RetryTest.test_a_retry_counts_along_its_chain"
+  ],
+  "why": "a statement that succeeds enters trigger retries_claimed_once"
+ },
+ "1D-ddl-spec-question-hash": {
+  "controls": [
+   "test_store_examples.ExampleWorldTest.test_the_example_documents_are_stored_whole"
+  ],
+  "why": "a statement that succeeds enters trigger decision_specs_question_registered"
+ },
+ "1D-ddl-spec-question-id": {
+  "controls": [
+   "test_store_examples.ExampleWorldTest.test_the_example_documents_are_stored_whole"
+  ],
+  "why": "a statement that succeeds enters trigger decision_specs_question_registered"
+ },
+ "1D-ddl-spec-question-version": {
+  "controls": [
+   "test_store_examples.ExampleWorldTest.test_the_example_documents_are_stored_whole"
+  ],
+  "why": "a statement that succeeds enters trigger decision_specs_question_registered"
+ },
+ "1D-ddl-trigger-any-episode-dropped": {
+  "controls": [
+   "test_store_ddl.OrdinalAndTriggerTest.test_trigger_identity_unique_and_handled_is_final"
+  ],
+  "why": "a statement that succeeds enters trigger review_triggers_episode_of_their_topic"
+ },
+ "1D-registry-active-not-superseded": {
+  "controls": [
+   "test_router_registries.ConfigBundleTest.test_the_active_bundle_again_is_a_replay"
+  ],
+  "why": "gen2/router/registries.py: executes line 106"
+ },
+ "1D-registry-bundle-identity-partial": {
+  "controls": [
+   "test_station_config.PinnedPolicyTest.test_new_work_pins_the_mounted_bundle"
+  ],
+  "why": "gen2/router/registries.py: executes line 84"
+ },
+ "1D-registry-duplicate-question": {
+  "controls": [
+   "test_router_registries.ConfigBundleTest.test_the_active_bundle_again_is_a_replay"
+  ],
+  "why": "gen2/router/registries.py: leaves line 79 for a line outside 79-80 (or returns)"
+ },
+ "1D-registry-fact-every-refusal": {
+  "controls": [
+   "test_router_registries.ConfigBundleTest.test_the_active_bundle_again_is_a_replay"
+  ],
+  "why": "gen2/router/registries.py: executes line 138; or executes line 139"
+ },
+ "1D-registry-hold-window-default": {
+  "controls": [
+   "test_router_registries.RegistryRestartTest.test_pins_and_registries_survive_a_restart"
+  ],
+  "why": "gen2/router/registries.py: executes line 129"
+ },
+ "1D-registry-no-recovery-fact": {
+  "controls": [
+   "test_router_registries.ConfigBundleTest.test_the_active_bundle_again_is_a_replay"
+  ],
+  "why": "gen2/router/registries.py: executes line 113"
+ },
+ "1D-registry-qualification-any-spec": {
+  "controls": [
+   "test_router_registries.QualificationRecordTest.test_a_revocation_between_validation_and_the_write_is_seen"
+  ],
+  "why": "gen2/router/registries.py: leaves line 169 for a line outside 169-170 (or returns)"
+ },
+ "1D-registry-qualification-conflict-replayed": {
+  "controls": [
+   "test_router_registries.RegistryRestartTest.test_a_revocation_survives_a_restart"
+  ],
+  "why": "gen2/router/registries.py: leaves line 165 for a line outside 165-166 (or returns)"
+ },
+ "1D-registry-qualified-any-spec": {
+  "controls": [
+   "test_router_registries.QualificationRecordTest.test_a_revocation_between_validation_and_the_write_is_seen"
+  ],
+  "why": "gen2/router/registries.py: executes line 192"
+ },
+ "1D-registry-question-altered": {
+  "controls": [
+   "test_router_registries.ConfigBundleTest.test_the_active_bundle_again_is_a_replay"
+  ],
+  "why": "gen2/router/registries.py: leaves line 103 for a line outside 103-104 (or returns)"
+ },
+ "1D-registry-question-hash-untrue": {
+  "controls": [
+   "test_router_registries.ConfigBundleTest.test_the_active_bundle_again_is_a_replay"
+  ],
+  "why": "gen2/router/registries.py: leaves line 82 for a line outside 82-83 (or returns)"
+ },
+ "1D-registry-refusal-no-fact": {
+  "controls": [
+   "test_router_registries.ConfigBundleTest.test_a_bundle_the_schema_refuses_is_refused"
+  ],
+  "why": "gen2/router/registries.py: executes line 88"
+ },
+ "1D-registry-revocation-conflict-replayed": {
+  "by_hand": true,
+  "controls": [
+   "test_router_registries.QualificationRecordTest.test_the_same_revocation_again_replays"
+  ],
+  "why": "passes gen2/router/registries.py's revocation-conflict guard (line 180) without taking it: the identical revocation replays"
+ },
+ "1D-registry-revocation-not-recorded": {
+  "controls": [
+   "test_router_registries.QualificationRecordTest.test_a_revocation_between_validation_and_the_write_is_seen"
+  ],
+  "why": "gen2/router/registries.py: executes line 183"
+ },
+ "1D-registry-revoked-still-qualified": {
+  "controls": [
+   "test_router_registries.QualificationRecordTest.test_a_revocation_between_validation_and_the_write_is_seen"
+  ],
+  "why": "gen2/router/registries.py: executes line 192"
+ },
+ "1D-registry-router-policy-shipped-only": {
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_every_kinds_lane_waits_for_a_requeue_within_its_budget"
+  ],
+  "why": "gen2/router/registries.py: executes line 129"
+ },
+ "1D-registry-superseded-reactivated": {
+  "controls": [
+   "test_router_registries.ConfigBundleTest.test_the_active_bundle_again_is_a_replay"
+  ],
+  "why": "gen2/router/registries.py: leaves line 94 for a line outside 94-95 (or returns)"
+ },
+ "1D-registry-version-unordered": {
+  "controls": [
+   "test_router_registries.ConfigBundleTest.test_the_active_bundle_again_is_a_replay"
+  ],
+  "why": "gen2/router/registries.py: leaves line 99 for a line outside 99-100 (or returns)"
+ },
+ "1D-router-amendment-any-parent": {
+  "controls": [
+   "test_router_amendments.AmendmentApprovalTest.test_an_approved_amendment_requeues_a_completed_topic"
+  ],
+  "why": "gen2/router/service.py: leaves line 999 for a line outside 999-1000 (or returns)"
+ },
+ "1D-router-brief-impact-unrecorded": {
+  "controls": [
+   "test_router_amendments.BriefImpactTest.test_a_lineage_only_version_lets_scoping_work_complete"
+  ],
+  "why": "gen2/router/service.py: executes line 968; or executes line 960"
+ },
+ "1D-router-claim-any-bundle": {
+  "controls": [
+   "test_router_registries.ConfigBundleTest.test_an_episode_holds_window_is_its_pinned_bundles"
+  ],
+  "why": "gen2/router/service.py: leaves line 333 for a line outside 333-334 (or returns)"
+ },
+ "1D-router-commit-reads-active-bundle": {
+  "controls": [
+   "test_router_ops.OperatorDecisionTest.test_hold_clearance"
+  ],
+  "why": "gen2/router/service.py: executes line 684"
+ },
+ "1D-router-completed-not-requeued": {
+  "controls": [
+   "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
+  ],
+  "why": "gen2/router/service.py: executes line 1007"
+ },
+ "1D-router-contract-impact-unrecorded": {
+  "controls": [
+   "test_router_amendments.ImpactTest.test_a_compatible_amendment_lets_admitted_work_complete_under_its_pins"
+  ],
+  "why": "gen2/router/service.py: executes line 1010"
+ },
+ "1D-router-hold-window-unpinned": {
+  "controls": [
+   "test_router_registries.RegistryRestartTest.test_pins_and_registries_survive_a_restart"
+  ],
+  "why": "gen2/router/lifecycle.py: executes line 155"
+ },
+ "1D-router-lane-ungated": {
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
+  ],
+  "why": "gen2/router/service.py: executes line 341"
+ },
+ "1D-router-policy-version-unpinned": {
+  "controls": [
+   "test_router_ops.OperatorDecisionTest.test_hold_clearance"
+  ],
+  "why": "gen2/router/service.py: executes line 720 (else 719)"
+ },
+ "1D-router-qualification-not-rechecked": {
+  "controls": [
+   "test_router_evidence.ProviderScreeningTest.test_a_qualified_receipts_committed_answer"
+  ],
+  "why": "gen2/router/service.py: leaves line 764-766 for a line outside 764-767 (or returns), having executed line 764"
+ },
+ "1D-router-question-unpinned": {
+  "controls": [
+   "test_router_registries.QualificationRecordTest.test_a_revocation_between_validation_and_the_write_is_seen"
+  ],
+  "why": "gen2/router/boundary.py: leaves line 144 for a line outside 144-146 (or returns)"
+ },
+ "1D-router-reframe-as-amendment": {
+  "controls": [
+   "test_router_amendments.AmendmentApprovalTest.test_an_approved_amendment_requeues_a_completed_topic"
+  ],
+  "why": "gen2/router/service.py: leaves line 1002 for a line outside 1002-1003 (or returns)"
+ },
+ "1D-router-replay-ignores-draw": {
+  "controls": [
+   "test_supervisor_crash.ResearchPassCrashTest.test_crash_before_the_grant_is_kept"
+  ],
+  "why": "gen2/router/service.py: executes line 413-414 (else 412); or executes line 409"
+ },
+ "1D-router-replay-ignores-retry": {
+  "controls": [
+   "test_supervisor_crash.ResearchPassCrashTest.test_crash_before_the_grant_is_kept"
+  ],
+  "why": "gen2/router/service.py: executes line 413 (else 412); or executes line 409"
+ },
+ "1D-router-reservation-not-drawn": {
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
+  ],
+  "why": "gen2/router/service.py: executes line 353"
+ },
+ "1D-router-retry-unlinked": {
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
+  ],
+  "why": "gen2/router/service.py: executes line 351"
+ },
+ "1D-router-stale-claim-promoted": {
+  "controls": [
+   "test_router_amendments.ImpactTest.test_a_compatible_amendment_lets_admitted_work_complete_under_its_pins"
+  ],
+  "why": "gen2/router/service.py: leaves line 891 for a line outside 891-893 (or returns)"
+ },
+ "1D-sched-budget-unbounded": {
+  "controls": [
+   "test_router_scheduling.SignalQueueTest.test_the_cadence_floor_and_mandatory_signals_are_never_held_back"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 215 for a line outside 215-216 (or returns)"
+ },
+ "1D-sched-budget-windowless": {
+  "controls": [
+   "test_router_scheduling.SignalQueueTest.test_the_cadence_floor_and_mandatory_signals_are_never_held_back"
+  ],
+  "why": "gen2/router/scheduling.py: executes line 214; or executes line 206"
+ },
+ "1D-sched-cooldown-ignored": {
+  "controls": [
+   "test_router_scheduling.SignalQueueTest.test_the_cadence_floor_and_mandatory_signals_are_never_held_back"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 217 for a line outside 217-218 (or returns)"
+ },
+ "1D-sched-draw-below-threshold": {
+  "by_hand": true,
+  "controls": [
+   "test_router_scheduling.ReservationTest.test_an_auto_promotion_draw_inside_a_critical_facet"
+  ],
+  "why": "passes gen2/router/scheduling.py's threshold guard (line 193) without taking it: a facet rated critical meets the threshold"
+ },
+ "1D-sched-draw-beyond-units": {
+  "controls": [
+   "test_router_scheduling.ReservationTest.test_an_auto_promotion_draw_is_inside_a_facet_rated_at_the_threshold"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 189 for a line outside 189-190 (or returns)"
+ },
+ "1D-sched-draw-closed": {
+  "controls": [
+   "test_router_scheduling.ReservationTest.test_a_reservation_is_sized_by_the_bundle_and_drawn_within_its_units"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 187 for a line outside 187-188 (or returns)"
+ },
+ "1D-sched-exhausted-left-open": {
+  "controls": [
+   "test_router_scheduling.ReservationTest.test_a_reservation_is_sized_by_the_bundle_and_drawn_within_its_units"
+  ],
+  "why": "gen2/router/scheduling.py: executes line 174; or executes line 171"
+ },
+ "1D-sched-exhaustion-without-hold": {
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
+  ],
+  "why": "gen2/router/scheduling.py: executes line 121; or executes line 119"
+ },
+ "1D-sched-floor-held-back": {
+  "controls": [
+   "test_router_scheduling.SignalQueueTest.test_reviews_coalesce_within_budget_and_cooldown_and_drop_nothing"
+  ],
+  "why": "gen2/router/scheduling.py: executes line 206"
+ },
+ "1D-sched-lane-claimed-unnamed": {
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 148 for a line outside 148-149 (or returns)"
+ },
+ "1D-sched-lane-claimed-unrequeued": {
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 148 for a line outside 148-149 (or returns)"
+ },
+ "1D-sched-lane-gate-never": {
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
+  ],
+  "why": "gen2/router/scheduling.py: executes line 146"
+ },
+ "1D-sched-mandatory-held-back": {
+  "controls": [
+   "test_router_scheduling.SignalQueueTest.test_reviews_coalesce_within_budget_and_cooldown_and_drop_nothing"
+  ],
+  "why": "gen2/router/scheduling.py: executes line 206"
+ },
+ "1D-sched-policy-budget-short": {
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
+  ],
+  "why": "gen2/router/scheduling.py: executes line 119"
+ },
+ "1D-sched-policy-budget-unbounded": {
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
+  ],
+  "why": "gen2/router/scheduling.py: executes line 119"
+ },
+ "1D-sched-policy-requeues-any-failure": {
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
+  ],
+  "why": "gen2/router/scheduling.py: executes line 116 (else 115); or executes line 113"
+ },
+ "1D-sched-policy-requeues-operator-cancellation": {
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
+  ],
+  "why": "gen2/router/scheduling.py: executes line 115; or executes line 113"
+ },
+ "1D-sched-queue-unconfigured-unbounded": {
+  "controls": [
+   "test_router_scheduling.SignalQueueTest.test_the_cadence_floor_and_mandatory_signals_are_never_held_back"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 211 for a line outside 211-212 (or returns); or leaves line 211 for a line outside 211-212 (or returns)"
+ },
+ "1D-sched-requeue-a-delegate": {
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 106 for a line outside 106-107 (or returns)"
+ },
+ "1D-sched-requeue-conflict-replayed": {
+  "by_hand": true,
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_same_requeue_again_replays"
+  ],
+  "why": "passes gen2/router/scheduling.py's re-queue conflict guard (line 103) without taking it: the identical re-queue replays"
+ },
+ "1D-sched-requeue-ignores-incident": {
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 109 for a line outside 109-110 (or returns)"
+ },
+ "1D-sched-requeue-live-work": {
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 106 for a line outside 106-107 (or returns)"
+ },
+ "1D-sched-requeue-not-the-lanes-last": {
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 106 for a line outside 106-107 (or returns)"
+ },
+ "1D-sched-reservation-conflict-replayed": {
+  "by_hand": true,
+  "controls": [
+   "test_router_scheduling.ReservationTest.test_the_same_reservation_again_replays"
+  ],
+  "why": "passes gen2/router/scheduling.py's reservation-conflict guard (line 159) without taking it: the identical reservation replays"
+ },
+ "1D-sched-reservation-reopened": {
+  "by_hand": true,
+  "controls": [
+   "test_router_scheduling.ReservationTest.test_an_exhausted_reservation_is_closed_when_the_next_opens"
+  ],
+  "why": "passes gen2/router/scheduling.py's open-reservation guard (line 172) without taking it: the open one has no units left, so it closes and the next opens"
+ },
+ "1D-sched-reservation-unsized": {
+  "controls": [
+   "test_router_scheduling.ReservationTest.test_a_reservation_is_sized_by_the_bundle_and_drawn_within_its_units"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 168 for a line outside 168-169 (or returns); or leaves line 168 for a line outside 168-169 (or returns)"
+ },
+ "1D-sched-reservation-without-approval": {
+  "controls": [
+   "test_router_scheduling.ReservationTest.test_a_reservation_is_sized_by_the_bundle_and_drawn_within_its_units"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 164 for a line outside 164-165 (or returns); or leaves line 164 for a line outside 164-165 (or returns)"
+ },
+ "1D-sched-retry-of-anything": {
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_hold_deadline_is_the_pinned_bundles_window"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 151 for a line outside 151-152 (or returns)"
+ },
+ "1D-sched-review-conflict-replayed": {
+  "by_hand": true,
+  "controls": [
+   "test_router_scheduling.SignalQueueTest.test_the_same_review_again_replays"
+  ],
+  "why": "passes gen2/router/scheduling.py's review-conflict guard (line 201) without taking it: the identical review replays"
+ },
+ "1D-sched-review-without-signal": {
+  "controls": [
+   "test_router_scheduling.SignalQueueTest.test_the_cadence_floor_and_mandatory_signals_are_never_held_back"
+  ],
+  "why": "gen2/router/scheduling.py: leaves line 207 for a line outside 207-208 (or returns)"
+ },
+ "1D-sched-signals-dropped": {
+  "controls": [
+   "test_router_scheduling.SignalQueueTest.test_the_cadence_floor_and_mandatory_signals_are_never_held_back"
+  ],
+  "why": "gen2/router/scheduling.py: executes line 220"
+ },
+ "1D-sup-bundle-policy-ignored": {
+  "controls": [
+   "test_station_config.PinnedPolicyTest.test_the_station_does_not_start_on_a_refused_bundle"
+  ],
+  "why": "gen2/supervisor/supervisor.py: executes line 163"
+ },
+ "1D-sup-job-ignores-pinned-bundle": {
+  "controls": [
+   "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
+  ],
+  "why": "gen2/supervisor/supervisor.py: executes line 393"
+ },
+ "1D-sup-order-pin-unchecked": {
+  "controls": [
+   "test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_clean_end_commits_the_result_with_its_execution_record"
+  ],
+  "why": "gen2/supervisor/supervisor.py: executes line 252; or executes line 253"
+ },
+ "1D-sup-station-falls-back": {
+  "controls": [
+   "test_station_config.PinnedPolicyTest.test_a_job_keeps_its_admitted_bundles_policy_across_a_restart"
+  ],
+  "why": "gen2/app/station.py: executes line 61; or executes line 60; or leaves line 60 for a line outside 60-62 (or returns)"
+ },
+ "1D-sup-station-no-resolver": {
+  "controls": [
+   "test_supervisor_crash.ResearchPassCrashTest.test_recovery_starts_nothing_once_cancellation_is_requested"
+  ],
+  "why": "gen2/app/station.py: executes line 71 (else 70)"
+ },
+ "1D-sup-station-policy-shipped": {
+  "controls": [
+   "test_supervisor_crash.ResearchPassCrashTest.test_recovery_starts_nothing_once_cancellation_is_requested"
+  ],
+  "why": "gen2/app/station.py: executes line 69; or executes line 55"
+ },
+ "1D-sup-station-two-policies": {
+  "controls": [
+   "test_station_config.PinnedPolicyTest.test_a_job_keeps_its_admitted_bundles_policy_across_a_restart"
+  ],
+  "why": "gen2/app/station.py: leaves line 56 for a line outside 56-58 (or returns)"
  },
  "A1-D01-live-lease-replace": {
   "controls": [
    "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "trigger leases_no_delete refuses every statement it enters (no WHEN), so no accepted path passes through it; the control inserts a row into leases, the table it guards, in a statement that succeeds"
+ },
+ "A1-append-only-update-amendment_impacts_immutable_u": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "trigger amendment_impacts_immutable_u refuses every statement it enters (no WHEN), so no accepted path passes through it; the control inserts a row into amendment_impacts, the table it guards, in a statement that succeeds"
  },
  "A1-append-only-update-artifact_topics_immutable_u": {
   "controls": [
@@ -3329,6 +4334,12 @@
   ],
   "why": "trigger outbox_events_immutable_u refuses every statement it enters (no WHEN), so no accepted path passes through it; the control inserts a row into outbox_events, the table it guards, in a statement that succeeds"
  },
+ "A1-append-only-update-questions_immutable_u": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "trigger questions_immutable_u refuses every statement it enters (no WHEN), so no accepted path passes through it; the control inserts a row into questions, the table it guards, in a statement that succeeds"
+ },
  "A1-append-only-update-quote_checks_immutable_u": {
   "controls": [
    "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
@@ -3346,6 +4357,12 @@
    "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
   ],
   "why": "trigger research_ordinals_immutable_u refuses every statement it enters (no WHEN), so no accepted path passes through it; the control inserts a row into research_ordinals, the table it guards, in a statement that succeeds"
+ },
+ "A1-append-only-update-reservation_draws_immutable_u": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "trigger reservation_draws_immutable_u refuses every statement it enters (no WHEN), so no accepted path passes through it; the control inserts a row into reservation_draws, the table it guards, in a statement that succeeds"
  },
  "A1-append-only-update-retrieval_events_immutable_u": {
   "controls": [
@@ -6877,6 +7894,12 @@
   ],
   "why": "a statement that succeeds enters trigger contract_status_forward_only"
  },
+ "cov-delete-guard-amendment_impacts_no_delete": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "trigger amendment_impacts_no_delete refuses every statement it enters (no WHEN), so no accepted path passes through it; the control inserts a row into amendment_impacts, the table it guards, in a statement that succeeds"
+ },
  "cov-delete-guard-artifact_topics_immutable_d": {
   "controls": [
    "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
@@ -6906,6 +7929,12 @@
    "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
   ],
   "why": "trigger claims_no_delete refuses every statement it enters (no WHEN), so no accepted path passes through it; the control inserts a row into claims, the table it guards, in a statement that succeeds"
+ },
+ "cov-delete-guard-config_bundles_no_delete": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "trigger config_bundles_no_delete refuses every statement it enters (no WHEN), so no accepted path passes through it; the control inserts a row into config_bundles, the table it guards, in a statement that succeeds"
  },
  "cov-delete-guard-decision_receipts_immutable_d": {
   "controls": [
@@ -6967,11 +7996,41 @@
   ],
   "why": "trigger outbox_events_immutable_d refuses every statement it enters (no WHEN), so no accepted path passes through it; the control inserts a row into outbox_events, the table it guards, in a statement that succeeds"
  },
+ "cov-delete-guard-qualifications_no_delete": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "trigger qualifications_no_delete refuses every statement it enters (no WHEN), so no accepted path passes through it; the control inserts a row into qualifications, the table it guards, in a statement that succeeds"
+ },
+ "cov-delete-guard-questions_no_delete": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "trigger questions_no_delete refuses every statement it enters (no WHEN), so no accepted path passes through it; the control inserts a row into questions, the table it guards, in a statement that succeeds"
+ },
  "cov-delete-guard-research_ordinals_immutable_d": {
   "controls": [
    "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
   ],
   "why": "trigger research_ordinals_immutable_d refuses every statement it enters (no WHEN), so no accepted path passes through it; the control inserts a row into research_ordinals, the table it guards, in a statement that succeeds"
+ },
+ "cov-delete-guard-reservation_draws_no_delete": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "trigger reservation_draws_no_delete refuses every statement it enters (no WHEN), so no accepted path passes through it; the control inserts a row into reservation_draws, the table it guards, in a statement that succeeds"
+ },
+ "cov-delete-guard-reservations_no_delete": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "trigger reservations_no_delete refuses every statement it enters (no WHEN), so no accepted path passes through it; the control inserts a row into reservations, the table it guards, in a statement that succeeds"
+ },
+ "cov-delete-guard-retries_no_delete": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "trigger retries_no_delete refuses every statement it enters (no WHEN), so no accepted path passes through it; the control inserts a row into retries, the table it guards, in a statement that succeeds"
  },
  "cov-delete-guard-retrieval_events_immutable_d": {
   "controls": [
@@ -7064,11 +8123,10 @@
   "why": "a statement that succeeds enters trigger review_episodes_close_once"
  },
  "cov-review_triggers_handled_is_final": {
-  "controls": [],
-  "in_killer": [
-   "test_store_ddl.OrdinalAndTriggerTest.test_trigger_identity_unique_and_handled_is_final"
+  "controls": [
+   "test_store_registries.SignalQueueEpisodeTest.test_a_trigger_joins_only_its_topics_episode"
   ],
-  "why": "no other test enters trigger review_triggers_handled_is_final in a statement that succeeds; the killer does, and under the mutant too: the UPDATE marking the trigger handled runs before the refusals"
+  "why": "a statement that succeeds enters trigger review_triggers_handled_is_final"
  },
  "cov-works_identity_immutable": {
   "controls": [],
