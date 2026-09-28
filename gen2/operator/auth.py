@@ -20,9 +20,13 @@ not made of visible ASCII (at least MIN_TOKEN characters).
 
 A presented token is compared in constant time: its SHA-256 digest against
 every configured token's digest with hmac.compare_digest, all of them, with
-no early exit, so neither the length of the presented token nor which
-principal matched changes the work done. Tokens stay in this module: they
-are never logged, echoed, returned or stored.
+no early exit, so which principal matched does not change the work done (the
+presented token's length does: SHA-256 reads all of it). Tokens stay in this
+module: they are never logged, echoed, returned or stored. The configured
+ones are kept here, in memory, for one purpose: redact() takes each of them
+out of whatever the listener is about to write — a reply, a log line — so a
+token a request carries in its path or body is not reflected back or logged
+(Astra 1e review finding 3).
 
 Persistence (RG-9): the principal set is the mounted secrets', read at every
 start. A restart or a replacement with the same mount keeps every principal,
@@ -39,6 +43,7 @@ from typing import Mapping, NamedTuple
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 MIN_TOKEN = 16
 SCHEME = "bearer "
+REDACTED = "[credential]"
 
 
 class CredentialsRefused(ValueError):
@@ -75,6 +80,7 @@ class Credentials:
         if len(set(digests)) != len(digests):
             raise CredentialsRefused("two principals share a token: a token names one principal")
         self._entries = [(principal, digest) for (principal, _), digest in zip(entries, digests)]
+        self._tokens = tuple(sorted((token for _, token in entries), key=len, reverse=True))  # the longest first: none is left half-redacted
 
     @property
     def principals(self) -> list[Principal]:
@@ -91,6 +97,20 @@ class Credentials:
             if hmac.compare_digest(presented, digest):
                 found = principal
         return found
+
+    def redact(self, value):
+        """`value` — a JSON value (dicts, lists, strings, numbers) or a log
+        line — with every configured token replaced by REDACTED wherever it
+        appears in a string, a key included."""
+        if isinstance(value, str):
+            for token in self._tokens:
+                value = value.replace(token, REDACTED)
+            return value
+        if isinstance(value, dict):
+            return {self.redact(k): self.redact(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [self.redact(item) for item in value]
+        return value
 
     @classmethod
     def from_environ(cls, environ: Mapping[str, str]) -> "Credentials":

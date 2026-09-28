@@ -61,8 +61,13 @@ exporter, which will run under an invocation, adds its capability-bearing
 calls needing both its token and that capability.)
 
 Every request is logged as one line — principal, method, route, HTTP status
-and the reply's status — and nothing else: never a header, a token or a
-body.
+and the reply's status — and nothing else: never a header, a token, a query
+or a body. The method and route are the service's own labels (label()): a
+route it serves by its name, anything else "?" — never the request's own
+text, which may carry a credential (Astra 1e review finding 3). And every
+reply and log line passes through Credentials.redact() before it leaves, so
+no configured token a request carries — in its path, its query or its body,
+echoed by a refusal — is written back or logged.
 """
 from __future__ import annotations
 
@@ -78,6 +83,8 @@ from gen2.operator.auth import Credentials, Principal
 MAX_BODY = 1024 * 1024
 LENGTH = re.compile(r"[0-9]{1,12}")
 COMMAND_PREFIX = "/v1/commands/"
+ROUTES = ("/v1/health", "/v1/status", "/mcp")
+METHODS = ("GET", "POST")
 _NAME = lambda principal: principal.name  # noqa: E731
 _OPERATOR = lambda principal: "operator"  # noqa: E731
 # route name (the router operation called) -> (the role it needs, the fields the principal supplies)
@@ -95,6 +102,18 @@ COMMANDS: dict[str, tuple[str, dict[str, Callable[[Principal], str]]]] = {
 }
 
 
+def label(method: str, target: str) -> tuple[str, str]:
+    """What a log line may say of a request: its method and its route as the
+    service names them, "?" for any it does not serve — never the request's
+    own text (the engine's diagnostics use it too)."""
+    route = target.partition("?")[0]
+    if route.startswith(COMMAND_PREFIX):
+        route = route if route[len(COMMAND_PREFIX):] in COMMANDS else COMMAND_PREFIX + "?"
+    elif route not in ROUTES:
+        route = "?"
+    return (method if method in METHODS else "?"), route
+
+
 class OperatorService:
     def __init__(self, backend, credentials: Credentials, *, incidents: Callable[[], list[dict]] = lambda: [],
                  log: Callable[[str], None] = lambda line: None) -> None:
@@ -105,6 +124,7 @@ class OperatorService:
 
     def handle(self, method: str, target: str, authorization: str | None, length: str | None, read: Callable[[int], bytes]) -> tuple[int, dict]:
         path, _, query = target.partition("?")
+        method_label, route = label(method, target)
         if path == "/v1/health":
             if method != "GET":
                 return 405, {"status": "refused", "reason": "method_not_allowed"}
@@ -115,25 +135,25 @@ class OperatorService:
             return (200, {"status": "ok"}) if healthy else (503, {"status": "unavailable"})
         principal = self._credentials.authenticate(authorization)
         if principal is None:
-            return self._answer(None, method, path, 401, {"status": "refused", "reason": "unauthenticated"})
+            return self._answer(None, method_label, route, 401, {"status": "refused", "reason": "unauthenticated"})
         if path == "/v1/status" and method == "GET":
             topics = parse_qs(query).get("topic", [])
-            return self._answer(principal, method, path, *self._status(principal, topics[0] if topics else None))
+            return self._answer(principal, method_label, route, *self._status(principal, topics[0] if topics else None))
         if path == "/mcp" and method == "POST":
             body, error = self._body(length, read)
             if error is not None:
-                return self._answer(principal, method, path, error[0], {"status": "refused", "reason": error[1]})
+                return self._answer(principal, method_label, route, error[0], {"status": "refused", "reason": error[1]})
             code, reply, route = self._mcp(principal, body)
-            return self._answer(principal, method, route, code, reply)
+            return self._answer(principal, method_label, route, code, reply)
         name = path[len(COMMAND_PREFIX):] if path.startswith(COMMAND_PREFIX) and method == "POST" else None
         if name not in COMMANDS:
-            return self._answer(principal, method, path, 404, {"status": "refused", "reason": "no_such_route"})
+            return self._answer(principal, method_label, route, 404, {"status": "refused", "reason": "no_such_route"})
         if principal.role != COMMANDS[name][0]:
-            return self._answer(principal, method, path, 403, {"status": "refused", "reason": "forbidden"})
+            return self._answer(principal, method_label, route, 403, {"status": "refused", "reason": "forbidden"})
         body, error = self._body(length, read)
         if error is not None:
-            return self._answer(principal, method, path, error[0], {"status": "refused", "reason": error[1]})
-        return self._answer(principal, method, path, *self._command(principal, name, body))
+            return self._answer(principal, method_label, route, error[0], {"status": "refused", "reason": error[1]})
+        return self._answer(principal, method_label, route, *self._command(principal, name, body))
 
     def _status(self, principal: Principal, topic: str | None) -> tuple[int, dict]:
         if principal.role != "operator":
@@ -200,8 +220,10 @@ class OperatorService:
             return None, (400, "request_invalid")
         return (body, None) if isinstance(body, dict) else (None, (400, "request_invalid"))
 
-    def _answer(self, principal: Principal | None, method: str, path: str, code: int, reply: dict) -> tuple[int, dict]:
+    def _answer(self, principal: Principal | None, method: str, route: str, code: int, reply: dict) -> tuple[int, dict]:
+        """Log the request's line (labels only: label()) and answer; both with
+        every configured token redacted."""
         who = "-" if principal is None else f"{principal.role}:{principal.name}"
         outcome = reply.get("status") if isinstance(reply, dict) else None
-        self._log(f"{who} {method} {path} -> {code} {outcome}")
-        return code, reply
+        self._log(self._credentials.redact(f"{who} {method} {route} -> {code} {outcome}"))
+        return code, self._credentials.redact(reply)

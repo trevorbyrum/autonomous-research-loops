@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import socket
 import unittest
+from unittest import mock
 
 from gen2.operator.auth import Credentials, CredentialsRefused, Principal
 from gen2.tests import operator_fixtures as of
@@ -287,6 +288,95 @@ class SecrecyTest(of.CommandWorld):
         self.assertTrue(any("-> 401" in line for line in self.logs) and any("-> 403" in line for line in self.logs))
         for token in (*of.TOKENS, presented):
             self.assertFalse([s for s in seen if token in s], f"a token ({token[:6]}...) appeared")
+
+
+def raw_exchange(engine, request: bytes) -> bytes:
+    """Send `request` as it is; every byte of the answer (status line, headers,
+    body) until the engine closes the connection, or 5 s pass."""
+    host, port = engine.address
+    answer = b""
+    with socket.create_connection((host, port), timeout=5) as conn:
+        conn.sendall(request)
+        try:
+            while chunk := conn.recv(65536):
+                answer += chunk
+        except (TimeoutError, ConnectionResetError):
+            pass
+    return answer
+
+
+class DiagnosticSecrecyTest(of.CommandWorld):
+    """A credential a request carries — in its path, query, method, version,
+    a header or its body — reaches no log line, reply or header, through each
+    diagnostic path of the listener: the service's route labels, the parser's
+    refusals, the handler's fault path, a refusal that would echo a body's
+    key (Astra 1e review finding 3). Each carried as a configured
+    operator's token, the exporter's and an unknown one. An unknown string in
+    an authenticated operator's own body is not a credential the engine can
+    know, so the refusal that echoes a body's key is sent with the
+    configured tokens only (Credentials.redact takes those out).
+    A request line the parser cannot read is answered as HTTP/0.9, a body
+    with no status line or headers (http.server)."""
+    UNKNOWN = "op-token-mallory-0123456789abcdef"
+    PARSER = b'{"reason": "bad_request", "status": "refused"}'
+    ECHOED = "a body key the router refuses"
+
+    def requests(self, token: str) -> list[tuple[str, bytes, str]]:
+        """(what, the raw request, the line the engine logs for it)."""
+        auth = f"Authorization: Bearer {of.OPERATOR_TOKEN}\r\n"
+        body = json.dumps({"invocation_id": of.RUNNING, "reason": "stop", token: 1}).encode()
+        post = lambda path, extra="": (f"POST {path} HTTP/1.1\r\nHost: x\r\n{extra}Content-Length: {len(body)}\r\n\r\n".encode() + body)  # noqa: E731
+        return [
+            ("an unauthenticated command path", post(f"/v1/commands/{token}"), "- POST /v1/commands/? -> 401 refused"),
+            ("an authenticated unknown command", post(f"/v1/commands/{token}", auth), "operator:alice POST /v1/commands/? -> 404 refused"),
+            ("an unknown path", f"GET /{token}/x HTTP/1.1\r\nHost: x\r\n{auth}\r\n".encode(), "operator:alice GET ? -> 404 refused"),
+            ("a status query", f"GET /v1/status?topic={token} HTTP/1.1\r\nHost: x\r\n{auth}\r\n".encode(), "operator:alice GET /v1/status -> 200 refused"),
+            ("a body key the router refuses", post("/v1/commands/request_cancel", auth), "operator:alice POST /v1/commands/request_cancel -> 200 refused"),
+            ("an unsupported method", f"{token} /v1/status HTTP/1.1\r\nHost: x\r\n{auth}\r\n".encode(), "- ? ? -> 501 refused"),
+            ("an unsupported method's path", f"PUT /v1/commands/{token} HTTP/1.1\r\nHost: x\r\n\r\n".encode(), "- ? ? -> 501 refused"),
+            ("a bad version", f"GET /v1/status HTTP/{token}\r\nHost: x\r\n\r\n".encode(), "- ? ? -> 400 refused"),
+            ("a bad request line", f"{token}\r\n\r\n".encode(), "- ? ? -> 400 refused"),
+            ("a request line too long", f"GET /{token}{'a' * 70000} HTTP/1.1\r\n\r\n".encode(), "- ? ? -> 414 refused"),
+            ("a header too long", f"GET /v1/status HTTP/1.1\r\nX-Pad: {token}{'a' * 70000}\r\n\r\n".encode(), "- ? ? -> 431 refused"),
+        ]
+
+    def test_no_carried_token_reaches_a_log_a_reply_or_a_header(self) -> None:
+        for token in (of.OPERATOR_TOKEN, of.EXPORTER_TOKEN, self.UNKNOWN):
+            for what, request, line in self.requests(token):
+                if token == self.UNKNOWN and what == self.ECHOED:
+                    continue
+                with self.subTest(token=token[:9], what=what):
+                    self.logs.clear()
+                    answer = raw_exchange(self.engine, request)
+                    if what in ("a bad version", "a bad request line"):
+                        self.assertEqual(answer, self.PARSER)
+                    else:
+                        self.assertTrue(answer.startswith(f"HTTP/1.0 {line.split(' -> ')[1][:3]} ".encode()), answer[:80])
+                    self.assertNotIn(token.encode(), answer)
+                    self.assertEqual(self.logs, [line])
+        refused = raw_exchange(self.engine, self.requests(of.EXPORTER_TOKEN)[4][1])  # the router's refusal names the key; the key is redacted
+        self.assertIn(b"[credential]", refused)
+        answer = raw_exchange(self.engine, f"GET /v1/status HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {of.OPERATOR_TOKEN}\r\n\r\n".encode())
+        self.assertIn(b'"status": "ok"', answer)  # the control: an authenticated request is answered
+
+    def test_a_fault_behind_the_service_is_logged_by_type_and_label(self) -> None:
+        """The handler's fault path: the service raises with the carried token
+        in its message; the answer is the fixed 500 and the log line names
+        the fault's type and the service's labels, nothing of the request."""
+        for token in (of.OPERATOR_TOKEN, self.UNKNOWN):
+            for path, line in ((f"/v1/commands/{token}", "- POST /v1/commands/? -> 500 RuntimeError"),
+                               ("/v1/commands/request_cancel", "- POST /v1/commands/request_cancel -> 500 RuntimeError"),
+                               (f"/{token}", "- POST ? -> 500 RuntimeError")):
+                with self.subTest(token=token[:9], path=path[:14]):
+                    self.logs.clear()
+                    body = json.dumps({"reason": token}).encode()
+                    with mock.patch.object(self.engine.service, "handle", side_effect=RuntimeError(f"failed on {path} with {token}")):
+                        answer = raw_exchange(self.engine, f"POST {path} HTTP/1.1\r\nHost: x\r\nContent-Length: {len(body)}\r\n\r\n".encode() + body)
+                    self.assertTrue(answer.startswith(b"HTTP/1.0 500 "), answer[:80])
+                    self.assertTrue(answer.endswith(b'{"reason": "internal", "status": "error"}'), answer[-80:])
+                    self.assertNotIn(token.encode(), answer)
+                    self.assertEqual(self.logs, [line])
+        self.assertEqual(self.command("request_cancel", self.bodies()["request_cancel"])[1]["status"], "recorded")  # the control, unpatched
 
 
 class CredentialsTest(unittest.TestCase):

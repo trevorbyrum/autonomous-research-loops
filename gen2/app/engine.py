@@ -38,11 +38,13 @@ from typing import Callable
 
 from gen2.app.station import Station, StationRefused, open_station
 from gen2.operator.auth import Credentials, CredentialsRefused
-from gen2.operator.service import COMMANDS, OperatorService
+from gen2.operator.service import COMMANDS, OperatorService, label
 from gen2.router.service import utc_now
 
 ANSWER_TIMEOUT_S = 60.0
 DRAIN_MAX = 64 * 1024
+# The parser's own refusals (http.server calls send_error): each a fixed answer, repeating nothing of the request
+PARSER_REFUSALS = {400: "bad_request", 414: "uri_too_long", 431: "headers_too_large", 501: "method_not_supported", 505: "version_not_supported"}
 
 
 class _Owned:
@@ -80,7 +82,7 @@ class Engine:
         self.service = OperatorService(_Owned(self._owner, self.station), credentials,
                                        incidents=lambda: self._owner.submit(supervisor.incidents).result(timeout=ANSWER_TIMEOUT_S), log=self.log)
         try:
-            self._server = http.server.ThreadingHTTPServer(listen, _handler(self.service, self.log))
+            self._server = _Server(listen, _handler(self.service, self.log), self.log)
         except BaseException:
             self._owner.submit(self.station.close).result()
             self._owner.shutdown()
@@ -107,6 +109,20 @@ class Engine:
             self._owner.shutdown()
 
 
+class _Server(http.server.ThreadingHTTPServer):
+    daemon_threads = True
+
+    def __init__(self, listen: tuple[str, int], handler, log: Callable[[str], None]) -> None:
+        self._diagnostic = log
+        super().__init__(listen, handler)
+
+    def handle_error(self, request, client_address) -> None:
+        """A connection that failed outside the service (a client gone
+        mid-answer): one line naming the fault's type, never the traceback
+        socketserver would print, whose text may carry the request's."""
+        self._diagnostic(f"- ? ? -> connection {sys.exc_info()[0].__name__}")
+
+
 def _handler(service: OperatorService, log: Callable[[str], None]):
     class Handler(http.server.BaseHTTPRequestHandler):
         server_version = "gen2-engine"
@@ -130,20 +146,36 @@ def _handler(service: OperatorService, log: Callable[[str], None]):
             length = self.headers.get("Content-Length")
             try:
                 code, reply = service.handle(self.command, self.path, self.headers.get("Authorization"), length, read)
-            except Exception as exc:  # a fault behind the service: answered, logged by type only, never with the request
-                log(f"- {self.command} {self.path.partition('?')[0]} -> 500 {type(exc).__name__}")
+            except Exception as exc:  # a fault behind the service: answered, logged by type and the service's labels, never with the request
+                log("- {} {} -> 500 {}".format(*label(self.command, self.path), type(exc).__name__))
                 code, reply = 500, {"status": "error", "reason": "internal"}
+            self._write(code, reply)
+            self._discard(length, consumed)
+
+        def send_error(self, code: int, message: str | None = None, explain: str | None = None) -> None:
+            """The parser's refusal — a malformed request line or header, a
+            method no route serves, a URI or header too long — answered with a
+            fixed reply (PARSER_REFUSALS) and logged as one fixed line. The
+            inherited answer repeats the request's own text in its reason
+            phrase and page (Astra 1e review finding 3); nothing of it is
+            repeated here, and the connection closes."""
+            self.close_connection = True
+            log(f"- ? ? -> {code} refused")
+            self._write(code, {"status": "refused", "reason": PARSER_REFUSALS.get(code, "bad_request")}, close=True)
+
+        def _write(self, code: int, reply: dict, *, close: bool = False) -> None:
             raw = json.dumps(reply, sort_keys=True).encode("utf-8")
-            self.send_response(code)
+            self.send_response(code)  # the standard reason phrase for the code, never a message
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(raw)))
             self.send_header("Cache-Control", "no-store")
             if code == 401:
                 self.send_header("WWW-Authenticate", 'Bearer realm="gen2-engine"')
+            if close:
+                self.send_header("Connection", "close")
             self.end_headers()
             self.wfile.write(raw)
             self.wfile.flush()
-            self._discard(length, consumed)
 
         def _discard(self, length: str | None, consumed: int) -> None:
             """After the answer, the rest of a small declared body the service
