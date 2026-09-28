@@ -396,3 +396,16 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-1c-repair-2-astr
 **Orchestrator routing decision:** this is the third path of the same kind, so 1c-repair-3 closes the class structurally. The gate goes at the router-call chokepoint, and an open incident's deadline becomes write-once. No per-site patch.
 
 No operator decision needed.
+
+## 2026-09-28: 1c-repair-3 re-review (Astra, xhigh). BLOCK, narrow
+Full report: `~/work/research-loops-public/private/reviews/gen2-1c-repair-3-astra-review-20260928.md`.
+
+**What closed:**
+- The sequential retry bypasses are repaired. Static inspection found no backend call that goes around `_call()`.
+- The tightened control rule fixes the earlier enclosing-branch examples.
+
+**What remains:**
+- **BLOCK 1:** overlapping advances on the same job are not serialized. `_spend()`/`_save()` writes the caller's stale journal snapshot back, which erases an open incident and resets the exhausted counter. That produced 12 calls instead of 6, and the deadline moved. Reproduced 8/8: 4 kinds × {shared instance, shared jobs directory}. A temporary whole-advance lock fixes it.
+- **BLOCK 2:** a relevant passing control exists for `no-abandon-handshake`.
+
+**Routed:** `docs/gen2/tasks/1c-repair-4.md`, a cross-process per-job lock with parent↔delegate lock ordering.
