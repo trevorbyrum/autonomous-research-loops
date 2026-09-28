@@ -257,8 +257,11 @@ class CliTransportTest(unittest.TestCase):
 
     def run_cli(self, server: Answering, *args: str) -> tuple[int, str, str]:
         out, err = io.StringIO(), io.StringIO()
-        code = cli.main(list(args), environ={"GEN2_OPERATOR_URL": server.url, "GEN2_OPERATOR_TOKEN": of.OPERATOR_TOKEN},
-                        stdin=io.StringIO('{"invocation_id": "inv_running0001", "reason": "stop"}'), stdout=out, stderr=err)
+        try:
+            code = cli.main(list(args), environ={"GEN2_OPERATOR_URL": server.url, "GEN2_OPERATOR_TOKEN": of.OPERATOR_TOKEN},
+                            stdin=io.StringIO('{"invocation_id": "inv_running0001", "reason": "stop"}'), stdout=out, stderr=err)
+        except Exception as escaped:  # what the process would print as a traceback, exiting 1
+            self.fail(f"the CLI raised {type(escaped).__name__} instead of answering")
         return code, out.getvalue(), err.getvalue()
 
     def serve(self, answer: bytes) -> Answering:
@@ -283,6 +286,8 @@ class CliTransportTest(unittest.TestCase):
                     self.assertTrue(err.startswith(f"no answer from the engine at {server.url}: "), err)
                     self.assertNotIn("Traceback", err)
                     self.assertNotIn(of.OPERATOR_TOKEN, err)
+                    for part in ("garbage", "xxxx", '{"status'):  # none of the engine's bytes
+                        self.assertNotIn(part, err)
 
     def test_the_controls_answered_and_refused(self) -> None:
         for label, answer, code in (("answered", http_answer("200 OK", b'{"status": "recorded"}'), 0), ("refused by the router", http_answer("200 OK", b'{"status": "refused", "reason": "not_cancellable"}'), 1),

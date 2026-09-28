@@ -21,9 +21,12 @@ to one answer, a status code and a JSON document. The transport
 (gen2/app/engine.py) only moves bytes; the CLI (gen2/app/cli.py) is a client
 of the same routes. Every command is one of the router's existing operations,
 called on the backend the composition root hands over
-(core.control.OperatorBackend); this module holds no store, imports no
-router and has no write path of its own (gen2/boundaries.toml: operator
-imports core only and is granted no capability).
+(core.control.OperatorBackend) — but one: recover_incident, the station's
+recovery of a job stalled on an incident (task 1e-repair; Supervisor.
+recover_incident), which reaches the router only through the invocation's own
+capability-bearing operations. This module holds no store, imports no router
+and has no write path of its own (gen2/boundaries.toml: operator imports core
+only and is granted no capability).
 
 Routes: GET /v1/health; GET /v1/status[?topic=<topic_id>]; POST
 /v1/commands/<operation>, where <operation> is the router operation's own
@@ -43,10 +46,10 @@ refused before anything but the route is read:
      object (400 otherwise). Status's query is no query or exactly one topic
      (400 otherwise); over MCP, the whole envelope first (_mcp).
   5. Authority is the principal's, never the request's: the fields that name
-     who acts (a decision's operator_id, the requester of a cancellation or
-     re-queue, a brief closure's closed_by) and capability_id are refused if
-     the body names them (400 authority_in_request), and the first three are
-     then set from the principal.
+     who acts (a decision's operator_id, the requester of a cancellation,
+     re-queue or recovery, a brief closure's closed_by) and capability_id are
+     refused if the body names them (400 authority_in_request), and the
+     others are then set from the principal.
   6. The router's operation answers (200): its reply is the answer, whatever
      it decided — its `status` says what happened, a refusal included.
 

@@ -59,8 +59,12 @@ and time from its first unresolved look, per episode), recover()
 resumptions, launch refusals, launcher starts and commit re-sends. Past the
 router, write, refusal or unknown budget the job stalls with an owned,
 deadlined incident naming the budget and what it last met, which only
-recover() — itself budgeted, and refilling nothing — closes. An unresolved
-episode keeps its hold, since only its reconciliation clears it (L-4). An
+recover() or recover_incident() — the operator's, for one job — closes, each
+drawing on the job's recovery budget and refilling nothing. An unresolved
+episode keeps its hold, since only its reconciliation clears it (L-4); where
+the retained end's descendants were never confirmed ended, recover() alone
+finds the same unconfirmed end again, and recover_incident() is the route:
+the group ended afresh, the episode reconciled from that (task 1e-repair). An
 exhausted launch, spawn or commit budget is recorded as an incident beside
 the job's end; a journal that cannot be written raises ControlFailure out of
 band (RG-3).

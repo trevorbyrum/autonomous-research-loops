@@ -12,7 +12,10 @@ gen2/router/status.py (the facts and the router's own judgments of them);
 gen2/supervisor/supervisor.py Supervisor.incidents (the incidents: a stalled
 job's blocking one — the collected end whose descendants were never
 confirmed ended stalls as outcome_unknown_unresolved, which needs the
-operator — and each exhausted retry budget, recorded beside its job's end).
+operator — and each exhausted retry budget, recorded beside its job's end;
+each names its invocation and topic from the job's durable order, whatever
+the topic's lanes have done since, Astra 1e review finding 5). A blocking
+incident says what clears it: the operator's recover_incident.
 
 Nothing here decides anything: every reason is read off a fact, and each
 names what it waits for and, where the record has them, who owns it and by

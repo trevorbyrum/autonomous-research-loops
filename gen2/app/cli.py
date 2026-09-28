@@ -9,10 +9,11 @@ service"); DEPLOYMENT-CONTRACT.md §1.1 (operator clients on the host reach
     python -m gen2.app.cli health
     python -m gen2.app.cli call OPERATION [FILE]     (the JSON body: FILE, or stdin)
 
-OPERATION is a router operation the service routes (apply_operator_decision,
-request_cancel, requeue, close_brief, activate_config_bundle, version_brief,
-mark_brief_overdue, propose_amendment); the body is sent as it is, and the
-service supplies who acts from the token. The engine is GEN2_OPERATOR_URL
+OPERATION is an operation the service routes (the router's
+apply_operator_decision, request_cancel, requeue, close_brief,
+activate_config_bundle, version_brief, mark_brief_overdue,
+propose_amendment; the station's recover_incident); the body is sent as it
+is, and the service supplies who acts from the token. The engine is GEN2_OPERATOR_URL
 (default http://127.0.0.1:8770); the token is GEN2_OPERATOR_TOKEN, read from
 the environment and never from the command line, where other users of the
 host could read it. The reply is printed as JSON. Exit 0 when the engine

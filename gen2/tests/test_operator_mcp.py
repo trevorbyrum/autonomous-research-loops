@@ -119,6 +119,15 @@ class McpEnvelopeTest(McpClient, of.CommandWorld):
         code, reply = self.mcp(base)
         self.assertEqual((code, reply["id"], reply["result"]["isError"], json.loads(reply["result"]["content"][0]["text"])["status"]), (200, 7, False, "recorded"))
 
+    def test_initialize_answers_a_version_it_supports(self) -> None:
+        """The version asked for when the server supports it, its newest
+        otherwise (never the request's text); a protocolVersion is required."""
+        for asked, answered in (("2025-06-18", "2025-06-18"), ("2024-11-05", "2024-11-05"), ("1999-01-01", "2025-11-25"), (of.OPERATOR_TOKEN, "2025-11-25")):
+            with self.subTest(asked=asked[:10]):
+                code, reply = self.rpc("initialize", {"protocolVersion": asked, "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}})
+                self.assertEqual((code, reply["result"]["protocolVersion"]), (200, answered))
+        self.assertEqual(self.mcp({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"capabilities": {}}}), (400, self.refusal(1, -32602)))
+
     def test_notifications_are_checked_and_do_nothing(self) -> None:
         before = self.state(exclude=())
         for label, message in (("jsonrpc 1.0", {"jsonrpc": "1.0", "method": "notifications/initialized"}),

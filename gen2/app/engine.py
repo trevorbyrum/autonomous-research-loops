@@ -14,13 +14,20 @@ preserve pins, auth-volume access and permissions).
 One thread owns the router. The store's SQLite connection belongs to the
 thread that opened it, and the router is one writer, so the station is
 opened on a single worker thread and every call into it — each request's
-operation, status and health, the supervisor's incident list — runs there,
-one at a time, in arrival order; the listener's request threads only wait
-for their answer. The service (gen2/operator/service.py) decides every
-answer; this module only moves bytes and never logs a header.
+operation, status and health, the supervisor's incident list and the
+operator's recovery of a stalled job — runs there, one at a time, in arrival
+order; the listener's request threads only wait for their answer. The
+service (gen2/operator/service.py) decides every answer; this module only
+moves bytes. Nothing it logs or answers repeats the request's own text: a
+fault behind the service is logged by its type and the service's labels, the
+parser's own refusals are fixed replies, a connection fault is one line
+naming its type (Astra 1e review finding 3); and a body answered unread is
+discarded only within fixed bounds (_discard; finding 8).
 
 What is not here: TLS (the listener is published on host loopback only),
-and a scheduler loop driving the supervisor (Phase 2). `POST /mcp`
+and a scheduler loop driving the supervisor (Phase 2: until then the
+supervisor advances only when the composition root or an operator's
+recover_incident drives it). `POST /mcp`
 (DEPLOYMENT-CONTRACT.md §1.1) is a route of the same service, not a
 transport of its own.
 """

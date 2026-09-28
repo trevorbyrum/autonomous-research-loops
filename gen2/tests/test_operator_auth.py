@@ -14,6 +14,8 @@ about a listener exposed beyond loopback (deployment).
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import socket
 import time
@@ -492,6 +494,18 @@ class DiagnosticSecrecyTest(of.CommandWorld):
                     self.assertEqual(self.logs, [line])
         self.assertEqual(self.command("request_cancel", self.bodies()["request_cancel"])[1]["status"], "recorded")  # the control, unpatched
 
+    def test_a_connection_fault_is_one_line_naming_its_type(self) -> None:
+        """What the server does with a fault outside the service (a client gone
+        mid-answer): one log line naming the fault's type, and nothing written
+        to stderr — no traceback, whose text may carry the request's."""
+        stderr = io.StringIO()
+        try:
+            raise ConnectionResetError(f"reset while answering /v1/commands/{of.OPERATOR_TOKEN}")
+        except ConnectionResetError:
+            with contextlib.redirect_stderr(stderr):
+                self.engine._server.handle_error(None, ("127.0.0.1", 1))
+        self.assertEqual((self.logs, stderr.getvalue()), (["- ? ? -> connection ConnectionResetError"], ""))
+
 
 class CredentialsTest(unittest.TestCase):
     ENV = {"GEN2_SECRETS": "env", "GEN2_OPERATOR_TOKENS": f"alice={of.OPERATOR_TOKEN}, bob={of.OTHER_OPERATOR_TOKEN}",
@@ -503,6 +517,18 @@ class CredentialsTest(unittest.TestCase):
         self.assertEqual(creds.authenticate(f"Bearer {of.OTHER_OPERATOR_TOKEN}"), Principal("bob", "operator"))
         self.assertEqual(creds.authenticate(f"Bearer {of.EXPORTER_TOKEN}"), Principal("exporter", "exporter"))
         self.assertIsNone(Credentials.from_environ({**self.ENV, "GEN2_SECRET_EXPORTER_TOKEN": ""}).authenticate(f"Bearer {of.EXPORTER_TOKEN}"))
+
+    def test_redact_takes_every_configured_token_out(self) -> None:
+        """Wherever a configured token stands in a reply — a string, a key, a
+        list, nested — it is replaced; a token that is another's prefix does
+        not leave the longer one half-redacted; other text is kept."""
+        long_token = of.OPERATOR_TOKEN + "-and-more"
+        creds = Credentials({"alice": of.OPERATOR_TOKEN, "carol": long_token}, of.EXPORTER_TOKEN)
+        reply = {"detail": f"/{long_token}: no value is allowed here", of.EXPORTER_TOKEN: [f"x{of.OPERATOR_TOKEN}y", {"k": of.EXPORTER_TOKEN}], "n": 5,
+                 "kept": "op-token-mallory-0123456789abcdef"}
+        self.assertEqual(creds.redact(reply), {"detail": "/[credential]: no value is allowed here", "[credential]": ["x[credential]y", {"k": "[credential]"}],
+                                              "n": 5, "kept": "op-token-mallory-0123456789abcdef"})
+        self.assertEqual(creds.redact(f"- POST {of.EXPORTER_TOKEN}"), "- POST [credential]")
 
     def test_unusable_secrets_refuse_the_start(self) -> None:
         """Each defect alone, beside ENV, which starts (the control); no
