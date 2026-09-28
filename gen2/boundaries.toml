@@ -191,7 +191,7 @@ third_party = []
 
 [modules.operator]
 path = "gen2/operator"
-purpose = "Operator transports (CLI/MCP/API behind one command service — design review §10) and status: typed holds, why-waiting answers, capability facts. Reaches state only through the ControlBackend protocol."
+purpose = "The one operator command service (design review §10: CLI/MCP/API behind one command service; task 1e): principals authenticated by bearer token, commands authorized per class, each command one of the router's existing operations, and status (typed holds, why-waiting answers, capability facts). Reaches state only through the core OperatorBackend protocol the composition root hands it: no store, no router import, no write path of its own, and no network capability — the transports that carry it (the listener and the CLI's client) are the composition root's."
 boundaries = ["Operator"]
 may_import = ["core"]
 stdlib_capabilities = []
@@ -199,10 +199,10 @@ third_party = []
 
 [modules.app]
 path = "gen2/app"
-purpose = "Composition root: constructs the router (which owns its store) and hands the core ControlBackend protocol to supervisor, exporter and operator. Exists so router and supervisor never import each other. No domain logic."
+purpose = "Composition root: constructs the router (which owns its store) and hands the core ControlBackend protocol to supervisor, exporter and operator. Exists so router and supervisor never import each other. No domain logic. Task 1e: it also carries the operator service's transports — the engine's HTTP listener (http.server; DEPLOYMENT-CONTRACT.md §1.1) and the operator CLI's client of it (http.client) — which only move bytes to and from gen2/operator/service.py."
 boundaries = []
 may_import = ["core", "router", "supervisor", "decision", "tier0", "gateway_client", "exporter", "operator"]
-stdlib_capabilities = []
+stdlib_capabilities = ["http.server", "http.client"]
 third_party = []
 
 [modules.tests]
