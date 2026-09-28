@@ -678,7 +678,7 @@
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/amendments.py: executes line 306; or executes line 302"
+  "why": "gen2/router/amendments.py: executes line 353; or executes line 349"
  },
  "1B-approval-without-supersession": {
   "by_hand": true,
@@ -718,7 +718,7 @@
   "controls": [
    "test_router_amendments.BriefImpactTest.test_a_lineage_only_version_lets_scoping_work_complete"
   ],
-  "why": "gen2/router/amendments.py: executes line 312; or executes line 311"
+  "why": "gen2/router/amendments.py: executes line 359; or executes line 358"
  },
  "1B-bundle-identity": {
   "controls": [
@@ -3249,7 +3249,7 @@
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/amendments.py: leaves line 273 for a line outside 273-274 (or returns)"
+  "why": "gen2/router/amendments.py: leaves line 320 for a line outside 320-321 (or returns)"
  },
  "1D-amend-amendment-conflict-replayed": {
   "by_hand": true,
@@ -3262,13 +3262,13 @@
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/amendments.py: leaves line 273 for a line outside 273-274 (or returns)"
+  "why": "gen2/router/amendments.py: leaves line 320 for a line outside 320-321 (or returns)"
  },
  "1D-amend-amendment-revision-unchecked": {
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/amendments.py: leaves line 273 for a line outside 273-274 (or returns)"
+  "why": "gen2/router/amendments.py: leaves line 320 for a line outside 320-321 (or returns)"
  },
  "1D-amend-amendment-without-facets": {
   "by_hand": true,
@@ -3294,7 +3294,7 @@
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_the_proposal_is_classed_against_the_approved_revision"
   ],
-  "why": "gen2/router/amendments.py: executes line 287"
+  "why": "gen2/router/amendments.py: executes line 334"
  },
  "1D-amend-awaiting-not-superseded": {
   "controls": [
@@ -3303,19 +3303,19 @@
   "rejected": [
    "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
   ],
-  "why": "gen2/router/amendments.py: executes line 239"
+  "why": "gen2/router/amendments.py: executes line 286"
  },
  "1D-amend-brief-any-lineage": {
   "controls": [
    "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
   ],
-  "why": "gen2/router/amendments.py: leaves line 229 for a line outside 229-230 (or returns)"
+  "why": "gen2/router/amendments.py: leaves line 276 for a line outside 276-277 (or returns)"
  },
  "1D-amend-brief-closed-reopened": {
   "controls": [
    "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
   ],
-  "why": "gen2/router/amendments.py: leaves line 231 for a line outside 231-232 (or returns)"
+  "why": "gen2/router/amendments.py: leaves line 278 for a line outside 278-279 (or returns)"
  },
  "1D-amend-brief-conflict-replayed": {
   "by_hand": true,
@@ -3328,121 +3328,121 @@
   "controls": [
    "test_router_amendments.BriefImpactTest.test_a_lineage_only_version_lets_scoping_work_complete"
   ],
-  "why": "gen2/router/amendments.py: executes line 175"
+  "why": "gen2/router/amendments.py: executes line 222"
  },
  "1D-amend-brief-created-later": {
   "controls": [
    "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
   ],
-  "why": "gen2/router/amendments.py: leaves line 233 for a line outside 233-234 (or returns)"
+  "why": "gen2/router/amendments.py: leaves line 280 for a line outside 280-281 (or returns)"
  },
  "1D-amend-brief-deadline-past": {
   "controls": [
    "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
   ],
-  "why": "gen2/router/amendments.py: leaves line 233 for a line outside 233-234 (or returns)"
+  "why": "gen2/router/amendments.py: leaves line 280 for a line outside 280-281 (or returns)"
  },
  "1D-amend-brief-first-version": {
   "controls": [
    "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
   ],
-  "why": "gen2/router/amendments.py: leaves line 227 for a line outside 227-228 (or returns); or leaves line 227 for a line outside 227-228 (or returns)"
+  "why": "gen2/router/amendments.py: leaves line 274 for a line outside 274-275 (or returns); or leaves line 274 for a line outside 274-275 (or returns)"
  },
  "1D-amend-brief-impact-unnamed": {
   "controls": [
    "test_router_amendments.AmendmentApprovalTest.test_an_approved_amendment_requeues_a_completed_topic"
   ],
-  "why": "gen2/router/amendments.py: executes line 364"
+  "why": "gen2/router/amendments.py: executes line 411"
  },
  "1D-amend-brief-other-lineage": {
   "controls": [
    "test_router_amendments.BriefLineageTest.test_another_briefs_impacts_do_not_judge_a_pin"
   ],
-  "why": "gen2/router/amendments.py: executes line 311"
+  "why": "gen2/router/amendments.py: executes line 358"
  },
  "1D-amend-brief-parent-unchecked": {
   "controls": [
    "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
   ],
-  "why": "gen2/router/amendments.py: leaves line 229 for a line outside 229-230 (or returns)"
+  "why": "gen2/router/amendments.py: leaves line 276 for a line outside 276-277 (or returns)"
  },
  "1D-amend-brief-pin-rejudged": {
   "controls": [
    "test_router_amendments.BriefImpactTest.test_a_lineage_only_version_lets_scoping_work_complete"
   ],
-  "why": "gen2/router/amendments.py: executes line 312; or executes line 311"
+  "why": "gen2/router/amendments.py: executes line 359; or executes line 358"
  },
  "1D-amend-brief-version-unchecked": {
   "controls": [
    "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
   ],
-  "why": "gen2/router/amendments.py: leaves line 229 for a line outside 229-230 (or returns)"
+  "why": "gen2/router/amendments.py: leaves line 276 for a line outside 276-277 (or returns)"
  },
  "1D-amend-changed-label-kept": {
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_the_proposal_is_classed_against_the_approved_revision"
   ],
-  "why": "gen2/router/amendments.py: leaves line 280 for a line outside 280-281 (or returns)"
+  "why": "gen2/router/amendments.py: leaves line 327 for a line outside 327-328 (or returns)"
  },
  "1D-amend-compatible-fenced": {
   "controls": [
    "test_router_amendments.ImpactTest.test_the_record_lists_what_stood_until_now"
   ],
-  "why": "gen2/router/amendments.py: executes line 326, 334, 393"
+  "why": "gen2/router/amendments.py: executes line 373, 381, 440"
  },
  "1D-amend-confirmed-superseded-early": {
   "controls": [
    "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
   ],
-  "why": "gen2/router/amendments.py: executes line 239"
+  "why": "gen2/router/amendments.py: executes line 286"
  },
  "1D-amend-document-hash-untrue": {
   "controls": [
    "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
   ],
-  "why": "gen2/router/amendments.py: leaves line 203 for a line outside 203-204 (or returns)"
+  "why": "gen2/router/amendments.py: leaves line 250 for a line outside 250-251 (or returns)"
  },
  "1D-amend-everything-listed-again": {
   "controls": [
    "test_router_amendments.ImpactTest.test_an_impact_is_recorded_once_with_its_approval"
   ],
-  "why": "gen2/router/amendments.py: executes line 354"
+  "why": "gen2/router/amendments.py: executes line 401"
  },
  "1D-amend-exclusions-not-reopened": {
   "controls": [
    "test_router_amendments.ImpactTest.test_an_impact_is_recorded_once_with_its_approval"
   ],
-  "why": "gen2/router/amendments.py: executes line 371; or executes line 366"
+  "why": "gen2/router/amendments.py: executes line 418; or executes line 413"
  },
  "1D-amend-fenced-not-cancelled": {
   "controls": [
    "test_router_amendments.ImpactTest.test_a_compatible_amendment_lets_admitted_work_complete_under_its_pins"
   ],
-  "why": "gen2/router/amendments.py: executes line 396; or executes line 395"
+  "why": "gen2/router/amendments.py: executes line 443; or executes line 442"
  },
  "1D-amend-framing-content-ignored": {
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/amendments.py: executes line 164"
+  "why": "gen2/router/amendments.py: executes line 210"
  },
  "1D-amend-framing-counts-coverage-cells": {
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/amendments.py: executes line 147 (else 145)"
+  "why": "gen2/router/amendments.py: executes line 192 (else 190)"
  },
  "1D-amend-framing-counts-facet-importance": {
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/amendments.py: executes line 146 (else 145)"
+  "why": "gen2/router/amendments.py: executes line 191 (else 190)"
  },
  "1D-amend-framing-ignored": {
   "controls": [
    "test_router_amendments.ImpactTest.test_an_impact_is_recorded_once_with_its_approval"
   ],
-  "why": "gen2/router/amendments.py: executes line 164"
+  "why": "gen2/router/amendments.py: executes line 210"
  },
  "1D-amend-framing-unbound": {
   "controls": [
@@ -3451,127 +3451,201 @@
   "rejected": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/amendments.py: executes line 156-157 (else 156)"
+  "why": "gen2/router/amendments.py: executes line 201-202 (else 201)"
  },
  "1D-amend-framing-without-decision-record": {
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/amendments.py: executes line 145"
+  "why": "gen2/router/amendments.py: executes line 190"
  },
  "1D-amend-framing-without-deliberately-out": {
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/amendments.py: executes line 147 (else 145)"
+  "why": "gen2/router/amendments.py: executes line 192 (else 190)"
  },
  "1D-amend-framing-without-facets": {
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/amendments.py: executes line 146 (else 145)"
+  "why": "gen2/router/amendments.py: executes line 191 (else 190)"
  },
  "1D-amend-framing-without-framework": {
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/amendments.py: executes line 145"
+  "why": "gen2/router/amendments.py: executes line 190"
  },
  "1D-amend-framing-without-question-types": {
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/amendments.py: executes line 147 (else 145)"
+  "why": "gen2/router/amendments.py: executes line 192 (else 190)"
  },
  "1D-amend-importance-counted": {
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/amendments.py: executes line 136"
+  "why": "gen2/router/amendments.py: executes line 149"
+ },
+ "1D-amend-inventory-cell-added-out": {
+  "controls": [
+   "test_router_amendments.CompatibilityRuleTest.test_each_section_is_classed_as_the_design_says"
+  ],
+  "why": "gen2/router/amendments.py: executes line 179"
+ },
+ "1D-amend-inventory-cell-entry-change-kept": {
+  "controls": [
+   "test_router_amendments.InventoryImpactTest.test_a_filled_gap_lets_work_complete_and_its_claim_promote"
+  ],
+  "why": "gen2/router/amendments.py: executes line 165 (else 164)"
+ },
+ "1D-amend-inventory-cell-shrink-kept": {
+  "controls": [
+   "test_router_amendments.InventoryImpactTest.test_a_filled_gap_lets_work_complete_and_its_claim_promote"
+  ],
+  "why": "gen2/router/amendments.py: executes line 165-166 (else 164)"
+ },
+ "1D-amend-inventory-cells-ignored": {
+  "controls": [
+   "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
+  ],
+  "why": "gen2/router/amendments.py: executes line 177"
+ },
+ "1D-amend-inventory-gap-beside-kept": {
+  "controls": [
+   "test_router_amendments.CompatibilityRuleTest.test_each_section_is_classed_as_the_design_says"
+  ],
+  "why": "gen2/router/amendments.py: executes line 179"
+ },
+ "1D-amend-inventory-gap-fill-withdrawn": {
+  "controls": [
+   "test_router_amendments.InventoryImpactTest.test_a_restored_obligation_revives_nothing"
+  ],
+  "why": "gen2/router/amendments.py: executes line 165 (else 164)"
+ },
+ "1D-amend-inventory-new-gap-withdrawn": {
+  "controls": [
+   "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
+  ],
+  "why": "gen2/router/amendments.py: executes line 179"
+ },
+ "1D-amend-inventory-out-cell-brought-back-kept": {
+  "controls": [
+   "test_router_amendments.InventoryImpactTest.test_a_filled_gap_lets_work_complete_and_its_claim_promote"
+  ],
+  "why": "gen2/router/amendments.py: executes line 165 (else 164)"
+ },
+ "1D-amend-inventory-removal-ignored": {
+  "controls": [
+   "test_router_amendments.InventoryImpactTest.test_a_filled_gap_lets_work_complete_and_its_claim_promote"
+  ],
+  "why": "gen2/router/amendments.py: executes line 175"
+ },
+ "1D-amend-inventory-unchanged-cells-withdrawn": {
+  "controls": [
+   "test_router_amendments.AmendmentProposalTest.test_the_same_amendment_again_replays"
+  ],
+  "rejected": [
+   "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows",
+   "test_router_amendments.AmendmentProposalTest.test_the_proposal_is_classed_against_the_approved_revision",
+   "test_router_amendments.ImpactTest.test_a_compatible_amendment_lets_admitted_work_complete_under_its_pins",
+   "test_router_amendments.ImpactTest.test_a_compatible_amendment_lets_every_kind_complete_under_its_pins",
+   "test_router_amendments.ImpactTest.test_an_impact_is_recorded_once_with_its_approval",
+   "test_router_amendments.ImpactTest.test_the_record_lists_what_stood_until_now"
+  ],
+  "why": "gen2/router/amendments.py: executes line 179"
+ },
+ "1D-amend-inventory-withdrawal-ignored": {
+  "controls": [
+   "test_router_amendments.InventoryImpactTest.test_a_filled_gap_lets_work_complete_and_its_claim_promote"
+  ],
+  "why": "gen2/router/amendments.py: executes line 214-215 (else 213)"
  },
  "1D-amend-label-returns": {
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_the_proposal_is_classed_against_the_approved_revision"
   ],
-  "why": "gen2/router/amendments.py: leaves line 280 for a line outside 280-281 (or returns)"
+  "why": "gen2/router/amendments.py: leaves line 327 for a line outside 327-328 (or returns)"
  },
  "1D-amend-obligations-ignored": {
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/amendments.py: executes line 167-168 (else 167)"
+  "why": "gen2/router/amendments.py: executes line 214 (else 213)"
  },
  "1D-amend-overdue-any-status": {
   "controls": [
    "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
   ],
-  "why": "gen2/router/amendments.py: leaves line 251 for a line outside 251-252 (or returns)"
+  "why": "gen2/router/amendments.py: leaves line 298 for a line outside 298-299 (or returns)"
  },
  "1D-amend-overdue-before-deadline": {
   "controls": [
    "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
   ],
-  "why": "gen2/router/amendments.py: leaves line 253 for a line outside 253-254 (or returns)"
+  "why": "gen2/router/amendments.py: leaves line 300 for a line outside 300-301 (or returns)"
  },
  "1D-amend-overdue-deadline-exclusive": {
   "controls": [
    "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
   ],
-  "why": "gen2/router/amendments.py: leaves line 253 for a line outside 253-254 (or returns)"
+  "why": "gen2/router/amendments.py: leaves line 300 for a line outside 300-301 (or returns)"
  },
  "1D-amend-overdue-not-replayed": {
   "controls": [
    "test_router_amendments.BriefVersionTest.test_owner_reassignment_and_deadline_extension_are_new_versions"
   ],
-  "why": "gen2/router/amendments.py: executes line 249; or executes line 250"
+  "why": "gen2/router/amendments.py: executes line 296; or executes line 297"
  },
  "1D-amend-pin-rejudged": {
   "controls": [
    "test_router_amendments.ImpactTest.test_a_compatible_amendment_lets_admitted_work_complete_under_its_pins"
   ],
-  "why": "gen2/router/amendments.py: executes line 306; or executes line 302"
+  "why": "gen2/router/amendments.py: executes line 353; or executes line 349"
  },
  "1D-amend-pins-unchecked": {
   "controls": [
    "test_router_commit.FencingTest.test_a_held_topic_is_left_held"
   ],
-  "why": "gen2/router/amendments.py: leaves line 334 for a line outside 334-336 (or returns)"
+  "why": "gen2/router/amendments.py: leaves line 381 for a line outside 381-383 (or returns)"
  },
  "1D-amend-protocol-revision-ignored": {
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/amendments.py: executes line 167"
+  "why": "gen2/router/amendments.py: executes line 213"
  },
  "1D-amend-protocol-sections-ignored": {
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/amendments.py: executes line 167"
+  "why": "gen2/router/amendments.py: executes line 213"
  },
  "1D-amend-protocol-unbound": {
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/amendments.py: executes line 156-157 (else 156)"
+  "why": "gen2/router/amendments.py: executes line 201-202 (else 201)"
  },
  "1D-amend-protocol-without-applicability": {
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/amendments.py: executes line 152"
+  "why": "gen2/router/amendments.py: executes line 197"
  },
  "1D-amend-protocol-without-eligibility": {
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/amendments.py: executes line 152"
+  "why": "gen2/router/amendments.py: executes line 197"
  },
  "1D-amend-protocol-without-stopping": {
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/amendments.py: executes line 152"
+  "why": "gen2/router/amendments.py: executes line 197"
  },
  "1D-amend-reservations-left-open": {
   "by_hand": true,
@@ -3584,37 +3658,37 @@
   "controls": [
    "test_router_amendments.ImpactTest.test_a_compatible_amendment_lets_admitted_work_complete_under_its_pins"
   ],
-  "why": "gen2/router/amendments.py: executes line 395"
+  "why": "gen2/router/amendments.py: executes line 442"
  },
  "1D-amend-stale-rejudged": {
   "controls": [
    "test_router_amendments.StandingTest.test_a_framing_label_written_back_revives_no_claim"
   ],
-  "why": "gen2/router/amendments.py: executes line 353"
+  "why": "gen2/router/amendments.py: executes line 400"
  },
  "1D-amend-standing-any-brief": {
   "controls": [
    "test_router_amendments.ImpactTest.test_a_compatible_amendment_lets_admitted_work_complete_under_its_pins"
   ],
-  "why": "gen2/router/amendments.py: executes line 323 (else 322)"
+  "why": "gen2/router/amendments.py: executes line 370 (else 369)"
  },
  "1D-amend-standing-unrecorded": {
   "controls": [
    "test_router_amendments.ImpactTest.test_an_impact_is_recorded_once_with_its_approval"
   ],
-  "why": "gen2/router/amendments.py: executes line 359 (else 357)"
+  "why": "gen2/router/amendments.py: executes line 406 (else 404)"
  },
  "1D-amend-unchanged-relabelled": {
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/amendments.py: leaves line 278 for a line outside 278-279 (or returns)"
+  "why": "gen2/router/amendments.py: leaves line 325 for a line outside 325-326 (or returns)"
  },
  "1D-amend-unrecorded-compatible": {
   "controls": [
    "test_router_amendments.StandingTest.test_a_framing_label_written_back_revives_no_claim"
   ],
-  "why": "gen2/router/amendments.py: executes line 324; or executes line 325"
+  "why": "gen2/router/amendments.py: executes line 371; or executes line 372"
  },
  "1D-ddl-bundle-activation-rewritable": {
   "controls": [
@@ -3992,19 +4066,19 @@
   "controls": [
    "test_router_registries.ConfigBundleTest.test_the_active_bundle_again_is_a_replay"
   ],
-  "why": "gen2/router/registries.py: executes line 110"
+  "why": "gen2/router/registries.py: executes line 111"
  },
  "1D-registry-bundle-identity-partial": {
   "controls": [
    "test_station_config.PinnedPolicyTest.test_new_work_pins_the_mounted_bundle"
   ],
-  "why": "gen2/router/registries.py: executes line 86"
+  "why": "gen2/router/registries.py: executes line 87"
  },
  "1D-registry-duplicate-question": {
   "controls": [
    "test_router_registries.ConfigBundleTest.test_the_active_bundle_again_is_a_replay"
   ],
-  "why": "gen2/router/registries.py: leaves line 81 for a line outside 81-82 (or returns)"
+  "why": "gen2/router/registries.py: leaves line 82 for a line outside 82-83 (or returns)"
  },
  "1D-registry-fact-every-refusal": {
   "controls": [
@@ -4013,7 +4087,7 @@
   "rejected": [
    "test_router_registries.ConfigBundleTest.test_the_active_bundle_again_is_a_replay"
   ],
-  "why": "gen2/router/registries.py: executes line 148; or executes line 149"
+  "why": "gen2/router/registries.py: executes line 155; or executes line 156"
  },
  "1D-registry-hold-window-default": {
   "controls": [
@@ -4022,55 +4096,61 @@
   "rejected": [
    "test_router_registries.RegistryRestartTest.test_pins_and_registries_survive_a_restart"
   ],
-  "why": "gen2/router/registries.py: executes line 139"
+  "why": "gen2/router/registries.py: executes line 146"
  },
  "1D-registry-no-recovery-fact": {
   "controls": [
    "test_router_registries.ConfigBundleTest.test_the_active_bundle_again_is_a_replay"
   ],
-  "why": "gen2/router/registries.py: executes line 117"
+  "why": "gen2/router/registries.py: executes line 118"
  },
  "1D-registry-qualification-any-spec": {
   "controls": [
    "test_router_registries.QualificationRecordTest.test_a_revocation_between_validation_and_the_write_is_seen"
   ],
-  "why": "gen2/router/registries.py: leaves line 179 for a line outside 179-180 (or returns)"
+  "why": "gen2/router/registries.py: leaves line 186 for a line outside 186-187 (or returns)"
  },
  "1D-registry-qualification-conflict-replayed": {
   "controls": [
    "test_router_registries.RegistryRestartTest.test_a_revocation_survives_a_restart"
   ],
-  "why": "gen2/router/registries.py: leaves line 175 for a line outside 175-176 (or returns)"
+  "why": "gen2/router/registries.py: leaves line 182 for a line outside 182-183 (or returns)"
  },
  "1D-registry-qualified-any-spec": {
   "controls": [
    "test_router_registries.QualificationRecordTest.test_a_revocation_between_validation_and_the_write_is_seen"
   ],
-  "why": "gen2/router/registries.py: executes line 202"
+  "why": "gen2/router/registries.py: executes line 209"
  },
  "1D-registry-question-altered": {
   "controls": [
    "test_router_registries.ConfigBundleTest.test_the_active_bundle_again_is_a_replay"
   ],
-  "why": "gen2/router/registries.py: leaves line 107 for a line outside 107-108 (or returns)"
+  "why": "gen2/router/registries.py: leaves line 108 for a line outside 108-109 (or returns)"
  },
  "1D-registry-question-hash-untrue": {
   "controls": [
    "test_router_registries.ConfigBundleTest.test_the_active_bundle_again_is_a_replay"
   ],
-  "why": "gen2/router/registries.py: leaves line 84 for a line outside 84-85 (or returns)"
+  "why": "gen2/router/registries.py: leaves line 85 for a line outside 85-86 (or returns)"
  },
  "1D-registry-refusal-no-fact": {
   "controls": [
    "test_router_registries.ConfigBundleTest.test_a_bundle_the_schema_refuses_is_refused"
   ],
-  "why": "gen2/router/registries.py: executes line 90"
+  "why": "gen2/router/registries.py: executes line 91"
  },
  "1D-registry-replay-no-recovery": {
   "controls": [
    "test_router_registries.ConfigBundleTest.test_the_active_bundle_again_is_a_replay"
   ],
-  "why": "gen2/router/registries.py: executes line 99; or executes line 95"
+  "why": "gen2/router/registries.py: executes line 100; or executes line 96"
+ },
+ "1D-registry-restore-no-recovery": {
+  "controls": [
+   "test_station_config.RestartPolicyTest.test_the_reviewers_restart_with_nothing_mounted"
+  ],
+  "why": "gen2/router/registries.py: executes line 138; or executes line 137"
  },
  "1D-registry-revocation-conflict-replayed": {
   "by_hand": true,
@@ -4097,7 +4177,7 @@
    "test_router_registries.QualificationRecordTest.test_a_revocation_between_validation_and_the_write_is_seen",
    "test_router_registries.RegistryRestartTest.test_a_revocation_survives_a_restart"
   ],
-  "why": "gen2/router/registries.py: executes line 202"
+  "why": "gen2/router/registries.py: executes line 209"
  },
  "1D-registry-router-policy-shipped-only": {
   "controls": [
@@ -4109,19 +4189,19 @@
    "test_router_scheduling.RequeueTest.test_policy_requeues_only_transient_ends",
    "test_router_scheduling.SignalQueueTest.test_reviews_coalesce_within_budget_and_cooldown_and_drop_nothing"
   ],
-  "why": "gen2/router/registries.py: executes line 139"
+  "why": "gen2/router/registries.py: executes line 146"
  },
  "1D-registry-superseded-reactivated": {
   "controls": [
    "test_router_registries.ConfigBundleTest.test_the_active_bundle_again_is_a_replay"
   ],
-  "why": "gen2/router/registries.py: leaves line 96 for a line outside 96-97 (or returns)"
+  "why": "gen2/router/registries.py: leaves line 97 for a line outside 97-98 (or returns)"
  },
  "1D-registry-version-unordered": {
   "controls": [
    "test_router_registries.ConfigBundleTest.test_the_active_bundle_again_is_a_replay"
   ],
-  "why": "gen2/router/registries.py: leaves line 103 for a line outside 103-104 (or returns)"
+  "why": "gen2/router/registries.py: leaves line 104 for a line outside 104-105 (or returns)"
  },
  "1D-router-amendment-any-parent": {
   "controls": [
@@ -4493,7 +4573,7 @@
   "controls": [
    "test_station_config.RestartPolicyTest.test_the_reviewers_restart_with_nothing_mounted"
   ],
-  "why": "gen2/app/station.py: executes line 69 (else 68); or executes line 64"
+  "why": "gen2/app/station.py: executes line 71 (else 70); or executes line 66"
  },
  "1D-sup-job-ignores-pinned-bundle": {
   "controls": [
@@ -4517,37 +4597,43 @@
   "controls": [
    "test_station_config.PinnedPolicyTest.test_a_job_keeps_its_admitted_bundles_policy_across_a_restart"
   ],
-  "why": "gen2/app/station.py: executes line 74; or executes line 73; or leaves line 73 for a line outside 73-75 (or returns)"
+  "why": "gen2/app/station.py: executes line 76; or executes line 75; or leaves line 75 for a line outside 75-77 (or returns)"
  },
  "1D-sup-station-no-resolver": {
   "controls": [
    "test_station_config.PinnedPolicyTest.test_a_bundles_identity_is_the_hash_of_its_whole_document"
   ],
-  "why": "gen2/app/station.py: executes line 89 (else 88)"
+  "why": "gen2/app/station.py: executes line 91 (else 90)"
  },
  "1D-sup-station-policy-shipped": {
   "controls": [
    "test_station_config.PinnedPolicyTest.test_a_bundles_identity_is_the_hash_of_its_whole_document"
   ],
-  "why": "gen2/app/station.py: executes line 89 (else 88)"
+  "why": "gen2/app/station.py: executes line 91 (else 90)"
  },
  "1D-sup-station-two-policies": {
   "controls": [
    "test_station_config.RestartPolicyTest.test_a_fallback_policy_is_only_a_named_fixture"
   ],
-  "why": "gen2/app/station.py: leaves line 65 for a line outside 65-67 (or returns)"
+  "why": "gen2/app/station.py: leaves line 67 for a line outside 67-69 (or returns)"
+ },
+ "1D-sup-unmounted-not-restored": {
+  "controls": [
+   "test_station_config.RestartPolicyTest.test_the_reviewers_restart_with_nothing_mounted"
+  ],
+  "why": "gen2/app/station.py: executes line 80; or executes line 73"
  },
  "1D-sup-unmounted-restores-nothing": {
   "controls": [
    "test_station_config.RestartPolicyTest.test_the_reviewers_restart_with_nothing_mounted"
   ],
-  "why": "gen2/app/station.py: executes line 89 (else 88)"
+  "why": "gen2/app/station.py: executes line 91 (else 90)"
  },
  "1D-sup-unmounted-starts-anyway": {
   "controls": [
    "test_station_config.RestartPolicyTest.test_the_reviewers_restart_with_nothing_mounted"
   ],
-  "why": "gen2/app/station.py: leaves line 79 for a line outside 79-81 (or returns)"
+  "why": "gen2/app/station.py: leaves line 81 for a line outside 81-83 (or returns)"
  },
  "A1-D01-live-lease-replace": {
   "controls": [
