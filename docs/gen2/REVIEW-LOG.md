@@ -409,3 +409,14 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-1c-repair-3-astr
 - **BLOCK 2:** a relevant passing control exists for `no-abandon-handshake`.
 
 **Routed:** `docs/gen2/tasks/1c-repair-4.md`, a cross-process per-job lock with parent↔delegate lock ordering.
+
+## 2026-09-28 — 1c-repair-4 re-review (Astra, xhigh) — **1c ACCEPTED** (5 review rounds)
+Full report: `~/work/research-loops-public/private/reviews/gen2-1c-repair-4-astra-review-20260928.md`.
+
+**BLOCK 1 closed.** Astra rebuilt the overlap regression as a genuinely concurrent probe rather than reusing its old script: 4 kinds × 2 pause points × {shared supervisor, shared directory, separate processes} = 24/24 pass, with kernel lock contention actually observed, exactly six failing calls, the incident and its original deadline preserved, and no executor started. Also 12/12 separate-process recovery schedules, 16/16 parent/delegate schedules in both lock orders, and lock-resource checks (no descriptor leaks; one lock inode per job). Astra confirmed the coder's criticism of its own earlier script was correct: that script's pass rested on barrier timeouts, not a real race.
+
+**BLOCK 2 closed:** the abandonment control is paired; the `for`-header rule and the remaining single unpaired mutant are accepted.
+
+**Stated limits (documented, accepted):** the serialization guarantee is per job, across cooperating threads and processes on one Linux host — not cross-host; the journal revision check is a backstop, not independent mutual exclusion; `busy` is transient, creates no incident and spends no budget.
+
+**1c totals:** 5 review rounds (BLOCK 15 findings → 3 → 2 → 2 → ACCEPT). Every finding was reproduced before repair and independently re-verified after. Production 5,771/10,000 lines; 1,065 tests; 1,071/1,071 mutants killed, 1,058 with paired controls.
