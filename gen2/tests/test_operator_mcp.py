@@ -44,11 +44,13 @@ class McpTest(of.CommandWorld):
                 ("the exporter's token", "request_cancel", bodies["request_cancel"], of.EXPORTER_TOKEN, "forbidden"),
                 ("an operator's delivery", "ack_delivery", bodies["ack_delivery"], of.OPERATOR_TOKEN, "forbidden"),
                 ("a capability-bearing call", "record_transition", {"capability_id": self.run_grant["capability_id"]}, of.OPERATOR_TOKEN, "no_such_route"),
+                ("a token as a tool name", of.EXPORTER_TOKEN, {}, of.OPERATOR_TOKEN, "no_such_route"),
                 ("the router's refusal", "request_cancel", {"invocation_id": of.FAILED, "reason": "stop"}, of.OPERATOR_TOKEN, "not_cancellable")):
             with self.subTest(label=label):
                 failed, reply = self.call(tool, arguments, token=token)
                 self.assertEqual((failed, reply["reason"]), (True, reason))
         self.assertEqual(self.state(exclude=()), before)
+        self.assertFalse([line for line in self.logs if any(token in line for token in of.TOKENS)])  # an unknown tool's name is not logged
         failed, reply = self.call("apply_operator_decision", bodies["apply_operator_decision"], token=of.OTHER_OPERATOR_TOKEN)
         self.assertEqual((failed, reply["status"]), (False, "applied"))
         self.assertEqual(self.rows("SELECT operator_id FROM operator_decisions WHERE decision_id = 'opd_brief_other'"), [("bob",)])

@@ -18,7 +18,7 @@ The operator's commands and status, behind one service (`service.py`, design rev
 
 `GET /v1/health`, `GET /v1/status[?topic=<topic_id>]`, `POST /v1/commands/<operation>`, and `POST /mcp` (below). In order — a missing or invalid token is refused before anything but the route is read:
 
-1. `GET /v1/health` needs no token and answers `{"status": "ok"}` (the router can take its store's write lock now) or 503 `{"status": "unavailable"}`, nothing else.
+1. `GET /v1/health` needs no token and answers `{"status": "ok"}` (the router can take its store's write lock now) or 503 `{"status": "unavailable"}`, nothing else. Of DEPLOYMENT-CONTRACT.md §1.2's definition, the compatibility gate and the schema-identity check run when the store is opened (`gen2/store/db.py`; the engine does not start otherwise); the last scheduler tick has no scheduler to report until Phase 2.
 2. The bearer token names a principal, or 401 (the same reply for every failure). The body is not read, whatever length it declares.
 3. The route is status or a command, or 404; the principal's role is the one it needs, or 403 (over MCP the tool is in the body, so this follows step 4).
 4. The body: a declared length (411 without, 413 over 1 MiB), strict JSON (C-13: duplicate keys and non-finite numbers refused), an object; 400 otherwise.
@@ -67,4 +67,5 @@ All over real HTTP on loopback (`gen2/tests/operator_fixtures.py`: the engine ov
 - **Tokens live in the engine's environment.** A process running as the same OS user can read another's environment (`/proc/<pid>/environ`); agents get a scrubbed environment (`gen2/supervisor/jobshim.py`), but keeping them from the engine's process is OS-level isolation — another user or container — which is deployment's.
 - **The router trusts the surface's names.** It records the `operator_id` and `closed_by` it is handed; it does not check a name against the principal set. What makes them authenticated is that only this surface reaches those operations across a process boundary (the composition root wires it; the boundary graph keeps the store the router's).
 - **Status holds the write lock while it reads** (one consistent snapshot), so a large status delays writers for its duration. Supervisor incidents are read from the jobs directory beside that snapshot, not inside it.
+- **Capability facts are shown, not pushed.** Status lists each current fact with its `since`; the facts are recorded on transitions (H-2), but no alert is sent anywhere: an alerting channel is Phase 3's (projections).
 - **One thread owns the router** (`gen2/app/engine.py`): requests are answered one at a time, in arrival order; a request waits at most 60 s for its turn, then gets 500 (health: 503).

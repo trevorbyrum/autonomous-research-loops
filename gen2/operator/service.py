@@ -183,7 +183,7 @@ class OperatorService:
             else:
                 code, reply = 404, {"status": "refused", "reason": "no_such_route"}
             failed = code != 200 or reply.get("status") in ("refused", "rejected")
-            return 200, answer({"content": [{"type": "text", "text": json.dumps(reply, sort_keys=True)}], "isError": failed}), f"/mcp:{tool}"
+            return 200, answer({"content": [{"type": "text", "text": json.dumps(reply, sort_keys=True)}], "isError": failed}), f"/mcp:{tool if tool in (*COMMANDS, 'status') else '?'}"
         return 200, {"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32601, "message": "method not found"}}, "/mcp"
 
     def _body(self, length: str | None, read: Callable[[int], bytes]) -> tuple[dict | None, tuple[int, str] | None]:
