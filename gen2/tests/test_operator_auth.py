@@ -736,6 +736,7 @@ class CarriedFormsTest(of.CommandWorld):
                                                         f"Content-Length: {len(body)}\r\n\r\n".encode() + body).decode("latin-1")
                 rest = self.decoded(rest_answer.partition("\r\n\r\n")[2])
                 mcp_answer, mcp = self.exchange("/mcp", self.tool_call(arguments, tool=tool))
+                self.assertEqual(mcp_answer[:13], "HTTP/1.0 200 ", mcp_answer[:200])  # not the fixed fault MCP's answer check falls back to
                 inner = self.decoded(mcp["result"]["content"][0]["text"])
                 self.assertEqual((rest_answer[:13], rest, mcp["id"], inner, mcp["result"]["isError"]), ("HTTP/1.0 200 ", rest_expected, 1, tool_expected, True))
                 self.assert_absent(token, rest_answer, rest)
