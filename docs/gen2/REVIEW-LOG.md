@@ -485,3 +485,10 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-1e-repair-2-astr
 **Remaining (MEDIUM):** redaction runs before final serialization, so JSON escaping can reconstruct a configured token at the output boundary (backslash+quote reassembly; a token completed by the serializer's own opening quote; percent-encoded JSON escapes inside IDs decoded in layers). Required: the credential check must cover the actual serialized representation; unsafe IDs refused with a null ID before dispatch; emitted JSON stays valid.
 
 **Routed:** `docs/gen2/tasks/1e-repair-3.md` (single finding) to an Opus 5.5 coder.
+
+## 2026-09-28 — 1e-repair-3 re-review (Astra, xhigh, fresh session after a third filter stop) — BLOCK, one finding
+Full report: `~/work/research-loops-public/private/reviews/gen2-1e-repair-3-astra-review-20260928.md`. All previous reproductions repaired; configuration rules verified to exclude whitespace from secrets (74 parser cases), so piece-wise scanning is sound.
+
+**Remaining (MEDIUM, new):** the pre-dispatch piece-wise check and the later recursive whole-string check disagree at the 256-state decoding cap. A harmless ID with 272 combined states passes acceptance, executes, then returns `id: "[credential]"` — an accepted correlation ID changed after execution; two harmless seeded capability-fact strings likewise get an already-checked MCP tool document replaced whole, producing a success reply whose tool text isn't valid JSON. Not a secret disclosure — a correctness defect of the masking itself. Astra verified a one-line repair in a disposable tree (the later predicate scans the same pieces).
+
+**Routed:** `docs/gen2/tasks/1e-repair-4.md` to an Opus 5.5 coder.
