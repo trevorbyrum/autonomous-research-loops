@@ -54,7 +54,8 @@ def compose(facts: dict, incidents: list[dict]) -> dict:
             owners[inv["invocation_id"]] = topic["topic_id"]
         for lane in topic["lanes"]:
             owners[lane["last_invocation_id"]] = topic["topic_id"]
-    listed = [{**incident, "topic_id": owners.get(incident["invocation_id"])} for incident in incidents]
+    listed = [{**incident, "topic_id": owners.get(incident["invocation_id"]), **({"clears_when": "recover_incident"} if incident["blocking"] else {})}
+              for incident in incidents]
     return {"status": "ok", "at": facts["at"], "topics": [_topic(topic, listed) for topic in facts["topics"]], "incidents": listed,
             "config_bundles": facts["config_bundles"], "capability_facts": facts["capability_facts"]}
 

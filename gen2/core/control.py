@@ -160,9 +160,21 @@ class ControlBackend(Protocol):
 class OperatorBackend(ControlBackend, Protocol):
     """What the operator surface (gen2/operator/service.py, task 1e) is handed
     by the composition root: the router's operations for the trusted surface,
-    beside the protocol above. The surface authenticates the principal and
-    fills the fields that name it; the router validates, fences and writes as
-    for every operation. None of these hands out the store."""
+    beside the protocol above, and one of the station's (recover_incident).
+    The surface authenticates the principal and fills the fields that name
+    it; the router validates, fences and writes as for every operation. None
+    of these hands out the store."""
+
+    def recover_incident(self, request: Mapping) -> dict:
+        """The station's, not the router's (gen2/supervisor/supervisor.py
+        Supervisor.recover_incident; task 1e-repair): an operator's request
+        that the station recover one job stalled on an open incident, within
+        the job's recovery budget. The station ends the job's execution group
+        afresh where its retained end's descendants were never confirmed
+        ended, then resumes the job, which reaches the router only through the
+        invocation's own capability-bearing operations (an outcome_unknown
+        episode through reconcile, the only way its hold clears). Key: the
+        incident; the request once it is closed replays."""
 
     def activate_config_bundle(self, document: Mapping) -> dict:
         """Validate and activate a mounted config-bundle/1 (task 1d)."""

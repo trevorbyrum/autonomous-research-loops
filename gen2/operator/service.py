@@ -90,6 +90,7 @@ COMMANDS: dict[str, tuple[str, dict[str, Callable[[Principal], str]]]] = {
     "version_brief": ("operator", {}),
     "mark_brief_overdue": ("operator", {}),
     "propose_amendment": ("operator", {}),
+    "recover_incident": ("operator", {"requested_by": _NAME}),  # the station's (core.control.OperatorBackend), not the router's
     "ack_delivery": ("exporter", {}),
 }
 

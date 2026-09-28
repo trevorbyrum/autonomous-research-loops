@@ -46,20 +46,23 @@ DRAIN_MAX = 64 * 1024
 
 
 class _Owned:
-    """The router as the operator service sees it: only the operations its
-    routes call (core.control.OperatorBackend's, the COMMANDS table's), each
+    """The station as the operator service sees it: only the operations its
+    routes call (core.control.OperatorBackend's, the COMMANDS table's) — the
+    router's, and the supervisor's recovery of a stalled job (STATION) — each
     run on the owner thread and its answer returned here. Nothing else of the
-    router — its store least of all — is reachable through it."""
+    router or the supervisor — the store least of all — is reachable through
+    it."""
 
     OPERATIONS = frozenset(COMMANDS) | {"status", "healthy"}
+    STATION = frozenset({"recover_incident"})  # the supervisor's; every other operation is the router's
 
-    def __init__(self, owner: ThreadPoolExecutor, target) -> None:
-        self._owner, self._target = owner, target
+    def __init__(self, owner: ThreadPoolExecutor, station: Station) -> None:
+        self._owner, self._station = owner, station
 
     def __getattr__(self, name: str):
         if name not in self.OPERATIONS:
             raise AttributeError(f"{name} is not an operation of the operator surface")
-        method = getattr(self._target, name)
+        method = getattr(self._station.supervisor if name in self.STATION else self._station.router, name)
         return lambda *args: self._owner.submit(method, *args).result(timeout=ANSWER_TIMEOUT_S)
 
 
@@ -74,7 +77,7 @@ class Engine:
             raise
         self.log = log or (lambda line: print(line, file=sys.stderr, flush=True))
         supervisor = self.station.supervisor
-        self.service = OperatorService(_Owned(self._owner, self.station.router), credentials,
+        self.service = OperatorService(_Owned(self._owner, self.station), credentials,
                                        incidents=lambda: self._owner.submit(supervisor.incidents).result(timeout=ANSWER_TIMEOUT_S), log=self.log)
         try:
             self._server = http.server.ThreadingHTTPServer(listen, _handler(self.service, self.log))

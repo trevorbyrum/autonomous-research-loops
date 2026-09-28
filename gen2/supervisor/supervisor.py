@@ -130,6 +130,11 @@ TERMINAL = ("committed", "failed", "cancelled")
 FINAL_REFUSALS = frozenset({"transition_conflict", "reconciliation_conflict", "cancel_conflict",
                             "unknown_invocation", "capability_invalid", "capability_invocation_mismatch"})
 DIGEST = re.compile(r"\Asha256:[0-9a-f]{64}\Z")
+INVOCATION_ID = re.compile(r"inv_[A-Za-z0-9_-]{8,64}")  # common.schema.json#/$defs/invocation_id: also the job's directory name
+
+
+def _refusal(reason: str, detail: str, **facts) -> dict:
+    return {"status": "refused", "reason": reason, "detail": detail[:500], **facts}
 
 
 @dataclass(frozen=True)
@@ -299,6 +304,82 @@ class Supervisor:
         if failures:
             raise ControlFailure("; ".join(failures), outcomes)
         return outcomes
+
+    RECOVERY_REQUEST = frozenset({"invocation_id", "incident_since", "requested_by", "reason"})
+
+    def recover_incident(self, request: Mapping) -> dict:
+        """The operator's recovery of one job stalled on an incident (task
+        1e-repair; Astra 1e review finding 2, carrying the 1c re-review 2
+        escalation): {invocation_id, incident_since — the open incident the
+        operator saw in status, requested_by — the operator (the surface
+        supplies it), reason}.
+
+        Under the job's lock, drawing one attempt of the job's recovery
+        budget as recover() does (refilling nothing): when the job's end is
+        retained with descendants never confirmed ended — the collected end,
+        which recover() alone stalls on again, since the unconfirmed
+        observation stays what the job holds — the station ends the owned
+        execution group afresh and keeps what it found beside the retained
+        end (collected["rehandled"]), the retained observation and its
+        record left as they were. A group still not confirmed empty keeps
+        the incident open, the episode's hold with the router and the lease
+        held (termination_unconfirmed). Otherwise the incident is closed and
+        the job advanced: the outcome_unknown episode is reconciled through
+        the router's reconcile under the invocation's capability, with a
+        fresh execution record of that handling (_unknown), which alone
+        clears the episode's hold and releases capacity (L-4, L-7; the
+        reconciliation-only hold rule, Astra 1c review A7). No hold is
+        cleared here and no capability is taken from the request: the
+        operator asks for the station's work, which the router judges.
+
+        Every attempt is recorded in the journal (`recoveries`). Keyed by
+        the incident: the same request once that incident is closed replays
+        the recovery that closed it. Refused, with nothing done: a request
+        not of this shape, an unknown job, an incident not the open one, a
+        settled job, the recovery budget spent, the job's lock another's."""
+        if not isinstance(request, Mapping) or set(request) != self.RECOVERY_REQUEST or not all(
+                isinstance(request[k], str) and 0 < len(request[k]) <= 500 for k in self.RECOVERY_REQUEST) \
+                or not INVOCATION_ID.fullmatch(request["invocation_id"]):
+            return _refusal("request_invalid", "a recovery names invocation_id, incident_since, requested_by and reason, each a string")
+        inv, since = request["invocation_id"], request["incident_since"]
+        job = self.job(inv)
+        order = job.read("order.json")
+        if order is None:
+            return _refusal("unknown_invocation", f"no job of this station runs {inv}")
+        try:
+            with self._exclusive(order):
+                journal = self._journal(job)
+                incident, recoveries = journal.get("incident"), journal.get("recoveries", [])
+                if incident is None or incident["since"] != since:
+                    closed = next((r for r in reversed(recoveries) if r["incident"]["since"] == since and r["outcome"] != "termination_unconfirmed"), None)
+                    if closed is not None:
+                        return {"status": "replayed", "invocation_id": inv, **closed}
+                    return _refusal("incident_not_open", f"{inv}'s open incident is {'none' if incident is None else 'raised at ' + incident['since']}")
+                if journal.get("settled"):
+                    return _refusal("settled", f"{inv} ended {journal['settled']}")
+                if not self._spend(job, journal, "recovery"):
+                    return _refusal("recovery_exhausted", f"{inv}'s recovery budget ({self._policy(job).recovery_attempts}) is spent; the incident stays open")
+                entry = {"incident": incident, "requested_by": request["requested_by"], "reason": request["reason"], "at": self._now(), "termination": None}
+                collected, identity = journal.get("collected"), job.read("identity.json")
+                if collected and collected["observation"]["descendants"]["handling"] == "unconfirmed" and not collected.get("rehandled") and identity:
+                    ended = job.terminate(identity, term_grace=self._policy(job).term_grace_s, kill_grace=self._policy(job).kill_grace_s, reap=self._reap)
+                    entry["termination"] = {"at": self._now(), "descendants": self._handled(ended)}
+                    if not ended["confirmed"]:
+                        journal["recoveries"] = [*recoveries, {**entry, "outcome": "termination_unconfirmed"}]
+                        self._save(job, journal)
+                        return _refusal("termination_unconfirmed", f"{inv}'s execution group is still not confirmed empty; the incident stays open",
+                                        termination=entry["termination"])
+                    collected["rehandled"] = {**entry["termination"], "requested_by": request["requested_by"]}
+                journal["incident"] = None
+                journal["recoveries"] = [*recoveries, {**entry, "outcome": None}]
+                self._save(job, journal)
+                outcome = self._advance(job, order, journal)
+                journal = self._journal(job)  # the durable journal, under the lock: the advance may have saved a copy of its own (_write_failed)
+                journal["recoveries"][-1]["outcome"] = outcome
+                self._save(job, journal)
+                return {"status": "resumed", "invocation_id": inv, **journal["recoveries"][-1]}
+        except Busy:
+            return _refusal("busy", f"{inv}'s job is held by another caller; nothing was done")
 
     def incidents(self) -> list[dict]:
         """Every open control incident of this supervisor's jobs (RG-3:
@@ -1006,6 +1087,8 @@ class Supervisor:
         collected = journal.get("collected")
         if collected is not None:
             observation = collected["observation"]
+            if collected.get("rehandled"):  # the group ended afresh at the operator's request (recover_incident): the retained end, with what that found
+                observation = {**observation, "descendants": collected["rehandled"]["descendants"]}
             if observation["descendants"]["handling"] == "unconfirmed":
                 self._unresolved(job, journal, status, "the collected end's descendants are not confirmed ended")
             if cancel and observation["termination"] is None:

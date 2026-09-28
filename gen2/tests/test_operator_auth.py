@@ -205,13 +205,16 @@ class BackendSurfaceTest(of.OperatorTestCase):
     def test_the_service_reaches_only_the_operator_operations(self) -> None:
         """What the composition root hands the service (gen2/app/engine.py
         _Owned) answers the operations its routes call and nothing else of the
-        router: not its store, not a capability-bearing call, not a trusted
-        command no route names."""
+        router or the supervisor: not the store, not a capability-bearing call,
+        not a trusted command no route names, not the supervisor's own driving
+        (the station's recovery of one stalled job is the one route there)."""
         backend = self.engine.service._backend
         self.assertIs(backend.healthy(), True)
         self.assertEqual(backend.status({"topic_id": TOPIC})["status"], "ok")
+        self.assertEqual(backend.recover_incident({})["reason"], "request_invalid")  # the supervisor's, answering
         for name in ("_store", "claim", "record_transition", "commit_outcome", "reconcile", "invocation_status", "record_observation",
-                     "record_qualification", "open_reservation", "open_review", "restore_config_bundle", "close"):
+                     "record_qualification", "open_reservation", "open_review", "restore_config_bundle", "close",
+                     "recover", "advance", "submit", "prepare", "run", "incidents", "job", "control"):
             with self.subTest(name=name):
                 with self.assertRaises(AttributeError):
                     getattr(backend, name)
