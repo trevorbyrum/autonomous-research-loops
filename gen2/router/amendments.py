@@ -46,22 +46,35 @@ governing design:
             and applicability rules (G-1: the lock covers that protocol;
             G-7: eligibility, required access tier, stopping
             interpretation; RG-6: labels under an old protocol do not count
-            under the new one), and every obligation the two revisions
-            share, as defined, importance aside (G-1: the lock covers the
-            approved inventory; a claim answers its obligation). Any change
-            is `protocol_changed`.
-  neither   `compatible`: obligations added or removed (a sub-question
-            inside the framing, G-5; in methodology §2's taxonomy, filling a
-            known gap or testing a competing explanation needs no reframe),
-            the coverage matrix's cells (which obligations cover which facet
-            and question type: the plan, not the question), importance
-            ratings (G-2: authority for later actions, given by their own
-            decision), the surveillance policy (when a completed topic
-            reopens, flow S8) and the method design (how the work proceeds;
-            its envelope bounds self-serve adjustment, flow S5).
+            under the new one), and the approved inventory (G-1): every
+            obligation the two revisions share, as defined, importance aside
+            (a claim answers its obligation), and anything the new one
+            withdraws. An obligation it no longer carries is withdrawn,
+            whether removed or issued again under another id: its id is how
+            work, coverage and claims answer it. So is a coverage-matrix cell
+            it does not keep in scope, covered at least as it was — dropped,
+            emptied of an obligation, put deliberately out, a deliberately-out
+            one brought back, or its entry otherwise changed — and a cell it
+            adds deliberately out, or as a gap beside one already listed
+            (methodology §2 step 4: the obligation set is approved with its
+            matrix, "what we chose not to ask" recorded with the same weight
+            as what we asked). Any of these is `protocol_changed`, fencing
+            everything pinned to the superseded revision (Astra 1d-repair
+            review finding 1: at Phase 1's revision-wide scope a conservative
+            fence suffices; reconciling item by item is a later design).
+  neither   `compatible`: what only adds to the inventory — an obligation
+            added, a gap cell filled, an obligation added to a covered cell,
+            a cell listed in scope for a pair not listed before (G-5: a
+            sub-question inside an existing facet; methodology §2's taxonomy:
+            filling a known gap needs no reframe) — importance ratings (G-2:
+            authority for later actions, given by their own decision), the
+            surveillance policy (when a completed topic reopens, flow S8) and
+            the method design (how the work proceeds; its envelope bounds
+            self-serve adjustment, flow S5).
 The rule is conservative: an edit harmless in meaning is still
 incompatible (a reworded key question is a reframe), and no edit of a
-framing or protocol section is compatible. A brief version is compatible
+framing or protocol section is compatible. It is not symmetric: an addition
+is compatible, and its revert a withdrawal. A brief version is compatible
 with its successor only if they differ in lineage alone (version, parent,
 creation time).
 
@@ -136,11 +149,43 @@ def _obligations(doc: dict) -> dict:
     return {o["obligation_id"]: {k: v for k, v in o.items() if k != "importance"} for o in doc["obligations"]}
 
 
+def _cells(doc: dict) -> dict:
+    """The coverage matrix's cells, by (facet, question type)."""
+    cells: dict = {}
+    for cell in (doc["facet_map"].get("coverage_matrix") or {}).get("cells", ()):
+        cells.setdefault((cell["facet_id"], cell["question_type"]), []).append(cell)
+    return cells
+
+
+def _kept(was: dict, cell: dict) -> bool:
+    """Whether `cell` keeps the earlier cell `was` in scope, covered at least
+    as it was: the same cell, its gap filled, or its obligations added to."""
+    rest = lambda c: {k: v for k, v in c.items() if k != "obligation_ids"}  # noqa: E731
+    return _same(was, cell) or cell["state"] == "covered" and (
+        was["state"] == "gap" or was["state"] == "covered" and _same(rest(was), rest(cell))
+        and set(was.get("obligation_ids", ())) <= set(cell.get("obligation_ids", ())))
+
+
+def _withdrawn(pinned: dict, current: dict) -> bool:
+    """Whether `current` withdraws anything of the inventory `pinned` approved
+    (module docstring): an obligation it no longer carries, removed or issued
+    again under another id; a cell it does not keep (_kept); or a cell it adds
+    out of scope, deliberately out or a gap beside one the pinned listed."""
+    old, new = _cells(pinned), _cells(current)
+    if _obligations(pinned).keys() - _obligations(current).keys():
+        return True
+    if any(not any(_kept(was, cell) for cell in new.get(pair, ())) for pair, cells in old.items() for was in cells):
+        return True
+    return any(cell["state"] != "covered" and not any(_same(was, cell) for was in old.get(pair, ())) and (cell["state"] != "gap" or pair in old)
+               for pair, cells in new.items() for cell in cells)
+
+
 def framing(doc: dict) -> dict:
     """What a framing version names (module docstring): the decision record
     and the facet map, but for the version label itself, the facets'
-    importance and the coverage matrix's cells. (A section a document
-    written around the router lacks is compared as absent.)"""
+    importance and the coverage matrix's cells (the inventory's: _withdrawn).
+    (A section a document written around the router lacks is compared as
+    absent.)"""
     facet_map = doc["facet_map"]
     return {"decision_record": doc.get("decision_record"), "analytic_framework": facet_map.get("analytic_framework"),
             "facets": [{k: v for k, v in facet.items() if k != "importance"} for facet in facet_map.get("facets", ())],
@@ -160,12 +205,14 @@ VERSIONED = (("framing", "framing version", lambda doc: doc["facet_map"]["framin
 def contract_compatibility(pinned: dict, current: dict) -> str:
     """Whether results produced under the `pinned` contract document stay
     valid under the `current` one (G-1, G-6): compatible, reframed or
-    protocol_changed (module docstring). Labels and content both count."""
+    protocol_changed (module docstring). Labels and content both count, and
+    so does what `current` withdraws from `pinned`'s inventory."""
     if pinned["facet_map"]["framing_version"] != current["facet_map"]["framing_version"] or not _same(framing(pinned), framing(current)):
         return "reframed"
     old, new = _obligations(pinned), _obligations(current)
     if pinned["protocol_revision"] != current["protocol_revision"] or not _same(protocol(pinned), protocol(current)) \
-            or any(not _same(old[o], new[o]) for o in old.keys() & new.keys()):
+            or any(not _same(old[o], new[o]) for o in old.keys() & new.keys()) \
+            or _withdrawn(pinned, current):
         return "protocol_changed"
     return "compatible"
 

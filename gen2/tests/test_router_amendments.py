@@ -7,7 +7,10 @@ reassignment and deadline extension); the 1b review's bootstrap ruling
 on proposal 3 (amendment_pending was interim fail-closed); the 1a review
 (G-1 impact before Phase 1 acceptance); the 1d review's findings 1 (framing
 content, version binding, no revival of stale pins) and 6 (each half of a
-version's lineage refused alone); gen2/router/amendments.py.
+version's lineage refused alone); the 1d-repair review's finding 1 (the
+approved inventory: an obligation removed or issued again under another id,
+and a coverage cell withdrawn, are not compatible) and its ruling on the
+flagged classification choices; gen2/router/amendments.py.
 
 The contract world: revision 1 is the draft the operator rated (a fixture,
 contract construction being Phase 2), revision 2 carries those ratings and
@@ -166,6 +169,23 @@ class ContractWorld(RouterTestCase):
         own = {**empty_outcome("inv_verify01", "interim_transition"), "verification_receipts": [test_router_commit.AuthorityTest.verification_receipt(self, verifier)]}
         assert self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own))["status"] == "committed"
         return verifier
+
+    def promote_revision_one(self, grant: dict, op: str) -> dict:
+        outcome = {**empty_outcome(grant["invocation_id"], "interim_transition"), "claim_promotions": [{"claim_id": "clm_00000001", "revision": 1}]}
+        before = self.state()
+        response = self.router.commit_outcome(self.envelope(grant, op, outcome))
+        self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
+        self.assertIn("contract-admitted work adopts it as a new revision", response.get("detail"))
+        self.assertEqual(self.state(), before)
+        return response
+
+    def adopt(self, grant: dict) -> None:
+        text = self.artifact(b"a load-bearing claim")
+        adopt = {**empty_outcome(grant["invocation_id"], "interim_transition"),
+                 "claims": [{"claim_id": "clm_00000001", "revision": 2, "text_ref": text, "load_bearing": False, "required_access_tier": None}],
+                 "claim_promotions": [{"claim_id": "clm_00000001", "revision": 2}]}
+        self.assertEqual(self.router.commit_outcome(self.envelope(grant, "op_adopt000001", adopt, refs=[text]))["status"], "committed")
+        self.assertEqual(self.rows("SELECT revision, status FROM claims ORDER BY revision"), [(1, "provisional"), (2, "accepted_support")])
 
     def refused_command(self, method, request: dict, reason: str, detail: str | None = None) -> None:
         before = self.state()
@@ -412,7 +432,7 @@ class VersionBindingTest(ContractWorld):
     accepted twin differing from it in the label alone."""
 
     def test_a_changed_framing_needs_a_new_framing_version(self) -> None:
-        for name, expected, basis, edit in DESIGN_ORACLE:
+        for name, expected, _, basis, edit in DESIGN_ORACLE:
             if expected != FRAMING or name == "the framing version alone":
                 continue
             with self.subTest(name, basis=basis):  # the review's probe (a key question reworded, the label kept) among them
@@ -455,23 +475,6 @@ class StandingTest(ContractWorld):
     The oracle: the impact records (raw SQL) and hand-written refusals; the
     pairwise rule is asserted to call the two revisions compatible, so the
     refusal is the record's."""
-
-    def promote_revision_one(self, grant: dict, op: str) -> dict:
-        outcome = {**empty_outcome(grant["invocation_id"], "interim_transition"), "claim_promotions": [{"claim_id": "clm_00000001", "revision": 1}]}
-        before = self.state()
-        response = self.router.commit_outcome(self.envelope(grant, op, outcome))
-        self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
-        self.assertIn("contract-admitted work adopts it as a new revision", response.get("detail"))
-        self.assertEqual(self.state(), before)
-        return response
-
-    def adopt(self, grant: dict) -> None:
-        text = self.artifact(b"a load-bearing claim")
-        adopt = {**empty_outcome(grant["invocation_id"], "interim_transition"),
-                 "claims": [{"claim_id": "clm_00000001", "revision": 2, "text_ref": text, "load_bearing": False, "required_access_tier": None}],
-                 "claim_promotions": [{"claim_id": "clm_00000001", "revision": 2}]}
-        self.assertEqual(self.router.commit_outcome(self.envelope(grant, "op_adopt000001", adopt, refs=[text]))["status"], "committed")
-        self.assertEqual(self.rows("SELECT revision, status FROM claims ORDER BY revision"), [(1, "provisional"), (2, "accepted_support")])
 
     def test_a_framing_label_written_back_revives_no_claim(self) -> None:
         """The review's history: a claim under framing 1, a reframe to 2,
@@ -540,6 +543,148 @@ class StandingTest(ContractWorld):
         self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
         self.assertIn("(unrecorded)", response.get("detail"))
         self.assertEqual(self.state(), before)
+
+
+class InventoryImpactTest(ContractWorld):
+    """G-1 for the approved inventory (Astra 1d-repair review finding 1): an
+    amendment withdrawing an obligation — removed, or issued again under
+    another id — or a coverage cell's scope is protocol_changed, so what is
+    pinned to the revision it supersedes is fenced as a whole (a revision-wide
+    fence; the review's ruling finds that sufficient at Phase 1's scope): the
+    running pass's cancellation requested and its final commit refused, its
+    coverage and claim listed stale, the claim promoted only as a revision
+    adopted under the current revision (V-10). Nothing listed is rewritten:
+    the claim, the observation scoped to the withdrawn obligation and the
+    claim's link to it stay. An addition stays compatible. The review's
+    probes, through the router's proposal and approval; the claim's typed
+    link to O-2 is seeded (raw SQL: Phase 1's outcome schema has no
+    link-writing operation). The withdrawals one at a time are
+    CompatibilityRuleTest's (DESIGN_ORACLE)."""
+
+    def cost_result(self) -> dict:
+        """The review's world: a research pass under revision 2, still
+        running, with a provisional cost claim linked to O-2 and a search
+        observation scoped to O-2."""
+        grant = self.started("inv_research01")
+        text = self.artifact(b"Author plus audit costs less than committee intake in the five-station fleet.")
+        outcome = empty_outcome("inv_research01", "interim_transition")
+        outcome["claims"] = [{"claim_id": "clm_00000001", "revision": 1, "text_ref": text, "load_bearing": False, "required_access_tier": None}]
+        self.assertEqual(self.router.commit_outcome(self.envelope(grant, "op_capture0001", outcome, refs=[text]))["status"], "committed")
+        self.x("INSERT INTO claim_source_links (claim_id, claim_revision, work_id, source_version, topic_id, contract_revision, obligation_id, spans, contribution, "
+               "evidence_origin_lineage, created_at) VALUES ('clm_00000001', 1, 'wrk_00000001', 'v1', ?, 2, 'O-2', '[]', 'answer', 'review-source', "
+               "'2026-09-27T10:00:00Z')", TOPIC)
+        request = {"q": "cost comparison"}
+        observation = {"observation_id": "obs_cost000001", "request": request, "request_identity": canonical.logical_hash(request), "attempt": 1, "lane": "crossref",
+                       "obligation_ids": ["O-2"], "started_at": "2026-09-27T10:00:00Z", "ended_at": "2026-09-27T10:00:01Z", "coverage_state": "searched_empty",
+                       "result_count": 0, "completeness": "complete", "error_class": None, "capability_fact_id": None, "policy_version": "pol-1", "cost_units": None,
+                       "gateway_call_ref": None}
+        self.assertEqual(self.router.record_observation({"capability_id": grant["capability_id"], "invocation_id": "inv_research01", "observation": observation,
+                                                         "retrieval_events": []})["status"], "recorded")
+        return grant
+
+    def retained(self) -> list:
+        return [self.rows(f"SELECT * FROM {table} ORDER BY rowid") for table in ("claims", "search_observations", "claim_source_links")]
+
+    def fenced(self, grant: dict, did: str) -> None:
+        """`did`'s impact fences the pass and lists its coverage and claim
+        stale; the pass's final commit is refused, the store unchanged."""
+        record = self.impact(did)
+        self.assertEqual((record["classification"], [(w["invocation_id"], w["disposition"], w["cancel_requested"]) for w in record["work"]],
+                          record["coverage"], [(c["claim_id"], c["disposition"]) for c in record["claims"]]),
+                         ("protocol_changed", [("inv_research01", "fenced", True)], [{"observation_id": "obs_cost000001", "disposition": "stale_under_new_protocol"}],
+                          [("clm_00000001", "stale_under_new_protocol")]))
+        before = self.state()
+        response = self.router.commit_outcome(self.envelope(grant, "op_final000001", empty_outcome("inv_research01")))
+        self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
+        self.assertIn("contract revision 2 was superseded (protocol_changed)", response.get("detail"))
+        self.assertEqual(self.state(), before)
+
+    def adopted_only(self, grant: dict) -> None:
+        """The fenced pass ends and is re-queued; its retry, under the current
+        revision, cannot promote the old claim, and adopts it as revision 2."""
+        ended = self.router.record_transition({"capability_id": grant["capability_id"], "invocation_id": "inv_research01", "to_state": "cancelled",
+                                               "end_evidence_ref": self.evidence(grant, ())})
+        self.assertEqual(ended["status"], "recorded", ended)
+        self.assertEqual(self.router.requeue({"invocation_id": "inv_research01", "requested_by": "operator", "reason": "re-run under the current revision"})["status"],
+                         "requeued")
+        adopter = self.started("inv_research02", retry_of="inv_research01")
+        self.promote_revision_one(adopter, "op_promote0001")
+        self.adopt(adopter)
+
+    def withdrawal(self, edit) -> None:
+        """Propose and approve `edit` as revision 3 over the cost result: classed
+        protocol_changed at proposal and approval, fencing it; nothing listed
+        is rewritten; only adoption promotes the claim."""
+        grant = self.cost_result()
+        kept = self.retained()
+        doc = contract_doc(3, 2, edit=edit)
+        self.assertEqual(self.router.propose_amendment({"document": doc}), {"status": "recorded", "topic_id": TOPIC, "revision": 3, "against_approved": "protocol_changed"})
+        out = self.approve(doc)
+        self.assertEqual((out["status"], out["effects"]["impact"]["classification"]), ("applied", "protocol_changed"), out)
+        self.fenced(grant, "opd_amend0003")
+        self.assertEqual(self.retained(), kept)
+        self.adopted_only(grant)
+
+    def test_a_removed_obligation_fences_its_work_coverage_and_claim(self) -> None:
+        """The review's removal probe: O-2 removed, its cell marked deliberately out."""
+        self.withdrawal(removed)
+
+    def test_an_obligation_removed_alone_fences(self) -> None:
+        """O-2 removed, the matrix untouched (its cell still names it): the removal alone withdraws it."""
+        self.withdrawal(lambda d: d["obligations"].pop(1))
+
+    def test_a_scope_removing_cell_alone_fences(self) -> None:
+        """O-2 kept as it was, its cell put deliberately out: the cell alone withdraws it."""
+        self.withdrawal(lambda d: (cost_cell(d).pop("obligation_ids"), cost_cell(d).update(state="deliberately_out", rationale="Cost is no longer in scope.")))
+
+    def test_a_redefinition_under_its_own_id_is_fenced(self) -> None:
+        """The review's control: O-2 redefined as O-2."""
+        self.withdrawal(redefined_cost)
+
+    def test_a_redefinition_under_a_new_id_is_fenced_the_same(self) -> None:
+        """The review's replacement probe: the same redefinition issued as
+        O-new, its cell naming O-new, is fenced as the redefinition under O-2
+        is (the previous test): the id's spelling decides nothing."""
+        self.withdrawal(reissued)
+
+    def test_a_filled_gap_lets_work_complete_and_its_claim_promote(self) -> None:
+        """The accepted control (G-5, R ruling 2): an obligation added in an
+        existing facet, filling its gap cell, leaves the pass to complete
+        under revision 2 and its claim to be promoted."""
+        grant = self.cost_result()
+        doc = contract_doc(3, 2, edit=gap_filled)
+        self.assertEqual(self.router.propose_amendment({"document": doc})["against_approved"], "compatible")
+        self.assertEqual(self.approve(doc)["effects"]["impact"]["classification"], "compatible")
+        record = self.impact("opd_amend0003")
+        self.assertEqual(([(w["invocation_id"], w["disposition"], w["cancel_requested"]) for w in record["work"]], record["coverage"],
+                          [(c["claim_id"], c["disposition"]) for c in record["claims"]]),
+                         ([("inv_research01", "completes_under_pins", False)], [{"observation_id": "obs_cost000001", "disposition": "valid"}],
+                          [("clm_00000001", "valid")]))
+        response = self.finish(grant, "op_final000001", {**empty_outcome("inv_research01"), "claim_promotions": [{"claim_id": "clm_00000001", "revision": 1}]})
+        self.assertEqual(response["status"], "committed", response)
+        self.assertEqual(response["receipt"]["admission"]["contract"]["revision"], 2)
+        self.assertEqual(self.rows("SELECT revision, status FROM claims"), [(1, "accepted_support")])
+
+    def test_a_restored_obligation_revives_nothing(self) -> None:
+        """Revision 3 removes O-2, revision 4 restores revision 2's inventory
+        (itself a withdrawal from 3: its deliberately-out cell brought back).
+        Pairwise, 2 and 4 are compatible; the record still fences the pass,
+        and the claim is still promoted only by adoption."""
+        from gen2.router.amendments import contract_compatibility
+        grant = self.cost_result()
+        self.approve(self.propose(3, removed))
+        fourth = self.propose(4)
+        self.assertEqual(self.approve(fourth)["status"], "applied")
+        self.assertEqual(contract_compatibility(contract_doc(2, 1), fourth), "compatible")
+        record = self.impact("opd_amend0004")
+        self.assertEqual((record["classification"], record["standing"], [(w["invocation_id"], w["disposition"]) for w in record["work"]], record["claims"], record["coverage"]),
+                         ("protocol_changed", [{"revision": 3, "classification": "protocol_changed"}], [("inv_research01", "fenced")], [], []))
+        before = self.state()
+        response = self.router.commit_outcome(self.envelope(grant, "op_final000001", empty_outcome("inv_research01")))
+        self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
+        self.assertIn("contract revision 2 was superseded (protocol_changed)", response.get("detail"))
+        self.assertEqual(self.state(), before)
+        self.adopted_only(grant)
 
 
 class BriefVersionTest(RouterTestCase):
@@ -828,54 +973,105 @@ def gap_filled(doc: dict) -> None:
     cell.update(state="covered", obligation_ids=["O-3"])
 
 
+def cost_cell(doc: dict) -> dict:
+    """The example's covered F-cost x cost cell, which O-2 alone covers."""
+    return next(c for c in doc["facet_map"]["coverage_matrix"]["cells"] if (c["facet_id"], c["question_type"]) == ("F-cost", "cost"))
+
+
+def removed(doc: dict) -> None:
+    """The review's removal probe: O-2 removed, its cell marked deliberately out."""
+    doc["obligations"].pop(1)
+    cell = cost_cell(doc)
+    cell.pop("obligation_ids")
+    cell.update(state="deliberately_out", rationale="Cost is no longer in scope.")
+
+
+def redefined_cost(doc: dict) -> None:
+    """O-2's comparator and question changed, under its own id (protocol_changed as a shared obligation redefined)."""
+    doc["obligations"][1]["slots"]["comparator"] = "No structured intake"
+    doc["obligations"][1].update(text="Compare cost against no structured intake.", importance={"proposed": None, "operator_rating": None})
+
+
+def reissued(doc: dict) -> None:
+    """The review's replacement probe: O-2's redefinition issued as O-new, its cell naming O-new."""
+    redefined_cost(doc)
+    doc["obligations"][1]["obligation_id"] = "O-new"
+    cost_cell(doc)["obligation_ids"] = ["O-new"]
+
+
 # Each edit of the example contract, the class the governing design gives it
-# (not the router's docstring), and where the design says so. F = flow
-# architecture, M = methodology synthesis, INV = docs/gen2/INVARIANTS.md.
+# (not the router's docstring), the class of its revert (the edited revision
+# superseded by the example again: an addition's revert is a withdrawal, so the
+# rule is not symmetric), and where the design says so. F = flow architecture,
+# M = methodology synthesis, INV = docs/gen2/INVARIANTS.md, R = Astra's
+# 1d-repair review (finding 1 and its ruling on coverage cells and removal).
 FRAMING, PROTOCOL = "reframed", "protocol_changed"
 DESIGN_ORACLE = (
     # The framing: G-6 / F §6.5 "a reframe versions the facet map"; M §2 step 1 the analytic framework is drawn from the
     # decision and "each link generates a key question"; M §5 "decision record + framing version + facet map ... what changed
     # at each reframe"; M §2 taxonomy: "replace the framing ... the decision question is not answerable as formulated".
-    ("the decision record's objective reworded", FRAMING, "M §5, M §2 taxonomy (changed objective)",
+    ("the decision record's objective reworded", FRAMING, FRAMING, "M §5, M §2 taxonomy (changed objective)",
      lambda d: d["decision_record"]["objective"].update(operator_words="Decide whether intake needs any audit at all.")),
-    ("what the decision feeds", FRAMING, "M §5; F S1/S3 (the decision record is what every obligation traces to)",
+    ("what the decision feeds", FRAMING, FRAMING, "M §5; F S1/S3 (the decision record is what every obligation traces to)",
      lambda d: d["decision_record"]["feeds"].update(description="Intake station design for the six-station fleet.")),
-    ("a key question reworded, the framing version kept", FRAMING, "G-6, M §2 step 1 (a link's key question is the framing)",
+    ("a key question reworded, the framing version kept", FRAMING, FRAMING, "G-6, M §2 step 1 (a link's key question is the framing)",
      lambda d: d["facet_map"]["analytic_framework"]["links"][0].update(key_question=REFRAMED_QUESTION)),
-    ("a framework node added", FRAMING, "G-6, M §2 step 1",
+    ("a framework node added", FRAMING, FRAMING, "G-6, M §2 step 1",
      lambda d: d["facet_map"]["analytic_framework"]["nodes"].append({"node_id": "N-cost", "label": "Operator cost", "kind": "decision_outcome"})),
-    ("a facet redefined", FRAMING, "G-6 (the facet map), G-5 (a new facet always needs an amendment)",
+    ("a facet redefined", FRAMING, FRAMING, "G-6 (the facet map), G-5 (a new facet always needs an amendment)",
      lambda d: d["facet_map"]["facets"][0].update(label="Effect of design on decision quality")),
-    ("a facet added", FRAMING, "G-5, G-6",
+    ("a facet added", FRAMING, FRAMING, "G-5, G-6",
      lambda d: d["facet_map"]["facets"].append({**copy.deepcopy(d["facet_map"]["facets"][1]), "facet_id": "F-latency", "label": "Latency"})),
-    ("a coverage question type added", FRAMING, "G-6; M §2 step 4 (the facet x question-type matrix)",
+    ("a coverage question type added", FRAMING, FRAMING, "G-6; M §2 step 4 (the facet x question-type matrix)",
      lambda d: d["facet_map"]["coverage_matrix"]["question_types"].append("mechanism")),
-    ("what is deliberately out", FRAMING, "G-6; F S1 (scope)",
+    ("what is deliberately out", FRAMING, FRAMING, "G-6; F S1 (scope)",
      lambda d: d["facet_map"]["deliberately_out"].clear()),
-    ("the framing version alone", FRAMING, "G-6 (a declared reframe is a reframe)",
+    ("the framing version alone", FRAMING, FRAMING, "G-6 (a declared reframe is a reframe)",
      lambda d: d["facet_map"].update(framing_version=2)),
     # The protocol: G-1 "hash-locked with its protocol revision ... the eligibility/stopping/applicability protocol" and "the
     # approved inventory"; G-7 "eligibility, estimand, required access tier, or stopping interpretation"; RG-6 "labels made under
     # the old protocol do not count under the new one".
-    ("the protocol revision alone", PROTOCOL, "G-1", lambda d: d.update(protocol_revision=2)),
-    ("an eligibility criterion", PROTOCOL, "G-1, G-7, RG-6", lambda d: d["eligibility_protocol"]["criteria"][1].update(description="Reports cost.")),
-    ("the required access tier", PROTOCOL, "G-7", lambda d: d["eligibility_protocol"]["required_access_tier"].update(other="full_text")),
-    ("a stopping profile", PROTOCOL, "G-1, G-7 (stopping interpretation)", lambda d: d["stopping_profiles"][0].update(profile_id="SP-other")),
-    ("the applicability rules", PROTOCOL, "G-1", lambda d: d["applicability_rules"][0].update(target_context="Any intake.")),
-    ("a shared obligation redefined", PROTOCOL, "G-1 (the approved inventory; a claim answers its obligation)",
+    ("the protocol revision alone", PROTOCOL, PROTOCOL, "G-1", lambda d: d.update(protocol_revision=2)),
+    ("an eligibility criterion", PROTOCOL, PROTOCOL, "G-1, G-7, RG-6", lambda d: d["eligibility_protocol"]["criteria"][1].update(description="Reports cost.")),
+    ("the required access tier", PROTOCOL, PROTOCOL, "G-7", lambda d: d["eligibility_protocol"]["required_access_tier"].update(other="full_text")),
+    ("a stopping profile", PROTOCOL, PROTOCOL, "G-1, G-7 (stopping interpretation)", lambda d: d["stopping_profiles"][0].update(profile_id="SP-other")),
+    ("the applicability rules", PROTOCOL, PROTOCOL, "G-1", lambda d: d["applicability_rules"][0].update(target_context="Any intake.")),
+    ("a shared obligation redefined", PROTOCOL, PROTOCOL, "G-1 (the approved inventory; a claim answers its obligation)",
      lambda d: d["obligations"][0].update(text="Compare cost only.")),
-    ("a shared obligation's slots", PROTOCOL, "G-1", lambda d: d["obligations"][0]["slots"].update(comparator="No intake review")),
-    # Neither, so compatible: what earlier results were produced against is untouched.
-    ("an obligation added in an existing facet, filling a gap cell", "compatible",
-     "G-5 (a sub-question inside an existing facet, even auto-promoted); M §2 taxonomy ('fill a known gap': none needed)", gap_filled),
-    ("an obligation removed, its cell marked out", "compatible", "G-1 keeps the inventory versioned, and a result for it stays what it was",
-     lambda d: (d["obligations"].pop(1), next(c for c in d["facet_map"]["coverage_matrix"]["cells"] if c.get("obligation_ids") == ["O-2"]).update(
-         state="deliberately_out", obligation_ids=[], rationale="Costing dropped."))),
-    ("a facet's importance", "compatible", "G-2 (a rating is authority for later actions, given by its own decision)",
+    ("a shared obligation's slots", PROTOCOL, PROTOCOL, "G-1", lambda d: d["obligations"][0]["slots"].update(comparator="No intake review")),
+    # The approved inventory withdrawn from: G-1 "the lock covers the approved inventory"; M §2 step 4 "the obligation set is
+    # approved with its matrix, so 'what we chose not to ask' is recorded with the same weight as what we asked"; G-5 authorizes
+    # additions inside an existing facet, not removals; R finding 1 (removal, re-issue under a new id and scope-removing cells are
+    # not compatible; a conservative revision-wide fence suffices). Each withdrawal alone, then the review's two probes.
+    ("an obligation removed, the matrix untouched", PROTOCOL, "compatible", "G-1, R finding 1 (removal); its revert adds an obligation",
+     lambda d: d["obligations"].pop(1)),
+    ("a covered cell put deliberately out, its obligation kept", PROTOCOL, PROTOCOL, "M §2 step 4, R finding 1 (a scope-removing cell)",
+     lambda d: (cost_cell(d).pop("obligation_ids"), cost_cell(d).update(state="deliberately_out", rationale="Cost is no longer in scope."))),
+    ("a gap put deliberately out", PROTOCOL, PROTOCOL, "M §2 step 4 (an exclusion is a decision about what is asked), R finding 1",
+     lambda d: next(c for c in d["facet_map"]["coverage_matrix"]["cells"] if c["state"] == "gap").update(state="deliberately_out")),
+    ("a covered cell's obligation swapped for another, both kept", PROTOCOL, PROTOCOL, "M §2 step 4, R finding 1 (the cell loses O-2)",
+     lambda d: cost_cell(d).update(obligation_ids=["O-1"])),
+    ("a gap cell dropped from the matrix", PROTOCOL, "compatible", "M §2 step 4 (an empty cell is a visible decision); its revert lists a gap",
+     lambda d: d["facet_map"]["coverage_matrix"]["cells"].pop(3)),
+    ("a covered cell's entry otherwise changed, its obligations kept", PROTOCOL, PROTOCOL,
+     "M §2 step 4; the rule is conservative (a cell is kept as it was or added to, nothing else)",
+     lambda d: cost_cell(d).update(rationale="Costed with operator time.")),
+    ("an obligation removed, its cell marked out", PROTOCOL, PROTOCOL, "G-1, M §2 step 4, R finding 1 (the review's removal probe)", removed),
+    ("an obligation redefined under a new id", PROTOCOL, PROTOCOL, "G-1, R finding 1 (as protocol_changed as under its own id)", reissued),
+    ("an obligation issued again unchanged under a new id", PROTOCOL, PROTOCOL, "G-1, R finding 1 (its id is how work answers it)",
+     lambda d: (d["obligations"][1].update(obligation_id="O-new"), cost_cell(d).update(obligation_ids=["O-new"]))),
+    # Neither, so compatible: what earlier results were produced against is untouched, or only added to.
+    ("an obligation added in an existing facet, filling a gap cell", "compatible", PROTOCOL,
+     "G-5 (a sub-question inside an existing facet, even auto-promoted); M §2 taxonomy ('fill a known gap': none needed); R ruling 2", gap_filled),
+    ("an obligation added to a covered cell", "compatible", PROTOCOL, "G-5, R ruling 2 (additive coverage preserving existing questions)",
+     lambda d: (d["obligations"].append({**copy.deepcopy(d["obligations"][1]), "obligation_id": "O-3", "text": "Compare operator cost alone.",
+                                         "importance": {"proposed": None, "operator_rating": None}}), cost_cell(d)["obligation_ids"].append("O-3"))),
+    ("a facet's importance", "compatible", "compatible", "G-2 (a rating is authority for later actions, given by its own decision); R ruling 2",
      lambda d: d["facet_map"]["facets"][1]["importance"]["operator_rating"].update(band="limited")),
-    ("an obligation's importance", "compatible", "G-2", lambda d: d["obligations"][1]["importance"]["operator_rating"].update(band="limited")),
-    ("the surveillance policy", "compatible", "F S8 (when a completed topic reopens), design review §4", compatible),
-    ("the method design's envelope", "compatible", "F S5, G-7 (the envelope bounds self-serve adjustment, not results)",
+    ("an obligation's importance", "compatible", "compatible", "G-2; R ruling 2",
+     lambda d: d["obligations"][1]["importance"]["operator_rating"].update(band="limited")),
+    ("the surveillance policy", "compatible", "compatible", "F S8 (when a completed topic reopens), design review §4", compatible),
+    ("the method design's envelope", "compatible", "compatible", "F S5, G-7 (the envelope bounds self-serve adjustment, not results)",
      lambda d: d["method_design"]["operational_envelope"]["permitted_adjustments"].append("Add a citation-chaining lane")),
 )
 
@@ -883,21 +1079,40 @@ DESIGN_ORACLE = (
 class CompatibilityRuleTest(RouterTestCase):
     """G-1, G-6, G-7: the rule, one section of the example contract at a
     time. The oracle is DESIGN_ORACLE: each edit's class from the governing
-    design, with its citation, written independently of the router's
-    docstring. Structural limit: these are the sections the design names;
-    the rule is structural, so it does not judge whether an edit is harmless
-    in meaning (a harmless reframe is still a reframe)."""
+    design, and its revert's, with its citation, written independently of the
+    router's docstring. Structural limit: these are the sections the design
+    names; the rule is structural, so it does not judge whether an edit is
+    harmless in meaning (a harmless reframe is still a reframe, a withdrawn
+    obligation fences work that did not answer it)."""
 
     def test_each_section_is_classed_as_the_design_says(self) -> None:
         from gen2.router.amendments import contract_compatibility
         base = contract_doc(2, 1)
-        for name, expected, basis, edit in DESIGN_ORACLE:
+        for name, expected, reverted, basis, edit in DESIGN_ORACLE:
             with self.subTest(name, basis=basis):
                 doc = copy.deepcopy(base)
                 edit(doc)
                 self.assertNotEqual(doc, base)
-                self.assertEqual(contract_compatibility(base, doc), expected)
-                self.assertEqual(contract_compatibility(doc, base), expected)  # the rule is symmetric: a revert is the same change
+                self.assertEqual((contract_compatibility(base, doc), contract_compatibility(doc, base)), (expected, reverted))  # the edit, then its revert
+
+    def test_a_cell_for_a_pair_not_listed_before_is_added_only_in_scope(self) -> None:
+        """M §2 step 4, R finding 1: a pinned matrix without the F-cost x
+        effect cell; a later revision listing it covered or as a gap only adds
+        to the inventory, listing it deliberately out withdraws it — as does a
+        deliberately-out or gap cell added beside a pair's kept one."""
+        from gen2.router.amendments import contract_compatibility
+        unlisted = contract_doc(2, 1, edit=lambda d: d["facet_map"]["coverage_matrix"]["cells"].pop(3))
+        for name, expected, edit in (
+                ("a gap", "compatible", lambda d: None),
+                ("covered", "compatible", gap_filled),
+                ("deliberately out", PROTOCOL, lambda d: d["facet_map"]["coverage_matrix"]["cells"][3].update(state="deliberately_out"))):
+            with self.subTest(name):
+                self.assertEqual(contract_compatibility(unlisted, contract_doc(3, 2, edit=edit)), expected)
+        for state in ("deliberately_out", "gap"):
+            with self.subTest(f"{state} beside a kept cell"):
+                beside = contract_doc(3, 2, edit=lambda d: d["facet_map"]["coverage_matrix"]["cells"].append(
+                    {"facet_id": "F-cost", "question_type": "cost", "state": state, "rationale": "Cost is no longer in scope."}))
+                self.assertEqual(contract_compatibility(contract_doc(2, 1), beside), PROTOCOL)
 
     def test_a_brief_is_compatible_only_in_its_lineage(self) -> None:
         from gen2.router.amendments import brief_compatibility
