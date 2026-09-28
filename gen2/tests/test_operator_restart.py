@@ -18,7 +18,9 @@ import io
 import json
 import os
 import select
+import socket
 import subprocess
+import threading
 import unittest
 
 from gen2.app import cli
@@ -176,6 +178,102 @@ class CliTest(of.CommandWorld):
         self.assertEqual((code, out.getvalue()), (2, ""))
         self.assertIn("no answer from the engine", err_stream.getvalue())
         self.assertNotIn(of.OPERATOR_TOKEN, err_stream.getvalue())
+
+
+class Answering:
+    """A loopback server that answers every request with `answer`, exactly
+    those bytes, then closes the connection: a reply cut short, one that is
+    not HTTP, one that is not JSON. `requests` counts what it was sent."""
+
+    def __init__(self, answer: bytes) -> None:
+        self.answer, self.requests, self._stop = answer, 0, threading.Event()
+        self._listener = socket.create_server(("127.0.0.1", 0))
+        self._listener.settimeout(0.05)  # accept() wakes to see the stop
+        self.url = "http://127.0.0.1:%d" % self._listener.getsockname()[1]
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+        self._thread.start()
+
+    def _serve(self) -> None:
+        while not self._stop.is_set():
+            try:
+                conn, _ = self._listener.accept()
+            except TimeoutError:
+                continue
+            with conn:
+                conn.settimeout(5)
+                received = b""
+                while b"\r\n\r\n" not in received:
+                    chunk = conn.recv(65536)
+                    if not chunk:
+                        break
+                    received += chunk
+                head, _, body = received.partition(b"\r\n\r\n")
+                declared = next((int(line.split(b":")[1]) for line in head.split(b"\r\n") if line.lower().startswith(b"content-length:")), 0)
+                while len(body) < declared:
+                    body += conn.recv(65536)
+                self.requests += 1
+                conn.sendall(self.answer)
+
+    def close(self) -> None:
+        self._stop.set()
+        self._thread.join(timeout=5)
+        self._listener.close()
+
+
+def http_answer(status: str, body: bytes, declared: int | None = None) -> bytes:
+    return f"HTTP/1.0 {status}\r\nContent-Type: application/json\r\nContent-Length: {len(body) if declared is None else declared}\r\n\r\n".encode() + body
+
+
+class CliTransportTest(unittest.TestCase):
+    """What the CLI makes of a reply that is not a usable answer (Astra 1e
+    review finding 6): a real socket answering with exactly the bytes given.
+    Every one is exit 2 — no answer to give — with a one-line diagnostic and
+    nothing on stdout; exit 1 stays the router's refusal and 0 its answer."""
+
+    def run_cli(self, server: Answering, *args: str) -> tuple[int, str, str]:
+        out, err = io.StringIO(), io.StringIO()
+        code = cli.main(list(args), environ={"GEN2_OPERATOR_URL": server.url, "GEN2_OPERATOR_TOKEN": of.OPERATOR_TOKEN},
+                        stdin=io.StringIO('{"invocation_id": "inv_running0001", "reason": "stop"}'), stdout=out, stderr=err)
+        return code, out.getvalue(), err.getvalue()
+
+    def serve(self, answer: bytes) -> Answering:
+        server = Answering(answer)
+        self.addCleanup(server.close)
+        return server
+
+    def test_a_reply_cut_short_or_malformed_is_no_answer(self) -> None:
+        cases = {"a body cut short": http_answer("200 OK", b'{"status": ', declared=80),
+                 "a closed connection": b"", "a status line that is not HTTP": b"garbage\r\n\r\n",
+                 "a status line too long": b"HTTP/1.0 200 " + b"x" * 70000 + b"\r\n\r\n",
+                 "a body that is not JSON": http_answer("200 OK", b"<html>ok</html>"),
+                 "a list": http_answer("200 OK", b"[]"), "null": http_answer("200 OK", b"null"), "an empty body": http_answer("200 OK", b""),
+                 "an object without a status": http_answer("200 OK", b'{"applied": true}'), "a status not a string": http_answer("200 OK", b'{"status": 1}')}
+        for label, answer in cases.items():
+            for args in (("status",), ("call", "request_cancel")):
+                with self.subTest(label=label, command=args[0]):
+                    server = self.serve(answer)
+                    code, out, err = self.run_cli(server, *args)
+                    self.assertEqual((code, out), (2, ""), err)
+                    self.assertEqual((server.requests, err.count("\n")), (1, 1), err)  # sent once, never retried; one line
+                    self.assertTrue(err.startswith(f"no answer from the engine at {server.url}: "), err)
+                    self.assertNotIn("Traceback", err)
+                    self.assertNotIn(of.OPERATOR_TOKEN, err)
+
+    def test_the_controls_answered_and_refused(self) -> None:
+        for label, answer, code in (("answered", http_answer("200 OK", b'{"status": "recorded"}'), 0), ("refused by the router", http_answer("200 OK", b'{"status": "refused", "reason": "not_cancellable"}'), 1),
+                                    ("refused by the transport", http_answer("403 Forbidden", b'{"status": "refused", "reason": "forbidden"}'), 2)):
+            with self.subTest(label=label):
+                got, out, _ = self.run_cli(self.serve(answer), "call", "request_cancel")
+                self.assertEqual((got, json.loads(out)["status"]), (code, "recorded" if code == 0 else "refused"))
+
+    def test_the_cli_process_itself_exits_2_on_a_reply_cut_short(self) -> None:
+        """The review's reproduction: `python -m gen2.app.cli status`, as its own
+        process, against a 200 declaring 80 bytes and closing after 10."""
+        server = self.serve(http_answer("200 OK", b'{"status":', declared=80))
+        done = children.python(["-m", "gen2.app.cli", "status"], env={**os.environ, "GEN2_OPERATOR_URL": server.url, "GEN2_OPERATOR_TOKEN": of.OPERATOR_TOKEN},
+                               capture_output=True, text=True, timeout=60)
+        self.assertEqual((done.returncode, done.stdout), (2, ""), done.stderr)
+        self.assertEqual(done.stderr, f"no answer from the engine at {server.url}: IncompleteRead\n")
 
 
 if __name__ == "__main__":

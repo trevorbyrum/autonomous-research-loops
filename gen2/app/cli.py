@@ -18,9 +18,13 @@ the environment and never from the command line, where other users of the
 host could read it. The reply is printed as JSON. Exit 0 when the engine
 answered and the operation did not refuse; 1 when it refused (the reply's
 status is refused or rejected); 2 when there was no answer to give — the
-engine unreachable, or the request refused by the transport (401, 403, 404,
-400, 413, 5xx). Nothing is retried: a lost reply is sent again by running the
-same command, which every operation replays under its key.
+engine unreachable; its reply cut short, not HTTP, or not a JSON object with
+a status (Astra 1e review finding 6: an http.client protocol error is a
+transport failure like a refused connection, never a traceback and exit 1);
+or the request refused by the transport (401, 403, 404, 400, 411, 413, 5xx).
+After a command whose reply was lost or cut short, whether it was applied is
+not known. Nothing is retried: a lost reply is sent again by running the same
+command, which every operation replays under its key.
 """
 from __future__ import annotations
 
@@ -37,7 +41,8 @@ REFUSED = ("refused", "rejected")
 
 def request(url: str, token: str | None, method: str, path: str, body: bytes | None = None, *, timeout: float = 60.0) -> tuple[int, dict]:
     """One request to the engine; (HTTP status, the JSON reply). Raises
-    OSError when the engine cannot be reached."""
+    OSError when the engine cannot be reached, http.client.HTTPException when
+    its reply is not HTTP or is cut short, ValueError when it is not JSON."""
     parts = urlsplit(url)
     if parts.scheme != "http" or not parts.hostname:
         raise ValueError(f"GEN2_OPERATOR_URL must be an http:// URL, not {url!r}")
@@ -64,22 +69,32 @@ def main(argv: list[str] | None = None, environ=os.environ, stdin=None, stdout=N
     call.add_argument("file", nargs="?")
     args = parser.parse_args(argv)
     url, token = environ.get("GEN2_OPERATOR_URL", "http://127.0.0.1:8770"), environ.get("GEN2_OPERATOR_TOKEN")
+    if args.command == "call":
+        try:
+            body = (Path(args.file).read_text(encoding="utf-8") if args.file else stdin.read()).encode("utf-8")
+        except (OSError, ValueError) as failure:
+            print(f"the request body cannot be read: {type(failure).__name__}: {failure}", file=stderr)
+            return 2
     try:
         if args.command == "health":
             code, reply = request(url, None, "GET", "/v1/health")
         elif args.command == "status":
             code, reply = request(url, token, "GET", "/v1/status" + (f"?{urlencode({'topic': args.topic})}" if args.topic else ""))
         else:
-            text = Path(args.file).read_text(encoding="utf-8") if args.file else stdin.read()
-            code, reply = request(url, token, "POST", f"/v1/commands/{args.operation}", text.encode("utf-8"))
-    except (OSError, ValueError) as failure:
-        print(f"no answer from the engine at {url}: {failure}", file=stderr)
+            code, reply = request(url, token, "POST", f"/v1/commands/{args.operation}", body)
+    except (OSError, ValueError, http.client.HTTPException) as failure:  # IncompleteRead, BadStatusLine, LineTooLong ... are HTTPException
+        # an HTTPException's text can carry the engine's bytes: its type names it
+        said = type(failure).__name__ if isinstance(failure, http.client.HTTPException) else f"{type(failure).__name__}: {failure}"
+        print(f"no answer from the engine at {url}: {said}", file=stderr)
+        return 2
+    if not isinstance(reply, dict) or not isinstance(reply.get("status"), str):
+        print(f"no answer from the engine at {url}: its reply (HTTP {code}) is not a JSON object with a status", file=stderr)
         return 2
     print(json.dumps(reply, indent=2, sort_keys=True), file=stdout)
     if code != 200:
         print(f"the engine refused the request: HTTP {code}", file=stderr)
         return 2
-    return 1 if isinstance(reply, dict) and reply.get("status") in REFUSED else 0
+    return 1 if reply["status"] in REFUSED else 0
 
 
 if __name__ == "__main__":
