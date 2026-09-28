@@ -1,5 +1,9 @@
 # research-loops
 
+> **This README describes gen-1**, the engine that runs today (`research_loops/`). Gen-2, a rebuild under
+> `gen2/`, is in progress on its own branch and is not yet what runs; its build status is kept in
+> [docs/gen2/BUILD-STATE.md](docs/gen2/BUILD-STATE.md).
+
 **A durable engine for running autonomous research topics to genuine completion.**
 
 Managed station deployments use a protected controller, strict intake, and a
