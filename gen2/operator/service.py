@@ -71,7 +71,9 @@ route it serves by its name, anything else "?" — never the request's own
 text, which may carry a credential (Astra 1e review finding 3). And every
 reply and log line passes through Credentials.redact() before it leaves, so
 no configured token a request carries — in its path, its query or its body,
-echoed by a refusal — is written back or logged.
+echoed by a refusal — is written back or logged; a tool's reply over MCP
+passes through it before it is nested as text, and an MCP id carrying one is
+refused (_mcp; Astra 1e-repair re-review finding 2).
 """
 from __future__ import annotations
 
@@ -223,7 +225,12 @@ class OperatorService:
         MCP): members only jsonrpc, id, method and params; jsonrpc exactly
         "2.0"; method a string; id, where present, a string or an integer
         (never null, a float, a boolean or a structure); params, where
-        present, an object (-32600 Invalid Request otherwise). A message
+        present, an object (-32600 Invalid Request otherwise). An id that
+        carries a configured token, in any form redaction takes out (auth.py
+        Credentials.redact: as it is, percent-encoded, an integer's digits),
+        is refused the same way and answered with a null id: echoing it
+        would repeat the credential, and replacing it would answer another
+        request's id (Astra 1e-repair re-review finding 2). A message
         without an id is a notification: a notifications/ method is accepted
         (202) and does nothing; any other method needs an id (-32600). Each
         method's params carry only its members, each of its type, the
@@ -234,11 +241,14 @@ class OperatorService:
         "request_invalid"}) as their data, and nothing is dispatched. A
         well-formed call's refusal, at any later step — the role, who acts
         named, an unknown or capability-bearing tool, the arguments, the
-        router's own — is an in-band tool error carrying its reply."""
+        router's own — is an in-band tool error carrying its reply, redacted
+        before it is serialized into the tool's text (redaction after would
+        see the token JSON-escaped, and miss it)."""
         has_id, ident = "id" in message, message.get("id")
+        usable = has_id and _request_id(ident) and self._credentials.redact(ident) == ident
         if set(message) - JSONRPC_MEMBERS or message.get("jsonrpc") != "2.0" or not isinstance(message.get("method"), str) \
-                or (has_id and not _request_id(ident)) or ("params" in message and not isinstance(message["params"], dict)):
-            return self._rpc_refusal(ident if has_id and _request_id(ident) else None, -32600, "invalid request")
+                or (has_id and not usable) or ("params" in message and not isinstance(message["params"], dict)):
+            return self._rpc_refusal(ident if usable else None, -32600, "invalid request")
         method, params = message["method"], message.get("params", {})
         if not has_id:
             if method.startswith("notifications/"):
@@ -267,7 +277,8 @@ class OperatorService:
         else:
             code, reply = 404, {"status": "refused", "reason": "no_such_route"}
         failed = code != 200 or reply.get("status") in ("refused", "rejected")
-        return 200, answer({"content": [{"type": "text", "text": json.dumps(reply, sort_keys=True)}], "isError": failed}), f"/mcp:{tool if tool in (*COMMANDS, 'status') else '?'}"
+        return 200, answer({"content": [{"type": "text", "text": json.dumps(self._credentials.redact(reply), sort_keys=True)}], "isError": failed}), \
+            f"/mcp:{tool if tool in (*COMMANDS, 'status') else '?'}"
 
     @staticmethod
     def _rpc_refusal(ident, code: int, message: str) -> tuple[int, dict, str]:

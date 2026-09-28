@@ -26,7 +26,10 @@ module: they are never logged, echoed, returned or stored. The configured
 ones are kept here, in memory, for one purpose: redact() takes each of them
 out of whatever the listener is about to write — a reply, a log line — so a
 token a request carries in its path or body is not reflected back or logged
-(Astra 1e review finding 3).
+(Astra 1e review finding 3), in each form a reply can carry it: as it is,
+JSON-escaped (a token holding `"` or `\\`, inside JSON text a reply nests),
+percent-encoded, or as the decimal digits of a number (Astra 1e-repair
+re-review finding 2).
 
 Persistence (RG-9): the principal set is the mounted secrets', read at every
 start. A restart or a replacement with the same mount keeps every principal,
@@ -37,8 +40,10 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import re
 from typing import Mapping, NamedTuple
+from urllib.parse import unquote
 
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 MIN_TOKEN = 16
@@ -80,7 +85,9 @@ class Credentials:
         if len(set(digests)) != len(digests):
             raise CredentialsRefused("two principals share a token: a token names one principal")
         self._entries = [(principal, digest) for (principal, _), digest in zip(entries, digests)]
-        self._tokens = tuple(sorted((token for _, token in entries), key=len, reverse=True))  # the longest first: none is left half-redacted
+        self._tokens = tuple(token for _, token in entries)
+        # each token as it is and JSON-escaped, the longest first: none is left half-redacted
+        self._forms = tuple(sorted({form for token in self._tokens for form in (token, json.dumps(token)[1:-1])}, key=len, reverse=True))
 
     @property
     def principals(self) -> list[Principal]:
@@ -100,17 +107,30 @@ class Credentials:
 
     def redact(self, value):
         """`value` — a JSON value (dicts, lists, strings, numbers) or a log
-        line — with every configured token replaced by REDACTED wherever it
-        appears in a string, a key included."""
+        line — with every configured token taken out wherever it appears in
+        a string, a key included: as it is or JSON-escaped, replaced by
+        REDACTED; a string that shows one only once percent-decoded (again
+        and again, until nothing changes), and a number whose decimal text
+        holds one, replaced whole by REDACTED. A value that carries no
+        configured token is returned as it was."""
         if isinstance(value, str):
-            for token in self._tokens:
-                value = value.replace(token, REDACTED)
-            return value
+            for form in self._forms:
+                value = value.replace(form, REDACTED)
+            return REDACTED if self._encoded(value) else value
         if isinstance(value, dict):
             return {self.redact(k): self.redact(v) for k, v in value.items()}
         if isinstance(value, list):
             return [self.redact(item) for item in value]
+        if isinstance(value, (int, float)) and any(token in str(value) for token in self._tokens):  # True/False hold no token
+            return REDACTED
         return value
+
+    def _encoded(self, text: str) -> bool:
+        while "%" in text and (decoded := unquote(text)) != text:
+            if any(form in decoded for form in self._forms):
+                return True
+            text = decoded
+        return False
 
     @classmethod
     def from_environ(cls, environ: Mapping[str, str]) -> "Credentials":
