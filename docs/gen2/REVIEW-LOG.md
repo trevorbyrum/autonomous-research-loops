@@ -473,3 +473,6 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-1e-repair-astra-
 **Closed:** original findings 4 (MCP strictness), 5 (incident attribution), 6 (CLI exit classes), 8 (unread-body regression, with the 2 s bound accepted). **Remaining:** the recovery-replay defect above; MCP serialization/numeric-ID credential escape; startup secrecy tests discarding the first stdout line.
 
 **Routed:** `docs/gen2/tasks/1e-repair-2.md` to an Opus 5.5 coder. Finding 1 of the original review (auth-volume demonstration) remains with the operator, recommendation already presented: amend the phasing to "before any live provider execution."
+
+## 2026-09-28 — OPERATOR DECISION: the §4 auth-volume demonstrations run UP FRONT (no phasing amendment)
+The operator chose to satisfy DEPLOYMENT-CONTRACT §4 as written rather than amend its phasing: "Doesn't it make more sense to do up front?" Confirmed. Task 1f (docs/gen2/tasks/1f.md) builds the minimal compose slice and runs all four demonstrations with a pinned public runner CLI, using the supervisor's already-declared capability-probe responsibility for demonstration (d). Isolation rules: own compose project/ports/volumes, throwaway credentials only, gen-1 untouched. 1f dispatches after 1e-repair-2 lands (one coder on the tree). This resolves the 1e review's finding 1 by the demonstration route.
