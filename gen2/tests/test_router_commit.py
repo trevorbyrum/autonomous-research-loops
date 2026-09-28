@@ -210,9 +210,10 @@ class FencingTest(CommitCase):
         self.assertRejected(self.router.commit_outcome(env), "topic_paused", before, audits)
 
     def test_work_pinned_to_a_superseded_contract_is_not_committed(self) -> None:
-        """The G-1 hook: after an amendment approves revision 2, a result pinned
-        to revision 1 is refused (amendment_pending) until 1d's impact rules
-        say which results remain compatible."""
+        """G-1 (task 1d): after an amendment approves revision 2, whose
+        protocol changed, a result pinned to revision 1 is fenced
+        (amendment_pending). test_router_amendments.py has the compatible
+        case, which commits under its pins."""
         env = self.final_envelope()
         chash = self.contract_draft(TOPIC, 2)
         self.assertEqual(self.decide("opd_amend0001", "amendment_approval", {"kind": "contract_revision", "revision": 2, "hash": chash})["status"], "applied")
@@ -221,19 +222,20 @@ class FencingTest(CommitCase):
         self.assertRejected(self.router.commit_outcome(env), "amendment_pending", before, audits)
 
     def test_work_pinned_to_a_superseded_brief_is_not_committed(self) -> None:
-        """The same hook before any contract: a pre-contract pass pinned to
-        brief v1 does not commit once v2 is the confirmed version."""
+        """The same before any contract: a pre-contract pass pinned to brief
+        v1 does not commit once v2, whose content changed, is the confirmed
+        version (a lineage-only v2 is test_router_amendments.py's)."""
         scoping_topic = OTHER
         self.to_scoping(scoping_topic)
         grant = self.started("inv_scoping01", tid=scoping_topic)
         env = self.final_envelope(grant=grant, outcome=empty_outcome("inv_scoping01", topic=scoping_topic))
-        v2 = self.brief(scoping_topic, version=2)
+        v2 = self.brief(scoping_topic, version=2, feeds="rebuild, or buy")
         self.assertEqual(self.decide("opd_brief0002", "brief_confirmation", {"kind": "intake_brief", "ref": "brief-1", "revision": 2, "hash": v2}, scoping_topic)["status"],
                          "applied")
         self.assertEqual(self.rows("SELECT version, status FROM intake_briefs WHERE topic_id = ? ORDER BY version", scoping_topic), [(1, "superseded"), (2, "confirmed")])
         env["expected_state_revision"] = self.state_revision(scoping_topic)
         before, audits = self.snapshot()
-        self.assertRejected(self.router.commit_outcome(env), "amendment_pending", before, audits, "brief-1 v1 is superseded")
+        self.assertRejected(self.router.commit_outcome(env), "amendment_pending", before, audits, "brief brief-1 v1 was superseded (content_changed)")
 
     def test_a_held_topic_is_left_held(self) -> None:
         """A research pass finishing after its topic was held releases its

@@ -27,12 +27,11 @@ The collaborators the router reads through (supplied by the composition
 root) are protocols here too, so the router needs no import of the modules
 that implement them:
   * StagedBytes: the protected spool's read side (gen2/supervisor/spool.py);
-  * QualificationRegistry: which (provider, class, spec) may act at
-    qualified authority (task 1d loads fake records; Phase 3 real ones);
   * ExtensionRegistry: which reviewed extension connectors the image carries
-    (EXPORT-API.md §7; Phase 3 registers them).
-Their defaults (router.service) admit nothing: no registry means no
-qualification and no extension, never "any non-null string" (INVARIANTS §13).
+    (EXPORT-API.md §7; Phase 3 registers them). Its default (router.service)
+    admits nothing, never "any non-null string" (INVARIANTS §13).
+Qualification is not a collaborator: its records are the router's own
+(gen2/router/registries.py, task 1d), and none recorded means none qualified.
 """
 from __future__ import annotations
 
@@ -57,12 +56,6 @@ class StagedBytes(Protocol):
     def media_type(self, content_hash: str, *, topic_id: str) -> str | None:
         """The media type the spool recorded when these bytes were staged for
         this topic, or None if nothing is staged."""
-
-
-class QualificationRegistry(Protocol):
-    def is_qualified(self, *, provider: str, decision_class: str, spec_hash: str, qualification_ref: str) -> bool:
-        """True only for a live qualification of exactly this provider, class
-        and DecisionSpec (INVARIANTS D-4, D-5)."""
 
 
 class ExtensionRegistry(Protocol):

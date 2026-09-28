@@ -11,11 +11,12 @@ extension admission before outbox admission).
 Oracles: hand-written expectations; raw SQL read-back; for refusals, every
 table but the audit log unchanged.
 
-Structural limits: no qualification or extension registry exists yet — the
-fakes here admit exactly what a test lists, so these tests show the router
-consults them and fails closed without them, not what 1d/Phase 3 will
-admit; export bundles are fixture documents, not assembled from committed
-state (Phase 3).
+Structural limits: qualification comes from fake records the tests write
+through the router (task 1d; test_router_registries.py exercises the records
+themselves), and the extension registry is a fake admitting exactly what a
+test lists, so these tests show the router consults them and fails closed
+without them, not what Phase 3 will admit; export bundles are fixture
+documents, not assembled from committed state (Phase 3).
 """
 from __future__ import annotations
 
@@ -23,11 +24,16 @@ import json
 from pathlib import Path
 
 from gen2.core import canonical
-from gen2.tests.router_fixtures import OTHER, TOPIC, Registry, RouterTestCase, empty_outcome, h, jcs
+from gen2.tests.router_fixtures import OTHER, QUESTION, TOPIC, RouterTestCase, empty_outcome, h, jcs
 from gen2.tests.test_router_schemas import verdicts  # the jsonschema oracle, as a subprocess (a function: nothing here is collected twice)
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "schema" / "examples"
 T = "2026-09-27T10:00:00Z"
+
+
+def qual_ref(spec_hash: str) -> str:
+    """The fake qualification record a spec's qualified receipts name (one per spec)."""
+    return "qual_" + spec_hash[7:23]
 
 
 class EvidenceCase(RouterTestCase):
@@ -141,7 +147,7 @@ class ScreeningBase(EvidenceCase):
         return {"spec_version": "decision-spec/1", "spec_id": spec_id or self.SPEC, "decision_class": "screening", "provider": "jev",
                 "model": {"requested": "jev-1.13", "resolved_version": "jev-1.13.0"}, "primitive": "choice",
                 "output_semantics": "Include or exclude against the eligibility protocol's criteria.",
-                "question": {"question_id": "Q-screen", "version": 1, "content_hash": h("9")}, "rubric": None,
+                "question": {k: QUESTION[k] for k in ("question_id", "version", "content_hash")}, "rubric": None,
                 "input_builder": {"builder_id": "B-screen-snapshot", "version": 1, "max_input_tokens": 30000},
                 "protocol": pins, "action_policy": {"policy_id": "P1", "version": 1},
                 "options": {"include": {"criteria": "eligible"}, "exclude": {"criteria": "not eligible"}}}
@@ -169,10 +175,21 @@ class ScreeningBase(EvidenceCase):
                 "input_manifest": {"snapshot_digest": h("6"), "input_record_ids": [], "input_status": "complete"},
                 "provider_response": {"status": "answered", "raw_response_digest": raw["content_hash"], "raw_response_artifact": raw,
                                       "answer": {"primitive": "choice", "selected_option_id": option, "distribution": {"include": 0.8, "exclude": 0.2}, "confidence": 0.7}},
-                "policy": {"policy_id": "P1", "version": 1}, "authorization": {"authority_level": authority, "qualification_ref": "qual-1" if authority == "qualified" else None},
+                "policy": {"policy_id": "P1", "version": 1}, "authorization": {"authority_level": authority, "qualification_ref": qual_ref(spec_hash) if authority == "qualified" else None},
                 "action": "commit_reversible_action" if authority == "qualified" else "attach_proposal",
                 "outcome": {"commit_operation_id": op if authority == "qualified" else None, "proposal_ref": None if authority == "qualified" else "prop-1", "hold_id": None},
                 "blind_sample": {"selected": False, "initial_disposition_ref": None}}
+
+    def qualify(self, *spec_hashes: str) -> None:
+        """A fake qualification record of each spec, recorded through the router (task 1d)."""
+        for sh in spec_hashes:
+            out = self.router.record_qualification({"qualification_id": qual_ref(sh), "provider": "jev", "decision_class": "screening", "spec_hash": sh,
+                                                    "evaluation_ref": "fake-evaluation-1", "operator_id": "user"})
+            assert out["status"] in ("recorded", "replayed"), out
+
+    def provider(self, op: str = "op_screen00001", **kwargs) -> dict:
+        return self.screen(self.assessment(kwargs.pop("decision", "include"), actor="decision_provider", receipt="dec_000000000001"),
+                           receipts=[self.decision_receipt(op, **kwargs)])
 
     def screen(self, *assessments: dict, receipts=()) -> dict:
         return {**empty_outcome("inv_research01", "interim_transition"), "screening_assessments": list(assessments), "decision_receipts": list(receipts)}
@@ -224,13 +241,6 @@ class ProviderScreeningTest(ScreeningBase):
         super().setUp()
         self.qualify(self.spec_hash)
 
-    def qualify(self, *spec_hashes: str) -> None:
-        self.router = self.make_router(qualifications=Registry({("jev", "screening", sh, "qual-1") for sh in spec_hashes}))
-
-    def provider(self, op: str = "op_screen00001", **kwargs) -> dict:
-        return self.screen(self.assessment(kwargs.pop("decision", "include"), actor="decision_provider", receipt="dec_000000000001"),
-                           receipts=[self.decision_receipt(op, **kwargs)])
-
     def only_this_defect(self, outcome: dict, reason: str, detail: str, refs=None) -> None:
         refs = [self.raw] if refs is None else refs
         self.refused(self.grant, "op_screen00001", outcome, reason, refs=refs, detail=detail)
@@ -257,11 +267,11 @@ class ProviderScreeningTest(ScreeningBase):
                 self.refused(self.grant, op, self.provider(op, **kwargs), "payload_invalid", refs=[self.raw], detail="committed answer about this work")
         self.committed(self.grant, "op_screen00001", self.provider(), refs=[self.raw])
 
-    def test_no_registry_entry_means_no_qualified_authority(self) -> None:
-        self.router = self.make_router()  # the default registry: nothing is qualified
-        self.refused(self.grant, "op_screen00001", self.provider(), "payload_invalid", refs=[self.raw], detail="no qualification registry")
-        self.qualify(self.spec_hash)
-        self.committed(self.grant, "op_screen00001", self.provider(), refs=[self.raw])
+    def test_no_qualification_record_means_no_qualified_authority(self) -> None:
+        spec = ("dspec_screen0008", self.spec("dspec_screen0008"))  # a complete spec of its own, never qualified
+        self.refused(self.grant, "op_screen00001", self.provider(spec=spec), "payload_invalid", refs=[self.raw], detail="no live qualification record")
+        self.qualify(spec[1])
+        self.committed(self.grant, "op_screen00001", self.provider(spec=spec), refs=[self.raw])
 
     def pins(self) -> dict:
         """One pin of the spec's protocol changed, and the detail each must be

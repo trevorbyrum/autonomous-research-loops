@@ -7,10 +7,12 @@ through. Read-backs are plain SQL on that connection, never the router's own
 readers, so an assertion about what was written does not trust the code
 under test.
 
-World state that task 1b gives the router no path for is written with raw
-SQL, and only that: topic creation, intake-brief and contract-draft rows,
-and the scoping -> awaiting_scope_approval step (the committed scoping
-report is later work). Everything the router does own — brief confirmation,
+World state that the router has no path for is written with raw SQL, and
+only that: topic creation, a brief's first version and a first contract
+draft (intake and contract construction are Phase 2), decision specs, and
+the scoping -> awaiting_scope_approval step (the committed scoping report is
+later work). Every test's router starts with BUNDLE activated through the
+router (task 1d): CONFIG is its hash, the bundle new work pins. Everything the router does own — brief confirmation,
 scope and contract approval, claims, lifecycle facts, observations, commits,
 delivery receipts — goes through the router here, so the fixtures exercise
 those paths too.
@@ -34,7 +36,17 @@ from gen2.tests import store_fixtures
 EXAMPLES = Path(__file__).resolve().parents[1] / "schema" / "examples"
 TOPIC = "fleet-a:t1"
 OTHER = "fleet-a:t2"
-CONFIG = "sha256:" + "c" * 64
+
+
+def question(qid: str = "Q-screen", version: int = 1, text: str = "Does this work meet the pinned eligibility criteria?") -> dict:
+    """A question registry entry (config-bundle/1) with its true content hash."""
+    entry = {"question_id": qid, "version": version, "text": text}
+    return {**entry, "content_hash": canonical.content_hash(entry)}
+
+
+QUESTION = question()
+BUNDLE = {"bundle_version": "config-bundle/1", "version": 1, "policy": {}, "questions": [QUESTION]}
+CONFIG = canonical.logical_hash(BUNDLE)
 EXPIRES = "2026-12-31T00:00:00Z"
 DEADLINE = "2026-12-30T00:00:00Z"
 CRITERIA = [
@@ -111,13 +123,10 @@ class Spool:
 
 
 class Registry:
-    """A fake qualification/extension registry: admits exactly what it lists."""
+    """A fake extension registry: admits exactly what it lists."""
 
     def __init__(self, admitted=()) -> None:
         self.admitted = set(admitted)
-
-    def is_qualified(self, *, provider, decision_class, spec_hash, qualification_ref) -> bool:
-        return (provider, decision_class, spec_hash, qualification_ref) in self.admitted
 
     def is_admitted(self, *, module, review_ref) -> bool:
         return (module, review_ref) in self.admitted
@@ -130,7 +139,6 @@ def empty_outcome(invocation_id: str, kind: str = "final_outcome", topic: str = 
 
 
 class RouterTestCase(unittest.TestCase):
-    QUALIFICATIONS: tuple = ()
     EXTENSIONS: tuple = ()
 
     def setUp(self) -> None:
@@ -142,6 +150,13 @@ class RouterTestCase(unittest.TestCase):
         self.ids = Ids()
         self.faults: dict[str, BaseException] = {}
         self.router = self.make_router()
+        self.seed()
+
+    def seed(self) -> None:
+        """The world every router test starts from: BUNDLE activated through
+        the router (new work pins CONFIG), and two topics at intake."""
+        activated = self.router.activate_config_bundle(BUNDLE)
+        assert activated["status"] == "activated" and activated["bundle_hash"] == CONFIG, activated
         for tid in (TOPIC, OTHER):
             self.x("INSERT INTO queue_entries (topic_id, fleet_id, priority, status, created_at, updated_at) VALUES (?, 'fleet-a', 1, 'awaiting_brief_confirmation', ?, ?)",
                    tid, "2026-09-27T09:00:00Z", "2026-09-27T09:00:00Z")
@@ -150,8 +165,7 @@ class RouterTestCase(unittest.TestCase):
         self.db.close()
 
     def make_router(self, **overrides) -> service.Router:
-        kwargs = dict(clock=self.clock, new_id=self.ids, qualifications=Registry(self.QUALIFICATIONS),
-                      extensions=Registry(self.EXTENSIONS), fault=self.fault)
+        kwargs = dict(clock=self.clock, new_id=self.ids, extensions=Registry(self.EXTENSIONS), fault=self.fault)
         kwargs.update(overrides)
         return service.Router(self.store, self.spool, **kwargs)
 
@@ -182,12 +196,19 @@ class RouterTestCase(unittest.TestCase):
         return self.value("SELECT status FROM queue_entries WHERE topic_id = ?", tid)
 
     # -- world ---------------------------------------------------------------
-    def brief(self, tid: str = TOPIC, version: int = 1) -> str:
-        """An intake brief version whose content hash is the true JCS hash of its document."""
+    @staticmethod
+    def brief_document(tid: str = TOPIC, version: int = 1, **changes) -> dict:
+        """An intake-brief/1 document of brief-1 with its true content hash;
+        `changes` edit its content (a re-version with them is not lineage-only)."""
         doc = {"brief_version": "intake-brief/1", "topic_id": tid, "brief_id": "brief-1", "version": version, "parent_version": None if version == 1 else version - 1,
                "created_at": "2026-09-27T09:00:00Z", "objective_in_operator_words": "why is intake slow", "feeds": "rebuild or not",
-               "evidence_that_would_change_it": ["stage latencies"], "constraints": [], "operator_hypotheses": [], "surfaced_assumptions": []}
+               "evidence_that_would_change_it": ["stage latencies"], "constraints": [], "operator_hypotheses": [], "surfaced_assumptions": [], **changes}
         doc["content_hash"] = canonical.content_hash(doc)
+        return doc
+
+    def brief(self, tid: str = TOPIC, version: int = 1, **changes) -> str:
+        """An intake brief version (raw SQL: a brief's first version is intake's, Phase 2)."""
+        doc = self.brief_document(tid, version, **changes)
         self.x("INSERT INTO intake_briefs (topic_id, brief_id, version, parent_version, content_hash, document, owner_operator_id, status, created_at, review_deadline) "
                "VALUES (?, 'brief-1', ?, ?, ?, ?, 'user', 'awaiting_confirmation', ?, ?)",
                tid, version, doc["parent_version"], doc["content_hash"], json.dumps(doc), doc["created_at"], "2026-10-01T00:00:00Z")

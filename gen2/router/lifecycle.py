@@ -37,10 +37,6 @@ from gen2.core import instants
 from gen2.router import boundary
 from gen2.router.boundary import Refusal
 
-# How long an outcome_unknown episode may stay unreconciled before its hold is
-# overdue (the owner escalates). Execution policy (G-10): the mounted policy
-# bundle owns it once 1d loads bundles.
-UNKNOWN_HOLD_WINDOW = timedelta(hours=1)
 RESOLUTION_TARGET = {"found_running": "running", "found_result": "result_ready", "confirmed_failed": "failed"}
 
 _CAP = {"$ref": "common.schema.json#/$defs/capability_id"}
@@ -152,12 +148,15 @@ class Lifecycle:
     def _open_unknown_hold(self, inv: dict, episode: int, cause: str, now: str) -> None:
         """The episode's typed hold: class unknown, the router's to clear
         (through the episode's reconciliation record), owned by the station
-        that holds the job, with a deadline (H-3, RG-3)."""
+        that holds the job, with a deadline: the hold window of the bundle the
+        invocation is pinned to (G-10, RG-9; shipped default one hour) (H-3,
+        RG-3)."""
         station = self._lease_of(inv)["station_id"]
+        window = timedelta(seconds=self._router_policy(inv["config_bundle_hash"])["hold_window_s"])
         self._store.insert("holds", {
             "hold_id": self._new_id("hold_"), "topic_id": inv["topic_id"], "subject_ref": unknown_hold_subject(inv["invocation_id"], episode),
             "hold_class": "unknown", "cause": f"outcome_unknown ({cause})", "recoverability": "unknown", "required_authority": "router",
-            "owner": f"supervisor:{station}", "deadline_at": _after(now, UNKNOWN_HOLD_WINDOW),
+            "owner": f"supervisor:{station}", "deadline_at": _after(now, window),
             "clears_when": f"the reconciliation record of episode {episode}: a job-handle lookup or the termination of the execution group",
             "capability_fact_id": None, "created_at": now, "created_by_operation_id": None})
 

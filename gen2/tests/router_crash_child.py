@@ -83,9 +83,7 @@ class World(rf.RouterTestCase):
         self.spool.conn = None
         self.clock, self.ids, self.faults = rf.Clock(), rf.Ids(), {}
         self.router = self.make_router()
-        for tid in (rf.TOPIC, rf.OTHER):
-            self.x("INSERT INTO queue_entries (topic_id, fleet_id, priority, status, created_at, updated_at) VALUES (?, 'fleet-a', 1, 'awaiting_brief_confirmation', ?, ?)",
-                   tid, "2026-09-27T09:00:00Z", "2026-09-27T09:00:00Z")
+        self.seed()
 
     def runTest(self) -> None:
         pass

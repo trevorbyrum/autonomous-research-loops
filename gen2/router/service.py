@@ -26,16 +26,11 @@ yet (task 1e); operator decisions and delivery receipts are likewise trusted
 to come from the operator surface and the exporter wired by the composition
 root.
 
-Where later tasks attach (hooks named, not implemented here):
-  * G-1 amendment impact and stale-work rules (task 1d): _require_current_pins
-    refuses to commit work whose pinned contract revision or brief is no
-    longer the topic's approved/confirmed one ("amendment_pending"), and
-    apply_operator_decision's contract approval is where impact
-    identification runs (_approve_contract);
-  * config-bundle registry, reservations, retry budgets, scheduling (1d);
-  * the operator transport and its authentication (1e).
 Task 1c's lifecycle operations (cancellation, reconciliation, status) are in
-lifecycle.py.
+lifecycle.py; task 1d's config bundles, question registry and qualification
+records in registries.py, brief and contract versions and amendment impact
+(G-1) in amendments.py, re-queues, reservations and the signal queue in
+scheduling.py. The operator transport and its authentication are task 1e's.
 """
 from __future__ import annotations
 
@@ -46,13 +41,15 @@ from typing import Callable, Mapping
 
 from gen2.core import canonical, instants
 from gen2.router import boundary
+from gen2.router.amendments import AMENDMENT_COMMANDS, Amendments, contract_compatibility
 from gen2.router.boundary import Refusal, instant
 from gen2.router.lifecycle import LIFECYCLE_COMMANDS, Lifecycle, is_episode_hold
+from gen2.router.registries import REGISTRY_COMMANDS, Registries
+from gen2.router.scheduling import SCHEDULING_COMMANDS, Scheduling
 from gen2.router.schemas import SchemaSet
 from gen2.store import api
 
 VALIDATOR_VERSION = "router-boundary/1"
-POLICY_VERSION = "router-policy/1"  # the engine policy bundle's version once 1d mounts it
 ENVELOPE_MAX_BYTES = 64 * 1024
 LIFECYCLE_FACTS = {  # target state -> the facts that record it (L-2, L-3, C-9; task 1c: L-4, L-5, L-7, L-9)
     "launching": ("job_handle",),
@@ -79,9 +76,10 @@ COMMANDS = {  # the router's own request shapes (commands, not stored documents)
                 "invocation_id": _INV, "kind": {"$ref": "common.schema.json#/$defs/invocation_kind"},
                 "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"}, "station_id": _ID,
                 "config_bundle_hash": {"$ref": "common.schema.json#/$defs/sha256"}, "deadline_at": _TS, "lease_expires_at": _TS,
-                "parent_capability_id": _CAP, "requested_by_invocation_id": _INV},
+                "parent_capability_id": _CAP, "requested_by_invocation_id": _INV, "retry_of": _INV,
+                "reservation": {"$ref": "router-commands#/$defs/draw"}},
             "if": {"properties": {"kind": {"const": "delegate"}}},
-            "then": {"required": ["parent_capability_id"], "not": {"anyOf": [{"required": ["lease_expires_at"]}, {"required": ["station_id"]}]}},
+            "then": {"required": ["parent_capability_id"], "not": {"anyOf": [{"required": k} for k in (["lease_expires_at"], ["station_id"], ["retry_of"], ["reservation"])]}},
             "else": {"required": ["lease_expires_at", "station_id"], "not": {"required": ["parent_capability_id"]}}},
         "transition": {
             "type": "object", "additionalProperties": False, "required": ["capability_id", "invocation_id", "to_state"],
@@ -152,13 +150,6 @@ def random_id(prefix: str) -> str:
     return prefix + secrets.token_hex(16)
 
 
-class NoQualifications:
-    """No qualification registry: nothing acts at qualified authority (§13)."""
-
-    def is_qualified(self, **_) -> bool:
-        return False
-
-
 class NoExtensions:
     """No extension loading (Phase 3): no extension connector is admitted."""
 
@@ -175,21 +166,23 @@ def _short(text: str) -> str:
     return (text or "refused")[:500]
 
 
-class Router(Lifecycle):
+class Router(Lifecycle, Registries, Amendments, Scheduling):
     """The ControlBackend (gen2/core/control.py) over one store. Construct
     with a Store (Router.open for a durable one); the router owns it and hands
-    it to no one."""
+    it to no one. Qualification is read from the store's own records
+    (registries.py): there is no registry to inject, and none recorded means
+    none qualified (INVARIANTS §13)."""
 
     def __init__(self, store: api.Store, spool, *, clock: Callable[[], str] = utc_now, new_id: Callable[[str], str] = random_id,
-                 qualifications=None, extensions=None, fault: Callable[[str], None] | None = None, schemas: SchemaSet | None = None) -> None:
+                 extensions=None, fault: Callable[[str], None] | None = None, schemas: SchemaSet | None = None) -> None:
         self._store = store
         self._spool = spool
         self._clock = clock
         self._new_id = new_id
-        self._qualifications = qualifications or NoQualifications()
         self._extensions = extensions or NoExtensions()
         self._fault = fault or (lambda point: None)
-        self._schemas = schemas or SchemaSet(extra={"router-commands": {"$defs": {**COMMANDS["$defs"], **LIFECYCLE_COMMANDS}}})
+        self._schemas = schemas or SchemaSet(extra={"router-commands": {"$defs": {
+            **COMMANDS["$defs"], **LIFECYCLE_COMMANDS, **REGISTRY_COMMANDS, **AMENDMENT_COMMANDS, **SCHEDULING_COMMANDS}}})
 
     @classmethod
     def open(cls, path: str | Path, spool, *, create: bool = False, **kwargs) -> "Router":
@@ -290,21 +283,6 @@ class Router(Lifecycle):
         return {"context": "pre-contract/1", "brief": {"brief_id": inv["brief_ref"], "version": inv["brief_version"], "content_hash": inv["brief_hash"]},
                 "brief_confirmation_decision_id": inv["brief_confirmation_decision_id"]}
 
-    def _require_current_pins(self, inv: dict) -> None:
-        """Work whose pinned contract revision (or, before any contract, its
-        pinned brief version) is no longer the topic's approved (confirmed)
-        one is not committed: G-1's amendment-impact rules (task 1d) decide
-        which results remain compatible; until they exist, none is silently
-        reused (G-1, RG-1b(c)). The result stays retained (C-10)."""
-        if inv["admission_context"] == "contract/1":
-            row = self._one("contract_revisions", {"topic_id": inv["topic_id"], "revision": inv["contract_revision"]})
-            if row["status"] != "approved":
-                raise Refusal("amendment_pending", f"pinned contract revision {inv['contract_revision']} is {row['status']}")
-        else:
-            row = self._one("intake_briefs", {"topic_id": inv["topic_id"], "brief_id": inv["brief_ref"], "version": inv["brief_version"]})
-            if row["status"] != "confirmed":
-                raise Refusal("amendment_pending", f"pinned brief {inv['brief_ref']} v{inv['brief_version']} is {row['status']}")
-
     def _set_topic(self, topic: dict, now: str, status: str | None = None, **columns) -> int:
         """Advance the topic's state revision by one (compare-and-set on the
         revision read), with a status change in the same statement."""
@@ -351,12 +329,16 @@ class Router(Lifecycle):
             raise Refusal("topic_paused", f"paused at {topic['paused_at']}")
         if req["kind"] == "delegate":
             return self._admit_delegate(req, topic, now)
+        active = self._active_bundle()  # new work pins the active bundle; admitted work keeps its own (RG-9, C-12)
+        if active is None or active["bundle_hash"] != req["config_bundle_hash"]:
+            raise Refusal("config_bundle_not_active", f"new work is admitted under the active config bundle ({None if active is None else active['bundle_hash']})")
         pins = self._derive_admission(topic["topic_id"], req["kind"])
         scope = boundary.SCOPE_OF_KIND[req["kind"]]
         claimable = {"scoping"} if pins["admission_context"] == "pre-contract/1" else (
             {"queued", "resting"} if scope == "research" else {"queued", "active", "resting"})
         if topic["status"] not in claimable:
             raise Refusal("topic_not_claimable", f"a {scope} lease under {pins['admission_context']} needs the topic {sorted(claimable)}, not {topic['status']}")
+        retry = self._admit_lane(req, topic["topic_id"], scope)
         for live in (row for row in self._store.select("leases", {"topic_id": topic["topic_id"], "scope": scope}) if row["released_at"] is None):
             if instant(now) < instant(live["expires_at"]):
                 raise Refusal("lease_held", f"{live['lease_id']} (generation {live['generation']}) is live until {live['expires_at']}")
@@ -366,6 +348,10 @@ class Router(Lifecycle):
         self._store.insert("leases", {"lease_id": lease_id, "topic_id": topic["topic_id"], "scope": scope, "generation": generation,
                                       "station_id": req["station_id"], "granted_at": now, "expires_at": req["lease_expires_at"]})
         self._insert_invocation(req, topic["topic_id"], lease_id, pins, now)
+        if retry is not None:
+            self._store.update("retries", {"invocation_id": retry["invocation_id"]}, {"retry_invocation_id": req["invocation_id"]})
+        if "reservation" in req:
+            self._draw(req["reservation"], req["invocation_id"], topic["topic_id"], now)
         if scope == "research" and pins["admission_context"] == "contract/1":
             self._set_topic(topic, now, "active")
         self._audit("claim", now, {"lease_id": lease_id, "generation": generation, "scope": scope},
@@ -422,7 +408,10 @@ class Router(Lifecycle):
             same = self._one("invocations", {"invocation_id": inv["parent_invocation_id"]})["capability_id"] == req["parent_capability_id"]
         elif same:
             lease = self._one("leases", {"lease_id": inv["lease_id"]})
-            same = lease["station_id"] == req["station_id"] and lease["expires_at"] == req["lease_expires_at"]
+            retry, draw = self._one("retries", {"retry_invocation_id": inv["invocation_id"]}), self._one("reservation_draws", {"invocation_id": inv["invocation_id"]})
+            same = (lease["station_id"] == req["station_id"] and lease["expires_at"] == req["lease_expires_at"]
+                    and (retry and retry["invocation_id"]) == req.get("retry_of")
+                    and (draw and {k: v for k, v in draw.items() if k in ("reservation_id", "facet_id") and v is not None}) == req.get("reservation"))
         if not same:
             raise Refusal("invocation_id_conflict", f"{inv['invocation_id']} was admitted for a different request")
         return self._grant("replayed", inv["invocation_id"])
@@ -692,11 +681,13 @@ class Router(Lifecycle):
         receipts = {}
         specs = {}
         hold_ids = {hold["hold_id"] for hold in payload["holds"]}
+        bundle = self._bundle(inv["config_bundle_hash"])  # immutable: the question registry the invocation was admitted under (D-1)
+        questions = {(q["question_id"], q["version"], q["content_hash"]) for q in bundle["questions"]}
         for doc in payload["decision_receipts"]:
             spec = self._one("decision_specs", {"spec_hash": doc["spec"]["spec_hash"]})
             specs[doc["decision_receipt_id"]] = None if spec is None else spec["document"]
             boundary.check_decision_receipt(doc, specs[doc["decision_receipt_id"]], invocation_id=inv["invocation_id"], topic_id=inv["topic_id"],
-                                            operation_id=env["operation_id"], qualifications=self._qualifications)
+                                            operation_id=env["operation_id"], qualifications=self, questions=questions)
             response = doc["provider_response"]
             if response["raw_response_artifact"] is not None:  # D-1: response bytes are retained, and the reference is to them
                 if response["raw_response_digest"] != response["raw_response_artifact"]["content_hash"]:
@@ -726,7 +717,7 @@ class Router(Lifecycle):
                 raise Refusal("payload_invalid", f"{hold['hold_id']}: capability fact {fact} is not recorded")
         validated = list(dict.fromkeys([env["payload_digest"], *(ref["content_hash"] for ref in env["result_refs"])]))
         return {"invocation": inv, "payload": payload, "artifacts": artifacts, "manifests": manifests, "protocol": protocol,
-                "validation": {"validator_version": VALIDATOR_VERSION, "policy_version": POLICY_VERSION, "validated_hashes": validated}}
+                "validation": {"validator_version": VALIDATOR_VERSION, "policy_version": f"config-bundle/{bundle['version']}", "validated_hashes": validated}}
 
     def _commit_in_transaction(self, env: dict, fingerprint: str, checked: dict, now: str) -> tuple[str, dict]:
         """Steps 3-4: replay or reject, fence against current state, then
@@ -768,6 +759,12 @@ class Router(Lifecycle):
             stored = self._one("artifacts", {"content_hash": content_hash})
             if stored is not None and (stored["size_bytes"], stored["media_type"]) != (ref["size_bytes"], ref["media_type"]):
                 raise Refusal("payload_invalid", f"{content_hash} was recorded meanwhile as {stored['size_bytes']} bytes of {stored['media_type']} (A10)")
+        for doc in payload["decision_receipts"]:  # revoked since validation? then no longer qualified (D-4, D-11)
+            authorization = doc["authorization"]
+            if authorization["authority_level"] == "qualified" and not self.is_qualified(
+                    provider=doc["provider"], decision_class=doc["decision_class"], spec_hash=doc["spec"]["spec_hash"],
+                    qualification_ref=authorization["qualification_ref"]):
+                raise Refusal("payload_invalid", f"{doc['decision_receipt_id']}: its qualification was revoked meanwhile (D-4, D-11)")
         self._fault("in_transaction:fenced")
 
         # effects, decided before the receipt so the receipt records them all
@@ -814,7 +811,7 @@ class Router(Lifecycle):
             "topic_id": inv["topic_id"], "request_fingerprint": fingerprint, "payload_digest": env["payload_digest"], "lease_id": lease_id,
             "lease_generation": lease["generation"], "admission_context": inv["admission_context"], "contract_revision": inv["contract_revision"],
             "brief_hash": inv["brief_hash"], "config_bundle_hash": inv["config_bundle_hash"], "state_revision_before": topic["state_revision"],
-            "state_revision_after": after, "validator_version": VALIDATOR_VERSION, "policy_version": POLICY_VERSION, "receipt": receipt, "committed_at": now})
+            "state_revision_after": after, "validator_version": VALIDATOR_VERSION, "policy_version": checked["validation"]["policy_version"], "receipt": receipt, "committed_at": now})
         self._fault("in_transaction:receipt")
         if ordinal is not None:
             self._store.insert("research_ordinals", {"topic_id": inv["topic_id"], "ordinal": ordinal, "invocation_id": inv["invocation_id"],
@@ -890,6 +887,10 @@ class Router(Lifecycle):
                 raise Refusal("cross_topic", f"{promotion['claim_id']} is another topic's claim")
             if row["status"] not in ("provisional", "contested"):
                 raise Refusal("payload_invalid", f"{promotion['claim_id']} revision {promotion['revision']} is {row['status']}")
+            producer = self._one("invocations", {"invocation_id": row["producer_invocation_id"]})
+            if producer["admission_context"] == "contract/1" and self._pin_status(producer) not in ("current", "compatible"):
+                raise Refusal("amendment_pending", f"{promotion['claim_id']} revision {promotion['revision']} was produced under a revision an amendment made "
+                                                   "incompatible; contract-admitted work adopts it as a new revision (V-10, G-1)")
             self._store.update("claims", {"claim_id": promotion["claim_id"], "revision": promotion["revision"]}, {"status": "accepted_support"})
             promotions.append([promotion["claim_id"], promotion["revision"]])
         for identity, trigger in new_triggers:
@@ -957,11 +958,16 @@ class Router(Lifecycle):
         transition the current state does not allow is refused whole."""
         kind, topic = d["kind"], self._one("queue_entries", {"topic_id": d["topic_id"]}) if d["topic_id"] else None
         if kind == "brief_confirmation":
-            for older in self._store.select("intake_briefs", {"topic_id": d["topic_id"], "brief_id": d["subject_ref"], "status": "confirmed"}):
-                self._store.update("intake_briefs", {"topic_id": d["topic_id"], "brief_id": d["subject_ref"], "version": older["version"]}, {"status": "superseded"})
-            self._store.update("intake_briefs", {"topic_id": d["topic_id"], "brief_id": d["subject_ref"], "version": d["subject_revision"]},
-                               {"status": "confirmed", "confirmed_by_decision_id": d["decision_id"]})
-            return {**self._move(topic, now, {"awaiting_brief_confirmation": "scoping"}), "brief_confirmed": [d["subject_ref"], d["subject_revision"]]}
+            key = {"topic_id": d["topic_id"], "brief_id": d["subject_ref"]}
+            older = self._store.select("intake_briefs", {**key, "status": "confirmed"})
+            for row in older:
+                self._store.update("intake_briefs", {**key, "version": row["version"]}, {"status": "superseded"})
+            self._store.update("intake_briefs", {**key, "version": d["subject_revision"]}, {"status": "confirmed", "confirmed_by_decision_id": d["decision_id"]})
+            effects = {**self._move(topic, now, {"awaiting_brief_confirmation": "scoping"}), "brief_confirmed": [d["subject_ref"], d["subject_revision"]]}
+            current = self._one("intake_briefs", {**key, "version": d["subject_revision"]})
+            for row in older:  # G-1: work pinned to the version this one supersedes (amendments.py)
+                effects.update(self._record_impact(d, "brief", row, current, now))
+            return effects
         if kind == "scope_approval":
             return self._move(topic, now, {"awaiting_scope_approval": "awaiting_contract_approval"}, required=True)
         if kind in ("contract_approval", "amendment_approval", "reframe_approval"):
@@ -982,18 +988,29 @@ class Router(Lifecycle):
 
     def _approve_contract(self, d: dict, topic: dict, now: str) -> dict:
         """Approve exactly this revision, superseding the approved one (one
-        approved revision per topic). Task 1d attaches G-1 here: identifying
-        the labels, dossiers, verification and in-flight work an amendment
-        affects. Until then, work pinned to the superseded revision is refused
-        at commit (amendment_pending), never silently reused."""
-        superseded = []
-        for old in self._store.select("contract_revisions", {"topic_id": d["topic_id"], "status": "approved"}):
-            self._store.update("contract_revisions", {"topic_id": d["topic_id"], "revision": old["revision"]}, {"status": "superseded"})
-            superseded.append(old["revision"])
-        self._store.update("contract_revisions", {"topic_id": d["topic_id"], "revision": d["subject_revision"]},
-                           {"status": "approved", "approved_by_decision_id": d["decision_id"]})
-        effects = self._move(topic, now, {"awaiting_contract_approval": "queued"}, active_contract_revision=d["subject_revision"])
-        return {**effects, "contract_approved": d["subject_revision"], "contract_superseded": superseded}
+        approved revision per topic). An amendment revises the approved
+        revision (its parent), and a framing change is approved as a reframe
+        and only a reframe (G-6, G-7). An approved amendment requeues a
+        completed topic (store README, queue status). Then G-1: the impact on
+        what was pinned to the superseded revision (amendments.py)."""
+        key = {"topic_id": d["topic_id"]}
+        revision = self._one("contract_revisions", {**key, "revision": d["subject_revision"]})
+        previous = self._one("contract_revisions", {**key, "status": "approved"})
+        if previous is not None and revision["parent_revision"] != previous["revision"]:
+            raise Refusal("decision_refused", f"revision {revision['revision']} does not revise the approved revision {previous['revision']}")
+        reframe = previous is not None and contract_compatibility(previous["document"], revision["document"]) == "reframed"
+        if reframe != (d["kind"] == "reframe_approval"):
+            raise Refusal("decision_refused", "a framing change is approved as a reframe, and a reframe approval approves a framing change (G-6, G-7)")
+        if previous is not None:
+            self._store.update("contract_revisions", {**key, "revision": previous["revision"]}, {"status": "superseded"})
+        self._store.update("contract_revisions", {**key, "revision": d["subject_revision"]}, {"status": "approved", "approved_by_decision_id": d["decision_id"]})
+        effects = self._move(topic, now, {"awaiting_contract_approval": "queued", "completed_with_qualified_conclusions": "queued"},
+                             active_contract_revision=d["subject_revision"], status_decision_id=None)
+        effects.update(contract_approved=d["subject_revision"], contract_superseded=[] if previous is None else [previous["revision"]])
+        if previous is not None:
+            effects.update(self._record_impact(d, "contract", self._one("contract_revisions", {**key, "revision": previous["revision"]}),
+                                               self._one("contract_revisions", {**key, "revision": d["subject_revision"]}), now))
+        return effects
 
     def _move(self, topic: dict, now: str, moves: dict, *, required: bool = False, **queue_columns) -> dict:
         """Apply the queue move for the topic's current status, with any

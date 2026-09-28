@@ -125,7 +125,12 @@ def check_verification_receipt(doc: dict, invocation_id: str, capability_id: str
 
 
 def check_decision_receipt(doc: dict, spec_document: dict | None, *, invocation_id: str, topic_id: str, operation_id: str,
-                           qualifications) -> None:
+                           qualifications, questions: set) -> None:
+    """D-1, D-4, D-5: a receipt of the committing invocation, of its topic,
+    under a stored spec whose hash is true and whose pinned question is one
+    the invocation's pinned bundle carries (`questions`: (id, version, hash)
+    triples; an unknown or altered question is neither); qualified authority
+    only under a live qualification of exactly its provider, class and spec."""
     rid = doc["decision_receipt_id"]
     if doc["topic_id"] != topic_id:
         raise Refusal("cross_topic", f"{rid} is about topic {doc['topic_id']}")
@@ -135,11 +140,15 @@ def check_decision_receipt(doc: dict, spec_document: dict | None, *, invocation_
         raise Refusal("payload_invalid", f"{rid}: no stored DecisionSpec has hash {doc['spec']['spec_hash']}")
     if canonical.logical_hash(spec_document) != doc["spec"]["spec_hash"]:
         raise Refusal("payload_invalid", f"{rid}: the stored DecisionSpec does not hash to {doc['spec']['spec_hash']} (hash truth)")
+    question = spec_document["question"]
+    if (question["question_id"], question["version"], question["content_hash"]) not in questions:
+        raise Refusal("payload_invalid", f"{rid}: its spec's question {question['question_id']} v{question['version']} is not in the invocation's "
+                                         "pinned question registry under that hash (D-1)")
     authorization = doc["authorization"]
     if authorization["authority_level"] == "qualified" and not qualifications.is_qualified(
             provider=doc["provider"], decision_class=doc["decision_class"], spec_hash=doc["spec"]["spec_hash"],
             qualification_ref=authorization["qualification_ref"]):
-        raise Refusal("payload_invalid", f"{rid}: no qualification registry qualifies {doc['provider']}/{doc['decision_class']} for this spec; "
+        raise Refusal("payload_invalid", f"{rid}: no live qualification record qualifies {doc['provider']}/{doc['decision_class']} for this spec; "
                                          "a qualification reference alone is not qualification (D-4, INVARIANTS §13)")
     if doc["outcome"]["commit_operation_id"] not in (None, operation_id):
         raise Refusal("payload_invalid", f"{rid}: its committed action is recorded by {doc['outcome']['commit_operation_id']}, not by this operation (D-2)")
