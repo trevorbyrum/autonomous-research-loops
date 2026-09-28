@@ -17,7 +17,8 @@ acceptance), the 1b review (bootstrap ruling: minimal router-owned brief and
 amendment version commands; ruling on proposal 3: amendment_pending was an
 interim fail-closed rule).
 
-Commands (trusted surface until 1e): version_brief writes the next version
+Commands (the trusted surface: task 1e's authenticated operator surface):
+version_brief writes the next version
 of a brief — a re-version, an owner reassignment or a deadline extension,
 each a new immutable version awaiting confirmation (a version awaiting
 confirmation that it replaces is superseded; a confirmed one stays confirmed
@@ -25,8 +26,11 @@ until its successor is confirmed); mark_brief_overdue marks a version
 awaiting confirmation overdue once its deadline has passed on the router's
 clock (expiry marks, it never advances); propose_amendment writes the next
 contract revision as a draft whose parent is the approved revision, with its
-facet and obligation rows. Approval stays an operator decision
-(amendment_approval, reframe_approval: service.Router._approve_contract).
+facet and obligation rows; close_brief (task 1e) cancels a version awaiting
+confirmation or archives a confirmed one, recording who (the authenticated
+operator the surface names), when and why (G-4). Approval stays an operator
+decision (amendment_approval, reframe_approval:
+service.Router._approve_contract).
 
 Compatibility, deterministic and structural: whether work, labels and claims
 pinned to a superseded contract revision stay valid under the current one,
@@ -138,6 +142,11 @@ AMENDMENT_COMMANDS = {
         "properties": {"topic_id": {"$ref": "common.schema.json#/$defs/topic_id"}, "brief_id": {"$ref": "common.schema.json#/$defs/short_text"},
                        "version": {"$ref": "common.schema.json#/$defs/revision"}}},
     "amendment": {"type": "object", "additionalProperties": False, "required": ["document"], "properties": {"document": {"type": "object"}}},
+    "brief_close": {  # task 1e: closed_by is the authenticated operator the operator surface names, never the caller's own word
+        "type": "object", "additionalProperties": False, "required": ["topic_id", "brief_id", "version", "closure", "closed_by", "reason"],
+        "properties": {"topic_id": {"$ref": "common.schema.json#/$defs/topic_id"}, "brief_id": {"$ref": "common.schema.json#/$defs/short_text"},
+                       "version": {"$ref": "common.schema.json#/$defs/revision"}, "closure": {"enum": ["cancelled", "archived"]},
+                       "closed_by": {"$ref": "common.schema.json#/$defs/short_text"}, "reason": {"$ref": "common.schema.json#/$defs/short_text"}}},
 }
 
 
@@ -241,6 +250,9 @@ class Amendments:
     def propose_amendment(self, request: Mapping) -> dict:
         return self._amendment_command(request, "amendment", "contract-v2.schema.json", self._amendment_in_transaction)
 
+    def close_brief(self, request: Mapping) -> dict:
+        return self._amendment_command(request, "brief_close", None, self._close_in_transaction)
+
     def _amendment_command(self, request: Mapping, shape: str, document_schema: str | None, body) -> dict:
         try:
             req = boundary.normalize(request, "request_invalid")
@@ -302,6 +314,28 @@ class Amendments:
         self._store.update("intake_briefs", {k: req[k] for k in ("topic_id", "brief_id", "version")}, {"overdue_since": now})
         self._audit("brief_overdue", now, {"brief_id": req["brief_id"], "version": req["version"]}, topic_id=req["topic_id"])
         return {"status": "marked", "overdue_since": now}
+
+    def _close_in_transaction(self, req: dict, now: str) -> dict:
+        """G-4: cancellation (of a version awaiting confirmation) and archival
+        (of a confirmed one) are explicit acts, with who, when and why (task
+        1e: who is the authenticated operator). Key: (topic, brief, version);
+        the closure is write-once, and only the identical one replays. Work
+        pinned to a closed version is fenced at its commit (_pin_status: a
+        closed brief carries no work)."""
+        key = {k: req[k] for k in ("topic_id", "brief_id", "version")}
+        row = self._one("intake_briefs", key)
+        if row is None:
+            raise Refusal("unknown_brief", f"{req['brief_id']} v{req['version']}")
+        if row["closed_at"] is not None:
+            if (row["status"], row["closed_by"], row["close_reason"]) != (req["closure"], req["closed_by"], req["reason"]):
+                raise Refusal("brief_close_conflict", f"{req['brief_id']} v{req['version']} was {row['status']} by {row['closed_by']} at {row['closed_at']}")
+            return {"status": "replayed", **key, "closure": row["status"], "closed_at": row["closed_at"]}
+        if {"awaiting_confirmation": "cancelled", "confirmed": "archived"}.get(row["status"]) != req["closure"]:
+            raise Refusal("brief_not_closable", f"{req['brief_id']} v{req['version']} is {row['status']}: a version awaiting confirmation is "
+                                                "cancelled, a confirmed one archived (G-4)")
+        self._store.update("intake_briefs", key, {"status": req["closure"], "closed_by": req["closed_by"], "closed_at": now, "close_reason": req["reason"]})
+        self._audit("brief_closed", now, {**key, "closure": req["closure"], "by": req["closed_by"]}, topic_id=req["topic_id"])
+        return {"status": "closed", **key, "closure": req["closure"], "closed_at": now}
 
     def _amendment_in_transaction(self, req: dict, now: str) -> dict:
         doc = req["document"]

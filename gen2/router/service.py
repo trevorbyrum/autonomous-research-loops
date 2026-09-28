@@ -20,17 +20,19 @@ transaction back and is reported as a refusal, never retried.
 
 Authority: an invocation acts only through the capability the router minted
 for it at claim; its kind, topic, pins and lease are read from its row,
-never from the request. The capability is an unguessable bearer identifier.
-There is no transport and so no authentication of the process presenting it
-yet (task 1e); operator decisions and delivery receipts are likewise trusted
-to come from the operator surface and the exporter wired by the composition
-root.
+never from the request. The capability is an unguessable bearer identifier,
+held by the supervisor in the engine's own process: no transport carries it
+(task 1e). Operator decisions, the trusted-surface commands and delivery
+receipts reach the router through the operator surface
+(gen2/operator/service.py), which authenticates the principal and supplies
+the fields that name it (a decision's operator_id, a brief closure's
+closed_by); the router records what that surface hands it.
 
 Task 1c's lifecycle operations (cancellation, reconciliation, status) are in
 lifecycle.py; task 1d's config bundles, question registry and qualification
 records in registries.py, brief and contract versions and amendment impact
 (G-1) in amendments.py, re-queues, reservations and the signal queue in
-scheduling.py. The operator transport and its authentication are task 1e's.
+scheduling.py; task 1e's status read and health probe in status.py.
 """
 from __future__ import annotations
 
@@ -47,6 +49,7 @@ from gen2.router.lifecycle import LIFECYCLE_COMMANDS, Lifecycle, is_episode_hold
 from gen2.router.registries import REGISTRY_COMMANDS, Registries
 from gen2.router.scheduling import SCHEDULING_COMMANDS, Scheduling
 from gen2.router.schemas import SchemaSet
+from gen2.router.status import STATUS_COMMANDS, Status
 from gen2.store import api
 
 VALIDATOR_VERSION = "router-boundary/1"
@@ -166,7 +169,7 @@ def _short(text: str) -> str:
     return (text or "refused")[:500]
 
 
-class Router(Lifecycle, Registries, Amendments, Scheduling):
+class Router(Lifecycle, Registries, Amendments, Scheduling, Status):
     """The ControlBackend (gen2/core/control.py) over one store. Construct
     with a Store (Router.open for a durable one); the router owns it and hands
     it to no one. Qualification is read from the store's own records
@@ -182,7 +185,8 @@ class Router(Lifecycle, Registries, Amendments, Scheduling):
         self._extensions = extensions or NoExtensions()
         self._fault = fault or (lambda point: None)
         self._schemas = schemas or SchemaSet(extra={"router-commands": {"$defs": {
-            **COMMANDS["$defs"], **LIFECYCLE_COMMANDS, **REGISTRY_COMMANDS, **AMENDMENT_COMMANDS, **SCHEDULING_COMMANDS}}})
+            **COMMANDS["$defs"], **LIFECYCLE_COMMANDS, **REGISTRY_COMMANDS, **AMENDMENT_COMMANDS, **SCHEDULING_COMMANDS,
+            **STATUS_COMMANDS}}})
 
     @classmethod
     def open(cls, path: str | Path, spool, *, create: bool = False, **kwargs) -> "Router":

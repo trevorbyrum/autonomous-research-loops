@@ -41,7 +41,10 @@ from typing import Mapping, Protocol
 class ControlUnavailable(Exception):
     """The router could not be reached. Nothing is known to have happened;
     every operation is idempotent under its key, so the same request is sent
-    again (C-10). Raised by a transport (task 1e), never by the router."""
+    again (C-10). Raised by a transport, never by the router: today by a test
+    double standing between the supervisor and the router (the supervisor
+    runs in the engine's own process); the exporter's transport (Phase 3)
+    raises it when the engine's listener cannot be reached."""
 
 
 class StagedBytes(Protocol):
@@ -152,3 +155,40 @@ class ControlBackend(Protocol):
         """Record one export-delivery-receipt/2, whole, for a committed
         manifest and advance the connector's watermark from a delivered one.
         Key: export_receipt_id; only the identical document replays."""
+
+
+class OperatorBackend(ControlBackend, Protocol):
+    """What the operator surface (gen2/operator/service.py, task 1e) is handed
+    by the composition root: the router's operations for the trusted surface,
+    beside the protocol above. The surface authenticates the principal and
+    fills the fields that name it; the router validates, fences and writes as
+    for every operation. None of these hands out the store."""
+
+    def activate_config_bundle(self, document: Mapping) -> dict:
+        """Validate and activate a mounted config-bundle/1 (task 1d)."""
+
+    def version_brief(self, request: Mapping) -> dict:
+        """Write the next version of an intake brief (task 1d)."""
+
+    def mark_brief_overdue(self, request: Mapping) -> dict:
+        """Mark a version awaiting confirmation overdue, once its deadline has
+        passed on the router's clock (task 1d, G-4)."""
+
+    def close_brief(self, request: Mapping) -> dict:
+        """Cancel a version awaiting confirmation, or archive a confirmed one,
+        naming the operator who closed it (task 1e, G-4)."""
+
+    def propose_amendment(self, request: Mapping) -> dict:
+        """Write the next contract revision as a draft of the approved one (task 1d)."""
+
+    def requeue(self, request: Mapping) -> dict:
+        """Re-queue ended failed or cancelled work (task 1d, L-6)."""
+
+    def status(self, request: Mapping) -> dict:
+        """The committed record the operator's status is composed from, in one
+        snapshot, with the router's own judgments of it now (task 1e). Writes
+        nothing."""
+
+    def healthy(self) -> bool:
+        """The router can commit now (DEPLOYMENT-CONTRACT.md §1.2). Writes nothing."""
+
