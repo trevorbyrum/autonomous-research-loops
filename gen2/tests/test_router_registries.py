@@ -252,6 +252,15 @@ class QualificationRecordTest(ScreeningBase):
         self.assertEqual(self.state(exclude=("audit_events", "qualifications")), before)
         self.assertEqual(self.rows("SELECT revoke_reason FROM qualifications"), [("revoked mid-commit",)])
 
+    def test_the_same_revocation_again_replays(self) -> None:
+        """The accepted path of the revocation-conflict guard, on its own: the
+        identical revocation of a revoked record replays and changes nothing."""
+        revocation = {"qualification_id": qual_ref(self.spec_hash), "operator_id": "user", "reason": "drift"}
+        self.assertEqual(self.router.revoke_qualification(revocation)["status"], "revoked")
+        before = self.state()
+        self.assertEqual(self.router.revoke_qualification(revocation), {"status": "replayed", "qualification_id": qual_ref(self.spec_hash)})
+        self.assertEqual(self.state(), before)
+
     def test_revocation_replays_conflicts_and_needs_a_record(self) -> None:
         revocation = {"qualification_id": qual_ref(self.spec_hash), "operator_id": "user", "reason": "drift"}
         self.assertEqual(self.router.revoke_qualification(revocation)["status"], "revoked")

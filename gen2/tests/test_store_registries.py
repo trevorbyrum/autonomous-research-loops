@@ -59,14 +59,16 @@ class ConfigBundleTest(StoreTestCase):
         self.assertEqual(self.rows("SELECT bundle_hash, status FROM config_bundles ORDER BY version"), [(h("c"), "superseded"), (h("d"), "active")])
 
     def test_a_bundle_never_changes_and_is_never_reactivated(self) -> None:
-        for name, sql in (("its document", "UPDATE config_bundles SET document = ? WHERE version = 1"), ("its version", "UPDATE config_bundles SET version = 9 WHERE version = ?"),
+        self.supersede_first()  # active -> superseded is the one change
+        self.x(BUNDLE_INSERT, h("d"), 2, json.dumps(bundle(2, ())), "active", T)  # nothing pins bundle 2: only the guard refuses
+        for name, sql in (("its document", "UPDATE config_bundles SET document = ? WHERE version = 2"), ("its version", "UPDATE config_bundles SET version = 9 WHERE version = ?"),
                           ("its hash", "UPDATE config_bundles SET bundle_hash = 'sha256:" + "e" * 64 + "' WHERE version = ?"),
                           ("its activation time", "UPDATE config_bundles SET activated_at = 'x' WHERE version = ?")):
             with self.subTest(name):
-                self.rejects("a config bundle never changes", sql, json.dumps(bundle(1, ())) if "document" in sql else 1)
-        self.supersede_first()  # active -> superseded is the one change
-        self.rejects("a superseded one is never reactivated", "UPDATE config_bundles SET status = 'active' WHERE version = 1")
-        self.assertEqual(self.rows("SELECT status FROM config_bundles"), [("superseded",)])
+                self.rejects("a config bundle never changes", sql, json.dumps(bundle(2, (QUESTION,))) if "document" in sql else 2)
+        self.x("UPDATE config_bundles SET status = 'superseded' WHERE version = 2")
+        self.rejects("a superseded one is never reactivated", "UPDATE config_bundles SET status = 'active' WHERE version = 2")
+        self.assertEqual(self.rows("SELECT version, status FROM config_bundles ORDER BY version"), [(1, "superseded"), (2, "superseded")])
 
     def test_an_invocation_pins_a_recorded_bundle(self) -> None:
         self.approve_contract(TOPIC, 1)
@@ -92,7 +94,9 @@ class QuestionRegistryTest(StoreTestCase):
         registered_by = self.carrying(q2)
         self.rejects("recorded as the entry of the bundle", QUESTION_INSERT, "Q-method", 1, h("8"), json.dumps(q2), h("c"), T)  # bundle 1 does not carry it
         self.rejects("recorded as the entry of the bundle", QUESTION_INSERT, "Q-other", 1, h("7"), json.dumps(question("Q-other", ch="7")), registered_by, T)
-        self.rejects("CHECK constraint failed", QUESTION_INSERT, "Q-method", 2, h("8"), json.dumps(q2), registered_by, T)  # the row is not its document
+        for name, row in (("another version", ("Q-method", 2, h("8"))), ("another id", ("Q-other", 1, h("8"))), ("another hash", ("Q-method", 1, h("6")))):
+            with self.subTest(name):  # the bundle carries the document: only the row's disagreement with it refuses
+                self.rejects("CHECK constraint failed", QUESTION_INSERT, *row, json.dumps(q2), registered_by, T)
         self.x(QUESTION_INSERT, "Q-method", 1, h("8"), json.dumps(q2), registered_by, T)
 
     def test_a_bundle_carries_a_registered_version_only_under_its_content(self) -> None:
@@ -166,11 +170,12 @@ class QualificationTest(StoreTestCase):
     def test_qualified_authority_rests_on_a_live_record_of_exactly_its_spec(self) -> None:
         self.x(QUAL_INSERT, "qual_screen01", "jev", "screening", self.jev, T)
         self.x(QUAL_INSERT, "qual_prefil01", "jev", "relevance_prefilter", self.prefilter, T)
+        self.x(QUAL_INSERT, "qual_screen02", "jev", "screening", self.spec("dspec_screen02"), T)  # the same provider and class, another spec
         self.x(QUAL_INSERT, "qual_revoked1", "jev", "screening", self.jev, T)
         self.x("UPDATE qualifications SET revoked_by = 'user', revoked_at = ?, revoke_reason = 'drift' WHERE qualification_id = 'qual_revoked1'", T)
         qualified = dict(authority="qualified", action="commit_reversible_action", commit_op="op_00000001", live_qualification=False)
         for n, (name, ref) in enumerate((("an unrecorded reference", "qual_nosuchone"), ("a revoked record", "qual_revoked1"),
-                                         ("another spec's record", "qual_prefil01")), start=1):
+                                         ("another spec's record", "qual_screen02"), ("another class's record", "qual_prefil01")), start=1):
             with self.subTest(name):
                 with self.assertRaises(sqlite3.IntegrityError) as ctx:
                     self.decision_receipt(f"dec_0000000{n}", "inv_pppppppp", self.jev, qualification=ref, **qualified)
@@ -246,8 +251,8 @@ class ReservationTest(StoreTestCase):
         self.to_running("inv_pppppppp")
         self.invocation("inv_deleg001", kind="delegate", lease=None, parent="inv_pppppppp")
         self.rejects(guard, DRAW, "inv_deleg001", "rsv_00000001", None, T)  # a delegate draws under its parent's
+        self.assertEqual(self.approved_with_obligation(OTHER), self.rev)  # the same revision number: only the topic differs
         self.lease("lease_other001", 1, tid=OTHER)
-        self.approve_contract(OTHER, 1)
         self.invocation("inv_other001", tid=OTHER, lease="lease_other001")
         self.rejects(guard, DRAW, "inv_other001", "rsv_00000001", None, T)  # another topic's work
         self.x("UPDATE reservations SET closed_at = ?, close_reason = 'test' WHERE reservation_id = 'rsv_00000001'", T)

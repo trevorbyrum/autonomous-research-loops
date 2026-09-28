@@ -2646,13 +2646,14 @@ BEGIN
 END;
 
 -- D-5, D-11 (task 1d): qualified authority rests on a live qualification of
--- exactly this provider, class and spec, whatever string the receipt names.
+-- exactly this spec, whatever string the receipt names. (The spec fixes the
+-- provider and class: a record's are its spec's, qualifications_created_live_
+-- for_their_spec, and so are a receipt's, decision_receipts_match_spec.)
 CREATE TRIGGER decision_receipts_qualification_live
 BEFORE INSERT ON decision_receipts
 WHEN NEW.authority_level = 'qualified' AND NOT EXISTS (
   SELECT 1 FROM qualifications q
-  WHERE q.qualification_id = NEW.qualification_ref AND q.provider = NEW.provider AND q.decision_class = NEW.decision_class
-    AND q.spec_hash = NEW.spec_hash AND q.revoked_at IS NULL)
+  WHERE q.qualification_id = NEW.qualification_ref AND q.spec_hash = NEW.spec_hash AND q.revoked_at IS NULL)
 BEGIN
   SELECT RAISE(ABORT, 'qualified authority needs a live qualification of this provider, class and spec; a reference naming anything else is not qualification (D-5, D-11)');
 END;

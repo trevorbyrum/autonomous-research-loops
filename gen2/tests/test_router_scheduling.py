@@ -23,8 +23,13 @@ cancelled, which is where a retry happens.
 from __future__ import annotations
 
 import json
+import sqlite3
+import tempfile
+from pathlib import Path
 
 from gen2.core import canonical
+from gen2.store import api
+from gen2.tests import router_fixtures as rf, store_fixtures
 from gen2.core.instants import utc_instant_ns
 from gen2.tests.router_fixtures import TOPIC, RouterTestCase, empty_outcome
 from gen2.tests.test_router_amendments import ContractWorld, compatible, reframed
@@ -80,6 +85,8 @@ class RequeueTest(PolicyCase):
                 self.refused(self.claim(f"inv_{kind[:6]}02", kind), "requeue_required", before, f"{first['invocation_id']}, the last")
                 self.refused(self.claim(f"inv_{kind[:6]}02", kind, retry_of=first["invocation_id"]), "requeue_required", before)  # named, not yet re-queued
                 self.assertEqual(self.requeue(first["invocation_id"]), {"status": "requeued", "invocation_id": first["invocation_id"], "attempt": 2})
+                before = self.state()
+                self.refused(self.claim(f"inv_{kind[:6]}02", kind), "requeue_required", before)  # re-queued, the lane is claimed as its retry, by name
                 second = self.claim(f"inv_{kind[:6]}02", kind, retry_of=first["invocation_id"])
                 self.assertEqual(second["status"], "granted", second)
                 self.assertEqual(self.rows("SELECT attempt, requested_by, retry_invocation_id FROM retries WHERE invocation_id = ?", first["invocation_id"]),
@@ -150,6 +157,29 @@ class RequeueTest(PolicyCase):
         self.assertEqual(self.state(), before)
         self.assertEqual(cancelled["status"], "granted")
 
+    def test_ended_work_its_lane_moved_past_is_not_requeued(self) -> None:
+        """Work whose lease expired and was replaced ends afterwards: its lane's
+        last work is the replacement, so it is not re-queued (the replacement
+        is, once it ends)."""
+        first = self.claim("inv_discov01", "discovery", lease_expires_at="2026-09-27T10:30:00Z")
+        self.running(first)
+        self.clock.set("2026-09-27T10:31:00Z")
+        second = self.started("inv_discov02", "discovery")  # the expired lease is released and replaced
+        self.fail(first)
+        before = self.state()
+        self.refused(self.requeue("inv_discov01"), "not_requeueable", before, "only the last work of a lane")
+        self.fail(second)
+        self.assertEqual(self.requeue("inv_discov02")["status"], "requeued")
+
+    def test_the_same_requeue_again_replays(self) -> None:
+        """The accepted path of the re-queue conflict guard, on its own."""
+        self.claim("inv_discov01", "discovery")
+        self.router.request_cancel({"invocation_id": "inv_discov01", "requested_by": "operator", "reason": "stop"})
+        self.assertEqual(self.requeue("inv_discov01", "operator", "again")["status"], "requeued")
+        before = self.state()
+        self.assertEqual(self.requeue("inv_discov01", "operator", "again"), {"status": "replayed", "invocation_id": "inv_discov01", "attempt": 2})
+        self.assertEqual(self.state(), before)
+
     def test_a_retry_names_only_the_lanes_waiting_work(self) -> None:
         first = self.claim("inv_discov01", "discovery")
         self.router.request_cancel({"invocation_id": "inv_discov01", "requested_by": "operator", "reason": "stop"})
@@ -210,6 +240,39 @@ class ReservationTest(ContractWorld):
         self.assertEqual(grant["status"], "granted", grant)
         self.assertEqual(self.claim("inv_checkpt01", "checkpoint", reservation={"reservation_id": "rsv_promote01", "facet_id": "F-effect"})["status"], "replayed")
         self.assertEqual(self.claim("inv_checkpt01", "checkpoint")["reason"], "invocation_id_conflict")  # without its reservation it is another request
+
+    def test_an_auto_promotion_draw_inside_a_critical_facet(self) -> None:
+        """The accepted path of the threshold guard, on its own."""
+        self.open("rsv_promote01", "auto_promotion")
+        self.assertEqual(self.claim("inv_checkpt01", "checkpoint", reservation={"reservation_id": "rsv_promote01", "facet_id": "F-effect"})["status"], "granted")
+        self.assertEqual(self.rows("SELECT invocation_id, facet_id FROM reservation_draws"), [("inv_checkpt01", "F-effect")])
+
+    def test_the_same_reservation_again_replays(self) -> None:
+        """The accepted path of the reservation-conflict guard, on its own."""
+        self.open("rsv_explore001", "protected_exploration")
+        before = self.state()
+        self.assertEqual(self.open("rsv_explore001", "protected_exploration"), {"status": "replayed", "reservation_id": "rsv_explore001", "units": 2})
+        self.assertEqual(self.state(), before)
+
+    def test_an_exhausted_reservation_is_closed_when_the_next_opens(self) -> None:
+        """The accepted path of the guard refusing a second open reservation:
+        the one open has no units left, so the next opens."""
+        self.open("rsv_explore001", "protected_exploration")
+        self.claim("inv_discov01", "discovery", reservation={"reservation_id": "rsv_explore001"})
+        self.claim("inv_checkpt01", "checkpoint", reservation={"reservation_id": "rsv_explore001"})
+        self.assertEqual(self.open("rsv_explore002", "protected_exploration")["status"], "opened")
+        self.assertEqual(self.rows("SELECT reservation_id, close_reason FROM reservations ORDER BY rowid"), [("rsv_explore001", "exhausted"), ("rsv_explore002", None)])
+
+    def test_an_amendment_leaves_a_closed_reservation_as_it_was(self) -> None:
+        """The accepted path of the impact's closing guard: a reservation already
+        closed is passed over, its closure kept."""
+        self.open("rsv_explore001", "protected_exploration")
+        self.claim("inv_discov01", "discovery", reservation={"reservation_id": "rsv_explore001"})
+        self.claim("inv_checkpt01", "checkpoint", reservation={"reservation_id": "rsv_explore001"})
+        self.open("rsv_explore002", "protected_exploration")  # the first closes, exhausted
+        closed = self.rows("SELECT * FROM reservations WHERE reservation_id = 'rsv_explore001'")
+        self.approve(self.propose(3, compatible))
+        self.assertEqual(self.rows("SELECT * FROM reservations WHERE reservation_id = 'rsv_explore001'"), closed)
 
     def test_an_amendment_closes_the_reservations_of_the_revision_it_supersedes(self) -> None:
         self.open("rsv_explore001", "protected_exploration")
@@ -300,6 +363,14 @@ class SignalQueueTest(PolicyCase):
                "sha256:" + "e" * 64, TOPIC, "2026-09-27T13:00:00Z")
         self.assertEqual(self.review(4)["triggers"], [waiting, "sha256:" + "e" * 64])  # mandatory: past the budget, and the queued signal with it
 
+    def test_the_same_review_again_replays(self) -> None:
+        """The accepted path of the review-conflict guard, on its own."""
+        self.signal()
+        self.assertEqual(self.review(1)["status"], "opened")
+        before = self.state()
+        self.assertEqual(self.review(1), {"status": "replayed", "episode_id": "rev_episode0001"})
+        self.assertEqual(self.state(), before)
+
     def test_a_review_needs_a_pending_signal_a_configured_queue_and_its_own_key(self) -> None:
         before = self.state()
         self.refused(self.review(1), "no_pending_signal", before)
@@ -311,3 +382,61 @@ class SignalQueueTest(PolicyCase):
         self.assertEqual(self.review(1, "fixed_cadence")["status"], "replayed")
         before = self.state()
         self.refused(self.review(1, "method_fit"), "review_conflict", before)
+
+
+class SchedulingRestartTest(ContractWorld):
+    """RG-9: re-queues, reservations and their draws are store state: after a
+    restart a waiting lane still waits for its retry, a claimed re-queue is
+    still claimed, and a reservation's drawn units still count."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.directory = Path(self._tmp.name)
+        api.open_store(self.directory / "store.sqlite3", create=True).close()
+        self.db = sqlite3.connect(self.directory / "store.sqlite3", isolation_level=None)
+        self.db.executescript(store_fixtures.CONNECTION_TEXT)
+        self.store = api.open_store(self.directory / "store.sqlite3")
+        self.spool, self.clock, self.ids, self.faults = rf.Spool(), rf.Clock(), rf.Ids(), {}
+        self.router = self.make_router()
+        self.seed()
+        self.build_world()
+        assert self.router.activate_config_bundle(POLICY)["status"] == "activated"
+
+    def tearDown(self) -> None:
+        self.router.close()
+        self.db.close()
+        self._tmp.cleanup()
+
+    def reopen(self) -> None:
+        self.router.close()
+        self.store = api.open_store(self.directory / "store.sqlite3")
+        self.router = self.make_router()
+
+    def claim(self, inv: str, kind: str = "research_pass", tid: str = TOPIC, **extra) -> dict:
+        extra.setdefault("config_bundle_hash", POLICY_HASH)
+        return super().claim(inv, kind, tid, **extra)
+
+    def open(self, rid: str, purpose: str) -> dict:
+        return self.router.open_reservation({"reservation_id": rid, "topic_id": TOPIC, "purpose": purpose})
+
+    def test_retry_and_reservation_state_survive_a_restart(self) -> None:
+        self.open("rsv_explore001", "protected_exploration")
+        first = self.claim("inv_discov01", "discovery", reservation={"reservation_id": "rsv_explore001"})
+        self.running(first)
+        out = self.router.record_transition({"capability_id": first["capability_id"], "invocation_id": "inv_discov01", "to_state": "failed",
+                                             "failure_class": "killed", "end_evidence_ref": self.evidence(first, ("killed",))})
+        self.assertEqual(out["status"], "recorded", out)
+        self.assertEqual(self.router.requeue({"invocation_id": "inv_discov01", "requested_by": "policy", "reason": "transient"})["attempt"], 2)
+        self.reopen()
+        before = self.state()
+        refused = self.claim("inv_discov02", "discovery")
+        self.assertEqual((refused["status"], refused["reason"]), ("refused", "requeue_required"))
+        self.assertEqual(self.state(), before)
+        retry = self.claim("inv_discov02", "discovery", retry_of="inv_discov01", reservation={"reservation_id": "rsv_explore001"})
+        self.assertEqual(retry["status"], "granted", retry)
+        self.reopen()
+        self.assertEqual(self.rows("SELECT invocation_id, attempt, retry_invocation_id FROM retries"), [("inv_discov01", 2, "inv_discov02")])
+        before = self.state()
+        refused = self.claim("inv_checkpt01", "checkpoint", reservation={"reservation_id": "rsv_explore001"})
+        self.assertEqual((refused["status"], refused["reason"]), ("refused", "reservation_exhausted"))  # two units, both drawn before the restarts
+        self.assertEqual(self.state(), before)

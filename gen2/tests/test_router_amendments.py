@@ -201,6 +201,14 @@ class AmendmentProposalTest(ContractWorld):
         self.assertEqual(self.router.propose_amendment({"document": good})["status"], "replayed")
         self.assertEqual(self.state(), before)
 
+    def test_the_same_amendment_again_replays(self) -> None:
+        """The accepted path of the amendment-conflict guard, on its own."""
+        doc = contract_doc(3, 2, edit=compatible)
+        self.assertEqual(self.router.propose_amendment({"document": doc})["status"], "recorded")
+        before = self.state()
+        self.assertEqual(self.router.propose_amendment({"document": copy.deepcopy(doc)}), {"status": "replayed", "topic_id": TOPIC, "revision": 3})
+        self.assertEqual(self.state(), before)
+
     def test_no_approved_contract_takes_no_amendment(self) -> None:
         self.to_scoping(OTHER)
         doc = {**contract_doc(1, None, edit=compatible), "topic_id": OTHER}
@@ -423,11 +431,23 @@ class BriefVersionTest(RouterTestCase):
         for name, request, reason, detail in cases:
             with self.subTest(name):
                 self.refused_command(request, reason, detail)
+        self.clock.set("2026-10-04T23:59:59.999Z")  # the next reading is the requested deadline itself: over at that instant, so refused
+        self.refused_command(self.version(2, deadline="2026-10-05T00:00:00Z"), "request_invalid", "reviewed after now")
+        self.clock.set("2026-09-27T10:00:00Z")
         self.assertEqual(self.router.version_brief(good)["status"], "recorded")
         before = self.state()
         self.assertEqual(self.router.version_brief(good)["status"], "replayed")
         self.assertEqual(self.state(), before)
         self.refused_command({**good, "owner_operator_id": "user-3"}, "brief_version_conflict")
+
+    def test_the_same_version_again_replays(self) -> None:
+        """The accepted path of the brief-version conflict guard, on its own."""
+        self.brief()
+        request = self.version(2, owner="user-2")
+        self.assertEqual(self.router.version_brief(request)["status"], "recorded")
+        before = self.state()
+        self.assertEqual(self.router.version_brief(copy.deepcopy(request)), {"status": "replayed", "topic_id": TOPIC, "brief_id": "brief-1", "version": 2})
+        self.assertEqual(self.state(), before)
 
     def test_a_closed_or_unknown_brief_takes_no_version(self) -> None:
         self.refused_command(self.version(2), "unknown_brief")
