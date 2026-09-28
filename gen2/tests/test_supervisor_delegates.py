@@ -56,7 +56,7 @@ import unittest
 from gen2.core.control import ControlUnavailable
 from gen2.core.instants import utc_instant_ns
 from gen2.supervisor import jobs
-from gen2.supervisor.supervisor import Held, Waiting
+from gen2.supervisor.supervisor import Held, StaleJournal, Waiting
 from gen2.tests import children
 from gen2.tests import router_fixtures as rf
 from gen2.tests.supervisor_fixtures import AFTER_DEADLINE, MAIN, PARENT, SupervisedTestCase, Unreachable, succeed
@@ -376,12 +376,21 @@ class ParentEnds:
 
     def refused_at_the_chokepoint(self, supervisor, caller: str, inv: str) -> None:
         """Every control method for `inv`, called as another job holding a
-        stale copy of the journal: refused (Held), whatever the caller holds."""
+        stale copy of the journal: refused (Held), whatever the caller holds.
+        Nor is the incident renewed by a caller of its writer, holding a stale
+        copy or the current one: the writer keeps it and attempts no write
+        (a stale copy's write would also be refused by the journal's revision
+        check, task 1c-repair-4, but that is not what keeps it)."""
         for method in METHODS:
             with self.assertRaises(Waiting) as raised:
                 supervisor._call(supervisor.job(caller), {"budgets": {}}, method, {"invocation_id": inv})
             self.assertIsInstance(raised.exception, Held, method)
-        supervisor._incident(supervisor.job(inv), {"budgets": {}}, "router_unreachable")  # nor is it renewed by a stale caller of the writer
+        job = supervisor.job(inv)
+        for held in ({"budgets": {}}, supervisor._journal(job)):
+            try:
+                supervisor._incident(job, held, "router_unreachable")
+            except StaleJournal as refused:
+                self.fail(f"the incident writer attempted a write: {refused}")
 
     def test_a_delegate_does_not_retry_its_stalled_parents_claim(self) -> None:
         """Astra's reproduction (1c re-review 2, BLOCK 1): a restarted
