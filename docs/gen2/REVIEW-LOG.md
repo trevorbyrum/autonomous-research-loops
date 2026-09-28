@@ -441,3 +441,12 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-1d-astra-review-
 **All seven open questions ruled ACCEPT** (lane gate, proactive cancellation, fail-closed missing policy values, admission-unit reservations, question-entry format, `policy_version`, claimable table in code), with finding 3 as required integration. **The four INVARIANTS locator updates are authorized** as repair work (V-10 wording only after finding 1).
 
 **Routed:** `docs/gen2/tasks/1d-repair.md` to an Opus 5.5 coder.
+
+## 2026-09-28 — 1d-repair re-review (Astra, xhigh) — BLOCK, narrow (2 areas)
+Full report: `~/work/research-loops-public/private/reviews/gen2-1d-repair-astra-review-20260928.md`.
+
+**CLOSED:** the framing-content and stale-revival repairs hold under Astra's rebuilt probes (version-label cycling, restored obligations/briefs); pinned policy on every start; retry/reservation through work orders (real failed subprocess re-queued and committed for all four kinds); exact hold arithmetic (500,000,000 ns on the probe); lineage isolation (the parent-only survivor is killed).
+
+**Remaining:** (1) HIGH — obligation removal/replacement bypasses impact classification: the classifier compares only shared IDs and the framing projection omits coverage cells, so removing `O-2` (cell → `deliberately_out`) or re-issuing the same substantive change under a fresh ID gets blanket `compatible`, and the old claim promotes without adoption. G-1 locks the approved inventory; G-5 authorizes bounded additions, not removals. Conservative revision-wide fencing suffices at Phase 1 scope. (2) MEDIUM — the unmounted-restoration path never records capability recovery (`failing` forever), while explicit remount does.
+
+**Routed:** `docs/gen2/tasks/1d-repair-2.md` to an Opus 5.5 coder.
