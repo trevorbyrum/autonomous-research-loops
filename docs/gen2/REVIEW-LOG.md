@@ -476,3 +476,12 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-1e-repair-astra-
 
 ## 2026-09-28 — OPERATOR DECISION: the §4 auth-volume demonstrations run UP FRONT (no phasing amendment)
 The operator chose to satisfy DEPLOYMENT-CONTRACT §4 as written rather than amend its phasing: "Doesn't it make more sense to do up front?" Confirmed. Task 1f (docs/gen2/tasks/1f.md) builds the minimal compose slice and runs all four demonstrations with a pinned public runner CLI, using the supervisor's already-declared capability-probe responsibility for demonstration (d). Isolation rules: own compose project/ports/volumes, throwaway credentials only, gen-1 untouched. 1f dispatches after 1e-repair-2 lands (one coder on the tree). This resolves the 1e review's finding 1 by the demonstration route.
+
+## 2026-09-28 — 1e-repair-2 re-review (Astra, xhigh) — BLOCK, narrow (one finding)
+Full report: `~/work/research-loops-public/private/reviews/gen2-1e-repair-2-astra-review-20260928.md`.
+
+**CLOSED:** recovery resumption (the original `os._exit(71)` reproduction now ends `resumed`/outcome `failed`, then `replayed`; one reconciliation, hold cleared, lease released, one allowance spent) and startup-log coverage. Findings 4/5/6/8 stay closed.
+
+**Remaining (MEDIUM):** redaction runs before final serialization, so JSON escaping can reconstruct a configured token at the output boundary (backslash+quote reassembly; a token completed by the serializer's own opening quote; percent-encoded JSON escapes inside IDs decoded in layers). Required: the credential check must cover the actual serialized representation; unsafe IDs refused with a null ID before dispatch; emitted JSON stays valid.
+
+**Routed:** `docs/gen2/tasks/1e-repair-3.md` (single finding) to an Opus 5.5 coder.
