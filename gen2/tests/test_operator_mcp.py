@@ -47,12 +47,15 @@ class McpTest(McpClient, of.CommandWorld):
                 ("an operator's delivery", "ack_delivery", bodies["ack_delivery"], of.OPERATOR_TOKEN, "forbidden"),
                 ("a capability-bearing call", "record_transition", {"capability_id": self.run_grant["capability_id"]}, of.OPERATOR_TOKEN, "no_such_route"),
                 ("a token as a tool name", of.EXPORTER_TOKEN, {}, of.OPERATOR_TOKEN, "no_such_route"),
+                ("another's secret as a tool name", "op-token-mallory-0123456789abcdef", {}, of.OPERATOR_TOKEN, "no_such_route"),
                 ("the router's refusal", "request_cancel", {"invocation_id": of.FAILED, "reason": "stop"}, of.OPERATOR_TOKEN, "not_cancellable")):
             with self.subTest(label=label):
                 failed, reply = self.call(tool, arguments, token=token)
                 self.assertEqual((failed, reply.get("reason")), (True, reason))
         self.assertEqual(self.state(exclude=()), before)
-        self.assertFalse([line for line in self.logs if any(token in line for token in of.TOKENS)])  # an unknown tool's name is not logged
+        # an unknown tool's name is not logged — not a configured token, which redaction would also take out, nor any other text
+        self.assertFalse([line for line in self.logs if any(token in line for token in (*of.TOKENS, "op-token-mallory-0123456789abcdef"))])
+        self.assertIn("operator:alice POST /mcp:? -> 200 None", self.logs)
         failed, reply = self.call("apply_operator_decision", bodies["apply_operator_decision"], token=of.OTHER_OPERATOR_TOKEN)
         self.assertEqual((failed, reply["status"]), (False, "applied"))
         self.assertEqual(self.rows("SELECT operator_id FROM operator_decisions WHERE decision_id = 'opd_brief_other'"), [("bob",)])

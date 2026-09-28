@@ -149,7 +149,8 @@ FILE_TARGETS = {
     "gen2/router/lifecycle.py": ("module", "gen2.router.lifecycle", "gen2.router.scheduling", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/supervisor/spool.py": ("module", "gen2.supervisor.spool", "gen2.supervisor.supervisor", "gen2.tests.supervisor_fixtures"),
     "gen2/supervisor/jobs.py": ("module", "gen2.supervisor.jobs", "gen2.supervisor.supervisor", "gen2.tests.supervisor_fixtures"),
-    "gen2/supervisor/supervisor.py": ("module", "gen2.supervisor.supervisor", "gen2.app.station", "gen2.tests.supervisor_fixtures"),
+    "gen2/supervisor/supervisor.py": ("module", "gen2.supervisor.supervisor", "gen2.app.station", "gen2.tests.supervisor_fixtures",
+                                      "gen2.app.engine", "gen2.tests.operator_fixtures"),
     "gen2/supervisor/jobshim.py": ("disk",),
     "gen2/schema/execution-record.schema.json": ("attr", "test_schema_counterfactuals", "EXECUTION_RECORD_SCHEMA"),
     # task 1b. A router module's dependents (named after the dotted module) are
@@ -253,6 +254,10 @@ OAU, OAZ, OAF, OBD, OCR, OHL, OSE = ("test_operator_auth.AuthenticationTest.", "
 OTW, OIW, OEW, ORO = ("test_operator_status.TopicWaitingTest.", "test_operator_status.InvocationWaitingTest.", "test_operator_status.EngineWideTest.",
                       "test_operator_status.ReadOnlyTest.")
 OCM, OCL, OMC = "test_operator_commands.", "test_operator_restart.CliTest.", "test_operator_mcp.McpTest."
+# task 1e-repair (Astra 1e review findings 2-8)
+ORC, ORD, OHI = "test_operator_recovery.DiscoveryRecoveryTest.", "test_operator_recovery.DelegateRecoveryTest.", "test_operator_status.HistoricalIncidentTest."
+OEN, ODS, OUB = "test_operator_mcp.McpEnvelopeTest.", "test_operator_auth.DiagnosticSecrecyTest.", "test_operator_auth.UnreadBodyTest."
+OCT, ORP = "test_operator_restart.CliTransportTest.", "test_operator_restart.ReplacementTest."
 RECEIPT = "gen2/schema/export-delivery-receipt.schema.json"
 MANIFEST = "gen2/schema/export-manifest.schema.json"
 ENVELOPE = "gen2/schema/freshness-envelope.schema.json"
@@ -3690,7 +3695,7 @@ MUTATIONS: list[Mutation] = [
           ("mcp-logs-any-tool", "an unknown tool's name, whatever it holds, is logged", (OMC + "test_a_tool_call_is_the_routes_own_command",), OPS,
            "f\"/mcp:{tool if tool in (*COMMANDS, 'status') else '?'}\"", 'f"/mcp:{tool}"'),
           ("mcp-refusal-not-error", "a router refusal over MCP is not a tool error", (OMC + "test_a_tool_call_is_the_routes_own_command",), OPS,
-           '            failed = code != 200 or reply.get("status") in ("refused", "rejected")', "            failed = code != 200"),
+           '        failed = code != 200 or reply.get("status") in ("refused", "rejected")', "        failed = code != 200"),
           ("svc-who-acts-from-request", "a body naming who acts is taken (then overwritten)",
            (OAF + "test_who_acts_is_never_taken_from_the_request", OAZ + "test_a_capability_in_a_command_body_is_refused"), OPS,
            "        if named:\n            return", "        if False:\n            return"),
@@ -3720,7 +3725,7 @@ MUTATIONS: list[Mutation] = [
           ("svc-health-needs-token", "health without a token is refused", (OHL + "test_health_needs_no_token_and_says_only_that_the_router_can_commit",), OPS,
            '        if path == "/v1/health":', '        if path == "/v1/health" and authorization is not None:'),
           ("svc-log-leaks-token", "a refused request's header is logged", (OSE + "test_no_token_reaches_a_log_a_reply_or_a_header",), OPS,
-           "            return self._answer(None, method, path, 401,", '            return self._answer(None, method, f"{path} {authorization}", 401,'),
+           "            return self._answer(None, method_label, route, 401,", '            return self._answer(None, method_label, f"{route} {authorization}", 401,'),
           # status.py: each waiting reason dropped alone; and a refusal spread over the reason (the defect the probe found while it was written)
           ("status-scope-approval-unexplained", "a topic awaiting scope approval does not say so", (OTW + "test_each_topic_waits_for_what_its_status_says",), OPT,
            '    "awaiting_scope_approval": "scope_approval",\n', ""),
@@ -3745,9 +3750,9 @@ MUTATIONS: list[Mutation] = [
            '    for review in topic["reviews"]:', "    for review in ():"),
           ("status-ended-incidents-unnamed", "an incident of ended work is not on its topic", (OEW + "test_the_station_incidents_are_listed_and_named_on_their_items",), OPT,
            '    waiting += [_incident(i) for i in incidents if i["topic_id"] == topic["topic_id"] and i["invocation_id"] not in live]', "    waiting += []"),
-          ("status-incidents-unowned", "an incident names no topic", (OEW + "test_the_station_incidents_are_listed_and_named_on_their_items",), OPT,
-           '    listed = [{**incident, "topic_id": owners.get(incident["invocation_id"])} for incident in incidents]',
-           '    listed = [{**incident, "topic_id": None} for incident in incidents]'),
+          ("status-incidents-unowned", "an incident names no topic (1e-repair: the topic is the order's, read by the supervisor)",
+           (OEW + "test_the_station_incidents_are_listed_and_named_on_their_items", OHI + "test_a_cancelled_works_incident_keeps_its_topic_after_its_replacement"), SPV,
+           'found.append({"invocation_id": order["invocation_id"], "topic_id": order["topic_id"],', 'found.append({"invocation_id": order["invocation_id"], "topic_id": None,'),
           ("status-reconciliation-unexplained", "an outcome_unknown episode names no episode or hold",
            (OIW + "test_an_outcome_unknown_episode_waits_for_its_reconciliation_under_its_hold",), OPT,
            '    if inv["unknown"] is not None:', "    if False:"),
@@ -3822,11 +3827,136 @@ MUTATIONS: list[Mutation] = [
           ("engine-401-unchallenged", "a 401 carries no WWW-Authenticate", (OAU + "test_a_missing_or_invalid_token_is_refused_before_the_body_is_read",), ENG,
            "            if code == 401:\n                self.send_header(", "            if False:\n                self.send_header("),
           ("cli-refusal-succeeds", "the CLI exits 0 on the router's refusal", (OCL + "test_the_exit_code_says_who_refused",), CLI,
-           '    return 1 if isinstance(reply, dict) and reply.get("status") in REFUSED else 0', "    return 0"),
+           '    return 1 if reply["status"] in REFUSED else 0', "    return 0"),
           ("cli-transport-refusal-as-routers", "the CLI reports a transport refusal as the router's", (OCL + "test_the_exit_code_says_who_refused",), CLI,
            "    if code != 200:", "    if False:"),
           ("cli-token-unsent", "the CLI sends no token", (OCL + "test_the_cli_sends_the_body_and_prints_the_reply",), CLI,
            "    if token:\n        headers[", "    if False:\n        headers["),
+      )),
+    # task 1e-repair (Astra 1e review findings 2-8): each repair's guard removed alone
+    *(Mutation(f"1E-{key}", "1e-repair", desc, tuple(killers), target=target, old=old, new=new, via_child=child)
+      for key, desc, killers, target, old, new, child in (
+          # finding 2: the operator's recovery of a stalled job (supervisor.py recover_incident; service, engine, status)
+          ("recover-no-fresh-termination", "the operator's recovery does not end the group afresh (recover() alone, which stalls again)",
+           (ORC + "test_recover_alone_stays_stalled_and_the_operators_recovery_reconciles_the_collected_end", ORD + "test_the_station_ends_a_live_group_itself"), SPV,
+           '                if collected and collected["observation"]["descendants"]["handling"] == "unconfirmed" and not collected.get("rehandled") and identity:',
+           "                if False:", False),
+          ("recover-unconfirmed-taken", "a fresh termination that is not confirmed is kept as the group's handling",
+           (ORC + "test_capacity_is_not_released_while_the_group_is_not_confirmed_ended",), SPV, '                    if not ended["confirmed"]:', "                    if False:", False),
+          ("recover-fresh-handling-unused", "the reconciliation ignores the fresh handling and stays on the retained unconfirmed one",
+           (ORC + "test_the_station_ends_a_live_group_itself", ORD + "test_recover_alone_stays_stalled_and_the_operators_recovery_reconciles_the_collected_end"), SPV,
+           '            if collected.get("rehandled"):', "            if False:", False),
+          ("recover-budget-unspent", "the operator's recovery draws nothing on the recovery budget",
+           (ORC + "test_the_recovery_budget_bounds_the_operators_requests",), SPV, '                if not self._spend(job, journal, "recovery"):', "                if False:", False),
+          ("recover-any-incident", "a recovery naming another incident recovers the open one",
+           (ORC + "test_a_request_not_naming_the_open_incident_is_refused",), SPV,
+           '                if incident is None or incident["since"] != since:', "                if incident is None:", False),
+          ("recover-no-replay", "the same recovery once its incident is closed is refused, not replayed",
+           (ORD + "test_recover_alone_stays_stalled_and_the_operators_recovery_reconciles_the_collected_end",), SPV,
+           "                    if closed is not None:\n", "                    if False:\n", False),
+          ("recover-invocation-unchecked", "a recovery's invocation id is taken as a path without its shape checked",
+           (ORC + "test_a_request_not_naming_the_open_incident_is_refused",), SPV,
+           ' \\\n                or not INVOCATION_ID.fullmatch(request["invocation_id"]):', ":", False),
+          ("recover-shape-unchecked", "a recovery request with a field too many is taken", (ORC + "test_a_request_not_naming_the_open_incident_is_refused",), SPV,
+           "set(request) != self.RECOVERY_REQUEST", "not set(request) >= self.RECOVERY_REQUEST", False),
+          ("svc-recover-requester-from-request", "the recovery's requester is the request's, not the principal's",
+           (ORC + "test_recover_alone_stays_stalled_and_the_operators_recovery_reconciles_the_collected_end",), OPS,
+           '    "recover_incident": ("operator", {"requested_by": _NAME}),', '    "recover_incident": ("operator", {}),', False),
+          ("engine-recover-by-router", "the surface sends the recovery to the router, which has no such operation",
+           ("test_operator_auth.BackendSurfaceTest.test_the_service_reaches_only_the_operator_operations",), ENG,
+           '    STATION = frozenset({"recover_incident"})', "    STATION = frozenset()", False),
+          ("status-clears-unnamed", "a blocking incident does not say what clears it",
+           (ORC + "test_recover_alone_stays_stalled_and_the_operators_recovery_reconciles_the_collected_end",), OPT,
+           '    listed = [{**incident, **({"clears_when": "recover_incident"} if incident["blocking"] else {})} for incident in incidents]',
+           "    listed = list(incidents)", False),
+          # finding 3: nothing a request carries reaches a log, a reply or a header
+          ("svc-unknown-route-verbatim", "an unknown route is logged as it came", (ODS + "test_no_carried_token_reaches_a_log_a_reply_or_a_header",), OPS,
+           '    elif route not in ROUTES:\n        route = "?"', "    elif route not in ROUTES:\n        pass", False),
+          ("svc-unknown-command-verbatim", "an unknown command's route is logged as it came", (ODS + "test_no_carried_token_reaches_a_log_a_reply_or_a_header",), OPS,
+           "        route = route if route[len(COMMAND_PREFIX):] in COMMANDS else COMMAND_PREFIX + \"?\"", "        route = route", False),
+          ("svc-reply-unredacted", "a reply is not redacted (a refusal echoes a token in a body key)",
+           (ODS + "test_no_carried_token_reaches_a_log_a_reply_or_a_header",), OPS,
+           "        return code, self._credentials.redact(reply)", "        return code, reply", False),
+          ("auth-redact-nothing", "redaction replaces no token",
+           ("test_operator_auth.CredentialsTest.test_redact_takes_every_configured_token_out", ODS + "test_no_carried_token_reaches_a_log_a_reply_or_a_header"), OPA,
+           "            for token in self._tokens:", "            for token in ():", False),
+          ("auth-redact-keys-kept", "a token standing as a key is kept", ("test_operator_auth.CredentialsTest.test_redact_takes_every_configured_token_out",), OPA,
+           "            return {self.redact(k): self.redact(v) for k, v in value.items()}", "            return {k: self.redact(v) for k, v in value.items()}", False),
+          ("auth-redact-shortest-first", "a token another's prefix is redacted first, leaving the longer one half-shown",
+           ("test_operator_auth.CredentialsTest.test_redact_takes_every_configured_token_out",), OPA,
+           "key=len, reverse=True))", "key=len))", False),
+          ("engine-parser-reflects", "the parser's refusals are http.server's own (the request's text in the reason phrase and page)",
+           (ODS + "test_no_carried_token_reaches_a_log_a_reply_or_a_header",), ENG,
+           "        def send_error(self, code: int,", "        def _unused_send_error(self, code: int,", False),
+          ("engine-fault-logs-request", "the handler's fault path logs the request's method and path",
+           (ODS + "test_a_fault_behind_the_service_is_logged_by_type_and_label",), ENG,
+           '                log("- {} {} -> 500 {}".format(*label(self.command, self.path), type(exc).__name__))',
+           '                log(f"- {self.command} {self.path} -> 500 {type(exc).__name__}")', False),
+          ("engine-connection-fault-traceback", "a connection fault is socketserver's traceback on stderr",
+           (ODS + "test_a_connection_fault_is_one_line_naming_its_type",), ENG, "    def handle_error(self, request, client_address) -> None:",
+           "    def _unused_handle_error(self, request, client_address) -> None:", False),
+          # finding 4: the MCP envelope as strict as a command's body
+          ("mcp-version-unchecked", "any jsonrpc version is taken", (OEN + "test_each_malformed_member_is_refused_before_dispatch",), OPS,
+           ' or message.get("jsonrpc") != "2.0"', "", False),
+          ("mcp-members-unchecked", "an envelope member too many is taken", (OEN + "test_each_malformed_member_is_refused_before_dispatch",), OPS,
+           "        if set(message) - JSONRPC_MEMBERS or ", "        if ", False),
+          ("mcp-method-unchecked", "a method that is not a string is taken", (OEN + "test_each_malformed_member_is_refused_before_dispatch",), OPS,
+           ' or not isinstance(message.get("method"), str)', "", False),
+          ("mcp-id-unchecked", "any id is taken", (OEN + "test_each_malformed_member_is_refused_before_dispatch",), OPS,
+           "                or (has_id and not _request_id(ident)) or (", "                or (", False),
+          ("mcp-id-bool", "a boolean id is taken as an integer", (OEN + "test_each_malformed_member_is_refused_before_dispatch",), OPS,
+           "(type(ident) is int and", "(isinstance(ident, int) and", False),
+          ("mcp-params-type-unchecked", "params that are not an object are taken", (OEN + "test_each_malformed_member_is_refused_before_dispatch",), OPS,
+           ' or ("params" in message and not isinstance(message["params"], dict)):', ":", False),
+          ("mcp-params-members-unchecked", "a params member too many is taken", (OEN + "test_each_malformed_member_is_refused_before_dispatch",), OPS,
+           "        if set(params) - set(members) or ", "        if ", False),
+          ("mcp-params-required-unchecked", "a required params member may be absent", (OEN + "test_each_malformed_member_is_refused_before_dispatch",), OPS,
+           "not required <= set(params) or ", "", False),
+          ("mcp-params-types-unchecked", "params members of any type are taken (arguments [] or null included)",
+           (OEN + "test_each_malformed_member_is_refused_before_dispatch", OEN + "test_each_http_negative_has_its_mcp_twin"), OPS,
+           " or not all(isinstance(params[k], members[k]) for k in params):", ":", False),
+          ("mcp-notification-any-method", "any method without an id is a notification", (OEN + "test_notifications_are_checked_and_do_nothing",), OPS,
+           '            if method.startswith("notifications/"):', "            if True:", False),
+          ("mcp-initialize-echoes", "initialize answers whatever version was asked for", (OEN + "test_initialize_answers_a_version_it_supports",), OPS,
+           '            version = params["protocolVersion"] if params["protocolVersion"] in MCP_VERSIONS else MCP_VERSIONS[0]',
+           '            version = params["protocolVersion"]', False),
+          ("status-query-lenient", "a status query is read leniently (a topic twice, an unknown key)", (OEN + "test_status_arguments_are_as_strict_as_its_query",), OPS,
+           '    return {"topic": parsed["topic"][0]} if set(parsed) == {"topic"} and len(parsed["topic"]) == 1 else None',
+           '    return {"topic": parsed["topic"][0]} if "topic" in parsed else {}', False),
+          ("status-arguments-unchecked", "status arguments other than one topic are taken", (OEN + "test_status_arguments_are_as_strict_as_its_query",), OPS,
+           '        if arguments is None or set(arguments) - {"topic"} or not isinstance(arguments.get("topic", ""), str):',
+           "        if arguments is None:", False),
+          # finding 6: a reply cut short or malformed is the CLI's exit 2
+          ("cli-protocol-error-uncaught", "an http.client protocol error escapes the CLI (a traceback, exit 1)",
+           (OCT + "test_a_reply_cut_short_or_malformed_is_no_answer",), CLI,
+           "    except (OSError, ValueError, http.client.HTTPException) as failure:", "    except (OSError, ValueError) as failure:", False),
+          ("cli-malformed-reply-taken", "a reply that is not an object with a status is taken as an answer",
+           (OCT + "test_a_reply_cut_short_or_malformed_is_no_answer",), CLI,
+           '    if not isinstance(reply, dict) or not isinstance(reply.get("status"), str):', "    if not isinstance(reply, dict):", False),
+          ("cli-diagnostic-verbatim", "the CLI's diagnostic repeats the protocol error's text (the engine's bytes)",
+           (OCT + "test_a_reply_cut_short_or_malformed_is_no_answer",), CLI,
+           "        said = type(failure).__name__ if isinstance(failure, http.client.HTTPException) else ", "        said = ", False),
+          ("cli-process-protocol-error-uncaught", "the CLI process exits 1 on a reply cut short (the review's reproduction)",
+           (OCT + "test_the_cli_process_itself_exits_2_on_a_reply_cut_short",), CLI,
+           "    except (OSError, ValueError, http.client.HTTPException) as failure:", "    except (OSError, ValueError) as failure:", True),
+          # finding 7: the startup-leak mutant the review built (a print of the operator tokens before the credentials are read)
+          ("engine-startup-leak", "the engine prints GEN2_OPERATOR_TOKENS as it starts",
+           (ORP + "test_a_replacement_process_serves_the_same_principals_permissions_and_state", ORP + "test_an_engine_without_usable_secrets_does_not_start"), ENG,
+           "        credentials = Credentials.from_environ(environ)",
+           '        print("LEAK " + environ.get("GEN2_OPERATOR_TOKENS", ""), file=sys.stderr, flush=True)\n        credentials = Credentials.from_environ(environ)', True),
+          # finding 8: the unread-body discard and its bounds
+          ("engine-no-discard", "an unread body is not discarded after the answer (the client's send is reset)",
+           (OUB + "test_a_small_body_sent_after_the_answer_is_discarded_and_the_connection_ends_cleanly",), ENG,
+           "            self._discard(length, consumed)\n", "", False),
+          ("engine-discard-unbounded", "any unread body is discarded, however large", (OUB + "test_a_body_over_the_ceiling_is_not_waited_for",), ENG,
+           "            if not 0 < remaining <= DRAIN_MAX:", "            if not 0 < remaining:", False),
+          ("engine-discard-ceiling-short", "an unread body of exactly the ceiling is not discarded",
+           (OUB + "test_a_small_body_sent_after_the_answer_is_discarded_and_the_connection_ends_cleanly",), ENG,
+           "            if not 0 < remaining <= DRAIN_MAX:", "            if not 0 < remaining < DRAIN_MAX:", False),
+          ("engine-discard-untimed", "the discard waits as long as bytes keep coming (an idle timeout alone)",
+           (OUB + "test_a_client_too_slow_is_not_waited_for",), ENG,
+           "                while remaining > 0 and (left := deadline - time.monotonic()) > 0:\n                    self.connection.settimeout(min(DRAIN_IDLE_S, left))",
+           "                while remaining > 0:\n                    self.connection.settimeout(DRAIN_IDLE_S)", False),
       )),
 ]
 
@@ -3836,6 +3966,19 @@ MUTATIONS: list[Mutation] = [
 # their removal alone. Listed so a reviewer does not mistake them for missed
 # coverage; each names the first layer (which IS in the inventory).
 SECOND_LAYER = {
+    "gen2/operator/service.py label(): the method label (GET/POST, else ?) (1e-repair, Astra 1e review finding 3)":
+        "only do_GET and do_POST call the service, and the engine's fault path runs inside them, so every method it labels is GET or POST; "
+        "any other method is refused by http.server's dispatch through the engine's send_error, a fixed reply and fixed log line "
+        "(1E-engine-parser-reflects kills its removal). The label is kept so the rule reads the same for method and route",
+    "gen2/operator/service.py _answer: redact() on the log line (1e-repair, Astra 1e review finding 3)":
+        "a log line holds only the service's labels (1E-svc-unknown-route-verbatim, 1E-svc-unknown-command-verbatim, 1E-svc-log-leaks-token "
+        "kill a request's text reaching it), a configured principal's role and name, and a reply's status, which the router or supervisor "
+        "writes from its own vocabulary; none carries a request's text, so no configured token can reach it for redaction to take out. "
+        "The reply's redaction is the tested layer (1E-svc-reply-unredacted)",
+    "gen2/operator/service.py _mcp: arguments omitted read as {} (1e-repair, Astra 1e review finding 4)":
+        "MCP_PARAMS types every params member before the tool call reads it, so a given `arguments` that is not an object is refused first "
+        "(1E-mcp-params-types-unchecked); only an omitted one reaches the default. The review's truthiness defect (arguments [] read as {}) "
+        "is killed through that type check",
     "gen2/supervisor/supervisor.py _settle_delegates: the delegate's own lock, taken under its parent's (1c-repair-4)":
         "every caller that writes a delegate's journal holds its parent's lock first (_exclusive: a delegate's advance and recover() take "
         "the parent's, then the delegate's; a parent ends its delegates holding its own), so no second caller can hold the delegate's while a "

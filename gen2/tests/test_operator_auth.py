@@ -328,7 +328,11 @@ class BackendSurfaceTest(of.OperatorTestCase):
         backend = self.engine.service._backend
         self.assertIs(backend.healthy(), True)
         self.assertEqual(backend.status({"topic_id": TOPIC})["status"], "ok")
-        self.assertEqual(backend.recover_incident({})["reason"], "request_invalid")  # the supervisor's, answering
+        try:
+            answered = backend.recover_incident({})  # the supervisor's, answering
+        except AttributeError:
+            self.fail("the station's recovery is not reachable through the backend")
+        self.assertEqual(answered["reason"], "request_invalid")
         for name in ("_store", "claim", "record_transition", "commit_outcome", "reconcile", "invocation_status", "record_observation",
                      "record_qualification", "open_reservation", "open_review", "restore_config_bundle", "close",
                      "recover", "advance", "submit", "prepare", "run", "incidents", "job", "control"):

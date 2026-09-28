@@ -281,6 +281,26 @@ MANUAL: dict[str, dict] = {
     "TO-original-failures-ignored": {
         "controls": [], "in_killer": ["test_trigger_order_tool.TriggerOrderToolTest.test_outcomes_must_be_green_and_identical"],
         "why": "the killer asserts the accepted case (identical green outcomes: no problem) before the refusals; " + _ORDER},
+    # task 1e-repair: recover_incident's COMMANDS entry; no recovery request passes through it the same way under both versions
+    "1E-svc-recover-requester-from-request": {
+        "controls": ["test_operator_mcp.McpTest.test_mcp_needs_a_token_and_lists_only_the_roles_tools"],
+        "why": "reads the COMMANDS entry the mutant changes on its accepted path — tools/list's role filter lists recover_incident for an "
+               "operator — and asserts the operator's tools; the mutant changes only the field supplied from the principal, and no recovery "
+               "request can be a control: the surface refuses a body naming requested_by, and without it the mutant's request is refused "
+               "(probed: 0 of 9 candidates pass)"},
+    # task 1e-repair: the server's handle_error override runs only for a failed connection
+    "1E-engine-connection-fault-traceback": {
+        "controls": [],
+        "why": "the mutant renames the server's handle_error override (gen2/app/engine.py _Server), which socketserver calls only when a "
+               "connection has failed outside the service: no answered request passes through it, every call is a fault, and its one line "
+               "and empty stderr are what its killer asserts. There is no accepted alternative through it to pair"},
+    # task 1e-repair: the startup leak runs in the engine's own process, which only the replacement tests start (both its killers)
+    "1E-engine-startup-leak": {
+        "controls": [], "in_killer": ["test_operator_restart.ReplacementTest.test_a_replacement_process_serves_the_same_principals_permissions_and_state"],
+        "why": "the changed line (the credentials read at the engine's start, gen2/app/engine.py main) runs only in the engine processes the "
+               "replacement tests start; the killer's accepted case — three engine processes start under the mounted secrets, serve health, "
+               "status and commands, keep principals, pins and the confirmed brief, refuse the rotated token — runs under the mutant and is "
+               "asserted before the secrecy check it fails, every engine's output collected first"},
 }
 # A killer the trace shows entering its trigger in a statement that succeeds, where no other test does, is credited
 # with its own accepted case only once read: that statement runs before the refusal the mutant fails (or the

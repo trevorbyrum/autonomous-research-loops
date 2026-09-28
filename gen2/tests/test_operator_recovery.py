@@ -107,16 +107,25 @@ class RecoveryFaults:
         return json.loads((self.root / "jobs" / f"job-{inv}" / "journal.json").read_text())
 
     # -- the collected end, stalled ------------------------------------------------
-    def stall_on_the_collected_end(self) -> dict:
-        """A hanging job past its deadline whose group's termination is not
-        confirmed: the end is retained unconfirmed, the episode entered, the
-        unknown budget spent, the job stalled. Returns its identity."""
+    def stall_on_the_collected_end(self, exits: bool = False) -> dict:
+        """A job whose group's termination is not confirmed — a hanging job
+        past its deadline, or (`exits`) one that writes its result and exits
+        leaving a descendant: the end is retained unconfirmed, the episode
+        entered, the unknown budget spent, the job stalled. Returns its
+        identity."""
         if self.KIND == "delegate":
             parent = self.order("research_pass", [{"op": "hang"}], inv=PARENT, deadline=sf.rf.DEADLINE)
             self.assertEqual(self.supervise(lambda s: s.submit(parent)), "running")
-        self.assertEqual(self.supervise(lambda s: s.submit(self.order(self.KIND, [{"op": "hang"}]))), "running")
-        identity = json.loads((self.root / "jobs" / f"job-{MAIN}" / "identity.json").read_text())
-        self.clock.set(AFTER_DEADLINE)
+        steps = [{"op": "spawn_descendant", "marker": "descendant.pid"}, *sf.succeed()] if exits else [{"op": "hang"}]
+        self.assertEqual(self.supervise(lambda s: s.submit(self.order(self.KIND, steps))), "running")
+        job_dir = self.root / "jobs" / f"job-{MAIN}"
+        identity = json.loads((job_dir / "identity.json").read_text())
+        if exits:
+            deadline = time.monotonic() + 10
+            while not (job_dir / "exit.json").exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+        else:
+            self.clock.set(AFTER_DEADLINE)
         with Unconfirmed().patched():
             outcomes = [self.supervise(lambda s: s.advance(MAIN))]
         while outcomes[-1] != "stalled" and len(outcomes) < 10:
@@ -124,9 +133,9 @@ class RecoveryFaults:
         self.assertEqual(outcomes, ["unknown_unresolved"] * 5 + ["stalled"])
         journal = self.journal()
         self.assertEqual((journal["incident"]["kind"], journal["incident"]["last_finding"], journal["collected"]["observation"]["descendants"]["handling"],
-                          journal["collected"]["terminated"]),
-                         ("outcome_unknown_unresolved", "the collected end's descendants are not confirmed ended", "unconfirmed", "timeout"))
-        self.assertNotEqual(jobs.members(identity), [])  # nothing ended the group: it hangs on
+                          journal["collected"].get("terminated")),
+                         ("outcome_unknown_unresolved", "the collected end's descendants are not confirmed ended", "unconfirmed", None if exits else "timeout"))
+        self.assertNotEqual(jobs.members(identity), [])  # nothing ended the group: it (or the descendant) lives on
         return identity
 
     def held(self) -> dict:
@@ -196,7 +205,7 @@ class RecoveryFaults:
         self.assertEqual((self.state(exclude=()), self.journal()), (before, journal_before))
         # the operator's recovery: the incident status names, then the store
         on_invocation = [w for i in self.topic_status()["invocations"] if i["invocation_id"] == MAIN for w in i["waiting"] if w["reason"] == "incident"]
-        self.assertEqual([(w["incident"]["since"], w["incident"]["clears_when"]) for w in on_invocation], [(stalled["since"], "recover_incident")])
+        self.assertEqual([(w["incident"]["since"], w["incident"].get("clears_when")) for w in on_invocation], [(stalled["since"], "recover_incident")])
         code, reply = self.command("recover_incident", self.request())
         self.assertEqual((code, reply["status"], reply["outcome"], reply["incident"], reply["requested_by"]), (200, "resumed", "failed", stalled, "alice"))
         self.assertEqual(reply["termination"]["descendants"], {"handling": "none_found", "count": 0})  # already ended from outside: nothing left
@@ -227,6 +236,31 @@ class RecoveryFaults:
         self.assertGreater(reply["termination"]["descendants"]["count"], 0)
         self.assertEqual(jobs.members(identity), [])
         self.reconciled(retained)
+
+    def test_a_clean_exit_whose_descendant_lingered_commits_once_the_group_is_ended(self) -> None:
+        """The other collected end: the result written and the executor gone,
+        its descendant never confirmed ended. The operator's recovery ends
+        the descendant; the episode is reconciled as the result found, from
+        fresh evidence, and the result commits — capacity released by the
+        commit, not before."""
+        identity = self.stall_on_the_collected_end(exits=True)
+        retained = self.journal()["collected"]
+        self.assertEqual(self.held(), self.UNRECONCILED)
+        code, reply = self.command("recover_incident", self.request())
+        self.assertEqual((code, reply["status"], reply["outcome"], reply["termination"]["descendants"]), (200, "resumed", "committed", {"handling": "terminated", "count": 1}))
+        self.assertEqual(jobs.members(identity), [])
+        self.assertEqual(self.rows("SELECT resolution, method FROM invocation_reconciliations WHERE invocation_id = ?", MAIN), [("found_result", "job_handle_lookup")])
+        evidence = self.value("SELECT evidence_ref FROM invocation_reconciliations WHERE invocation_id = ?", MAIN)
+        self.assertNotEqual(evidence, retained["record"]["content_hash"])
+        fresh = json.loads(self.spool.real.read(evidence, topic_id=TOPIC))
+        self.assertEqual((fresh["descendants"], fresh["termination"], fresh["output"]["content_hash"]),
+                         ({"handling": "terminated", "count": 1}, {"reason": "descendants_after_exit"}, retained["result"]["content_hash"]))
+        self.assertEqual(json.loads(self.spool.real.read(retained["record"]["content_hash"], topic_id=TOPIC))["descendants"], {"handling": "unconfirmed", "count": 1})
+        self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN), "committed")
+        self.assertEqual(self.rows("SELECT cleared_by_reconciliation_id IS NOT NULL FROM holds WHERE subject_ref = ?", f"invocation:{MAIN}#unknown:1"), [(1,)])
+        if self.KIND != "delegate":
+            lease = self.value("SELECT lease_id FROM invocations WHERE invocation_id = ?", MAIN)
+            self.assertEqual(self.rows("SELECT release_reason FROM leases WHERE lease_id = ?", lease), [("final_outcome",)])
 
     def test_capacity_is_not_released_while_the_group_is_not_confirmed_ended(self) -> None:
         """The station's fresh termination is not confirmed either: refused,
