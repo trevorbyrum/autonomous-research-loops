@@ -385,15 +385,17 @@ class Supervisor:
         """Every open control incident of this supervisor's jobs (RG-3:
         visible, owned, deadlined): the one a stalled job waits on
         (blocking), and each exhausted retry budget (kept beside the job's
-        end, which it does not block). Read from the journals; changes
-        nothing."""
+        end, which it does not block). Each names its invocation and that
+        invocation's topic, from the job's durable order, whatever has
+        happened to the topic's lanes since (Astra 1e review finding 5).
+        Read from the journals; changes nothing."""
         found = []
         for path in sorted(self.jobs_root.iterdir()):
             job = jobs.Job(self.jobs_root, path.name)
             order, journal = job.read("order.json"), job.read("journal.json") or {}
             for key in ("incident", "exhausted"):
                 if order is not None and journal.get(key):
-                    found.append({"invocation_id": order["invocation_id"], "blocking": key == "incident", **journal[key]})
+                    found.append({"invocation_id": order["invocation_id"], "topic_id": order["topic_id"], "blocking": key == "incident", **journal[key]})
         return found
 
     def run(self, invocation_id: str, *, timeout_s: float = 60.0, until: tuple[str, ...] = TERMINAL + ("not_admitted",)) -> str:

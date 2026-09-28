@@ -144,7 +144,7 @@ class StatusWorld(of.OperatorTestCase):
         assert outcomes[-1] == "cancelled", outcomes
         job = jobs.Job(self.root / "jobs", "job-inv_unknown0001")
         job.dir.mkdir(parents=True)
-        job.write("order.json", {"invocation_id": "inv_unknown0001"})
+        job.write("order.json", {"invocation_id": "inv_unknown0001", "topic_id": TOPIC})  # an order names its topic (Supervisor.prepare)
         job.write("journal.json", {"incident": {"kind": "outcome_unknown_unresolved", "since": "2026-09-27T10:05:00Z", "owner": "supervisor:station-1",
                                                 "deadline_at": "2026-09-27T11:05:00Z", "budget": "unknown", "unknown_episode": 1,
                                                 "unresolved_since": "2026-09-27T10:04:00Z", "last_finding": COLLECTED_END}})
@@ -306,6 +306,59 @@ class EngineWideTest(StatusWorld):
         topic = next(t for t in doc["topics"] if t["topic_id"] == T5)
         self.assertEqual(self.one(topic, "incident")["incident"]["kind"], "retry_exhausted")
         self.assertEqual(self.one(topic, "requeue")["cancel_requested_by"], "supervisor")
+
+
+class HistoricalIncidentTest(StatusWorld):
+    """An open incident keeps its topic and invocation whatever its lane has
+    done since (Astra 1e review finding 5): the ended work it concerns is
+    re-queued and its replacement admitted, so it is neither live nor its
+    lane's last; and in a topic-filtered view, other topics' incidents keep
+    theirs."""
+
+    def replace(self, ended: str, retry: str, kind: str, tid: str) -> None:
+        """Lift the topic's pause, re-queue the ended work as the operator
+        (over HTTP) and admit its retry under the active bundle."""
+        self.x("UPDATE queue_entries SET paused_at = NULL WHERE topic_id = ?", tid)
+        code, reply = self.command("requeue", {"invocation_id": ended, "reason": "diagnosed"})
+        self.assertEqual((code, reply["status"]), (200, "requeued"), reply)
+        active = self.value("SELECT bundle_hash FROM config_bundles WHERE status = 'active'")
+        self.assertEqual(self.claim(retry, kind=kind, tid=tid, retry_of=ended, config_bundle_hash=active)["status"], "granted")
+
+    def test_a_cancelled_works_incident_keeps_its_topic_after_its_replacement(self) -> None:
+        """Astra's reproduction: T5's retry_exhausted (the supervisor's own),
+        its cancelled verification re-queued and replaced."""
+        self.replace("inv_t5paused01", "inv_t5retry001", "verification", T5)
+        lane = next(lane for lane in self.topic_status(T5)["lanes"] if lane["scope"] == "verification")
+        self.assertEqual((lane["last_invocation_id"], lane["state"]), ("inv_t5retry001", "admitted"))  # the lane moved past it
+        doc = self.status_doc()
+        found = next(i for i in doc["incidents"] if i["invocation_id"] == "inv_t5paused01")
+        self.assertEqual((found["topic_id"], found["kind"], found["blocking"]), (T5, "retry_exhausted", False))
+        topic = next(t for t in doc["topics"] if t["topic_id"] == T5)
+        self.assertEqual([w["incident"]["invocation_id"] for w in self.reasons(topic, "incident")], ["inv_t5paused01"])
+
+    def test_a_failed_works_incident_keeps_its_topic_after_its_replacement(self) -> None:
+        """T4's failed research pass, with the incident the supervisor records
+        beside an end (written as its journal holds it), re-queued and replaced."""
+        job = jobs.Job(self.root / "jobs", "job-inv_t4fail0001")
+        job.dir.mkdir(parents=True)
+        job.write("order.json", {"invocation_id": "inv_t4fail0001", "topic_id": T4})
+        job.write("journal.json", {"settled": "failed", "exhausted": {
+            "kind": "retry_exhausted", "since": "2026-09-27T10:10:00Z", "owner": "supervisor:station-1", "deadline_at": "2026-09-27T11:10:00Z",
+            "budget": "commit", "last_refusal": {"reason": "state_revision_stale", "detail": None}, "result_ref": None}})
+        self.replace("inv_t4fail0001", "inv_t4retry001", "research_pass", T4)
+        lane = next(lane for lane in self.topic_status(T4)["lanes"] if lane["scope"] == "research")
+        self.assertEqual(lane["last_invocation_id"], "inv_t4retry001")
+        topic = self.topic_status(T4)
+        self.assertEqual([(w["incident"]["invocation_id"], w["incident"]["budget"]) for w in self.reasons(topic, "incident")], [("inv_t4fail0001", "commit")])
+        self.assertEqual(next(i for i in self.status_doc()["incidents"] if i["invocation_id"] == "inv_t4fail0001")["topic_id"], T4)
+
+    def test_a_filtered_view_keeps_every_incidents_topic(self) -> None:
+        """Status of T4 alone still lists the engine's incidents, each with its
+        own topic — none of them T4's — and T4 waits on none of them."""
+        doc = self.status_doc(T4)
+        self.assertEqual([t["topic_id"] for t in doc["topics"]], [T4])
+        self.assertEqual(sorted((i["invocation_id"], i["topic_id"]) for i in doc["incidents"]), [("inv_t5paused01", T5), ("inv_unknown0001", TOPIC)])
+        self.assertEqual(self.reasons(doc["topics"][0], "incident"), [])
 
 
 class LiveWorkTest(of.OperatorTestCase):
