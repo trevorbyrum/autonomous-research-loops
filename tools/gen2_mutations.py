@@ -2587,7 +2587,7 @@ MUTATIONS: list[Mutation] = [
            '        if inv["kind"] == "delegate":\n            return\n        self._require_delegates_ended(inv)\n        lease = self._one("leases", {"lease_id": inv["lease_id"]})',
            "        lease = self._lease_of(inv)"),
           ("unknown-hold-already-due", "the episode hold is due the moment it opens", ("UnknownTest.test_entering_outcome_unknown_opens_an_owned_deadlined_hold",), LIF,
-           '"deadline_at": _after(now, UNKNOWN_HOLD_WINDOW)', '"deadline_at": now'),
+           '"deadline_at": _after(now, window)', '"deadline_at": now'),
           ("unknown-hold-unowned", "the episode hold is not owned by the station holding the job",
            ("UnknownTest.test_entering_outcome_unknown_opens_an_owned_deadlined_hold",), LIF,
            '"owner": f"supervisor:{station}"', '"owner": "router"'),
@@ -2741,7 +2741,7 @@ MUTATIONS: list[Mutation] = [
           ("commit-budget-unbounded", "a refused commit is re-sent without end", ("test_a_commit_refused_while_paused_is_resent_within_its_budget",),
            '            if self._spend(job, journal, "commit"):', '            if True:'),
           ("no-start-grace", "a start found after a restart is abandoned at once", ("test_a_slow_start_found_after_a_restart_is_given_its_grace",),
-           "            view = self._await_identity(job, self.policy.start_grace_s)", "            view = self._await_identity(job, 0.0)"),
+           "            view = self._await_identity(job, self._policy(job).start_grace_s)", "            view = self._await_identity(job, 0.0)"),
           ("vanished-group-terminated", "a group gone without an exit is reconciled by a termination that ends nothing",
            ("test_a_group_gone_without_an_exit_is_reconciled_by_lookup",),
            '        if view["verdict"] == "vanished" and not view["members"] and not cancel:', "        if False:"),
@@ -2797,7 +2797,7 @@ MUTATIONS: list[Mutation] = [
            '        except OSError as unwritable:\n            raise ControlFailure(', '        except OSError as unwritable:\n            return "write_failed"\n            raise ControlFailure('),
           ("stalled-write-retried", "a job stalled on a failed write retries it on every advance (unbounded), not only on recover()",
            ("test_enospc_from_the_spool_stalls_with_an_incident",),
-           '        stalled_on_a_write = bool(journal.get("incident")) and journal["budgets"].get("write", 0) >= self.policy.write_attempts',
+           '        stalled_on_a_write = bool(journal.get("incident")) and journal["budgets"].get("write", 0) >= self._policy(job).write_attempts',
            '        stalled_on_a_write = False'),
           ("write-budget-never-refunded", "a write that made progress keeps its budget spent",
            ("test_an_execution_record_over_the_quota_stalls_with_the_result_kept",), '        journal["budgets"].pop("write", None)\n', ''))),
@@ -2813,7 +2813,7 @@ MUTATIONS: list[Mutation] = [
            '                        journal["incident"] = None\n                        self._save(job, journal)',
            '                        journal["incident"] = None\n                        journal["budgets"]["router"] = 0\n                        self._save(job, journal)'),
           ("outage-untimed", "an outage is bounded by attempts only, however long it lasts",
-           ("test_an_outage_is_also_bounded_in_time",), ' or self._past(self._after(self.policy.router_window_s, outage["since"]))', ''))),
+           ("test_an_outage_is_also_bounded_in_time",), ' or self._past(self._after(self._policy(job).router_window_s, outage["since"]))', ''))),
     # A11: an exhausted retry budget is an owned, deadlined incident with its budget, last refusal and result reference.
     *(Mutation(f"1C-sup-{key}", "1c-A11", desc, tuple(p + k for k in killers for p in (SLR, SLD)), target=SPV, old=old, new=new)
       for key, desc, killers, old, new in (
@@ -2985,11 +2985,11 @@ MUTATIONS: list[Mutation] = [
           # an outcome_unknown episode that cannot be reconciled yet: attempts and time, per episode; its hold stays (L-4)
           ("unknown-unbudgeted", "an unresolved outcome_unknown episode is looked at again on every advance, never stalling",
            ("test_an_unresolved_unknown_episode_stalls_within_its_budget_and_keeps_its_hold",), (SBR, SBD),
-           '        if not self._spend(job, journal, "unknown") or self._past(self._after(self.policy.unknown_window_s, tried["since"])):',
+           '        if not self._spend(job, journal, "unknown") or self._past(self._after(self._policy(job).unknown_window_s, tried["since"])):',
            '        if False:'),
           ("unknown-untimed", "an unresolved episode is bounded by attempts only, however long it lasts",
            ("test_an_unresolved_unknown_episode_is_also_bounded_in_time",), (SBR, SBD),
-           ' or self._past(self._after(self.policy.unknown_window_s, tried["since"]))', ''),
+           ' or self._past(self._after(self._policy(job).unknown_window_s, tried["since"]))', ''),
           ("unknown-never-refunded", "a reconciled episode keeps its unknown budget spent",
            ("test_an_unknown_episode_reconciled_within_its_budget_refunds_it",), (SBR, SBD),
            '        if journal.pop("unresolved", None) is not None:', '        if False:'))),
@@ -3020,7 +3020,7 @@ MUTATIONS: list[Mutation] = [
            '        raised = (job.read("journal.json") or {}).get(key)', '        raised = journal.get(key)'),
           ("stalled-write-retried-under-another-incident", "a failed write is retried on every advance while the job is stalled on another incident",
            ("test_a_write_failing_while_stalled_is_bounded_and_keeps_the_incident",), (SBR, SBD),
-           'bool(journal.get("incident")) and journal["budgets"].get("write", 0) >= self.policy.write_attempts',
+           'bool(journal.get("incident")) and journal["budgets"].get("write", 0) >= self._policy(job).write_attempts',
            '(journal.get("incident") or {}).get("kind") == "durable_write_failed"'))),
     # 1c-repair-4 (L-6, RG-3; Astra 1c re-review 3, BLOCK 1): every read-modify-write of a job's journal is one caller's — a
     # per-job lock across the threads and processes of a host, a delegate's parent's taken first — and a write resting on

@@ -110,7 +110,7 @@ import hashlib
 import re
 import sys
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Mapping
@@ -134,8 +134,9 @@ DIGEST = re.compile(r"\Asha256:[0-9a-f]{64}\Z")
 
 @dataclass(frozen=True)
 class Policy:
-    """Execution policy (G-10: the mounted policy bundle's once 1d loads
-    bundles). Every retry path draws on one of these (L-6)."""
+    """Execution policy (G-10): the shipped defaults, which a config bundle's
+    supervisor section overrides value by value (supervisor_policy). Every
+    retry path draws on one of these (L-6)."""
     router_attempts: int = 5       # sends while the router is unreachable, per outage (until a write it answers)
     router_window_s: float = 600.0 # how long an outage may last before the job stalls, whatever attempts remain
     recovery_attempts: int = 3     # recover() resumptions of a job stalled on an incident
@@ -153,6 +154,13 @@ class Policy:
     term_grace_s: float = 2.0      # SIGTERM -> SIGKILL
     kill_grace_s: float = 2.0      # SIGKILL -> the group confirmed empty, or not
     poll_s: float = 0.02
+
+
+def supervisor_policy(bundle: Mapping) -> Policy:
+    """A config-bundle/1 document's supervisor policy: the values it names over
+    the shipped defaults (G-10). The router validated the bundle when it was
+    activated (gen2/schema/config-bundle.schema.json)."""
+    return replace(Policy(), **bundle["policy"].get("supervisor", {}))
 
 
 @dataclass(frozen=True)
@@ -217,14 +225,16 @@ class StaleJournal(ControlFailure):
 
 class Supervisor:
     def __init__(self, control, spool: Spool, jobs_root: str | Path, *, station_id: str, host_id: str, container_id: str | None = None,
-                 policy: Policy = Policy(), clock: Callable[[], str], launcher: tuple[str, ...] = LAUNCHER,
-                 fault: Callable[[str], None] | None = None) -> None:
+                 policy: Policy = Policy(), policies: Callable[[str], Policy] | None = None, clock: Callable[[], str],
+                 launcher: tuple[str, ...] = LAUNCHER, fault: Callable[[str], None] | None = None) -> None:
         self.control = control
         self.spool = spool
         self.jobs_root = Path(jobs_root)
         self.jobs_root.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.station_id, self.host_id, self.container_id = station_id, host_id, container_id
-        self.policy = policy
+        self.policy = policy  # the station's own (lock wait, polling), and every job's without `policies`
+        self._policies = policies  # a config bundle's hash -> its Policy (the composition root's); None: every job has `policy`
+        self._pinned: dict[str, Policy] = {}
         self._clock = clock
         self.launcher = tuple(launcher)
         self._fault = fault or (lambda point: None)
@@ -236,7 +246,11 @@ class Supervisor:
 
     def prepare(self, order: WorkOrder) -> None:
         """Make the order durable under its job handle (the claim is sent from
-        the stored order, so a restart re-sends the same claim, L-8)."""
+        the stored order, so a restart re-sends the same claim, L-8). An order
+        pins a recorded config bundle: one the resolver does not know raises
+        before anything is written."""
+        if self._policies is not None:
+            self._policies(order.config_bundle_hash)
         self.job(order.invocation_id).prepare({**asdict(order), "command": list(order.command), "env": dict(order.env)})
 
     def submit(self, order: WorkOrder) -> str:
@@ -372,6 +386,16 @@ class Supervisor:
             yield
 
     # -- journal and budgets ---------------------------------------------------
+    def _policy(self, job: jobs.Job) -> Policy:
+        """The job's policy: that of the config bundle its order is pinned to,
+        the one it was admitted under, whatever bundle is active now — resolved
+        once, and again the same way after a restart (G-10, RG-9)."""
+        if self._policies is None:
+            return self.policy
+        if job.handle not in self._pinned:
+            self._pinned[job.handle] = self._policies(job.read("order.json")["config_bundle_hash"])
+        return self._pinned[job.handle]
+
     def _journal(self, job: jobs.Job) -> dict:
         journal = job.read("journal.json") or {}
         journal.setdefault("budgets", {})
@@ -394,7 +418,7 @@ class Supervisor:
         """Draw one attempt from this job's budget for `path`; False once it is
         spent. Recorded before the attempt, so a crash does not refund it."""
         used = journal["budgets"].get(path, 0)
-        if used >= getattr(self.policy, f"{path}_attempts"):
+        if used >= getattr(self._policy(job), f"{path}_attempts"):
             return False
         journal["budgets"][path] = used + 1
         self._save(job, journal)
@@ -418,7 +442,7 @@ class Supervisor:
             journal[key] = raised
             return
         journal[key] = {"kind": kind, "since": self._now(), "owner": f"supervisor:{self.station_id}",
-                        "deadline_at": self._after(self.policy.incident_window_s), **facts}
+                        "deadline_at": self._after(self._policy(job).incident_window_s), **facts}
         self._save(job, journal)
 
     def _exhausted(self, job: jobs.Job, journal: dict, budget: str, last_refusal: dict | None, result_ref: dict | None) -> None:
@@ -498,7 +522,7 @@ class Supervisor:
             journal["budgets"].pop("unknown", None)
             self._save(job, journal)
         tried["finding"] = finding
-        if not self._spend(job, journal, "unknown") or self._past(self._after(self.policy.unknown_window_s, tried["since"])):
+        if not self._spend(job, journal, "unknown") or self._past(self._after(self._policy(job).unknown_window_s, tried["since"])):
             self._incident(job, journal, "outcome_unknown_unresolved", budget="unknown", unknown_episode=episode,
                            unresolved_since=tried["since"], last_finding=finding)
             raise Waiting("stalled")
@@ -530,7 +554,7 @@ class Supervisor:
             response = getattr(self.control, method)(request)
         except ControlUnavailable:
             outage = journal.setdefault("outage", {"since": self._now()})
-            if not self._spend(job, journal, "router") or self._past(self._after(self.policy.router_window_s, outage["since"])):
+            if not self._spend(job, journal, "router") or self._past(self._after(self._policy(job).router_window_s, outage["since"])):
                 self._incident(job, journal, "router_unreachable", method=method, outage_since=outage["since"])
                 raise Waiting("stalled") from None
             raise Waiting("router_unavailable") from None
@@ -560,7 +584,7 @@ class Supervisor:
         if journal.get("collected"):
             return
         # a write whose budget ran out while the job is stalled (on it, or on another incident): recover() retries it, nothing else does
-        stalled_on_a_write = bool(journal.get("incident")) and journal["budgets"].get("write", 0) >= self.policy.write_attempts
+        stalled_on_a_write = bool(journal.get("incident")) and journal["budgets"].get("write", 0) >= self._policy(job).write_attempts
         if "observation" in journal.get("observing", {}):  # an end already observed, its record not yet staged: never observed again
             return None if stalled_on_a_write else self._retain(job, order, journal)
         if stalled_on_a_write and journal.get("observing"):
@@ -590,14 +614,14 @@ class Supervisor:
         """After the primary ended: wait for the launcher to leave (it has
         recorded the exit), then end whatever else is left of the group and
         confirm it gone (L-7). The launcher is not counted as a descendant."""
-        deadline = time.monotonic() + self.policy.kill_grace_s
+        deadline = time.monotonic() + self._policy(job).kill_grace_s
         while identity["pid"] in jobs.members(identity) and time.monotonic() < deadline:
             self._reap()
             time.sleep(0.005)
         left = [pid for pid in jobs.members(identity) if pid != identity["pid"]]
         if not left and identity["pid"] not in jobs.members(identity):
             return {"handling": "none_found", "count": 0}, None
-        ended = job.terminate(identity, term_grace=self.policy.term_grace_s, kill_grace=self.policy.kill_grace_s, reap=self._reap)
+        ended = job.terminate(identity, term_grace=self._policy(job).term_grace_s, kill_grace=self._policy(job).kill_grace_s, reap=self._reap)
         if not left and ended["confirmed"]:  # only a lingering launcher was ended: no descendant
             return {"handling": "none_found", "count": 0}, None
         return self._handled({**ended, "found": len(left)}), {"reason": "descendants_after_exit"}
@@ -652,7 +676,7 @@ class Supervisor:
     def _terminate(self, job: jobs.Job, order: dict, journal: dict, view: dict, reason: str) -> None:
         """End the execution group (timeout or cancellation) and record it;
         the termination is kept before its record is staged (A4)."""
-        ended = job.terminate(view["identity"], term_grace=self.policy.term_grace_s, kill_grace=self.policy.kill_grace_s, reap=self._reap)
+        ended = job.terminate(view["identity"], term_grace=self._policy(job).term_grace_s, kill_grace=self._policy(job).kill_grace_s, reap=self._reap)
         observation = {"process": self._process(view["identity"]), "exit": job.read("exit.json"), "termination": {"reason": reason},
                        "descendants": self._handled(ended),
                        "output": {"status": "not_collected", "content_hash": None, "size_bytes": None, "declared_digest": None, "detail": None},
@@ -817,7 +841,7 @@ class Supervisor:
                 self._save(job, journal)
                 raise Waiting("launching") from None
             self._fault("spawned")
-            view = self._await_identity(job, self.policy.identity_grace_s)
+            view = self._await_identity(job, self._policy(job).identity_grace_s)
         if view["identity"] is not None and job.handle in self._children:  # this process started it and saw its identity
             response = self._transition(job, journal, grant, "running", **{k: v for k, v in self._process(view["identity"]).items()})
             if response["status"] in ("recorded", "replayed"):
@@ -979,7 +1003,7 @@ class Supervisor:
                 # a cancellation of work that already ended: the owned group is confirmed empty by the same idempotent
                 # operation that ends a live one — an empty group is signalled nothing (descendants none_found) — and the
                 # observed exit is kept as it was: nothing says the cancellation caused it (Q5 ruling; Astra 1c review A2)
-                ended = job.terminate(view["identity"], term_grace=self.policy.term_grace_s, kill_grace=self.policy.kill_grace_s, reap=self._reap)
+                ended = job.terminate(view["identity"], term_grace=self._policy(job).term_grace_s, kill_grace=self._policy(job).kill_grace_s, reap=self._reap)
                 if not ended["confirmed"]:
                     self._unresolved(job, journal, status, "the group of work that already exited is not confirmed empty")
                 observation = {**observation, "termination": {"reason": "cancellation"}, "descendants": self._handled(ended)}
@@ -989,7 +1013,7 @@ class Supervisor:
                 return self._reconcile(job, order, journal, grant, status, "confirmed_failed", "job_handle_lookup", observation)
             return self._reconcile(job, order, journal, grant, status, "found_result", "job_handle_lookup", observation, digest=collected["result"]["content_hash"])
         if view["verdict"] in ("starting", "unstarted"):
-            view = self._await_identity(job, self.policy.start_grace_s)
+            view = self._await_identity(job, self._policy(job).start_grace_s)
         if view["verdict"] in ("not_started", "unstarted"):
             if view["verdict"] == "unstarted" and not job.abandon():  # a launcher got the lock first: its identity is next
                 self._unresolved(job, journal, status, "a launcher took the lock before the start could be abandoned")
@@ -1008,7 +1032,7 @@ class Supervisor:
             return self._reconcile(job, order, journal, grant, status, "confirmed_failed", "job_handle_lookup", observation)
         # running under cancellation or past its deadline, or vanished leaving members: end the group, then reconcile by termination
         reason = "cancellation" if cancel else ("timeout" if self._past(order["deadline_at"]) else "reconciliation")
-        ended = job.terminate(view["identity"], term_grace=self.policy.term_grace_s, kill_grace=self.policy.kill_grace_s, reap=self._reap)
+        ended = job.terminate(view["identity"], term_grace=self._policy(job).term_grace_s, kill_grace=self._policy(job).kill_grace_s, reap=self._reap)
         if not ended["confirmed"]:
             self._unresolved(job, journal, status, f"the group's termination ({reason}) is not confirmed")
         observation = {**self._unrun({"cancellation": None, "timeout": "timeout"}.get(reason, "no_exit_record"), None),

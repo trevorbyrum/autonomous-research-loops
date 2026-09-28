@@ -144,9 +144,7 @@ class SupervisedTestCase(rf.RouterTestCase):
         self.clock, self.ids, self.faults = rf.Clock(), rf.Ids(), {}
         self.router = self.make_router()
         self.control = Unreachable(self.router)
-        for tid in (rf.TOPIC, rf.OTHER):
-            self.x("INSERT INTO queue_entries (topic_id, fleet_id, priority, status, created_at, updated_at) VALUES (?, 'fleet-a', 1, 'awaiting_brief_confirmation', ?, ?)",
-                   tid, "2026-09-27T09:00:00Z", "2026-09-27T09:00:00Z")
+        self.seed()
         self.to_queued()
         self._baseline = self.state(exclude=())  # the world before any job: ended() reports every other table that changed since
         self._supervisors: list[Supervisor] = []  # every supervisor a test made, so tearDown reaps every launcher it started
