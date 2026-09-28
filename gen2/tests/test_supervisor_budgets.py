@@ -349,7 +349,7 @@ class BudgetFaults:
         restarted = self.make_supervisor(control=control)
         self.assertEqual([restarted.advance(MAIN) for _ in range(advances)], ["stalled"] * advances)
         self.assertEqual((count(), self.journal()["incident"], self.state(exclude=())), (done, found, before))
-        self.assertIn({"invocation_id": MAIN, "blocking": True, **found}, restarted.incidents())
+        self.assertIn({"invocation_id": MAIN, "topic_id": rf.TOPIC, "blocking": True, **found}, restarted.incidents())
         return found
 
     def test_a_refused_end_is_resent_within_its_budget_then_stalls(self) -> None:

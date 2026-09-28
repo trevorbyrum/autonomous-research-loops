@@ -420,7 +420,7 @@ class LifecycleFaults:
                          {"kind": "retry_exhausted", "budget": budget, "result_ref": result_ref, "owner": "supervisor:station-1"})
         self.assertEqual({k: found["last_refusal"].get(k) for k in last_refusal}, last_refusal)
         self.assertGreater(utc_instant_ns(found["deadline_at"]), utc_instant_ns(found["since"]))
-        self.assertEqual([i for i in self.supervisor.incidents() if i["invocation_id"] == MAIN], [{"invocation_id": MAIN, "blocking": False, **found}])
+        self.assertEqual([i for i in self.supervisor.incidents() if i["invocation_id"] == MAIN], [{"invocation_id": MAIN, "topic_id": rf.TOPIC, "blocking": False, **found}])
         before, spawns, calls = self.state(exclude=()), self.spawns(), self.control.calls
         restarted = self.make_supervisor()
         self.assertEqual(restarted.recover()[MAIN], self.ended()["state"])
