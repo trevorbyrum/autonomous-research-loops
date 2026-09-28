@@ -100,11 +100,15 @@ class OperatorTestCase(rf.RouterTestCase):
         self.engine = self.start_engine(creds)
 
     # -- HTTP ------------------------------------------------------------------
+    def listener(self) -> tuple[str, int]:
+        """Where this test's requests go: its engine's listener."""
+        return self.engine.address
+
     def http(self, method: str, path: str, body=None, *, token: str | None = OPERATOR_TOKEN, raw: bytes | None = None,
              headers: dict | None = None) -> tuple[int, object, dict]:
         """One request to the engine's listener: (status, the JSON reply, the
         response headers)."""
-        host, port = self.engine.address
+        host, port = self.listener()
         connection = http.client.HTTPConnection(host, port, timeout=30)
         sent = {} if headers is None else dict(headers)
         if token is not None:

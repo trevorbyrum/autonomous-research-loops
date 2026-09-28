@@ -64,7 +64,9 @@ drawing on the job's recovery budget and refilling nothing. An unresolved
 episode keeps its hold, since only its reconciliation clears it (L-4); where
 the retained end's descendants were never confirmed ended, recover() alone
 finds the same unconfirmed end again, and recover_incident() is the route:
-the group ended afresh, the episode reconciled from that (task 1e-repair). An
+the group ended afresh, the episode reconciled from that (task 1e-repair),
+the recovery recorded unfinished until that is done and carried on by the
+next caller holding the job's lock (task 1e-repair-2). An
 exhausted launch, spawn or commit budget is recorded as an incident beside
 the job's end; a journal that cannot be written raises ControlFailure out of
 band (RG-3).
@@ -281,7 +283,9 @@ class Supervisor:
         write is exhausted until that operation makes progress), so a
         resumption that fails again stalls again at once (L-6; Astra 1c
         review A5). With no recovery attempt left the incident stays open as
-        raised, and the job's calls stay refused. Each job's resumption and
+        raised, and the job's calls stay refused. A job whose operator
+        recovery was left unfinished draws nothing: its advance finishes that
+        recovery first (recover_incident). Each job's resumption and
         its advance are one hold of its lock (_exclusive): a job whose lock
         another caller keeps past the wait is reported busy, its recovery
         budget untouched. A job whose journal cannot be written is reported
@@ -296,7 +300,8 @@ class Supervisor:
             try:
                 with self._exclusive(order):
                     journal = self._journal(job)  # read under the lock, as advance() reads it
-                    if journal.get("incident") and not journal.get("settled") and self._spend(job, journal, "recovery"):
+                    if journal.get("incident") and not journal.get("recovering") \
+                            and not journal.get("settled") and self._spend(job, journal, "recovery"):
                         journal["incident"] = None
                         self._save(job, journal)
                     outcomes[order["invocation_id"]] = self.advance(order["invocation_id"])
@@ -336,11 +341,20 @@ class Supervisor:
         cleared here and no capability is taken from the request: the
         operator asks for the station's work, which the router judges.
 
-        Every attempt is recorded in the journal (`recoveries`). Keyed by
-        the incident: the same request once that incident is closed replays
-        the recovery that closed it. Refused, with nothing done: a request
-        not of this shape, an unknown job, an incident not the open one, a
-        settled job, the recovery budget spent, the job's lock another's."""
+        The recovery is recorded unfinished before any of that is done, in
+        the write that draws its allowance (journal["recovering"]: the
+        incident, who asked and why, the termination once made), and is
+        recorded finished (`recoveries`, with the advance's outcome) only
+        once that work is done: until then status lists it with its
+        incident (incidents()). One left unfinished — the reply lost, the
+        engine ended or replaced mid-way — is carried on from where its
+        journal stands by the next caller holding the job's lock: this
+        request again, advance(), recover() — drawing no allowance again
+        (_recovering; Astra 1e-repair re-review finding 1). Keyed by the
+        incident: the same request once its recovery is finished replays it.
+        Refused, with nothing done: a request not of this shape, an unknown
+        job, an incident not the open one, a settled job, the recovery
+        budget spent, the job's lock another's."""
         if not isinstance(request, Mapping) or set(request) != self.RECOVERY_REQUEST or not all(
                 isinstance(request[k], str) and 0 < len(request[k]) <= 500 for k in self.RECOVERY_REQUEST) \
                 or not INVOCATION_ID.fullmatch(request["invocation_id"]):
@@ -353,53 +367,93 @@ class Supervisor:
         try:
             with self._exclusive(order):
                 journal = self._journal(job)
-                incident, recoveries = journal.get("incident"), journal.get("recoveries", [])
+                unfinished = journal.get("recovering")
+                if unfinished is not None:  # finished first, whichever incident this request names
+                    answer = self._recovering(job, order, journal)
+                    if unfinished["incident"]["since"] == since:
+                        return answer
+                    journal = self._journal(job)
+                incident = journal.get("incident")
                 if incident is None or incident["since"] != since:
-                    closed = next((r for r in reversed(recoveries) if r["incident"]["since"] == since and r["outcome"] != "termination_unconfirmed"), None)
-                    if closed is not None:
-                        return {"status": "replayed", "invocation_id": inv, **closed}
+                    finished = next((r for r in reversed(journal.get("recoveries", [])) if r["incident"]["since"] == since
+                                     and r["outcome"] != "termination_unconfirmed"), None)
+                    if finished is not None:
+                        return {"status": "replayed", "invocation_id": inv, **finished}
                     return _refusal("incident_not_open", f"{inv}'s open incident is {'none' if incident is None else 'raised at ' + incident['since']}")
                 if journal.get("settled"):
                     return _refusal("settled", f"{inv} ended {journal['settled']}")
+                # recorded unfinished in the write that draws its allowance: a crash leaves both or neither
+                journal["recovering"] = {"incident": incident, "requested_by": request["requested_by"], "reason": request["reason"], "at": self._now(),
+                                         "termination": None}
                 if not self._spend(job, journal, "recovery"):
                     return _refusal("recovery_exhausted", f"{inv}'s recovery budget ({self._policy(job).recovery_attempts}) is spent; the incident stays open")
-                entry = {"incident": incident, "requested_by": request["requested_by"], "reason": request["reason"], "at": self._now(), "termination": None}
-                collected, identity = journal.get("collected"), job.read("identity.json")
-                if collected and collected["observation"]["descendants"]["handling"] == "unconfirmed" and not collected.get("rehandled") and identity:
-                    ended = job.terminate(identity, term_grace=self._policy(job).term_grace_s, kill_grace=self._policy(job).kill_grace_s, reap=self._reap)
-                    entry["termination"] = {"at": self._now(), "descendants": self._handled(ended)}
-                    if not ended["confirmed"]:
-                        journal["recoveries"] = [*recoveries, {**entry, "outcome": "termination_unconfirmed"}]
-                        self._save(job, journal)
-                        return _refusal("termination_unconfirmed", f"{inv}'s execution group is still not confirmed empty; the incident stays open",
-                                        termination=entry["termination"])
-                    collected["rehandled"] = {**entry["termination"], "requested_by": request["requested_by"]}
-                journal["incident"] = None
-                journal["recoveries"] = [*recoveries, {**entry, "outcome": None}]
-                self._save(job, journal)
-                outcome = self._advance(job, order, journal)
-                journal = self._journal(job)  # the durable journal, under the lock: the advance may have saved a copy of its own (_write_failed)
-                journal["recoveries"][-1]["outcome"] = outcome
-                self._save(job, journal)
-                return {"status": "resumed", "invocation_id": inv, **journal["recoveries"][-1]}
+                return self._recovering(job, order, journal)
         except Busy:
             return _refusal("busy", f"{inv}'s job is held by another caller; nothing was done")
+
+    def _recovering(self, job: jobs.Job, order: dict, journal: dict) -> dict:
+        """Carry the job's unfinished operator recovery (journal["recovering"])
+        on from where its durable journal stands, under the job's lock its
+        caller holds, and record it finished: the group ended afresh if the
+        collected end's descendants are still unconfirmed and not yet
+        re-handled (terminating an empty group again confirms it empty), the
+        incident closed if still open, the job advanced. The recovery is
+        finished once that advance has returned (its outcome recorded), or
+        once a fresh termination is not confirmed (the incident kept open).
+        A crash anywhere before leaves it unfinished, to be carried on the
+        same way; nothing here draws on a budget."""
+        entry, inv = journal["recovering"], order["invocation_id"]
+        self._fault("recovery_recorded")
+        collected, identity = journal.get("collected"), job.read("identity.json")
+        if collected and collected["observation"]["descendants"]["handling"] == "unconfirmed" and not collected.get("rehandled") and identity:
+            ended = job.terminate(identity, term_grace=self._policy(job).term_grace_s, kill_grace=self._policy(job).kill_grace_s, reap=self._reap)
+            entry["termination"] = {"at": self._now(), "descendants": self._handled(ended)}
+            if not ended["confirmed"]:
+                self._recovered(job, journal, "termination_unconfirmed")
+                return _refusal("termination_unconfirmed", f"{inv}'s execution group is still not confirmed empty; the incident stays open",
+                                termination=entry["termination"])
+            collected["rehandled"] = {**entry["termination"], "requested_by": entry["requested_by"]}
+        if (journal.get("incident") or {}).get("since") == entry["incident"]["since"]:
+            journal["incident"] = None
+        self._save(job, journal)  # the fresh handling and the incident's closure, together
+        self._fault("recovery_closed")
+        outcome = self._advance(job, order, journal)
+        self._fault("recovery_advanced")
+        journal = self._journal(job)  # the durable journal, under the lock: the advance may have saved a copy of its own (_write_failed)
+        return {"status": "resumed", "invocation_id": inv, **self._recovered(job, journal, outcome)}
+
+    def _recovered(self, job: jobs.Job, journal: dict, outcome: str) -> dict:
+        """The unfinished recovery recorded finished, with its outcome."""
+        finished = {**journal.pop("recovering"), "outcome": outcome}
+        journal["recoveries"] = [*journal.get("recoveries", []), finished]
+        self._save(job, journal)
+        return finished
 
     def incidents(self) -> list[dict]:
         """Every open control incident of this supervisor's jobs (RG-3:
         visible, owned, deadlined): the one a stalled job waits on
-        (blocking), and each exhausted retry budget (kept beside the job's
-        end, which it does not block). Each names its invocation and that
-        invocation's topic, from the job's durable order, whatever has
-        happened to the topic's lanes since (Astra 1e review finding 5).
+        (blocking), an operator recovery not yet finished — listed as its
+        incident, with `recovery` saying who asked, when and for what, until
+        it is finished, whether or not it has closed the incident yet
+        (recover_incident) — and each exhausted retry budget (kept beside
+        the job's end, which it does not block). Each names its invocation
+        and that invocation's topic, from the job's durable order, whatever
+        has happened to the topic's lanes since (Astra 1e review finding 5).
         Read from the journals; changes nothing."""
         found = []
         for path in sorted(self.jobs_root.iterdir()):
             job = jobs.Job(self.jobs_root, path.name)
             order, journal = job.read("order.json"), job.read("journal.json") or {}
-            for key in ("incident", "exhausted"):
-                if order is not None and journal.get(key):
-                    found.append({"invocation_id": order["invocation_id"], "topic_id": order["topic_id"], "blocking": key == "incident", **journal[key]})
+            if order is None:
+                continue
+            named, unfinished = {"invocation_id": order["invocation_id"], "topic_id": order["topic_id"]}, journal.get("recovering")
+            if unfinished is not None:
+                found.append({**named, "blocking": True, **unfinished["incident"],
+                              "recovery": {"status": "unfinished", **{k: v for k, v in unfinished.items() if k != "incident"}}})
+            if journal.get("incident") and (unfinished is None or journal["incident"]["since"] != unfinished["incident"]["since"]):
+                found.append({**named, "blocking": True, **journal["incident"]})
+            if journal.get("exhausted"):
+                found.append({**named, "blocking": False, **journal["exhausted"]})
         return found
 
     def run(self, invocation_id: str, *, timeout_s: float = 60.0, until: tuple[str, ...] = TERMINAL + ("not_admitted",)) -> str:
@@ -417,7 +471,10 @@ class Supervisor:
         so no other caller reads that journal meanwhile or writes over it:
         another thread, or another supervisor sharing the jobs directory on
         this host (L-6, RG-3; Astra 1c re-review 3, BLOCK 1). Waiting for the
-        lock spends nothing and is bounded (Busy: "busy")."""
+        lock spends nothing and is bounded (Busy: "busy"). An operator
+        recovery left unfinished is this step: it is finished first
+        (_recovering), its outcome the step's ("stalled" if its fresh
+        termination is not confirmed)."""
         job = self.job(invocation_id)
         order = job.read("order.json")
         if order is None:
@@ -425,6 +482,8 @@ class Supervisor:
         try:
             with self._exclusive(order):
                 journal = self._journal(job)  # read under the lock: every write of this advance rests on it (_save)
+                if journal.get("recovering"):
+                    return self._recovering(job, order, journal).get("outcome", "stalled")
                 return self._advance(job, order, journal)
         except Busy as busy:
             return str(busy)
@@ -1153,7 +1212,9 @@ class Supervisor:
             request["result_payload_digest"] = pending["digest"]
         if pending["resolution"] in ("confirmed_failed", "terminated_group") and not (pending["resolution"] == "terminated_group" and status["cancel_requested"]):
             request["failure_class"] = pending["observation"]["findings"][0]
-        self._sent(job, journal, self._call(job, journal, "reconcile", request), "reconcile")
+        response = self._call(job, journal, "reconcile", request)
+        self._fault("reconcile_replied")
+        self._sent(job, journal, response, "reconcile")
         if journal.pop("unresolved", None) is not None:  # the episode is reconciled: its unknown budget is spent no longer
             journal["budgets"].pop("unknown", None)
             self._save(job, journal)

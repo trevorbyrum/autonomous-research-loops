@@ -22,6 +22,7 @@ journal read from disk; expected outcomes are written by hand.
 """
 from __future__ import annotations
 
+import http.client
 import io
 import json
 import os
@@ -40,6 +41,15 @@ from gen2.tests.supervisor_fixtures import AFTER_DEADLINE, MAIN, PARENT
 FORBIDDEN = {"status": "refused", "reason": "forbidden"}
 
 
+def at(doc, *path):
+    """doc[path[0]][path[1]]..., or None where any step is missing: an assertion then compares None, never raises."""
+    for key in path:
+        if not isinstance(doc, (dict, list)) or (key not in doc if isinstance(doc, dict) else not -len(doc) <= key < len(doc)):
+            return None
+        doc = doc[key]
+    return doc
+
+
 class Unconfirmed:
     """jobs.Job.terminate for a group that will not end: nothing is
     signalled, the group is never confirmed empty (test_supervisor_budgets)."""
@@ -54,7 +64,7 @@ class Unconfirmed:
         return mock.patch.object(jobs.Job, "terminate", terminate)
 
 
-class RecoveryFaults:
+class RecoveryWorld:
     """The engine's station runs real jobs under the fast fixture policy
     (recovery budget 3, unknown budget 5), its supervisor driven on the
     engine's owner thread as the composition root would drive it."""
@@ -94,9 +104,11 @@ class RecoveryFaults:
         return left
 
     def reap(self) -> None:
+        launchers = [*getattr(self, "replaced_launchers", [])]  # started by an engine this test has since replaced
         if self.engine is not None:
-            for popen in list(self.engine.station.supervisor._children.values()):
-                popen.poll()
+            launchers += self.engine.station.supervisor._children.values()
+        for popen in launchers:
+            popen.poll()
 
     def supervise(self, step):
         return self.engine.call(lambda station: step(station.supervisor))
@@ -181,7 +193,26 @@ class RecoveryFaults:
             lease = self.value("SELECT lease_id FROM invocations WHERE invocation_id = ?", MAIN)
             self.assertEqual(self.rows("SELECT release_reason FROM leases WHERE lease_id = ?", lease), [("failed",)])
 
-    # -- the tests -----------------------------------------------------------------
+    def unfinished(self, stalled: dict, requested_by: str = "alice") -> None:
+        """The journal records the recovery unfinished on its one allowance,
+        and status lists it once, as its incident, blocking, with who asked
+        and what clears it."""
+        journal = self.journal()
+        self.assertEqual((at(journal, "recovering", "incident"), at(journal, "recovering", "requested_by"), at(journal, "budgets", "recovery"),
+                          journal.get("recoveries", [])), (stalled, requested_by, 1, []))
+        listed = [i for i in self.status_doc()["incidents"] if i["invocation_id"] == MAIN]
+        self.assertEqual([({k: i.get(k) for k in stalled}, i["blocking"], i.get("clears_when"), at(i, "recovery", "status"), at(i, "recovery", "requested_by"))
+                          for i in listed], [(stalled, True, "recover_incident", "unfinished", requested_by)])
+
+    def restart_engine(self) -> None:
+        """This process's engine replaced by a new one over the same state (its launchers' processes kept reaped)."""
+        self.replaced_launchers = [*getattr(self, "replaced_launchers", []), *self.engine.station.supervisor._children.values()]
+        self.engine.close()
+        self.engine = None
+        self.engine = self.start_engine(fixture_policy=sf.FAST, supervisor_options={"launcher": sf.launcher()})
+
+
+class RecoveryFaults(RecoveryWorld):
     def test_recover_alone_stays_stalled_and_the_operators_recovery_reconciles_the_collected_end(self) -> None:
         identity = self.stall_on_the_collected_end()
         retained = self.journal()["collected"]
@@ -311,6 +342,194 @@ class RecoveryFaults:
                 self.assertEqual((code, reply["status"], reply["reason"]), (200, "refused", reason))
         self.assertEqual((self.state(exclude=()), self.journal()), (before, journal_before))
         self.assertEqual(self.command("recover_incident", self.request())[1]["status"], "resumed")
+
+    # -- a recovery cut short (Astra 1e-repair re-review finding 1) -------------------------
+    # In process, the cut is an exception out of the station's step (the engine answers 500), which leaves the journal as
+    # that step last wrote it; ReplacedRecoveryTest cuts it with a real process exit and a replacement engine.
+    def test_an_unfinished_recovery_is_finished_by_the_next_advance(self) -> None:
+        """Cut before the job is advanced: the incident closed, nothing
+        reconciled. After a restart the next advance is the recovery's own:
+        it reconciles, and the recovery is recorded finished; the request
+        again replays that, drawing nothing."""
+        self.stall_on_the_collected_end()
+        retained, stalled = self.journal()["collected"], self.journal()["incident"]
+        s = self.engine.station.supervisor
+        with mock.patch.object(s, "_advance", side_effect=RuntimeError("cut before the advance")):
+            self.assertEqual(self.command("recover_incident", self.request()), (500, {"status": "error", "reason": "internal"}))
+        self.assertEqual((self.held(), self.journal().get("incident"), at(self.journal(), "collected", "rehandled", "requested_by")), (self.UNRECONCILED, None, "alice"))
+        self.unfinished(stalled)
+        self.restart_engine()
+        self.unfinished(stalled)
+        self.assertEqual(self.supervise(lambda s: s.advance(MAIN)), "failed")
+        self.reconciled(retained)
+        journal = self.journal()
+        self.assertEqual(("recovering" in journal, [r.get("outcome") for r in journal.get("recoveries", [])], at(journal, "budgets", "recovery")), (False, ["failed"], 1))
+        code, again = self.command("recover_incident", self.request(incident_since=stalled["since"]))
+        self.assertEqual((code, again.get("status"), again.get("outcome"), again.get("incident")), (200, "replayed", "failed", stalled))
+        self.assertEqual((at(self.journal(), "budgets", "recovery"), [i["invocation_id"] for i in self.status_doc()["incidents"]]), (1, []))
+
+    def test_recover_finishes_an_unfinished_recovery_without_drawing_again(self) -> None:
+        """Cut after the recovery was recorded, before the group was ended:
+        the incident still open, the group alive. recover() does not close
+        the incident on an allowance of its own: it finishes the operator's
+        recovery, which ends the group and reconciles."""
+        identity = self.stall_on_the_collected_end()
+        retained, stalled = self.journal()["collected"], self.journal()["incident"]
+        with mock.patch.object(jobs.Job, "terminate", side_effect=RuntimeError("cut before the group is ended")):
+            self.assertEqual(self.command("recover_incident", self.request())[0], 500)
+        journal = self.journal()
+        self.assertEqual((journal.get("incident"), "recovering" in journal, at(journal, "recovering", "termination"), at(journal, "collected", "rehandled")),
+                         (stalled, True, None, None))
+        self.unfinished(stalled)
+        self.assertNotEqual(jobs.members(identity), [])
+        self.restart_engine()
+        self.assertEqual(self.supervise(lambda s: s.recover())[MAIN], "failed")
+        self.assertEqual(jobs.members(identity), [])
+        self.reconciled(retained)
+        journal = self.journal()
+        self.assertEqual((at(journal, "budgets", "recovery"), at(journal, "recoveries", 0, "outcome"), at(journal, "recoveries", 0, "termination", "descendants", "handling")),
+                         (1, "failed", "terminated"))
+
+    def test_an_unfinished_recovery_is_finished_before_another_incidents(self) -> None:
+        """Cut after the recovery's advance stalled the job on a new incident
+        (the router refused the reconciliation as a conflict, which no retry
+        changes), before the recovery was recorded finished. Status lists
+        both; the operator's request for the new incident first finishes the
+        old recovery (its advance stalls again on the new incident), then
+        recovers the new one on a second allowance."""
+        self.stall_on_the_collected_end()
+        retained, stalled = self.journal()["collected"], self.journal()["incident"]
+        s = self.engine.station.supervisor
+        router, advance = s.control, s._advance
+
+        class Conflicting:
+            def __getattr__(self, name):
+                if name == "reconcile":
+                    return lambda request: {"status": "refused", "reason": "reconciliation_conflict", "detail": "fixture: recorded otherwise"}
+                return getattr(router, name)
+
+        def advanced_then_cut(*args):
+            advance(*args)
+            raise RuntimeError("cut after the advance")
+        s.control = Conflicting()
+        try:
+            with mock.patch.object(s, "_advance", side_effect=advanced_then_cut):
+                self.assertEqual(self.command("recover_incident", self.request())[0], 500)
+        finally:
+            s.control = router
+        second = self.journal().get("incident") or {}
+        self.assertEqual((second.get("kind"), second.get("write"), at(self.journal(), "recovering", "incident"), self.held()),
+                         ("lifecycle_write_refused", "reconcile", stalled, self.UNRECONCILED))
+        listed = [(i["since"], "recovery" in i) for i in self.status_doc()["incidents"] if i["invocation_id"] == MAIN]
+        self.assertEqual(listed, [(stalled["since"], True), (second["since"], False)])
+        code, reply = self.command("recover_incident", self.request(incident_since=second["since"]))
+        self.assertEqual((code, reply.get("status"), reply.get("outcome"), reply.get("incident")), (200, "resumed", "failed", second))
+        self.reconciled(retained)
+        journal = self.journal()
+        self.assertEqual([(r["incident"]["since"], r.get("outcome")) for r in journal.get("recoveries", [])], [(stalled["since"], "stalled"), (second["since"], "failed")])
+        self.assertEqual(("recovering" in journal, at(journal, "budgets", "recovery")), (False, 2))
+        self.assertEqual(self.command("recover_incident", self.request(incident_since=stalled["since"]))[1].get("outcome"), "stalled")  # the first, replayed
+
+
+class ReplacedRecovery(of.EngineProcesses, RecoveryWorld):
+    """The operator's recovery cut short by a real process exit, and carried
+    on by a replacement engine (Astra 1e-repair re-review finding 1, its
+    reproduction). The stalled job is made in this process as RecoveryFaults
+    makes it; then the engine serving it is a process of its own
+    (recovery_child: the fixture policy and launcher, and a fault hook that
+    ends the process with os._exit(137) at one point of the recovery). The
+    operator's recovery is sent to it and gets no answer; an unmodified
+    `python -m gen2.app.engine` over the same state takes its place. From the
+    cut until the recovery is finished, status lists it, unfinished, as its
+    incident. The same request to the replacement carries it on: the episode
+    reconciled once, from fresh evidence, the old evidence kept, the hold
+    cleared and capacity released by that reconciliation alone, no second
+    allowance drawn — and only then answers resumed; the request again
+    replays that. Read-backs are raw SQL and the journal on disk."""
+    CUT_CLOCK = "2026-09-27T12:30:00Z"  # the cut engine's clock, after this test's (the replacement's is the real one)
+
+    def listener(self) -> tuple[str, int]:
+        return self.address
+
+    def serving(self, url: str | None) -> None:
+        """This test's requests go to the engine process at `url` from now on."""
+        self.assertIsNotNone(url, "the engine printed no address")
+        host, _, port = url.removeprefix("http://").rpartition(":")
+        self.address = (host, int(port))
+
+    def cut_and_replaced(self, point: str, reconciled_at_the_cut: bool) -> None:
+        identity = self.stall_on_the_collected_end()
+        retained, stalled = self.journal()["collected"], self.journal()["incident"]
+        request = self.request()
+        self.replaced_launchers = [*self.engine.station.supervisor._children.values()]
+        self.engine.close()
+        self.engine = None
+        cut, url = self.spawn(["-m", "gen2.tests.recovery_child", str(self.root), point, self.CUT_CLOCK])
+        self.serving(url)
+        with self.assertRaises((http.client.HTTPException, ConnectionError)):  # no answer: the process ended mid-request
+            self.command("recover_incident", request)
+        self.assertEqual(cut.wait(timeout=60), 137)
+        self.stop(cut)
+        # the cut: the recovery recorded unfinished on its one allowance, whatever of its work was done
+        journal = self.journal()
+        self.assertEqual((at(journal, "recovering", "incident"), at(journal, "budgets", "recovery"), journal.get("recoveries", [])), (stalled, 1, []))
+        if point == "recovery_recorded":  # before the group was ended: the incident open, the group alive
+            self.assertEqual((journal.get("incident"), at(journal, "collected", "rehandled")), (stalled, None))
+            self.assertNotEqual(jobs.members(identity), [])
+        else:
+            self.assertEqual((journal.get("incident"), at(journal, "collected", "rehandled", "descendants", "handling")), (None, "terminated"))
+            self.assertEqual(jobs.members(identity), [])
+        if reconciled_at_the_cut:
+            self.assertEqual({k: self.held()[k] for k in ("state", "open_holds", "reconciliations")}, {"state": "failed", "open_holds": 0, "reconciliations": 1})
+        else:
+            self.assertEqual(self.held(), self.UNRECONCILED)
+
+        replacement, url = self.spawn()
+        self.serving(url)
+        self.unfinished(stalled)  # listed engine-wide; and where the waiting item is:
+        topic = self.topic_status()
+        on_invocation = [w["incident"] for i in topic["invocations"] if i["invocation_id"] == MAIN for w in i["waiting"] if w["reason"] == "incident"]
+        on_topic = [w["incident"] for w in topic["waiting"] if w["reason"] == "incident"]
+        self.assertEqual([(i["since"], at(i, "recovery", "status")) for i in (on_topic if reconciled_at_the_cut else on_invocation)], [(stalled["since"], "unfinished")])
+        code, reply = self.command("recover_incident", request)
+        self.assertEqual((code, reply.get("status"), reply.get("outcome"), reply.get("incident"), reply.get("requested_by"), at(reply, "termination", "descendants", "handling")),
+                         (200, "resumed", "failed", stalled, "alice", "terminated"))
+        self.assertEqual(jobs.members(identity), [])
+        self.reconciled(retained)
+        journal = self.journal()
+        self.assertEqual(("recovering" in journal, at(journal, "budgets", "recovery"), [r.get("outcome") for r in journal.get("recoveries", [])], journal.get("settled")),
+                         (False, 1, ["failed"], "failed"))
+        after = self.state(exclude=())
+        self.assertEqual(self.command("recover_incident", request), (200, {**reply, "status": "replayed"}))
+        self.assertEqual((self.state(exclude=()), [i for i in self.status_doc()["incidents"] if i["invocation_id"] == MAIN]), (after, []))
+        self.stop(replacement)
+        self.assert_collected(2, "listening on ")
+        self.assert_no_token_in_any_output()
+
+    def test_cut_after_the_recovery_is_recorded_before_the_group_is_ended(self) -> None:
+        self.cut_and_replaced("recovery_recorded", reconciled_at_the_cut=False)
+
+    def test_cut_after_the_incident_is_closed_before_the_reconciliation(self) -> None:
+        """The review's reproduction: the process ends as the job is about
+        to be advanced — the group ended, the incident closed, nothing
+        reconciled."""
+        self.cut_and_replaced("recovery_closed", reconciled_at_the_cut=False)
+
+    def test_cut_after_the_router_reconciled_before_the_journal_says_so(self) -> None:
+        self.cut_and_replaced("reconcile_replied", reconciled_at_the_cut=True)
+
+    def test_cut_after_the_advance_before_the_recovery_is_recorded_finished(self) -> None:
+        """The work done, the job settled; the process ends before the
+        recovery is recorded finished and its reply sent."""
+        self.cut_and_replaced("recovery_advanced", reconciled_at_the_cut=True)
+
+
+class ResearchPassReplacedRecoveryTest(ReplacedRecovery, of.OperatorTestCase):
+    KIND = "research_pass"
+
+
+class DelegateReplacedRecoveryTest(ReplacedRecovery, of.OperatorTestCase):
+    KIND = "delegate"
 
 
 class ResearchPassRecoveryTest(RecoveryFaults, of.OperatorTestCase):
