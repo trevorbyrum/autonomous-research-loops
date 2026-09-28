@@ -301,6 +301,14 @@ MANUAL: dict[str, dict] = {
                "replacement tests start; the killer's accepted case — three engine processes start under the mounted secrets, serve health, "
                "status and commands, keep principals, pins and the confirmed brief, refuse the rotated token — runs under the mutant and is "
                "asserted before the secrecy check it fails, every engine's output collected first"},
+    # task 1e-repair-2: the review's startup-stdout mutant, in the refusal handler of the engine's start
+    "1E-engine-startup-stdout-leak": {
+        "controls": [], "in_killer": ["test_operator_restart.ReplacementTest.test_an_engine_without_usable_secrets_does_not_start"],
+        "why": "the changed line (the refusal handler of gen2/app/engine.py main) runs only in engine processes that refuse to start, which "
+               "only this test starts; its accepted case — each of the three refused starts exits 1 printing no address (in subTests), and "
+               "all three outputs are collected, none empty, each with the engine's fixed refusal diagnostic — runs under the mutant and is "
+               "asserted before the secrecy check it fails, the stdout line read at each start collected with the rest (Astra 1e-repair "
+               "re-review finding 3)"},
 }
 # A killer the trace shows entering its trigger in a statement that succeeds, where no other test does, is credited
 # with its own accepted case only once read: that statement runs before the refusal the mutant fails (or the

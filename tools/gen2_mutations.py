@@ -258,6 +258,8 @@ OCM, OCL, OMC = "test_operator_commands.", "test_operator_restart.CliTest.", "te
 ORC, ORD, OHI = "test_operator_recovery.DiscoveryRecoveryTest.", "test_operator_recovery.DelegateRecoveryTest.", "test_operator_status.HistoricalIncidentTest."
 OEN, ODS, OUB = "test_operator_mcp.McpEnvelopeTest.", "test_operator_auth.DiagnosticSecrecyTest.", "test_operator_auth.UnreadBodyTest."
 OCT, ORP = "test_operator_restart.CliTransportTest.", "test_operator_restart.ReplacementTest."
+# task 1e-repair-2 (Astra 1e-repair re-review findings 1-3)
+ORR, OCF = "test_operator_recovery.ResearchPassReplacedRecoveryTest.", "test_operator_auth.CarriedFormsTest."
 RECEIPT = "gen2/schema/export-delivery-receipt.schema.json"
 MANIFEST = "gen2/schema/export-manifest.schema.json"
 ENVELOPE = "gen2/schema/freshness-envelope.schema.json"
@@ -3752,7 +3754,8 @@ MUTATIONS: list[Mutation] = [
            '    waiting += [_incident(i) for i in incidents if i["topic_id"] == topic["topic_id"] and i["invocation_id"] not in live]', "    waiting += []"),
           ("status-incidents-unowned", "an incident names no topic (1e-repair: the topic is the order's, read by the supervisor)",
            (OEW + "test_the_station_incidents_are_listed_and_named_on_their_items", OHI + "test_a_cancelled_works_incident_keeps_its_topic_after_its_replacement"), SPV,
-           'found.append({"invocation_id": order["invocation_id"], "topic_id": order["topic_id"],', 'found.append({"invocation_id": order["invocation_id"], "topic_id": None,'),
+           'named, unfinished = {"invocation_id": order["invocation_id"], "topic_id": order["topic_id"]}',
+           'named, unfinished = {"invocation_id": order["invocation_id"], "topic_id": None}'),
           ("status-reconciliation-unexplained", "an outcome_unknown episode names no episode or hold",
            (OIW + "test_an_outcome_unknown_episode_waits_for_its_reconciliation_under_its_hold",), OPT,
            '    if inv["unknown"] is not None:', "    if False:"),
@@ -3839,10 +3842,12 @@ MUTATIONS: list[Mutation] = [
           # finding 2: the operator's recovery of a stalled job (supervisor.py recover_incident; service, engine, status)
           ("recover-no-fresh-termination", "the operator's recovery does not end the group afresh (recover() alone, which stalls again)",
            (ORC + "test_recover_alone_stays_stalled_and_the_operators_recovery_reconciles_the_collected_end", ORD + "test_the_station_ends_a_live_group_itself"), SPV,
-           '                if collected and collected["observation"]["descendants"]["handling"] == "unconfirmed" and not collected.get("rehandled") and identity:',
-           "                if False:", False),
+           '        if collected and collected["observation"]["descendants"]["handling"] == "unconfirmed" and not collected.get("rehandled") and identity:',
+           "        if False:", False),
           ("recover-unconfirmed-taken", "a fresh termination that is not confirmed is kept as the group's handling",
-           (ORC + "test_capacity_is_not_released_while_the_group_is_not_confirmed_ended",), SPV, '                    if not ended["confirmed"]:', "                    if False:", False),
+           (ORC + "test_capacity_is_not_released_while_the_group_is_not_confirmed_ended",), SPV,
+           '            if not ended["confirmed"]:\n                self._recovered(job, journal, "termination_unconfirmed")',
+           '            if False:\n                self._recovered(job, journal, "termination_unconfirmed")', False),
           ("recover-fresh-handling-unused", "the reconciliation ignores the fresh handling and stays on the retained unconfirmed one",
            (ORC + "test_the_station_ends_a_live_group_itself", ORD + "test_recover_alone_stays_stalled_and_the_operators_recovery_reconciles_the_collected_end"), SPV,
            '            if collected.get("rehandled"):', "            if False:", False),
@@ -3853,7 +3858,7 @@ MUTATIONS: list[Mutation] = [
            '                if incident is None or incident["since"] != since:', "                if incident is None:", False),
           ("recover-no-replay", "the same recovery once its incident is closed is refused, not replayed",
            (ORD + "test_recover_alone_stays_stalled_and_the_operators_recovery_reconciles_the_collected_end",), SPV,
-           "                    if closed is not None:\n", "                    if False:\n", False),
+           "                    if finished is not None:\n", "                    if False:\n", False),
           ("recover-invocation-unchecked", "a recovery's invocation id is taken as a path without its shape checked",
            (ORC + "test_a_request_not_naming_the_open_incident_is_refused",), SPV,
            ' \\\n                or not INVOCATION_ID.fullmatch(request["invocation_id"]):', ":", False),
@@ -3879,12 +3884,12 @@ MUTATIONS: list[Mutation] = [
            "        return code, self._credentials.redact(reply)", "        return code, reply", False),
           ("auth-redact-nothing", "redaction replaces no token",
            ("test_operator_auth.CredentialsTest.test_redact_takes_every_configured_token_out", ODS + "test_no_carried_token_reaches_a_log_a_reply_or_a_header"), OPA,
-           "            for token in self._tokens:", "            for token in ():", False),
+           "            for form in self._forms:", "            for form in ():", False),
           ("auth-redact-keys-kept", "a token standing as a key is kept", ("test_operator_auth.CredentialsTest.test_redact_takes_every_configured_token_out",), OPA,
            "            return {self.redact(k): self.redact(v) for k, v in value.items()}", "            return {k: self.redact(v) for k, v in value.items()}", False),
           ("auth-redact-shortest-first", "a token another's prefix is redacted first, leaving the longer one half-shown",
            ("test_operator_auth.CredentialsTest.test_redact_takes_every_configured_token_out",), OPA,
-           "key=len, reverse=True))", "key=len))", False),
+           "}, key=len, reverse=True))", "}, key=len))", False),
           ("engine-parser-reflects", "the parser's refusals are http.server's own (the request's text in the reason phrase and page)",
            (ODS + "test_no_carried_token_reaches_a_log_a_reply_or_a_header",), ENG,
            "        def send_error(self, code: int,", "        def _unused_send_error(self, code: int,", False),
@@ -3903,7 +3908,7 @@ MUTATIONS: list[Mutation] = [
           ("mcp-method-unchecked", "a method that is not a string is taken", (OEN + "test_each_malformed_member_is_refused_before_dispatch",), OPS,
            ' or not isinstance(message.get("method"), str)', "", False),
           ("mcp-id-unchecked", "any id is taken", (OEN + "test_each_malformed_member_is_refused_before_dispatch",), OPS,
-           "                or (has_id and not _request_id(ident)) or (", "                or (", False),
+           "        usable = has_id and _request_id(ident) and ", "        usable = has_id and ", False),
           ("mcp-id-bool", "a boolean id is taken as an integer", (OEN + "test_each_malformed_member_is_refused_before_dispatch",), OPS,
            "(type(ident) is int and", "(isinstance(ident, int) and", False),
           ("mcp-params-type-unchecked", "params that are not an object are taken", (OEN + "test_each_malformed_member_is_refused_before_dispatch",), OPS,
@@ -3957,6 +3962,83 @@ MUTATIONS: list[Mutation] = [
            (OUB + "test_a_client_too_slow_is_not_waited_for",), ENG,
            "                while remaining > 0 and (left := deadline - time.monotonic()) > 0:\n                    self.connection.settimeout(min(DRAIN_IDLE_S, left))",
            "                while remaining > 0:\n                    self.connection.settimeout(DRAIN_IDLE_S)", False),
+      )),
+    # task 1e-repair-2 (Astra 1e-repair re-review findings 1-3): each repair's guard removed alone
+    *(Mutation(f"1E-{key}", "1e-repair-2", desc, tuple(killers), target=target, old=old, new=new, via_child=child)
+      for key, desc, killers, target, old, new, child in (
+          # finding 1: an unfinished recovery is recorded unfinished and carried on, never replayed as done
+          ("recover-finished-before-the-work", "the recovery is recorded finished, outcome null, before the job is advanced (the 1e-repair defect)",
+           (ORR + "test_cut_after_the_incident_is_closed_before_the_reconciliation", ORR + "test_cut_after_the_router_reconciled_before_the_journal_says_so",
+            ORR + "test_cut_after_the_advance_before_the_recovery_is_recorded_finished"), SPV,
+           "        self._save(job, journal)  # the fresh handling and the incident's closure, together\n        self._fault(\"recovery_closed\")\n"
+           "        outcome = self._advance(job, order, journal)\n        self._fault(\"recovery_advanced\")\n"
+           "        journal = self._journal(job)  # the durable journal, under the lock: the advance may have saved a copy of its own (_write_failed)\n"
+           '        return {"status": "resumed", "invocation_id": inv, **self._recovered(job, journal, outcome)}\n',
+           "        self._recovered(job, journal, None)\n        self._fault(\"recovery_closed\")\n"
+           "        outcome = self._advance(job, order, journal)\n        self._fault(\"recovery_advanced\")\n"
+           '        journal = self._journal(job)\n        journal["recoveries"][-1]["outcome"] = outcome\n        self._save(job, journal)\n'
+           '        return {"status": "resumed", "invocation_id": inv, **journal["recoveries"][-1]}\n', True),
+          ("recover-unfinished-replayed-null", "the same request replays an unfinished recovery as done, outcome null, its work not carried on",
+           (ORR + "test_cut_after_the_incident_is_closed_before_the_reconciliation", ORR + "test_cut_after_the_recovery_is_recorded_before_the_group_is_ended"), SPV,
+           "                    answer = self._recovering(job, order, journal)\n",
+           '                    answer = {"status": "replayed", "invocation_id": inv, **unfinished, "outcome": None}\n', True),
+          ("recover-allowance-apart", "the allowance is drawn in a write of its own, before the recovery is recorded",
+           (ORR + "test_cut_after_the_recovery_is_recorded_before_the_group_is_ended",), SPV,
+           '                journal["recovering"] = {"incident": incident, "requested_by": request["requested_by"], "reason": request["reason"], "at": self._now(),\n'
+           '                                         "termination": None}\n'
+           '                if not self._spend(job, journal, "recovery"):\n'
+           '                    return _refusal("recovery_exhausted", f"{inv}\'s recovery budget ({self._policy(job).recovery_attempts}) is spent; the incident stays open")\n',
+           '                if not self._spend(job, journal, "recovery"):\n'
+           '                    return _refusal("recovery_exhausted", f"{inv}\'s recovery budget ({self._policy(job).recovery_attempts}) is spent; the incident stays open")\n'
+           '                journal["recovering"] = {"incident": incident, "requested_by": request["requested_by"], "reason": request["reason"], "at": self._now(),\n'
+           '                                         "termination": None}\n', True),
+          ("recover-unfinished-unlisted", "status does not list an unfinished recovery (its incident closed: nothing is listed)",
+           (ORC + "test_an_unfinished_recovery_is_finished_by_the_next_advance", ORD + "test_an_unfinished_recovery_is_finished_by_the_next_advance"), SPV,
+           "            if unfinished is not None:\n                found.append(", "            if False:\n                found.append(", False),
+          ("recover-unfinished-listed-twice", "an unfinished recovery whose incident is still open is listed twice",
+           (ORC + "test_recover_finishes_an_unfinished_recovery_without_drawing_again",), SPV,
+           '            if journal.get("incident") and (unfinished is None or journal["incident"]["since"] != unfinished["incident"]["since"]):',
+           '            if journal.get("incident"):', False),
+          ("recover-advance-ignores-unfinished", "advance() does not carry an unfinished recovery on",
+           (ORC + "test_an_unfinished_recovery_is_finished_by_the_next_advance",), SPV,
+           '                if journal.get("recovering"):\n                    return self._recovering(job, order, journal).get("outcome", "stalled")\n', "", False),
+          ("recover-advance-unconfirmed-failed", "advance() reports a carried-on recovery whose termination is unconfirmed as failed",
+           (ORC + "test_an_unfinished_recovery_whose_fresh_termination_is_unconfirmed_releases_nothing",), SPV,
+           '.get("outcome", "stalled")', '.get("outcome", "failed")', False),
+          ("recover-draws-again", "recover() closes the incident on an allowance of its own while a recovery is unfinished",
+           (ORC + "test_recover_finishes_an_unfinished_recovery_without_drawing_again",), SPV,
+           '                    if journal.get("incident") and not journal.get("recovering") \\\n', '                    if journal.get("incident") \\\n', False),
+          ("recover-unfinished-overwritten", "another incident's recovery is started over an unfinished one",
+           (ORC + "test_an_unfinished_recovery_is_finished_before_another_incidents",), SPV,
+           "                if unfinished is not None:  # finished first, whichever incident this request names\n",
+           '                if unfinished is not None and unfinished["incident"]["since"] == since:\n', False),
+          ("recover-closes-another-incident", "a carried-on recovery closes whatever incident is open, not only its own",
+           (ORC + "test_an_unfinished_recovery_is_finished_before_another_incidents",), SPV,
+           '        if (journal.get("incident") or {}).get("since") == entry["incident"]["since"]:\n            journal["incident"] = None\n',
+           '        if True:\n            journal["incident"] = None\n', False),
+          # finding 2: no credential escapes through MCP's nested text or a request id
+          ("svc-mcp-text-unredacted", "a tool's reply is nested as MCP text before it is redacted",
+           (OCF + "test_the_tool_text_is_redacted_before_it_is_nested_whatever_the_boundary_does",), OPS,
+           '"text": json.dumps(self._credentials.redact(reply), sort_keys=True)', '"text": json.dumps(reply, sort_keys=True)', False),
+          ("svc-mcp-id-credential-kept", "an MCP id carrying a configured token is taken (then echoed, or answered redacted)",
+           (OCF + "test_an_id_carrying_a_token_is_refused_and_never_echoed",), OPS, " and self._credentials.redact(ident) == ident", "", False),
+          ("auth-redact-escaped-kept", "a token JSON-escaped is not taken out", (OCR + "test_redact_takes_out_each_form_a_reply_can_carry",), OPA,
+           "for form in (token, json.dumps(token)[1:-1])}", "for form in (token,)}", False),
+          ("auth-redact-encoded-kept", "a string showing a token only percent-decoded is kept",
+           (OCR + "test_redact_takes_out_each_form_a_reply_can_carry", OCF + "test_an_id_carrying_a_token_is_refused_and_never_echoed"), OPA,
+           "            return REDACTED if self._encoded(value) else value", "            return value", False),
+          ("auth-redact-decoded-once", "a string is percent-decoded once only (a token encoded twice is kept)",
+           (OCR + "test_redact_takes_out_each_form_a_reply_can_carry", OCF + "test_an_id_carrying_a_token_is_refused_and_never_echoed"), OPA,
+           "            text = decoded\n", "            break\n", False),
+          ("auth-redact-numbers-kept", "a number whose digits hold a token is kept",
+           (OCR + "test_redact_takes_out_each_form_a_reply_can_carry", OCF + "test_an_id_carrying_a_token_is_refused_and_never_echoed"), OPA,
+           "        if isinstance(value, (int, float)) and any(token in str(value) for token in self._tokens):  # True/False hold no token\n            return REDACTED\n",
+           "", False),
+          # finding 3: the review's startup-stdout mutant (the operator tokens printed to stdout on the refusal path, before its diagnostic)
+          ("engine-startup-stdout-leak", "the engine prints GEN2_OPERATOR_TOKENS to stdout as it refuses to start",
+           (ORP + "test_an_engine_without_usable_secrets_does_not_start",), ENG,
+           '        print(f"gen2 engine refused to start: {refused}", file=sys.stderr, flush=True)',
+           '        print(environ.get("GEN2_OPERATOR_TOKENS"), flush=True)\n        print(f"gen2 engine refused to start: {refused}", file=sys.stderr, flush=True)', True),
       )),
 ]
 
