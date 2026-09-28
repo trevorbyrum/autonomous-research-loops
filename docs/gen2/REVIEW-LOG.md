@@ -492,3 +492,10 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-1e-repair-3-astr
 **Remaining (MEDIUM, new):** the pre-dispatch piece-wise check and the later recursive whole-string check disagree at the 256-state decoding cap. A harmless ID with 272 combined states passes acceptance, executes, then returns `id: "[credential]"` — an accepted correlation ID changed after execution; two harmless seeded capability-fact strings likewise get an already-checked MCP tool document replaced whole, producing a success reply whose tool text isn't valid JSON. Not a secret disclosure — a correctness defect of the masking itself. Astra verified a one-line repair in a disposable tree (the later predicate scans the same pieces).
 
 **Routed:** `docs/gen2/tasks/1e-repair-4.md` to an Opus 5.5 coder.
+
+## 2026-09-28 — 1e-repair-4 re-review (Astra, xhigh) — **1e ACCEPTED, conditional only on task 1f** (5 review rounds)
+Full report: `~/work/research-loops-public/private/reviews/gen2-1e-repair-4-astra-review-20260928.md`. Gates A/B/C all PASS.
+
+**All four reproductions verified at HEAD in unmodified engine processes:** the 272-state ID echoed exactly with the cancellation recorded; the deeply-encoded status document intact over REST and MCP; the trailing-backslash ID refused up front with the store unchanged; the reply-matching secret answered by the exact fixed 500. Astra also **independently confirmed the coder's counter-evidence**: it rebuilt disposable trees with its own earlier one-line `auth.py` proposal (hash-matched) and reproduced both additional failures against it — the coder was right that it was insufficient, and both added guards are REQUIRED and ACCEPTED.
+
+**1e totals:** 5 rounds (BLOCK 8 findings → 3 → narrow → narrow → ACCEPT). **The Phase 1→2 operator gate now contains exactly:** (1) task 1f's four pinned-runner deployment demonstrations; (2) the operator's Phase 1 acceptance and Phase 2 authorization (decision layer stays disabled/unqualified); (3) merge to main as a separate operator decision. The H-4 locator cleanup stays nonblocking.
