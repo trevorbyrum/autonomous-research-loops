@@ -184,6 +184,22 @@ MANUAL: dict[str, dict] = {
         "controls": ["test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_commit_refused_while_paused_commits_once_the_pause_lifts"],
         "why": "executes gen2/supervisor/supervisor.py's commit-budget guard (if self._spend(job, journal, \"commit\")) on its accepted path: "
                "the commit refused once while paused is resent within budget and commits"},
+    # task 1e: every traced status read is of a world with ended work, which the mutant lists (and status then fails for); the
+    # accepted case — live work only — was written as a test of its own, added after the trace
+    "1E-rstatus-ended-invocations": {
+        "controls": ["test_operator_status.LiveWorkTest.test_live_work_alone_is_listed"],
+        "why": "evaluates gen2/router/status.py's live-work filter (if i[\"state\"] in LIVE) on a running pass, the case it admits, in a "
+               "world with no ended work, and asserts the pass is listed waiting for its end"},
+    # task 1e: every traced in-process CLI call but health sends a token; health without one was written as a test of its own
+    "1E-cli-token-unsent": {
+        "controls": ["test_operator_restart.CliTest.test_health_is_asked_without_a_token"],
+        "why": "evaluates gen2/app/cli.py's `if token:` with no token (no header sent, the branch the mutant always takes) and asserts "
+               "the unauthenticated health route still answers"},
+    # task 1e: only the killer replays a brief closure; its accepted case was split out as a test of its own, added after the trace
+    "1E-close-conflict-replayed": {
+        "controls": ["test_operator_commands.BriefCommandTest.test_the_identical_closure_replays"],
+        "why": "passes gen2/router/amendments.py's closure-conflict guard (if (row[\"status\"], row[\"closed_by\"], row[\"close_reason\"]) != ...) "
+               "without taking it: the identical closure by the same operator replays and writes nothing"},
     # task 1c-repair-4 (the C4 re-check): the traced candidates reach the supersession loop's header only through a fixture's
     # first approval; the accepted case it admits was split out of the killer as a test of its own, added after the trace
     "1B-approval-without-supersession": {

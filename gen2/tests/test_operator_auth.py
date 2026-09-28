@@ -46,9 +46,21 @@ class HealthTest(of.OperatorTestCase):
     def test_health_is_a_read(self) -> None:
         before = self.state(exclude=())
         code, reply, _ = self.http("POST", "/v1/health", {"status": "down"}, token=None)
-        self.assertEqual((code, reply["reason"]), (405, "method_not_allowed"))
+        self.assertEqual((code, reply.get("reason")), (405, "method_not_allowed"))
         self.assertEqual(self.http("GET", "/v1/health", token=None)[0], 200)
         self.assertEqual(self.state(exclude=()), before)
+
+
+def raw_answer(engine, request: bytes) -> str:
+    """Send `request` as it is and read the first answer; an answer that does
+    not come within 5 s is the empty string (the assertion then fails)."""
+    host, port = engine.address
+    with socket.create_connection((host, port), timeout=5) as conn:
+        conn.sendall(request)
+        try:
+            return conn.recv(4096).decode("latin-1")
+        except TimeoutError:
+            return ""
 
 
 class AuthenticationTest(of.CommandWorld):
@@ -82,11 +94,8 @@ class AuthenticationTest(of.CommandWorld):
         """A wrong token declaring a large body it never sends is answered at
         once: the service does not read what an unauthenticated caller says it
         will send."""
-        host, port = self.engine.address
-        with socket.create_connection((host, port), timeout=10) as conn:
-            conn.sendall(b"POST /v1/commands/request_cancel HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer op-token-mallory-0123456789abcdef\r\n"
-                         b"Content-Length: 900000\r\n\r\n")
-            answer = conn.recv(4096).decode("latin-1")
+        answer = raw_answer(self.engine, b"POST /v1/commands/request_cancel HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer op-token-mallory-0123456789abcdef\r\n"
+                                         b"Content-Length: 900000\r\n\r\n")
         self.assertTrue(answer.startswith("HTTP/1.0 401"), answer)
 
     def test_the_bearer_scheme_is_matched_without_case_and_the_token_exactly(self) -> None:
@@ -128,7 +137,7 @@ class AuthorizationTest(of.CommandWorld):
             with self.subTest(command=name):
                 self.assertEqual(self.command(name, bodies[name], token=of.EXPORTER_TOKEN), (403, {"status": "refused", "reason": "forbidden"}))
                 code, reply, _ = self.http("POST", f"/v1/commands/{name}", raw=b"{not json", token=of.EXPORTER_TOKEN)  # refused before its body is parsed
-                self.assertEqual((code, reply["reason"]), (403, "forbidden"))
+                self.assertEqual((code, reply.get("reason")), (403, "forbidden"))
         self.assertEqual(self.state(exclude=()), before)
         for name in OPERATOR_COMMANDS:
             with self.subTest(control=name):
@@ -163,7 +172,7 @@ class AuthorizationTest(of.CommandWorld):
                             ("apply_operator_decision", {"capability_id": self.run_grant["capability_id"]})):
             with self.subTest(command=name):
                 code, reply = self.command(name, {**bodies[name], **extra})
-                self.assertEqual((code, reply["reason"]), (400, "authority_in_request"))
+                self.assertEqual((code, reply.get("reason")), (400, "authority_in_request"))
         self.assertEqual(self.state(exclude=()), before)
         for name in ("request_cancel", "apply_operator_decision"):
             self.assertEqual(self.command(name, bodies[name])[1]["status"], APPLIED[name])
@@ -220,7 +229,7 @@ class AuthorityFieldTest(of.CommandWorld):
         for name, field, value in cases:
             with self.subTest(command=name, field=field):
                 code, reply = self.command(name, {**bodies[name], field: value})
-                self.assertEqual((code, reply["reason"]), (400, "authority_in_request"))
+                self.assertEqual((code, reply.get("reason")), (400, "authority_in_request"))
                 self.assertIn(field, reply["detail"])
         self.assertEqual(self.state(exclude=()), before)
         for name, _, _ in cases:
@@ -243,22 +252,16 @@ class BodyTest(of.CommandWorld):
                 ("a non-finite number", text[:-1].encode() + b', "n": NaN}', None, (400, "request_invalid"))):
             with self.subTest(label=label):
                 code, reply, _ = self.http("POST", "/v1/commands/request_cancel", raw=raw, headers=headers)
-                self.assertEqual((code, reply["reason"]), expected)
-        host, port = self.engine.address
-        with socket.create_connection((host, port), timeout=10) as conn:  # declared, never sent: refused unread
-            conn.sendall(f"POST /v1/commands/request_cancel HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {of.OPERATOR_TOKEN}\r\n"
-                         f"Content-Length: {1024 * 1024 + 1}\r\n\r\n".encode())
-            answer = conn.recv(4096).decode("latin-1")
+                self.assertEqual((code, reply.get("reason")), expected)
+        answer = raw_answer(self.engine, f"POST /v1/commands/request_cancel HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {of.OPERATOR_TOKEN}\r\n"
+                                         f"Content-Length: {1024 * 1024 + 1}\r\n\r\n".encode())  # declared, never sent: refused unread
         self.assertTrue(answer.startswith("HTTP/1.0 413"), answer)
         self.assertEqual(self.state(exclude=()), before)
         self.assertEqual(self.command("request_cancel", body)[1]["status"], "recorded")
 
     def test_a_body_without_a_length_is_refused(self) -> None:
-        host, port = self.engine.address
-        with socket.create_connection((host, port), timeout=10) as conn:
-            conn.sendall(f"POST /v1/commands/request_cancel HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {of.OPERATOR_TOKEN}\r\n"
-                         "Transfer-Encoding: chunked\r\n\r\n".encode())  # no chunk sent: the answer comes without reading one
-            answer = conn.recv(4096).decode("latin-1")
+        answer = raw_answer(self.engine, f"POST /v1/commands/request_cancel HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {of.OPERATOR_TOKEN}\r\n"
+                                         "Transfer-Encoding: chunked\r\n\r\n".encode())  # no chunk sent: the answer comes without reading one
         self.assertTrue(answer.startswith("HTTP/1.0 411"), answer)
 
 

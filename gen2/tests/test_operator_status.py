@@ -246,9 +246,9 @@ class InvocationWaitingTest(StatusWorld):
     def test_an_outcome_unknown_episode_waits_for_its_reconciliation_under_its_hold(self) -> None:
         found = self.one(self.invocation(self.status_doc(), "inv_unknown0001"), "reconciliation")
         row = self.hold_row(subject_ref="invocation:inv_unknown0001#unknown:1")
-        self.assertEqual((found["episode"], found["hold"]), (1, {k: row[k] for k in ("hold_id", "owner", "deadline_at", "clears_when")}))
+        self.assertEqual((found.get("episode"), found.get("hold")), (1, {k: row[k] for k in ("hold_id", "owner", "deadline_at", "clears_when")}))
         self.assertEqual(row["owner"], "supervisor:station-1")
-        self.assertEqual(found["since"], self.value("SELECT outcome_unknown_since FROM invocations WHERE invocation_id = 'inv_unknown0001'"))
+        self.assertEqual(found.get("since"), self.value("SELECT outcome_unknown_since FROM invocations WHERE invocation_id = 'inv_unknown0001'"))
 
     def test_fenced_work_is_amendment_pending_naming_what_superseded_its_pin(self) -> None:
         inv = self.invocation(self.status_doc(), "inv_fenced00001")
@@ -308,6 +308,17 @@ class EngineWideTest(StatusWorld):
         self.assertEqual(self.one(topic, "requeue")["cancel_requested_by"], "supervisor")
 
 
+class LiveWorkTest(of.OperatorTestCase):
+    def test_live_work_alone_is_listed(self) -> None:
+        """A topic whose only work is running: it is listed, waiting for its end
+        (the accepted case of the router's live-work filter, in a world with no
+        ended work beside it)."""
+        self.to_queued()
+        self.started("inv_live0000001")
+        topic = self.topic_status()
+        self.assertEqual([(i["invocation_id"], [w["reason"] for w in i["waiting"]]) for i in topic["invocations"]], [("inv_live0000001", ["end"])])
+
+
 class ReadOnlyTest(StatusWorld):
     def test_status_changes_nothing(self) -> None:
         """Every table's rows, audit events included, and the jobs directory,
@@ -322,4 +333,4 @@ class ReadOnlyTest(StatusWorld):
         doc = self.status_doc(T4)
         self.assertEqual([t["topic_id"] for t in doc["topics"]], [T4])
         code, reply, _ = self.http("GET", "/v1/status?topic=fleet-a:nope")
-        self.assertEqual((code, reply["status"], reply["reason"]), (200, "refused", "unknown_topic"))
+        self.assertEqual((code, reply["status"], reply.get("reason")), (200, "refused", "unknown_topic"))

@@ -156,11 +156,14 @@ class CliTest(of.CommandWorld):
         code, reply, _ = self.run_cli("status", "--topic", OTHER)
         self.assertEqual((code, [t["topic_id"] for t in reply["topics"]]), (0, [OTHER]))
 
+    def test_health_is_asked_without_a_token(self) -> None:
+        self.assertEqual(self.run_cli("health", token=None)[:2], (0, {"status": "ok"}))
+
     def test_the_exit_code_says_who_refused(self) -> None:
         code, reply, _ = self.run_cli("call", "request_cancel", body={"invocation_id": of.FAILED, "reason": "stop"})
-        self.assertEqual((code, reply["reason"]), (1, "not_cancellable"))
+        self.assertEqual((code, reply.get("reason")), (1, "not_cancellable"))
         code, reply, err = self.run_cli("call", "request_cancel", token=of.EXPORTER_TOKEN, body=self.bodies()["request_cancel"])
-        self.assertEqual((code, reply["reason"]), (2, "forbidden"))
+        self.assertEqual((code, reply.get("reason")), (2, "forbidden"))
         self.assertIn("HTTP 403", err)
         self.assertEqual(self.run_cli("status", token=None)[0], 2)
         self.assertEqual(self.run_cli("health", token=None)[:2], (0, {"status": "ok"}))

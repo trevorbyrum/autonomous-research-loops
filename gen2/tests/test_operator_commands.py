@@ -27,14 +27,14 @@ class DecisionCommandTest(of.CommandWorld):
         before = self.state(exclude=())
         self.assertEqual(self.command("apply_operator_decision", body)[1]["status"], "replayed")
         code, reply = self.command("apply_operator_decision", body, token=of.OTHER_OPERATOR_TOKEN)  # the same id from another operator is other content
-        self.assertEqual((code, reply["status"], reply["reason"]), (200, "rejected", "decision_id_conflict"))
+        self.assertEqual((code, reply["status"], reply.get("reason")), (200, "rejected", "decision_id_conflict"))
         self.assertEqual(self.state(exclude=()), before)
 
     def test_a_decision_the_router_refuses_writes_nothing(self) -> None:
         body = self.bodies()["apply_operator_decision"]
         before = self.state(exclude=())
         code, reply = self.command("apply_operator_decision", {**body, "subject": {**body["subject"], "hash": rf.h("0")}})
-        self.assertEqual((code, reply["status"], reply["reason"]), (200, "rejected", "decision_refused"))
+        self.assertEqual((code, reply["status"], reply.get("reason")), (200, "rejected", "decision_refused"))
         self.assertEqual(self.state(exclude=()), before)
         self.assertEqual(self.command("apply_operator_decision", body)[1]["status"], "applied")
 
@@ -57,7 +57,7 @@ class HoldCommandTest(of.CommandWorld):
         hold = self.value("SELECT hold_id FROM holds WHERE subject_ref = 'invocation:inv_unknown0001#unknown:1'")
         before = self.state(exclude=())
         code, reply = self.command("apply_operator_decision", self.clearance(hold, "opd_clear0002"))
-        self.assertEqual((code, reply["status"], reply["reason"]), (200, "rejected", "decision_refused"))
+        self.assertEqual((code, reply["status"], reply.get("reason")), (200, "rejected", "decision_refused"))
         self.assertEqual(self.state(exclude=()), before)
 
 
@@ -81,7 +81,7 @@ class CancelCommandTest(of.CommandWorld):
         for invocation, reason in ((of.FAILED, "not_cancellable"), (of.RUNNING, "cancel_conflict"), ("inv_nosuch00001", "unknown_invocation")):
             with self.subTest(invocation=invocation):
                 code, reply = self.command("request_cancel", {"invocation_id": invocation, "reason": "stop"})
-                self.assertEqual((code, reply["status"], reply["reason"]), (200, "refused", reason))
+                self.assertEqual((code, reply["status"], reply.get("reason")), (200, "refused", reason))
         self.assertEqual(self.state(exclude=()), before)
 
 
@@ -133,7 +133,7 @@ class BriefCommandTest(of.CommandWorld):
                 ("unknown", {**archive, "version": 9}, "unknown_brief")):
             with self.subTest(label=label):
                 code, reply = self.command("close_brief", body)
-                self.assertEqual((code, reply["status"], reply["reason"]), (200, "refused", reason))
+                self.assertEqual((code, reply["status"], reply.get("reason")), (200, "refused", reason))
         self.assertEqual(self.state(exclude=()), before)
         self.assertEqual(self.command("close_brief", archive)[1]["status"], "closed")
         before = self.state(exclude=())
@@ -142,7 +142,17 @@ class BriefCommandTest(of.CommandWorld):
                                    ("another operator", archive, of.OTHER_OPERATOR_TOKEN)):
             with self.subTest(label=label):
                 code, reply = self.command("close_brief", body, token=token)
-                self.assertEqual((code, reply["status"], reply["reason"]), (200, "refused", "brief_close_conflict"))
+                self.assertEqual((code, reply["status"], reply.get("reason")), (200, "refused", "brief_close_conflict"))
+        self.assertEqual(self.state(exclude=()), before)
+
+    def test_the_identical_closure_replays(self) -> None:
+        """The accepted case of the closure's write-once guard, on its own: the
+        same closure by the same operator again replays and writes nothing."""
+        archive = self.bodies()["close_brief"]
+        self.assertEqual(self.command("close_brief", archive)[1]["status"], "closed")
+        before = self.state(exclude=())
+        code, reply = self.command("close_brief", archive)
+        self.assertEqual((code, reply["status"], reply["closure"]), (200, "replayed", "archived"))
         self.assertEqual(self.state(exclude=()), before)
 
     def test_a_version_or_marking_the_router_refuses_writes_nothing(self) -> None:
@@ -151,7 +161,7 @@ class BriefCommandTest(of.CommandWorld):
                                         ("mark_brief_overdue", {"topic_id": OTHER, "brief_id": "brief-1", "version": 1}, "not_overdue")):
             with self.subTest(operation=operation):
                 code, reply = self.command(operation, body)
-                self.assertEqual((code, reply["status"], reply["reason"]), (200, "refused", reason))
+                self.assertEqual((code, reply["status"], reply.get("reason")), (200, "refused", reason))
         self.assertEqual(self.state(exclude=()), before)
 
 
@@ -170,7 +180,7 @@ class AmendmentCommandTest(of.CommandWorld):
     def test_an_amendment_the_router_refuses_writes_nothing(self) -> None:
         before = self.state(exclude=())
         code, reply = self.command("propose_amendment", {"document": self.amend.contract_doc(5, 2, edit=self.amend.compatible)})
-        self.assertEqual((code, reply["status"], reply["reason"]), (200, "refused", "request_invalid"))
+        self.assertEqual((code, reply["status"], reply.get("reason")), (200, "refused", "request_invalid"))
         self.assertEqual(self.state(exclude=()), before)
 
 
@@ -185,7 +195,7 @@ class RequeueCommandTest(of.CommandWorld):
     def test_work_that_has_not_ended_is_not_requeued(self) -> None:
         before = self.state(exclude=())
         code, reply = self.command("requeue", {"invocation_id": of.RUNNING, "reason": "again"})
-        self.assertEqual((code, reply["status"], reply["reason"]), (200, "refused", "not_requeueable"))
+        self.assertEqual((code, reply["status"], reply.get("reason")), (200, "refused", "not_requeueable"))
         self.assertEqual(self.state(exclude=()), before)
 
 
@@ -198,7 +208,7 @@ class DeliveryCommandTest(of.CommandWorld):
     def test_a_receipt_of_no_manifest_writes_nothing(self) -> None:
         before = self.state(exclude=())
         code, reply = self.command("ack_delivery", {**self.bodies()["ack_delivery"], "manifest_id": "man_nosuch0001"}, token=of.EXPORTER_TOKEN)
-        self.assertEqual((code, reply["status"], reply["reason"]), (200, "rejected", "unknown_manifest"))
+        self.assertEqual((code, reply["status"], reply.get("reason")), (200, "rejected", "unknown_manifest"))
         self.assertEqual(self.state(exclude=()), before)
 
 

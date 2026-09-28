@@ -48,7 +48,7 @@ class McpTest(of.CommandWorld):
                 ("the router's refusal", "request_cancel", {"invocation_id": of.FAILED, "reason": "stop"}, of.OPERATOR_TOKEN, "not_cancellable")):
             with self.subTest(label=label):
                 failed, reply = self.call(tool, arguments, token=token)
-                self.assertEqual((failed, reply["reason"]), (True, reason))
+                self.assertEqual((failed, reply.get("reason")), (True, reason))
         self.assertEqual(self.state(exclude=()), before)
         self.assertFalse([line for line in self.logs if any(token in line for token in of.TOKENS)])  # an unknown tool's name is not logged
         failed, reply = self.call("apply_operator_decision", bodies["apply_operator_decision"], token=of.OTHER_OPERATOR_TOKEN)
