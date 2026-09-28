@@ -4642,113 +4642,149 @@
   ],
   "why": "gen2/app/station.py: leaves line 81 for a line outside 81-83 (or returns)"
  },
+ "1E-auth-decodings-past-bound-kept": {
+  "controls": [
+   "test_operator_auth.CredentialsTest.test_redact_takes_out_each_form_a_reply_can_carry"
+  ],
+  "why": "gen2/operator/auth.py: executes line 211; or executes line 210"
+ },
  "1E-auth-entry-without-name": {
   "controls": [
    "test_operator_auth.CredentialsTest.test_the_mounted_names_configure_the_principals"
   ],
-  "why": "gen2/operator/auth.py: leaves line 148 for a line outside 148-149 (or returns)"
+  "why": "gen2/operator/auth.py: leaves line 229 for a line outside 229-230 (or returns)"
  },
  "1E-auth-exporter-operates": {
   "controls": [
    "test_operator_auth.AuthorizationTest.test_a_capability_is_never_a_bearer_token"
   ],
-  "why": "gen2/operator/auth.py: executes line 78; or executes line 77"
+  "why": "gen2/operator/auth.py: executes line 95; or executes line 94"
  },
  "1E-auth-name-twice": {
   "controls": [
    "test_operator_auth.CredentialsTest.test_the_mounted_names_configure_the_principals"
   ],
-  "why": "gen2/operator/auth.py: leaves line 150 for a line outside 150-151 (or returns)"
+  "why": "gen2/operator/auth.py: leaves line 231 for a line outside 231-232 (or returns)"
  },
  "1E-auth-name-unchecked": {
   "controls": [
    "test_operator_auth.CredentialsTest.test_the_mounted_names_configure_the_principals"
   ],
-  "why": "gen2/operator/auth.py: leaves line 80 for a line outside 80-81 (or returns)"
+  "why": "gen2/operator/auth.py: leaves line 97 for a line outside 97-98 (or returns)"
+ },
+ "1E-auth-nested-unchecked": {
+  "controls": [
+   "test_operator_auth.CarriedFormsTest.test_the_tool_text_is_redacted_before_it_is_nested_whatever_the_boundary_does"
+  ],
+  "why": "gen2/operator/auth.py: executes line 194"
  },
  "1E-auth-no-operator": {
   "controls": [
    "test_operator_auth.CredentialsTest.test_the_mounted_names_configure_the_principals"
   ],
-  "why": "gen2/operator/auth.py: leaves line 74 for a line outside 74-75 (or returns)"
+  "why": "gen2/operator/auth.py: leaves line 91 for a line outside 91-92 (or returns)"
  },
  "1E-auth-redact-decoded-once": {
   "controls": [
    "test_operator_auth.CredentialsTest.test_redact_takes_every_configured_token_out"
   ],
-  "why": "gen2/operator/auth.py: executes line 132; or executes line 129"
+  "why": "gen2/operator/auth.py: executes line 213; or executes line 209"
  },
  "1E-auth-redact-encoded-kept": {
   "controls": [
    "test_operator_auth.CredentialsTest.test_redact_takes_every_configured_token_out"
   ],
-  "why": "gen2/operator/auth.py: executes line 119; or executes line 116"
+  "why": "gen2/operator/auth.py: executes line 137; or executes line 134"
  },
  "1E-auth-redact-escaped-kept": {
   "controls": [
    "test_operator_auth.CredentialsTest.test_redact_takes_every_configured_token_out"
   ],
-  "why": "gen2/operator/auth.py: executes line 90"
+  "why": "gen2/operator/auth.py: executes line 107"
  },
  "1E-auth-redact-keys-kept": {
   "controls": [
    "test_operator_auth.DiagnosticSecrecyTest.test_a_fault_behind_the_service_is_logged_by_type_and_label"
   ],
-  "why": "gen2/operator/auth.py: executes line 121; or executes line 120"
+  "why": "gen2/operator/auth.py: executes line 139; or executes line 138"
  },
  "1E-auth-redact-nothing": {
   "controls": [
    "test_operator_auth.DiagnosticSecrecyTest.test_a_fault_behind_the_service_is_logged_by_type_and_label"
   ],
-  "why": "gen2/operator/auth.py: executes line 117; or executes line 116"
+  "why": "gen2/operator/auth.py: executes line 135; or executes line 134"
  },
  "1E-auth-redact-numbers-kept": {
   "controls": [
    "test_operator_auth.CredentialsTest.test_redact_takes_every_configured_token_out"
   ],
-  "why": "gen2/operator/auth.py: executes line 124; or executes line 125"
+  "why": "gen2/operator/auth.py: executes line 142; or executes line 143"
  },
  "1E-auth-redact-shortest-first": {
   "controls": [
    "test_operator_auth.CredentialsTest.test_the_mounted_names_configure_the_principals"
   ],
-  "why": "gen2/operator/auth.py: executes line 90"
+  "why": "gen2/operator/auth.py: executes line 107"
  },
  "1E-auth-scheme-case": {
   "controls": [
    "test_operator_auth.AuthenticationTest.test_an_unread_body_is_never_waited_for"
   ],
-  "why": "gen2/operator/auth.py: executes line 99"
+  "why": "gen2/operator/auth.py: executes line 116"
  },
  "1E-auth-scheme-unchecked": {
   "controls": [
    "test_operator_auth.AuthenticationTest.test_an_unread_body_is_never_waited_for"
   ],
-  "why": "gen2/operator/auth.py: executes line 99"
+  "why": "gen2/operator/auth.py: executes line 116"
  },
  "1E-auth-shared-token": {
   "controls": [
    "test_operator_auth.CredentialsTest.test_the_mounted_names_configure_the_principals"
   ],
-  "why": "gen2/operator/auth.py: leaves line 85 for a line outside 85-86 (or returns)"
+  "why": "gen2/operator/auth.py: leaves line 102 for a line outside 102-103 (or returns)"
  },
  "1E-auth-token-prefix": {
   "controls": [
    "test_operator_auth.AuthenticationTest.test_an_unread_body_is_never_waited_for"
   ],
-  "why": "gen2/operator/auth.py: executes line 65"
+  "why": "gen2/operator/auth.py: executes line 76"
  },
  "1E-auth-token-unchecked": {
   "controls": [
    "test_operator_auth.CredentialsTest.test_the_mounted_names_configure_the_principals"
   ],
-  "why": "gen2/operator/auth.py: leaves line 82 for a line outside 82-83 (or returns)"
+  "why": "gen2/operator/auth.py: leaves line 99 for a line outside 99-100 (or returns)"
+ },
+ "1E-auth-unescape-skipped": {
+  "controls": [
+   "test_operator_auth.CredentialsTest.test_past_the_decoding_bound_a_text_counts_as_carrying_a_token"
+  ],
+  "why": "gen2/operator/auth.py: executes line 208; or executes line 204"
+ },
+ "1E-auth-unwritable-written": {
+  "controls": [
+   "test_operator_auth.CarriedFormsTest.test_a_value_its_answer_would_write_as_a_token_is_replaced_whole_the_answer_still_json"
+  ],
+  "why": "gen2/operator/auth.py: leaves line 168 for a line outside 168-169 (or returns)"
  },
  "1E-auth-vault-admitted": {
   "controls": [
    "test_operator_auth.CredentialsTest.test_the_mounted_names_configure_the_principals"
   ],
-  "why": "gen2/operator/auth.py: leaves line 141 for a line outside 141-142 (or returns)"
+  "why": "gen2/operator/auth.py: leaves line 222 for a line outside 222-223 (or returns)"
+ },
+ "1E-auth-written-bytes-replaced": {
+  "controls": [
+   "test_operator_auth.CarriedFormsTest.test_the_tool_text_is_redacted_before_it_is_nested_whatever_the_boundary_does"
+  ],
+  "why": "gen2/operator/auth.py: executes line 166; or executes line 167; or leaves line 168 for a line outside 168-169 (or returns); or leaves line 168 for a line outside 168-169 (or returns); or executes line 170"
+ },
+ "1E-auth-written-unchecked": {
+  "controls": [
+   "test_operator_auth.CarriedFormsTest.test_the_tool_text_is_redacted_before_it_is_nested_whatever_the_boundary_does"
+  ],
+  "why": "gen2/operator/auth.py: executes line 166"
  },
  "1E-cli-diagnostic-verbatim": {
   "controls": [
@@ -4831,13 +4867,13 @@
   "controls": [
    "test_operator_auth.AuthenticationTest.test_an_unread_body_is_never_waited_for"
   ],
-  "why": "gen2/app/engine.py: executes line 182"
+  "why": "gen2/app/engine.py: executes line 184"
  },
  "1E-engine-backend-unrestricted": {
   "controls": [
    "test_operator_auth.HealthTest.test_health_is_a_read"
   ],
-  "why": "gen2/app/engine.py: leaves line 75 for a line outside 75-76 (or returns)"
+  "why": "gen2/app/engine.py: leaves line 77 for a line outside 77-78 (or returns)"
  },
  "1E-engine-connection-fault-traceback": {
   "by_hand": true,
@@ -4848,43 +4884,43 @@
   "controls": [
    "test_operator_auth.UnreadBodyTest.test_a_refusal_with_no_body_closes_cleanly"
   ],
-  "why": "gen2/app/engine.py: executes line 203"
+  "why": "gen2/app/engine.py: executes line 205"
  },
  "1E-engine-discard-unbounded": {
   "controls": [
    "test_operator_auth.UnreadBodyTest.test_a_small_body_sent_after_the_answer_is_discarded_and_the_connection_ends_cleanly"
   ],
-  "why": "gen2/app/engine.py: executes line 203"
+  "why": "gen2/app/engine.py: executes line 205"
  },
  "1E-engine-discard-untimed": {
   "controls": [
    "test_operator_auth.UnreadBodyTest.test_a_small_body_sent_after_the_answer_is_discarded_and_the_connection_ends_cleanly"
   ],
-  "why": "gen2/app/engine.py: executes line 207; or executes line 208"
+  "why": "gen2/app/engine.py: executes line 209; or executes line 210"
  },
  "1E-engine-fault-logs-request": {
   "controls": [
    "test_operator_auth.DiagnosticSecrecyTest.test_no_carried_token_reaches_a_log_a_reply_or_a_header"
   ],
-  "why": "gen2/app/engine.py: executes line 160; or leaves line 158 for a line outside 157-161 (or returns)"
+  "why": "gen2/app/engine.py: executes line 163; or leaves line 160-161 for a line outside 159-164 (or returns)"
  },
  "1E-engine-no-discard": {
   "controls": [
    "test_operator_auth.UnreadBodyTest.test_a_refusal_with_no_body_closes_cleanly"
   ],
-  "why": "gen2/app/engine.py: executes line 163"
+  "why": "gen2/app/engine.py: executes line 166"
  },
  "1E-engine-parser-reflects": {
   "controls": [
    "test_operator_auth.DiagnosticSecrecyTest.test_a_connection_fault_is_one_line_naming_its_type"
   ],
-  "why": "gen2/app/engine.py: executes line 165"
+  "why": "gen2/app/engine.py: executes line 168"
  },
  "1E-engine-recover-by-router": {
   "controls": [
    "test_operator_auth.HealthTest.test_health_is_a_read"
   ],
-  "why": "gen2/app/engine.py: executes line 77"
+  "why": "gen2/app/engine.py: executes line 79"
  },
  "1E-engine-startup-leak": {
   "by_hand": true,
@@ -4902,41 +4938,47 @@
   ],
   "why": "the changed line (the refusal handler of gen2/app/engine.py main) runs only in engine processes that refuse to start, which only this test starts; its accepted case \u2014 each of the three refused starts exits 1 printing no address (in subTests), and all three outputs are collected, none empty, each with the engine's fixed refusal diagnostic \u2014 runs under the mutant and is asserted before the secrecy check it fails, the stdout line read at each start collected with the rest (Astra 1e-repair re-review finding 3)"
  },
+ "1E-engine-written-unchecked": {
+  "controls": [
+   "test_operator_auth.CarriedFormsTest.test_a_token_in_a_tool_reply_is_taken_out_before_the_reply_is_nested"
+  ],
+  "why": "gen2/app/engine.py: executes line 161"
+ },
  "1E-mcp-id-bool": {
   "controls": [
    "test_operator_mcp.McpEnvelopeTest.test_initialize_answers_a_version_it_supports"
   ],
-  "why": "gen2/operator/service.py: executes line 138"
+  "why": "gen2/operator/service.py: executes line 142"
  },
  "1E-mcp-id-unchecked": {
   "controls": [
    "test_operator_mcp.McpEnvelopeTest.test_initialize_answers_a_version_it_supports"
   ],
-  "why": "gen2/operator/service.py: executes line 248"
+  "why": "gen2/operator/service.py: executes line 259"
  },
  "1E-mcp-initialize-echoes": {
   "controls": [
    "test_operator_mcp.McpEnvelopeTest.test_each_malformed_member_is_refused_before_dispatch"
   ],
-  "why": "gen2/operator/service.py: executes line 264; or executes line 263"
+  "why": "gen2/operator/service.py: executes line 275; or executes line 274"
  },
  "1E-mcp-logs-any-tool": {
   "controls": [
    "test_operator_mcp.McpTest.test_status_is_a_tool_of_the_operators"
   ],
-  "why": "gen2/operator/service.py: executes line 281 (else 280)"
+  "why": "gen2/operator/service.py: executes line 292 (else 291)"
  },
  "1E-mcp-members-unchecked": {
   "controls": [
    "test_operator_mcp.McpEnvelopeTest.test_initialize_answers_a_version_it_supports"
   ],
-  "why": "gen2/operator/service.py: executes line 249"
+  "why": "gen2/operator/service.py: executes line 260"
  },
  "1E-mcp-method-unchecked": {
   "controls": [
    "test_operator_mcp.McpEnvelopeTest.test_initialize_answers_a_version_it_supports"
   ],
-  "why": "gen2/operator/service.py: executes line 249"
+  "why": "gen2/operator/service.py: executes line 260"
  },
  "1E-mcp-notification-any-method": {
   "controls": [
@@ -4945,13 +4987,13 @@
   "rejected": [
    "test_operator_mcp.McpEnvelopeTest.test_each_malformed_member_is_refused_before_dispatch"
   ],
-  "why": "gen2/operator/service.py: executes line 254"
+  "why": "gen2/operator/service.py: executes line 265"
  },
  "1E-mcp-params-members-unchecked": {
   "controls": [
    "test_operator_mcp.McpEnvelopeTest.test_initialize_answers_a_version_it_supports"
   ],
-  "why": "gen2/operator/service.py: executes line 260"
+  "why": "gen2/operator/service.py: executes line 271"
  },
  "1E-mcp-params-required-unchecked": {
   "controls": [
@@ -4960,43 +5002,43 @@
   "rejected": [
    "test_operator_mcp.McpEnvelopeTest.test_initialize_answers_a_version_it_supports"
   ],
-  "why": "gen2/operator/service.py: executes line 260"
+  "why": "gen2/operator/service.py: executes line 271"
  },
  "1E-mcp-params-type-unchecked": {
   "controls": [
    "test_operator_mcp.McpEnvelopeTest.test_initialize_answers_a_version_it_supports"
   ],
-  "why": "gen2/operator/service.py: executes line 250 (else 249)"
+  "why": "gen2/operator/service.py: executes line 261 (else 260)"
  },
  "1E-mcp-params-types-unchecked": {
   "controls": [
    "test_operator_mcp.McpEnvelopeTest.test_initialize_answers_a_version_it_supports"
   ],
-  "why": "gen2/operator/service.py: executes line 260"
+  "why": "gen2/operator/service.py: executes line 271"
  },
  "1E-mcp-refusal-not-error": {
   "controls": [
    "test_operator_mcp.McpTest.test_status_is_a_tool_of_the_operators"
   ],
-  "why": "gen2/operator/service.py: executes line 279"
+  "why": "gen2/operator/service.py: executes line 290"
  },
  "1E-mcp-status-for-all": {
   "controls": [
    "test_operator_mcp.McpTest.test_status_is_a_tool_of_the_operators"
   ],
-  "why": "gen2/operator/service.py: executes line 269; or executes line 268"
+  "why": "gen2/operator/service.py: executes line 280; or executes line 279"
  },
  "1E-mcp-tools-unfiltered": {
   "controls": [
    "test_operator_mcp.McpTest.test_status_is_a_tool_of_the_operators"
   ],
-  "why": "gen2/operator/service.py: executes line 269; or executes line 268"
+  "why": "gen2/operator/service.py: executes line 280; or executes line 279"
  },
  "1E-mcp-version-unchecked": {
   "controls": [
    "test_operator_mcp.McpEnvelopeTest.test_initialize_answers_a_version_it_supports"
   ],
-  "why": "gen2/operator/service.py: executes line 249"
+  "why": "gen2/operator/service.py: executes line 260"
  },
  "1E-recover-advance-ignores-unfinished": {
   "controls": [
@@ -5249,7 +5291,7 @@
   "controls": [
    "test_operator_mcp.McpTest.test_status_is_a_tool_of_the_operators"
   ],
-  "why": "gen2/operator/service.py: executes line 199"
+  "why": "gen2/operator/service.py: executes line 203"
  },
  "1E-status-briefs-unexplained": {
   "controls": [
@@ -5345,7 +5387,7 @@
   "controls": [
    "test_operator_restart.CliTest.test_the_cli_sends_the_body_and_prints_the_reply"
   ],
-  "why": "gen2/operator/service.py: executes line 150"
+  "why": "gen2/operator/service.py: executes line 154"
  },
  "1E-status-reconciliation-unexplained": {
   "controls": [
@@ -5393,7 +5435,7 @@
   "controls": [
    "test_operator_auth.AuthorizationTest.test_a_capability_in_a_command_body_is_refused"
   ],
-  "why": "gen2/operator/service.py: executes line 117, 184, 186, 207, 269-270, 275, 281"
+  "why": "gen2/operator/service.py: executes line 121, 188, 190, 211, 280-281, 286, 292"
  },
  "1E-svc-body-before-auth": {
   "controls": [
@@ -5402,37 +5444,37 @@
   "rejected": [
    "test_operator_auth.AuthenticationTest.test_an_unread_body_is_never_waited_for"
   ],
-  "why": "gen2/operator/service.py: executes line 173"
+  "why": "gen2/operator/service.py: executes line 177"
  },
  "1E-svc-body-unbounded": {
   "controls": [
    "test_operator_auth.AuthorityFieldTest.test_who_acts_is_never_taken_from_the_request"
   ],
-  "why": "gen2/operator/service.py: executes line 292"
+  "why": "gen2/operator/service.py: executes line 303"
  },
  "1E-svc-capability-call-routed": {
   "controls": [
    "test_operator_auth.AuthorizationTest.test_a_capability_in_a_command_body_is_refused"
   ],
-  "why": "gen2/operator/service.py: executes line 117, 184, 186, 207, 269-270, 275, 281"
+  "why": "gen2/operator/service.py: executes line 121, 188, 190, 211, 280-281, 286, 292"
  },
  "1E-svc-capability-in-body": {
   "controls": [
    "test_operator_auth.AuthorizationTest.test_only_the_exporter_token_acknowledges_a_delivery"
   ],
-  "why": "gen2/operator/service.py: executes line 210"
+  "why": "gen2/operator/service.py: executes line 214"
  },
  "1E-svc-command-any-role": {
   "controls": [
    "test_operator_commands.BriefCommandTest.test_a_closure_is_explicit_and_written_once"
   ],
-  "why": "gen2/operator/service.py: executes line 208"
+  "why": "gen2/operator/service.py: executes line 212"
  },
  "1E-svc-health-always-ok": {
   "controls": [
    "test_operator_auth.HealthTest.test_health_is_a_read"
   ],
-  "why": "gen2/operator/service.py: executes line 171; or executes line 164"
+  "why": "gen2/operator/service.py: executes line 175; or executes line 168"
  },
  "1E-svc-health-needs-token": {
   "controls": [
@@ -5442,49 +5484,61 @@
    "test_operator_auth.HealthTest.test_health_is_a_read",
    "test_operator_auth.HealthTest.test_health_is_unavailable_when_the_router_cannot_commit"
   ],
-  "why": "gen2/operator/service.py: executes line 164"
+  "why": "gen2/operator/service.py: executes line 168"
  },
  "1E-svc-length-optional": {
   "controls": [
    "test_operator_auth.AuthorityFieldTest.test_who_acts_is_never_taken_from_the_request"
   ],
-  "why": "gen2/operator/service.py: executes line 288"
+  "why": "gen2/operator/service.py: executes line 299"
  },
  "1E-svc-lenient-json": {
   "controls": [
    "test_operator_auth.AuthorityFieldTest.test_who_acts_is_never_taken_from_the_request"
   ],
-  "why": "gen2/operator/service.py: executes line 295"
+  "why": "gen2/operator/service.py: executes line 306"
  },
  "1E-svc-log-leaks-token": {
   "controls": [
    "test_operator_auth.BodyTest.test_a_body_without_a_length_is_refused"
   ],
-  "why": "gen2/operator/service.py: executes line 174; or executes line 173"
+  "why": "gen2/operator/service.py: executes line 178; or executes line 177"
  },
  "1E-svc-mcp-id-credential-kept": {
   "controls": [
    "test_operator_auth.CarriedFormsTest.test_a_token_in_a_tool_reply_is_taken_out_before_the_reply_is_nested"
   ],
-  "why": "gen2/operator/service.py: executes line 248"
+  "why": "gen2/operator/service.py: executes line 259"
+ },
+ "1E-svc-mcp-id-written-unchecked": {
+  "controls": [
+   "test_operator_auth.CarriedFormsTest.test_the_tool_text_is_redacted_before_it_is_nested_whatever_the_boundary_does"
+  ],
+  "why": "gen2/operator/service.py: executes line 259"
+ },
+ "1E-svc-mcp-text-unnested": {
+  "controls": [
+   "test_operator_auth.CarriedFormsTest.test_the_tool_text_is_redacted_before_it_is_nested_whatever_the_boundary_does"
+  ],
+  "why": "gen2/operator/service.py: executes line 291"
  },
  "1E-svc-mcp-text-unredacted": {
   "controls": [
-   "test_operator_auth.CarriedFormsTest.test_a_token_in_a_tool_reply_is_taken_out_before_the_reply_is_nested"
+   "test_operator_auth.CarriedFormsTest.test_a_value_its_answer_would_write_as_a_token_is_replaced_whole_the_answer_still_json"
   ],
-  "why": "gen2/operator/service.py: executes line 280"
+  "why": "gen2/operator/service.py: executes line 291"
  },
  "1E-svc-non-object-body": {
   "controls": [
    "test_operator_auth.AuthorityFieldTest.test_who_acts_is_never_taken_from_the_request"
   ],
-  "why": "gen2/operator/service.py: executes line 298"
+  "why": "gen2/operator/service.py: executes line 309"
  },
  "1E-svc-operator-unnamed": {
   "controls": [
    "test_operator_commands.DecisionCommandTest.test_a_decision_the_router_refuses_writes_nothing"
   ],
-  "why": "gen2/operator/service.py: executes line 94"
+  "why": "gen2/operator/service.py: executes line 98"
  },
  "1E-svc-recover-requester-from-request": {
   "by_hand": true,
@@ -5509,7 +5563,7 @@
   "controls": [
    "test_operator_auth.DiagnosticSecrecyTest.test_a_fault_behind_the_service_is_logged_by_type_and_label"
   ],
-  "why": "gen2/operator/service.py: executes line 306"
+  "why": "gen2/operator/service.py: executes line 317"
  },
  "1E-svc-requester-not-operator": {
   "controls": [
@@ -5522,19 +5576,19 @@
    "test_operator_restart.CliTest.test_the_cli_sends_the_body_and_prints_the_reply",
    "test_operator_restart.CliTest.test_the_exit_code_says_who_refused"
   ],
-  "why": "gen2/operator/service.py: executes line 95"
+  "why": "gen2/operator/service.py: executes line 99"
  },
  "1E-svc-route-role-unchecked": {
   "controls": [
    "test_operator_auth.AuthorizationTest.test_a_capability_in_a_command_body_is_refused"
   ],
-  "why": "gen2/operator/service.py: executes line 186"
+  "why": "gen2/operator/service.py: executes line 190"
  },
  "1E-svc-status-any-role": {
   "controls": [
    "test_operator_auth.AuthenticationTest.test_the_bearer_scheme_is_matched_without_case_and_the_token_exactly"
   ],
-  "why": "gen2/operator/service.py: executes line 197"
+  "why": "gen2/operator/service.py: executes line 201"
  },
  "1E-svc-unauthenticated-served": {
   "controls": [
@@ -5543,7 +5597,7 @@
   "rejected": [
    "test_operator_auth.AuthenticationTest.test_an_unread_body_is_never_waited_for"
   ],
-  "why": "gen2/operator/service.py: executes line 173"
+  "why": "gen2/operator/service.py: executes line 177"
  },
  "1E-svc-unknown-command-verbatim": {
   "controls": [
@@ -5552,7 +5606,7 @@
   "rejected": [
    "test_operator_auth.DiagnosticSecrecyTest.test_a_fault_behind_the_service_is_logged_by_type_and_label"
   ],
-  "why": "gen2/operator/service.py: executes line 117; or executes line 116"
+  "why": "gen2/operator/service.py: executes line 121; or executes line 120"
  },
  "1E-svc-unknown-route-verbatim": {
   "controls": [
@@ -5561,13 +5615,13 @@
   "rejected": [
    "test_operator_auth.DiagnosticSecrecyTest.test_a_fault_behind_the_service_is_logged_by_type_and_label"
   ],
-  "why": "gen2/operator/service.py: executes line 119; or executes line 118"
+  "why": "gen2/operator/service.py: executes line 123; or executes line 122"
  },
  "1E-svc-who-acts-from-request": {
   "controls": [
    "test_operator_auth.AuthorizationTest.test_only_the_exporter_token_acknowledges_a_delivery"
   ],
-  "why": "gen2/operator/service.py: executes line 211"
+  "why": "gen2/operator/service.py: executes line 215"
  },
  "A1-D01-live-lease-replace": {
   "controls": [
