@@ -280,6 +280,21 @@ class ObservationTest(RouterTestCase):
                 "coverage_state": "searched_ok", "result_count": count, "completeness": "complete", "error_class": None, "capability_fact_id": None,
                 "policy_version": "gw-policy/1", "cost_units": None, "gateway_call_ref": "call-1"}
 
+    def test_an_unobserved_result_set_is_recorded_with_no_count(self) -> None:
+        """The accepted case of test_unknown_is_not_zero, split out as a control of its own (task 1c-repair-3; Astra 1c re-review 2 BLOCK 2): an
+        unobserved set with no records and no count is recorded, its count
+        unknown."""
+        self.assertEqual(self.observe(0, count=None, coverage="provider_unavailable", completeness="unobserved", error="provider_outage")["status"], "recorded")
+        self.assertEqual(self.rows("SELECT result_count, completeness FROM search_observations"), [(None, "unobserved")])
+
+    def test_the_same_observation_again_replays(self) -> None:
+        """The accepted case of test_replay_and_conflict_by_observation_id,
+        split out as a control of its own (task 1c-repair-3; Astra 1c re-review 2 BLOCK 2)."""
+        self.assertEqual(self.observe(2)["status"], "recorded")
+        before = self.state(exclude=())
+        self.assertEqual(self.observe(2)["status"], "replayed")
+        self.assertEqual(self.state(exclude=()), before)
+
     def test_replay_and_conflict_by_observation_id(self) -> None:
         self.assertEqual(self.observe(2)["status"], "recorded")
         before = self.state(exclude=())
@@ -318,6 +333,15 @@ class ObservationTest(RouterTestCase):
 
 
 class OperatorDecisionTest(RouterTestCase):
+    def test_the_same_decision_again_replays(self) -> None:
+        """The accepted replay of test_brief_confirmation_moves_intake_to_scoping,
+        split out as a control of its own (task 1c-repair-3; Astra 1c re-review 2 BLOCK 2)."""
+        subject = {"kind": "intake_brief", "ref": "brief-1", "revision": 1, "hash": self.brief()}
+        self.assertEqual(self.decide("opd_brief0001", "brief_confirmation", subject)["status"], "applied")
+        before = self.state(exclude=())
+        self.assertEqual(self.decide("opd_brief0001", "brief_confirmation", subject)["status"], "replayed")
+        self.assertEqual(self.state(exclude=()), before)
+
     def test_brief_confirmation_moves_intake_to_scoping(self) -> None:
         bhash = self.brief()
         subject = {"kind": "intake_brief", "ref": "brief-1", "revision": 1, "hash": bhash}
@@ -472,6 +496,16 @@ class AckDeliveryTest(RouterTestCase):
                          [(jcs(docs[0]).decode(), "partial", 7, "hold_000000000001"), (jcs(docs[1]).decode(), "unknown", None, None),
                           (jcs(docs[2]).decode(), "observed", 12, None)])
 
+    def test_the_same_receipt_again_replays(self) -> None:
+        """The accepted replay of test_a_replay_is_the_same_document, split out
+        as a control of its own (task 1c-repair-3; Astra 1c re-review 2 BLOCK 2):
+        the same receipt, its keys in another order, replays with nothing written."""
+        doc = self.receipt("exr_000000000001")
+        self.assertEqual(self.ack(doc)["status"], "recorded")
+        before = self.state(exclude=())
+        self.assertEqual(self.ack(dict(reversed(list(doc.items()))))["status"], "replayed")
+        self.assertEqual(self.state(exclude=()), before)
+
     def test_a_replay_is_the_same_document(self) -> None:
         """Astra 1b review A2: an export receipt id replays exactly the
         document it recorded. The same document (in any key order) replays
@@ -528,6 +562,13 @@ class AckDeliveryTest(RouterTestCase):
                 self.assertEqual((out["status"], out.get("reason")), ("rejected", reason), out)
                 self.assertIn(fragment, out.get("detail", ""))
                 self.assertEqual(self.state(exclude=()), before)
+
+    def test_a_delivery_of_the_pair_the_watermark_holds_leaves_it(self) -> None:
+        """A second attempt delivering the pair the connector already holds is
+        recorded and the watermark stays (neither older nor newer; split out as a control of its own (task 1c-repair-3; Astra 1c re-review 2 BLOCK 2))."""
+        self.assertEqual(self.ack(self.receipt("exr_000000000001", generation=2))["status"], "recorded")
+        self.assertEqual(self.ack(self.receipt("exr_000000000002", generation=2, attempt=2))["status"], "recorded")
+        self.assertEqual(self.rows("SELECT generation, options_revision FROM connector_watermarks WHERE connector_id = 'warehouse'"), [(2, 1)])
 
     def test_the_watermark_never_regresses(self) -> None:
         self.assertEqual(self.ack(self.receipt("exr_000000000001", generation=1))["status"], "recorded")

@@ -360,6 +360,12 @@ class ExportTest(EvidenceCase):
         rows = self.rows("SELECT outbox_event_id, manifest_hash, committed_by_operation_id FROM outbox_events")
         self.assertEqual(rows, [(receipt["effects"]["outbox_event_ids"][0], canonical.logical_hash(manifest), "op_export00001")])
 
+    def test_an_admitted_extension_connector_is_exported(self) -> None:
+        """The accepted case of test_an_extension_is_admitted_only_by_the_registry,
+        split out as a control of its own (task 1c-repair-3; Astra 1c re-review 2 BLOCK 2)."""
+        extension = {"connector_type": "extension", "implementation": {"module": "acme_graph_connector", "review_ref": "review-2026-10-01"}}
+        self.committed(self.grant, "op_export00001", self.exporting(self.manifest(expected_connectors={"graph": extension})), refs=[self.bundle_ref])
+
     def test_an_extension_is_admitted_only_by_the_registry(self) -> None:
         extension = {"connector_type": "extension", "implementation": {"module": "acme_graph_connector", "review_ref": "review-2026-10-01"}}
         unreviewed = {"connector_type": "extension", "implementation": {"module": "acme_graph_connector", "review_ref": "review-none"}}

@@ -168,6 +168,12 @@ MANUAL: dict[str, dict] = {
         "controls": [], "in_killer": ["test_check_boundaries.BoundaryCheckerTest.test_scope_resolution_witnesses"],
         "why": "the mutant over-reports (the walrus case, the killer's positive control, becomes a violation); the killer asserts its "
                "paired negatives (the class-body and global cases reported) before that; no other test reaches these lines"},
+    # only killers reach the commit budget's guard in the trace; the accepted case its killer holds in a subTest (the pause
+    # lifting within budget) was split out as a test of its own, added after the trace (task 1c-repair-3)
+    "1C-sup-commit-budget-unbounded": {
+        "controls": ["test_supervisor_lifecycle.ResearchPassLifecycleTest.test_a_commit_refused_while_paused_commits_once_the_pause_lifts"],
+        "why": "executes gen2/supervisor/supervisor.py's commit-budget guard (if self._spend(job, journal, \"commit\")) on its accepted path: "
+               "the commit refused once while paused is resent within budget and commits"},
     # a race, not a removed guard: which test notices it depends on timing
     "1C-jobs-probe-takes-the-lock": {
         "controls": [],

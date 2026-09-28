@@ -263,6 +263,14 @@ class HashSemanticsTest(unittest.TestCase):
             with self.subTest(changed=key):
                 self.assertNotEqual(content_hash(dict(doc, **{key: value})), expected)
 
+    def test_a_document_without_the_field_is_hashed_whole(self) -> None:
+        """The accepted case split out of test_content_hash_excludes_exactly_itself
+        (task 1c-repair-3; Astra 1c re-review 2 BLOCK 2): a document with no
+        content_hash field hashes to the digest of its whole canonical bytes,
+        written here as a literal."""
+        self.assertEqual(content_hash({"schema_version": "contract-v2", "revision": 3, "stopping": {"target_recall": 0.95}}),
+                         "sha256:" + hashlib.sha256(b'{"revision":3,"schema_version":"contract-v2","stopping":{"target_recall":0.95}}').hexdigest())
+
     def test_request_fingerprint_excludes_exactly_submitted_at(self) -> None:
         env = self.envelope()
         base = request_fingerprint(env)

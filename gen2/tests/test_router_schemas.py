@@ -155,6 +155,13 @@ class EqualityTest(unittest.TestCase):
         self.assertFalse(eq({"a": 1}, {"a": 1, "b": 2}))
         self.assertFalse(eq("1", 1))
 
+    def test_contains_counts_items_by_json_value(self) -> None:
+        """Enough items equal to the `contains` value by JSON value (1 and 1.0,
+        not true) meet minContains (task 1c-repair-3: the accepted path of the
+        minContains check)."""
+        mine = router_schemas.SchemaSet(extra={"probe": {"$defs": {"c": {"type": "array", "contains": {"const": 1}, "minContains": 2}}}})
+        self.assertEqual(mine.errors([1, 1.0, True], "probe#/$defs/c"), [])
+
     def test_unique_items_by_json_value(self) -> None:
         mine = router_schemas.SchemaSet(extra={"probe": {"$defs": {"u": {"type": "array", "uniqueItems": True}}}})
         self.assertTrue(mine.errors([1, 1.0], "probe#/$defs/u"))

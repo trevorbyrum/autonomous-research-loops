@@ -100,6 +100,28 @@ class FailureTest(LifecycleTestCase):
         self.assertEqual(self.lease_row(), (0, None))
         self.assertEqual(self.transition("failed", failure_class="exit_nonzero", end_evidence_ref=self.evidence(self.grant))["status"], "recorded")
 
+    def test_a_committed_delegate_lets_its_parents_end_release_the_lease(self) -> None:
+        """A delegate that committed has ended: its parent's failure is
+        recorded and releases the lease (the accepted case of the
+        delegates-ended check with a committed delegate; task 1c-repair-3,
+        Astra 1c re-review 2 BLOCK 2)."""
+        delegate = self.started("inv_deleg001", "delegate", parent=self.grant)
+        self.assertEqual(self.finish(delegate, "op_delegate001")["status"], "committed")
+        self.assertEqual(self.transition("failed", failure_class="exit_nonzero", end_evidence_ref=self.evidence(self.grant))["status"], "recorded")
+        self.assertEqual(self.lease_row(), (1, "failed"))
+
+    def test_evidence_already_recorded_as_an_artifact_is_bound_again(self) -> None:
+        """The execution record is already an artifact of this topic: the
+        failure is recorded against it, the topic keeps it and capacity is
+        released (the existing-artifact case of recording end evidence;
+        task 1c-repair-3, Astra 1c re-review 2 BLOCK 2)."""
+        evidence = self.evidence(self.grant)
+        self.x("INSERT INTO artifacts (content_hash, topic_id, size_bytes, media_type, staged_at) VALUES (?, ?, ?, ?, ?)",
+               evidence, TOPIC, len(self.spool.blobs[evidence]), "application/json", self.clock())
+        self.assertEqual(self.transition("failed", failure_class="exit_nonzero", end_evidence_ref=evidence)["status"], "recorded")
+        self.assertEqual(self.rows("SELECT topic_id FROM artifact_topics WHERE content_hash = ?", evidence), [(TOPIC,)])
+        self.assertEqual(self.lease_row(), (1, "failed"))
+
     def test_a_parents_lease_is_not_released_while_a_delegate_is_live(self) -> None:
         """The parent's lease is its delegates' too (L-8); a live delegate
         runs in its own session, which the parent's evidence cannot account
@@ -149,6 +171,15 @@ class CancellationTest(LifecycleTestCase):
     def cancel(self, by: str = "operator", grant: dict | None = None, **extra) -> dict:
         grant = grant or self.grant
         return self.router.request_cancel({"invocation_id": grant["invocation_id"], "requested_by": by, "reason": "stop", **extra})
+
+    def test_a_cancellation_asked_again_by_its_requester_replays(self) -> None:
+        """The accepted replay of test_work_never_launched_is_cancelled_at_once,
+        split out as a control of its own (task 1c-repair-3; Astra 1c re-review 2 BLOCK 2)."""
+        pending = self.claim("inv_checkpt01", "checkpoint")
+        self.assertEqual(self.cancel(grant=pending)["status"], "cancelled")
+        before = self.state(exclude=())
+        self.assertEqual(self.cancel(grant=pending)["status"], "replayed")
+        self.assertEqual(self.state(exclude=()), before)
 
     def test_work_never_launched_is_cancelled_at_once(self) -> None:
         pending = self.claim("inv_checkpt01", "checkpoint")

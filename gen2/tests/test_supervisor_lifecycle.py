@@ -448,6 +448,20 @@ class LifecycleFaults:
                 else:
                     self.exhausted("commit", {"reason": "topic_paused"}, self.journal()["collected"]["result"])
 
+    def test_a_commit_refused_while_paused_commits_once_the_pause_lifts(self) -> None:
+        """The accepted case of test_a_commit_refused_while_paused_is_resent_within_its_budget,
+        split out as a control of its own (task 1c-repair-3; Astra 1c re-review 2
+        BLOCK 2): refused once while the topic is paused, the commit is resent
+        within its budget and commits; nothing is exhausted."""
+        self.submit()
+        self.stop_at("result_ready_recorded")
+        self.x("UPDATE queue_entries SET paused_at = ? WHERE topic_id = ?", "2026-09-27T10:00:00Z", rf.TOPIC)
+        supervisor = self.make_supervisor()
+        self.assertEqual(supervisor.advance(MAIN), "result_ready")
+        self.x("UPDATE queue_entries SET paused_at = NULL WHERE topic_id = ?", rf.TOPIC)
+        self.assertEqual(supervisor.advance(MAIN), "committed")
+        self.assertEqual((self.ended()["state"], self.journal().get("exhausted")), ("committed", None))
+
     # -- budgets (L-6) ---------------------------------------------------------------------------
     def test_a_launcher_that_cannot_start_fails_within_the_spawn_budget(self) -> None:
         self.prepare(self.KIND)

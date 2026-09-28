@@ -229,6 +229,20 @@ class ParentEnds:
         self.ended_after_its_delegate("committed", "final_outcome")
 
 
+    def test_a_delegate_already_asked_to_cancel_is_not_asked_again(self) -> None:
+        """The operator asked the delegate to cancel before its parent ended:
+        the parent's end reads that from its status and asks nothing more (the
+        request stays the operator's); the delegate's own advance ends it, and
+        the parent then commits (the accepted case of the parent's
+        cancellation request; task 1c-repair-3)."""
+        self.start([*GATED, *succeed(PARENT)])
+        self.assertIn(self.router.request_cancel({"invocation_id": MAIN, "requested_by": "operator", "reason": "stop"})["status"], ("recorded", "cancelled"))
+        self.gate(PARENT)
+        self.assertEqual(self.supervisor.run(PARENT, timeout_s=RUN_S), "committed")
+        self.assertEqual([(name, alive) for name, alive in self.watch.seen if alive], [])
+        self.assertEqual(self.rows("SELECT state, cancel_requested_by FROM invocations WHERE invocation_id = ?", MAIN), [("cancelled", "operator")])
+        self.assertEqual(jobs.members(self.job_file("identity.json")), [])
+
     # -- a delegate stalled on an incident (Astra 1c re-review A5-R) -----------------------------------
     def stalled_delegate(self, method: str) -> dict:
         """The parent has ended; its delegate's `method` calls cannot reach the
