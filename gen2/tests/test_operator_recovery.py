@@ -390,6 +390,23 @@ class RecoveryFaults(RecoveryWorld):
         self.assertEqual((at(journal, "budgets", "recovery"), at(journal, "recoveries", 0, "outcome"), at(journal, "recoveries", 0, "termination", "descendants", "handling")),
                          (1, "failed", "terminated"))
 
+    def test_an_unfinished_recovery_whose_fresh_termination_is_unconfirmed_releases_nothing(self) -> None:
+        """Cut before the group was ended; the advance that carries the
+        recovery on finds the group still not confirmed empty: the recovery
+        is finished as termination_unconfirmed, the incident kept open as
+        raised, nothing reconciled or released, and the job stalled."""
+        self.stall_on_the_collected_end()
+        stalled = self.journal()["incident"]
+        with mock.patch.object(jobs.Job, "terminate", side_effect=RuntimeError("cut before the group is ended")):
+            self.assertEqual(self.command("recover_incident", self.request())[0], 500)
+        with Unconfirmed().patched():
+            self.assertEqual(self.supervise(lambda s: s.advance(MAIN)), "stalled")
+        journal = self.journal()
+        self.assertEqual((journal.get("incident"), "recovering" in journal, [r.get("outcome") for r in journal.get("recoveries", [])], at(journal, "budgets", "recovery")),
+                         (stalled, False, ["termination_unconfirmed"], 1))
+        self.assertEqual(self.held(), self.UNRECONCILED)
+        self.assertEqual([("recovery" in i, i["since"]) for i in self.status_doc()["incidents"] if i["invocation_id"] == MAIN], [(False, stalled["since"])])
+
     def test_an_unfinished_recovery_is_finished_before_another_incidents(self) -> None:
         """Cut after the recovery's advance stalled the job on a new incident
         (the router refused the reconciliation as a conflict, which no retry
