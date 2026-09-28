@@ -48,8 +48,8 @@ class ConfigBundleTest(RouterTestCase):
     def refused(self, document: dict, reason: str, detail: str) -> None:
         before = self.state(exclude=("audit_events", "capability_facts"))
         out = self.activate(document)
-        self.assertEqual((out["status"], out["reason"]), ("refused", reason), out)
-        self.assertIn(detail, out["detail"])
+        self.assertEqual((out["status"], out.get("reason")), ("refused", reason), out)
+        self.assertIn(detail, out.get("detail", ""))
         self.assertEqual(self.state(exclude=("audit_events", "capability_facts")), before)
         self.assertEqual(self.rows("SELECT bundle_hash FROM config_bundles WHERE status = 'active'"), [(CONFIG,)])  # the previous one stays active
 
@@ -78,7 +78,7 @@ class ConfigBundleTest(RouterTestCase):
         self.assertEqual(self.activate(bundle(2))["status"], "activated")
         before = self.state(exclude=("audit_events", "capability_facts"))
         out = self.activate(BUNDLE)
-        self.assertEqual((out["status"], out["reason"]), ("refused", "bundle_superseded"), out)
+        self.assertEqual((out["status"], out.get("reason")), ("refused", "bundle_superseded"), out)
         self.assertEqual(self.state(exclude=("audit_events", "capability_facts")), before)
         self.assertEqual(self.value("SELECT version FROM config_bundles WHERE status = 'active'"), 2)
 
@@ -112,7 +112,7 @@ class ConfigBundleTest(RouterTestCase):
         self.activate(second)
         before = self.state()
         refused = self.claim("inv_research01")
-        self.assertEqual((refused["status"], refused["reason"]), ("refused", "config_bundle_not_active"), refused)
+        self.assertEqual((refused["status"], refused.get("reason")), ("refused", "config_bundle_not_active"), refused)
         self.assertEqual(self.state(), before)
         grant = self.claim("inv_research01", config_bundle_hash=canonical.logical_hash(second))
         self.assertEqual(grant["status"], "granted", grant)
@@ -126,7 +126,7 @@ class ConfigBundleTest(RouterTestCase):
                        (TOPIC, "2026-09-27T09:00:00Z", "2026-09-27T09:00:00Z"))
             refused = router.claim({"invocation_id": "inv_research01", "kind": "discovery", "topic_id": TOPIC, "config_bundle_hash": CONFIG,
                                     "deadline_at": rf.DEADLINE, "station_id": "station-1", "lease_expires_at": rf.EXPIRES})
-            self.assertEqual((refused["status"], refused["reason"]), ("refused", "config_bundle_not_active"), refused)
+            self.assertEqual((refused["status"], refused.get("reason")), ("refused", "config_bundle_not_active"), refused)
             self.assertEqual(db.execute("SELECT count(*) FROM invocations").fetchone(), (0,))
         finally:
             db.close()
@@ -204,7 +204,7 @@ class QualificationRecordTest(ScreeningBase):
         before = self.state()
         self.assertEqual(self.router.record_qualification(self.grant_request(self.spec_hash)), {"status": "replayed", "qualification_id": qual_ref(self.spec_hash)})
         out = self.router.record_qualification(self.grant_request(self.spec_hash, evaluation_ref="fake-evaluation-2"))
-        self.assertEqual((out["status"], out["reason"]), ("refused", "qualification_conflict"))
+        self.assertEqual((out["status"], out.get("reason")), ("refused", "qualification_conflict"))
         self.assertEqual(self.state(), before)
 
     def test_a_record_qualifies_only_its_specs_provider_and_class(self) -> None:
@@ -214,7 +214,7 @@ class QualificationRecordTest(ScreeningBase):
                               ("an unknown spec", {"spec_hash": h("e")})):
             with self.subTest(name):
                 out = self.router.record_qualification({**self.grant_request(other), **changes})
-                self.assertEqual((out["status"], out["reason"]), ("refused", "qualification_invalid"), out)
+                self.assertEqual((out["status"], out.get("reason")), ("refused", "qualification_invalid"), out)
                 self.assertEqual(self.state(), before)
         self.assertEqual(self.router.record_qualification(self.grant_request(other))["status"], "recorded")
 
@@ -247,8 +247,8 @@ class QualificationRecordTest(ScreeningBase):
         self.router = self.make_router(fault=revoke)
         before = self.state(exclude=("audit_events", "qualifications"))
         response = self.router.commit_outcome(self.envelope(self.grant, "op_screen00001", self.provider(), refs=[self.raw]))
-        self.assertEqual((response["status"], response["reason"]), ("rejected", "payload_invalid"), response)
-        self.assertIn("revoked meanwhile", response["detail"])
+        self.assertEqual((response["status"], response.get("reason")), ("rejected", "payload_invalid"), response)
+        self.assertIn("revoked meanwhile", response.get("detail"))
         self.assertEqual(self.state(exclude=("audit_events", "qualifications")), before)
         self.assertEqual(self.rows("SELECT revoke_reason FROM qualifications"), [("revoked mid-commit",)])
 
@@ -270,7 +270,7 @@ class QualificationRecordTest(ScreeningBase):
                                       ("no such record", {**revocation, "qualification_id": "qual_nosuchrecord"}, "unknown_qualification")):
             with self.subTest(name):
                 out = self.router.revoke_qualification(request)
-                self.assertEqual((out["status"], out["reason"]), ("refused", reason), out)
+                self.assertEqual((out["status"], out.get("reason")), ("refused", reason), out)
         self.assertEqual(self.state(), before)
 
 

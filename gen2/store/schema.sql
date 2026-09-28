@@ -2795,7 +2795,7 @@ END;
 
 CREATE TRIGGER retries_claimed_once
 BEFORE UPDATE ON retries
-WHEN OLD.retry_invocation_id IS NOT NULL OR NEW.retry_invocation_id IS NULL
+WHEN OLD.retry_invocation_id IS NOT NULL
   OR NEW.invocation_id IS NOT OLD.invocation_id OR NEW.topic_id IS NOT OLD.topic_id OR NEW.attempt IS NOT OLD.attempt
   OR NEW.requested_by IS NOT OLD.requested_by OR NEW.reason IS NOT OLD.reason OR NEW.requested_at IS NOT OLD.requested_at
   OR NOT EXISTS (SELECT 1 FROM invocations n JOIN invocations o ON o.invocation_id = OLD.invocation_id

@@ -100,6 +100,14 @@ class PinnedPolicyTest(StationWorld):
             self.station.supervisor.prepare(self.order("inv_discov03", {**B2, "version": 9}))
         self.assertFalse((self.root / "jobs" / "job-inv_discov03").exists())
 
+    def test_a_bundles_identity_is_the_hash_of_its_whole_document(self) -> None:
+        """C-13: the identity the router records, and new work pins, is the
+        JCS hash of the whole mounted document, its question registry included."""
+        entry = {"question_id": "Q-screen", "version": 1, "text": "Does this work meet the pinned eligibility criteria?"}
+        carrying = {**B2, "questions": [{**entry, "content_hash": canonical.content_hash(entry)}]}
+        self.reopen(carrying)
+        self.assertEqual(self.rows("SELECT bundle_hash FROM config_bundles WHERE status = 'active'"), [(canonical.logical_hash(carrying),)])
+
     def test_the_station_does_not_start_on_a_refused_bundle(self) -> None:
         self.station.close()
         with self.assertRaises(StationRefused):

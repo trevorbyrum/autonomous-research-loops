@@ -103,7 +103,8 @@ class Scheduling:
             if (recorded["requested_by"], recorded["reason"]) != (req["requested_by"], req["reason"]):
                 raise Refusal("requeue_conflict", f"{inv['invocation_id']} was re-queued by {recorded['requested_by']} ({recorded['reason']})")
             return {"status": "replayed", "invocation_id": inv["invocation_id"], "attempt": recorded["attempt"]}
-        if inv["kind"] == "delegate" or inv["state"] not in ("failed", "cancelled") or self._lane_last(inv["topic_id"], boundary.SCOPE_OF_KIND[inv["kind"]]) != inv["invocation_id"]:
+        # a delegate holds no lease, so it is never a lane's last work: its work is its parent's to re-queue
+        if inv["state"] not in ("failed", "cancelled") or self._lane_last(inv["topic_id"], boundary.SCOPE_OF_KIND.get(inv["kind"])) != inv["invocation_id"]:
             raise Refusal("not_requeueable", f"{inv['invocation_id']} is a {inv['kind']} in state {inv['state']}: only the last work of a lane, ended failed or cancelled, is re-queued")
         subject = f"invocation:{inv['invocation_id']}#requeue"
         if any(h["cleared_at"] is None for h in self._store.select("holds", {"topic_id": inv["topic_id"], "subject_ref": subject})):

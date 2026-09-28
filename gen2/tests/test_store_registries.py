@@ -348,10 +348,13 @@ class RetryTest(StoreTestCase):
         self.x(RETRY, "inv_pppppppp", TOPIC, 2, T, None)
         self.next_attempt("lease_cccccccc", 2, "inv_cccccccc", "checkpoint", "checkpoint")
         self.rejects(guard, "UPDATE retries SET retry_invocation_id = 'inv_cccccccc' WHERE invocation_id = 'inv_pppppppp'")  # another kind
-        self.rejects(guard, "UPDATE retries SET reason = 'other' WHERE invocation_id = 'inv_pppppppp'")
         self.next_attempt("lease_bbbbbbbb", 3, "inv_qqqqqqqq")
+        self.rejects(guard, "UPDATE retries SET retry_invocation_id = 'inv_qqqqqqqq', reason = 'other' WHERE invocation_id = 'inv_pppppppp'")  # a claim rewriting its reason
         self.x("UPDATE retries SET retry_invocation_id = 'inv_qqqqqqqq' WHERE invocation_id = 'inv_pppppppp'")
         self.rejects(guard, "UPDATE retries SET retry_invocation_id = NULL WHERE invocation_id = 'inv_pppppppp'")
+        self.x("UPDATE leases SET released_at = ?, release_reason = 'test' WHERE lease_id = 'lease_bbbbbbbb'", T)
+        self.next_attempt("lease_dddddddd", 4, "inv_rrrrrrrr")
+        self.rejects(guard, "UPDATE retries SET retry_invocation_id = 'inv_rrrrrrrr' WHERE invocation_id = 'inv_pppppppp'")  # claimed again, by valid work
         self.assertEqual(self.rows("SELECT retry_invocation_id FROM retries"), [("inv_qqqqqqqq",)])
 
     def test_a_retry_of_another_topic_is_refused(self) -> None:

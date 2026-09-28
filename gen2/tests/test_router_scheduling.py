@@ -57,9 +57,9 @@ class PolicyCase(RouterTestCase):
         assert out["status"] == "recorded", out
 
     def refused(self, out: dict, reason: str, before: dict, detail: str | None = None) -> None:
-        self.assertEqual((out["status"], out["reason"]), ("refused", reason), out)
+        self.assertEqual((out["status"], out.get("reason")), ("refused", reason), out)
         if detail is not None:
-            self.assertIn(detail, out["detail"])
+            self.assertIn(detail, out.get("detail", ""))
         self.assertEqual(self.state(), before)
 
     def requeue(self, inv: str, by: str = "policy", reason: str = "transient") -> dict:
@@ -95,13 +95,13 @@ class RequeueTest(PolicyCase):
                 self.fail(second)
                 out = self.requeue(second["invocation_id"])  # attempt 3 is past a budget of one retry
                 self.assertEqual(out["status"], "exhausted", out)
-                self.assertEqual(self.rows("SELECT subject_ref, hold_class, required_authority, owner, cleared_at FROM holds WHERE hold_id = ?", out["hold_id"]),
+                self.assertEqual(self.rows("SELECT subject_ref, hold_class, required_authority, owner, cleared_at FROM holds WHERE hold_id = ?", out.get("hold_id")),
                                  [(f"invocation:{second['invocation_id']}#requeue", "transient", "operator", "operator", None)])
                 self.assertEqual(self.rows("SELECT count(*) FROM retries WHERE invocation_id = ?", second["invocation_id"]), [(0,)])
                 before = self.state()
                 self.refused(self.requeue(second["invocation_id"]), "incident_open", before)  # one hold; nothing more is re-queued
                 self.refused(self.requeue(second["invocation_id"], "operator", "diagnosed"), "incident_open", before)
-                self.assertEqual(self.decide(f"opd_clear{kind[:6]}", "hold_clearance", {"kind": "hold", "ref": out["hold_id"]})["status"], "applied")
+                self.assertEqual(self.decide(f"opd_clear{kind[:6]}", "hold_clearance", {"kind": "hold", "ref": out.get("hold_id")})["status"], "applied")
                 self.assertEqual(self.requeue(second["invocation_id"], "operator", "diagnosed"),
                                  {"status": "requeued", "invocation_id": second["invocation_id"], "attempt": 3})
                 third = self.started(f"inv_{kind[:6]}03", kind, retry_of=second["invocation_id"])
@@ -113,7 +113,7 @@ class RequeueTest(PolicyCase):
         self.requeue(first["invocation_id"])
         second = self.started("inv_discov02", "discovery", retry_of=first["invocation_id"])
         self.fail(second)
-        hold_id = self.requeue(second["invocation_id"])["hold_id"]
+        hold_id = self.requeue(second["invocation_id"]).get("hold_id")
         created, deadline = self.rows("SELECT created_at, deadline_at FROM holds WHERE hold_id = ?", hold_id)[0]
         self.assertEqual((utc_instant_ns(deadline) - utc_instant_ns(created)) // 10**9, 600)
 
@@ -148,8 +148,11 @@ class RequeueTest(PolicyCase):
         self.router.request_cancel({"invocation_id": "inv_discov01", "requested_by": "operator", "reason": "stop"})
         self.requeue("inv_discov01", "operator", "again")
         self.started("inv_discov02", "discovery", retry_of="inv_discov01")
+        ended_delegate = self.claim("inv_deleg002", "delegate", parent=parent)
+        self.assertEqual(self.router.request_cancel({"invocation_id": "inv_deleg002", "requested_by": "operator", "reason": "stop"}).get("status"), "cancelled")
         before = self.state()
-        for name, inv in (("a running delegate", delegate["invocation_id"]), ("committed work", committed["invocation_id"]), ("running work", "inv_research01")):
+        for name, inv in (("a running delegate", delegate["invocation_id"]), ("an ended delegate", ended_delegate["invocation_id"]),
+                          ("committed work", committed["invocation_id"]), ("running work", "inv_research01")):
             with self.subTest(name):
                 self.refused(self.requeue(inv, "operator", "x"), "not_requeueable", before)
         self.refused(self.requeue("inv_discov01", "operator", "another reason"), "requeue_conflict", before)  # re-queued once, already claimed
@@ -212,7 +215,7 @@ class ReservationTest(ContractWorld):
         return self.router.open_reservation({"reservation_id": rid, "topic_id": TOPIC, "purpose": purpose})
 
     def refused(self, out: dict, reason: str, before: dict) -> None:
-        self.assertEqual((out["status"], out["reason"]), ("refused", reason), out)
+        self.assertEqual((out["status"], out.get("reason")), ("refused", reason), out)
         self.assertEqual(self.state(), before)
 
     def test_a_reservation_is_sized_by_the_bundle_and_drawn_within_its_units(self) -> None:
@@ -230,7 +233,7 @@ class ReservationTest(ContractWorld):
         self.assertEqual(self.claim("inv_verify01", "verification")["status"], "granted")  # without the reservation, as ordinary work
 
     def test_an_auto_promotion_draw_is_inside_a_facet_rated_at_the_threshold(self) -> None:
-        self.assertEqual(self.open("rsv_promote01", "auto_promotion")["units"], 1)
+        self.assertEqual(self.open("rsv_promote01", "auto_promotion").get("units"), 1)
         before = self.state()
         for name, facet in (("an important facet", "F-cost"), ("no such facet", "F-none")):
             with self.subTest(name):
@@ -239,7 +242,7 @@ class ReservationTest(ContractWorld):
         grant = self.claim("inv_checkpt01", "checkpoint", reservation={"reservation_id": "rsv_promote01", "facet_id": "F-effect"})
         self.assertEqual(grant["status"], "granted", grant)
         self.assertEqual(self.claim("inv_checkpt01", "checkpoint", reservation={"reservation_id": "rsv_promote01", "facet_id": "F-effect"})["status"], "replayed")
-        self.assertEqual(self.claim("inv_checkpt01", "checkpoint")["reason"], "invocation_id_conflict")  # without its reservation it is another request
+        self.assertEqual(self.claim("inv_checkpt01", "checkpoint").get("reason"), "invocation_id_conflict")  # without its reservation it is another request
 
     def test_an_auto_promotion_draw_inside_a_critical_facet(self) -> None:
         """The accepted path of the threshold guard, on its own."""
@@ -282,7 +285,7 @@ class ReservationTest(ContractWorld):
         self.assertEqual(sorted(record["reservations_closed"]), ["rsv_explore001", "rsv_promote01"])
         before = self.state()
         self.refused(self.claim("inv_checkpt01", "checkpoint", reservation={"reservation_id": "rsv_promote01", "facet_id": "F-effect"}), "reservation_closed", before)
-        self.assertEqual(self.open("rsv_promote02", "auto_promotion")["contract_revision"], 3)  # a new reservation, under the reframed revision
+        self.assertEqual(self.open("rsv_promote02", "auto_promotion").get("contract_revision"), 3)  # a new reservation, under the reframed revision
 
     def test_opening_needs_an_approved_revision_a_size_and_no_open_one_with_units_left(self) -> None:
         self.assertEqual(self.open("rsv_explore001", "protected_exploration")["status"], "opened")
@@ -337,7 +340,7 @@ class SignalQueueTest(PolicyCase):
         self.refused(self.review(2), "signal_cooldown", before, "the signals stay queued")
         self.assertEqual(self.pending(), [waiting])
         self.clock.set("2026-09-27T11:00:00.100Z")  # past the hour's cooldown
-        self.assertEqual(self.review(2)["triggers"], [waiting])
+        self.assertEqual(self.review(2).get("triggers"), [waiting])
         self.signal()
         self.clock.set("2026-09-27T13:00:00Z")
         before = self.state()
@@ -351,17 +354,17 @@ class SignalQueueTest(PolicyCase):
         self.signal()
         self.review(1)
         routine = self.signal()
-        self.assertEqual(self.review(2, "fixed_cadence")["triggers"], [routine])  # the floor, during the cooldown
+        self.assertEqual(self.review(2, "fixed_cadence").get("triggers"), [routine])  # the floor, during the cooldown
         self.x("INSERT INTO review_triggers (trigger_identity, topic_id, reason_code, signal_source, cause_ref, observed_at) VALUES (?, ?, 'retraction', 'deterministic', 'doi:10.1/x', ?)",
                "sha256:" + "d" * 64, TOPIC, "2026-09-27T10:30:00Z")  # code policy's signal (no router path raises one yet: surveillance is Phase 2)
-        self.assertEqual(self.review(3)["triggers"], ["sha256:" + "d" * 64])  # mandatory: during the cooldown
+        self.assertEqual(self.review(3).get("triggers"), ["sha256:" + "d" * 64])  # mandatory: during the cooldown
         self.clock.set("2026-09-27T13:00:00Z")
         waiting = self.signal()
         before = self.state()
         self.refused(self.review(4), "signal_budget_spent", before)  # episodes 1 and 3 fill the budget of two
         self.x("INSERT INTO review_triggers (trigger_identity, topic_id, reason_code, signal_source, cause_ref, observed_at) VALUES (?, ?, 'decision_record_change', 'operator', 'DR-2', ?)",
                "sha256:" + "e" * 64, TOPIC, "2026-09-27T13:00:00Z")
-        self.assertEqual(self.review(4)["triggers"], [waiting, "sha256:" + "e" * 64])  # mandatory: past the budget, and the queued signal with it
+        self.assertEqual(self.review(4).get("triggers"), [waiting, "sha256:" + "e" * 64])  # mandatory: past the budget, and the queued signal with it
 
     def test_the_same_review_again_replays(self) -> None:
         """The accepted path of the review-conflict guard, on its own."""
@@ -426,11 +429,11 @@ class SchedulingRestartTest(ContractWorld):
         out = self.router.record_transition({"capability_id": first["capability_id"], "invocation_id": "inv_discov01", "to_state": "failed",
                                              "failure_class": "killed", "end_evidence_ref": self.evidence(first, ("killed",))})
         self.assertEqual(out["status"], "recorded", out)
-        self.assertEqual(self.router.requeue({"invocation_id": "inv_discov01", "requested_by": "policy", "reason": "transient"})["attempt"], 2)
+        self.assertEqual(self.router.requeue({"invocation_id": "inv_discov01", "requested_by": "policy", "reason": "transient"}).get("attempt"), 2)
         self.reopen()
         before = self.state()
         refused = self.claim("inv_discov02", "discovery")
-        self.assertEqual((refused["status"], refused["reason"]), ("refused", "requeue_required"))
+        self.assertEqual((refused["status"], refused.get("reason")), ("refused", "requeue_required"))
         self.assertEqual(self.state(), before)
         retry = self.claim("inv_discov02", "discovery", retry_of="inv_discov01", reservation={"reservation_id": "rsv_explore001"})
         self.assertEqual(retry["status"], "granted", retry)
@@ -438,5 +441,5 @@ class SchedulingRestartTest(ContractWorld):
         self.assertEqual(self.rows("SELECT invocation_id, attempt, retry_invocation_id FROM retries"), [("inv_discov01", 2, "inv_discov02")])
         before = self.state()
         refused = self.claim("inv_checkpt01", "checkpoint", reservation={"reservation_id": "rsv_explore001"})
-        self.assertEqual((refused["status"], refused["reason"]), ("refused", "reservation_exhausted"))  # two units, both drawn before the restarts
+        self.assertEqual((refused["status"], refused.get("reason")), ("refused", "reservation_exhausted"))  # two units, both drawn before the restarts
         self.assertEqual(self.state(), before)
