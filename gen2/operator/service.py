@@ -40,7 +40,8 @@ refused before anything but the route is read:
      tool is named in the body, so this is checked once it is parsed.)
   4. The body: a declared length (411 without one, 413 over MAX_BODY), strict
      JSON (C-13: duplicate keys and non-finite numbers refused) holding an
-     object (400 otherwise).
+     object (400 otherwise). Status's query is no query or exactly one topic
+     (400 otherwise); over MCP, the whole envelope first (_mcp).
   5. Authority is the principal's, never the request's: the fields that name
      who acts (a decision's operator_id, the requester of a cancellation or
      re-queue, a brief closure's closed_by) and capability_id are refused if
@@ -114,6 +115,36 @@ def label(method: str, target: str) -> tuple[str, str]:
     return (method if method in METHODS else "?"), route
 
 
+JSONRPC_MEMBERS = frozenset({"jsonrpc", "id", "method", "params"})
+# method -> (the members its params may carry, with each one's type; those it must carry)
+MCP_PARAMS: dict[str, tuple[dict[str, type], set[str]]] = {
+    "initialize": ({"protocolVersion": str, "capabilities": dict, "clientInfo": dict, "_meta": dict}, {"protocolVersion"}),
+    "ping": ({"_meta": dict}, set()),
+    "tools/list": ({"cursor": str, "_meta": dict}, set()),
+    "tools/call": ({"name": str, "arguments": dict, "_meta": dict}, {"name"}),
+}
+MCP_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")  # the first is answered to a client asking for any other
+MAX_ID = 2**53 - 1
+
+
+def _request_id(ident: object) -> bool:
+    """A JSON-RPC id as MCP allows it: a string, or an integer (never a
+    boolean, a float, null or a structure), bounded."""
+    return (isinstance(ident, str) and 0 < len(ident) <= 200) or (type(ident) is int and -MAX_ID <= ident <= MAX_ID)
+
+
+def _status_query(query: str) -> dict | None:
+    """A status query as status arguments: none, or exactly one topic; None
+    for anything else (a repeated or unknown key, a malformed query)."""
+    if not query:
+        return {}
+    try:
+        parsed = parse_qs(query, keep_blank_values=True, strict_parsing=True)
+    except ValueError:
+        return None
+    return {"topic": parsed["topic"][0]} if set(parsed) == {"topic"} and len(parsed["topic"]) == 1 else None
+
+
 class OperatorService:
     def __init__(self, backend, credentials: Credentials, *, incidents: Callable[[], list[dict]] = lambda: [],
                  log: Callable[[str], None] = lambda line: None) -> None:
@@ -137,8 +168,7 @@ class OperatorService:
         if principal is None:
             return self._answer(None, method_label, route, 401, {"status": "refused", "reason": "unauthenticated"})
         if path == "/v1/status" and method == "GET":
-            topics = parse_qs(query).get("topic", [])
-            return self._answer(principal, method_label, route, *self._status(principal, topics[0] if topics else None))
+            return self._answer(principal, method_label, route, *self._status(principal, _status_query(query)))
         if path == "/mcp" and method == "POST":
             body, error = self._body(length, read)
             if error is not None:
@@ -155,10 +185,15 @@ class OperatorService:
             return self._answer(principal, method_label, route, error[0], {"status": "refused", "reason": error[1]})
         return self._answer(principal, method_label, route, *self._command(principal, name, body))
 
-    def _status(self, principal: Principal, topic: str | None) -> tuple[int, dict]:
+    def _status(self, principal: Principal, arguments: dict | None) -> tuple[int, dict]:
+        """Status, the same for every transport: the operator's, and its
+        arguments ({} or {"topic": <topic_id>}; None: a query that was not
+        one) exactly, like a command's body."""
         if principal.role != "operator":
             return 403, {"status": "refused", "reason": "forbidden"}
-        facts = self._backend.status({} if topic is None else {"topic_id": topic})
+        if arguments is None or set(arguments) - {"topic"} or not isinstance(arguments.get("topic", ""), str):
+            return 400, {"status": "refused", "reason": "request_invalid"}
+        facts = self._backend.status({} if "topic" not in arguments else {"topic_id": arguments["topic"]})
         return 200, status_view.compose(facts, self._incidents()) if facts.get("status") == "ok" else facts
 
     def _command(self, principal: Principal, name: str, body: dict) -> tuple[int, dict]:
@@ -178,34 +213,62 @@ class OperatorService:
         """Stateless MCP over HTTP (DEPLOYMENT-CONTRACT.md §1.1: one JSON-RPC
         message per request, the gateway's shape): tools/list names the tools
         the principal's role may call; tools/call runs the same _status and
-        _command as the routes, so MCP is a transport, not a second path. A
-        refusal, at any step, is an in-band tool error carrying its reply."""
-        method, params = message.get("method"), message.get("params") or {}
-        if "id" not in message:
-            return 202, {}, "/mcp"  # a notification: nothing to answer
-        answer = lambda result: {"jsonrpc": "2.0", "id": message["id"], "result": result}  # noqa: E731
+        _command as the routes, so MCP is a transport, not a second path.
+
+        The envelope is checked whole before anything is dispatched, as
+        strictly as a command's body (Astra 1e review finding 4; JSON-RPC 2.0,
+        MCP): members only jsonrpc, id, method and params; jsonrpc exactly
+        "2.0"; method a string; id, where present, a string or an integer
+        (never null, a float, a boolean or a structure); params, where
+        present, an object (-32600 Invalid Request otherwise). A message
+        without an id is a notification: a notifications/ method is accepted
+        (202) and does nothing; any other method needs an id (-32600). Each
+        method's params carry only its members, each of its type, the
+        required ones present (MCP_PARAMS; -32602 Invalid params otherwise):
+        a tool call's arguments, omitted, are {}; given, they are an object —
+        [] or null is refused, never taken as {}. Both errors are HTTP 400
+        with the command path's own refusal ({"status": "refused", "reason":
+        "request_invalid"}) as their data, and nothing is dispatched. A
+        well-formed call's refusal, at any later step — the role, who acts
+        named, an unknown or capability-bearing tool, the arguments, the
+        router's own — is an in-band tool error carrying its reply."""
+        has_id, ident = "id" in message, message.get("id")
+        if set(message) - JSONRPC_MEMBERS or message.get("jsonrpc") != "2.0" or not isinstance(message.get("method"), str) \
+                or (has_id and not _request_id(ident)) or ("params" in message and not isinstance(message["params"], dict)):
+            return self._rpc_refusal(ident if has_id and _request_id(ident) else None, -32600, "invalid request")
+        method, params = message["method"], message.get("params", {})
+        if not has_id:
+            if method.startswith("notifications/"):
+                return 202, {}, "/mcp"  # a notification: nothing to answer
+            return self._rpc_refusal(None, -32600, "invalid request")  # a request needs its id
+        if method not in MCP_PARAMS:
+            return 200, {"jsonrpc": "2.0", "id": ident, "error": {"code": -32601, "message": "method not found"}}, "/mcp"
+        members, required = MCP_PARAMS[method]
+        if set(params) - set(members) or not required <= set(params) or not all(isinstance(params[k], members[k]) for k in params):
+            return self._rpc_refusal(ident, -32602, "invalid params")
+        answer = lambda result: {"jsonrpc": "2.0", "id": ident, "result": result}  # noqa: E731
         if method == "initialize":
-            return 200, answer({"protocolVersion": params.get("protocolVersion", "2024-11-05"), "capabilities": {"tools": {}},
-                                "serverInfo": {"name": "gen2-engine", "version": "1e"}}), "/mcp"
+            version = params["protocolVersion"] if params["protocolVersion"] in MCP_VERSIONS else MCP_VERSIONS[0]
+            return 200, answer({"protocolVersion": version, "capabilities": {"tools": {}}, "serverInfo": {"name": "gen2-engine", "version": "1e"}}), "/mcp"
         if method == "ping":
             return 200, answer({}), "/mcp"
         if method == "tools/list":
             names = ["status"] * (principal.role == "operator") + [name for name, (role, _) in COMMANDS.items() if role == principal.role]
             return 200, answer({"tools": [{"name": name, "description": f"POST /v1/commands/{name}" if name in COMMANDS else "GET /v1/status",
                                            "inputSchema": {"type": "object"}} for name in names]}), "/mcp"
-        if method == "tools/call":
-            tool, arguments = params.get("name"), params.get("arguments") or {}
-            if not isinstance(arguments, dict):
-                code, reply = 400, {"status": "refused", "reason": "request_invalid"}
-            elif tool == "status":
-                code, reply = self._status(principal, arguments.get("topic"))
-            elif tool in COMMANDS:
-                code, reply = self._command(principal, tool, arguments)
-            else:
-                code, reply = 404, {"status": "refused", "reason": "no_such_route"}
-            failed = code != 200 or reply.get("status") in ("refused", "rejected")
-            return 200, answer({"content": [{"type": "text", "text": json.dumps(reply, sort_keys=True)}], "isError": failed}), f"/mcp:{tool if tool in (*COMMANDS, 'status') else '?'}"
-        return 200, {"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32601, "message": "method not found"}}, "/mcp"
+        tool, arguments = params["name"], params.get("arguments", {})
+        if tool == "status":
+            code, reply = self._status(principal, arguments)
+        elif tool in COMMANDS:
+            code, reply = self._command(principal, tool, arguments)
+        else:
+            code, reply = 404, {"status": "refused", "reason": "no_such_route"}
+        failed = code != 200 or reply.get("status") in ("refused", "rejected")
+        return 200, answer({"content": [{"type": "text", "text": json.dumps(reply, sort_keys=True)}], "isError": failed}), f"/mcp:{tool if tool in (*COMMANDS, 'status') else '?'}"
+
+    @staticmethod
+    def _rpc_refusal(ident, code: int, message: str) -> tuple[int, dict, str]:
+        return 400, {"jsonrpc": "2.0", "id": ident, "error": {"code": code, "message": message, "data": {"status": "refused", "reason": "request_invalid"}}}, "/mcp"
 
     def _body(self, length: str | None, read: Callable[[int], bytes]) -> tuple[dict | None, tuple[int, str] | None]:
         if length is None:
