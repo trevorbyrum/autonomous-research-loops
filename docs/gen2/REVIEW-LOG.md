@@ -432,3 +432,12 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-scope-audit-astr
 
 ## 2026-09-28 — Task 1d dispatched (registries, config bundles, reservations, brief/amendment versioning, G-1 impact)
 Brief: `docs/gen2/tasks/1d.md`, scoped to INVARIANTS §13's Phase 1 column and the store README deferrals, carrying the 1a-review G-1 obligation, the 1b bootstrap ruling, the 1b proposal-3 interim (`amendment_pending` → real impact handling), and the 1c policy-bundle/scheduling deferrals. Coder: Opus 5.5 agent 7a61b979.
+
+## 2026-09-28 — 1d review (Astra, xhigh) — BLOCK (Gates A + C); Gate B PASS
+Full report: `~/work/research-loops-public/private/reviews/gen2-1d-astra-review-20260928.md`. Independent build matched: exit 0, 1,167 tests, 1245/1245 mutants, production 6,560.
+
+**Findings:** (1) HIGH — G-1/G-6 compatibility trusts the framing version label: changed framing content passes as compatible, and cycling 1→2→1 silently revives a claim recorded stale, which then promotes without adoption. (2) HIGH — restart without the `config_bundle` argument runs old jobs under default `Policy()`, bypassing their pinned budgets. (3) HIGH — `WorkOrder` can't carry `retry_of`/`reservation`, so the accepted lane gate can't actually be exercised through the supervisor. (4) MEDIUM — fractional `hold_window_s` truncates to a zero window. (5) MEDIUM — after a refused bundle, restoring the valid one leaves the capability fact falsely `failing`, and the station test requires the stale state. (6) MEDIUM/Gate C — the brief wrong-parent negative is masked by hash validation; a parent-only mutant survives all 26 amendment tests.
+
+**All seven open questions ruled ACCEPT** (lane gate, proactive cancellation, fail-closed missing policy values, admission-unit reservations, question-entry format, `policy_version`, claimable table in code), with finding 3 as required integration. **The four INVARIANTS locator updates are authorized** as repair work (V-10 wording only after finding 1).
+
+**Routed:** `docs/gen2/tasks/1d-repair.md` to an Opus 5.5 coder.
