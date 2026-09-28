@@ -51,9 +51,11 @@ def open_station(root: str | Path, *, station_id: str, host_id: str, clock: Call
     whatever is active now; the station's own from `config_bundle`, the
     mounted config-bundle/1 document, which the router activates first (a
     replay if it is already the active one), or, with none mounted, from the
-    bundle the router has active (the persisted configuration). With none
-    mounted and none recorded active the station does not start
-    (StationRefused): there is no unpinned fallback policy.
+    bundle the router has active (the persisted configuration), which the
+    router restores — either way a failure a refused bundle raised is
+    recovered from, once (H-2). With none mounted and none recorded active
+    the station does not start (StationRefused): there is no unpinned
+    fallback policy.
 
     `fixture_policy` is a test fixture outside that guarantee: every job runs
     under it, whatever bundle it pins. It cannot be combined with a mounted
@@ -75,7 +77,7 @@ def open_station(root: str | Path, *, station_id: str, host_id: str, clock: Call
             raise StationRefused(f"the config bundle was refused ({activated['reason']}): {activated['detail']}")
         own = activated["bundle_hash"]
     else:
-        own = router.active_config_bundle()
+        own = router.restore_config_bundle()
         if own is None:
             router.close()
             raise StationRefused("no config bundle is mounted and none is recorded active: the station has no policy to start under")

@@ -3,9 +3,10 @@ activates it at start, and the supervisor takes each job's policy from the
 bundle that job was admitted under — across a restart onto a newer bundle,
 and across a restart with nothing mounted (the active bundle restored; with
 none, no start). Through the station too: a failed job's re-queued retry
-runs, a mounted fractional hold window is kept, and a restored bundle
-clears the failure a refused one raised (task 1d-repair, Astra 1d review
-findings 2-5).
+runs, a mounted fractional hold window is kept, and a restored bundle —
+mounted again, or with nothing mounted — clears the failure a refused one
+raised (task 1d-repair, Astra 1d review findings 2-5; task 1d-repair-2,
+Astra 1d-repair review finding 2).
 
 Trace: INVARIANTS G-10, RG-9, C-12, L-6, H-2; DEPLOYMENT-CONTRACT.md §2
 ("in-flight work keeps the bundle it was admitted under ... a mounted edit
@@ -206,6 +207,30 @@ class RestartPolicyTest(StationWorld):
         self.assertEqual(self.station.supervisor.run("inv_discov02"), "failed")  # admitted and run to its end (no output: L-9)
         self.assertEqual(self.rows("SELECT config_bundle_hash FROM invocations"), [(canonical.logical_hash(B2),)])
         self.assertEqual(self.station.supervisor.submit(self.order("inv_discov03", B1)), "not_admitted")  # the superseded bundle admits nothing new
+
+    def test_a_restart_with_nothing_mounted_recovers_from_a_refused_mount(self) -> None:
+        """H-2 on the restoration path (Astra 1d-repair review finding 2): a
+        refused mount leaves the capability failing; the next start with
+        nothing mounted restores the active B1 and records the recovery once,
+        the failure kept as history; further such restarts record nothing.
+        Throughout, the admitted job keeps its pin and B1's budget."""
+        self.admit_and_stop("inv_discov01", B1)
+        self.station.close()
+        with self.assertRaises(StationRefused):
+            self.open({**B1, "policy": {"supervisor": {"launch_attempt": 1}}, "version": 3})
+        facts = "SELECT state, superseded_by_fact_id IS NULL FROM capability_facts WHERE capability = 'config-bundle' ORDER BY rowid"
+        self.assertEqual(self.rows(facts), [("failing", 1)])
+        self.station = open_station(self.root, station_id="station-1", host_id="host-test", clock=self.clock)  # the refused start closed its router
+        self.router = self.station.router
+        self.assertEqual(self.rows(facts), [("failing", 0), ("healthy", 1)])
+        history = self.rows("SELECT * FROM capability_facts ORDER BY rowid")
+        for _ in range(2):
+            self.restart_unmounted()
+            self.assertEqual(self.rows("SELECT * FROM capability_facts ORDER BY rowid"), history)
+        self.assertEqual(self.station.supervisor.policy, supervisor_policy(B1))
+        self.assertEqual(self.rows("SELECT version, status FROM config_bundles"), [(1, "active")])
+        self.assertEqual(self.rows("SELECT invocation_id, config_bundle_hash FROM invocations"), [("inv_discov01", canonical.logical_hash(B1))])
+        self.assertEqual([self.station.supervisor.advance("inv_discov01") for _ in range(3)], ["waiting_launch", "cancelled", "cancelled"])  # B1's one refusal
 
     def test_nothing_mounted_and_nothing_recorded_does_not_start(self) -> None:
         fresh = self.root / "fresh"

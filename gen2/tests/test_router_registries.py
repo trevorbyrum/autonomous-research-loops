@@ -119,6 +119,29 @@ class ConfigBundleTest(RouterTestCase):
         self.assertEqual(self.activate(copy.deepcopy(BUNDLE))["status"], "replayed")
         self.assertEqual(self.state(), before)
 
+    def test_restoring_the_active_bundle_after_a_refusal_is_a_recovery(self) -> None:
+        """H-2, RG-9 on a start with nothing mounted (Astra 1d-repair review
+        finding 2): restoring the active bundle names it and records the
+        recovery once, the failure kept as history; restoring it again, with
+        nothing to recover from, writes nothing, as it does in a store with
+        no bundle to restore."""
+        self.assertEqual(self.activate(bundle(2, policy={"supervisor": {"launch_attempt": 1}}))["status"], "refused")
+        self.assertEqual(self.router.restore_config_bundle(), CONFIG)
+        facts = self.rows("SELECT fact_id, state, superseded_by_fact_id FROM capability_facts WHERE capability = 'config-bundle' ORDER BY rowid")
+        self.assertEqual([(state, superseded is None) for _, state, superseded in facts], [("failing", False), ("healthy", True)])
+        self.assertEqual(facts[0][2], facts[1][0])  # the failure is superseded by the recovery, not rewritten
+        self.assertEqual(self.rows("SELECT version, status FROM config_bundles"), [(1, "active")])
+        before = self.state(exclude=())
+        self.assertEqual(self.router.restore_config_bundle(), CONFIG)
+        self.assertEqual(self.state(exclude=()), before)
+        db = store_fixtures.connect()
+        try:
+            router = service.Router(api.adopt_in_memory(db), rf.Spool(), clock=rf.Clock())
+            self.assertIsNone(router.restore_config_bundle())
+            self.assertEqual(db.execute("SELECT count(*) FROM capability_facts").fetchone(), (0,))
+        finally:
+            db.close()
+
     def test_new_work_pins_the_active_bundle(self) -> None:
         self.to_queued()
         second = bundle(2)

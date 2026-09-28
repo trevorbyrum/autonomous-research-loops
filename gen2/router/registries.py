@@ -23,8 +23,9 @@ admitted work keeps the bundle it was admitted under, which stays recorded
 and resolvable, so its policy survives a restart and a later activation
 (RG-9). A refused bundle leaves the active one as it was and raises a dated
 capability fact, on the transition only (H-2); the next activation that
-succeeds — a new bundle, or the active one mounted again (a replay) —
-records the recovery, the failure staying in the fact history.
+succeeds — a new bundle, or the active one mounted again (a replay) — or a
+start with nothing mounted restoring the active one records the recovery,
+the failure staying in the fact history.
 
 Questions: a (question id, version) has one content forever, the entry's
 content hash (C-13). A DecisionSpec resolves against the registry when it is
@@ -125,10 +126,16 @@ class Registries:
         row = self._one("config_bundles", {"bundle_hash": bundle_hash})
         return None if row is None else row["document"]
 
-    def active_config_bundle(self) -> str | None:
-        """The active bundle's hash (None before any is activated): what a
-        start with nothing mounted restores. Reading it authorizes nothing."""
-        active = self._active_bundle()
+    def restore_config_bundle(self) -> str | None:
+        """What a start with nothing mounted runs under (trusted surface: the
+        composition root): the active bundle's hash, None before any is
+        activated. Restoring the usable active bundle, like mounting it again,
+        records the recovery from a refusal since, once (H-2; Astra 1d-repair
+        review finding 2): the failure stays history."""
+        with self._store.transaction():
+            active = self._active_bundle()
+            if active is not None:
+                self._fact(BUNDLE_CAPABILITY, "healthy", f"bundle version {active['version']} active (restored)", self._now())
         return None if active is None else active["bundle_hash"]
 
     def _bundle(self, bundle_hash: str) -> dict:
