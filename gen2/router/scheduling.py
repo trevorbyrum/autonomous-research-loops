@@ -42,6 +42,13 @@ episode takes every pending trigger of its topic. A signal-driven episode is
 admitted within the active bundle's budget per window and after its
 cooldown; the fixed cadence floor, and any pending mandatory signal
 (retraction, decision-record change), are never held back by either (G-12).
+Task 2a: the mandatory signals enter through raise_signal (code policy or
+the operator; the surveillance that raises them is 2d's); a checkpoint's
+commit closes its episode and marks the episode's triggers handled
+(service.Router, review_closures).
+
+Topics (task 2a). create_topic enters a topic into the queue at intake
+(flow S1); what advances it is the brief's confirmation (G-4).
 """
 from __future__ import annotations
 
@@ -71,6 +78,14 @@ SCHEDULING_COMMANDS = {
         "type": "object", "additionalProperties": False, "required": ["episode_id", "topic_id", "kind"],
         "properties": {"episode_id": {"type": "string", "pattern": "^rev_[A-Za-z0-9_-]{8,64}$"}, "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
                        "kind": {"enum": ["fixed_cadence", "obligations_scope", "method_fit", "facet_audit", "calibration", "state_integrity_audit"]}}},
+    "topic": {  # task 2a
+        "type": "object", "additionalProperties": False, "required": ["topic_id", "priority"],
+        "properties": {"topic_id": {"$ref": "common.schema.json#/$defs/topic_id"}, "priority": {"type": "integer", "minimum": 0, "maximum": 9007199254740991}}},
+    "signal": {  # task 2a: signal_source names the trusted caller (code policy or the operator surface), as requeue's requested_by does
+        "type": "object", "additionalProperties": False, "required": ["topic_id", "reason_code", "signal_source", "cause_ref", "source_revision", "observed_at"],
+        "properties": {"topic_id": {"$ref": "common.schema.json#/$defs/topic_id"}, "reason_code": {"enum": list(MANDATORY)},
+                       "signal_source": {"enum": ["deterministic", "operator"]}, "cause_ref": _ID,
+                       "source_revision": {"$ref": "common.schema.json#/$defs/state_revision"}, "observed_at": {"$ref": "common.schema.json#/$defs/timestamp"}}},
 }
 
 
@@ -84,6 +99,12 @@ class Scheduling:
     def open_review(self, request: Mapping) -> dict:
         return self._scheduling_command(request, "review", self._review_in_transaction)
 
+    def create_topic(self, request: Mapping) -> dict:
+        return self._scheduling_command(request, "topic", self._topic_in_transaction)
+
+    def raise_signal(self, request: Mapping) -> dict:
+        return self._scheduling_command(request, "signal", self._signal_in_transaction)
+
     def _scheduling_command(self, request: Mapping, shape: str, body) -> dict:
         try:
             req = boundary.normalize(request, "request_invalid")
@@ -91,6 +112,24 @@ class Scheduling:
             return self._guarded("request_invalid", lambda now: body(req, now))
         except Refusal as refusal:
             return {"status": "refused", "reason": refusal.reason, "detail": refusal.detail[:500]}
+
+    # -- topics (task 2a) ----------------------------------------------------------
+    def _topic_in_transaction(self, req: dict, now: str) -> dict:
+        """A topic enters the queue at intake: awaiting its brief's
+        confirmation, at state revision 0 (DDL queue_entries_created_at_intake;
+        G-13: nothing is created decided), its fleet its id's prefix. Key: the
+        topic id; only the identical request replays, whatever the topic has
+        done since."""
+        tid = req["topic_id"]
+        stored = self._one("queue_entries", {"topic_id": tid})
+        if stored is not None:
+            if stored["priority"] != req["priority"]:
+                raise Refusal("topic_conflict", f"{tid} was created with priority {stored['priority']}")
+            return {"status": "replayed", "topic_id": tid}
+        self._store.insert("queue_entries", {"topic_id": tid, "fleet_id": tid.split(":", 1)[0], "priority": req["priority"],
+                                             "status": "awaiting_brief_confirmation", "created_at": now, "updated_at": now})
+        self._audit("topic_created", now, {"priority": req["priority"]}, topic_id=tid)
+        return {"status": "created", "topic_id": tid}
 
     # -- re-queue ------------------------------------------------------------------
     def _requeue_in_transaction(self, req: dict, now: str) -> dict:
@@ -221,3 +260,24 @@ class Scheduling:
             self._store.update("review_triggers", {"trigger_identity": trigger["trigger_identity"]}, {"episode_id": req["episode_id"]})
         self._audit("review_opened", now, {"episode_id": req["episode_id"], "kind": req["kind"], "triggers": len(pending)}, topic_id=req["topic_id"])
         return {"status": "opened", "episode_id": req["episode_id"], "triggers": [t["trigger_identity"] for t in pending]}
+
+    def _signal_in_transaction(self, req: dict, now: str) -> dict:
+        """A code-policy signal (task 2a; G-12): a retraction or a
+        decision-record change, raised by code policy or the operator (never
+        by a model's observation: the store's CHECK), recorded pending in the
+        topic's coalesced queue, where it exempts a signal-driven review from
+        budget and cooldown (above). Key: its trigger identity — (topic,
+        reason, cause, source revision), source_revision being the revision of
+        the source the signal is about — so the same signal reported again
+        collides with the first whatever became of it, and a handled one
+        opens nothing (RG-1b(e))."""
+        identity = boundary.trigger_identity(req["topic_id"], req)
+        stored = self._one("review_triggers", {"trigger_identity": identity})
+        if stored is not None:
+            return {"status": "replayed", "trigger_identity": identity, "episode_id": stored["episode_id"], "handled_at": stored["handled_at"]}
+        self._open_topic(req["topic_id"])
+        if instant(req["observed_at"]) > instant(now):
+            raise Refusal("request_invalid", f"a signal is observed by now ({now}), not at {req['observed_at']}")
+        self._store.insert("review_triggers", {"trigger_identity": identity, **{k: req[k] for k in ("topic_id", "reason_code", "signal_source", "cause_ref", "observed_at")}})
+        self._audit("signal_raised", now, {"trigger_identity": identity, "reason_code": req["reason_code"], "source": req["signal_source"]}, topic_id=req["topic_id"])
+        return {"status": "recorded", "trigger_identity": identity, "episode_id": None, "handled_at": None}
