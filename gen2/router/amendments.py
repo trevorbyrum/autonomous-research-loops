@@ -33,8 +33,9 @@ operator's ratings descends from the draft they rated (G-2) — its approval
 is the existing contract_approval, which the store refuses while any facet
 is unrated or a critical one uncovered (G-3); propose_amendment writes the
 next contract revision as a draft whose parent is the approved revision.
-Both write the facet and obligation rows, and both keep a label naming one
-content (below) against the revision revised; close_brief (task 1e) cancels
+Both write the facet and obligation rows, both keep a label naming one
+content (below) against the revision revised, and both refuse a draft that
+is not referentially consistent (references, below; task 2a's expansion); close_brief (task 1e) cancels
 a version awaiting confirmation or archives a confirmed one, recording who
 (the authenticated operator the surface names), when and why (G-4). Approval
 stays an operator decision (contract_approval, amendment_approval,
@@ -239,6 +240,62 @@ def brief_compatibility(pinned: dict, current: dict) -> str:
     return "lineage_only" if _same(strip(pinned), strip(current)) else "content_changed"
 
 
+def references(doc: dict, templates: dict) -> str | None:
+    """The first referential defect of a contract draft, or None (task 2a;
+    store README "What stays router logic"; flow S3: code checks referential
+    consistency, the operator approves scientific fit). Ids are unique within
+    their section; framework links join its nodes; each obligation fills
+    exactly the slots of a registered template of its claim type (methodology
+    §2 step 2), traces only to decision-record entries and framework links the
+    contract has, and names one of its stopping profiles; each matrix cell
+    names a facet and question type of the map, a covered cell only
+    obligations that tag its facet, another cell none; applicability rules
+    name its obligations; a templated method design is its registered
+    template's combination (family, role, purpose). Structure only: whether
+    the framework represents the decision is the operator's."""
+    record, framework, matrix = doc["decision_record"], doc["facet_map"]["analytic_framework"], doc["facet_map"]["coverage_matrix"]
+    entries = [e["entry_id"] for e in (*record["feeds"].get("alternatives", ()), *record["evidence_that_would_change_it"], *record["constraints"],
+                                       *record["operator_hypotheses"], *record["surfaced_assumptions"])]
+    nodes, links = [n["node_id"] for n in framework["nodes"]], [link["link_id"] for link in framework["links"]]
+    facets, obligations = [f["facet_id"] for f in doc["facet_map"]["facets"]], {o["obligation_id"]: o for o in doc["obligations"]}
+    profiles, design = [p["profile_id"] for p in doc["stopping_profiles"]], doc["method_design"]
+    for what, ids in (("decision-record entry", entries), ("framework node", nodes), ("framework link", links), ("facet", facets), ("stopping profile", profiles),
+                      ("obligation", [o["obligation_id"] for o in doc["obligations"]]), ("method family", [f["family_id"] for f in design["families"]])):
+        if len(set(ids)) != len(ids):
+            return f"a {what} id is used twice"
+    if any(not {link["from_node"], link["to_node"]} <= set(nodes) for link in framework["links"]):
+        return "a framework link joins a node the framework lacks"
+    registered = {(t["template_id"], t["template_version"]): t for t in templates.get("obligation", ())}
+    for oid, o in obligations.items():
+        t = registered.get((o["template"]["template_id"], o["template"]["template_version"]))
+        if t is None or t["claim_type"] != o["template"]["claim_type"]:
+            return f"{oid}: template {o['template']['template_id']} v{o['template']['template_version']} is no registered {o['template']['claim_type']} template"
+        if not set(t["required_slots"]) <= set(o["slots"]) <= set(t["required_slots"]) | set(t["optional_slots"]):
+            return f"{oid}: its slots are not its template's (required {sorted(t['required_slots'])}, optional {sorted(t['optional_slots'])})"
+        if not set(o["traces_to"]["decision_record_entries"]) <= set(entries) or not set(o["traces_to"]["framework_links"]) <= set(links):
+            return f"{oid} traces to a decision-record entry or framework link the contract lacks"
+        if o["stopping_profile_id"] not in profiles:
+            return f"{oid} names stopping profile {o['stopping_profile_id']}, which the contract lacks"
+    for cell in matrix["cells"]:
+        at, named = f"cell ({cell['facet_id']}, {cell['question_type']})", cell.get("obligation_ids", ())
+        if cell["facet_id"] not in facets or cell["question_type"] not in matrix["question_types"]:
+            return f"{at} names a facet or question type the map lacks"
+        if any(i not in obligations or cell["facet_id"] not in obligations[i]["facet_ids"] for i in named) or (cell["state"] != "covered" and named):
+            return f"{at} names obligations that are not the contract's tagging its facet, or names any while {cell['state']}"
+    if any(not set(rule["obligation_ids"]) <= set(obligations) for rule in doc["applicability_rules"]):
+        return "an applicability rule names an obligation the contract lacks"
+    if design["selection"] == "template":
+        shape = lambda families: sorted(_key(f) for f in families)  # noqa: E731
+        md = next((t for t in templates.get("method_design", ()) if (t["template_id"], t["template_version"]) == (design["template"]["template_id"], design["template"]["template_version"])), None)
+        if md is None or shape(md["families"]) != shape(design["families"]):
+            return "the method design is not its registered template's combination of families, roles and purposes"
+    return None
+
+
+def _key(family: dict) -> bytes:
+    return canonical.canonical_bytes({k: family.get(k) for k in ("family", "role", "purpose")})
+
+
 def _importance(entry: dict) -> dict:
     """A facet or obligation row's importance columns, as its document entry states them (DDL binds the two)."""
     proposed, rating = entry["importance"].get("proposed") or {}, entry["importance"].get("operator_rating") or {}
@@ -388,6 +445,9 @@ class Amendments:
                     raise Refusal("request_invalid", f"the {what} is the {'revised' if draft else 'approved'} revision's, so it keeps {name} {kept} (G-6)")
             elif label(doc) <= recorded:
                 raise Refusal("request_invalid", f"a changed {what} takes a new {name}, above every recorded one ({recorded}): a label never names two (G-6)")
+        defect = references(doc, self._templates()) or self._recorded_references(doc)
+        if defect is not None:  # task 2a: every draft the router writes, a first one or an amendment
+            raise Refusal("contract_inconsistent", defect)
         self._store.insert("contract_revisions", {"topic_id": tid, "revision": doc["revision"], "parent_revision": doc["parent_revision"],
                                                   "protocol_revision": doc["protocol_revision"], "framing_version": doc["facet_map"]["framing_version"],
                                                   "content_hash": doc["content_hash"], "document": doc, "status": "draft", "created_at": doc["created_at"]})
@@ -401,6 +461,24 @@ class Amendments:
         against = None if approved is None else contract_compatibility(approved["document"], doc)
         self._audit("contract_drafted" if draft else "amendment_proposed", now, {"revision": doc["revision"], "against_approved": against}, topic_id=tid)
         return {"status": "recorded", "topic_id": tid, "revision": doc["revision"], "against_approved": against}
+
+    def _recorded_references(self, doc: dict) -> str | None:
+        """The references a draft makes to the topic's record (task 2a): the
+        confirmed brief its decision record names was confirmed by exactly the
+        decision it names (flow S1: a contract is drafted from a confirmed
+        brief); a proposed method design is a document recorded for the topic
+        by the topic's own work."""
+        brief, tid = doc["decision_record"]["objective"]["confirmed_brief"], doc["topic_id"]
+        row = self._one("intake_briefs", {"topic_id": tid, "brief_id": brief["brief_id"], "version": brief["version"]})
+        if row is None or row["confirmed_by_decision_id"] != brief["confirmed_by"]:
+            return f"the decision record names brief {brief['brief_id']} v{brief['version']} as confirmed by {brief['confirmed_by']}, which the topic's record does not"
+        proposal = doc["method_design"].get("proposal")
+        if proposal is not None:
+            ref, inv = proposal["document"], self._one("invocations", {"invocation_id": proposal["proposed_by"]})
+            stored = self._recorded_for(ref["content_hash"], tid)
+            if inv is None or inv["topic_id"] != tid or stored is None or (stored["size_bytes"], stored["media_type"]) != (ref["size_bytes"], ref["media_type"]):
+                return "the method-design proposal is not a document recorded for this topic, proposed by its own work"
+        return None
 
     # -- pins ----------------------------------------------------------------------
     def _pin_status(self, inv: dict) -> str:

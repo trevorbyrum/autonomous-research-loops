@@ -27,6 +27,11 @@ succeeds — a new bundle, or the active one mounted again (a replay) — or a
 start with nothing mounted restoring the active one records the recovery,
 the failure staying in the fact history.
 
+Templates (task 2a): the obligation and method-design templates contract
+drafts are checked against (amendments.py). As with questions, a (template
+id, version) has one content forever: a bundle naming a recorded one with
+other content is refused (template_altered).
+
 Questions: a (question id, version) has one content forever, the entry's
 content hash (C-13). A DecisionSpec resolves against the registry when it is
 stored (DDL decision_specs_question_registered) and, when a decision is
@@ -84,6 +89,9 @@ class Registries:
             for q in doc["questions"]:
                 if canonical.content_hash(q) != q["content_hash"]:
                     raise Refusal("bundle_invalid", f"question {q['question_id']} v{q['version']} does not hash to its content hash (C-13)")
+            for kind, entries in doc.get("templates", {}).items():  # task 2a: the template registry
+                if len({(t["template_id"], t["template_version"]) for t in entries}) != len(entries):
+                    raise Refusal("bundle_invalid", f"a {kind} template version appears twice")
             bundle_hash = canonical.logical_hash(doc)
             return self._guarded("bundle_invalid", lambda now: self._activate_in_transaction(doc, bundle_hash, now))
         except Refusal as refusal:
@@ -107,6 +115,11 @@ class Registries:
             row = self._one("questions", {"question_id": q["question_id"], "version": q["version"]})
             if row is not None and row["content_hash"] != q["content_hash"]:
                 raise Refusal("question_altered", f"{q['question_id']} v{q['version']} is registered with another content; a rewording is a new version (D-4)")
+        for kind, entries in doc.get("templates", {}).items():  # a template version has one content forever, as a question version does
+            for t, b in ((t, b) for t in entries for b in recorded):
+                was = next((x for x in b["document"].get("templates", {}).get(kind, ()) if (x["template_id"], x["template_version"]) == (t["template_id"], t["template_version"])), t)
+                if canonical.canonical_bytes(was) != canonical.canonical_bytes(t):
+                    raise Refusal("template_altered", f"{kind} template {t['template_id']} v{t['template_version']} is registered with another content; a change is a new version")
         active = next((b for b in recorded if b["status"] == "active"), None)
         if active is not None:
             self._store.update("config_bundles", {"bundle_hash": active["bundle_hash"]}, {"status": "superseded"})
@@ -147,6 +160,11 @@ class Registries:
 
     def _active_bundle(self) -> dict | None:
         return self._one("config_bundles", {"status": "active"})
+
+    def _templates(self) -> dict:
+        """The active bundle's template registry (task 2a); none registered while no bundle names any."""
+        active = self._active_bundle()
+        return {} if active is None else active["document"].get("templates", {})
 
     def _fact(self, capability: str, state: str, detail: str, now: str) -> None:
         """A dated capability fact, recorded on a transition only (H-2): a state
