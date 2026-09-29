@@ -1,0 +1,9 @@
+# The engine image's build context is the repository root; it takes gen2/
+# (engine code, DDL, schemas, the runtime lock) and nothing else — not the
+# tests, not any local state, credential or environment file.
+*
+!gen2/
+gen2/tests/
+**/__pycache__/
+**/*.pyc
+**/*.env

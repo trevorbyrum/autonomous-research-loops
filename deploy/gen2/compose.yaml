@@ -1,0 +1,65 @@
+# The gen-2 minimal deployment slice (task 1f): the engine alone — router,
+# station supervisor and operator listener — with its control-store volume,
+# one provider auth volume, its mounted config bundle and its env secrets.
+# No gateway, exporter, tier0 or research workflow.
+#
+# Trace: docs/gen2/DEPLOYMENT-CONTRACT.md §1 (the `engine` service; the
+# control store a file on a volume only the engine mounts), §1.1 (listens on
+# 0.0.0.0:8770 in its container; published on host loopback only, the port
+# checked free on the deploying host), §1.2 (healthcheck: the image's), §2
+# (config mounted read-only; restart, not rebuild), §3.1 (env secrets from
+# one file, never in the repository), §4 (one auth volume per provider at a
+# fixed path, service-owned, 0700, surviving restart and replacement).
+#
+# Every deployment-specific value comes from the environment, and each
+# required one fails the command when unset:
+#   GEN2_ENV_FILE     the secrets file (GEN2_SECRETS=env, GEN2_OPERATOR_TOKENS,
+#                     GEN2_SECRET_EXPORTER_TOKEN; deploy/gen2.env.example);
+#                     0400, never committed (*.env is ignored)
+#   GEN2_BUNDLE       the config-bundle/1 file mounted read-only
+#   GEN2_HOST_ID      the host identity the supervisor records (process identity, L-3)
+#   GEN2_ENGINE_PORT  the host loopback port (default 8770, the contract's)
+#   GEN2_IMAGE        the image tag (default gen2-engine:dev)
+# Use it under its own project name (-p): volumes and the network are the
+# project's. First start: create the store, explicitly, once
+# (`--profile init run --rm init-store`: a missing store is a startup error,
+# never a mode — INVARIANTS §11.2), then `up`.
+
+services:
+  engine:
+    image: ${GEN2_IMAGE:-gen2-engine:dev}
+    build:
+      context: ../..
+      dockerfile: deploy/gen2/Dockerfile
+    command: ["--root", "/var/lib/gen2/state", "--station-id", "station-1", "--host-id", "${GEN2_HOST_ID:?set GEN2_HOST_ID}",
+              "--bundle", "/etc/gen2/bundle.json", "--auth-root", "/auth"]
+    env_file: ["${GEN2_ENV_FILE:?set GEN2_ENV_FILE to the secrets file}"]
+    ports: ["127.0.0.1:${GEN2_ENGINE_PORT:-8770}:8770"]
+    volumes:
+      - state:/var/lib/gen2/state
+      - auth-codex:/auth/codex
+      - ${GEN2_BUNDLE:?set GEN2_BUNDLE to the config bundle}:/etc/gen2/bundle.json:ro
+    read_only: true
+    tmpfs: ["/tmp:mode=1777"]  # the probes' fresh workspaces
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    init: true          # PID 1 forwards the stop signal and reaps
+    stop_signal: SIGINT # the engine's own shutdown path: KeyboardInterrupt -> Engine.close()
+    stop_grace_period: 10s
+
+  # The store's explicit, one-time creation. Runs with no network and exits.
+  init-store:
+    image: ${GEN2_IMAGE:-gen2-engine:dev}
+    profiles: ["init"]
+    entrypoint: ["/opt/gen2/venv/bin/python", "-c",
+                 "from gen2.store.api import open_store; open_store('/var/lib/gen2/state/store.sqlite3', create=True).close(); print('store created')"]
+    volumes:
+      - state:/var/lib/gen2/state
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+volumes:
+  state: {}       # the control store, spool and jobs: the engine's alone
+  auth-codex: {}  # the codex auth home: credential state and what the runner keeps beside it

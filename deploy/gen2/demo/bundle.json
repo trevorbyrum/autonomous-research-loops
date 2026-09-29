@@ -1,0 +1,1 @@
+{"bundle_version": "config-bundle/1", "version": 1, "questions": [], "policy": {"supervisor": {"probe_timeout_s": 20}}}

@@ -14,7 +14,7 @@ PYTHON ?= $(GEN2_VENV)/bin/python
 
 GEN2_SQLITE_REPORT ?=
 
-.PHONY: gen2-check gen2-venv gen2-sqlite gen2-boundaries gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount
+.PHONY: gen2-check gen2-venv gen2-sqlite gen2-boundaries gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount gen2-auth-demo
 
 gen2-check: gen2-sqlite gen2-boundaries gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size
 	@echo "gen2-check: all checks passed"
@@ -86,3 +86,12 @@ gen2-size: gen2-venv
 # Full report, including the like-for-like gen-1 recount.
 gen2-linecount: gen2-venv
 	$(PYTHON) tools/gen2_linecount.py --gen1-baseline
+
+# The DEPLOYMENT-CONTRACT §4 auth-volume demonstrations (task 1f;
+# docs/gen2/AUTH-DEMO.md): builds the engine image (deploy/gen2/Dockerfile),
+# runs the compose slice (deploy/gen2/compose.yaml) under its own project
+# name, and asserts each demonstration mechanically. Needs Docker with
+# Compose; not part of gen2-check. DEMOS=a,b,c,d1,d2,e runs a subset. Exit
+# status is the demonstrations' own: no pipe.
+gen2-auth-demo: gen2-venv
+	$(PYTHON) deploy/gen2/demo/auth_demo.py $(if $(DEMOS),--only $(DEMOS))
