@@ -466,10 +466,12 @@ class Amendments:
         """The references a draft makes to the topic's record (task 2a), checked
         when it is written and again when it is approved: the confirmed brief
         its decision record names was confirmed by exactly the decision it
-        names and, until the topic's first approval, still stands — current,
-        or superseded only by a compatible version (flow S1, S3: a contract is
-        drafted from the confirmed need; task 2a-repair F1; after it, a brief
-        change reaches the contract through its impact, G-1); a proposed method design is a document its
+        names and still stands — current, or superseded only by a compatible
+        version (flow S1, S3; task 2a-repair F1) — or, after the first
+        approval, was archived (it or a compatible successor) with no brief
+        confirmed now: a replacement is never kept, as neither a contract
+        approval's impact nor its work sees briefs (F1-R; an amendment names
+        it, a reframe, G-6); a proposed method design is a document its
         proposer, a primary invocation of the topic, committed — its bytes
         among what one of its own commit receipts validated (F3)."""
         brief, tid = doc["decision_record"]["objective"]["confirmed_brief"], doc["topic_id"]
@@ -477,7 +479,9 @@ class Amendments:
         if row is None or row["confirmed_by_decision_id"] != brief["confirmed_by"]:
             return f"the decision record names brief {brief['brief_id']} v{brief['version']} as confirmed by {brief['confirmed_by']}, which the topic's record does not"
         standing = self._brief_standing(tid, brief["brief_id"], brief["version"])
-        if standing not in COMPATIBLE and self._one("contract_revisions", {"topic_id": tid, "status": "approved"}) is None:
+        if standing not in COMPATIBLE and not (self._one("contract_revisions", {"topic_id": tid, "status": "approved"}) is not None
+                                               and self._one("intake_briefs", {"topic_id": tid, "status": "confirmed"}) is None
+                                               and (row["status"] == "archived" or self._standing("brief", tid, brief["version"], brief["brief_id"]) is None)):
             return f"the decision record names brief {brief['brief_id']} v{brief['version']}, which no longer stands ({standing})"
         proposal = doc["method_design"].get("proposal")
         if proposal is not None:
