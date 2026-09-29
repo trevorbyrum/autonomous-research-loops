@@ -17,11 +17,15 @@ transaction:
     conflict;
   * the capability's dated fact moves on a transition only (H-2): usable is
     healthy, unusable_credential failing, runner_error unknown (the runner
-    could not say). Nothing recorded is not healthy: a capability known only
-    by probing is unknown until probed, so its first observation is a
-    transition. A fact's `since` is the observation's own instant, and a
-    failing or unknown one carries `last_success_at`, the last usable
-    observation recorded;
+    could not say), declared_expired degraded (the runner reads the
+    credential, whose access token declares it expired: the credential's own
+    claim, which a refresh credential may renew; the provider was not asked,
+    task 1f-repair; such an observation names that declared instant, at or
+    before it was observed). Nothing recorded is not healthy: a capability
+    known only by probing is unknown until probed, so its first observation
+    is a transition. A fact's `since` is the observation's own instant, and
+    one not healthy carries `last_success_at`, the last usable observation
+    recorded;
   * an observation older than one already recorded for the capability (two
     probes that ran together, recorded out of order) is kept and moves
     nothing: the fact follows the newest observation (found by reading the
@@ -43,17 +47,22 @@ from gen2.router.boundary import Refusal
 from gen2.router.lifecycle import _after
 from gen2.router.registries import ROUTER_DEFAULTS
 
-OUTCOME_STATE = {"usable": "healthy", "unusable_credential": "failing", "runner_error": "unknown"}
+OUTCOME_STATE = {"usable": "healthy", "declared_expired": "degraded", "unusable_credential": "failing", "runner_error": "unknown"}
 AUDIT_KIND = "capability_probe"
 _ID = {"$ref": "common.schema.json#/$defs/short_text"}
+_DECLARED = {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/timestamp"}]}
 CAPABILITY_COMMANDS = {
     "capability_probe": {
         "type": "object", "additionalProperties": False,
-        "required": ["probe_id", "capability", "outcome", "detail", "started_at", "observed_at", "runner", "affected_lanes", "requested_by"],
+        "required": ["probe_id", "capability", "outcome", "detail", "declared_expiry", "started_at", "observed_at", "runner", "affected_lanes",
+                     "requested_by"],
         "properties": {
             "probe_id": {"type": "string", "pattern": "^probe_[a-f0-9]{32}$"},
             "capability": {"type": "string", "pattern": "^provider-auth:[a-z][a-z0-9-]{0,39}$"},
             "outcome": {"enum": sorted(OUTCOME_STATE)}, "detail": _ID,
+            "declared_expiry": {"oneOf": [{"type": "null"}, {  # what the credential declares of its own expiry, when it was read
+                "type": "object", "additionalProperties": False, "required": ["access_token", "id_token", "refresh_credential"],
+                "properties": {"access_token": _DECLARED, "id_token": _DECLARED, "refresh_credential": {"type": "boolean"}}}]},
             "started_at": {"$ref": "common.schema.json#/$defs/timestamp"}, "observed_at": {"$ref": "common.schema.json#/$defs/timestamp"},
             "runner": {"type": "object", "additionalProperties": False, "required": ["name", "version"], "properties": {"name": _ID, "version": _ID}},
             "affected_lanes": {"type": "array", "maxItems": 20, "uniqueItems": True, "items": _ID},
@@ -72,6 +81,10 @@ class Capabilities:
             boundary.require_schema(self._schemas, req, "router-commands#/$defs/capability_probe", "request_invalid")
             if boundary.instant(req["observed_at"]) < boundary.instant(req["started_at"]):
                 raise Refusal("request_invalid", "a probe is observed at or after it started")
+            if req["outcome"] == "declared_expired" and not (
+                    req["declared_expiry"] and req["declared_expiry"]["access_token"]
+                    and boundary.instant(req["declared_expiry"]["access_token"]) <= boundary.instant(req["observed_at"])):
+                raise Refusal("request_invalid", "declared_expired names the access token's declared expiry, at or before the observation")
             return self._guarded("request_invalid", lambda now: self._probe_in_transaction(req, now))
         except Refusal as refusal:
             return {"status": "refused", "reason": refusal.reason, "detail": refusal.detail[:500]}
@@ -108,7 +121,7 @@ class Capabilities:
                 policy = self._router_policy(active["bundle_hash"]) if active is not None else ROUTER_DEFAULTS
                 hold = {"hold_id": self._new_id("hold_"), "topic_id": None, "subject_ref": hold_subject(capability), "hold_class": "capability",
                         "cause": f"{capability} {req['outcome']}: {req['detail']}"[:500],
-                        "recoverability": "needs_remediation" if req["outcome"] == "unusable_credential" else "unknown",
+                        "recoverability": "needs_remediation" if req["outcome"] in ("unusable_credential", "declared_expired") else "unknown",
                         "required_authority": "operator", "owner": "operator", "deadline_at": _after(now, policy["hold_window_s"]),
                         "clears_when": f"an operator hold_clearance, once a probe records {capability} usable (for a credential: refreshed "
                                        "in its auth volume; for the runner: repaired by an image release)",
@@ -118,7 +131,7 @@ class Capabilities:
             else:
                 hold = {"hold_id": hold["hold_id"], "opened": False}
         reply = {"status": "recorded", "probe_id": req["probe_id"], "capability": capability, "outcome": req["outcome"],
-                 "started_at": req["started_at"], "observed_at": req["observed_at"], "applied": applied,
+                 "declared_expiry": req["declared_expiry"], "started_at": req["started_at"], "observed_at": req["observed_at"], "applied": applied,
                  "fact": {"fact_id": current["fact_id"], "state": current["state"], "since": current["since"],  # an older observation implies a newer one's fact
                           "last_success_at": current["last_success_at"], "transition": transition},
                  "hold": hold}
