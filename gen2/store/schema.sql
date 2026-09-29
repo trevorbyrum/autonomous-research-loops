@@ -1585,11 +1585,16 @@ END;
 
 -- trace: flow S5 (types and cadence; fixed floor + coalesced signal queue);
 -- design review §5 (review episodes and triggers); INVARIANTS G-12.
+-- opened_after_generation (task 2a-repair F2): the topic's latest lease
+-- generation when the episode opened (0: none yet), so work admitted after it
+-- holds a greater one — commit order, where wall time can repeat or step back.
+-- A checkpoint closes only an episode opened before its admission (router).
 CREATE TABLE review_episodes (
   episode_id TEXT PRIMARY KEY,
   topic_id TEXT NOT NULL REFERENCES queue_entries (topic_id),
   kind TEXT NOT NULL CHECK (kind IN ('fixed_cadence', 'obligations_scope', 'method_fit', 'facet_audit', 'calibration', 'state_integrity_audit')),
   opened_at TEXT NOT NULL,
+  opened_after_generation INTEGER NOT NULL DEFAULT 0 CHECK (opened_after_generation >= 0),
   opened_by_operation_id TEXT REFERENCES operation_receipts (operation_id),
   closed_at TEXT,
   closed_by_operation_id TEXT REFERENCES operation_receipts (operation_id),
@@ -1600,7 +1605,7 @@ CREATE TRIGGER review_episodes_close_once
 BEFORE UPDATE ON review_episodes
 WHEN OLD.closed_at IS NOT NULL
   OR NEW.episode_id IS NOT OLD.episode_id OR NEW.topic_id IS NOT OLD.topic_id
-  OR NEW.kind IS NOT OLD.kind OR NEW.opened_at IS NOT OLD.opened_at
+  OR NEW.kind IS NOT OLD.kind OR NEW.opened_at IS NOT OLD.opened_at OR NEW.opened_after_generation IS NOT OLD.opened_after_generation
 BEGIN
   SELECT RAISE(ABORT, 'a closed review episode is final');
 END;

@@ -255,7 +255,9 @@ class Scheduling:
                 raise Refusal("signal_budget_spent", f"{len(recent)} signal reviews within {queue['window_s']} s; the signals stay queued")
             if opened and instant(now) < opened[-1] + int(queue["cooldown_s"] * 10**9):
                 raise Refusal("signal_cooldown", f"the last signal review opened within {queue['cooldown_s']} s; the signals stay queued")
-        self._store.insert("review_episodes", {"episode_id": req["episode_id"], "topic_id": req["topic_id"], "kind": req["kind"], "opened_at": now})
+        generation = max((lease["generation"] for lease in self._store.select("leases", {"topic_id": req["topic_id"]})), default=0)  # work admitted later holds a later one
+        self._store.insert("review_episodes", {"episode_id": req["episode_id"], "topic_id": req["topic_id"], "kind": req["kind"], "opened_at": now,
+                                               "opened_after_generation": generation})
         for trigger in pending:
             self._store.update("review_triggers", {"trigger_identity": trigger["trigger_identity"]}, {"episode_id": req["episode_id"]})
         self._audit("review_opened", now, {"episode_id": req["episode_id"], "kind": req["kind"], "triggers": len(pending)}, topic_id=req["topic_id"])

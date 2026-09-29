@@ -84,6 +84,10 @@ class Clock:
     def set(self, instant: str) -> None:
         self._ns = utc_instant_ns(instant)
 
+    def next_reads(self, instant: str) -> None:
+        """The next reading is exactly `instant`: a repeated or earlier one, as a real clock may give."""
+        self._ns = utc_instant_ns(instant) - 1_000_000
+
     def __call__(self) -> str:
         self._ns += 1_000_000
         seconds, rest = divmod(self._ns, 10**9)

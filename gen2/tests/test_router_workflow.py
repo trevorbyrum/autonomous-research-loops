@@ -706,6 +706,24 @@ class ReviewClosureTest(Workflow):
         with self.subTest("an episode already closed"):
             self.refused_commit(self.checkpoint, "op_closure0002", "payload_invalid", "was closed by op_closure0001", review_closures=[{"episode_id": "rev_episode0001"}])
 
+    def test_an_episode_opened_after_admission_is_not_closed_whatever_the_clock_read(self) -> None:
+        """Task 2a-repair F2 (Astra 2a review): a retraction raised, and its
+        review opened, after the checkpoint's admission — at the same clock
+        reading as the admission, or an earlier one — is not closed by it, and
+        the retraction stays unhandled; the episode it was admitted to review
+        closes beside them."""
+        admitted = self.value("SELECT admitted_at FROM invocations WHERE invocation_id = 'inv_checkpt01'")
+        for n, (label, reading) in enumerate((("at the admission's reading", admitted), ("at an earlier reading", "2026-09-27T09:56:00.000Z"))):
+            with self.subTest(label):
+                self.assertEqual(self.router.raise_signal(signal(f"retraction-late-{n}"))["status"], "recorded")
+                self.clock.next_reads(reading)
+                self.assertEqual(self.router.open_review({"episode_id": f"rev_late0000{n}", "topic_id": TOPIC, "kind": "method_fit"})["status"], "opened")
+                self.assertEqual(self.value("SELECT opened_at FROM review_episodes WHERE episode_id = ?", f"rev_late0000{n}"), reading)
+                self.refused_commit(self.checkpoint, f"op_lateclose{n:03d}", "payload_invalid", "opened after inv_checkpt01",
+                                    review_closures=[{"episode_id": f"rev_late0000{n}"}])
+                self.assertEqual(self.rows("SELECT handled_at FROM review_triggers WHERE episode_id = ?", f"rev_late0000{n}"), [(None,)])
+        self.assertEqual(self.capture(self.checkpoint, "op_closure0001", claim=None, review_closures=[{"episode_id": "rev_episode0001"}])["status"], "committed")
+
     def test_a_handled_signal_reported_again_opens_nothing(self) -> None:
         """RG-1b(e): after the episode closed, the same retraction and the same
         observation collide with their handled triggers; no review opens."""
@@ -852,6 +870,37 @@ class ScopeDecisionTest(Workflow):
         self.assertEqual(self.state(), before)
         self.assertEqual(self.decide_scope("opd_scopet102", v2)["status"], "applied")
         self.assertEqual(self.status(), "awaiting_contract_approval")
+
+    def commit_at(self, inv: str, report: dict, reading: str) -> None:
+        """A new pass commits `report`, its commit reading the clock at exactly `reading`."""
+        grant = self.started(inv)
+        env = self.envelope(grant, f"op_{inv[4:]}", {**empty_outcome(inv), "scoping_reports": [report]})
+        self.ready(grant, env["payload_digest"])
+        env["expected_state_revision"] = self.state_revision(TOPIC)
+        self.clock.next_reads(reading)
+        self.assertEqual(self.router.commit_outcome(env)["status"], "committed")
+        self.assertEqual(self.value("SELECT created_at FROM scoping_reports WHERE report_id = ? AND version = ?", report["report_id"], report["version"]), reading)
+
+    def test_the_current_report_is_the_last_committed_whatever_the_clock_read(self) -> None:
+        """Task 2a-repair F4 (Astra 2a review): scope-1 v1 rejected, scope-2 v1
+        committed at the same clock reading as scope-1 v1, or scope-1 v2 at an
+        earlier one; the last committed is the current report, and the stale
+        one is neither approved nor rejected."""
+        committed = self.value("SELECT created_at FROM scoping_reports WHERE report_id = 'scope-1'")
+        for n, (label, report, reading) in enumerate((("another report at the same reading", self.scoping_report_document(report_id="scope-2"), committed),
+                                                      ("the next version at an earlier reading", self.scoping_report_document(version=2), "2026-09-27T09:59:00.000Z"))):
+            with self.subTest(label):
+                self.setUp()
+                self.assertEqual(self.decide_scope("opd_scopereject", self.v1, "rejected")["status"], "applied")
+                self.commit_at("inv_scoping02", report, reading)
+                before = self.state()
+                for disposition in ("approved", "rejected"):
+                    stale = self.decide_scope(f"opd_stale{disposition}", self.v1, disposition)
+                    self.assertEqual((stale["status"], stale.get("reason")), ("rejected", "decision_refused"), stale)
+                    self.assertIn("about the topic's newest committed report, not scope-1 v1", stale.get("detail", ""))
+                    self.assertEqual(self.state(), before)
+                self.assertEqual(self.decide_scope("opd_scopecurrent", report)["status"], "applied")
+                self.assertEqual(self.status(), "awaiting_contract_approval")
 
     def test_a_rejection_of_the_current_report_reworks_it(self) -> None:
         """The accepted rejection alone: the topic's newest report, rejected, sends it back to scoping."""

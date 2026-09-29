@@ -1045,7 +1045,7 @@ class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities
                 raise Refusal("cross_topic" if episode else "payload_invalid", f"{closure['episode_id']} is not a review episode of {topic_id}")
             if episode["closed_at"] is not None:
                 raise Refusal("payload_invalid", f"{closure['episode_id']} was closed by {episode['closed_by_operation_id']}")
-            if instant(episode["opened_at"]) > instant(inv["admitted_at"]):
+            if self._one("leases", {"lease_id": inv["lease_id"]})["generation"] <= episode["opened_after_generation"]:  # commit order, not wall time (2a-repair F2)
                 raise Refusal("payload_invalid", f"{closure['episode_id']} opened after {inv['invocation_id']} was admitted: a checkpoint closes only an "
                                                  "episode it was admitted to review, so no signal is marked handled unreviewed (G-12)")
             self._store.update("review_episodes", {"episode_id": closure["episode_id"]}, {"closed_at": now, "closed_by_operation_id": op_id})
@@ -1161,13 +1161,16 @@ class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities
         self._require_current_report(d)
         return self._move(self._one("queue_entries", {"topic_id": d["topic_id"]}), now, {"awaiting_scope_approval": "scoping"}, required=True)
 
-    def _require_current_report(self, d: dict) -> None:
+    def _require_current_report(self, d: dict) -> dict:
         """A scope decision is about the report the topic was handed to the
-        operator with: its newest committed one (task 2a)."""
+        operator with: its newest committed one (task 2a), in commit order —
+        the topic state revision its commit reached, not wall time or a
+        version, which orders one report's series only (task 2a-repair F4)."""
         reports = self._store.select("scoping_reports", {"topic_id": d["topic_id"]})
-        newest = max(reports, key=lambda r: (instant(r["created_at"]), r["version"]), default=None)
+        newest = max(reports, key=lambda r: self._one("operation_receipts", {"operation_id": r["committed_by_operation_id"]})["state_revision_after"], default=None)
         if newest is None or (newest["report_id"], newest["version"]) != (d["subject_ref"], d["subject_revision"]):
             raise Refusal("decision_refused", f"a scope decision is about the topic's newest committed report, not {d['subject_ref']} v{d['subject_revision']}")
+        return newest
 
     def _approve_contract(self, d: dict, topic: dict, now: str) -> dict:
         """Approve exactly this revision, superseding the approved one (one
