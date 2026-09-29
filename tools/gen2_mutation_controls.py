@@ -161,6 +161,16 @@ MANUAL: dict[str, dict] = {
              "why": "validates an accepted retraction from code policy against the signal command's schema (gen2/router/scheduling.py "
                     "SCHEDULING_COMMANDS, whose enum the mutant widens) and records it: the widened schema still accepts it"}
        for mid in ("2A-signal-discretionary", "2A-signal-model-source")},
+    # task 2a's expansion: only the killer takes the accepted rejection in the trace; the accepted rejection alone was written as a test
+    # of its own, added after the trace
+    "2A-rework-stale": {"controls": ["test_router_workflow.ScopeDecisionTest.test_a_rejection_of_the_current_report_reworks_it"],
+                        "why": "executes gen2/router/service.py _rework's changed line (the newest-report check) on its accepted path, a rejection of "
+                               "the topic's newest report, and asserts the move back to scoping: the mutant, which drops only that check, keeps it"},
+    # the changed statement is the rework's move itself, under no guard of its own: every accepted rejection asserts or relies on it
+    "2A-rework-none": {"controls": [],
+                       "why": "the changed statement is the rework's queue move itself (gen2/router/service.py _rework's return), reached only by a "
+                              "rejection of the topic's newest report, whose one effect is that move: no accepted path through it can pass under a "
+                              "mutant that drops it, so there is no alternative to pair"},
     # task 2a: every traced creation is of a topic outside fleet-a, which the mutant (a fixed fleet-a) breaks; the accepted creation of a
     # fleet-a topic was written as a test of its own, added after the trace
     "2A-topic-fleet-fixed": {"controls": ["test_router_workflow.TopicTest.test_each_topic_takes_its_own_ids_fleet"],

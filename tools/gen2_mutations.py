@@ -275,7 +275,7 @@ WCL, WSC, WSG, WRC = ("test_router_workflow.ClaimSourceLinkTest.", "test_router_
 # task 2a's expansion (Astra's Phase 2 plan audit, findings 4 and 8)
 WSR, WSD, WSP, WRF, WTR = ("test_router_workflow.ScopingReportTest.", "test_router_workflow.ScopeDecisionTest.", "test_router_workflow.SourceProposalTest.",
                            "test_router_workflow.ReferentialCheckTest.", "test_router_workflow.TemplateRegistryTest.")
-SSR, SSP = "test_store_workflow.ScopingReportTest.", "test_store_workflow.SourceProposalTest."
+SWR, SWP = "test_store_workflow.ScopingReportTest.", "test_store_workflow.SourceProposalTest."
 RECEIPT = "gen2/schema/export-delivery-receipt.schema.json"
 MANIFEST = "gen2/schema/export-manifest.schema.json"
 ENVELOPE = "gen2/schema/freshness-envelope.schema.json"
@@ -4459,35 +4459,35 @@ MUTATIONS: list[Mutation] = [
            '        return {} if active is None else active["document"].get("templates", {})', "        return {}"),
       )),
     # task 2a's expansion in the store: scoping reports, source proposals and their decisions (each guard removed alone)
-    Mutation("2A-ddl-report-by-pre-contract-work", "2a-expansion", "a scoping report may be committed by any work", (SSR + "test_a_report_is_committed_by_pre_contract_work_of_its_brief",),
+    Mutation("2A-ddl-report-by-pre-contract-work", "2a-expansion", "a scoping report may be committed by any work", (SWR + "test_a_report_is_committed_by_pre_contract_work_of_its_brief",),
              drop_trigger="scoping_reports_by_pre_contract_work"),
-    Mutation("2A-ddl-report-immutable", "2a-expansion", "a scoping report may be rewritten", (SSR + "test_a_report_is_immutable_and_never_deleted",
+    Mutation("2A-ddl-report-immutable", "2a-expansion", "a scoping report may be rewritten", (SWR + "test_a_report_is_immutable_and_never_deleted",
              "test_store_history.EveryTableSweepTest.test_append_only_tables_reject_every_update"), drop_trigger="scoping_reports_immutable_u"),
-    Mutation("2A-ddl-report-delete-guard", "2a-expansion", "a scoping report may be deleted", (SSR + "test_a_report_is_immutable_and_never_deleted",
+    Mutation("2A-ddl-report-delete-guard", "2a-expansion", "a scoping report may be deleted", (SWR + "test_a_report_is_immutable_and_never_deleted",
              "test_store_history.EveryTableSweepTest.test_no_table_can_be_deleted_from_or_replaced_into"), drop_trigger="scoping_reports_no_delete"),
-    Mutation("2A-ddl-proposal-by-its-proposer", "2a-expansion", "a source proposal may be committed by another invocation", (SSP + "test_a_proposal_is_committed_by_its_proposer",),
+    Mutation("2A-ddl-proposal-by-its-proposer", "2a-expansion", "a source proposal may be committed by another invocation", (SWP + "test_a_proposal_is_committed_by_its_proposer",),
              drop_trigger="source_proposals_by_their_proposer"),
-    Mutation("2A-ddl-proposal-immutable", "2a-expansion", "a source proposal may be rewritten", (SSP + "test_a_proposal_is_immutable_and_never_deleted",
+    Mutation("2A-ddl-proposal-immutable", "2a-expansion", "a source proposal may be rewritten", (SWP + "test_a_proposal_is_immutable_and_never_deleted",
              "test_store_history.EveryTableSweepTest.test_append_only_tables_reject_every_update"), drop_trigger="source_proposals_immutable_u"),
-    Mutation("2A-ddl-proposal-delete-guard", "2a-expansion", "a source proposal may be deleted", (SSP + "test_a_proposal_is_immutable_and_never_deleted",
+    Mutation("2A-ddl-proposal-delete-guard", "2a-expansion", "a source proposal may be deleted", (SWP + "test_a_proposal_is_immutable_and_never_deleted",
              "test_store_history.EveryTableSweepTest.test_no_table_can_be_deleted_from_or_replaced_into"), drop_trigger="source_proposals_no_delete"),
-    Mutation("2A-ddl-report-document-unbound", "2a-expansion", "a scoping report's document need not be its row", (SSR + "test_its_document_is_its_row",),
+    Mutation("2A-ddl-report-document-unbound", "2a-expansion", "a scoping report's document need not be its row", (SWR + "test_its_document_is_its_row",),
              old="  CHECK (json_extract(document, '$.topic_id') IS topic_id\n     AND json_extract(document, '$.report_id') IS report_id", new="  CHECK (1\n     OR 1"),
-    Mutation("2A-ddl-report-parent-earlier", "2a-expansion", "a scoping report version may name itself as its parent", (SSR + "test_a_version_revises_an_earlier_stored_one",),
+    Mutation("2A-ddl-report-parent-earlier", "2a-expansion", "a scoping report version may name itself as its parent", (SWR + "test_a_version_revises_an_earlier_stored_one",),
              old="  CONSTRAINT scoping_report_parent_is_earlier CHECK (parent_version IS NULL OR parent_version < version),\n", new=""),
-    Mutation("2A-ddl-proposal-document-unbound", "2a-expansion", "a source proposal's document need not be its row", (SSP + "test_its_document_is_its_row",),
+    Mutation("2A-ddl-proposal-document-unbound", "2a-expansion", "a source proposal's document need not be its row", (SWP + "test_its_document_is_its_row",),
              old="  CHECK (json_extract(document, '$.proposal_id') IS proposal_id\n", new="  CHECK (1 OR json_extract(document, '$.proposal_id') IS proposal_id\n"),
-    Mutation("2A-ddl-proposal-supersedes-itself", "2a-expansion", "a proposal may supersede itself", (SSP + "test_a_re_proposal_supersedes_another_stored_proposal",),
+    Mutation("2A-ddl-proposal-supersedes-itself", "2a-expansion", "a proposal may supersede itself", (SWP + "test_a_re_proposal_supersedes_another_stored_proposal",),
              old="  CHECK (supersedes_proposal_id IS NOT proposal_id),\n", new=""),
-    Mutation("2A-ddl-subject-exists-report", "2a-expansion", "a scope decision may name an unstored report", (SSR + "test_a_scope_decision_names_a_stored_report_exactly",),
+    Mutation("2A-ddl-subject-exists-report", "2a-expansion", "a scope decision may name an unstored report", (SWR + "test_a_scope_decision_names_a_stored_report_exactly",),
              scope="operator_decisions_subject_exists",
              old="  OR (NEW.subject_kind = 'scoping_report' AND NOT EXISTS (\n        SELECT 1 FROM scoping_reports s\n        WHERE s.topic_id = NEW.topic_id AND s.report_id = NEW.subject_ref AND s.version = NEW.subject_revision AND s.content_hash = NEW.subject_hash))\n", new=""),
-    Mutation("2A-ddl-subject-exists-proposal", "2a-expansion", "a source decision may name an unstored proposal", (SSP + "test_a_source_decision_names_a_stored_proposal_exactly",),
+    Mutation("2A-ddl-subject-exists-proposal", "2a-expansion", "a source decision may name an unstored proposal", (SWP + "test_a_source_decision_names_a_stored_proposal_exactly",),
              scope="operator_decisions_subject_exists",
              old="  OR (NEW.subject_kind = 'source_proposal' AND NOT EXISTS (\n        SELECT 1 FROM source_proposals p WHERE p.proposal_id = NEW.subject_ref AND p.topic_id = NEW.topic_id AND p.content_hash = NEW.subject_hash))\n", new=""),
-    Mutation("2A-ddl-proposal-subject-shape", "2a-expansion", "a source decision may carry a revision a proposal does not have", (SSP + "test_a_source_decision_names_a_stored_proposal_exactly",),
+    Mutation("2A-ddl-proposal-subject-shape", "2a-expansion", "a source decision may carry a revision a proposal does not have", (SWP + "test_a_source_decision_names_a_stored_proposal_exactly",),
              old="  CHECK (subject_kind != 'source_proposal' OR (subject_revision IS NULL AND subject_hash IS NOT NULL)),\n", new=""),
-    Mutation("2A-ddl-source-kind-unmapped", "2a-expansion", "a source approval maps to no subject kind", (SSP + "test_a_source_decision_names_a_stored_proposal_exactly",),
+    Mutation("2A-ddl-source-kind-unmapped", "2a-expansion", "a source approval maps to no subject kind", (SWP + "test_a_source_decision_names_a_stored_proposal_exactly",),
              old="\n      OR (kind = 'source_approval' AND subject_kind = 'source_proposal')", new=""),
 ]
 

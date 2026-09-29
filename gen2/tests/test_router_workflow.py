@@ -853,6 +853,12 @@ class ScopeDecisionTest(Workflow):
         self.assertEqual(self.decide_scope("opd_scopet102", v2)["status"], "applied")
         self.assertEqual(self.status(), "awaiting_contract_approval")
 
+    def test_a_rejection_of_the_current_report_reworks_it(self) -> None:
+        """The accepted rejection alone: the topic's newest report, rejected, sends it back to scoping."""
+        out = self.decide_scope("opd_scopereject", self.v1, "rejected")
+        self.assertEqual((out["status"], (out.get("effects") or {}).get("queue_transition")), ("applied", {"from": "awaiting_scope_approval", "to": "scoping"}), out)
+        self.assertEqual(self.status(), "scoping")
+
     def test_a_deferral_is_a_record_only(self) -> None:
         out = self.decide_scope("opd_scopedefer", self.v1, "deferred")
         self.assertEqual((out["status"], out["effects"]), ("applied", {}), out)
