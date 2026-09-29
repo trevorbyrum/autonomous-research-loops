@@ -1210,9 +1210,9 @@ class ReferentialCheckTest(Workflow):
 
     DESIGN = b"a mixed-methods design: realist synthesis first, then a systematic review"
 
-    def commit_design(self, inv: str, kind: str = "research_pass", tid: str = TOPIC) -> dict:
-        """`inv` commits the design document (a research pass as a claim's text; any other kind as a result ref); returns its ref."""
-        grant, design = self.started(inv, kind, tid=tid), self.artifact(self.DESIGN, "text/markdown")
+    def commit_design(self, inv: str, kind: str = "research_pass", tid: str = TOPIC, text: bytes = DESIGN) -> dict:
+        """`inv` commits a design document (a research pass as a claim's text; any other kind as a result ref); returns its ref."""
+        grant, design = self.started(inv, kind, tid=tid), self.artifact(text, "text/markdown")
         claims = [{"claim_id": f"clm_design{inv[-4:]}", "revision": 1, "text_ref": design, "load_bearing": False, "required_access_tier": None}]
         out = self.finish(grant, f"op_design{inv[-4:]}", {**empty_outcome(inv, topic=tid), "claims": claims if kind == "research_pass" else []}, refs=[design])
         self.assertEqual(out["status"], "committed", out)
@@ -1227,16 +1227,15 @@ class ReferentialCheckTest(Workflow):
         exactly that document, is a primary invocation, and is the topic's;
         each defect alone, beside the same author's accepted proposal."""
         design = self.commit_design("inv_scoping01")
-        self.started("inv_scoping02")  # another research pass of the topic, which commits nothing
+        other = self.commit_design("inv_scoping02", text=b"another design")  # another research pass of the topic commits another document
         self.commit_design("inv_discovr1", "discovery")  # a discovery pass commits the same bytes
         self.open_brief(OTHER)
         self.confirm(OTHER)
         self.commit_design("inv_otherrp1", tid=OTHER)  # another topic's research pass commits them too
-        other = self.artifact(b"another design", "text/markdown")
         cases = (("an unknown invocation", design, "inv_nobody0001", "is not a document inv_nobody0001"),
                  ("another primary of the topic, which did not commit it", design, "inv_scoping02", "is not a document inv_scoping02, a primary invocation of this topic, committed"),
                  ("a non-primary invocation that committed it", design, "inv_discovr1", "is not a document inv_discovr1"),
-                 ("a document its author never committed", other, "inv_scoping01", "is not a document inv_scoping01"),
+                 ("a document of the topic its author never committed", other, "inv_scoping01", "is not a document inv_scoping01"),
                  ("another topic's invocation that committed it", design, "inv_otherrp1", "is not a document inv_otherrp1"),
                  ("another media type", {**design, "media_type": "text/plain"}, "inv_scoping01", "another size or media type"),
                  ("another size", {**design, "size_bytes": design["size_bytes"] + 1}, "inv_scoping01", "another size or media type"))
