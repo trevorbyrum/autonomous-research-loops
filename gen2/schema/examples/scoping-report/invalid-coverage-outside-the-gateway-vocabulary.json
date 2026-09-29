@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "scoping-report.schema.json",
+    "expect": "invalid",
+    "tests": "RG-4 (task 2a): coverage is stated in the gateway's vocabulary (no 'no_results')",
+    "base": "valid-first-report.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/coverage/1/coverage_state",
+        "value": "no_results"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "enum",
+        "path": "/coverage/1/coverage_state"
+      }
+    ]
+  }
+}

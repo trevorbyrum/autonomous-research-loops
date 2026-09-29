@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "scoping-report.schema.json",
+    "expect": "invalid",
+    "tests": "RG-4 (task 2a): a coverage fact rests on recorded observations",
+    "base": "valid-first-report.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/coverage/0/observation_ids",
+        "value": []
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "minItems",
+        "path": "/coverage/0/observation_ids"
+      }
+    ]
+  }
+}

@@ -2,7 +2,7 @@
   "fixture": {
     "schema": "config-bundle.schema.json",
     "expect": "valid",
-    "tests": "G-10 / RG-9: supervisor and router policy overrides, the newer budgets, and one question registry entry"
+    "tests": "G-10 / RG-9: supervisor and router policy overrides, the newer budgets, and one question registry entry; task 2a: the template registry (an obligation template's slots, a method-design template's families)"
   },
   "instance": {
     "bundle_version": "config-bundle/1",
@@ -47,6 +47,41 @@
         "text": "Does this work meet eligibility criterion C-1 of the pinned protocol?",
         "content_hash": "sha256:14b21089eecc09e8f6f302092339422ce490c3caa4fece41ad1fb26a5f9ffaa0"
       }
-    ]
+    ],
+    "templates": {
+      "obligation": [
+        {
+          "template_id": "T-comparison",
+          "template_version": 1,
+          "claim_type": "comparison",
+          "required_slots": [
+            "population",
+            "intervention",
+            "comparator",
+            "outcome"
+          ],
+          "optional_slots": [
+            "setting"
+          ]
+        }
+      ],
+      "method_design": [
+        {
+          "template_id": "MD-sr-plus-initiation",
+          "template_version": 1,
+          "families": [
+            {
+              "family": "systematic_review",
+              "role": "primary"
+            },
+            {
+              "family": "truth_discovery",
+              "role": "added",
+              "purpose": "initiation"
+            }
+          ]
+        }
+      ]
+    }
   }
 }

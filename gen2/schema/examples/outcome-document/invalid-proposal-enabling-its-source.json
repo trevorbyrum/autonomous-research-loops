@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "outcome-document.schema.json",
+    "expect": "invalid",
+    "tests": "SOURCE-GOVERNANCE step 1 (task 2a): a proposal inside a commit still cannot enable its source",
+    "base": "valid-scoping-report-and-proposal.json",
+    "patch": [
+      {
+        "op": "add",
+        "path": "/source_proposals/0/enabled",
+        "value": true
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "additionalProperties",
+        "path": "/source_proposals/0"
+      }
+    ]
+  }
+}

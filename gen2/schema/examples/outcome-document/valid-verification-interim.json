@@ -83,6 +83,8 @@
     "screening_assessments": [],
     "review_triggers": [],
     "review_closures": [],
+    "scoping_reports": [],
+    "source_proposals": [],
     "holds": [],
     "exports": []
   }

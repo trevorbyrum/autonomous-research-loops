@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "config-bundle.schema.json",
+    "expect": "invalid",
+    "tests": "methodology \u00a72 step 2 (task 2a): an obligation template names its required slots",
+    "base": "valid-full-bundle.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/templates/obligation/0/required_slots",
+        "value": []
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "minItems",
+        "path": "/templates/obligation/0/required_slots"
+      }
+    ]
+  }
+}

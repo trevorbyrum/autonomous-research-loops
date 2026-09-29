@@ -107,6 +107,58 @@
           "content_hash": {"$ref": "common.schema.json#/$defs/sha256"}
         }
       }
+    },
+    "templates": {
+      "description": "Task 2a: the template registry contract drafts are checked against (methodology §2 step 2: an obligation fills the required slots of its claim type's template; §3 and flow S3: a method design is one of a small set of coherent templates). A (template id, version) has one content forever: the router refuses a bundle naming a recorded one with other content. Absent, no template is registered, and a draft citing one is refused.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "obligation": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["template_id", "template_version", "claim_type", "required_slots", "optional_slots"],
+            "properties": {
+              "template_id": {"$ref": "common.schema.json#/$defs/local_id"},
+              "template_version": {"$ref": "common.schema.json#/$defs/revision"},
+              "claim_type": {"$ref": "contract-v2.schema.json#/$defs/obligation/properties/template/properties/claim_type"},
+              "required_slots": {"type": "array", "minItems": 1, "maxItems": 20, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/local_id"}},
+              "optional_slots": {"type": "array", "maxItems": 20, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/local_id"}}
+            }
+          }
+        },
+        "method_design": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["template_id", "template_version", "families"],
+            "properties": {
+              "template_id": {"$ref": "common.schema.json#/$defs/local_id"},
+              "template_version": {"$ref": "common.schema.json#/$defs/revision"},
+              "families": {
+                "description": "The coherent combination the template fixes: each family with its role and (for an added family) its purpose.",
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 8,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["family", "role"],
+                  "properties": {
+                    "family": {"$ref": "contract-v2.schema.json#/$defs/method_design/properties/families/items/properties/family"},
+                    "role": {"$ref": "contract-v2.schema.json#/$defs/method_design/properties/families/items/properties/role"},
+                    "purpose": {"$ref": "contract-v2.schema.json#/$defs/method_design/properties/families/items/properties/purpose"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "$defs": {

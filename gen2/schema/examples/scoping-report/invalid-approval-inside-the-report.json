@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "scoping-report.schema.json",
+    "expect": "invalid",
+    "tests": "G-13 (task 2a): scope approval is the operator's decision about this report, never a field of it",
+    "base": "valid-first-report.json",
+    "patch": [
+      {
+        "op": "add",
+        "path": "/scope_approved",
+        "value": true
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "additionalProperties",
+        "path": ""
+      }
+    ]
+  }
+}

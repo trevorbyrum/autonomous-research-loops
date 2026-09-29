@@ -1,0 +1,284 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/scoping-report.schema.json",
+  "$comment": "flow: S2 (breadth-first mapping of extent, range and nature plus the tradition census - which communities study this under what names, with what assumptions; the Scoping Report in PRISMA-ScR item shape: territory map, traditions, candidate facets, gap-map skeleton, deliberately-out list, coverage facts per lane; the report records which discovery mechanisms ran, chaining-only coverage labelled as such; hand-off: operator scope approval); §6.2 (the gap-map skeleton is matrix v0) | boundaries: Primary agent (per-station frontier LLM); Router; Operator | design-review: §4 (exploratory discovery before binding protocol approval) | invariants: C-12; G-4; G-13; RG-4; RG-U | note: task 2a, the mechanical hand-off. The router checks identity, lineage, hash truth, the brief pin (the committing work's own), that the gap map names candidate facets, and that each coverage fact is exactly what the cited observations of the topic recorded (an unavailable lane never reads as searched_empty). Whether the census is adequate is the operator's scope approval; the scoping workflow that writes it is task 2e's",
+  "title": "Scoping report",
+  "description": "One version of a topic's scoping report (flow S2), committed through commit_outcome by pre-contract research work and approved, or sent back to scoping, by the operator's scope_approval about exactly this report id, version and hash. Its content_hash is SHA-256 over the JCS serialization of this document minus content_hash (jcs-rfc8785/1). A rework is a new version whose parent is the previous one.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "report_version",
+    "report_id",
+    "topic_id",
+    "version",
+    "parent_version",
+    "created_at",
+    "content_hash",
+    "brief",
+    "territory_map",
+    "traditions",
+    "candidate_facets",
+    "gap_map",
+    "deliberately_out",
+    "discovery_mechanisms",
+    "coverage"
+  ],
+  "properties": {
+    "report_version": {
+      "const": "scoping-report/1"
+    },
+    "report_id": {
+      "$ref": "common.schema.json#/$defs/local_id"
+    },
+    "topic_id": {
+      "$ref": "common.schema.json#/$defs/topic_id"
+    },
+    "version": {
+      "$ref": "common.schema.json#/$defs/revision"
+    },
+    "parent_version": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "common.schema.json#/$defs/revision"
+        }
+      ]
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "content_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "brief": {
+      "description": "The operator-confirmed brief version this scoping ran under: its committing work's admission pin (C-12), compared by the router.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "brief_id",
+        "version",
+        "content_hash"
+      ],
+      "properties": {
+        "brief_id": {
+          "$ref": "common.schema.json#/$defs/local_id"
+        },
+        "version": {
+          "$ref": "common.schema.json#/$defs/revision"
+        },
+        "content_hash": {
+          "$ref": "common.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "territory_map": {
+      "description": "PRISMA-ScR's extent, range and nature of the literature found.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "extent",
+        "range",
+        "nature"
+      ],
+      "properties": {
+        "extent": {
+          "$ref": "common.schema.json#/$defs/long_text"
+        },
+        "range": {
+          "$ref": "common.schema.json#/$defs/long_text"
+        },
+        "nature": {
+          "$ref": "common.schema.json#/$defs/long_text"
+        }
+      }
+    },
+    "traditions": {
+      "description": "The tradition census: required, because the framing ceiling is set here (flow S2).",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "tradition_id",
+          "community",
+          "names",
+          "assumptions"
+        ],
+        "properties": {
+          "tradition_id": {
+            "$ref": "common.schema.json#/$defs/local_id"
+          },
+          "community": {
+            "$ref": "common.schema.json#/$defs/short_text"
+          },
+          "names": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 30,
+            "uniqueItems": true,
+            "items": {
+              "$ref": "common.schema.json#/$defs/short_text"
+            }
+          },
+          "assumptions": {
+            "$ref": "common.schema.json#/$defs/long_text"
+          }
+        }
+      }
+    },
+    "candidate_facets": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "facet_id",
+          "label",
+          "rationale"
+        ],
+        "properties": {
+          "facet_id": {
+            "$ref": "common.schema.json#/$defs/local_id"
+          },
+          "label": {
+            "$ref": "common.schema.json#/$defs/short_text"
+          },
+          "rationale": {
+            "$ref": "common.schema.json#/$defs/long_text"
+          }
+        }
+      }
+    },
+    "gap_map": {
+      "description": "The gap-map skeleton over the candidate facets: matrix v0 of the contract's coverage matrix (flow §6.2). `unknown` is not `gap`: what was not looked at is not shown to be missing (RG-U).",
+      "type": "array",
+      "maxItems": 2000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "facet_id",
+          "question_type",
+          "state"
+        ],
+        "properties": {
+          "facet_id": {
+            "$ref": "common.schema.json#/$defs/local_id"
+          },
+          "question_type": {
+            "$ref": "common.schema.json#/$defs/local_id"
+          },
+          "state": {
+            "enum": [
+              "evidence_seen",
+              "gap",
+              "unknown"
+            ]
+          },
+          "note": {
+            "$ref": "common.schema.json#/$defs/long_text"
+          }
+        }
+      }
+    },
+    "deliberately_out": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "item_id",
+          "description",
+          "reason"
+        ],
+        "properties": {
+          "item_id": {
+            "$ref": "common.schema.json#/$defs/local_id"
+          },
+          "description": {
+            "$ref": "common.schema.json#/$defs/long_text"
+          },
+          "reason": {
+            "$ref": "common.schema.json#/$defs/long_text"
+          }
+        }
+      }
+    },
+    "discovery_mechanisms": {
+      "description": "Which discovery mechanisms ran, did not run, or were unavailable (flow S2: chaining-only coverage is labelled as such).",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mechanism",
+          "status"
+        ],
+        "properties": {
+          "mechanism": {
+            "enum": [
+              "database_search",
+              "backward_citation_chaining",
+              "forward_citation_chaining",
+              "registry_search",
+              "grey_literature",
+              "expert_suggestion",
+              "manual"
+            ]
+          },
+          "status": {
+            "enum": [
+              "ran",
+              "not_run",
+              "unavailable"
+            ]
+          },
+          "note": {
+            "$ref": "common.schema.json#/$defs/short_text"
+          }
+        }
+      }
+    },
+    "coverage": {
+      "description": "Coverage facts per lane in the gateway's own vocabulary, each resting on recorded search observations of the topic whose lane and coverage state it restates (RG-4).",
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "lane",
+          "coverage_state",
+          "observation_ids"
+        ],
+        "properties": {
+          "lane": {
+            "$ref": "common.schema.json#/$defs/short_text"
+          },
+          "coverage_state": {
+            "$ref": "common.schema.json#/$defs/coverage_state"
+          },
+          "observation_ids": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1000,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^obs_[A-Za-z0-9_-]{8,64}$"
+            }
+          }
+        }
+      }
+    }
+  }
+}

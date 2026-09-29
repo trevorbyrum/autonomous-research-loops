@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "config-bundle.schema.json",
+    "expect": "invalid",
+    "tests": "flow S3 (task 2a): a method-design template's families use the contract's family vocabulary",
+    "base": "valid-full-bundle.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/templates/method_design/0/families/1/family",
+        "value": "vibes"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "enum",
+        "path": "/templates/method_design/0/families/1/family"
+      }
+    ]
+  }
+}

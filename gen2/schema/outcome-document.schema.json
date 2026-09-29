@@ -20,6 +20,8 @@
     "screening_assessments",
     "review_triggers",
     "review_closures",
+    "scoping_reports",
+    "source_proposals",
     "holds",
     "exports"
   ],
@@ -161,6 +163,18 @@
         "required": ["episode_id"],
         "properties": {"episode_id": {"type": "string", "pattern": "^rev_[A-Za-z0-9_-]{8,64}$"}}
       }
+    },
+    "scoping_reports": {
+      "description": "Task 2a: the pre-contract scoping report (flow S2), committed by pre-contract research work of a topic still scoping; the router checks its brief pin, lineage, hash and coverage facts, records it, and moves the topic to awaiting_scope_approval. The operator's scope_approval names exactly this report id, version and hash.",
+      "type": "array",
+      "maxItems": 1,
+      "items": {"$ref": "scoping-report.schema.json"}
+    },
+    "source_proposals": {
+      "description": "Task 2a: typed proposals that the gateway should be able to call a new provider (docs/gen2/SOURCE-GOVERNANCE.md step 1). Retained; they authorize nothing. The operator's source_approval names exactly one proposal and its content hash (the JCS hash of the whole document, computed by the router). Nothing here writes a registry, enables a lane or carries a credential.",
+      "type": "array",
+      "maxItems": 16,
+      "items": {"$ref": "source-proposal.schema.json"}
     },
     "holds": {
       "description": "Typed, owned, deadlined holds created open by this commit (H-3).",
