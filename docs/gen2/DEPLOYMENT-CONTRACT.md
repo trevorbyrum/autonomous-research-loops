@@ -365,12 +365,14 @@ produces a dated capability fact and a typed capability hold, not a silent
 zero-result pass. Untested auth-volume refresh is how a fleet discovers on a
 Monday that every station has been unauthenticated since Friday.
 
-*Status (task 1f, 2026-09-28; evidence `docs/gen2/AUTH-DEMO.md`; this note
-changes no requirement).* With the pinned runner codex 0.153.2, (a), (b) and
-(c) are demonstrated, and (d) is demonstrated for a credential the runner
-rejects on its own. (d) for an **expired or revoked** credential is **not**
-met: the runner's local check reads an expired credential as usable, and a
-probe that makes no network call cannot see a revocation (AUTH-DEMO.md F1,
+*Status (task 1f, 2026-09-28, corrected by task 1f-repair, 2026-09-29;
+evidence `docs/gen2/AUTH-DEMO.md`; this note changes no requirement).* With
+the pinned runner codex 0.153.2, (a), (b) and (c) are demonstrated, and (d)
+is demonstrated for a credential the runner rejects on its own and for one
+whose own declared expiry has passed (read offline from the credential;
+not the provider's answer). (d) for a **revoked** credential, or one expired
+without declaring it, is **not** met: neither changes a local byte, so a
+probe that makes no network call cannot be sure to see it (AUTH-DEMO.md F1,
 awaiting the operator). AUTH-DEMO.md F2–F4 name the places where this
 section's and §3.1's wording and the slice differ.
 
