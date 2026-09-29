@@ -508,3 +508,14 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-1f-astra-review-
 **Accepted:** (a), (b), (d1), the characterization, authority wiring, hygiene (no gen-1 contact, no token in kept files).
 
 **Routed:** `docs/gen2/tasks/1f-repair.md` — fix the brief, extend the probe to read declared expiry offline (fact + hold, labeled as declared expiry), split (d2) into the now-demonstrable declared-expiry case and the honestly-residual revocation case, fix the oracle and doc claims. The §4(d) disposition remains the operator's.
+
+## 2026-09-29: 1f-repair re-review (Astra, xhigh). **1f TECHNICALLY COMPLETE. All Phase 1 tasks (1a–1f) done.** (2 rounds)
+Full report: `~/work/research-loops-public/private/reviews/gen2-1f-repair-astra-review-20260929.md`. Gates A/B/C all PASS.
+
+**Findings 1–3 closed on Astra's own execution:** it decoded the fixtures independently (d2a declares expiry 2001-09-09; controls 2100-01-01; `alg: none` synthetic), ran the production probe with the baked runner under `--network none` (verdict `declared_expired`; empty-or-any API key takes precedence, matching the runner), audited the store by SQL (one dated `degraded` fact retaining `last_success_at`; a `capability` hold with operator authority, one-hour deadline, explicit remedy; recovery does not clear it; all 12 clearances across three runs bound to approved operator decisions; every copied DB passes integrity_check), and confirmed the concurrency oracle rejects serial schedules while `c-control` keeps failing the overlap assertion. `degraded` is ruled technically reasonable, with the mapping confirmed as part of the operator's (d) decision. F2–F4 stay disclosed, operator-routed.
+
+**Final build accounting at 7d11b22:** 1,424 tests; 1,487/1,487 mutants (1,470 with paired controls); 16 schemas, 67 valid + 198 invalid fixtures; 41 STRICT tables; production 8,677/10,000 lines.
+
+**The exact Phase 1→2 operator gate (Astra's words):** (1) decide §4(d) — how the demonstrated local rejection and declared-expiry fact/hold count, the `degraded` mapping, the refresh-presence policy, and the disposition of the unseen revocation/undeclared-expiry residual; (2) then accept Phase 1 and authorize Phase 2 (the complete single-topic workflow with the gateway observation/policy repairs; no model qualification or unattended authority); (3) merge to main as a separate operator decision.
+
+**LOOP STOPPED AT THE PHASE 1→2 OPERATOR GATE.**
