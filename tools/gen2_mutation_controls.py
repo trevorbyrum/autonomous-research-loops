@@ -155,6 +155,10 @@ _ROUTER_GRAPH = ("test_check_boundaries.BoundaryCheckerTest.test_store_writes_ar
                  _REAL_GRAPH + " (the router's reach to the store's write primitives)")
 _ORDER = "the tool's own test; no other test calls compare()"
 MANUAL: dict[str, dict] = {
+    # task 1f: only the killer replays a recorded probe in the traced suite; the accepted replay is split out into a test of its own
+    "1F-caps-replay-unchecked": {"controls": ["test_capability_probe.ProbeRecordTest.test_a_lost_reply_is_answered_again_from_the_record"],
+                                 "why": "the identical observation's replay is the accepted path through the conflict check (capabilities.py): "
+                                        "the control replays one and checks nothing was written"},
     # connection.sql: every store connection applies it; the control's accepted writes fire triggers under it
     "A1-recursive-triggers-off": {"controls": ["test_store_ddl.LeaseFencingTest.test_release_is_write_once"],
                                   "why": "applies the connection contract and makes accepted writes that fire triggers under it"},
