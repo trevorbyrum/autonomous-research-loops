@@ -91,7 +91,7 @@ gen2-linecount: gen2-venv
 # docs/gen2/AUTH-DEMO.md): builds the engine image (deploy/gen2/Dockerfile),
 # runs the compose slice (deploy/gen2/compose.yaml) under its own project
 # name, and asserts each demonstration mechanically. Needs Docker with
-# Compose; not part of gen2-check. DEMOS=a,b,c,d1,d2,e runs a subset. Exit
-# status is the demonstrations' own: no pipe.
+# Compose; not part of gen2-check. DEMOS=a,b,c,c-control,d1,d2a,d2b,e runs a
+# subset. Exit status is the demonstrations' own: no pipe.
 gen2-auth-demo: gen2-venv
 	$(PYTHON) deploy/gen2/demo/auth_demo.py $(if $(DEMOS),--only $(DEMOS))

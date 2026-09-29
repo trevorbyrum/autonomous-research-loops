@@ -3,7 +3,7 @@
 run against the minimal compose slice (deploy/gen2/compose.yaml) with the
 pinned runner (codex 0.153.2, baked in deploy/gen2/Dockerfile).
 
-    python deploy/gen2/demo/auth_demo.py [--only a,b,c,d1,d2,e] [--keep]
+    python deploy/gen2/demo/auth_demo.py [--only a,b,c,c-control,d1,d2a,d2b,e] [--keep]
     make gen2-auth-demo [DEMOS=a,b]
 
 Each demonstration asserts its outcome mechanically — exit statuses, the
@@ -21,16 +21,29 @@ be set up. Nothing is retried and no failure is softened.
       and the capability's fact carries on unchanged
   c   concurrency: two probes at once against one auth home, twenty rounds;
       both classify correctly each time, the credential's bytes and
-      permissions are unchanged, and at least one round's two runner runs
-      overlapped in time (read from the probes' own recorded instants)
+      permissions are as before after every round, and in at least one round
+      two `codex login status` processes were live at one instant — seen in
+      the engine container's own process table (SAMPLER), not inferred from
+      the probes' recorded start and end, which bracket the whole probe
+  c-control  (c)'s negative control: the same rounds against an engine whose
+      probe runs its runner one probe at a time, after each probe's recorded
+      start (a lock in a copy of probe.py mounted over the image's); (c)'s
+      overlap assertion must fail there, while the processes are seen
   d1  an invalid credential: a dated failing fact and a typed capability hold,
       owned and deadlined, in operator status — never a silent success
-  d2  an expired credential, as the contract words (d): the same fact and
-      hold required. With this runner it is NOT met (docs/gen2/AUTH-DEMO.md):
-      this demonstration fails, and says so
+  d2a an expired credential that declares its expiry (JWT `exp` in 2001): the
+      runner reads it as logged in; the probe reads the declared expiry and
+      records a dated degraded fact and the typed hold, labeled as the
+      credential's own claim
+  d2b the residual of (d): a revoked credential, or one expired without
+      declaring it. Neither changes a local byte, so it is modeled by leaving
+      a usable credential exactly as it is. The same fact and hold are
+      required, and it is NOT met (docs/gen2/AUTH-DEMO.md F1): this
+      demonstration fails, and says so, for the operator's disposition
   e   characterization: the pinned runner itself, with no network at all,
       over each throwaway credential shape; the probe's rules applied to its
-      output — the version-pinned table AUTH-DEMO.md reports
+      output, then the declared expiry read from the same bytes — the
+      version-pinned table AUTH-DEMO.md reports
 
 Isolation: its own compose project (gen2-authdemo), so its own containers,
 network and volumes; the contract's default host port, checked free first
@@ -48,6 +61,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import dataclasses
 import hashlib
 import json
 import os
@@ -65,7 +79,7 @@ REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
 from gen2.app.cli import request as cli_request  # noqa: E402
 from gen2.core.instants import utc_instant_ns  # noqa: E402
-from gen2.supervisor.probe import RUNNERS  # noqa: E402
+from gen2.supervisor.probe import RUNNERS, declared_verdict  # noqa: E402
 
 PROJECT = "gen2-authdemo"
 IMAGE = "gen2-engine:1f-authdemo"
@@ -75,9 +89,10 @@ UID = GID = 10001
 AUTH_VOLUME = f"{PROJECT}_auth-codex"
 STATE_VOLUME = f"{PROJECT}_state"
 CAPABILITY = "provider-auth:codex"
-DEMOS = ("a", "b", "c", "d1", "d2", "e")
+DEMOS = ("a", "b", "c", "c-control", "d1", "d2a", "d2b", "e")
 ROUNDS = 20
 PY = "/opt/gen2/venv/bin/python"
+PROBE_IN_IMAGE = "/opt/gen2/src/gen2/supervisor/probe.py"
 
 # Run inside a container (as the service user): the auth home as it stands — every entry's type, mode, owner and, for
 # regular files, size and SHA-256 — as JSON on stdout.
@@ -142,6 +157,57 @@ for key, argv in (("version", ["codex", "--version"]), ("status", ["codex", "log
     out[key] = {"code": p.returncode, "stdout": p.stdout.decode("utf-8", "replace"), "stderr": p.stderr.decode("utf-8", "replace")}
 print(json.dumps(out))
 """
+# Run inside the engine container (its PID namespace) during (c)'s rounds, until its stdin closes (or argv[1] seconds): every
+# codex `login status` process seen live — its exec'd command line read from /proc, its state not a zombie's — and every
+# instant two of them were live together. Sound for each pair it reports: the first process was read live, then the
+# second, then the first again, the same process (pid and start time); a process lives over one interval, so both were
+# live when the second was read. A process that lived and ended between two scans is not seen at all.
+SAMPLER = r"""
+import json, os, sys, threading, time
+STATUS = b"codex\x00login\x00status\x00"
+stop = threading.Event()
+threading.Thread(target=lambda: (sys.stdin.buffer.read(), stop.set()), daemon=True).start()
+def live(pid):
+    try:
+        with open(f"/proc/{pid}/stat", "rb") as f:
+            fields = f.read().rsplit(b")", 1)[1].split()
+    except (OSError, IndexError):
+        return None
+    return None if fields[0] in (b"Z", b"X", b"x") else int(fields[19])  # its state; then its start time, in ticks after boot
+seen, together, scans = {}, {}, 0
+deadline = time.monotonic() + float(sys.argv[1])
+print("sampling", flush=True)
+while not stop.is_set() and time.monotonic() < deadline:
+    scans += 1
+    found = []
+    for name in os.listdir("/proc"):
+        if not name.isdigit():
+            continue
+        try:
+            with open(f"/proc/{name}/cmdline", "rb") as f:
+                if f.read() != STATUS:
+                    continue
+        except OSError:
+            continue
+        start = live(name)
+        if start is not None:
+            found.append((f"{name}:{start}", time.time_ns()))
+    for key, at in found:
+        seen.setdefault(key, [at, at])[1] = at
+    if len(found) >= 2 and live(found[0][0].split(":")[0]) == int(found[0][0].split(":")[1]):
+        for key, at in found[1:]:
+            pair = together.setdefault(found[0][0] + " " + key, [at, at, 0])
+            pair[1], pair[2] = at, pair[2] + 1
+print(json.dumps({"scans": scans, "processes": seen, "together": together, "stopped_by": "stdin" if stop.is_set() else "deadline"}))
+"""
+# (c)'s negative control: the probe of the image with its runner runs serialized after each probe's recorded start
+# (Astra 1f review finding 2's counterexample). Applied to a copy of the repository's probe.py, mounted read-only over the
+# image's; the needle must be found exactly once.
+SERIALIZE = ("    def _probe(self, runner: Runner, home: Path) -> tuple[str, str]:\n",
+             "    def _probe(self, runner: Runner, home: Path) -> tuple[str, str]:\n"
+             "        with _SERIALIZED:  # c-control: one probe's runner at a time\n"
+             "            return self._probe_serialized(runner, home)\n\n"
+             "    def _probe_serialized(self, runner: Runner, home: Path) -> tuple[str, str]:\n")
 
 
 class SetupFailed(Exception):
@@ -165,31 +231,54 @@ def jwt(claims: dict) -> str:
     return f"{part({'alg': 'none', 'typ': 'JWT'})}.{part(claims)}.throwaway-signature"
 
 
-def chatgpt_tokens(exp: int) -> bytes:
-    """Throwaway ChatGPT-mode tokens (unsigned; nothing here is a real account)."""
-    claims = {"exp": exp, "iat": exp - 3600, "email": "throwaway@example.invalid",
-              "https://api.openai.com/auth": {"chatgpt_plan_type": "plus", "chatgpt_account_id": "acct-throwaway"}}
-    return json.dumps({"OPENAI_API_KEY": None, "last_refresh": "2001-09-09T00:00:00Z",
-                       "tokens": {"id_token": jwt(claims), "access_token": jwt(claims), "refresh_token": "rt-throwaway-" + secrets.token_hex(8),
-                                  "account_id": "acct-throwaway"}}).encode()
+EXPIRED, UNEXPIRED = 1000000000, 4102444800  # JWT exp: 2001-09-09T01:46:40Z, 2100-01-01T00:00:00Z
+
+
+def chatgpt_tokens(exp: int, id_exp: int | str | None = None, *, refresh: bool = True, key: str | None = None) -> bytes:
+    """Throwaway ChatGPT-mode tokens (unsigned; nothing here is a real account): an access token expiring at `exp` (a
+    string: an opaque token), an ID token at `id_exp` (the same by default)."""
+    def token(at: int | str) -> str:
+        return at if isinstance(at, str) else jwt({"exp": at, "iat": at - 3600, "email": "throwaway@example.invalid",
+                                                   "https://api.openai.com/auth": {"chatgpt_plan_type": "plus", "chatgpt_account_id": "acct-throwaway"}})
+    return json.dumps({"OPENAI_API_KEY": key, "last_refresh": "2001-09-09T00:00:00Z",
+                       "tokens": {"id_token": token(exp if id_exp is None else id_exp), "access_token": token(exp),
+                                  "refresh_token": "rt-throwaway-" + secrets.token_hex(8) if refresh else "", "account_id": "acct-throwaway"}}).encode()
 
 
 def api_key() -> bytes:
     return json.dumps({"OPENAI_API_KEY": "sk-throwaway-1f-" + secrets.token_hex(16)}).encode()
 
 
-SHAPES = {  # characterization (e): shape -> (bytes, the outcome the probe's rules give for codex 0.153.2, is it a gap)
-    "absent": (lambda: b"", "unusable_credential", None),
-    "api_key": (api_key, "usable", None),
-    "api_key_empty": (lambda: b'{"OPENAI_API_KEY": ""}', "usable", "an empty API key reads as a credential"),
-    "empty_object": (lambda: b"{}", "usable", "an empty object reads as ChatGPT tokens"),
-    "chatgpt_unexpired": (lambda: chatgpt_tokens(4102444800), "usable", None),
-    "chatgpt_expired": (lambda: chatgpt_tokens(1000000000), "usable", "tokens that expired in 2001 read as usable: expiry is not checked locally"),
-    "id_token_garbage": (lambda: b'{"OPENAI_API_KEY": null, "tokens": {"id_token": "not-a-jwt", "access_token": "x", "refresh_token": "y", "account_id": "z"}}',
-                         "unusable_credential", None),
-    "malformed_json": (lambda: b"{not json", "unusable_credential", None),
-    "empty_file": (lambda: b"", "unusable_credential", None),
-    "unreadable": (api_key, "unusable_credential", None),
+@dataclasses.dataclass(frozen=True)
+class Shape:  # characterization (e): one throwaway credential shape
+    make: object          # () -> its bytes
+    runner: str           # the outcome the probe's rules give codex 0.153.2's own answer
+    probe: str            # the probe's outcome: that, then the declared expiry read from the same bytes
+    gap: str | None = None  # where the probe's outcome is a false positive, or rests on a claim, said plainly
+
+
+SHAPES = {
+    "absent": Shape(lambda: b"", "unusable_credential", "unusable_credential"),
+    "api_key": Shape(api_key, "usable", "usable"),
+    "api_key_empty": Shape(lambda: b'{"OPENAI_API_KEY": ""}', "usable", "usable", "an empty API key reads as a credential"),
+    "empty_object": Shape(lambda: b"{}", "usable", "usable", "an empty object reads as ChatGPT tokens"),
+    "chatgpt_unexpired": Shape(lambda: chatgpt_tokens(UNEXPIRED), "usable", "usable"),
+    "chatgpt_expired": Shape(lambda: chatgpt_tokens(EXPIRED), "usable", "declared_expired",
+                             "the runner's command reads tokens that expired in 2001 as logged in; the probe's verdict is the tokens' own declared "
+                             "expiry, not the provider's answer (a refresh token is present)"),
+    "chatgpt_expired_no_refresh": Shape(lambda: chatgpt_tokens(EXPIRED, refresh=False), "usable", "declared_expired",
+                                        "as chatgpt_expired, with an empty refresh token"),
+    "access_expired_id_unexpired": Shape(lambda: chatgpt_tokens(EXPIRED, UNEXPIRED), "usable", "declared_expired",
+                                         "the access token's declared expiry decides"),
+    "access_opaque_id_expired": Shape(lambda: chatgpt_tokens("opaque-access-token", EXPIRED), "usable", "usable",
+                                      "an opaque access token declares no expiry; the ID token's, passed, decides nothing"),
+    "api_key_beside_expired_tokens": Shape(lambda: chatgpt_tokens(EXPIRED, key="sk-throwaway-1f-" + secrets.token_hex(16)), "usable", "usable",
+                                           "codex uses the API key, which declares no expiry; the tokens beside it are not its credential"),
+    "id_token_garbage": Shape(lambda: b'{"OPENAI_API_KEY": null, "tokens": {"id_token": "not-a-jwt", "access_token": "x", "refresh_token": "y", '
+                                      b'"account_id": "z"}}', "unusable_credential", "unusable_credential"),
+    "malformed_json": Shape(lambda: b"{not json", "unusable_credential", "unusable_credential"),
+    "empty_file": Shape(lambda: b"", "unusable_credential", "unusable_credential"),
+    "unreadable": Shape(api_key, "unusable_credential", "unusable_credential"),
 }
 
 
@@ -206,6 +295,7 @@ class Demo:
         self.current: dict | None = None
         self.env = {**os.environ, "GEN2_ENV_FILE": str(self.env_file), "GEN2_BUNDLE": str(BUNDLE), "GEN2_HOST_ID": "gen2-authdemo-host",
                     "GEN2_ENGINE_PORT": str(port), "GEN2_IMAGE": IMAGE}
+        self.compose_files = [COMPOSE_FILE]  # c-control adds its override while it runs
 
     # -- logging and commands ------------------------------------------------
     def log(self, line: str) -> None:
@@ -231,7 +321,7 @@ class Demo:
         return done
 
     def compose(self, *args: str, **kw) -> subprocess.CompletedProcess:
-        return self.sh(["docker", "compose", "-p", PROJECT, "-f", str(COMPOSE_FILE), *args], **kw)
+        return self.sh(["docker", "compose", "-p", PROJECT, *(a for f in self.compose_files for a in ("-f", str(f))), *args], **kw)
 
     def check(self, condition: bool, what: str, **evidence) -> None:
         line = ("  ASSERT ok   " if condition else "  ASSERT FAIL ") + what + (f"  {json.dumps(evidence, sort_keys=True)}" if evidence else "")
@@ -441,67 +531,159 @@ class Demo:
                    "replacement: the new container's probe agrees, and the fact recorded before replacement carries on", fact=probed["fact"])
         self.check(self.status()["config_bundles"]["active"] == bundle, "replacement: the active config bundle pin is unchanged", bundle=bundle)
 
-    def demo_c(self) -> None:
-        self.begin("c", f"two simultaneous probes against one auth home, {ROUNDS} rounds")
+    def sampler(self) -> subprocess.Popen:
+        """SAMPLER, started in the engine container, answering once it samples."""
+        argv = ["docker", "compose", "-p", PROJECT, *(a for f in self.compose_files for a in ("-f", str(f))), "exec", "-T", "engine", PY, "-c", SAMPLER, "900"]
+        self.log("$ " + " ".join(argv[:-3]) + " -c SAMPLER 900  (in the background)")
+        child = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=self.env, cwd=REPO)
+        first = child.stdout.readline()
+        if first != b"sampling\n":
+            child.kill()
+            raise Failed(f"the process sampler did not start: {first!r} {child.stderr.read().decode('utf-8', 'replace')[-500:]}")
+        return child
+
+    def sampled(self, child: subprocess.Popen) -> dict:
+        """The sampler's record, its stdin closed; its exit status is checked, never assumed."""
+        child.stdin.close()
+        out, err = child.stdout.read(), child.stderr.read()
+        code = child.wait(timeout=60)
+        self.log(f"  sampler exit {code}")
+        if err.strip():
+            self.log_file.write(f"  --- stderr\n{err.decode('utf-8', 'replace').rstrip()}\n")
+        self.check(code == 0, "the process sampler ran to its end", exit=code)
+        return json.loads(out)
+
+    def rounds(self, name: str) -> dict:
+        """ROUNDS rounds of two probe_capability requests leaving a barrier together, the engine container's processes
+        sampled throughout; per round, both replies and the credential's state are checked."""
         start = self.probe()
         self.check(start["outcome"] == "usable", "precondition: the credential is usable")
         before = self.credential_state(self.auth_home())
-        overlapped, replies = 0, []
-        for round_no in range(1, ROUNDS + 1):
-            barrier, pair, errors = threading.Barrier(2), [None, None], []
+        replies, windows, whole = [], [], 0
+        sampler = self.sampler()
+        try:
+            for round_no in range(1, ROUNDS + 1):
+                barrier, pair, errors = threading.Barrier(2), [None, None], []
 
-            def one(slot: int) -> None:  # the CLI's own client function, in this process: both requests leave at the barrier
-                try:
-                    barrier.wait(timeout=30)
-                    code, reply = cli_request(f"http://127.0.0.1:{self.port}", self.token, "POST", "/v1/commands/probe_capability",
-                                              b'{"provider": "codex"}')
-                    self.log(f"  round {round_no} slot {slot}: HTTP {code} {json.dumps(reply, sort_keys=True)}")
-                    pair[slot] = reply if code == 200 else {"status": f"http_{code}"}
-                except BaseException as failure:  # noqa: BLE001 - reported below as this round's failure
-                    errors.append(repr(failure))
-            threads = [threading.Thread(target=one, args=(slot,)) for slot in (0, 1)]
-            for thread in threads:
-                thread.start()
-            for thread in threads:
-                thread.join()
-            self.check(not errors, f"round {round_no}: both probe calls answered", errors=errors)
-            self.replies.extend(pair)
-            replies.extend(pair)
-            self.check(all(r["status"] == "recorded" and r["outcome"] == "usable" for r in pair),
-                       f"round {round_no}: both probes classify the credential usable", outcomes=[r["outcome"] for r in pair])
-            windows = [(ns(r["started_at"]), ns(r["observed_at"])) for r in pair]  # the runner's run, as the router recorded it
-            if max(w[0] for w in windows) < min(w[1] for w in windows):
-                overlapped += 1
-            self.log(f"  round {round_no}: runner windows {[(w[1] - w[0]) // 1000 for w in windows]} us, overlap={max(w[0] for w in windows) < min(w[1] for w in windows)}")
-        after = self.credential_state(self.auth_home())
-        self.check(after == before, "the credential's bytes, mode, owner and inode are unchanged after every round", before=before, after=after)
-        self.check(overlapped >= 1, "at least one round's two runner runs overlapped in time (the probes' own recorded instants)",
-                   overlapped=overlapped, rounds=ROUNDS)
+                def one(slot: int) -> None:  # the CLI's own client function, in this process: both requests leave at the barrier
+                    try:
+                        barrier.wait(timeout=30)
+                        code, reply = cli_request(f"http://127.0.0.1:{self.port}", self.token, "POST", "/v1/commands/probe_capability",
+                                                  b'{"provider": "codex"}')
+                        self.log(f"  round {round_no} slot {slot}: HTTP {code} {json.dumps(reply, sort_keys=True)}")
+                        pair[slot] = reply if code == 200 else {"status": f"http_{code}"}
+                    except BaseException as failure:  # noqa: BLE001 - reported below as this round's failure
+                        errors.append(repr(failure))
+                threads = [threading.Thread(target=one, args=(slot,)) for slot in (0, 1)]
+                begun = time.time_ns()
+                for thread in threads:
+                    thread.start()
+                for thread in threads:
+                    thread.join()
+                windows.append((begun, time.time_ns()))
+                self.check(not errors, f"round {round_no}: both probe calls answered", errors=errors)
+                self.replies.extend(pair)
+                replies.extend(pair)
+                self.check(all(r["status"] == "recorded" and r["outcome"] == "usable" for r in pair),
+                           f"round {round_no}: both probes classify the credential usable", outcomes=[r["outcome"] for r in pair])
+                probes = [(ns(r["started_at"]), ns(r["observed_at"])) for r in pair]  # each whole probe, as recorded: not its runner's run
+                whole += max(w[0] for w in probes) < min(w[1] for w in probes)
+                self.log(f"  round {round_no}: whole-probe windows {[(w[1] - w[0]) // 1000 for w in probes]} us (auth-home check, workspace, "
+                         f"--version, login status, declared-expiry read, cleanup), intersecting={max(w[0] for w in probes) < min(w[1] for w in probes)}")
+                now = self.credential_state(self.auth_home())
+                self.check(now == before, f"round {round_no}: the credential's bytes, mode, owner and inode are as before (read after the round)",
+                           **({} if now == before else {"before": before, "after": now}))
+        except BaseException:  # the round's own failure is the one reported: the sampler is ended, unread
+            sampler.kill()
+            sampler.wait()
+            raise
+        seen = self.sampled(sampler)
+        (self.dir / f"{name}-processes.json").write_text(json.dumps({"windows_ns": windows, **seen}, indent=2, sort_keys=True))
+        in_round = lambda at: next((n for n, (b, e) in enumerate(windows, 1) if b <= at <= e), None)  # noqa: E731
+        together = sorted({in_round(first) for first, _last, _count in seen["together"].values()} - {None})
+        processes = [sum(1 for first, _last in seen["processes"].values() if in_round(first) == n) for n in range(1, ROUNDS + 1)]
+        self.log(f"  sampler: {seen['scans']} scans, {len(seen['processes'])} login status processes seen (per round {processes}); "
+                 f"two live at one instant in rounds {together}; whole-probe windows intersected in {whole} rounds")
         status = self.status()
         self.check(self.fact(status)["fact_id"] == start["fact"]["fact_id"] and self.holds(status) == [],
                    "operator status: the fact carries on unchanged, no hold opened", fact=self.fact(status))
         self.check(all(r["fact"]["fact_id"] == start["fact"]["fact_id"] and not r["fact"]["transition"] for r in replies),
                    "no probe of the rounds moved the fact")
-        self.current["evidence"] = {"rounds": ROUNDS, "overlapped": overlapped}
+        return {"rounds": ROUNDS, "together": together, "processes_per_round": processes, "whole_probe_windows_intersecting": whole,
+                "scans": seen["scans"], "pairs": len(seen["together"])}
 
-    def demo_d(self, name: str, title: str, data: bytes, gap: str | None) -> None:
+    @staticmethod
+    def overlapped(evidence: dict) -> bool:
+        """(c)'s overlap assertion: in at least one round, two login status processes were live at one instant."""
+        return len(evidence["together"]) >= 1
+
+    def demo_c(self) -> None:
+        self.begin("c", f"two simultaneous probes against one auth home, {ROUNDS} rounds")
+        evidence = self.rounds("c")
+        self.check(self.overlapped(evidence), "in at least one round two codex login status processes were live at one instant "
+                   "(the engine container's process table, sampled)", rounds=evidence["together"], pairs=evidence["pairs"])
+        self.current["evidence"] = evidence
+
+    def demo_c_control(self) -> None:
+        self.begin("c-control", "(c)'s negative control: the runner serialized after each probe's start; (c)'s overlap assertion must fail")
+        source = (REPO / "gen2/supervisor/probe.py").read_text()
+        needle, patched = SERIALIZE
+        if source.count(needle) != 1 or source.count("\nimport time\n") != 1 or "\nimport threading\n" in source:
+            raise Failed("the serializing patch does not apply to gen2/supervisor/probe.py as it stands")
+        patched = source.replace(needle, patched).replace("\nimport time\n", "\nimport threading\nimport time\n\n_SERIALIZED = threading.Lock()\n", 1)
+        control = self.dir / "c-control"
+        control.mkdir()
+        (control / "probe.py").write_text(patched)
+        (control / "probe.py").chmod(0o644)
+        (control / "compose.override.yaml").write_text(
+            f"services:\n  engine:\n    volumes:\n      - {control / 'probe.py'}:{PROBE_IN_IMAGE}:ro\n")
+        self.compose_files = [COMPOSE_FILE, control / "compose.override.yaml"]
+        try:
+            self.compose("up", "-d", "engine")
+            self.wait_healthy()
+            running = self.compose("exec", "-T", "engine", "sha256sum", PROBE_IN_IMAGE).stdout.decode().split()[0]
+            self.check(running == hashlib.sha256(patched.encode()).hexdigest(), "the engine runs the serialized probe", sha256=running)
+            evidence = self.rounds("c-control")
+            self.check(sum(evidence["processes_per_round"]) >= ROUNDS and all(evidence["processes_per_round"]),
+                       "the sampler saw login status processes in every round", per_round=evidence["processes_per_round"])
+            self.check(not self.overlapped(evidence), "(c)'s overlap assertion fails with the runner serialized: no two login status processes "
+                       "live at one instant", rounds=evidence["together"], whole_probe_windows_intersecting=evidence["whole_probe_windows_intersecting"])
+            self.current["evidence"] = evidence
+        finally:  # the image's own probe again, whatever happened here
+            self.compose_files = [COMPOSE_FILE]
+            self.compose("up", "-d", "engine")
+            self.wait_healthy()
+            running = self.compose("exec", "-T", "engine", "sha256sum", PROBE_IN_IMAGE).stdout.decode().split()[0]
+            self.check(running == hashlib.sha256(source.encode()).hexdigest(), "the engine runs the repository's probe again", sha256=running)
+
+    def demo_d(self, name: str, title: str, data: bytes | None, outcome: str | None, state: str | None, gap: str | None = None) -> dict:
+        """A credential written (data None: the usable one left exactly as it is), then the contract's (d): a dated fact
+        and the typed capability hold, never a silent success — the fact `state` from `outcome`, where the probe's outcome
+        is known (None: any not usable, any not healthy)."""
         self.begin(name, title)
         start = self.probe()
         self.check(start["outcome"] == "usable", "precondition: the credential is usable")
-        self.write_credential(data)
+        before = self.credential_state(self.auth_home())
+        if data is None:
+            self.log("  the credential is left as it is: a revocation, or an expiry it does not declare, changes no local byte")
+        else:
+            self.write_credential(data)
         called = utc()
         reply = self.probe()
         try:
+            if data is None:
+                self.check(self.credential_state(self.auth_home()) == before, "the credential is byte for byte the one just probed usable")
             self.check(reply["outcome"] != "usable" and reply["fact"]["state"] != "healthy",
                        "never a silent success: the probe does not record the credential usable", outcome=reply["outcome"],
                        fact=reply["fact"], **({"known_gap": gap} if gap else {}))
-            self.check(reply["outcome"] == "unusable_credential" and reply["fact"]["state"] == "failing" and reply["fact"]["transition"],
-                       "a failing capability fact is recorded", fact=reply["fact"])
+            outcome, state = outcome or reply["outcome"], state or reply["fact"]["state"]
+            self.check(reply["outcome"] == outcome and reply["fact"]["state"] == state and reply["fact"]["transition"],
+                       f"a {state} capability fact is recorded ({outcome})", fact=reply["fact"])
             self.check(ns(called) <= ns(reply["fact"]["since"]), "the fact is dated at the probe", since=reply["fact"]["since"], called=called)
             status = self.status()
             fact, holds = self.fact(status), self.holds(status)
-            self.check(fact == {**fact, "fact_id": reply["fact"]["fact_id"], "state": "failing", "since": reply["fact"]["since"]},
-                       "operator status shows the dated failing fact", fact=fact)
+            self.check(fact == {**fact, "fact_id": reply["fact"]["fact_id"], "state": state, "since": reply["fact"]["since"]},
+                       f"operator status shows the dated {state} fact", fact=fact)
             self.check(fact["last_success_at"] is not None and ns(fact["last_success_at"]) <= ns(fact["since"]),
                        "the fact names its last success", last_success_at=fact["last_success_at"])
             self.check(len(holds) == 1 and holds[0]["hold_id"] == reply["hold"]["hold_id"], "operator status is waiting on the capability's hold",
@@ -511,6 +693,7 @@ class Demo:
                        and hold["capability_fact_id"] == reply["fact"]["fact_id"] and ns(hold["deadline_at"]) > ns(reply["fact"]["since"])
                        and not hold["deadline_passed"] and hold["clears_when"] and hold["recoverability"] == "needs_remediation",
                        "the hold is typed (capability), owned (operator), deadlined, bound to the fact, and says what clears it", hold=hold)
+            return {"reply": reply, "fact": fact}
         finally:  # the next demonstration starts from a usable credential and no open hold, whatever happened here
             self.write_credential(api_key())
             restored = self.cli("call", "probe_capability", body={"provider": "codex"})
@@ -521,20 +704,38 @@ class Demo:
                     "subject": {"kind": "hold", "ref": hold["hold_id"], "revision": None, "hash": None}, "decided_at": utc(),
                     "notes": "restored after the demonstration", "payload": None})
 
+    def demo_d2a(self) -> None:
+        shape = SHAPES["chatgpt_expired"]
+        seen = self.demo_d("d2a", "an expired credential that declares its expiry: a dated degraded fact and a typed capability hold in status",
+                           shape.make(), "declared_expired", "degraded", shape.gap)
+        reply, fact = seen["reply"], seen["fact"]
+        self.check(reply["declared_expiry"] == {"access_token": "2001-09-09T01:46:40Z", "id_token": "2001-09-09T01:46:40Z", "refresh_credential": True},
+                   "the record names the declared expiries (access and ID token, from their JWT exp) and that a refresh credential is present",
+                   declared_expiry=reply["declared_expiry"])
+        self.check(fact["detail"].startswith("declared_expired: the runner reads the credential, but its access token declares it expired at "
+                                             "2001-09-09T01:46:40Z: the credential's own claim, not the provider's answer"),
+                   "the fact says the expiry is the credential's own claim, not the provider's answer", detail=fact["detail"])
+
     def demo_e(self) -> None:
-        self.begin("e", "characterization: the pinned runner's own verdicts, no network, per credential shape")
+        self.begin("e", "characterization: the pinned runner's own verdicts, no network, per credential shape; then the declared expiry")
         runner = RUNNERS["codex"]
         table = {}
-        for shape, (make, expected, gap) in SHAPES.items():
+        for name, shape in SHAPES.items():
+            data = shape.make()
             done = self.sh(["docker", "run", "--rm", "--network", "none", "--user", f"{UID}:{GID}", "--read-only", "--tmpfs", "/tmp:mode=1777",
-                            "--tmpfs", f"/auth:mode=0700,uid={UID},gid={GID}", "-i", "--entrypoint", PY, IMAGE, "-c", CHARACTERIZE, shape],
-                           stdin=make())
+                            "--tmpfs", f"/auth:mode=0700,uid={UID},gid={GID}", "-i", "--entrypoint", PY, IMAGE, "-c", CHARACTERIZE, name],
+                           stdin=data)
             raw = json.loads(done.stdout)
-            self.check(raw["version"]["code"] == 0 and raw["version"]["stdout"] == runner.version_stdout, f"{shape}: the runner is {runner.version}")
+            self.check(raw["version"]["code"] == 0 and raw["version"]["stdout"] == runner.version_stdout, f"{name}: the runner is {runner.version}")
             outcome, detail = runner.classify(raw["status"]["code"], raw["status"]["stdout"], raw["status"]["stderr"])
-            table[shape] = {"exit": raw["status"]["code"], "stderr": raw["status"]["stderr"].strip(), "outcome": outcome, "detail": detail, "gap": gap}
-            self.check(outcome == expected, f"{shape}: the probe's rules give {expected}" + (f" — KNOWN GAP: {gap}" if gap else ""),
-                       exit=raw["status"]["code"], outcome=outcome)
+            declared = runner.declared(json.loads(data)) if outcome == "usable" else None  # the probe's own reader, over the same bytes
+            verdict = declared_verdict(declared, utc()) or (outcome, detail)
+            table[name] = {"exit": raw["status"]["code"], "stderr": raw["status"]["stderr"].strip(), "runner_outcome": outcome,
+                           "declared_expiry": declared, "probe_outcome": verdict[0], "detail": verdict[1], "gap": shape.gap}
+            self.check(outcome == shape.runner, f"{name}: the probe's rules give the runner's answer {shape.runner}", exit=raw["status"]["code"],
+                       outcome=outcome)
+            self.check(verdict[0] == shape.probe, f"{name}: the probe records {shape.probe}" + (f" — {shape.gap}" if shape.gap else ""),
+                       declared_expiry=declared)
         (self.dir / "characterization.json").write_text(json.dumps(table, indent=2, sort_keys=True))
         self.current["evidence"] = table
 
@@ -566,7 +767,7 @@ class Demo:
                    and facts[-1]["superseded_by_fact_id"] is None, "the fact history is one chain of transitions, each a change of state",
                    states=[f["state"] for f in facts])
         failing = {f["fact_id"] for f in facts if f["state"] != "healthy"}
-        self.check(all(h[1] == "capability" and h[2] in failing for h in holds), "every capability hold is bound to a failing or unknown fact",
+        self.check(all(h[1] == "capability" and h[2] in failing for h in holds), "every capability hold is bound to a fact not healthy",
                    holds=len(holds))
         self.check(all(h[3] is not None and h[4] is not None for h in holds), "every hold the run opened was cleared by an operator decision")
         self.current["evidence"] = {"probes": len(audits), "facts": [f["state"] for f in facts], "holds": len(holds)}
@@ -588,11 +789,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         demo.setup()
         steps = [("setup", demo.baseline)] + [(name, step) for name, step in (
-            ("a", demo.demo_a), ("b", demo.demo_b), ("c", demo.demo_c),
-            ("d1", lambda: demo.demo_d("d1", "an invalid credential: a dated fact and a typed capability hold in status",
-                                       SHAPES["id_token_garbage"][0](), None)),
-            ("d2", lambda: demo.demo_d("d2", "an expired credential (the contract's (d) case): a dated fact and a typed capability hold in status",
-                                       SHAPES["chatgpt_expired"][0](), SHAPES["chatgpt_expired"][2])),
+            ("a", demo.demo_a), ("b", demo.demo_b), ("c", demo.demo_c), ("c-control", demo.demo_c_control),
+            ("d1", lambda: demo.demo_d("d1", "an invalid credential: a dated failing fact and a typed capability hold in status",
+                                       SHAPES["id_token_garbage"].make(), "unusable_credential", "failing")),
+            ("d2a", demo.demo_d2a),
+            ("d2b", lambda: demo.demo_d("d2b", "a revoked credential, or one expired without declaring it (the residual of (d)): a dated fact and a "
+                                               "typed capability hold in status", None, None, None,
+                                        "revocation, and an expiry the credential does not declare, change no local byte: no local probe sees them "
+                                        "(AUTH-DEMO.md F1, the operator's)")),
             ("e", demo.demo_e)) if name in chosen] + [("z", demo.store_readback)]
         for name, step in steps:
             try:
