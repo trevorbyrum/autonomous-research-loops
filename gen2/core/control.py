@@ -156,11 +156,21 @@ class ControlBackend(Protocol):
         manifest and advance the connector's watermark from a delivered one.
         Key: export_receipt_id; only the identical document replays."""
 
+    def record_capability_probe(self, observation: Mapping) -> dict:
+        """Record one capability probe's observation, the station supervisor's
+        classification of a provider's auth home (task 1f;
+        gen2/router/capabilities.py): kept whole; the capability's dated fact
+        moved on a transition only, following the newest observation; a hold
+        of the capability, the operator's, opened when it is not usable and
+        none is open (H-2, RG-3). Key: probe_id; only the identical
+        observation replays."""
+
 
 class OperatorBackend(ControlBackend, Protocol):
     """What the operator surface (gen2/operator/service.py, task 1e) is handed
     by the composition root: the router's operations for the trusted surface,
-    beside the protocol above, and one of the station's (recover_incident).
+    beside the protocol above, and two of the station's (recover_incident,
+    probe_capability).
     The surface authenticates the principal and fills the fields that name
     it; the router validates, fences and writes as for every operation. None
     of these hands out the store."""
@@ -175,6 +185,13 @@ class OperatorBackend(ControlBackend, Protocol):
         invocation's own capability-bearing operations (an outcome_unknown
         episode through reconcile, the only way its hold clears). Key: the
         incident; the request once it is closed replays."""
+
+    def probe_capability(self, request: Mapping) -> dict:
+        """The station's, not the router's (gen2/supervisor/probe.py; task 1f):
+        an operator's request that the station probe one provider's auth home
+        with its pinned runner now — {provider}; the surface supplies
+        requested_by. The observation reaches the router as
+        record_capability_probe, whose answer this returns."""
 
     def activate_config_bundle(self, document: Mapping) -> dict:
         """Validate and activate a mounted config-bundle/1 (task 1d)."""

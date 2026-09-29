@@ -22,6 +22,9 @@ names what it waits for and, where the record has them, who owns it and by
 when. Reading status changes nothing (the router's read writes no row; the
 incidents are read from the journals).
 
+The engine itself waits for each open hold of no topic (`waiting`; task 1f:
+a capability's hold, whose fact is among the capability facts beside it).
+
 A topic waits for what its status says it waits for (STATUS_WAITS; an active
 topic's work is in its invocations, and a completed or retired one waits for
 nothing), and for each of: a pause, an open hold, a brief version awaiting
@@ -53,7 +56,8 @@ STATE_WAITS = {"admitted": "launch", "launching": "start", "running": "end", "re
 def compose(facts: dict, incidents: list[dict]) -> dict:
     listed = [{**incident, **({"clears_when": "recover_incident"} if incident["blocking"] else {})} for incident in incidents]
     return {"status": "ok", "at": facts["at"], "topics": [_topic(topic, listed) for topic in facts["topics"]], "incidents": listed,
-            "config_bundles": facts["config_bundles"], "capability_facts": facts["capability_facts"]}
+            "config_bundles": facts["config_bundles"], "capability_facts": facts["capability_facts"],
+            "waiting": [{"reason": "hold", **hold} for hold in facts["holds"]]}
 
 
 def _incident(incident: dict) -> dict:  # nested: an incident's own fields never overwrite the reason

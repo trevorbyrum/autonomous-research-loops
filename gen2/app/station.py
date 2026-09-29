@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Callable, Mapping
 
 from gen2.router.service import Router
+from gen2.supervisor.probe import CapabilityProbe
 from gen2.supervisor.spool import Spool
 from gen2.supervisor.supervisor import Policy, Supervisor, supervisor_policy
 
@@ -34,6 +35,7 @@ class Station:
     router: Router
     spool: Spool
     supervisor: Supervisor
+    probe: CapabilityProbe
 
     def close(self) -> None:
         self.router.close()
@@ -41,8 +43,11 @@ class Station:
 
 def open_station(root: str | Path, *, station_id: str, host_id: str, clock: Callable[[], str], container_id: str | None = None,
                  config_bundle: Mapping | None = None, fixture_policy: Policy | None = None, control: Callable[[Router], object] = lambda router: router,
-                 create: bool = False, router_options: dict | None = None, supervisor_options: dict | None = None) -> Station:
-    """<root>/store.sqlite3, <root>/spool and <root>/jobs, wired together.
+                 create: bool = False, router_options: dict | None = None, supervisor_options: dict | None = None,
+                 auth_root: str | Path | None = None, probe_options: dict | None = None) -> Station:
+    """<root>/store.sqlite3, <root>/spool and <root>/jobs, wired together, and
+    the capability probe of the auth homes under `auth_root` (one per provider,
+    <auth_root>/<provider>; task 1f), which records through the same protocol.
 
     Every start — a first one, a restart, a replacement — takes the
     supervisor's policies from recorded config bundles (G-10, RG-9;
@@ -69,7 +74,7 @@ def open_station(root: str | Path, *, station_id: str, host_id: str, clock: Call
             raise ValueError("with a config bundle, the supervisor's policy is the bundle's")
         supervisor = Supervisor(control(router), spool, root / "jobs", station_id=station_id, host_id=host_id, container_id=container_id,
                                 policy=fixture_policy, policies=None, clock=clock, **(supervisor_options or {}))
-        return Station(router, spool, supervisor)
+        return Station(router, spool, supervisor, _probe(auth_root, control(router), supervisor, clock, station_id, probe_options))
     if config_bundle is not None:
         activated = router.activate_config_bundle(config_bundle)
         if activated["status"] not in ("activated", "replayed"):
@@ -89,4 +94,9 @@ def open_station(root: str | Path, *, station_id: str, host_id: str, clock: Call
         return supervisor_policy(bundle)
     supervisor = Supervisor(control(router), spool, root / "jobs", station_id=station_id, host_id=host_id, container_id=container_id,
                             policy=policies(own), policies=policies, clock=clock, **(supervisor_options or {}))
-    return Station(router, spool, supervisor)
+    return Station(router, spool, supervisor, _probe(auth_root, control(router), supervisor, clock, station_id, probe_options))
+
+
+def _probe(auth_root, control, supervisor: Supervisor, clock, station_id: str, options: dict | None) -> CapabilityProbe:
+    return CapabilityProbe(auth_root, record=control.record_capability_probe, clock=clock, timeout_s=lambda: supervisor.policy.probe_timeout_s,
+                           station_id=station_id, **(options or {}))

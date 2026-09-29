@@ -15,8 +15,9 @@ re-queues, reservations and holds).
 nothing), per topic: its queue row, the brief versions still standing, the
 contract drafts awaiting approval, the open holds, its live invocations, the
 last work of each of its lanes, its open reservations, its pending signals
-and open reviews; and, engine-wide, the active and pinned config bundles and
-the current capability facts. Beside the rows it gives what the router
+and open reviews; and, engine-wide, the active and pinned config bundles, the
+current capability facts and the open holds of no topic (task 1f: a
+capability's, capabilities.py). Beside the rows it gives what the router
 itself would decide now, from the same helpers its operations decide with,
 so status and the next operation cannot disagree: an invocation's
 launch-admission check (L-7), how its pins stand after any amendment
@@ -77,7 +78,9 @@ class Status:
                                    for h, ids in sorted(pinned.items())]},
                     "capability_facts": [_pick(f, ("fact_id", "capability", "state", "detail", "since", "last_success_at", "affected_lanes"))
                                          for f in sorted(self._store.select("capability_facts"), key=lambda f: f["capability"])
-                                         if f["superseded_by_fact_id"] is None]}
+                                         if f["superseded_by_fact_id"] is None],
+                    "holds": [{**_pick(h, HOLD), "deadline_passed": instant(now) >= instant(h["deadline_at"])}  # open holds of no topic (task 1f: a capability's)
+                              for h in sorted(self._store.select("holds"), key=lambda h: h["created_at"]) if h["topic_id"] is None and h["cleared_at"] is None]}
         except Refusal as refusal:
             return {"status": "refused", "reason": refusal.reason, "detail": refusal.detail[:500]}
 

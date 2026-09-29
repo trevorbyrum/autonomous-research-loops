@@ -32,7 +32,8 @@ Task 1c's lifecycle operations (cancellation, reconciliation, status) are in
 lifecycle.py; task 1d's config bundles, question registry and qualification
 records in registries.py, brief and contract versions and amendment impact
 (G-1) in amendments.py, re-queues, reservations and the signal queue in
-scheduling.py; task 1e's status read and health probe in status.py.
+scheduling.py; task 1e's status read and health probe in status.py; task 1f's
+capability-probe records in capabilities.py.
 """
 from __future__ import annotations
 
@@ -45,6 +46,7 @@ from gen2.core import canonical, instants
 from gen2.router import boundary
 from gen2.router.amendments import AMENDMENT_COMMANDS, Amendments, contract_compatibility
 from gen2.router.boundary import Refusal, instant
+from gen2.router.capabilities import CAPABILITY_COMMANDS, Capabilities
 from gen2.router.lifecycle import LIFECYCLE_COMMANDS, Lifecycle, is_episode_hold
 from gen2.router.registries import REGISTRY_COMMANDS, Registries
 from gen2.router.scheduling import SCHEDULING_COMMANDS, Scheduling
@@ -169,7 +171,7 @@ def _short(text: str) -> str:
     return (text or "refused")[:500]
 
 
-class Router(Lifecycle, Registries, Amendments, Scheduling, Status):
+class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities):
     """The ControlBackend (gen2/core/control.py) over one store. Construct
     with a Store (Router.open for a durable one); the router owns it and hands
     it to no one. Qualification is read from the store's own records
@@ -186,7 +188,7 @@ class Router(Lifecycle, Registries, Amendments, Scheduling, Status):
         self._fault = fault or (lambda point: None)
         self._schemas = schemas or SchemaSet(extra={"router-commands": {"$defs": {
             **COMMANDS["$defs"], **LIFECYCLE_COMMANDS, **REGISTRY_COMMANDS, **AMENDMENT_COMMANDS, **SCHEDULING_COMMANDS,
-            **STATUS_COMMANDS}}})
+            **STATUS_COMMANDS, **CAPABILITY_COMMANDS}}})
 
     @classmethod
     def open(cls, path: str | Path, spool, *, create: bool = False, **kwargs) -> "Router":

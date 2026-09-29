@@ -21,10 +21,12 @@ to one answer, a status code and a JSON document. The transport
 (gen2/app/engine.py) only moves bytes; the CLI (gen2/app/cli.py) is a client
 of the same routes. Every command is one of the router's existing operations,
 called on the backend the composition root hands over
-(core.control.OperatorBackend) — but one: recover_incident, the station's
-recovery of a job stalled on an incident (task 1e-repair; Supervisor.
+(core.control.OperatorBackend) — but two, the station's: recover_incident,
+the recovery of a job stalled on an incident (task 1e-repair; Supervisor.
 recover_incident), which reaches the router only through the invocation's own
-capability-bearing operations. This module holds no store, imports no router
+capability-bearing operations; and probe_capability, a probe of one
+provider's auth home with its pinned runner (task 1f; gen2/supervisor/
+probe.py), whose observation the router records. This module holds no store, imports no router
 and has no write path of its own (gen2/boundaries.toml: operator imports core
 only and is granted no capability).
 
@@ -111,6 +113,7 @@ COMMANDS: dict[str, tuple[str, dict[str, Callable[[Principal], str]]]] = {
     "mark_brief_overdue": ("operator", {}),
     "propose_amendment": ("operator", {}),
     "recover_incident": ("operator", {"requested_by": _NAME}),  # the station's (core.control.OperatorBackend), not the router's
+    "probe_capability": ("operator", {"requested_by": _NAME}),  # the station's too (task 1f)
     "ack_delivery": ("exporter", {}),
 }
 

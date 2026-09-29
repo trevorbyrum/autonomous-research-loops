@@ -38,7 +38,8 @@
             "start_grace_s": {"$ref": "#/$defs/seconds"},
             "term_grace_s": {"$ref": "#/$defs/seconds"},
             "kill_grace_s": {"$ref": "#/$defs/seconds"},
-            "poll_s": {"$ref": "#/$defs/seconds"}
+            "poll_s": {"$ref": "#/$defs/seconds"},
+            "probe_timeout_s": {"$ref": "#/$defs/seconds"}
           }
         },
         "router": {
