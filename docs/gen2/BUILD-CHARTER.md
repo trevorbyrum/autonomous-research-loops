@@ -23,7 +23,9 @@ Items 1–3 are cited by document identity (file name and dates). They belong to
 
 ## Standing rules
 - Build follows the adjudicated phase order (flow doc + Astra review §10): Phase 0 invariants/migration contract → 1 mechanical vertical slice (fake executors; crash/replay/cancel proven before model authority) → 2 one complete research workflow → 3 qualified automation/projections → 4 migration+canary. Phase transitions are operator-gates.
-- Size budget: 10,000 production-line allocation, 12,000 hard ceiling → scope reconsideration (like-for-like counting per adjudication; tests/schemas/prompts reported separately).
+- Size rules (the user, 2026-09-29; replaces the earlier 10,000/12,000 total, which had been copied from the design review's *proposed* planning allocation without operator approval):
+  - **Per-file limit: no hand-written file over 1,500 lines** (code, tests, tooling, SQL, config). It is enforced by `make gen2-check`. Generated files (for example the mutation-control pairings and the generated catalog/env example) are exempt only by an explicit, reasoned allowlist entry.
+  - **Total production code: 15,000 lines is a growth-review trigger.** When it is reached, the loop stops for a review with the user of what made it grow before building further. The total is reported at every task boundary. Tests, schemas, SQL, prompts and tooling are reported separately.
 - Machine-checkable module-boundary graph in CI from the first commit; a boundary-graph violation fails the build.
 - Jev is not a build dependency: everything must run and be testable with the decision layer disabled.
 - No merging to main, ever, without the operator. No touching gen-1 runtime state, live topics, or the running gateway service.
