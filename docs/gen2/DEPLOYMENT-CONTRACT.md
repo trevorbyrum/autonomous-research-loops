@@ -365,16 +365,36 @@ produces a dated capability fact and a typed capability hold, not a silent
 zero-result pass. Untested auth-volume refresh is how a fleet discovers on a
 Monday that every station has been unauthenticated since Friday.
 
+*Operator amendment to (d) (the user, 2026-09-29; normative).* For the Phase 1
+gate, (d) is satisfied by its offline scope: a credential the pinned runner
+rejects on its own, and a credential whose own declared expiry has passed (read
+offline from the credential), each produce a dated capability fact and a typed
+capability hold. A declared expiry is recorded as a **`degraded`** fact (the
+credential's own claim, not the provider's answer), and refresh-token presence
+is recorded but never taken as proof that the credential can be refreshed. The
+residual — a **revoked** credential, or one that has expired without declaring
+it — changes no local byte and cannot be seen offline. It becomes a binding
+**requirement gating the first live provider execution** (Phase 2's live
+single-topic run; corrected same day from "Phase 3", since the first live call
+happens in Phase 2): when a real
+invocation's authentication fails, the engine must record a dated `failing`
+capability fact and open a typed capability hold, and the invocation must end as
+a failure with that evidence — never as a zero-result pass. That requirement is
+tested with the pinned runner against a genuinely rejected credential before any
+live provider call is admissible. An optional provider liveness check (a
+non-billing token exchange) may be added later as a deployment choice; it is not
+required.
+
 *Status (task 1f, 2026-09-28, corrected by task 1f-repair, 2026-09-29;
 evidence `docs/gen2/AUTH-DEMO.md`; this note changes no requirement).* With
 the pinned runner codex 0.153.2, (a), (b) and (c) are demonstrated, and (d)
 is demonstrated for a credential the runner rejects on its own and for one
 whose own declared expiry has passed (read offline from the credential;
-not the provider's answer; whether that counts is the operator's). (d) for
+not the provider's answer; counted by the operator amendment above). (d) for
 a **revoked** credential, or one expired
-without declaring it, is **not** met: neither changes a local byte, so a
-probe that makes no network call cannot be sure to see it (AUTH-DEMO.md F1,
-awaiting the operator). AUTH-DEMO.md F2–F4 name the places where this
+without declaring it, is outside the offline scope: neither changes a local byte, so a
+probe that makes no network call cannot be sure to see it (AUTH-DEMO.md F1;
+resolved by the operator amendment above). AUTH-DEMO.md F2–F4 name the places where this
 section's and §3.1's wording and the slice differ.
 
 **`wrappers/` is the one operator-trusted executable mount.** Some providers
