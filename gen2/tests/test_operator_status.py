@@ -37,7 +37,7 @@ from gen2.tests import router_fixtures as rf
 from gen2.tests.router_fixtures import OTHER, TOPIC, h
 
 T3, T4, T5 = "fleet-a:t3", "fleet-a:t4", "fleet-a:t5"
-POLICY_BUNDLE = {"bundle_version": "config-bundle/1", "version": 2, "questions": [rf.QUESTION],
+POLICY_BUNDLE = {"bundle_version": "config-bundle/1", "version": 2, "questions": [rf.QUESTION], "templates": rf.TEMPLATES,  # task 2a: amendments are drafted in them
                  "policy": {"router": {"retry": {"attempts": 0, "failure_classes": ["exit_nonzero"]}, "reservations": {"protected_exploration": {"units": 2}}}}}
 POLICY = canonical.logical_hash(POLICY_BUNDLE)
 LATER_BUNDLE = {**POLICY_BUNDLE, "version": 3}

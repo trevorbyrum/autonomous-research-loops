@@ -76,8 +76,7 @@ class ProductionAndAdoptionTest(EvidenceCase):
 
         # the topic reaches an approved contract; admitted work adopts the claim as revision 2
         chash = self.contract_draft(TOPIC, 1)
-        self.x("UPDATE queue_entries SET status = 'awaiting_scope_approval', state_revision = state_revision + 1 WHERE topic_id = ?", TOPIC)
-        self.decide("opd_scope0001", "scope_approval", {"kind": "scoping_report", "ref": "s", "revision": 1, "hash": h("5")})
+        self.scope_seeded()
         self.decide("opd_cntr0001", "contract_approval", {"kind": "contract_revision", "revision": 1, "hash": chash})
         admitted = self.started("inv_research01")
         # the scoping revision itself cannot be promoted, even by admitted work (V-10, the store's second layer)

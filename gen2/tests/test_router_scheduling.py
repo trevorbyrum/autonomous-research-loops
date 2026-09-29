@@ -35,7 +35,7 @@ from gen2.tests.router_fixtures import TOPIC, RouterTestCase, empty_outcome
 from gen2.tests.test_router_amendments import ContractWorld, compatible, reframed
 
 KINDS = ("research_pass", "discovery", "verification", "checkpoint")
-POLICY = {"bundle_version": "config-bundle/1", "version": 2, "questions": [],
+POLICY = {"bundle_version": "config-bundle/1", "version": 2, "questions": [], "templates": rf.TEMPLATES,  # task 2a: amendments are drafted in them
           "policy": {"router": {"hold_window_s": 600, "retry": {"attempts": 1, "failure_classes": ["killed", "spawn_failed"]},
                                 "reservations": {"protected_exploration": {"units": 2}, "auto_promotion": {"units": 1, "min_band": "critical"}},
                                 "signal_queue": {"budget": 2, "window_s": 86400, "cooldown_s": 3600}}}}

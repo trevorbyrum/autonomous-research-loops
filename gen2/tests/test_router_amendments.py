@@ -54,6 +54,7 @@ def contract_doc(revision: int, parent: int | None, *, rated: bool = True, edit=
     """The example contract as TOPIC's revision `revision`; `edit` changes it."""
     doc = copy.deepcopy(EXAMPLE)
     doc.update(topic_id=TOPIC, revision=revision, parent_revision=parent, created_at="2026-09-27T09:30:00Z")
+    doc["decision_record"]["objective"]["confirmed_brief"] = {"brief_id": "brief-1", "version": 1, "confirmed_by": "opd_brieft101"}  # the world's (task 2a checks it)
     for entry in doc["facet_map"]["facets"] + doc["obligations"]:
         entry["importance"]["proposed"] = None
         if not rated:
@@ -100,8 +101,7 @@ class ContractWorld(RouterTestCase):
     def build_world(self) -> None:
         self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000001', 'doi', '10.1/x', '2026-09-27T09:00:00Z')")
         self.to_scoping()
-        self.x("UPDATE queue_entries SET status = 'awaiting_scope_approval', state_revision = state_revision + 1 WHERE topic_id = ?", TOPIC)
-        assert self.decide("opd_scope0001", "scope_approval", {"kind": "scoping_report", "ref": "scope-1", "revision": 1, "hash": h("5")})["status"] == "applied"
+        self.scope_seeded()
         r1, rated = contract_doc(1, None, rated=False), contract_doc(2, 1)
         self.store_draft(r1)
         payload = {"facets": {f["facet_id"]: {"band": f["importance"]["operator_rating"]["band"], "score": f["importance"]["operator_rating"].get("score")}
@@ -629,9 +629,18 @@ class InventoryImpactTest(ContractWorld):
         """The review's removal probe: O-2 removed, its cell marked deliberately out."""
         self.withdrawal(removed)
 
-    def test_an_obligation_removed_alone_fences(self) -> None:
-        """O-2 removed, the matrix untouched (its cell still names it): the removal alone withdraws it."""
-        self.withdrawal(lambda d: d["obligations"].pop(1))
+    def test_an_obligation_removed_alone_is_refused_as_inconsistent(self) -> None:
+        """O-2 removed, the matrix untouched (its cell still names it). Since
+        task 2a the router refuses that draft before classing it: its cell
+        names an obligation the draft lacks (amendments.references), and
+        nothing changes. The removal alone is still classed protocol_changed
+        (CompatibilityRuleTest), and the consistent removal fences (above)."""
+        self.cost_result()
+        before = self.state()
+        out = self.router.propose_amendment({"document": contract_doc(3, 2, edit=lambda d: d["obligations"].pop(1))})
+        self.assertEqual((out["status"], out.get("reason")), ("refused", "contract_inconsistent"), out)
+        self.assertIn("cell (F-cost, cost) names obligations", out.get("detail", ""))
+        self.assertEqual(self.state(), before)
 
     def test_a_scope_removing_cell_alone_fences(self) -> None:
         """O-2 kept as it was, its cell put deliberately out: the cell alone withdraws it."""

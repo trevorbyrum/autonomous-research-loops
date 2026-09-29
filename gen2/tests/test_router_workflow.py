@@ -1,7 +1,10 @@
 """The router's workflow write paths (task 2a), and one topic end to end.
 
-Trace: docs/gen2/tasks/2a.md; flow S1 (a topic enters at intake; the brief's
-first version awaits the operator's confirmation), S3 (contract drafts, the
+Trace: docs/gen2/tasks/2a.md and its expansion (Astra's Phase 2 plan audit,
+findings 4 and 8); flow S1 (a topic enters at intake; the brief's first
+version awaits the operator's confirmation), S2 (the scoping report and the
+exact-subject scope approval), S3 (contract drafts, their referential
+consistency against the template registry, the
 operator's ratings, approval blocked by an uncovered critical facet), S4
 (retrieved records deduplicated into works; claim-source-obligation links),
 S5 (a checkpoint closes its review episode; mandatory signals); INVARIANTS
@@ -9,7 +12,8 @@ G-2, G-3, G-4, G-12, G-13, C-9, C-12, E-2, E-3, V-9, RG-1b(e); the 1b
 review's bootstrap ruling (topic, brief and first-draft creation, and work
 registration, left to Phase 2), the 1d-repair-2 review (the claim-source
 link had no outcome operation: it was fixture-seeded), gen2/router/README.md
-(review closure and code-policy signals: Phase 2).
+(review closure and code-policy signals: Phase 2); SOURCE-GOVERNANCE.md
+steps 1-2 (a typed source proposal, retained; the operator's exact decision).
 
 Oracles: expectations written by hand; raw SQL read-back, of the whole store
 (every table but the audit log) around each refusal; a new work's id and a
@@ -17,26 +21,29 @@ signal's trigger identity written out here from their JCS bytes with
 hashlib, not with the router's helpers.
 
 Seeding: the unit tests start from the shared fixtures (router_fixtures),
-which still seed their two topics, and in some worlds a brief and a first
-contract draft, by raw SQL — the fixtures predate these paths, and the older
-suites depend on them as they are. What a test here is about goes through the
-router. EndToEndTest uses no seeding the router now provides: its one raw-SQL
-step is the scoping -> awaiting_scope_approval queue move, which stands for
-the committed scoping report (flow S2's hand-off), for which the router has
-no path yet (not among task 2a's operations).
+which still seed their two topics, and in some worlds a brief, a first
+contract draft and the scope step, by raw SQL — the fixtures predate these
+paths, and the older suites depend on them as they are. What a test here is
+about goes through the router (the scope step included: scoped()). A few
+worlds write around the router on purpose, each saying so: a pause, a work
+recorded before, a report row whose hash is untrue. EndToEndTest seeds
+nothing: every step of the chain is a router operation.
 
 Structural limits: work runs at the router with fixture invocations standing
 in for executors, except in EndToEndTest, where the research pass and the
-checkpoint are real fake-executor subprocesses under the supervisor; there,
-too, the test performs the capture steps the supervisor does not yet make
-(an observation, a work registration and an interim claim capture, under the
-running job's own capability). Identity dedup is exact: normalizing an
+checkpoint (and the scoping pass) are real fake-executor subprocesses under
+the supervisor; there, too, the test performs the capture steps the
+supervisor does not yet make (observations, a work registration and an
+interim claim capture, under the running job's own capability). The
+referential checks are structural: a consistent draft can still misstate the
+decision, which stays the operator's. Identity dedup is exact: normalizing an
 identity is the dedup method's, recorded by its version, and not tested
 here. Nothing here tests that a link, a closure or a signal is
 scientifically right; only who may write it, when, and what is kept.
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 
@@ -63,6 +70,7 @@ def contract(revision: int, parent: int | None, *, topic: str = TOPIC, rated: bo
     """The example contract as `topic`'s revision, its ratings citing opd_rate0001 (the example's), its hash true."""
     def change(doc: dict) -> None:
         doc["topic_id"] = topic
+        doc["decision_record"]["objective"]["confirmed_brief"] = {"brief_id": "brief-1", "version": 1, "confirmed_by": f"opd_brief{topic[-2:]}01"}
         if edit is not None:
             edit(doc)
     return contract_doc(revision, parent, rated=rated, edit=change)
@@ -75,8 +83,11 @@ def ratings(doc: dict) -> dict:
 
 
 def uncover_effect(doc: dict) -> None:
-    """O-1, the one obligation tagging the critical facet F-effect, withdrawn; its cell a gap."""
+    """O-1, the one obligation tagging the critical facet F-effect, withdrawn; its cell a gap and its
+    applicability rule gone, so the draft stays consistent (task 2a); a changed protocol takes protocol revision 2 (G-6)."""
     doc["obligations"] = [o for o in doc["obligations"] if o["obligation_id"] != "O-1"]
+    doc["applicability_rules"] = [r for r in doc["applicability_rules"] if "O-1" not in r["obligation_ids"]]
+    doc["protocol_revision"] = 2
     for cell in doc["facet_map"]["coverage_matrix"]["cells"]:
         if cell["facet_id"] == "F-effect" and cell["question_type"] == "effect":
             cell.clear()
@@ -113,19 +124,18 @@ class Workflow(RouterTestCase):
         """S1 and S3's drafts through the router: the brief opened and
         confirmed, draft 1 unrated, the operator's rating of it, draft 2
         carrying the ratings."""
-        assert self.open_brief(tid)["status"] == "recorded"
-        self.confirm(tid)
+        if not self.rows("SELECT 1 FROM intake_briefs WHERE topic_id = ?", tid):
+            assert self.open_brief(tid)["status"] == "recorded"
+            self.confirm(tid)
         r2 = contract(2, 1, topic=tid)
         assert self.draft(contract(1, None, topic=tid, rated=False))["status"] == "recorded"
         assert self.rate(r2, tid)["status"] == "applied"
         assert self.draft(r2)["status"] == "recorded"
         return r2
 
-    def scope_approved(self, tid: str = TOPIC) -> None:
-        """Raw SQL for the committed scoping report (no router path yet), then the operator's scope approval."""
-        self.x("UPDATE queue_entries SET status = 'awaiting_scope_approval', state_revision = state_revision + 1 WHERE topic_id = ?", tid)
-        out = self.decide(f"opd_scope{tid[-2:]}01", "scope_approval", {"kind": "scoping_report", "ref": "scope-1", "revision": 1, "hash": h("5")}, tid)
-        assert out["status"] == "applied", out
+    def scope_approved(self, tid: str = TOPIC) -> dict:
+        """S2 through the router: a pre-contract pass commits the scoping report, the operator approves exactly it (router_fixtures.scoped)."""
+        return self.scoped(tid)
 
     def approve(self, doc: dict, tid: str = TOPIC, did: str | None = None) -> dict:
         return self.decide(did or f"opd_cntr{tid[-2:]}{doc['revision']:02d}", "contract_approval",
@@ -355,7 +365,7 @@ class ContractDraftTest(Workflow):
         self.assertEqual((out["status"], out.get("reason")), ("rejected", "decision_refused"), out)
         self.assertIn("no uncovered critical facet (G-3)", out.get("detail", ""))
         self.assertEqual(self.state(), before)
-        covered = contract(3, 2)
+        covered = contract(3, 2, edit=lambda d: d.update(protocol_revision=3))  # the protocol again, under a new label (G-6: a label never returns)
         self.assertEqual(self.draft(covered)["status"], "recorded")
         self.assertEqual(self.approve(covered)["status"], "applied")
         self.assertEqual(self.rows("SELECT status, active_contract_revision FROM queue_entries WHERE topic_id = ?", TOPIC), [("queued", 3)])
@@ -714,22 +724,395 @@ class ReviewClosureTest(Workflow):
 
 
 # ---------------------------------------------------------------------------
+# the scoping report and the scope decision (Astra's Phase 2 plan audit, finding 4)
+# ---------------------------------------------------------------------------
+UNAVAILABLE = {"observation_id": "obs_t1scope002", "request": {"q": "cost"}, "request_identity": canonical.logical_hash({"q": "cost"}), "attempt": 1,
+               "lane": "semantic_scholar", "obligation_ids": [], "started_at": "2026-09-27T10:00:00Z", "ended_at": "2026-09-27T10:00:01Z",
+               "coverage_state": "provider_unavailable", "result_count": None, "completeness": "unobserved", "error_class": "provider_outage",
+               "capability_fact_id": None, "policy_version": "pol-1", "cost_units": None, "gateway_call_ref": None}
+
+
+class ScopingReportTest(Workflow):
+    """A pre-contract research pass of TOPIC (scoping) has searched crossref
+    (one record) and found semantic_scholar unavailable; its report cites both."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.open_brief()
+        self.confirm()
+        self.grant = self.started("inv_scoping01")
+        self.observe(self.grant, "obs_t1scope001", ("rec-1",))
+        out = self.router.record_observation({"capability_id": self.grant["capability_id"], "invocation_id": "inv_scoping01", "observation": UNAVAILABLE,
+                                              "retrieval_events": []})
+        assert out["status"] == "recorded", out
+
+    def report(self, version: int = 1, **changes) -> dict:
+        coverage = [{"lane": "crossref", "coverage_state": "searched_ok", "observation_ids": ["obs_t1scope001"]},
+                    {"lane": "semantic_scholar", "coverage_state": "provider_unavailable", "observation_ids": ["obs_t1scope002"]}]
+        return self.scoping_report_document(version=version, **{"coverage": coverage, **changes})
+
+    def commit(self, op: str, report: dict, grant: dict | None = None) -> dict:
+        grant = grant or self.grant
+        return self.router.commit_outcome(self.envelope(grant, op, {**empty_outcome(grant["invocation_id"], "interim_transition", topic=grant["topic_id"]),
+                                                                    "scoping_reports": [report]}))
+
+    def test_the_report_hands_the_topic_to_the_operator(self) -> None:
+        report = self.report()
+        out = self.commit("op_report00001", report)
+        self.assertEqual((out["status"], out.get("receipt", {}).get("effects", {}).get("queue_transition")), ("committed", {"from": "scoping", "to": "awaiting_scope_approval"}), out)
+        self.assertEqual(self.status(), "awaiting_scope_approval")
+        self.assertEqual(self.rows("SELECT report_id, version, parent_version, content_hash, brief_id, brief_version, brief_hash, invocation_id, committed_by_operation_id "
+                                   "FROM scoping_reports"),
+                         [("scope-1", 1, None, report["content_hash"], "brief-1", 1, self.brief_document()["content_hash"], "inv_scoping01", "op_report00001")])
+        self.assertEqual(json.loads(self.value("SELECT document FROM scoping_reports")), report)
+        approved = self.decide("opd_scopet101", "scope_approval", {"kind": "scoping_report", "ref": "scope-1", "revision": 1, "hash": report["content_hash"]})
+        self.assertEqual((approved["status"], (approved.get("effects") or {}).get("queue_transition")),
+                         ("applied", {"from": "awaiting_scope_approval", "to": "awaiting_contract_approval"}))
+
+    def test_each_defect_is_refused_alone(self) -> None:
+        def rehash(doc: dict, **changes) -> dict:
+            doc = {**doc, **changes}
+            doc["content_hash"] = canonical.content_hash({k: v for k, v in doc.items() if k != "content_hash"})
+            return doc
+        seen = "is not what the cited observations of fleet-a:t1 recorded"
+        cases = (("another brief than its work's pin", self.report(brief={"brief_id": "brief-1", "version": 1, "content_hash": h("9")}), "payload_invalid",
+                  "not its work's admission pin"),
+                 ("an untrue hash", {**self.report(), "content_hash": h("9")}, "payload_invalid", "does not hash to its content hash"),
+                 ("another topic", rehash(self.report(), topic_id=OTHER), "cross_topic", "is about topic fleet-a:t2"),
+                 ("a gap-map facet it does not propose", self.report(gap_map=[{"facet_id": "F-cost", "question_type": "cost", "state": "gap"}]), "payload_invalid",
+                  "its gap map names a facet it does not propose"),
+                 ("a first version numbered 2", self.report(version=2), "payload_invalid", "the next version is 1, with parent None"),
+                 ("a lane's state its observation did not record", self.report(coverage=[{"lane": "crossref", "coverage_state": "searched_empty",
+                                                                                          "observation_ids": ["obs_t1scope001"]}]), "payload_invalid", seen),
+                 ("an unavailable lane reported searched_empty", self.report(coverage=[{"lane": "semantic_scholar", "coverage_state": "searched_empty",
+                                                                                        "observation_ids": ["obs_t1scope002"]}]), "payload_invalid", seen),
+                 ("an observation of another lane", self.report(coverage=[{"lane": "openalex", "coverage_state": "searched_ok", "observation_ids": ["obs_t1scope001"]}]),
+                  "payload_invalid", seen),
+                 ("an unrecorded observation", self.report(coverage=[{"lane": "crossref", "coverage_state": "searched_ok", "observation_ids": ["obs_nothere0001"]}]),
+                  "payload_invalid", seen))
+        for n, (label, report, reason, detail) in enumerate(cases):
+            with self.subTest(label):
+                before = self.state()
+                out = self.commit(f"op_badreport{n:03d}", report)
+                self.assertEqual((out["status"], out.get("reason")), ("rejected", reason), out)
+                self.assertIn(detail, out.get("detail", ""))
+                self.assertEqual(self.state(), before)
+        self.assertEqual(self.commit("op_report00001", self.report())["status"], "committed")  # the accepted report beside them
+
+    def test_a_topic_no_longer_scoping_takes_no_report(self) -> None:
+        self.assertEqual(self.commit("op_report00001", self.report())["status"], "committed")
+        before = self.state()
+        out = self.commit("op_report00002", self.report(version=2))
+        self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
+        self.assertIn("while its topic is scoping, not awaiting_scope_approval", out.get("detail", ""))
+        self.assertEqual(self.state(), before)
+
+    def test_only_pre_contract_research_commits_a_report(self) -> None:
+        discovery = self.started("inv_scopedisc1", "discovery")
+        self.refused_commit(discovery, "op_discreport1", "kind_not_permitted", "a discovery invocation cannot commit scoping_reports", scoping_reports=[self.report()])
+        self.to_queued(OTHER)
+        admitted = self.started("inv_research02", tid=OTHER)
+        report = self.scoping_report_document(OTHER)
+        self.refused_commit(admitted, "op_admreport1", "kind_not_permitted", "scoping_reports are pre-contract work's", scoping_reports=[report])
+
+
+class ScopeDecisionTest(Workflow):
+    """TOPIC's first scoping pass has committed report scope-1 v1 and ended."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.open_brief()
+        self.confirm()
+        self.v1 = self.scoping_report_document()
+        out = self.finish(self.started("inv_scoping01"), "op_report00001", {**empty_outcome("inv_scoping01"), "scoping_reports": [self.v1]})
+        assert out["status"] == "committed", out
+
+    def decide_scope(self, did: str, report: dict, disposition: str = "approved", **subject) -> dict:
+        return self.decide(did, "scope_approval", {"kind": "scoping_report", "ref": report["report_id"], "revision": report["version"],
+                                                   "hash": report["content_hash"], **subject}, disposition=disposition)
+
+    def test_approval_of_the_report_awaits_the_contract(self) -> None:
+        self.assertEqual(self.decide_scope("opd_scopet101", self.v1)["status"], "applied")
+        self.assertEqual(self.status(), "awaiting_contract_approval")
+
+    def test_a_rejection_sends_the_topic_back_to_scoping_for_a_new_version(self) -> None:
+        out = self.decide_scope("opd_scopereject", self.v1, "rejected")
+        self.assertEqual((out["status"], (out.get("effects") or {}).get("queue_transition")), ("applied", {"from": "awaiting_scope_approval", "to": "scoping"}), out)
+        v2 = self.scoping_report_document(version=2, traditions=[{"tradition_id": "TR-lis", "community": "information science", "names": ["question negotiation"],
+                                                                  "assumptions": "the stated question is a compromise"}])
+        out = self.finish(self.started("inv_scoping02"), "op_report00002", {**empty_outcome("inv_scoping02"), "scoping_reports": [v2]})
+        self.assertEqual(out["status"], "committed", out)
+        before = self.state()
+        stale = self.decide_scope("opd_scopestale", self.v1)
+        self.assertEqual((stale["status"], stale.get("reason")), ("rejected", "decision_refused"), stale)
+        self.assertIn("about the topic's newest committed report, not scope-1 v1", stale.get("detail", ""))
+        self.assertEqual(self.state(), before)
+        stale = self.decide_scope("opd_scopestale2", self.v1, "rejected")  # nor does a rejection of it send the topic back
+        self.assertEqual((stale["status"], stale.get("reason")), ("rejected", "decision_refused"), stale)
+        self.assertEqual(self.state(), before)
+        self.assertEqual(self.decide_scope("opd_scopet102", v2)["status"], "applied")
+        self.assertEqual(self.status(), "awaiting_contract_approval")
+
+    def test_a_deferral_is_a_record_only(self) -> None:
+        out = self.decide_scope("opd_scopedefer", self.v1, "deferred")
+        self.assertEqual((out["status"], out["effects"]), ("applied", {}), out)
+        self.assertEqual(self.status(), "awaiting_scope_approval")
+
+    def test_a_decision_names_a_stored_report_exactly(self) -> None:
+        for n, (label, subject) in enumerate((("another hash", {"hash": h("9")}), ("an unstored version", {"revision": 2}), ("an unstored report", {"ref": "scope-9"}))):
+            with self.subTest(label):
+                before = self.state()
+                out = self.decide_scope(f"opd_scopebad{n}", self.v1, **subject)
+                self.assertEqual((out["status"], out.get("reason")), ("rejected", "decision_refused"), out)
+                self.assertIn("must name an existing subject", out.get("detail", ""))
+                self.assertEqual(self.state(), before)
+
+    def test_a_stored_report_whose_hash_is_untrue_is_not_approved(self) -> None:
+        """RA6 hash truth for the new subject: a report row written around the
+        router (raw SQL, by the same pass) whose document does not hash to its
+        recorded hash is not approved, though the DDL's exact-subject check passes."""
+        forged = self.scoping_report_document(report_id="scope-9")
+        forged["content_hash"] = h("8")
+        self.x("INSERT INTO scoping_reports (topic_id, report_id, version, parent_version, content_hash, document, brief_id, brief_version, brief_hash, invocation_id, "
+               "committed_by_operation_id, created_at) VALUES (?, 'scope-9', 1, NULL, ?, ?, 'brief-1', 1, ?, 'inv_scoping01', 'op_report00001', '2026-09-27T10:30:00Z')",
+               TOPIC, h("8"), json.dumps(forged), forged["brief"]["content_hash"])
+        before = self.state()
+        out = self.decide_scope("opd_scopeforged", forged)
+        self.assertEqual((out["status"], out.get("reason")), ("rejected", "subject_hash_untrue"), out)
+        self.assertEqual(self.state(), before)
+
+
+# ---------------------------------------------------------------------------
+# source proposals (Astra's Phase 2 plan audit, finding 8; SOURCE-GOVERNANCE.md steps 1-2)
+# ---------------------------------------------------------------------------
+PROPOSAL_EXAMPLE = json.loads((rf.EXAMPLES / "source-proposal" / "valid-domain-lane-with-a-key.json").read_text())["instance"]
+
+
+def proposal(grant: dict, pid: str = "srcp_00000001", **changes) -> dict:
+    doc = {**PROPOSAL_EXAMPLE, "proposal_id": pid, "topic_id": grant["topic_id"],
+           "proposed_by": {"invocation_id": grant["invocation_id"], "invocation_kind": grant["kind"]}, **changes}
+    doc["motivation"] = {**doc["motivation"], "blocked_obligation_ids": changes.get("blocked", [])}
+    doc.pop("blocked", None)
+    return doc
+
+
+class SourceProposalTest(Workflow):
+    """TOPIC is scoping; a pre-contract research pass proposes a provider."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.open_brief()
+        self.confirm()
+        self.grant = self.started("inv_scoping01")
+
+    def test_a_proposal_is_retained_and_authorizes_nothing(self) -> None:
+        doc = proposal(self.grant)
+        out = self.capture(self.grant, "op_propose0001", claim=None, source_proposals=[doc])
+        self.assertEqual(out["status"], "committed", out)
+        truth = "sha256:" + hashlib.sha256(canonical.canonical_bytes(doc)).hexdigest()  # the JCS bytes' SHA-256, not the router's helper
+        self.assertEqual(self.rows("SELECT proposal_id, topic_id, content_hash, proposed_by_invocation_id, committed_by_operation_id, supersedes_proposal_id FROM source_proposals"),
+                         [("srcp_00000001", TOPIC, truth, "inv_scoping01", "op_propose0001", None)])
+        before = self.state(exclude=("audit_events", "operator_decisions"))
+        for n, disposition in enumerate(("deferred", "rejected", "approved")):
+            out = self.decide(f"opd_sourcet10{n}", "source_approval", {"kind": "source_proposal", "ref": "srcp_00000001", "revision": None, "hash": truth},
+                              disposition=disposition)
+            self.assertEqual((out["status"], out["effects"]), ("applied", {} if disposition == "approved" else {}), out)
+        self.assertEqual(self.state(exclude=("audit_events", "operator_decisions")), before)  # nothing enabled, registered or moved: a record
+        self.assertEqual(self.rows("SELECT disposition FROM operator_decisions WHERE kind = 'source_approval' ORDER BY rowid"), [("deferred",), ("rejected",), ("approved",)])
+
+    def test_a_re_proposal_supersedes_a_recorded_one(self) -> None:
+        self.capture(self.grant, "op_propose0001", claim=None, source_proposals=[proposal(self.grant)])
+        again = proposal(self.grant, "srcp_00000002", supersedes_proposal_id="srcp_00000001")
+        self.assertEqual(self.capture(self.grant, "op_propose0002", claim=None, source_proposals=[again])["status"], "committed")
+        self.assertEqual(self.value("SELECT supersedes_proposal_id FROM source_proposals WHERE proposal_id = 'srcp_00000002'"), "srcp_00000001")
+
+    def test_each_defect_is_refused_alone(self) -> None:
+        cases = (("another proposer", proposal(self.grant, proposed_by={"invocation_id": "inv_other00001", "invocation_kind": "research_pass"}),
+                  "capability_invocation_mismatch", "a proposal is its committer's"),
+                 ("another kind than its proposer's", proposal(self.grant, proposed_by={"invocation_id": "inv_scoping01", "invocation_kind": "discovery"}),
+                  "capability_invocation_mismatch", "a proposal is its committer's"),
+                 ("another topic", proposal(self.grant, topic_id=OTHER), "cross_topic", "is about topic fleet-a:t2"),
+                 ("superseding an unrecorded proposal", proposal(self.grant, supersedes_proposal_id="srcp_nothere01"), "payload_invalid", "which is not recorded"))
+        for n, (label, doc, reason, detail) in enumerate(cases):
+            with self.subTest(label):
+                self.refused_commit(self.grant, f"op_badprop{n:04d}", reason, detail, source_proposals=[doc])
+        self.assertEqual(self.capture(self.grant, "op_propose0001", claim=None, source_proposals=[proposal(self.grant)])["status"], "committed")
+
+    def test_a_decision_names_a_stored_proposal_exactly(self) -> None:
+        doc = proposal(self.grant)
+        self.capture(self.grant, "op_propose0001", claim=None, source_proposals=[doc])
+        truth = canonical.logical_hash(doc)
+        for n, (label, subject, detail) in enumerate((("another hash", {"ref": "srcp_00000001", "hash": h("9")}, "must name an existing subject"),
+                                                       ("an unstored proposal", {"ref": "srcp_nothere01", "hash": truth}, "must name an existing subject"),
+                                                       ("a revision a proposal has not", {"ref": "srcp_00000001", "hash": truth, "revision": 1}, "CHECK constraint failed"))):
+            with self.subTest(label):
+                before = self.state()
+                out = self.decide(f"opd_sourcebad{n}", "source_approval", {"kind": "source_proposal", "revision": None, **subject})
+                self.assertEqual((out["status"], out.get("reason")), ("rejected", "decision_refused"), out)
+                self.assertIn(detail, out.get("detail", ""))
+                self.assertEqual(self.state(), before)
+
+    def test_a_stored_proposal_whose_hash_is_untrue_is_not_decided(self) -> None:
+        """RA6 hash truth: a proposal row written around the router (raw SQL, by
+        the same pass's commit) whose document does not hash to its recorded
+        hash takes no decision, though the DDL's exact-subject check passes."""
+        self.capture(self.grant, "op_propose0001", claim=None, source_proposals=[proposal(self.grant)])
+        forged = proposal(self.grant, "srcp_forged0001")
+        self.x("INSERT INTO source_proposals (proposal_id, topic_id, content_hash, document, proposed_by_invocation_id, committed_by_operation_id, created_at) "
+               "VALUES ('srcp_forged0001', ?, ?, ?, 'inv_scoping01', 'op_propose0001', '2026-09-27T10:30:00Z')", TOPIC, h("8"), json.dumps(forged))
+        before = self.state()
+        out = self.decide("opd_sourceforge", "source_approval", {"kind": "source_proposal", "ref": "srcp_forged0001", "revision": None, "hash": h("8")})
+        self.assertEqual((out["status"], out.get("reason")), ("rejected", "subject_hash_untrue"), out)
+        self.assertEqual(self.state(), before)
+
+    def test_admitted_work_names_obligations_its_revision_has(self) -> None:
+        self.finish(self.grant, "op_scopefin01")
+        self.approved()
+        research = self.started("inv_research01")
+        self.refused_commit(research, "op_badprop0009", "payload_invalid", "names a blocked obligation contract revision 2 lacks",
+                            source_proposals=[proposal(research, blocked=["O-9"])])
+        self.assertEqual(self.capture(research, "op_propose0009", claim=None, source_proposals=[proposal(research, "srcp_00000009", blocked=["O-1"])])["status"],
+                         "committed")
+        verifier = self.started("inv_verify001", "verification")
+        self.refused_commit(verifier, "op_badprop0010", "kind_not_permitted", "a verification invocation cannot commit source_proposals",
+                            source_proposals=[proposal(verifier, "srcp_00000010")])
+
+
+# ---------------------------------------------------------------------------
+# referential checks on drafts, and the template registry (finding 4)
+# ---------------------------------------------------------------------------
+def set_path(path: str, value):
+    """An edit setting one field of the contract, the path's parts separated by '/' (list indices as numbers)."""
+    def edit(doc: dict) -> None:
+        *parents, last = [int(p) if p.isdigit() else p for p in path.split("/")]
+        node = doc
+        for part in parents:
+            node = node[part]
+        if value is DROP:
+            node.pop(last)
+        else:
+            node[last] = value
+    return edit
+
+
+DROP = object()
+DEFECTS = (  # (label, edit of the example contract, the refusal's detail): each alone makes it referentially inconsistent
+    ("an unregistered template", set_path("obligations/0/template/template_id", "T-unknown"), "O-1: template T-unknown v1 is no registered comparison template"),
+    ("a template of another claim type", set_path("obligations/0/template/claim_type", "effect"), "O-1: template T-comparison v1 is no registered effect template"),
+    ("a required slot left unfilled", set_path("obligations/0/slots/comparator", DROP), "O-1: its slots are not its template's"),
+    ("a slot outside its template", set_path("obligations/0/slots/dose", "10 mg"), "O-1: its slots are not its template's"),
+    ("a trace to no decision-record entry", set_path("obligations/0/traces_to/decision_record_entries", ["EV-9"]), "O-1 traces to a decision-record entry or framework link"),
+    ("a trace to no framework link", set_path("obligations/0/traces_to/framework_links", ["L-9"]), "O-1 traces to a decision-record entry or framework link"),
+    ("a stopping profile it lacks", set_path("obligations/0/stopping_profile_id", "SP-9"), "O-1 names stopping profile SP-9"),
+    ("a framework link to no node", set_path("facet_map/analytic_framework/links/0/to_node", "N-9"), "a framework link joins a node the framework lacks"),
+    ("a decision-record entry id used twice", set_path("decision_record/constraints/0/entry_id", "EV-1"), "a decision-record entry id is used twice"),
+    ("a cell of no facet", set_path("facet_map/coverage_matrix/cells/2/facet_id", "F-9"), "names a facet or question type the map lacks"),
+    ("a cell of no question type", set_path("facet_map/coverage_matrix/cells/2/question_type", "qt-9"), "names a facet or question type the map lacks"),
+    ("a covered cell naming an obligation of another facet", set_path("facet_map/coverage_matrix/cells/1/obligation_ids", ["O-1"]),
+     "cell (F-cost, cost) names obligations that are not the contract's tagging its facet"),
+    ("a gap cell naming obligations", set_path("facet_map/coverage_matrix/cells/3/obligation_ids", ["O-2"]), "cell (F-cost, effect) names obligations"),
+    ("an applicability rule of no obligation", set_path("applicability_rules/0/obligation_ids", ["O-9"]), "an applicability rule names an obligation the contract lacks"),
+    ("an unregistered method-design template", set_path("method_design/template/template_id", "MD-unknown"), "not its registered template's combination"),
+    ("families not its template's", set_path("method_design/families/1/purpose", "triangulation"), "not its registered template's combination"),
+    ("a brief confirmed by another decision", set_path("decision_record/objective/confirmed_brief/confirmed_by", "opd_elsewhere01"),
+     "names brief brief-1 v1 as confirmed by opd_elsewhere01"),
+    ("a proposed method design no work of the topic recorded", lambda d: d["method_design"].update(
+        selection="primary_proposal", proposal={"document": {"content_hash": h("7"), "size_bytes": 10, "media_type": "text/plain"}, "proposed_by": "inv_nobody0001"}) or
+     d["method_design"].pop("template"), "the method-design proposal is not a document recorded for this topic"),
+)
+
+
+class ReferentialCheckTest(Workflow):
+    """TOPIC's brief is confirmed; each defect is drafted as revision 1 (no
+    earlier revision, so no label rule applies) and refused alone."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.open_brief()
+        self.confirm()
+
+    def test_each_defect_is_refused_alone(self) -> None:
+        for label, edit, detail in DEFECTS:
+            with self.subTest(label):
+                before = self.state()
+                out = self.draft(contract(1, None, rated=False, edit=edit))
+                self.assertEqual((out["status"], out.get("reason")), ("refused", "contract_inconsistent"), out)
+                self.assertIn(detail, out.get("detail", ""))
+                self.assertEqual(self.state(), before)
+        self.assertEqual(self.draft(contract(1, None, rated=False))["status"], "recorded")  # the consistent draft beside them
+
+    def test_a_proposed_method_design_is_a_document_of_the_topics_own_work(self) -> None:
+        scoping = self.started("inv_scoping01")
+        design = self.artifact(b"a mixed-methods design: realist synthesis first, then a systematic review", "text/markdown")
+        recorded = self.router.commit_outcome(self.envelope(scoping, "op_design00001", {**empty_outcome("inv_scoping01", "interim_transition"), "claims": [
+            {"claim_id": "clm_design0001", "revision": 1, "text_ref": design, "load_bearing": False, "required_access_tier": None}]}, refs=[design]))
+        self.assertEqual(recorded["status"], "committed", recorded)  # the design document is recorded for the topic by its own work
+        proposed = lambda d: d["method_design"].update(selection="primary_proposal", proposal={"document": design, "proposed_by": "inv_scoping01"}) or \
+            d["method_design"].pop("template")  # noqa: E731
+        self.assertEqual(self.draft(contract(1, None, rated=False, edit=proposed))["status"], "recorded")
+
+    def test_an_amendment_is_checked_as_a_first_draft_is(self) -> None:
+        self.approved()
+        before = self.state()
+        out = self.router.propose_amendment({"document": contract(3, 2, edit=set_path("obligations/0/slots/comparator", DROP))})
+        self.assertEqual((out["status"], out.get("reason")), ("refused", "contract_inconsistent"), out)
+        self.assertEqual(self.state(), before)
+        def added(doc: dict) -> None:  # a consistent obligation added, its optional slot filled, unrated
+            o3 = copy.deepcopy(doc["obligations"][0])
+            o3.update(obligation_id="O-3", importance={"proposed": None, "operator_rating": None})
+            o3["slots"]["setting"] = "five stations"
+            doc["obligations"].append(o3)
+        self.assertEqual(self.router.propose_amendment({"document": contract(3, 2, edit=added)})["status"], "recorded")
+
+    def test_without_a_registered_template_no_draft_is_written(self) -> None:
+        bare = {**rf.BUNDLE, "version": 2}
+        bare.pop("templates")
+        self.assertEqual(self.router.activate_config_bundle(bare)["status"], "activated")
+        before = self.state()
+        out = self.draft(contract(1, None, rated=False))
+        self.assertEqual((out["status"], out.get("reason")), ("refused", "contract_inconsistent"), out)
+        self.assertIn("no registered comparison template", out.get("detail", ""))
+        self.assertEqual(self.state(), before)
+
+
+class TemplateRegistryTest(Workflow):
+    def test_a_template_version_keeps_one_content(self) -> None:
+        altered = {**rf.BUNDLE, "version": 2, "templates": {**rf.TEMPLATES, "obligation": [{**rf.TEMPLATES["obligation"][0], "optional_slots": []}]}}
+        before = self.state(exclude=("audit_events", "capability_facts"))
+        out = self.router.activate_config_bundle(altered)
+        self.assertEqual((out["status"], out.get("reason")), ("refused", "template_altered"), out)
+        self.assertEqual(self.state(exclude=("audit_events", "capability_facts")), before)
+        newer = {**rf.BUNDLE, "version": 2, "templates": {**rf.TEMPLATES, "obligation": [*rf.TEMPLATES["obligation"],
+                                                                                         {**rf.TEMPLATES["obligation"][0], "template_version": 2, "optional_slots": []}]}}
+        self.assertEqual(self.router.activate_config_bundle(newer)["status"], "activated")  # a change is a new version
+
+    def test_a_template_version_appears_once_in_a_bundle(self) -> None:
+        twice = {**rf.BUNDLE, "version": 2, "templates": {**rf.TEMPLATES, "obligation": rf.TEMPLATES["obligation"] * 2}}
+        out = self.router.activate_config_bundle(twice)
+        self.assertEqual((out["status"], out.get("reason")), ("refused", "bundle_invalid"), out)
+        self.assertIn("obligation template version appears twice", out.get("detail", ""))
+
+
+# ---------------------------------------------------------------------------
 # one topic, end to end
 # ---------------------------------------------------------------------------
 E2E = "fleet-e:intake-latency"
-RESEARCH, CHECKPOINT = "inv_e2eresearch1", "inv_e2echeckpt01"
+SCOPING, RESEARCH, CHECKPOINT = "inv_e2escoping01", "inv_e2eresearch1", "inv_e2echeckpt01"
 
 
 class EndToEndTest(sf.SupervisedTestCase, Workflow):
-    """Topic -> brief -> contract drafts -> approval -> admitted research ->
-    claim -> link -> review closure, on a durable store and the real spool,
-    through router operations only but one raw-SQL step (the committed
-    scoping report: module docstring). The research pass and the checkpoint
-    are fake-executor subprocesses under the supervisor; while the research
-    pass runs, the test performs, under the job's own capability, the capture
-    steps the supervisor does not make yet (a search observation, a work
-    registration, an interim claim capture). The decision layer is disabled:
-    no decision spec or receipt exists anywhere."""
+    """topic -> brief -> confirmation -> scoping report -> scope approval ->
+    unrated draft -> rating -> rated successor -> contract approval ->
+    admitted research -> claim/link -> review closure, on a durable store and
+    the real spool, through router operations only: nothing is seeded (the
+    config bundle is activated through the router). The scoping pass, the
+    research pass and the checkpoint are fake-executor subprocesses under the
+    supervisor; while the scoping and research passes run, the test performs,
+    under each job's own capability, the capture steps the supervisor does
+    not make yet (search observations, a work registration, an interim claim
+    capture). The scoping pass also proposes a source, which the operator
+    defers. The decision layer is disabled: no decision spec or receipt
+    exists anywhere."""
 
     def seed(self) -> None:  # only the bundle, activated through the router: no seeded topic
         assert self.router.activate_config_bundle(rf.BUNDLE)["status"] == "activated"
@@ -751,27 +1134,45 @@ class EndToEndTest(sf.SupervisedTestCase, Workflow):
     def outcome_text(self, inv: str, **sections) -> str:
         return canonical.canonical_bytes({**empty_outcome(inv, topic=E2E), **sections}).decode("utf-8")
 
+    def gated(self, kind: str, inv: str, outcome: str) -> dict:
+        """Submit a job whose fake executor waits for its gate, then writes `outcome`; returns its grant once it runs."""
+        self.supervisor.prepare(self.order(kind, [{"op": "wait_for", "name": "gate", "seconds": 60}, {"op": "write", "name": "outcome.json", "text": outcome}],
+                                           inv=inv, topic=E2E))
+        self.assertEqual(self.supervisor.run(inv, until=("running",)), "running")
+        return self.journal(inv)["grant"]
+
     def test_one_topic_from_intake_to_a_closed_review(self) -> None:
         r = self.router
         wid = work_of("doi", "10.1/x")
-        # S1: the topic and its brief
+        # S1: the topic, its brief and the operator's confirmation
         self.assertEqual(r.create_topic({"topic_id": E2E, "priority": 1})["status"], "created")
         self.assertEqual(self.open_brief(E2E)["status"], "recorded")
         self.confirm(E2E)
         self.assertEqual(self.status(E2E), "scoping")
-        # S3: drafts, the operator's rating, approval (G-2, G-3)
-        r2 = self.rated_drafts_after_confirmation(E2E)
-        self.scope_approved(E2E)
+        # S2: a pre-contract scoping pass searches, then commits its report and a source proposal; the operator approves the report, defers the proposal
+        report = self.scoping_report_document(E2E, coverage=[{"lane": "crossref", "coverage_state": "searched_ok", "observation_ids": ["obs_e2escope01"]}])
+        scoping_final = self.outcome_text(SCOPING, scoping_reports=[report],
+                                          source_proposals=[proposal({"topic_id": E2E, "invocation_id": SCOPING, "kind": "research_pass"}, "srcp_e2e00001")])
+        scoping = self.gated("research_pass", SCOPING, scoping_final)
+        self.assertEqual(scoping["admission"]["context"], "pre-contract/1")
+        self.observe(scoping, "obs_e2escope01", ("rec-0",))
+        self.gate(SCOPING)
+        self.assertEqual(self.supervisor.run(SCOPING), "committed")
+        self.assertEqual(self.status(E2E), "awaiting_scope_approval")
+        self.assertEqual(self.decide("opd_scopecy01", "scope_approval", {"kind": "scoping_report", "ref": "scope-1", "revision": 1, "hash": report["content_hash"]},
+                                     E2E)["status"], "applied")
+        stored = self.value("SELECT content_hash FROM source_proposals WHERE proposal_id = 'srcp_e2e00001'")
+        self.assertEqual(self.decide("opd_sourcecy01", "source_approval", {"kind": "source_proposal", "ref": "srcp_e2e00001", "revision": None, "hash": stored},
+                                     E2E, disposition="deferred")["status"], "applied")
         self.assertEqual(self.status(E2E), "awaiting_contract_approval")
+        # S3: an unrated draft, the operator's rating of it, the rated successor, approval (G-2, G-3; the referential checks)
+        r2 = self.rated_drafts(E2E)
         self.assertEqual(self.approve(r2, E2E)["status"], "applied")
         self.assertEqual(self.rows("SELECT status, active_contract_revision FROM queue_entries WHERE topic_id = ?", E2E), [("queued", 2)])
         # S4: an admitted research pass; its final outcome links the claim it captured
         trigger = {"reason_code": "persistent_contradiction", "cause_ref": "clm_e2e0000001 vs its source", "source_revision": 4, "observed_at": "2026-09-27T09:59:00Z"}
         final = self.outcome_text(RESEARCH, next_queue_state="resting", claim_source_links=[link(claim="clm_e2e0000001", work=wid)], review_triggers=[trigger])
-        self.supervisor.prepare(self.order("research_pass", [{"op": "wait_for", "name": "gate", "seconds": 60},
-                                                             {"op": "write", "name": "outcome.json", "text": final}], inv=RESEARCH, topic=E2E))
-        self.assertEqual(self.supervisor.run(RESEARCH, until=("running",)), "running")
-        grant = self.journal(RESEARCH)["grant"]
+        grant = self.gated("research_pass", RESEARCH, final)
         self.assertEqual(grant["admission"]["context"], "contract/1")
         events = self.observe(grant, "obs_e2esearch1", ("rec-1", "rec-2"))
         self.assertEqual(self.register(grant, [("doi", "10.1/x", events)])["status"], "recorded")
@@ -790,9 +1191,15 @@ class EndToEndTest(sf.SupervisedTestCase, Workflow):
         # the whole store, read back
         self.assertEqual(self.rows("SELECT status, active_contract_revision, fleet_id FROM queue_entries"), [("resting", 2, "fleet-e")])
         self.assertEqual(self.rows("SELECT version, status FROM intake_briefs"), [(1, "confirmed")])
+        self.assertEqual(self.rows("SELECT report_id, version, invocation_id FROM scoping_reports"), [("scope-1", 1, SCOPING)])
+        self.assertEqual(self.rows("SELECT proposal_id, proposed_by_invocation_id FROM source_proposals"), [("srcp_e2e00001", SCOPING)])
+        self.assertEqual(self.rows("SELECT kind, disposition FROM operator_decisions ORDER BY rowid"),
+                         [("brief_confirmation", "approved"), ("scope_approval", "approved"), ("source_approval", "deferred"), ("rating_approval", "approved"),
+                          ("contract_approval", "approved")])
         self.assertEqual(self.rows("SELECT revision, status FROM contract_revisions ORDER BY revision"), [(1, "draft"), (2, "approved")])
         self.assertEqual(self.rows("SELECT invocation_id, kind, admission_context, contract_revision, state FROM invocations ORDER BY admitted_at"),
-                         [(RESEARCH, "research_pass", "contract/1", 2, "committed"), (CHECKPOINT, "checkpoint", "contract/1", 2, "committed")])
+                         [(SCOPING, "research_pass", "pre-contract/1", None, "committed"), (RESEARCH, "research_pass", "contract/1", 2, "committed"),
+                          (CHECKPOINT, "checkpoint", "contract/1", 2, "committed")])
         self.assertEqual(self.rows("SELECT claim_id, revision, producer_invocation_id, status FROM claims"), [("clm_e2e0000001", 1, RESEARCH, "provisional")])
         self.assertEqual(self.rows("SELECT work_id, identity_value FROM works"), [(wid, "10.1/x")])
         self.assertEqual(self.value("SELECT count(*) FROM record_work_links WHERE work_id = ?", wid), 2)
@@ -810,11 +1217,3 @@ class EndToEndTest(sf.SupervisedTestCase, Workflow):
         self.assertEqual(r.raise_signal(signal(wid, tid=E2E, observed="2026-09-27T09:58:00Z"))["status"], "replayed")
         refused = r.open_review({"episode_id": "rev_e2eepisode2", "topic_id": E2E, "kind": "method_fit"})
         self.assertEqual((refused["status"], refused.get("reason")), ("refused", "no_pending_signal"))
-
-    def rated_drafts_after_confirmation(self, tid: str) -> dict:
-        r2 = contract(2, 1, topic=tid)
-        self.assertEqual(self.draft(contract(1, None, topic=tid, rated=False))["status"], "recorded")
-        self.assertEqual(self.rate(r2, tid)["status"], "applied")
-        self.assertEqual(self.draft(r2)["status"], "recorded")
-        return r2
-

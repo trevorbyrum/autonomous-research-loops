@@ -9,12 +9,15 @@ under test.
 
 World state is written with raw SQL where the router had no path for it
 when these fixtures were written: topic creation, a brief's first version
-and a first contract draft, decision specs, and the scoping ->
-awaiting_scope_approval step (the committed scoping report). Task 2a gave the
-router the first three (create_topic, open_brief, draft_contract); the
-suites written before it keep these fixtures as they are, and the 2a tests
-(test_router_workflow.py) use the router's paths. The scoping step and
-decision specs still have no router path. Every test's router starts with BUNDLE activated through the
+and a first contract draft, the scope step (scoping -> awaiting_scope_approval
+-> awaiting_contract_approval: scope_seeded), and decision specs. Task 2a
+gave the router all but decision specs (create_topic, open_brief,
+draft_contract, and the scoping report's commit and scope approval:
+scoped()); the suites written before it keep these fixtures as they are,
+since a real scoping pass would change the leases, receipts and counts they
+assert, and the 2a tests (test_router_workflow.py) use the router's paths.
+Since task 2a a scope approval needs a stored report, so the seeded scope
+step records no decision. Every test's router starts with BUNDLE activated through the
 router (task 1d): CONFIG is its hash, the bundle new work pins. Everything the router does own — brief confirmation,
 scope and contract approval, claims, lifecycle facts, observations, commits,
 delivery receipts — goes through the router here, so the fixtures exercise
@@ -48,7 +51,12 @@ def question(qid: str = "Q-screen", version: int = 1, text: str = "Does this wor
 
 
 QUESTION = question()
-BUNDLE = {"bundle_version": "config-bundle/1", "version": 1, "policy": {}, "questions": [QUESTION]}
+# task 2a: the templates the example contract (schema/examples/contract-v2/valid-two-obligations.json) is drafted in
+TEMPLATES = {"obligation": [{"template_id": "T-comparison", "template_version": 1, "claim_type": "comparison",
+                             "required_slots": ["comparator", "intervention", "outcome", "population"], "optional_slots": ["setting"]}],
+             "method_design": [{"template_id": "MD-sr-plus-initiation", "template_version": 1,
+                                "families": [{"family": "systematic_review", "role": "primary"}, {"family": "truth_discovery", "role": "added", "purpose": "initiation"}]}]}
+BUNDLE = {"bundle_version": "config-bundle/1", "version": 1, "policy": {}, "questions": [QUESTION], "templates": TEMPLATES}
 CONFIG = canonical.logical_hash(BUNDLE)
 EXPIRES = "2026-12-31T00:00:00Z"
 DEADLINE = "2026-12-30T00:00:00Z"
@@ -138,7 +146,7 @@ class Registry:
 def empty_outcome(invocation_id: str, kind: str = "final_outcome", topic: str = TOPIC) -> dict:
     return {"outcome_version": "outcome/1", "invocation_id": invocation_id, "topic_id": topic, "operation_kind": kind,
             "next_queue_state": None, "claims": [], "claim_promotions": [], "claim_source_links": [], "verification_receipts": [], "decision_receipts": [],
-            "screening_assessments": [], "review_triggers": [], "review_closures": [], "holds": [], "exports": []}
+            "screening_assessments": [], "review_triggers": [], "review_closures": [], "scoping_reports": [], "source_proposals": [], "holds": [], "exports": []}
 
 
 class RouterTestCase(unittest.TestCase):
@@ -238,16 +246,45 @@ class RouterTestCase(unittest.TestCase):
         assert out["status"] == "applied", out
 
     def to_queued(self, tid: str = TOPIC) -> str:
-        """S1 -> S3 on the router: the brief confirmed, scope and contract
-        revision 1 approved (the scoping-report step is raw SQL)."""
+        """S1 -> S3 on the router: the brief confirmed, the scoping report
+        committed and approved, contract revision 1 (a raw-SQL draft) approved."""
         self.to_scoping(tid)
         chash = self.contract_draft(tid, 1)
-        self.x("UPDATE queue_entries SET status = 'awaiting_scope_approval', state_revision = state_revision + 1 WHERE topic_id = ?", tid)
-        out = self.decide(f"opd_scope{tid[-2:]}01", "scope_approval", {"kind": "scoping_report", "ref": "scope-1", "revision": 1, "hash": h("5")}, tid)
-        assert out["status"] == "applied", out
+        self.scope_seeded(tid)
         out = self.decide(f"opd_cntr{tid[-2:]}01", "contract_approval", {"kind": "contract_revision", "revision": 1, "hash": chash}, tid)
         assert out["status"] == "applied", out
         return chash
+
+    def scope_seeded(self, tid: str = TOPIC) -> None:
+        """The pre-2a suites' scope step, raw: scoping -> awaiting_scope_approval
+        -> awaiting_contract_approval, two queue moves the DDL admits, with no
+        report and no decision (scoped() is the router's path)."""
+        for status in ("awaiting_scope_approval", "awaiting_contract_approval"):
+            self.x("UPDATE queue_entries SET status = ?, state_revision = state_revision + 1 WHERE topic_id = ?", status, tid)
+
+    def scoping_report_document(self, tid: str = TOPIC, version: int = 1, **changes) -> dict:
+        """A scoping-report/1 of report scope-1, scoped under the topic's brief-1 v1, its hash true."""
+        doc = {"report_version": "scoping-report/1", "report_id": "scope-1", "topic_id": tid, "version": version, "parent_version": None if version == 1 else version - 1,
+               "created_at": "2026-09-27T09:40:00Z", "brief": {"brief_id": "brief-1", "version": 1, "content_hash": self.brief_document(tid)["content_hash"]},
+               "territory_map": {"extent": "some forty studies", "range": "human and agent intake", "nature": "case studies, few comparisons"},
+               "traditions": [{"tradition_id": "TR-re", "community": "requirements engineering", "names": ["elicitation completeness"], "assumptions": "omissions are countable"}],
+               "candidate_facets": [{"facet_id": "F-effect", "label": "effect on omissions", "rationale": "the decision turns on it"}],
+               "gap_map": [{"facet_id": "F-effect", "question_type": "effect", "state": "unknown"}], "deliberately_out": [],
+               "discovery_mechanisms": [{"mechanism": "database_search", "status": "ran"}], "coverage": [], **changes}
+        doc["content_hash"] = canonical.content_hash(doc)
+        return doc
+
+    def scoped(self, tid: str = TOPIC, inv: str | None = None) -> dict:
+        """S2 on the router (task 2a): a pre-contract research pass commits the
+        scoping report — the topic moves to awaiting_scope_approval — and the
+        operator approves exactly that report; returns it."""
+        inv = inv or f"inv_scope{tid[-2:]}0001"
+        report = self.scoping_report_document(tid)
+        out = self.finish(self.started(inv, tid=tid), f"op_scope{tid[-2:]}0001", {**empty_outcome(inv, topic=tid), "scoping_reports": [report]})
+        assert out["status"] == "committed", out
+        out = self.decide(f"opd_scope{tid[-2:]}01", "scope_approval", {"kind": "scoping_report", "ref": "scope-1", "revision": 1, "hash": report["content_hash"]}, tid)
+        assert out["status"] == "applied", out
+        return report
 
     # -- invocations ---------------------------------------------------------
     def claim(self, inv: str, kind: str = "research_pass", tid: str = TOPIC, **extra) -> dict:
@@ -271,9 +308,13 @@ class RouterTestCase(unittest.TestCase):
         self.running(grant)
         return grant
 
-    def stage(self, document: dict) -> tuple[str, int]:
+    def stage(self, document: dict, topic: str = TOPIC) -> tuple[str, int]:
         raw = jcs(document)
-        return self.spool.put(raw), len(raw)
+        if hasattr(self.spool, "real"):  # the operator suites' staging spool
+            return self.spool.put(raw, topic=topic), len(raw)
+        if hasattr(self.spool, "put"):  # this file's fake and the restart suite's: bytes for any topic
+            return self.spool.put(raw), len(raw)
+        return self.spool.stage(topic, raw, "application/json")["content_hash"], len(raw)  # the real spool (the supervisor suites' worlds)
 
     def ready(self, grant: dict, digest: str) -> None:
         out = self.router.record_transition({"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"],
@@ -281,7 +322,7 @@ class RouterTestCase(unittest.TestCase):
         assert out["status"] == "recorded", out
 
     def envelope(self, grant: dict, op: str, outcome: dict, *, refs=(), expected: int | None = None, **overrides) -> dict:
-        digest, size = self.stage(outcome)
+        digest, size = self.stage(outcome, grant["topic_id"])
         env = {"envelope_version": "commit-outcome/1", "operation_id": op, "operation_kind": outcome["operation_kind"],
                "invocation_id": grant["invocation_id"], "capability_id": grant["capability_id"], "topic_id": grant["topic_id"],
                "admission": grant["admission"], "config_bundle_hash": grant["config_bundle_hash"],

@@ -374,8 +374,7 @@ class OperatorDecisionTest(RouterTestCase):
         label; the router recomputes)."""
         self.to_scoping()
         forged = self.contract_draft(TOPIC, 1, true_hash=False)
-        self.x("UPDATE queue_entries SET status = 'awaiting_scope_approval', state_revision = state_revision + 1 WHERE topic_id = ?", TOPIC)
-        self.assertEqual(self.decide("opd_scope0001", "scope_approval", {"kind": "scoping_report", "ref": "s", "revision": 1, "hash": h("5")})["status"], "applied")
+        self.scope_seeded()
         before = self.state(exclude=())
         out = self.decide("opd_cntr0001", "contract_approval", {"kind": "contract_revision", "revision": 1, "hash": forged})
         self.assertEqual((out["status"], out.get("reason")), ("rejected", "subject_hash_untrue"))
@@ -387,9 +386,7 @@ class OperatorDecisionTest(RouterTestCase):
         supersedes nothing, and approves exactly this one."""
         self.to_scoping()
         chash = self.contract_draft(TOPIC, 1)
-        self.x("UPDATE queue_entries SET status = 'awaiting_scope_approval', state_revision = state_revision + 1 WHERE topic_id = ?", TOPIC)
-        out = self.decide(f"opd_scope{TOPIC[-2:]}01", "scope_approval", {"kind": "scoping_report", "ref": "scope-1", "revision": 1, "hash": h("5")})
-        self.assertEqual(out["status"], "applied", out)
+        self.scope_seeded()
         out = self.decide(f"opd_cntr{TOPIC[-2:]}01", "contract_approval", {"kind": "contract_revision", "revision": 1, "hash": chash})
         self.assertEqual(out["status"], "applied", out)
         self.assertEqual((out["effects"]["contract_approved"], out["effects"]["contract_superseded"]), (1, []))
@@ -408,9 +405,10 @@ class OperatorDecisionTest(RouterTestCase):
 
     def test_a_decision_whose_transition_the_state_forbids_is_refused_whole(self) -> None:
         self.to_scoping()
+        report = self.scoped()  # the topic now awaits contract approval
         before = self.state(exclude=())
-        out = self.decide("opd_scope0001", "scope_approval", {"kind": "scoping_report", "ref": "s", "revision": 1, "hash": h("5")})
-        self.assertEqual((out["status"], out.get("reason")), ("rejected", "decision_refused"))  # scoping, not awaiting scope approval
+        out = self.decide("opd_scope0002", "scope_approval", {"kind": "scoping_report", "ref": "scope-1", "revision": 1, "hash": report["content_hash"]})
+        self.assertEqual((out["status"], out.get("reason")), ("rejected", "decision_refused"))  # awaiting contract approval, not scope approval
         self.assertIn("moves it only from", out.get("detail", ""))
         self.assertEqual(self.state(exclude=()), before)
 
