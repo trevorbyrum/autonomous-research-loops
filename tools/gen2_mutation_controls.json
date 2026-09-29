@@ -2726,6 +2726,9 @@
  },
  "1C-sup-cancellation-ignored": {
   "controls": [
+   "test_supervisor_crash.DiscoveryCrashTest.test_crash_after_launch_intent_before_any_start"
+  ],
+  "rejected": [
    "test_supervisor_delegates.ResearchPassParentTest.test_a_parent_that_completes"
   ],
   "why": "gen2/supervisor/supervisor.py: executes line 1076"
