@@ -1,0 +1,20 @@
+{
+  "fixture": {
+    "schema": "outcome-document.schema.json",
+    "expect": "invalid",
+    "tests": "C-12 (task 2a): a claim-source link names the obligation of the pinned revision it answers",
+    "base": "valid-research-final.json",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/claim_source_links/0/obligation_id"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "required",
+        "path": "/claim_source_links/0"
+      }
+    ]
+  }
+}

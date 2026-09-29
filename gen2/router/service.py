@@ -33,7 +33,11 @@ lifecycle.py; task 1d's config bundles, question registry and qualification
 records in registries.py, brief and contract versions and amendment impact
 (G-1) in amendments.py, re-queues, reservations and the signal queue in
 scheduling.py; task 1e's status read and health probe in status.py; task 1f's
-capability-probe records in capabilities.py.
+capability-probe records in capabilities.py. Task 2a's workflow write paths:
+work registration here (register_works), a topic's claim-source links and a
+checkpoint's review closure as commit_outcome sections here, topic creation
+and code-policy signals in scheduling.py, a brief's first version and
+contract construction's drafts in amendments.py.
 """
 from __future__ import annotations
 
@@ -126,6 +130,15 @@ COMMANDS = {  # the router's own request shapes (commands, not stored documents)
                               "properties": {"event_id": {"type": "string", "pattern": "^rev_[A-Za-z0-9_-]{8,64}$"}, "provider_record_id": _ID,
                                              "rank": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1, "maximum": 9007199254740991}]},
                                              "captured_at": _TS}}}}},
+        "works": {  # task 2a
+            "type": "object", "additionalProperties": False, "required": ["capability_id", "invocation_id", "dedup_method_version", "works"],
+            "properties": {
+                "capability_id": _CAP, "invocation_id": _INV, "dedup_method_version": _ID,
+                "works": {"type": "array", "minItems": 1, "maxItems": 1000, "items": {
+                    "type": "object", "additionalProperties": False, "required": ["identity_scheme", "identity_value", "event_ids"],
+                    "properties": {"identity_scheme": {"enum": ["doi", "arxiv", "pmid", "isbn", "url", "gateway_record"]}, "identity_value": _ID,
+                                   "event_ids": {"type": "array", "minItems": 1, "maxItems": 10000, "uniqueItems": True,
+                                                 "items": {"type": "string", "pattern": "^rev_[A-Za-z0-9_-]{8,64}$"}}}}}}},
         "operator_decision": {
             "type": "object", "additionalProperties": False,
             "required": ["decision_id", "topic_id", "kind", "disposition", "subject", "operator_id", "decided_at", "notes", "payload"],
@@ -570,6 +583,67 @@ class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities
                     topic_id=inv["topic_id"], invocation_id=inv["invocation_id"])
         return {"status": "recorded", "observation_id": obs["observation_id"], "retrieval_events": len(events)}
 
+    # -- works (task 2a) -------------------------------------------------------------
+    def register_works(self, request: Mapping) -> dict:
+        """Unit 2 (E-3): link retrieved records of the invocation's topic to
+        the works they are, by identity. A work is one row however many topics
+        retrieve it (its id derives from its identity, boundary.work_id); a
+        topic's claims may cite it only through its own records' links
+        (_work_of_topic). Key: each record's link, recorded once: a request
+        whose every link is recorded as asked replays, a record linked to
+        another work (or under another dedup method) is a conflict."""
+        try:
+            req = boundary.normalize(request, "request_invalid")
+            boundary.require_schema(self._schemas, req, "router-commands#/$defs/works", "request_invalid")
+            events = [e for work in req["works"] for e in work["event_ids"]]
+            identities = {(work["identity_scheme"], work["identity_value"]) for work in req["works"]}
+            if len(set(events)) != len(events) or len(identities) != len(req["works"]):
+                raise Refusal("request_invalid", "each retrieved record maps to one work, and each work is named once (E-3)")
+            return self._guarded("request_invalid", lambda now: self._works_in_transaction(req, now))
+        except Refusal as refusal:
+            return {"status": "refused", "reason": refusal.reason, "detail": _short(refusal.detail)}
+
+    def _works_in_transaction(self, req: dict, now: str) -> dict:
+        inv = self._capability(req["capability_id"], req["invocation_id"])
+        works, unrecorded, new = [], [], []
+        for work in req["works"]:
+            identity = {"identity_scheme": work["identity_scheme"], "identity_value": work["identity_value"]}
+            stored = self._one("works", identity)
+            wid = stored["work_id"] if stored else boundary.work_id(work["identity_scheme"], work["identity_value"])
+            for event_id in work["event_ids"]:
+                link = self._one("record_work_links", {"event_id": event_id})
+                if link is None:
+                    new.append((event_id, wid))
+                elif (link["work_id"], link["dedup_method_version"]) != (wid, req["dedup_method_version"]):
+                    raise Refusal("work_link_conflict", f"{event_id} is linked to {link['work_id']} under {link['dedup_method_version']}: "
+                                                        "each retrieved record maps to one work (E-3)")
+            works.append({"work_id": wid, **identity})
+            if stored is None:
+                unrecorded.append({"work_id": wid, **identity, "created_at": now})
+        if not new:  # a lost reply is answered from the links, whatever the invocation's state now
+            return {"status": "replayed", "works": works}
+        if inv["state"] != "running" or inv["cancel_requested_at"] is not None:
+            raise Refusal("invocation_state_invalid", f"works are registered while running, not {inv['state']}, and never after a cancellation request")
+        self._require_current_lease(inv, now)
+        if self._one("queue_entries", {"topic_id": inv["topic_id"]})["paused_at"] is not None:
+            raise Refusal("topic_paused", f"{inv['topic_id']} is paused")
+        for row in unrecorded:
+            self._store.insert("works", row)
+        for event_id, wid in new:
+            event = self._one("retrieval_events", {"event_id": event_id})
+            if event is None or event["topic_id"] != inv["topic_id"]:  # a record of another topic is not this topic's (C-9's rule for artifacts)
+                raise Refusal("cross_topic" if event else "unknown_event", f"{event_id} is not a retrieval event of {inv['topic_id']}")
+            self._store.insert("record_work_links", {"event_id": event_id, "work_id": wid, "dedup_method_version": req["dedup_method_version"], "linked_at": now})
+        self._audit("works_registered", now, {"works": [w["work_id"] for w in works], "links": len(new)}, topic_id=inv["topic_id"], invocation_id=inv["invocation_id"])
+        return {"status": "recorded", "works": works}
+
+    def _work_of_topic(self, work_id: str, topic_id: str) -> bool:
+        """Whether a record of this topic is linked to the work: a topic
+        cites a work through its own retrieval, not because the row exists
+        (the artifact_topics rule, C-9, applied to works; task 2a)."""
+        return any(self._one("retrieval_events", {"event_id": link["event_id"]})["topic_id"] == topic_id
+                   for link in self._store.select("record_work_links", {"work_id": work_id}))
+
     # -- commit_outcome ----------------------------------------------------------
     def commit_outcome(self, envelope: Mapping) -> dict:
         op_id = envelope.get("operation_id") if isinstance(envelope, Mapping) else None
@@ -899,10 +973,39 @@ class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities
                                                    "incompatible; contract-admitted work adopts it as a new revision (V-10, G-1)")
             self._store.update("claims", {"claim_id": promotion["claim_id"], "revision": promotion["revision"]}, {"status": "accepted_support"})
             promotions.append([promotion["claim_id"], promotion["revision"]])
+        links = []
+        for link in payload["claim_source_links"]:  # task 2a: the claim's admission (C-12) and the topic's own retrieval of the work (C-9's rule)
+            claim, what = self._one("claims", {"claim_id": link["claim_id"], "revision": link["claim_revision"]}), f"{link['claim_id']} revision {link['claim_revision']}"
+            if claim is None:
+                raise Refusal("payload_invalid", f"{what} is not recorded")
+            if claim["topic_id"] != topic_id:
+                raise Refusal("cross_topic", f"{what} is another topic's claim")
+            if self._one("invocations", {"invocation_id": claim["producer_invocation_id"]})["contract_revision"] != inv["contract_revision"]:
+                raise Refusal("payload_invalid", f"{what} was not produced by work admitted under contract revision {inv['contract_revision']}, "
+                                                 "whose obligation the link names (C-12)")
+            if self._one("obligations", {"topic_id": topic_id, "contract_revision": inv["contract_revision"], "obligation_id": link["obligation_id"]}) is None:
+                raise Refusal("payload_invalid", f"{link['obligation_id']} is not an obligation of contract revision {inv['contract_revision']}")
+            if not self._work_of_topic(link["work_id"], topic_id):
+                raise Refusal("cross_topic" if self._one("works", {"work_id": link["work_id"]}) else "payload_invalid",
+                              f"no record {topic_id} retrieved is linked to {link['work_id']}: a work's row is not the topic's authorization to cite it")
+            self._store.insert("claim_source_links", {**link, "topic_id": topic_id, "contract_revision": inv["contract_revision"], "created_at": now})
+            links.append([link["claim_id"], link["claim_revision"], link["work_id"], link["obligation_id"]])
         for identity, trigger in new_triggers:
             self._store.insert("review_triggers", {"trigger_identity": identity, "topic_id": topic_id, "reason_code": trigger["reason_code"],
                                                    "signal_source": "primary_observation", "cause_ref": trigger["cause_ref"],
                                                    "observed_at": trigger["observed_at"], "recorded_by_operation_id": op_id})
+        for closure in payload["review_closures"]:  # task 2a: the checkpoint closes an episode opened for it to review, its triggers handled (S5, RG-1b(e))
+            episode = self._one("review_episodes", {"episode_id": closure["episode_id"]})
+            if episode is None or episode["topic_id"] != topic_id:
+                raise Refusal("cross_topic" if episode else "payload_invalid", f"{closure['episode_id']} is not a review episode of {topic_id}")
+            if episode["closed_at"] is not None:
+                raise Refusal("payload_invalid", f"{closure['episode_id']} was closed by {episode['closed_by_operation_id']}")
+            if instant(episode["opened_at"]) > instant(inv["admitted_at"]):
+                raise Refusal("payload_invalid", f"{closure['episode_id']} opened after {inv['invocation_id']} was admitted: a checkpoint closes only an "
+                                                 "episode it was admitted to review, so no signal is marked handled unreviewed (G-12)")
+            self._store.update("review_episodes", {"episode_id": closure["episode_id"]}, {"closed_at": now, "closed_by_operation_id": op_id})
+            for trigger in self._store.select("review_triggers", {"episode_id": closure["episode_id"]}):
+                self._store.update("review_triggers", {"trigger_identity": trigger["trigger_identity"]}, {"handled_at": now})
         for outbox_id, manifest, manifest_hash in outbox:
             supersedes = manifest["supersedes"] or {}
             self._store.insert("outbox_events", {
@@ -912,7 +1015,8 @@ class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities
                 "source_revision": manifest["source"]["revision"], "source_content_hash": manifest["source"]["content_hash"],
                 "approval_decision_id": manifest["approval"]["operator_decision_id"], "bundle_content_hash": manifest["bundle"]["content_hash"],
                 "expected_connectors": manifest["expected_connectors"], "manifest": manifest, "committed_by_operation_id": op_id, "created_at": now})
-        return {"claims": claims, "claim_promotions": promotions,
+        return {"claims": claims, "claim_promotions": promotions, "claim_source_links": links,
+                "review_closures": [c["episode_id"] for c in payload["review_closures"]],
                 "verification_receipts": [d["verification_receipt_id"] for d in payload["verification_receipts"]],
                 "screening_assessments": [a["assessment_id"] for a in payload["screening_assessments"]],
                 "artifacts": sorted(checked["artifacts"])}

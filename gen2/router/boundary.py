@@ -36,9 +36,11 @@ PRIMARY = frozenset({"research_pass", "checkpoint"})
 SECTION_KINDS = {
     "claims": PRIMARY,
     "claim_promotions": PRIMARY,
+    "claim_source_links": PRIMARY,  # task 2a
     "decision_receipts": PRIMARY,
     "screening_assessments": PRIMARY,
     "review_triggers": PRIMARY,
+    "review_closures": frozenset({"checkpoint"}),  # task 2a: closing an episode is the checkpoint workflow's (flow S5)
     "exports": PRIMARY,
     "holds": PRIMARY | {"verification"},
     "verification_receipts": frozenset({"verification"}),
@@ -250,6 +252,13 @@ def check_manifest(manifest: dict, topic_id: str, extensions, bundle_raw: bytes,
     if bundle["bundle_id"] != manifest["bundle"]["bundle_id"] or bundle["topic_id"] != topic_id:
         raise Refusal("payload_invalid", f"{mid}: the staged bundle is {bundle['bundle_id']} of {bundle['topic_id']}")
     return canonical.logical_hash(manifest)
+
+
+def work_id(identity_scheme: str, identity_value: str) -> str:
+    """A new work's id (task 2a): derived from its identity, so topics that
+    retrieve the same record register one work without coordinating (E-3:
+    identity duplicates only; normalizing an identity is the dedup method's)."""
+    return "wrk_" + canonical.logical_hash({"identity_scheme": identity_scheme, "identity_value": identity_value}).split(":", 1)[1]
 
 
 def trigger_identity(topic_id: str, trigger: dict) -> str:

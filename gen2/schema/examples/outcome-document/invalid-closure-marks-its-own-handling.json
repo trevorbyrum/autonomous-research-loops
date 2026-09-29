@@ -1,0 +1,24 @@
+{
+  "fixture": {
+    "schema": "outcome-document.schema.json",
+    "expect": "invalid",
+    "tests": "RG-1b(e) (task 2a): a review closure names only its episode; the router marks the episode's triggers handled at commit",
+    "base": "valid-research-final.json",
+    "patch": [
+      {
+        "op": "add",
+        "path": "/review_closures/0",
+        "value": {
+          "episode_id": "rev_01J8ZQ7R1A",
+          "handled_at": "2026-09-25T11:02:00Z"
+        }
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "additionalProperties",
+        "path": "/review_closures/0"
+      }
+    ]
+  }
+}

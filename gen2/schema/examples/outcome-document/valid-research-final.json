@@ -2,7 +2,7 @@
   "fixture": {
     "schema": "outcome-document.schema.json",
     "expect": "valid",
-    "tests": "C-4/V-10: a research pass's final outcome proposes capture, promotion, screening, a trigger, a hold and its next queue state; no producer or recorder field exists"
+    "tests": "C-4/V-10: a research pass's final outcome proposes capture, promotion, a claim-source link, screening, a trigger, a hold and its next queue state; no producer or recorder field exists"
   },
   "instance": {
     "outcome_version": "outcome/1",
@@ -27,6 +27,28 @@
       {
         "claim_id": "clm_01J8ZQ11C1",
         "revision": 2
+      }
+    ],
+    "claim_source_links": [
+      {
+        "claim_id": "clm_01J8ZQ5C1A",
+        "claim_revision": 1,
+        "work_id": "wrk_01J8ZQ5E3C",
+        "source_version": "v2",
+        "obligation_id": "O-1",
+        "spans": [
+          {
+            "start": 120,
+            "end": 188,
+            "locator": {
+              "kind": "table",
+              "value": "Table 2"
+            }
+          }
+        ],
+        "contribution": "answer",
+        "evidence_origin_lineage": "trial-2019-committee-intake",
+        "analytical_method": null
       }
     ],
     "verification_receipts": [],
@@ -55,6 +77,7 @@
         "observed_at": "2026-09-25T11:01:59Z"
       }
     ],
+    "review_closures": [],
     "holds": [
       {
         "hold_id": "hold_01J8ZQ5H1A",

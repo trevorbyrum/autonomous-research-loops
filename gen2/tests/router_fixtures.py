@@ -134,8 +134,8 @@ class Registry:
 
 def empty_outcome(invocation_id: str, kind: str = "final_outcome", topic: str = TOPIC) -> dict:
     return {"outcome_version": "outcome/1", "invocation_id": invocation_id, "topic_id": topic, "operation_kind": kind,
-            "next_queue_state": None, "claims": [], "claim_promotions": [], "verification_receipts": [], "decision_receipts": [],
-            "screening_assessments": [], "review_triggers": [], "holds": [], "exports": []}
+            "next_queue_state": None, "claims": [], "claim_promotions": [], "claim_source_links": [], "verification_receipts": [], "decision_receipts": [],
+            "screening_assessments": [], "review_triggers": [], "review_closures": [], "holds": [], "exports": []}
 
 
 class RouterTestCase(unittest.TestCase):

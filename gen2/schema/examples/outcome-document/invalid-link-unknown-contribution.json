@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "outcome-document.schema.json",
+    "expect": "invalid",
+    "tests": "V-9 (task 2a): a link's contribution is one of the typed relationships the store records",
+    "base": "valid-research-final.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/claim_source_links/0/contribution",
+        "value": "supports"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "enum",
+        "path": "/claim_source_links/0/contribution"
+      }
+    ]
+  }
+}

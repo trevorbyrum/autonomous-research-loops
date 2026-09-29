@@ -14,10 +14,12 @@
     "next_queue_state",
     "claims",
     "claim_promotions",
+    "claim_source_links",
     "verification_receipts",
     "decision_receipts",
     "screening_assessments",
     "review_triggers",
+    "review_closures",
     "holds",
     "exports"
   ],
@@ -61,6 +63,27 @@
         "properties": {
           "claim_id": {"$ref": "common.schema.json#/$defs/claim_id"},
           "revision": {"$ref": "common.schema.json#/$defs/revision"}
+        }
+      }
+    },
+    "claim_source_links": {
+      "description": "Task 2a: typed links of claim revisions of the committing invocation's topic to the works they rest on, each for an obligation of the invocation's pinned contract revision, which the router fills in with the topic (C-12: the claim was produced by work admitted under that revision; a scoping claim links to nothing until contract-admitted work adopts it). The work is one a record of this topic retrieved (the router's rule, not this schema's). Independent origins and analytical methods are recorded apart (V-9).",
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["claim_id", "claim_revision", "work_id", "source_version", "obligation_id", "spans", "contribution", "evidence_origin_lineage", "analytical_method"],
+        "properties": {
+          "claim_id": {"$ref": "common.schema.json#/$defs/claim_id"},
+          "claim_revision": {"$ref": "common.schema.json#/$defs/revision"},
+          "work_id": {"$ref": "common.schema.json#/$defs/work_id"},
+          "source_version": {"$ref": "common.schema.json#/$defs/short_text"},
+          "obligation_id": {"$ref": "common.schema.json#/$defs/local_id"},
+          "spans": {"type": "array", "maxItems": 50, "items": {"$ref": "verification-receipt.schema.json#/properties/cited_spans/items"}},
+          "contribution": {"enum": ["answer", "confidence", "applicability", "options", "question_formulation", "boundary_condition", "contradiction"]},
+          "evidence_origin_lineage": {"$ref": "common.schema.json#/$defs/short_text"},
+          "analytical_method": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/short_text"}]}
         }
       }
     },
@@ -125,6 +148,18 @@
           "source_revision": {"$ref": "common.schema.json#/$defs/state_revision"},
           "observed_at": {"$ref": "common.schema.json#/$defs/timestamp"}
         }
+      }
+    },
+    "review_closures": {
+      "description": "Task 2a: review episodes of the committing invocation's topic its commit closes, marking each episode's triggers handled (flow S5; RG-1b(e): a handled trigger stays handled). Only a checkpoint closes one, and only an episode opened before it was admitted (the router's rules, gen2/router/boundary.py SECTION_KINDS and service.py).",
+      "type": "array",
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["episode_id"],
+        "properties": {"episode_id": {"type": "string", "pattern": "^rev_[A-Za-z0-9_-]{8,64}$"}}
       }
     },
     "holds": {

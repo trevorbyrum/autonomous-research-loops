@@ -12,6 +12,7 @@
     "next_queue_state": null,
     "claims": [],
     "claim_promotions": [],
+    "claim_source_links": [],
     "verification_receipts": [
       {
         "receipt_version": "verification-receipt/1",
@@ -81,6 +82,7 @@
     "decision_receipts": [],
     "screening_assessments": [],
     "review_triggers": [],
+    "review_closures": [],
     "holds": [],
     "exports": []
   }

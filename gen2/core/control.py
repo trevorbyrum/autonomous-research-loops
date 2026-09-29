@@ -137,6 +137,11 @@ class ControlBackend(Protocol):
         with it, under the capability of a running invocation whose lease is
         current. Key: observation_id."""
 
+    def register_works(self, request: Mapping) -> dict:
+        """Link retrieved records of the invocation's topic to the works they
+        are, by identity (task 2a; E-3), under the capability, while running
+        and its lease current. Key: each record's link, recorded once."""
+
     def commit_outcome(self, envelope: Mapping) -> dict:
         """The commit protocol (design review §5 steps 1-5; C-2..C-5): replay
         or reject by operation_id, validate outside the transaction, fence and
