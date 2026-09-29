@@ -370,7 +370,8 @@ evidence `docs/gen2/AUTH-DEMO.md`; this note changes no requirement).* With
 the pinned runner codex 0.153.2, (a), (b) and (c) are demonstrated, and (d)
 is demonstrated for a credential the runner rejects on its own and for one
 whose own declared expiry has passed (read offline from the credential;
-not the provider's answer). (d) for a **revoked** credential, or one expired
+not the provider's answer; whether that counts is the operator's). (d) for
+a **revoked** credential, or one expired
 without declaring it, is **not** met: neither changes a local byte, so a
 probe that makes no network call cannot be sure to see it (AUTH-DEMO.md F1,
 awaiting the operator). AUTH-DEMO.md F2–F4 name the places where this

@@ -15,7 +15,8 @@ demonstrated for a credential the pinned runner rejects on its own (absent,
 unparseable, unreadable: d1), and for one whose own declared expiry has
 passed (d2a): the probe reads the credential's declared expiry offline and
 records a dated `degraded` fact and the typed hold, labeled as the
-credential's claim, not the provider's answer. **(d) for a revoked
+credential's claim, not the provider's answer (whether that counts toward
+(d) is the operator's, F1). **(d) for a revoked
 credential, or one that expired without declaring it, is not met:** neither
 changes a local byte, so no local probe can be sure to see it. The
 demonstration that asserts it (d2b) fails, reproducibly: the driver exits 1,
@@ -213,11 +214,13 @@ at its own size:
   just read it usable is read usable again, and the demonstration asserting
   (d) for it fails.
 
-So (d) as the contract words it is met, locally, for a credential the runner
-rejects (d1) and for one whose declared expiry has passed (d2a, with the
-limits above); it is not met for a revoked credential or an undeclared
-expiry (d2b). Options, for the operator (none is taken here):
-- **(i)** Allow the probe an authenticated, non-billing exchange with the provider. For OAuth runners that is the token-refresh handshake claude's status check already attempts. It would see revocation and real expiry, and settle whether a declared-expired token still renews. It needs network access to the provider's auth endpoint and real credentials, so it cannot be demonstrated with throwaway credentials except against a provider stub.
+So, of what (d) names, a dated fact and a typed hold are shown for a
+credential the runner rejects (d1) and for one whose declared expiry has
+passed (d2a, with the limits above: a claim read, not the provider's
+answer), and not for a revoked credential or an undeclared expiry (d2b).
+Whether that satisfies (d) is the operator's ruling. Options, for the
+operator (none is taken here):
+- **(i)** Allow the probe an authenticated, non-billing exchange with the provider. For OAuth runners that is the token-refresh handshake (claude's status command appeared to start one in the manual run of the appendix, not reproduced by the review). It would see revocation and real expiry, and settle whether a declared-expired token still renews. It needs network access to the provider's auth endpoint and real credentials, so it cannot be demonstrated with throwaway credentials except against a provider stub.
 - **(ii)** Amend (d)'s Phase 1 obligation to what local inspection covers: a credential the pinned runner rejects, and one whose declared expiry has passed (with whether that is `degraded` or `failing`, and whether a present refresh credential should change it, stated). Make a later-phase obligation of the residual that actually prevents the Monday discovery the contract describes: a real invocation's authentication failure is classified by the supervisor as a capability failure (a fact and a hold), never as a zero-result pass.
 - **(iii)** Both.
 
