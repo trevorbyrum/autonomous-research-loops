@@ -277,6 +277,7 @@ WSR, WSD, WSP, WRF, WTR = ("test_router_workflow.ScopingReportTest.", "test_rout
                            "test_router_workflow.ReferentialCheckTest.", "test_router_workflow.TemplateRegistryTest.")
 SWR, SWP = "test_store_workflow.ScopingReportTest.", "test_store_workflow.SourceProposalTest."
 WBS = "test_router_workflow.BriefStandingTest."  # task 2a-repair F1
+WBB, IBR = "test_router_brief_basis.BriefBasisTest.", "test_store_intake.BriefReplacementTest."  # task 2a-repair-3
 RECEIPT = "gen2/schema/export-delivery-receipt.schema.json"
 MANIFEST = "gen2/schema/export-manifest.schema.json"
 ENVELOPE = "gen2/schema/freshness-envelope.schema.json"
@@ -4461,25 +4462,49 @@ MUTATIONS: list[Mutation] = [
            '            if (stored["size_bytes"], stored["media_type"]) != (ref["size_bytes"], ref["media_type"]):', "            if False:"),
           # task 2a-repair F1: a hand-off under a brief version that no longer stands does not advance the topic
           ("brief-standing-unchecked", "a draft may name a brief version that no longer stands", (WBS + "test_replaced_before_drafting", WBS + "test_closed_between_draft_and_first_approval"), AMD,
-           '        if standing not in COMPATIBLE and not (self._one("contract_revisions"', '        if False and not (self._one("contract_revisions"'),
+           "            lapsed = None if lapsed in COMPATIBLE else lapsed", "            lapsed = None"),
           ("brief-standing-after-approval", "an amendment is refused for an archival after the first approval",
-           (WBS + "test_after_the_first_approval_an_amendment_keeps_its_brief", WBS + "test_a_lineage_only_replacement_after_the_first_approval"), AMD,
-           ' not (self._one("contract_revisions", {"topic_id": tid, "status": "approved"}) is not None', " not (False"),
-          # task 2a-repair-2 F1-R: after it, only a need archived unreplaced is kept
+           (WBS + "test_after_the_first_approval_an_amendment_keeps_its_brief", WBS + "test_a_lineage_only_replacement_after_the_first_approval",
+            WBB + "test_archival_only_before_proposal"), AMD,
+           '        if self._one("contract_revisions", {"topic_id": tid, "status": "approved"}) is None:\n            lapsed', "        if True:\n            lapsed"),
+          # task 2a-repair-2 F1-R, task 2a-repair-3: after it, a version a later confirmation replaced is never kept — a durable fact
           ("brief-standing-replacement-kept", "after the first approval an amendment keeps any brief it names (F1-R)",
            (WBS + "test_replaced_after_the_first_approval_before_an_amendment", WBS + "test_replaced_between_an_amendment_and_its_approval",
-            WBS + "test_a_replacement_stays_one_whatever_follows", WBS + "test_a_brief_confirmed_after_the_archival_replaces_it"), AMD,
-           ' is not None\n                                               and self._one("intake_briefs", {"topic_id": tid, "status": "confirmed"}) is None\n'
-           '                                               and (row["status"] == "archived" or self._standing("brief", tid, brief["version"], brief["brief_id"]) is None)):',
-           " is not None):"),
-          ("brief-standing-confirmed-unchecked", "an archived brief is kept though another is confirmed after it", (WBS + "test_a_brief_confirmed_after_the_archival_replaces_it",), AMD,
-           '                                               and self._one("intake_briefs", {"topic_id": tid, "status": "confirmed"}) is None\n', ""),
-          ("brief-standing-replaced-lineage-kept", "a version its archived lineage replaced is kept", (WBS + "test_a_replacement_stays_one_whatever_follows",), AMD,
-           ' or self._standing("brief", tid, brief["version"], brief["brief_id"]) is None)):', " or True)):"),
-          ("brief-standing-archived-lineage-refused", "a version its archived lineage only compatibly succeeded is refused", (WBS + "test_a_lineage_only_replacement_after_the_first_approval",), AMD,
-           ' or self._standing("brief", tid, brief["version"], brief["brief_id"]) is None)):', " or False)):"),
+            WBS + "test_a_replacement_stays_one_whatever_follows", WBS + "test_a_brief_confirmed_after_the_archival_replaces_it",
+            WBB + "test_different_brief_archived_before_proposal", WBB + "test_different_brief_archived_after_proposal"), AMD,
+           '            lapsed = replaced and f"replaced by the confirmation', '            lapsed = None and f"replaced by the confirmation'),
+          ("brief-replacement-unrecorded", "a confirmation records no replacement",
+           (WBS + "test_replaced_after_the_first_approval_before_an_amendment", WBB + "test_original_material_after_proposal",
+            WBB + "test_different_brief_archived_before_proposal"), AMD,
+           '                self._store.insert("brief_replacements", {', '                (lambda *_: None)("brief_replacements", {'),
+          ("brief-replacement-same-brief-only", "a confirmation replaces only versions of its own brief (the F1-R continuation)",
+           (WBB + "test_different_brief_archived_before_proposal", WBB + "test_different_brief_archived_after_proposal",
+            WBB + "test_archived_lineage_then_different_archived_before_proposal", WBB + "test_archived_lineage_then_different_archived_after_proposal",
+            WBB + "test_a_brief_confirmed_and_archived_before_the_basis_replaces_none_of_it", WBS + "test_a_brief_confirmed_after_the_archival_replaces_it"), AMD,
+           '        for row in self._store.select("intake_briefs", {"topic_id": d["topic_id"]}):',
+           '        for row in self._store.select("intake_briefs", {"topic_id": d["topic_id"], "brief_id": current["brief_id"]}):'),
+          ("brief-replacement-lineage-recorded", "a successor in lineage alone replaces a version",
+           (WBS + "test_a_lineage_only_replacement_after_the_first_approval", WBB + "test_lineage_only_archived_before_proposal",
+            WBB + "test_lineage_only_current_after_proposal"), AMD,
+           'and brief_compatibility(row["document"], current["document"]) not in COMPATIBLE', 'and (row["brief_id"], row["version"]) != (current["brief_id"], current["version"])'),
+          ("brief-replacement-of-unconfirmed", "a version never confirmed is taken as replaced, refusing the confirmation",
+           (WBB + "test_unconfirmed_material_version_before_proposal", WBB + "test_unconfirmed_material_version_after_proposal"), AMD,
+           '            if row["confirmed_by_decision_id"] is not None and brief_compatibility(', "            if brief_compatibility("),
+          ("brief-replacement-rewritten", "a version replaced again is written again, refusing the later confirmation",
+           (WBB + "test_multiple_material_before_proposal", WBB + "test_lineage_material_lineage_after_proposal"), AMD,
+           ' \\\n                    and self._one("brief_replacements", {"topic_id": d["topic_id"], "brief_id": row["brief_id"], "version": row["version"]}) is None:', ":"),
+          ("brief-replacement-reverted-by-archival", "archiving the replacing brief revives the version it replaced",
+           (WBB + "test_different_brief_archived_before_proposal", WBB + "test_different_brief_archived_after_proposal",
+            WBB + "test_material_then_archived_before_proposal", WBS + "test_a_replacement_stays_one_whatever_follows"), AMD,
+           '"version": brief["version"]})\n            lapsed = replaced and',
+           '"version": brief["version"]}) if self._one("intake_briefs", {"topic_id": tid, "status": "confirmed"}) else None\n            lapsed = replaced and'),
+          ("proposal-references-unchecked", "an amendment is proposed whatever became of its brief",
+           (WBS + "test_replaced_after_the_first_approval_before_an_amendment", WBB + "test_different_brief_archived_before_proposal",
+            WBB + "test_archived_lineage_then_different_archived_before_proposal"), AMD,
+           "        defect = references(doc, self._templates()) or self._recorded_references(doc)", "        defect = references(doc, self._templates())"),
           ("approval-references-unchecked", "a draft is approved whatever became of its brief since it was written",
-           (WBS + "test_closed_between_draft_and_first_approval", WBS + "test_replaced_between_an_amendment_and_its_approval"), SVC,
+           (WBS + "test_closed_between_draft_and_first_approval", WBS + "test_replaced_between_an_amendment_and_its_approval",
+            WBB + "test_different_brief_archived_after_proposal", WBB + "test_archived_lineage_then_different_archived_after_proposal"), SVC,
            '        defect = self._recorded_references(revision["document"])  # task 2a-repair F1', "        defect = None  # task 2a-repair F1"),
           ("scope-brief-standing-unchecked", "a report is approved whatever became of its brief", (WBS + "test_replaced_or_closed_before_scope_approval",
            WBS + "test_replaced_before_scope_approval_scopes_again"), SVC, "            if standing not in COMPATIBLE:  # task 2a-repair F1", "            if False:  # task 2a-repair F1"),
@@ -4537,6 +4562,19 @@ MUTATIONS: list[Mutation] = [
              old="  CHECK (subject_kind != 'source_proposal' OR (subject_revision IS NULL AND subject_hash IS NOT NULL)),\n", new=""),
     Mutation("2A-ddl-source-kind-unmapped", "2a-expansion", "a source approval maps to no subject kind", (SWP + "test_a_source_decision_names_a_stored_proposal_exactly",),
              old="\n      OR (kind = 'source_approval' AND subject_kind = 'source_proposal')", new=""),
+    # task 2a-repair-3: a brief version's replacement, by the confirmation of a later one, and for good
+    Mutation("2A-ddl-replacement-by-a-later-confirmation", "2a-repair-3", "any decision may record a replacement", (IBR + "test_only_the_confirmation_of_a_later_version_replaces_one",),
+             drop_trigger="brief_replacements_by_a_later_confirmation"),
+    Mutation("2A-ddl-replacement-by-its-own-confirmation", "2a-repair-3", "a version may be replaced by its own confirmation, or one never confirmed replaced",
+             (IBR + "test_only_the_confirmation_of_a_later_version_replaces_one",), scope="brief_replacements_by_a_later_confirmation",
+             old="\n    AND o.confirmed_by_decision_id != NEW.replaced_by_decision_id", new=""),
+    Mutation("2A-ddl-replacement-by-a-past-confirmation", "2a-repair-3", "a confirmation no longer current may record a replacement",
+             (IBR + "test_only_the_confirmation_of_a_later_version_replaces_one",), scope="brief_replacements_by_a_later_confirmation",
+             old="n.status = 'confirmed' AND ", new=""),
+    Mutation("2A-ddl-replacement-immutable", "2a-repair-3", "a replacement may be rewritten", (IBR + "test_a_replacement_is_permanent",
+             "test_store_history.EveryTableSweepTest.test_append_only_tables_reject_every_update"), drop_trigger="brief_replacements_immutable_u"),
+    Mutation("2A-ddl-replacement-delete-guard", "2a-repair-3", "a replacement may be deleted", (IBR + "test_a_replacement_is_permanent",
+             "test_store_history.EveryTableSweepTest.test_no_table_can_be_deleted_from_or_replaced_into"), drop_trigger="brief_replacements_no_delete"),
 ]
 
 

@@ -627,25 +627,25 @@
   "controls": [
    "test_router_ops.AckDeliveryTest.test_the_whole_receipt_is_recorded"
   ],
-  "why": "gen2/router/service.py: leaves line 1264 for a line outside 1264-1265 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1265 for a line outside 1265-1266 (or returns)"
  },
  "1B-ack-hold-any-topic": {
   "controls": [
    "test_router_ops.AckDeliveryTest.test_the_whole_receipt_is_recorded"
   ],
-  "why": "gen2/router/service.py: leaves line 1261 for a line outside 1261-1262 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1262 for a line outside 1262-1263 (or returns)"
  },
  "1B-ack-hold-unchecked": {
   "controls": [
    "test_router_ops.AckDeliveryTest.test_the_whole_receipt_is_recorded"
   ],
-  "why": "gen2/router/service.py: leaves line 1261 for a line outside 1261-1262 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1262 for a line outside 1262-1263 (or returns)"
  },
  "1B-ack-manifest-description": {
   "controls": [
    "test_router_ops.AckDeliveryTest.test_the_whole_receipt_is_recorded"
   ],
-  "why": "gen2/router/service.py: leaves line 1258 for a line outside 1258-1259 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1259 for a line outside 1259-1260 (or returns)"
  },
  "1B-ack-replay-any-content": {
   "controls": [
@@ -654,13 +654,13 @@
   "rejected": [
    "test_router_restart.RestartTest.test_delivery_receipts_read_back_whole_after_a_restart"
   ],
-  "why": "gen2/router/service.py: leaves line 1252 for a line outside 1252-1253 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1253 for a line outside 1253-1254 (or returns)"
  },
  "1B-ack-replay-projection-only": {
   "controls": [
    "test_router_ops.AckDeliveryTest.test_the_same_receipt_again_replays"
   ],
-  "why": "gen2/router/service.py: leaves line 1252 for a line outside 1252-1253 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1253 for a line outside 1253-1254 (or returns)"
  },
  "1B-admission-any-kind": {
   "controls": [
@@ -678,7 +678,7 @@
   "controls": [
    "test_router_commit.FencingTest.test_positive_control"
   ],
-  "why": "gen2/router/amendments.py: executes line 507; or executes line 503"
+  "why": "gen2/router/amendments.py: executes line 511; or executes line 507"
  },
  "1B-approval-without-supersession": {
   "by_hand": true,
@@ -718,7 +718,7 @@
   "controls": [
    "test_router_amendments.BriefImpactTest.test_a_lineage_only_version_lets_scoping_work_complete"
   ],
-  "why": "gen2/router/amendments.py: executes line 518; or executes line 517"
+  "why": "gen2/router/amendments.py: executes line 522; or executes line 521"
  },
  "1B-bundle-identity": {
   "controls": [
@@ -835,7 +835,7 @@
   "controls": [
    "test_router_ops.OperatorDecisionTest.test_contract_approval_queues_the_topic_and_an_amendment_supersedes"
   ],
-  "why": "gen2/router/service.py: leaves line 1221 for a line outside 1221-1222 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1222 for a line outside 1222-1223 (or returns)"
  },
  "1B-decision-other-invocation": {
   "controls": [
@@ -959,13 +959,13 @@
   "controls": [
    "test_router_ops.AckDeliveryTest.test_the_whole_receipt_is_recorded"
   ],
-  "why": "gen2/router/service.py: leaves line 1310 for a line outside 1310-1311 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1311 for a line outside 1311-1312 (or returns)"
  },
  "1B-fact-recovery-dropped": {
   "controls": [
    "test_router_ops.AckDeliveryTest.test_the_whole_receipt_is_recorded"
   ],
-  "why": "gen2/router/service.py: executes line 1303"
+  "why": "gen2/router/service.py: executes line 1304"
  },
  "1B-failure-keeps-lease": {
   "controls": [
@@ -1590,13 +1590,13 @@
   "controls": [
    "test_router_ops.AckDeliveryTest.test_a_delivery_of_the_pair_the_watermark_holds_leaves_it"
   ],
-  "why": "gen2/router/service.py: executes line 1289"
+  "why": "gen2/router/service.py: executes line 1290"
  },
  "1B-watermark-regression": {
   "controls": [
    "test_router_ops.AckDeliveryTest.test_a_delivery_of_the_pair_the_watermark_holds_leaves_it"
   ],
-  "why": "gen2/router/service.py: leaves line 1291 for a line outside 1291-1293 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1292 for a line outside 1292-1294 (or returns)"
  },
  "1BR-receipt-binds-acked-at": {
   "controls": [
@@ -2176,7 +2176,7 @@
   "controls": [
    "test_router_ops.OperatorDecisionTest.test_hold_clearance"
   ],
-  "why": "gen2/router/service.py: leaves line 1156 for a line outside 1156-1157 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1157 for a line outside 1157-1158 (or returns)"
  },
  "1C-router-episode-replay-current-only": {
   "controls": [
@@ -3362,13 +3362,13 @@
   "controls": [
    "test_router_amendments.AmendmentApprovalTest.test_an_approved_amendment_requeues_a_completed_topic"
   ],
-  "why": "gen2/router/amendments.py: executes line 570"
+  "why": "gen2/router/amendments.py: executes line 585"
  },
  "1D-amend-brief-other-lineage": {
   "controls": [
    "test_router_amendments.BriefLineageTest.test_another_briefs_impacts_do_not_judge_a_pin"
   ],
-  "why": "gen2/router/amendments.py: executes line 517"
+  "why": "gen2/router/amendments.py: executes line 521"
  },
  "1D-amend-brief-parent-unchecked": {
   "controls": [
@@ -3380,7 +3380,7 @@
   "controls": [
    "test_router_amendments.BriefImpactTest.test_a_lineage_only_version_lets_scoping_work_complete"
   ],
-  "why": "gen2/router/amendments.py: executes line 518; or executes line 517"
+  "why": "gen2/router/amendments.py: executes line 522; or executes line 521"
  },
  "1D-amend-brief-version-unchecked": {
   "controls": [
@@ -3398,7 +3398,7 @@
   "controls": [
    "test_router_amendments.ImpactTest.test_the_record_lists_what_stood_until_now"
   ],
-  "why": "gen2/router/amendments.py: executes line 482, 532, 540, 599"
+  "why": "gen2/router/amendments.py: executes line 484, 531, 547, 555, 614"
  },
  "1D-amend-confirmed-superseded-early": {
   "controls": [
@@ -3416,19 +3416,19 @@
   "controls": [
    "test_router_amendments.ImpactTest.test_an_impact_is_recorded_once_with_its_approval"
   ],
-  "why": "gen2/router/amendments.py: executes line 560"
+  "why": "gen2/router/amendments.py: executes line 575"
  },
  "1D-amend-exclusions-not-reopened": {
   "controls": [
    "test_router_amendments.ImpactTest.test_an_impact_is_recorded_once_with_its_approval"
   ],
-  "why": "gen2/router/amendments.py: executes line 577; or executes line 572"
+  "why": "gen2/router/amendments.py: executes line 592; or executes line 587"
  },
  "1D-amend-fenced-not-cancelled": {
   "controls": [
    "test_router_amendments.ImpactTest.test_a_compatible_amendment_lets_admitted_work_complete_under_its_pins"
   ],
-  "why": "gen2/router/amendments.py: executes line 602; or executes line 601"
+  "why": "gen2/router/amendments.py: executes line 617; or executes line 616"
  },
  "1D-amend-framing-content-ignored": {
   "controls": [
@@ -3613,13 +3613,13 @@
   "controls": [
    "test_router_amendments.ImpactTest.test_a_compatible_amendment_lets_admitted_work_complete_under_its_pins"
   ],
-  "why": "gen2/router/amendments.py: executes line 507; or executes line 503"
+  "why": "gen2/router/amendments.py: executes line 511; or executes line 507"
  },
  "1D-amend-pins-unchecked": {
   "controls": [
    "test_router_commit.FencingTest.test_a_held_topic_is_left_held"
   ],
-  "why": "gen2/router/amendments.py: leaves line 540 for a line outside 540-542 (or returns)"
+  "why": "gen2/router/amendments.py: leaves line 555 for a line outside 555-557 (or returns)"
  },
  "1D-amend-protocol-revision-ignored": {
   "controls": [
@@ -3668,25 +3668,25 @@
   "controls": [
    "test_router_amendments.ImpactTest.test_a_compatible_amendment_lets_admitted_work_complete_under_its_pins"
   ],
-  "why": "gen2/router/amendments.py: executes line 601"
+  "why": "gen2/router/amendments.py: executes line 616"
  },
  "1D-amend-stale-rejudged": {
   "controls": [
    "test_router_amendments.StandingTest.test_a_framing_label_written_back_revives_no_claim"
   ],
-  "why": "gen2/router/amendments.py: executes line 559"
+  "why": "gen2/router/amendments.py: executes line 574"
  },
  "1D-amend-standing-any-brief": {
   "controls": [
    "test_router_amendments.ImpactTest.test_a_compatible_amendment_lets_admitted_work_complete_under_its_pins"
   ],
-  "why": "gen2/router/amendments.py: executes line 529 (else 528)"
+  "why": "gen2/router/amendments.py: executes line 544 (else 543)"
  },
  "1D-amend-standing-unrecorded": {
   "controls": [
    "test_router_amendments.ImpactTest.test_an_impact_is_recorded_once_with_its_approval"
   ],
-  "why": "gen2/router/amendments.py: executes line 565 (else 563)"
+  "why": "gen2/router/amendments.py: executes line 580 (else 578)"
  },
  "1D-amend-unchanged-relabelled": {
   "controls": [
@@ -3698,7 +3698,7 @@
   "controls": [
    "test_router_amendments.StandingTest.test_a_framing_label_written_back_revives_no_claim"
   ],
-  "why": "gen2/router/amendments.py: executes line 530; or executes line 531"
+  "why": "gen2/router/amendments.py: executes line 545; or executes line 546"
  },
  "1D-ddl-bundle-activation-rewritable": {
   "controls": [
@@ -4217,7 +4217,7 @@
   "controls": [
    "test_router_amendments.AmendmentApprovalTest.test_an_approved_amendment_requeues_a_completed_topic"
   ],
-  "why": "gen2/router/service.py: leaves line 1198 for a line outside 1198-1199 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1199 for a line outside 1199-1200 (or returns)"
  },
  "1D-router-brief-impact-unrecorded": {
   "controls": [
@@ -4244,7 +4244,7 @@
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/service.py: executes line 1206"
+  "why": "gen2/router/service.py: executes line 1207"
  },
  "1D-router-contract-impact-unrecorded": {
   "controls": [
@@ -4256,7 +4256,7 @@
    "test_router_amendments.ImpactTest.test_a_reframe_marks_coverage_and_labels_stale_and_reopens_exclusions",
    "test_router_amendments.ImpactTest.test_the_record_lists_what_stood_until_now"
   ],
-  "why": "gen2/router/service.py: executes line 1210"
+  "why": "gen2/router/service.py: executes line 1211"
  },
  "1D-router-hold-fraction-dropped": {
   "controls": [
@@ -4313,7 +4313,7 @@
   "controls": [
    "test_router_amendments.AmendmentApprovalTest.test_an_approved_amendment_requeues_a_completed_topic"
   ],
-  "why": "gen2/router/service.py: leaves line 1201 for a line outside 1201-1202 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1202 for a line outside 1202-1203 (or returns)"
  },
  "1D-router-replay-ignores-draw": {
   "controls": [
@@ -4937,7 +4937,7 @@
   "in_killer": [
    "test_operator_restart.ReplacementTest.test_a_replacement_process_serves_the_same_principals_permissions_and_state"
   ],
-  "why": "the changed line (the credentials read at the engine's start, gen2/app/engine.py main) runs only in the engine processes the replacement tests start; the killer's accepted case — three engine processes start under the mounted secrets, serve health, status and commands, keep principals, pins and the confirmed brief, refuse the rotated token — runs under the mutant and is asserted before the secrecy check it fails, every engine's output collected first"
+  "why": "the changed line (the credentials read at the engine's start, gen2/app/engine.py main) runs only in the engine processes the replacement tests start; the killer's accepted case \u2014 three engine processes start under the mounted secrets, serve health, status and commands, keep principals, pins and the confirmed brief, refuse the rotated token \u2014 runs under the mutant and is asserted before the secrecy check it fails, every engine's output collected first"
  },
  "1E-engine-startup-stdout-leak": {
   "by_hand": true,
@@ -4945,7 +4945,7 @@
   "in_killer": [
    "test_operator_restart.ReplacementTest.test_an_engine_without_usable_secrets_does_not_start"
   ],
-  "why": "the changed line (the refusal handler of gen2/app/engine.py main) runs only in engine processes that refuse to start, which only this test starts; its accepted case — each of the three refused starts exits 1 printing no address (in subTests), and all three outputs are collected, none empty, each with the engine's fixed refusal diagnostic — runs under the mutant and is asserted before the secrecy check it fails, the stdout line read at each start collected with the rest (Astra 1e-repair re-review finding 3)"
+  "why": "the changed line (the refusal handler of gen2/app/engine.py main) runs only in engine processes that refuse to start, which only this test starts; its accepted case \u2014 each of the three refused starts exits 1 printing no address (in subTests), and all three outputs are collected, none empty, each with the engine's fixed refusal diagnostic \u2014 runs under the mutant and is asserted before the secrecy check it fails, the stdout line read at each start collected with the rest (Astra 1e-repair re-review finding 3)"
  },
  "1E-engine-written-unchecked": {
   "controls": [
@@ -5578,7 +5578,7 @@
    "test_operator_recovery.VerificationRecoveryTest.test_the_recovery_budget_bounds_the_operators_requests",
    "test_operator_recovery.VerificationRecoveryTest.test_the_station_ends_a_live_group_itself"
   ],
-  "why": "reads the COMMANDS entry the mutant changes on its accepted path — tools/list's role filter lists recover_incident for an operator — and asserts the operator's tools; the mutant changes only the field supplied from the principal, and no recovery request can be a control: the surface refuses a body naming requested_by, and without it the mutant's request is refused (probed: 0 of 9 candidates pass)"
+  "why": "reads the COMMANDS entry the mutant changes on its accepted path \u2014 tools/list's role filter lists recover_incident for an operator \u2014 and asserts the operator's tools; the mutant changes only the field supplied from the principal, and no recovery request can be a control: the surface refuses a body naming requested_by, and without it the mutant's request is refused (probed: 0 of 9 candidates pass)"
  },
  "1E-svc-reply-unredacted": {
   "controls": [
@@ -5897,7 +5897,43 @@
   "controls": [
    "test_router_workflow.BriefStandingTest.test_after_the_first_approval_an_amendment_keeps_its_brief"
   ],
-  "why": "gen2/router/service.py: executes line 1195"
+  "why": "gen2/router/service.py: executes line 1196"
+ },
+ "2A-brief-replacement-lineage-recorded": {
+  "controls": [
+   "test_router_workflow.BriefStandingTest.test_replaced_or_closed_before_scope_approval"
+  ],
+  "why": "gen2/router/amendments.py: executes line 531"
+ },
+ "2A-brief-replacement-of-unconfirmed": {
+  "controls": [
+   "test_router_brief_basis.BriefBasisTest.test_unconfirmed_different_brief_after_proposal"
+  ],
+  "why": "gen2/router/amendments.py: executes line 531"
+ },
+ "2A-brief-replacement-reverted-by-archival": {
+  "controls": [
+   "test_router_workflow.BriefStandingTest.test_closed_between_draft_and_first_approval"
+  ],
+  "why": "gen2/router/amendments.py: executes line 486; or executes line 482"
+ },
+ "2A-brief-replacement-rewritten": {
+  "controls": [
+   "test_router_workflow.BriefStandingTest.test_replaced_before_scope_approval_scopes_again"
+  ],
+  "why": "gen2/router/amendments.py: executes line 531-532 (else 531)"
+ },
+ "2A-brief-replacement-same-brief-only": {
+  "controls": [
+   "test_router_workflow.BriefStandingTest.test_replaced_or_closed_before_scope_approval"
+  ],
+  "why": "gen2/router/amendments.py: executes line 530"
+ },
+ "2A-brief-replacement-unrecorded": {
+  "controls": [
+   "test_router_workflow.BriefStandingTest.test_replaced_or_closed_before_scope_approval"
+  ],
+  "why": "gen2/router/amendments.py: executes line 533; or executes line 531-532 (else 531)"
  },
  "2A-brief-standing-after-approval": {
   "controls": [
@@ -5905,35 +5941,17 @@
   ],
   "why": "gen2/router/amendments.py: executes line 482"
  },
- "2A-brief-standing-archived-lineage-refused": {
-  "controls": [
-   "test_router_workflow.BriefStandingTest.test_after_the_first_approval_an_amendment_keeps_its_brief"
-  ],
-  "why": "gen2/router/amendments.py: executes line 484 (else 482)"
- },
- "2A-brief-standing-confirmed-unchecked": {
-  "controls": [
-   "test_router_workflow.BriefStandingTest.test_after_the_first_approval_an_amendment_keeps_its_brief"
-  ],
-  "why": "gen2/router/amendments.py: executes line 483 (else 482)"
- },
- "2A-brief-standing-replaced-lineage-kept": {
-  "controls": [
-   "test_router_workflow.BriefStandingTest.test_after_the_first_approval_an_amendment_keeps_its_brief"
-  ],
-  "why": "gen2/router/amendments.py: executes line 484 (else 482)"
- },
  "2A-brief-standing-replacement-kept": {
   "controls": [
    "test_router_workflow.BriefStandingTest.test_closed_between_draft_and_first_approval"
   ],
-  "why": "gen2/router/amendments.py: executes line 482-484 (else 482)"
+  "why": "gen2/router/amendments.py: executes line 487; or executes line 482"
  },
  "2A-brief-standing-unchecked": {
   "controls": [
    "test_router_workflow.BriefStandingTest.test_after_the_first_approval_an_amendment_keeps_its_brief"
   ],
-  "why": "gen2/router/amendments.py: executes line 482"
+  "why": "gen2/router/amendments.py: executes line 484; or executes line 482"
  },
  "2A-closure-cross-topic": {
   "controls": [
@@ -6018,6 +6036,36 @@
    "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
   ],
   "why": "a statement that succeeds inserts a row into source_proposals"
+ },
+ "2A-ddl-replacement-by-a-later-confirmation": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger brief_replacements_by_a_later_confirmation"
+ },
+ "2A-ddl-replacement-by-a-past-confirmation": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger brief_replacements_by_a_later_confirmation"
+ },
+ "2A-ddl-replacement-by-its-own-confirmation": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger brief_replacements_by_a_later_confirmation"
+ },
+ "2A-ddl-replacement-delete-guard": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "trigger brief_replacements_no_delete refuses every statement it enters (no WHEN), so no accepted path passes through it; the control inserts a row into brief_replacements, the table it guards, in a statement that succeeds"
+ },
+ "2A-ddl-replacement-immutable": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "trigger brief_replacements_immutable_u refuses every statement it enters (no WHEN), so no accepted path passes through it; the control inserts a row into brief_replacements, the table it guards, in a statement that succeeds"
  },
  "2A-ddl-report-by-pre-contract-work": {
   "controls": [
@@ -6107,7 +6155,7 @@
   "controls": [
    "test_router_workflow.ContractDraftTest.test_the_rated_draft_is_approved_and_the_topic_queued"
   ],
-  "why": "gen2/router/service.py: executes line 1207 (else 1206)"
+  "why": "gen2/router/service.py: executes line 1208 (else 1207)"
  },
  "2A-lineage-only-rescopes": {
   "controls": [
@@ -6214,6 +6262,12 @@
   ],
   "why": "gen2/router/service.py: leaves line 772 for a line outside 772-773 (or returns)"
  },
+ "2A-proposal-references-unchecked": {
+  "controls": [
+   "test_router_workflow.BriefStandingTest.test_closed_between_draft_and_first_approval"
+  ],
+  "why": "gen2/router/amendments.py: executes line 448"
+ },
  "2A-proposal-supersedes-unchecked": {
   "controls": [
    "test_router_workflow.SourceProposalTest.test_a_re_proposal_supersedes_a_recorded_one"
@@ -6230,7 +6284,7 @@
   "controls": [
    "test_router_workflow.ReferentialCheckTest.test_a_proposed_method_design_is_a_document_of_the_topics_own_work"
   ],
-  "why": "gen2/router/amendments.py: executes line 479"
+  "why": "gen2/router/amendments.py: executes line 480"
  },
  "2A-refs-cell-facet": {
   "controls": [
@@ -6296,25 +6350,25 @@
   "controls": [
    "test_router_workflow.ReferentialCheckTest.test_a_proposed_method_design_is_a_document_of_the_topics_own_work"
   ],
-  "why": "gen2/router/amendments.py: executes line 489"
+  "why": "gen2/router/amendments.py: executes line 493"
  },
  "2A-refs-proposal-size-media": {
   "controls": [
    "test_router_workflow.ReferentialCheckTest.test_a_proposed_method_design_is_a_document_of_the_topics_own_work"
   ],
-  "why": "gen2/router/amendments.py: executes line 493"
+  "why": "gen2/router/amendments.py: executes line 497"
  },
  "2A-refs-proposal-topic": {
   "controls": [
    "test_router_workflow.ReferentialCheckTest.test_a_proposed_method_design_is_a_document_of_the_topics_own_work"
   ],
-  "why": "gen2/router/amendments.py: executes line 489"
+  "why": "gen2/router/amendments.py: executes line 493"
  },
  "2A-refs-proposal-uncommitted": {
   "controls": [
    "test_router_workflow.ReferentialCheckTest.test_a_proposed_method_design_is_a_document_of_the_topics_own_work"
   ],
-  "why": "gen2/router/amendments.py: executes line 490 (else 489)"
+  "why": "gen2/router/amendments.py: executes line 494 (else 493)"
  },
  "2A-refs-slot-extra": {
   "controls": [
@@ -6455,13 +6509,13 @@
   "controls": [
    "test_router_workflow.ScopeDecisionTest.test_approval_of_the_report_awaits_the_contract"
   ],
-  "why": "gen2/router/service.py: executes line 1178"
+  "why": "gen2/router/service.py: executes line 1179"
  },
  "2A-rework-any-disposition": {
   "controls": [
    "test_router_workflow.SourceProposalTest.test_a_proposal_is_retained_and_authorizes_nothing"
   ],
-  "why": "gen2/router/service.py: executes line 1167"
+  "why": "gen2/router/service.py: executes line 1168"
  },
  "2A-rework-none": {
   "by_hand": true,
@@ -6479,13 +6533,13 @@
   "controls": [
    "test_router_workflow.BriefStandingTest.test_after_the_first_approval_an_amendment_keeps_its_brief"
   ],
-  "why": "gen2/router/service.py: leaves line 1142 for a line outside 1142-1144 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1143 for a line outside 1143-1145 (or returns)"
  },
  "2A-scope-stale-approved": {
   "controls": [
    "test_router_workflow.ScopeDecisionTest.test_approval_of_the_report_awaits_the_contract"
   ],
-  "why": "gen2/router/service.py: executes line 1140; or executes line 1139"
+  "why": "gen2/router/service.py: executes line 1141; or executes line 1140"
  },
  "2A-signal-collision-inserts": {
   "controls": [

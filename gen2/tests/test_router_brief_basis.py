@@ -179,7 +179,8 @@ class BriefBasisTest(Workflow):
         self.assertEqual(self.propose(reframe)["status"], "recorded")
         self.refused(lambda: self.approve_amendment(reframe), "rejected", "decision_refused", "a framing change is approved as a reframe")
         out = self.approve_amendment(reframe, "reframe_approval")
-        self.assertEqual((out["status"], out["effects"]["impact"]["classification"]), ("applied", "reframed"), out)
+        self.assertEqual(out["status"], "applied", out)
+        self.assertEqual(out["effects"]["impact"]["classification"], "reframed")
         self.refused_commit(grant, "op_pinnedr2b", "amendment_pending", "pinned contract revision 2 was superseded (reframed)")
 
     def accepted(self, history, before_proposal: bool) -> None:
@@ -191,7 +192,8 @@ class BriefBasisTest(Workflow):
         if not before_proposal:
             history()
         out = self.approve_amendment(stale)
-        self.assertEqual((out["status"], out["effects"]["impact"]["classification"]), ("applied", "compatible"), out)
+        self.assertEqual(out["status"], "applied", out)
+        self.assertEqual(out["effects"]["impact"]["classification"], "compatible")
 
     # -- Astra's matrix: ten barred histories ------------------------------------------
     def test_original_material_before_proposal(self) -> None:
