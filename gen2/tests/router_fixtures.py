@@ -232,7 +232,8 @@ class RouterTestCase(unittest.TestCase):
     def contract_draft(self, tid: str = TOPIC, revision: int = 1, *, true_hash: bool = True, criteria=None) -> str:
         doc = {"topic_id": tid, "revision": revision, "parent_revision": None if revision == 1 else revision - 1, "created_at": "2026-09-27T09:30:00Z",
                "protocol_revision": revision, "facet_map": {"framing_version": 1, "facets": []}, "obligations": [],
-               "eligibility_protocol": {"protocol_version": revision, "criteria": criteria or CRITERIA}}
+               "eligibility_protocol": {"protocol_version": revision, "criteria": criteria or CRITERIA}, "method_design": {},
+               "decision_record": {"objective": {"confirmed_brief": {"brief_id": "brief-1", "version": 1, "confirmed_by": f"opd_brief{tid[-2:]}01"}}}}
         doc["content_hash"] = canonical.content_hash(doc) if true_hash else h("9")
         self.x("INSERT INTO contract_revisions (topic_id, revision, parent_revision, protocol_revision, framing_version, content_hash, document, status, created_at) "
                "VALUES (?, ?, ?, ?, 1, ?, ?, 'draft', ?)", tid, revision, doc["parent_revision"], revision, doc["content_hash"], json.dumps(doc), doc["created_at"])
@@ -250,8 +251,10 @@ class RouterTestCase(unittest.TestCase):
         assert out["status"] == "applied", out
 
     def to_queued(self, tid: str = TOPIC) -> str:
-        """S1 -> S3 on the router: the brief confirmed, the scoping report
-        committed and approved, contract revision 1 (a raw-SQL draft) approved."""
+        """S1 -> S3 for the pre-2a suites: the brief confirmed on the router,
+        the scope step seeded raw (scope_seeded: no report, no decision), and
+        contract revision 1 (a raw-SQL draft naming the confirmed brief)
+        approved on the router."""
         self.to_scoping(tid)
         chash = self.contract_draft(tid, 1)
         self.scope_seeded(tid)

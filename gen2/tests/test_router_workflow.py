@@ -447,6 +447,116 @@ class ContractDraftTest(Workflow):
         self.assertEqual(self.router.propose_amendment({"document": contract(3, 2)})["status"], "recorded")
 
 
+def under_v2(doc: dict) -> None:
+    """The draft names brief-1 v2 (confirmed by opd_brieft102): a changed decision record takes framing version 2 (G-6)."""
+    doc["decision_record"]["objective"]["confirmed_brief"].update(version=2, confirmed_by="opd_brieft102")
+    doc["facet_map"]["framing_version"] = 2
+
+
+class BriefStandingTest(Workflow):
+    """Task 2a-repair F1 (Astra 2a review): a hand-off under a brief version
+    that no longer stands — materially replaced, or closed — does not advance
+    the topic, and a material replacement sends a topic awaiting scope or
+    contract approval back to scoping; a version replaced only in its lineage
+    still stands. Each refusal leaves the whole store as it was."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.open_brief()
+        self.confirm()
+
+    def replace(self, material: bool = True) -> dict:
+        """brief-1 v2 written and confirmed, another `feeds` or only a new version; returns the confirmation's effects."""
+        doc = self.brief_document(TOPIC, 2, **({"feeds": "rebuild, or buy"} if material else {}))
+        self.assertEqual(self.router.version_brief({"document": doc, "owner_operator_id": "user", "review_deadline": REVIEW_BY})["status"], "recorded")
+        out = self.decide("opd_brieft102", "brief_confirmation", {"kind": "intake_brief", "ref": "brief-1", "revision": 2, "hash": doc["content_hash"]})
+        self.assertEqual(out["status"], "applied", out)
+        return out["effects"]
+
+    def archive(self) -> None:
+        out = self.router.close_brief({"topic_id": TOPIC, "brief_id": "brief-1", "version": 1, "closure": "archived", "closed_by": "user", "reason": "withdrawn"})
+        self.assertEqual(out["status"], "closed", out)
+
+    def refused(self, out_of, reason: str, detail: str) -> None:
+        before = self.state()
+        out = out_of()
+        self.assertEqual(out.get("reason"), reason, out)
+        self.assertIn(detail, out.get("detail", ""))
+        self.assertEqual(self.state(), before)
+
+    def rescoped(self, inv: str, brief: int = 2, report_version: int = 2) -> dict:
+        """A new pass, admitted under the confirmed brief, commits the next report of scope-1; the operator approves it."""
+        report = self.scoping_report_document(version=report_version, brief={"brief_id": "brief-1", "version": brief,
+                                                                            "content_hash": self.value("SELECT content_hash FROM intake_briefs WHERE version = ?", brief)})
+        self.assertEqual(self.finish(self.started(inv), f"op_{inv[4:]}", {**empty_outcome(inv), "scoping_reports": [report]})["status"], "committed")
+        self.assertEqual(self.scope(f"opd_scope{report_version:03d}", report)["status"], "applied")
+        return report
+
+    def scope(self, did: str, report: dict) -> dict:
+        return self.decide(did, "scope_approval", {"kind": "scoping_report", "ref": "scope-1", "revision": report["version"], "hash": report["content_hash"]})
+
+    def test_replaced_before_drafting(self) -> None:
+        self.replace()
+        self.refused(lambda: self.draft(contract(1, None, rated=False)), "contract_inconsistent", "names brief brief-1 v1, which no longer stands (content_changed)")
+        self.assertEqual(self.draft(contract(1, None, rated=False, edit=under_v2))["status"], "recorded")  # the current brief's draft beside it
+
+    def test_a_lineage_only_replacement_leaves_the_brief_standing(self) -> None:
+        self.assertEqual(self.replace(material=False)["queue_transition"], None)
+        self.assertEqual(self.draft(contract(1, None, rated=False))["status"], "recorded")
+
+    def test_replaced_or_closed_before_scope_approval(self) -> None:
+        report = self.scoping_report_document()
+        self.assertEqual(self.finish(self.started("inv_scoping01"), "op_report00001", {**empty_outcome("inv_scoping01"), "scoping_reports": [report]})["status"], "committed")
+        self.archive()  # closed: the topic stays awaiting its scope decision, which the closed brief cannot carry
+        self.refused(lambda: self.scope("opd_scope001", report), "decision_refused", "scoped under brief brief-1 v1, which no longer stands (archived)")
+        self.assertEqual(self.status(), "awaiting_scope_approval")
+
+    def test_replaced_before_scope_approval_scopes_again(self) -> None:
+        report = self.scoping_report_document()
+        self.assertEqual(self.finish(self.started("inv_scoping01"), "op_report00001", {**empty_outcome("inv_scoping01"), "scoping_reports": [report]})["status"], "committed")
+        self.assertEqual(self.replace()["queue_transition"], {"from": "awaiting_scope_approval", "to": "scoping"})
+        self.refused(lambda: self.scope("opd_scope001", report), "decision_refused", "scoped under brief brief-1 v1, which no longer stands (content_changed)")
+        self.rescoped("inv_scoping02")  # the report scoped under v2 is approved
+        self.assertEqual(self.status(), "awaiting_contract_approval")
+
+    def test_replaced_between_draft_and_first_approval(self) -> None:
+        r2 = self.rated_drafts()
+        self.scope_approved()
+        self.assertEqual(self.replace()["queue_transition"], {"from": "awaiting_contract_approval", "to": "scoping"})
+        self.refused(lambda: self.approve(r2), "decision_refused", "names brief brief-1 v1, which no longer stands (content_changed)")
+        r3 = contract(3, 2, edit=under_v2)
+        self.assertEqual(self.draft(r3)["status"], "recorded")
+        self.refused(lambda: self.approve(r3), "decision_refused", "the topic is scoping")  # a fresh draft alone does not skip the renewed scoping
+        self.rescoped("inv_scoping02")
+        self.assertEqual(self.approve(r3)["status"], "applied")
+        self.assertEqual(self.rows("SELECT status, active_contract_revision FROM queue_entries WHERE topic_id = ?", TOPIC), [("queued", 3)])
+
+    def test_closed_between_draft_and_first_approval(self) -> None:
+        r2 = self.rated_drafts()
+        self.scope_approved()
+        self.archive()
+        self.refused(lambda: self.approve(r2), "decision_refused", "names brief brief-1 v1, which no longer stands (archived)")
+        brief2 = self.brief_document(TOPIC, 1, brief_id="brief-2", feeds="rebuild, or buy")  # another brief confirmed after the closure: nothing it succeeds
+        self.assertEqual(self.router.open_brief({"document": brief2, "owner_operator_id": "user", "review_deadline": REVIEW_BY})["status"], "recorded")
+        out = self.decide("opd_brief2t101", "brief_confirmation", {"kind": "intake_brief", "ref": "brief-2", "revision": 1, "hash": brief2["content_hash"]})
+        self.assertEqual((out["status"], out["effects"]["queue_transition"]), ("applied", {"from": "awaiting_contract_approval", "to": "scoping"}), out)
+
+    def test_after_the_first_approval_an_amendment_keeps_its_brief(self) -> None:
+        """The check is S1-S3's: once the topic has an approved contract, a
+        brief change reaches it through its impact (G-1), and an amendment
+        still names the brief the contract was drafted from."""
+        self.approved()
+        self.archive()
+        self.assertEqual(self.router.propose_amendment({"document": contract(3, 2)})["status"], "recorded")
+
+    def test_a_lineage_only_replacement_between_draft_and_first_approval(self) -> None:
+        r2 = self.rated_drafts()
+        self.scope_approved()
+        self.assertEqual(self.replace(material=False)["queue_transition"], None)
+        self.assertEqual(self.approve(r2)["status"], "applied")
+        self.assertEqual(self.status(), "queued")
+
+
 # ---------------------------------------------------------------------------
 # works
 # ---------------------------------------------------------------------------
@@ -1071,10 +1181,12 @@ DEFECTS = (  # (label, edit of the example contract, the refusal's detail): each
     ("families not its template's", set_path("method_design/families/1/purpose", "triangulation"), "not its registered template's combination"),
     ("a brief confirmed by another decision", set_path("decision_record/objective/confirmed_brief/confirmed_by", "opd_elsewhere01"),
      "names brief brief-1 v1 as confirmed by opd_elsewhere01"),
-    ("a proposed method design no work of the topic recorded", lambda d: d["method_design"].update(
-        selection="primary_proposal", proposal={"document": {"content_hash": h("7"), "size_bytes": 10, "media_type": "text/plain"}, "proposed_by": "inv_nobody0001"}) or
-     d["method_design"].pop("template"), "the method-design proposal is not a document recorded for this topic"),
-)
+)  # a proposed method design's provenance: ReferentialCheckTest.test_each_provenance_defect_is_refused_alone
+
+
+def proposed(document: dict, by: str):
+    """The draft's method design is `by`'s proposal of `document` (flow S3's primary-authored route)."""
+    return lambda d: d["method_design"].update(selection="primary_proposal", proposal={"document": document, "proposed_by": by}) or d["method_design"].pop("template")
 
 
 class ReferentialCheckTest(Workflow):
@@ -1096,15 +1208,46 @@ class ReferentialCheckTest(Workflow):
                 self.assertEqual(self.state(), before)
         self.assertEqual(self.draft(contract(1, None, rated=False))["status"], "recorded")  # the consistent draft beside them
 
+    DESIGN = b"a mixed-methods design: realist synthesis first, then a systematic review"
+
+    def commit_design(self, inv: str, kind: str = "research_pass", tid: str = TOPIC) -> dict:
+        """`inv` commits the design document (a research pass as a claim's text; any other kind as a result ref); returns its ref."""
+        grant, design = self.started(inv, kind, tid=tid), self.artifact(self.DESIGN, "text/markdown")
+        claims = [{"claim_id": f"clm_design{inv[-4:]}", "revision": 1, "text_ref": design, "load_bearing": False, "required_access_tier": None}]
+        out = self.finish(grant, f"op_design{inv[-4:]}", {**empty_outcome(inv, topic=tid), "claims": claims if kind == "research_pass" else []}, refs=[design])
+        self.assertEqual(out["status"], "committed", out)
+        return design
+
     def test_a_proposed_method_design_is_a_document_of_the_topics_own_work(self) -> None:
-        scoping = self.started("inv_scoping01")
-        design = self.artifact(b"a mixed-methods design: realist synthesis first, then a systematic review", "text/markdown")
-        recorded = self.router.commit_outcome(self.envelope(scoping, "op_design00001", {**empty_outcome("inv_scoping01", "interim_transition"), "claims": [
-            {"claim_id": "clm_design0001", "revision": 1, "text_ref": design, "load_bearing": False, "required_access_tier": None}]}, refs=[design]))
-        self.assertEqual(recorded["status"], "committed", recorded)  # the design document is recorded for the topic by its own work
-        proposed = lambda d: d["method_design"].update(selection="primary_proposal", proposal={"document": design, "proposed_by": "inv_scoping01"}) or \
-            d["method_design"].pop("template")  # noqa: E731
-        self.assertEqual(self.draft(contract(1, None, rated=False, edit=proposed))["status"], "recorded")
+        design = self.commit_design("inv_scoping01")  # the design document is committed by the topic's own primary work
+        self.assertEqual(self.draft(contract(1, None, rated=False, edit=proposed(design, "inv_scoping01")))["status"], "recorded")
+
+    def test_each_provenance_defect_is_refused_alone(self) -> None:
+        """Task 2a-repair F3 (Astra 2a review): the proposer named committed
+        exactly that document, is a primary invocation, and is the topic's;
+        each defect alone, beside the same author's accepted proposal."""
+        design = self.commit_design("inv_scoping01")
+        self.started("inv_scoping02")  # another research pass of the topic, which commits nothing
+        self.commit_design("inv_discovr1", "discovery")  # a discovery pass commits the same bytes
+        self.open_brief(OTHER)
+        self.confirm(OTHER)
+        self.commit_design("inv_otherrp1", tid=OTHER)  # another topic's research pass commits them too
+        other = self.artifact(b"another design", "text/markdown")
+        cases = (("an unknown invocation", design, "inv_nobody0001", "is not a document inv_nobody0001"),
+                 ("another primary of the topic, which did not commit it", design, "inv_scoping02", "is not a document inv_scoping02, a primary invocation of this topic, committed"),
+                 ("a non-primary invocation that committed it", design, "inv_discovr1", "is not a document inv_discovr1"),
+                 ("a document its author never committed", other, "inv_scoping01", "is not a document inv_scoping01"),
+                 ("another topic's invocation that committed it", design, "inv_otherrp1", "is not a document inv_otherrp1"),
+                 ("another media type", {**design, "media_type": "text/plain"}, "inv_scoping01", "another size or media type"),
+                 ("another size", {**design, "size_bytes": design["size_bytes"] + 1}, "inv_scoping01", "another size or media type"))
+        for label, document, by, detail in cases:
+            with self.subTest(label):
+                before = self.state()
+                out = self.draft(contract(1, None, rated=False, edit=proposed(document, by)))
+                self.assertEqual((out["status"], out.get("reason")), ("refused", "contract_inconsistent"), out)
+                self.assertIn(detail, out.get("detail", ""))
+                self.assertEqual(self.state(), before)
+        self.assertEqual(self.draft(contract(1, None, rated=False, edit=proposed(design, "inv_scoping01")))["status"], "recorded")
 
     def test_an_amendment_is_checked_as_a_first_draft_is(self) -> None:
         self.approved()

@@ -50,7 +50,7 @@ from typing import Callable, Mapping
 
 from gen2.core import canonical, instants
 from gen2.router import boundary
-from gen2.router.amendments import AMENDMENT_COMMANDS, Amendments, contract_compatibility
+from gen2.router.amendments import AMENDMENT_COMMANDS, COMPATIBLE, Amendments, brief_compatibility, contract_compatibility
 from gen2.router.boundary import Refusal, instant
 from gen2.router.capabilities import CAPABILITY_COMMANDS, Capabilities
 from gen2.router.lifecycle import LIFECYCLE_COMMANDS, Lifecycle, is_episode_hold
@@ -1124,16 +1124,24 @@ class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities
         if kind == "brief_confirmation":
             key = {"topic_id": d["topic_id"], "brief_id": d["subject_ref"]}
             older = self._store.select("intake_briefs", {**key, "status": "confirmed"})
+            current = self._one("intake_briefs", {**key, "version": d["subject_revision"]})
+            # task 2a-repair F1: a scope basis the confirmed version does not compatibly succeed is scoped again before a contract
+            rescope = dict.fromkeys(("awaiting_scope_approval", "awaiting_contract_approval"), "scoping") if not older or any(
+                brief_compatibility(row["document"], current["document"]) not in COMPATIBLE for row in older) else {}
             for row in older:
                 self._store.update("intake_briefs", {**key, "version": row["version"]}, {"status": "superseded"})
             self._store.update("intake_briefs", {**key, "version": d["subject_revision"]}, {"status": "confirmed", "confirmed_by_decision_id": d["decision_id"]})
-            effects = {**self._move(topic, now, {"awaiting_brief_confirmation": "scoping"}), "brief_confirmed": [d["subject_ref"], d["subject_revision"]]}
+            effects = {**self._move(topic, now, {"awaiting_brief_confirmation": "scoping", **rescope}), "brief_confirmed": [d["subject_ref"], d["subject_revision"]]}
             current = self._one("intake_briefs", {**key, "version": d["subject_revision"]})
             for row in older:  # G-1: work pinned to the version this one supersedes (amendments.py)
                 effects.update(self._record_impact(d, "brief", row, current, now))
             return effects
         if kind == "scope_approval":
-            self._require_current_report(d)
+            report = self._require_current_report(d)
+            standing = self._brief_standing(d["topic_id"], report["brief_id"], report["brief_version"])
+            if standing not in COMPATIBLE:  # task 2a-repair F1
+                raise Refusal("decision_refused", f"{report['report_id']} v{report['version']} was scoped under brief {report['brief_id']} "
+                                                  f"v{report['brief_version']}, which no longer stands ({standing})")
             return self._move(topic, now, {"awaiting_scope_approval": "awaiting_contract_approval"}, required=True)
         if kind in ("contract_approval", "amendment_approval", "reframe_approval"):
             return self._approve_contract(d, topic, now)
@@ -1184,6 +1192,9 @@ class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities
         key = {"topic_id": d["topic_id"]}
         revision = self._one("contract_revisions", {**key, "revision": d["subject_revision"]})
         previous = self._one("contract_revisions", {**key, "status": "approved"})
+        defect = self._recorded_references(revision["document"])  # task 2a-repair F1: its brief still stands at approval
+        if defect is not None:
+            raise Refusal("decision_refused", defect)
         if previous is not None and revision["parent_revision"] != previous["revision"]:
             raise Refusal("decision_refused", f"revision {revision['revision']} does not revise the approved revision {previous['revision']}")
         reframe = previous is not None and contract_compatibility(previous["document"], revision["document"]) == "reframed"

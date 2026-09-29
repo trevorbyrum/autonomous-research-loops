@@ -463,21 +463,31 @@ class Amendments:
         return {"status": "recorded", "topic_id": tid, "revision": doc["revision"], "against_approved": against}
 
     def _recorded_references(self, doc: dict) -> str | None:
-        """The references a draft makes to the topic's record (task 2a): the
-        confirmed brief its decision record names was confirmed by exactly the
-        decision it names (flow S1: a contract is drafted from a confirmed
-        brief); a proposed method design is a document recorded for the topic
-        by the topic's own work."""
+        """The references a draft makes to the topic's record (task 2a), checked
+        when it is written and again when it is approved: the confirmed brief
+        its decision record names was confirmed by exactly the decision it
+        names and, until the topic's first approval, still stands — current,
+        or superseded only by a compatible version (flow S1, S3: a contract is
+        drafted from the confirmed need; task 2a-repair F1; after it, a brief
+        change reaches the contract through its impact, G-1); a proposed method design is a document its
+        proposer, a primary invocation of the topic, committed — its bytes
+        among what one of its own commit receipts validated (F3)."""
         brief, tid = doc["decision_record"]["objective"]["confirmed_brief"], doc["topic_id"]
         row = self._one("intake_briefs", {"topic_id": tid, "brief_id": brief["brief_id"], "version": brief["version"]})
         if row is None or row["confirmed_by_decision_id"] != brief["confirmed_by"]:
             return f"the decision record names brief {brief['brief_id']} v{brief['version']} as confirmed by {brief['confirmed_by']}, which the topic's record does not"
+        standing = self._brief_standing(tid, brief["brief_id"], brief["version"])
+        if standing not in COMPATIBLE and self._one("contract_revisions", {"topic_id": tid, "status": "approved"}) is None:
+            return f"the decision record names brief {brief['brief_id']} v{brief['version']}, which no longer stands ({standing})"
         proposal = doc["method_design"].get("proposal")
         if proposal is not None:
             ref, inv = proposal["document"], self._one("invocations", {"invocation_id": proposal["proposed_by"]})
-            stored = self._recorded_for(ref["content_hash"], tid)
-            if inv is None or inv["topic_id"] != tid or stored is None or (stored["size_bytes"], stored["media_type"]) != (ref["size_bytes"], ref["media_type"]):
-                return "the method-design proposal is not a document recorded for this topic, proposed by its own work"
+            if inv is None or inv["topic_id"] != tid or inv["kind"] not in boundary.PRIMARY or not any(
+                    ref["content_hash"] in r["receipt"]["validation"]["validated_hashes"] for r in self._store.select("operation_receipts", {"invocation_id": inv["invocation_id"]})):
+                return f"the method-design proposal is not a document {proposal['proposed_by']}, a primary invocation of this topic, committed"
+            stored = self._one("artifacts", {"content_hash": ref["content_hash"]})  # recorded by that commit
+            if (stored["size_bytes"], stored["media_type"]) != (ref["size_bytes"], ref["media_type"]):
+                return "the method-design proposal is not the document recorded: another size or media type"
         return None
 
     # -- pins ----------------------------------------------------------------------
@@ -491,12 +501,17 @@ class Amendments:
             if pinned["status"] == "approved":
                 return "current"
             return self._standing("contract", inv["topic_id"], inv["contract_revision"]) or "compatible"
-        pinned = self._one("intake_briefs", {"topic_id": inv["topic_id"], "brief_id": inv["brief_ref"], "version": inv["brief_version"]})
-        current = self._one("intake_briefs", {"topic_id": inv["topic_id"], "status": "confirmed"})
+        return self._brief_standing(inv["topic_id"], inv["brief_ref"], inv["brief_version"])
+
+    def _brief_standing(self, topic_id: str, brief_id: str, version: int) -> str:
+        """How a brief version stands now, for work pinned to it and for what
+        names it (a draft, a scoping report; task 2a-repair F1)."""
+        pinned = self._one("intake_briefs", {"topic_id": topic_id, "brief_id": brief_id, "version": version})
+        current = self._one("intake_briefs", {"topic_id": topic_id, "status": "confirmed"})
         if pinned["status"] == "confirmed":
             return "current"
-        if pinned["status"] == "superseded" and current is not None and current["brief_id"] == inv["brief_ref"]:  # its own lineage is current
-            return self._standing("brief", inv["topic_id"], inv["brief_version"], inv["brief_ref"]) or "lineage_only"
+        if pinned["status"] == "superseded" and current is not None and current["brief_id"] == brief_id:  # its own lineage is current
+            return self._standing("brief", topic_id, version, brief_id) or "lineage_only"
         return pinned["status"]
 
     def _standing(self, kind: str, topic_id: str, version: int, brief_id: str | None = None) -> str | None:
