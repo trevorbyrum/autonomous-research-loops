@@ -41,6 +41,8 @@ SECTION_KINDS = {
     "screening_assessments": PRIMARY,
     "review_triggers": PRIMARY,
     "review_closures": frozenset({"checkpoint"}),  # task 2a: closing an episode is the checkpoint workflow's (flow S5)
+    "scoping_reports": frozenset({"research_pass"}),  # task 2a: the primary assembles the scoping report (flow S2), pre-contract only
+    "source_proposals": PRIMARY | {"discovery", "delegate"},  # task 2a: a proposal authorizes nothing (SOURCE-GOVERNANCE.md step 1)
     "exports": PRIMARY,
     "holds": PRIMARY | {"verification"},
     "verification_receipts": frozenset({"verification"}),
@@ -48,7 +50,8 @@ SECTION_KINDS = {
 # C-12: pre-contract (scoping) work records scoping material only —
 # provisional claims (and the holds and trigger observations of its own
 # pass); nothing that needs the approved protocol.
-PRE_CONTRACT_SECTIONS = frozenset({"claims", "review_triggers", "holds"})
+PRE_CONTRACT_SECTIONS = frozenset({"claims", "review_triggers", "holds", "scoping_reports", "source_proposals"})
+PRE_CONTRACT_ONLY = frozenset({"scoping_reports"})  # task 2a: scoping is S2's, before any approved contract
 
 
 class Refusal(Exception):
@@ -111,6 +114,8 @@ def check_sections(payload: dict, kind: str, admission_context: str) -> None:
             raise Refusal("kind_not_permitted", f"a {kind} invocation cannot commit {section}")
         if admission_context == "pre-contract/1" and section not in PRE_CONTRACT_SECTIONS:
             raise Refusal("kind_not_permitted", f"pre-contract/1 work records scoping material only, not {section} (C-12)")
+        if admission_context != "pre-contract/1" and section in PRE_CONTRACT_ONLY:
+            raise Refusal("kind_not_permitted", f"{section} are pre-contract work's (flow S2), not {admission_context}'s")
 
 
 def check_verification_receipt(doc: dict, invocation_id: str, capability_id: str, topic_id: str) -> None:

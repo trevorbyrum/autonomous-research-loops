@@ -167,7 +167,23 @@ become a source. That is why the gateway is "the only door" in.
 
 ## Status
 
-The schema and this pathway are specification. No engine code implements step 1's
-proposal route yet (typed proposals land with the router in Phase 1), and no
-source has been proposed through it. Nothing here is evidence that the pathway
-works; it is what the implementation will be reviewed against.
+Steps 1 and 2 are implemented in the router (task 2a, Phase 2; Astra's
+Phase 2 plan audit, finding 8). A research pass, checkpoint, discovery or
+delegate commits `source-proposal/1` documents in its outcome's
+`source_proposals` section (`gen2/router/service.py`): the router checks that
+the proposal is of the committing invocation's topic and names that invocation
+as its proposer, that a superseded proposal is recorded, and, for
+contract-admitted work, that each blocked obligation is its revision's. The
+proposal is retained whole in the store's `source_proposals`, under the JCS
+hash of the whole document, which the router computes. The operator's
+`source_approval` decision (approved, rejected or deferred) names exactly one
+stored proposal and that hash (G-13; the store refuses a decision about any
+other subject, and the router recomputes the hash first). The decision is a
+record only. Nothing in the engine writes the gateway's registry, enables a
+lane, holds a credential or installs anything. Steps 3 to 6 remain the
+reviewed build task, the gateway seed, the regenerated catalog and the
+secrets surface, as above. No real source has been proposed through the
+route: the tests exercise it with the schema's example proposal
+(`gen2/tests/test_router_workflow.py`, `test_store_workflow.py`). The route
+existing is not evidence that any proposal was right; that stays the
+operator's decision.

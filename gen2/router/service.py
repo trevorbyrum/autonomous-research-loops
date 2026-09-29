@@ -34,8 +34,10 @@ records in registries.py, brief and contract versions and amendment impact
 (G-1) in amendments.py, re-queues, reservations and the signal queue in
 scheduling.py; task 1e's status read and health probe in status.py; task 1f's
 capability-probe records in capabilities.py. Task 2a's workflow write paths:
-work registration here (register_works), a topic's claim-source links and a
-checkpoint's review closure as commit_outcome sections here, topic creation
+work registration here (register_works), a topic's claim-source links, a
+checkpoint's review closure, a pre-contract scoping report and source
+proposals as commit_outcome sections here, the scope decision's move and
+rework with the other decisions here, topic creation
 and code-policy signals in scheduling.py, a brief's first version and
 contract construction's drafts in amendments.py.
 """
@@ -146,11 +148,12 @@ COMMANDS = {  # the router's own request shapes (commands, not stored documents)
                 "decision_id": {"$ref": "common.schema.json#/$defs/operator_decision_id"},
                 "topic_id": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/topic_id"}]},
                 "kind": {"enum": ["brief_confirmation", "scope_approval", "rating_approval", "contract_approval", "amendment_approval", "reframe_approval",
-                                  "completion_approval", "retirement", "hold_clearance", "publication_approval", "blind_initial_disposition", "advised_feedback"]},
+                                  "completion_approval", "retirement", "hold_clearance", "publication_approval", "blind_initial_disposition", "advised_feedback",
+                                  "source_approval"]},
                 "disposition": {"enum": ["approved", "rejected", "deferred", "recorded"]},
                 "subject": {"type": "object", "additionalProperties": False, "required": ["kind", "ref", "revision", "hash"],
                             "properties": {"kind": {"enum": ["intake_brief", "scoping_report", "contract_revision", "dossier", "topic", "hold",
-                                                             "publication_source", "decision_receipt"]},
+                                                             "publication_source", "decision_receipt", "source_proposal"]},
                                            "ref": _ID, "revision": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/state_revision"}]},
                                            "hash": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/sha256"}]}}},
                 "operator_id": _ID, "decided_at": _TS,
@@ -754,6 +757,20 @@ class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities
 
         for claim in payload["claims"]:
             bind(claim["text_ref"], f"{claim['claim_id']}: its text")
+        for report in payload["scoping_reports"]:  # task 2a: flow S2's hand-off, by the work whose admission it names (C-12)
+            if report["topic_id"] != inv["topic_id"]:
+                raise Refusal("cross_topic", f"{report['report_id']} is about topic {report['topic_id']}")
+            if canonical.content_hash(report) != report["content_hash"]:
+                raise Refusal("payload_invalid", f"{report['report_id']} v{report['version']} does not hash to its content hash (C-13)")
+            if report["brief"] != {"brief_id": inv["brief_ref"], "version": inv["brief_version"], "content_hash": inv["brief_hash"]}:
+                raise Refusal("payload_invalid", f"{report['report_id']} names brief {report['brief']['brief_id']} v{report['brief']['version']}, not its work's admission pin (C-12)")
+            if not {c["facet_id"] for c in report["gap_map"]} <= {f["facet_id"] for f in report["candidate_facets"]}:
+                raise Refusal("payload_invalid", f"{report['report_id']}: its gap map names a facet it does not propose")
+        for proposal in payload["source_proposals"]:  # task 2a: proposed by the committing invocation, never a document's say-so
+            if proposal["topic_id"] != inv["topic_id"]:
+                raise Refusal("cross_topic", f"{proposal['proposal_id']} is about topic {proposal['topic_id']}")
+            if proposal["proposed_by"] != {"invocation_id": inv["invocation_id"], "invocation_kind": inv["kind"]}:
+                raise Refusal("capability_invocation_mismatch", f"{proposal['proposal_id']} names proposer {proposal['proposed_by']['invocation_id']}: a proposal is its committer's")
         for doc in payload["verification_receipts"]:
             boundary.check_verification_receipt(doc, inv["invocation_id"], env["capability_id"], inv["topic_id"])
             if doc["extraction"]["method"] == "canonical_bytes" and not available(doc["obtained_content_hash"]):
@@ -857,6 +874,10 @@ class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities
             queue_transition, rest_state = {"from": "active", "to": target}, ("rest_until" if target == "resting" else "idle")
         elif topic["status"] == "held":
             rest_state = "held"
+        if payload["scoping_reports"]:  # task 2a: the committed report hands a scoping topic to the operator (store README, queue status)
+            if topic["status"] != "scoping":
+                raise Refusal("payload_invalid", f"a scoping report is committed while its topic is scoping, not {topic['status']}")
+            queue_transition = {"from": "scoping", "to": "awaiting_scope_approval"}
         if final and inv["kind"] != "delegate":
             lease_release = {"lease_id": lease["lease_id"], "generation": lease["generation"], "rest_state": rest_state}
         known = {row["trigger_identity"] for row in self._store.select("review_triggers", {"topic_id": inv["topic_id"]})}
@@ -990,6 +1011,30 @@ class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities
                               f"no record {topic_id} retrieved is linked to {link['work_id']}: a work's row is not the topic's authorization to cite it")
             self._store.insert("claim_source_links", {**link, "topic_id": topic_id, "contract_revision": inv["contract_revision"], "created_at": now})
             links.append([link["claim_id"], link["claim_revision"], link["work_id"], link["obligation_id"]])
+        for report in payload["scoping_reports"]:  # task 2a: the next version of its report, each coverage fact the cited observations' own (RG-4)
+            key = {"topic_id": topic_id, "report_id": report["report_id"]}
+            latest = max((r["version"] for r in self._store.select("scoping_reports", key)), default=None)
+            if (report["version"], report["parent_version"]) != ((1, None) if latest is None else (latest + 1, latest)):
+                raise Refusal("payload_invalid", f"{report['report_id']}: the next version is {1 if latest is None else latest + 1}, with parent {latest}")
+            for fact in report["coverage"]:
+                observed = [self._one("search_observations", {"observation_id": o}) for o in fact["observation_ids"]]
+                if any(o is None or (o["topic_id"], o["lane"], o["coverage_state"]) != (topic_id, fact["lane"], fact["coverage_state"]) for o in observed):
+                    raise Refusal("payload_invalid", f"{report['report_id']}: {fact['lane']} {fact['coverage_state']} is not what the cited observations of {topic_id} recorded")
+            self._store.insert("scoping_reports", {**key, "version": report["version"], "parent_version": report["parent_version"], "content_hash": report["content_hash"],
+                                                   "document": report, "brief_id": report["brief"]["brief_id"], "brief_version": report["brief"]["version"],
+                                                   "brief_hash": report["brief"]["content_hash"], "invocation_id": inv["invocation_id"],
+                                                   "committed_by_operation_id": op_id, "created_at": now})
+        for proposal in payload["source_proposals"]:  # task 2a: retained, authorizing nothing (SOURCE-GOVERNANCE.md step 1)
+            blocked = proposal["motivation"]["blocked_obligation_ids"]
+            if inv["admission_context"] == "contract/1" and any(self._one("obligations", {"topic_id": topic_id, "contract_revision": inv["contract_revision"],
+                                                                                            "obligation_id": o}) is None for o in blocked):
+                raise Refusal("payload_invalid", f"{proposal['proposal_id']} names a blocked obligation contract revision {inv['contract_revision']} lacks")
+            superseded = proposal.get("supersedes_proposal_id")
+            if superseded is not None and self._one("source_proposals", {"proposal_id": superseded}) is None:
+                raise Refusal("payload_invalid", f"{proposal['proposal_id']} supersedes {superseded}, which is not recorded")
+            self._store.insert("source_proposals", {"proposal_id": proposal["proposal_id"], "topic_id": topic_id, "content_hash": canonical.logical_hash(proposal),
+                                                    "document": proposal, "proposed_by_invocation_id": inv["invocation_id"], "committed_by_operation_id": op_id,
+                                                    "supersedes_proposal_id": superseded, "created_at": now})
         for identity, trigger in new_triggers:
             self._store.insert("review_triggers", {"trigger_identity": identity, "topic_id": topic_id, "reason_code": trigger["reason_code"],
                                                    "signal_source": "primary_observation", "cause_ref": trigger["cause_ref"],
@@ -1016,6 +1061,8 @@ class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities
                 "approval_decision_id": manifest["approval"]["operator_decision_id"], "bundle_content_hash": manifest["bundle"]["content_hash"],
                 "expected_connectors": manifest["expected_connectors"], "manifest": manifest, "committed_by_operation_id": op_id, "created_at": now})
         return {"claims": claims, "claim_promotions": promotions, "claim_source_links": links,
+                "scoping_reports": [[r["report_id"], r["version"]] for r in payload["scoping_reports"]],
+                "source_proposals": [p["proposal_id"] for p in payload["source_proposals"]],
                 "review_closures": [c["episode_id"] for c in payload["review_closures"]],
                 "verification_receipts": [d["verification_receipt_id"] for d in payload["verification_receipts"]],
                 "screening_assessments": [a["assessment_id"] for a in payload["screening_assessments"]],
@@ -1043,7 +1090,7 @@ class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities
             return {"status": "replayed", "decision_id": req["decision_id"], "effects": None}
         self._require_subject_hash_truth(row)
         self._store.insert("operator_decisions", row)
-        effects = self._apply_decision(row, now) if row["disposition"] == "approved" else {}
+        effects = self._apply_decision(row, now) if row["disposition"] == "approved" else self._rework(row, now)
         self._audit("operator_decision", now, {"kind": row["kind"], "disposition": row["disposition"], "effects": effects}, topic_id=row["topic_id"])
         topic = self._one("queue_entries", {"topic_id": row["topic_id"]}) if row["topic_id"] else None
         return {"status": "applied", "decision_id": req["decision_id"], "effects": effects,
@@ -1057,6 +1104,13 @@ class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities
             stored = self._one("contract_revisions", {"topic_id": row["topic_id"], "revision": row["subject_revision"]})
         elif row["subject_kind"] == "intake_brief":
             stored = self._one("intake_briefs", {"topic_id": row["topic_id"], "brief_id": row["subject_ref"], "version": row["subject_revision"]})
+        elif row["subject_kind"] == "scoping_report":  # task 2a
+            stored = self._one("scoping_reports", {"topic_id": row["topic_id"], "report_id": row["subject_ref"], "version": row["subject_revision"]})
+        elif row["subject_kind"] == "source_proposal":  # task 2a: its hash is of the whole document (it carries none of its own)
+            stored = self._one("source_proposals", {"proposal_id": row["subject_ref"]})
+            if stored is not None and canonical.logical_hash(stored["document"]) != stored["content_hash"]:
+                raise Refusal("subject_hash_untrue", "the stored source proposal does not hash to its recorded content hash")
+            return
         else:
             return
         if stored is not None and canonical.content_hash(stored["document"]) != stored["content_hash"]:
@@ -1079,6 +1133,7 @@ class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities
                 effects.update(self._record_impact(d, "brief", row, current, now))
             return effects
         if kind == "scope_approval":
+            self._require_current_report(d)
             return self._move(topic, now, {"awaiting_scope_approval": "awaiting_contract_approval"}, required=True)
         if kind in ("contract_approval", "amendment_approval", "reframe_approval"):
             return self._approve_contract(d, topic, now)
@@ -1094,7 +1149,25 @@ class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities
                 raise Refusal("decision_refused", f"{hold['hold_id']} holds an outcome_unknown episode: it clears only through that episode's reconciliation record (L-4)")
             self._store.update("holds", {"hold_id": d["subject_ref"]}, {"cleared_at": now, "cleared_by_decision_id": d["decision_id"]})
             return {"hold_cleared": d["subject_ref"]}
-        return {}  # rating, publication, blind and advised decisions are records their consumers read
+        return {}  # rating, publication, source, blind and advised decisions are records their consumers read (a source approval enables nothing)
+
+    def _rework(self, d: dict, now: str) -> dict:
+        """Task 2a: a rejected scope approval of the topic's current report
+        sends it back to scoping for a new report version (store README, queue
+        status: awaiting_scope_approval -> scoping, the operator's rework).
+        Any other rejection or deferral is a record only."""
+        if (d["kind"], d["disposition"]) != ("scope_approval", "rejected"):
+            return {}
+        self._require_current_report(d)
+        return self._move(self._one("queue_entries", {"topic_id": d["topic_id"]}), now, {"awaiting_scope_approval": "scoping"}, required=True)
+
+    def _require_current_report(self, d: dict) -> None:
+        """A scope decision is about the report the topic was handed to the
+        operator with: its newest committed one (task 2a)."""
+        reports = self._store.select("scoping_reports", {"topic_id": d["topic_id"]})
+        newest = max(reports, key=lambda r: (instant(r["created_at"]), r["version"]), default=None)
+        if newest is None or (newest["report_id"], newest["version"]) != (d["subject_ref"], d["subject_revision"]):
+            raise Refusal("decision_refused", f"a scope decision is about the topic's newest committed report, not {d['subject_ref']} v{d['subject_revision']}")
 
     def _approve_contract(self, d: dict, topic: dict, now: str) -> dict:
         """Approve exactly this revision, superseding the approved one (one
