@@ -18,19 +18,27 @@ amendment version commands; ruling on proposal 3: amendment_pending was an
 interim fail-closed rule).
 
 Commands (the trusted surface: task 1e's authenticated operator surface):
-version_brief writes the next version
-of a brief — a re-version, an owner reassignment or a deadline extension,
+open_brief (task 2a) writes a brief's first version (intake's hand-off, flow
+S1: version 1, no parent, awaiting confirmation, created by now and reviewed
+after now); version_brief writes the next version of a brief — a re-version, an owner reassignment or a deadline extension,
 each a new immutable version awaiting confirmation (a version awaiting
 confirmation that it replaces is superseded; a confirmed one stays confirmed
 until its successor is confirmed); mark_brief_overdue marks a version
 awaiting confirmation overdue once its deadline has passed on the router's
-clock (expiry marks, it never advances); propose_amendment writes the next
-contract revision as a draft whose parent is the approved revision, with its
-facet and obligation rows; close_brief (task 1e) cancels a version awaiting
-confirmation or archives a confirmed one, recording who (the authenticated
-operator the surface names), when and why (G-4). Approval stays an operator
-decision (amendment_approval, reframe_approval:
-service.Router._approve_contract).
+clock (expiry marks, it never advances); draft_contract (task 2a) writes
+contract construction's drafts while the topic has never had an approved
+contract and its brief is confirmed (flow S3): the first as revision 1 with
+no parent, each later one revising the newest, so the draft carrying the
+operator's ratings descends from the draft they rated (G-2) — its approval
+is the existing contract_approval, which the store refuses while any facet
+is unrated or a critical one uncovered (G-3); propose_amendment writes the
+next contract revision as a draft whose parent is the approved revision.
+Both write the facet and obligation rows, and both keep a label naming one
+content (below) against the revision revised; close_brief (task 1e) cancels
+a version awaiting confirmation or archives a confirmed one, recording who
+(the authenticated operator the surface names), when and why (G-4). Approval
+stays an operator decision (contract_approval, amendment_approval,
+reframe_approval: service.Router._approve_contract).
 
 Compatibility, deterministic and structural: whether work, labels and claims
 pinned to a superseded contract revision stay valid under the current one,
@@ -244,11 +252,19 @@ class Amendments:
     def version_brief(self, request: Mapping) -> dict:
         return self._amendment_command(request, "brief_version", "intake-brief.schema.json", self._version_brief_in_transaction)
 
+    def open_brief(self, request: Mapping) -> dict:
+        """Task 2a: a brief's first version (intake's, flow S1), in version_brief's shape."""
+        return self._amendment_command(request, "brief_version", "intake-brief.schema.json", lambda req, now: self._version_brief_in_transaction(req, now, first=True))
+
     def mark_brief_overdue(self, request: Mapping) -> dict:
         return self._amendment_command(request, "brief_overdue", None, self._overdue_in_transaction)
 
     def propose_amendment(self, request: Mapping) -> dict:
         return self._amendment_command(request, "amendment", "contract-v2.schema.json", self._amendment_in_transaction)
+
+    def draft_contract(self, request: Mapping) -> dict:
+        """Task 2a: contract construction's drafts before any approval (flow S3), in propose_amendment's shape."""
+        return self._amendment_command(request, "amendment", "contract-v2.schema.json", lambda req, now: self._amendment_in_transaction(req, now, draft=True))
 
     def close_brief(self, request: Mapping) -> dict:
         return self._amendment_command(request, "brief_close", None, self._close_in_transaction)
@@ -273,7 +289,7 @@ class Amendments:
             raise Refusal("topic_retired", f"{topic_id} is retired")
         return topic
 
-    def _version_brief_in_transaction(self, req: dict, now: str) -> dict:
+    def _version_brief_in_transaction(self, req: dict, now: str, first: bool = False) -> dict:
         doc = req["document"]
         key = {"topic_id": doc["topic_id"], "brief_id": doc["brief_id"]}
         stored = self._one("intake_briefs", {**key, "version": doc["version"]})
@@ -283,11 +299,14 @@ class Amendments:
             return {"status": "replayed", **key, "version": doc["version"]}
         self._open_topic(doc["topic_id"])
         latest = max(self._store.select("intake_briefs", key), key=lambda b: b["version"], default=None)
-        if latest is None:
-            raise Refusal("unknown_brief", "a brief's first version is intake's (Phase 2); this writes the next version of a recorded brief")
-        if (doc["version"], doc["parent_version"]) != (latest["version"] + 1, latest["version"]):
-            raise Refusal("request_invalid", f"the next version of {doc['brief_id']} is {latest['version'] + 1}, with parent {latest['version']}")
-        if latest["status"] in ("cancelled", "archived"):
+        if first and latest is not None:  # task 2a: open_brief writes a brief not yet recorded, version_brief every later version
+            raise Refusal("brief_exists", f"{doc['brief_id']} is recorded (v{latest['version']}); its next version is version_brief's")
+        if latest is None and not first:
+            raise Refusal("unknown_brief", "a brief's first version is open_brief's (intake); this writes the next version of a recorded brief")
+        lineage = (1, None) if latest is None else (latest["version"] + 1, latest["version"])
+        if (doc["version"], doc["parent_version"]) != lineage:
+            raise Refusal("request_invalid", f"the next version of {doc['brief_id']} is {lineage[0]}, with parent {lineage[1]}")
+        if latest is not None and latest["status"] in ("cancelled", "archived"):
             raise Refusal("brief_closed", f"{doc['brief_id']} v{latest['version']} is {latest['status']}")
         if instant(doc["created_at"]) > instant(now) or instant(req["review_deadline"]) <= instant(now):
             raise Refusal("request_invalid", f"a version is created by now and reviewed after now ({now})")
@@ -295,7 +314,7 @@ class Amendments:
                                              "document": doc, "owner_operator_id": req["owner_operator_id"], "status": "awaiting_confirmation",
                                              "created_at": doc["created_at"], "review_deadline": req["review_deadline"]})
         superseded = None
-        if latest["status"] == "awaiting_confirmation":  # it can no longer be confirmed; a confirmed one waits for its successor's confirmation
+        if latest is not None and latest["status"] == "awaiting_confirmation":  # it can no longer be confirmed; a confirmed one waits for its successor's confirmation
             self._store.update("intake_briefs", {**key, "version": latest["version"]}, {"status": "superseded"})
             superseded = latest["version"]
         self._audit("brief_versioned", now, {**key, "version": doc["version"], "superseded": superseded}, topic_id=doc["topic_id"])
@@ -337,7 +356,7 @@ class Amendments:
         self._audit("brief_closed", now, {**key, "closure": req["closure"], "by": req["closed_by"]}, topic_id=req["topic_id"])
         return {"status": "closed", **key, "closure": req["closure"], "closed_at": now}
 
-    def _amendment_in_transaction(self, req: dict, now: str) -> dict:
+    def _amendment_in_transaction(self, req: dict, now: str, draft: bool = False) -> dict:
         doc = req["document"]
         tid = doc["topic_id"]
         stored = self._one("contract_revisions", {"topic_id": tid, "revision": doc["revision"]})
@@ -345,19 +364,28 @@ class Amendments:
             if not _same(stored["document"], doc):
                 raise Refusal("amendment_conflict", f"revision {doc['revision']} of {tid} was written otherwise")
             return {"status": "replayed", "topic_id": tid, "revision": doc["revision"]}
-        self._open_topic(tid)
+        topic = self._open_topic(tid)
         revisions = self._store.select("contract_revisions", {"topic_id": tid})
         approved = next((c for c in revisions if c["status"] == "approved"), None)
-        if approved is None:
-            raise Refusal("no_approved_contract", "an amendment revises the approved contract; a first draft is contract construction's (Phase 2)")
-        newest = max(c["revision"] for c in revisions)
-        if (doc["revision"], doc["parent_revision"]) != (newest + 1, approved["revision"]):
-            raise Refusal("request_invalid", f"an amendment is revision {newest + 1}, with the approved revision {approved['revision']} as its parent")
-        for what, name, label, content in VERSIONED:  # a label names one content (module docstring)
-            kept, recorded = label(approved["document"]), max(label(c["document"]) for c in revisions)
-            if _same(content(doc), content(approved["document"])):
+        if draft:  # task 2a: before any approval, each draft revises the newest (the first none), so a rated draft descends from the draft rated (G-2)
+            if any(c["status"] != "draft" for c in revisions):
+                raise Refusal("contract_approved", "the topic has had an approved contract; a revision of it is propose_amendment's")
+            if topic["status"] == "awaiting_brief_confirmation":
+                raise Refusal("brief_unconfirmed", "a contract is drafted once the topic's brief is confirmed (G-4: an unconfirmed brief does not advance)")
+            base = max(revisions, key=lambda c: c["revision"], default=None)
+            lineage = (1, None) if base is None else (base["revision"] + 1, base["revision"])
+        elif approved is None:
+            raise Refusal("no_approved_contract", "an amendment revises the approved contract; a draft before any approval is draft_contract's")
+        else:
+            base, lineage = approved, (max(c["revision"] for c in revisions) + 1, approved["revision"])
+        if (doc["revision"], doc["parent_revision"]) != lineage:
+            raise Refusal("request_invalid", f"this draft is revision {lineage[0]}, with parent {lineage[1]}" if draft else
+                          f"an amendment is revision {lineage[0]}, with the approved revision {lineage[1]} as its parent")
+        for what, name, label, content in VERSIONED if base is not None else ():  # a label names one content (module docstring)
+            kept, recorded = label(base["document"]), max(label(c["document"]) for c in revisions)
+            if _same(content(doc), content(base["document"])):
                 if label(doc) != kept:
-                    raise Refusal("request_invalid", f"the {what} is the approved revision's, so it keeps {name} {kept} (G-6)")
+                    raise Refusal("request_invalid", f"the {what} is the {'revised' if draft else 'approved'} revision's, so it keeps {name} {kept} (G-6)")
             elif label(doc) <= recorded:
                 raise Refusal("request_invalid", f"a changed {what} takes a new {name}, above every recorded one ({recorded}): a label never names two (G-6)")
         self._store.insert("contract_revisions", {"topic_id": tid, "revision": doc["revision"], "parent_revision": doc["parent_revision"],
@@ -370,8 +398,8 @@ class Amendments:
                 "topic_id": tid, "contract_revision": doc["revision"], "obligation_id": o["obligation_id"], "template_id": o["template"]["template_id"],
                 "template_version": o["template"]["template_version"], "claim_type": o["template"]["claim_type"], "facet_ids": o["facet_ids"],
                 "stopping_profile_id": o["stopping_profile_id"], "exploratory": o["exploratory"], **_importance(o)})
-        against = contract_compatibility(approved["document"], doc)
-        self._audit("amendment_proposed", now, {"revision": doc["revision"], "against_approved": against}, topic_id=tid)
+        against = None if approved is None else contract_compatibility(approved["document"], doc)
+        self._audit("contract_drafted" if draft else "amendment_proposed", now, {"revision": doc["revision"], "against_approved": against}, topic_id=tid)
         return {"status": "recorded", "topic_id": tid, "revision": doc["revision"], "against_approved": against}
 
     # -- pins ----------------------------------------------------------------------
