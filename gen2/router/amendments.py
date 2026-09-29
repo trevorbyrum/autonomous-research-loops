@@ -528,7 +528,7 @@ class Amendments:
         lineage alone is replaced, once and for good (DDL brief_replacements;
         task 2a-repair-3) — no archival or later confirmation undoes it."""
         for row in self._store.select("intake_briefs", {"topic_id": d["topic_id"]}):
-            if row["confirmed_by_decision_id"] is not None and brief_compatibility(row["document"], current["document"]) not in COMPATIBLE \
+            if row["confirmed_by_decision_id"] not in (None, d["decision_id"]) and brief_compatibility(row["document"], current["document"]) not in COMPATIBLE \
                     and self._one("brief_replacements", {"topic_id": d["topic_id"], "brief_id": row["brief_id"], "version": row["version"]}) is None:
                 self._store.insert("brief_replacements", {"topic_id": d["topic_id"], "brief_id": row["brief_id"], "version": row["version"],
                                                           "replaced_by_decision_id": d["decision_id"], "recorded_at": now})
