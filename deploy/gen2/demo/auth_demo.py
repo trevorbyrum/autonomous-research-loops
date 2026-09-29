@@ -293,8 +293,10 @@ class Demo:
     def container(self) -> dict:
         cid = self.compose("ps", "-q", "engine").stdout.decode().strip()
         self.check(bool(cid), "the engine container exists")
-        info = json.loads(self.sh(["docker", "inspect", cid]).stdout)[0]
-        return {"id": info["Id"], "image": info["Image"], "started_at": info["State"]["StartedAt"], "restarts": info["RestartCount"],
+        # only these fields: the whole inspect document carries the container's environment, the env-file secrets among it
+        info = json.loads(self.sh(["docker", "inspect", "--format", '{"Id": {{json .Id}}, "Image": {{json .Image}}, "StartedAt": {{json .State.StartedAt}}, '
+                                   '"RestartCount": {{json .RestartCount}}, "Mounts": {{json .Mounts}}}', cid]).stdout)
+        return {"id": info["Id"], "image": info["Image"], "started_at": info["StartedAt"], "restarts": info["RestartCount"],
                 "mounts": sorted((m.get("Name") or m.get("Source"), m["Destination"], m["RW"]) for m in info["Mounts"])}
 
     def volumes(self) -> dict:
