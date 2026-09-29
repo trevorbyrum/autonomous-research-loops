@@ -17,12 +17,19 @@ Every expected outcome, fact and hold field is written by hand from the
 rules the modules state; read-backs are raw SQL on the test's own
 connection, or HTTP to the engine.
 
+Declared expiry (task 1f-repair): the credentials are hand-built JSON whose
+JWTs are unsigned and whose instants are chosen against the test's clock;
+every expected instant is written by hand. The fake runner answers usable
+whatever the file holds, so these tests show what the probe reads beside the
+runner, not what the pinned runner accepts ((e) characterizes that).
+
 Structural limits: the fake runner cannot show what the real runner does
 with a real credential; process-group termination is shown for a child in
 the runner's own session only.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import signal
@@ -37,7 +44,7 @@ from pathlib import Path
 
 from gen2.core.instants import utc_instant_ns
 from gen2.supervisor import probe
-from gen2.supervisor.probe import CapabilityProbe, Runner, codex_status
+from gen2.supervisor.probe import CapabilityProbe, Runner, claude_declared, codex_declared, codex_status, epoch_instant, jwt_exp
 from gen2.tests import operator_fixtures as of
 from gen2.tests import router_fixtures as rf
 
@@ -83,10 +90,25 @@ sys.exit(b.get("code", 0))
 """
 
 
-def observation(pid: str, outcome: str, observed: str, *, started: str | None = None, detail: str = "by hand") -> dict:
-    return {"probe_id": "probe_" + pid.ljust(32, "0"), "capability": CAP, "outcome": outcome, "detail": detail,
+def observation(pid: str, outcome: str, observed: str, *, started: str | None = None, detail: str = "by hand", declared: dict | None = None) -> dict:
+    return {"probe_id": "probe_" + pid.ljust(32, "0"), "capability": CAP, "outcome": outcome, "detail": detail, "declared_expiry": declared,
             "started_at": started or observed, "observed_at": observed, "runner": {"name": "codex", "version": "0.153.2"},
             "affected_lanes": ["station:station-1"], "requested_by": "alice"}
+
+
+def jwt(claims: object) -> str:
+    part = lambda obj: base64.urlsafe_b64encode(json.dumps(obj).encode()).decode().rstrip("=")  # noqa: E731
+    return f"{part({'alg': 'none', 'typ': 'JWT'})}.{part(claims)}.UNSIGNEDSIG"
+
+
+def chatgpt(access: object, id_token: object, *, refresh: object = "rt-REFRESHPART", key: object = None) -> dict:
+    """codex's auth.json in ChatGPT mode; access and id_token are an `exp` (a JWT is made) or a token string as given."""
+    token = lambda exp: exp if isinstance(exp, str) else jwt({"exp": exp, "email": "t@example.invalid"})  # noqa: E731
+    return {"OPENAI_API_KEY": key, "tokens": {"id_token": token(id_token), "access_token": token(access), "refresh_token": refresh,
+                                              "account_id": "acct-x"}}
+
+
+EXP_2001, EXP_2100 = 1000000000, 4102444800  # 2001-09-09T01:46:40Z and 2100-01-01T00:00:00Z, as RFC 7519 NumericDate
 
 
 class ProbeRecordTest(rf.RouterTestCase):
@@ -148,6 +170,35 @@ class ProbeRecordTest(rf.RouterTestCase):
         self.assertEqual([(h["hold_class"], h["recoverability"], h["capability_fact_id"]) for h in self.holds()],
                          [("capability", "unknown", reply["fact"]["fact_id"])])
 
+    def test_a_declared_expiry_is_a_degraded_fact_and_a_hold_to_remedy(self):
+        usable = self.record(observation("d21", "usable", "2026-09-27T10:00:05Z"))
+        declared = {"access_token": "2001-09-09T01:46:40Z", "id_token": None, "refresh_credential": True}
+        reply = self.record(observation("d22", "declared_expired", "2026-09-27T10:00:06Z", detail="its access token declares it expired",
+                                        declared=declared))
+        self.assertEqual((reply["outcome"], reply["declared_expiry"], reply["fact"]["state"], reply["fact"]["transition"]),
+                         ("declared_expired", declared, "degraded", True))
+        self.assertEqual(self.facts()[-1], (reply["fact"]["fact_id"], "degraded", "2026-09-27T10:00:06Z", "2026-09-27T10:00:05Z", None))
+        self.assertEqual(self.value("SELECT detail FROM capability_facts WHERE fact_id = ?", reply["fact"]["fact_id"]),
+                         "declared_expired: its access token declares it expired")
+        self.assertEqual([(h["hold_class"], h["recoverability"], h["owner"], h["required_authority"], h["capability_fact_id"], h["cause"])
+                          for h in self.holds()],
+                         [("capability", "needs_remediation", "operator", "operator", reply["fact"]["fact_id"],
+                           CAP + " declared_expired: its access token declares it expired")])
+        self.assertIsNone(usable["hold"])
+
+    def test_a_declared_expired_observation_names_its_access_expiry_at_or_before_it_was_observed(self):
+        before = self.state(exclude=())
+        at = "2026-09-27T10:00:06Z"
+        for declared in (None, {"access_token": None, "id_token": "2001-09-09T01:46:40Z", "refresh_credential": False},
+                         {"access_token": "2026-09-27T10:00:07Z", "id_token": None, "refresh_credential": False}):
+            with self.subTest(declared=declared):
+                self.assertEqual(self.record(observation("d31", "declared_expired", at, declared=declared)),
+                                 {"status": "refused", "reason": "request_invalid",
+                                  "detail": "declared_expired names the access token's declared expiry, at or before the observation"})
+        self.assertEqual(self.state(exclude=()), before)
+        exact = self.record(observation("d32", "declared_expired", at, declared={"access_token": at, "id_token": None, "refresh_credential": False}))
+        self.assertEqual((exact["status"], exact["fact"]["state"]), ("recorded", "degraded"))  # at the instant itself: RFC 7519, on or after
+
     def test_a_usable_probe_clears_no_hold_an_operator_clearance_does_and_a_later_failure_opens_a_new_one(self):
         failing = self.record(observation("e1", "unusable_credential", "2026-09-27T10:00:05Z"))
         usable = self.record(observation("e2", "usable", "2026-09-27T10:00:06Z"))
@@ -203,7 +254,10 @@ class ProbeRecordTest(rf.RouterTestCase):
         before = self.state(exclude=())
         good = observation("9a1", "usable", "2026-09-27T10:00:05Z")
         for bad in ({**good, "capability": "config-bundle"}, {**good, "outcome": "fine"}, {**good, "probe_id": "probe_short"},
-                    {**good, "started_at": "2026-09-27T10:00:06Z"}, {**good, "extra": 1}, {k: v for k, v in good.items() if k != "requested_by"}):
+                    {**good, "started_at": "2026-09-27T10:00:06Z"}, {**good, "extra": 1}, {k: v for k, v in good.items() if k != "requested_by"},
+                    {k: v for k, v in good.items() if k != "declared_expiry"}, {**good, "declared_expiry": {"access_token": None, "id_token": None}},
+                    {**good, "declared_expiry": {"access_token": "2001-09-31T00:00:00Z", "id_token": None, "refresh_credential": False}},
+                    {**good, "declared_expiry": {"access_token": None, "id_token": None, "refresh_credential": 1}}):
             with self.subTest(bad=bad):
                 self.assertEqual(self.record(bad).get("reason"), "request_invalid")
         self.assertEqual(self.state(exclude=()), before)
@@ -286,7 +340,8 @@ class ProbeRunTest(FakeRunnerCase):
 
     def test_the_observation_is_the_router_request_and_carries_nothing_the_runner_printed(self):
         obs = self.run_probe()
-        self.assertEqual(set(obs), {"probe_id", "capability", "outcome", "detail", "started_at", "observed_at", "runner", "affected_lanes", "requested_by"})
+        self.assertEqual(set(obs), {"probe_id", "capability", "outcome", "detail", "declared_expiry", "started_at", "observed_at", "runner",
+                                    "affected_lanes", "requested_by"})
         self.assertEqual((obs["capability"], obs["runner"], obs["affected_lanes"], obs["requested_by"]),
                          (CAP, {"name": "codex", "version": "0.153.2"}, ["station:station-1"], "alice"))
         self.assertLess(utc_instant_ns(obs["started_at"]), utc_instant_ns(obs["observed_at"]))
@@ -391,6 +446,136 @@ class ProbeRunTest(FakeRunnerCase):
                          ("unusable_credential", "the runner cannot parse the credential"))  # the permission text is the line's end, nowhere else
 
 
+class DeclaredExpiryTest(FakeRunnerCase):
+    """What the credential declares of its own expiry, read beside the
+    runner's verdict (probe.py, task 1f-repair). The fake runner answers
+    "Logged in using ChatGPT" unless a test says otherwise."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.behave(stderr="Logged in using ChatGPT\n")
+
+    def credential(self, value: object, name: str = "auth.json") -> None:
+        (self.home / name).write_text(json.dumps(value))
+
+    def test_an_access_token_declared_expired_is_declared_expired_labeled_as_its_own_claim(self):
+        for refresh, present in (("rt-REFRESHPART", "present"), ("", "absent")):
+            with self.subTest(refresh=refresh):
+                self.credential(chatgpt(EXP_2001, EXP_2001, refresh=refresh))
+                obs = self.run_probe()
+                self.assertEqual((obs["outcome"], obs["detail"], obs["declared_expiry"]), (
+                    "declared_expired", "the runner reads the credential, but its access token declares it expired at 2001-09-09T01:46:40Z: "
+                                        f"the credential's own claim, not the provider's answer; a refresh credential is {present}",
+                    {"access_token": "2001-09-09T01:46:40Z", "id_token": "2001-09-09T01:46:40Z", "refresh_credential": refresh != ""}))
+                text = json.dumps(obs)
+                for part in ("UNSIGNEDSIG", "REFRESHPART", "example.invalid", jwt({"exp": EXP_2001, "email": "t@example.invalid"}).split(".")[1]):
+                    self.assertNotIn(part, text)  # the instants leave; no byte of a token does
+
+    def test_only_the_access_token_decides_and_the_id_token_is_recorded(self):
+        cases = [  # (access, id_token) -> (outcome, declared access, declared id)
+            ((EXP_2100, EXP_2001), ("usable", "2100-01-01T00:00:00Z", "2001-09-09T01:46:40Z")),
+            (("opaque-access", EXP_2001), ("usable", None, "2001-09-09T01:46:40Z")),
+            ((EXP_2001, "opaque-id"), ("declared_expired", "2001-09-09T01:46:40Z", None)),
+            ((EXP_2100, EXP_2100), ("usable", "2100-01-01T00:00:00Z", "2100-01-01T00:00:00Z")),
+        ]
+        for (access, id_token), (outcome, declared_access, declared_id) in cases:
+            with self.subTest(access=access, id_token=id_token):
+                self.credential(chatgpt(access, id_token))
+                obs = self.run_probe()
+                self.assertEqual((obs["outcome"], obs["declared_expiry"]),
+                                 (outcome, {"access_token": declared_access, "id_token": declared_id, "refresh_credential": True}))
+                if outcome == "usable":
+                    self.assertEqual(obs["detail"], "the runner reads a credential (ChatGPT tokens)")
+
+    def test_a_credential_that_declares_no_expiry_rests_on_the_runner_verdict(self):
+        nothing = {"access_token": None, "id_token": None, "refresh_credential": False}
+        cases = [  # (auth.json, the runner's line): codex uses an API key string over its tokens, an empty one too ((e), AUTH-DEMO.md)
+            ({"OPENAI_API_KEY": "sk-KEYPART"}, KEY_LINE), (chatgpt(EXP_2001, EXP_2001, key="sk-KEYPART"), KEY_LINE),
+            (chatgpt(EXP_2001, EXP_2001, key=""), KEY_LINE), ({}, "Logged in using ChatGPT\n")]
+        for value, line in cases:
+            with self.subTest(value=value):
+                self.behave(stderr=line)
+                self.credential(value)
+                obs = self.run_probe()
+                self.assertEqual((obs["outcome"], obs["declared_expiry"]), ("usable", nothing))
+
+    def test_the_access_expiry_decides_at_or_before_the_observation(self):
+        epoch = utc_instant_ns("2026-09-27T10:00:00Z") // 10**9
+        cases = [(epoch, "declared_expired", "2026-09-27T10:00:00Z"), (epoch + 1, "usable", "2026-09-27T10:00:01Z"),
+                 (epoch + 0.5, "usable", "2026-09-27T10:00:01Z"), (epoch - 0.5, "declared_expired", "2026-09-27T10:00:00Z")]
+        for exp, outcome, declared in cases:  # observed at 10:00:00.000Z exactly: the clock's second reading from 09:59:59.998Z
+            with self.subTest(exp=exp):
+                self.clock.set("2026-09-27T09:59:59.998Z")
+                self.credential(chatgpt(exp, EXP_2100))
+                obs = self.run_probe()
+                self.assertEqual((obs["observed_at"], obs["outcome"], obs["declared_expiry"]["access_token"]),
+                                 ("2026-09-27T10:00:00.000Z", outcome, declared))
+
+    def test_a_credential_file_not_to_read_declares_nothing(self):
+        target = self.root / "elsewhere.json"
+        target.write_text(json.dumps(chatgpt(EXP_2001, EXP_2001)))
+        cases = {  # each in an auth home of its own; the fake runner answers usable whatever is there
+            "a link": lambda path: path.symlink_to(target),
+            "past the size bound": lambda path: path.write_text(json.dumps(chatgpt(EXP_2001, EXP_2001)) + " " * probe.MAX_CREDENTIAL),
+            "not JSON": lambda path: path.write_text("{not json"),
+            "absent": lambda path: None,
+            "unreadable": lambda path: (path.write_text(json.dumps(chatgpt(EXP_2001, EXP_2001))), path.chmod(0o000)),
+        }
+        for name, make in cases.items():
+            with self.subTest(case=name):
+                root = self.root / name.replace(" ", "-")
+                (root / "codex").mkdir(parents=True, mode=0o700)
+                (root / "codex" / "behaviour.json").write_text(json.dumps({"stderr": "Logged in using ChatGPT\n"}))
+                make(root / "codex" / "auth.json")
+                obs = self.run_probe(auth_root=root)
+                self.assertEqual((obs["outcome"], obs["declared_expiry"]), ("usable", None))
+
+    def test_nothing_is_read_when_the_runner_does_not_read_the_credential_as_usable(self):
+        self.credential(chatgpt(EXP_2001, EXP_2001))
+        for behaviour, outcome in (({"stderr": "Not logged in\n", "code": 1}, "unusable_credential"),
+                                   ({"stderr": "Error checking login status: missing field `refresh_token`\n", "code": 1}, "unusable_credential"),
+                                   ({"stderr": "Logged in using ChatGPT\n", "code": 2}, "runner_error")):
+            with self.subTest(behaviour=behaviour):
+                self.behave(**behaviour)
+                obs = self.run_probe()
+                self.assertEqual((obs["outcome"], obs["declared_expiry"]), (outcome, None))  # a runner's rejection stands: never made merely degraded
+
+    def test_a_claude_format_is_read_for_its_expires_at(self):
+        claude = Runner("codex", "0.153.2", ("codex", "--version"), "codex-cli 0.153.2\n", ("codex", "login", "status"), "CODEX_HOME", codex_status,
+                        ".credentials.json", claude_declared)  # the fake runner, answering as codex; the file read the way a claude runner's is
+        self.credential({"claudeAiOauth": {"accessToken": "sk-ant-oat-ACCESSPART", "refreshToken": "sk-ant-ort-REFRESHPART",
+                                           "expiresAt": EXP_2001 * 1000}}, ".credentials.json")
+        obs = self.run_probe(runners={"codex": claude})
+        self.assertEqual((obs["outcome"], obs["declared_expiry"]),
+                         ("declared_expired", {"access_token": "2001-09-09T01:46:40Z", "id_token": None, "refresh_credential": True}))
+        self.assertNotIn("PART", json.dumps(obs))
+
+    def test_a_claude_credential_stating_no_expiry_declares_none(self):
+        claude = Runner("codex", "0.153.2", ("codex", "--version"), "codex-cli 0.153.2\n", ("codex", "login", "status"), "CODEX_HOME", codex_status,
+                        ".credentials.json", claude_declared)
+        self.credential({"claudeAiOauth": {"accessToken": "sk-ant-oat-ACCESSPART", "refreshToken": "sk-ant-ort-REFRESHPART"}}, ".credentials.json")
+        obs = self.run_probe(runners={"codex": claude})
+        self.assertEqual((obs["outcome"], obs["declared_expiry"]), ("usable", {"access_token": None, "id_token": None, "refresh_credential": True}))
+
+    def test_the_readers_alone(self):
+        self.assertEqual(jwt_exp(jwt({"exp": EXP_2001})), "2001-09-09T01:46:40Z")
+        for token in (jwt({"exp": True}), jwt({"exp": "1000000000"}), jwt({"exp": -1}), jwt({"exp": 253402300800}), jwt({"exp": 10**30}),
+                      jwt({"iat": EXP_2001}), jwt([EXP_2001]), jwt({"exp": EXP_2001}) + ".a.b", "a.%%%.c", "a." + "W" * 10 + ".c", "a.b", None, 7):
+            with self.subTest(token=token):
+                self.assertIsNone(jwt_exp(token))
+        self.assertEqual(jwt_exp("x." + base64.urlsafe_b64encode(b'{"exp": NaN}').decode() + ".y"), None)  # Python's json reads NaN
+        self.assertEqual((epoch_instant(EXP_2001 + 0.25), epoch_instant(253402300799), epoch_instant(0)),
+                         ("2001-09-09T01:46:41Z", "9999-12-31T23:59:59Z", "1970-01-01T00:00:00Z"))
+        self.assertEqual(codex_declared([]), {"access_token": None, "id_token": None, "refresh_credential": False})
+        self.assertEqual(codex_declared({"tokens": {"access_token": jwt({"exp": EXP_2001}), "refresh_token": "r"}}),
+                         {"access_token": "2001-09-09T01:46:40Z", "id_token": None, "refresh_credential": True})
+        for ms, instant in ((EXP_2001 * 1000, "2001-09-09T01:46:40Z"), (EXP_2001 * 1000 + 1, "2001-09-09T01:46:41Z"), (True, None),
+                            ("1000000000000", None), (10**400, None), (float("inf"), None)):
+            with self.subTest(expires_at=ms):
+                self.assertEqual(claude_declared({"claudeAiOauth": {"expiresAt": ms, "refreshToken": ""}}),
+                                 {"access_token": instant, "id_token": None, "refresh_credential": False})
+
+
 class StationProbeTest(FakeRunnerCase):
     """The composition root's probe (gen2/app/station.py): its timeout is the
     mounted bundle's supervisor policy (G-10), and it records through the router."""
@@ -447,6 +632,21 @@ class EngineProbeTest(of.OperatorTestCase):
                          [("hold", reply["hold"]["hold_id"], "capability", "operator", reply["fact"]["fact_id"])])
         [fact] = [f for f in status["capability_facts"] if f["capability"] == CAP]
         self.assertEqual((fact["fact_id"], fact["state"], fact["since"]), (reply["fact"]["fact_id"], "failing", reply["observed_at"]))
+
+    def test_a_declared_expired_credential_is_a_degraded_fact_and_a_hold_in_status(self):
+        (self.home / "behaviour.json").write_text(json.dumps({"stderr": "Logged in using ChatGPT\n"}))
+        (self.home / "auth.json").write_text(json.dumps(chatgpt(EXP_2001, EXP_2001)))
+        code, reply, _ = self.http("POST", "/v1/commands/probe_capability", {"provider": "codex"})
+        self.assertEqual((code, reply["status"], reply["outcome"], reply["fact"]["state"], reply["hold"] and reply["hold"]["opened"]),
+                         (200, "recorded", "declared_expired", "degraded", True), reply)
+        self.assertEqual(reply["declared_expiry"], {"access_token": "2001-09-09T01:46:40Z", "id_token": "2001-09-09T01:46:40Z", "refresh_credential": True})
+        code, status, _ = self.http("GET", "/v1/status")
+        [fact] = [f for f in status["capability_facts"] if f["capability"] == CAP]
+        self.assertEqual((fact["fact_id"], fact["state"]), (reply["fact"]["fact_id"], "degraded"))
+        self.assertTrue(fact["detail"].startswith("declared_expired: the runner reads the credential, but its access token declares it expired at "
+                                                  "2001-09-09T01:46:40Z: the credential's own claim, not the provider's answer"), fact["detail"])
+        self.assertEqual([(w["hold_id"], w["hold_class"], w["recoverability"], w["capability_fact_id"]) for w in status["waiting"]],
+                         [(reply["hold"]["hold_id"], "capability", "needs_remediation", reply["fact"]["fact_id"])])
 
     def test_who_asks_is_the_principal_and_only_an_operator_may(self):
         code, reply, _ = self.http("POST", "/v1/commands/probe_capability", {"provider": "codex", "requested_by": "mallory"})

@@ -5651,43 +5651,61 @@
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 105; or executes line 104"
+  "why": "gen2/router/capabilities.py: executes line 118; or executes line 117"
+ },
+ "1F-caps-declared-expired-healthy": {
+  "controls": [
+   "test_capability_probe.ProbeRecordTest.test_an_older_observation_is_kept_and_moves_nothing"
+  ],
+  "why": "gen2/router/capabilities.py: executes line 99"
+ },
+ "1F-caps-declared-instant-unchecked": {
+  "controls": [
+   "test_capability_probe.ProbeRecordTest.test_a_declared_expiry_is_a_degraded_fact_and_a_hold_to_remedy"
+  ],
+  "why": "gen2/router/capabilities.py: leaves line 84-86 for a line outside 84-87 (or returns), having executed line 84"
+ },
+ "1F-caps-declared-remedy-unknown": {
+  "controls": [
+   "test_capability_probe.ProbeRecordTest.test_an_unusable_credential_opens_one_typed_owned_deadlined_hold_bound_to_its_fact"
+  ],
+  "why": "gen2/router/capabilities.py: executes line 124 (else 122); or executes line 119"
  },
  "1F-caps-every-observation-a-transition": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 92"
+  "why": "gen2/router/capabilities.py: executes line 105"
  },
  "1F-caps-hold-on-transition-only": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 104"
+  "why": "gen2/router/capabilities.py: executes line 117"
  },
  "1F-caps-hold-router-authority": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_a_runner_error_is_an_unknown_fact_and_a_hold_whose_remedy_is_unknown"
   ],
-  "why": "gen2/router/capabilities.py: executes line 112 (else 109); or executes line 106"
+  "why": "gen2/router/capabilities.py: executes line 125 (else 122); or executes line 119"
  },
  "1F-caps-no-last-success": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 100 (else 98); or executes line 93"
+  "why": "gen2/router/capabilities.py: executes line 113 (else 111); or executes line 106"
  },
  "1F-caps-older-applied": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 90"
+  "why": "gen2/router/capabilities.py: executes line 103"
  },
  "1F-caps-order-unchecked": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: leaves line 73 for a line outside 73-74 (or returns)"
+  "why": "gen2/router/capabilities.py: leaves line 82 for a line outside 82-83 (or returns)"
  },
  "1F-caps-replay-unchecked": {
   "by_hand": true,
@@ -5700,7 +5718,7 @@
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 86"
+  "why": "gen2/router/capabilities.py: executes line 99"
  },
  "1F-eng-probe-on-owner": {
   "controls": [
@@ -5723,65 +5741,148 @@
   ],
   "why": "gen2/operator/status.py: executes line 60 (else 58)"
  },
+ "1F-prb-claude-milliseconds-as-seconds": {
+  "by_hand": true,
+  "controls": [
+   "test_capability_probe.DeclaredExpiryTest.test_a_claude_credential_stating_no_expiry_declares_none"
+  ],
+  "why": "executes gen2/supervisor/probe.py claude_declared's changed line on its accepted path for a credential stating no expiresAt (the conditional's else: the changed conversion itself is evaluated only by the killers) and asserts it declares no expiry and notes the refresh token"
+ },
+ "1F-prb-declared-bool-seconds": {
+  "controls": [
+   "test_capability_probe.DeclaredExpiryTest.test_a_claude_format_is_read_for_its_expires_at"
+  ],
+  "why": "gen2/supervisor/probe.py: executes line 118"
+ },
+ "1F-prb-declared-boundary-after": {
+  "controls": [
+   "test_capability_probe.DeclaredExpiryTest.test_a_claude_format_is_read_for_its_expires_at"
+  ],
+  "why": "gen2/supervisor/probe.py: executes line 162"
+ },
+ "1F-prb-declared-empty-refresh": {
+  "controls": [
+   "test_capability_probe.DeclaredExpiryTest.test_the_access_expiry_decides_at_or_before_the_observation"
+  ],
+  "why": "gen2/supervisor/probe.py: executes line 144 (else 143)"
+ },
+ "1F-prb-declared-fraction-down": {
+  "controls": [
+   "test_capability_probe.DeclaredExpiryTest.test_a_claude_format_is_read_for_its_expires_at"
+  ],
+  "why": "gen2/supervisor/probe.py: executes line 120"
+ },
+ "1F-prb-declared-id-token-decides": {
+  "controls": [
+   "test_capability_probe.DeclaredExpiryTest.test_an_access_token_declared_expired_is_declared_expired_labeled_as_its_own_claim"
+  ],
+  "rejected": [
+   "test_capability_probe.DeclaredExpiryTest.test_a_claude_format_is_read_for_its_expires_at",
+   "test_capability_probe.DeclaredExpiryTest.test_the_access_expiry_decides_at_or_before_the_observation"
+  ],
+  "why": "gen2/supervisor/probe.py: executes line 162"
+ },
+ "1F-prb-declared-key-mode-ignored": {
+  "controls": [
+   "test_capability_probe.DeclaredExpiryTest.test_an_access_token_declared_expired_is_declared_expired_labeled_as_its_own_claim"
+  ],
+  "why": "gen2/supervisor/probe.py: executes line 142"
+ },
+ "1F-prb-declared-link-followed": {
+  "controls": [
+   "test_capability_probe.DeclaredExpiryTest.test_a_claude_format_is_read_for_its_expires_at"
+  ],
+  "why": "gen2/supervisor/probe.py: executes line 230"
+ },
+ "1F-prb-declared-over-rejection": {
+  "controls": [
+   "test_capability_probe.DeclaredExpiryTest.test_a_claude_format_is_read_for_its_expires_at"
+  ],
+  "why": "gen2/supervisor/probe.py: executes line 196"
+ },
+ "1F-prb-declared-range-unchecked": {
+  "controls": [
+   "test_capability_probe.DeclaredExpiryTest.test_a_claude_format_is_read_for_its_expires_at"
+  ],
+  "why": "gen2/supervisor/probe.py: executes line 118"
+ },
+ "1F-prb-declared-size-unbounded": {
+  "controls": [
+   "test_capability_probe.DeclaredExpiryTest.test_a_claude_format_is_read_for_its_expires_at"
+  ],
+  "why": "gen2/supervisor/probe.py: executes line 233; or executes line 234"
+ },
+ "1F-prb-declared-unread": {
+  "controls": [
+   "test_capability_probe.EngineProbeTest.test_the_operator_probe_is_recorded_and_status_shows_the_fact_and_the_hold"
+  ],
+  "rejected": [
+   "test_capability_probe.DeclaredExpiryTest.test_a_claude_format_is_read_for_its_expires_at",
+   "test_capability_probe.DeclaredExpiryTest.test_a_credential_that_declares_no_expiry_rests_on_the_runner_verdict",
+   "test_capability_probe.DeclaredExpiryTest.test_only_the_access_token_decides_and_the_id_token_is_recorded",
+   "test_capability_probe.DeclaredExpiryTest.test_the_access_expiry_decides_at_or_before_the_observation"
+  ],
+  "why": "gen2/supervisor/probe.py: executes line 196"
+ },
  "1F-prb-detail-echoes-output": {
   "controls": [
-   "test_capability_probe.ProbeRunTest.test_a_record_given_to_the_run_is_used_instead_of_the_probe_own"
+   "test_capability_probe.DeclaredExpiryTest.test_a_claude_format_is_read_for_its_expires_at"
   ],
-  "why": "gen2/supervisor/probe.py: executes line 75; or executes line 74"
+  "why": "gen2/supervisor/probe.py: executes line 105; or executes line 104"
  },
  "1F-prb-environment-inherited": {
   "controls": [
-   "test_capability_probe.ProbeRunTest.test_a_record_given_to_the_run_is_used_instead_of_the_probe_own"
+   "test_capability_probe.ProbeRunTest.test_a_runner_killed_by_a_signal_is_a_runner_error"
   ],
-  "why": "gen2/supervisor/probe.py: executes line 135"
+  "why": "gen2/supervisor/probe.py: executes line 242"
  },
  "1F-prb-home-link-followed": {
   "controls": [
-   "test_capability_probe.ProbeRunTest.test_a_record_given_to_the_run_is_used_instead_of_the_probe_own"
+   "test_capability_probe.ProbeRunTest.test_a_runner_killed_by_a_signal_is_a_runner_error"
   ],
-  "why": "gen2/supervisor/probe.py: executes line 122"
+  "why": "gen2/supervisor/probe.py: executes line 209"
  },
  "1F-prb-home-mode-unchecked": {
   "controls": [
-   "test_capability_probe.ProbeRunTest.test_a_record_given_to_the_run_is_used_instead_of_the_probe_own"
+   "test_capability_probe.ProbeRunTest.test_a_runner_killed_by_a_signal_is_a_runner_error"
   ],
-  "why": "gen2/supervisor/probe.py: executes line 128"
+  "why": "gen2/supervisor/probe.py: executes line 215"
  },
  "1F-prb-home-owner-unchecked": {
   "controls": [
-   "test_capability_probe.ProbeRunTest.test_a_record_given_to_the_run_is_used_instead_of_the_probe_own"
+   "test_capability_probe.ProbeRunTest.test_a_runner_killed_by_a_signal_is_a_runner_error"
   ],
-  "why": "gen2/supervisor/probe.py: executes line 128"
+  "why": "gen2/supervisor/probe.py: executes line 215"
  },
  "1F-prb-permission-anywhere": {
   "controls": [
-   "test_capability_probe.ProbeRunTest.test_each_answer_of_the_runner_is_classified_by_its_rules"
+   "test_capability_probe.DeclaredExpiryTest.test_nothing_is_read_when_the_runner_does_not_read_the_credential_as_usable"
   ],
-  "why": "gen2/supervisor/probe.py: executes line 79"
+  "why": "gen2/supervisor/probe.py: executes line 109"
  },
  "1F-prb-stdout-unchecked": {
   "controls": [
    "test_capability_probe.ProbeRunTest.test_the_codex_rules_alone"
   ],
-  "why": "gen2/supervisor/probe.py: executes line 72"
+  "why": "gen2/supervisor/probe.py: executes line 102"
  },
  "1F-prb-timeout-process-only": {
   "controls": [
    "test_capability_probe.StationProbeTest.test_the_probe_timeout_is_the_bundle_policy_and_the_record_is_the_router_own"
   ],
-  "why": "gen2/supervisor/probe.py: executes line 160"
+  "why": "gen2/supervisor/probe.py: executes line 267"
  },
  "1F-prb-version-unchecked": {
   "controls": [
-   "test_capability_probe.ProbeRunTest.test_a_record_given_to_the_run_is_used_instead_of_the_probe_own"
+   "test_capability_probe.ProbeRunTest.test_a_runner_killed_by_a_signal_is_a_runner_error"
   ],
-  "why": "gen2/supervisor/probe.py: executes line 140"
+  "why": "gen2/supervisor/probe.py: executes line 247"
  },
  "1F-prb-workspace-kept": {
   "controls": [
-   "test_capability_probe.ProbeRunTest.test_a_record_given_to_the_run_is_used_instead_of_the_probe_own"
+   "test_capability_probe.ProbeRunTest.test_a_runner_killed_by_a_signal_is_a_runner_error"
   ],
-  "why": "gen2/supervisor/probe.py: executes line 145"
+  "why": "gen2/supervisor/probe.py: executes line 252"
  },
  "1F-rst-topic-holds-engine-wide": {
   "controls": [

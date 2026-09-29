@@ -267,6 +267,7 @@ ORR, OCF = "test_operator_recovery.ResearchPassReplacedRecoveryTest.", "test_ope
 # task 1f: capability probes
 CAPS, PRB = "gen2/router/capabilities.py", "gen2/supervisor/probe.py"
 CPR, CPN, CPE = "test_capability_probe.ProbeRecordTest.", "test_capability_probe.ProbeRunTest.", "test_capability_probe.EngineProbeTest."
+CPD = "test_capability_probe.DeclaredExpiryTest."
 RECEIPT = "gen2/schema/export-delivery-receipt.schema.json"
 MANIFEST = "gen2/schema/export-manifest.schema.json"
 ENVELOPE = "gen2/schema/freshness-envelope.schema.json"
@@ -4188,6 +4189,61 @@ MUTATIONS: list[Mutation] = [
           ("prb-permission-anywhere", "a permission error named anywhere in the line reads as unreadable",
            (CPN + "test_the_codex_rules_alone",), PRB,
            '        if line.endswith("Permission denied (os error 13)"):\n', '        if "Permission denied (os error 13)" in line:\n'),
+      )),
+    # task 1f-repair (Astra 1f review finding 1): what the credential declares of its own expiry, read beside the runner's verdict,
+    # and its record; each guard removed alone
+    *(Mutation(f"1F-{key}", "1f-repair", desc, tuple(killers), target=target, old=old, new=new)
+      for key, desc, killers, target, old, new in (
+          ("prb-declared-unread", "the credential's declared expiry is never read: an access token declared expired reads usable",
+           (CPD + "test_an_access_token_declared_expired_is_declared_expired_labeled_as_its_own_claim",
+            CPE + "test_a_declared_expired_credential_is_a_degraded_fact_and_a_hold_in_status"), PRB,
+           '        declared = self._declared(runner, home) if outcome == "usable" else None\n', "        declared = None\n"),
+          ("prb-declared-over-rejection", "the declared expiry is read whatever the runner said: a rejected credential is recorded merely degraded",
+           (CPD + "test_nothing_is_read_when_the_runner_does_not_read_the_credential_as_usable",), PRB,
+           '        declared = self._declared(runner, home) if outcome == "usable" else None\n',
+           "        declared = self._declared(runner, home)\n"),
+          ("prb-declared-id-token-decides", "the ID token's declared expiry decides, not the access token's",
+           (CPD + "test_only_the_access_token_decides_and_the_id_token_is_recorded",), PRB,
+           '    if declared is None or declared["access_token"] is None or utc_instant_ns(declared["access_token"]) > utc_instant_ns(observed):\n',
+           '    if declared is None or declared["id_token"] is None or utc_instant_ns(declared["id_token"]) > utc_instant_ns(observed):\n'),
+          ("prb-declared-boundary-after", "a token is expired only after its declared instant, not at it (RFC 7519: on or after)",
+           (CPD + "test_the_access_expiry_decides_at_or_before_the_observation",), PRB,
+           ' > utc_instant_ns(observed):\n', ' >= utc_instant_ns(observed):\n'),
+          ("prb-declared-fraction-down", "a declared instant's fraction is dropped: the declared expiry is made earlier",
+           (CPD + "test_the_access_expiry_decides_at_or_before_the_observation", CPD + "test_the_readers_alone"), PRB,
+           "time.gmtime(math.ceil(seconds))", "time.gmtime(int(seconds))"),
+          ("prb-declared-key-mode-ignored", "codex's tokens are read though an API key is the credential it uses",
+           (CPD + "test_a_credential_that_declares_no_expiry_rests_on_the_runner_verdict",), PRB,
+           'if not isinstance(auth.get("OPENAI_API_KEY"), str) and isinstance(auth.get("tokens"), dict)', 'if isinstance(auth.get("tokens"), dict)'),
+          ("prb-declared-link-followed", "a link standing for the credential file is followed for its declared expiry",
+           (CPD + "test_a_credential_file_not_to_read_declares_nothing",), PRB,
+           "os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK", "os.O_RDONLY | os.O_NONBLOCK"),
+          ("prb-declared-size-unbounded", "a credential file past the size bound is read whole",
+           (CPD + "test_a_credential_file_not_to_read_declares_nothing",), PRB,
+           "            if len(data) > MAX_CREDENTIAL:\n                return None\n", ""),
+          ("prb-declared-empty-refresh", "an empty refresh token counts as a refresh credential",
+           (CPD + "test_an_access_token_declared_expired_is_declared_expired_labeled_as_its_own_claim",), PRB,
+           ' and tokens["refresh_token"] != ""}', "}"),
+          ("prb-declared-bool-seconds", "a boolean reads as a number of seconds (true: 1970-01-01T00:00:01Z)",
+           (CPD + "test_the_readers_alone",), PRB,
+           "    if isinstance(seconds, bool) or not isinstance(seconds, (int, float))", "    if not isinstance(seconds, (int, float))"),
+          ("prb-declared-range-unchecked", "a declared instant outside 1970..9999 is converted anyway",
+           (CPD + "test_the_readers_alone",), PRB,
+           " or not 0 <= seconds <= LAST_SECOND:\n", ":\n"),
+          ("prb-claude-milliseconds-as-seconds", "claude's expiresAt is read as seconds, not milliseconds",
+           (CPD + "test_a_claude_format_is_read_for_its_expires_at", CPD + "test_the_readers_alone"), PRB,
+           "epoch_instant(-(-ms // 1000))", "epoch_instant(ms)"),
+          ("caps-declared-expired-healthy", "a declared-expired observation records the capability healthy (no hold)",
+           (CPR + "test_a_declared_expiry_is_a_degraded_fact_and_a_hold_to_remedy",
+            CPE + "test_a_declared_expired_credential_is_a_degraded_fact_and_a_hold_in_status"), CAPS,
+           '"declared_expired": "degraded",', '"declared_expired": "healthy",'),
+          ("caps-declared-remedy-unknown", "a declared-expired credential's hold says its remedy is unknown",
+           (CPR + "test_a_declared_expiry_is_a_degraded_fact_and_a_hold_to_remedy",
+            CPE + "test_a_declared_expired_credential_is_a_degraded_fact_and_a_hold_in_status"), CAPS,
+           'if req["outcome"] in ("unusable_credential", "declared_expired") else "unknown"', 'if req["outcome"] == "unusable_credential" else "unknown"'),
+          ("caps-declared-instant-unchecked", "a declared_expired observation naming no passed access expiry is recorded",
+           (CPR + "test_a_declared_expired_observation_names_its_access_expiry_at_or_before_it_was_observed",), CAPS,
+           '            if req["outcome"] == "declared_expired" and not (\n', "            if False and not (\n"),
       )),
 ]
 

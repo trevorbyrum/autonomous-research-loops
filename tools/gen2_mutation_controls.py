@@ -155,6 +155,12 @@ _ROUTER_GRAPH = ("test_check_boundaries.BoundaryCheckerTest.test_store_writes_ar
                  _REAL_GRAPH + " (the router's reach to the store's write primitives)")
 _ORDER = "the tool's own test; no other test calls compare()"
 MANUAL: dict[str, dict] = {
+    # task 1f-repair: only the killers reach claude_declared in the trace; its accepted case with no expiresAt was split out, added after the trace
+    "1F-prb-claude-milliseconds-as-seconds": {
+        "controls": ["test_capability_probe.DeclaredExpiryTest.test_a_claude_credential_stating_no_expiry_declares_none"],
+        "why": "executes gen2/supervisor/probe.py claude_declared's changed line on its accepted path for a credential stating no expiresAt "
+               "(the conditional's else: the changed conversion itself is evaluated only by the killers) and asserts it declares no expiry "
+               "and notes the refresh token"},
     # task 1f: only the killer replays a recorded probe in the traced suite; the accepted replay is split out into a test of its own
     "1F-caps-replay-unchecked": {"controls": ["test_capability_probe.ProbeRecordTest.test_a_lost_reply_is_answered_again_from_the_record"],
                                  "why": "the identical observation's replay is the accepted path through the conflict check (capabilities.py): "
