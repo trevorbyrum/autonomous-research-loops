@@ -189,6 +189,12 @@ class TopicTest(Workflow):
         self.assertEqual(self.router.create_topic({"topic_id": NEW, "priority": 3}), {"status": "replayed", "topic_id": NEW})
         self.assertEqual(self.state(), before)
 
+    def test_each_topic_takes_its_own_ids_fleet(self) -> None:
+        """A second topic of the seeded fleet: its fleet is its own prefix, not another topic's."""
+        self.assertEqual(self.router.create_topic({"topic_id": "fleet-a:t3", "priority": 2})["status"], "created")
+        self.assertEqual(self.rows("SELECT fleet_id, status, state_revision FROM queue_entries WHERE topic_id = 'fleet-a:t3'"),
+                         [("fleet-a", "awaiting_brief_confirmation", 0)])
+
     def test_another_request_under_a_topic_id_is_a_conflict(self) -> None:
         self.router.create_topic({"topic_id": NEW, "priority": 3})
         before = self.state()

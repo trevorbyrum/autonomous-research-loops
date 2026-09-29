@@ -155,6 +155,17 @@ _ROUTER_GRAPH = ("test_check_boundaries.BoundaryCheckerTest.test_store_writes_ar
                  _REAL_GRAPH + " (the router's reach to the store's write primitives)")
 _ORDER = "the tool's own test; no other test calls compare()"
 MANUAL: dict[str, dict] = {
+    # task 2a: the signal command's schema is a module constant read when the Router builds its SchemaSet, not by a traced line of
+    # the request's path; the accepted request validates against the changed enum
+    **{mid: {"controls": ["test_router_workflow.SignalTest.test_a_signal_is_queued_pending_and_opens_its_review"],
+             "why": "validates an accepted retraction from code policy against the signal command's schema (gen2/router/scheduling.py "
+                    "SCHEDULING_COMMANDS, whose enum the mutant widens) and records it: the widened schema still accepts it"}
+       for mid in ("2A-signal-discretionary", "2A-signal-model-source")},
+    # task 2a: every traced creation is of a topic outside fleet-a, which the mutant (a fixed fleet-a) breaks; the accepted creation of a
+    # fleet-a topic was written as a test of its own, added after the trace
+    "2A-topic-fleet-fixed": {"controls": ["test_router_workflow.TopicTest.test_each_topic_takes_its_own_ids_fleet"],
+                             "why": "executes gen2/router/scheduling.py's queue insert (the changed fleet_id) for fleet-a:t3, whose fleet the mutant "
+                                    "also names, and asserts the row: the mutant leaves that creation working"},
     # task 1f-repair: only the killers reach claude_declared in the trace; its accepted case with no expiresAt was split out, added after the trace
     "1F-prb-claude-milliseconds-as-seconds": {
         "controls": ["test_capability_probe.DeclaredExpiryTest.test_a_claude_credential_stating_no_expiry_declares_none"],
