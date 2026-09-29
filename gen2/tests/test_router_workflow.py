@@ -193,7 +193,7 @@ class TopicTest(Workflow):
         self.router.create_topic({"topic_id": NEW, "priority": 3})
         before = self.state()
         out = self.router.create_topic({"topic_id": NEW, "priority": 4})
-        self.assertEqual((out["status"], out["reason"]), ("refused", "topic_conflict"), out)
+        self.assertEqual((out["status"], out.get("reason")), ("refused", "topic_conflict"), out)
         self.assertEqual(self.state(), before)
 
     def test_a_replay_is_answered_whatever_the_topic_has_done_since(self) -> None:
@@ -210,7 +210,7 @@ class TopicTest(Workflow):
             with self.subTest(label):
                 before = self.state()
                 out = self.router.create_topic(request)
-                self.assertEqual((out["status"], out["reason"]), ("refused", "request_invalid"), out)
+                self.assertEqual((out["status"], out.get("reason")), ("refused", "request_invalid"), out)
                 self.assertEqual(self.state(), before)
 
 
@@ -241,13 +241,13 @@ class BriefIntakeTest(Workflow):
         self.open_brief()
         before = self.state()
         out = self.router.open_brief({"document": self.brief_document(version=2), "owner_operator_id": "user", "review_deadline": REVIEW_BY})
-        self.assertEqual((out["status"], out["reason"]), ("refused", "brief_exists"), out)
+        self.assertEqual((out["status"], out.get("reason")), ("refused", "brief_exists"), out)
         self.assertEqual(self.state(), before)
 
     def test_version_brief_writes_no_first_version(self) -> None:
         before = self.state()
         out = self.router.version_brief({"document": self.brief_document(), "owner_operator_id": "user", "review_deadline": REVIEW_BY})
-        self.assertEqual((out["status"], out["reason"]), ("refused", "unknown_brief"), out)
+        self.assertEqual((out["status"], out.get("reason")), ("refused", "unknown_brief"), out)
         self.assertEqual(self.state(), before)
 
     def test_each_defect_is_refused_alone(self) -> None:
@@ -268,8 +268,8 @@ class BriefIntakeTest(Workflow):
             with self.subTest(label):
                 before = self.state()
                 out = self.router.open_brief({"owner_operator_id": "user", "review_deadline": REVIEW_BY, **request})
-                self.assertEqual((out["status"], out["reason"]), ("refused", reason), out)
-                self.assertIn(detail, out["detail"])
+                self.assertEqual((out["status"], out.get("reason")), ("refused", reason), out)
+                self.assertIn(detail, out.get("detail", ""))
                 self.assertEqual(self.state(), before)
 
 
@@ -305,6 +305,20 @@ class ContractDraftTest(Workflow):
         self.assertEqual(self.rows("SELECT revision, status, approved_by_decision_id FROM contract_revisions WHERE topic_id = ? ORDER BY revision", TOPIC),
                          [(1, "draft", None), (2, "approved", "opd_cntrt102")])
 
+    def test_a_first_approval_is_the_s3_hand_off(self) -> None:
+        """A topic's first approval moves it awaiting_contract_approval ->
+        queued, and only that: approved while still scoping, it would hold an
+        approved contract no work can be claimed under."""
+        r2 = self.rated_drafts()
+        before = self.state()
+        out = self.approve(r2)
+        self.assertEqual((out["status"], out.get("reason")), ("rejected", "decision_refused"), out)
+        self.assertIn("the topic is scoping; this decision moves it only from ['awaiting_contract_approval'", out.get("detail", ""))
+        self.assertEqual(self.state(), before)
+        self.scope_approved()
+        self.assertEqual(self.approve(r2)["status"], "applied")
+        self.assertEqual(self.status(), "queued")
+
     def test_an_unrated_draft_is_not_approved(self) -> None:
         """G-2/G-3: approval needs every facet operator-rated."""
         self.open_brief()
@@ -314,8 +328,8 @@ class ContractDraftTest(Workflow):
         self.scope_approved()
         before = self.state()
         out = self.approve(r1)
-        self.assertEqual((out["status"], out["reason"]), ("rejected", "decision_refused"), out)
-        self.assertIn("every facet operator-rated", out["detail"])
+        self.assertEqual((out["status"], out.get("reason")), ("rejected", "decision_refused"), out)
+        self.assertIn("every facet operator-rated", out.get("detail", ""))
         self.assertEqual(self.state(), before)
 
     def test_an_uncovered_critical_facet_blocks_approval_and_covering_it_lifts_the_block(self) -> None:
@@ -332,8 +346,8 @@ class ContractDraftTest(Workflow):
         self.scope_approved()
         before = self.state()
         out = self.approve(bare)
-        self.assertEqual((out["status"], out["reason"]), ("rejected", "decision_refused"), out)
-        self.assertIn("no uncovered critical facet (G-3)", out["detail"])
+        self.assertEqual((out["status"], out.get("reason")), ("rejected", "decision_refused"), out)
+        self.assertIn("no uncovered critical facet (G-3)", out.get("detail", ""))
         self.assertEqual(self.state(), before)
         covered = contract(3, 2)
         self.assertEqual(self.draft(covered)["status"], "recorded")
@@ -350,16 +364,16 @@ class ContractDraftTest(Workflow):
         with self.subTest("a first draft carrying a rating: no draft was rated before it"):
             before = self.state()
             out = self.draft(contract(1, None))
-            self.assertEqual((out["status"], out["reason"]), ("refused", "request_invalid"), out)
-            self.assertIn("exactly what the operator rated", out["detail"])
+            self.assertEqual((out["status"], out.get("reason")), ("refused", "request_invalid"), out)
+            self.assertIn("exactly what the operator rated", out.get("detail", ""))
             self.assertEqual(self.state(), before)
         self.draft(contract(1, None, rated=False))
         self.rate(contract(2, 1))
         with self.subTest("a band and score the operator did not give"):
             before = self.state()
             out = self.draft(contract(2, 1, edit=rerated))
-            self.assertEqual((out["status"], out["reason"]), ("refused", "request_invalid"), out)
-            self.assertIn("exactly what the operator rated", out["detail"])
+            self.assertEqual((out["status"], out.get("reason")), ("refused", "request_invalid"), out)
+            self.assertIn("exactly what the operator rated", out.get("detail", ""))
             self.assertEqual(self.state(), before)
         self.assertEqual(self.draft(contract(2, 1))["status"], "recorded")
 
@@ -368,7 +382,7 @@ class ContractDraftTest(Workflow):
             doc["facet_map"]["analytic_framework"]["links"][0]["key_question"] = "Which facets does intake design cause to be missed?"
         before = self.state()
         out = self.draft(contract(1, None, topic=OTHER, rated=False))
-        self.assertEqual((out["status"], out["reason"]), ("refused", "brief_unconfirmed"), out)  # OTHER is at intake
+        self.assertEqual((out["status"], out.get("reason")), ("refused", "brief_unconfirmed"), out)  # OTHER is at intake
         self.assertEqual(self.state(), before)
         self.open_brief()
         self.confirm()
@@ -379,8 +393,8 @@ class ContractDraftTest(Workflow):
             with self.subTest(label):
                 before = self.state()
                 out = self.draft(doc)
-                self.assertEqual((out["status"], out["reason"]), ("refused", reason), out)
-                self.assertIn(detail, out["detail"])
+                self.assertEqual((out["status"], out.get("reason")), ("refused", reason), out)
+                self.assertIn(detail, out.get("detail", ""))
                 self.assertEqual(self.state(), before)
         self.draft(contract(1, None, rated=False))
         self.rate(contract(2, 1))
@@ -392,8 +406,8 @@ class ContractDraftTest(Workflow):
             with self.subTest(label):
                 before = self.state()
                 out = self.draft(doc)
-                self.assertEqual((out["status"], out["reason"]), ("refused", reason), out)
-                self.assertIn(detail, out["detail"])
+                self.assertEqual((out["status"], out.get("reason")), ("refused", reason), out)
+                self.assertIn(detail, out.get("detail", ""))
                 self.assertEqual(self.state(), before)
         self.assertEqual(self.draft(contract(3, 2))["status"], "recorded")  # the accepted draft beside them
 
@@ -404,7 +418,7 @@ class ContractDraftTest(Workflow):
         self.rate(contract(2, 1))
         before = self.state()
         out = self.router.propose_amendment({"document": contract(2, 1)})
-        self.assertEqual((out["status"], out["reason"]), ("refused", "no_approved_contract"), out)
+        self.assertEqual((out["status"], out.get("reason")), ("refused", "no_approved_contract"), out)
         self.assertEqual(self.state(), before)
         r2 = contract(2, 1)
         self.draft(r2)
@@ -412,7 +426,7 @@ class ContractDraftTest(Workflow):
         self.approve(r2)
         before = self.state()
         out = self.draft(contract(3, 2))
-        self.assertEqual((out["status"], out["reason"]), ("refused", "contract_approved"), out)
+        self.assertEqual((out["status"], out.get("reason")), ("refused", "contract_approved"), out)
         self.assertEqual(self.state(), before)
         self.assertEqual(self.router.propose_amendment({"document": contract(3, 2)})["status"], "recorded")
 
@@ -443,7 +457,7 @@ class WorkRegistrationTest(Workflow):
         other = self.started("inv_research02", tid=OTHER)
         theirs = self.observe(other, "obs_t2search01", ("rec-1",))
         self.register(self.grant, [("doi", "10.1/x", self.events)])
-        self.assertEqual(self.register(other, [("doi", "10.1/x", theirs)])["works"][0]["work_id"], work_of("doi", "10.1/x"))
+        self.assertEqual(self.register(other, [("doi", "10.1/x", theirs)]).get("works", [{}])[0].get("work_id"), work_of("doi", "10.1/x"))
         self.assertEqual(self.value("SELECT count(*) FROM works"), 1)
         self.assertEqual(self.rows("SELECT e.topic_id, count(*) FROM record_work_links l JOIN retrieval_events e USING (event_id) GROUP BY 1 ORDER BY 1"),
                          [(TOPIC, 2), (OTHER, 1)])
@@ -451,7 +465,7 @@ class WorkRegistrationTest(Workflow):
     def test_a_recorded_identity_keeps_its_id(self) -> None:
         self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000001', 'doi', '10.1/y', '2026-09-27T09:00:00Z')")
         out = self.register(self.grant, [("doi", "10.1/y", self.events[:1])])
-        self.assertEqual((out["status"], out["works"][0]["work_id"]), ("recorded", "wrk_00000001"), out)
+        self.assertEqual((out["status"], out.get("works", [{}])[0].get("work_id")), ("recorded", "wrk_00000001"), out)
         self.assertEqual(self.value("SELECT count(*) FROM works"), 1)
 
     def test_a_record_maps_to_one_work(self) -> None:
@@ -461,7 +475,7 @@ class WorkRegistrationTest(Workflow):
             with self.subTest(label):
                 before = self.state()
                 out = self.register(self.grant, works, version)
-                self.assertEqual((out["status"], out["reason"]), ("refused", "work_link_conflict"), out)
+                self.assertEqual((out["status"], out.get("reason")), ("refused", "work_link_conflict"), out)
                 self.assertEqual(self.state(), before)
 
     def test_each_defect_is_refused_alone(self) -> None:
@@ -478,15 +492,15 @@ class WorkRegistrationTest(Workflow):
             with self.subTest(label):
                 before = self.state()
                 out = self.register(self.grant, works)
-                self.assertEqual((out["status"], out["reason"]), ("refused", reason), out)
-                self.assertIn(detail, out["detail"])
+                self.assertEqual((out["status"], out.get("reason")), ("refused", reason), out)
+                self.assertIn(detail, out.get("detail", ""))
                 self.assertEqual(self.state(), before)
 
     def refused(self, reason: str, detail: str) -> None:
         before = self.state()
         out = self.register(self.grant, [("doi", "10.1/x", self.events)])
-        self.assertEqual((out["status"], out["reason"]), ("refused", reason), out)
-        self.assertIn(detail, out["detail"])
+        self.assertEqual((out["status"], out.get("reason")), ("refused", reason), out)
+        self.assertIn(detail, out.get("detail", ""))
         self.assertEqual(self.state(), before)
 
     def test_a_paused_topic_registers_nothing(self) -> None:
@@ -630,8 +644,8 @@ class SignalTest(Workflow):
             with self.subTest(label):
                 before = self.state()
                 out = self.router.raise_signal(request)
-                self.assertEqual((out["status"], out["reason"]), ("refused", reason), out)
-                self.assertIn(detail, out["detail"])
+                self.assertEqual((out["status"], out.get("reason")), ("refused", reason), out)
+                self.assertIn(detail, out.get("detail", ""))
                 self.assertEqual(self.state(), before)
 
 
@@ -682,12 +696,12 @@ class ReviewClosureTest(Workflow):
         self.capture(self.checkpoint, "op_closure0001", claim=None, review_closures=[{"episode_id": "rev_episode0001"}])
         before = self.state()
         replay = self.router.raise_signal(signal(observed="2026-09-27T09:59:00Z"))
-        self.assertEqual((replay["status"], replay["episode_id"]), ("replayed", "rev_episode0001"))
-        self.assertIsNotNone(replay["handled_at"])
+        self.assertEqual((replay["status"], replay.get("episode_id")), ("replayed", "rev_episode0001"))
+        self.assertIsNotNone(replay.get("handled_at"))
         trigger = {"reason_code": "persistent_contradiction", "cause_ref": "clm_a vs clm_b", "source_revision": 0, "observed_at": "2026-09-27T09:59:00Z"}
         self.assertEqual(self.capture(self.research, "op_trigger0003", claim=None, review_triggers=[trigger])["receipt"]["effects"]["trigger_identities"], [])
         out = self.router.open_review({"episode_id": "rev_episode0009", "topic_id": TOPIC, "kind": "method_fit"})
-        self.assertEqual((out["status"], out["reason"]), ("refused", "no_pending_signal"), out)
+        self.assertEqual((out["status"], out.get("reason")), ("refused", "no_pending_signal"), out)
         self.assertEqual(self.rows("SELECT count(*), count(handled_at) FROM review_triggers"), [(2, 2)])
         after = self.state()
         self.assertEqual([after[t] for t in ("review_triggers", "review_episodes")], [before[t] for t in ("review_triggers", "review_episodes")])
@@ -789,7 +803,7 @@ class EndToEndTest(sf.SupervisedTestCase, Workflow):
         # the handled retraction reported again opens nothing (RG-1b(e))
         self.assertEqual(r.raise_signal(signal(wid, tid=E2E, observed="2026-09-27T09:58:00Z"))["status"], "replayed")
         refused = r.open_review({"episode_id": "rev_e2eepisode2", "topic_id": E2E, "kind": "method_fit"})
-        self.assertEqual((refused["status"], refused["reason"]), ("refused", "no_pending_signal"))
+        self.assertEqual((refused["status"], refused.get("reason")), ("refused", "no_pending_signal"))
 
     def rated_drafts_after_confirmation(self, tid: str) -> dict:
         r2 = contract(2, 1, topic=tid)

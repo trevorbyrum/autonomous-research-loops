@@ -1101,8 +1101,10 @@ class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities
         approved revision per topic). An amendment revises the approved
         revision (its parent), and a framing change is approved as a reframe
         and only a reframe (G-6, G-7). An approved amendment requeues a
-        completed topic (store README, queue status). Then G-1: the impact on
-        what was pinned to the superseded revision (amendments.py)."""
+        completed topic (store README, queue status); a topic's first
+        approval is the S3 hand-off, awaiting_contract_approval -> queued, and
+        only that (task 2a). Then G-1: the impact on what was pinned to the
+        superseded revision (amendments.py)."""
         key = {"topic_id": d["topic_id"]}
         revision = self._one("contract_revisions", {**key, "revision": d["subject_revision"]})
         previous = self._one("contract_revisions", {**key, "status": "approved"})
@@ -1115,6 +1117,7 @@ class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities
             self._store.update("contract_revisions", {**key, "revision": previous["revision"]}, {"status": "superseded"})
         self._store.update("contract_revisions", {**key, "revision": d["subject_revision"]}, {"status": "approved", "approved_by_decision_id": d["decision_id"]})
         effects = self._move(topic, now, {"awaiting_contract_approval": "queued", "completed_with_qualified_conclusions": "queued"},
+                             required=previous is None,  # task 2a: the first approval is the S3 hand-off, awaiting_contract_approval -> queued
                              active_contract_revision=d["subject_revision"], status_decision_id=None)
         effects.update(contract_approved=d["subject_revision"], contract_superseded=[] if previous is None else [previous["revision"]])
         if previous is not None:

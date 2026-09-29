@@ -7,11 +7,14 @@ through. Read-backs are plain SQL on that connection, never the router's own
 readers, so an assertion about what was written does not trust the code
 under test.
 
-World state that the router has no path for is written with raw SQL, and
-only that: topic creation, a brief's first version and a first contract
-draft (intake and contract construction are Phase 2), decision specs, and
-the scoping -> awaiting_scope_approval step (the committed scoping report is
-later work). Every test's router starts with BUNDLE activated through the
+World state is written with raw SQL where the router had no path for it
+when these fixtures were written: topic creation, a brief's first version
+and a first contract draft, decision specs, and the scoping ->
+awaiting_scope_approval step (the committed scoping report). Task 2a gave the
+router the first three (create_topic, open_brief, draft_contract); the
+suites written before it keep these fixtures as they are, and the 2a tests
+(test_router_workflow.py) use the router's paths. The scoping step and
+decision specs still have no router path. Every test's router starts with BUNDLE activated through the
 router (task 1d): CONFIG is its hash, the bundle new work pins. Everything the router does own — brief confirmation,
 scope and contract approval, claims, lifecycle facts, observations, commits,
 delivery receipts — goes through the router here, so the fixtures exercise
