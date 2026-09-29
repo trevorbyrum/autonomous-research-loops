@@ -2982,6 +2982,51 @@ BEGIN
   SELECT RAISE(ABORT, 'amendment impact records are never deleted (G-1: older revisions and decisions are preserved)');
 END;
 
+-- trace: flow S1, §6.1 (an edited brief re-versions; the contract takes it
+-- only through an approved framework diff), S3; INVARIANTS G-4, G-6, C-12;
+-- task 2a-repair-3 (Astra 2a-repair-2 review, F1-R continued: that a brief
+-- was replaced is recorded when it happens, not reconstructed from history).
+-- One permanent row per confirmed brief version that a later confirmation
+-- replaced, written by the router in the confirming decision's transaction
+-- for every version of the topic confirmed before it, of any brief id, that
+-- it does not succeed in lineage alone (amendments.py). Archiving either
+-- version, or confirming the old content again, removes nothing. After the
+-- topic's first contract approval, a revision naming a replaced version is
+-- neither proposed nor approved; one naming the newer basis incorporates it
+-- (G-6: a changed decision record is a reframe).
+CREATE TABLE brief_replacements (
+  topic_id TEXT NOT NULL,
+  brief_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  replaced_by_decision_id TEXT NOT NULL REFERENCES operator_decisions (decision_id),
+  recorded_at TEXT NOT NULL,
+  PRIMARY KEY (topic_id, brief_id, version),
+  FOREIGN KEY (topic_id, brief_id, version) REFERENCES intake_briefs (topic_id, brief_id, version)
+) STRICT;
+
+-- By the decision that confirmed the topic's confirmed version, about a
+-- version another decision confirmed: so one confirmed before it (one
+-- confirmed version per topic, and confirmed is never re-entered).
+CREATE TRIGGER brief_replacements_by_a_later_confirmation
+BEFORE INSERT ON brief_replacements
+WHEN NOT EXISTS (
+  SELECT 1 FROM intake_briefs n, intake_briefs o
+  WHERE n.topic_id = NEW.topic_id AND n.status = 'confirmed' AND n.confirmed_by_decision_id = NEW.replaced_by_decision_id
+    AND o.topic_id = NEW.topic_id AND o.brief_id = NEW.brief_id AND o.version = NEW.version
+    AND o.confirmed_by_decision_id != NEW.replaced_by_decision_id)
+BEGIN
+  SELECT RAISE(ABORT, 'a brief version is replaced only by the decision confirming a later version of its topic (G-4)');
+END;
+
+CREATE TRIGGER brief_replacements_immutable_u BEFORE UPDATE ON brief_replacements
+BEGIN
+  SELECT RAISE(ABORT, 'a brief replacement is permanent');
+END;
+CREATE TRIGGER brief_replacements_no_delete BEFORE DELETE ON brief_replacements
+BEGIN
+  SELECT RAISE(ABORT, 'brief replacements are never deleted: a replaced version stays replaced');
+END;
+
 -- G-12 (task 1d): the coalesced signal queue attaches a trigger only to a
 -- review episode of its own topic.
 CREATE TRIGGER review_triggers_episode_of_their_topic

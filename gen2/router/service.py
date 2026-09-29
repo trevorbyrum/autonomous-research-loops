@@ -1135,6 +1135,7 @@ class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities
             current = self._one("intake_briefs", {**key, "version": d["subject_revision"]})
             for row in older:  # G-1: work pinned to the version this one supersedes (amendments.py)
                 effects.update(self._record_impact(d, "brief", row, current, now))
+            self._record_replacements(d, current, now)  # task 2a-repair-3: what a contract may still name
             return effects
         if kind == "scope_approval":
             report = self._require_current_report(d)

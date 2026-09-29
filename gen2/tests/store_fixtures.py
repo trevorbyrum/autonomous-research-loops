@@ -655,6 +655,11 @@ class StoreTestCase(unittest.TestCase):
         self.decision("opd_scope_other", "scope_approval", OTHER, ref="scope-1", rev=1, hsh=report)
         proposal = self.source_proposal()
         self.decision("opd_source_other", "source_approval", OTHER, "deferred", ref="srcp_00000001", hsh=proposal)
+        # task 2a-repair-3: TOPIC's brief-1 v2 is confirmed, and v1 stays replaced
+        self.brief(TOPIC, "brief-1", 2, parent=1)
+        self.x("UPDATE intake_briefs SET status = 'superseded' WHERE topic_id = ? AND version = 1", TOPIC)
+        self.x("INSERT INTO brief_replacements (topic_id, brief_id, version, replaced_by_decision_id, recorded_at) VALUES (?, 'brief-1', 1, ?, ?)",
+               TOPIC, self.confirm_brief(TOPIC, version=2)[3], T)
 
     def delivery(self, *, receipt_overrides: dict | None = None, **row) -> None:
         """One export_delivery_receipts row: a delivered attempt of connector

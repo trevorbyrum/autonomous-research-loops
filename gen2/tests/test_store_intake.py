@@ -194,5 +194,42 @@ class IntakeBriefTest(StoreTestCase):
         self.assertEqual(self.snapshot("intake_briefs"), stored)
 
 
+class BriefReplacementTest(StoreTestCase):
+    """Task 2a-repair-3: a confirmed version is replaced by the decision that
+    confirmed a later version of its topic, and stays replaced."""
+
+    INSERT = "INSERT INTO brief_replacements (topic_id, brief_id, version, replaced_by_decision_id, recorded_at) VALUES (?, 'brief-1', ?, ?, ?)"
+
+    def test_only_the_confirmation_of_a_later_version_replaces_one(self) -> None:
+        refused = "replaced only by the decision confirming a later version"
+        own = self.confirm_brief(TOPIC)[3]
+        self.decision("opd_confirm2", "brief_confirmation", ref="brief-1", rev=2, hsh=self.brief(TOPIC, "brief-1", 2, parent=1))
+        self.rejects(refused, self.INSERT, TOPIC, 1, own, T)  # its own confirmation
+        self.rejects(refused, self.INSERT, TOPIC, 1, "opd_confirm2", T)  # a decision whose version is not confirmed
+        self.x(UPDATE.format("status = 'superseded'"), TOPIC, 1)
+        self.x(UPDATE.format("status = 'confirmed', confirmed_by_decision_id = 'opd_confirm2'"), TOPIC, 2)
+        self.decision("opd_confirm3", "brief_confirmation", ref="brief-1", rev=3, hsh=self.brief(TOPIC, "brief-1", 3, parent=2))
+        self.rejects(refused, self.INSERT, TOPIC, 3, "opd_confirm2", T)  # a version never confirmed
+        self.x(self.INSERT, TOPIC, 1, "opd_confirm2", T)
+        self.x(UPDATE.format("status = 'superseded'"), TOPIC, 2)
+        self.x(UPDATE.format("status = 'confirmed', confirmed_by_decision_id = 'opd_confirm3'"), TOPIC, 3)
+        self.rejects(refused, self.INSERT, TOPIC, 3, "opd_confirm2", T)  # by an earlier confirmation, no longer the topic's confirmed one
+        self.assertEqual(self.rows("SELECT brief_id, version, replaced_by_decision_id FROM brief_replacements"), [("brief-1", 1, "opd_confirm2")])
+
+    def test_a_replacement_is_permanent(self) -> None:
+        self.confirm_brief(TOPIC)
+        self.brief(TOPIC, "brief-1", 2, parent=1)
+        self.x(UPDATE.format("status = 'superseded'"), TOPIC, 1)
+        self.x(self.INSERT, TOPIC, 1, self.confirm_brief(TOPIC, version=2)[3], T)
+        stored = self.snapshot("brief_replacements")
+        for column, value in (("replaced_by_decision_id", "opd_brief_x"), ("recorded_at", LATER), ("version", 2)):
+            with self.subTest(column=column):
+                self.rejects("permanent", f"UPDATE brief_replacements SET {column} = ?", value)
+        self.rejects("never deleted", "DELETE FROM brief_replacements")
+        self.rejects("never deleted", "INSERT OR REPLACE INTO brief_replacements SELECT * FROM brief_replacements")
+        self.x(UPDATE.format("status = 'archived', closed_by = 'user', closed_at = ?, close_reason = 'done'"), T, TOPIC, 2)  # the replacing version archived
+        self.assertEqual(self.snapshot("brief_replacements"), stored)
+
+
 if __name__ == "__main__":
     unittest.main()

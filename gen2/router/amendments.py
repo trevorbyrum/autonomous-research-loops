@@ -466,23 +466,27 @@ class Amendments:
         """The references a draft makes to the topic's record (task 2a), checked
         when it is written and again when it is approved: the confirmed brief
         its decision record names was confirmed by exactly the decision it
-        names and still stands — current, or superseded only by a compatible
-        version (flow S1, S3; task 2a-repair F1) — or, after the first
-        approval, was archived (it or a compatible successor) with no brief
-        confirmed now: a replacement is never kept, as neither a contract
-        approval's impact nor its work sees briefs (F1-R; an amendment names
-        it, a reframe, G-6); a proposed method design is a document its
-        proposer, a primary invocation of the topic, committed — its bytes
-        among what one of its own commit receipts validated (F3)."""
+        names and, until the first approval, still stands — current, or
+        superseded only by a compatible version (flow S1, S3; task 2a-repair
+        F1); after it, no later confirmation replaced it (_record_replacements;
+        archived, or succeeded in lineage alone, it still serves): neither a
+        contract approval's impact nor its work sees briefs, so an amendment
+        names the replacement, a reframe (F1-R, task 2a-repair-3; G-6); a
+        proposed method design is a document its proposer, a primary
+        invocation of the topic, committed — its bytes among what one of its
+        own commit receipts validated (F3)."""
         brief, tid = doc["decision_record"]["objective"]["confirmed_brief"], doc["topic_id"]
         row = self._one("intake_briefs", {"topic_id": tid, "brief_id": brief["brief_id"], "version": brief["version"]})
         if row is None or row["confirmed_by_decision_id"] != brief["confirmed_by"]:
             return f"the decision record names brief {brief['brief_id']} v{brief['version']} as confirmed by {brief['confirmed_by']}, which the topic's record does not"
-        standing = self._brief_standing(tid, brief["brief_id"], brief["version"])
-        if standing not in COMPATIBLE and not (self._one("contract_revisions", {"topic_id": tid, "status": "approved"}) is not None
-                                               and self._one("intake_briefs", {"topic_id": tid, "status": "confirmed"}) is None
-                                               and (row["status"] == "archived" or self._standing("brief", tid, brief["version"], brief["brief_id"]) is None)):
-            return f"the decision record names brief {brief['brief_id']} v{brief['version']}, which no longer stands ({standing})"
+        if self._one("contract_revisions", {"topic_id": tid, "status": "approved"}) is None:
+            lapsed = self._brief_standing(tid, brief["brief_id"], brief["version"])
+            lapsed = None if lapsed in COMPATIBLE else lapsed
+        else:
+            replaced = self._one("brief_replacements", {"topic_id": tid, "brief_id": brief["brief_id"], "version": brief["version"]})
+            lapsed = replaced and f"replaced by the confirmation {replaced['replaced_by_decision_id']}"
+        if lapsed:
+            return f"the decision record names brief {brief['brief_id']} v{brief['version']}, which no longer stands ({lapsed})"
         proposal = doc["method_design"].get("proposal")
         if proposal is not None:
             ref, inv = proposal["document"], self._one("invocations", {"invocation_id": proposal["proposed_by"]})
@@ -517,6 +521,17 @@ class Amendments:
         if pinned["status"] == "superseded" and current is not None and current["brief_id"] == brief_id:  # its own lineage is current
             return self._standing("brief", topic_id, version, brief_id) or "lineage_only"
         return pinned["status"]
+
+    def _record_replacements(self, d: dict, current: dict, now: str) -> None:
+        """In the confirmation `d` of `current`: every version of the topic
+        confirmed before it, of any brief, that it does not succeed in
+        lineage alone is replaced, once and for good (DDL brief_replacements;
+        task 2a-repair-3) — no archival or later confirmation undoes it."""
+        for row in self._store.select("intake_briefs", {"topic_id": d["topic_id"]}):
+            if row["confirmed_by_decision_id"] is not None and brief_compatibility(row["document"], current["document"]) not in COMPATIBLE \
+                    and self._one("brief_replacements", {"topic_id": d["topic_id"], "brief_id": row["brief_id"], "version": row["version"]}) is None:
+                self._store.insert("brief_replacements", {"topic_id": d["topic_id"], "brief_id": row["brief_id"], "version": row["version"],
+                                                          "replaced_by_decision_id": d["decision_id"], "recorded_at": now})
 
     def _standing(self, kind: str, topic_id: str, version: int, brief_id: str | None = None) -> str | None:
         """How what is pinned to a superseded `version` stands, as the impacts

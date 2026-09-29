@@ -466,9 +466,10 @@ class BriefStandingTest(Workflow):
         self.confirm()
 
     def replace(self, material: bool = True) -> dict:
-        """brief-1 v2 written and confirmed, another `feeds` or only a new version; returns the confirmation's effects."""
+        """brief-1 v2 written and confirmed, another `feeds`, or only another owner and deadline; returns the confirmation's effects."""
         doc = self.brief_document(TOPIC, 2, **({"feeds": "rebuild, or buy"} if material else {}))
-        self.assertEqual(self.router.version_brief({"document": doc, "owner_operator_id": "user", "review_deadline": REVIEW_BY})["status"], "recorded")
+        owner = {"owner_operator_id": "user", "review_deadline": REVIEW_BY} if material else {"owner_operator_id": "other-owner", "review_deadline": "2026-10-02T00:00:00Z"}
+        self.assertEqual(self.router.version_brief({"document": doc, **owner})["status"], "recorded")
         out = self.decide("opd_brieft102", "brief_confirmation", {"kind": "intake_brief", "ref": "brief-1", "revision": 2, "hash": doc["content_hash"]})
         self.assertEqual(out["status"], "applied", out)
         return out["effects"]
@@ -588,7 +589,7 @@ class BriefStandingTest(Workflow):
         self.approved()
         grant = self.started("inv_pinnedr2")
         self.assertEqual(self.replace()["queue_transition"], None)
-        self.refused(lambda: self.propose(self.amendment()), "contract_inconsistent", "names brief brief-1 v1, which no longer stands (content_changed)")
+        self.refused(lambda: self.propose(self.amendment()), "contract_inconsistent", "names brief brief-1 v1, which no longer stands (replaced by the confirmation opd_brieft102)")
         r3 = self.amendment(edit=under_v2)
         self.assertEqual(self.propose(r3)["status"], "recorded")
         self.refused(lambda: self.approve_amendment(r3), "decision_refused", "a framing change is approved as a reframe")
@@ -602,20 +603,20 @@ class BriefStandingTest(Workflow):
         r3 = self.amendment()
         self.assertEqual(self.propose(r3)["status"], "recorded")
         self.replace()
-        self.refused(lambda: self.approve_amendment(r3), "decision_refused", "names brief brief-1 v1, which no longer stands (content_changed)")
+        self.refused(lambda: self.approve_amendment(r3), "decision_refused", "names brief brief-1 v1, which no longer stands (replaced by the confirmation opd_brieft102)")
 
     def test_a_replacement_stays_one_whatever_follows(self) -> None:
         """Repeated replacements: v3 returning to v1's content does not restore
-        v1 (what a recorded impact made stale stays stale), nor does archiving
+        v1 (a replacement is recorded once, for good), nor does archiving
         v3 — only a need archived unreplaced is kept."""
         self.approved()
         self.replace()
         v3 = self.brief_document(TOPIC, 3)  # v1's content
         self.assertEqual(self.router.version_brief({"document": v3, "owner_operator_id": "user", "review_deadline": REVIEW_BY})["status"], "recorded")
         self.confirm(version=3, doc=v3)
-        self.refused(lambda: self.propose(self.amendment()), "contract_inconsistent", "names brief brief-1 v1, which no longer stands (content_changed)")
+        self.refused(lambda: self.propose(self.amendment()), "contract_inconsistent", "names brief brief-1 v1, which no longer stands (replaced by the confirmation opd_brieft102)")
         self.archive(version=3)
-        self.refused(lambda: self.propose(self.amendment()), "contract_inconsistent", "names brief brief-1 v1, which no longer stands (superseded)")
+        self.refused(lambda: self.propose(self.amendment()), "contract_inconsistent", "names brief brief-1 v1, which no longer stands (replaced by the confirmation opd_brieft102)")
 
     def test_a_brief_confirmed_after_the_archival_replaces_it(self) -> None:
         """A brief confirmed after v1's archival (another brief: nothing it
@@ -629,8 +630,8 @@ class BriefStandingTest(Workflow):
         self.assertEqual(self.router.open_brief({"document": brief2, "owner_operator_id": "user", "review_deadline": REVIEW_BY})["status"], "recorded")
         out = self.decide("opd_brief2t101", "brief_confirmation", {"kind": "intake_brief", "ref": "brief-2", "revision": 1, "hash": brief2["content_hash"]})
         self.assertEqual((out["status"], out["effects"]["queue_transition"]), ("applied", None), out)
-        self.refused(lambda: self.approve_amendment(r3), "decision_refused", "names brief brief-1 v1, which no longer stands (archived)")
-        self.refused(lambda: self.propose(self.amendment(4, 2)), "contract_inconsistent", "names brief brief-1 v1, which no longer stands (archived)")
+        self.refused(lambda: self.approve_amendment(r3), "decision_refused", "names brief brief-1 v1, which no longer stands (replaced by the confirmation opd_brief2t101)")
+        self.refused(lambda: self.propose(self.amendment(4, 2)), "contract_inconsistent", "names brief brief-1 v1, which no longer stands (replaced by the confirmation opd_brief2t101)")
 
     def test_a_lineage_only_replacement_between_draft_and_first_approval(self) -> None:
         r2 = self.rated_drafts()
