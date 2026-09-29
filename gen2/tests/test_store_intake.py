@@ -73,7 +73,7 @@ class IntakeBriefTest(StoreTestCase):
         b2 = self.brief(TOPIC, "brief-1", 2, parent=1)
         ob = self.brief(OTHER, "brief-1", 1)
         self.decision("opd_rejected", "brief_confirmation", disposition="rejected", ref="brief-1", rev=1, hsh=b1)
-        self.decision("opd_wrongknd", "scope_approval", ref="brief-1", rev=1, hsh=b1)
+        self.decision("opd_wrongknd", "publication_approval", ref="brief-1", rev=1, hsh=b1)  # task 2a: a kind whose subject has no stored table (a scope approval now needs a stored report)
         self.decision("opd_otherver", "brief_confirmation", ref="brief-1", rev=2, hsh=b2)
         self.decision("opd_othertop", "brief_confirmation", tid=OTHER, ref="brief-1", rev=1, hsh=ob)
         self.decision("opd_confirm1", "brief_confirmation", ref="brief-1", rev=1, hsh=b1)

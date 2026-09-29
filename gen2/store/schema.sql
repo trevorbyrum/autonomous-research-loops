@@ -340,6 +340,121 @@ BEGIN
   SELECT RAISE(ABORT, 'a topic leaves intake only with a confirmed intake brief (G-4)');
 END;
 
+-- trace: flow S2 (the Scoping Report in PRISMA-ScR item shape: territory map,
+-- tradition census, candidate facets, gap-map skeleton, deliberately-out
+-- list, discovery mechanisms and coverage facts per lane; hand-off: the
+-- operator's scope approval), §6.2 (the gap-map skeleton is matrix v0);
+-- design review §4 (exploratory discovery before binding protocol approval);
+-- BOUNDARIES.md Router, Operator; schema scoping-report.schema.json;
+-- INVARIANTS C-12, G-4, G-13.
+-- Task 2a. One row per committed report version. Pre-contract research work
+-- of the topic commits it through commit_outcome, and the router moves the
+-- topic scoping -> awaiting_scope_approval in the same transaction; a scope
+-- approval names exactly one stored version and hash
+-- (operator_decisions_subject_exists). The report names the confirmed brief
+-- it scoped, which must be its committing work's admission pin. Content,
+-- lineage and provenance are immutable: a rework is a new version.
+CREATE TABLE scoping_reports (
+  topic_id TEXT NOT NULL REFERENCES queue_entries (topic_id),
+  report_id TEXT NOT NULL CHECK (length(report_id) BETWEEN 1 AND 64 AND report_id GLOB '[A-Za-z]*' AND report_id NOT GLOB '*[^A-Za-z0-9._-]*'),
+  version INTEGER NOT NULL CHECK (version >= 1),
+  parent_version INTEGER,
+  content_hash TEXT NOT NULL UNIQUE CHECK (content_hash GLOB 'sha256:*' AND length(content_hash) = 71),
+  document TEXT NOT NULL CHECK (json_valid(document)),
+  brief_id TEXT NOT NULL,
+  brief_version INTEGER NOT NULL,
+  brief_hash TEXT NOT NULL,
+  invocation_id TEXT NOT NULL REFERENCES invocations (invocation_id),
+  committed_by_operation_id TEXT NOT NULL REFERENCES operation_receipts (operation_id),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (topic_id, report_id, version),
+  FOREIGN KEY (topic_id, report_id, parent_version) REFERENCES scoping_reports (topic_id, report_id, version),
+  FOREIGN KEY (topic_id, brief_id, brief_version) REFERENCES intake_briefs (topic_id, brief_id, version),
+  CONSTRAINT scoping_report_parent_is_earlier CHECK (parent_version IS NULL OR parent_version < version),
+  CHECK (json_extract(document, '$.topic_id') IS topic_id
+     AND json_extract(document, '$.report_id') IS report_id
+     AND json_extract(document, '$.version') IS version
+     AND json_extract(document, '$.parent_version') IS parent_version
+     AND json_extract(document, '$.content_hash') IS content_hash
+     AND json_extract(document, '$.brief.brief_id') IS brief_id
+     AND json_extract(document, '$.brief.version') IS brief_version
+     AND json_extract(document, '$.brief.content_hash') IS brief_hash)
+) STRICT;
+
+-- C-12: a scoping report is pre-contract work's. It is committed by the
+-- operation of the invocation it names, of its topic, admitted under
+-- pre-contract/1 and pinned to exactly the brief version and hash the report
+-- names.
+CREATE TRIGGER scoping_reports_by_pre_contract_work
+BEFORE INSERT ON scoping_reports
+WHEN NOT EXISTS (
+  SELECT 1 FROM operation_receipts r JOIN invocations i ON i.invocation_id = r.invocation_id
+  WHERE r.operation_id = NEW.committed_by_operation_id AND r.invocation_id = NEW.invocation_id
+    AND i.topic_id = NEW.topic_id AND i.admission_context = 'pre-contract/1'
+    AND i.brief_ref IS NEW.brief_id AND i.brief_version IS NEW.brief_version AND i.brief_hash IS NEW.brief_hash)
+BEGIN
+  SELECT RAISE(ABORT, 'a scoping report is committed by pre-contract work of its topic pinned to exactly the brief it names (C-12)');
+END;
+
+CREATE TRIGGER scoping_reports_immutable_u BEFORE UPDATE ON scoping_reports
+BEGIN
+  SELECT RAISE(ABORT, 'scoping reports are immutable; a rework is a new version');
+END;
+CREATE TRIGGER scoping_reports_no_delete BEFORE DELETE ON scoping_reports
+BEGIN
+  SELECT RAISE(ABORT, 'scoping reports are never deleted (C-11)');
+END;
+
+-- trace: docs/gen2/SOURCE-GOVERNANCE.md steps 1-2 (an agent's typed proposal
+-- through commit_outcome, retained, authorizing nothing; the operator's
+-- approve/reject/defer about exactly that proposal); flow §2 (a new option is
+-- generation, a proposal to the operator); design review §6 (a new adapter is
+-- an image release; agents introduce no executables); schema
+-- source-proposal.schema.json; BOUNDARIES.md Operator, Primary agent,
+-- Secondary/delegate agents, Gateway; INVARIANTS G-13, B-2.
+-- Task 2a. The retained proposal. Nothing here writes the gateway's registry,
+-- enables a lane or holds a credential: the document has no field for any of
+-- them, and no table of this store is the registry. content_hash is the JCS
+-- hash of the whole document (it carries none of its own), computed by the
+-- router; a source_approval decision names it.
+CREATE TABLE source_proposals (
+  proposal_id TEXT PRIMARY KEY CHECK (proposal_id GLOB 'srcp_*'),
+  topic_id TEXT NOT NULL REFERENCES queue_entries (topic_id),
+  content_hash TEXT NOT NULL UNIQUE CHECK (content_hash GLOB 'sha256:*' AND length(content_hash) = 71),
+  document TEXT NOT NULL CHECK (json_valid(document)),
+  proposed_by_invocation_id TEXT NOT NULL REFERENCES invocations (invocation_id),
+  committed_by_operation_id TEXT NOT NULL REFERENCES operation_receipts (operation_id),
+  supersedes_proposal_id TEXT REFERENCES source_proposals (proposal_id),
+  created_at TEXT NOT NULL,
+  CHECK (supersedes_proposal_id IS NOT proposal_id),
+  CHECK (json_extract(document, '$.proposal_id') IS proposal_id
+     AND json_extract(document, '$.topic_id') IS topic_id
+     AND json_extract(document, '$.proposed_by.invocation_id') IS proposed_by_invocation_id
+     AND json_extract(document, '$.supersedes_proposal_id') IS supersedes_proposal_id)
+) STRICT;
+
+-- The proposer is the committing invocation, of the proposal's topic and of
+-- the kind the document says (authority from the capability, never from a
+-- document field).
+CREATE TRIGGER source_proposals_by_their_proposer
+BEFORE INSERT ON source_proposals
+WHEN NOT EXISTS (
+  SELECT 1 FROM operation_receipts r JOIN invocations i ON i.invocation_id = r.invocation_id
+  WHERE r.operation_id = NEW.committed_by_operation_id AND r.invocation_id = NEW.proposed_by_invocation_id
+    AND i.topic_id = NEW.topic_id AND i.kind IS json_extract(NEW.document, '$.proposed_by.invocation_kind'))
+BEGIN
+  SELECT RAISE(ABORT, 'a source proposal is committed by the invocation that proposes it, of its topic and kind (G-13)');
+END;
+
+CREATE TRIGGER source_proposals_immutable_u BEFORE UPDATE ON source_proposals
+BEGIN
+  SELECT RAISE(ABORT, 'source proposals are immutable; a re-proposal is a new proposal naming the one it supersedes');
+END;
+CREATE TRIGGER source_proposals_no_delete BEFORE DELETE ON source_proposals
+BEGIN
+  SELECT RAISE(ABORT, 'source proposals are never deleted; a rejection is a decision, not a deletion');
+END;
+
 -- trace: flow S3 (Contract v2, hash-locked with its protocol revision);
 -- design review §4 (immutable approved revision; older revisions preserved);
 -- schema contract-v2.schema.json; INVARIANTS G-1.
@@ -1151,6 +1266,7 @@ END;
 -- of its subject). subject_ref / subject_revision / subject_hash by kind:
 --   intake_brief       brief id / brief version / brief content hash
 --   scoping_report     report id / report version / report content hash
+--   source_proposal    proposal id / - / proposal content hash (task 2a)
 --   contract_revision  topic id / contract revision / contract content_hash
 --   dossier            topic id / dossier revision / dossier content_hash
 --   topic              topic id / queue state_revision decided against / -
@@ -1160,9 +1276,9 @@ END;
 -- The kind -> subject-kind mapping is a CHECK, so consuming gates test the
 -- decision kind (which fixes the subject kind). Subjects stored here are
 -- checked to exist with that exact hash when the decision is recorded
--- (intake briefs since 0b: topic, brief id, version and hash); scoping-report
--- and publication-source subjects are not store rows yet, so only their
--- shape is checked. Consuming gates then re-check kind, disposition,
+-- (intake briefs since 0b: topic, brief id, version and hash; scoping reports
+-- and source proposals since task 2a); publication-source subjects are not
+-- store rows yet, so only their shape is checked. Consuming gates then re-check kind, disposition,
 -- topic and exact subject.
 -- A rating decision retains what the operator rated (RA2): payload =
 -- {"facets": {facet_id: {"band", "score"}}, "obligations": {obligation_id:
@@ -1174,11 +1290,11 @@ CREATE TABLE operator_decisions (
   kind TEXT NOT NULL CHECK (kind IN (
     'brief_confirmation', 'scope_approval', 'rating_approval', 'contract_approval',
     'amendment_approval', 'reframe_approval', 'completion_approval', 'retirement',
-    'hold_clearance', 'publication_approval', 'blind_initial_disposition', 'advised_feedback')),
+    'hold_clearance', 'publication_approval', 'blind_initial_disposition', 'advised_feedback', 'source_approval')),
   disposition TEXT NOT NULL CHECK (disposition IN ('approved', 'rejected', 'deferred', 'recorded')),
   subject_kind TEXT NOT NULL CHECK (subject_kind IN (
     'intake_brief', 'scoping_report', 'contract_revision', 'dossier', 'topic', 'hold',
-    'publication_source', 'decision_receipt')),
+    'publication_source', 'decision_receipt', 'source_proposal')),
   subject_ref TEXT NOT NULL CHECK (length(subject_ref) > 0),
   subject_revision INTEGER CHECK (subject_revision >= 0),
   subject_hash TEXT CHECK (subject_hash IS NULL OR (subject_hash GLOB 'sha256:*' AND length(subject_hash) = 71)),
@@ -1195,11 +1311,13 @@ CREATE TABLE operator_decisions (
       OR (kind = 'retirement' AND subject_kind = 'topic')
       OR (kind = 'hold_clearance' AND subject_kind = 'hold')
       OR (kind = 'publication_approval' AND subject_kind = 'publication_source')
-      OR (kind IN ('blind_initial_disposition', 'advised_feedback') AND subject_kind = 'decision_receipt')),
+      OR (kind IN ('blind_initial_disposition', 'advised_feedback') AND subject_kind = 'decision_receipt')
+      OR (kind = 'source_approval' AND subject_kind = 'source_proposal')),
   CHECK (subject_kind NOT IN ('intake_brief', 'scoping_report', 'contract_revision', 'dossier', 'publication_source')
       OR (subject_revision IS NOT NULL AND subject_hash IS NOT NULL)),
   CHECK (subject_kind NOT IN ('contract_revision', 'dossier', 'topic') OR subject_ref IS topic_id),
   CHECK (subject_kind != 'topic' OR subject_revision IS NOT NULL),
+  CHECK (subject_kind != 'source_proposal' OR (subject_revision IS NULL AND subject_hash IS NOT NULL)),
   CHECK (subject_kind = 'hold' OR topic_id IS NOT NULL),
   CHECK ((kind IN ('blind_initial_disposition', 'advised_feedback')) = (disposition = 'recorded'))
 ) STRICT;
@@ -1219,6 +1337,11 @@ WHEN (NEW.subject_kind = 'contract_revision' AND NOT EXISTS (
   OR (NEW.subject_kind = 'intake_brief' AND NOT EXISTS (
         SELECT 1 FROM intake_briefs b
         WHERE b.topic_id = NEW.topic_id AND b.brief_id = NEW.subject_ref AND b.version = NEW.subject_revision AND b.content_hash = NEW.subject_hash))
+  OR (NEW.subject_kind = 'scoping_report' AND NOT EXISTS (
+        SELECT 1 FROM scoping_reports s
+        WHERE s.topic_id = NEW.topic_id AND s.report_id = NEW.subject_ref AND s.version = NEW.subject_revision AND s.content_hash = NEW.subject_hash))
+  OR (NEW.subject_kind = 'source_proposal' AND NOT EXISTS (
+        SELECT 1 FROM source_proposals p WHERE p.proposal_id = NEW.subject_ref AND p.topic_id = NEW.topic_id AND p.content_hash = NEW.subject_hash))
 BEGIN
   SELECT RAISE(ABORT, 'an operator decision must name an existing subject of its topic with that exact revision and hash (A2)');
 END;

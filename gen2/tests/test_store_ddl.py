@@ -1318,10 +1318,10 @@ class HoldTest(StoreTestCase):
         bad = (
             (TOPIC, "hold_clearance", "approved", "topic", TOPIC, 0, None),                 # kind admits only a hold subject
             (TOPIC, "retirement", "approved", "hold", "hold_00000001", None, None),         # and the reverse
-            (TOPIC, "scope_approval", "approved", "scoping_report", "scope-1", None, ch),   # a versioned subject needs its revision
+            (TOPIC, "publication_approval", "approved", "publication_source", "src-1", None, ch),  # a versioned subject needs its revision (task 2a: a kind with no stored subject)
             (TOPIC, "contract_approval", "approved", "contract_revision", OTHER, 1, ch),     # contract subject is referenced by its own topic
             (TOPIC, "retirement", "approved", "topic", TOPIC, None, None),                  # topic subject needs the state revision decided against
-            (None, "scope_approval", "approved", "scoping_report", "scope-1", 1, ch),       # only hold decisions may be topic-less
+            (None, "publication_approval", "approved", "publication_source", "src-1", 1, ch),  # only hold decisions may be topic-less
             (TOPIC, "retirement", "recorded", "topic", TOPIC, 0, None),                     # 'recorded' is only for blind/advised records
             (TOPIC, "publication_approval", "approved", "publication_source", "src-1", 1, None),  # a publication source needs its hash
         )
@@ -2177,7 +2177,7 @@ class AdmissionAndLeaseTest(StoreTestCase):
                              "VALUES ('opd_nosubject', ?, 'brief_confirmation', 'approved', 'intake_brief', ?, ?, ?, 'user', ?)", kw.get("tid", TOPIC), kw["ref"], kw["rev"], kw["hsh"], T)
         self.decision("opd_rejected", "brief_confirmation", disposition="rejected", ref=brief, rev=version, hsh=bhash)
         self.decision("opd_second00", "brief_confirmation", ref=brief, rev=version, hsh=bhash)
-        self.decision("opd_wrongknd", "scope_approval", ref=brief, rev=version, hsh=bhash)
+        self.decision("opd_wrongknd", "publication_approval", ref=brief, rev=version, hsh=bhash)  # task 2a: a kind whose subject has no stored table (a scope approval now needs a stored report)
         v2 = self.brief(TOPIC, brief, 2, parent=1)
         self.decision("opd_v2unconf", "brief_confirmation", ref=brief, rev=2, hsh=v2)
         other = self.confirm_brief(OTHER, "brief-o", 1)

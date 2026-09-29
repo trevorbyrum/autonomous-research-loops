@@ -37,6 +37,7 @@ SUBJECT_KIND = {
     "completion_approval": "dossier", "retirement": "topic", "hold_clearance": "hold",
     "publication_approval": "publication_source",
     "blind_initial_disposition": "decision_receipt", "advised_feedback": "decision_receipt",
+    "source_approval": "source_proposal",  # task 2a
 }
 
 
@@ -557,6 +558,36 @@ class StoreTestCase(unittest.TestCase):
         self.x("INSERT INTO invocation_reconciliations (reconciliation_id, invocation_id, unknown_episode, unknown_since, resolution, method, evidence_ref, result_payload_digest, descendants_confirmed_at, resolved_at, request) "
                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rid or f"rec_{iid[4:]}e{episode}", iid, episode, since, resolution, method, h("7"), digest, descendants, T, json.dumps(request))
 
+    # -- task 2a: scoping reports and source proposals --------------------------
+    def scoping_pass(self, iid: str = "inv_ssssssss", tid: str = OTHER, op: str = "op_scoping01", lease: str = "lease_ssssssss") -> None:
+        """A pre-contract research pass of `tid` (its brief-1 v1 confirmed) and its commit receipt."""
+        self.lease(lease, 1, tid=tid)
+        self.invocation(iid, lease=lease, tid=tid, pre_contract=True)
+        self.receipt(op, iid, lease=lease, gen=1, before=0, tid=tid, digest="e")
+
+    def scoping_report(self, rid: str = "scope-1", version: int = 1, parent: int | None = None, *, tid: str = OTHER, iid: str = "inv_ssssssss",
+                       op: str = "op_scoping01", content: str | None = None, brief: tuple | None = None, doc_overrides: dict | None = None) -> str:
+        """A scoping report row whose document's identity fields agree with its columns (unless doc_overrides say otherwise). Returns its hash."""
+        content = content or "sha256:" + f"{tid}/{rid}".encode().hex()[:52].ljust(52, "0") + f"{version:012d}"
+        brief_id, brief_version, brief_hash = brief or ("brief-1", 1, self.brief_hash(tid))
+        doc = {"topic_id": tid, "report_id": rid, "version": version, "parent_version": parent, "content_hash": content,
+               "brief": {"brief_id": brief_id, "version": brief_version, "content_hash": brief_hash}, **(doc_overrides or {})}
+        self.x("INSERT INTO scoping_reports (topic_id, report_id, version, parent_version, content_hash, document, brief_id, brief_version, brief_hash, invocation_id, "
+               "committed_by_operation_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+               tid, rid, version, parent, content, json.dumps(doc), brief_id, brief_version, brief_hash, iid, op, T)
+        return content
+
+    def source_proposal(self, pid: str = "srcp_00000001", *, tid: str = OTHER, iid: str = "inv_ssssssss", op: str = "op_scoping01", kind: str = "research_pass",
+                        supersedes: str | None = None, content: str | None = None, doc_overrides: dict | None = None) -> str:
+        """A source proposal row whose document's identity fields agree with its columns (unless doc_overrides say otherwise). Returns its hash."""
+        content = content or "sha256:" + pid.encode().hex()[:64].ljust(64, "0")
+        doc = {"proposal_id": pid, "topic_id": tid, "proposed_by": {"invocation_id": iid, "invocation_kind": kind}, **(doc_overrides or {})}
+        if supersedes is not None:
+            doc["supersedes_proposal_id"] = supersedes
+        self.x("INSERT INTO source_proposals (proposal_id, topic_id, content_hash, document, proposed_by_invocation_id, committed_by_operation_id, supersedes_proposal_id, created_at) "
+               "VALUES (?, ?, ?, ?, ?, ?, ?, ?)", pid, tid, content, json.dumps(doc), iid, op, supersedes, T)
+        return content
+
     # -- one coherent row in every table -------------------------------------
     def populate_every_table(self) -> None:
         """A positive control that the whole schema admits one coherent history,
@@ -618,6 +649,12 @@ class StoreTestCase(unittest.TestCase):
         self.delivery()
         self.x("INSERT INTO connector_watermarks (topic_id, connector_id, generation, options_revision, delivered_at) VALUES (?, 'warehouse', 1, 1, ?)", TOPIC, T)
         self.x("INSERT INTO audit_events (audit_event_id, at, kind, topic_id, detail) VALUES ('aud_00000001', ?, 'commit', ?, '{}')", T, TOPIC)
+        # task 2a: OTHER's pre-contract pass commits a scoping report and a source proposal; the operator decides about each exactly
+        self.scoping_pass()
+        report = self.scoping_report()
+        self.decision("opd_scope_other", "scope_approval", OTHER, ref="scope-1", rev=1, hsh=report)
+        proposal = self.source_proposal()
+        self.decision("opd_source_other", "source_approval", OTHER, "deferred", ref="srcp_00000001", hsh=proposal)
 
     def delivery(self, *, receipt_overrides: dict | None = None, **row) -> None:
         """One export_delivery_receipts row: a delivered attempt of connector

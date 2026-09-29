@@ -381,7 +381,7 @@ class AmendmentImpactTest(StoreTestCase):
     def test_an_impact_is_of_an_approval_of_its_topic(self) -> None:
         guard = "recorded for an approved contract or brief approval of its topic"
         rejected = self.decision("opd_rejected1", "amendment_approval", disposition="rejected", rev=1, hsh=self.content_hash_of(TOPIC, 1))
-        scope = self.decision("opd_scope0001", "scope_approval", ref="scope-1", rev=1, hsh=h("5"))
+        scope = self.decision("opd_scope0001", "publication_approval", ref="scope-1", rev=1, hsh=h("5"))  # task 2a: a kind whose subject has no stored table (a scope approval now needs a stored report)
         for name, args in (("a rejected decision", (rejected, TOPIC, "contract", "compatible", self.doc(rejected, "contract", "compatible"))),
                            ("another kind of decision", (scope, TOPIC, "contract", "compatible", self.doc(scope, "contract", "compatible"))),
                            ("a brief record of a contract approval", (self.approval, TOPIC, "brief", "lineage_only", self.doc(self.approval, "brief", "lineage_only"))),
