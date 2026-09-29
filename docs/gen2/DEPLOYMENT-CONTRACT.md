@@ -1,7 +1,8 @@
 # Gen-2 deployment contract
 
 The operator-facing specification of how gen-2 runs. It is a **contract, not a
-description**: no compose file, image or volume in it exists yet. Task 0c writes
+description**: when it was written no compose file, image or volume in it
+existed (task 1f has since added the first engine slice, §6). Task 0c writes
 the specification; Phase 1 and later build against it, and Astra's Gate A checks
 each phase diff against this file the same way it checks `BOUNDARIES.md`. Where
 this file and a later deployment disagree, one of them changes through the
@@ -364,6 +365,15 @@ produces a dated capability fact and a typed capability hold, not a silent
 zero-result pass. Untested auth-volume refresh is how a fleet discovers on a
 Monday that every station has been unauthenticated since Friday.
 
+*Status (task 1f, 2026-09-28; evidence `docs/gen2/AUTH-DEMO.md`; this note
+changes no requirement).* With the pinned runner codex 0.153.2, (a), (b) and
+(c) are demonstrated, and (d) is demonstrated for a credential the runner
+rejects on its own. (d) for an **expired or revoked** credential is **not**
+met: the runner's local check reads an expired credential as usable, and a
+probe that makes no network call cannot see a revocation (AUTH-DEMO.md F1,
+awaiting the operator). AUTH-DEMO.md F2–F4 name the places where this
+section's and §3.1's wording and the slice differ.
+
 **`wrappers/` is the one operator-trusted executable mount.** Some providers
 need a small shell wrapper the image cannot ship (a site-specific login shim, a
 locally patched invocation). `wrappers/` is mounted read-only into the
@@ -462,9 +472,13 @@ surveillance.
 ## 6. What this file does not settle
 
 - **No compose file, image or volume is committed by task 0c.** This is the
-  specification they are built against. The `engine`, `exporter` and `tier0`
-  images do not exist yet. The gen-2 `gateway` runs the existing gateway image in
-  the `env` secrets mode only.
+  specification they are built against. Task 1f added the minimal `engine`
+  slice only: the engine image with its pinned runner (`deploy/gen2/Dockerfile`)
+  and a compose file for the engine, its control-store volume and one auth
+  volume (`deploy/gen2/compose.yaml`; `docs/gen2/AUTH-DEMO.md`). The `exporter`
+  and `tier0` images do not exist yet, and the gateway is not in that slice.
+  The gen-2 `gateway` runs the existing gateway image in the `env` secrets mode
+  only.
 - **Vault mode for any service** waits for §3.4's acceptance tests. The gateway
   release it needs is Phase 2/3 repair work, and authorizing it is the user's.
 - **Port defaults are only defaults** (§1.1). Whether each is free is checked
