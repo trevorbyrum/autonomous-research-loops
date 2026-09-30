@@ -1,0 +1,62 @@
+{
+ "attempt": 1,
+ "exchanges": [
+  {
+   "request": {
+    "authorization": "engine",
+    "body": {
+     "accept_per_item": false,
+     "commercial": true,
+     "invocation_id": "inv_fixture0001",
+     "topic_id": "topic-fixture",
+     "ttl_seconds": 3600
+    },
+    "correlation": null,
+    "method": "POST",
+    "path": "/v1/grants"
+   },
+   "response": {
+    "body": {
+     "client_id": "engine@topic-fixture",
+     "expires_at": 1790100000,
+     "invocation_id": "inv_fixture0001",
+     "policy": {
+      "accept_per_item": false,
+      "commercial": true,
+      "topic_id": "topic-fixture"
+     },
+     "token": "gwg1.fixture-grant"
+    },
+    "content_type": "application/json",
+    "status": 201,
+    "x_research_gateway": "result"
+   }
+  },
+  {
+   "request": {
+    "authorization": "grant",
+    "body": {
+     "commercial": false,
+     "identity": "doi:10.1234/abc"
+    },
+    "correlation": {
+     "attempt": 1,
+     "invocation_id": "inv_fixture0001"
+    },
+    "method": "POST",
+    "path": "/v1/resolve"
+   },
+   "response": {
+    "body": {
+     "error": "policy-bound: commercial is set by the topic, not the caller"
+    },
+    "content_type": "application/json",
+    "status": 403,
+    "x_research_gateway": "result"
+   }
+  }
+ ],
+ "invocation_id": "inv_fixture0001",
+ "note": "a grant is minted; a request under it asking to loosen its posture is refused",
+ "scenario": "grant_and_policy_refusal"
+}

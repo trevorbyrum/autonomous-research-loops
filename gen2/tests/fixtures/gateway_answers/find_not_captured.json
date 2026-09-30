@@ -1,0 +1,191 @@
+{
+ "attempt": 1,
+ "exchanges": [
+  {
+   "request": {
+    "authorization": "engine",
+    "body": {
+     "domain": "finance",
+     "kind": "article",
+     "query": "reranking"
+    },
+    "correlation": {
+     "attempt": 1,
+     "invocation_id": "inv_fixture0001"
+    },
+    "method": "POST",
+    "path": "/v1/find"
+   },
+   "response": {
+    "body": {
+     "domain_resolved": "finance",
+     "effective_request": {
+      "accept_per_item": false,
+      "commercial": false,
+      "cursors": {},
+      "domain": "finance",
+      "kind": "article",
+      "lanes": null,
+      "limit": 20,
+      "published_after": null,
+      "query": "reranking",
+      "request_type": "find",
+      "year_from": null
+     },
+     "facts": [],
+     "lanes": [
+      {
+       "completeness": "complete",
+       "count": 1,
+       "coverage": "searched_ok",
+       "cursor": null,
+       "exhausted": true,
+       "retrieved": [
+        "doi:10.1234/abc"
+       ],
+       "role": "base",
+       "source": "crossref"
+      },
+      {
+       "completeness": "complete",
+       "count": 0,
+       "coverage": "searched_empty",
+       "cursor": null,
+       "exhausted": true,
+       "retrieved": [],
+       "role": "base",
+       "source": "doaj"
+      }
+     ],
+     "next": {
+      "crossref": "exhausted",
+      "doaj": "exhausted"
+     },
+     "observation": {
+      "attempt": 1,
+      "call_ref": null,
+      "capture_loss": "no durable call log: this gateway runs without a database",
+      "captured": false,
+      "invocation_id": "inv_fixture0001",
+      "job_id": null,
+      "request_identity": "sha256:4050b9fe6b33b35c7aca2d3eed710c6b5f01cc5672da0ecc20dc9d1fa66e34b2",
+      "served": "dispatched"
+     },
+     "records": [
+      {
+       "attribution": null,
+       "authors": [
+        "Ada Lovelace",
+        "Consortium X"
+       ],
+       "cited_by_count": 12,
+       "freshness_lag": "origin registry (publishers deposit here first)",
+       "identifiers": {
+        "doi": "10.1234/abc",
+        "issn": "1234-5678"
+       },
+       "identity": "doi:10.1234/abc",
+       "kind": "article",
+       "license": "http://creativecommons.org/licenses/by/4.0/",
+       "links": [
+        "https://doi.org/10.1234/abc"
+       ],
+       "metadata_license": "Metadata: no rights asserted (facts); reference lists as deposited by publishers.",
+       "permissions": {
+        "access": "commercial_use",
+        "availability": "metadata",
+        "redistribution": "permitted",
+        "storage": "persist"
+       },
+       "provenance": [
+        {
+         "attribution": null,
+         "freshness_lag": "origin registry (publishers deposit here first)",
+         "identity": "doi:10.1234/abc",
+         "license": "http://creativecommons.org/licenses/by/4.0/",
+         "link": "https://doi.org/10.1234/abc",
+         "metadata_license": "Metadata: no rights asserted (facts); reference lists as deposited by publishers.",
+         "permissions": {
+          "access": "commercial_use",
+          "availability": "metadata",
+          "redistribution": "permitted",
+          "storage": "persist"
+         },
+         "raw": {
+          "DOI": "10.1234/ABC",
+          "ISSN": [
+           "12345678"
+          ],
+          "URL": "https://doi.org/10.1234/abc",
+          "author": [
+           {
+            "family": "Lovelace",
+            "given": "Ada"
+           },
+           {
+            "name": "Consortium X"
+           }
+          ],
+          "container-title": [
+           "Journal of IR"
+          ],
+          "is-referenced-by-count": 12,
+          "issued": {
+           "date-parts": [
+            [
+             2021,
+             3,
+             1
+            ]
+           ]
+          },
+          "license": [
+           {
+            "URL": "http://creativecommons.org/licenses/by/4.0/"
+           }
+          ],
+          "publisher": "Example Press",
+          "reference": [
+           {
+            "DOI": "10.1000/ref1"
+           },
+           {
+            "unstructured": "no doi here"
+           }
+          ],
+          "reference-count": 2,
+          "title": [
+           "Reranking for retrieval"
+          ],
+          "type": "journal-article"
+         },
+         "retrieved_at": "2026-09-30T00:00:00+00:00",
+         "source_id": "crossref"
+        }
+       ],
+       "publisher": "Example Press",
+       "reference_count": 2,
+       "retrieved_at": "2026-09-30T00:00:00+00:00",
+       "source_id": "crossref",
+       "sources": [
+        "crossref"
+       ],
+       "title": "Reranking for retrieval",
+       "type": "journal-article",
+       "venue": "Journal of IR",
+       "year": 2021
+      }
+     ],
+     "request_identity": "sha256:4050b9fe6b33b35c7aca2d3eed710c6b5f01cc5672da0ecc20dc9d1fa66e34b2",
+     "request_type": "find"
+    },
+    "content_type": "application/json",
+    "status": 200,
+    "x_research_gateway": "result"
+   }
+  }
+ ],
+ "invocation_id": "inv_fixture0001",
+ "note": "a gateway without a database: the durable request row is an explicit loss",
+ "scenario": "find_not_captured"
+}

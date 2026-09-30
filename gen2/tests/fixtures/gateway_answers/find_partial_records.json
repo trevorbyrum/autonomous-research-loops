@@ -1,0 +1,157 @@
+{
+ "attempt": 1,
+ "exchanges": [
+  {
+   "request": {
+    "authorization": "engine",
+    "body": {
+     "kind": "article",
+     "lanes": [
+      "stub"
+     ],
+     "query": "q"
+    },
+    "correlation": {
+     "attempt": 1,
+     "invocation_id": "inv_fixture0001"
+    },
+    "method": "POST",
+    "path": "/v1/find"
+   },
+   "response": {
+    "body": {
+     "domain_resolved": "other",
+     "effective_request": {
+      "accept_per_item": false,
+      "commercial": false,
+      "cursors": {},
+      "domain": "other",
+      "kind": "article",
+      "lanes": [
+       "stub"
+      ],
+      "limit": 20,
+      "published_after": null,
+      "query": "q",
+      "request_type": "find",
+      "year_from": null
+     },
+     "facts": [
+      "stub: 1 malformed record(s) dropped \u2014 the count is a lower bound"
+     ],
+     "lanes": [
+      {
+       "completeness": "partial",
+       "count": 2,
+       "coverage": "searched_ok",
+       "cursor": null,
+       "error_class": "payload_invalid",
+       "retrieved": [
+        "doi:10.1234/p1",
+        "doi:10.1234/p2"
+       ],
+       "role": "base",
+       "source": "stub"
+      }
+     ],
+     "observation": {
+      "attempt": 1,
+      "call_ref": 101,
+      "capture_loss": null,
+      "captured": true,
+      "invocation_id": "inv_fixture0001",
+      "job_id": null,
+      "request_identity": "sha256:3fe8ba08c5643f3c2d6369c27a0231e1c71e8c5fbb04c3c5bac62be005a46aa3",
+      "served": "dispatched"
+     },
+     "records": [
+      {
+       "freshness_lag": "none",
+       "identifiers": {},
+       "identity": "doi:10.1234/p1",
+       "kind": "article",
+       "links": [],
+       "metadata_license": "CC0 (fixture)",
+       "permissions": {
+        "access": "commercial_use",
+        "availability": "metadata",
+        "redistribution": "unknown",
+        "storage": "persist"
+       },
+       "provenance": [
+        {
+         "attribution": null,
+         "freshness_lag": "none",
+         "identity": "doi:10.1234/p1",
+         "license": null,
+         "link": null,
+         "metadata_license": "CC0 (fixture)",
+         "permissions": {
+          "access": "commercial_use",
+          "availability": "metadata",
+          "redistribution": "unknown",
+          "storage": "persist"
+         },
+         "raw": null,
+         "retrieved_at": null,
+         "source_id": "stub"
+        }
+       ],
+       "source_id": "stub",
+       "sources": [
+        "stub"
+       ],
+       "title": "P1"
+      },
+      {
+       "freshness_lag": "none",
+       "identifiers": {},
+       "identity": "doi:10.1234/p2",
+       "kind": "article",
+       "links": [],
+       "metadata_license": "CC0 (fixture)",
+       "permissions": {
+        "access": "commercial_use",
+        "availability": "metadata",
+        "redistribution": "unknown",
+        "storage": "persist"
+       },
+       "provenance": [
+        {
+         "attribution": null,
+         "freshness_lag": "none",
+         "identity": "doi:10.1234/p2",
+         "license": null,
+         "link": null,
+         "metadata_license": "CC0 (fixture)",
+         "permissions": {
+          "access": "commercial_use",
+          "availability": "metadata",
+          "redistribution": "unknown",
+          "storage": "persist"
+         },
+         "raw": null,
+         "retrieved_at": null,
+         "source_id": "stub"
+        }
+       ],
+       "source_id": "stub",
+       "sources": [
+        "stub"
+       ],
+       "title": "P2"
+      }
+     ],
+     "request_identity": "sha256:3fe8ba08c5643f3c2d6369c27a0231e1c71e8c5fbb04c3c5bac62be005a46aa3",
+     "request_type": "find"
+    },
+    "content_type": "application/json",
+    "status": 200,
+    "x_research_gateway": "result"
+   }
+  }
+ ],
+ "invocation_id": "inv_fixture0001",
+ "note": "one of three records unreadable: searched_ok, partial, a lower bound of 2",
+ "scenario": "find_partial_records"
+}

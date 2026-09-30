@@ -1,0 +1,85 @@
+{
+ "attempt": 1,
+ "exchanges": [
+  {
+   "request": {
+    "authorization": "engine",
+    "body": {
+     "domain": "finance",
+     "kind": "article",
+     "query": "reranking"
+    },
+    "correlation": {
+     "attempt": 1,
+     "invocation_id": "inv_fixture0001"
+    },
+    "method": "POST",
+    "path": "/v1/find"
+   },
+   "response": {
+    "body": {
+     "domain_resolved": "finance",
+     "effective_request": {
+      "accept_per_item": false,
+      "commercial": false,
+      "cursors": {},
+      "domain": "finance",
+      "kind": "article",
+      "lanes": null,
+      "limit": 20,
+      "published_after": null,
+      "query": "reranking",
+      "request_type": "find",
+      "year_from": null
+     },
+     "facts": [
+      "crossref: unreadable answer (PayloadError) \u2014 treated as unavailable, never as no results (R-10, H-5)"
+     ],
+     "lanes": [
+      {
+       "completeness": "unobserved",
+       "coverage": "provider_unavailable",
+       "cursor": null,
+       "error": "PayloadError: unparseable JSON (HTTP 200, 42 bytes)",
+       "error_class": "payload_invalid",
+       "role": "base",
+       "source": "crossref"
+      },
+      {
+       "completeness": "complete",
+       "count": 0,
+       "coverage": "searched_empty",
+       "cursor": null,
+       "exhausted": true,
+       "retrieved": [],
+       "role": "base",
+       "source": "doaj"
+      }
+     ],
+     "next": {
+      "doaj": "exhausted"
+     },
+     "observation": {
+      "attempt": 1,
+      "call_ref": 101,
+      "capture_loss": null,
+      "captured": true,
+      "invocation_id": "inv_fixture0001",
+      "job_id": null,
+      "request_identity": "sha256:4050b9fe6b33b35c7aca2d3eed710c6b5f01cc5672da0ecc20dc9d1fa66e34b2",
+      "served": "dispatched"
+     },
+     "records": [],
+     "request_identity": "sha256:4050b9fe6b33b35c7aca2d3eed710c6b5f01cc5672da0ecc20dc9d1fa66e34b2",
+     "request_type": "find"
+    },
+    "content_type": "application/json",
+    "status": 200,
+    "x_research_gateway": "result"
+   }
+  }
+ ],
+ "invocation_id": "inv_fixture0001",
+ "note": "crossref answers truncated JSON: unavailable, payload_invalid, no count",
+ "scenario": "find_unreadable_lane"
+}
