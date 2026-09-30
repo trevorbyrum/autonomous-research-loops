@@ -141,9 +141,10 @@ class ControlBackend(Protocol):
         """Record the capability facts the Gateway reported with an answer
         (task 2b-repair A6; gen2/router/capabilities.py), under the capability
         of a running invocation whose lease is current, before the
-        observations that name them: each a dated `gateway.*` fact whose id is
-        its capability and since, superseding the capability's older current
-        fact. Key: each fact_id; only identical content replays."""
+        observations that name them: each a snapshot of a dated `gateway.*`
+        fact's episode (capability, state, since), superseding the capability's
+        current fact — an older episode's is refused (task 2b-repair-2 R2).
+        Key: each fact_id, its content's; only identical content replays."""
 
     def register_works(self, request: Mapping) -> dict:
         """Link retrieved records of the invocation's topic to the works they

@@ -150,26 +150,32 @@ def observation(entry: dict, *, request: dict, invocation_id: str, attempt: int,
 
 
 def capability_fact(fact: object) -> dict | None:
-    """A gateway capability fact as the engine's capability_facts row (its id the capability
-    and its since, canonical.gateway_fact_id: one episode, one id), or None if it is not one —
-    a fact without the instant its state began is not a dated fact."""
+    """A gateway capability fact as the engine's capability_facts row (its id the snapshot's,
+    canonical.gateway_fact_id: an episode and what the gateway said of it then), or None if
+    it is not one — a fact without the instant its state began is not a dated fact."""
     if not isinstance(fact, dict) or not isinstance(fact.get("capability"), str) or fact.get("state") not in FACT_STATES \
             or not isinstance(fact.get("since"), str) or not fact["since"]:
         return None
-    capability = "gateway." + fact["capability"]
     lanes = fact.get("affected_lanes")
     last = fact.get("last_success_at")
-    return {"fact_id": canonical.gateway_fact_id(capability, fact["since"]), "capability": capability,
-            "state": fact["state"], "detail": str(fact.get("detail") or fact["state"])[:500], "since": fact["since"],
-            "last_success_at": last if isinstance(last, str) and last else None,
-            "affected_lanes": sorted({x for x in lanes if isinstance(x, str) and x}) if isinstance(lanes, list) else []}
+    row = {"capability": "gateway." + fact["capability"], "state": fact["state"], "detail": str(fact.get("detail") or fact["state"])[:500],
+           "since": fact["since"], "last_success_at": last if isinstance(last, str) and last else None,
+           "affected_lanes": sorted({x for x in lanes if isinstance(x, str) and x}) if isinstance(lanes, list) else []}
+    return {"fact_id": canonical.gateway_fact_id(row), **row}
 
 
 def router_requests(out: dict, *, capability_id: str, invocation_id: str) -> list[tuple[str, dict]]:
     """What the router records for one search, in order (2b-repair A6): the capability facts
     the gateway reported first (record_gateway_facts — an observation names its fact, which
-    must exist), then each observation with its retrieval events (record_observation)."""
+    must exist), then each observation with its retrieval events (record_observation). Pages
+    answered under two snapshots of one capability's episode (2b-repair-2 R2) are two
+    commands, in the order the pages reported them: a command holds one fact per capability."""
     who = {"capability_id": capability_id, "invocation_id": invocation_id}
-    out_requests = [("record_gateway_facts", {**who, "facts": list(out["capability_facts"])})] if out["capability_facts"] else []
-    return out_requests + [("record_observation", {**who, "observation": o["observation"], "retrieval_events": o["retrieval_events"]})
-                           for o in out["observations"]]
+    batches: list[list[dict]] = []
+    for fact in out["capability_facts"]:
+        if not batches or any(f["capability"] == fact["capability"] for f in batches[-1]):
+            batches.append([])
+        batches[-1].append(fact)
+    return [("record_gateway_facts", {**who, "facts": batch}) for batch in batches] + [
+        ("record_observation", {**who, "observation": o["observation"], "retrieval_events": o["retrieval_events"]})
+        for o in out["observations"]]

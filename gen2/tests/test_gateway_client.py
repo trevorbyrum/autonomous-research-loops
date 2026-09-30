@@ -195,7 +195,9 @@ class RecordedAnswers(unittest.TestCase):
         self.assertEqual({k: fact[k] for k in ("capability", "state", "since", "last_success_at", "affected_lanes", "detail")},
                          {"capability": "gateway.secrets.vault", "state": "failing", "since": "2026-09-21T19:47:00Z",
                           "last_success_at": None, "affected_lanes": ["fred"], "detail": "403"})
-        self.assertEqual(fact["fact_id"], canonical.gateway_fact_id("gateway.secrets.vault", "2026-09-21T19:47:00Z"))
+        self.assertEqual(fact["fact_id"], canonical.gateway_fact_id({"capability": "gateway.secrets.vault", "state": "failing", "detail": "403",
+                                                                      "since": "2026-09-21T19:47:00Z", "last_success_at": None,
+                                                                      "affected_lanes": ["fred"]}))
         obs = by_lane(out)["fred"]
         self.assertEqual(summary(obs), ("provider_unavailable", "unobserved", None, "secrets_backend_failing", []))
         self.assertEqual(obs["observation"]["capability_fact_id"], fact["fact_id"])
@@ -411,7 +413,7 @@ def serve(test, handler_body) -> str:
             pass
 
         def do_POST(self):
-            self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            self.body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
             handler_body(self)
 
         do_GET = do_POST
@@ -422,18 +424,29 @@ def serve(test, handler_body) -> str:
     return f"http://127.0.0.1:{server.server_port}"
 
 
+def _write(h, resp: dict) -> None:
+    raw = json.dumps(resp["body"]).encode()
+    h.send_response(resp["status"])
+    h.send_header("Content-Type", resp["content_type"])
+    h.send_header("X-Research-Gateway", resp["x_research_gateway"])
+    h.send_header("Content-Length", str(len(raw)))
+    h.end_headers()
+    h.wfile.write(raw)
+
+
 def recorded_answer(name: str, index: int = 0):
     """A loopback answer replaying one recorded response, headers and body as the gateway sent them."""
-    resp = fixture(name)["exchanges"][index]["response"]
+    return lambda h: _write(h, fixture(name)["exchanges"][index]["response"])
+
+
+def recorded_in_order(name: str, seen: list):
+    """Loopback answers replaying one scenario's recorded responses in order; each request that
+    arrives is kept in `seen` as (path, body) for the test to compare with what was recorded."""
+    responses = [e["response"] for e in fixture(name)["exchanges"]]
 
     def answer(h):
-        raw = json.dumps(resp["body"]).encode()
-        h.send_response(resp["status"])
-        h.send_header("Content-Type", resp["content_type"])
-        h.send_header("X-Research-Gateway", resp["x_research_gateway"])
-        h.send_header("Content-Length", str(len(raw)))
-        h.end_headers()
-        h.wfile.write(raw)
+        seen.append((h.path, canonical.parse_json_strict(h.body) if h.body else None))
+        _write(h, responses[len(seen) - 1])
     return answer
 
 
@@ -605,6 +618,59 @@ class RecordedByTheRouter(RouterTestCase):
                          [("provider_unavailable", None, "secrets_backend_failing", fact["fact_id"])])
         self.assertEqual([r["status"] for r in self.record(out)], ["replayed", "replayed"], "the same report replays whole")
 
+    def test_an_outage_that_widens_is_recorded_snapshot_by_snapshot(self):
+        """2b-repair-2 R2: ONE Vault outage the real gateway answered three times (fixture
+        data_secrets_outage_widens, replayed in order over a real socket) — FRED fails, GovInfo
+        joins the same outage, Vault then fails another way. Each answer is recorded through the
+        router's own commands: each snapshot of the one episode supersedes the last and keeps its
+        onset, and each observation names the snapshot it was answered with — never a stale one."""
+        seen = []
+        c = GatewayClient(serve(self, recorded_in_order("data_secrets_outage_widens", seen)), ENGINE_TOKEN, transport=http_transport)
+        requests = ({"request_type": "data", "source": "fred", "params": {"series": "GDP"}},
+                    {"request_type": "find", "query": "appropriations", "kind": "dataset", "lanes": ["govinfo"]},
+                    {"request_type": "data", "source": "fred", "params": {"series": "UNRATE"}})
+        outs = [c.search(r, invocation_id=INV, attempt=1, policy_version="gw-policy/1") for r in requests]
+        self.assertEqual(seen, [(e["request"]["path"], e["request"]["body"]) for e in fixture("data_secrets_outage_widens")["exchanges"]])
+        replies = [self.record(out) for out in outs]
+        self.assertEqual([[r["status"] for r in rs] for rs in replies], [["recorded", "recorded"]] * 3, "every answer is recorded, fact then observation")
+        ids = [out["capability_facts"][0]["fact_id"] for out in outs]
+        since = "2026-09-21T19:47:00Z"
+        self.assertEqual([(*r[:4], json.loads(r[4]), r[5]) for r in self.rows(
+            "SELECT fact_id, state, since, detail, affected_lanes, superseded_by_fact_id FROM capability_facts WHERE capability = 'gateway.secrets.vault'")],
+            [(ids[0], "failing", since, "403", ["fred"], ids[1]), (ids[1], "failing", since, "403", ["fred", "govinfo"], ids[2]),
+             (ids[2], "failing", since, "503", ["fred", "govinfo"], None)], "one onset; each snapshot kept, the last current")
+        self.assertEqual([(lane, detail, json.loads(lanes)) for lane, detail, lanes in self.rows(
+            "SELECT o.lane, f.detail, f.affected_lanes FROM search_observations o JOIN capability_facts f ON f.fact_id = o.capability_fact_id "
+            "ORDER BY o.rowid")],
+            [("fred", "403", ["fred"]), ("govinfo", "403", ["fred", "govinfo"]), ("fred", "503", ["fred", "govinfo"])],
+            "each observation names the snapshot it was answered with")
+        self.assertEqual([r["status"] for r in self.record(outs[1])], ["replayed", "replayed"], "an answer recorded again replays")
+        self.assertEqual(self.value("SELECT fact_id FROM capability_facts WHERE capability = 'gateway.secrets.vault' AND superseded_by_fact_id IS NULL"),
+                         ids[2], "and moves nothing")
+
+    def test_pages_answered_under_two_snapshots_record_each_in_page_order(self):
+        """2b-repair-2 R2: a search whose pages were answered under two snapshots of one outage is
+        two fact commands in page order (a command holds one fact per capability), each page's
+        observation naming its own. Input: the recorded paged answer, a lane of page 1 and the
+        continuation of page 2 failing on secrets as the gateway answers it (the lanes and facts of
+        data_secrets_outage_widens)."""
+        paged, outage = fixture("find_paged_complete")["exchanges"], fixture("data_secrets_outage_widens")["exchanges"]
+        exchanges = copy.deepcopy(paged)
+        one, two = (e["response"]["body"] for e in exchanges)
+        one["lanes"].append(outage[1]["response"]["body"]["lanes"][0])
+        one["capability_facts"] = outage[1]["response"]["body"]["capability_facts"]
+        two["lanes"] = [{**outage[2]["response"]["body"]["lanes"][0], "source": "crossref", "role": "base", "cursor": "c2"}]
+        two["capability_facts"] = outage[2]["response"]["body"]["capability_facts"]
+        two["records"] = []
+        out = search(self, "find_paged_complete", exchanges=exchanges, pages=2)
+        requests = observe.router_requests(out, capability_id=self.grant["capability_id"], invocation_id=INV)
+        self.assertEqual([[(f["detail"], f["affected_lanes"]) for f in r["facts"]] for c, r in requests if c == "record_gateway_facts"],
+                         [[("403", ["fred", "govinfo"])], [("503", ["fred", "govinfo"])]], "one command per snapshot, in page order")
+        self.assertEqual([r["status"] for r in self.record(out)], ["recorded"] * 6, "two fact commands, then four observations")
+        self.assertEqual(self.rows("SELECT o.lane, json_extract(o.request, '$.page'), f.detail FROM search_observations o "
+                                   "LEFT JOIN capability_facts f ON f.fact_id = o.capability_fact_id ORDER BY o.rowid"),
+                         [("crossref", 1, None), ("doaj", 1, None), ("govinfo", 1, "403"), ("crossref", 2, "503")])
+
     def test_an_observation_naming_an_unrecorded_fact_is_refused(self):
         out = search(self, "data_secrets_failing", {"request_type": "data", "source": "fred", "params": {"series": "GDP"}})
         (obs,) = out["observations"]
@@ -625,9 +691,9 @@ class GatewayFactsCommand(RouterTestCase):
         self.grant = self.started(INV, "discovery")
 
     def fact(self, since: str = SINCE, **over) -> dict:
-        capability = over.pop("capability", "gateway.secrets.vault")
-        return {"fact_id": canonical.gateway_fact_id(capability, since), "capability": capability, "state": "failing", "detail": "403",
-                "since": since, "last_success_at": None, "affected_lanes": ["fred"], **over}
+        doc = {"capability": "gateway.secrets.vault", "state": "failing", "detail": "403", "since": since, "last_success_at": None,
+               "affected_lanes": ["fred"], **over}
+        return {"fact_id": canonical.gateway_fact_id(doc), **doc}
 
     def put(self, *facts, grant=None) -> dict:
         grant = grant or self.grant
@@ -655,14 +721,28 @@ class GatewayFactsCommand(RouterTestCase):
         cases = (("another namespace", self.fact(capability="provider-auth:claude")),
                  ("an id that is not its content's", {**self.fact(), "fact_id": "fact_" + "0" * 32}),
                  ("a since that is no instant", {**self.fact(), "since": "yesterday"}),
-                 ("a state outside the vocabulary", self.fact(state="broken")))
+                 ("a state outside the vocabulary", self.fact(state="broken")),
+                 ("an id naming other content", {**self.fact(), "detail": "other"}))
         for label, fact in cases:
             with self.subTest(label):
                 self.assertEqual(self.put(fact).get("reason"), "request_invalid")
         self.assertEqual(self.put(self.fact(), self.fact(detail="again")).get("reason"), "request_invalid", "one fact per capability")
         self.put(self.fact())
-        self.assertEqual(self.put(self.fact(detail="other")).get("reason"), "fact_conflict", "other content under a recorded id")
+        self.assertEqual(self.put(self.fact(state="degraded")).get("reason"), "fact_conflict", "another state since the same instant")
         self.assertEqual(self.value("SELECT count(*) FROM capability_facts WHERE capability LIKE 'gateway.%'"), 1)
+
+    def test_a_later_snapshot_of_the_episode_supersedes_it_and_keeps_its_onset(self):
+        """2b-repair-2 R2: an ongoing outage that widens, then fails another way, is three
+        snapshots of one episode — each recorded, superseding the last, `since` kept; the lanes
+        are a set; an earlier snapshot recorded again replays and moves nothing."""
+        first, wider, other = self.fact(), self.fact(affected_lanes=["fred", "govinfo"]), self.fact(affected_lanes=["fred", "govinfo"], detail="503")
+        self.assertEqual([self.put(f)["status"] for f in (first, wider, other)], ["recorded"] * 3)
+        self.assertEqual(self.rows("SELECT fact_id, since, superseded_by_fact_id FROM capability_facts WHERE capability = 'gateway.secrets.vault' "
+                                   "ORDER BY rowid"),
+                         [(first["fact_id"], self.SINCE, wider["fact_id"]), (wider["fact_id"], self.SINCE, other["fact_id"]),
+                          (other["fact_id"], self.SINCE, None)])
+        self.assertEqual(self.put(self.fact(affected_lanes=["govinfo", "fred"]))["status"], "replayed", "the same lanes in another order")
+        self.assertEqual(self.current(), [(other["fact_id"], "failing", self.SINCE)])
 
     def test_only_a_running_invocation_records_but_a_lost_reply_replays(self):
         self.put(self.fact())

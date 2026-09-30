@@ -44,13 +44,21 @@ lanes (its secrets backend failing, since when, which lanes); an observation
 naming such a fact (secrets_backend_failing) needs it recorded first, and
 record_gateway_facts is the typed path, under the capability of the running
 invocation that received it. Each fact is a `gateway.*` capability — never
-another namespace — whose id is its capability and since
-(canonical.gateway_fact_id), so an id is its content's and one episode is one
-fact whoever reports it: the same fact again replays, other content under its
-id is a conflict. A new one supersedes the capability's current fact (H-2: a
-transition is a new row); one older than the current fact is refused
-(fact_superseded) — a fact is inserted current, never behind a newer one. It
-opens no hold: what a failing gateway capability holds is 2c/2e's to decide.
+another namespace — and one SNAPSHOT of an episode (2b-repair-2 R2): the
+episode is the capability, its state and `since`, the instant that state
+began; the snapshot is what the gateway said of it then (detail, last success,
+affected lanes). Its id is its content's (canonical.gateway_fact_id), whoever
+reports it: the same snapshot again replays. A new one supersedes the
+capability's current fact (H-2: a transition is a new row, and every snapshot
+is kept) — a later episode, or a later snapshot of the current episode (an
+outage that widens to another lane, or fails another way, keeps its `since`),
+each observation naming the snapshot it was answered with. One older than the
+current episode is refused (fact_superseded) — a fact is inserted current,
+never behind a newer one; another state since the current episode's instant is
+refused (fact_conflict): a new state begins a new episode. Within an episode
+the snapshots carry no instant of their own, so the one recorded last is
+current, and one recorded again replays without moving it. It opens no hold:
+what a failing gateway capability holds is 2c/2e's to decide.
 """
 from __future__ import annotations
 
@@ -98,7 +106,6 @@ CAPABILITY_COMMANDS = {
                     "affected_lanes": {"type": "array", "maxItems": 50, "uniqueItems": True, "items": _ID}}}}}},
 }
 GATEWAY_FACT_AUDIT = "gateway_fact"
-FACT_FIELDS = ("capability", "state", "detail", "since", "last_success_at", "affected_lanes")
 
 
 def hold_subject(capability: str) -> str:
@@ -177,8 +184,8 @@ class Capabilities:
             if len({f["capability"] for f in req["facts"]}) != len(req["facts"]):
                 raise Refusal("request_invalid", "one fact per capability: an answer reports each capability's current fact once")
             for fact in req["facts"]:
-                if fact["fact_id"] != canonical.gateway_fact_id(fact["capability"], fact["since"]):
-                    raise Refusal("request_invalid", f"{fact['fact_id']} is not the id of {fact['capability']} since {fact['since']}")
+                if fact["fact_id"] != canonical.gateway_fact_id(fact):
+                    raise Refusal("request_invalid", f"{fact['fact_id']} is not the id of its content ({fact['capability']} since {fact['since']})")
             return self._guarded("request_invalid", lambda now: self._gateway_facts_in_transaction(req, now))
         except Refusal as refusal:
             return {"status": "refused", "reason": refusal.reason, "detail": refusal.detail[:500]}
@@ -187,11 +194,8 @@ class Capabilities:
         inv = self._capability(req["capability_id"], req["invocation_id"])
         replies, new = [], []
         for fact in req["facts"]:
-            stored = self._one("capability_facts", {"fact_id": fact["fact_id"]})
-            if stored is None:
+            if self._one("capability_facts", {"fact_id": fact["fact_id"]}) is None:   # the id is its content's: recorded is identical
                 new.append(fact)
-            elif any(stored[k] != fact[k] for k in FACT_FIELDS):
-                raise Refusal("fact_conflict", f"{fact['fact_id']} was recorded with other content")
             else:
                 replies.append({"fact_id": fact["fact_id"], "status": "replayed"})
         if not new:   # a lost reply is answered from the facts, whatever the invocation's state now
@@ -207,6 +211,9 @@ class Capabilities:
             if current is not None and instant(current["since"]) > instant(fact["since"]):
                 raise Refusal("fact_superseded", f"{fact['capability']}'s current fact {current['fact_id']} began at {current['since']}, "
                                                  f"after {fact['since']}: an older episode is never recorded behind a newer one")
+            if current is not None and instant(current["since"]) == instant(fact["since"]) and current["state"] != fact["state"]:
+                raise Refusal("fact_conflict", f"{fact['capability']} was {current['state']} since {current['since']}, not {fact['state']}: "
+                                               "a new state is a new episode, with the instant it began")
             if current is not None:
                 self._store.update("capability_facts", {"fact_id": current["fact_id"]}, {"superseded_by_fact_id": fact["fact_id"]})
             self._store.insert("capability_facts", {**fact, "observed_by_invocation_id": inv["invocation_id"], "recorded_at": now})

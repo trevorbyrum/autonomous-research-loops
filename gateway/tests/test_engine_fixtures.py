@@ -278,6 +278,41 @@ class EngineFixtures(unittest.TestCase):
                          "the dated fact the engine records before the observation that names it (DEPLOYMENT-CONTRACT §3.4 fixture 5)")
         self.check("data_secrets_failing", rec, "vault answers 403: the lane is secrets_backend_failing with the dated fact")
 
+    def test_data_secrets_outage_widens(self):
+        """2b-repair-2 R2: ONE Vault outage answered three times, in order — FRED fails; GovInfo
+        joins the same outage; Vault then fails another way. Every answer's fact keeps the
+        episode's onset (the first failed read) and says what was true as it answered: the lanes
+        failing so far and the latest failure's detail (STATION-CONTRACT; SecretsHealth)."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        token_file = os.path.join(tmp.name, "token")
+        Path(token_file).write_text("s.fixture-token\n")
+        vault = FakeVault(secrets={})
+        self.addCleanup(vault.close)
+        vault.mode = "status:403"
+        wall, clock = [T0 + 120], [0.0]
+        chain = secrets.Chain(secrets.EnvBackend(), secrets.VaultBackend(addr=vault.url, token_file=token_file, environ={},
+                                                                         wall=lambda: wall[0], clock=lambda: clock[0]))
+        with mock.patch.dict(os.environ, {k: v for k, v in os.environ.items() if not k.startswith("RESEARCH_GATEWAY_SECRET_")}, clear=True):
+            rec = Recorder(self, secrets_backend=chain)
+            first = rec.send("POST", "/v1/data", {"source": "fred", "params": {"series": "GDP"}})[1]
+            wall[0] += 60
+            second = rec.send("POST", "/v1/find", {"query": "appropriations", "kind": "dataset", "lanes": ["govinfo"]})[1]
+            wall[0] += 60
+            clock[0] += secrets.VaultBackend.failure_ttl + 1   # FRED's failed read is no longer replayed: Vault is asked again
+            vault.mode = "status:503"
+            third = rec.send("POST", "/v1/data", {"source": "fred", "params": {"series": "UNRATE"}})[1]
+        failing = ("provider_unavailable", "unobserved", None, None, "secrets_backend_failing", None, None, None)
+        self.assertEqual([lanes_of(b) for b in (first, second, third)], [[("fred", *failing)], [("govinfo", *failing)], [("fred", *failing)]])
+        episode = {"capability": "secrets.vault", "state": "failing", "since": "2026-09-21T19:47:00Z", "last_success_at": None}
+        self.assertEqual([b["capability_facts"] for b in (first, second, third)],
+                         [[{**episode, "detail": "403", "affected_lanes": ["fred"]}],
+                          [{**episode, "detail": "403", "affected_lanes": ["fred", "govinfo"]}],
+                          [{**episode, "detail": "503", "affected_lanes": ["fred", "govinfo"]}]],
+                         "one episode, its onset kept; its lanes and detail as of each answer")
+        self.check("data_secrets_outage_widens", rec, "one vault outage: FRED fails, GovInfo joins it, then vault answers 503 — "
+                                                      "one onset, three snapshots")
+
     def test_grant_and_policy_refusal(self):
         rec = Recorder(self)
         status, grant = rec.send("POST", "/v1/grants", {"topic_id": "topic-fixture", "commercial": True, "accept_per_item": False,

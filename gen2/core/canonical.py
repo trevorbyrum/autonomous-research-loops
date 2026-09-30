@@ -154,11 +154,16 @@ def logical_hash(value: object) -> str:
     return _sha256(canonical_bytes(value))
 
 
-def gateway_fact_id(capability: str, since: str) -> str:
-    """A gateway-reported capability fact's id (tasks 2b, 2b-repair A6): one per capability
-    and the instant its state began — one episode, one id, whoever reports it — so the
-    router can check that an id is its content's, and a re-report replays."""
-    return "fact_" + hashlib.sha256(canonical_bytes(["capability", capability, since])).hexdigest()[:32]
+def gateway_fact_id(fact: dict) -> str:
+    """A gateway-reported capability fact's id (tasks 2b, 2b-repair A6, 2b-repair-2 R2): one
+    SNAPSHOT of an episode — the episode is the capability, its state and the instant that
+    state began, which its snapshots never change; the snapshot adds what the gateway said of
+    it then (detail, last success, the affected lanes as a set) — whoever reports it. So the
+    router can check that an id is its content's, a re-report replays, and an ongoing outage
+    that widens or changes its detail is a new snapshot of the same episode, never a conflict."""
+    return "fact_" + hashlib.sha256(canonical_bytes(
+        ["capability", fact["capability"], fact["since"], fact["state"], fact["detail"], fact["last_success_at"],
+         sorted(fact["affected_lanes"])])).hexdigest()[:32]
 
 
 def _without(document: dict, excluded: tuple[str, ...]) -> dict:

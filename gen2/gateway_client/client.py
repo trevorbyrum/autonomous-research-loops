@@ -168,7 +168,7 @@ class GatewayClient:
             if not going:
                 break
             sent = {**request, "cursors": going, "lanes": sorted(going)}
-        out["capability_facts"] = list({f["fact_id"]: f for f in out["capability_facts"]}.values())   # one fact, however many pages carried it
+        out["capability_facts"] = list({f["fact_id"]: f for f in out["capability_facts"]}.values())   # one snapshot, however many pages carried it
         return out
 
     def _answer(self, sent: dict, ctx: dict) -> dict:
