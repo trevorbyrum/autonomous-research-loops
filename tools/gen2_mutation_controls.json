@@ -6674,6 +6674,132 @@
   ],
   "why": "gen2/router/service.py: leaves line 628 for a line outside 628-629 (or returns)"
  },
+ "2R-growth-trigger-exclusive": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 230; or executes line 233"
+ },
+ "2R-growth-trigger-passes": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 233"
+ },
+ "2R-growth-trigger-silent": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 230"
+ },
+ "2R-size-allowlist-file-unchecked": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 141"
+ },
+ "2R-size-allowlist-passes": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 233"
+ },
+ "2R-size-allowlist-tool-unchecked": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 143"
+ },
+ "2R-size-allowlist-unnamed": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 145"
+ },
+ "2R-size-count-unnamed": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 226; or executes line 225"
+ },
+ "2R-size-exempt-by-header": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 134"
+ },
+ "2R-size-exempt-by-name": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 134"
+ },
+ "2R-size-first-offender-only": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 225; or executes line 224"
+ },
+ "2R-size-limit-inclusive": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 137"
+ },
+ "2R-size-over-limit-dropped": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 138; or executes line 137"
+ },
+ "2R-size-over-limit-passes": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 233"
+ },
+ "2R-size-surface-drops-deploy": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 125"
+ },
+ "2R-size-surface-drops-gen2": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 125"
+ },
+ "2R-size-surface-drops-github": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 125"
+ },
+ "2R-size-surface-drops-makefile": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 125"
+ },
+ "2R-size-surface-drops-tools-check": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 125"
+ },
+ "2R-size-surface-drops-tools-gen": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 125"
+ },
+ "2R-size-surface-drops-tools-gen2": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 125"
+ },
  "A1-D01-live-lease-replace": {
   "controls": [
    "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
@@ -6846,19 +6972,19 @@
   "controls": [
    "test_check_ddl_rules.DdlRuleTest.test_guarded_table_passes"
   ],
-  "why": "tools/check_gen2_schemas.py: executes line 351"
+  "why": "tools/check_gen2_schemas.py: executes line 354"
  },
  "A1-ddl-rule-on-conflict": {
   "controls": [
    "test_check_ddl_rules.DdlRuleTest.test_guarded_table_passes"
   ],
-  "why": "tools/check_gen2_schemas.py: executes line 326"
+  "why": "tools/check_gen2_schemas.py: executes line 329"
  },
  "A1-ddl-rule-pragmas": {
   "controls": [
    "test_check_ddl_rules.DdlRuleTest.test_guarded_table_passes"
   ],
-  "why": "tools/check_gen2_schemas.py: executes line 319"
+  "why": "tools/check_gen2_schemas.py: executes line 322"
  },
  "A1-delivery-receipts-delete-guard": {
   "controls": [
@@ -8379,43 +8505,43 @@
   "controls": [
    "test_sqlite_gate.OpenStoreTest.test_created_store_reopens_with_the_contract_applied"
   ],
-  "why": "gen2/store/db.py: leaves line 91 for a line outside 91-92 (or returns)"
+  "why": "gen2/store/db.py: leaves line 105 for a line outside 105-106 (or returns)"
  },
  "DBO-durable-contract-skipped": {
   "controls": [
    "test_writer.IdentityBoundTest.test_every_integer_column_is_classified_once"
   ],
-  "why": "gen2/store/db.py: executes line 98"
+  "why": "gen2/store/db.py: executes line 112"
  },
  "DBO-gate-after-open": {
   "controls": [
    "test_sqlite_gate.OpenStoreTest.test_created_store_reopens_with_the_contract_applied"
   ],
-  "why": "gen2/store/db.py: executes line 87"
+  "why": "gen2/store/db.py: executes line 101"
  },
  "DBO-implicit-create": {
   "controls": [
    "test_sqlite_gate.OpenStoreTest.test_created_store_reopens_with_the_contract_applied"
   ],
-  "why": "gen2/store/db.py: leaves line 93 for a line outside 93-94 (or returns)"
+  "why": "gen2/store/db.py: leaves line 107 for a line outside 107-108 (or returns)"
  },
  "DBO-no-schema-identity": {
   "controls": [
    "test_sqlite_gate.OpenStoreTest.test_created_store_reopens_with_the_contract_applied"
   ],
-  "why": "gen2/store/db.py: executes line 107"
+  "why": "gen2/store/db.py: executes line 121"
  },
  "DBO-schema-names-only": {
   "controls": [
    "test_sqlite_gate.OpenStoreTest.test_created_store_reopens_with_the_contract_applied"
   ],
-  "why": "gen2/store/db.py: executes line 62"
+  "why": "gen2/store/db.py: executes line 76"
  },
  "DBO-user-version-ignored": {
   "controls": [
    "test_sqlite_gate.OpenStoreTest.test_created_store_reopens_with_the_contract_applied"
   ],
-  "why": "gen2/store/db.py: leaves line 64 for a line outside 64-67 (or returns)"
+  "why": "gen2/store/db.py: leaves line 78 for a line outside 78-81 (or returns)"
  },
  "IB-archive-from-awaiting": {
   "controls": [
@@ -10011,13 +10137,13 @@
   "controls": [
    "test_check_ddl_rules.DdlRuleTest.test_guarded_table_passes"
   ],
-  "why": "tools/check_gen2_schemas.py: executes line 314"
+  "why": "tools/check_gen2_schemas.py: executes line 317"
  },
  "SQLC-build-unprobed-json": {
   "controls": [
    "test_check_ddl_rules.DdlRuleTest.test_guarded_table_passes"
   ],
-  "why": "tools/check_gen2_schemas.py: executes line 310"
+  "why": "tools/check_gen2_schemas.py: executes line 313"
  },
  "SQLC-json-not-probed": {
   "controls": [
