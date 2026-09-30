@@ -607,3 +607,10 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-2b-astra-review-
 Line accounting, mutation counts, and the Phase 3 scope boundary (breaker/budget/SIGTERM untouched) were all independently confirmed correct. Gate B passes outright — no research-effectiveness claim introduced.
 
 **Orchestrator routing decision:** dispatched to a fresh Opus 5.5 coder as task 2b-repair (`docs/gen2/tasks/2b-repair.md`), covering A1–A8 with Astra's required repairs verbatim.
+
+## 2026-09-30 — 2b-repair landed (coder fa1a0b3b), orchestrator independent verification GREEN, sent to Astra
+9 commits since the BLOCK verdict. Coder's self-report: all eight findings closed (see task file for per-item detail); notably A2's fix replaces the merged multi-page observation with one observation per page (revises 4 previously-accepted tests: 106, 107, 127, 128), and A5 enforces the correlation pair with **no maintenance-door exemption**, since none was granted — the coder flagged this explicitly as a decision worth Astra's attention, not something it decided quietly.
+
+**Orchestrator independently re-ran, not trusted from the coder's log:** 9 commits confirmed (`e7856a9..HEAD`), clean working tree. `make gen2-check` unpiped exit 0: 1,601 tests OK, 1,674/1,674 mutants killed. `make gen2-gateway` unpiped exit 0: 385 tests OK (with and without database), 74/74 gateway mutants killed — matches the coder's claims exactly. **Live gen-1 gateway boundary re-fingerprinted again:** HEAD still `f4a7a5c6`, PID 1456514 unchanged, 0 restarts, active since 2026-09-26 — untouched through this repair too.
+
+Astra dispatched for re-review, task file `~/work/research-loops-public/private/reviews/gen2-2b-repair-review-task-20260930.md`. Asked to re-run its original reproductions against each of A1–A8, give an explicit opinion on whether A5's no-exemption default should instead be an operator decision, and re-confirm the gen-1 boundary itself rather than trust either report.
