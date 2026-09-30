@@ -62,6 +62,20 @@ make gen2-check PYTHON_BOOTSTRAP=python3.12   # choose the base interpreter expl
 
 Run `make` directly, and do not pipe its output through `tail`, `grep` or `tee` unless `pipefail` is set. The exit status is the build result. The prior repair round had two masked-failure incidents from exactly that pattern.
 
+## The gateway's checks (`make gen2-gateway`, task 2b)
+
+The research gateway is a separate package (`gateway/`), not gen-2 code: it has its own
+dependency, `psycopg`, and it is never imported by gen-2 (INVARIANTS B-2). Its checks
+therefore run on the gateway's interpreter, `$(PYTHON_BOOTSTRAP)`, not in `.venv-gen2`:
+that interpreter must provide `psycopg` (the gateway's image installs `psycopg[binary]`;
+the build host used for task 2b has the distribution's `python3-psycopg` 3.1). The
+database cases and mutants also need PostgreSQL server binaries (`initdb`, `pg_ctl`,
+`createdb`, on `PATH` or under `/usr/lib/postgresql/*/bin`): `tools/gen2_gateway_check.py`
+initializes a throwaway cluster in a temporary directory, on a Unix socket only, and
+removes it afterwards; it never uses an existing database. Without those binaries the
+check fails and says what did not run. It is not part of `gen2-check` (CI has neither);
+whether the gateway should get a hash-locked environment of its own is an open question.
+
 ## CI
 
 `.github/workflows/gen2-check.yml` installs Python 3.12 with `actions/setup-python`, then runs `make gen2-venv`, `make gen2-sqlite` (recording the SQLite version in the job summary) and `make gen2-check`. These are the same targets, the same locks and the same flags as a local build. CI no longer installs into the runner's interpreter.
