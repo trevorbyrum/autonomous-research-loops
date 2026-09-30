@@ -187,7 +187,7 @@ MANUAL: dict[str, dict] = {
                                  "why": "the identical observation's replay is the accepted path through the conflict check (capabilities.py): "
                                         "the control replays one and checks nothing was written"},
     # connection.sql: every store connection applies it; the control's accepted writes fire triggers under it
-    "A1-recursive-triggers-off": {"controls": ["test_store_ddl.LeaseFencingTest.test_release_is_write_once"],
+    "A1-recursive-triggers-off": {"controls": ["test_store_ddl_invocations.LeaseFencingTest.test_release_is_write_once"],
                                   "why": "applies the connection contract and makes accepted writes that fire triggers under it"},
     **{mid: {"controls": [_IMPORTER_GRAPH[0]], "why": _IMPORTER_GRAPH[1]}
        for mid in ("RA7-real-graph-posix", "RA7-real-graph-nt", "A8-real-graph-posixsubprocess", "A8-real-graph-imaplib",
@@ -241,7 +241,7 @@ MANUAL: dict[str, dict] = {
     # task 1c-repair-4 (the C4 re-check): every traced candidate (143) needs an approval, which this over-restricting mutant
     # refuses; the one alternative the trigger's own WHEN admits without an approval was written as a test of its own
     "RA3R-approval-refused-too": {
-        "controls": ["test_store_ddl.ContractGovernanceTest.test_an_update_recording_no_approval_pointer_passes_its_guard"],
+        "controls": ["test_store_ddl_contracts.ContractGovernanceTest.test_an_update_recording_no_approval_pointer_passes_its_guard"],
         "why": "a statement that succeeds enters trigger contract_approval_pointer_set_by_approval with its WHEN false on its own "
                "NEW-pointer conjunct (a draft's pointer written as NULL: nothing recorded), the alternative it admits without the removed "
                "approved-status exemption; no write path makes that statement. The other alternative, restating a pointer already "
@@ -345,11 +345,11 @@ MANUAL: dict[str, dict] = {
 # with its own accepted case only once read: that statement runs before the refusal the mutant fails (or the
 # refusals sit in subTests, which go on), so it also runs under the mutant.
 READ_IN_KILLER = {
-    "test_store_ddl.ExportOutboxTest.test_connector_watermark_never_regresses":
+    "test_store_ddl_export.ExportOutboxTest.test_connector_watermark_never_regresses":
         "the idempotent retry UPDATE runs before the refusals, which sit in subTests; an advancing UPDATE ends the test",
-    "test_store_ddl.ObservationTest.test_one_current_capability_fact_supersede_to_transition":
+    "test_store_ddl_evidence.ObservationTest.test_one_current_capability_fact_supersede_to_transition":
         "the documented supersession UPDATE (cf-1 -> cf-2) runs before the refusals",
-    "test_store_ddl.OrdinalAndTriggerTest.test_trigger_identity_unique_and_handled_is_final":
+    "test_store_ddl_invocations.OrdinalAndTriggerTest.test_trigger_identity_unique_and_handled_is_final":
         "the UPDATE marking the trigger handled runs before the refusals",
     "test_store_history.RecordIdentityTest.test_work_identity_is_immutable":
         "the refusals sit in subTests, which go on; the accepted study_group_id UPDATE then runs",

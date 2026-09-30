@@ -556,28 +556,28 @@
  "0D-watermark-lower-generation": {
   "controls": [],
   "in_killer": [
-   "test_store_ddl.ExportOutboxTest.test_connector_watermark_never_regresses"
+   "test_store_ddl_export.ExportOutboxTest.test_connector_watermark_never_regresses"
   ],
   "why": "no other test enters trigger connector_watermarks_never_regress in a statement that succeeds; the killer does, and under the mutant too: the idempotent retry UPDATE runs before the refusals, which sit in subTests; an advancing UPDATE ends the test"
  },
  "0D-watermark-lower-options": {
   "controls": [],
   "in_killer": [
-   "test_store_ddl.ExportOutboxTest.test_connector_watermark_never_regresses"
+   "test_store_ddl_export.ExportOutboxTest.test_connector_watermark_never_regresses"
   ],
   "why": "no other test enters trigger connector_watermarks_never_regress in a statement that succeeds; the killer does, and under the mutant too: the idempotent retry UPDATE runs before the refusals, which sit in subTests; an advancing UPDATE ends the test"
  },
  "0D-watermark-moves-connector": {
   "controls": [],
   "in_killer": [
-   "test_store_ddl.ExportOutboxTest.test_connector_watermark_never_regresses"
+   "test_store_ddl_export.ExportOutboxTest.test_connector_watermark_never_regresses"
   ],
   "why": "no other test enters trigger connector_watermarks_never_regress in a statement that succeeds; the killer does, and under the mutant too: the idempotent retry UPDATE runs before the refusals, which sit in subTests; an advancing UPDATE ends the test"
  },
  "0D-watermark-moves-topic": {
   "controls": [],
   "in_killer": [
-   "test_store_ddl.ExportOutboxTest.test_connector_watermark_never_regresses"
+   "test_store_ddl_export.ExportOutboxTest.test_connector_watermark_never_regresses"
   ],
   "why": "no other test enters trigger connector_watermarks_never_regress in a statement that succeeds; the killer does, and under the mutant too: the idempotent retry UPDATE runs before the refusals, which sit in subTests; an advancing UPDATE ends the test"
  },
@@ -3720,19 +3720,19 @@
  },
  "1D-ddl-bundle-json-kind": {
   "controls": [
-   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+   "test_store_ddl_invocations.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
   ],
   "why": "a statement that succeeds inserts a row into config_bundles"
  },
  "1D-ddl-bundle-json-version": {
   "controls": [
-   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+   "test_store_ddl_invocations.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
   ],
   "why": "a statement that succeeds inserts a row into config_bundles"
  },
  "1D-ddl-bundle-questions-altered-dropped": {
   "controls": [
-   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+   "test_store_ddl_invocations.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
   ],
   "why": "a statement that succeeds enters trigger config_bundles_questions_unaltered"
  },
@@ -3744,13 +3744,13 @@
  },
  "1D-ddl-bundle-recorded-older": {
   "controls": [
-   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+   "test_store_ddl_invocations.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
   ],
   "why": "a statement that succeeds enters trigger config_bundles_recorded_active_and_newest"
  },
  "1D-ddl-bundle-recorded-superseded": {
   "controls": [
-   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+   "test_store_ddl_invocations.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
   ],
   "why": "a statement that succeeds enters trigger config_bundles_recorded_active_and_newest"
  },
@@ -3762,7 +3762,7 @@
  },
  "1D-ddl-config-two-active": {
   "controls": [
-   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+   "test_store_ddl_invocations.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
   ],
   "why": "a statement that succeeds inserts a row into config_bundles"
  },
@@ -3846,7 +3846,7 @@
  },
  "1D-ddl-invocation-pins-any-bundle": {
   "controls": [
-   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+   "test_store_ddl_invocations.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
   ],
   "why": "a statement that succeeds inserts a row into invocations"
  },
@@ -3912,31 +3912,31 @@
  },
  "1D-ddl-question-not-its-bundles-dropped": {
   "controls": [
-   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+   "test_store_ddl_invocations.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
   ],
   "why": "a statement that succeeds enters trigger questions_carried_by_their_bundle"
  },
  "1D-ddl-question-row-hash": {
   "controls": [
-   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+   "test_store_ddl_invocations.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
   ],
   "why": "a statement that succeeds inserts a row into questions"
  },
  "1D-ddl-question-row-id": {
   "controls": [
-   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+   "test_store_ddl_invocations.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
   ],
   "why": "a statement that succeeds inserts a row into questions"
  },
  "1D-ddl-question-row-version": {
   "controls": [
-   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+   "test_store_ddl_invocations.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
   ],
   "why": "a statement that succeeds inserts a row into questions"
  },
  "1D-ddl-question-version-rewordable": {
   "controls": [
-   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
+   "test_store_ddl_invocations.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper"
   ],
   "why": "a statement that succeeds inserts a row into questions"
  },
@@ -4068,7 +4068,7 @@
  },
  "1D-ddl-trigger-any-episode-dropped": {
   "controls": [
-   "test_store_ddl.OrdinalAndTriggerTest.test_trigger_identity_unique_and_handled_is_final"
+   "test_store_ddl_invocations.OrdinalAndTriggerTest.test_trigger_identity_unique_and_handled_is_final"
   ],
   "why": "a statement that succeeds enters trigger review_triggers_episode_of_their_topic"
  },
@@ -6027,7 +6027,7 @@
  },
  "2A-ddl-proposal-subject-shape": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operator_decisions"
  },
@@ -6099,19 +6099,19 @@
  },
  "2A-ddl-source-kind-unmapped": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operator_decisions"
  },
  "2A-ddl-subject-exists-proposal": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger operator_decisions_subject_exists"
  },
  "2A-ddl-subject-exists-report": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger operator_decisions_subject_exists"
  },
@@ -6676,7 +6676,7 @@
  },
  "A1-D01-live-lease-replace": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "trigger leases_no_delete refuses every statement it enters (no WHEN), so no accepted path passes through it; the control inserts a row into leases, the table it guards, in a statement that succeeds"
  },
@@ -6832,7 +6832,7 @@
  },
  "A1-contract-created-at-pin": {
   "controls": [
-   "test_store_ddl.CommitFencingTest.test_delegate_commits_under_parent_lease"
+   "test_store_ddl_invocations.CommitFencingTest.test_delegate_commits_under_parent_lease"
   ],
   "why": "a statement that succeeds enters trigger contract_content_immutable"
  },
@@ -6880,7 +6880,7 @@
  },
  "A1-receipt-delete-guard": {
   "controls": [
-   "test_store_ddl.CommitFencingTest.test_delegate_commits_under_parent_lease"
+   "test_store_ddl_invocations.CommitFencingTest.test_delegate_commits_under_parent_lease"
   ],
   "why": "trigger operation_receipts_immutable_d refuses every statement it enters (no WHEN), so no accepted path passes through it; the control inserts a row into operation_receipts, the table it guards, in a statement that succeeds"
  },
@@ -6893,7 +6893,7 @@
  "A1-recursive-triggers-off": {
   "by_hand": true,
   "controls": [
-   "test_store_ddl.LeaseFencingTest.test_release_is_write_once"
+   "test_store_ddl_invocations.LeaseFencingTest.test_release_is_write_once"
   ],
   "why": "applies the connection contract and makes accepted writes that fire triggers under it"
  },
@@ -7049,7 +7049,7 @@
  },
  "A10-observation-invocation-topic": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger search_observations_invocation_topic"
  },
@@ -7223,13 +7223,13 @@
  },
  "A11-complete-has-no-error": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into search_observations"
  },
  "A11-completeness-tied-to-coverage": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into search_observations"
  },
@@ -7274,127 +7274,127 @@
  },
  "A11-old-partial-ban": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into search_observations"
  },
  "A11-partial-says-why": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into search_observations"
  },
  "A11-searched-empty-only-complete": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into search_observations"
  },
  "A2-completion-active-contract": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_completion_needs_current_dossier_approval"
  },
  "A2-completion-contract-approved": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_completion_needs_current_dossier_approval"
  },
  "A2-completion-currency": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_completion_needs_current_dossier_approval"
  },
  "A2-completion-disposition": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_completion_needs_current_dossier_approval"
  },
  "A2-completion-kind": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_completion_needs_current_dossier_approval"
  },
  "A2-completion-naming": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_completion_needs_current_dossier_approval"
  },
  "A2-completion-topic": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_completion_needs_current_dossier_approval"
  },
  "A2-contract-approval-disposition": {
   "controls": [
-   "test_store_ddl.CommitFencingTest.test_delegate_commits_under_parent_lease"
+   "test_store_ddl_invocations.CommitFencingTest.test_delegate_commits_under_parent_lease"
   ],
   "why": "a statement that succeeds enters trigger contract_approval_bound_to_revision"
  },
  "A2-contract-approval-kind": {
   "controls": [
-   "test_store_ddl.CommitFencingTest.test_delegate_commits_under_parent_lease"
+   "test_store_ddl_invocations.CommitFencingTest.test_delegate_commits_under_parent_lease"
   ],
   "why": "a statement that succeeds enters trigger contract_approval_bound_to_revision"
  },
  "A2-contract-approval-naming": {
   "controls": [
-   "test_store_ddl.CommitFencingTest.test_delegate_commits_under_parent_lease"
+   "test_store_ddl_invocations.CommitFencingTest.test_delegate_commits_under_parent_lease"
   ],
   "why": "a statement that succeeds enters trigger contract_approval_bound_to_revision"
  },
  "A2-contract-approval-subject": {
   "controls": [
-   "test_store_ddl.CommitFencingTest.test_delegate_commits_under_parent_lease"
+   "test_store_ddl_invocations.CommitFencingTest.test_delegate_commits_under_parent_lease"
   ],
   "why": "a statement that succeeds enters trigger contract_approval_bound_to_revision"
  },
  "A2-contract-created-as-draft": {
   "controls": [
-   "test_store_ddl.CommitFencingTest.test_delegate_commits_under_parent_lease"
+   "test_store_ddl_invocations.CommitFencingTest.test_delegate_commits_under_parent_lease"
   ],
   "why": "a statement that succeeds enters trigger contract_created_as_draft"
  },
  "A2-decision-shape-kind-subject-map": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operator_decisions"
  },
  "A2-decision-shape-recorded-only-blind": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operator_decisions"
  },
  "A2-decision-shape-ref-is-topic": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operator_decisions"
  },
  "A2-decision-shape-topic-revision": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operator_decisions"
  },
  "A2-decision-shape-topic-scoped": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operator_decisions"
  },
  "A2-decision-shape-versioned-subject": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operator_decisions"
  },
@@ -7544,97 +7544,97 @@
  },
  "A2-queue-created-at-intake": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger queue_entries_created_at_intake"
  },
  "A2-retirement-disposition": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_retirement_needs_operator_decision"
  },
  "A2-retirement-kind": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_retirement_needs_operator_decision"
  },
  "A2-retirement-naming": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_retirement_needs_operator_decision"
  },
  "A2-retirement-state-revision": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_retirement_needs_operator_decision"
  },
  "A2-retirement-topic": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_retirement_needs_operator_decision"
  },
  "A2-status-change-advances-revision": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_retirement_needs_operator_decision"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_retirement_needs_operator_decision"
   ],
   "why": "a statement that succeeds enters trigger queue_status_change_advances_revision"
  },
  "A2-status-decision-iff-gated": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into queue_entries"
  },
  "A2-subject-exists-contract": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger operator_decisions_subject_exists"
  },
  "A2-subject-exists-decision-receipt": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger operator_decisions_subject_exists"
  },
  "A2-subject-exists-dossier": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger operator_decisions_subject_exists"
  },
  "A2-subject-exists-hold": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger operator_decisions_subject_exists"
  },
  "A3-approval-every-facet-rated": {
   "controls": [
-   "test_store_ddl.CommitFencingTest.test_delegate_commits_under_parent_lease"
+   "test_store_ddl_invocations.CommitFencingTest.test_delegate_commits_under_parent_lease"
   ],
   "why": "a statement that succeeds enters trigger contract_approval_needs_rated_covered_facets"
  },
  "A3-approval-facet-rows-complete": {
   "controls": [
-   "test_store_ddl.CommitFencingTest.test_delegate_commits_under_parent_lease"
+   "test_store_ddl_invocations.CommitFencingTest.test_delegate_commits_under_parent_lease"
   ],
   "why": "a statement that succeeds enters trigger contract_approval_needs_rated_covered_facets"
  },
  "A3-approval-obligation-rows-complete": {
   "controls": [
-   "test_store_ddl.CommitFencingTest.test_delegate_commits_under_parent_lease"
+   "test_store_ddl_invocations.CommitFencingTest.test_delegate_commits_under_parent_lease"
   ],
   "why": "a statement that succeeds enters trigger contract_approval_needs_rated_covered_facets"
  },
  "A3-approval-uncovered-critical": {
   "controls": [
-   "test_store_ddl.CommitFencingTest.test_delegate_commits_under_parent_lease"
+   "test_store_ddl_invocations.CommitFencingTest.test_delegate_commits_under_parent_lease"
   ],
   "why": "a statement that succeeds enters trigger contract_approval_needs_rated_covered_facets"
  },
@@ -7688,55 +7688,55 @@
  },
  "A4-brief-confirmation-brief-hash": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger invocations_admission_context"
  },
  "A4-brief-confirmation-brief-id": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger invocations_admission_context"
  },
  "A4-brief-confirmation-brief-version": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger invocations_admission_context"
  },
  "A4-brief-confirmation-confirming-decision": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger invocations_admission_context"
  },
  "A4-brief-confirmation-status": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger invocations_admission_context"
  },
  "A4-brief-confirmation-topic": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger invocations_admission_context"
  },
  "A4-brief-pins-exclusive": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into invocations"
  },
  "A4-contract-admission-approved": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger invocations_admission_context"
  },
  "A4-contract-pins-exclusive": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into invocations"
  },
@@ -7748,163 +7748,163 @@
  },
  "A4-pre-contract-closes-on-approval": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger invocations_admission_context"
  },
  "A4-pre-contract-kinds": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into invocations"
  },
  "A4-receipt-json-brief": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operation_receipts"
  },
  "A4-receipt-json-context": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operation_receipts"
  },
  "A4-receipt-json-contract": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operation_receipts"
  },
  "A4-receipt-pinned-brief": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger operation_receipts_admission_pinned"
  },
  "A4-receipt-pinned-config": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger operation_receipts_admission_pinned"
  },
  "A4-receipt-pinned-context": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger operation_receipts_admission_pinned"
  },
  "A4-receipt-pinned-contract-revision": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger operation_receipts_admission_pinned"
  },
  "A5-D06-drop-result-ready-to-committed": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_allowed_transitions"
  },
  "A5-D06-reopen-committed-cancelled": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_allowed_transitions"
  },
  "A5-D06-skip-admitted-to-running": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_allowed_transitions"
  },
  "A5-D06-unknown-back-to-launching": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_allowed_transitions"
  },
  "A5-launch-intent-carries-handle": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds inserts a row into invocations"
  },
  "A5-pin-admission-context": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_identity_immutable"
  },
  "A5-pin-admitted-at": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_identity_immutable"
  },
  "A5-pin-brief-hash-decision": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_identity_immutable"
  },
  "A5-pin-brief-pins": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_identity_immutable"
  },
  "A5-pin-config": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_identity_immutable"
  },
  "A5-pin-container": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_identity_immutable"
  },
  "A5-pin-contract-revision": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_identity_immutable"
  },
  "A5-pin-host": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_identity_immutable"
  },
  "A5-pin-requested-by": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_identity_immutable"
  },
  "A5-pin-result-digest": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_identity_immutable"
  },
  "A5-reconciliation-cancelled-resolution": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_unknown_needs_reconciliation"
  },
  "A5-reconciliation-committed-receipt": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_unknown_needs_reconciliation"
  },
  "A5-reconciliation-current-episode": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocation_reconciliations_for_current_episode"
  },
@@ -7916,43 +7916,43 @@
  },
  "A5-reconciliation-descendants": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds inserts a row into invocation_reconciliations"
  },
  "A5-reconciliation-digest-iff-found-result": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds inserts a row into invocation_reconciliations"
  },
  "A5-reconciliation-episode": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_unknown_needs_reconciliation"
  },
  "A5-reconciliation-failed-resolution": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_unknown_needs_reconciliation"
  },
  "A5-reconciliation-result-digest": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_unknown_needs_reconciliation"
  },
  "A5-reconciliation-running-branch": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_unknown_needs_reconciliation"
  },
  "A5-reconciliation-termination-method": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds inserts a row into invocation_reconciliations"
  },
@@ -7964,7 +7964,7 @@
  },
  "A5-unknown-needs-reconciliation": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_unknown_needs_reconciliation"
  },
@@ -8292,7 +8292,7 @@
  "A9-fact-provenance-pins": {
   "controls": [],
   "in_killer": [
-   "test_store_ddl.ObservationTest.test_one_current_capability_fact_supersede_to_transition"
+   "test_store_ddl_evidence.ObservationTest.test_one_current_capability_fact_supersede_to_transition"
   ],
   "why": "no other test enters trigger capability_facts_supersede_only in a statement that succeeds; the killer does, and under the mutant too: the documented supersession UPDATE (cf-1 -> cf-2) runs before the refusals"
  },
@@ -8305,7 +8305,7 @@
  "A9-link-successor": {
   "controls": [],
   "in_killer": [
-   "test_store_ddl.ObservationTest.test_one_current_capability_fact_supersede_to_transition"
+   "test_store_ddl_evidence.ObservationTest.test_one_current_capability_fact_supersede_to_transition"
   ],
   "why": "no other test enters trigger capability_facts_link_successor in a statement that succeeds; the killer does, and under the mutant too: the documented supersession UPDATE (cf-1 -> cf-2) runs before the refusals"
  },
@@ -8323,19 +8323,19 @@
  },
  "C13-commit-absent-passes": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operation_receipts"
  },
  "C13-commit-contract-unchecked": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operation_receipts"
  },
  "C13-commit-fingerprint-unchecked": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operation_receipts"
  },
@@ -8419,79 +8419,79 @@
  },
  "IB-archive-from-awaiting": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger intake_briefs_status_transitions"
  },
  "IB-closed-fields-together": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into intake_briefs"
  },
  "IB-closed-iff-cancelled-archived": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into intake_briefs"
  },
  "IB-confirmation-bound-dropped": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger intake_briefs_confirmation_bound"
  },
  "IB-confirmation-disposition": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger intake_briefs_confirmation_bound"
  },
  "IB-confirmation-kind": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger intake_briefs_confirmation_bound"
  },
  "IB-confirmation-subject": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger intake_briefs_confirmation_bound"
  },
  "IB-content-dropped": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger intake_briefs_content_immutable"
  },
  "IB-created-awaiting-dropped": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger intake_briefs_created_awaiting"
  },
  "IB-decision-subject-exists": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger operator_decisions_subject_exists"
  },
  "IB-delete-guard-dropped": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "trigger intake_briefs_no_delete refuses every statement it enters (no WHEN), so no accepted path passes through it; the control inserts a row into intake_briefs, the table it guards, in a statement that succeeds"
  },
  "IB-document-binding": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into intake_briefs"
  },
  "IB-one-confirmed-per-topic": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into intake_briefs"
  },
@@ -8521,61 +8521,61 @@
  },
  "IB-parent-earlier": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into intake_briefs"
  },
  "IB-pointer-changes-after": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger intake_briefs_confirmation_pointer_set_by_confirmation"
  },
  "IB-pointer-dropped": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger intake_briefs_confirmation_pointer_set_by_confirmation"
  },
  "IB-pointer-without-transition": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger intake_briefs_confirmation_pointer_set_by_confirmation"
  },
  "IB-queue-gate-any-brief": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_scoping_needs_confirmed_brief"
  },
  "IB-queue-gate-any-topic": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_scoping_needs_confirmed_brief"
  },
  "IB-queue-gate-dropped": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_scoping_needs_confirmed_brief"
  },
  "IB-superseded-by-later-dropped": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger intake_briefs_superseded_by_a_later_version"
  },
  "IB-terminal-dropped": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger intake_briefs_terminal_immutable"
  },
  "IB-transitions-dropped": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger intake_briefs_status_transitions"
  },
@@ -9165,67 +9165,67 @@
  },
  "R1c-approved-without-decision": {
   "controls": [
-   "test_store_ddl.CommitFencingTest.test_delegate_commits_under_parent_lease"
+   "test_store_ddl_invocations.CommitFencingTest.test_delegate_commits_under_parent_lease"
   ],
   "why": "a statement that succeeds inserts a row into contract_revisions"
  },
  "R1c-draft-superseded-edge-restored": {
   "controls": [
-   "test_store_ddl.CommitFencingTest.test_delegate_commits_under_parent_lease"
+   "test_store_ddl_invocations.CommitFencingTest.test_delegate_commits_under_parent_lease"
   ],
   "why": "a statement that succeeds enters trigger contract_status_forward_only"
  },
  "R2.1-delegate-has-no-lease": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds inserts a row into invocations"
  },
  "R2.1-delegate-inherits-pins": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_delegate_inherits_parent"
  },
  "R2.1-delegate-parent-not-delegate": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_delegate_inherits_parent"
  },
  "R2.1-delegate-parent-running": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_delegate_inherits_parent"
  },
  "R2.1-delegate-parent-topic": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_delegate_inherits_parent"
  },
  "R2.1-lease-live": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger invocations_lease_matches_kind"
  },
  "R2.1-lease-scope": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger invocations_lease_matches_kind"
  },
  "R2.1-lease-topic": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger invocations_lease_matches_kind"
  },
  "R2.1-one-owner-per-lease": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into invocations"
  },
@@ -9237,28 +9237,28 @@
  },
  "R2.2-parent-only-for-delegates": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into invocations"
  },
  "R2.2-requested-by-same-topic": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger invocations_requested_by_same_topic"
  },
  "R2.5-claim-drop-provisional-to-support": {
   "controls": [
-   "test_store_ddl.ContractAdmittedSupportTest.test_contested_to_accepted_support_follows_the_same_rule"
+   "test_store_ddl_evidence.ContractAdmittedSupportTest.test_contested_to_accepted_support_follows_the_same_rule"
   ],
   "rejected": [
-   "test_store_ddl.ContractAdmittedSupportTest.test_adopted_pre_contract_claim_with_a_receipt_is_allowed",
-   "test_store_ddl.ContractAdmittedSupportTest.test_contract_admitted_claim_without_a_receipt_is_refused",
-   "test_store_ddl.ContractAdmittedSupportTest.test_every_claim_needs_admission_not_only_load_bearing",
-   "test_store_ddl.ContractAdmittedSupportTest.test_pre_contract_claim_with_a_qualifying_receipt_is_refused",
-   "test_store_ddl.ContractAdmittedSupportTest.test_the_producer_is_work_of_the_claims_own_topic",
-   "test_store_ddl.VerificationTest.test_accepted_support_needs_receipt_at_required_tier",
-   "test_store_ddl.VerificationTest.test_sampling_never_qualifies_a_load_bearing_claim",
+   "test_store_ddl_evidence.ContractAdmittedSupportTest.test_adopted_pre_contract_claim_with_a_receipt_is_allowed",
+   "test_store_ddl_evidence.ContractAdmittedSupportTest.test_contract_admitted_claim_without_a_receipt_is_refused",
+   "test_store_ddl_evidence.ContractAdmittedSupportTest.test_every_claim_needs_admission_not_only_load_bearing",
+   "test_store_ddl_evidence.ContractAdmittedSupportTest.test_pre_contract_claim_with_a_qualifying_receipt_is_refused",
+   "test_store_ddl_evidence.ContractAdmittedSupportTest.test_the_producer_is_work_of_the_claims_own_topic",
+   "test_store_ddl_evidence.VerificationTest.test_accepted_support_needs_receipt_at_required_tier",
+   "test_store_ddl_evidence.VerificationTest.test_sampling_never_qualifies_a_load_bearing_claim",
    "test_store_history.EveryTableSweepTest.test_append_only_tables_reject_every_update",
    "test_store_history.EveryTableSweepTest.test_every_table_is_populated",
    "test_store_history.EveryTableSweepTest.test_no_table_can_be_deleted_from_or_replaced_into",
@@ -9297,43 +9297,43 @@
  },
  "R2.5-queue-complete-from-queued": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_status_transitions"
  },
  "R2.5-queue-drop-contract-approval-to-queued": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_retirement_needs_operator_decision"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_retirement_needs_operator_decision"
   ],
   "why": "a statement that succeeds enters trigger queue_status_transitions"
  },
  "R2.5-queue-resource-stop-as-completion": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_status_transitions"
  },
  "R2.5-queue-revive-retired": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_status_transitions"
  },
  "R2.5-queue-skip-intake": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_status_transitions"
  },
  "RA1-pointer-moves-with-revision": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_status_decision_moves_with_status"
  },
  "RA1-terminal-decision-pointer": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_status_decision_moves_with_status"
  },
@@ -9459,43 +9459,43 @@
  },
  "RA2-payload-facet-band": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger operator_decisions_rating_payload_of_its_draft"
  },
  "RA2-payload-facet-in-draft": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger operator_decisions_rating_payload_of_its_draft"
  },
  "RA2-payload-obligation-band": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger operator_decisions_rating_payload_of_its_draft"
  },
  "RA2-payload-obligation-in-draft": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger operator_decisions_rating_payload_of_its_draft"
  },
  "RA2-payload-of-its-draft": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger operator_decisions_rating_payload_of_its_draft"
  },
  "RA2-payload-only-on-rating-decisions": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operator_decisions"
  },
  "RA2-payload-shape": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operator_decisions"
  },
@@ -9507,7 +9507,7 @@
  },
  "RA2R-only-self-excluded": {
   "controls": [
-   "test_store_ddl.CommitFencingTest.test_delegate_commits_under_parent_lease"
+   "test_store_ddl_invocations.CommitFencingTest.test_delegate_commits_under_parent_lease"
   ],
   "why": "a statement that succeeds inserts a row into contract_revisions"
  },
@@ -9522,8 +9522,8 @@
    "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
   ],
   "rejected": [
-   "test_store_ddl.ContractGovernanceTest.test_approval_pointer_is_set_only_by_the_approval_transition",
-   "test_store_ddl.ContractGovernanceTest.test_completion_needs_approval_of_current_dossier"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_approval_pointer_is_set_only_by_the_approval_transition",
+   "test_store_ddl_contracts.ContractGovernanceTest.test_completion_needs_approval_of_current_dossier"
   ],
   "why": "a statement that succeeds enters trigger dossiers_under_approved_protocol"
  },
@@ -9578,113 +9578,113 @@
  "RA3R-approval-refused-too": {
   "by_hand": true,
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_an_update_recording_no_approval_pointer_passes_its_guard"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_an_update_recording_no_approval_pointer_passes_its_guard"
   ],
   "rejected": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_admission_pins_are_exclusive",
-   "test_store_ddl.AdmissionAndLeaseTest.test_contract_admission_needs_an_approved_revision",
-   "test_store_ddl.AdmissionAndLeaseTest.test_invocation_owns_a_live_lease_of_its_kind_and_topic",
-   "test_store_ddl.AdmissionAndLeaseTest.test_newer_verification_generation_does_not_fence_research",
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_admission_closes_once_a_contract_is_approved",
-   "test_store_ddl.AdmissionAndLeaseTest.test_receipt_carries_the_invocations_admission_and_config",
-   "test_store_ddl.AdmissionAndLeaseTest.test_receipt_json_admission_matches_its_columns",
-   "test_store_ddl.CommitFencingTest.test_commit_under_another_invocations_lease_rejected",
-   "test_store_ddl.CommitFencingTest.test_cross_topic_commit_rejected",
-   "test_store_ddl.CommitFencingTest.test_delegate_commits_under_parent_lease",
-   "test_store_ddl.CommitFencingTest.test_one_commit_per_state_revision",
-   "test_store_ddl.CommitFencingTest.test_one_final_outcome_per_invocation",
-   "test_store_ddl.CommitFencingTest.test_operation_id_reuse_rejected_and_receipts_immutable",
-   "test_store_ddl.CommitFencingTest.test_released_lease_cannot_commit",
-   "test_store_ddl.CommitFencingTest.test_stale_generation_rejected",
-   "test_store_ddl.CommitFencingTest.test_state_revision_advances_by_exactly_one",
-   "test_store_ddl.ContractAdmittedSupportTest.test_adopted_pre_contract_claim_with_a_receipt_is_allowed",
-   "test_store_ddl.ContractAdmittedSupportTest.test_contested_to_accepted_support_follows_the_same_rule",
-   "test_store_ddl.ContractAdmittedSupportTest.test_contract_admitted_claim_without_a_receipt_is_refused",
-   "test_store_ddl.ContractAdmittedSupportTest.test_every_claim_needs_admission_not_only_load_bearing",
-   "test_store_ddl.ContractAdmittedSupportTest.test_pre_contract_claim_with_a_qualifying_receipt_is_refused",
-   "test_store_ddl.ContractAdmittedSupportTest.test_the_producer_is_work_of_the_claims_own_topic",
-   "test_store_ddl.ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",
-   "test_store_ddl.ContractGovernanceTest.test_contract_content_immutable_never_deleted",
-   "test_store_ddl.ContractGovernanceTest.test_one_approved_revision_per_topic",
-   "test_store_ddl.ContractGovernanceTest.test_proposed_importance_cites_an_importance_receipt",
-   "test_store_ddl.ContractGovernanceTest.test_retirement_needs_operator_decision",
-   "test_store_ddl.DecisionReceiptConsistencyTest.test_abstention_retains_the_raw_response",
-   "test_store_ddl.DecisionReceiptConsistencyTest.test_action_fixes_the_outcome_shape",
-   "test_store_ddl.DecisionReceiptConsistencyTest.test_receipt_matches_its_spec",
-   "test_store_ddl.DecisionReceiptConsistencyTest.test_receipt_row_matches_its_json",
-   "test_store_ddl.DecisionReceiptConsistencyTest.test_spec_shape_by_class_and_provider",
-   "test_store_ddl.DraftVocabularyTransitionTest.test_claim_status_transitions",
-   "test_store_ddl.DraftVocabularyTransitionTest.test_queue_status_transitions",
-   "test_store_ddl.ExportOutboxTest.test_connector_ids_are_well_formed",
-   "test_store_ddl.ExportOutboxTest.test_connector_watermark_never_regresses",
-   "test_store_ddl.ExportOutboxTest.test_delivery_receipt_only_for_named_connectors",
-   "test_store_ddl.ExportOutboxTest.test_manifest_json_matches_its_columns",
-   "test_store_ddl.ExportOutboxTest.test_manifest_names_only_declared_connector_types",
-   "test_store_ddl.ExportOutboxTest.test_one_generation_is_one_approved_revision",
-   "test_store_ddl.ExportOutboxTest.test_only_approved_work_is_exported",
-   "test_store_ddl.ExportOutboxTest.test_ordering_pairs_strictly_increase",
-   "test_store_ddl.ExportOutboxTest.test_receipt_describes_its_manifest",
-   "test_store_ddl.ExportOutboxTest.test_receipt_document_matches_its_columns",
-   "test_store_ddl.ExportOutboxTest.test_receipt_status_rules",
-   "test_store_ddl.ExportOutboxTest.test_supersession_names_a_lower_pair",
-   "test_store_ddl.ExportOutboxTest.test_written_count_rules",
-   "test_store_ddl.FacetImportanceTest.test_approval_needs_complete_rows_and_every_facet_rated",
-   "test_store_ddl.FacetImportanceTest.test_critical_facet_with_zero_obligations_is_representable_and_blocks_approval",
-   "test_store_ddl.FacetImportanceTest.test_facet_proposal_cites_an_importance_receipt",
-   "test_store_ddl.HashContractTest.test_commit_receipt_records_the_frozen_contracts",
-   "test_store_ddl.HashContractTest.test_decision_receipt_records_the_frozen_canonicalization_only",
-   "test_store_ddl.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper",
-   "test_store_ddl.HoldTest.test_decision_subject_must_exist_with_its_topic",
-   "test_store_ddl.HoldTest.test_operator_hold_cleared_only_by_operator_decision",
-   "test_store_ddl.InvocationLifecycleTest.test_capability_is_unique_per_invocation",
-   "test_store_ddl.InvocationLifecycleTest.test_delegate_inherits_a_running_parent_of_its_topic",
-   "test_store_ddl.InvocationLifecycleTest.test_delegate_names_its_parent",
-   "test_store_ddl.InvocationLifecycleTest.test_every_exit_needs_its_own_episodes_record",
-   "test_store_ddl.InvocationLifecycleTest.test_found_committed_needs_the_final_receipt",
-   "test_store_ddl.InvocationLifecycleTest.test_full_chain_allowed_but_skips_rejected",
-   "test_store_ddl.InvocationLifecycleTest.test_invocations_start_admitted",
-   "test_store_ddl.InvocationLifecycleTest.test_launching_requires_launch_intent",
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle",
-   "test_store_ddl.InvocationLifecycleTest.test_outcome_unknown_is_reconciled_not_skipped",
-   "test_store_ddl.InvocationLifecycleTest.test_process_identity_is_write_once",
-   "test_store_ddl.InvocationLifecycleTest.test_reconciliation_resolutions_and_evidence",
-   "test_store_ddl.InvocationLifecycleTest.test_running_requires_process_identity_not_a_pid",
-   "test_store_ddl.InvocationLifecycleTest.test_terminal_states_are_final",
-   "test_store_ddl.ObservationTest.test_degraded_search_cannot_report_zero",
-   "test_store_ddl.ObservationTest.test_observation_invocation_is_of_its_topic",
-   "test_store_ddl.ObservationTest.test_one_current_capability_fact_supersede_to_transition",
-   "test_store_ddl.ObservationTest.test_partial_results_are_kept_and_marked_incomplete",
-   "test_store_ddl.ObservationTest.test_retrieval_events_only_from_successful_searches",
-   "test_store_ddl.ObservationTest.test_searched_empty_is_exactly_zero_and_searched_ok_has_results",
-   "test_store_ddl.ObservationTest.test_secrets_failure_is_a_dated_capability_fact",
-   "test_store_ddl.OrdinalAndTriggerTest.test_only_research_pass_final_outcomes_get_ordinals",
-   "test_store_ddl.OrdinalAndTriggerTest.test_ordinals_dense_and_once_per_invocation",
-   "test_store_ddl.OrdinalAndTriggerTest.test_trigger_identity_unique_and_handled_is_final",
-   "test_store_ddl.ScreeningAndDecisionTest.test_assessment_operation_invocation_and_reversal_are_of_its_topic",
-   "test_store_ddl.ScreeningAndDecisionTest.test_exclusion_requires_reason_code",
-   "test_store_ddl.ScreeningAndDecisionTest.test_fallback_label_cannot_carry_probability",
-   "test_store_ddl.ScreeningAndDecisionTest.test_missing_confidence_or_primitive_is_rejected_not_defaulted",
-   "test_store_ddl.ScreeningAndDecisionTest.test_provider_assessment_is_exactly_its_receipts_committed_action",
-   "test_store_ddl.ScreeningAndDecisionTest.test_receipt_provider_must_match_spec",
-   "test_store_ddl.ScreeningAndDecisionTest.test_shadow_decision_provider_cannot_write_authoritative_screening",
-   "test_store_ddl.ScreeningAndDecisionTest.test_unqualified_authority_is_capped",
-   "test_store_ddl.VerificationTest.test_absent_keys_are_not_passes",
-   "test_store_ddl.VerificationTest.test_accepted_support_needs_receipt_at_required_tier",
-   "test_store_ddl.VerificationTest.test_claims_start_provisional",
-   "test_store_ddl.VerificationTest.test_load_bearing_receipt_states_its_claims_designation",
-   "test_store_ddl.VerificationTest.test_nli_alarm_quarantines_the_quote",
-   "test_store_ddl.VerificationTest.test_producer_cannot_verify_itself",
-   "test_store_ddl.VerificationTest.test_producer_unvalidated_extraction_rejected",
-   "test_store_ddl.VerificationTest.test_quote_check_binding",
-   "test_store_ddl.VerificationTest.test_receipt_must_name_the_claims_real_producer",
-   "test_store_ddl.VerificationTest.test_receipt_names_the_verifiers_own_capability",
-   "test_store_ddl.VerificationTest.test_receipt_row_matches_its_json",
-   "test_store_ddl.VerificationTest.test_requested_by_is_same_topic_and_never_self",
-   "test_store_ddl.VerificationTest.test_sampling_never_qualifies_a_load_bearing_claim",
-   "test_store_ddl.VerificationTest.test_support_needs_successful_checks_or_adjudication",
-   "test_store_ddl.VerificationTest.test_supports_cannot_exceed_obtained_tier",
-   "test_store_ddl.VerificationTest.test_truthful_unsuccessful_verdicts_may_record_unperformed_checks",
-   "test_store_ddl.VerificationTest.test_verifier_must_be_separate_verification_invocation",
+   "test_store_ddl_contracts.ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",
+   "test_store_ddl_contracts.ContractGovernanceTest.test_contract_content_immutable_never_deleted",
+   "test_store_ddl_contracts.ContractGovernanceTest.test_one_approved_revision_per_topic",
+   "test_store_ddl_contracts.ContractGovernanceTest.test_proposed_importance_cites_an_importance_receipt",
+   "test_store_ddl_contracts.ContractGovernanceTest.test_retirement_needs_operator_decision",
+   "test_store_ddl_contracts.DraftVocabularyTransitionTest.test_claim_status_transitions",
+   "test_store_ddl_contracts.DraftVocabularyTransitionTest.test_queue_status_transitions",
+   "test_store_ddl_contracts.FacetImportanceTest.test_approval_needs_complete_rows_and_every_facet_rated",
+   "test_store_ddl_contracts.FacetImportanceTest.test_critical_facet_with_zero_obligations_is_representable_and_blocks_approval",
+   "test_store_ddl_contracts.FacetImportanceTest.test_facet_proposal_cites_an_importance_receipt",
+   "test_store_ddl_evidence.ContractAdmittedSupportTest.test_adopted_pre_contract_claim_with_a_receipt_is_allowed",
+   "test_store_ddl_evidence.ContractAdmittedSupportTest.test_contested_to_accepted_support_follows_the_same_rule",
+   "test_store_ddl_evidence.ContractAdmittedSupportTest.test_contract_admitted_claim_without_a_receipt_is_refused",
+   "test_store_ddl_evidence.ContractAdmittedSupportTest.test_every_claim_needs_admission_not_only_load_bearing",
+   "test_store_ddl_evidence.ContractAdmittedSupportTest.test_pre_contract_claim_with_a_qualifying_receipt_is_refused",
+   "test_store_ddl_evidence.ContractAdmittedSupportTest.test_the_producer_is_work_of_the_claims_own_topic",
+   "test_store_ddl_evidence.DecisionReceiptConsistencyTest.test_abstention_retains_the_raw_response",
+   "test_store_ddl_evidence.DecisionReceiptConsistencyTest.test_action_fixes_the_outcome_shape",
+   "test_store_ddl_evidence.DecisionReceiptConsistencyTest.test_receipt_matches_its_spec",
+   "test_store_ddl_evidence.DecisionReceiptConsistencyTest.test_receipt_row_matches_its_json",
+   "test_store_ddl_evidence.DecisionReceiptConsistencyTest.test_spec_shape_by_class_and_provider",
+   "test_store_ddl_evidence.HoldTest.test_decision_subject_must_exist_with_its_topic",
+   "test_store_ddl_evidence.HoldTest.test_operator_hold_cleared_only_by_operator_decision",
+   "test_store_ddl_evidence.ObservationTest.test_degraded_search_cannot_report_zero",
+   "test_store_ddl_evidence.ObservationTest.test_observation_invocation_is_of_its_topic",
+   "test_store_ddl_evidence.ObservationTest.test_one_current_capability_fact_supersede_to_transition",
+   "test_store_ddl_evidence.ObservationTest.test_partial_results_are_kept_and_marked_incomplete",
+   "test_store_ddl_evidence.ObservationTest.test_retrieval_events_only_from_successful_searches",
+   "test_store_ddl_evidence.ObservationTest.test_searched_empty_is_exactly_zero_and_searched_ok_has_results",
+   "test_store_ddl_evidence.ObservationTest.test_secrets_failure_is_a_dated_capability_fact",
+   "test_store_ddl_evidence.ScreeningAndDecisionTest.test_assessment_operation_invocation_and_reversal_are_of_its_topic",
+   "test_store_ddl_evidence.ScreeningAndDecisionTest.test_exclusion_requires_reason_code",
+   "test_store_ddl_evidence.ScreeningAndDecisionTest.test_fallback_label_cannot_carry_probability",
+   "test_store_ddl_evidence.ScreeningAndDecisionTest.test_missing_confidence_or_primitive_is_rejected_not_defaulted",
+   "test_store_ddl_evidence.ScreeningAndDecisionTest.test_provider_assessment_is_exactly_its_receipts_committed_action",
+   "test_store_ddl_evidence.ScreeningAndDecisionTest.test_receipt_provider_must_match_spec",
+   "test_store_ddl_evidence.ScreeningAndDecisionTest.test_shadow_decision_provider_cannot_write_authoritative_screening",
+   "test_store_ddl_evidence.ScreeningAndDecisionTest.test_unqualified_authority_is_capped",
+   "test_store_ddl_evidence.VerificationTest.test_absent_keys_are_not_passes",
+   "test_store_ddl_evidence.VerificationTest.test_accepted_support_needs_receipt_at_required_tier",
+   "test_store_ddl_evidence.VerificationTest.test_claims_start_provisional",
+   "test_store_ddl_evidence.VerificationTest.test_load_bearing_receipt_states_its_claims_designation",
+   "test_store_ddl_evidence.VerificationTest.test_nli_alarm_quarantines_the_quote",
+   "test_store_ddl_evidence.VerificationTest.test_producer_cannot_verify_itself",
+   "test_store_ddl_evidence.VerificationTest.test_producer_unvalidated_extraction_rejected",
+   "test_store_ddl_evidence.VerificationTest.test_quote_check_binding",
+   "test_store_ddl_evidence.VerificationTest.test_receipt_must_name_the_claims_real_producer",
+   "test_store_ddl_evidence.VerificationTest.test_receipt_names_the_verifiers_own_capability",
+   "test_store_ddl_evidence.VerificationTest.test_receipt_row_matches_its_json",
+   "test_store_ddl_evidence.VerificationTest.test_requested_by_is_same_topic_and_never_self",
+   "test_store_ddl_evidence.VerificationTest.test_sampling_never_qualifies_a_load_bearing_claim",
+   "test_store_ddl_evidence.VerificationTest.test_support_needs_successful_checks_or_adjudication",
+   "test_store_ddl_evidence.VerificationTest.test_supports_cannot_exceed_obtained_tier",
+   "test_store_ddl_evidence.VerificationTest.test_truthful_unsuccessful_verdicts_may_record_unperformed_checks",
+   "test_store_ddl_evidence.VerificationTest.test_verifier_must_be_separate_verification_invocation",
+   "test_store_ddl_export.ExportOutboxTest.test_connector_ids_are_well_formed",
+   "test_store_ddl_export.ExportOutboxTest.test_connector_watermark_never_regresses",
+   "test_store_ddl_export.ExportOutboxTest.test_delivery_receipt_only_for_named_connectors",
+   "test_store_ddl_export.ExportOutboxTest.test_manifest_json_matches_its_columns",
+   "test_store_ddl_export.ExportOutboxTest.test_manifest_names_only_declared_connector_types",
+   "test_store_ddl_export.ExportOutboxTest.test_one_generation_is_one_approved_revision",
+   "test_store_ddl_export.ExportOutboxTest.test_only_approved_work_is_exported",
+   "test_store_ddl_export.ExportOutboxTest.test_ordering_pairs_strictly_increase",
+   "test_store_ddl_export.ExportOutboxTest.test_receipt_describes_its_manifest",
+   "test_store_ddl_export.ExportOutboxTest.test_receipt_document_matches_its_columns",
+   "test_store_ddl_export.ExportOutboxTest.test_receipt_status_rules",
+   "test_store_ddl_export.ExportOutboxTest.test_supersession_names_a_lower_pair",
+   "test_store_ddl_export.ExportOutboxTest.test_written_count_rules",
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_admission_pins_are_exclusive",
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_contract_admission_needs_an_approved_revision",
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_invocation_owns_a_live_lease_of_its_kind_and_topic",
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_newer_verification_generation_does_not_fence_research",
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_admission_closes_once_a_contract_is_approved",
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_receipt_carries_the_invocations_admission_and_config",
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_receipt_json_admission_matches_its_columns",
+   "test_store_ddl_invocations.CommitFencingTest.test_commit_under_another_invocations_lease_rejected",
+   "test_store_ddl_invocations.CommitFencingTest.test_cross_topic_commit_rejected",
+   "test_store_ddl_invocations.CommitFencingTest.test_delegate_commits_under_parent_lease",
+   "test_store_ddl_invocations.CommitFencingTest.test_one_commit_per_state_revision",
+   "test_store_ddl_invocations.CommitFencingTest.test_one_final_outcome_per_invocation",
+   "test_store_ddl_invocations.CommitFencingTest.test_operation_id_reuse_rejected_and_receipts_immutable",
+   "test_store_ddl_invocations.CommitFencingTest.test_released_lease_cannot_commit",
+   "test_store_ddl_invocations.CommitFencingTest.test_stale_generation_rejected",
+   "test_store_ddl_invocations.CommitFencingTest.test_state_revision_advances_by_exactly_one",
+   "test_store_ddl_invocations.HashContractTest.test_commit_receipt_records_the_frozen_contracts",
+   "test_store_ddl_invocations.HashContractTest.test_decision_receipt_records_the_frozen_canonicalization_only",
+   "test_store_ddl_invocations.HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper",
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_capability_is_unique_per_invocation",
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_delegate_inherits_a_running_parent_of_its_topic",
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_delegate_names_its_parent",
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_every_exit_needs_its_own_episodes_record",
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_found_committed_needs_the_final_receipt",
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_full_chain_allowed_but_skips_rejected",
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_invocations_start_admitted",
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_launching_requires_launch_intent",
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle",
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_outcome_unknown_is_reconciled_not_skipped",
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_process_identity_is_write_once",
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_reconciliation_resolutions_and_evidence",
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_running_requires_process_identity_not_a_pid",
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_terminal_states_are_final",
+   "test_store_ddl_invocations.OrdinalAndTriggerTest.test_only_research_pass_final_outcomes_get_ordinals",
+   "test_store_ddl_invocations.OrdinalAndTriggerTest.test_ordinals_dense_and_once_per_invocation",
+   "test_store_ddl_invocations.OrdinalAndTriggerTest.test_trigger_identity_unique_and_handled_is_final",
    "test_store_examples.ExampleWorldTest.test_commit_receipt_cannot_describe_another_row",
    "test_store_examples.ExampleWorldTest.test_decision_receipt_cannot_name_another_spec",
    "test_store_examples.ExampleWorldTest.test_obligation_rows_cannot_contradict_the_example_document",
@@ -9735,37 +9735,37 @@
  },
  "RA4-entry-takes-next-identity": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_unknown_episode_is_fresh"
  },
  "RA4-episode-identity-dropped": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_unknown_episode_is_fresh"
  },
  "RA4-episode-keyed-by-timestamp": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_unknown_needs_reconciliation"
  },
  "RA4-identity-immutable": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_unknown_episode_is_fresh"
  },
  "RA4-reconciliation-names-current-episode": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocation_reconciliations_for_current_episode"
  },
  "RA4-start-time-immutable": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_unknown_episode_is_fresh"
  },
@@ -9801,13 +9801,13 @@
  },
  "RA6-contract-created_at": {
   "controls": [
-   "test_store_ddl.CommitFencingTest.test_delegate_commits_under_parent_lease"
+   "test_store_ddl_invocations.CommitFencingTest.test_delegate_commits_under_parent_lease"
   ],
   "why": "a statement that succeeds inserts a row into contract_revisions"
  },
  "RA6-contract-parent_revision": {
   "controls": [
-   "test_store_ddl.CommitFencingTest.test_delegate_commits_under_parent_lease"
+   "test_store_ddl_invocations.CommitFencingTest.test_delegate_commits_under_parent_lease"
   ],
   "why": "a statement that succeeds inserts a row into contract_revisions"
  },
@@ -9855,97 +9855,97 @@
  },
  "RA6-receipt-admission-brief-confirmation": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger operation_receipts_admission_references"
  },
  "RA6-receipt-admission-brief-id": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger operation_receipts_admission_references"
  },
  "RA6-receipt-admission-brief-version": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger operation_receipts_admission_references"
  },
  "RA6-receipt-admission-contract-hash": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger operation_receipts_admission_references"
  },
  "RA6-receipt-admission-references-dropped": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger operation_receipts_admission_references"
  },
  "RA6-receipt-json-committed_at": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operation_receipts"
  },
  "RA6-receipt-json-invocation_id": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operation_receipts"
  },
  "RA6-receipt-json-lease-release-generation": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operation_receipts"
  },
  "RA6-receipt-json-lease-release-lease": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operation_receipts"
  },
  "RA6-receipt-json-operation_kind": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operation_receipts"
  },
  "RA6-receipt-json-request_fingerprint": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operation_receipts"
  },
  "RA6-receipt-json-state_revision_after": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operation_receipts"
  },
  "RA6-receipt-json-state_revision_before": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operation_receipts"
  },
  "RA6-receipt-json-topic_id": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operation_receipts"
  },
  "RA6-receipt-json-validation-policy_version": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operation_receipts"
  },
  "RA6-receipt-json-validation-validator_version": {
   "controls": [
-   "test_store_ddl.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.AdmissionAndLeaseTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds inserts a row into operation_receipts"
  },
@@ -10142,7 +10142,7 @@
    "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
   ],
   "rejected": [
-   "test_store_ddl.ContractAdmittedSupportTest.test_the_producer_is_work_of_the_claims_own_topic"
+   "test_store_ddl_evidence.ContractAdmittedSupportTest.test_the_producer_is_work_of_the_claims_own_topic"
   ],
   "why": "a statement that succeeds enters trigger claims_accepted_support_needs_contract_admission"
  },
@@ -10314,13 +10314,13 @@
  "cov-connector_watermarks_never_regress": {
   "controls": [],
   "in_killer": [
-   "test_store_ddl.ExportOutboxTest.test_connector_watermark_never_regresses"
+   "test_store_ddl_export.ExportOutboxTest.test_connector_watermark_never_regresses"
   ],
   "why": "no other test enters trigger connector_watermarks_never_regress in a statement that succeeds; the killer does, and under the mutant too: the idempotent retry UPDATE runs before the refusals, which sit in subTests; an advancing UPDATE ends the test"
  },
  "cov-contract_status_forward_only": {
   "controls": [
-   "test_store_ddl.CommitFencingTest.test_delegate_commits_under_parent_lease"
+   "test_store_ddl_invocations.CommitFencingTest.test_delegate_commits_under_parent_lease"
   ],
   "why": "a statement that succeeds enters trigger contract_status_forward_only"
  },
@@ -10500,13 +10500,13 @@
  },
  "cov-invocations_start_admitted": {
   "controls": [
-   "test_store_ddl.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
+   "test_store_ddl_invocations.InvocationLifecycleTest.test_never_observed_job_recovered_by_handle"
   ],
   "why": "a statement that succeeds enters trigger invocations_start_admitted"
  },
  "cov-leases_generation_increases": {
   "controls": [
-   "test_store_ddl.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
+   "test_store_ddl_invocations.ZeroContractDiscoveryTest.test_pre_contract_discovery_can_finalize"
   ],
   "why": "a statement that succeeds enters trigger leases_generation_increases"
  },
@@ -10518,7 +10518,7 @@
  },
  "cov-operation_receipts_fenced": {
   "controls": [
-   "test_store_ddl.CommitFencingTest.test_delegate_commits_under_parent_lease"
+   "test_store_ddl_invocations.CommitFencingTest.test_delegate_commits_under_parent_lease"
   ],
   "why": "a statement that succeeds enters trigger operation_receipts_fenced"
  },
@@ -10530,7 +10530,7 @@
  },
  "cov-queue_state_revision_advances_by_one": {
   "controls": [
-   "test_store_ddl.ContractGovernanceTest.test_status_change_is_a_commit"
+   "test_store_ddl_contracts.ContractGovernanceTest.test_status_change_is_a_commit"
   ],
   "why": "a statement that succeeds enters trigger queue_state_revision_advances_by_one"
  },

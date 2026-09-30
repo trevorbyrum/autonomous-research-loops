@@ -191,24 +191,24 @@ FILE_TARGETS = {
 }
 
 H = "test_store_history."
-D = "test_store_ddl."
-FI = "test_store_ddl.FacetImportanceTest."
-AD = "test_store_ddl.AdmissionAndLeaseTest."
-IL = "test_store_ddl.InvocationLifecycleTest."
-VT = "test_store_ddl.VerificationTest."
-CS = "test_store_ddl.ContractAdmittedSupportTest."
-LT = "test_store_ddl.InvocationLifecycleTest."
-DC = "test_store_ddl.DecisionReceiptConsistencyTest."
-SD = "test_store_ddl.ScreeningAndDecisionTest."
-OB = "test_store_ddl.ObservationTest."
-VO = "test_store_ddl.DraftVocabularyTransitionTest."
+DI, DE, DX, DK = "test_store_ddl_invocations.", "test_store_ddl_evidence.", "test_store_ddl_export.", "test_store_ddl_contracts."  # task 2r: test_store_ddl.py by concern
+FI = "test_store_ddl_contracts.FacetImportanceTest."
+AD = "test_store_ddl_invocations.AdmissionAndLeaseTest."
+IL = "test_store_ddl_invocations.InvocationLifecycleTest."
+VT = "test_store_ddl_evidence.VerificationTest."
+CS = "test_store_ddl_evidence.ContractAdmittedSupportTest."
+LT = "test_store_ddl_invocations.InvocationLifecycleTest."
+DC = "test_store_ddl_evidence.DecisionReceiptConsistencyTest."
+SD = "test_store_ddl_evidence.ScreeningAndDecisionTest."
+OB = "test_store_ddl_evidence.ObservationTest."
+VO = "test_store_ddl_contracts.DraftVocabularyTransitionTest."
 CB = "test_check_boundaries.BoundaryCheckerTest."
 DR = "test_check_ddl_rules.DdlRuleTest."
 IN = "test_instants.UtcInstantTest."
 CN = "test_canonical."
 RI = "test_store_history.RecordIdentityTest."
 EX = "test_store_examples.ExampleWorldTest."
-CG = "test_store_ddl.ContractGovernanceTest."
+CG = "test_store_ddl_contracts.ContractGovernanceTest."
 SG = "test_sqlite_gate."
 IB = "test_store_intake.IntakeBriefTest."
 SC = "test_source_catalog.CatalogToolTest."
@@ -293,24 +293,24 @@ MUTATIONS: list[Mutation] = [
     Mutation("A1-recursive-triggers-off", "A1", "connection contract omits recursive_triggers (REPLACE skips delete guards)",
              (H + "ReplaceAndDeleteTest.test_replace_cannot_rewrite_a_receipt_on_any_key",
               H + "ConnectionContractTest.test_connection_contract_reads_back_on",
-              D + "CommitFencingTest.test_operation_id_reuse_rejected_and_receipts_immutable"),
+              DI + "CommitFencingTest.test_operation_id_reuse_rejected_and_receipts_immutable"),
              target="connection", old="PRAGMA recursive_triggers = ON;\n"),
     Mutation("A1-receipt-delete-guard", "A1", "drop operation_receipts delete guard",
              (H + "ReplaceAndDeleteTest.test_replace_cannot_rewrite_a_receipt_on_any_key",
-              D + "CommitFencingTest.test_operation_id_reuse_rejected_and_receipts_immutable",
+              DI + "CommitFencingTest.test_operation_id_reuse_rejected_and_receipts_immutable",
               H + "EveryTableSweepTest.test_no_table_can_be_deleted_from_or_replaced_into"),
              drop_trigger="operation_receipts_immutable_d"),
     Mutation("A1-connector-watermark-delete-guard", "A1", "drop connector_watermarks delete guard (carries the sink-watermark case, 0d)",
              (H + "ReplaceAndDeleteTest.test_connector_watermark_cannot_regress_by_delete_reinsert_or_replace",
-              D + "ExportOutboxTest.test_connector_watermark_never_regresses"),
+              DX + "ExportOutboxTest.test_connector_watermark_never_regresses"),
              drop_trigger="connector_watermarks_no_delete"),
     Mutation("A1-review-trigger-delete-guard", "A1", "drop review_triggers delete guard",
              (H + "ReplaceAndDeleteTest.test_handled_trigger_replayed_after_its_episode_closed_stays_handled",
-              D + "OrdinalAndTriggerTest.test_trigger_identity_unique_and_handled_is_final"),
+              DI + "OrdinalAndTriggerTest.test_trigger_identity_unique_and_handled_is_final"),
              drop_trigger="review_triggers_no_delete"),
     Mutation("A1-contract-delete-guard", "A1", "drop contract_revisions delete guard",
              (H + "ReplaceAndDeleteTest.test_update_or_replace_cannot_delete_the_approved_contract",
-              D + "ContractGovernanceTest.test_contract_content_immutable_never_deleted"),
+              DK + "ContractGovernanceTest.test_contract_content_immutable_never_deleted"),
              drop_trigger="contract_no_delete"),
     Mutation("A1-queue-delete-guard", "A1", "drop queue_entries delete guard",
              (H + "EveryTableSweepTest.test_no_table_can_be_deleted_from_or_replaced_into",), drop_trigger="queue_entries_no_delete"),
@@ -342,62 +342,62 @@ MUTATIONS: list[Mutation] = [
     # unique hash and the decision-time existence check) they are mutated
     # together as one dimension.
     Mutation("A2-queue-created-at-intake", "A2", "topics may be inserted in any status",
-             (D + "ContractGovernanceTest.test_terminal_statuses_cannot_be_inserted",), drop_trigger="queue_entries_created_at_intake"),
+             (DK + "ContractGovernanceTest.test_terminal_statuses_cannot_be_inserted",), drop_trigger="queue_entries_created_at_intake"),
     Mutation("A2-status-change-advances-revision", "A2", "status may change without a commit",
-             (D + "ContractGovernanceTest.test_status_change_is_a_commit",), drop_trigger="queue_status_change_advances_revision"),
+             (DK + "ContractGovernanceTest.test_status_change_is_a_commit",), drop_trigger="queue_status_change_advances_revision"),
     Mutation("A2-status-decision-iff-gated", "A2", "status_decision_id no longer tied to decision-gated statuses",
-             (D + "ContractGovernanceTest.test_status_change_is_a_commit",),
+             (DK + "ContractGovernanceTest.test_status_change_is_a_commit",),
              old="\n  CHECK ((status IN ('completed_with_qualified_conclusions', 'retired')) = (status_decision_id IS NOT NULL)),", new=""),
     Mutation("A2-completion-naming", "A2", "completion accepts any valid approval, not the one named",
-             (D + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",), old="    WHERE d.decision_id = NEW.status_decision_id\n      AND d.topic_id = NEW.topic_id\n      AND d.kind = 'completion_approval'", new="    WHERE d.topic_id = NEW.topic_id\n      AND d.kind = 'completion_approval'"),
+             (DK + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",), old="    WHERE d.decision_id = NEW.status_decision_id\n      AND d.topic_id = NEW.topic_id\n      AND d.kind = 'completion_approval'", new="    WHERE d.topic_id = NEW.topic_id\n      AND d.kind = 'completion_approval'"),
     Mutation("A2-completion-kind", "A2", "completion gate ignores decision kind",
-             (D + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",), old="      AND d.kind = 'completion_approval'\n", new=""),
+             (DK + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",), old="      AND d.kind = 'completion_approval'\n", new=""),
     Mutation("A2-completion-disposition", "A2", "completion gate ignores disposition",
-             (D + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",), old="      AND d.kind = 'completion_approval'\n      AND d.disposition = 'approved'\n", new="      AND d.kind = 'completion_approval'\n"),
+             (DK + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",), old="      AND d.kind = 'completion_approval'\n      AND d.disposition = 'approved'\n", new="      AND d.kind = 'completion_approval'\n"),
     Mutation("A2-completion-topic", "A2", "completion gate binds the dossier to the decision's topic, not the transition's",
-             (D + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",),
+             (DK + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",),
              old="    JOIN dossiers x ON x.topic_id = NEW.topic_id AND x.dossier_revision = d.subject_revision AND x.content_hash = d.subject_hash",
              new="    JOIN dossiers x ON x.topic_id = d.topic_id AND x.dossier_revision = d.subject_revision AND x.content_hash = d.subject_hash",
              also=(("    WHERE d.decision_id = NEW.status_decision_id\n      AND d.topic_id = NEW.topic_id\n      AND d.kind = 'completion_approval'", "    WHERE d.decision_id = NEW.status_decision_id\n      AND d.kind = 'completion_approval'"),)),
     Mutation("A2-completion-currency", "A2", "completion accepts an approval of a superseded dossier",
-             (D + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",),
+             (DK + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",),
              old="      AND x.dossier_revision = (SELECT max(y.dossier_revision) FROM dossiers y WHERE y.topic_id = NEW.topic_id)\n", new=""),
     Mutation("A2-completion-active-contract", "A2", "completion ignores which contract is active",
-             (D + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",), old="      AND x.contract_revision IS NEW.active_contract_revision\n", new=""),
+             (DK + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",), old="      AND x.contract_revision IS NEW.active_contract_revision\n", new=""),
     Mutation("A2-completion-contract-approved", "A2", "completion ignores whether the contract is approved",
-             (D + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",), old="      AND c.status = 'approved')\nBEGIN\n  SELECT RAISE(ABORT, 'completion requires", new=")\nBEGIN\n  SELECT RAISE(ABORT, 'completion requires"),
+             (DK + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",), old="      AND c.status = 'approved')\nBEGIN\n  SELECT RAISE(ABORT, 'completion requires", new=")\nBEGIN\n  SELECT RAISE(ABORT, 'completion requires"),
     Mutation("A2-retirement-naming", "A2", "retirement accepts any valid decision, not the one named",
-             (D + "ContractGovernanceTest.test_retirement_needs_operator_decision",), old="    WHERE d.decision_id = NEW.status_decision_id\n      AND d.topic_id = NEW.topic_id\n      AND d.kind = 'retirement'", new="    WHERE d.topic_id = NEW.topic_id\n      AND d.kind = 'retirement'"),
+             (DK + "ContractGovernanceTest.test_retirement_needs_operator_decision",), old="    WHERE d.decision_id = NEW.status_decision_id\n      AND d.topic_id = NEW.topic_id\n      AND d.kind = 'retirement'", new="    WHERE d.topic_id = NEW.topic_id\n      AND d.kind = 'retirement'"),
     Mutation("A2-retirement-topic", "A2", "retirement ignores the decision's topic",
-             (D + "ContractGovernanceTest.test_retirement_needs_operator_decision",), old="      AND d.topic_id = NEW.topic_id\n      AND d.kind = 'retirement'", new="      AND d.kind = 'retirement'"),
+             (DK + "ContractGovernanceTest.test_retirement_needs_operator_decision",), old="      AND d.topic_id = NEW.topic_id\n      AND d.kind = 'retirement'", new="      AND d.kind = 'retirement'"),
     Mutation("A2-retirement-kind", "A2", "retirement ignores decision kind",
-             (D + "ContractGovernanceTest.test_retirement_needs_operator_decision",), old="      AND d.kind = 'retirement'\n", new=""),
+             (DK + "ContractGovernanceTest.test_retirement_needs_operator_decision",), old="      AND d.kind = 'retirement'\n", new=""),
     Mutation("A2-retirement-disposition", "A2", "retirement ignores disposition",
-             (D + "ContractGovernanceTest.test_retirement_needs_operator_decision",), old="      AND d.kind = 'retirement'\n      AND d.disposition = 'approved'\n", new="      AND d.kind = 'retirement'\n"),
+             (DK + "ContractGovernanceTest.test_retirement_needs_operator_decision",), old="      AND d.kind = 'retirement'\n      AND d.disposition = 'approved'\n", new="      AND d.kind = 'retirement'\n"),
     Mutation("A2-retirement-state-revision", "A2", "a retirement decision about an earlier state is accepted (stale/reuse)",
-             (D + "ContractGovernanceTest.test_retirement_needs_operator_decision",), old="\n      AND d.subject_revision = OLD.state_revision)", new=")"),
+             (DK + "ContractGovernanceTest.test_retirement_needs_operator_decision",), old="\n      AND d.subject_revision = OLD.state_revision)", new=")"),
     Mutation("RA1-terminal-decision-pointer", "RA1", "the review's probe: a completed/retired topic's authorizing decision may be swapped or cleared without a status change",
-             (D + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier", D + "ContractGovernanceTest.test_retirement_needs_operator_decision"),
+             (DK + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier", DK + "ContractGovernanceTest.test_retirement_needs_operator_decision"),
              drop_trigger="queue_status_decision_moves_with_status"),
     Mutation("RA1-pointer-moves-with-revision", "RA1", "advancing state_revision alone counts as the transition that may move the pointer",
-             (D + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier", D + "ContractGovernanceTest.test_retirement_needs_operator_decision"),
+             (DK + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier", DK + "ContractGovernanceTest.test_retirement_needs_operator_decision"),
              scope="queue_status_decision_moves_with_status", old="AND NEW.status IS OLD.status", new="AND NEW.status IS OLD.status AND NEW.state_revision IS OLD.state_revision"),
     Mutation("A2-contract-created-as-draft", "A2", "contracts may be inserted approved",
-             (D + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",), drop_trigger="contract_created_as_draft"),
+             (DK + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",), drop_trigger="contract_created_as_draft"),
     Mutation("A2-contract-approval-naming", "A2", "contract approval accepts any valid approval, not the one named",
-             (D + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",), old="    WHERE d.decision_id = NEW.approved_by_decision_id\n", new="    WHERE 1\n"),
+             (DK + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",), old="    WHERE d.decision_id = NEW.approved_by_decision_id\n", new="    WHERE 1\n"),
     Mutation("A2-contract-approval-kind", "A2", "contract approval ignores decision kind",
-             (D + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",), old="      AND d.kind IN ('contract_approval', 'amendment_approval', 'reframe_approval')\n", new=""),
+             (DK + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",), old="      AND d.kind IN ('contract_approval', 'amendment_approval', 'reframe_approval')\n", new=""),
     Mutation("A2-contract-approval-disposition", "A2", "contract approval ignores disposition",
-             (D + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",),
+             (DK + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",),
              old="      AND d.kind IN ('contract_approval', 'amendment_approval', 'reframe_approval')\n      AND d.disposition = 'approved'\n", new="      AND d.kind IN ('contract_approval', 'amendment_approval', 'reframe_approval')\n"),
     Mutation("A2-contract-approval-subject", "A2", "contract approval ignores subject topic/revision/hash",
-             (D + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",),
+             (DK + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",),
              old="      AND d.topic_id = NEW.topic_id\n      AND d.subject_revision = NEW.revision\n      AND d.subject_hash = NEW.content_hash)", new=")"),
     # --- RA2: a rating is exactly what the operator rated (facets and obligations alike) ---
     *(Mutation(f"RA2-{kind}-{key}", "RA2", f"{kind} rating: {desc}", (killer,), scope=f"{kind}s_rating_is_what_the_operator_rated", old=old, new=new)
       for kind, killer, subject in (("facet", FI + "test_facet_rating_bound_to_a_rating_decision", "facet_id"),
-                                    ("obligation", D + "ContractGovernanceTest.test_operator_rating_bound_to_a_rating_decision", "obligation_id"))
+                                    ("obligation", DK + "ContractGovernanceTest.test_operator_rating_bound_to_a_rating_decision", "obligation_id"))
       for key, desc, old, new in (
           ("naming", "any valid rating decision will do, not the one named", "  WHERE d.decision_id = NEW.operator_rating_decision_id\n", "  WHERE 1\n"),
           ("disposition", "a rejected rating decision authorizes", "AND d.kind = 'rating_approval' AND d.disposition = 'approved'", "AND d.kind = 'rating_approval'"),
@@ -415,14 +415,14 @@ MUTATIONS: list[Mutation] = [
           ("rated-draft", "the definition may be compared with any revision, not the rated draft",
            "    AND rated.topic_id = d.topic_id AND rated.revision = d.subject_revision\n", "    AND rated.topic_id = d.topic_id\n"))),
     Mutation("RA2-payload-only-on-rating-decisions", "RA2", "a rating decision may lack its payload, or another kind carry one",
-             (D + "ContractGovernanceTest.test_only_a_rating_decision_carries_a_rating_payload",),
+             (DK + "ContractGovernanceTest.test_only_a_rating_decision_carries_a_rating_payload",),
              old="  CHECK ((kind = 'rating_approval') = (payload IS NOT NULL)),\n", new=""),
     Mutation("RA2-payload-shape", "RA2", "a rating payload need not carry facet and obligation objects",
-             (D + "ContractGovernanceTest.test_only_a_rating_decision_carries_a_rating_payload",),
+             (DK + "ContractGovernanceTest.test_only_a_rating_decision_carries_a_rating_payload",),
              old="  CHECK (kind != 'rating_approval' OR (json_type(payload, '$.facets') IS 'object' AND json_type(payload, '$.obligations') IS 'object')),\n", new=""),
     Mutation("RA2-payload-of-its-draft", "RA2", "a rating payload may name subjects its draft does not have",
-             (D + "ContractGovernanceTest.test_only_a_rating_decision_carries_a_rating_payload",), drop_trigger="operator_decisions_rating_payload_of_its_draft"),
-    *(Mutation(f"RA2-payload-{key}", "RA2", desc, (D + "ContractGovernanceTest.test_only_a_rating_decision_carries_a_rating_payload",),
+             (DK + "ContractGovernanceTest.test_only_a_rating_decision_carries_a_rating_payload",), drop_trigger="operator_decisions_rating_payload_of_its_draft"),
+    *(Mutation(f"RA2-payload-{key}", "RA2", desc, (DK + "ContractGovernanceTest.test_only_a_rating_decision_carries_a_rating_payload",),
                scope="operator_decisions_rating_payload_of_its_draft", old=old, new=new)
       for key, desc, old, new in (
           ("facet-band", "a rated facet need not carry a band from the vocabulary",
@@ -451,38 +451,38 @@ MUTATIONS: list[Mutation] = [
             FI + "test_facet_rating_bound_to_a_rating_decision"),
            "\n  CONSTRAINT contract_parent_is_earlier CHECK (parent_revision IS NULL OR parent_revision != revision),"))),
     Mutation("A2-proposal-receipt-class", "A2", "a Jev proposal may cite any decision class",
-             (D + "ContractGovernanceTest.test_proposed_importance_cites_an_importance_receipt",), scope="obligations_proposal_cites_importance_receipt",
+             (DK + "ContractGovernanceTest.test_proposed_importance_cites_an_importance_receipt",), scope="obligations_proposal_cites_importance_receipt",
              old=" AND r.decision_class = 'importance_score')", new=")"),
     Mutation("A2-proposal-receipt-topic", "A2", "a Jev proposal may cite another topic's receipt",
-             (D + "ContractGovernanceTest.test_proposed_importance_cites_an_importance_receipt",), scope="obligations_proposal_cites_importance_receipt",
+             (DK + "ContractGovernanceTest.test_proposed_importance_cites_an_importance_receipt",), scope="obligations_proposal_cites_importance_receipt",
              old="          AND r.topic_id = NEW.topic_id AND r.decision_class", new="          AND r.decision_class"),
     Mutation("A3-facet-band-score", "A3", "facet band/score consistency CHECK removed", (FI + "test_facet_rating_bound_to_a_rating_decision",), scope="facets",
              old="  CHECK (operator_importance_score IS NULL\n      OR (operator_importance_band = 'critical' AND operator_importance_score BETWEEN 7 AND 9)\n      OR (operator_importance_band = 'important' AND operator_importance_score BETWEEN 4 AND 6)\n      OR (operator_importance_band = 'limited' AND operator_importance_score BETWEEN 1 AND 3))",
              new="  CHECK (1)"),
     Mutation("A2-holds-created-open", "A2", "holds may be inserted cleared",
-             (D + "HoldTest.test_holds_are_created_open",), drop_trigger="holds_created_open"),
+             (DE + "HoldTest.test_holds_are_created_open",), drop_trigger="holds_created_open"),
     Mutation("A2-hold-clearance-naming", "A2", "a hold clears with any valid clearance, not the one named",
-             (D + "HoldTest.test_operator_hold_cleared_only_by_operator_decision",), old="    WHERE d.decision_id = NEW.cleared_by_decision_id\n", new="    WHERE 1\n"),
+             (DE + "HoldTest.test_operator_hold_cleared_only_by_operator_decision",), old="    WHERE d.decision_id = NEW.cleared_by_decision_id\n", new="    WHERE 1\n"),
     Mutation("A2-hold-clearance-kind", "A2", "hold clearance ignores decision kind",
-             (D + "HoldTest.test_operator_hold_cleared_only_by_operator_decision",), old="      AND d.kind = 'hold_clearance' AND d.disposition = 'approved'\n      AND d.topic_id IS NEW.topic_id", new="      AND d.disposition = 'approved'\n      AND d.topic_id IS NEW.topic_id"),
+             (DE + "HoldTest.test_operator_hold_cleared_only_by_operator_decision",), old="      AND d.kind = 'hold_clearance' AND d.disposition = 'approved'\n      AND d.topic_id IS NEW.topic_id", new="      AND d.disposition = 'approved'\n      AND d.topic_id IS NEW.topic_id"),
     Mutation("A2-hold-clearance-disposition", "A2", "hold clearance ignores disposition",
-             (D + "HoldTest.test_operator_hold_cleared_only_by_operator_decision",), old="      AND d.kind = 'hold_clearance' AND d.disposition = 'approved'\n      AND d.topic_id IS NEW.topic_id", new="      AND d.kind = 'hold_clearance'\n      AND d.topic_id IS NEW.topic_id"),
+             (DE + "HoldTest.test_operator_hold_cleared_only_by_operator_decision",), old="      AND d.kind = 'hold_clearance' AND d.disposition = 'approved'\n      AND d.topic_id IS NEW.topic_id", new="      AND d.kind = 'hold_clearance'\n      AND d.topic_id IS NEW.topic_id"),
     Mutation("A2-hold-clearance-subject", "A2", "hold clearance ignores which hold (and so topic) it is about",
-             (D + "HoldTest.test_operator_hold_cleared_only_by_operator_decision",), old="      AND d.topic_id IS NEW.topic_id\n      AND d.subject_ref = NEW.hold_id)", new=")"),
+             (DE + "HoldTest.test_operator_hold_cleared_only_by_operator_decision",), old="      AND d.topic_id IS NEW.topic_id\n      AND d.subject_ref = NEW.hold_id)", new=")"),
     Mutation("A2-publication-naming", "A2", "publication accepts any valid approval, not the one named",
-             (D + "ExportOutboxTest.test_only_approved_work_is_exported",), old="  WHERE d.decision_id = NEW.approval_decision_id\n", new="  WHERE 1\n"),
+             (DX + "ExportOutboxTest.test_only_approved_work_is_exported",), old="  WHERE d.decision_id = NEW.approval_decision_id\n", new="  WHERE 1\n"),
     Mutation("A2-publication-kind", "A2", "publication ignores decision kind (the review's rating-decision probe)",
-             (D + "ExportOutboxTest.test_only_approved_work_is_exported",), old="    AND d.kind = 'publication_approval' AND d.disposition = 'approved'\n", new="    AND d.disposition = 'approved'\n"),
+             (DX + "ExportOutboxTest.test_only_approved_work_is_exported",), old="    AND d.kind = 'publication_approval' AND d.disposition = 'approved'\n", new="    AND d.disposition = 'approved'\n"),
     Mutation("A2-publication-disposition", "A2", "publication ignores disposition",
-             (D + "ExportOutboxTest.test_only_approved_work_is_exported",), old="    AND d.kind = 'publication_approval' AND d.disposition = 'approved'\n", new="    AND d.kind = 'publication_approval'\n"),
+             (DX + "ExportOutboxTest.test_only_approved_work_is_exported",), old="    AND d.kind = 'publication_approval' AND d.disposition = 'approved'\n", new="    AND d.kind = 'publication_approval'\n"),
     Mutation("A2-publication-topic", "A2", "publication ignores the approval's topic",
-             (D + "ExportOutboxTest.test_only_approved_work_is_exported",), old="    AND d.topic_id = NEW.topic_id\n    AND d.subject_revision = NEW.source_revision", new="    AND d.subject_revision = NEW.source_revision"),
+             (DX + "ExportOutboxTest.test_only_approved_work_is_exported",), old="    AND d.topic_id = NEW.topic_id\n    AND d.subject_revision = NEW.source_revision", new="    AND d.subject_revision = NEW.source_revision"),
     Mutation("A2-publication-revision", "A2", "publication ignores the approved source revision",
-             (D + "ExportOutboxTest.test_only_approved_work_is_exported",), old="    AND d.subject_revision = NEW.source_revision\n", new=""),
+             (DX + "ExportOutboxTest.test_only_approved_work_is_exported",), old="    AND d.subject_revision = NEW.source_revision\n", new=""),
     Mutation("A2-publication-hash", "A2", "publication ignores the approved source hash",
-             (D + "ExportOutboxTest.test_only_approved_work_is_exported",), old="\n    AND d.subject_hash = NEW.source_content_hash)", new=")"),
+             (DX + "ExportOutboxTest.test_only_approved_work_is_exported",), old="\n    AND d.subject_hash = NEW.source_content_hash)", new=")"),
     *(Mutation(f"A2-manifest-binds-{key}", "A2", f"manifest JSON no longer bound to its {key} column",
-               (D + "ExportOutboxTest.test_manifest_json_matches_its_columns",), old=f"\n     AND json_extract(manifest, '$.{path}') IS {col}", new="")
+               (DX + "ExportOutboxTest.test_manifest_json_matches_its_columns",), old=f"\n     AND json_extract(manifest, '$.{path}') IS {col}", new="")
       for key, path, col in (("artifact-kind", "artifact_kind", "artifact_kind"), ("source-revision", "source.revision", "source_revision"),
                              ("source-hash", "source.content_hash", "source_content_hash"), ("approval-id", "approval.operator_decision_id", "approval_decision_id"),
                              ("approved-revision", "approval.approved_revision", "source_revision"), ("supersedes", "supersedes.generation", "supersedes_generation"),
@@ -491,22 +491,22 @@ MUTATIONS: list[Mutation] = [
                              ("bundle-hash", "bundle.content_hash", "bundle_content_hash"),
                              ("supersedes-options-revision", "supersedes.options_revision", "supersedes_options_revision"))),
     Mutation("A2-manifest-binds-expected-connectors", "A2", "manifest JSON no longer bound to expected_connectors (carries expected_sinks, 0d)",
-             (D + "ExportOutboxTest.test_manifest_json_matches_its_columns",), old="\n     AND json_extract(manifest, '$.expected_connectors') IS json(expected_connectors))", new=")"),
+             (DX + "ExportOutboxTest.test_manifest_json_matches_its_columns",), old="\n     AND json_extract(manifest, '$.expected_connectors') IS json(expected_connectors))", new=")"),
     Mutation("A2-subject-exists-contract", "A2", "a contract decision may name a nonexistent revision/hash",
-             (D + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",),
+             (DK + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",),
              old="WHEN (NEW.subject_kind = 'contract_revision' AND NOT EXISTS (\n        SELECT 1 FROM contract_revisions c\n        WHERE c.topic_id = NEW.topic_id AND c.revision = NEW.subject_revision AND c.content_hash = NEW.subject_hash))\n  OR ",
              new="WHEN "),
     Mutation("A2-subject-exists-dossier", "A2", "a completion decision may name a nonexistent dossier/hash",
-             (D + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",),
+             (DK + "ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",),
              old="  OR (NEW.subject_kind = 'dossier' AND NOT EXISTS (\n        SELECT 1 FROM dossiers x\n        WHERE x.topic_id = NEW.topic_id AND x.dossier_revision = NEW.subject_revision AND x.content_hash = NEW.subject_hash))\n", new=""),
     Mutation("A2-subject-exists-hold", "A2", "a clearance may name a nonexistent or other-topic hold",
-             (D + "HoldTest.test_decision_subject_must_exist_with_its_topic",),
+             (DE + "HoldTest.test_decision_subject_must_exist_with_its_topic",),
              old="  OR (NEW.subject_kind = 'hold' AND NOT EXISTS (\n        SELECT 1 FROM holds k WHERE k.hold_id = NEW.subject_ref AND k.topic_id IS NEW.topic_id))\n", new=""),
     Mutation("A2-subject-exists-decision-receipt", "A2", "a blind/advised record may name a nonexistent receipt",
-             (D + "HoldTest.test_decision_subject_must_exist_with_its_topic",),
+             (DE + "HoldTest.test_decision_subject_must_exist_with_its_topic",),
              old="  OR (NEW.subject_kind = 'decision_receipt' AND NOT EXISTS (\n        SELECT 1 FROM decision_receipts r WHERE r.decision_receipt_id = NEW.subject_ref AND r.topic_id = NEW.topic_id))\n", new=""),
     *(Mutation(f"A2-decision-shape-{key}", "A2", f"operator_decisions CHECK removed: {key}",
-               (D + "HoldTest.test_decision_subject_shape",), old=old, new="")
+               (DE + "HoldTest.test_decision_subject_shape",), old=old, new="")
       for key, old in (
           ("kind-subject-map", "\n  CHECK ((kind = 'brief_confirmation' AND subject_kind = 'intake_brief')\n      OR (kind = 'scope_approval' AND subject_kind = 'scoping_report')\n      OR (kind IN ('rating_approval', 'contract_approval', 'amendment_approval', 'reframe_approval') AND subject_kind = 'contract_revision')\n      OR (kind = 'completion_approval' AND subject_kind = 'dossier')\n      OR (kind = 'retirement' AND subject_kind = 'topic')\n      OR (kind = 'hold_clearance' AND subject_kind = 'hold')\n      OR (kind = 'publication_approval' AND subject_kind = 'publication_source')\n      OR (kind IN ('blind_initial_disposition', 'advised_feedback') AND subject_kind = 'decision_receipt')\n      OR (kind = 'source_approval' AND subject_kind = 'source_proposal')),"),
           ("versioned-subject", "\n  CHECK (subject_kind NOT IN ('intake_brief', 'scoping_report', 'contract_revision', 'dossier', 'publication_source')\n      OR (subject_revision IS NOT NULL AND subject_hash IS NOT NULL)),"),
@@ -1170,7 +1170,7 @@ MUTATIONS: list[Mutation] = [
            '        if table not in self._columns:\n            raise StoreWriteError(f"unknown table {table!r}")\n        known = self._columns[table]',
            "        known = self._columns.get(table, {})"))),
     # --- 0b: the hashing contract recorded (and frozen) on receipts (Astra 0a ruling R1) ----
-    *(Mutation(f"C13-{key}", "0b-R1-freeze", desc, tuple("test_store_ddl.HashContractTest." + k for k in killers), scope=scope, old=old, new=new)
+    *(Mutation(f"C13-{key}", "0b-R1-freeze", desc, tuple("test_store_ddl_invocations.HashContractTest." + k for k in killers), scope=scope, old=old, new=new)
       for key, desc, killers, scope, old, new in (
           ("commit-contract-unchecked", "a commit receipt may record any hashing contract, or none",
            ("test_commit_receipt_records_the_frozen_contracts", "test_frozen_versions_agree_across_ddl_schema_and_helper"), "operation_receipts",
@@ -1511,38 +1511,38 @@ MUTATIONS: list[Mutation] = [
                       "reservations_no_delete")),
     *(Mutation(f"cov-{trigger}", "0a", f"drop {trigger} (a pre-existing 0a guard)", tuple(killers), drop_trigger=trigger)
       for trigger, killers in (
-          ("operation_receipts_fenced", (D + "CommitFencingTest.test_stale_generation_rejected", D + "CommitFencingTest.test_released_lease_cannot_commit",
-                                         D + "CommitFencingTest.test_cross_topic_commit_rejected", D + "CommitFencingTest.test_commit_under_another_invocations_lease_rejected")),
+          ("operation_receipts_fenced", (DI + "CommitFencingTest.test_stale_generation_rejected", DI + "CommitFencingTest.test_released_lease_cannot_commit",
+                                         DI + "CommitFencingTest.test_cross_topic_commit_rejected", DI + "CommitFencingTest.test_commit_under_another_invocations_lease_rejected")),
           ("claims_accepted_support_needs_receipt", (VT + "test_accepted_support_needs_receipt_at_required_tier", CS + "test_contract_admitted_claim_without_a_receipt_is_refused")),
-          ("connector_watermarks_never_regress", (D + "ExportOutboxTest.test_connector_watermark_never_regresses",)),
+          ("connector_watermarks_never_regress", (DX + "ExportOutboxTest.test_connector_watermark_never_regresses",)),
           ("invocations_start_admitted", (LT + "test_invocations_start_admitted",)),
-          ("leases_generation_increases", (D + "LeaseFencingTest.test_generation_strictly_increases_per_topic",)),
-          ("leases_release_final_identity_immutable", (D + "LeaseFencingTest.test_release_is_write_once",)),
-          ("queue_state_revision_advances_by_one", (D + "CommitFencingTest.test_state_revision_advances_by_exactly_one",)),
-          ("contract_status_forward_only", (D + "ContractGovernanceTest.test_contract_content_immutable_never_deleted", CG + "test_approval_pointer_is_set_only_by_the_approval_transition")),
+          ("leases_generation_increases", (DI + "LeaseFencingTest.test_generation_strictly_increases_per_topic",)),
+          ("leases_release_final_identity_immutable", (DI + "LeaseFencingTest.test_release_is_write_once",)),
+          ("queue_state_revision_advances_by_one", (DI + "CommitFencingTest.test_state_revision_advances_by_exactly_one",)),
+          ("contract_status_forward_only", (DK + "ContractGovernanceTest.test_contract_content_immutable_never_deleted", CG + "test_approval_pointer_is_set_only_by_the_approval_transition")),
           ("claims_start_provisional", (VT + "test_claims_start_provisional",)),
           ("retrieval_events_from_successful_search", (OB + "test_retrieval_events_only_from_successful_searches",)),
-          ("review_triggers_handled_is_final", (D + "OrdinalAndTriggerTest.test_trigger_identity_unique_and_handled_is_final",)),
-          ("outbox_events_pair_increases", (D + "ExportOutboxTest.test_ordering_pairs_strictly_increase",)),
-          ("holds_clear_once_identity_immutable", (D + "HoldTest.test_operator_hold_cleared_only_by_operator_decision", RI + "test_hold_identity_class_and_authority_are_immutable")),
+          ("review_triggers_handled_is_final", (DI + "OrdinalAndTriggerTest.test_trigger_identity_unique_and_handled_is_final",)),
+          ("outbox_events_pair_increases", (DX + "ExportOutboxTest.test_ordering_pairs_strictly_increase",)),
+          ("holds_clear_once_identity_immutable", (DE + "HoldTest.test_operator_hold_cleared_only_by_operator_decision", RI + "test_hold_identity_class_and_authority_are_immutable")),
           ("queue_topic_identity_immutable", (RI + "test_topic_identity_is_immutable",)),
           ("review_episodes_close_once", (RI + "test_review_episode_closes_once",)),
           ("claims_identity_immutable", (RI + "test_claim_content_is_immutable_per_revision",)),
           ("works_identity_immutable", (RI + "test_work_identity_is_immutable",)))),
     Mutation("D48-any-declared-connector", "A2", "the review's surviving mutant, carried (0d): any connector of a declared type accepted, not just the ones the manifest names",
-             (D + "ExportOutboxTest.test_delivery_receipt_only_for_named_connectors",), scope="export_delivery_receipts_expected_connector",
+             (DX + "ExportOutboxTest.test_delivery_receipt_only_for_named_connectors",), scope="export_delivery_receipts_expected_connector",
              old="WHEN NOT EXISTS (\n  SELECT 1 FROM outbox_events e, json_each(e.expected_connectors) j\n  WHERE e.manifest_id = NEW.manifest_id AND j.key = NEW.connector_id\n    AND json_extract(j.value, '$.connector_type') IS NEW.connector_type)",
              new="WHEN NEW.connector_type NOT IN ('sql', 'jsonl_file', 'webhook', 'extension')"),
-    Mutation("D48-expected-connector-dropped", "A2", "drop the expected-connector trigger", (D + "ExportOutboxTest.test_delivery_receipt_only_for_named_connectors",),
+    Mutation("D48-expected-connector-dropped", "A2", "drop the expected-connector trigger", (DX + "ExportOutboxTest.test_delivery_receipt_only_for_named_connectors",),
              drop_trigger="export_delivery_receipts_expected_connector"),
     Mutation("D48-connector-type-unmatched", "0d", "a receipt may name the manifest's connector under another type",
-             (D + "ExportOutboxTest.test_delivery_receipt_only_for_named_connectors",), scope="export_delivery_receipts_expected_connector",
+             (DX + "ExportOutboxTest.test_delivery_receipt_only_for_named_connectors",), scope="export_delivery_receipts_expected_connector",
              old="\n    AND json_extract(j.value, '$.connector_type') IS NEW.connector_type)", new=")"),
     # --- 0d: the export tables (operator ruling 2026-09-26) ---------------------
     # outbox_events is the export-manifest table; export_delivery_receipts and
     # connector_watermarks replace the per-sink tables. Each mutant removes one
     # rule, and its test's probe for that rule is the only one it admits.
-    *(Mutation(f"0D-{key}", "0d", desc, (D + X + killer,), old=old, new=new, scope=scope)
+    *(Mutation(f"0D-{key}", "0d", desc, (DX + X + killer,), old=old, new=new, scope=scope)
       for key, desc, killer, scope, old, new in (
           ("pair-lower-generation-admitted", "a lower generation is admitted when its options revision is higher",
            "test_ordering_pairs_strictly_increase", "outbox_events_pair_increases",
@@ -1654,10 +1654,10 @@ MUTATIONS: list[Mutation] = [
       )),
     # --- 1b-repair A2: the whole delivery receipt, bound to its columns (EXPORT-API.md §9 item 3) ---
     Mutation("1BR-receipt-binds-version", "1b-A2", "a delivery receipt's document need not be export-delivery-receipt/2",
-             (D + X + "test_receipt_document_matches_its_columns",), scope="export_delivery_receipts",
+             (DX + X + "test_receipt_document_matches_its_columns",), scope="export_delivery_receipts",
              old="CHECK (json_extract(receipt, '$.receipt_version') IS 'export-delivery-receipt/2'\n     AND ", new="CHECK ("),
     *(Mutation(f"1BR-receipt-binds-{key}", "1b-A2", f"a delivery receipt's document is no longer bound to its {col} column",
-               (D + X + "test_receipt_document_matches_its_columns",), scope="export_delivery_receipts",
+               (DX + X + "test_receipt_document_matches_its_columns",), scope="export_delivery_receipts",
                old=f"\n     AND json_extract(receipt, '$.{path}') IS {col}", new="")
       for key, path, col in (("receipt-id", "export_receipt_id", "export_receipt_id"), ("manifest", "manifest_id", "manifest_id"),
                              ("connector-id", "connector.connector_id", "connector_id"), ("connector-type", "connector.connector_type", "connector_type"),
@@ -1666,7 +1666,7 @@ MUTATIONS: list[Mutation] = [
                              ("unknown-cause", "unknown_cause", "unknown_cause"), ("capability-fact", "capability_fact_id", "capability_fact_id"),
                              ("written-status", "written.status", "written_status"), ("written-value", "written.value", "written_value"),
                              ("hold", "hold_id", "hold_id"), ("attempted-at", "attempted_at", "attempted_at"), ("acked-at", "acked_at", "acked_at"))),
-    *(Mutation(f"1BR-{key}", "1b-A2", desc, (D + X + "test_written_count_rules",), scope="export_delivery_receipts", old=old, new=new)
+    *(Mutation(f"1BR-{key}", "1b-A2", desc, (DX + X + "test_written_count_rules",), scope="export_delivery_receipts", old=old, new=new)
       for key, desc, old, new in (
           ("written-unknown-with-a-value", "an unknown count may carry a value (RG-U: unknown is never zero)",
            "CHECK ((written_value IS NULL) = (written_status = 'unknown')),", "CHECK (written_value IS NOT NULL OR written_status = 'unknown'),"),
@@ -1686,8 +1686,8 @@ MUTATIONS: list[Mutation] = [
            "\n  CHECK (status != 'outcome_unknown' OR written_status IN ('unknown', 'partial')),", ""),
       )),
     Mutation("1BR-receipt-describes-manifest-dropped", "1b-A2", "a receipt may report another topic, pair or hold than its manifest's",
-             (D + X + "test_receipt_describes_its_manifest",), drop_trigger="export_delivery_receipts_describe_their_manifest"),
-    *(Mutation(f"1BR-receipt-describes-{key}", "1b-A2", desc, (D + X + "test_receipt_describes_its_manifest",),
+             (DX + X + "test_receipt_describes_its_manifest",), drop_trigger="export_delivery_receipts_describe_their_manifest"),
+    *(Mutation(f"1BR-receipt-describes-{key}", "1b-A2", desc, (DX + X + "test_receipt_describes_its_manifest",),
                scope="export_delivery_receipts_describe_their_manifest", old=old, new=new)
       for key, desc, old, new in (
           ("topic", "a receipt may report another topic than its manifest's", "\n    AND e.topic_id IS json_extract(NEW.receipt, '$.topic_id')", ""),
@@ -1698,27 +1698,27 @@ MUTATIONS: list[Mutation] = [
           ("hold-topic", "a receipt may name another topic's hold", " AND h.topic_id = e.topic_id", ""),
       )),
     Mutation("0D-one-generation-dropped", "0d", "drop the one-generation-one-approved-revision trigger",
-             (D + X + "test_one_generation_is_one_approved_revision",), drop_trigger="outbox_events_generation_is_one_approved_revision"),
+             (DX + X + "test_one_generation_is_one_approved_revision",), drop_trigger="outbox_events_generation_is_one_approved_revision"),
     Mutation("0D-connectors-declared-dropped", "0d", "drop the declared-connector-type trigger (the store's undeclared-type negative)",
-             (D + X + "test_manifest_names_only_declared_connector_types",), drop_trigger="outbox_events_connectors_declared"),
-    Mutation("A1-D01-live-lease-replace", "A1", "drop leases delete guard (REPLACE of the live lease)", (D + "LeaseFencingTest.test_one_live_lease_per_topic_and_scope_until_released",),
+             (DX + X + "test_manifest_names_only_declared_connector_types",), drop_trigger="outbox_events_connectors_declared"),
+    Mutation("A1-D01-live-lease-replace", "A1", "drop leases delete guard (REPLACE of the live lease)", (DI + "LeaseFencingTest.test_one_live_lease_per_topic_and_scope_until_released",),
              drop_trigger="leases_no_delete"),
     # --- A9: capability supersession --------------------------------------
     Mutation("A9-successor-fk-immediate", "A9", "successor FK checked immediately (the documented transaction cannot run)",
-             (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",),
+             (DE + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",),
              old="REFERENCES capability_facts (fact_id) DEFERRABLE INITIALLY DEFERRED", new="REFERENCES capability_facts (fact_id)"),
     Mutation("A9-self-supersession", "A9", "drop the no-self-supersession CHECK",
-             (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",),
+             (DE + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",),
              old=",\n  CHECK (superseded_by_fact_id IS NOT fact_id)\n) STRICT;", new="\n) STRICT;"),
     Mutation("A9-insert-current-same-capability", "A9", "drop the insert-current/same-capability trigger",
-             (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",), drop_trigger="capability_facts_insert_current_same_capability"),
+             (DE + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",), drop_trigger="capability_facts_insert_current_same_capability"),
     Mutation("A9-link-successor", "A9", "drop the successor-link trigger (cross-capability, cyclic)",
-             (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",), drop_trigger="capability_facts_link_successor"),
+             (DE + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",), drop_trigger="capability_facts_link_successor"),
     Mutation("A9-fact-provenance-pins", "A9", "capability fact recorded_at/observer no longer pinned",
-             (D + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",),
+             (DE + "ObservationTest.test_one_current_capability_fact_supersede_to_transition",),
              old="\n  OR NEW.observed_by_invocation_id IS NOT OLD.observed_by_invocation_id OR NEW.recorded_at IS NOT OLD.recorded_at", new=""),
     Mutation("A1-contract-created-at-pin", "A1", "contract created_at no longer pinned",
-             (D + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",),
+             (DK + "ContractGovernanceTest.test_contract_content_immutable_never_deleted",),
              old="  OR NEW.created_at IS NOT OLD.created_at\n  OR (OLD.approved_by_decision_id IS NOT NULL",
              new="  OR (OLD.approved_by_decision_id IS NOT NULL"),
     # --- 0c: the registry/artifact drift gate (task 0c deliverable 2, Gate C) ------
