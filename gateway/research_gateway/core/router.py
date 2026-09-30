@@ -572,6 +572,11 @@ def _lane_observed(entry: dict, got: list[dict], fact: str | None, dropped: int,
     if rt == "fetch" and (payload.get("params") or {}).get("download") and out.get("content") is None and got:
         entry["coverage"] = COVERAGE_METADATA_ONLY  # found, but the requested file is not retrievable
     entry["count"] = count
+    # the identities this lane returned, in its own rank order and before any merge (E-2:
+    # retrieval-time identities, so the engine records one retrieval event per candidate
+    # and its count is never a bare number); a catalogue's are its entries' ids
+    entry["retrieved"] = ([str(e.get("id")) for e in out.get("entries") or []] if rt == "catalog"
+                          else [str(r["identity"]) for r in got])
     entry["completeness"] = "partial" if dropped else "complete"
     if dropped:
         entry["error_class"] = ERR_PAYLOAD

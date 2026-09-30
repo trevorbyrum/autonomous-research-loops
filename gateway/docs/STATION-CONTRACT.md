@@ -65,7 +65,8 @@ is never conflated with "not searched" or "unavailable":
     `unobserved` (no result set was read: every degraded state, `not_searched`,
     `exhausted`);
   - `count` exists only for an observed result set — a lane that could not run, or
-    whose answer was unreadable, has no count, never a zero;
+    whose answer was unreadable, has no count, never a zero — and `retrieved` lists the
+    identities it counts, in the lane's own rank order, before any merge;
   - `error_class` names why a lane is degraded or partial, in the engine store's
     vocabulary (`payload_invalid`, `timeout`, `rate_limited`, `breaker_open`,
     `budget_refused`, `provider_outage`, `credentials_rejected`,

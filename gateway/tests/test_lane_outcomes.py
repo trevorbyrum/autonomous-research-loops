@@ -82,6 +82,10 @@ class LaneOutcomes(unittest.TestCase):
         self.assertEqual(len(out["lanes"]), 1, out["lanes"])
         entry = out["lanes"][0]
         self.assertEqual(store_admits(entry), [], entry)
+        if entry.get("count") is not None:   # every counted record is named: a count is never a bare number (E-2)
+            self.assertEqual(len(entry["retrieved"]), entry["count"], entry)
+        else:
+            self.assertNotIn("retrieved", entry)
         return entry
 
     def test_an_unreadable_answer_is_unavailable_with_no_count(self):
@@ -105,6 +109,7 @@ class LaneOutcomes(unittest.TestCase):
         e = self.lane(out)
         self.assertEqual((e["coverage"], e["completeness"], e["count"], e["error_class"], e["next"]),
                          ("searched_ok", "partial", 2, "payload_invalid", "c2"))
+        self.assertEqual(e["retrieved"], ["doi:10.1234/1", "doi:10.1234/2"], "the observed identities, in rank order")
         self.assertTrue(any("lower bound" in f for f in out["facts"]))
         self.assertEqual(len(out["records"]), 2, "what was observed is kept")
 
