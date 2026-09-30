@@ -140,6 +140,12 @@ class RecordedAnswers(unittest.TestCase):
         self.assertEqual(summary(lanes["doaj"]), ("unknown", "unobserved", None, "telemetry_missing", []))
         self.assertTrue(all(o["observation"]["gateway_call_ref"] is None for o in out["observations"]))
 
+    def test_control_an_uncaptured_lane_with_records_keeps_them_as_a_lower_bound(self):
+        ex = mutated("find_not_captured", 0, lambda r: r["body"]["lanes"].pop(1))
+        c, _ = client(self, ex)
+        (obs,) = c.search(FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1")["observations"]
+        self.assertEqual(summary(obs), ("searched_ok", "partial", 1, "telemetry_missing", ["doi:10.1234/abc"]))
+
     def test_control_a_captured_answer_keeps_its_complete_lanes(self):
         lanes = by_lane(search(self, "find_complete"))
         self.assertEqual([summary(lanes[s])[:4] for s in ("crossref", "doaj")],
@@ -296,16 +302,18 @@ class UnreadableAnswers(unittest.TestCase):
         self.assertEqual(summary(self.lanes_of(mutated("find_complete", 0, repeat))["crossref"]),
                          ("searched_ok", "complete", 1, None, ["doi:10.1234/abc"]))
 
-    def test_metadata_only_names_the_held_record_never_an_empty_query(self):
-        """2b-repair A1 (replaces metadata_only-to-searched_empty): an enrich of a held identity
-        that found no full text is metadata_only for THAT record; metadata_only naming nothing
-        on any other request is unreadable, never inferred absence."""
+    def test_metadata_only_names_the_held_record(self):
+        """2b-repair A1 (replaces metadata_only-to-searched_empty, test 115): an enrich of a held
+        identity that found no full text is metadata_only for THAT record."""
         enrich = {"request_type": "enrich", "identity": "doi:10.1234/abc", "what": "full_text"}
         answer = {"lanes": [{"source": "unpaywall", "coverage": "metadata_only", "completeness": "complete", "count": 0, "retrieved": []}],
                   "records": [], "observation": {"invocation_id": INV, "attempt": 1, "served": "dispatched", "captured": True, "call_ref": 7}}
         c = GatewayClient(BASE, ENGINE_TOKEN, transport=answering(lambda sent: answer), clock=lambda: "2026-09-30T10:00:00Z")
         (obs,) = c.search(enrich, invocation_id=INV, attempt=1, policy_version="gw-policy/1")["observations"]
         self.assertEqual(summary(obs), ("metadata_only", "complete", 1, None, ["doi:10.1234/abc"]))
+
+    def test_metadata_only_naming_nothing_is_unreadable_never_an_empty_query(self):
+        """... and metadata_only naming nothing on any other request is unreadable, never inferred absence."""
         lanes = self.lanes_of(mutated("find_complete", 0, lambda r: r["body"]["lanes"][1].__setitem__("coverage", "metadata_only")))
         self.assertEqual(summary(lanes["doaj"]), ("unknown", "unobserved", None, "payload_invalid", []))
 
@@ -507,7 +515,7 @@ class RecordedByTheRouter(RouterTestCase):
         self.assertEqual(self.observations(), [("crossref", 1, "searched_ok", "complete", 1, None),
                                                ("crossref", 2, "provider_unavailable", "unobserved", None, "provider_outage"),
                                                ("doaj", 1, "searched_empty", "complete", 0, None)])
-        self.assertEqual([(json.loads(r)["request"]["cursors"], ref) for r, ref in self.rows(
+        self.assertEqual([(json.loads(r)["request"].get("cursors"), ref) for r, ref in self.rows(
                           "SELECT request, gateway_call_ref FROM search_observations WHERE json_extract(request, '$.page') = 2")],
                          [({"crossref": "c2"}, "gw-call:102")], "the durable row keeps the failed page's own cursor and its own call")
 
@@ -640,7 +648,7 @@ class GatewayFactsCommand(RouterTestCase):
         self.assertEqual(self.current(), [(later["fact_id"], "healthy", "2026-09-22T08:00:00Z")])
         earlier = self.fact("2026-09-20T00:00:00Z")
         reply = self.put(earlier)
-        self.assertEqual((reply["status"], reply["reason"]), ("refused", "fact_superseded"))
+        self.assertEqual((reply["status"], reply.get("reason")), ("refused", "fact_superseded"))
         self.assertEqual(self.current(), [(later["fact_id"], "healthy", "2026-09-22T08:00:00Z")], "nothing moved")
 
     def test_what_is_not_a_gateway_fact_is_refused(self):
@@ -650,21 +658,21 @@ class GatewayFactsCommand(RouterTestCase):
                  ("a state outside the vocabulary", self.fact(state="broken")))
         for label, fact in cases:
             with self.subTest(label):
-                self.assertEqual(self.put(fact)["reason"], "request_invalid")
-        self.assertEqual(self.put(self.fact(), self.fact(detail="again"))["reason"], "request_invalid", "one fact per capability")
+                self.assertEqual(self.put(fact).get("reason"), "request_invalid")
+        self.assertEqual(self.put(self.fact(), self.fact(detail="again")).get("reason"), "request_invalid", "one fact per capability")
         self.put(self.fact())
-        self.assertEqual(self.put(self.fact(detail="other"))["reason"], "fact_conflict", "other content under a recorded id")
+        self.assertEqual(self.put(self.fact(detail="other")).get("reason"), "fact_conflict", "other content under a recorded id")
         self.assertEqual(self.value("SELECT count(*) FROM capability_facts WHERE capability LIKE 'gateway.%'"), 1)
 
     def test_only_a_running_invocation_records_but_a_lost_reply_replays(self):
         self.put(self.fact())
         wrong = self.router.record_gateway_facts({"capability_id": self.grant["capability_id"], "invocation_id": "inv_someone_else",
                                                   "facts": [self.fact("2026-09-22T08:00:00Z")]})
-        self.assertEqual(wrong["reason"], "capability_invocation_mismatch")
+        self.assertEqual(wrong.get("reason"), "capability_invocation_mismatch")
         self.clock.set("2027-01-01T00:00:00Z")   # the lease has expired
         self.assertEqual(self.put(self.fact())["status"], "replayed")
         reply = self.put(self.fact("2026-09-22T08:00:00Z"))
-        self.assertEqual((reply["status"], reply["reason"]), ("refused", "lease_not_current"))
+        self.assertEqual((reply["status"], reply.get("reason")), ("refused", "lease_not_current"))
 
 
 if __name__ == "__main__":

@@ -98,9 +98,9 @@ def metadata_only_named(entry: dict, sent: dict) -> dict:
     if entry.get("coverage") != "metadata_only" or entry.get("retrieved"):
         return entry
     held = sent.get("identity") if sent.get("request_type") == "enrich" else None
-    if isinstance(held, str) and held:
-        return {**entry, "count": 1, "retrieved": [held]}
-    return unobserved(entry["source"], "unknown", "payload_invalid")
+    if not (isinstance(held, str) and held):
+        return unobserved(entry["source"], "unknown", "payload_invalid")
+    return {**entry, "count": 1, "retrieved": [held]}
 
 
 def uncaptured(entry: dict) -> dict:

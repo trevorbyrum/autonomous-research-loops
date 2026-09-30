@@ -161,6 +161,17 @@ MANUAL: dict[str, dict] = {
              "why": "validates an accepted retraction from code policy against the signal command's schema (gen2/router/scheduling.py "
                     "SCHEDULING_COMMANDS, whose enum the mutant widens) and records it: the widened schema still accepts it"}
        for mid in ("2A-signal-discretionary", "2A-signal-model-source")},
+    # task 2b-repair A6: the same shape — record_gateway_facts' schema is a module constant (gen2/router/capabilities.py
+    # CAPABILITY_COMMANDS) read when the Router builds its SchemaSet, not by a traced line of the request's path
+    # task 2b-repair A1: every traced uncaptured answer also has an empty lane (the killers'); the uncaptured answer with
+    # records only was written as a test of its own, added after the trace
+    "2B-uncaptured-empty-kept": {"controls": ["test_gateway_client.RecordedAnswers.test_control_an_uncaptured_lane_with_records_keeps_them_as_a_lower_bound"],
+                                 "why": "evaluates gen2/gateway_client/observe.py uncaptured's changed guard (searched_empty?) for a searched_ok lane of "
+                                        "an uncaptured answer — false, on the accepted path to a partial lower bound — and asserts that bound: the "
+                                        "mutant, which skips the guard, leaves it so"},
+    "2B-fact-namespace-open": {"controls": ["test_gateway_client.GatewayFactsCommand.test_a_fact_is_recorded_and_replays"],
+                               "why": "validates an accepted gateway.secrets.vault fact against gateway_facts' schema, whose capability pattern the "
+                                      "mutant widens, and records it: the widened schema still accepts it"},
     # task 2a's expansion: only the killer takes the accepted rejection in the trace; the accepted rejection alone was written as a test
     # of its own, added after the trace
     "2A-rework-stale": {"controls": ["test_router_workflow.ScopeDecisionTest.test_a_rejection_of_the_current_report_reworks_it"],

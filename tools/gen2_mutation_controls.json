@@ -5654,61 +5654,61 @@
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 118; or executes line 117"
+  "why": "gen2/router/capabilities.py: executes line 149; or executes line 148"
  },
  "1F-caps-declared-expired-healthy": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_an_older_observation_is_kept_and_moves_nothing"
   ],
-  "why": "gen2/router/capabilities.py: executes line 99"
+  "why": "gen2/router/capabilities.py: executes line 130"
  },
  "1F-caps-declared-instant-unchecked": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_a_declared_expiry_is_a_degraded_fact_and_a_hold_to_remedy"
   ],
-  "why": "gen2/router/capabilities.py: leaves line 84-86 for a line outside 84-87 (or returns), having executed line 84"
+  "why": "gen2/router/capabilities.py: leaves line 115-117 for a line outside 115-118 (or returns), having executed line 115"
  },
  "1F-caps-declared-remedy-unknown": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_an_unusable_credential_opens_one_typed_owned_deadlined_hold_bound_to_its_fact"
   ],
-  "why": "gen2/router/capabilities.py: executes line 124 (else 122); or executes line 119"
+  "why": "gen2/router/capabilities.py: executes line 155 (else 153); or executes line 150"
  },
  "1F-caps-every-observation-a-transition": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 105"
+  "why": "gen2/router/capabilities.py: executes line 136"
  },
  "1F-caps-hold-on-transition-only": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 117"
+  "why": "gen2/router/capabilities.py: executes line 148"
  },
  "1F-caps-hold-router-authority": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_a_runner_error_is_an_unknown_fact_and_a_hold_whose_remedy_is_unknown"
   ],
-  "why": "gen2/router/capabilities.py: executes line 125 (else 122); or executes line 119"
+  "why": "gen2/router/capabilities.py: executes line 156 (else 153); or executes line 150"
  },
  "1F-caps-no-last-success": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 113 (else 111); or executes line 106"
+  "why": "gen2/router/capabilities.py: executes line 144 (else 142); or executes line 137"
  },
  "1F-caps-older-applied": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 103"
+  "why": "gen2/router/capabilities.py: executes line 134"
  },
  "1F-caps-order-unchecked": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: leaves line 82 for a line outside 82-83 (or returns)"
+  "why": "gen2/router/capabilities.py: leaves line 113 for a line outside 113-114 (or returns)"
  },
  "1F-caps-replay-unchecked": {
   "by_hand": true,
@@ -5721,7 +5721,7 @@
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 99"
+  "why": "gen2/router/capabilities.py: executes line 130"
  },
  "1F-eng-probe-on-owner": {
   "controls": [
@@ -6674,239 +6674,382 @@
   ],
   "why": "gen2/router/service.py: leaves line 628 for a line outside 628-629 (or returns)"
  },
+ "2B-cache-hit-unmarked": {
+  "controls": [
+   "test_gateway_client.UnreadableAnswers.test_control_a_record_cache_hit_is_its_sources_record"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 271"
+ },
  "2B-count-without-identities": {
   "controls": [
    "test_gateway_client.UnreadableAnswers.test_a_repeated_identity_is_one_candidate"
   ],
-  "why": "gen2/gateway_client/observe.py: executes line 67"
+  "why": "gen2/gateway_client/observe.py: executes line 74"
+ },
+ "2B-delivery-in-identity": {
+  "controls": [
+   "test_gateway_client.RecordedByTheRouter.test_an_unreadable_lane_is_admissible_and_counts_nothing"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 160; or executes line 159"
+ },
+ "2B-echo-bool-attempt": {
+  "controls": [
+   "test_gateway_client.UnreadableAnswers.test_control_a_record_cache_hit_is_its_sources_record"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 88"
+ },
+ "2B-echo-is-identity": {
+  "controls": [
+   "test_gateway_client.RecordedByTheRouter.test_an_unreadable_lane_is_admissible_and_counts_nothing"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 160; or executes line 159"
  },
  "2B-echo-unchecked": {
   "controls": [
    "test_gateway_client.UnreadableAnswers.test_a_repeated_identity_is_one_candidate"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 193"
+  "why": "gen2/gateway_client/client.py: executes line 199"
  },
  "2B-envelope-unchecked": {
   "controls": [
    "test_gateway_client.UnreadableAnswers.test_a_repeated_identity_is_one_candidate"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 98"
+  "why": "gen2/gateway_client/client.py: executes line 112"
+ },
+ "2B-fact-conflict-replays": {
+  "controls": [
+   "test_gateway_client.GatewayFactsCommand.test_a_fact_is_recorded_and_replays"
+  ],
+  "why": "gen2/router/capabilities.py: leaves line 193 for a line outside 193-194 (or returns)"
+ },
+ "2B-fact-id-unchecked": {
+  "controls": [
+   "test_gateway_client.GatewayFactsCommand.test_a_fact_is_recorded_and_replays"
+  ],
+  "why": "gen2/router/capabilities.py: leaves line 180 for a line outside 180-181 (or returns)"
+ },
+ "2B-fact-namespace-open": {
+  "by_hand": true,
+  "controls": [
+   "test_gateway_client.GatewayFactsCommand.test_a_fact_is_recorded_and_replays"
+  ],
+  "why": "validates an accepted gateway.secrets.vault fact against gateway_facts' schema, whose capability pattern the mutant widens, and records it: the widened schema still accepts it"
+ },
+ "2B-fact-not-superseding": {
+  "controls": [
+   "test_gateway_client.GatewayFactsCommand.test_a_fact_is_recorded_and_replays"
+  ],
+  "why": "gen2/router/capabilities.py: executes line 210"
+ },
+ "2B-fact-older-recorded": {
+  "controls": [
+   "test_gateway_client.GatewayFactsCommand.test_a_fact_is_recorded_and_replays"
+  ],
+  "why": "gen2/router/capabilities.py: leaves line 207 for a line outside 207-209 (or returns)"
+ },
+ "2B-fact-unfenced": {
+  "controls": [
+   "test_gateway_client.GatewayFactsCommand.test_a_fact_is_recorded_and_replays"
+  ],
+  "why": "gen2/router/capabilities.py: executes line 201"
  },
  "2B-fact-unlinked": {
   "controls": [
    "test_gateway_client.RecordedAnswers.test_a_grant_and_the_policy_it_binds"
   ],
-  "why": "gen2/gateway_client/observe.py: executes line 118 (else 115)"
+  "why": "gen2/gateway_client/observe.py: executes line 145 (else 142)"
+ },
+ "2B-facts-not-recorded": {
+  "controls": [
+   "test_gateway_client.RecordedByTheRouter.test_an_unreadable_lane_is_admissible_and_counts_nothing"
+  ],
+  "why": "gen2/gateway_client/observe.py: executes line 173"
  },
  "2B-failed-job-read": {
   "controls": [
-   "test_gateway_client.TransportOutcomes.test_a_queued_answer_is_polled_to_its_result"
+   "test_gateway_client.TransportOutcomes.test_a_queued_answer_is_polled_to_its_result_under_this_invocation"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 206"
+  "why": "gen2/gateway_client/client.py: executes line 217"
  },
  "2B-id-includes-links": {
   "controls": [
    "test_gateway_client.RecordedAnswers.test_a_grant_and_the_policy_it_binds"
   ],
-  "why": "gen2/gateway_client/observe.py: executes line 104"
+  "why": "gen2/gateway_client/observe.py: executes line 136"
  },
  "2B-id-not-deterministic": {
   "controls": [
    "test_gateway_client.RecordedAnswers.test_a_grant_and_the_policy_it_binds"
   ],
-  "why": "gen2/gateway_client/observe.py: executes line 104"
+  "why": "gen2/gateway_client/observe.py: executes line 136"
  },
- "2B-metadata-only-kept": {
+ "2B-lane-less-empty": {
   "controls": [
-   "test_gateway_client.UnreadableAnswers.test_a_repeated_identity_is_one_candidate"
+   "test_gateway_client.UnreadableAnswers.test_control_a_record_cache_hit_is_its_sources_record"
   ],
-  "why": "gen2/gateway_client/observe.py: executes line 111"
+  "why": "gen2/gateway_client/client.py: executes line 224; or executes line 223"
  },
- "2B-pages-rounded-up": {
+ "2B-metadata-only-empty": {
   "controls": [
-   "test_gateway_client.RecordedAnswers.test_pages_that_all_answer_are_one_complete_observation"
+   "test_gateway_client.UnreadableAnswers.test_metadata_only_names_the_held_record"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 254 (else 253)"
+  "why": "gen2/gateway_client/observe.py: executes line 102; or executes line 101"
+ },
+ "2B-metadata-only-held-ignored": {
+  "controls": [
+   "test_gateway_client.UnreadableAnswers.test_metadata_only_naming_nothing_is_unreadable_never_an_empty_query"
+  ],
+  "why": "gen2/gateway_client/observe.py: executes line 101"
+ },
+ "2B-metadata-only-unnamed": {
+  "controls": [
+   "test_gateway_client.UnreadableAnswers.test_control_a_record_cache_hit_is_its_sources_record"
+  ],
+  "why": "gen2/gateway_client/observe.py: executes line 98"
+ },
+ "2B-named-lane-dropped": {
+  "controls": [
+   "test_gateway_client.UnreadableAnswers.test_control_a_record_cache_hit_is_its_sources_record"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 237"
+ },
+ "2B-page-request-first": {
+  "controls": [
+   "test_gateway_client.RecordedAnswers.test_a_grant_and_the_policy_it_binds"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 160; or executes line 159"
  },
  "2B-partial-unexplained": {
   "controls": [
    "test_gateway_client.UnreadableAnswers.test_a_repeated_identity_is_one_candidate"
   ],
-  "why": "gen2/gateway_client/observe.py: executes line 73"
+  "why": "gen2/gateway_client/observe.py: executes line 80"
  },
  "2B-policy-refusal-empty": {
   "controls": [
    "test_gateway_client.RecordedAnswers.test_dropped_records_are_a_lower_bound"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 188-189"
+  "why": "gen2/gateway_client/client.py: executes line 194-195"
+ },
+ "2B-poll-capture-ignored": {
+  "controls": [
+   "test_gateway_client.TransportOutcomes.test_a_queued_answer_is_polled_to_its_result_under_this_invocation"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 214"
+ },
+ "2B-poll-echo-unchecked": {
+  "controls": [
+   "test_gateway_client.TransportOutcomes.test_a_queued_answer_is_polled_to_its_result_under_this_invocation"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 254; or executes line 252"
+ },
+ "2B-poll-uncorrelated": {
+  "controls": [
+   "test_gateway_client.TransportOutcomes.test_a_queued_answer_is_polled_and_a_job_that_never_ends_is_a_timeout"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 251; or executes line 250"
  },
  "2B-queued-unpolled": {
   "controls": [
    "test_gateway_client.RecordedAnswers.test_dropped_records_are_a_lower_bound"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 202"
+  "why": "gen2/gateway_client/client.py: executes line 208"
+ },
+ "2B-records-unchecked": {
+  "controls": [
+   "test_gateway_client.UnreadableAnswers.test_control_a_record_cache_hit_is_its_sources_record"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 221"
  },
  "2B-redirects-followed": {
   "controls": [
    "test_gateway_client.OverRealHttp.test_the_default_transport_reads_a_real_answer"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 63"
+  "why": "gen2/gateway_client/client.py: executes line 68"
  },
  "2B-repeat-counted-twice": {
   "controls": [
-   "test_gateway_client.UnreadableAnswers.test_metadata_only_with_nothing_returned_is_an_empty_query"
+   "test_gateway_client.UnreadableAnswers.test_control_a_record_cache_hit_is_its_sources_record"
   ],
-  "why": "gen2/gateway_client/observe.py: executes line 108"
+  "why": "gen2/gateway_client/observe.py: executes line 140"
  },
  "2B-transport-failure-empty": {
   "controls": [
-   "test_gateway_client.TransportOutcomes.test_a_queued_answer_is_polled_to_its_result"
+   "test_gateway_client.TransportOutcomes.test_a_queued_answer_is_polled_to_its_result_under_this_invocation"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 187; or executes line 186"
+  "why": "gen2/gateway_client/client.py: executes line 193; or executes line 192"
+ },
+ "2B-uncaptured-complete": {
+  "controls": [
+   "test_gateway_client.RecordedAnswers.test_control_a_captured_answer_keeps_its_complete_lanes"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 235; or executes line 229"
+ },
+ "2B-uncaptured-empty-kept": {
+  "by_hand": true,
+  "controls": [
+   "test_gateway_client.RecordedAnswers.test_control_an_uncaptured_lane_with_records_keeps_them_as_a_lower_bound"
+  ],
+  "rejected": [
+   "test_gateway_client.TransportOutcomes.test_a_poll_not_attributed_to_this_caller_or_not_captured_degrades"
+  ],
+  "why": "evaluates gen2/gateway_client/observe.py uncaptured's changed guard (searched_empty?) for a searched_ok lane of an uncaptured answer \u2014 false, on the accepted path to a partial lower bound \u2014 and asserts that bound: the mutant, which skips the guard, leaves it so"
  },
  "2B-uncaptured-silent": {
   "controls": [
    "test_gateway_client.RecordedAnswers.test_dropped_records_are_a_lower_bound"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 199; or executes line 196"
+  "why": "gen2/gateway_client/client.py: executes line 206; or executes line 203"
  },
  "2B-unobserved-counted": {
   "controls": [
    "test_gateway_client.RecordedByTheRouter.test_an_unreadable_lane_is_admissible_and_counts_nothing"
   ],
-  "why": "gen2/gateway_client/observe.py: executes line 59"
+  "why": "gen2/gateway_client/observe.py: executes line 66"
  },
  "2B-vocabulary-unchecked": {
   "controls": [
    "test_gateway_client.UnreadableAnswers.test_a_repeated_identity_is_one_candidate"
   ],
-  "why": "gen2/gateway_client/observe.py: executes line 52"
+  "why": "gen2/gateway_client/observe.py: executes line 59"
+ },
+ "2R-growth-counts-the-gateway": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 173"
  },
  "2R-growth-trigger-exclusive": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
   ],
-  "why": "tools/gen2_linecount.py: executes line 230; or executes line 233"
+  "why": "tools/gen2_linecount.py: executes line 248; or executes line 251"
  },
  "2R-growth-trigger-passes": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
   ],
-  "why": "tools/gen2_linecount.py: executes line 233"
+  "why": "tools/gen2_linecount.py: executes line 251"
  },
  "2R-growth-trigger-silent": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
   ],
-  "why": "tools/gen2_linecount.py: executes line 230"
+  "why": "tools/gen2_linecount.py: executes line 248"
  },
  "2R-size-allowlist-file-unchecked": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
   ],
-  "why": "tools/gen2_linecount.py: executes line 141"
+  "why": "tools/gen2_linecount.py: executes line 149"
  },
  "2R-size-allowlist-passes": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
   ],
-  "why": "tools/gen2_linecount.py: executes line 233"
+  "why": "tools/gen2_linecount.py: executes line 251"
  },
  "2R-size-allowlist-tool-unchecked": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
   ],
-  "why": "tools/gen2_linecount.py: executes line 143"
+  "why": "tools/gen2_linecount.py: executes line 151"
  },
  "2R-size-allowlist-unnamed": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
   ],
-  "why": "tools/gen2_linecount.py: executes line 145"
+  "why": "tools/gen2_linecount.py: executes line 153"
  },
  "2R-size-count-unnamed": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
   ],
-  "why": "tools/gen2_linecount.py: executes line 226; or executes line 225"
+  "why": "tools/gen2_linecount.py: executes line 244; or executes line 243"
  },
  "2R-size-exempt-by-header": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
   ],
-  "why": "tools/gen2_linecount.py: executes line 134"
+  "why": "tools/gen2_linecount.py: executes line 142"
  },
  "2R-size-exempt-by-name": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
   ],
-  "why": "tools/gen2_linecount.py: executes line 134"
+  "why": "tools/gen2_linecount.py: executes line 142"
  },
  "2R-size-first-offender-only": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
   ],
-  "why": "tools/gen2_linecount.py: executes line 225; or executes line 224"
+  "why": "tools/gen2_linecount.py: executes line 243; or executes line 242"
  },
  "2R-size-limit-inclusive": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
   ],
-  "why": "tools/gen2_linecount.py: executes line 137"
+  "why": "tools/gen2_linecount.py: executes line 145"
  },
  "2R-size-over-limit-dropped": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
   ],
-  "why": "tools/gen2_linecount.py: executes line 138; or executes line 137"
+  "why": "tools/gen2_linecount.py: executes line 146; or executes line 145"
  },
  "2R-size-over-limit-passes": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
   ],
-  "why": "tools/gen2_linecount.py: executes line 233"
+  "why": "tools/gen2_linecount.py: executes line 251"
  },
  "2R-size-surface-drops-deploy": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
   ],
-  "why": "tools/gen2_linecount.py: executes line 125"
+  "why": "tools/gen2_linecount.py: executes line 133"
+ },
+ "2R-size-surface-drops-gateway": {
+  "controls": [
+   "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
+  ],
+  "why": "tools/gen2_linecount.py: executes line 133"
  },
  "2R-size-surface-drops-gen2": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
   ],
-  "why": "tools/gen2_linecount.py: executes line 125"
+  "why": "tools/gen2_linecount.py: executes line 133"
  },
  "2R-size-surface-drops-github": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
   ],
-  "why": "tools/gen2_linecount.py: executes line 125"
+  "why": "tools/gen2_linecount.py: executes line 133"
  },
  "2R-size-surface-drops-makefile": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
   ],
-  "why": "tools/gen2_linecount.py: executes line 125"
+  "why": "tools/gen2_linecount.py: executes line 133"
  },
  "2R-size-surface-drops-tools-check": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
   ],
-  "why": "tools/gen2_linecount.py: executes line 125"
+  "why": "tools/gen2_linecount.py: executes line 133"
  },
  "2R-size-surface-drops-tools-gen": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
   ],
-  "why": "tools/gen2_linecount.py: executes line 125"
+  "why": "tools/gen2_linecount.py: executes line 133"
  },
  "2R-size-surface-drops-tools-gen2": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
   ],
-  "why": "tools/gen2_linecount.py: executes line 125"
+  "why": "tools/gen2_linecount.py: executes line 133"
  },
  "A1-D01-live-lease-replace": {
   "controls": [
@@ -9314,7 +9457,7 @@
    "test_router_ops.TransitionTest.test_each_state_is_recorded_with_exactly_its_facts",
    "test_router_ops.TransitionTest.test_the_final_launch_admission_check"
   ],
-  "why": "gen2/core/canonical.py: executes line 166"
+  "why": "gen2/core/canonical.py: executes line 173"
  },
  "R1-duplicate-keys-merged": {
   "controls": [
@@ -9329,13 +9472,13 @@
   "rejected": [
    "test_canonical.HashSemanticsTest.test_request_fingerprint_excludes_exactly_submitted_at"
   ],
-  "why": "gen2/core/canonical.py: executes line 173"
+  "why": "gen2/core/canonical.py: executes line 180"
  },
  "R1-fingerprint-keeps-submitted-at": {
   "controls": [
    "test_canonical.HashSemanticsTest.test_semantically_changed_envelopes_fingerprint_differently"
   ],
-  "why": "gen2/core/canonical.py: executes line 173"
+  "why": "gen2/core/canonical.py: executes line 180"
  },
  "R1-identity-bool": {
   "controls": [
@@ -9377,13 +9520,13 @@
   "controls": [
    "test_supervisor_spool.CollectTest.test_a_regular_file_is_staged_as_found"
   ],
-  "why": "gen2/core/canonical.py: executes line 180"
+  "why": "gen2/core/canonical.py: executes line 187"
  },
  "R1-raw-bytes-stripped": {
   "controls": [
    "test_supervisor_spool.CollectTest.test_a_regular_file_is_staged_as_found"
   ],
-  "why": "gen2/core/canonical.py: executes line 180"
+  "why": "gen2/core/canonical.py: executes line 187"
  },
  "R1-sort-keys-is-not-jcs": {
   "controls": [

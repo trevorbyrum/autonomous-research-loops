@@ -1,6 +1,13 @@
 """Mutants of task 2b: the engine's gateway client (gen2/gateway_client), each guard
-removed or weakened alone. Killers are in gen2/tests/test_gateway_client.py, which
-replays the gateway's recorded answers and records the results through a real router.
+removed or weakened alone, and (task 2b-repair A6) the router's record_gateway_facts.
+Killers are in gen2/tests/test_gateway_client.py, which replays the gateway's recorded
+answers and records the results through a real router.
+
+Task 2b-repair: `2B-metadata-only-kept` enforced the rejected conversion of metadata_only
+into an empty search (Astra's test 115); it is replaced by the metadata-only family below,
+whose killers require the named state instead. `2B-pages-rounded-up` guarded the merged
+multi-page observation, which is gone (each page is its own observation, A2); the page
+family below replaces it.
 
 The gateway service's own guards are a separate inventory (tools/gen2_gateway_mutants.py,
 run by tools/gen2_gateway_mutations.py on the gateway's suite).
@@ -11,7 +18,9 @@ from .base import Mutation
 
 GC = "test_gateway_client."
 RA, UA, TO, RR, OH = GC + "RecordedAnswers.", GC + "UnreadableAnswers.", GC + "TransportOutcomes.", GC + "RecordedByTheRouter.", GC + "OverRealHttp."
-OBS, CLI = "gen2/gateway_client/observe.py", "gen2/gateway_client/client.py"
+GF = GC + "GatewayFactsCommand."
+OBS, CLI, CAPS = "gen2/gateway_client/observe.py", "gen2/gateway_client/client.py", "gen2/router/capabilities.py"
+PAGE_DOC = 'request={"lane": entry["source"], "page": page, "request": sent},'
 
 MUTATIONS: list[Mutation] = [
     *(Mutation(f"2B-{key}", "2b", desc, tuple(killers), target=target, old=old, new=new)
@@ -26,11 +35,55 @@ MUTATIONS: list[Mutation] = [
            '    if comp == "partial" and err is None:', "    if False:"),
           ("repeat-counted-twice", "a record the provider repeated is two candidates", (UA + "test_a_repeated_identity_is_one_candidate",), OBS,
            "        if identity not in seen:", "        if True:"),
-          ("metadata-only-kept", "metadata_only with nothing returned stays metadata_only (the store refuses it)",
-           (UA + "test_metadata_only_with_nothing_returned_is_an_empty_query",), OBS,
-           '    if coverage == "metadata_only" and not count:', "    if False:"),
+          # 2b-repair A1: metadata_only is its own state, naming its record
+          ("metadata-only-unnamed", "metadata_only naming no record is kept as it stands (the store refuses it)",
+           (UA + "test_metadata_only_names_the_held_record", UA + "test_metadata_only_naming_nothing_is_unreadable_never_an_empty_query",
+            RR + "test_metadata_only_is_admissible_as_its_own_state"), OBS,
+           '    if entry.get("coverage") != "metadata_only" or entry.get("retrieved"):\n        return entry', "    if True:\n        return entry"),
+          ("metadata-only-held-ignored", "an enrich's held identity is not the record its metadata_only lane names",
+           (UA + "test_metadata_only_names_the_held_record", RR + "test_metadata_only_is_admissible_as_its_own_state"), OBS,
+           "    if not (isinstance(held, str) and held):", "    if True:"),
+          ("metadata-only-empty", "metadata_only naming nothing becomes an empty search (the conversion test 115 enforced)",
+           (UA + "test_metadata_only_naming_nothing_is_unreadable_never_an_empty_query",), OBS,
+           '        return unobserved(entry["source"], "unknown", "payload_invalid")\n    return {**entry, "count": 1',
+           '        return {**entry, "coverage": "searched_empty"}\n    return {**entry, "count": 1'),
+          # 2b-repair A1: an uncaptured answer is a lower bound, never complete negative evidence
+          ("uncaptured-empty-kept", "an uncaptured empty lane stays an empty search (made partial, which the store refuses)",
+           (RA + "test_an_uncaptured_answer_is_a_lower_bound_never_negative_evidence", RR + "test_an_uncaptured_answer_is_recorded_as_a_lower_bound",
+            TO + "test_a_poll_not_attributed_to_this_caller_or_not_captured_degrades"), OBS,
+           '    if entry["coverage"] == "searched_empty":\n        return unobserved(entry["source"], "unknown", "telemetry_missing")',
+           '    if False:\n        return unobserved(entry["source"], "unknown", "telemetry_missing")'),
+          ("uncaptured-complete", "the lanes of an answer the gateway did not capture stay complete",
+           (RA + "test_an_uncaptured_answer_is_a_lower_bound_never_negative_evidence", RR + "test_an_uncaptured_answer_is_recorded_as_a_lower_bound",
+            TO + "test_a_poll_not_attributed_to_this_caller_or_not_captured_degrades"), CLI,
+           '            result["lanes"].append(entry if captured else observe.uncaptured(entry))', '            result["lanes"].append(entry)'),
+          ("uncaptured-silent", "a request the gateway did not capture durably raises no telemetry loss",
+           (RA + "test_an_uncaptured_answer_is_a_lower_bound_never_negative_evidence",), CLI,
+           '            lost(str(obs.get("capture_loss") or "the gateway did not acknowledge a durable request row"))', "            pass"),
+          ("poll-capture-ignored", "a poll the gateway did not record durably leaves the answer captured",
+           (TO + "test_a_poll_not_attributed_to_this_caller_or_not_captured_degrades",), CLI,
+           "            if not _captured(poll):\n                captured = False", "            if False:\n                captured = False"),
+          # 2b-repair A1: the whole answer variant
+          ("records-unchecked", "a dispatched answer without its records list is read as one with none",
+           (UA + "test_a_success_that_is_not_a_gateway_answer_is_unreadable",), CLI,
+           "        if not isinstance(lanes, list) or not isinstance(records, list):",
+           "        records = records if isinstance(records, list) else []\n        if not isinstance(lanes, list):"),
+          ("lane-less-empty", "an answer without lanes that is not a record-cache hit is an empty search",
+           (UA + "test_an_answer_without_lanes_is_only_a_record_cache_hit_that_says_so",), CLI,
+           "            lanes = _record_cache_lanes(doc, sent)\n",
+           '            lanes = _record_cache_lanes(doc, sent) or [{"source": observe.GATEWAY_LANE, "coverage": "searched_empty", '
+           '"completeness": "complete", "count": 0, "retrieved": []}]\n'),
+          ("cache-hit-unmarked", "an answer without lanes is read as a record-cache hit without saying it is one",
+           (UA + "test_an_answer_without_lanes_is_only_a_record_cache_hit_that_says_so",), CLI,
+           '    if sent.get("request_type") != "resolve" or doc.get("cache_hit") is not True or doc.get("served_from") != "record_cache" \\',
+           '    if sent.get("request_type") != "resolve" \\'),
+          ("named-lane-dropped", "a named lane the answer leaves out is not observed as unknown",
+           (UA + "test_a_named_lane_the_answer_leaves_out_is_unobserved",), CLI,
+           '        result["lanes"] += [observe.unobserved(sid, "unknown", "payload_invalid") for sid in sent.get("lanes") or [] if sid not in answered]',
+           '        result["lanes"] += []'),
+          # identity (H-1, H-5; 2b-repair A2)
           ("fact-unlinked", "a secrets-failing observation does not name its fact",
-           (RA + "test_a_failing_secrets_read_carries_its_fact_and_no_count", RR + "test_a_secrets_failure_is_recorded_against_its_fact"), OBS,
+           (RA + "test_a_failing_secrets_read_carries_its_fact_and_no_count", RR + "test_a_secrets_failure_is_recorded_through_the_routers_own_commands"), OBS,
            '"capability_fact_id": fact_id if entry.get("error_class") == "secrets_backend_failing" else None,', '"capability_fact_id": None,'),
           ("id-not-deterministic", "an observation's id depends on the run, not on its identity",
            (RA + "test_the_same_answer_twice_is_the_same_observation",), OBS,
@@ -38,9 +91,22 @@ MUTATIONS: list[Mutation] = [
           ("id-includes-links", "an observation's id changes with the obligations it is linked to",
            (RA + "test_the_same_answer_twice_is_the_same_observation",), OBS,
            '    oid = "obs_" + _digest("observation", invocation_id, attempt, rid)', '    oid = "obs_" + _digest("observation", invocation_id, attempt, rid, obligation_ids)'),
+          ("delivery-in-identity", "how an answer was delivered is part of the request's identity",
+           (RR + "test_a_delivery_change_is_never_a_second_observation",), CLI,
+           PAGE_DOC, 'request={"lane": entry["source"], "page": page, "request": sent, "delivery": answer["delivery"]},'),
+          ("echo-is-identity", "the request's identity is the gateway's echo (a failure has none: different requests merge)",
+           (RR + "test_different_failed_requests_are_different_observations",), CLI,
+           PAGE_DOC, 'request={"lane": entry["source"], "page": page, "request": answer["effective"]},'),
+          ("page-request-first", "every page's observation names the first page's request (the failed cursor is lost)",
+           (RA + "test_each_page_is_its_own_observation_and_a_failed_one_keeps_its_cursor",
+            RR + "test_a_failed_continuation_is_its_own_observation_with_its_cursor"), CLI,
+           PAGE_DOC, 'request={"lane": entry["source"], "page": page, "request": request},'),
           ("echo-unchecked", "an answer for another invocation or attempt is attributed to this one",
            (UA + "test_an_answer_for_another_invocation_is_not_attributed",), CLI,
-           '        if (obs.get("invocation_id"), obs.get("attempt")) != (ctx["invocation_id"], ctx["attempt"]):', "        if False:"),
+           "        if not _echoes(obs, ctx):\n            # an answer", "        if False:\n            # an answer"),
+          ("echo-bool-attempt", "an attempt echoed as true is read as attempt 1",
+           (UA + "test_an_answer_for_another_invocation_is_not_attributed",), CLI,
+           'type(obs.get("attempt")) is int and obs["attempt"] == ctx["attempt"]', 'obs.get("attempt") == ctx["attempt"]'),
           ("envelope-unchecked", "a success that is not a gateway answer is read as one",
            (UA + "test_a_success_that_is_not_a_gateway_answer_is_unreadable",), CLI,
            '        if resp_headers.get("x-research-gateway") != "result" or "json" not in resp_headers.get("content-type", ""):', "        if False:"),
@@ -49,20 +115,42 @@ MUTATIONS: list[Mutation] = [
            '            return failed("unknown", error)', '            return failed("searched_empty", None)'),
           ("policy-refusal-empty", "a request the policy refused is recorded as an empty search", (RA + "test_a_grant_and_the_policy_it_binds",), CLI,
            '           403: ("not_searched", None),', '           403: ("searched_empty", None),'),
-          ("queued-unpolled", "a queued answer is read as it stands, without polling", (TO + "test_a_queued_answer_is_polled_to_its_result",
+          ("queued-unpolled", "a queued answer is read as it stands, without polling", (TO + "test_a_queued_answer_is_polled_to_its_result_under_this_invocation",
                                                                                         TO + "test_a_queued_answer_is_polled_and_a_job_that_never_ends_is_a_timeout"), CLI,
            '        if doc.get("status") in ("queued", "running"):', "        if False:"),
           ("failed-job-read", "a failed job's result is read like a done one's", (TO + "test_a_queued_answer_is_polled_and_a_job_that_never_ends_is_a_timeout",), CLI,
            '            if job.get("status") != "done" or not isinstance(job.get("result"), dict):', '            if not isinstance(job.get("result"), dict):'),
-          ("uncaptured-silent", "a request the gateway did not capture durably raises no telemetry loss",
-           (RA + "test_an_uncaptured_request_is_an_explicit_telemetry_loss",), CLI,
-           '            result["losses"].append({"reason": str(obs.get("capture_loss") or "the gateway did not acknowledge a durable request row"),',
-           '            (lambda *a: None)({"reason": str(obs.get("capture_loss") or "the gateway did not acknowledge a durable request row"),'),
-          ("pages-rounded-up", "a lane whose later page failed is called complete", (RA + "test_a_failed_continuation_page_leaves_a_lower_bound",
-                                                                                      RR + "test_a_failed_continuation_is_admissible_as_a_lower_bound"), CLI,
-           '             "count": len(retrieved), "retrieved": retrieved, "completeness": "partial" if partial else "complete"}',
-           '             "count": len(retrieved), "retrieved": retrieved, "completeness": "complete"}'),
+          # 2b-repair A5: every poll is this caller's
+          ("poll-uncorrelated", "a poll carries no invocation or attempt", (TO + "test_a_queued_answer_is_polled_to_its_result_under_this_invocation",), CLI,
+           '            status, job, _ = self._exchange("GET", f"/v1/jobs/{job_id}", None, ctx["token"], _headers(ctx))',
+           '            status, job, _ = self._exchange("GET", f"/v1/jobs/{job_id}", None, ctx["token"])'),
+          ("poll-echo-unchecked", "a poll's answer for another caller is attributed to this one",
+           (TO + "test_a_poll_not_attributed_to_this_caller_or_not_captured_degrades",), CLI,
+           "                return job, (obs if _echoes(obs, ctx) else None)", "                return job, obs"),
           ("redirects-followed", "the default transport follows a redirect (the bearer token goes elsewhere)", (OH + "test_a_redirect_is_never_followed",), CLI,
            "_OPENER = urllib.request.build_opener(_NoRedirect)", "_OPENER = urllib.request.build_opener()"),
+          # 2b-repair A6: the gateway's facts through the router's own command, before the observations naming them
+          ("facts-not-recorded", "the facts a search reported are not among the router's requests",
+           (RR + "test_a_secrets_failure_is_recorded_through_the_routers_own_commands",), OBS,
+           '    out_requests = [("record_gateway_facts"', '    out_requests = [] if True else [("record_gateway_facts"'),
+          ("fact-id-unchecked", "a gateway fact's id need not be its capability and since", (GF + "test_what_is_not_a_gateway_fact_is_refused",), CAPS,
+           '                if fact["fact_id"] != canonical.gateway_fact_id(fact["capability"], fact["since"]):', "                if False:"),
+          ("fact-namespace-open", "a gateway fact may name any capability, not only gateway.*", (GF + "test_what_is_not_a_gateway_fact_is_refused",), CAPS,
+           '"^gateway\\\\.[a-z0-9][a-z0-9_.-]{0,62}$"', '"^[a-z].*$"'),
+          ("fact-conflict-replays", "other content under a recorded fact's id replays", (GF + "test_what_is_not_a_gateway_fact_is_refused",), CAPS,
+           "            elif any(stored[k] != fact[k] for k in FACT_FIELDS):", "            elif False:"),
+          ("fact-older-recorded", "an older episode is recorded behind the current fact", (GF + "test_a_later_episode_supersedes_and_an_earlier_one_is_refused",), CAPS,
+           '            if current is not None and instant(current["since"]) > instant(fact["since"]):', "            if False:"),
+          ("fact-not-superseding", "a new fact leaves its capability's current fact current (the one-current index refuses it)",
+           (GF + "test_a_later_episode_supersedes_and_an_earlier_one_is_refused",), CAPS,
+           '            if current is not None:\n                self._store.update("capability_facts", {"fact_id": current["fact_id"]}, '
+           '{"superseded_by_fact_id": fact["fact_id"]})',
+           '            if False:\n                self._store.update("capability_facts", {"fact_id": current["fact_id"]}, '
+           '{"superseded_by_fact_id": fact["fact_id"]})'),
+          ("fact-unfenced", "a gateway fact is recorded without a current lease", (GF + "test_only_a_running_invocation_records_but_a_lost_reply_replays",), CAPS,
+           '        self._require_current_lease(inv, now)\n        if self._one("queue_entries", {"topic_id": inv["topic_id"]})["paused_at"] is not None:\n'
+           '            raise Refusal("topic_paused", f"{inv[\'topic_id\']} is paused")',
+           '        if self._one("queue_entries", {"topic_id": inv["topic_id"]})["paused_at"] is not None:\n'
+           '            raise Refusal("topic_paused", f"{inv[\'topic_id\']} is paused")'),
       )),
 ]
