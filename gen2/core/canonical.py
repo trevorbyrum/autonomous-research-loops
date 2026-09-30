@@ -154,6 +154,13 @@ def logical_hash(value: object) -> str:
     return _sha256(canonical_bytes(value))
 
 
+def gateway_fact_id(capability: str, since: str) -> str:
+    """A gateway-reported capability fact's id (tasks 2b, 2b-repair A6): one per capability
+    and the instant its state began — one episode, one id, whoever reports it — so the
+    router can check that an id is its content's, and a re-report replays."""
+    return "fact_" + hashlib.sha256(canonical_bytes(["capability", capability, since])).hexdigest()[:32]
+
+
 def _without(document: dict, excluded: tuple[str, ...]) -> dict:
     if not isinstance(document, dict):
         raise CanonicalizationError("a hashed document is a JSON object")

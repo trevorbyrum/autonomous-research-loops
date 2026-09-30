@@ -288,7 +288,11 @@ address and a readable, explicitly named token file, and passes the eight tests 
 as executable fixtures — `gateway/tests/test_secrets_contract.py`, against a loopback
 KV v2 fake; tests 1–2 start the real entrypoint in a child process, 3–8 drive the
 assembled service over its HTTP front door, and the engine's side of test 5 is
-`gen2/tests/test_gateway_client.py` over the gateway's recorded answers. What that is
+`gen2/tests/test_gateway_client.py` over the gateway's recorded answers. *Task 2b-repair:*
+a non-200 success status is a failed read too (A7), and test 5's engine half records the
+dated fact through the router's own typed command (`record_gateway_facts`,
+`gen2/router/capabilities.py`) before the observation naming it — the recorded HTTP
+answer over a real socket, no test-only SQL (A6). What that is
 not: the run "in its container" (it needs the dedicated gen-2 gateway deployment, task
 2e1), a reviewed release, or an operator decision. Vault stays inadmissible until the
 operator accepts such a release; nothing here changes the deployed gateway.

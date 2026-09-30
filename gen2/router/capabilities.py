@@ -37,13 +37,28 @@ transaction:
     A usable observation records the recovery fact and clears no hold: the
     operator clears it with that fact in status. A hold cleared while the
     capability still fails is opened again by the next such observation.
+
+Gateway-reported facts (task 2b-repair A6; DEPLOYMENT-CONTRACT §3.4 fixture 5):
+the Gateway answers a request with the dated capability facts that explain its
+lanes (its secrets backend failing, since when, which lanes); an observation
+naming such a fact (secrets_backend_failing) needs it recorded first, and
+record_gateway_facts is the typed path, under the capability of the running
+invocation that received it. Each fact is a `gateway.*` capability — never
+another namespace — whose id is its capability and since
+(canonical.gateway_fact_id), so an id is its content's and one episode is one
+fact whoever reports it: the same fact again replays, other content under its
+id is a conflict. A new one supersedes the capability's current fact (H-2: a
+transition is a new row); one older than the current fact is refused
+(fact_superseded) — a fact is inserted current, never behind a newer one. It
+opens no hold: what a failing gateway capability holds is 2c/2e's to decide.
 """
 from __future__ import annotations
 
 from typing import Mapping
 
+from gen2.core import canonical
 from gen2.router import boundary
-from gen2.router.boundary import Refusal
+from gen2.router.boundary import Refusal, instant
 from gen2.router.lifecycle import _after
 from gen2.router.registries import ROUTER_DEFAULTS
 
@@ -67,7 +82,23 @@ CAPABILITY_COMMANDS = {
             "runner": {"type": "object", "additionalProperties": False, "required": ["name", "version"], "properties": {"name": _ID, "version": _ID}},
             "affected_lanes": {"type": "array", "maxItems": 20, "uniqueItems": True, "items": _ID},
             "requested_by": _ID}},
+    "gateway_facts": {
+        "type": "object", "additionalProperties": False, "required": ["capability_id", "invocation_id", "facts"],
+        "properties": {
+            "capability_id": {"$ref": "common.schema.json#/$defs/capability_id"},
+            "invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
+            "facts": {"type": "array", "minItems": 1, "maxItems": 20, "items": {
+                "type": "object", "additionalProperties": False,
+                "required": ["fact_id", "capability", "state", "detail", "since", "last_success_at", "affected_lanes"],
+                "properties": {
+                    "fact_id": {"type": "string", "pattern": "^fact_[a-f0-9]{32}$"},
+                    "capability": {"type": "string", "pattern": "^gateway\\.[a-z0-9][a-z0-9_.-]{0,62}$"},
+                    "state": {"enum": ["healthy", "degraded", "failing", "unknown"]}, "detail": _ID,
+                    "since": {"$ref": "common.schema.json#/$defs/timestamp"}, "last_success_at": _DECLARED,
+                    "affected_lanes": {"type": "array", "maxItems": 50, "uniqueItems": True, "items": _ID}}}}}},
 }
+GATEWAY_FACT_AUDIT = "gateway_fact"
+FACT_FIELDS = ("capability", "state", "detail", "since", "last_success_at", "affected_lanes")
 
 
 def hold_subject(capability: str) -> str:
@@ -138,3 +169,47 @@ class Capabilities:
         self._store.insert("audit_events", {"audit_event_id": audit_id, "at": now, "kind": AUDIT_KIND, "topic_id": None, "invocation_id": None,
                                             "operation_id": None, "detail": {"observation": req, "reply": reply}})
         return reply
+
+    def record_gateway_facts(self, request: Mapping) -> dict:
+        try:
+            req = boundary.normalize(request, "request_invalid")
+            boundary.require_schema(self._schemas, req, "router-commands#/$defs/gateway_facts", "request_invalid")
+            if len({f["capability"] for f in req["facts"]}) != len(req["facts"]):
+                raise Refusal("request_invalid", "one fact per capability: an answer reports each capability's current fact once")
+            for fact in req["facts"]:
+                if fact["fact_id"] != canonical.gateway_fact_id(fact["capability"], fact["since"]):
+                    raise Refusal("request_invalid", f"{fact['fact_id']} is not the id of {fact['capability']} since {fact['since']}")
+            return self._guarded("request_invalid", lambda now: self._gateway_facts_in_transaction(req, now))
+        except Refusal as refusal:
+            return {"status": "refused", "reason": refusal.reason, "detail": refusal.detail[:500]}
+
+    def _gateway_facts_in_transaction(self, req: dict, now: str) -> dict:
+        inv = self._capability(req["capability_id"], req["invocation_id"])
+        replies, new = [], []
+        for fact in req["facts"]:
+            stored = self._one("capability_facts", {"fact_id": fact["fact_id"]})
+            if stored is None:
+                new.append(fact)
+            elif any(stored[k] != fact[k] for k in FACT_FIELDS):
+                raise Refusal("fact_conflict", f"{fact['fact_id']} was recorded with other content")
+            else:
+                replies.append({"fact_id": fact["fact_id"], "status": "replayed"})
+        if not new:   # a lost reply is answered from the facts, whatever the invocation's state now
+            return {"status": "replayed", "facts": replies}
+        if inv["state"] != "running" or inv["cancel_requested_at"] is not None:
+            raise Refusal("invocation_state_invalid", f"gateway facts are recorded while running, not {inv['state']}, and never after a cancellation request")
+        self._require_current_lease(inv, now)
+        if self._one("queue_entries", {"topic_id": inv["topic_id"]})["paused_at"] is not None:
+            raise Refusal("topic_paused", f"{inv['topic_id']} is paused")
+        for fact in new:
+            current = next((f for f in self._store.select("capability_facts", {"capability": fact["capability"]})
+                            if f["superseded_by_fact_id"] is None), None)
+            if current is not None and instant(current["since"]) > instant(fact["since"]):
+                raise Refusal("fact_superseded", f"{fact['capability']}'s current fact {current['fact_id']} began at {current['since']}, "
+                                                 f"after {fact['since']}: an older episode is never recorded behind a newer one")
+            if current is not None:
+                self._store.update("capability_facts", {"fact_id": current["fact_id"]}, {"superseded_by_fact_id": fact["fact_id"]})
+            self._store.insert("capability_facts", {**fact, "observed_by_invocation_id": inv["invocation_id"], "recorded_at": now})
+            replies.append({"fact_id": fact["fact_id"], "status": "recorded"})
+        self._audit(GATEWAY_FACT_AUDIT, now, {"facts": [f["fact_id"] for f in new]}, topic_id=inv["topic_id"], invocation_id=inv["invocation_id"])
+        return {"status": "recorded", "facts": replies}

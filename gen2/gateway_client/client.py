@@ -2,35 +2,40 @@
 
 The gateway runs as its own process and is never imported (INVARIANTS B-2); this client
 speaks its HTTP API (gateway/docs/STATION-CONTRACT.md, OPERATIONS.md). It carries the
-invocation and attempt on every request (H-1), mints per-invocation grants for stations
-(the gateway enforces a grant's topic policy on every door), and turns every answer —
-and every failure to get one — into search-observation documents for the router's
-record_observation (observe.py), plus the capability facts the gateway reported and the
+invocation and attempt on every request and every job poll (H-1; the gateway refuses a
+research request without them), mints per-invocation grants for stations (the gateway
+enforces a grant's topic policy on every door), and turns every answer — and every
+failure to get one — into search-observation documents for the router's
+record_observation (observe.py), plus the capability facts the gateway reported (for the
+router's record_gateway_facts, first: observe.router_requests gives the order) and the
 telemetry the gateway could not capture durably. Nothing it cannot read becomes zero
 results: a transport failure, a timeout, a refused or unreadable answer, a job that
 failed or never finished, an answer that does not echo the invocation it was asked under
 — each is an observation with coverage `unknown` (or the gateway's own degraded state)
 and no count (RG-4, RG-U).
 
-Pagination (find, pages > 1): each lane still answering with a `next` cursor is asked
-again, alone with the other continuing lanes (the `lanes` filter), under the same
-invocation and attempt. A lane's pages are one observation of the logical request
-("pages": N): complete when every page read was complete; when a later page fails after
-earlier pages were read, `partial` with error_class `partial_pagination` and the
-identities actually observed as a LOWER BOUND — never rounded up to what the provider
-claimed; the first page failing is that page's own failure (task 2b; INVARIANTS RG-4).
+Every answer variant is validated whole (2b-repair A1): a dispatched answer names its
+lanes and carries its records list; an answer without lanes is only ever a record-cache
+hit that says so and carries the one record it repeats; a queued answer is polled to a
+finished job. A named lane the answer leaves out is unobserved. An answer the gateway did
+not capture durably is a telemetry loss, and its lanes keep what they read only as a lower
+bound (observe.uncaptured).
+
+Pagination (find, pages > 1; 2b-repair A2): each lane still answering with a `next`
+cursor is asked again, alone with the other continuing lanes (the `lanes` filter), under
+the same invocation and attempt. EACH PAGE a lane was asked is its own observation — its
+`request` the exact payload sent for that page (its cursors) — so a failed continuation
+keeps its own cursor and outcome, and what the earlier pages read stands on their own
+observations; nothing is rounded up to what the provider claimed.
 
 Queued answers are polled until the job finishes or the client's deadline passes; a
 deadline that passes is `unknown`/`timeout`, never an empty result.
 
-What this client does not do: write the store (the router records what it returns), pick
-lanes or policy (the gateway plans; the grant binds), or record a gateway capability fact
-before the observations that reference it — the caller must (the router has no command
-for gateway-reported facts yet: an open question for 2c/2e).
+What this client does not do: write the store (the router records what it returns) or
+pick lanes or policy (the gateway plans; the grant binds).
 """
 from __future__ import annotations
 
-import json
 import time
 import urllib.error
 import urllib.request
@@ -78,6 +83,15 @@ REFUSED = {400: ("unknown", "payload_invalid"), 401: ("auth_failed", "credential
            403: ("not_searched", None), 404: ("unknown", "transport_failure")}
 
 
+def _echoes(obs: dict, ctx: dict) -> bool:
+    """The gateway's observation names THIS invocation and attempt (H-1): anything else cannot be attributed to it."""
+    return obs.get("invocation_id") == ctx["invocation_id"] and type(obs.get("attempt")) is int and obs["attempt"] == ctx["attempt"]
+
+
+def _captured(obs: dict) -> bool:
+    return obs.get("captured") is True and type(obs.get("call_ref")) is int
+
+
 class GatewayClient:
     def __init__(self, base_url: str, token: str, *, timeout: float = 130.0, deadline: float = 300.0,
                  transport: Callable = http_transport, clock: Callable[[], str] = utc_now,
@@ -119,61 +133,50 @@ class GatewayClient:
     def search(self, request: dict, *, invocation_id: str, attempt: int, policy_version: str,
                obligation_ids: Sequence[str] = (), pages: int = 1, token: str | None = None) -> dict:
         """One logical request: `request` is a gateway payload with its `request_type`. Returns
-        {"observations": [{"observation", "retrieval_events", "records"}], "capability_facts",
-        "telemetry_losses", "effective_request", "gateway_request_identity"}."""
+        {"observations": [{"observation", "retrieval_events", "records", "delivery"}],
+        "capability_facts", "telemetry_losses", "pages": [{"page", "sent", "effective_request",
+        "gateway_request_identity", "delivery", "call_ref"}]} — one observation per lane per page."""
         rt = request.get("request_type")
         if rt not in REQUEST_TYPES or not isinstance(attempt, int) or attempt < 1 or pages < 1:
             raise ValueError("a search is a find/resolve/enrich/fetch/data request, attempt >= 1, pages >= 1")
         if pages > 1 and rt != "find":
             raise ValueError("only find answers page")
-        token = token or self.token
         ctx = {"invocation_id": invocation_id, "attempt": attempt, "obligation_ids": list(obligation_ids),
-               "policy_version": policy_version, "token": token}
-        started = self._clock()
-        answer = self._answer(request, ctx)
-        lanes = {e["source"]: {"entry": e, "pages": [e]} for e in answer["lanes"]}
-        refs = [answer["call_ref"]] if answer["call_ref"] else []
-        records = answer["records"]
-        for _ in range(pages - 1):
-            going = {sid: s["pages"][-1]["next"] for sid, s in lanes.items()
-                     if s["pages"][-1].get("completeness") == "complete" and isinstance(s["pages"][-1].get("next"), (str, int))
-                     and s["pages"][-1]["next"] != "exhausted"}
+               "policy_version": policy_version, "token": token or self.token}
+        out = {"observations": [], "capability_facts": [], "telemetry_losses": [], "pages": []}
+        sent = request
+        for page in range(1, pages + 1):
+            started = self._clock()
+            answer = self._answer(sent, ctx)
+            ended = self._clock()
+            out["capability_facts"] += answer["facts"]
+            out["telemetry_losses"] += answer["losses"]
+            out["pages"].append({"page": page, "sent": sent, "effective_request": answer["effective"],
+                                 "gateway_request_identity": answer["gateway_identity"], "delivery": answer["delivery"],
+                                 "call_ref": answer["call_ref"]})
+            fact_id = next((f["fact_id"] for f in answer["facts"] if f["capability"].startswith("gateway.secrets")), None)
+            call_ref = f"gw-call:{answer['call_ref']}" if answer["call_ref"] is not None else None
+            for entry in answer["lanes"]:
+                obs = observe.observation(entry, request={"lane": entry["source"], "page": page, "request": sent},
+                                          started_at=started, ended_at=ended, call_ref=call_ref, fact_id=fact_id,
+                                          **{k: ctx[k] for k in ("invocation_id", "attempt", "obligation_ids", "policy_version")})
+                obs["records"] = observe.lane_records({"records": answer["records"]}, entry["source"])
+                obs["delivery"] = answer["delivery"]
+                out["observations"].append(obs)
+            going = {e["source"]: e["next"] for e in answer["lanes"]
+                     if e.get("completeness") == "complete" and type(e.get("next")) in (str, int) and e["next"] != "exhausted"}
             if not going:
                 break
-            page = self._answer({**request, "cursors": going, "lanes": sorted(going)}, ctx)
-            refs += [page["call_ref"]] if page["call_ref"] else []
-            records += page["records"]
-            answer["facts"] += page["facts"]
-            answer["losses"] += page["losses"]
-            got = {e["source"]: e for e in page["lanes"]}
-            for sid in going:
-                lanes[sid]["pages"].append(got.get(sid) or observe.unobserved(sid, "unknown", "payload_invalid"))
-        ended = self._clock()
-        answer["facts"] = list({f["fact_id"]: f for f in answer["facts"]}.values())   # one fact, however many pages carried it
-        call_ref = ",".join(f"gw-call:{r}" for r in refs)
-        if len(call_ref) > 500:
-            call_ref = f"gw-call:{refs[0]}..{refs[-1]} ({len(refs)} requests)"
-        out = {"observations": [], "capability_facts": answer["facts"], "telemetry_losses": answer["losses"],
-               "effective_request": answer["effective"], "gateway_request_identity": answer["gateway_identity"]}
-        fact_id = next((f["fact_id"] for f in answer["facts"] if f["capability"].startswith("gateway.secrets")), None)
-        for sid, lane in lanes.items():
-            entry = _pages_as_one(lane["pages"]) if pages > 1 else lane["entry"]
-            doc = {"lane": sid, "gateway_request": answer["effective"], "gateway_request_identity": answer["gateway_identity"],
-                   "pages": pages, "delivery": answer["delivery"]}
-            obs = observe.observation(entry, request=doc, started_at=started, ended_at=ended,
-                                      call_ref=call_ref or None, fact_id=fact_id, **{
-                                          k: ctx[k] for k in ("invocation_id", "attempt", "obligation_ids", "policy_version")})
-            obs["records"] = observe.lane_records({"records": records}, sid)
-            out["observations"].append(obs)
+            sent = {**request, "cursors": going, "lanes": sorted(going)}
+        out["capability_facts"] = list({f["fact_id"]: f for f in out["capability_facts"]}.values())   # one fact, however many pages carried it
         return out
 
-    def _answer(self, request: dict, ctx: dict) -> dict:
+    def _answer(self, sent: dict, ctx: dict) -> dict:
         """One gateway request, polled to completion: its lanes (each validated, or replaced by
-        an unknown one), records, capability facts, capture losses and identity."""
-        headers = {"X-Research-Invocation": ctx["invocation_id"], "X-Research-Attempt": str(ctx["attempt"])}
-        payload = {k: v for k, v in request.items() if k != "request_type"}
-        status, doc, error = self._exchange("POST", f"/v1/{request['request_type']}", payload, ctx["token"], headers)
-        named = request.get("lanes") or [observe.GATEWAY_LANE]
+        an unknown one), records, capability facts, capture losses, delivery and echo."""
+        payload = {k: v for k, v in sent.items() if k != "request_type"}
+        status, doc, error = self._exchange("POST", f"/v1/{sent['request_type']}", payload, ctx["token"], _headers(ctx))
+        named = sent.get("lanes") or [observe.GATEWAY_LANE]
         result = {"lanes": [], "records": [], "facts": [], "losses": [], "call_ref": None, "delivery": None,
                   "effective": None, "gateway_identity": None}
 
@@ -183,6 +186,9 @@ class GatewayClient:
                 result["losses"].append({"reason": loss, **{k: ctx[k] for k in ("invocation_id", "attempt")}})
             return result
 
+        def lost(reason: str) -> None:
+            result["losses"].append({"reason": reason, **{k: ctx[k] for k in ("invocation_id", "attempt")}})
+
         if status is None:                        # nothing answered: a transport failure or a timeout
             return failed("unknown", error)
         if status in REFUSED:                      # the gateway refused the request itself
@@ -190,25 +196,34 @@ class GatewayClient:
         if not 200 <= status < 300 or doc is None:  # a gateway error, or a success that is not a gateway answer
             return failed("unknown", "payload_invalid" if 200 <= status < 300 else "transport_failure")
         obs = doc.get("observation") if isinstance(doc.get("observation"), dict) else {}
-        if (obs.get("invocation_id"), obs.get("attempt")) != (ctx["invocation_id"], ctx["attempt"]):
+        if not _echoes(obs, ctx):
             # an answer that does not say it is THIS invocation's cannot be attributed to it (H-1)
             return failed("unknown", "payload_invalid", "the gateway's answer did not echo this invocation and attempt")
-        if isinstance(obs.get("call_ref"), int) and obs.get("captured"):
+        captured = _captured(obs)
+        if captured:
             result["call_ref"] = obs["call_ref"]
         else:
-            result["losses"].append({"reason": str(obs.get("capture_loss") or "the gateway did not acknowledge a durable request row"),
-                                     **{k: ctx[k] for k in ("invocation_id", "attempt")}})
+            lost(str(obs.get("capture_loss") or "the gateway did not acknowledge a durable request row"))
         result["delivery"] = {"served": obs.get("served"), "dispatched_by": obs.get("dispatched_by"), "job_id": obs.get("job_id")}
         if doc.get("status") in ("queued", "running"):
-            job = self._poll(doc.get("job_id"), ctx)
+            job, poll = self._poll(doc.get("job_id"), ctx)
             if job is None:
                 return failed("unknown", "timeout")          # never finished by the deadline: nothing observed
+            if poll is None:
+                return failed("unknown", "payload_invalid", "the gateway's answer to a poll did not echo this invocation and attempt")
+            if not _captured(poll):
+                captured = False
+                lost(str(poll.get("capture_loss") or "the gateway did not acknowledge a durable row for this caller's poll"))
             if job.get("status") != "done" or not isinstance(job.get("result"), dict):
                 return failed("unknown", "transport_failure")  # the job failed: what it observed is unknown
             doc = job["result"]
-        lanes = doc.get("lanes")
-        if not isinstance(lanes, list) or (not lanes and request.get("lanes")):
-            return failed("unknown", "payload_invalid")
+        lanes, records = doc.get("lanes"), doc.get("records")
+        if not isinstance(lanes, list) or not isinstance(records, list):
+            return failed("unknown", "payload_invalid")   # the whole answer, not only its lanes: no records list is unreadable
+        if not lanes:
+            lanes = _record_cache_lanes(doc, sent)
+            if lanes is None:
+                return failed("unknown", "payload_invalid")   # no lanes and not a record-cache hit: nothing observed, never empty
         result["effective"] = doc.get("effective_request") if isinstance(doc.get("effective_request"), dict) else None
         result["gateway_identity"] = doc.get("request_identity") if isinstance(doc.get("request_identity"), str) else None
         for entry in lanes:
@@ -216,45 +231,50 @@ class GatewayClient:
             sid = entry.get("source") if isinstance(entry, dict) and isinstance(entry.get("source"), str) else None
             if problem and sid is None:
                 return failed("unknown", "payload_invalid")
-            result["lanes"].append(observe.unobserved(sid, "unknown", "payload_invalid") if problem else entry)
-        if not lanes:   # an answer served without lanes (a record-cache hit) observed the records it returned
-            recs = [r for r in doc.get("records") or [] if isinstance(r, dict) and isinstance(r.get("identity"), str)]
-            result["lanes"] = [{"source": doc.get("served_from") or observe.GATEWAY_LANE, "coverage": "searched_ok" if recs else "searched_empty",
-                                "completeness": "complete", "count": len(recs), "retrieved": [r["identity"] for r in recs]}]
-        result["records"] = [r for r in doc.get("records") or [] if isinstance(r, dict)]
+            entry = observe.unobserved(sid, "unknown", "payload_invalid") if problem else observe.metadata_only_named(entry, sent)
+            result["lanes"].append(entry if captured else observe.uncaptured(entry))
+        answered = {e["source"] for e in result["lanes"]}
+        result["lanes"] += [observe.unobserved(sid, "unknown", "payload_invalid") for sid in sent.get("lanes") or [] if sid not in answered]
+        result["records"] = [r for r in records if isinstance(r, dict)]
         result["facts"] = [f for f in (observe.capability_fact(x) for x in doc.get("capability_facts") or []) if f]
         return result
 
-    def _poll(self, job_id, ctx: dict) -> dict | None:
-        """The finished (done or failed) job, or None when it does not finish by the deadline."""
+    def _poll(self, job_id, ctx: dict) -> tuple[dict | None, dict | None]:
+        """(the finished job — done or failed —, this caller's observation of it), polled under
+        the caller's own invocation and attempt (the gateway binds and records every poll,
+        2b-repair A5): (None, None) when it does not finish by the deadline, (job, None) when
+        the poll's answer does not echo this caller."""
         if isinstance(job_id, bool) or not isinstance(job_id, int):
-            return None
+            return None, None
         waited = 0.0
         while waited <= self.deadline:
-            status, job, _ = self._exchange("GET", f"/v1/jobs/{job_id}", None, ctx["token"])
+            status, job, _ = self._exchange("GET", f"/v1/jobs/{job_id}", None, ctx["token"], _headers(ctx))
             if status == 200 and job and job.get("status") in ("done", "failed"):
-                return job
+                obs = job.get("observation") if isinstance(job.get("observation"), dict) else {}
+                return job, (obs if _echoes(obs, ctx) else None)
             self._sleep(POLL_SECONDS)
             waited += POLL_SECONDS
+        return None, None
+
+
+def _headers(ctx: dict) -> dict:
+    return {"X-Research-Invocation": ctx["invocation_id"], "X-Research-Attempt": str(ctx["attempt"])}
+
+
+def _record_cache_lanes(doc: dict, sent: dict) -> list[dict] | None:
+    """The one lane of a record-cache hit, or None (2b-repair A1, A2). A resolve the gateway
+    answered from a record it already holds has no lanes of its own; it must say so
+    (cache_hit, served_from record_cache) and carry exactly the one record it repeats, whose
+    source's earlier dispatch that is — so that source is its lane, and the same attempt
+    delivered again from the cache is the same observation, never a second one."""
+    recs = doc.get("records")
+    if sent.get("request_type") != "resolve" or doc.get("cache_hit") is not True or doc.get("served_from") != "record_cache" \
+            or len(recs) != 1 or not isinstance(recs[0], dict):
         return None
-
-
-def _pages_as_one(pages: list[dict]) -> dict:
-    """A lane's pages as one observation: the first page's failure is the lane's; a later
-    page's failure makes what was read a partial set, a lower bound (partial_pagination)."""
-    first = pages[0]
-    if first.get("completeness") == "unobserved":
-        return first
-    retrieved = [i for p in pages if p.get("completeness") != "unobserved" for i in p.get("retrieved") or []]
-    broken = next((p for p in pages[1:] if p.get("completeness") != "complete"), None)
-    partial = broken is not None or any(p.get("completeness") == "partial" for p in pages)
-    # a continuation exists only after a first page that returned records, so a partial set
-    # always has at least those: its count is what was read, a lower bound
-    entry = {"source": first["source"], "coverage": "searched_ok" if retrieved else first["coverage"],
-             "count": len(retrieved), "retrieved": retrieved, "completeness": "partial" if partial else "complete"}
-    if partial:
-        entry["error_class"] = "partial_pagination" if broken is not None else "payload_invalid"
-    return entry
+    identity, source = recs[0].get("identity"), recs[0].get("source_id")
+    if not (isinstance(identity, str) and identity and isinstance(source, str) and source):
+        return None
+    return [{"source": source, "coverage": "searched_ok", "completeness": "complete", "count": 1, "retrieved": [identity]}]
 
 
 class GrantRefused(Exception):

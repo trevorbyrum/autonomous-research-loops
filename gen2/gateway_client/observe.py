@@ -12,17 +12,24 @@ a lane entry that breaks them, a count without the identities behind it, or an a
 that does not echo the invocation and attempt it was asked under, is recorded as
 `unknown` with error_class `payload_invalid` — never as the counts it claimed.
 
-Identity (H-1, H-5): an observation's `request` names the lane and the gateway's
-effective request as echoed; `request_identity` is the engine's RFC 8785 hash of that
-document; `observation_id` and each `event_id` derive from the invocation, attempt and
-request identity, so recording the same observation again replays instead of
-duplicating. The gateway's own request identity rides inside `request`, never assumed
-equal to the engine's.
+Identity (H-1, H-5; task 2b-repair A2): an observation's `request` is what the engine
+ATTEMPTED — the lane, the page, and the exact request it sent for that page (its query,
+kind, filters, cursors) — so it exists whether or not anything answered, and two
+different requests never share it. It holds nothing the answer said: not the gateway's
+echo of its effective request (a failure has none), not how the answer was delivered
+(dispatched, coalesced, from a cache, polled), not its durable-capture acknowledgement.
+`request_identity` is the engine's RFC 8785 hash of that document; `observation_id` and
+each `event_id` derive from the invocation, attempt and request identity, so recording
+the same observation again replays, and the same attempt answered another way is a
+conflict at the router — never a second observation of one attempt.
 
-What a lane observation cannot say: its content came from another caller's dispatch
-(`served` is coalesced or cache) — carried in `request.served` for accounting to read —
-and cost, which the gateway does not report per lane (`cost_units` is null: unknown,
-never zero).
+What the answer did say, and the store keeps: the lane's coverage, completeness, count,
+error class and fact; `gateway_call_ref`, the caller's own durable request row at the
+gateway (null when it was not captured). An answer the gateway did not capture durably
+(2b-repair A1; RG-4's telemetry loss) keeps what it read only as a LOWER BOUND: a complete
+set becomes partial (`telemetry_missing`), a complete empty set becomes `unknown` — missing
+telemetry is never complete negative evidence. What an observation still cannot say: cost,
+which the gateway does not report per lane (`cost_units` is null: unknown, never zero).
 """
 from __future__ import annotations
 
@@ -82,6 +89,31 @@ def unobserved(lane: str, coverage: str, error_class: str | None) -> dict:
     return {"source": lane, "coverage": coverage, "completeness": "unobserved", "error_class": error_class}
 
 
+def metadata_only_named(entry: dict, sent: dict) -> dict:
+    """`metadata_only` is "the record was found; its full text is not retrievable"
+    (STATION-CONTRACT §2): it names the record, and it is never an empty search (2b-repair
+    A1). The gateway's enrich of a HELD identity that found no full text names no record in
+    its lane — the record is the one the request held, so that is the identity recorded; any
+    other metadata_only that names nothing is unreadable (`unknown`, payload_invalid)."""
+    if entry.get("coverage") != "metadata_only" or entry.get("retrieved"):
+        return entry
+    held = sent.get("identity") if sent.get("request_type") == "enrich" else None
+    if isinstance(held, str) and held:
+        return {**entry, "count": 1, "retrieved": [held]}
+    return unobserved(entry["source"], "unknown", "payload_invalid")
+
+
+def uncaptured(entry: dict) -> dict:
+    """A lane of an answer the gateway did not capture durably (2b-repair A1; RG-4): what it
+    read stays, as a lower bound — a complete set is partial (`telemetry_missing`), a complete
+    empty set is `unknown` — and a set already partial or unobserved keeps its own reason."""
+    if entry.get("completeness") != "complete":
+        return entry
+    if entry["coverage"] == "searched_empty":
+        return unobserved(entry["source"], "unknown", "telemetry_missing")
+    return {**entry, "completeness": "partial", "error_class": "telemetry_missing"}
+
+
 def lane_records(answer: dict, lane: str) -> list[dict]:
     """The answer's records this lane contributed (a merged record names its members)."""
     out = []
@@ -99,7 +131,7 @@ def observation(entry: dict, *, request: dict, invocation_id: str, attempt: int,
                 policy_version: str, started_at: str, ended_at: str, call_ref: str | None,
                 fact_id: str | None = None) -> dict:
     """{"observation", "retrieval_events"} for one validated lane entry. `request` is the
-    engine's request document for this lane; its logical hash is the request identity."""
+    engine's attempted-request document for this lane and page; its hash is the request identity."""
     rid = canonical.logical_hash(request)
     oid = "obs_" + _digest("observation", invocation_id, attempt, rid)
     observed = entry["completeness"] != "unobserved"
@@ -107,14 +139,9 @@ def observation(entry: dict, *, request: dict, invocation_id: str, attempt: int,
     for identity in entry.get("retrieved") or []:
         if identity not in seen:   # one candidate, one event: a provider repeating a record does not count it twice
             seen.append(identity)
-    coverage, count = entry["coverage"], (len(seen) if observed else None)
-    if coverage == "metadata_only" and not count:
-        # the gateway's "the identity is known but its full text is not retrievable" with nothing
-        # returned: for the store this successful query returned 0 items (it needs >= 1 for metadata_only)
-        coverage = "searched_empty"
     doc = {"observation_id": oid, "request": request, "request_identity": rid, "attempt": attempt, "lane": entry["source"],
-           "obligation_ids": list(obligation_ids), "started_at": started_at, "ended_at": ended_at, "coverage_state": coverage,
-           "result_count": count, "completeness": entry["completeness"], "error_class": entry.get("error_class"),
+           "obligation_ids": list(obligation_ids), "started_at": started_at, "ended_at": ended_at, "coverage_state": entry["coverage"],
+           "result_count": len(seen) if observed else None, "completeness": entry["completeness"], "error_class": entry.get("error_class"),
            "capability_fact_id": fact_id if entry.get("error_class") == "secrets_backend_failing" else None,
            "policy_version": policy_version, "cost_units": None, "gateway_call_ref": call_ref}
     events = [{"event_id": "rev_" + _digest("event", oid, identity), "provider_record_id": identity, "rank": rank,
@@ -123,13 +150,26 @@ def observation(entry: dict, *, request: dict, invocation_id: str, attempt: int,
 
 
 def capability_fact(fact: object) -> dict | None:
-    """A gateway capability fact as the engine's capability_facts row (fact_id deterministic in
-    the capability and its since: one failing episode, one id), or None if it is not one."""
-    if not isinstance(fact, dict) or not isinstance(fact.get("capability"), str) or fact.get("state") not in FACT_STATES:
+    """A gateway capability fact as the engine's capability_facts row (its id the capability
+    and its since, canonical.gateway_fact_id: one episode, one id), or None if it is not one —
+    a fact without the instant its state began is not a dated fact."""
+    if not isinstance(fact, dict) or not isinstance(fact.get("capability"), str) or fact.get("state") not in FACT_STATES \
+            or not isinstance(fact.get("since"), str) or not fact["since"]:
         return None
     capability = "gateway." + fact["capability"]
     lanes = fact.get("affected_lanes")
-    return {"fact_id": "fact_" + _digest("capability", capability, fact.get("since")), "capability": capability,
-            "state": fact["state"], "detail": str(fact.get("detail") or fact["state"])[:500], "since": fact.get("since"),
-            "last_success_at": fact.get("last_success_at"),
-            "affected_lanes": sorted(x for x in lanes if isinstance(x, str)) if isinstance(lanes, list) else []}
+    last = fact.get("last_success_at")
+    return {"fact_id": canonical.gateway_fact_id(capability, fact["since"]), "capability": capability,
+            "state": fact["state"], "detail": str(fact.get("detail") or fact["state"])[:500], "since": fact["since"],
+            "last_success_at": last if isinstance(last, str) and last else None,
+            "affected_lanes": sorted({x for x in lanes if isinstance(x, str) and x}) if isinstance(lanes, list) else []}
+
+
+def router_requests(out: dict, *, capability_id: str, invocation_id: str) -> list[tuple[str, dict]]:
+    """What the router records for one search, in order (2b-repair A6): the capability facts
+    the gateway reported first (record_gateway_facts — an observation names its fact, which
+    must exist), then each observation with its retrieval events (record_observation)."""
+    who = {"capability_id": capability_id, "invocation_id": invocation_id}
+    out_requests = [("record_gateway_facts", {**who, "facts": list(out["capability_facts"])})] if out["capability_facts"] else []
+    return out_requests + [("record_observation", {**who, "observation": o["observation"], "retrieval_events": o["retrieval_events"]})
+                           for o in out["observations"]]
