@@ -197,7 +197,7 @@ class IdentityBoundTest(WriterTestCase):
 
 
 def fact(fid: str, superseded_by: str | None = None) -> dict:
-    return {"fact_id": fid, "capability": "gateway.crossref", "state": "healthy", "detail": fid, "since": T, "affected_lanes": ["research"],
+    return {"fact_id": fid, "capability": "provider-auth:crossref", "state": "healthy", "detail": fid, "since": T, "affected_lanes": ["research"],
             "superseded_by_fact_id": superseded_by, "recorded_at": T}
 
 

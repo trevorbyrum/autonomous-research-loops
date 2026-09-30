@@ -116,6 +116,11 @@ def hold_subject(capability: str) -> str:
     return f"capability:{capability}"
 
 
+def _successor(fact: Mapping) -> dict:
+    """What a gateway fact's predecessor states of it: the edge the store holds to the relation (2b-repair-5 F1)."""
+    return {"successor_since": fact["since"], "successor_state": fact["state"], "successor_revision": fact["revision"]}
+
+
 class Capabilities:
     def record_capability_probe(self, request: Mapping) -> dict:
         try:
@@ -224,9 +229,9 @@ class Capabilities:
                                                "one revision of an episode is one snapshot")
             behind = current is not None and instant(current["since"]) == instant(fact["since"]) and current["revision"] > fact["revision"]
             if current is not None and not behind:
-                self._store.update("capability_facts", {"fact_id": current["fact_id"]}, {"superseded_by_fact_id": fact["fact_id"]})
-            self._store.insert("capability_facts", {**fact, "observed_by_invocation_id": inv["invocation_id"],
-                                                    "superseded_by_fact_id": current["fact_id"] if behind else None, "recorded_at": now})
+                self._store.update("capability_facts", {"fact_id": current["fact_id"]}, {"superseded_by_fact_id": fact["fact_id"], **_successor(fact)})
+            self._store.insert("capability_facts", {**fact, "observed_by_invocation_id": inv["invocation_id"], "recorded_at": now,
+                                                    **({"superseded_by_fact_id": current["fact_id"], **_successor(current)} if behind else {})})
             replies.append({"fact_id": fact["fact_id"], "status": "recorded"})
         self._audit(GATEWAY_FACT_AUDIT, now, {"facts": [f["fact_id"] for f in new]}, topic_id=inv["topic_id"], invocation_id=inv["invocation_id"])
         return {"status": "recorded", "facts": replies}

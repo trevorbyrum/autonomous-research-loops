@@ -500,34 +500,57 @@ class ObservationTest(StoreTestCase):
         self.rejects("inserted current", "INSERT INTO capability_facts (fact_id, capability, state, detail, since, affected_lanes, superseded_by_fact_id, recorded_at) VALUES ('cf-9', 'secrets_backend', 'failing', 'd', ?, '[]', 'cf-1', ?)", T, T)
         self.assertEqual(self.rows(current), [("cf-2", "healthy")])
 
-    FACT = ("INSERT INTO capability_facts (fact_id, capability, state, detail, since, affected_lanes, revision, superseded_by_fact_id, recorded_at) "
-            "VALUES (?, ?, ?, ?, ?, '[]', ?, ?, ?)")
+    FACT = ("INSERT INTO capability_facts (fact_id, capability, state, detail, since, affected_lanes, revision, superseded_by_fact_id, "
+            "successor_since, successor_state, successor_revision, recorded_at) VALUES (?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?)")
+    LINK = ("UPDATE capability_facts SET superseded_by_fact_id = ?, successor_since = ?, successor_state = ?, successor_revision = ? "
+            "WHERE fact_id = ?")
 
-    def fact(self, fact_id: str, revision, behind=None, *, capability="gateway.secrets.vault", state="failing", since=T, detail="d") -> tuple:
-        return (self.FACT, fact_id, capability, state, detail, since, revision, behind, T)
+    def fact(self, fact_id: str, revision, behind=None, *, capability="gateway.secrets.vault", state="failing", since=T, detail="d",
+             declared=None) -> tuple:
+        """A gateway fact inserted `behind` another states that fact's episode and revision as the router does
+        (2b-repair-5 F1): what is recorded of it, unless `declared` (since, state, revision) says otherwise."""
+        if declared is None and behind is not None and capability.startswith("gateway."):
+            declared = self.db.execute("SELECT since, state, revision FROM capability_facts WHERE fact_id = ?", (behind,)).fetchone()
+        return (self.FACT, fact_id, capability, state, detail, since, revision, behind, *(declared or (None, None, None)), T)
+
+    def supersede(self, current: str, successor: tuple, declared=None) -> None:
+        """The documented transaction: `current` names its successor with the successor's episode and revision
+        (as the router states them, unless `declared` says otherwise), then the successor is inserted current.
+        Rolled back when refused."""
+        fid, state, since, revision = successor[1], successor[3], successor[5], successor[6]
+        self.x("BEGIN")
+        try:
+            self.x(self.LINK, fid, *(declared or (since, state, revision)), current)
+            self.x(*successor)
+            self.x("COMMIT")
+        except sqlite3.IntegrityError:
+            self.x("ROLLBACK")
+            raise
 
     def test_a_late_snapshot_is_an_earlier_revision_of_the_current_facts_own_episode(self) -> None:
         """2b-repair-4 F1 (Astra's 2b-repair-3 review, its table): a fact is inserted behind its
         capability's current fact only as a late gateway snapshot: a `gateway.*` fact of the same
         capability, episode (`since`) and state as the current fact, its revision strictly below the
-        current fact's. Each refused insert differs from the accepted one in that one respect; one
-        revision of an episode is one snapshot."""
+        current fact's. 2b-repair-5 F1: its place (behind the current fact, in its episode) is the insert's
+        rule; the rest is the one supersession relation every gateway edge is held to. Each refused insert
+        differs from the accepted one in that one respect, and names the rule refusing it; one revision of an
+        episode is one snapshot."""
         current = "SELECT fact_id, revision FROM capability_facts WHERE capability = ? AND superseded_by_fact_id IS NULL"
         self.x(*self.fact("cf-3", 3))
         self.x(*self.fact("cf-n3", 3, capability="secrets_backend"))   # not a gateway fact, with revisions
         self.x(*self.fact("cf-o1", None, capability="unrelated.operator"))
-        for label, fact in (("an earlier episode", self.fact("cf-2", 2, "cf-3", since="2026-09-24T12:00:00Z")),
-                            ("a later episode", self.fact("cf-2", 2, "cf-3", since="2026-09-26T12:00:00Z")),
-                            ("another state since the same instant", self.fact("cf-2", 2, "cf-3", state="degraded")),
-                            ("a higher revision", self.fact("cf-4", 4, "cf-3")),
-                            ("the same revision", self.fact("cf-3b", 3, "cf-3", detail="other")),
-                            ("no revision", self.fact("cf-2", None, "cf-3")),
-                            ("not a gateway fact", self.fact("cf-n2", 2, "cf-n3", capability="secrets_backend")),
-                            ("neither a gateway fact nor revised", self.fact("cf-o0", None, "cf-o1", capability="unrelated.operator")),
-                            ("another capability's current fact", self.fact("cf-2", 2, "cf-n3")),
-                            ("a fact never recorded", self.fact("cf-2", 2, "cf-absent"))):
+        for label, fact, rule in (("an earlier episode", self.fact("cf-2", 2, "cf-3", since="2026-09-24T12:00:00Z"), "inserted current"),
+                                  ("a later episode", self.fact("cf-2", 2, "cf-3", since="2026-09-26T12:00:00Z"), "inserted current"),
+                                  ("another state since the same instant", self.fact("cf-2", 2, "cf-3", state="degraded"), "gateway_supersession_edge"),
+                                  ("a higher revision", self.fact("cf-4", 4, "cf-3"), "gateway_supersession_edge"),
+                                  ("the same revision", self.fact("cf-3b", 3, "cf-3", detail="other"), "gateway_supersession_edge"),
+                                  ("no revision", self.fact("cf-2", None, "cf-3"), "gateway_fact_snapshot"),
+                                  ("not a gateway fact", self.fact("cf-n2", 2, "cf-n3", capability="secrets_backend"), "inserted current"),
+                                  ("neither a gateway fact nor revised", self.fact("cf-o0", None, "cf-o1", capability="unrelated.operator"), "inserted current"),
+                                  ("another capability's current fact", self.fact("cf-2", 2, "cf-n3"), "FOREIGN KEY constraint failed"),
+                                  ("a fact never recorded", self.fact("cf-2", 2, "cf-absent"), "inserted current")):
             with self.subTest(label):
-                self.rejects("inserted current", *fact)
+                self.rejects(rule, *fact)
         self.assertEqual(self.rows(current, "gateway.secrets.vault"), [("cf-3", 3)])
         self.x(*self.fact("cf-2", 2, "cf-3"))   # the accepted case
         self.assertEqual(self.rows(current, "gateway.secrets.vault"), [("cf-3", 3)], "the newer fact stays current")
@@ -543,28 +566,99 @@ class ObservationTest(StoreTestCase):
         later = "2026-09-26T12:00:00Z"
         self.x(*self.fact("cf-3", 3))
         self.x(*self.fact("cf-2", 2, "cf-3"))
-        self.x("BEGIN")   # a later revision of the episode supersedes the current fact
-        self.x("UPDATE capability_facts SET superseded_by_fact_id = 'cf-5' WHERE fact_id = 'cf-3'")
-        self.x(*self.fact("cf-5", 5))
-        self.x("COMMIT")
+        self.supersede("cf-3", self.fact("cf-5", 5))   # a later revision of the episode supersedes the current fact
         self.rejects("inserted current", *self.fact("cf-1", 1, "cf-3"))   # behind a fact no longer current
         self.x(*self.fact("cf-4", 4, "cf-5"))   # late again, behind the new current fact
-        self.x("BEGIN")   # a new episode supersedes it
-        self.x("UPDATE capability_facts SET superseded_by_fact_id = 'cf-l6' WHERE fact_id = 'cf-5'")
-        self.x(*self.fact("cf-l6", 6, since=later))
-        self.x("COMMIT")
+        self.supersede("cf-5", self.fact("cf-l6", 6, since=later))   # a new episode supersedes it
         self.rejects("inserted current", *self.fact("cf-1", 1, "cf-l6"))   # an earlier episode, behind the later one
         self.assertEqual(self.rows("SELECT fact_id, revision, superseded_by_fact_id FROM capability_facts ORDER BY since, revision"),
                          [("cf-2", 2, "cf-3"), ("cf-3", 3, "cf-5"), ("cf-4", 4, "cf-5"), ("cf-5", 5, "cf-l6"), ("cf-l6", 6, None)])
         self.rejects("must be current", "UPDATE capability_facts SET superseded_by_fact_id = 'cf-4' WHERE fact_id = 'cf-l6'")
         self.x("BEGIN")   # the successor another fact names is inserted current, never behind one
-        self.x("UPDATE capability_facts SET superseded_by_fact_id = 'cf-l7' WHERE fact_id = 'cf-l6'")
+        self.x(self.LINK, "cf-l7", later, "failing", 7, "cf-l6")
         self.x(*self.fact("cf-l8", 8, since=later))
         self.rejects("inserted current", *self.fact("cf-l7", 7, "cf-l8", since=later))
         self.x("ROLLBACK")
         self.rejects("CHECK constraint failed", *self.fact("cf-l0", 0, "cf-l6", since=later))
         self.rejects("supersede, never edit", "UPDATE capability_facts SET revision = 9 WHERE fact_id = 'cf-l6'")
         self.assertEqual(self.rows("SELECT fact_id FROM capability_facts WHERE superseded_by_fact_id IS NULL"), [("cf-l6",)])
+
+    def test_every_gateway_supersession_edge_is_the_one_relation(self) -> None:
+        """2b-repair-5 F1 (Astra's 2b-repair-4 review, its ordinary-successor table): the ordinary
+        supersession transaction — the current fact linked to a successor not yet inserted, then that
+        successor inserted — is held to the late snapshot's relation, at the edge. An older revision of
+        the episode, the same revision, no revision, another state since the same instant and an older
+        episode are refused, whether the current fact states the successor it links truly (the relation's
+        CHECK), states a valid one and another is inserted (the deferred foreign key, at COMMIT), or states
+        none (the reproduction as written). A higher revision, and a later episode with its revision
+        started again, are accepted."""
+        earlier, later = "2026-09-24T12:00:00Z", "2026-09-26T12:00:00Z"
+        current = "SELECT fact_id FROM capability_facts WHERE capability = 'gateway.secrets.vault' AND superseded_by_fact_id IS NULL"
+        self.x(*self.fact("cf-3", 3))
+        for label, successor, declared, rule in (
+                ("an older revision of the episode", self.fact("cf-n", 2), None, "gateway_supersession_edge"),
+                ("the same revision", self.fact("cf-n", 3, detail="other"), None, "gateway_supersession_edge"),
+                ("no revision", self.fact("cf-n", None), None, "gateway_supersession_edge"),
+                ("another state since the same instant", self.fact("cf-n", 4, state="healthy"), None, "gateway_supersession_edge"),
+                ("an older episode", self.fact("cf-n", 4, since=earlier), None, "gateway_supersession_edge"),
+                ("an older revision, a higher one stated", self.fact("cf-n", 2), (T, "failing", 4), "FOREIGN KEY constraint failed"),
+                ("no revision, one stated", self.fact("cf-n", None), (T, "failing", 4), "gateway_fact_snapshot"),
+                ("another state, the same one stated", self.fact("cf-n", 4, state="healthy"), (T, "failing", 4), "FOREIGN KEY constraint failed"),
+                ("an older episode, a later one stated", self.fact("cf-n", 4, since=earlier), (later, "failing", 4), "FOREIGN KEY constraint failed")):
+            with self.subTest(label):
+                with self.assertRaises(sqlite3.IntegrityError) as refused:
+                    self.supersede("cf-3", successor, declared)
+                self.assertIn(rule, str(refused.exception))
+                self.assertEqual(self.rows(current), [("cf-3",)])
+        self.rejects("gateway_supersession_edge", "UPDATE capability_facts SET superseded_by_fact_id = 'cf-n' WHERE fact_id = 'cf-3'")
+        self.supersede("cf-3", self.fact("cf-4", 4))   # a higher revision of the episode
+        self.supersede("cf-4", self.fact("cf-l1", 1, since=later))   # a later episode, its revision started again
+        self.assertEqual(self.rows("SELECT fact_id, revision, superseded_by_fact_id FROM capability_facts ORDER BY since, revision"),
+                         [("cf-3", 3, "cf-4"), ("cf-4", 4, "cf-l1"), ("cf-l1", 1, None)])
+        self.assertEqual(self.rows("PRAGMA foreign_key_check"), [])
+
+    def test_an_episode_is_later_by_its_instant_not_its_text(self) -> None:
+        """2b-repair-5 F1: which episode is later is decided by instants, a fraction's digits counted as
+        time whatever the text sorts as: "...:00Z" sorts after "...:00.5Z" and is half a second before it."""
+        self.x(*self.fact("cf-a", 3, since="2026-09-25T12:00:00.5Z"))
+        with self.assertRaises(sqlite3.IntegrityError) as refused:
+            self.supersede("cf-a", self.fact("cf-b", 1, since="2026-09-25T12:00:00Z"))
+        self.assertIn("gateway_supersession_edge", str(refused.exception))
+        self.supersede("cf-a", self.fact("cf-c", 1, since="2026-09-25T12:00:00.500000001Z"))   # a nanosecond later
+        self.supersede("cf-c", self.fact("cf-d", 1, since="2026-09-25T12:00:01Z"))
+        self.assertEqual(self.rows("SELECT fact_id FROM capability_facts WHERE superseded_by_fact_id IS NULL"), [("cf-d",)])
+
+    def test_a_gateway_fact_is_a_snapshot_in_an_orderable_form(self) -> None:
+        """2b-repair-5 F1: a gateway fact carries its revision, and its `since` in the one form whose instants
+        the store orders (common.schema.json's timestamp: seconds, an optional 1-9 digit fraction, Z);
+        whether it names a real calendar instant stays the router's (A11). Other facts are not held to it."""
+        for label, since in (("an offset", "2026-09-25T12:00:00+00:00"), ("no zone", "2026-09-25T12:00:00"),
+                             ("a space", "2026-09-25 12:00:00Z"), ("an empty fraction", "2026-09-25T12:00:00.Z"),
+                             ("a ten-digit fraction", "2026-09-25T12:00:00.0123456789Z"),
+                             ("a fraction that is not digits", "2026-09-25T12:00:00.5x5Z")):
+            with self.subTest(label):
+                self.rejects("gateway_fact_snapshot", *self.fact("cf-x", 1, since=since))
+        self.rejects("gateway_fact_snapshot", *self.fact("cf-x", None))
+        for i, since in enumerate(("2026-09-25T12:00:00Z", "2026-09-25T12:00:00.5Z", "2026-09-25T12:00:00.123456789Z")):
+            self.x(*self.fact(f"cf-{i}", 1, capability=f"gateway.form{i}", since=since))
+        self.x(*self.fact("cf-o", None, capability="provider-auth:x", since="2026-09-25 12:00"))
+        self.assertEqual(self.rows("SELECT count(*) FROM capability_facts"), [(4,)])
+
+    def test_only_a_superseded_gateway_fact_states_its_successor(self) -> None:
+        """2b-repair-5 F1: a successor's episode and revision are stated by the gateway fact it supersedes,
+        and by nothing else: not by a current fact, nor by another capability's fact."""
+        self.rejects("gateway_supersession_edge", *self.fact("cf-1", 1, declared=(T, "failing", 2)))
+        self.rejects("gateway_supersession_edge", *self.fact("cf-o", None, capability="provider-auth:x", declared=(T, "failing", 2)))
+        self.x(*self.fact("cf-1", 1))
+        self.x(*self.fact("cf-o", None, capability="provider-auth:x"))
+        self.rejects("gateway_supersession_edge", "UPDATE capability_facts SET successor_revision = 2 WHERE fact_id = 'cf-1'")
+        self.x("BEGIN")
+        self.rejects("gateway_supersession_edge", self.LINK, "cf-o2", T, "failing", 2, "cf-o")
+        self.x("UPDATE capability_facts SET superseded_by_fact_id = 'cf-o2' WHERE fact_id = 'cf-o'")
+        self.x(*self.fact("cf-o2", None, capability="provider-auth:x", state="healthy"))
+        self.x("COMMIT")
+        self.assertEqual(self.rows("SELECT fact_id, successor_since, successor_state, successor_revision FROM capability_facts ORDER BY fact_id"),
+                         [("cf-1", None, None, None), ("cf-o", None, None, None), ("cf-o2", None, None, None)])
 
     def test_observation_invocation_is_of_its_topic(self) -> None:
         """A10: search_observations binds its invocation's topic."""

@@ -156,9 +156,9 @@ MUTATIONS: list[Mutation] = [
           ("fact-not-superseding", "a new fact leaves its capability's current fact current (the one-current index refuses it)",
            (GF + "test_a_later_episode_supersedes_and_an_earlier_one_is_refused",), CAPS,
            '            if current is not None and not behind:\n                self._store.update("capability_facts", {"fact_id": current["fact_id"]}, '
-           '{"superseded_by_fact_id": fact["fact_id"]})',
+           '{"superseded_by_fact_id": fact["fact_id"], **_successor(fact)})',
            '            if False:\n                self._store.update("capability_facts", {"fact_id": current["fact_id"]}, '
-           '{"superseded_by_fact_id": fact["fact_id"]})'),
+           '{"superseded_by_fact_id": fact["fact_id"], **_successor(fact)})'),
           # 2b-repair-3 R2: an episode's snapshots ordered by their revision, whenever the router hears of them
           ("fact-id-without-revision", "a snapshot's id leaves out its revision: a return to earlier contents replays as the earlier snapshot",
            (RR + "test_an_outage_that_says_again_what_it_said_before_is_current_as_said_last",

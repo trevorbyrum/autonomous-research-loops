@@ -840,22 +840,39 @@ END;
 -- A transition is a new row superseding the current one; one current fact
 -- per capability. The supersession contract (Astra 0a review A9) is one
 -- transaction: UPDATE the current fact's superseded_by_fact_id to the new
--- id, then INSERT the new fact. The successor FK is DEFERRABLE INITIALLY
--- DEFERRED so that order satisfies both the one-current index and the FK at
--- COMMIT; a transaction that links a successor it never inserts fails at
+-- id (a gateway fact's with the successor's episode, below), then INSERT the
+-- new fact. The successor FK is DEFERRABLE INITIALLY DEFERRED so that order
+-- satisfies both the one-current index and the FK at COMMIT; a transaction
+-- that links a successor it never inserts fails at
 -- COMMIT and must be rolled back (nothing changes). Facts are inserted
 -- current; a successor is of the same capability, never itself, and never a
 -- fact that is already superseded (so no cycles, and at most one current fact).
--- One exception (task 2b-repair-3 R2; its eligibility, 2b-repair-4 F1): a
--- LATE SNAPSHOT — a gateway fact (`gateway.*`) that reaches the router after
--- a newer revision of its own episode — is inserted directly behind the
--- capability's current fact, as its predecessor, when it is exactly that: the
--- same capability, the same episode (the same `since`, as recorded) and state
--- as the current fact, and a revision strictly below the current fact's. Such
--- a fact is no one's successor, then or later (a successor must be current),
--- so it is never in a cycle, and the current fact stays the newest.
--- `revision` is the gateway's order of its episode's snapshots, one snapshot
--- per revision; null for any other fact.
+-- A gateway fact (`gateway.*`) is one SNAPSHOT of an episode: its capability,
+-- state and `since` (the instant the state began), ordered within the episode
+-- by the gateway's `revision`, one snapshot per revision; `revision` is null
+-- for any other fact. Its `since` is kept in the timestamp form
+-- (common.schema.json: seconds, an optional 1-9 digit fraction, a literal Z),
+-- the one form whose instants the store can order; that it names a real
+-- calendar instant is still the router's to check (A11).
+-- EVERY gateway supersession edge (predecessor -> successor) is one relation,
+-- whichever statement makes it and in whichever order (task 2b-repair-5 F1):
+-- the same capability, and either the same episode (the same `since`, as
+-- recorded, and state) with a strictly higher revision, or a later episode
+-- (a later instant; its revision may start again). The predecessor carries
+-- the edge: its successor_since/_state/_revision state the successor's
+-- episode and revision, the CHECK below holds them to the relation, and a
+-- deferred foreign key holds them to the successor actually recorded, at
+-- COMMIT — so an edge is valid once complete, whether the successor was
+-- linked before it was inserted (the transaction above) or already stood
+-- (a late snapshot, below). Revision order across gateway lifetimes is
+-- Phase 3's, not this relation's.
+-- A LATE SNAPSHOT (task 2b-repair-3 R2; 2b-repair-4 F1) — a gateway fact that
+-- reaches the router after a newer revision of its own episode — is such an
+-- edge inserted the other way round: directly behind the capability's current
+-- fact, as its predecessor, in that fact's own episode (the same `since`); the
+-- relation makes it an earlier revision of the same state. Such a fact is no
+-- one's successor, then or later (a successor must be current), so it is never
+-- in a cycle, and the current fact stays the newest.
 CREATE TABLE capability_facts (
   fact_id TEXT PRIMARY KEY,
   capability TEXT NOT NULL,
@@ -867,26 +884,42 @@ CREATE TABLE capability_facts (
   revision INTEGER CHECK (revision >= 1),
   observed_by_invocation_id TEXT REFERENCES invocations (invocation_id),
   superseded_by_fact_id TEXT REFERENCES capability_facts (fact_id) DEFERRABLE INITIALLY DEFERRED,
+  successor_since TEXT,
+  successor_state TEXT,
+  successor_revision INTEGER,
   recorded_at TEXT NOT NULL,
-  CHECK (superseded_by_fact_id IS NOT fact_id)
+  CHECK (superseded_by_fact_id IS NOT fact_id),
+  CONSTRAINT gateway_fact_snapshot CHECK (capability NOT GLOB 'gateway.*' OR (revision IS NOT NULL AND (
+    since GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'
+    OR (since GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9]*Z'
+        AND length(since) <= 30 AND substr(since, 21, length(since) - 21) NOT GLOB '*[^0-9]*')))),
+  -- an instant's order is its text's once the fraction is 9 digits wide
+  CONSTRAINT gateway_supersession_edge CHECK (CASE WHEN superseded_by_fact_id IS NULL OR capability NOT GLOB 'gateway.*'
+    THEN successor_since IS NULL AND successor_state IS NULL AND successor_revision IS NULL
+    ELSE successor_since IS NOT NULL AND successor_state IS NOT NULL AND successor_revision IS NOT NULL
+      AND (successor_since IS since AND successor_state IS state AND successor_revision > revision
+           OR substr(successor_since, 1, 19) || substr(rtrim(substr(successor_since, 21), 'Z') || '000000000', 1, 9)
+              > substr(since, 1, 19) || substr(rtrim(substr(since, 21), 'Z') || '000000000', 1, 9)) END),
+  FOREIGN KEY (superseded_by_fact_id, capability, successor_since, successor_state, successor_revision)
+    REFERENCES capability_facts (fact_id, capability, since, state, revision) DEFERRABLE INITIALLY DEFERRED
 ) STRICT;
 
 CREATE UNIQUE INDEX capability_facts_one_current_per_capability
   ON capability_facts (capability) WHERE superseded_by_fact_id IS NULL;
 CREATE UNIQUE INDEX capability_facts_one_snapshot_per_revision
   ON capability_facts (capability, since, revision) WHERE revision IS NOT NULL;
+CREATE UNIQUE INDEX capability_facts_edge_key
+  ON capability_facts (fact_id, capability, since, state, revision);
 
 CREATE TRIGGER capability_facts_insert_current_same_capability
 BEFORE INSERT ON capability_facts
 WHEN (NEW.superseded_by_fact_id IS NOT NULL AND (
        NOT EXISTS (SELECT 1 FROM capability_facts c WHERE c.fact_id = NEW.superseded_by_fact_id
-                   AND c.capability IS NEW.capability AND c.superseded_by_fact_id IS NULL
-                   AND NEW.capability GLOB 'gateway.*' AND c.since IS NEW.since AND c.state IS NEW.state
-                   AND NEW.revision < c.revision)
+                   AND c.superseded_by_fact_id IS NULL AND NEW.capability GLOB 'gateway.*' AND c.since IS NEW.since)
        OR EXISTS (SELECT 1 FROM capability_facts o WHERE o.superseded_by_fact_id = NEW.fact_id)))
   OR EXISTS (SELECT 1 FROM capability_facts o WHERE o.superseded_by_fact_id = NEW.fact_id AND o.capability IS NOT NEW.capability)
 BEGIN
-  SELECT RAISE(ABORT, 'a capability fact is inserted current, and only as the successor of a fact of the same capability, or as a late snapshot: a gateway fact directly behind its capability''s current fact, an earlier revision of that fact''s own episode (A9)');
+  SELECT RAISE(ABORT, 'a capability fact is inserted current, and only as the successor of a fact of the same capability, or as a late snapshot: a gateway fact directly behind its capability''s current fact, in that fact''s own episode (A9)');
 END;
 
 CREATE TRIGGER capability_facts_link_successor
