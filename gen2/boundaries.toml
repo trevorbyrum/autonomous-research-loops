@@ -116,7 +116,7 @@ third_party = ["rfc8785"]
 
 [modules.store]
 path = "gen2/store"
-purpose = "SQLite implementation of the one authoritative engine store (DDL in gen2/store/schema.sql). Private to the router: the only module granted sqlite3, and only the router may import it."
+purpose = "SQLite implementation of the one authoritative engine store (DDL in gen2/store/schema/, its parts in their declared order). Private to the router: the only module granted sqlite3, and only the router may import it."
 boundaries = ["Router"]
 may_import = ["core"]
 stdlib_capabilities = ["sqlite3"]
@@ -221,4 +221,4 @@ third_party = []
 [unmapped_components]
 "Primary agent (per-station frontier LLM)" = "An external model invocation launched by the supervisor (invocation kind research_pass/checkpoint). It writes nothing directly; its typed proposals enter only through commit_outcome."
 "Secondary/delegate agents" = "External model invocations (kind discovery/delegate) under the supervisor's lifecycle; no evidence-write capability exists for them to hold."
-"Verifier" = "A separate invocation (kind verification) with its own capability; role separation and required access tier are enforced by the router at commit (and by the verification_receipts constraints in gen2/store/schema.sql)."
+"Verifier" = "A separate invocation (kind verification) with its own capability; role separation and required access tier are enforced by the router at commit (and by the verification_receipts constraints in gen2/store/schema/03-evidence-and-decisions.sql)."

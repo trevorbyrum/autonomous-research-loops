@@ -33,8 +33,6 @@ from gen2.store import api, compat, db
 from gen2.store.compat import StoreCompatibilityError
 from gen2.tests import children
 
-ROOT = Path(__file__).resolve().parents[2]
-
 
 class ReportingConnection:
     """A real in-memory connection that reports another sqlite_version() and,
@@ -126,7 +124,7 @@ class JsonCapabilityTest(unittest.TestCase):
         self.assertIn("json_extract: answered [(None, None)]", ctx.exception.fact["detail"])
 
     def test_every_json_function_the_ddl_uses_is_probed(self) -> None:
-        used = compat.json_functions_used((ROOT / "gen2" / "store" / "schema.sql").read_text(encoding="utf-8"))
+        used = compat.json_functions_used(db.schema_text())
         self.assertTrue({"json_extract", "json_each", "json_valid"} <= used)  # the scan finds them at all
         self.assertEqual(used - {name for name, _, _ in compat.JSON_PROBES}, set())
         self.assertEqual(compat.json_functions_used("-- json_patch in a comment\nSELECT json_patch(a, b), json_valid(c)"), {"json_patch", "json_valid"})
@@ -205,7 +203,7 @@ class OpenStoreTest(unittest.TestCase):
         conn = sqlite3.connect(":memory:", isolation_level=None)
         if contract:
             conn.executescript(compat.CONNECTION_CONTRACT.read_text(encoding="utf-8"))
-        conn.executescript((ROOT / "gen2" / "store" / "schema.sql").read_text(encoding="utf-8") if ddl is None else ddl)
+        conn.executescript(db.schema_text() if ddl is None else ddl)
         return conn
 
     def test_a_store_is_made_only_through_a_checked_route(self) -> None:
@@ -220,7 +218,7 @@ class OpenStoreTest(unittest.TestCase):
         connection with a transaction open, and one not in autocommit mode."""
         path = self.dir / "store.sqlite3"
         raw = sqlite3.connect(path, isolation_level=None)
-        raw.executescript((ROOT / "gen2" / "store" / "schema.sql").read_text(encoding="utf-8"))
+        raw.executescript(db.schema_text())
         self.assertEqual([raw.execute(f"PRAGMA {p}").fetchone() for p in ("foreign_keys", "recursive_triggers")], [(0,), (0,)])
         with mock.patch.object(compat, "SQLITE_FLOOR", (99, 0, 0)):
             self.refused(db.StoreOpenError, api.Store, raw, {})
@@ -248,7 +246,7 @@ class OpenStoreTest(unittest.TestCase):
                 s.insert("leases", {"lease_id": "lease_orphan", "topic_id": "fleet-a:nowhere", "scope": "research", "generation": 1,
                                     "station_id": "st1", "granted_at": "2026-09-25T00:00:00Z", "expires_at": "2026-09-25T00:00:00Z"})
         store.close()
-        ddl = (ROOT / "gen2" / "store" / "schema.sql").read_text(encoding="utf-8")
+        ddl = db.schema_text()
         weakened = ddl.replace("SELECT RAISE(ABORT, 'contract revisions are never deleted (G-1)');", "SELECT 1;")
         self.assertNotEqual(weakened, ddl)
         open_tx = self.memory_store(contract=True)
@@ -307,7 +305,7 @@ class OpenStoreTest(unittest.TestCase):
         """Schema identity: a missing guard, a guard with the same name and a
         weaker body, an extra table, or another user_version is refused on
         open."""
-        ddl = (ROOT / "gen2" / "store" / "schema.sql").read_text(encoding="utf-8")
+        ddl = db.schema_text()
         cases = {
             "missing trigger": ddl.replace("CREATE TRIGGER contract_no_delete BEFORE DELETE ON contract_revisions\nBEGIN\n  SELECT RAISE(ABORT, 'contract revisions are never deleted (G-1)');\nEND;\n", ""),
             "weakened trigger": ddl.replace("SELECT RAISE(ABORT, 'contract revisions are never deleted (G-1)');", "SELECT 1;"),
@@ -323,7 +321,7 @@ class OpenStoreTest(unittest.TestCase):
                 raw.close()
                 exc = self.open_error(path)
                 self.assertIsInstance(exc, db.StoreOpenError)
-                self.assertIn("store schema is not gen2/store/schema.sql", str(exc))
+                self.assertIn("store schema is not the DDL in gen2/store/schema/", str(exc))
 
 
 class GateCommandTest(unittest.TestCase):

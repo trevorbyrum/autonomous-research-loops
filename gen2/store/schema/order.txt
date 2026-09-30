@@ -1,0 +1,11 @@
+# The store DDL, in parts, in the order the store applies them: one file name
+# per line (blank lines and # comments are ignored). gen2/store/db.py
+# schema_text() joins them in this order and the store executes the result as
+# one script; every reader of the DDL (the store, the tests, the DDL and
+# trigger-order checks) takes it from there. Each part is whole sections of
+# what was one schema.sql, split only so that no file passes the 1,500-line
+# limit (task 2r); no statement spans two parts.
+01-queue-and-contracts.sql
+02-invocations-and-records.sql
+03-evidence-and-decisions.sql
+04-registries-and-export.sql

@@ -316,7 +316,7 @@ def adopt_in_memory(conn: sqlite3.Connection) -> Store:
     """A Store over an in-memory connection the caller built (test fixtures
     that load the DDL themselves). It runs the checks db.connect runs on a
     durable connection: the compatibility gate, with the connection contract
-    applied and read back, then schema identity with gen2/store/schema.sql.
+    applied and read back, then schema identity with the gen2/store/schema/ DDL.
     Refused: a connection to a file (a durable store is opened with
     open_store, which also sets WAL, synchronous FULL and the busy timeout),
     one with a transaction open, and one not in autocommit mode

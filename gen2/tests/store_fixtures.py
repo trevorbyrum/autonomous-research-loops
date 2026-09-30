@@ -19,8 +19,10 @@ import sqlite3
 import unittest
 from pathlib import Path
 
+from gen2.store import db
+
 STORE_DIR = Path(__file__).resolve().parents[1] / "store"
-DDL_TEXT = (STORE_DIR / "schema.sql").read_text(encoding="utf-8")
+DDL_TEXT = db.schema_text()  # the store's own join of gen2/store/schema/ parts, in their declared order
 CONNECTION_TEXT = (STORE_DIR / "connection.sql").read_text(encoding="utf-8")
 
 T = "2026-09-25T12:00:00Z"

@@ -21,8 +21,10 @@ Checks, in order (any failure exits 1; a missing validator exits 2):
   4. The SQLite this runs on passes the store's compatibility gate
      (gen2/store/compat.py: numeric version floor, JSON functions answering
      correctly — every json_* function the DDL uses must have a probe there),
-     the same gate the store's open path runs; then gen2/store/schema.sql
-     executes on an empty in-memory SQLite database opened with
+     the same gate the store's open path runs; then the store DDL (the parts
+     in gen2/store/schema/, joined in their declared order exactly as the
+     store applies them: gen2/store/db.py schema_text) executes on an empty
+     in-memory SQLite database opened with
      gen2/store/connection.sql through that gate (every pragma it sets, and
      foreign_keys/recursive_triggers, must read back as on); every table is
      STRICT, is preceded by a `-- trace:` comment and has
@@ -280,15 +282,16 @@ def check_schemas(root: Path, headings: set[str]) -> tuple[list[str], int, int]:
     return failures, n_valid, n_invalid
 
 
-def _compat():
-    """The store's SQLite gate: the repository's gen2.store.compat (from the
-    import path when one is given, else from this tool's own checkout)."""
+def _store():
+    """The store's SQLite gate (gen2.store.compat) and its DDL loader
+    (gen2.store.db): the repository's (from the import path when one is
+    given, else from this tool's own checkout)."""
     try:
-        from gen2.store import compat
+        from gen2.store import compat, db
     except ImportError:
         sys.path.insert(0, str(TOOL_ROOT))
-        from gen2.store import compat
-    return compat
+        from gen2.store import compat, db
+    return compat, db
 
 
 def _strip_sql_comments(text: str) -> str:
@@ -296,16 +299,16 @@ def _strip_sql_comments(text: str) -> str:
 
 
 def check_ddl(root: Path) -> tuple[list[str], int]:
-    rel = "gen2/store/schema.sql"
+    rel = "gen2/store/schema"
     conn_rel = "gen2/store/connection.sql"
-    path = root / rel
-    if not path.exists():
-        return [f"{rel}: not found"], 0
+    compat, db = _store()
+    try:
+        text = db.schema_text(root / rel)  # the parts order.txt declares, joined as the store joins them
+    except FileNotFoundError as exc:
+        return [f"{rel}: not found: {exc.filename}"], 0
     if not (root / conn_rel).exists():
         return [f"{conn_rel}: not found"], 0
-    text = path.read_text(encoding="utf-8")
     failures: list[str] = []
-    compat = _compat()
     unprobed = sorted(compat.json_functions_used(text) - {name for name, _, _ in compat.JSON_PROBES})
     if unprobed:
         failures.append(f"{rel}: uses JSON function(s) {unprobed} that the compatibility gate does not probe (add them to gen2/store/compat.py JSON_PROBES)")

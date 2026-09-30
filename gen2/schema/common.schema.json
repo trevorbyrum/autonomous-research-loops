@@ -162,7 +162,7 @@
       "enum": ["research_pass", "discovery", "delegate", "verification", "checkpoint"]
     },
     "invocation_state": {
-      "description": "Allowed transitions are listed in docs/gen2/INVARIANTS.md L-1 and enforced by the invocations trigger in gen2/store/schema.sql.",
+      "description": "Allowed transitions are listed in docs/gen2/INVARIANTS.md L-1 and enforced by the invocations trigger in gen2/store/schema/02-invocations-and-records.sql.",
       "enum": ["admitted", "launching", "running", "result_ready", "committed", "cancelled", "failed", "outcome_unknown"]
     },
     "hold_class": {"enum": ["transient", "capability", "scope", "judgment", "unknown"]},

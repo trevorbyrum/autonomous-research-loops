@@ -5,9 +5,9 @@ without recursive_triggers, lets history be rewritten); INVARIANTS C-11;
 Astra third review ruling 4 (the build runs the store's SQLite gate);
 Astra 0c review C1 (a fixture's declared errors are counted, not collapsed).
 
-Each DDL test writes a throwaway gen2/store/{schema,connection}.sql pair, runs
-`check_gen2_schemas.py --part ddl` as a subprocess, and asserts the exit code
-and the specific failure. The fixtures are literal SQL written here. The
+Each DDL test writes a throwaway store DDL (gen2/store/schema/: one part, its
+order.txt naming it) and connection.sql, runs `check_gen2_schemas.py --part
+ddl` as a subprocess, and asserts the exit code and the specific failure. The fixtures are literal SQL written here. The
 fixture-rule test does the same with a literal one-file schema tree and
 `--part schemas`.
 """
@@ -30,6 +30,7 @@ CHECKER = REPO / "tools" / "check_gen2_schemas.py"
 # so the import path is given explicitly (children.env(): the repository, or
 # the harness's mutant tree) rather than derived from its location.
 CONNECTION = "PRAGMA foreign_keys = ON;\nPRAGMA recursive_triggers = ON;\n"
+ORDER = "# the fixture's one part\nfixture.sql\n"
 GUARDED = """\
 -- trace: fixture
 CREATE TABLE t (id TEXT PRIMARY KEY, v TEXT) STRICT;
@@ -50,8 +51,9 @@ class DdlRuleTest(unittest.TestCase):
 
     def run_check(self, schema: str, connection: str = CONNECTION) -> subprocess.CompletedProcess:
         store = self.root / "gen2" / "store"
-        store.mkdir(parents=True, exist_ok=True)
-        (store / "schema.sql").write_text(textwrap.dedent(schema), encoding="utf-8")
+        (store / "schema").mkdir(parents=True, exist_ok=True)
+        (store / "schema" / "order.txt").write_text(ORDER, encoding="utf-8")
+        (store / "schema" / "fixture.sql").write_text(textwrap.dedent(schema), encoding="utf-8")
         (store / "connection.sql").write_text(connection, encoding="utf-8")
         return subprocess.run([sys.executable, str(CHECKER), "--root", str(self.root), "--part", "ddl"], capture_output=True, text=True, timeout=60, env=children.env())
 
@@ -60,8 +62,9 @@ class DdlRuleTest(unittest.TestCase):
         the DDL check (here the floor is raised above this SQLite in the
         checker's own process)."""
         store = self.root / "gen2" / "store"
-        store.mkdir(parents=True)
-        (store / "schema.sql").write_text(GUARDED, encoding="utf-8")
+        (store / "schema").mkdir(parents=True)
+        (store / "schema" / "order.txt").write_text(ORDER, encoding="utf-8")
+        (store / "schema" / "fixture.sql").write_text(GUARDED, encoding="utf-8")
         (store / "connection.sql").write_text(CONNECTION, encoding="utf-8")
         code = ("import runpy, sys, gen2.store.compat as c\nc.SQLITE_FLOOR = (99, 0, 0)\n"
                 f"sys.argv = [{str(CHECKER)!r}, '--root', {str(self.root)!r}, '--part', 'ddl']\nrunpy.run_path({str(CHECKER)!r}, run_name='__main__')")

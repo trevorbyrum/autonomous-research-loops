@@ -2,7 +2,7 @@
 qualification records, reservations and their draws, re-queues, amendment
 impact records, and the signal queue's episode binding.
 
-Trace: gen2/store/schema.sql "Engine configuration and registries (task 1d)";
+Trace: gen2/store/schema/04-registries-and-export.sql "Engine configuration and registries (task 1d)";
 INVARIANTS G-1, G-5, G-10, G-12, RG-9, C-11, C-12, D-1, D-4, D-5, D-11, L-6.
 
 Oracles: hand-written expectations; each refusal is one defect beside the

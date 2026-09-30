@@ -7,15 +7,15 @@ in-memory connection before it creates or opens anything on disk:
 then opens the path (creating it only when asked, refusing a missing store
 otherwise), re-runs the gate on that durable connection with the connection
 contract applied and read back, and admits the store only if its schema is
-exactly gen2/store/schema.sql.
+exactly the DDL in gen2/store/schema/ (schema_text: its parts, in order).
 
 Trace: Astra third review ruling 4 (compatibility enforced in the common
 store initialization path before a durable store is created or admitted);
 task 0b ("open, validate compatibility, expose read/write primitives that
 respect the DDL's own guards"); INVARIANTS C-11 (connection contract), §11.2
 (a missing store is a startup error, not a mode), C-8 (short transactions);
-gen2/store/schema.sql header (the store module adds WAL, synchronous FULL,
-busy_timeout).
+gen2/store/schema/01-queue-and-contracts.sql header (the store module adds
+WAL, synchronous FULL, busy_timeout).
 
 Not here: router logic, scheduling, decisions (Phase 1+). This module holds
 the connection; the router is its only intended caller (boundaries.toml).
@@ -27,11 +27,25 @@ from pathlib import Path
 
 from gen2.store import compat
 
-SCHEMA = Path(__file__).resolve().parent / "schema.sql"
+SCHEMA_DIR = Path(__file__).resolve().parent / "schema"  # the DDL's parts; order.txt declares their order
 BUSY_TIMEOUT_MS = 5000
 # Operational settings (they do not change which rows the schema admits, so
 # they are not in connection.sql), each read back after it is set.
 OPERATIONAL_PRAGMAS = (("journal_mode", "WAL", "wal"), ("synchronous", "FULL", 2), ("busy_timeout", str(BUSY_TIMEOUT_MS), BUSY_TIMEOUT_MS))
+
+
+def schema_parts(schema_dir: Path = SCHEMA_DIR) -> list[Path]:
+    """The DDL's parts, in the order schema_dir/order.txt declares them (one
+    file name per line; blank lines and # comments ignored)."""
+    names = [line.strip() for line in (schema_dir / "order.txt").read_text(encoding="utf-8").splitlines()]
+    return [schema_dir / name for name in names if name and not name.startswith("#")]
+
+
+def schema_text(schema_dir: Path = SCHEMA_DIR) -> str:
+    """The DDL the store applies: its parts joined in their declared order,
+    executed as one script (task 2r split the one schema.sql into these parts
+    so that no file passes the 1,500-line limit; their join is its text)."""
+    return "".join(part.read_text(encoding="utf-8") for part in schema_parts(schema_dir))
 
 
 class StoreOpenError(RuntimeError):
@@ -44,11 +58,11 @@ def _schema_objects(conn: sqlite3.Connection) -> dict[tuple[str, str], str]:
 
 
 def reference_schema(ddl_text: str | None = None) -> tuple[dict[tuple[str, str], str], int]:
-    """The objects and user_version schema.sql produces on a fresh connection."""
+    """The objects and user_version the DDL produces on a fresh connection."""
     conn = sqlite3.connect(":memory:")
     try:
         compat.apply_connection_contract(conn)
-        conn.executescript(SCHEMA.read_text(encoding="utf-8") if ddl_text is None else ddl_text)
+        conn.executescript(schema_text() if ddl_text is None else ddl_text)
         return _schema_objects(conn), conn.execute("PRAGMA user_version").fetchone()[0]
     finally:
         conn.close()
@@ -63,7 +77,7 @@ def check_schema_identity(conn: sqlite3.Connection, ddl_text: str | None = None)
     stored_version = conn.execute("PRAGMA user_version").fetchone()[0]
     if missing or extra or changed or stored_version != version:
         raise StoreOpenError(
-            f"store schema is not gen2/store/schema.sql (user_version {stored_version}, expected {version}; "
+            f"store schema is not the DDL in gen2/store/schema/ (user_version {stored_version}, expected {version}; "
             f"missing {missing[:5]}{'...' if len(missing) > 5 else ''}, unexpected {extra[:5]}, changed {changed[:5]})")
 
 
@@ -99,7 +113,7 @@ def connect(path: str | Path, *, create: bool = False) -> tuple[sqlite3.Connecti
         observed["operational"] = _apply_operational(conn)
         if create:
             try:
-                conn.executescript("BEGIN IMMEDIATE;\n" + SCHEMA.read_text(encoding="utf-8") + "\nCOMMIT;\n")
+                conn.executescript("BEGIN IMMEDIATE;\n" + schema_text() + "\nCOMMIT;\n")
             except sqlite3.Error:
                 if conn.in_transaction:
                     conn.execute("ROLLBACK")

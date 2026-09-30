@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Reversed-trigger-order check for the gen-2 store DDL (a permanent CI check).
 
-Rebuilds gen2/store/schema.sql with every CREATE TRIGGER moved after all
-other statements, in the reverse of its original order, runs the whole
-store suite (gen2/tests/test_store_*.py) against the original and against
-the rebuilt DDL, and fails unless both runs are green and every test (and
-subtest) has the same outcome in both.
+Rebuilds the store DDL (gen2/store/schema/, its parts joined in order) with
+every CREATE TRIGGER moved after all other statements, in the reverse of its
+original order, runs the whole store suite (gen2/tests/test_store_*.py)
+against the original and against the rebuilt DDL, and fails unless both
+runs are green and every test (and subtest) has the same outcome in both.
 
 Why: where more than one guard refuses the same write, which message SQLite
 reports is its trigger-firing order (observed: most recently created first;

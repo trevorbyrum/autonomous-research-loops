@@ -22,7 +22,7 @@ The checks, in order. None substitutes for another:
      its answer compared. SQLite can be compiled without JSON at any version
      (SQLITE_OMIT_JSON), so the version alone does not establish it, and a
      function that exists but answers wrongly is refused too.
-     json_functions_used() lists the json_* names in schema.sql; the build
+     json_functions_used() lists the json_* names in the DDL; the build
      fails if one has no probe here (tools/check_gen2_schemas.py).
   3. Connection contract. connection.sql is applied and every pragma it sets
      reads back as 1. REQUIRED_PRAGMAS must be among them, so a contract file

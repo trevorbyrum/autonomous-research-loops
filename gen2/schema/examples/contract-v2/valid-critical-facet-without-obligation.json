@@ -2,7 +2,7 @@
   "fixture": {
     "schema": "contract-v2.schema.json",
     "expect": "valid",
-    "tests": "A3/G-3: a facet's importance is stored on the facet itself, so a critical facet with zero obligations is representable (schema-valid); the uncovered-critical rule that then blocks approval is a store check (gen2/store/schema.sql contract_approval_needs_rated_covered_facets), not a schema one"
+    "tests": "A3/G-3: a facet's importance is stored on the facet itself, so a critical facet with zero obligations is representable (schema-valid); the uncovered-critical rule that then blocks approval is a store check (gen2/store/schema/01-queue-and-contracts.sql contract_approval_needs_rated_covered_facets), not a schema one"
   },
   "instance": {
     "schema_version": "contract-v2",

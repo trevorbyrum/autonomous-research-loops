@@ -13,7 +13,7 @@
 --   recursive_triggers SQLite fires DELETE triggers for rows removed by a
 --                      REPLACE conflict resolution (INSERT OR REPLACE,
 --                      REPLACE INTO, UPDATE OR REPLACE) ONLY when this is on.
---                      Every table in schema.sql has a BEFORE DELETE guard,
+--                      Every table in the DDL has a BEFORE DELETE guard,
 --                      so with this on a REPLACE that would overwrite a
 --                      stored row aborts; with it off the row is silently
 --                      replaced (demonstrated by

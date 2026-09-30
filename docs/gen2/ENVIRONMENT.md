@@ -45,7 +45,7 @@ Advertising a lower floor needs `make gen2-check` passing on that version first.
 A refusal raises `StoreCompatibilityError`. The error carries a dated capability fact (`store.sqlite failing since …`, with what was observed). It is not a silent fallback.
 
 The same functions run in three places:
-- **The store's open path, `gen2/store/db.py`.** The library is checked on an in-memory connection before anything on disk is created or opened (`sqlite3.connect(path)` would create the file). The contract is then applied and read back on the durable connection itself. An existing store is admitted only if its schema is exactly `schema.sql`.
+- **The store's open path, `gen2/store/db.py`.** The library is checked on an in-memory connection before anything on disk is created or opened (`sqlite3.connect(path)` would create the file). The contract is then applied and read back on the durable connection itself. An existing store is admitted only if its schema is exactly the store DDL: the parts in `gen2/store/schema/`, joined in the order `order.txt` declares.
 - **`make gen2-sqlite`.** This runs first in `gen2-check` and prints the record of what the build ran on.
 - **The DDL check, `make gen2-ddl`.** It prints `DDL creates … on SQLite x.y.z (compatibility gate passed)`.
 - **The importer.** The 0b dry-run importer (`gen2/importer/`) has no SQLite access at all: the boundary graph lets it import `core` only, with no `sqlite3` grant. Any importer that writes a store (Phase 4) must open it through `gen2/store/api.py` `open_store`, and so through this gate. That requires amending the importer's boundary entry, which the review path covers.

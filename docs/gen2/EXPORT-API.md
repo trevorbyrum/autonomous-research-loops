@@ -4,7 +4,7 @@ How approved research leaves the engine: one standard, versioned export API
 that any database can connect to, local or cloud. The documents are committed
 (`gen2/schema/export-bundle.schema.json`, `export-manifest.schema.json`,
 `export-delivery-receipt.schema.json`), and so are the store tables that
-record exports (`gen2/store/schema.sql`, "Export"). The exporter and its
+record exports (`gen2/store/schema/04-registries-and-export.sql`, "Export"). The exporter and its
 connectors are **Phase-3 implementation targets**; no export code exists yet.
 
 > **Operator ruling 2026-09-26.** Gen-2 is open source. Nothing in the build

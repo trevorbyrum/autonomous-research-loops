@@ -118,7 +118,7 @@ thing that container owns — not about a dependency.
 
 | Service | Check | Healthy means | Explicitly **not** part of the check |
 |---|---|---|---|
-| `engine` | `GET http://127.0.0.1:8770/v1/health` from inside the container (the `0.0.0.0` listener includes the container's loopback): control store opens through the compatibility gate (`gen2/store/compat.py`), the schema matches `schema.sql` exactly, the last scheduler tick is within its interval | the router can commit | whether any provider, connector or the gateway is reachable |
+| `engine` | `GET http://127.0.0.1:8770/v1/health` from inside the container (the `0.0.0.0` listener includes the container's loopback): control store opens through the compatibility gate (`gen2/store/compat.py`), the schema matches the store DDL (`gen2/store/schema/`) exactly, the last scheduler tick is within its interval | the router can commit | whether any provider, connector or the gateway is reachable |
 | `gateway` | the gateway image's own healthcheck (`GET /v1/health`, no token) | the service answers | whether any source lane is working |
 | `exporter` | `GET http://127.0.0.1:8772/v1/health` from inside the container: the outbox can be read through the `ControlBackend` at `GEN2_ENGINE_URL`, and the worker's last loop is within its interval | the consumer is alive | whether any connector's destination accepted anything |
 | `tier0` | model loaded, one fixed probe pair classified | the screen answers | — |
@@ -145,7 +145,7 @@ documented operator act (§4).
 | Item | Baked / mounted | Change takes effect by | Why |
 |---|---|---|---|
 | Gen-2 engine code (`gen2/`), the composition root, the DDL, every validator | **baked** | rebuild + release | Engine bugs and migrations are image releases (design review §6). |
-| `gen2/store/schema.sql` and its migrations | **baked** | rebuild + release, then a migration run | A store migration is an engine change with a data step. |
+| `gen2/store/schema/` (the DDL's parts, in their declared order) and its migrations | **baked** | rebuild + release, then a migration run | A store migration is an engine change with a data step. |
 | Schema files (`gen2/schema/*.schema.json`) and the router's validation boundary | **baked** | rebuild + release | The validators are code's contract with itself; a mounted schema would let a config edit widen what the router accepts. |
 | `ControlBackend` implementations (a second store backend) | **baked** | rebuild + release | "A new backend adapter is engine code and therefore an image change, not just a mounted DSN" — design review §5. |
 | Decision-provider adapters, tier-0 client, gateway client, reference connectors, extension connectors | **baked** | rebuild + release | Executable adapters require an image release (design review §6). An extension connector is reviewed code from its own package outside the core, never operator config (`EXPORT-API.md` §7; operator ruling 2026-09-26). |
@@ -256,7 +256,7 @@ collapsed:
   unparseable payload) records a capability fact
   `capability = secrets.<backend>`, `state = failing`, `since` = first
   observation, `last_success_at`, and the affected lanes, and alerts on the
-  transition. `gen2/store/schema.sql` already holds these rows
+  transition. The store DDL (`gen2/store/schema/`) already holds these rows
   (`capability_facts`) and already models a failed secrets read as a search
   observation's `error_class = 'secrets_backend_failing'`.
 - A read that *succeeds and finds nothing* is "no secret configured for this
@@ -466,7 +466,7 @@ changes — never first attempted during an incident):
 1. Restore the dated backup into a **scratch** volume, never over the live one.
 2. Open it through `gen2/store` `open_store`, which runs the SQLite
    compatibility gate and admits the store only if its schema is exactly
-   `schema.sql`. A restored store that fails the gate is a failed restore, not a
+   the DDL in `gen2/store/schema/`. A restored store that fails the gate is a failed restore, not a
    store to be repaired by hand.
 3. Reconcile counts and authority history against the last known-good report:
    topics, contract revisions and their approvals, receipts and ordinals (dense,
