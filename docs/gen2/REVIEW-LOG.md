@@ -559,3 +559,10 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-2a-repair-astra-
 Full report: `~/work/research-loops-public/private/reviews/gen2-2a-repair-2-astra-review-20260929.md`. The two earlier F1-R timings now refuse. **Remaining:** archiving a confirmed replacement brief that has a *different* brief ID restores permission to amend under the obsolete original, because the supersession check reconstructs history filtered by brief ID. Six failing cases in a 26-case matrix, with a minimal router-only regression (four tests fail by assertion). The locator-only update at C-12/G-4 is AUTHORIZED.
 
 **Orchestrator routing decision:** this is the third round of the same defect family, so 2a-repair-3 replaces the history reconstruction with a durable, monotonic supersession fact written at brief-confirmation time and cleared only by incorporation through reframe approval (the lesson from 1c's retry chokepoint). 2r follows it.
+
+## 2026-09-30 — 2a-repair-3 re-review (Astra, xhigh) — **2a ACCEPTED** (5 review rounds)
+Full report: `~/work/research-loops-public/private/reviews/gen2-2a-repair-3-astra-review-20260929.md`. Gates A/B/C all PASS. Scope corrected mid-review to include the coder's fourth commit `ed69e70`, which the orchestrator had left out of the scope list; Astra asked rather than assume.
+
+**The F1 family is closed structurally.** Replacements are recorded in the same transaction as the confirming decision, across every brief ID, and are never overwritten. The post-approval check reads that record at proposal and at approval, and neither archival nor later confirmations can remove it. Incorporation through a reframe changes the contract's basis without erasing the old record. Astra's scripts, byte-identical: 26/26 expected outcomes (the six previously failing cross-ID cases now refuse, and all 20 reframe controls pass), cross-brief regression 4/4, history controls pass. Fresh sequences (reversions, chains, concurrent approval) found no counterexample.
+
+**2a totals:** 5 rounds (BLOCK F1–F4 → F1-R → F1-R continued → structural fix → ACCEPT). Production 9,111 lines.
