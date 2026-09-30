@@ -360,6 +360,8 @@ READ_IN_KILLER = {
         "the idempotent retry UPDATE runs before the refusals, which sit in subTests; an advancing UPDATE ends the test",
     "test_store_ddl_evidence.ObservationTest.test_one_current_capability_fact_supersede_to_transition":
         "the documented supersession UPDATE (cf-1 -> cf-2) runs before the refusals",
+    "test_store_ddl_evidence.ObservationTest.test_a_delayed_snapshot_is_kept_directly_behind_the_current_fact":
+        "the documented supersession UPDATE (cf-1 -> cf-3) runs before the refusals",
     "test_store_ddl_invocations.OrdinalAndTriggerTest.test_trigger_identity_unique_and_handled_is_final":
         "the UPDATE marking the trigger handled runs before the refusals",
     "test_store_history.RecordIdentityTest.test_work_identity_is_immutable":

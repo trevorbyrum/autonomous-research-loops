@@ -140,7 +140,7 @@ MUTATIONS: list[Mutation] = [
           # 2b-repair-2 R2: an episode's snapshots (the id is the snapshot's; another state is another episode)
           ("fact-id-episode-only", "a gateway fact's id is its episode's alone: a later snapshot of an ongoing outage replays as the stale one",
            (RR + "test_an_outage_that_widens_is_recorded_snapshot_by_snapshot", GF + "test_a_later_snapshot_of_the_episode_supersedes_it_and_keeps_its_onset"),
-           CANON, '["capability", fact["capability"], fact["since"], fact["state"], fact["detail"], fact["last_success_at"],\n'
+           CANON, '["capability", fact["capability"], fact["since"], fact["state"], fact["revision"], fact["detail"], fact["last_success_at"],\n'
            '         sorted(fact["affected_lanes"])]', '["capability", fact["capability"], fact["since"]]'),
           ("fact-lanes-ordered", "a snapshot's affected lanes are a list: the same lanes in another order are another snapshot",
            (GF + "test_a_later_snapshot_of_the_episode_supersedes_it_and_keeps_its_onset",), CANON,
@@ -155,14 +155,33 @@ MUTATIONS: list[Mutation] = [
            '            if current is not None and instant(current["since"]) > instant(fact["since"]):', "            if False:"),
           ("fact-not-superseding", "a new fact leaves its capability's current fact current (the one-current index refuses it)",
            (GF + "test_a_later_episode_supersedes_and_an_earlier_one_is_refused",), CAPS,
-           '            if current is not None:\n                self._store.update("capability_facts", {"fact_id": current["fact_id"]}, '
+           '            if current is not None and not behind:\n                self._store.update("capability_facts", {"fact_id": current["fact_id"]}, '
            '{"superseded_by_fact_id": fact["fact_id"]})',
            '            if False:\n                self._store.update("capability_facts", {"fact_id": current["fact_id"]}, '
            '{"superseded_by_fact_id": fact["fact_id"]})'),
+          # 2b-repair-3 R2: an episode's snapshots ordered by their revision, whenever the router hears of them
+          ("fact-id-without-revision", "a snapshot's id leaves out its revision: a return to earlier contents replays as the earlier snapshot",
+           (RR + "test_an_outage_that_says_again_what_it_said_before_is_current_as_said_last",
+            GF + "test_an_earlier_revision_recorded_late_is_kept_behind_the_current_fact"), CANON,
+           'fact["state"], fact["revision"], fact["detail"]', 'fact["state"], fact["detail"]'),
+          ("fact-order-by-arrival", "an earlier revision recorded late displaces the current fact (the last recorded is current)",
+           (GF + "test_an_earlier_revision_recorded_late_is_kept_behind_the_current_fact",), CAPS,
+           '            behind = current is not None and instant(current["since"]) == instant(fact["since"]) and current["revision"] > fact["revision"]',
+           "            behind = False"),
+          ("fact-revision-twin", "one revision of an episode may be recorded with other contents", (GF + "test_what_is_not_a_gateway_fact_is_refused",), CAPS,
+           "            if twin is not None:", "            if False:"),
+          ("fact-revision-any", "a reported fact's revision need only be present", (RA + "test_a_fact_without_its_revision_is_no_fact",), OBS,
+           '            or type(fact.get("revision")) is not int or not 1 <= fact["revision"] <= canonical.INT_BOUND:',
+           '            or fact.get("revision") is None:'),
           ("fact-unfenced", "a gateway fact is recorded without a current lease", (GF + "test_only_a_running_invocation_records_but_a_lost_reply_replays",), CAPS,
            '        self._require_current_lease(inv, now)\n        if self._one("queue_entries", {"topic_id": inv["topic_id"]})["paused_at"] is not None:\n'
            '            raise Refusal("topic_paused", f"{inv[\'topic_id\']} is paused")',
            '        if self._one("queue_entries", {"topic_id": inv["topic_id"]})["paused_at"] is not None:\n'
            '            raise Refusal("topic_paused", f"{inv[\'topic_id\']} is paused")'),
       )),
+    # 2b-repair-3 R2, Astra's reproduction 1: two recorder processes over one durable store (the kill rests on the children)
+    Mutation("2B-fact-order-by-arrival-two-processes", "2b", "a delayed write from another process displaces the newer snapshot it arrived after",
+             (RR + "test_a_report_recorded_after_a_newer_one_never_displaces_it",), target=CAPS, via_child=True,
+             old='            behind = current is not None and instant(current["since"]) == instant(fact["since"]) and current["revision"] > fact["revision"]',
+             new="            behind = False"),
 ]

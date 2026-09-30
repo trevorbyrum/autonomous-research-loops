@@ -860,7 +860,7 @@ class GatewayFactsCommand(RouterTestCase):
                 self.assertEqual(self.put(fact).get("reason"), "request_invalid")
         self.assertEqual(self.put(self.fact(), self.fact(detail="again")).get("reason"), "request_invalid", "one fact per capability")
         self.put(self.fact())
-        self.assertEqual(self.put(self.fact(state="degraded")).get("reason"), "fact_conflict", "another state since the same instant")
+        self.assertEqual(self.put(self.fact(state="degraded", revision=2)).get("reason"), "fact_conflict", "another state since the same instant")
         self.assertEqual(self.put(self.fact(detail="503")).get("reason"), "fact_conflict", "one revision of the episode, other contents")
         self.assertEqual(self.value("SELECT count(*) FROM capability_facts WHERE capability LIKE 'gateway.%'"), 1)
 
