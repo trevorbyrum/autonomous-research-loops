@@ -5654,61 +5654,61 @@
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 149; or executes line 148"
+  "why": "gen2/router/capabilities.py: executes line 156; or executes line 155"
  },
  "1F-caps-declared-expired-healthy": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_an_older_observation_is_kept_and_moves_nothing"
   ],
-  "why": "gen2/router/capabilities.py: executes line 130"
+  "why": "gen2/router/capabilities.py: executes line 137"
  },
  "1F-caps-declared-instant-unchecked": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_a_declared_expiry_is_a_degraded_fact_and_a_hold_to_remedy"
   ],
-  "why": "gen2/router/capabilities.py: leaves line 115-117 for a line outside 115-118 (or returns), having executed line 115"
+  "why": "gen2/router/capabilities.py: leaves line 122-124 for a line outside 122-125 (or returns), having executed line 122"
  },
  "1F-caps-declared-remedy-unknown": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_an_unusable_credential_opens_one_typed_owned_deadlined_hold_bound_to_its_fact"
   ],
-  "why": "gen2/router/capabilities.py: executes line 155 (else 153); or executes line 150"
+  "why": "gen2/router/capabilities.py: executes line 162 (else 160); or executes line 157"
  },
  "1F-caps-every-observation-a-transition": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 136"
+  "why": "gen2/router/capabilities.py: executes line 143"
  },
  "1F-caps-hold-on-transition-only": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 148"
+  "why": "gen2/router/capabilities.py: executes line 155"
  },
  "1F-caps-hold-router-authority": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_a_runner_error_is_an_unknown_fact_and_a_hold_whose_remedy_is_unknown"
   ],
-  "why": "gen2/router/capabilities.py: executes line 156 (else 153); or executes line 150"
+  "why": "gen2/router/capabilities.py: executes line 163 (else 160); or executes line 157"
  },
  "1F-caps-no-last-success": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 144 (else 142); or executes line 137"
+  "why": "gen2/router/capabilities.py: executes line 151 (else 149); or executes line 144"
  },
  "1F-caps-older-applied": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 134"
+  "why": "gen2/router/capabilities.py: executes line 141"
  },
  "1F-caps-order-unchecked": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: leaves line 113 for a line outside 113-114 (or returns)"
+  "why": "gen2/router/capabilities.py: leaves line 120 for a line outside 120-121 (or returns)"
  },
  "1F-caps-replay-unchecked": {
   "by_hand": true,
@@ -5721,7 +5721,7 @@
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 130"
+  "why": "gen2/router/capabilities.py: executes line 137"
  },
  "1F-eng-probe-on-owner": {
   "controls": [
@@ -6716,17 +6716,23 @@
   ],
   "why": "gen2/gateway_client/client.py: executes line 112"
  },
- "2B-fact-conflict-replays": {
+ "2B-fact-id-episode-only": {
   "controls": [
    "test_gateway_client.GatewayFactsCommand.test_a_fact_is_recorded_and_replays"
   ],
-  "why": "gen2/router/capabilities.py: leaves line 193 for a line outside 193-194 (or returns)"
+  "why": "gen2/core/canonical.py: executes line 165-166 (else 164)"
  },
  "2B-fact-id-unchecked": {
   "controls": [
    "test_gateway_client.GatewayFactsCommand.test_a_fact_is_recorded_and_replays"
   ],
-  "why": "gen2/router/capabilities.py: leaves line 180 for a line outside 180-181 (or returns)"
+  "why": "gen2/router/capabilities.py: leaves line 187 for a line outside 187-188 (or returns)"
+ },
+ "2B-fact-lanes-ordered": {
+  "controls": [
+   "test_gateway_client.GatewayFactsCommand.test_a_fact_is_recorded_and_replays"
+  ],
+  "why": "gen2/core/canonical.py: executes line 166 (else 164)"
  },
  "2B-fact-namespace-open": {
   "by_hand": true,
@@ -6739,19 +6745,25 @@
   "controls": [
    "test_gateway_client.GatewayFactsCommand.test_a_fact_is_recorded_and_replays"
   ],
-  "why": "gen2/router/capabilities.py: executes line 210"
+  "why": "gen2/router/capabilities.py: executes line 217"
  },
  "2B-fact-older-recorded": {
   "controls": [
    "test_gateway_client.GatewayFactsCommand.test_a_fact_is_recorded_and_replays"
   ],
-  "why": "gen2/router/capabilities.py: leaves line 207 for a line outside 207-209 (or returns)"
+  "why": "gen2/router/capabilities.py: leaves line 211 for a line outside 211-213 (or returns)"
+ },
+ "2B-fact-state-changes-in-episode": {
+  "controls": [
+   "test_gateway_client.GatewayFactsCommand.test_a_later_snapshot_of_the_episode_supersedes_it_and_keeps_its_onset"
+  ],
+  "why": "gen2/router/capabilities.py: leaves line 214 for a line outside 214-216 (or returns)"
  },
  "2B-fact-unfenced": {
   "controls": [
    "test_gateway_client.GatewayFactsCommand.test_a_fact_is_recorded_and_replays"
   ],
-  "why": "gen2/router/capabilities.py: executes line 201"
+  "why": "gen2/router/capabilities.py: executes line 205"
  },
  "2B-fact-unlinked": {
   "controls": [
@@ -6763,7 +6775,13 @@
   "controls": [
    "test_gateway_client.RecordedByTheRouter.test_an_unreadable_lane_is_admissible_and_counts_nothing"
   ],
-  "why": "gen2/gateway_client/observe.py: executes line 173"
+  "why": "gen2/gateway_client/observe.py: executes line 179"
+ },
+ "2B-facts-one-command": {
+  "controls": [
+   "test_gateway_client.RecordedByTheRouter.test_an_outage_that_widens_is_recorded_snapshot_by_snapshot"
+  ],
+  "why": "gen2/gateway_client/observe.py: executes line 176"
  },
  "2B-failed-job-read": {
   "controls": [
@@ -9457,7 +9475,7 @@
    "test_router_ops.TransitionTest.test_each_state_is_recorded_with_exactly_its_facts",
    "test_router_ops.TransitionTest.test_the_final_launch_admission_check"
   ],
-  "why": "gen2/core/canonical.py: executes line 173"
+  "why": "gen2/core/canonical.py: executes line 178"
  },
  "R1-duplicate-keys-merged": {
   "controls": [
@@ -9472,13 +9490,13 @@
   "rejected": [
    "test_canonical.HashSemanticsTest.test_request_fingerprint_excludes_exactly_submitted_at"
   ],
-  "why": "gen2/core/canonical.py: executes line 180"
+  "why": "gen2/core/canonical.py: executes line 185"
  },
  "R1-fingerprint-keeps-submitted-at": {
   "controls": [
    "test_canonical.HashSemanticsTest.test_semantically_changed_envelopes_fingerprint_differently"
   ],
-  "why": "gen2/core/canonical.py: executes line 180"
+  "why": "gen2/core/canonical.py: executes line 185"
  },
  "R1-identity-bool": {
   "controls": [
@@ -9520,13 +9538,13 @@
   "controls": [
    "test_supervisor_spool.CollectTest.test_a_regular_file_is_staged_as_found"
   ],
-  "why": "gen2/core/canonical.py: executes line 187"
+  "why": "gen2/core/canonical.py: executes line 192"
  },
  "R1-raw-bytes-stripped": {
   "controls": [
    "test_supervisor_spool.CollectTest.test_a_regular_file_is_staged_as_found"
   ],
-  "why": "gen2/core/canonical.py: executes line 187"
+  "why": "gen2/core/canonical.py: executes line 192"
  },
  "R1-sort-keys-is-not-jcs": {
   "controls": [

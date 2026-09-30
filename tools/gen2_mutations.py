@@ -127,7 +127,8 @@ FILE_TARGETS = {
     "tools/check_gen2_schemas.py": ("attr", "test_check_ddl_rules", "CHECKER"),
     "gen2/core/instants.py": ("module", "gen2.core.instants"),
     "gen2/core/canonical.py": ("module", "gen2.core.canonical", "gen2.router.boundary", "gen2.router.lifecycle", "gen2.router.registries", "gen2.router.amendments",
-                               "gen2.router.scheduling", "gen2.router.service", "gen2.tests.router_fixtures"),
+                               "gen2.router.scheduling", "gen2.router.capabilities", "gen2.router.service", "gen2.tests.router_fixtures",
+                               "gen2.gateway_client.observe", "gen2.gateway_client.client"),   # capabilities, observe: gateway_fact_id (2b-repair-2)
     "gen2/store/compat.py": ("module", "gen2.store.compat"),
     "gen2/store/db.py": ("module", "gen2.store.db"),
     "gen2/store/api.py": ("module", "gen2.store.api"),

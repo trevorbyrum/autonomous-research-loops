@@ -19,7 +19,7 @@ from .base import Mutation
 GC = "test_gateway_client."
 RA, UA, TO, RR, OH = GC + "RecordedAnswers.", GC + "UnreadableAnswers.", GC + "TransportOutcomes.", GC + "RecordedByTheRouter.", GC + "OverRealHttp."
 GF = GC + "GatewayFactsCommand."
-OBS, CLI, CAPS = "gen2/gateway_client/observe.py", "gen2/gateway_client/client.py", "gen2/router/capabilities.py"
+OBS, CLI, CAPS, CANON = "gen2/gateway_client/observe.py", "gen2/gateway_client/client.py", "gen2/router/capabilities.py", "gen2/core/canonical.py"
 PAGE_DOC = 'request={"lane": entry["source"], "page": page, "request": sent},'
 
 MUTATIONS: list[Mutation] = [
@@ -132,13 +132,25 @@ MUTATIONS: list[Mutation] = [
           # 2b-repair A6: the gateway's facts through the router's own command, before the observations naming them
           ("facts-not-recorded", "the facts a search reported are not among the router's requests",
            (RR + "test_a_secrets_failure_is_recorded_through_the_routers_own_commands",), OBS,
-           '    out_requests = [("record_gateway_facts"', '    out_requests = [] if True else [("record_gateway_facts"'),
-          ("fact-id-unchecked", "a gateway fact's id need not be its capability and since", (GF + "test_what_is_not_a_gateway_fact_is_refused",), CAPS,
-           '                if fact["fact_id"] != canonical.gateway_fact_id(fact["capability"], fact["since"]):', "                if False:"),
+           '    return [("record_gateway_facts", {**who, "facts": batch}) for batch in batches] + [', "    return [] + ["),
+          ("fact-id-unchecked", "a gateway fact's id need not be its content's", (GF + "test_what_is_not_a_gateway_fact_is_refused",), CAPS,
+           '                if fact["fact_id"] != canonical.gateway_fact_id(fact):', "                if False:"),
           ("fact-namespace-open", "a gateway fact may name any capability, not only gateway.*", (GF + "test_what_is_not_a_gateway_fact_is_refused",), CAPS,
            '"^gateway\\\\.[a-z0-9][a-z0-9_.-]{0,62}$"', '"^[a-z].*$"'),
-          ("fact-conflict-replays", "other content under a recorded fact's id replays", (GF + "test_what_is_not_a_gateway_fact_is_refused",), CAPS,
-           "            elif any(stored[k] != fact[k] for k in FACT_FIELDS):", "            elif False:"),
+          # 2b-repair-2 R2: an episode's snapshots (the id is the snapshot's; another state is another episode)
+          ("fact-id-episode-only", "a gateway fact's id is its episode's alone: a later snapshot of an ongoing outage replays as the stale one",
+           (RR + "test_an_outage_that_widens_is_recorded_snapshot_by_snapshot", GF + "test_a_later_snapshot_of_the_episode_supersedes_it_and_keeps_its_onset"),
+           CANON, '["capability", fact["capability"], fact["since"], fact["state"], fact["detail"], fact["last_success_at"],\n'
+           '         sorted(fact["affected_lanes"])]', '["capability", fact["capability"], fact["since"]]'),
+          ("fact-lanes-ordered", "a snapshot's affected lanes are a list: the same lanes in another order are another snapshot",
+           (GF + "test_a_later_snapshot_of_the_episode_supersedes_it_and_keeps_its_onset",), CANON,
+           '         sorted(fact["affected_lanes"])]', '         list(fact["affected_lanes"])]'),
+          ("fact-state-changes-in-episode", "another state since the current episode's instant supersedes it", (GF + "test_what_is_not_a_gateway_fact_is_refused",), CAPS,
+           '            if current is not None and instant(current["since"]) == instant(fact["since"]) and current["state"] != fact["state"]:',
+           "            if False:"),
+          ("facts-one-command", "two snapshots of one capability from one search's pages share a command (the router refuses it)",
+           (RR + "test_pages_answered_under_two_snapshots_record_each_in_page_order",), OBS,
+           '        if not batches or any(f["capability"] == fact["capability"] for f in batches[-1]):', "        if not batches:"),
           ("fact-older-recorded", "an older episode is recorded behind the current fact", (GF + "test_a_later_episode_supersedes_and_an_earlier_one_is_refused",), CAPS,
            '            if current is not None and instant(current["since"]) > instant(fact["since"]):', "            if False:"),
           ("fact-not-superseding", "a new fact leaves its capability's current fact current (the one-current index refuses it)",
