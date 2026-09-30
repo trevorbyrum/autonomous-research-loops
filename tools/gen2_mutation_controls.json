@@ -8734,7 +8734,7 @@
  },
  "A9-fact-provenance-pins": {
   "controls": [
-   "test_store_ddl_evidence.ObservationTest.test_a_delayed_snapshot_is_kept_directly_behind_the_current_fact"
+   "test_store_ddl_evidence.ObservationTest.test_supersession_goes_on_past_a_late_snapshot"
   ],
   "why": "a statement that succeeds enters trigger capability_facts_supersede_only"
  },
@@ -8756,15 +8756,45 @@
   ],
   "why": "a statement that succeeds enters trigger capability_facts_insert_current_same_capability"
  },
+ "A9-late-any-episode": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger capability_facts_insert_current_same_capability"
+ },
+ "A9-late-any-namespace": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger capability_facts_insert_current_same_capability"
+ },
+ "A9-late-any-revision": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger capability_facts_insert_current_same_capability"
+ },
+ "A9-late-any-state": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds enters trigger capability_facts_insert_current_same_capability"
+ },
  "A9-link-successor": {
   "controls": [],
   "in_killer": [
-   "test_store_ddl_evidence.ObservationTest.test_a_delayed_snapshot_is_kept_directly_behind_the_current_fact",
-   "test_store_ddl_evidence.ObservationTest.test_one_current_capability_fact_supersede_to_transition"
+   "test_store_ddl_evidence.ObservationTest.test_one_current_capability_fact_supersede_to_transition",
+   "test_store_ddl_evidence.ObservationTest.test_supersession_goes_on_past_a_late_snapshot"
   ],
-  "why": "no other test enters trigger capability_facts_link_successor in a statement that succeeds; the killer does, and under the mutant too: the documented supersession UPDATE (cf-1 -> cf-3) runs before the refusals; the documented supersession UPDATE (cf-1 -> cf-2) runs before the refusals"
+  "why": "no other test enters trigger capability_facts_link_successor in a statement that succeeds; the killer does, and under the mutant too: the documented supersession UPDATE (cf-1 -> cf-2) runs before the refusals; the accepted late insert (cf-2 behind cf-3) and the documented supersession (cf-3 -> cf-5) run before the refusals"
  },
  "A9-self-supersession": {
+  "controls": [
+   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+  ],
+  "why": "a statement that succeeds inserts a row into capability_facts"
+ },
+ "A9-snapshot-per-revision": {
   "controls": [
    "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
   ],

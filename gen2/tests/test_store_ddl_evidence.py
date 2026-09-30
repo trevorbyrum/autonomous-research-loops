@@ -500,34 +500,71 @@ class ObservationTest(StoreTestCase):
         self.rejects("inserted current", "INSERT INTO capability_facts (fact_id, capability, state, detail, since, affected_lanes, superseded_by_fact_id, recorded_at) VALUES ('cf-9', 'secrets_backend', 'failing', 'd', ?, '[]', 'cf-1', ?)", T, T)
         self.assertEqual(self.rows(current), [("cf-2", "healthy")])
 
-    def test_a_delayed_snapshot_is_kept_directly_behind_the_current_fact(self) -> None:
-        """2b-repair-3 R2: a gateway snapshot recorded after a newer revision of its episode is
-        inserted behind its capability's current fact, which stays current — only directly
-        behind the current fact of its own capability, and never as another fact's successor
-        (so it can never be in a cycle). Its revision is pinned like its other contents."""
-        ins = "INSERT INTO capability_facts (fact_id, capability, state, detail, since, affected_lanes, revision, superseded_by_fact_id, recorded_at) VALUES (?, ?, 'failing', 'd', ?, '[]', ?, ?, ?)"
-        current = "SELECT fact_id FROM capability_facts WHERE capability = 'gateway.secrets.vault' AND superseded_by_fact_id IS NULL"
-        self.x(ins, "cf-1", "gateway.secrets.vault", T, 1, None, T)
-        self.x("BEGIN")
-        self.x("UPDATE capability_facts SET superseded_by_fact_id = 'cf-3' WHERE fact_id = 'cf-1'")
-        self.x(ins, "cf-3", "gateway.secrets.vault", T, 3, None, T)
+    FACT = ("INSERT INTO capability_facts (fact_id, capability, state, detail, since, affected_lanes, revision, superseded_by_fact_id, recorded_at) "
+            "VALUES (?, ?, ?, ?, ?, '[]', ?, ?, ?)")
+
+    def fact(self, fact_id: str, revision, behind=None, *, capability="gateway.secrets.vault", state="failing", since=T, detail="d") -> tuple:
+        return (self.FACT, fact_id, capability, state, detail, since, revision, behind, T)
+
+    def test_a_late_snapshot_is_an_earlier_revision_of_the_current_facts_own_episode(self) -> None:
+        """2b-repair-4 F1 (Astra's 2b-repair-3 review, its table): a fact is inserted behind its
+        capability's current fact only as a late gateway snapshot: a `gateway.*` fact of the same
+        capability, episode (`since`) and state as the current fact, its revision strictly below the
+        current fact's. Each refused insert differs from the accepted one in that one respect; one
+        revision of an episode is one snapshot."""
+        current = "SELECT fact_id, revision FROM capability_facts WHERE capability = ? AND superseded_by_fact_id IS NULL"
+        self.x(*self.fact("cf-3", 3))
+        self.x(*self.fact("cf-n3", 3, capability="secrets_backend"))   # not a gateway fact, with revisions
+        self.x(*self.fact("cf-o1", None, capability="unrelated.operator"))
+        for label, fact in (("an earlier episode", self.fact("cf-2", 2, "cf-3", since="2026-09-24T12:00:00Z")),
+                            ("a later episode", self.fact("cf-2", 2, "cf-3", since="2026-09-26T12:00:00Z")),
+                            ("another state since the same instant", self.fact("cf-2", 2, "cf-3", state="degraded")),
+                            ("a higher revision", self.fact("cf-4", 4, "cf-3")),
+                            ("the same revision", self.fact("cf-3b", 3, "cf-3", detail="other")),
+                            ("no revision", self.fact("cf-2", None, "cf-3")),
+                            ("not a gateway fact", self.fact("cf-n2", 2, "cf-n3", capability="secrets_backend")),
+                            ("neither a gateway fact nor revised", self.fact("cf-o0", None, "cf-o1", capability="unrelated.operator")),
+                            ("another capability's current fact", self.fact("cf-2", 2, "cf-n3")),
+                            ("a fact never recorded", self.fact("cf-2", 2, "cf-absent"))):
+            with self.subTest(label):
+                self.rejects("inserted current", *fact)
+        self.assertEqual(self.rows(current, "gateway.secrets.vault"), [("cf-3", 3)])
+        self.x(*self.fact("cf-2", 2, "cf-3"))   # the accepted case
+        self.assertEqual(self.rows(current, "gateway.secrets.vault"), [("cf-3", 3)], "the newer fact stays current")
+        self.rejects("UNIQUE constraint failed", *self.fact("cf-2b", 2, "cf-3", detail="other"))
+        self.assertEqual(self.rows("SELECT fact_id, superseded_by_fact_id FROM capability_facts ORDER BY fact_id"),
+                         [("cf-2", "cf-3"), ("cf-3", None), ("cf-n3", None), ("cf-o1", None)])
+
+    def test_supersession_goes_on_past_a_late_snapshot(self) -> None:
+        """2b-repair-4 F1: a later snapshot or episode supersedes the current fact as before, with a
+        late snapshot behind it; the graph protections hold around it: a late snapshot is inserted
+        behind the current fact only (never a superseded one, never an earlier episode behind a
+        later), is never another fact's successor, and its revision is pinned like its contents."""
+        later = "2026-09-26T12:00:00Z"
+        self.x(*self.fact("cf-3", 3))
+        self.x(*self.fact("cf-2", 2, "cf-3"))
+        self.x("BEGIN")   # a later revision of the episode supersedes the current fact
+        self.x("UPDATE capability_facts SET superseded_by_fact_id = 'cf-5' WHERE fact_id = 'cf-3'")
+        self.x(*self.fact("cf-5", 5))
         self.x("COMMIT")
-        self.x(ins, "cf-y", "gateway.budget", T, 1, None, T)
-        self.rejects("inserted current", ins, "cf-2", "gateway.secrets.vault", T, 2, "cf-1", T)   # behind a superseded fact
-        self.rejects("inserted current", ins, "cf-2", "gateway.secrets.vault", T, 2, "cf-y", T)   # behind another capability's
+        self.rejects("inserted current", *self.fact("cf-1", 1, "cf-3"))   # behind a fact no longer current
+        self.x(*self.fact("cf-4", 4, "cf-5"))   # late again, behind the new current fact
+        self.x("BEGIN")   # a new episode supersedes it
+        self.x("UPDATE capability_facts SET superseded_by_fact_id = 'cf-l6' WHERE fact_id = 'cf-5'")
+        self.x(*self.fact("cf-l6", 6, since=later))
+        self.x("COMMIT")
+        self.rejects("inserted current", *self.fact("cf-1", 1, "cf-l6"))   # an earlier episode, behind the later one
+        self.assertEqual(self.rows("SELECT fact_id, revision, superseded_by_fact_id FROM capability_facts ORDER BY since, revision"),
+                         [("cf-2", 2, "cf-3"), ("cf-3", 3, "cf-5"), ("cf-4", 4, "cf-5"), ("cf-5", 5, "cf-l6"), ("cf-l6", 6, None)])
+        self.rejects("must be current", "UPDATE capability_facts SET superseded_by_fact_id = 'cf-4' WHERE fact_id = 'cf-l6'")
         self.x("BEGIN")   # the successor another fact names is inserted current, never behind one
-        self.x("UPDATE capability_facts SET superseded_by_fact_id = 'cf-2' WHERE fact_id = 'cf-3'")
-        self.x(ins, "cf-4", "gateway.secrets.vault", T, 4, None, T)
-        self.rejects("inserted current", ins, "cf-2", "gateway.secrets.vault", T, 2, "cf-4", T)
+        self.x("UPDATE capability_facts SET superseded_by_fact_id = 'cf-l7' WHERE fact_id = 'cf-l6'")
+        self.x(*self.fact("cf-l8", 8, since=later))
+        self.rejects("inserted current", *self.fact("cf-l7", 7, "cf-l8", since=later))
         self.x("ROLLBACK")
-        self.assertEqual(self.rows(current), [("cf-3",)])
-        self.rejects("CHECK constraint failed", ins, "cf-0", "gateway.secrets.vault", T, 0, "cf-3", T)
-        self.x(ins, "cf-2", "gateway.secrets.vault", T, 2, "cf-3", T)   # the accepted case
-        self.assertEqual(self.rows(current), [("cf-3",)], "the newer fact stays current")
-        self.assertEqual(self.rows("SELECT fact_id, revision, superseded_by_fact_id FROM capability_facts WHERE capability = 'gateway.secrets.vault' ORDER BY revision"),
-                         [("cf-1", 1, "cf-3"), ("cf-2", 2, "cf-3"), ("cf-3", 3, None)])
-        self.rejects("must be current", "UPDATE capability_facts SET superseded_by_fact_id = 'cf-2' WHERE fact_id = 'cf-3'")
-        self.rejects("supersede, never edit", "UPDATE capability_facts SET revision = 5 WHERE fact_id = 'cf-3'")
+        self.rejects("CHECK constraint failed", *self.fact("cf-l0", 0, "cf-l6", since=later))
+        self.rejects("supersede, never edit", "UPDATE capability_facts SET revision = 9 WHERE fact_id = 'cf-l6'")
+        self.assertEqual(self.rows("SELECT fact_id FROM capability_facts WHERE superseded_by_fact_id IS NULL"), [("cf-l6",)])
 
     def test_observation_invocation_is_of_its_topic(self) -> None:
         """A10: search_observations binds its invocation's topic."""

@@ -846,12 +846,16 @@ END;
 -- COMMIT and must be rolled back (nothing changes). Facts are inserted
 -- current; a successor is of the same capability, never itself, and never a
 -- fact that is already superseded (so no cycles, and at most one current fact).
--- One exception (task 2b-repair-3 R2): a gateway snapshot that reaches the
--- router after a newer revision of its episode is inserted directly behind
--- the capability's current fact, as its predecessor. Such a fact is no one's
--- successor, then or later (a successor must be current), so it is never in
--- a cycle, and the current fact stays the newest. `revision` is the
--- gateway's order of its episode's snapshots; null for any other fact.
+-- One exception (task 2b-repair-3 R2; its eligibility, 2b-repair-4 F1): a
+-- LATE SNAPSHOT — a gateway fact (`gateway.*`) that reaches the router after
+-- a newer revision of its own episode — is inserted directly behind the
+-- capability's current fact, as its predecessor, when it is exactly that: the
+-- same capability, the same episode (the same `since`, as recorded) and state
+-- as the current fact, and a revision strictly below the current fact's. Such
+-- a fact is no one's successor, then or later (a successor must be current),
+-- so it is never in a cycle, and the current fact stays the newest.
+-- `revision` is the gateway's order of its episode's snapshots, one snapshot
+-- per revision; null for any other fact.
 CREATE TABLE capability_facts (
   fact_id TEXT PRIMARY KEY,
   capability TEXT NOT NULL,
@@ -869,16 +873,20 @@ CREATE TABLE capability_facts (
 
 CREATE UNIQUE INDEX capability_facts_one_current_per_capability
   ON capability_facts (capability) WHERE superseded_by_fact_id IS NULL;
+CREATE UNIQUE INDEX capability_facts_one_snapshot_per_revision
+  ON capability_facts (capability, since, revision) WHERE revision IS NOT NULL;
 
 CREATE TRIGGER capability_facts_insert_current_same_capability
 BEFORE INSERT ON capability_facts
 WHEN (NEW.superseded_by_fact_id IS NOT NULL AND (
        NOT EXISTS (SELECT 1 FROM capability_facts c WHERE c.fact_id = NEW.superseded_by_fact_id
-                   AND c.capability IS NEW.capability AND c.superseded_by_fact_id IS NULL)
+                   AND c.capability IS NEW.capability AND c.superseded_by_fact_id IS NULL
+                   AND NEW.capability GLOB 'gateway.*' AND c.since IS NEW.since AND c.state IS NEW.state
+                   AND NEW.revision < c.revision)
        OR EXISTS (SELECT 1 FROM capability_facts o WHERE o.superseded_by_fact_id = NEW.fact_id)))
   OR EXISTS (SELECT 1 FROM capability_facts o WHERE o.superseded_by_fact_id = NEW.fact_id AND o.capability IS NOT NEW.capability)
 BEGIN
-  SELECT RAISE(ABORT, 'a capability fact is inserted current, and only as the successor of a fact of the same capability, or directly behind its capability''s current fact (A9)');
+  SELECT RAISE(ABORT, 'a capability fact is inserted current, and only as the successor of a fact of the same capability, or as a late snapshot: a gateway fact directly behind its capability''s current fact, an earlier revision of that fact''s own episode (A9)');
 END;
 
 CREATE TRIGGER capability_facts_link_successor
