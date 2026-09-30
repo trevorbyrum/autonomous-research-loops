@@ -70,8 +70,24 @@ from the secret `research_gateway`, field `tokens`, in the same
 `name=token,name=token` form. The gateway refuses to start without any.
 
 Routes: `GET /v1/health` (no token), `GET /v1/status`, `GET /v1/jobs/{id}`,
-`POST /v1/{find|resolve|enrich|fetch|data}` with a JSON body, and `POST /mcp`
-(stateless MCP over HTTP, one JSON-RPC message per request).
+`POST /v1/{find|resolve|enrich|fetch|data|catalog}` with a JSON body, `POST /mcp`
+(stateless MCP over HTTP, one JSON-RPC message per request), and `POST /v1/grants`.
+
+**Station grants (task 2b).** A station agent is never given a client token. The clients
+named in `RESEARCH_GATEWAY_GRANTORS` (comma-separated; none by default) mint a grant per
+invocation with `POST /v1/grants` — `{"topic_id", "commercial", "accept_per_item",
+"invocation_id", "domain"?, "ttl_seconds"?}` (posture stated explicitly; 60–86400 s,
+default 3600) — and hand the returned `token` to the station as its
+`RESEARCH_GATEWAY_TOKEN`. Every request under a grant, on every door, runs under the
+grant's topic policy and invocation: bound fields are injected and a conflicting value is
+refused with 403, its jobs are visible to that topic and posture alone, and a grant never
+mints another. Grants are signed with a per-process key, so a gateway restart invalidates
+them (the station then gets 401 and must be re-granted); see `core/principals.py`.
+
+**Correlation (task 2b).** `X-Research-Invocation` and `X-Research-Attempt` headers carry
+the caller's invocation and attempt on both doors (docs/STATION-CONTRACT.md §4); the stdio
+client sends them when `RESEARCH_INVOCATION_ID` is set. `GET /v1/status` carries dated
+capability facts (`capabilities.secrets`, with its operator line while failing).
 
 ## Mounting the tools
 

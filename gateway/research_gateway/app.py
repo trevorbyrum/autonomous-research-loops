@@ -26,6 +26,7 @@ from .adapters.base import Client
 from .core import alerts, calllog, db, queue
 from .core.broker import Broker, load_policies, persist_breaker, policies_from_rows
 from .core.cache import Cache
+from .core.principals import GRANT_PREFIX, Grants, Principal, as_principal, bind, bind_correlation, job_visible
 from .core.request_identity import request_identity
 from .core.router import Router, execute, make_handlers, redact_for_storage
 from .core.secrets import FAILING, FOUND, SecretsBackendFailing, SecretsConfigError, from_config, read_from
@@ -45,6 +46,7 @@ class Settings:
     sync_timeout: float = 60.0
     watch_interval: float = 300.0
     tokens: dict[str, str] = field(default_factory=dict)   # client name -> bearer token
+    grantors: set = field(default_factory=set)             # client names that may mint grants (task 2b)
 
     @property
     def host(self) -> str:
@@ -150,6 +152,7 @@ def load_settings(path: Path | None = None, environ: dict | None = None) -> Sett
     s.contact_email = env.get("RESEARCH_GATEWAY_CONTACT_EMAIL", s.contact_email)
     s.secrets_backend = env.get("RESEARCH_GATEWAY_SECRETS", s.secrets_backend)
     s.workers = int(env.get("RESEARCH_GATEWAY_WORKERS", s.workers))
+    s.grantors = {n.strip() for n in (env.get("RESEARCH_GATEWAY_GRANTORS") or "").split(",") if n.strip()}
     s.tokens = parse_tokens(env.get("RESEARCH_GATEWAY_TOKENS"))
     if not s.tokens:
         read = read_from(from_config(s.secrets_backend), "research_gateway", "tokens")
@@ -244,6 +247,7 @@ class Gateway:
         self.cache = Cache(db.connect() if self.conn is not None else None)
         self.router = Router(self.sources, adapters.load_all())
         self.handlers = make_handlers(self.router, self.cache)
+        self.grants = Grants()   # per-process key: a restart invalidates every grant (core/principals.py)
         self.stop_event = threading.Event()
         self.workers: list[queue.Worker] = []
         self.watcher: alerts.Watcher | None = None
@@ -364,13 +368,26 @@ class Gateway:
         with db.connect() as conn:
             return execute(self.router, payload, self.make_client(conn, client_id=client_id, **trace), self.cache)
 
-    def submit(self, payload: dict, client_id: str, *, priority: str = "interactive",
+    def admit(self, payload: dict, who, trace: dict | None = None) -> tuple[dict, dict]:
+        """The payload and trace as the principal may send them: its bound policy injected (a
+        conflict raises PolicyError) and, for a grant, its invocation (task 2b: the server, not
+        the client, enforces a station's policy — on every door)."""
+        principal = as_principal(who)
+        return bind(payload, principal), bind_correlation(dict(trace or {}), principal)
+
+    def mint_grant(self, who, request: dict) -> dict:
+        return self.grants.mint(as_principal(who), request)
+
+    def submit(self, payload: dict, client_id, *, priority: str = "interactive",
                iteration: str | None = None, batch_entry: int | None = None,
                topic: str | None = None, invocation_id: str | None = None, attempt: int | None = None,
                capture: dict | None = None) -> tuple[int, bool]:
         """Queue a request. A coalesced caller (created=False) leaves its OWN durable row under
         its own invocation and attempt; whether that row was written is reported in `capture`
         ({"call_ref"} or {"loss"}) — a lost row is an explicit telemetry loss, never silent."""
+        principal = as_principal(client_id)
+        payload, bound = self.admit(payload, principal, {"invocation_id": invocation_id, "attempt": attempt})
+        invocation_id, attempt, client_id = bound.get("invocation_id"), bound.get("attempt"), principal.name
         rid = request_identity(payload)
         with self._lock:
             job_id, created = queue.enqueue(self.conn, payload["request_type"], {k: v for k, v in payload.items() if k != "request_type"},
@@ -397,11 +414,12 @@ class Gateway:
                         capture["loss"] = f"coalesce row not written: {type(e).__name__}"
             return job_id, created
 
-    def job(self, job_id: int, client_id: str | None = None) -> dict | None:
-        """A job, or None; with client_id, only that client's own job (clients never see each other's)."""
+    def job(self, job_id: int, client_id=None) -> dict | None:
+        """A job, or None; with a caller, only that caller's own job (clients never see each other's),
+        and for a bound principal only its own topic's, created under its posture (task 2b)."""
         with self._lock:
             j = queue.get(self.conn, job_id)
-        if j is not None and client_id is not None and j.get("client_id") != client_id:
+        if j is not None and client_id is not None and not job_visible(j, as_principal(client_id)):
             return None
         return j
 
@@ -449,7 +467,9 @@ class Gateway:
         caller's job, from cache, still queued) and the acknowledgement of its durable request
         row — `captured` with the row's `call_ref`, or `capture_loss` saying why it was not
         written. It is added here, per caller, never inside cached or stored content."""
-        trace = dict(trace or {})
+        principal = as_principal(client_id)
+        payload, trace = self.admit(payload, principal, trace)   # PolicyError propagates: the door answers 403
+        client_id = principal.name
         # the request — its telemetry tail INCLUDED — is a counted lifecycle user of the
         # shared connections: stop() cannot close them between the work and the span write
         self._enter_request()
@@ -540,14 +560,16 @@ class Gateway:
         return {"job_id": job_id, "status": j["status"], "created": created, **result, **extra}
 
     # ------------------------------------------------------------ auth + status
-    def authenticate(self, header: str | None) -> str | None:
-        """Bearer token → client name, or None."""
+    def authenticate(self, header: str | None) -> Principal | None:
+        """Bearer token → the Principal (a configured client, or a verified unexpired grant), or None."""
         if not header or not header.lower().startswith("bearer "):
             return None
         presented = header.split(" ", 1)[1].strip()
+        if presented.startswith(GRANT_PREFIX):
+            return self.grants.verify(presented)
         for name, token in self.settings.tokens.items():
             if hmac.compare_digest(presented, token):
-                return name
+                return Principal(name=name, grantor=name in self.settings.grantors)
         return None
 
     def health(self, detailed: bool = False) -> dict:

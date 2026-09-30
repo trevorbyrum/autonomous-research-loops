@@ -18,7 +18,7 @@ from ..clients.mcp_stdio import REQUEST_TOOLS, handle, strip_bytes
 PEER_NAME = "research"
 
 
-def make_call(gateway: Gateway, client_id: str, trace: dict | None = None):
+def make_call(gateway: Gateway, client_id, trace: dict | None = None):
     """Tool dispatch bound to an in-process gateway for one authenticated client. Arguments go
     through the SAME payload validation as the HTTP door — the MCP door is not a side entrance
     around type checks (D-23) — and every request carries the POST's tracing and invocation/
@@ -75,7 +75,7 @@ def make_call(gateway: Gateway, client_id: str, trace: dict | None = None):
     return call
 
 
-def rpc(gateway: Gateway, client_id: str, msg: dict, trace: dict | None = None) -> dict | None:
+def rpc(gateway: Gateway, client_id, msg: dict, trace: dict | None = None) -> dict | None:
     """One JSON-RPC message → reply dict (None for notifications, which have no id)."""
     if not isinstance(msg, dict) or "id" not in msg:
         return None

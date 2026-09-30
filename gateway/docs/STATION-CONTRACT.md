@@ -28,6 +28,16 @@ against this file; a change here is a change to both.
   override in either direction.
 - Absent environment = unbound session (operator CLI, ad-hoc use): the tools behave
   exactly as before this contract.
+- **Server-side enforcement (task 2b).** The dispatcher's injection is a convenience, not
+  the boundary: an agent holding a client token could call the HTTP API directly. A
+  station is therefore given a GRANT, not a client token: the grantor mints it for one
+  invocation of one topic (`POST /v1/grants`, docs/OPERATIONS.md), carrying `topic_id`,
+  `commercial`, `accept_per_item`, the advisory `domain` and the invocation id. The server
+  applies the enforcement column above to every request under that grant on every door
+  (`/v1` sync and async, the MCP endpoint's tool calls, batch entries and downloads, job
+  polls): bound fields injected, a conflicting value refused (403 / an in-band tool error
+  naming the field), jobs visible only to the same topic under the posture in force, and
+  requests carrying the grant's invocation (another one named is refused).
 - Items without a `research_policy` field inject only `topic_id`: the gateway's
   personal-baseline default applies, which is also the pre-approval discovery posture.
 

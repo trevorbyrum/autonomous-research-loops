@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from .. import app as app_module
 from ..app import Gateway, Settings, load_settings
+from ..core.principals import PolicyError
 from ..core.queue import REQUEST_TYPES
 from ..core.secrets import SecretsConfigError
 from ..mcp import homelab_adapter
@@ -54,11 +55,12 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _client(self) -> str | None:
-        name = self.server.gateway.authenticate(self.headers.get("Authorization"))
-        if name is None:
-            self._send(401, {"error": "missing or invalid bearer token"})
-        return name
+    def _client(self):
+        """The authenticated Principal, or None after answering 401."""
+        principal = self.server.gateway.authenticate(self.headers.get("Authorization"))
+        if principal is None:
+            self._send(401, {"error": "missing, invalid or expired bearer token"})
+        return principal
 
     def _trace(self) -> dict | None:
         """Tracing and correlation from the headers (they never enter the payload, D-33); None
@@ -129,6 +131,8 @@ class Handler(BaseHTTPRequestHandler):
         rt = parts.path.rstrip("/").rsplit("/", 1)[-1]
         if parts.path.rstrip("/") == "/mcp":
             return self._mcp()
+        if parts.path.rstrip("/") == "/v1/grants":
+            return self._grant()
         if not parts.path.startswith("/v1/") or rt not in REQUEST_TYPES:
             return self._send(404, {"error": f"POST /v1/<{'|'.join(REQUEST_TYPES)}> or POST /mcp"})
         client = self._client()
@@ -146,6 +150,10 @@ class Handler(BaseHTTPRequestHandler):
         payload = {**body, "request_type": rt}
         gw = self.server.gateway
         query = parse_qs(parts.query)
+        try:
+            payload, trace = gw.admit(payload, client, trace)   # the principal's policy, on this door too (2b)
+        except PolicyError as e:
+            return self._send(403, {"error": str(e)})
         try:
             wants_async = query.get("async", ["0"])[0] in ("1", "true")
             if wants_async and gw.is_inline_only(payload):
@@ -166,6 +174,8 @@ class Handler(BaseHTTPRequestHandler):
             timeout = min(float(body.get("timeout") or gw.settings.sync_timeout), MAX_TIMEOUT)
             out = gw.handle(payload, client, timeout=timeout, priority=str(body.get("priority") or "interactive"),
                             trace=trace)
+        except PolicyError as e:
+            return self._send(403, {"error": str(e)})
         except ValueError as e:
             return self._send(400, {"error": str(e)})
         except Exception as e:  # the front door never dies on a request; the error is the answer
@@ -176,6 +186,22 @@ class Handler(BaseHTTPRequestHandler):
         status = 202 if out.get("status") in ("queued", "running") else 200
         self._send(status, {k: v for k, v in out.items() if k != "content"})
 
+
+    def _grant(self) -> None:
+        """POST /v1/grants: a configured grantor mints a grant for one invocation of one topic
+        (core/principals.py). 201 with the token; 403 for anyone else; 400 for a bad request."""
+        client = self._client()
+        if client is None:
+            return
+        body = self._body()
+        if body is None:
+            return
+        try:
+            return self._send(201, self.server.gateway.mint_grant(client, body))
+        except PolicyError as e:
+            return self._send(403, {"error": str(e)})
+        except ValueError as e:
+            return self._send(400, {"error": str(e)})
 
     def _mcp(self) -> None:
         """Stateless MCP over HTTP for the homelab gateway: one JSON-RPC message per POST."""
