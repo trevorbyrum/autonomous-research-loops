@@ -583,3 +583,10 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-2r-astra-review-
 **Boundary conformance confirmed** (same module edges before/after; only the router touches store-write primitives; router/supervisor/importer byte-identical) and **no stale reader of the old single-file path remains** anywhere in the repo. Astra went beyond the task and built the actual scoped Docker image (disabled networking, declared UID): it loads the split parts and produces the identical database inside the real deployment container.
 
 **2r totals:** 1 review round. Gen-2's size rule (1,500 lines/file, 15,000-line growth trigger) is now enforced by `make gen2-check`, not just documented. Production 9,125/15,000.
+
+## 2026-09-30 — 2b landed (coder 286eff36), orchestrator independent verification — GREEN, sent to Astra
+13 commits (`gen2 2b:` prefix) since the 2r tip. Coder's self-report: all six acceptance items done, gateway `core/request_identity.py` added, server-side signed/expiring policy grants, licence/freshness/provenance split into four distinct facts, all eight DEPLOYMENT-CONTRACT §3.4 fixtures executable against a fake Vault, engine-side `gen2/gateway_client` built and tested.
+
+**Orchestrator independently re-ran, not trusted from the coder's log:** `git status --short` clean on the working tree; `make gen2-check` unpiped exit 0, 1,582 tests OK (2 skipped), 1,651/1,651 mutants killed, 9,521 production lines in 31 files. **Live gen-1 gateway boundary re-fingerprinted separately:** `~/work/staging/research-gateway-wt/gateway` clean, HEAD still `f4a7a5c6108d90fd4afd2fa2e1b8164381e0c279` (unchanged), `research-gateway.service` still active — the live deployment was not touched.
+
+Astra dispatched for Gate A/B/C review, task file `~/work/research-loops-public/private/reviews/gen2-2b-review-task-20260930.md`. Explicitly asked to independently re-verify the gen-1-boundary claim itself rather than trust the coder's or orchestrator's fingerprint, and to rebuild several of the eight §3.4 fixtures and the request-identity collision fix from scratch.
