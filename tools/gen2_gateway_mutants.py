@@ -366,7 +366,8 @@ MUTANTS: list[Mutant] = [
            (PV + "ReturnedRecords.test_a_merged_find_record_carries_each_members_provenance_and_facts",),
            (PV + "ReturnedRecords.test_a_resolved_record_and_its_cached_copy_carry_the_facts",)),
     Mutant("L-persisted-redistributable", "every persisted row is written redistributable (the old meaning)", "research_gateway/core/cache.py",
-           '                     redistribution == "permitted", redistribution),', "                     True, redistribution),",
+           '                     redistribution == "permitted", redistribution, prov.get("metadata_license")),',
+           '                     True, redistribution, prov.get("metadata_license")),',
            ("tests.test_cache_dedup.PersistentCache.test_only_storable_members_reach_the_database_and_storage_is_not_redistribution",),
            ("tests.test_cache_dedup.PersistentCache.test_reload_keeps_member_stamps_links_and_attribution_verbatim",), db=True),
 ]

@@ -195,7 +195,8 @@ class BothDoorsCarryTheInvocation(unittest.TestCase):
                 "params": {"name": "research_find", "arguments": {"query": "q", "kind": "article"}}}
         status, body = post(self.url, "/mcp", call, INV)
         result = json.loads(body["result"]["content"][0]["text"])
-        self.assertEqual((result["observation"]["invocation_id"], result["observation"]["attempt"]), ("inv_research01", 2))
+        observed = result.get("observation") or {}
+        self.assertEqual((observed.get("invocation_id"), observed.get("attempt")), ("inv_research01", 2))
         seen = []
         real = self.gw.handle
 
