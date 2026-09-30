@@ -273,7 +273,7 @@ backend in this stack, and today that includes the current gateway image's
 ### 3.4 Vault mode waits for a reviewed release that passes these tests
 
 **Status today.** No service in this stack may run with `vault` selected. The
-current gateway image breaks both rules. With `RESEARCH_GATEWAY_VAULT_TOKEN_FILE`
+current (deployed, gen-1) gateway image breaks both rules. With `RESEARCH_GATEWAY_VAULT_TOKEN_FILE`
 unset it falls back to `~/.vault-token` (`VaultBackend.__init__`). Every failed
 read (an unreadable token file, a transport error, a non-200, an unparseable
 payload) becomes `{}` and then `None`, the value of a missing key
@@ -281,6 +281,17 @@ payload) becomes `{}` and then `None`, the value of a missing key
 gen-2 code that does not exist yet. Until the release below exists, the gen-2
 gateway runs with `RESEARCH_GATEWAY_SECRETS=env` and the engine with
 `GEN2_SECRETS=env`, both from the one mounted `.env` (§3.1).
+
+*Task 2b (branch `gen2`, 2026-09-30):* the gateway CODE on this branch now keeps every
+read's outcome (found / absent / failing), refuses to start without an explicit
+address and a readable, explicitly named token file, and passes the eight tests below
+as executable fixtures — `gateway/tests/test_secrets_contract.py`, against a loopback
+KV v2 fake; tests 1–2 start the real entrypoint in a child process, 3–8 drive the
+assembled service over its HTTP front door, and the engine's side of test 5 is
+`gen2/tests/test_gateway_client.py` over the gateway's recorded answers. What that is
+not: the run "in its container" (it needs the dedicated gen-2 gateway deployment, task
+2e1), a reviewed release, or an operator decision. Vault stays inadmissible until the
+operator accepts such a release; nothing here changes the deployed gateway.
 
 **What makes it admissible.** For the gateway: a reviewed gateway release that
 keeps the outcome of every secret read (a failed read is not an absent one),

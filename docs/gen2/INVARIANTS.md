@@ -283,7 +283,7 @@ A receipt matches its spec in provider, class, answer primitive and action polic
 
 ## 9. Holds and observability
 
-**H-1 — One invocation ID threads the chain** router → station → delegate → gateway lane → decision layer → commit receipt. *Source:* F §4.1.
+**H-1 — One invocation ID threads the chain** router → station → delegate → gateway lane → decision layer → commit receipt. *Source:* F §4.1. *Enforced at (gateway leg, task 2b):* `X-Research-Invocation`/`X-Research-Attempt` on both gateway doors (a malformed or half-given pair is refused), the job's creator identity and every `gateway.calls` row (immutable by trigger, `gateway/research_gateway/registry/schema.sql`), a grant's bound invocation, and each answer's per-caller `observation`; the engine's `gen2/gateway_client` refuses to attribute an answer that does not echo them, and the store's `UNIQUE (invocation_id, request_identity, attempt)` makes one attempt one observation. Tests `gateway/tests/test_correlation.py`, `gen2/tests/test_gateway_client.py`.
 
 **H-2 — Capability facts are first-class, dated, and alert on transition.** A failed secrets read is recorded as "secrets backend failing" with its since-time and affected lanes — never as "no key configured". *Source:* F §4.2; B *Gateway* (the 2026-09-21..24 vault outage is the fixture).
 
@@ -292,7 +292,7 @@ A receipt matches its spec in provider, class, answer primitive and action polic
 
 **H-4 — Status answers why every waiting item waits.** *Source:* F §4.4; DR §10 gate 9. *Enforced at:* the operator surface (task 1e; Astra 1e review, locator ruling): `gen2/operator/status.py` composes the router's read-only `status` (`gen2/router/status.py`) with `Supervisor.incidents()`: each topic and each live invocation carries `waiting`, every reason read off a fact with its owner and deadline where the record has them; every open incident names its topic and invocation from the job's durable order, whatever the topic's lanes have done since, and a blocking one what clears it — the operator's `recover_incident` (task 1e-repair, Astra 1e review findings 2 and 5). Tests `gen2/tests/test_operator_status.py`, `test_operator_recovery.py`.
 
-**H-5 — The gateway never turns an unparseable payload into zero results**, never lets two different requests share a request identity, and logs every call with its invocation ID. *Source:* DR §9; B *Gateway*.
+**H-5 — The gateway never turns an unparseable payload into zero results**, never lets two different requests share a request identity, and logs every call with its invocation ID. *Source:* DR §9; B *Gateway*. *Enforced at (task 2b):* the adapter boundary (`Response.json` and `need()` in `gateway/research_gateway/adapters/base.py`; lane outcomes in `core/router.py`: `count` only for an observed set, with the identities it counts), the complete effective request (`core/request_identity.py`), the call log's `invocation_id`/`request_identity` columns, and the engine client's validation of each lane (`gen2/gateway_client/observe.py`). Tests `gateway/tests/test_payload_shapes.py`, `test_lane_outcomes.py`, `test_correlation.py`; mutants `tools/gen2_gateway_mutants.py`, `tools/gen2_mutants/gateway_client_2b.py`.
 
 ---
 
