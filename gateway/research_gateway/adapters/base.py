@@ -28,6 +28,7 @@ from urllib.parse import quote  # re-exported: adapters quote path segments thro
 from ..core import calllog
 from ..core.broker import Broker, BreakerOpen, BudgetExhausted, NoPolicy
 from ..core.canonical import PayloadError  # noqa: F401 (re-exported: adapters raise it through base)
+from ..core.identity import meaningful
 
 
 @dataclass
@@ -495,6 +496,27 @@ def validate_data_params(mod, params: dict | None) -> str | None:
             if problem and problem not in problems:
                 problems.append(problem)
     return "; ".join(problems) or None
+
+
+# what decoding one unreadable provider member raises (a missing key, a list where an object
+# was expected, a value that is not a date ...): that member's failure, never the answer's
+MEMBER_ERRORS = (PayloadError, KeyError, TypeError, AttributeError, ValueError, IndexError)
+
+
+def members(source_id: str, items: list, build) -> list:
+    """Each provider member through `build` on its own (task 2b-repair A4; RG-4): a member
+    that is not an object, whose decoding fails, or whose record names no meaningful
+    identity becomes None — dropped and counted by the router, so the members read beside
+    it stand as a PARTIAL lower bound instead of the whole answer being lost, and an
+    unreadable member never becomes a fabricated candidate (`url:None`)."""
+    out = []
+    for member in items:
+        try:
+            rec = build(member) if isinstance(member, dict) else None
+        except MEMBER_ERRORS:
+            rec = None
+        out.append(rec if isinstance(rec, dict) and meaningful(rec.get("identity")) else None)
+    return out
 
 
 def need(source_id: str, value, *path: str, kind: type | tuple = list):

@@ -13,7 +13,7 @@ from __future__ import annotations
 import types
 import unittest
 
-from research_gateway.adapters.base import Client, FakeTransport, PayloadError, Response, SourceUnavailable
+from research_gateway.adapters.base import Client, FakeTransport, PayloadError, Response, SourceUnavailable, members
 from research_gateway.core import router as R
 from research_gateway.core.broker import Broker, RatePolicy
 from research_gateway.core.cache import Cache
@@ -133,6 +133,15 @@ class LaneOutcomes(unittest.TestCase):
                 self.assertEqual((e["coverage"], e["completeness"], e.get("count"), e["error_class"]),
                                  ("provider_unavailable", "unobserved", None, "payload_invalid"))
 
+    def test_a_fabricated_identity_is_a_dropped_record(self):
+        """A4 at the router: a record whose identity was built from a missing value names nothing."""
+        for fabricated in ("url:None", "openml:", "series:fred:null", "hf:undefined"):
+            with self.subTest(fabricated):
+                r, c, _ = stub(find=lambda cursor: {"records": [rec(1), {"identity": fabricated, "kind": "article"}]})
+                e = self.lane(find(r, c))
+                self.assertEqual((e["coverage"], e["completeness"], e.get("count"), e.get("retrieved"), e.get("error_class")),
+                                 ("searched_ok", "partial", 1, ["doi:10.1234/1"], "payload_invalid"))
+
     def test_a_failed_continuation_page_keeps_its_cursor(self):
         def pages(cursor):
             if cursor == "c2":
@@ -228,3 +237,78 @@ class DegradedAnswersAreNotReplayed(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RealAdapterMembers(unittest.TestCase):
+    """Task 2b-repair A4: a provider's MEMBERS, decoded by the real adapters (Crossref, DOAJ)
+    through the real router and seed, not a stub returning canonical records. An unreadable
+    member is never a candidate (no `url:None`); a bad member beside readable ones leaves those
+    as a partial lower bound — never exhausted, never replayed from the cache. Oracle: the
+    identities the provider bodies below name, stated here by hand."""
+
+    CROSSREF = ("https://api.crossref.org/works?", lambda items: {"message": {"items": items, "total-results": len(items)}})
+    DOAJ = ("https://doaj.org/api/search/articles/", lambda items: {"results": items, "total": len(items)})
+    VALID = {"crossref": ({"DOI": "10.1234/valid", "title": ["Good"]}, "doi:10.1234/valid"),
+             "doaj": ({"id": "d1", "bibjson": {"title": "Open", "identifier": [{"type": "doi", "id": "10.5555/oa1"}]}}, "doi:10.5555/oa1")}
+
+    def ask(self, lane: str, items: list, cache: Cache, times: int = 2):
+        """The same find, `times` times, with the provider answering `items` each time; the lane's
+        entries and whether each answer was served from the search cache."""
+        from tests.test_routing import SEED_NO_INDEX, make
+        router, client, transport = make(SEED_NO_INDEX)
+        prefix, body = self.CROSSREF if lane == "crossref" else self.DOAJ
+        answers = []
+        for _ in range(times):
+            transport.add("GET", prefix, body=body(items))
+            out = R.execute(router, {"request_type": "find", "query": "q", "kind": "article", "lanes": [lane]}, client, cache)
+            answers.append(({e["source"]: e for e in out["lanes"]}[lane], bool(out.get("cache_hit")), [r["identity"] for r in out["records"]]))
+        return answers
+
+    def test_an_unreadable_member_is_never_a_candidate(self):
+        for lane, items in (("crossref", [{}]), ("crossref", [{"DOI": None, "URL": None, "title": ["no identifier"]}]),
+                            ("crossref", ["not a work"]), ("crossref", [7]), ("doaj", [{}]), ("doaj", [7])):
+            with self.subTest(lane=lane, items=items):
+                for entry, cached, identities in self.ask(lane, items, Cache(None)):
+                    self.assertEqual((entry["coverage"], entry["completeness"], entry.get("error_class")),
+                                     ("provider_unavailable", "unobserved", "payload_invalid"))
+                    self.assertNotIn("count", entry)
+                    self.assertFalse(entry.get("exhausted"))
+                    self.assertNotIn("next", entry)
+                    self.assertFalse(cached, "a degraded answer is asked again, never replayed")
+                    self.assertEqual(identities, [])
+
+    def test_a_later_bad_member_keeps_the_earlier_as_a_partial_lower_bound(self):
+        for lane in ("crossref", "doaj"):
+            member, identity = self.VALID[lane]
+            for bad in (7, {}, {**member, "author" if lane == "crossref" else "bibjson": 7}):
+                with self.subTest(lane=lane, bad=bad):
+                    for entry, cached, identities in self.ask(lane, [member, bad], Cache(None)):
+                        self.assertEqual((entry["coverage"], entry["completeness"], entry.get("error_class"), entry.get("count"), entry.get("retrieved")),
+                                         ("searched_ok", "partial", "payload_invalid", 1, [identity]))
+                        self.assertFalse(entry.get("exhausted"), "a partial lane never claims it returned everything")
+                        self.assertFalse(cached, "a partial answer is asked again, never replayed")
+                        self.assertEqual(identities, [identity])
+                        self.assertEqual(store_admits(entry), [])
+
+    def test_each_member_is_decoded_alone(self):
+        """The helper every find path decodes members with: a non-object member, a member whose
+        decoding raises, and one whose record names nothing are each None beside a good one."""
+        def build(m):
+            if "boom" in m:
+                raise KeyError("DOI")
+            return {"identity": m["id"], "kind": "article"}
+        try:
+            got = members("stub", [{"id": "doi:10.1/a"}, 7, {"boom": 1}, {"id": "url:None"}, {"id": "doi:10.1/b"}], build)
+        except KeyError as e:
+            self.fail(f"one member's decoding failure escaped as {e!r}: it is that member's, not the answer's")
+        self.assertEqual(got, [{"identity": "doi:10.1/a", "kind": "article"}, None, None, None, {"identity": "doi:10.1/b", "kind": "article"}])
+
+    def test_control_readable_members_are_complete_and_cached(self):
+        for lane in ("crossref", "doaj"):
+            member, identity = self.VALID[lane]
+            with self.subTest(lane=lane):
+                (first, cached1, ids1), (second, cached2, ids2) = self.ask(lane, [member], Cache(None))
+                self.assertEqual((first["coverage"], first["completeness"], first["count"], first["retrieved"]),
+                                 ("searched_ok", "complete", 1, [identity]))
+                self.assertTrue(first.get("exhausted"))
+                self.assertEqual((cached1, cached2, ids1, ids2), (False, True, [identity], [identity]))

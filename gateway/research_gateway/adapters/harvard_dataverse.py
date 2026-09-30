@@ -4,7 +4,7 @@ from __future__ import annotations
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, check, need
+from .base import AdapterError, Client, check, members, need
 
 SOURCE_ID = "harvard_dataverse"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.7910/DVN/OY6CBK'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -76,7 +76,7 @@ def find_in(client: Client, base: str, source_id: str, secret_name: str | None, 
     check(source_id, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     data = need(source_id, resp.json, "data", kind=dict)
     items, total = need(source_id, data, "items"), data.get("total_count") or 0
-    return {"records": [search_record(base, source_id, i) for i in items], "total": total,
+    return {"records": members(source_id, items, lambda i: search_record(base, source_id, i)), "total": total,
             "next_page": page + 1 if items and page * per_page < total else None}
 
 

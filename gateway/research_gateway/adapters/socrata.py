@@ -5,7 +5,7 @@ import re
 
 from ..core.canonical import make_record, year_from
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, PayloadError, check, need
+from .base import AdapterError, Client, PayloadError, check, members, need
 
 SOURCE_ID = "socrata"
 SMOKE = {'capability': 'find', 'query': 'business licenses', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -73,7 +73,7 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0, portal
     j = resp.json
     results, total = need(SOURCE_ID, j, "results"), j.get("resultSetSize") or 0
     _KNOWN_DOMAINS.update((r.get("metadata") or {}).get("domain", "").lower() for r in results if (r.get("metadata") or {}).get("domain"))
-    return {"records": [_catalog_record(r) for r in results], "total": total,
+    return {"records": members(SOURCE_ID, results, _catalog_record), "total": total,
             "next_offset": offset + len(results) if results and offset + len(results) < total else None}
 
 

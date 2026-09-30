@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
-from .base import AdapterError, Client, PayloadError, check, need, quote
+from .base import AdapterError, Client, PayloadError, check, members, need, quote
 
 SOURCE_ID = "govinfo"
 SMOKE = {'capability': 'find', 'query': 'artificial intelligence', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -47,7 +47,7 @@ def find(client: Client, query: str, *, limit: int = 20, offset_mark: str = "*",
     # an answer may leave `results` out only when it counts nothing
     results = need(SOURCE_ID, j, "results") if j.get("results") is not None or j.get("count") != 0 else []
     nxt = j.get("offsetMark") if results and j.get("offsetMark") not in (None, offset_mark) else None
-    return {"records": [_record(p) for p in results], "total": j.get("count"), "next_offset_mark": nxt}
+    return {"records": members(SOURCE_ID, results, _record), "total": j.get("count"), "next_offset_mark": nxt}
 
 
 def resolve(client: Client, identity: str) -> dict | None:

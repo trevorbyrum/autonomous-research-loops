@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record
 from ..core.identity import normalize_doi
-from .base import Client, check, need
+from .base import Client, check, members, need
 
 SOURCE_ID = "datacite"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.7910/DVN/OY6CBK'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -45,7 +45,7 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1, resource
     data = need(SOURCE_ID, j, "data")
     total = (j.get("meta") or {}).get("total")
     nxt = page + 1 if data and total and page * min(limit, 100) < total else None
-    return {"records": [_record(d) for d in data], "total": total, "next_page": nxt}
+    return {"records": members(SOURCE_ID, data, _record), "total": total, "next_page": nxt}
 
 
 def resolve(client: Client, identity: str) -> dict | None:

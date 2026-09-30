@@ -10,7 +10,7 @@ import time
 
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi
-from .base import Client, check, need
+from .base import Client, check, members, need
 
 SOURCE_ID = "openaire"
 SMOKE = {'capability': 'find', 'query': 'management practices', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -106,7 +106,7 @@ def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None
     header = need(SOURCE_ID, j, "header", kind=dict)
     # an answer may leave `results` out only when its header says nothing matched
     rows = need(SOURCE_ID, j, "results") if j.get("results") is not None or header.get("numFound") != 0 else []
-    return {"records": [_record(r) for r in rows], "total": header.get("numFound"), "next_cursor": header.get("nextCursor")}
+    return {"records": members(SOURCE_ID, rows, _record), "total": header.get("numFound"), "next_cursor": header.get("nextCursor")}
 
 
 def resolve(client: Client, identity: str) -> dict | None:

@@ -19,6 +19,23 @@ KNOWN_SCHEMES = {"doi", "issn", "arxiv", "handle", "series", "url", "title", "pm
                  "venue", "repository", "table", "s2", "doaj", "openaire", "datacite", "europepmc", "govinfo"}
 
 
+_PLACEHOLDERS = frozenset({"none", "null", "undefined", "nan"})
+
+
+def meaningful(identity) -> bool:
+    """An identity that names something (task 2b-repair A4): `<scheme>:<value>` whose value
+    does not end empty and has no `:`- or `#`-separated part that is a stringified missing
+    value — never `url:None`, `openml:` or `series:fred:null` built from a provider member
+    that carried no identifier, which would be a fabricated candidate. (An empty middle
+    part stays: OpenAIRE's own ids read `50|doi_dedup___::0123...`.)"""
+    if not isinstance(identity, str) or ":" not in identity:
+        return False
+    scheme, value = identity.split(":", 1)
+    parts = re.split(r"[:#]", value)
+    return (bool(scheme) and not any(c.isspace() for c in scheme) and bool(parts[-1].strip())
+            and not any(part.strip().lower() in _PLACEHOLDERS for part in parts))
+
+
 def register_schemes(schemes) -> None:
     """Adapters declare the identity schemes they serve (hf, openml, kaggle, ...); the router
     registers them at start-up so parse()/canonical() recognise them."""

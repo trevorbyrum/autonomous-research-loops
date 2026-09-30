@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, PayloadError, check, need, quote
+from .base import AdapterError, Client, PayloadError, check, members, need, quote
 
 SOURCE_ID = "huggingface"
 SMOKE = {'capability': 'resolve', 'identity': 'stanfordnlp/imdb'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -58,7 +58,7 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0) -> dic
     resp = client.get(SOURCE_ID, "find", f"{BASE}/api/datasets", params=params, headers=_headers(client), query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     items = need(SOURCE_ID, resp.json)
-    return {"records": [_record(d) for d in items], "total": None,
+    return {"records": members(SOURCE_ID, items, _record), "total": None,
             "next_offset": offset + len(items) if len(items) >= min(limit, 100) else None}
 
 

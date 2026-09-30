@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi, normalize_issn
-from .base import Client, check, need, quote
+from .base import Client, check, members, need, quote
 
 SOURCE_ID = "doaj"
 SMOKE = {'capability': 'find', 'query': 'management', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -44,7 +44,7 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1) -> dict:
     j = resp.json
     results = need(SOURCE_ID, j, "results")
     nxt = page + 1 if results and (page + 1) * page_size <= MAX_RECORDS_PER_QUERY and page * page_size < (j.get("total") or 0) else None
-    return {"records": [_record(a) for a in results], "total": j.get("total"), "next_page": nxt}
+    return {"records": members(SOURCE_ID, results, _record), "total": j.get("total"), "next_page": nxt}
 
 
 def resolve(client: Client, identity: str) -> dict | None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, check, need, quote
+from .base import AdapterError, Client, check, members, need, quote
 
 SOURCE_ID = "openml"
 SMOKE = {'capability': 'resolve', 'identity': 'openml:61'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -53,7 +53,7 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0) -> dic
         return {"records": [], "total": 0, "next_offset": None}
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     items = need(SOURCE_ID, resp.json, "data", "dataset")
-    return {"records": [_list_record(d) for d in items], "total": None,
+    return {"records": members(SOURCE_ID, items, _list_record), "total": None,
             "next_offset": offset + len(items) if len(items) >= min(limit, 100) else None}
 
 

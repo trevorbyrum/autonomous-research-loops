@@ -419,9 +419,13 @@ def _valid_records(items, facts: list[str], source_id: str) -> tuple[list[dict],
     PARTIAL observation — what was kept is a lower bound, never the total (RG-4)."""
     if items is not None and not isinstance(items, list):
         raise PayloadError(f"{source_id}: adapter answered {type(items).__name__} records, not a list")
-    good = [r for r in (items or []) if isinstance(r, dict) and r.get("identity") and r.get("kind")]
+    # a record must name something: an identity built from a missing value (url:None) is a
+    # fabricated candidate, dropped like any unreadable member (task 2b-repair A4)
+    good = [r for r in (items or []) if isinstance(r, dict) and ident.meaningful(r.get("identity")) and r.get("kind")]
     dropped = len(items or []) - len(good)
-    if dropped:
+    if dropped and not good:
+        facts.append(f"{source_id}: unreadable answer ({dropped} member(s), none readable) — treated as unavailable, never as no results")
+    elif dropped:
         facts.append(f"{source_id}: {dropped} malformed record(s) dropped — the count is a lower bound")
     return good, dropped
 

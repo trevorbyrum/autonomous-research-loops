@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record
 from ..core.identity import normalize_arxiv, normalize_doi
-from .base import Client, PayloadError, check, need
+from .base import Client, PayloadError, check, members, need
 
 SOURCE_ID = "semanticscholar"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -65,7 +65,7 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0, year_f
     j = need(SOURCE_ID, resp.json, kind=dict)
     # the search answer omits `data` when nothing matched; then it must say total 0
     rows = need(SOURCE_ID, j, "data") if "data" in j or j.get("total") != 0 else []
-    return {"records": [_record(p) for p in rows], "total": j.get("total"), "next_offset": j.get("next")}
+    return {"records": members(SOURCE_ID, rows, _record), "total": j.get("total"), "next_offset": j.get("next")}
 
 
 def resolve(client: Client, identity: str) -> dict | None:

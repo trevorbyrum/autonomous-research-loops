@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi, normalize_issn
-from .base import Client, PayloadError, check, need
+from .base import Client, PayloadError, check, members, need
 
 SOURCE_ID = "crossref"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -16,6 +16,8 @@ BASE = "https://api.crossref.org"
 
 def _record(client: Client, w: dict) -> dict:
     doi = normalize_doi(w.get("DOI"))
+    if not doi and not (isinstance(w.get("URL"), str) and w["URL"].strip()):
+        raise PayloadError(f"{SOURCE_ID}: a work with neither a DOI nor a URL names nothing (A4)")
     authors = [" ".join(p for p in (a.get("given"), a.get("family")) if p) or a.get("name", "")
                for a in w.get("author", [])]
     issued = (w.get("issued") or {}).get("date-parts") or [[None]]
@@ -50,7 +52,7 @@ def find(client: Client, query: str, *, limit: int = 20, year_from_: int | None 
     resp = client.get(SOURCE_ID, "find", f"{BASE}/works", params=params, query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     msg = need(SOURCE_ID, resp.json, "message", kind=dict)
-    return {"records": [_record(client, w) for w in need(SOURCE_ID, msg, "items")],
+    return {"records": members(SOURCE_ID, need(SOURCE_ID, msg, "items"), lambda w: _record(client, w)),
             "total": msg.get("total-results"), "next_cursor": msg.get("next-cursor")}
 
 

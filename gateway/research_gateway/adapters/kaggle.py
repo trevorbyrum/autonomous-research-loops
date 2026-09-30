@@ -4,7 +4,7 @@ from __future__ import annotations
 import base64
 
 from ..core.canonical import make_record, year_from
-from .base import AdapterError, Client, check, need, quote
+from .base import AdapterError, Client, check, members, need, quote
 
 SOURCE_ID = "kaggle"
 SMOKE = {'capability': 'find', 'query': 'housing prices', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -44,7 +44,7 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1) -> dict:
     resp = client.get(SOURCE_ID, "find", f"{BASE}/datasets/list", params={"search": query, "page": page}, headers=hdrs, query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     items = need(SOURCE_ID, resp.json)
-    return {"records": [_record(d) for d in items[:limit]], "total": None, "next_page": page + 1 if len(items) >= 20 else None}
+    return {"records": members(SOURCE_ID, items[:limit], _record), "total": None, "next_page": page + 1 if len(items) >= 20 else None}
 
 
 def fetch(client: Client, target: str, *, file_name: str | None = None, download: bool = False) -> dict:

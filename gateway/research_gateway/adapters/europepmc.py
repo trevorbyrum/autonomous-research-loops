@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record
 from ..core.identity import normalize_doi
-from .base import Client, check, need
+from .base import Client, check, members, need
 
 SOURCE_ID = "europepmc"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -35,7 +35,7 @@ def find(client: Client, query: str, *, limit: int = 20, cursor: str | None = No
     j = resp.json
     results = need(SOURCE_ID, j, "resultList", "result")
     nxt = j.get("nextCursorMark") if results and j.get("nextCursorMark") != (cursor or "*") else None
-    return {"records": [_record(r) for r in results], "total": j.get("hitCount"), "next_cursor": nxt}
+    return {"records": members(SOURCE_ID, results, _record), "total": j.get("hitCount"), "next_cursor": nxt}
 
 
 def resolve(client: Client, identity: str) -> dict | None:

@@ -10,7 +10,9 @@ Not in the inventory, and why: the schema's immutability trigger (DDL applied to
 scratch database — tested directly by DurableCorrelation.test_correlation_is_immutable_
 once_written, not mutated); the front door's admit() before submit()/handle() (both bind
 again: removing one layer is an equivalent mutant); Grants.mint's `grantor.bound` clause
-(a grant's principal is never a grantor: equivalent).
+(a grant's principal is never a grantor: equivalent); crossref._record's own refusal of a work
+with neither DOI nor URL (2b-repair A4: members() and the router both drop the `url:None` it
+would build — a second and third layer that make removing the first equivalent).
 """
 from __future__ import annotations
 
@@ -146,6 +148,19 @@ MUTANTS: list[Mutant] = [
            '                          else [str(r["identity"]) for r in got])', "                          else [])",
            (LO + "LaneOutcomes.test_dropped_records_make_a_partial_lower_bound", LO + "LaneOutcomes.test_control_all_readable_records_are_complete"),
            (LO + "LaneOutcomes.test_control_a_readable_empty_answer_is_searched_empty",)),
+    # 2b-repair A4: provider members, each decoded alone, and every candidate names something
+    Mutant("P-members-not-isolated", "one unreadable member discards the members read beside it", BASE,
+           "        except MEMBER_ERRORS:\n            rec = None", "        except ZeroDivisionError:\n            rec = None",
+           (LO + "RealAdapterMembers.test_a_later_bad_member_keeps_the_earlier_as_a_partial_lower_bound", LO + "RealAdapterMembers.test_each_member_is_decoded_alone"),
+           (LO + "RealAdapterMembers.test_control_readable_members_are_complete_and_cached",)),
+    Mutant("P-member-identity-unchecked", "a decoded member naming nothing (url:None) is kept by the adapter helper", BASE,
+           '        out.append(rec if isinstance(rec, dict) and meaningful(rec.get("identity")) else None)',
+           '        out.append(rec if isinstance(rec, dict) and rec.get("identity") else None)',
+           (LO + "RealAdapterMembers.test_each_member_is_decoded_alone",), (LO + "RealAdapterMembers.test_control_readable_members_are_complete_and_cached",)),
+    Mutant("P-router-identity-unchecked", "the router counts a record whose identity names nothing", ROUTER,
+           '    good = [r for r in (items or []) if isinstance(r, dict) and ident.meaningful(r.get("identity")) and r.get("kind")]',
+           '    good = [r for r in (items or []) if isinstance(r, dict) and r.get("identity") and r.get("kind")]',
+           (LO + "LaneOutcomes.test_a_fabricated_identity_is_a_dropped_record",), (LO + "LaneOutcomes.test_control_all_readable_records_are_complete",)),
     # ---- items 1-2: invocation/attempt and complete request identity -------------------------------------
     Mutant("C-v1-drops-invocation", "the /v1 door drops the invocation headers", HTTP,
            '                 "topic": (self.headers.get("X-Research-Topic") or "")[:64] or None, **correlation}',
