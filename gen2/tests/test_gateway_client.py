@@ -20,6 +20,9 @@ from __future__ import annotations
 import copy
 import http.server
 import json
+import sqlite3
+import subprocess
+import tempfile
 import threading
 import unittest
 from pathlib import Path
@@ -27,11 +30,15 @@ from pathlib import Path
 from gen2.core import canonical
 from gen2.gateway_client import observe
 from gen2.gateway_client.client import GatewayClient, GrantRefused, http_transport
-from gen2.tests.router_fixtures import RouterTestCase
+from gen2.router.service import Router
+from gen2.store import api
+from gen2.tests import children
+from gen2.tests.router_fixtures import OTHER, RouterTestCase
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "gateway_answers"
 BASE = "http://gateway.invalid:8765"
 INV = "inv_fixture0001"
+INV_B = "inv_fixture0002"   # a second invocation, of another topic
 ENGINE_TOKEN = "tok-engine-secret"
 HEADERS = {"content-type": "application/json", "x-research-gateway": "result"}
 
@@ -192,15 +199,25 @@ class RecordedAnswers(unittest.TestCase):
     def test_a_failing_secrets_read_carries_its_fact_and_no_count(self):
         out = search(self, "data_secrets_failing", {"request_type": "data", "source": "fred", "params": {"series": "GDP"}})
         (fact,) = out["capability_facts"]
-        self.assertEqual({k: fact[k] for k in ("capability", "state", "since", "last_success_at", "affected_lanes", "detail")},
+        self.assertEqual({k: fact[k] for k in ("capability", "state", "since", "last_success_at", "affected_lanes", "detail", "revision")},
                          {"capability": "gateway.secrets.vault", "state": "failing", "since": "2026-09-21T19:47:00Z",
-                          "last_success_at": None, "affected_lanes": ["fred"], "detail": "403"})
+                          "last_success_at": None, "affected_lanes": ["fred"], "detail": "403", "revision": 1})
         self.assertEqual(fact["fact_id"], canonical.gateway_fact_id({"capability": "gateway.secrets.vault", "state": "failing", "detail": "403",
                                                                       "since": "2026-09-21T19:47:00Z", "last_success_at": None,
-                                                                      "affected_lanes": ["fred"]}))
+                                                                      "affected_lanes": ["fred"], "revision": 1}))
         obs = by_lane(out)["fred"]
         self.assertEqual(summary(obs), ("provider_unavailable", "unobserved", None, "secrets_backend_failing", []))
         self.assertEqual(obs["observation"]["capability_fact_id"], fact["fact_id"])
+
+    def test_a_fact_without_its_revision_is_no_fact(self):
+        """2b-repair-3 R2: a snapshot is placed among its episode's by its revision; one the
+        gateway did not give a revision (a positive integer) is not a fact the router can place."""
+        body = fixture("data_secrets_failing")["exchanges"][0]["response"]["body"]["capability_facts"][0]
+        self.assertEqual(observe.capability_fact(body)["revision"], 1, "control: the recorded fact")
+        for label, revision in (("zero", 0), ("a string", "1"), ("a fraction", 1.5), ("a boolean", True)):
+            with self.subTest(label):
+                self.assertIsNone(observe.capability_fact({**body, "revision": revision}))
+        self.assertIsNone(observe.capability_fact({k: v for k, v in body.items() if k != "revision"}))
 
     def test_a_grant_and_the_policy_it_binds(self):
         exchanges = fixture("grant_and_policy_refusal")["exchanges"]
@@ -648,6 +665,104 @@ class RecordedByTheRouter(RouterTestCase):
         self.assertEqual(self.value("SELECT fact_id FROM capability_facts WHERE capability = 'gateway.secrets.vault' AND superseded_by_fact_id IS NULL"),
                          ids[2], "and moves nothing")
 
+    def current(self, router=None) -> list[tuple]:
+        """The operator's current secrets fact (router status), as (fact_id, detail, lanes)."""
+        return [(f["fact_id"], f["detail"], f["affected_lanes"]) for f in (router or self.router).status({})["capability_facts"]
+                if f["capability"] == "gateway.secrets.vault"]
+
+    def test_an_outage_that_says_again_what_it_said_before_is_current_as_said_last(self):
+        """2b-repair-3 R2, Astra's reproduction 2 (no race): ONE invocation, each answer recorded
+        before the next is asked — FRED 403, GovInfo joins, a fresh FRED read 503, then a fresh
+        GovInfo read 403 again (fixture data_secrets_outage_recurs, the real gateway's answers,
+        replayed in order over a real socket). The fourth answer says what the second said, but
+        is a new gateway call and a later snapshot: its fact is recorded, not replayed as the
+        second, and the operator's current fact is the fourth — after every answer, the latest."""
+        seen = []
+        c = GatewayClient(serve(self, recorded_in_order("data_secrets_outage_recurs", seen)), ENGINE_TOKEN, transport=http_transport)
+        requests = ({"request_type": "data", "source": "fred", "params": {"series": "GDP"}},
+                    {"request_type": "find", "query": "appropriations", "kind": "dataset", "lanes": ["govinfo"]},
+                    {"request_type": "data", "source": "fred", "params": {"series": "UNRATE"}},
+                    {"request_type": "find", "query": "budget after 503", "kind": "dataset", "lanes": ["govinfo"]})
+        outs, replies, current = [], [], []
+        for request in requests:
+            outs.append(c.search(request, invocation_id=INV, attempt=1, policy_version="gw-policy/1"))
+            replies.append(self.record(outs[-1]))
+            current.append(self.current())
+        self.assertEqual(seen, [(e["request"]["path"], e["request"]["body"]) for e in fixture("data_secrets_outage_recurs")["exchanges"]])
+        ids = [out["capability_facts"][0]["fact_id"] for out in outs]
+        wide = ["fred", "govinfo"]
+        self.assertEqual(current, [[(ids[0], "403", ["fred"])], [(ids[1], "403", wide)], [(ids[2], "503", wide)], [(ids[3], "403", wide)]],
+                         "the operator's current fact is the latest answer's, after each")
+        self.assertEqual([[r["status"] for r in rs] for rs in replies], [["recorded", "recorded"]] * 4,
+                         "the fourth answer's fact is recorded, never replayed as the second")
+        self.assertEqual(len(set(ids)), 4, "four snapshots, though the fourth says what the second said")
+        self.assertEqual(self.rows("SELECT o.lane, f.fact_id, f.detail FROM search_observations o JOIN capability_facts f "
+                                   "ON f.fact_id = o.capability_fact_id ORDER BY o.rowid"),
+                         [("fred", ids[0], "403"), ("govinfo", ids[1], "403"), ("fred", ids[2], "503"), ("govinfo", ids[3], "403")],
+                         "each observation names the snapshot it was answered with")
+        self.assertEqual([[r["status"] for r in self.record(outs[i])] for i in (1, 2)], [["replayed", "replayed"]] * 2,
+                         "an earlier answer recorded again replays")
+        self.assertEqual(self.current(), [(ids[3], "403", wide)], "and moves nothing")
+
+    def test_a_report_recorded_after_a_newer_one_never_displaces_it(self):
+        """2b-repair-3 R2, Astra's reproduction 1: two invocations of two topics are answered
+        from one Vault outage — A's FRED read first (the narrow snapshot), then B's GovInfo read
+        (the wider one); fixture data_secrets_outage_two_invocations. Two recorder processes
+        open one durable store; A's is held until B's has committed. B's snapshot stays current
+        after A's delayed write, which is kept behind it for A's observation to name; B's exact
+        redelivery replays, and B's fresh GovInfo answer — the same snapshot again — keeps the
+        wider fact current."""
+        self.to_scoping(OTHER)
+        grant_b = self.started(INV_B, "discovery", tid=OTHER)
+        seen = []
+        c = GatewayClient(serve(self, recorded_in_order("data_secrets_outage_two_invocations", seen)), ENGINE_TOKEN, transport=http_transport)
+        narrow = c.search({"request_type": "data", "source": "fred", "params": {"series": "GDP"}}, invocation_id=INV, attempt=1,
+                          policy_version="gw-policy/1")
+        wider = c.search({"request_type": "find", "query": "appropriations", "kind": "dataset", "lanes": ["govinfo"]}, invocation_id=INV_B,
+                         attempt=1, policy_version="gw-policy/1")
+        fresh = c.search({"request_type": "find", "query": "budget", "kind": "dataset", "lanes": ["govinfo"]}, invocation_id=INV_B,
+                         attempt=1, policy_version="gw-policy/1")
+        self.assertEqual(seen, [(e["request"]["path"], e["request"]["body"]) for e in fixture("data_secrets_outage_two_invocations")["exchanges"]])
+        a, b = narrow["capability_facts"][0]["fact_id"], wider["capability_facts"][0]["fact_id"]
+        self.assertEqual(fresh["capability_facts"][0]["fact_id"], b, "the fresh read changed nothing: the same snapshot")
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = str(Path(tmp.name) / "engine.sqlite")
+        disk = sqlite3.connect(path)
+        self.db.backup(disk)
+        disk.close()
+        now = self.clock()
+        workers = []
+        for grant, out in ((self.grant, narrow), (grant_b, wider)):
+            job = Path(tmp.name) / f"{grant['invocation_id']}.json"
+            job.write_text(json.dumps({"db": path, "now": now, "out": out, "capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"]}))
+            workers.append(children.popen(["-c", RECORDER, str(job)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True))
+        self.assertEqual([w.stdout.readline().strip() for w in workers], ["ready", "ready"], "both processes hold the store open")
+        replies = {}
+        for label, worker in (("wider first", workers[1]), ("narrow delayed", workers[0])):
+            stdout, stderr = worker.communicate("go\n", timeout=60)
+            self.assertEqual(worker.returncode, 0, stderr)
+            replies[label] = [r["status"] for r in json.loads(stdout)]
+        self.assertEqual(replies, {"wider first": ["recorded", "recorded"], "narrow delayed": ["recorded", "recorded"]})
+        read = sqlite3.connect(path)
+        self.addCleanup(read.close)
+        with api.open_store(path) as store:
+            router = Router(store, None, clock=self.clock)
+            wide = ["fred", "govinfo"]
+            self.assertEqual(self.current(router), [(b, "403", wide)], "the delayed narrower snapshot does not displace the newer one")
+            joined = "SELECT o.invocation_id, o.lane, o.capability_fact_id FROM search_observations o ORDER BY o.rowid"
+            self.assertEqual(read.execute("SELECT fact_id, superseded_by_fact_id FROM capability_facts WHERE capability = 'gateway.secrets.vault' "
+                                          "ORDER BY rowid").fetchall(), [(b, None), (a, b)], "the delayed snapshot is kept, behind")
+            self.assertEqual(read.execute(joined).fetchall(), [(INV_B, "govinfo", b), (INV, "fred", a)], "each observation names its own")
+            who = {"capability_id": grant_b["capability_id"], "invocation_id": INV_B}
+            again = [getattr(router, cmd)(req) for cmd, req in observe.router_requests(wider, **who)]
+            self.assertEqual([r["status"] for r in again], ["replayed", "replayed"], "B's exact redelivery replays")
+            self.assertEqual(self.current(router), [(b, "403", wide)])
+            later = [getattr(router, cmd)(req) for cmd, req in observe.router_requests(fresh, **who)]
+            self.assertEqual([r["status"] for r in later], ["replayed", "recorded"], "the same snapshot again; a new observation")
+            self.assertEqual(self.current(router), [(b, "403", wide)], "the wider fact stays current")
+            self.assertEqual(read.execute(joined).fetchall(), [(INV_B, "govinfo", b), (INV, "fred", a), (INV_B, "govinfo", b)])
+
     def test_pages_answered_under_two_snapshots_record_each_in_page_order(self):
         """2b-repair-2 R2: a search whose pages were answered under two snapshots of one outage is
         two fact commands in page order (a command holds one fact per capability), each page's
@@ -679,6 +794,20 @@ class RecordedByTheRouter(RouterTestCase):
         self.assertEqual(reply["status"], "refused", "the fact is recorded first (router_requests' order)")
 
 
+RECORDER = """import json, sys
+from gen2.gateway_client import observe
+from gen2.router.service import Router
+from gen2.store import api
+job = json.loads(open(sys.argv[1]).read())
+with api.open_store(job["db"]) as store:
+    router = Router(store, None, clock=lambda: job["now"])
+    print("ready", flush=True)
+    sys.stdin.readline()
+    who = {"capability_id": job["capability_id"], "invocation_id": job["invocation_id"]}
+    print(json.dumps([getattr(router, cmd)(req) for cmd, req in observe.router_requests(job["out"], **who)]), flush=True)
+"""   # one recorder process: it opens the durable store, waits for its turn, records one search
+
+
 class GatewayFactsCommand(RouterTestCase):
     """record_gateway_facts (2b-repair A6): the router's typed, bounded path for the facts the
     gateway reports. Oracle: the rules stated in gen2/router/capabilities.py, by hand."""
@@ -691,7 +820,7 @@ class GatewayFactsCommand(RouterTestCase):
         self.grant = self.started(INV, "discovery")
 
     def fact(self, since: str = SINCE, **over) -> dict:
-        doc = {"capability": "gateway.secrets.vault", "state": "failing", "detail": "403", "since": since, "last_success_at": None,
+        doc = {"capability": "gateway.secrets.vault", "state": "failing", "revision": 1, "detail": "403", "since": since, "last_success_at": None,
                "affected_lanes": ["fred"], **over}
         return {"fact_id": canonical.gateway_fact_id(doc), **doc}
 
@@ -722,27 +851,47 @@ class GatewayFactsCommand(RouterTestCase):
                  ("an id that is not its content's", {**self.fact(), "fact_id": "fact_" + "0" * 32}),
                  ("a since that is no instant", {**self.fact(), "since": "yesterday"}),
                  ("a state outside the vocabulary", self.fact(state="broken")),
-                 ("an id naming other content", {**self.fact(), "detail": "other"}))
+                 ("an id naming other content", {**self.fact(), "detail": "other"}),
+                 ("no revision", {k: v for k, v in self.fact().items() if k != "revision"}),
+                 ("a revision below one", self.fact(revision=0)),
+                 ("a revision that is no integer", self.fact(revision=1.5)))
         for label, fact in cases:
             with self.subTest(label):
                 self.assertEqual(self.put(fact).get("reason"), "request_invalid")
         self.assertEqual(self.put(self.fact(), self.fact(detail="again")).get("reason"), "request_invalid", "one fact per capability")
         self.put(self.fact())
         self.assertEqual(self.put(self.fact(state="degraded")).get("reason"), "fact_conflict", "another state since the same instant")
+        self.assertEqual(self.put(self.fact(detail="503")).get("reason"), "fact_conflict", "one revision of the episode, other contents")
         self.assertEqual(self.value("SELECT count(*) FROM capability_facts WHERE capability LIKE 'gateway.%'"), 1)
 
     def test_a_later_snapshot_of_the_episode_supersedes_it_and_keeps_its_onset(self):
         """2b-repair-2 R2: an ongoing outage that widens, then fails another way, is three
         snapshots of one episode — each recorded, superseding the last, `since` kept; the lanes
         are a set; an earlier snapshot recorded again replays and moves nothing."""
-        first, wider, other = self.fact(), self.fact(affected_lanes=["fred", "govinfo"]), self.fact(affected_lanes=["fred", "govinfo"], detail="503")
+        first, wider, other = self.fact(), self.fact(affected_lanes=["fred", "govinfo"], revision=2), self.fact(affected_lanes=["fred", "govinfo"], detail="503", revision=3)
         self.assertEqual([self.put(f)["status"] for f in (first, wider, other)], ["recorded"] * 3)
         self.assertEqual(self.rows("SELECT fact_id, since, superseded_by_fact_id FROM capability_facts WHERE capability = 'gateway.secrets.vault' "
                                    "ORDER BY rowid"),
                          [(first["fact_id"], self.SINCE, wider["fact_id"]), (wider["fact_id"], self.SINCE, other["fact_id"]),
                           (other["fact_id"], self.SINCE, None)])
-        self.assertEqual(self.put(self.fact(affected_lanes=["govinfo", "fred"]))["status"], "replayed", "the same lanes in another order")
+        self.assertEqual(self.put(self.fact(affected_lanes=["govinfo", "fred"], revision=2))["status"], "replayed", "the same lanes in another order")
         self.assertEqual(self.current(), [(other["fact_id"], "failing", self.SINCE)])
+
+    def test_an_earlier_revision_recorded_late_is_kept_behind_the_current_fact(self):
+        """2b-repair-3 R2: the episode's snapshots are ordered by their revision, not by when the
+        router hears of them. Revision 2 recorded after revision 3 is kept (its observation names
+        it) behind the current fact, which stays current and replays as it was; revision 4,
+        saying again what revision 2 said, is the next snapshot and becomes current."""
+        one, two, three = self.fact(), self.fact(affected_lanes=["fred", "govinfo"], revision=2), self.fact(affected_lanes=["fred", "govinfo"], detail="503", revision=3)
+        self.assertEqual([self.put(f)["status"] for f in (one, three, two)], ["recorded"] * 3)
+        self.assertEqual(self.current(), [(three["fact_id"], "failing", self.SINCE)], "the newest revision is current")
+        self.assertEqual(self.put(two)["status"], "replayed")
+        four = self.fact(affected_lanes=["fred", "govinfo"], revision=4)
+        self.assertEqual(self.put(four)["status"], "recorded", "what revision 2 said, said later")
+        self.assertEqual(self.rows("SELECT fact_id, since, superseded_by_fact_id FROM capability_facts WHERE capability = 'gateway.secrets.vault' "
+                                   "ORDER BY rowid"),
+                         [(one["fact_id"], self.SINCE, three["fact_id"]), (three["fact_id"], self.SINCE, four["fact_id"]),
+                          (two["fact_id"], self.SINCE, three["fact_id"]), (four["fact_id"], self.SINCE, None)])
 
     def test_only_a_running_invocation_records_but_a_lost_reply_replays(self):
         self.put(self.fact())

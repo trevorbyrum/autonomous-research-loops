@@ -143,8 +143,10 @@ class ControlBackend(Protocol):
         of a running invocation whose lease is current, before the
         observations that name them: each a snapshot of a dated `gateway.*`
         fact's episode (capability, state, since), superseding the capability's
-        current fact — an older episode's is refused (task 2b-repair-2 R2).
-        Key: each fact_id, its content's; only identical content replays."""
+        current fact — an older episode's is refused (task 2b-repair-2 R2) —
+        or, an earlier revision recorded after a later one, kept behind it
+        (task 2b-repair-3 R2). Key: each fact_id, its content's (revision
+        included); only identical content replays."""
 
     def register_works(self, request: Mapping) -> dict:
         """Link retrieved records of the invocation's topic to the works they

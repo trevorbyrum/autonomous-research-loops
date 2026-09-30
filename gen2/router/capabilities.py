@@ -46,19 +46,22 @@ record_gateway_facts is the typed path, under the capability of the running
 invocation that received it. Each fact is a `gateway.*` capability — never
 another namespace — and one SNAPSHOT of an episode (2b-repair-2 R2): the
 episode is the capability, its state and `since`, the instant that state
-began; the snapshot is what the gateway said of it then (detail, last success,
+began; the snapshot is the gateway's `revision` of its fact (the count of the
+fact's changes, so it orders the episode's snapshots however they reach the
+router, 2b-repair-3 R2) and what the gateway said then (detail, last success,
 affected lanes). Its id is its content's (canonical.gateway_fact_id), whoever
-reports it: the same snapshot again replays. A new one supersedes the
-capability's current fact (H-2: a transition is a new row, and every snapshot
-is kept) — a later episode, or a later snapshot of the current episode (an
-outage that widens to another lane, or fails another way, keeps its `since`),
-each observation naming the snapshot it was answered with. One older than the
-current episode is refused (fact_superseded) — a fact is inserted current,
-never behind a newer one; another state since the current episode's instant is
-refused (fact_conflict): a new state begins a new episode. Within an episode
-the snapshots carry no instant of their own, so the one recorded last is
-current, and one recorded again replays without moving it. It opens no hold:
-what a failing gateway capability holds is 2c/2e's to decide.
+reports it: the same snapshot again replays, and moves nothing. A new one
+supersedes the capability's current fact (H-2: a transition is a new row, and
+every snapshot is kept) when it is a later episode, or a later revision of the
+current episode (an outage that widens to another lane, fails another way, or
+returns to what it said before, keeps its `since`); an earlier revision of the
+current episode — a report recorded after a newer one — is kept behind the
+current fact, which supersedes it, so each observation names the snapshot it
+was answered with and the current fact is the newest. One older than the
+current episode is refused (fact_superseded); another state since the current
+episode's instant is refused (fact_conflict): a new state begins a new
+episode; so is a revision of the episode recorded with other contents. It
+opens no hold: what a failing gateway capability holds is 2c/2e's to decide.
 """
 from __future__ import annotations
 
@@ -97,11 +100,12 @@ CAPABILITY_COMMANDS = {
             "invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
             "facts": {"type": "array", "minItems": 1, "maxItems": 20, "items": {
                 "type": "object", "additionalProperties": False,
-                "required": ["fact_id", "capability", "state", "detail", "since", "last_success_at", "affected_lanes"],
+                "required": ["fact_id", "capability", "state", "revision", "detail", "since", "last_success_at", "affected_lanes"],
                 "properties": {
                     "fact_id": {"type": "string", "pattern": "^fact_[a-f0-9]{32}$"},
                     "capability": {"type": "string", "pattern": "^gateway\\.[a-z0-9][a-z0-9_.-]{0,62}$"},
-                    "state": {"enum": ["healthy", "degraded", "failing", "unknown"]}, "detail": _ID,
+                    "state": {"enum": ["healthy", "degraded", "failing", "unknown"]}, "revision": {"$ref": "common.schema.json#/$defs/revision"},
+                    "detail": _ID,
                     "since": {"$ref": "common.schema.json#/$defs/timestamp"}, "last_success_at": _DECLARED,
                     "affected_lanes": {"type": "array", "maxItems": 50, "uniqueItems": True, "items": _ID}}}}}},
 }
@@ -206,17 +210,23 @@ class Capabilities:
         if self._one("queue_entries", {"topic_id": inv["topic_id"]})["paused_at"] is not None:
             raise Refusal("topic_paused", f"{inv['topic_id']} is paused")
         for fact in new:
-            current = next((f for f in self._store.select("capability_facts", {"capability": fact["capability"]})
-                            if f["superseded_by_fact_id"] is None), None)
+            recorded = self._store.select("capability_facts", {"capability": fact["capability"]})
+            current = next((f for f in recorded if f["superseded_by_fact_id"] is None), None)
             if current is not None and instant(current["since"]) > instant(fact["since"]):
                 raise Refusal("fact_superseded", f"{fact['capability']}'s current fact {current['fact_id']} began at {current['since']}, "
                                                  f"after {fact['since']}: an older episode is never recorded behind a newer one")
             if current is not None and instant(current["since"]) == instant(fact["since"]) and current["state"] != fact["state"]:
                 raise Refusal("fact_conflict", f"{fact['capability']} was {current['state']} since {current['since']}, not {fact['state']}: "
                                                "a new state is a new episode, with the instant it began")
-            if current is not None:
+            twin = next((f for f in recorded if instant(f["since"]) == instant(fact["since"]) and f["revision"] == fact["revision"]), None)
+            if twin is not None:
+                raise Refusal("fact_conflict", f"{fact['capability']}'s revision {fact['revision']} since {fact['since']} is {twin['fact_id']}: "
+                                               "one revision of an episode is one snapshot")
+            behind = current is not None and instant(current["since"]) == instant(fact["since"]) and current["revision"] > fact["revision"]
+            if current is not None and not behind:
                 self._store.update("capability_facts", {"fact_id": current["fact_id"]}, {"superseded_by_fact_id": fact["fact_id"]})
-            self._store.insert("capability_facts", {**fact, "observed_by_invocation_id": inv["invocation_id"], "recorded_at": now})
+            self._store.insert("capability_facts", {**fact, "observed_by_invocation_id": inv["invocation_id"],
+                                                    "superseded_by_fact_id": current["fact_id"] if behind else None, "recorded_at": now})
             replies.append({"fact_id": fact["fact_id"], "status": "recorded"})
         self._audit(GATEWAY_FACT_AUDIT, now, {"facts": [f["fact_id"] for f in new]}, topic_id=inv["topic_id"], invocation_id=inv["invocation_id"])
         return {"status": "recorded", "facts": replies}

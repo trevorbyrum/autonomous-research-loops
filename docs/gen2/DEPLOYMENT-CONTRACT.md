@@ -295,7 +295,12 @@ dated fact through the router's own typed command (`record_gateway_facts`,
 answer over a real socket, no test-only SQL (A6). *Task 2b-repair-2:* an outage that
 widens to another lane or fails another way keeps its onset and is recorded as the next
 snapshot of the same episode, each observation naming the snapshot it was answered with
-(R2; the recorded sequence `data_secrets_outage_widens`). What that is
+(R2; the recorded sequence `data_secrets_outage_widens`). *Task 2b-repair-3:* each
+change of the fact is its next `revision`, and the engine's current fact is the
+episode's latest revision however the reports reach it — a report recorded after a
+newer one is kept behind it, and an outage that says again what it said before is a
+later snapshot, not the earlier one replayed (R2; `data_secrets_outage_two_invocations`,
+`data_secrets_outage_recurs`). What that is
 not: the run "in its container" (it needs the dedicated gen-2 gateway deployment, task
 2e1), a reviewed release, or an operator decision. Vault stays inadmissible until the
 operator accepts such a release; nothing here changes the deployed gateway.

@@ -30,7 +30,7 @@ from unittest import mock
 from research_gateway import app
 from research_gateway.adapters.base import FakeTransport
 from research_gateway.api import http as api
-from research_gateway.core import alerts, secrets
+from research_gateway.core import alerts, router, secrets
 from tests.fake_vault import FakeVault
 
 GATEWAY_DIR = Path(__file__).resolve().parent.parent
@@ -442,6 +442,41 @@ class F8OutageReplay(VaultCase):
                 self.assertNotEqual(lane["coverage"], "searched_empty", lane)
                 if lane.get("error_class") == "secrets_backend_failing":
                     self.assertNotIn("count", lane)
+
+
+class FactRevisions(unittest.TestCase):
+    """2b-repair-3 R2: each change of the capability fact is its next revision, so the engine
+    can order an episode's snapshots however they reach it — a read that changes nothing is
+    the same snapshot, and a return to earlier contents is a later one. An answer carries the
+    latest snapshot it met, by revision, whatever order its lanes are collected in."""
+
+    def health(self):
+        wall = Clock(OUTAGE)
+        lanes = {"fred": ["fred"], "govinfo": ["govinfo"]}
+        return secrets.SecretsHealth("secrets.vault", wall=wall, lanes_for=lambda name: lanes[name]), wall
+
+    def test_each_change_is_the_next_revision_and_a_repeat_is_not(self):
+        h, wall = self.health()
+        f403, f503 = secrets.SecretRead(secrets.FAILING, reason="HTTP 403", status=403), secrets.SecretRead(secrets.FAILING, reason="HTTP 503", status=503)
+        seen = []
+        for name, read in (("fred", f403), ("fred", f403), ("govinfo", f403), ("fred", f503), ("govinfo", f403)):
+            wall.t += 60
+            h.failure(name, read)
+            seen.append(h.fact())
+        self.assertEqual([(f["revision"], f["detail"], f["affected_lanes"]) for f in seen],
+                         [(1, "403", ["fred"]), (1, "403", ["fred"]), (2, "403", ["fred", "govinfo"]), (3, "503", ["fred", "govinfo"]),
+                          (4, "403", ["fred", "govinfo"])], "a repeat is the same snapshot; a return to earlier contents is the next")
+        self.assertEqual({**seen[4], "revision": 2}, seen[2], "the fourth says what the second said")
+        self.assertEqual({f["since"] for f in seen}, {"2026-09-21T19:48:00Z"}, "one episode")
+
+    def test_an_answer_keeps_the_latest_snapshot_it_met(self):
+        older, newer = {"capability": "secrets.vault", "revision": 2, "detail": "403"}, {"capability": "secrets.vault", "revision": 3, "detail": "503"}
+        other = {"capability": "budget", "revision": 1}
+        for order in ((older, newer), (newer, older)):
+            out = {}
+            for fact in (other, *order):
+                router._add_fact(out, fact)
+            self.assertEqual(out["capability_facts"], [other, newer], "the latest by revision, one per capability")
 
 
 class UnknownBackendIsRefused(unittest.TestCase):

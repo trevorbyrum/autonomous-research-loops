@@ -67,10 +67,13 @@ ERR_SECRETS = "secrets_backend_failing"   # the gateway's own secrets read FAILE
 
 
 def _add_fact(out: dict, fact: dict | None) -> None:
-    """One current capability fact per capability in an answer (the latest snapshot wins)."""
+    """One current capability fact per capability in an answer: the latest snapshot by its
+    revision (2b-repair-3 R2), whatever order the lanes that raised it are collected in."""
     if fact:
-        facts = [f for f in out.setdefault("capability_facts", []) if f.get("capability") != fact.get("capability")]
-        out["capability_facts"] = facts + [fact]
+        facts = out.setdefault("capability_facts", [])
+        held = next((f for f in facts if f.get("capability") == fact.get("capability")), None)
+        if held is None or fact.get("revision", 0) >= held.get("revision", 0):
+            out["capability_facts"] = [f for f in facts if f is not held] + [fact]
 
 
 def _secrets_failing(entry: dict, facts: list[str], sid: str, e: SecretsBackendFailing) -> None:

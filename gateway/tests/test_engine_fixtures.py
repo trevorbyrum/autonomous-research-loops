@@ -42,10 +42,12 @@ from research_gateway.registry.load import read_seed
 from tests.fake_vault import FakeVault
 from tests.test_adapters_articles import CROSSREF_WORK
 
-FIXTURES = Path(__file__).resolve().parents[2] / "gen2" / "tests" / "fixtures" / "gateway_answers"
+# a mutation run's copy of gateway/ reads the committed fixtures from the repository it came from
+FIXTURES = Path(os.environ.get("GATEWAY_SOURCE_REPOSITORY") or Path(__file__).resolve().parents[2]) / "gen2" / "tests" / "fixtures" / "gateway_answers"
 RECORD = os.environ.get("GATEWAY_RECORD_FIXTURES") == "1"
 TOKENS = {"engine": "tok-engine-secret"}
 INV, ATT = "inv_fixture0001", 1
+INV_B = "inv_fixture0002"   # a second invocation, of another topic (2b-repair-3 R2)
 SEED = [dict(s, enabled=False) if s["id"] == "openalex_snapshot" else s for s in read_seed()]
 T0 = 1790019900.0
 
@@ -112,10 +114,10 @@ class Recorder:
         self.server.shutdown()
         self.server.server_close()
 
-    def send(self, method, path, body=None, *, token=TOKENS["engine"], correlated=True):
+    def send(self, method, path, body=None, *, token=TOKENS["engine"], correlated=True, invocation=INV):
         headers = {"Accept": "application/json", "Authorization": f"Bearer {token}"}
         if correlated:
-            headers.update({"X-Research-Invocation": INV, "X-Research-Attempt": str(ATT)})
+            headers.update({"X-Research-Invocation": invocation, "X-Research-Attempt": str(ATT)})
         data = json.dumps(body).encode() if body is not None else None
         if data:
             headers["Content-Type"] = "application/json"
@@ -128,7 +130,7 @@ class Recorder:
         doc = normalize(json.loads(raw))
         self.exchanges.append({"request": {"method": method, "path": path, "body": body,
                                            "authorization": "grant" if token.startswith("gwg1.") else "engine",
-                                           "correlation": {"invocation_id": INV, "attempt": ATT} if correlated else None},
+                                           "correlation": {"invocation_id": invocation, "attempt": ATT} if correlated else None},
                                "response": {"status": status, "content_type": rh.get("Content-Type"),
                                             "x_research_gateway": rh.get("X-Research-Gateway"), "body": doc}})
         return status, json.loads(raw)
@@ -274,7 +276,7 @@ class EngineFixtures(unittest.TestCase):
             status, body = rec.send("POST", "/v1/data", {"source": "fred", "params": {"series": "GDP"}})
         self.assertEqual(lanes_of(body), [("fred", "provider_unavailable", "unobserved", None, None, "secrets_backend_failing", None, None, None)])
         self.assertEqual(body["capability_facts"], [{"capability": "secrets.vault", "state": "failing", "since": "2026-09-21T19:47:00Z",
-                                                     "last_success_at": None, "detail": "403", "affected_lanes": ["fred"]}],
+                                                     "last_success_at": None, "detail": "403", "affected_lanes": ["fred"], "revision": 1}],
                          "the dated fact the engine records before the observation that names it (DEPLOYMENT-CONTRACT §3.4 fixture 5)")
         self.check("data_secrets_failing", rec, "vault answers 403: the lane is secrets_backend_failing with the dated fact")
 
@@ -306,12 +308,81 @@ class EngineFixtures(unittest.TestCase):
         self.assertEqual([lanes_of(b) for b in (first, second, third)], [[("fred", *failing)], [("govinfo", *failing)], [("fred", *failing)]])
         episode = {"capability": "secrets.vault", "state": "failing", "since": "2026-09-21T19:47:00Z", "last_success_at": None}
         self.assertEqual([b["capability_facts"] for b in (first, second, third)],
-                         [[{**episode, "detail": "403", "affected_lanes": ["fred"]}],
-                          [{**episode, "detail": "403", "affected_lanes": ["fred", "govinfo"]}],
-                          [{**episode, "detail": "503", "affected_lanes": ["fred", "govinfo"]}]],
-                         "one episode, its onset kept; its lanes and detail as of each answer")
+                         [[{**episode, "detail": "403", "affected_lanes": ["fred"], "revision": 1}],
+                          [{**episode, "detail": "403", "affected_lanes": ["fred", "govinfo"], "revision": 2}],
+                          [{**episode, "detail": "503", "affected_lanes": ["fred", "govinfo"], "revision": 3}]],
+                         "one episode, its onset kept; its lanes and detail as of each answer, each change the next revision")
         self.check("data_secrets_outage_widens", rec, "one vault outage: FRED fails, GovInfo joins it, then vault answers 503 — "
                                                       "one onset, three snapshots")
+
+    def outage(self):
+        """A recorder over a loopback Vault answering 403, with its wall and cache clocks."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        token_file = os.path.join(tmp.name, "token")
+        Path(token_file).write_text("s.fixture-token\n")
+        vault = FakeVault(secrets={})
+        self.addCleanup(vault.close)
+        vault.mode = "status:403"
+        wall, clock = [T0 + 120], [0.0]
+        chain = secrets.Chain(secrets.EnvBackend(), secrets.VaultBackend(addr=vault.url, token_file=token_file, environ={},
+                                                                         wall=lambda: wall[0], clock=lambda: clock[0]))
+        env = mock.patch.dict(os.environ, {k: v for k, v in os.environ.items() if not k.startswith("RESEARCH_GATEWAY_SECRET_")}, clear=True)
+        env.start()
+        self.addCleanup(env.stop)
+        return Recorder(self, secrets_backend=chain), vault, wall, clock
+
+    def test_data_secrets_outage_two_invocations(self):
+        """2b-repair-3 R2 (Astra's reproduction 1): one Vault outage answered to two invocations
+        — A's FRED read fails first; then B's GovInfo read widens the outage; then B asks GovInfo
+        again after the failed read's cache ran out, and Vault answers the same. The first two
+        are the outage's first two revisions; the fresh read changed nothing, so it is the same
+        snapshot again (SecretsHealth: a revision is a change of the fact)."""
+        rec, vault, wall, clock = self.outage()
+        first = rec.send("POST", "/v1/data", {"source": "fred", "params": {"series": "GDP"}})[1]
+        wall[0] += 60
+        second = rec.send("POST", "/v1/find", {"query": "appropriations", "kind": "dataset", "lanes": ["govinfo"]}, invocation=INV_B)[1]
+        wall[0] += 60
+        clock[0] += secrets.VaultBackend.failure_ttl + 1   # GovInfo's failed read is no longer replayed: Vault is asked again
+        third = rec.send("POST", "/v1/find", {"query": "budget", "kind": "dataset", "lanes": ["govinfo"]}, invocation=INV_B)[1]
+        self.assertEqual([observed(b)[:2] for b in (first, second, third)], [(INV, ATT), (INV_B, ATT), (INV_B, ATT)])
+        episode = {"capability": "secrets.vault", "state": "failing", "since": "2026-09-21T19:47:00Z", "last_success_at": None, "detail": "403"}
+        self.assertEqual([b["capability_facts"] for b in (first, second, third)],
+                         [[{**episode, "affected_lanes": ["fred"], "revision": 1}],
+                          [{**episode, "affected_lanes": ["fred", "govinfo"], "revision": 2}],
+                          [{**episode, "affected_lanes": ["fred", "govinfo"], "revision": 2}]],
+                         "the narrow snapshot, the wider one, and the wider one again: a fresh read that changed nothing")
+        self.check("data_secrets_outage_two_invocations", rec, "one vault outage answered to two invocations: A's FRED read, then B's "
+                                                               "GovInfo read widening it, then B's fresh GovInfo read changing nothing")
+
+    def test_data_secrets_outage_recurs(self):
+        """2b-repair-3 R2 (Astra's reproduction 2): ONE invocation, each answer before the next —
+        FRED fails 403; GovInfo joins; a fresh FRED read fails 503; a fresh GovInfo read fails
+        403 again. The fourth answer says what the second said, and is the outage's fourth
+        revision: a later snapshot, never the second one replayed."""
+        rec, vault, wall, clock = self.outage()
+        answers = [rec.send("POST", "/v1/data", {"source": "fred", "params": {"series": "GDP"}})[1]]
+        wall[0] += 60
+        answers.append(rec.send("POST", "/v1/find", {"query": "appropriations", "kind": "dataset", "lanes": ["govinfo"]})[1])
+        wall[0] += 60
+        clock[0] += secrets.VaultBackend.failure_ttl + 1
+        vault.mode = "status:503"
+        answers.append(rec.send("POST", "/v1/data", {"source": "fred", "params": {"series": "UNRATE"}})[1])
+        wall[0] += 60
+        clock[0] += secrets.VaultBackend.failure_ttl + 1
+        vault.mode = "status:403"
+        answers.append(rec.send("POST", "/v1/find", {"query": "budget after 503", "kind": "dataset", "lanes": ["govinfo"]})[1])
+        failing = ("provider_unavailable", "unobserved", None, None, "secrets_backend_failing", None, None, None)
+        self.assertEqual([lanes_of(b) for b in answers], [[("fred", *failing)], [("govinfo", *failing)], [("fred", *failing)], [("govinfo", *failing)]])
+        episode = {"capability": "secrets.vault", "state": "failing", "since": "2026-09-21T19:47:00Z", "last_success_at": None}
+        self.assertEqual([b["capability_facts"] for b in answers],
+                         [[{**episode, "detail": "403", "affected_lanes": ["fred"], "revision": 1}],
+                          [{**episode, "detail": "403", "affected_lanes": ["fred", "govinfo"], "revision": 2}],
+                          [{**episode, "detail": "503", "affected_lanes": ["fred", "govinfo"], "revision": 3}],
+                          [{**episode, "detail": "403", "affected_lanes": ["fred", "govinfo"], "revision": 4}]],
+                         "the fourth says what the second said, as the next revision")
+        self.check("data_secrets_outage_recurs", rec, "one vault outage, one invocation: FRED 403, GovInfo joins, FRED 503, then "
+                                                      "GovInfo 403 again — the second snapshot's contents as the fourth revision")
 
     def test_grant_and_policy_refusal(self):
         rec = Recorder(self)

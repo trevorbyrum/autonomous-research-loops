@@ -155,14 +155,17 @@ def logical_hash(value: object) -> str:
 
 
 def gateway_fact_id(fact: dict) -> str:
-    """A gateway-reported capability fact's id (tasks 2b, 2b-repair A6, 2b-repair-2 R2): one
-    SNAPSHOT of an episode — the episode is the capability, its state and the instant that
-    state began, which its snapshots never change; the snapshot adds what the gateway said of
-    it then (detail, last success, the affected lanes as a set) — whoever reports it. So the
-    router can check that an id is its content's, a re-report replays, and an ongoing outage
-    that widens or changes its detail is a new snapshot of the same episode, never a conflict."""
+    """A gateway-reported capability fact's id (tasks 2b, 2b-repair A6, 2b-repair-2 R2,
+    2b-repair-3 R2): one SNAPSHOT of an episode — the episode is the capability, its state and
+    the instant that state began, which its snapshots never change; the snapshot adds its
+    revision (the gateway's count of its fact's changes: the snapshot's place in the gateway's
+    reports) and what the gateway said then (detail, last success, the affected lanes as a
+    set) — whoever reports it. So the router can check that an id is its content's, a re-report
+    replays, an ongoing outage that widens or changes its detail is a new snapshot of the same
+    episode, never a conflict, and a return to earlier contents is a later snapshot, never the
+    earlier one replayed."""
     return "fact_" + hashlib.sha256(canonical_bytes(
-        ["capability", fact["capability"], fact["since"], fact["state"], fact["detail"], fact["last_success_at"],
+        ["capability", fact["capability"], fact["since"], fact["state"], fact["revision"], fact["detail"], fact["last_success_at"],
          sorted(fact["affected_lanes"])])).hexdigest()[:32]
 
 

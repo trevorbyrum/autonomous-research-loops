@@ -151,14 +151,17 @@ def observation(entry: dict, *, request: dict, invocation_id: str, attempt: int,
 
 def capability_fact(fact: object) -> dict | None:
     """A gateway capability fact as the engine's capability_facts row (its id the snapshot's,
-    canonical.gateway_fact_id: an episode and what the gateway said of it then), or None if
-    it is not one — a fact without the instant its state began is not a dated fact."""
+    canonical.gateway_fact_id: an episode, the snapshot's revision and what the gateway said of
+    it then), or None if it is not one — a fact without the instant its state began is not a
+    dated fact, and one without its revision has no place among its episode's snapshots."""
     if not isinstance(fact, dict) or not isinstance(fact.get("capability"), str) or fact.get("state") not in FACT_STATES \
-            or not isinstance(fact.get("since"), str) or not fact["since"]:
+            or not isinstance(fact.get("since"), str) or not fact["since"] \
+            or type(fact.get("revision")) is not int or not 1 <= fact["revision"] <= canonical.INT_BOUND:
         return None
     lanes = fact.get("affected_lanes")
     last = fact.get("last_success_at")
-    row = {"capability": "gateway." + fact["capability"], "state": fact["state"], "detail": str(fact.get("detail") or fact["state"])[:500],
+    row = {"capability": "gateway." + fact["capability"], "state": fact["state"], "revision": fact["revision"],
+           "detail": str(fact.get("detail") or fact["state"])[:500],
            "since": fact["since"], "last_success_at": last if isinstance(last, str) and last else None,
            "affected_lanes": sorted({x for x in lanes if isinstance(x, str) and x}) if isinstance(lanes, list) else []}
     return {"fact_id": canonical.gateway_fact_id(row), **row}

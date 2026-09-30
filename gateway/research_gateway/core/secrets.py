@@ -109,8 +109,11 @@ class SecretsHealth:
     """The dated `secrets.<backend>` capability fact. The fact is failing while any secret
     name's latest FRESH read failed (cached replays do not move it): `since` is the first
     failed read of the episode, `last_success_at` the latest fresh successful read, and the
-    affected lanes are the sources whose secret names are failing. `on_transition(fact)` is
-    called on every state change (the gateway alerts on it); a listener's error is its own."""
+    affected lanes are the sources whose secret names are failing. `revision` counts the
+    fact's changes, so each snapshot has its place in this gateway's reports and a return to
+    earlier contents is a later snapshot, never the earlier one again (task 2b-repair-3 R2).
+    `on_transition(fact)` is called on every state change (the gateway alerts on it); a
+    listener's error is its own."""
 
     def __init__(self, capability: str, *, wall: Callable[[], float] = time.time,
                  lanes_for: Callable[[str], list[str]] | None = None,
@@ -124,31 +127,37 @@ class SecretsHealth:
         self.last_success_at: float | None = None
         self.last_failure: SecretRead | None = None
         self.state = "unknown"   # until the first fresh read: nothing has been observed
+        self.revision = 0
 
     def success(self, name: str) -> None:
         with self._lock:
+            before = self._content()
             self.last_success_at = self._wall()
             self._failing.pop(name, None)
-            alert = self._settle()
+            alert = self._settle(before)
         self._notify(alert)
 
     def failure(self, name: str, read: SecretRead) -> None:
         with self._lock:
+            before = self._content()
             if not self._failing:
                 self.since = self._wall()
             self._failing[name] = read
             self.last_failure = read
-            alert = self._settle()
+            alert = self._settle(before)
         self._notify(alert)
 
-    def _settle(self) -> bool:
-        """Settle the state; True on a transition worth an alert: into failing, or a recovery
-        out of it (the first healthy read after startup is not news)."""
+    def _settle(self, before: dict) -> bool:
+        """Settle the state and count a change of the fact; True on a transition worth an
+        alert: into failing, or a recovery out of it (the first healthy read after startup is
+        not news)."""
         state = "failing" if self._failing else "healthy"
         if state == "healthy":
             self.since = None
         alert = state != self.state and (state == "failing" or self.state == "failing")
         self.state = state
+        if self._content() != before:
+            self.revision += 1
         return alert
 
     def _notify(self, alert: bool) -> None:
@@ -158,14 +167,17 @@ class SecretsHealth:
             except Exception:
                 pass
 
+    def _content(self) -> dict:
+        lanes = sorted({lane for name in self._failing for lane in self.lanes_for(name)})
+        last = self.last_failure if self._failing else None
+        return {"capability": self.capability, "state": self.state, "since": _iso(self.since),
+                "last_success_at": _iso(self.last_success_at),
+                "detail": (str(last.status) if last.status else last.reason) if last else None,
+                "affected_lanes": lanes}
+
     def fact(self) -> dict:
         with self._lock:
-            lanes = sorted({lane for name in self._failing for lane in self.lanes_for(name)})
-            last = self.last_failure if self._failing else None
-            return {"capability": self.capability, "state": self.state, "since": _iso(self.since),
-                    "last_success_at": _iso(self.last_success_at),
-                    "detail": (str(last.status) if last.status else last.reason) if last else None,
-                    "affected_lanes": lanes}
+            return {**self._content(), "revision": self.revision}
 
     def summary(self) -> str | None:
         """The operator's status line while failing (DEPLOYMENT-CONTRACT §3.4 test 8)."""
