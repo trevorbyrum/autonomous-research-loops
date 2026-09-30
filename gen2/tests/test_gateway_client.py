@@ -24,7 +24,7 @@ from pathlib import Path
 from gen2.core import canonical
 from gen2.gateway_client import observe
 from gen2.gateway_client.client import GatewayClient, GrantRefused, http_transport
-from router_fixtures import RouterTestCase
+from gen2.tests.router_fixtures import RouterTestCase
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "gateway_answers"
 BASE = "http://gateway.invalid:8765"
