@@ -6,7 +6,7 @@ It answers GET /v1/<mount>/data/<prefix>/<name> the way Vault's KV v2 engine doe
 {"errors": ["no handler for route ..."]} when the mount itself does not exist (the
 misconfigured-mount case). `mode` makes every read fail another way — a status
 (403, 500, 503), a redirect, an unparseable body, a stall past the client's
-timeout — and `fail_from` (an epoch second, compared against `clock()`) switches
+timeout —, `ok_status` sends a stored secret's valid body under another status, and `fail_from` (an epoch second, compared against `clock()`) switches
 every read to 403 from a fixed time (the outage replay). Every request is kept in
 `requests` as (path, token) so a test can prove what was, and was not, asked.
 """
@@ -24,6 +24,7 @@ class FakeVault:
         self.mount, self.prefix, self.clock = mount, prefix, clock
         self.secrets = dict(secrets or {})
         self.mode: str = "ok"            # ok | status:<code> | redirect:<code>:<url> | unparseable | stall:<seconds> | shapeless
+        self.ok_status = 200             # the status a stored secret's (otherwise identical) answer carries
         self.fail_from: float | None = None
         self.requests: list[tuple[str, str | None]] = []
         vault = self
@@ -87,4 +88,4 @@ class FakeVault:
             return h._send(404, json.dumps({"errors": []}).encode(), {"Content-Type": "application/json"})
         data = self.secrets[name[len(self.prefix) + 1:]]
         body = {"request_id": "r", "data": {"data": data, "metadata": {"version": 1, "deletion_time": ""}}}
-        h._send(200, json.dumps(body).encode(), {"Content-Type": "application/json"})
+        h._send(self.ok_status, json.dumps(body).encode(), {"Content-Type": "application/json"})

@@ -273,6 +273,19 @@ class F3TransportAndStatus(VaultCase):
                 self.assertNotEqual(read.state, secrets.ABSENT)
                 self.vault.mode = "ok"
 
+    def test_a_valid_body_under_another_success_status_is_failing(self):
+        """A7: only 200 is a KV read; 201/202/204-style successes carry no secret, whatever the body."""
+        for status in (201, 202, 203):
+            with self.subTest(status):
+                self.vault.ok_status = status
+                read = backend(self.vault, token_file=self.token_file).read("fred", "api_key")
+                self.assertEqual((read.state, read.reason, read.status), (secrets.FAILING, f"unexpected HTTP {status}", status))
+
+    def test_control_the_same_body_under_200_is_the_secret(self):
+        self.vault.ok_status = 200
+        read = backend(self.vault, token_file=self.token_file).read("fred", "api_key")
+        self.assertEqual(read.state, secrets.FOUND)
+
     def test_unreachable(self):
         self.vault.close()
         chain = backend(self.vault, token_file=self.token_file, timeout=0.5)

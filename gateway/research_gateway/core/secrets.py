@@ -183,7 +183,8 @@ class VaultBackend:
     secret; 404 with an empty `errors` list is a path with nothing stored under an existing
     mount (ABSENT); 404 naming a missing route ("no handler for route") is a mount or prefix
     that does not exist, which would make every key look absent (FAILING); anything else —
-    403, 5xx, a refused redirect, an unparseable or mis-shaped body, a timeout, an
+    403, 5xx, any other success status (a 201 or 204 is not a KV read, whatever its body
+    says), a refused redirect, an unparseable or mis-shaped body, a timeout, an
     unreachable address, an unreadable token file — is FAILING. Outcomes are cached per
     name: successes (found or absent) for 15 minutes, failures for 1 minute, and a cached
     failure replays as FAILING (a failure is never laundered into an absence)."""
@@ -237,7 +238,7 @@ class VaultBackend:
                                      headers={"X-Vault-Token": token})
         try:
             with self._opener.open(req, timeout=self.timeout) as resp:
-                raw = resp.read()
+                status, raw = resp.status, resp.read()
         except urllib.error.HTTPError as e:
             try:
                 body = e.read()
@@ -254,6 +255,8 @@ class VaultBackend:
             reason = getattr(e, "reason", e)
             kind = "timeout" if isinstance(reason, (TimeoutError, socket.timeout)) else "unreachable"
             return "failing", SecretRead(FAILING, reason=f"{kind} ({type(reason).__name__})")
+        if status != 200:   # a KV read answers 200: any other success status is not a read, whatever its body says
+            return "failing", SecretRead(FAILING, reason=f"unexpected HTTP {status}", status=status)
         try:
             doc = json.loads(raw)
         except (ValueError, UnicodeDecodeError):
