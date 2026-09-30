@@ -614,3 +614,14 @@ Line accounting, mutation counts, and the Phase 3 scope boundary (breaker/budget
 **Orchestrator independently re-ran, not trusted from the coder's log:** 9 commits confirmed (`e7856a9..HEAD`), clean working tree. `make gen2-check` unpiped exit 0: 1,601 tests OK, 1,674/1,674 mutants killed. `make gen2-gateway` unpiped exit 0: 385 tests OK (with and without database), 74/74 gateway mutants killed — matches the coder's claims exactly. **Live gen-1 gateway boundary re-fingerprinted again:** HEAD still `f4a7a5c6`, PID 1456514 unchanged, 0 restarts, active since 2026-09-26 — untouched through this repair too.
 
 Astra dispatched for re-review, task file `~/work/research-loops-public/private/reviews/gen2-2b-repair-review-task-20260930.md`. Asked to re-run its original reproductions against each of A1–A8, give an explicit opinion on whether A5's no-exemption default should instead be an operator decision, and re-confirm the gen-1 boundary itself rather than trust either report.
+
+## 2026-09-30 — 2b-repair re-review (Astra, xhigh) — **BLOCK, narrow** (A1/A2/A4/A5/A7/A8 CLOSED)
+Full report: `~/work/research-loops-public/private/reviews/gen2-2b-repair-astra-review-20260930.md`. Live gen-1 gateway boundary re-confirmed untouched a third time (same HEAD, PID, 0 restarts). `make gen2-check` and `make gen2-gateway` both independently re-run, exit 0, matching the orchestrator's own numbers exactly. Gate B PASS.
+
+**6 of 8 original findings are now genuinely closed: A1, A2, A4, A5, A7, A8.** Astra also explicitly ruled on the operational question the coder flagged: enforcing correlation with no maintenance exemption (A5) is "the literal, defensible reading" of the repair brief and **needs no blocking operator decision** — settled, not escalated.
+
+**2 new findings, both narrower than the original 8:**
+- **R1 (HIGH):** the A3 persistence fix only repairs legacy rows written *without* provenance — it misses the rows task 2b's own (pre-repair) writer actually produced, which have provenance summaries but are missing the input flags needed to reconstruct restrictions. A real pre-repair Crossref `prohibited` record still reloads as `permitted`; a real pre-repair FRED third-party-restricted record still reloads as `commercial_use`. The restrictive data is still in the stored summary — the reader just isn't looking at it correctly for this exact case.
+- **R2 (MEDIUM):** a single ongoing Vault outage that legitimately widens (a second lane starts failing under the same onset/episode) gets refused as `fact_conflict` by the new `record_gateway_facts` command, because the fact ID doesn't distinguish "same outage, updated snapshot" from "a genuinely different fact." A caller can end up persisting an observation against a stale, pre-widening snapshot.
+
+**Orchestrator routing decision:** dispatched to a fresh Opus 5.5 coder as task 2b-repair-2 (`docs/gen2/tasks/2b-repair-2.md`), covering only R1 and R2.
