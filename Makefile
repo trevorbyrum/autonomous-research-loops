@@ -74,8 +74,9 @@ gen2-test: gen2-venv
 gen2-trigger-order: gen2-venv
 	$(PYTHON) tools/gen2_trigger_order.py
 
-# Every guard in tools/gen2_mutations.py is removed in memory and its named
-# tests must fail (task 0a-repair: fixes must be mutation-testable).
+# Every guard in the inventory (tools/gen2_mutants/, run by
+# tools/gen2_mutations.py) is removed in memory and its named tests must fail
+# (task 0a-repair: fixes must be mutation-testable).
 gen2-mutation: gen2-venv
 	$(PYTHON) tools/gen2_mutations.py
 
