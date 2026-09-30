@@ -133,6 +133,11 @@ class RecordedAnswers(unittest.TestCase):
         self.assertEqual(summary(lanes["doaj"]), ("searched_empty", "complete", 0, None, []), "a finished lane is not asked again")
         self.assertEqual(lanes["crossref"]["observation"]["request"]["pages"], 2)
 
+    def test_pages_that_all_answer_are_one_complete_observation(self):
+        lanes = by_lane(search(self, "find_paged_complete", pages=2))
+        self.assertEqual(summary(lanes["crossref"]), ("searched_ok", "complete", 2, None, ["doi:10.1234/abc", "doi:10.1234/def"]))
+        self.assertEqual(summary(lanes["doaj"]), ("searched_empty", "complete", 0, None, []))
+
     def test_control_one_page_of_the_same_answer_is_complete(self):
         c, _ = client(self, fixture("find_paged_then_failed")["exchanges"][:1])
         lanes = by_lane(c.search(FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1"))
@@ -187,8 +192,13 @@ class UnreadableAnswers(unittest.TestCase):
                               ("identities dropped", lambda r: r["body"]["lanes"][0].pop("retrieved")),
                               ("empty with a count", lambda r: r["body"]["lanes"][1].__setitem__("count", 3)),
                               ("partial without a reason", lambda r: r["body"]["lanes"][0].__setitem__("completeness", "partial")),
-                              ("unknown vocabulary", lambda r: r["body"]["lanes"][0].__setitem__("coverage", "searched_mostly")),
-                              ("unobserved with a count", lambda r: r["body"]["lanes"][0].__setitem__("completeness", "unobserved"))):
+                              ("unknown vocabulary", lambda r: r["body"]["lanes"][0].update(
+                                  coverage="searched_mostly", completeness="unobserved", error_class="payload_invalid", count=None, retrieved=None)),
+                              ("unknown error class", lambda r: r["body"]["lanes"][0].update(
+                                  coverage="provider_unavailable", completeness="unobserved", error_class="provider_down", count=None, retrieved=None)),
+                              ("unobserved with a count", lambda r: r["body"]["lanes"][0].update(
+                                  coverage="provider_unavailable", completeness="unobserved", error_class="provider_outage")),
+                              ("observed with the wrong completeness", lambda r: r["body"]["lanes"][0].__setitem__("completeness", "unobserved"))):
             with self.subTest(label):
                 lanes = self.lanes_of(mutated("find_complete", 0, mutate))
                 broken = [sid for sid, obs in lanes.items() if summary(obs) == ("unknown", "unobserved", None, "payload_invalid", [])]
@@ -240,26 +250,33 @@ class TransportOutcomes(unittest.TestCase):
 
     def test_named_lanes_each_get_their_unknown(self):
         request = {**FIND, "lanes": ["crossref", "doaj"]}
-        self.assertEqual([o[-1] for o in self.outcome(None, None, "timeout", request=request)], ["crossref", "doaj"])
+        self.assertEqual(self.outcome(None, None, "timeout", request=request),
+                         [("unknown", "unobserved", None, "timeout", [], lane) for lane in ("crossref", "doaj")])
 
-    def test_a_queued_answer_is_polled_and_a_job_that_never_ends_is_a_timeout(self):
-        done = fixture("find_complete")["exchanges"][0]["response"]["body"]
-        queued = {**{k: done[k] for k in ("observation",)}, "status": "queued", "job_id": 7, "created": True}
-        answers = iter([(202, queued), (200, {"status": "running"}), (200, {"status": "done", "result": done})])
+    QUEUED = {"status": "queued", "job_id": 7, "created": True}
+
+    def queued_client(self, answers) -> GatewayClient:
+        answers = iter(answers)
 
         def transport(method, url, hdrs, data, timeout):
             status, body = next(answers)
             return status, {"content-type": "application/json", "x-research-gateway": "result"}, json.dumps(body).encode(), None
-        c = GatewayClient(BASE, ENGINE_TOKEN, transport=transport, clock=lambda: "2026-09-30T10:00:00Z", sleep=lambda s: None)
+        return GatewayClient(BASE, ENGINE_TOKEN, transport=transport, clock=lambda: "2026-09-30T10:00:00Z", sleep=lambda s: None, deadline=2)
+
+    def test_a_queued_answer_is_polled_to_its_result(self):
+        done = fixture("find_complete")["exchanges"][0]["response"]["body"]
+        queued = {**self.QUEUED, "observation": done["observation"]}
+        c = self.queued_client([(202, queued), (200, {"status": "running"}), (200, {"status": "done", "result": done})])
         lanes = by_lane(c.search(FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1"))
-        self.assertEqual(summary(lanes["crossref"])[:3], ("searched_ok", "complete", 1))
+        self.assertIn("crossref", lanes, "the polled job's lanes, not the queued answer's (which has none)")
+        self.assertEqual(summary(lanes["crossref"]), ("searched_ok", "complete", 1, None, ["doi:10.1234/abc"]))
+
+    def test_a_queued_answer_is_polled_and_a_job_that_never_ends_is_a_timeout(self):
+        done = fixture("find_complete")["exchanges"][0]["response"]["body"]
+        queued = {**self.QUEUED, "observation": done["observation"]}
         for final, expected in (({"status": "running"}, "timeout"), ({"status": "failed", "result": {}}, "transport_failure")):
             with self.subTest(final=final):
-                def stuck(method, url, hdrs, data, timeout, final=final):
-                    body = queued if method == "POST" else final
-                    return (202 if method == "POST" else 200), {"content-type": "application/json", "x-research-gateway": "result"}, \
-                        json.dumps(body).encode(), None
-                c = GatewayClient(BASE, ENGINE_TOKEN, transport=stuck, clock=lambda: "2026-09-30T10:00:00Z", sleep=lambda s: None, deadline=2)
+                c = self.queued_client([(202, queued)] + [(200, final)] * 10)
                 out = c.search(FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
                 self.assertEqual([summary(o) for o in out["observations"]], [("unknown", "unobserved", None, expected, [])])
 
@@ -309,16 +326,18 @@ class OverRealHttp(unittest.TestCase):
     def test_a_redirect_is_never_followed(self):
         seen = []
         elsewhere, other = self.serve(lambda h: seen.append(h.headers.get("Authorization")))
-
-        def redirect(h):
-            h.send_response(307)
-            h.send_header("Location", other + "/v1/find")
-            h.send_header("Content-Length", "0")
-            h.end_headers()
-        _, url = self.serve(redirect)
-        out = GatewayClient(url, ENGINE_TOKEN, transport=http_transport).search(FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
-        self.assertEqual([summary(o) for o in out["observations"]], [("unknown", "unobserved", None, "transport_failure", [])])
-        self.assertEqual(seen, [], "the token went nowhere else")
+        for code in (301, 302, 303, 307, 308):   # urllib would follow a POST's 301-303 on its own, carrying the token
+            with self.subTest(code):
+                def redirect(h, code=code):
+                    h.send_response(code)
+                    h.send_header("Location", other + "/v1/find")
+                    h.send_header("Content-Length", "0")
+                    h.end_headers()
+                _, url = self.serve(redirect)
+                out = GatewayClient(url, ENGINE_TOKEN, transport=http_transport, timeout=5).search(
+                    FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
+                self.assertEqual([summary(o) for o in out["observations"]], [("unknown", "unobserved", None, "transport_failure", [])])
+                self.assertEqual(seen, [], "the token went nowhere else")
 
 
 class RecordedByTheRouter(RouterTestCase):
@@ -362,6 +381,10 @@ class RecordedByTheRouter(RouterTestCase):
         self.admissible("find_paged_then_failed", pages=2)
         self.assertEqual(self.rows("SELECT lane, coverage_state, completeness, result_count, error_class FROM search_observations "
                                    "WHERE lane = 'crossref'"), [("crossref", "searched_ok", "partial", 1, "partial_pagination")])
+
+    def test_pages_that_all_answer_are_admissible_as_one_complete_observation(self):
+        self.admissible("find_paged_complete", pages=2)
+        self.assertEqual(self.value("SELECT count(*) FROM retrieval_events"), 2)
 
     def test_one_attempt_is_one_observation(self):
         """A different outcome for the same invocation, request and attempt is refused at the

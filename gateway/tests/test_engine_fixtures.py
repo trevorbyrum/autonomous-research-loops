@@ -180,6 +180,18 @@ class EngineFixtures(unittest.TestCase):
         rec.send("POST", "/v1/find", {**request, "cursors": {"crossref": "c2"}, "lanes": ["crossref"]})
         self.check("find_paged_then_failed", rec, "page 1 reads one record and a cursor; page 2 fails with HTTP 503")
 
+    def test_find_paged_complete(self):
+        rec = Recorder(self)
+        second = dict(CROSSREF_WORK, DOI="10.1234/def", title=["Reranking, continued"])
+        rec.t.by_substring.append(("cursor=c2", Response(200, {}, json.dumps(
+            {"message": {"items": [second], "total-results": 2}}).encode(), "")))
+        rec.t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [CROSSREF_WORK], "total-results": 2,
+                                                                              "next-cursor": "c2"}})
+        request = {"query": "reranking", "kind": "article", "domain": "finance"}
+        rec.send("POST", "/v1/find", request)
+        rec.send("POST", "/v1/find", {**request, "cursors": {"crossref": "c2"}, "lanes": ["crossref"]})
+        self.check("find_paged_complete", rec, "page 1 reads one record and a cursor; page 2 reads the last record")
+
     def test_data_secrets_failing(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)

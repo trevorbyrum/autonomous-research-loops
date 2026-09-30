@@ -166,6 +166,9 @@ FILE_TARGETS = {
     "gen2/router/capabilities.py": ("module", "gen2.router.capabilities", "gen2.router.service", "gen2.app.station", "gen2.app.engine",
                                     "gen2.tests.router_fixtures", "gen2.tests.operator_fixtures"),
     "gen2/supervisor/probe.py": ("module", "gen2.supervisor.probe", "gen2.app.station", "gen2.app.engine", "gen2.tests.operator_fixtures"),
+    # task 2b: the engine's gateway client; the client module binds names from observe, so it is reloaded after it
+    "gen2/gateway_client/observe.py": ("module", "gen2.gateway_client.observe", "gen2.gateway_client.client"),
+    "gen2/gateway_client/client.py": ("module", "gen2.gateway_client.client"),
     "tools/gen2_trigger_order.py": ("attr", "test_trigger_order_tool", "TOOL"),
     "tools/gen_source_catalog.py": ("attr", "test_source_catalog", "TOOL"),
     # A schema file: the whole schema tree is re-checked with this file replaced (0c-repair, C1).

@@ -6674,6 +6674,114 @@
   ],
   "why": "gen2/router/service.py: leaves line 628 for a line outside 628-629 (or returns)"
  },
+ "2B-count-without-identities": {
+  "controls": [
+   "test_gateway_client.UnreadableAnswers.test_a_repeated_identity_is_one_candidate"
+  ],
+  "why": "gen2/gateway_client/observe.py: executes line 67"
+ },
+ "2B-echo-unchecked": {
+  "controls": [
+   "test_gateway_client.UnreadableAnswers.test_a_repeated_identity_is_one_candidate"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 193"
+ },
+ "2B-envelope-unchecked": {
+  "controls": [
+   "test_gateway_client.UnreadableAnswers.test_a_repeated_identity_is_one_candidate"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 98"
+ },
+ "2B-fact-unlinked": {
+  "controls": [
+   "test_gateway_client.RecordedAnswers.test_a_grant_and_the_policy_it_binds"
+  ],
+  "why": "gen2/gateway_client/observe.py: executes line 118 (else 115)"
+ },
+ "2B-failed-job-read": {
+  "controls": [
+   "test_gateway_client.TransportOutcomes.test_a_queued_answer_is_polled_to_its_result"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 206"
+ },
+ "2B-id-includes-links": {
+  "controls": [
+   "test_gateway_client.RecordedAnswers.test_a_grant_and_the_policy_it_binds"
+  ],
+  "why": "gen2/gateway_client/observe.py: executes line 104"
+ },
+ "2B-id-not-deterministic": {
+  "controls": [
+   "test_gateway_client.RecordedAnswers.test_a_grant_and_the_policy_it_binds"
+  ],
+  "why": "gen2/gateway_client/observe.py: executes line 104"
+ },
+ "2B-metadata-only-kept": {
+  "controls": [
+   "test_gateway_client.UnreadableAnswers.test_a_repeated_identity_is_one_candidate"
+  ],
+  "why": "gen2/gateway_client/observe.py: executes line 111"
+ },
+ "2B-pages-rounded-up": {
+  "controls": [
+   "test_gateway_client.RecordedAnswers.test_pages_that_all_answer_are_one_complete_observation"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 254 (else 253)"
+ },
+ "2B-partial-unexplained": {
+  "controls": [
+   "test_gateway_client.UnreadableAnswers.test_a_repeated_identity_is_one_candidate"
+  ],
+  "why": "gen2/gateway_client/observe.py: executes line 73"
+ },
+ "2B-policy-refusal-empty": {
+  "controls": [
+   "test_gateway_client.RecordedAnswers.test_dropped_records_are_a_lower_bound"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 188-189"
+ },
+ "2B-queued-unpolled": {
+  "controls": [
+   "test_gateway_client.RecordedAnswers.test_dropped_records_are_a_lower_bound"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 202"
+ },
+ "2B-redirects-followed": {
+  "controls": [
+   "test_gateway_client.OverRealHttp.test_the_default_transport_reads_a_real_answer"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 63"
+ },
+ "2B-repeat-counted-twice": {
+  "controls": [
+   "test_gateway_client.UnreadableAnswers.test_metadata_only_with_nothing_returned_is_an_empty_query"
+  ],
+  "why": "gen2/gateway_client/observe.py: executes line 108"
+ },
+ "2B-transport-failure-empty": {
+  "controls": [
+   "test_gateway_client.TransportOutcomes.test_a_queued_answer_is_polled_to_its_result"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 187; or executes line 186"
+ },
+ "2B-uncaptured-silent": {
+  "controls": [
+   "test_gateway_client.RecordedAnswers.test_dropped_records_are_a_lower_bound"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 199; or executes line 196"
+ },
+ "2B-unobserved-counted": {
+  "controls": [
+   "test_gateway_client.RecordedByTheRouter.test_an_unreadable_lane_is_admissible_and_counts_nothing"
+  ],
+  "why": "gen2/gateway_client/observe.py: executes line 59"
+ },
+ "2B-vocabulary-unchecked": {
+  "controls": [
+   "test_gateway_client.UnreadableAnswers.test_a_repeated_identity_is_one_candidate"
+  ],
+  "why": "gen2/gateway_client/observe.py: executes line 52"
+ },
  "2R-growth-trigger-exclusive": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"
