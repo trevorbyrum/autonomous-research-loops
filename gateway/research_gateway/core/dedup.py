@@ -46,7 +46,10 @@ def _provenance_of(rec: dict) -> list[dict]:
              "license": rec.get("license") if s == own else None,
              "retrieved_at": rec.get("retrieved_at") if s == own else None,
              "attribution": rec.get("attribution") if s == own else None,
-             "link": (rec.get("links") or [None])[0] if s == own else None}
+             "link": (rec.get("links") or [None])[0] if s == own else None,
+             # the source's own statements about THIS record (task 2b): its terms forbid
+             # redistribution, or it carries third-party restrictions — kept per member
+             **({k: rec[k] for k in ("redistributable", "third_party_restricted") if k in rec} if s == own else {})}
             for s in rec.get("sources") or [own]]
 
 

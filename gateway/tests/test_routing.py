@@ -185,7 +185,7 @@ class R8_Commercial(unittest.TestCase):
         t.add("GET", "https://api.openaire.eu/graph/v1/researchProducts", body={"results": [], "header": {"numFound": 0}})
         s2 = {**HF_DATASET}  # any dict works: we plant the cached record directly
         cache.put_record({"identity": "doi:10.1000/s2", "kind": "article", "source_id": "semanticscholar", "title": "S2 only",
-                          "license": None, "raw": s2}, redistributable=False)
+                          "license": None, "raw": s2}, storable=False)
         personal = R.execute(r, {"request_type": "resolve", "identity": "doi:10.1000/s2"}, c, cache)
         self.assertTrue(personal.get("cache_hit"))
         commercial = R.execute(r, {"request_type": "resolve", "identity": "doi:10.1000/s2", "commercial": True}, c, cache)
@@ -276,7 +276,7 @@ class ExecuteMergeAndCache(unittest.TestCase):
                                  {"source_id": "europepmc", "license": None}]}
         self.assertEqual(r.persistable_members(merged), [0],
                          "the CC-BY lead does not launder the unlicensed Europe PMC member into record_sources")
-        self.assertFalse(r.redistributable_all(merged), "one restricted member caps the whole record at memory TTL")
+        self.assertFalse(r.storable_all(merged), "one restricted member caps the whole record at memory TTL")
         self.assertFalse(r.record_allowed(merged, {"commercial": True, "accept_per_item": True}),
                          "a commercial answer may not include the denied member either")
         merged["provenance"][2]["license"] = "cc-by-4.0"
@@ -297,7 +297,7 @@ class ExecuteMergeAndCache(unittest.TestCase):
         clean = {"identity": "doi:10.1000/c", "kind": "article", "source_id": "crossref", "license": "cc0",
                  "provenance": [{"source_id": "crossref", "license": "cc0"}]}
         self.assertTrue(r.record_allowed(clean, {"commercial": True}))
-        self.assertTrue(r.redistributable_all(clean))
+        self.assertTrue(r.storable_all(clean))
         restricted_series = {"identity": "series:fred:X", "kind": "series", "source_id": "fred", "license": None,
                              "third_party_restricted": True}
         self.assertFalse(r.record_allowed(restricted_series, {"commercial": True}),

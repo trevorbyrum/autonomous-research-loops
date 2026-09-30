@@ -7,6 +7,7 @@ adding a source is a seed row and an adapter file, never an edit here (I-2).
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import inspect
 import json
@@ -201,14 +202,44 @@ class Router:
         their raw payload (§6). Indexes, not source ids: two members from the same source with
         different licences are judged separately (D-25)."""
         return [i for i, m in enumerate(self._members(record))
-                if licenses.redistributable(self.sources.get(m["source_id"], {}),
-                                            {"kind": record.get("kind"), "license": m["license"]})]
+                if licenses.storable(self.sources.get(m["source_id"], {}),
+                                     {"kind": record.get("kind"), "license": m["license"]})]
 
-    def redistributable_all(self, record: dict) -> bool:
+    def storable_all(self, record: dict) -> bool:
         """True only when every member may be kept: anything less caches in memory for ≤ 1 hour (§6)."""
-        return all(licenses.redistributable(self.sources.get(m["source_id"], {}),
-                                            {"kind": record.get("kind"), "license": m["license"]})
+        return all(licenses.storable(self.sources.get(m["source_id"], {}),
+                                     {"kind": record.get("kind"), "license": m["license"]})
                    for m in self._members(record))
+
+    def annotate(self, record: dict) -> dict:
+        """Licence, freshness and provenance on a returned record (task 2b; design review §9):
+        each provenance member gets its source's metadata licence and freshness lag beside its
+        own content licence and retrieval time, and the four permission facts
+        (licenses.permissions); the record gets its own source's and the most restrictive
+        combination of its members'. Recomputed from the registry on every answer (cache hits
+        included), so a stored copy never freezes a stale verdict."""
+        has_content = bool(record.get("text") or record.get("rows"))
+        per = []
+        for m in (record.get("provenance") or []) if isinstance(record.get("provenance"), list) else []:
+            if isinstance(m, dict):
+                self._stamp(m, m.get("source_id"))
+                m["permissions"] = licenses.permissions(self.sources.get(m.get("source_id"), {}), m, kind=record.get("kind"),
+                                                        has_content=has_content)
+                per.append(m["permissions"])
+        if not per:
+            per = [licenses.permissions(self.sources.get(m["source_id"], {}),
+                                        {**m, "redistributable": record.get("redistributable"),
+                                         "third_party_restricted": record.get("third_party_restricted")},
+                                        kind=record.get("kind"), has_content=has_content) for m in self._members(record)]
+        self._stamp(record, record.get("source_id") or ((record.get("sources") or [None])[0]))
+        record["permissions"] = licenses.combined(per)
+        return record
+
+    def _stamp(self, target: dict, sid) -> None:
+        row = self.sources.get(sid) or {}
+        for key, field_name in (("metadata_license", "license"), ("freshness_lag", "freshness_lag")):
+            if isinstance(row.get(field_name), str) and row[field_name]:
+                target[key] = row[field_name]
 
     # ------------------------------------------------------------ planning
     def plan(self, payload: dict, *, agency: str | None = None) -> Plan:
@@ -432,6 +463,7 @@ def _run_lane(router: Router, rt: str, lane: Lane, payload: dict, client: Client
             pseudo = {"kind": "file", "source_id": lane.source_id, "license": res.get("license")}
             if router.record_allowed(pseudo, payload):
                 out["content"], out["content_type"] = res["content"], res.get("content_type")
+                out["content_license"], out["content_source"] = res.get("license"), lane.source_id
             else:
                 out["facts"].append(f"{lane.source_id}: download withheld — licence "
                                     f"{res.get('license') or 'unknown'} is not usable commercially (R-8)")
@@ -704,7 +736,7 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
             hit = None
         if hit and router.record_allowed(hit, payload):
             _log_cache_hit(client, rt, payload["identity"], None)
-            return {**out, "records": [hit], "cache_hit": True, "lanes": [], "served_from": "record_cache"}
+            return {**out, "records": [router.annotate(copy.deepcopy(hit))], "cache_hit": True, "served_from": "record_cache"}
         if "doi_org" in router.adapters and router._usable("doi_org", "resolve"):
             try:
                 with _lane_slots():   # metered like any lane: the aggregate bound has no side door
@@ -717,7 +749,9 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
         hit = cache.get_search(cache.search_key(rt, _search_payload(payload)))
         if hit:
             _log_cache_hit(client, rt, None, payload.get("query"))
-            return {**hit, "cache_hit": True}
+            hit = copy.deepcopy(hit)   # the cached answer is shared: annotate a copy, never it
+            hit["records"] = [router.annotate(r) for r in hit.get("records") or []]
+            return {**hit, "cache_hit": True, "served_from": "search_cache"}
     plan = router.plan(payload, agency=agency)
     out["facts"].extend(plan.facts)
     if rt == "data":  # a cited table must be reproducible: echo what was asked of which source (8a)
@@ -728,7 +762,12 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
     records = _drop_unlicensed(records, router, payload, out["facts"])
     if rt == "find":
         records = dedup.cluster(records)
-    out["records"] = records
+    out["records"] = [router.annotate(r) for r in records]
+    if out.get("content") is not None:
+        # a delivered download's own four facts: its content licence decides redistribution
+        out["content_permissions"] = licenses.permissions(
+            router.sources.get(out.pop("content_source", None), {}), {"license": out.get("content_license")},
+            kind="file", has_content=True)
     # redaction covers the WHOLE result — records, facts, lane errors — and runs BEFORE anything
     # is cached, so no stored copy a later request could serve back carries a secret (D-24, D-25)
     out = redact_secrets(out, client.secret_values)
@@ -740,7 +779,7 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
                     continue
                 if any(getattr(router.adapters.get(m["source_id"]), "LOCAL", False) for m in router._members(r)):
                     continue  # index answers came FROM the store; writing them back would erase harvested payloads (D-23)
-                cache.put_record(r, redistributable=router.redistributable_all(r), persist_members=router.persistable_members(r))
+                cache.put_record(r, storable=router.storable_all(r), persist_members=router.persistable_members(r))
             if rt == "find" and all(lane.get("completeness") == "complete" or lane.get("coverage") in (COVERAGE_SKIPPED, COVERAGE_EXHAUSTED)
                                     for lane in out["lanes"]):
                 # only an answer every lane completed is served again from memory: a degraded

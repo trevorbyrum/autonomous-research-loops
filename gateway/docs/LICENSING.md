@@ -37,6 +37,31 @@ repackaging (for example Semantic Scholar's API licence) are cached in memory
 only for at most an hour, never written to the database, and never exported.
 Public-domain and open-licence sources may be persisted with provenance.
 
+## Four facts per record, never one flag (task 2b)
+
+Availability, access, storage and redistribution are separate questions, and every
+returned record — and each provenance member of a merged record — answers each one
+separately in its `permissions` (computed from the registry and the member's own content
+licence on every answer, cache hits included; `core/licenses.py`):
+
+- `availability` — `content` when the gateway delivered the item itself (full text, rows,
+  file bytes), `metadata` when it delivered a description of it;
+- `access` — `commercial_use` when the source's verdict and the member's own licence let
+  it be used commercially (with per-item acceptance), `personal_use` otherwise;
+- `storage` — `persist` when the gateway may keep it (the rules above), `transient` when
+  it is only delivered (and held in memory for at most an hour);
+- `redistribution` — whether the CONTENT may travel downstream (an export, a quote),
+  decided by the content licence alone: `permitted` (an exactly identified allow-listed
+  licence), `conditional` (identified, with share-alike / non-commercial /
+  no-derivatives / copyleft conditions), `prohibited` (the source's terms forbid it), or
+  `unknown` (absent or unidentifiable — never read as permitted).
+
+A merged record carries the most restrictive of its members' facts. Records also carry
+their source's `metadata_license` and `freshness_lag` beside their own content `license`
+and `retrieved_at`. In `gateway.record_sources`, `redistributable` is true only when
+`redistribution` is `permitted`; before this it was true for every persisted row, and
+meant only that the gateway could keep it.
+
 ## Attribution
 
 Several `allow` verdicts are conditional on attribution (FRED, BEA, ECB, BIS,

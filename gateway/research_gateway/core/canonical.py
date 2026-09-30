@@ -54,8 +54,16 @@ PROVENANCE_SUMMARY_FIELDS = ("source_id", "identity", "license", "retrieved_at",
 # (D-30). Shared by job-result storage (router) and cache persistence.
 
 
+PERMISSION_FACTS = {"availability": ("content", "metadata"), "access": ("commercial_use", "personal_use"),
+                    "storage": ("persist", "transient"), "redistribution": ("permitted", "conditional", "prohibited", "unknown")}
+
+
 def member_summary(member: dict) -> dict:
-    out = {k: member[k] for k in PROVENANCE_SUMMARY_FIELDS if isinstance(member.get(k), str) and member[k]}
+    out = {k: member[k] for k in PROVENANCE_SUMMARY_FIELDS + ("metadata_license", "freshness_lag")
+           if isinstance(member.get(k), str) and member[k]}
+    perms = member.get("permissions")
+    if isinstance(perms, dict) and set(perms) == set(PERMISSION_FACTS) and all(perms[k] in v for k, v in PERMISSION_FACTS.items()):
+        out["permissions"] = {k: perms[k] for k in PERMISSION_FACTS}   # four enum facts, never a nested payload (task 2b)
     return out or {"source_id": member.get("source_id") if isinstance(member.get("source_id"), str) else None}
 
 

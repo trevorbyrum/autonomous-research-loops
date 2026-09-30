@@ -12,6 +12,7 @@ import sys
 from typing import Iterable
 
 from ..core import db
+from ..core.licenses import content_redistribution
 
 BATCH = 500
 
@@ -87,11 +88,15 @@ def upsert(cur, record: dict, source_id: str, *, license: str | None = None) -> 
         "ON CONFLICT (identity) DO UPDATE SET canonical = EXCLUDED.canonical, last_seen = now()",
         (record["identity"], record["kind"], json.dumps(merged, default=str)),
     )
+    content_license = license or record.get("license")
+    redistribution = content_redistribution(content_license)   # the harvested content's own licence decides (task 2b)
     cur.execute(
-        "INSERT INTO gateway.record_sources (identity, source_id, raw, fetched_at, license, redistributable) "
-        "VALUES (%s, %s, %s, now(), %s, true) ON CONFLICT (identity, source_id) DO UPDATE SET "
-        "raw = EXCLUDED.raw, fetched_at = now(), license = EXCLUDED.license",
-        (record["identity"], source_id, json.dumps(record.get("raw"), default=str), license or record.get("license")),
+        "INSERT INTO gateway.record_sources (identity, source_id, raw, fetched_at, license, redistributable, redistribution) "
+        "VALUES (%s, %s, %s, now(), %s, %s, %s) ON CONFLICT (identity, source_id) DO UPDATE SET "
+        "raw = EXCLUDED.raw, fetched_at = now(), license = EXCLUDED.license, "
+        "redistributable = EXCLUDED.redistributable, redistribution = EXCLUDED.redistribution",
+        (record["identity"], source_id, json.dumps(record.get("raw"), default=str), content_license,
+         redistribution == "permitted", redistribution),
     )
     cur.execute(
         "INSERT INTO gateway.index_docs (identity, kind, domain, year, tsv) "

@@ -16,6 +16,7 @@ from typing import Callable
 
 from . import identity as ident
 from .canonical import member_summary
+from .licenses import content_redistribution
 
 
 class Cache:
@@ -85,21 +86,21 @@ class Cache:
                 return None
             return {**row[0], "provenance": members} if members else row[0]
 
-    def put_record(self, record: dict, *, redistributable: bool, persist_members: list[int] | None = None) -> None:
-        """Keep the record in memory — for `metadata_ttl` only when EVERY member is redistributable,
+    def put_record(self, record: dict, *, storable: bool, persist_members: list[int] | None = None) -> None:
+        """Keep the record in memory — for `metadata_ttl` only when EVERY member is storable,
         else `memory_ttl` (§6: a restricted member never outlives an hour) — and persist only the
         provenance members at the given INDEXES (each judged with its own licence; two entries
         from one source are separate, D-25), skipping members that carry no raw payload so a
         stored payload is never overwritten with nothing (D-23)."""
         key = ident.canonical(record["identity"])
-        ttl = self.metadata_ttl if redistributable else self.memory_ttl
+        ttl = self.metadata_ttl if storable else self.memory_ttl
         with self._lock:
             self._bound(self._records, self.max_records)
             self._records[key] = (self._clock() + ttl, record)
             if self.conn is not None:
                 try:
                     self._persist(key, record, persist_members if persist_members is not None
-                                  else ([0] if redistributable else []))
+                                  else ([0] if storable else []))
                 except Exception:
                     try:
                         self.conn.rollback()   # a failed persist never poisons the next one (D-24)
@@ -135,12 +136,18 @@ class Cache:
                 (key, record["kind"], json.dumps(canonical, default=str)),
             )
             for prov in members:
+                # a persisted member is by definition storable; whether its CONTENT may be
+                # redistributed is a separate fact, decided by its own content licence (task 2b):
+                # `redistributable` is true only for `permitted`, never for unknown or conditional
+                content_license = prov.get("license") if "license" in prov else record.get("license")   # each member's own (D-23)
+                redistribution = content_redistribution(content_license, prov.get("redistributable", record.get("redistributable")))
                 cur.execute(
-                    "INSERT INTO gateway.record_sources (identity, source_id, raw, fetched_at, license, redistributable) "
-                    "VALUES (%s, %s, %s, now(), %s, true) ON CONFLICT (identity, source_id) DO UPDATE SET "
-                    "raw = EXCLUDED.raw, fetched_at = now(), license = EXCLUDED.license, redistributable = true",
-                    (key, prov["source_id"], json.dumps(prov.get("raw"), default=str),
-                     prov.get("license") if "license" in prov else record.get("license")),  # each member's own licence (D-23)
+                    "INSERT INTO gateway.record_sources (identity, source_id, raw, fetched_at, license, redistributable, redistribution) "
+                    "VALUES (%s, %s, %s, now(), %s, %s, %s) ON CONFLICT (identity, source_id) DO UPDATE SET "
+                    "raw = EXCLUDED.raw, fetched_at = now(), license = EXCLUDED.license, "
+                    "redistributable = EXCLUDED.redistributable, redistribution = EXCLUDED.redistribution",
+                    (key, prov["source_id"], json.dumps(prov.get("raw"), default=str), content_license,
+                     redistribution == "permitted", redistribution),
                 )
         self.conn.commit()
         self.persisted += 1

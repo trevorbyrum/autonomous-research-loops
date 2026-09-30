@@ -149,6 +149,16 @@ CREATE TABLE IF NOT EXISTS gateway.record_sources (
   PRIMARY KEY (identity, source_id)
 );
 
+-- Task 2b: storage and redistribution are separate facts. A row here is by definition
+-- storable (only storable members are persisted); `redistribution` is whether its CONTENT
+-- may travel downstream, decided by its own content licence (core/licenses.py), and
+-- `redistributable` is true only when that is `permitted`. Rows written before this
+-- carried redistributable = true for every persisted member (it meant "storable"): with no
+-- assessment they are not known to be redistributable, so they are set false.
+ALTER TABLE gateway.record_sources ADD COLUMN IF NOT EXISTS redistribution text
+  CHECK (redistribution IN ('permitted', 'conditional', 'prohibited', 'unknown'));
+UPDATE gateway.record_sources SET redistributable = false WHERE redistribution IS NULL AND redistributable;
+
 -- Tier 0 local index over harvested registries (Phase 6).
 CREATE TABLE IF NOT EXISTS gateway.index_docs (
   identity  text PRIMARY KEY,

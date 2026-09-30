@@ -187,12 +187,36 @@ def open_breakers(conn) -> list[tuple[str, float]]:
     return rows
 
 
+SOURCE_COLUMNS = ("id", "name", "kind", "homepage", "docs_url", "capabilities", "identifiers", "base_for", "domains",
+                  "auth", "secret_ref", "key_instructions", "license", "use_commercial", "use_evidence", "freshness_lag",
+                  "substitution_group", "enabled", "notes")
+RATE_COLUMNS = ("per_second", "per_minute", "per_hour", "per_day", "cost_cap_per_day", "burst", "verified", "evidence")
+
+
+def _plain(value):
+    """numeric columns come back as Decimal; the registry's rows hold ints and floats"""
+    from decimal import Decimal
+    if isinstance(value, Decimal):
+        return int(value) if value == value.to_integral_value() else float(value)
+    return value
+
+
 def sources_from_db(conn) -> list[dict]:
-    cols = ("id", "name", "kind", "capabilities", "identifiers", "base_for", "domains", "auth", "secret_ref",
-            "use_commercial", "substitution_group", "enabled")
+    """Every registry field of every source, as the seed spells it (task 2b; design review §9:
+    the loader used to select a subset, so a DB-backed gateway answered without the sources'
+    licence, freshness, evidence and homepage). Empty strings are the seed's "none" and stay
+    empty; the rate policy comes back as the seed's nested `rate` table."""
+    cols = [f"s.{c}" for c in SOURCE_COLUMNS] + [f"p.{c}" for c in RATE_COLUMNS]
     with conn.cursor() as cur:
-        cur.execute(f"SELECT {', '.join(cols)} FROM gateway.sources ORDER BY id")
-        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        cur.execute(f"SELECT {', '.join(cols)} FROM gateway.sources s "
+                    "LEFT JOIN gateway.rate_policies p ON p.source_id = s.id ORDER BY s.id")
+        rows = []
+        for r in cur.fetchall():
+            row = {c: _plain(v) for c, v in zip(SOURCE_COLUMNS, r[:len(SOURCE_COLUMNS)])}
+            for c in ("secret_ref", "substitution_group"):
+                row[c] = row[c] or ""   # the loader stores the seed's "" as NULL
+            row["rate"] = {c: _plain(v) for c, v in zip(RATE_COLUMNS, r[len(SOURCE_COLUMNS):]) if v is not None}
+            rows.append(row)
     conn.commit()
     seed_order = {s["id"]: i for i, s in enumerate(read_seed())}
     rows.sort(key=lambda r: seed_order.get(r["id"], len(seed_order)))  # lane order = seed order (§4)

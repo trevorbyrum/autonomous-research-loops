@@ -158,9 +158,12 @@ def allow_listed(license: str | None) -> bool:
     return bool(cid and KNOWN.get(cid, False))
 
 
-def redistributable(source: dict, record: dict | None = None) -> bool:
-    """May the gateway persist/export this record? Full text is never kept (I-7);
-    `allow` sources yes; `per-item` sources only for allow-listed records; else no."""
+def storable(source: dict, record: dict | None = None) -> bool:
+    """May the GATEWAY keep this record (persist it, serve it from its cache beyond an hour)?
+    Full text is never kept (I-7); `allow` sources yes; `per-item` sources only for
+    allow-listed records; else no. This is the storage fact only — it says nothing about
+    whether the record's content may be redistributed downstream (task 2b: the two were
+    one flag, `redistributable`, and are now separate facts; see permissions())."""
     if record and record.get("kind") in ("full_text",):
         return False
     verdict = source.get("use_commercial")
@@ -169,6 +172,58 @@ def redistributable(source: dict, record: dict | None = None) -> bool:
     if verdict == "per-item":
         return allow_listed((record or {}).get("license"))
     return False
+
+
+REDISTRIBUTION = ("permitted", "conditional", "prohibited", "unknown")
+CONTENT_KINDS = ("full_text", "file")
+
+
+def content_redistribution(license: str | None, adapter_flag=None) -> str:
+    """May the record's CONTENT travel downstream (an export bundle, a quote)? Decided by
+    the content licence the source reported for the work — never by the source's metadata
+    licence or its commercial verdict (a CC0 metadata record can describe a copyrighted
+    paper, LICENSING.md). `permitted`: an exactly identified allow-listed licence
+    (attribution at most); `conditional`: identified, with conditions (share-alike,
+    non-commercial, no-derivatives, copyleft); `unknown`: absent or not identifiable —
+    never read as permitted; `prohibited`: the adapter says the source's terms forbid it."""
+    if adapter_flag is False:
+        return "prohibited"
+    cid = identify(license)
+    if cid is None:
+        return "unknown"
+    return "permitted" if KNOWN.get(cid) else "conditional"
+
+
+def permissions(source: dict, member: dict, *, kind: str | None, has_content: bool = False) -> dict:
+    """The four facts about one contributing source's part of a record (task 2b; design
+    review §9: availability, content licence and permission to store/transmit are separate
+    facts, never collapsed into one flag):
+      availability   `content` when the gateway delivered the item's content (full text,
+                     rows, file bytes), `metadata` when it delivered a description of it;
+      access         `commercial_use` when the source's verdict and this member's own
+                     licence let it be used commercially (with per-item acceptance),
+                     `personal_use` otherwise — the personal-research baseline;
+      storage        `persist` when the gateway may keep it, `transient` when it is only
+                     delivered to the caller (and held in memory for at most an hour);
+      redistribution content_redistribution() of the member's content licence."""
+    record = {"kind": kind, "license": member.get("license")}
+    commercial = commercially_usable(source, record, {"commercial": True, "accept_per_item": True}) \
+        and not member.get("third_party_restricted")
+    return {"availability": "content" if has_content or kind in CONTENT_KINDS else "metadata",
+            "access": "commercial_use" if commercial else "personal_use",
+            "storage": "persist" if storable(source, record) else "transient",
+            "redistribution": content_redistribution(member.get("license"), member.get("redistributable"))}
+
+
+def combined(per_member: list[dict]) -> dict:
+    """A merged record's facts: each the most restrictive of its members' (one member that
+    may not be kept, used commercially or redistributed caps the record)."""
+    if not per_member:
+        return {}
+    order = {"redistribution": ("prohibited", "unknown", "conditional", "permitted"),
+             "storage": ("transient", "persist"), "access": ("personal_use", "commercial_use"),
+             "availability": ("metadata", "content")}
+    return {fact: min((p[fact] for p in per_member), key=values.index) for fact, values in order.items()}
 
 
 def commercially_usable(source: dict, record: dict | None, payload: dict) -> bool:

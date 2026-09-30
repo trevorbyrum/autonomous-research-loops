@@ -44,14 +44,15 @@ class Licenses(unittest.TestCase):
         self.assertFalse(licenses.commercially_usable(per_item, {"license": "CC-BY-NC"}, {"commercial": True, "accept_per_item": True}))
         self.assertTrue(licenses.commercially_usable(allow, {}, {"commercial": True}))
 
-    def test_redistributable(self):
+    def test_storable(self):
+        # the storage fact (formerly `redistributable`, task 2b): may the gateway keep it
         allow, per_item, deny = {"use_commercial": "allow"}, {"use_commercial": "per-item"}, {"use_commercial": "deny"}
         rec = {"kind": "dataset", "license": "cc-by-4.0"}
-        self.assertTrue(licenses.redistributable(allow, rec))
-        self.assertTrue(licenses.redistributable(per_item, rec))
-        self.assertFalse(licenses.redistributable(per_item, {"kind": "dataset", "license": None}))
-        self.assertFalse(licenses.redistributable(deny, rec))
-        self.assertFalse(licenses.redistributable(allow, {"kind": "full_text", "license": "cc0"}), "full text is never kept (I-7)")
+        self.assertTrue(licenses.storable(allow, rec))
+        self.assertTrue(licenses.storable(per_item, rec))
+        self.assertFalse(licenses.storable(per_item, {"kind": "dataset", "license": None}))
+        self.assertFalse(licenses.storable(deny, rec))
+        self.assertFalse(licenses.storable(allow, {"kind": "full_text", "license": "cc0"}), "full text is never kept (I-7)")
 
 
 def rec(identity, source, title, year=2021, authors=("Ada Lovelace",), kind="article", license=None, **extra):
@@ -110,8 +111,8 @@ class MemoryCache(unittest.TestCase):
     def test_ttls_and_policy(self):
         clock = FakeClock()
         c = C.Cache(None, clock=clock, memory_ttl=3600, metadata_ttl=7 * 86400)
-        c.put_record(rec("doi:10.1000/keep", "crossref", "K"), redistributable=True)
-        c.put_record(rec("doi:10.1000/mem", "semanticscholar", "M"), redistributable=False)
+        c.put_record(rec("doi:10.1000/keep", "crossref", "K"), storable=True)
+        c.put_record(rec("doi:10.1000/mem", "semanticscholar", "M"), storable=False)
         self.assertIsNotNone(c.get_record("10.1000/KEEP"))
         self.assertIsNotNone(c.get_record("doi:10.1000/mem"))
         clock.t += 3601
@@ -130,7 +131,7 @@ class MemoryCache(unittest.TestCase):
     def test_memory_is_bounded(self):
         c = C.Cache(None, max_records=3, max_searches=2)
         for i in range(10):
-            c.put_record(rec(f"doi:10.1000/{i}", "crossref", str(i)), redistributable=True)
+            c.put_record(rec(f"doi:10.1000/{i}", "crossref", str(i)), storable=True)
             c.put_search(f"k{i}", {"i": i})
         self.assertLess(c.stats()["records_in_memory"], 4)
         self.assertLess(c.stats()["searches_in_memory"], 3)
@@ -152,20 +153,23 @@ class PersistentCache(unittest.TestCase):
         self.conn.commit()
         self.conn.close()
 
-    def test_only_redistributable_records_reach_the_database(self):
+    def test_only_storable_members_reach_the_database_and_storage_is_not_redistribution(self):
         c = C.Cache(self.conn)
         keep = rec(f"doi:10.1000/{self.tag}-keep", "crossref", "Kept")
-        keep["provenance"] = [{"source_id": "crossref", "identity": keep["identity"], "raw": {"a": 1}},
-                              {"source_id": "doaj", "identity": keep["identity"], "raw": {"b": 2}},
+        keep["provenance"] = [{"source_id": "crossref", "identity": keep["identity"], "raw": {"a": 1}, "license": None},
+                              {"source_id": "doaj", "identity": keep["identity"], "raw": {"b": 2}, "license": "cc0"},
                               {"source_id": "semanticscholar", "identity": keep["identity"], "raw": {"never": "persisted"}}]
-        c.put_record(keep, redistributable=True, persist_members=[0, 1])
-        c.put_record(rec(f"doi:10.1000/{self.tag}-mem", "semanticscholar", "Memory only"), redistributable=False)
+        c.put_record(keep, storable=True, persist_members=[0, 1])
+        c.put_record(rec(f"doi:10.1000/{self.tag}-mem", "semanticscholar", "Memory only"), storable=False)
         with self.conn.cursor() as cur:
             cur.execute("SELECT identity, kind FROM gateway.records WHERE identity LIKE %s ORDER BY identity", (f"doi:10.1000/{self.tag}%",))
             self.assertEqual(cur.fetchall(), [(f"doi:10.1000/{self.tag}-keep", "article")])
-            cur.execute("SELECT source_id, redistributable, raw FROM gateway.record_sources WHERE identity = %s ORDER BY source_id", (keep["identity"],))
-            self.assertEqual(cur.fetchall(), [("crossref", True, {"a": 1}), ("doaj", True, {"b": 2})],
-                             "the non-redistributable member's raw payload never reaches record_sources (§6)")
+            cur.execute("SELECT source_id, redistributable, redistribution, raw FROM gateway.record_sources "
+                        "WHERE identity = %s ORDER BY source_id", (keep["identity"],))
+            self.assertEqual(cur.fetchall(), [("crossref", False, "unknown", {"a": 1}), ("doaj", True, "permitted", {"b": 2})],
+                             "the non-storable member's raw payload never reaches record_sources (§6); of the stored ones, "
+                             "only the member whose content licence permits it is redistributable (task 2b) — a stored "
+                             "member without a content licence is unknown, never permitted")
         fresh = C.Cache(self.conn)
         served = fresh.get_record(keep["identity"])
         self.assertEqual(served["title"], "Kept", "served from the database after a restart")
@@ -183,7 +187,7 @@ class PersistentCache(unittest.TestCase):
             {"source_id": "doaj", "identity": keep["identity"], "raw": {"b": 2}, "license": "cc0",
              "retrieved_at": "2026-09-05T12:00:00+00:00", "link": "https://doaj/doi", "attribution": None},
         ]
-        c.put_record(keep, redistributable=True, persist_members=[0, 1])
+        c.put_record(keep, storable=True, persist_members=[0, 1])
         served = C.Cache(self.conn).get_record(keep["identity"])
         members = {m["source_id"]: m for m in served["provenance"]}
         self.assertEqual(members["crossref"]["retrieved_at"], "2026-09-01T00:00:00+00:00")
@@ -201,7 +205,7 @@ class PersistentCache(unittest.TestCase):
                    "sources": ["crossref", "semanticscholar"]}
         # the router authorizes index 0 (crossref, allow); index 0 in the synthesized list is
         # crossref with raw=None — nothing persists, instead of the S2 raw slipping through
-        c.put_record(s2_lead, redistributable=False, persist_members=[0])
+        c.put_record(s2_lead, storable=False, persist_members=[0])
         with self.conn.cursor() as cur:
             cur.execute("SELECT count(*) FROM gateway.record_sources WHERE identity = %s", (s2_lead["identity"].lower(),))
             self.assertEqual(cur.fetchone()[0], 0)
