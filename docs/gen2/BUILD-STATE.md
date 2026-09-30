@@ -79,3 +79,8 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 
 ## Log
 - 2026-09-25: Loop initialized. Charter, boundary contract, build state committed on `gen2`. Task 0a dispatched.
+
+## Phase 4 release items (operator rulings 2026-09-30, from the 2b review chain)
+- **Real-data migration of old gateway records** (`gateway/research_gateway/registry/migrate.py`): owned by Phase 4, run only at a release the operator approves; complete only at zero unconverted records.
+- **Stopping and fencing every old gen-1 writer** (gateway, loaders, maintenance jobs) before that migration, and never restarting one against the converted database: owned by Phase 4. The operator will decide the procedure when Phase 4 arrives ("Can we address this when we're there"). Astra showed an old writer running after conversion re-loosens restrictions, so this step can't be skipped.
+- **Gen-1's unrecoverable non-lead restrictions:** purge the affected regenerable cache rows at cutover and refetch with current writers (the root-cause option). They are not carried forward.
