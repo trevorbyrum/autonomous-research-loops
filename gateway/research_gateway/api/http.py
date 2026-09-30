@@ -40,13 +40,16 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):  # one line per request, to stderr, never the body
         sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
 
-    def _send(self, status: int, body, content_type: str = "application/json") -> None:
+    def _send(self, status: int, body, content_type: str = "application/json", observation: dict | None = None) -> None:
         envelope = not isinstance(body, (bytes, bytearray))
         data = json.dumps(body, default=str).encode() if envelope else body
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         if envelope:
             self.send_header("X-Research-Gateway", "result")  # so clients never parse a downloaded JSON file as a gateway answer
+        elif observation is not None:
+            # raw bytes carry no envelope: the caller's observation rides a header instead (task 2b)
+            self.send_header("X-Research-Observation", json.dumps(observation, separators=(",", ":"), default=str))
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -56,6 +59,20 @@ class Handler(BaseHTTPRequestHandler):
         if name is None:
             self._send(401, {"error": "missing or invalid bearer token"})
         return name
+
+    def _trace(self) -> dict | None:
+        """Tracing and correlation from the headers (they never enter the payload, D-33); None
+        after answering 400 for a malformed or half-given invocation/attempt pair (task 2b)."""
+        correlation, problem = app_module.parse_correlation(self.headers.get)
+        if problem:
+            self._send(400, {"error": problem})
+            return None
+        trace = {"iteration": (self.headers.get("X-Research-Iteration") or "")[:64] or None,
+                 "topic": (self.headers.get("X-Research-Topic") or "")[:64] or None, **correlation}
+        entry_header = self.headers.get("X-Research-Batch-Entry")
+        if entry_header and entry_header.isdigit():
+            trace["batch_entry"] = int(entry_header)
+        return trace
 
     def _body(self) -> dict | None:
         if any(v.strip() for v in self.headers.get_all("Transfer-Encoding") or []):
@@ -117,6 +134,9 @@ class Handler(BaseHTTPRequestHandler):
         client = self._client()
         if client is None:
             return
+        trace = self._trace()
+        if trace is None:
+            return
         body = self._body()
         if body is None:
             return
@@ -131,17 +151,18 @@ class Handler(BaseHTTPRequestHandler):
             if wants_async and gw.is_inline_only(payload):
                 return self._send(400, {"error": f"{rt} requests are inline-only (their results are "
                                                  "delivered, never stored); there is no job to poll (D-24)"})
-            # tracing travels in headers, never in the payload the cache and dedup hash (D-33)
-            trace = {"iteration": (self.headers.get("X-Research-Iteration") or "")[:64] or None,
-                     "topic": (self.headers.get("X-Research-Topic") or "")[:64] or None}
-            entry_header = self.headers.get("X-Research-Batch-Entry")
-            if entry_header and entry_header.isdigit():
-                trace["batch_entry"] = int(entry_header)
             if wants_async and gw.conn is not None:
+                capture: dict = {}
                 job_id, created = gw.submit(payload, client, priority=str(body.get("priority") or "interactive"),
                                             iteration=trace["iteration"], batch_entry=trace.get("batch_entry"),
-                                            topic=trace.get("topic"))
-                return self._send(202, {"job_id": job_id, "created": created, "status": "queued"})
+                                            topic=trace.get("topic"), invocation_id=trace.get("invocation_id"),
+                                            attempt=trace.get("attempt"), capture=capture)
+                return self._send(202, {"job_id": job_id, "created": created, "status": "queued",
+                                        "observation": {**{k: trace.get(k) for k in ("invocation_id", "attempt")},
+                                                        "request_identity": app_module.request_identity(payload),
+                                                        "served": "queued", "job_id": job_id,
+                                                        "coalesce_ref": capture.get("call_ref"),
+                                                        "capture_loss": capture.get("loss")}})
             timeout = min(float(body.get("timeout") or gw.settings.sync_timeout), MAX_TIMEOUT)
             out = gw.handle(payload, client, timeout=timeout, priority=str(body.get("priority") or "interactive"),
                             trace=trace)
@@ -150,7 +171,8 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:  # the front door never dies on a request; the error is the answer
             return self._send(500, {"error": f"{type(e).__name__}: {e}"[:500]})
         if out.get("content") is not None:
-            return self._send(200, out["content"], out.get("content_type") or "application/octet-stream")
+            return self._send(200, out["content"], out.get("content_type") or "application/octet-stream",
+                              observation=out.get("observation"))
         status = 202 if out.get("status") in ("queued", "running") else 200
         self._send(status, {k: v for k, v in out.items() if k != "content"})
 
@@ -160,11 +182,14 @@ class Handler(BaseHTTPRequestHandler):
         client = self._client()
         if client is None:
             return
+        trace = self._trace()   # the MCP door carries the same correlation headers as /v1/ (task 2b)
+        if trace is None:
+            return
         body = self._body()
         if body is None:
             return
         try:
-            reply = homelab_adapter.rpc(self.server.gateway, client, body)
+            reply = homelab_adapter.rpc(self.server.gateway, client, body, trace=trace)
         except Exception as e:  # a broken tool call is an in-band JSON-RPC error, never a dead server
             reply = {"jsonrpc": "2.0", "id": body.get("id"), "error": {"code": -32603, "message": f"{type(e).__name__}: {e}"[:500]}}
         if reply is None:

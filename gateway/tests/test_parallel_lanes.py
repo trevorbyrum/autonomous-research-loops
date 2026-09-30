@@ -624,7 +624,7 @@ class AbortPublicationOrdering(unittest.TestCase):
                           ("plain-q", 0): 200, ("limited-q", 0): 429}
         for target_id, upd in c.conn.update_params.items():
             ins = c.conn.insert_params[target_id]
-            key = (ins[4], ins[-3])           # the row's OWN attempt query and hop
+            key = (ins[4], ins[-6])           # the row's OWN attempt query and hop
             self.assertEqual(upd[0], expected_status[key],
                              f"row {target_id} ({key}) completed with a sibling's outcome")
         hops = [rec.hop for rec in c.log if rec.request_type == "fetch"]
@@ -636,9 +636,10 @@ class AbortPublicationOrdering(unittest.TestCase):
         self.assertEqual(sorted(c.conn.update_target_ids), [1, 2, 3, 4],
                          "every attempt row received ITS OWN completion")
         # DURABLE hop: the redirect legs' attempt INSERTs carried hop 0 and 1, and their
-        # completions carried the hop too (calllog INSERT params: hop is 3rd-from-last;
-        # UPDATE params: hop is 2nd-from-last — a schema change should break this pin)
-        insert_hops = sorted(p[-3] for p in c.conn.insert_params.values() if p[-3] is not None)
+        # completions carried the hop too (calllog INSERT params: hop is 6th-from-last, before
+        # task 2b's invocation_id, attempt and request_identity; UPDATE params: hop is
+        # 2nd-from-last — a schema change should break this pin)
+        insert_hops = sorted(p[-6] for p in c.conn.insert_params.values() if p[-6] is not None)
         self.assertEqual(insert_hops, [0, 0, 0, 1], "every leg's ATTEMPT row carries its hop")
         update_hops = sorted(p[-2] for p in c.conn.update_params.values() if p[-2] is not None)
         self.assertEqual(update_hops, [0, 0, 0, 1], "hop survives to the DURABLE completed row, not just Client.log")

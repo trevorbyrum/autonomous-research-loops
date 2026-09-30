@@ -23,6 +23,7 @@ from ..adapters.base import AdapterError, Client, PayloadError, SourceUnavailabl
 from . import calllog, dedup, licenses
 from . import canonical as canonical_mod
 from . import identity as ident
+from . import request_identity as request_ident
 from .cache import Cache
 from .secrets import SecretsBackendFailing
 
@@ -218,6 +219,15 @@ class Router:
             plan.facts.append(f"unknown request type {rt!r}")
             return plan
         method(payload, plan, agency)
+        if rt == "find" and payload.get("lanes"):
+            # a find restricted to named lanes (task 2b): a continuation or a retry asks only the
+            # lanes it continues, so a lane that failed or finished is never restarted at page 1.
+            # A named lane that is not a find lane of this request is a fact, never silently absent.
+            wanted = set(payload["lanes"])
+            planned = {ln.source_id for ln in plan.lanes} | set(plan.skipped)
+            plan.lanes = [ln for ln in plan.lanes if ln.source_id in wanted]
+            plan.skipped = [sid for sid in plan.skipped if sid in wanted]
+            plan.facts += [f"{sid}: not a find lane for this request (lanes filter)" for sid in sorted(wanted - planned)]
         return plan
 
     def _plan_find(self, payload: dict, plan: Plan, _agency) -> None:
@@ -347,7 +357,7 @@ def _log_cache_hit(client: Client, request_type: str, identity: str | None, quer
     rec = calllog.CallRecord(source_id="cache", request_type=request_type, status=200, latency_ms=0, job_id=client.job_id,
                              identity=identity, query=query, cache_hit=True, result_count=1, domain_resolved=client.domain_resolved,
                              client_id=client.client_id, iteration=client.iteration, batch_entry=client.batch_entry,
-                             topic=client.topic, params_fp=client.request_fingerprint)
+                             topic=client.topic, params_fp=client.request_fingerprint, **client.correlation())
     client.log.append(rec)
     if client.conn is not None:
         with client.db_lock:
@@ -680,7 +690,12 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
     client.domain_resolved = resolve_domain(payload.get("domain"))
     client.commercial = bool(payload.get("commercial"))
     client.request_fingerprint = _payload_fingerprint(payload)
-    out = {"request_type": rt, "records": [], "facts": [], "lanes": [], "domain_resolved": client.domain_resolved}
+    effective = request_ident.effective_request(payload)
+    client.request_identity = request_ident.identity_of(effective)
+    # the complete effective request and its identity (H-5): content identity, the same for every
+    # caller of this request — never a caller's invocation, which the front door adds per caller
+    out = {"request_type": rt, "records": [], "facts": [], "lanes": [], "domain_resolved": client.domain_resolved,
+           "effective_request": effective, "request_identity": client.request_identity}
     agency = None
     if rt == "resolve" and ident.parse(payload.get("identity") or "")[0] == "doi":
         try:
@@ -689,7 +704,7 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
             hit = None
         if hit and router.record_allowed(hit, payload):
             _log_cache_hit(client, rt, payload["identity"], None)
-            return {**out, "records": [hit], "cache_hit": True}
+            return {**out, "records": [hit], "cache_hit": True, "lanes": [], "served_from": "record_cache"}
         if "doi_org" in router.adapters and router._usable("doi_org", "resolve"):
             try:
                 with _lane_slots():   # metered like any lane: the aggregate bound has no side door

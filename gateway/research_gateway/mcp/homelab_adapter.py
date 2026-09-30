@@ -18,11 +18,16 @@ from ..clients.mcp_stdio import REQUEST_TOOLS, handle, strip_bytes
 PEER_NAME = "research"
 
 
-def make_call(gateway: Gateway, client_id: str):
+def make_call(gateway: Gateway, client_id: str, trace: dict | None = None):
     """Tool dispatch bound to an in-process gateway for one authenticated client. Arguments go
     through the SAME payload validation as the HTTP door — the MCP door is not a side entrance
-    around type checks (D-23)."""
-    def call(name: str, args: dict) -> dict:
+    around type checks (D-23) — and every request carries the POST's tracing and invocation/
+    attempt, batch entries their own index (task 2b: the MCP door is not a side entrance
+    around correlation either)."""
+    trace = dict(trace or {})
+
+    def call(name: str, args: dict, entry: int | None = None) -> dict:
+        tr = {**trace, **({"batch_entry": entry} if entry is not None else {})}
         if name == "research_status":
             return gateway.status()
         if name == "research_sources":
@@ -37,13 +42,13 @@ def make_call(gateway: Gateway, client_id: str):
             if len(calls) > 20:
                 return {"capability_fact": "gateway_error_400", "error": "at most 20 calls per batch"}
             results = []
-            for entry in calls:
+            for index, entry in enumerate(calls):
                 tool = (entry or {}).get("tool")
                 if tool not in ("research_resolve", "research_enrich"):
                     results.append({"tool": tool, "error": "batch entries may only be research_resolve or research_enrich"})
                     continue
                 try:
-                    results.append({"tool": tool, "result": call(tool, (entry or {}).get("arguments") or {})})
+                    results.append({"tool": tool, "result": call(tool, (entry or {}).get("arguments") or {}, index)})
                 except Exception as e:  # one bad entry never sinks its neighbours
                     results.append({"tool": tool, "error": f"{type(e).__name__}: {e}"})
             return {"results": results}
@@ -54,7 +59,7 @@ def make_call(gateway: Gateway, client_id: str):
             problem = validate_payload(merged)
             if problem:
                 return {"capability_fact": "gateway_error_400", "error": problem}
-            return strip_bytes(gateway.handle({**merged, "request_type": "fetch"}, client_id))
+            return strip_bytes(gateway.handle({**merged, "request_type": "fetch"}, client_id, trace=tr))
         if name not in REQUEST_TOOLS:
             raise LookupError(name)
         if args is not None and not isinstance(args, dict):
@@ -66,16 +71,16 @@ def make_call(gateway: Gateway, client_id: str):
         if problem:
             return {"capability_fact": "gateway_error_400", "error": problem}
         payload = {**(args or {}), "request_type": REQUEST_TOOLS[name]}
-        return strip_bytes(gateway.handle(payload, client_id))
+        return strip_bytes(gateway.handle(payload, client_id, trace=tr))
     return call
 
 
-def rpc(gateway: Gateway, client_id: str, msg: dict) -> dict | None:
+def rpc(gateway: Gateway, client_id: str, msg: dict, trace: dict | None = None) -> dict | None:
     """One JSON-RPC message → reply dict (None for notifications, which have no id)."""
     if not isinstance(msg, dict) or "id" not in msg:
         return None
     try:
-        return {"jsonrpc": "2.0", "id": msg["id"], "result": handle(msg, make_call(gateway, client_id))}
+        return {"jsonrpc": "2.0", "id": msg["id"], "result": handle(msg, make_call(gateway, client_id, trace))}
     except LookupError:
         return {"jsonrpc": "2.0", "id": msg["id"], "error": {"code": -32601, "message": f"method not found: {msg.get('method')}"}}
 

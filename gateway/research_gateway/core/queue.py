@@ -44,17 +44,20 @@ def payload_hash(request_type: str, payload: dict, commercial: bool = False, cli
 
 def enqueue(conn, request_type: str, payload: dict, *, client_id: str, priority: int = PRIORITY_ENRICH,
             topic_id: str | None = None, commercial: bool = False, iteration: str | None = None,
-            batch_entry: int | None = None, topic: str | None = None) -> tuple[int, bool]:
-    """Returns (job id, created). created=False means an identical job is already in flight."""
+            batch_entry: int | None = None, topic: str | None = None, invocation_id: str | None = None,
+            attempt: int | None = None, request_identity: str | None = None) -> tuple[int, bool]:
+    """Returns (job id, created). created=False means an identical job is already in flight.
+    The job keeps its CREATOR's invocation, attempt and request identity (immutable, task 2b);
+    a coalesced caller's own observation is its own call row, never a rewrite of the job's."""
     if request_type not in REQUEST_TYPES:
         raise ValueError(f"unknown request type {request_type!r}")
     h = payload_hash(request_type, payload, commercial, client_id)
     in_flight ="SELECT id FROM gateway.jobs WHERE request_type = %s AND payload_hash = %s AND status IN ('queued','running')"
     # The in-flight twin can finish between our unique-violation and the re-read; then we simply insert again,
     # backing off a little each time, and give up with a retryable error only after a bounded run of flaps.
-    for attempt in range(ENQUEUE_ATTEMPTS):
-        if attempt:
-            time.sleep(0.01 * attempt)
+    for try_no in range(ENQUEUE_ATTEMPTS):
+        if try_no:
+            time.sleep(0.01 * try_no)
         with conn.cursor() as cur:
             cur.execute(in_flight, (request_type, h))
             row = cur.fetchone()
@@ -63,11 +66,13 @@ def enqueue(conn, request_type: str, payload: dict, *, client_id: str, priority:
                 return row[0], False
             try:
                 cur.execute(
-                    "INSERT INTO gateway.jobs (request_type, payload, payload_hash, priority, client_id, topic_id, commercial, iteration, batch_entry, topic) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+                    "INSERT INTO gateway.jobs (request_type, payload, payload_hash, priority, client_id, topic_id, commercial, "
+                    "iteration, batch_entry, topic, invocation_id, attempt, request_identity) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
                     # iteration is TRACING, deliberately outside payload_hash: identical requests
                     # from different iterations still coalesce; attribution stays the creator's (D-33)
-                    (request_type, json.dumps(payload), h, priority, client_id, topic_id, commercial, iteration, batch_entry, topic),
+                    (request_type, json.dumps(payload), h, priority, client_id, topic_id, commercial, iteration, batch_entry, topic,
+                     invocation_id, attempt, request_identity),
                 )
                 job_id = cur.fetchone()[0]
             except psycopg.errors.UniqueViolation:
@@ -89,17 +94,20 @@ def claim(conn) -> dict | None:
             UPDATE gateway.jobs SET status = 'running', started_at = now(), claim_token = %s
              WHERE id = (SELECT id FROM gateway.jobs WHERE status = 'queued'
                           ORDER BY priority, created_at FOR UPDATE SKIP LOCKED LIMIT 1)
-            RETURNING id, request_type, payload, priority, client_id, topic_id, commercial, iteration, batch_entry, topic
+            RETURNING id, request_type, payload, priority, client_id, topic_id, commercial, iteration, batch_entry, topic,
+                      invocation_id, attempt, request_identity
             """, (token,)
         )
         row = cur.fetchone()
     conn.commit()
     if not row:
         return None
-    job_id, request_type, payload, priority, client_id, topic_id, commercial, iteration, batch_entry, topic = row
+    (job_id, request_type, payload, priority, client_id, topic_id, commercial, iteration, batch_entry, topic,
+     invocation_id, attempt, request_identity) = row
     return {"id": job_id, "request_type": request_type, "payload": payload, "priority": priority,
             "client_id": client_id, "topic_id": topic_id, "commercial": commercial, "claim_token": token,
-            "iteration": iteration, "batch_entry": batch_entry, "topic": topic}
+            "iteration": iteration, "batch_entry": batch_entry, "topic": topic,
+            "invocation_id": invocation_id, "attempt": attempt, "request_identity": request_identity}
 
 
 def finish(conn, job_id: int, result: dict, claim_token: str | None = None) -> bool:
@@ -128,7 +136,8 @@ def fail(conn, job_id: int, error_class: str, detail: dict | None = None, claim_
 def get(conn, job_id: int) -> dict | None:
     with conn.cursor() as cur:
         cur.execute("SELECT id, request_type, payload, priority, status, client_id, topic_id, commercial, "
-                    "created_at, started_at, finished_at, result, error_class FROM gateway.jobs WHERE id = %s", (job_id,))
+                    "created_at, started_at, finished_at, result, error_class, invocation_id, attempt, request_identity "
+                    "FROM gateway.jobs WHERE id = %s", (job_id,))
         row = cur.fetchone()
         if not row:
             return None

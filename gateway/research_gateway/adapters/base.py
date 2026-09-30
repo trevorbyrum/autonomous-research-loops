@@ -206,6 +206,9 @@ class Client:
     batch_entry: int | None = None  # never inside them (cache keys and job dedup hash the payload)
     topic: str | None = None            # caller's topic id — tracing beside requests, like iteration
     request_fingerprint: str | None = None  # payload params/cursors fingerprint set by the executor (repeat classification)
+    invocation_id: str | None = None      # task 2b: the caller's invocation and attempt (the job CREATOR's on a
+    attempt: int | None = None            # worker), and the complete effective request's identity, on every row
+    request_identity: str | None = None
     db_lock: threading.Lock = field(default_factory=threading.Lock)
     abort: threading.Event = field(default_factory=threading.Event)
     # set the moment ANY audit write on this client fails, under db_lock itself — the same
@@ -215,6 +218,10 @@ class Client:
     # object is thread-safe; the shared TRANSACTION is not — so every operation-through-
     # commit on client.conn (call-log writes here, direct adapter use like the local
     # index lane) holds this lock. Transports overlap; database work serializes.
+
+    def correlation(self) -> dict:
+        """The invocation, attempt and request identity every call row of this client carries."""
+        return {"invocation_id": self.invocation_id, "attempt": self.attempt, "request_identity": self.request_identity}
 
     def secret(self, name: str, field: str | None = None) -> str | None:
         value = self.secrets(name, field)
@@ -307,7 +314,8 @@ class Client:
                                  job_id=self.job_id, identity=identity, query=(query or "")[:500] or None,
                                  result_count=result_count, failure_class="ok", domain_resolved=self.domain_resolved,
                                  client_id=self.client_id, iteration=self.iteration, batch_entry=self.batch_entry,
-                                 topic=self.topic, params_fp=self.request_fingerprint, backdate_ms=latency_ms)
+                                 topic=self.topic, params_fp=self.request_fingerprint, backdate_ms=latency_ms,
+                                 **self.correlation())
         self.log.append(rec)
         if self.conn is not None:
             with self.db_lock:
@@ -326,7 +334,7 @@ class Client:
                                  job_id=self.job_id, identity=identity, query=(query or "")[:500] or None,
                                  credits=credits or None, domain_resolved=self.domain_resolved, client_id=self.client_id,
                                  iteration=self.iteration, batch_entry=self.batch_entry,
-                                 topic=self.topic, params_fp=self.request_fingerprint, hop=hop)
+                                 topic=self.topic, params_fp=self.request_fingerprint, hop=hop, **self.correlation())
         with self.db_lock:   # committed BEFORE dispatch, and never interleaved with a sibling lane's transaction (9·2b)
             if self.abort.is_set():
                 raise calllog.AuditError("not dispatched: this request's call log already failed (I-6)")
@@ -358,7 +366,7 @@ class Client:
             ratelimit=calllog.ratelimit_headers(resp.headers), credits=credits or None,
             result_count=count, domain_resolved=self.domain_resolved, client_id=self.client_id,
             iteration=self.iteration, batch_entry=self.batch_entry, wait_ms=wait_ms,
-            topic=self.topic, params_fp=self.request_fingerprint, hop=hop,
+            topic=self.topic, params_fp=self.request_fingerprint, hop=hop, **self.correlation(),
             failure_class="refused" if refused else calllog.classify(resp.status, network_error=resp.status is None,
                                                                      body=resp.text[:2000] if resp.status in (401, 403) else ""),
         )

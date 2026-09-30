@@ -19,9 +19,11 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 from pathlib import Path
 
+from ..core.request_identity import effective_request, identity_of
 from .http_client import GatewayClient, from_env
 
 STR, INT, BOOL, OBJ = {"type": "string"}, {"type": "integer"}, {"type": "boolean"}, {"type": "object"}
@@ -171,24 +173,68 @@ def apply_policy(args: dict, policy: dict) -> dict:
     return out
 
 
-def _subject_of(mapping: dict) -> str:
-    """One subject rule for arguments AND stored job payloads: two different data series
-    from one source are two different requests (finding 4), and two different catalogue
-    browses (within/query/cursor) are too — an unrelated catalogue success must never
-    clear a different browse's blocker (D-32a finding 8)."""
+_SUBJECT_KEYS = ("query", "identity", "target", "source")
+
+
+def _request_type_of(mapping: dict) -> str:
     if mapping.get("source"):
-        distinguishing = {k: mapping[k] for k in ("params", "query", "within", "cursor")
-                          if mapping.get(k) not in (None, "", {})}
-        return json.dumps({"source": mapping["source"], **distinguishing},
-                          sort_keys=True, separators=(",", ":"), default=str)
-    return mapping.get("query") or mapping.get("identity") or mapping.get("target") or ""
+        return "catalog" if mapping.get("params") is None else "data"
+    if mapping.get("what"):
+        return "enrich"
+    return "resolve" if mapping.get("identity") else "fetch" if mapping.get("target") else "find"
 
 
-def record_activity(path: str | None, tool: str, args: dict, result: dict | None, error: str | None = None) -> None:
-    """Append degraded coverage states (and outright failures) for the chassis. Best-effort by
-    design: a broken activity file must never break research itself."""
+def _effective(mapping: dict, request_type: str | None) -> dict:
+    return effective_request({**{k: v for k, v in mapping.items() if k != "request_type"},
+                              "request_type": request_type or _request_type_of(mapping)})
+
+
+def _subject_of(mapping: dict, request_type: str | None = None) -> str:
+    """One subject rule for arguments AND stored job payloads, built from the COMPLETE
+    effective request the gateway executes (core/request_identity.py; task 2b): two requests
+    that differ in anything the gateway acts on — kind, cursor, filters, limit, posture, a
+    catalogue browse (D-32a finding 8), a data series (finding 4) — never share a key (design
+    review §9: two searches differing in kind and cursor used to collide). A request that sets
+    nothing beyond its query/identity/target keeps that bare text as its key, readable as before."""
+    rt = request_type or _request_type_of(mapping)
+    base_key = next((k for k in _SUBJECT_KEYS if mapping.get(k)), None)
+    base = str(mapping.get(base_key) or "") if base_key else ""
+    plain = effective_request({"request_type": rt, **({base_key: mapping[base_key]} if base_key else {})})
+    extra = {k: v for k, v in _effective(mapping, rt).items() if plain.get(k) != v}
+    if not extra and base_key != "source":
+        return base
+    return json.dumps({"subject": base, **extra}, sort_keys=True, separators=(",", ":"), default=str)
+
+
+# Activity lines that could not be written (task 2b: explicit telemetry loss). The next line
+# that CAN be written is preceded by an `unknown`-coverage line counting them, so a gap in the
+# file is announced in the file, not only in the answer the agent saw.
+_LOST = {"lines": 0, "why": None}
+_LOST_LOCK = threading.Lock()
+_ATTEMPTS: dict[str, int] = {}
+_ATTEMPTS_LOCK = threading.Lock()
+
+
+def next_attempt(identity: str) -> int:
+    """This process's attempt number for a request identity: 1, then 2 for its first retry..."""
+    with _ATTEMPTS_LOCK:
+        _ATTEMPTS[identity] = _ATTEMPTS.get(identity, 0) + 1
+        return _ATTEMPTS[identity]
+
+
+def record_activity(path: str | None, tool: str, args: dict, result: dict | None, error: str | None = None) -> dict | None:
+    """Append coverage observations (and outright failures) for the chassis. A broken activity
+    file never breaks research itself — but its failure is never silent either (task 2b): the
+    return is the capture acknowledgement, {"captured": True} or {"captured": False, "loss":
+    why} (None when no file is configured), and the lost lines are announced in the file by
+    the next line that can be written.
+
+    The `gateway` source is not a lane: its lines describe the gateway transport for this
+    request (STATION-CONTRACT.md §2). `provider_unavailable` there means the gateway itself
+    did not answer; `searched_ok` there means only that it answered — never that any lane
+    searched or found anything — and it is not written for an answer that is still pending."""
     if not path:
-        return
+        return None
     lines = []
     at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     payload = (result or {}).get("payload") if isinstance((result or {}).get("payload"), dict) else {}
@@ -199,11 +245,13 @@ def record_activity(path: str | None, tool: str, args: dict, result: dict | None
         request_type = "research_job"
         subject = f"job:{args.get('job_id')}"
         lane_rt = str((result or {}).get("request_type") or payload.get("request_type") or request_type)
-        lane_subject = _subject_of(payload) or subject
+        lane_subject = _subject_of(payload, lane_rt if lane_rt in REQUEST_TOOLS.values() else None) or subject
+        rid = identity_of(_effective(payload, lane_rt)) if payload and lane_rt in REQUEST_TOOLS.values() else None
     else:
         request_type = REQUEST_TOOLS.get(tool, tool)
-        subject = _subject_of(args)
+        subject = _subject_of(args, request_type)
         lane_rt, lane_subject = request_type, subject
+        rid = identity_of(_effective(args, request_type)) if request_type in REQUEST_TOOLS.values() else None
     observed: list[tuple[str, str, str | None, str, str]] = []
     gateway_trouble = False
     if error is not None:
@@ -225,18 +273,30 @@ def record_activity(path: str | None, tool: str, args: dict, result: dict | None
         observed.append(("gateway", "provider_unavailable", str(result.get("error_class") or "job failed")[:200],
                          request_type, subject))
         gateway_trouble = True
-    if not gateway_trouble and result is not None:
+    pending = isinstance(result, dict) and result.get("status") in ("queued", "running")
+    if not gateway_trouble and result is not None and not pending:
         # the gateway itself answered: that clears a gateway blocker for this request —
-        # otherwise a transport blip's blocker could never resolve (finding 6)
+        # otherwise a transport blip's blocker could never resolve (finding 6). A pending
+        # answer has observed nothing yet: it clears nothing until its job is polled (2b).
         observed.append(("gateway", "searched_ok", None, request_type, subject))
     for source, coverage, detail, rt, subj in observed:
         line = {"at": at, "source": source, "request_type": rt,
                 "coverage": coverage, "query_or_identity": subj}
+        if rid:
+            line["request_identity"] = rid   # the complete effective request's identity (H-5)
+        if source == "gateway":
+            line["scope"] = "gateway"   # the transport for this request — not a lane (STATION-CONTRACT §2)
         if detail:
             line["detail"] = detail
         lines.append(line)
     if not lines:
-        return
+        return {"captured": True}
+    with _LOST_LOCK:
+        lost = dict(_LOST)
+    if lost["lines"]:
+        lines.insert(0, {"at": at, "source": "gateway", "scope": "gateway", "request_type": "telemetry",
+                         "coverage": "unknown", "query_or_identity": "activity-file",
+                         "detail": f"telemetry_missing: {lost['lines']} earlier observation line(s) could not be written ({lost['why']})"})
     try:
         import fcntl
         with open(path, "a", encoding="utf-8") as fh:
@@ -246,8 +306,24 @@ def record_activity(path: str | None, tool: str, args: dict, result: dict | None
                 fh.flush()
             finally:
                 fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
-    except OSError:
-        pass
+    except OSError as e:
+        why = f"{type(e).__name__}: {e.strerror or e}"[:200]
+        with _LOST_LOCK:
+            _LOST["lines"] += len(lines) - (1 if lost["lines"] else 0)
+            _LOST["why"] = why
+        return {"captured": False, "loss": f"activity file not written ({why}); "
+                                           "the loss is announced in the file once it can be written"}
+    if lost["lines"]:
+        with _LOST_LOCK:
+            _LOST["lines"] -= lost["lines"]
+    return {"captured": True}
+
+
+def _acknowledged(out, ack: dict | None):
+    """The tool result, with the activity capture failure attached when there was one."""
+    if isinstance(out, dict) and ack is not None and not ack.get("captured"):
+        return {**out, "activity_capture": ack}
+    return out
 
 
 def strip_bytes(out: dict) -> dict:
@@ -305,8 +381,7 @@ def call_tool(client: GatewayClient, name: str, args: dict, *, policy: dict | No
             # observation, never a policy question: record it and hand it back —
             # raising a policy error here would hide the outage from the completion
             # guard (closing-round finding 3)
-            record_activity(activity, name, args, job)
-            return job
+            return _acknowledged(job, record_activity(activity, name, args, job))
         if policy and isinstance(job, dict):
             payload = job.get("payload") or {}
             if policy.get("topic_id") and payload.get("topic_id") != policy["topic_id"]:
@@ -318,8 +393,7 @@ def call_tool(client: GatewayClient, name: str, args: dict, *, policy: dict | No
                 # a since-tightened commercial posture never reads personal-mode results
                 if field in policy and bool(payload.get(field)) != policy[field]:
                     raise PolicyError(f"policy-bound: that job was created under a different {field} posture")
-        record_activity(activity, name, args, job if isinstance(job, dict) else None)
-        return job
+        return _acknowledged(job, record_activity(activity, name, args, job if isinstance(job, dict) else None))
     if name == "research_batch":
         calls = args.get("calls")
         if not isinstance(calls, list) or not calls:
@@ -340,7 +414,8 @@ def call_tool(client: GatewayClient, name: str, args: dict, *, policy: dict | No
                 return {"tool": tool, "error": f"batch entries may only be {' or '.join(BATCH_TOOLS)}"}
             if isinstance(client, GatewayClient):
                 entry_client = GatewayClient(client.url, client.token, client.timeout,
-                                             iteration=client.iteration, topic=getattr(client, "topic", None))
+                                             iteration=client.iteration, topic=getattr(client, "topic", None),
+                                             invocation_id=client.invocation_id)
                 entry_client.batch_entry = index
             else:
                 entry_client = client   # test stubs: shared, tracing-indifferent
@@ -357,13 +432,14 @@ def call_tool(client: GatewayClient, name: str, args: dict, *, policy: dict | No
         params = dict(args.get("params") or {})
         params["download"] = True
         bound = apply_policy({**args, "params": params}, policy or {})
+        _number_attempt(client, bound, "fetch")
         try:
             out = client.request("fetch", bound)
         except Exception as e:
             record_activity(activity, "research_files", bound, None, error=f"{type(e).__name__}: {e}")
             raise
-        record_activity(activity, "research_files", bound, out)   # same request key as the listing step
-        return deliver_content(out, str(bound.get("target") or ""), bound, download_dir)
+        ack = record_activity(activity, "research_files", bound, out)   # same request key as the listing step
+        return _acknowledged(deliver_content(out, str(bound.get("target") or ""), bound, download_dir), ack)
     if name == "research_sources":
         return client.sources(args.get("source") or None)
     if name not in REQUEST_TOOLS:
@@ -372,15 +448,24 @@ def call_tool(client: GatewayClient, name: str, args: dict, *, policy: dict | No
         raise ValueError("research_fetch lists files; downloading is research_download's job — "
                          "call it with the same target and the file's identifying params")
     bound = apply_policy(args, policy or {})
+    _number_attempt(client, bound, REQUEST_TOOLS[name])
     try:
         out = client.request(REQUEST_TOOLS[name], bound)
     except Exception as e:
         record_activity(activity, name, bound, None, error=f"{type(e).__name__}: {e}")
         raise
-    record_activity(activity, name, bound, out)   # lanes, capability-fact dicts and failed jobs all land here
+    ack = record_activity(activity, name, bound, out)   # lanes, capability-fact dicts and failed jobs all land here
     if name == "research_files":
-        return deliver_content(out, str(bound.get("target") or ""), bound, download_dir)
-    return strip_bytes(out)
+        return _acknowledged(deliver_content(out, str(bound.get("target") or ""), bound, download_dir), ack)
+    return _acknowledged(strip_bytes(out), ack)
+
+
+def _number_attempt(client, args: dict, request_type: str) -> None:
+    """Under an invocation, each request carries its attempt: 1 the first time this process
+    sends that exact effective request, one more for each repeat (task 2b; the engine's
+    observations are keyed by invocation, request identity and attempt)."""
+    if isinstance(client, GatewayClient) and client.invocation_id:
+        client.attempt = next_attempt(identity_of(_effective(args, request_type)))
 
 
 def handle(msg: dict, call, specs: list | None = None) -> dict:

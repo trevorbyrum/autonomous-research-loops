@@ -69,11 +69,22 @@ is never conflated with "not searched" or "unavailable":
   degraded or partial lane is never served again from the search cache.
 - Client → chassis: when `RESEARCH_LOOP_RESEARCH_ACTIVITY` names a writable file, the
   stdio dispatcher appends JSON lines
-  `{"at": iso8601, "source": id, "request_type": t, "coverage": state, "query_or_identity": s}`
-  — one per coverage-state TRANSITION, in order, keyed by the exact request
-  (source + request type + query/identity). Recovery (fail → ok) is a transition and is
+  `{"at": iso8601, "source": id, "request_type": t, "coverage": state, "query_or_identity": s,
+  "request_identity": sha256}` — one per observation, in order, keyed by the exact request.
+  The key is the COMPLETE effective request (task 2b; H-5): a request that sets nothing
+  beyond its query/identity/target keeps that bare text; any other field the gateway acts
+  on (kind, cursor, filters, limit, posture, a catalogue browse) makes it a JSON key, so two
+  different requests never share one. Recovery (fail → ok) is a transition and is
   never deduplicated away; capability-fact answers, transport failures and failed
   polled jobs all land here, not only lane lists.
+- The `gateway` source (lines marked `"scope": "gateway"`) is not a lane: it records the
+  gateway transport for the request. `provider_unavailable` there means the gateway itself
+  did not answer; `searched_ok` there means ONLY that it answered this request — never that
+  any lane searched or found anything (lane lines carry that) — and it is not written for an
+  answer still pending (`queued`/`running`). A line with `coverage: unknown` and
+  `request_type: telemetry` announces activity lines that could not be written (their
+  count and why): lost telemetry is explicit, never silent, and the tool result that lost
+  them carries `activity_capture: {"captured": false, "loss": ...}`.
 - Chassis → queue: the result record carries `research_failures` (requests whose FINAL
   state is degraded, each with its key), `research_ok` (keys whose final state
   cleared), and `research_coverage` (each source's last state — accumulated on the item
@@ -108,3 +119,26 @@ The surface teaches; an agent never has to guess a source's shape:
   arguments pass straight to `research_download`.
 - Under a bound topic, the operator-owned policy fields are enforced but not
   advertised in tool schemas.
+
+## 4. Correlation and observation (task 2b; INVARIANTS H-1, H-5)
+
+- The caller's invocation and attempt travel in headers on BOTH front doors (`/v1/*` and
+  `POST /mcp`): `X-Research-Invocation` (1–128 of `A-Za-z0-9._:-`) and
+  `X-Research-Attempt` (a positive integer: the caller's attempt at this exact request —
+  1, then one more for each retry). They travel together; a malformed or half-given pair
+  is refused with 400, never dropped. They never enter the payload, cache keys or the job
+  dedup hash. The stdio client sends them when `RESEARCH_INVOCATION_ID` is set, numbering
+  each repeat of the same effective request as the next attempt.
+- Every call row (`gateway.calls`: lane dispatches, redirect hops, cache hits, local-index
+  lookups, request and coalesce rows) carries `invocation_id`, `attempt` and
+  `request_identity`; a queued job keeps its CREATOR's. The schema's trigger refuses any
+  later change to them (immutable once written).
+- Every answer names its `effective_request` and `request_identity`, and carries the
+  caller's own `observation`: `invocation_id`, `attempt`, `request_identity`, `served`
+  (`dispatched`, `coalesced` onto another caller's in-flight job — then `dispatched_by`
+  names that caller —, `cache`, `queued`, `rejected`), `job_id`, and the durable-capture
+  acknowledgement: `captured` with the caller's own request row `call_ref`, or
+  `capture_loss` saying why it was not written (no database; a failed write). The
+  observation is added per caller at the front door, never inside cached or stored
+  content, so shared content keeps the dispatcher's identity. A raw-bytes download
+  carries it in the `X-Research-Observation` header.

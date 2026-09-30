@@ -96,6 +96,30 @@ ALTER TABLE gateway.jobs  ADD COLUMN IF NOT EXISTS batch_entry integer;  -- crea
 ALTER TABLE gateway.jobs ADD COLUMN IF NOT EXISTS attempts integer NOT NULL DEFAULT 0;  -- lease reclaim (D-23)
 ALTER TABLE gateway.jobs ADD COLUMN IF NOT EXISTS claim_token text;  -- claim fencing (D-24)
 CREATE INDEX IF NOT EXISTS calls_source_at_idx ON gateway.calls (source_id, at DESC);
+-- Task 2b correlation (INVARIANTS H-1, H-5): the caller's invocation and attempt, and the
+-- identity of the complete effective request (core/request_identity.py), on every call row
+-- and on each job (the creator's). Written once: the trigger below refuses any change.
+ALTER TABLE gateway.calls ADD COLUMN IF NOT EXISTS invocation_id text;
+ALTER TABLE gateway.calls ADD COLUMN IF NOT EXISTS attempt integer CHECK (attempt >= 1);
+ALTER TABLE gateway.calls ADD COLUMN IF NOT EXISTS request_identity text;
+ALTER TABLE gateway.jobs  ADD COLUMN IF NOT EXISTS invocation_id text;
+ALTER TABLE gateway.jobs  ADD COLUMN IF NOT EXISTS attempt integer CHECK (attempt >= 1);
+ALTER TABLE gateway.jobs  ADD COLUMN IF NOT EXISTS request_identity text;
+CREATE INDEX IF NOT EXISTS calls_invocation_idx ON gateway.calls (invocation_id, attempt) WHERE invocation_id IS NOT NULL;
+CREATE OR REPLACE FUNCTION gateway.correlation_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.invocation_id IS DISTINCT FROM OLD.invocation_id OR NEW.attempt IS DISTINCT FROM OLD.attempt
+     OR NEW.request_identity IS DISTINCT FROM OLD.request_identity THEN
+    RAISE EXCEPTION 'invocation, attempt and request identity are immutable once written (task 2b)';
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS calls_correlation_immutable ON gateway.calls;
+CREATE TRIGGER calls_correlation_immutable BEFORE UPDATE ON gateway.calls
+  FOR EACH ROW EXECUTE FUNCTION gateway.correlation_immutable();
+DROP TRIGGER IF EXISTS jobs_correlation_immutable ON gateway.jobs;
+CREATE TRIGGER jobs_correlation_immutable BEFORE UPDATE ON gateway.jobs
+  FOR EACH ROW EXECUTE FUNCTION gateway.correlation_immutable();
 
 CREATE TABLE IF NOT EXISTS gateway.breakers (
   source_id    text PRIMARY KEY REFERENCES gateway.sources(id) ON DELETE CASCADE,

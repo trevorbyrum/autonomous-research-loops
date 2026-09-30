@@ -12,6 +12,7 @@ from __future__ import annotations
 import hmac
 import json
 import os
+import re
 import threading
 import sys
 import time
@@ -25,6 +26,7 @@ from .adapters.base import Client
 from .core import alerts, calllog, db, queue
 from .core.broker import Broker, load_policies, persist_breaker, policies_from_rows
 from .core.cache import Cache
+from .core.request_identity import request_identity
 from .core.router import Router, execute, make_handlers, redact_for_storage
 from .core.secrets import FAILING, FOUND, SecretsBackendFailing, SecretsConfigError, from_config, read_from
 from .registry.load import read_seed
@@ -57,8 +59,30 @@ class Settings:
 # MCP) validate through this one table before anything reaches the router or the queue (D-23)
 FIELD_TYPES = {"query": str, "identity": str, "target": str, "what": str, "source": str, "kind": str, "domain": str,
                "topic_id": str, "published_after": str, "priority": str, "params": dict, "cursors": dict,
-               "within": str, "cursor": (str, int),
+               "within": str, "cursor": (str, int), "lanes": list,
                "commercial": bool, "accept_per_item": bool, "limit": int, "year_from": int, "timeout": (int, float)}
+# the caller's invocation and attempt (task 2b; INVARIANTS H-1) travel in headers on both doors,
+# never in the payload the cache and the job dedup hash
+INVOCATION_HEADER, ATTEMPT_HEADER = "X-Research-Invocation", "X-Research-Attempt"
+INVOCATION_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
+ATTEMPT_RE = re.compile(r"[1-9][0-9]{0,8}")
+
+
+def parse_correlation(get) -> tuple[dict, str | None]:
+    """({invocation_id, attempt} or {}, None) from a header getter, or ({}, why they are refused).
+    They travel together; a malformed one is refused, never dropped (a request whose identity
+    cannot be recorded does not run under a made-up one)."""
+    inv = (get(INVOCATION_HEADER) or "").strip()
+    att = (get(ATTEMPT_HEADER) or "").strip()
+    if not inv and not att:
+        return {}, None
+    if not inv or not att:
+        return {}, f"{INVOCATION_HEADER} and {ATTEMPT_HEADER} travel together"
+    if not INVOCATION_RE.fullmatch(inv):
+        return {}, f"{INVOCATION_HEADER} must be 1-128 characters of A-Z a-z 0-9 . _ : - (starting alphanumeric)"
+    if not ATTEMPT_RE.fullmatch(att):
+        return {}, f"{ATTEMPT_HEADER} must be a positive integer"
+    return {"invocation_id": inv, "attempt": int(att)}, None
 
 
 def validate_payload(body: dict) -> str | None:
@@ -75,6 +99,10 @@ def validate_payload(body: dict) -> str | None:
     for k, v in (body.get("cursors") or {}).items() if isinstance(body.get("cursors"), dict) else ():
         if not isinstance(v, (str, int)) or isinstance(v, bool):
             return f"cursors[{k!r}] must be a string or integer"
+    lanes = body.get("lanes")
+    if lanes is not None and (not isinstance(lanes, list) or not lanes or len(lanes) > 50
+                              or not all(isinstance(x, str) and x for x in lanes)):
+        return "lanes must be a non-empty list of up to 50 source ids"
     for key, value in body.items():
         want = FIELD_TYPES.get(key)
         if want is None:
@@ -250,15 +278,21 @@ class Gateway:
 
     def make_client(self, conn, job: dict | None = None, client_id: str | None = None,
                     iteration: str | None = None, batch_entry: int | None = None,
-                    topic: str | None = None) -> Client:
+                    topic: str | None = None, invocation_id: str | None = None, attempt: int | None = None) -> Client:
+        """A claimed job's client carries the job CREATOR's tracing and invocation/attempt (the
+        job row's, immutable); an inline request's carries its caller's."""
         kw = {"transport": self.transport} if self.transport is not None else {}
+        if job is not None and job.get("invocation_id") is not None:
+            invocation_id, attempt = job["invocation_id"], job.get("attempt")
+        elif job is not None and job.get("id") is not None:
+            invocation_id, attempt = None, None   # a job created unattributed stays unattributed
         return Client(broker=self.broker, secrets=self.secret, contact_email=self.settings.contact_email,
                       user_agent=f"research-gateway/{VERSION} (mailto:{self.settings.contact_email})",
                       conn=conn, job_id=(job or {}).get("id"), client_id=(job or {}).get("client_id") or client_id,
                       iteration=(job or {}).get("iteration") or iteration,
                       batch_entry=(job or {}).get("batch_entry") if (job or {}).get("batch_entry") is not None else batch_entry,
                       topic=(job or {}).get("topic_id") or (job or {}).get("topic") or topic,
-                      **kw)
+                      invocation_id=invocation_id, attempt=attempt, **kw)
 
     # ------------------------------------------------------------ lifecycle
     def start(self) -> None:
@@ -332,25 +366,35 @@ class Gateway:
 
     def submit(self, payload: dict, client_id: str, *, priority: str = "interactive",
                iteration: str | None = None, batch_entry: int | None = None,
-               topic: str | None = None) -> tuple[int, bool]:
+               topic: str | None = None, invocation_id: str | None = None, attempt: int | None = None,
+               capture: dict | None = None) -> tuple[int, bool]:
+        """Queue a request. A coalesced caller (created=False) leaves its OWN durable row under
+        its own invocation and attempt; whether that row was written is reported in `capture`
+        ({"call_ref"} or {"loss"}) — a lost row is an explicit telemetry loss, never silent."""
+        rid = request_identity(payload)
         with self._lock:
             job_id, created = queue.enqueue(self.conn, payload["request_type"], {k: v for k, v in payload.items() if k != "request_type"},
                                             client_id=client_id, priority=PRIORITIES.get(priority, queue.PRIORITY_INTERACTIVE),
                                             topic_id=payload.get("topic_id"), commercial=bool(payload.get("commercial")),
-                                            iteration=iteration, batch_entry=batch_entry, topic=topic)
+                                            iteration=iteration, batch_entry=batch_entry, topic=topic,
+                                            invocation_id=invocation_id, attempt=attempt, request_identity=rid)
             if not created:
                 # the coalesced WAITER's request observation (9·0 amendment): the shared dispatch
                 # stays the creator's; each later caller still leaves a durable row under its own
-                # tracing. Telemetry only — its failure never blocks the request itself.
+                # tracing. Its failure never blocks the request itself — and is never silent (2b).
                 try:
-                    calllog.record(self.conn, calllog.CallRecord(
+                    ref = calllog.record(self.conn, calllog.CallRecord(
                         source_id="coalesce", request_type=payload["request_type"], status=200, latency_ms=0,
                         job_id=job_id, identity=payload.get("identity") or payload.get("target"),
                         query=(payload.get("query") or "")[:500] or None, failure_class="ok",
                         client_id=client_id, iteration=iteration, batch_entry=batch_entry,
-                        topic=payload.get("topic_id") or topic))
-                except Exception:
-                    pass
+                        topic=payload.get("topic_id") or topic,
+                        invocation_id=invocation_id, attempt=attempt, request_identity=rid))
+                    if capture is not None:
+                        capture["call_ref"] = ref
+                except Exception as e:
+                    if capture is not None:
+                        capture["loss"] = f"coalesce row not written: {type(e).__name__}"
             return job_id, created
 
     def job(self, job_id: int, client_id: str | None = None) -> dict | None:
@@ -398,39 +442,77 @@ class Gateway:
                trace: dict | None = None) -> dict:
         """One request end to end. Inline requests (no queue, or a fetch/data/full-text payload)
         return the FULL result — redaction is a storage rule, not a delivery rule (D-24); queued
-        requests store and return canonical metadata (a timeout returns the job id to poll)."""
+        requests store and return canonical metadata (a timeout returns the job id to poll).
+
+        The answer carries this CALLER's `observation` (task 2b; H-1, H-5): its invocation and
+        attempt, the request identity, how it was served (dispatched, coalesced onto another
+        caller's job, from cache, still queued) and the acknowledgement of its durable request
+        row — `captured` with the row's `call_ref`, or `capture_loss` saying why it was not
+        written. It is added here, per caller, never inside cached or stored content."""
+        trace = dict(trace or {})
         # the request — its telemetry tail INCLUDED — is a counted lifecycle user of the
         # shared connections: stop() cannot close them between the work and the span write
         self._enter_request()
         t0 = time.monotonic()
         started_at = datetime.now(timezone.utc)
+        capture: dict = {}
+        out = None
         try:
-            out = self._handle(payload, client_id, timeout=timeout, priority=priority, trace=trace)
+            out = self._handle(payload, client_id, timeout=timeout, priority=priority, trace=trace, capture=capture)
+            return {**out, "observation": self._observe(payload, client_id, trace, out, t0, started_at, capture)}
         finally:
-            # the CALLER's request span (9·0 amendment): one `request` row per handled request —
-            # coalesced waiters and cache-served callers included. `at` is the TRUE recorded
-            # start (immune to lock wait before the write); the duration is measured AT WRITE
-            # TIME, so time the caller spent waiting on the control lock is part of the span.
-            try:
-                if self.conn is not None:
-                    with self._lock:
-                        calllog.record(self.conn, calllog.CallRecord(
-                            source_id="request", request_type=payload.get("request_type") or "?",
-                            status=200, latency_ms=int((time.monotonic() - t0) * 1000),
-                            at_utc=started_at,
-                            identity=payload.get("identity") or payload.get("target"),
-                            query=(payload.get("query") or "")[:500] or None, failure_class="ok",
-                            client_id=client_id, iteration=(trace or {}).get("iteration"),
-                            batch_entry=(trace or {}).get("batch_entry"),
-                            topic=payload.get("topic_id") or (trace or {}).get("topic")))
-            except Exception:
-                pass
-            finally:
-                self._exit_request()
-        return out
+            if out is None:   # the request raised: its span is still written (best effort; the error is the answer)
+                try:
+                    self._span(payload, client_id, trace, t0, started_at)
+                except Exception:
+                    pass
+            self._exit_request()
+
+    def _span(self, payload: dict, client_id: str, trace: dict, t0: float, started_at) -> int | None:
+        """The CALLER's request span (9·0 amendment): one `request` row per handled request —
+        coalesced waiters and cache-served callers included. `at` is the TRUE recorded start
+        (immune to lock wait before the write); the duration is measured AT WRITE TIME, so time
+        the caller spent waiting on the control lock is part of the span. None without a database."""
+        if self.conn is None:
+            return None
+        with self._lock:
+            return calllog.record(self.conn, calllog.CallRecord(
+                source_id="request", request_type=payload.get("request_type") or "?",
+                status=200, latency_ms=int((time.monotonic() - t0) * 1000),
+                at_utc=started_at,
+                identity=payload.get("identity") or payload.get("target"),
+                query=(payload.get("query") or "")[:500] or None, failure_class="ok",
+                client_id=client_id, iteration=trace.get("iteration"),
+                batch_entry=trace.get("batch_entry"),
+                topic=payload.get("topic_id") or trace.get("topic"),
+                invocation_id=trace.get("invocation_id"), attempt=trace.get("attempt"),
+                request_identity=request_identity(payload)))
+
+    def _observe(self, payload: dict, client_id: str, trace: dict, out: dict, t0: float, started_at, capture: dict) -> dict:
+        served = ("rejected" if str(out.get("capability_fact") or "").startswith("gateway_error")
+                  else "queued" if out.get("status") in ("queued", "running")
+                  else "coalesced" if out.get("created") is False
+                  else "cache" if out.get("cache_hit") else "dispatched")
+        obs = {"invocation_id": trace.get("invocation_id"), "attempt": trace.get("attempt"),
+               "request_identity": request_identity(payload), "served": served, "job_id": out.get("job_id"),
+               "captured": False, "call_ref": None, "capture_loss": None}
+        if served == "coalesced":
+            obs["dispatched_by"] = out.get("dispatched_by")   # whose dispatch this content is (the job's creator)
+        if self.conn is None:
+            obs["capture_loss"] = "no durable call log: this gateway runs without a database"
+            return obs
+        try:
+            obs["call_ref"] = self._span(payload, client_id, trace, t0, started_at)
+            obs["captured"] = capture.get("loss") is None
+        except Exception as e:
+            obs["capture_loss"] = f"request row not written: {type(e).__name__}"[:200]
+        if capture.get("loss"):
+            obs["capture_loss"] = "; ".join(x for x in (obs["capture_loss"], capture["loss"]) if x)
+        return obs
 
     def _handle(self, payload: dict, client_id: str, *, timeout: float | None = None, priority: str = "interactive",
-                trace: dict | None = None) -> dict:
+                trace: dict | None = None, capture: dict | None = None) -> dict:
+        trace = trace or {}
         if payload.get("request_type") == "data":
             # validate against the adapter's DECLARED contract before any budget or dispatch:
             # a blind call fails instantly WITH the contract, so the first mistake teaches (D-31)
@@ -445,16 +527,17 @@ class Gateway:
         if self.conn is None or self.is_inline_only(payload):
             return self.run_inline(payload, client_id, trace=trace)
         job_id, created = self.submit(payload, client_id, priority=priority,
-                                      iteration=(trace or {}).get("iteration"),
-                                      batch_entry=(trace or {}).get("batch_entry"),
-                                      topic=(trace or {}).get("topic"))
+                                      iteration=trace.get("iteration"), batch_entry=trace.get("batch_entry"),
+                                      topic=trace.get("topic"), invocation_id=trace.get("invocation_id"),
+                                      attempt=trace.get("attempt"), capture=capture)
         j = self.wait(job_id, self.settings.sync_timeout if timeout is None else timeout)
         if j is None or j["status"] not in ("done", "failed"):
             return {"job_id": job_id, "status": "queued" if j is None else j["status"], "created": created}
         result = j.get("result") or {}
         if j["status"] == "failed":
             result = {"facts": [f"job failed: {j.get('error_class')}"], "records": [], **result}
-        return {"job_id": job_id, "status": j["status"], "created": created, **result}
+        extra = {} if created else {"dispatched_by": {"invocation_id": j.get("invocation_id"), "attempt": j.get("attempt")}}
+        return {"job_id": job_id, "status": j["status"], "created": created, **result, **extra}
 
     # ------------------------------------------------------------ auth + status
     def authenticate(self, header: str | None) -> str | None:
