@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 
-from ..app import Gateway, validate_payload
+from ..app import CORRELATION_REQUIRED, Gateway, validate_payload
 from ..clients.mcp_stdio import REQUEST_TOOLS, handle, strip_bytes
 
 PEER_NAME = "research"
@@ -32,8 +32,12 @@ def make_call(gateway: Gateway, client_id, trace: dict | None = None):
             return gateway.status()
         if name == "research_sources":
             return gateway.source_descriptions((args or {}).get("source") or None)
-        if name == "research_job":
-            job = gateway.job(int((args or {}).get("job_id") or 0), client_id)
+        if name not in REQUEST_TOOLS and name not in ("research_job", "research_batch", "research_download"):
+            raise LookupError(name)
+        if not tr.get("invocation_id"):   # every research tool call is attributed (2b-repair A5)
+            return {"capability_fact": "gateway_error_400", "error": CORRELATION_REQUIRED}
+        if name == "research_job":   # bound and recorded under THIS caller, like any research request (A5)
+            job = gateway.poll(int((args or {}).get("job_id") or 0), client_id, tr)
             return job if job is not None else {"capability_fact": "gateway_error_404", "error": "no such job for this client"}
         if name == "research_batch":
             calls = (args or {}).get("calls")
@@ -60,8 +64,6 @@ def make_call(gateway: Gateway, client_id, trace: dict | None = None):
             if problem:
                 return {"capability_fact": "gateway_error_400", "error": problem}
             return strip_bytes(gateway.handle({**merged, "request_type": "fetch"}, client_id, trace=tr))
-        if name not in REQUEST_TOOLS:
-            raise LookupError(name)
         if args is not None and not isinstance(args, dict):
             return {"capability_fact": "gateway_error_400", "error": "arguments must be an object"}
         if name == "research_files" and ((args or {}).get("params") or {}).get("download"):

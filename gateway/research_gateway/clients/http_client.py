@@ -11,6 +11,21 @@ import urllib.error
 import urllib.request
 
 DEFAULT_URL = "http://127.0.0.1:8765"
+OBSERVATION_HEADER = "X-Research-Observation"
+
+
+def raw_observation(header: str | None) -> dict:
+    """What a raw-bytes answer says of its caller's observation (2b-repair A5): the gateway's
+    X-Research-Observation header, parsed — its attribution and capture acknowledgement kept
+    beside the bytes — or, when it is absent or unreadable, that loss said outright."""
+    try:
+        doc = json.loads(header) if header else None
+    except ValueError:
+        doc = None
+    if isinstance(doc, dict):
+        return {"observation": doc}
+    return {"observation": None, "observation_loss": f"the download carried no readable {OBSERVATION_HEADER} header: "
+                                                     "its attribution and capture acknowledgement are unknown"}
 
 
 def settings_from_env(environ: dict | None = None) -> tuple[str, str | None]:
@@ -57,6 +72,7 @@ class GatewayClient:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 raw, ctype = resp.read(), resp.headers.get("Content-Type", "")
                 envelope = resp.headers.get("X-Research-Gateway") == "result"
+                observed = resp.headers.get(OBSERVATION_HEADER)
         except urllib.error.HTTPError as e:
             raw, ctype = e.read(), e.headers.get("Content-Type", "")
             detail = {}
@@ -75,8 +91,9 @@ class GatewayClient:
             parsed = json.loads(raw)
             if isinstance(parsed, dict):
                 return parsed
-        # anything else — including a downloaded file that happens to BE JSON — stays bytes
-        return {"content": raw, "content_type": ctype}
+        # anything else — including a downloaded file that happens to BE JSON — stays bytes,
+        # with the caller's observation that rode its header
+        return {"content": raw, "content_type": ctype, **raw_observation(observed)}
 
     def request(self, request_type: str, payload: dict) -> dict:
         return self._call("POST", f"/v1/{request_type}", payload)

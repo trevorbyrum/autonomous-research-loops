@@ -85,8 +85,10 @@ mints another. Grants are signed with a per-process key, so a gateway restart in
 them (the station then gets 401 and must be re-granted); see `core/principals.py`.
 
 **Correlation (task 2b).** `X-Research-Invocation` and `X-Research-Attempt` headers carry
-the caller's invocation and attempt on both doors (docs/STATION-CONTRACT.md §4); the stdio
-client sends them when `RESEARCH_INVOCATION_ID` is set. `GET /v1/status` carries dated
+the caller's invocation and attempt on both doors (docs/STATION-CONTRACT.md §4). Every
+research request — job polls included — must carry them (task 2b-repair A5; a manual query
+names an invocation too: the CLI and the stdio client send the pair when
+`RESEARCH_INVOCATION_ID` is set, e.g. `RESEARCH_INVOCATION_ID=operator-adhoc`). `GET /v1/status` carries dated
 capability facts (`capabilities.secrets`, with its operator line while failing).
 
 ## Mounting the tools

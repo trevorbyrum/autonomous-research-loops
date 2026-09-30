@@ -371,6 +371,8 @@ def call_tool(client: GatewayClient, name: str, args: dict, *, policy: dict | No
     if name == "research_status":
         return client.status()
     if name == "research_job":
+        if isinstance(client, GatewayClient) and client.invocation_id:
+            client.attempt = next_attempt(f"research_job:{args.get('job_id')}")   # each poll its own attempt (A5)
         try:
             job = client.job(int(args["job_id"]))
         except Exception as e:

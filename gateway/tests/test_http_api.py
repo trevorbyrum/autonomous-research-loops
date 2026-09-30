@@ -49,9 +49,12 @@ def stop(gw, server):
     gw.stop()
 
 
+CORRELATION = {"X-Research-Invocation": "inv_http00001", "X-Research-Attempt": "1"}   # every research request carries one (A5)
+
+
 def http(url, method="GET", body=None, token=None):
     data = json.dumps(body).encode() if body is not None else None
-    headers = {"Content-Type": "application/json"} if data else {}
+    headers = {**CORRELATION, **({"Content-Type": "application/json"} if data else {})}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(url, data=data, method=method, headers=headers)
@@ -134,6 +137,58 @@ class InlineGateway(unittest.TestCase):
         finally:
             stop(gw, server)
 
+    def test_the_station_client_keeps_a_downloads_observation(self):
+        """2b-repair A5: raw bytes carry the caller's observation in a header; the station
+        client (and the stdio download tool on top of it) keeps it beside the bytes."""
+        seed = [dict(s, enabled=True, rate={**s["rate"], "verified": True}) if s["id"] == "globe" else s for s in read_seed()]
+        gw, server, url = start(use_db=False, sources=seed)
+        try:
+            client = http_client.GatewayClient(url, TOKENS["loops"], invocation_id="inv_dl0000001")
+            client.attempt = 3
+            out = client.request("fetch", {"target": "https://globeproject.com/data/x.xls", "params": {"download": True}})
+            obs = out.get("observation") or {}
+            self.assertEqual((out["content"], obs.get("invocation_id"), obs.get("attempt"), obs.get("served")),
+                             (b"\xd0\xcf\x11", "inv_dl0000001", 3, "dispatched"))
+            self.assertEqual((obs.get("captured"), obs.get("capture_loss")),
+                             (False, "no durable call log: this gateway runs without a database"), "the capture loss is kept, not dropped")
+            tool = mcp_stdio.call_tool(client, "research_download", {"target": "https://globeproject.com/data/x.xls"})
+            self.assertEqual((tool["content_bytes"], (tool.get("observation") or {}).get("invocation_id")), (3, "inv_dl0000001"))
+        finally:
+            stop(gw, server)
+
+    def test_control_a_download_through_the_station_client_is_its_bytes(self):
+        seed = [dict(s, enabled=True, rate={**s["rate"], "verified": True}) if s["id"] == "globe" else s for s in read_seed()]
+        gw, server, url = start(use_db=False, sources=seed)
+        try:
+            out = http_client.GatewayClient(url, TOKENS["loops"], invocation_id="inv_dl0000002").request(
+                "fetch", {"target": "https://globeproject.com/data/x.xls", "params": {"download": True}})
+        finally:
+            stop(gw, server)
+        self.assertEqual((out["content"], out["content_type"]), (b"\xd0\xcf\x11", "application/vnd.ms-excel"))
+
+    def test_bytes_without_their_observation_say_so(self):
+        import http.server
+        class Bare(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", "3")
+                self.end_headers()
+                self.wfile.write(b"abc")
+        bare = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Bare)
+        threading.Thread(target=bare.serve_forever, daemon=True).start()
+        try:
+            out = http_client.GatewayClient(f"http://127.0.0.1:{bare.server_port}", "t").request("fetch", {"target": "x"})
+        finally:
+            bare.shutdown()
+            bare.server_close()
+        self.assertEqual((out["content"], out.get("observation", "not reported")), (b"abc", None))
+        self.assertIn("X-Research-Observation", out.get("observation_loss", ""))
+
     def test_bad_requests(self):
         status, body, _ = http(f"{self.url}/v1/delete", "POST", {}, TOKENS["loops"])
         self.assertEqual(status, 404)
@@ -208,7 +263,7 @@ class InlineGateway(unittest.TestCase):
         self.assertEqual(status, 401)
 
     def test_stdio_client_against_the_server_and_when_it_is_gone(self):
-        client = http_client.GatewayClient(self.url, TOKENS["loops"])
+        client = http_client.GatewayClient(self.url, TOKENS["loops"], invocation_id="inv_stdio0001")
         out = mcp_stdio.handle({"method": "tools/call", "params": {"name": "research_find", "arguments": {"query": "reranking", "kind": "article"}}},
                                lambda n, a: mcp_stdio.call_tool(client, n, a))
         self.assertFalse(out["isError"])

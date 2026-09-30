@@ -151,9 +151,44 @@ class BothDoorsCarryTheInvocation(unittest.TestCase):
                                         else {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, headers)
                     self.assertEqual(status, 400, (path, body))
 
-    def test_control_no_correlation_is_an_unattributed_request(self):
-        status, body = post(self.url, "/v1/find", {"query": "q"})
-        self.assertEqual((status, body["observation"]["invocation_id"], body["observation"]["attempt"]), (200, None, None))
+    def test_a_research_request_without_correlation_is_refused_on_every_door(self):
+        """2b-repair A5 (replaces the unattributed-request control): no research request runs
+        without its invocation and attempt — every /v1 request type, the async door, a job
+        poll, and each MCP research tool (a download and a batch included)."""
+        for rt in ("find", "resolve", "enrich", "fetch", "data"):
+            with self.subTest(rt):
+                status, body = post(self.url, f"/v1/{rt}", {"query": "q"})
+                self.assertEqual((status, body.get("error")), (400, app.CORRELATION_REQUIRED))
+        status, body = post(self.url, "/v1/find?async=1", {"query": "q"})
+        self.assertEqual((status, body.get("error")), (400, app.CORRELATION_REQUIRED))
+        req = urllib.request.Request(self.url + "/v1/jobs/1", headers={"Authorization": f"Bearer {TOKENS['engine']}"})
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req, timeout=10)
+        self.assertEqual(cm.exception.code, 400, "a poll is research too")
+        for tool, arguments in (("research_find", {"query": "q"}), ("research_download", {"target": "hf:a/b", "params": {"path": "x"}}),
+                                ("research_batch", {"calls": [{"tool": "research_resolve", "arguments": {"identity": "doi:10.1/x"}}]}),
+                                ("research_job", {"job_id": 1})):
+            with self.subTest(tool):
+                status, body = post(self.url, "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                                                       "params": {"name": tool, "arguments": arguments}})
+                text = body["result"]["content"][0]["text"]
+                result = json.loads(text) if not text.startswith("error:") else {"error": text}
+                self.assertEqual((body["result"]["isError"], result.get("capability_fact"), result.get("error")),
+                                 (True, "gateway_error_400", app.CORRELATION_REQUIRED))
+
+    def test_control_what_is_not_research_needs_no_correlation(self):
+        """Health, status, the source registry and the MCP handshake are not research."""
+        for path in ("/v1/health", "/v1/status", "/v1/sources"):
+            with self.subTest(path):
+                req = urllib.request.Request(self.url + path, headers={"Authorization": f"Bearer {TOKENS['engine']}"})
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    self.assertEqual(r.status, 200)
+        for msg in ({"method": "tools/list"}, {"method": "tools/call", "params": {"name": "research_sources", "arguments": {}}},
+                    {"method": "tools/call", "params": {"name": "research_status", "arguments": {}}}):
+            with self.subTest(msg["method"]):
+                status, body = post(self.url, "/mcp", {"jsonrpc": "2.0", "id": 1, **msg})
+                self.assertEqual(status, 200)
+                self.assertFalse(body["result"].get("isError"), body)
 
     def test_the_mcp_door_carries_it_into_every_tool_call_and_batch_entry(self):
         call = {"jsonrpc": "2.0", "id": 7, "method": "tools/call",

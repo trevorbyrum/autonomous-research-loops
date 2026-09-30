@@ -15,8 +15,9 @@ Two kinds of principal:
     station agent is handed a grant, never a client token. Everything a grant-bearer asks
     is bound to the grant: the policy fields are injected, a conflicting argument is
     refused (PolicyError, 403 / an in-band tool error), its jobs are its topic's alone, and
-    its requests carry the grant's invocation (a different one named in the headers is
-    refused). A grant cannot mint grants.
+    its requests carry the grant's invocation and the caller's own attempt (another
+    invocation named, or none, is refused — there is no default attempt, 2b-repair A5).
+    A grant cannot mint grants.
 
 The signing key is random per gateway process, so grants do not outlive a restart: a
 station then gets 401 (visible), never a silently widened session. Persisting grants
@@ -83,12 +84,16 @@ def bind(payload: dict, principal: Principal) -> dict:
 
 
 def bind_correlation(trace: dict, principal: Principal) -> dict:
-    """A grant's requests carry the grant's invocation; naming another one is refused."""
+    """A grant's requests carry the grant's invocation and the caller's own attempt: naming
+    another invocation, or none, is refused, and an attempt is never made up (2b-repair A5:
+    a request whose attempt is unknown cannot be recorded as one)."""
     if principal.invocation_id is None:
         return trace
-    if trace.get("invocation_id") not in (None, principal.invocation_id):
-        raise PolicyError("policy-bound: the invocation is set by the grant, not the caller")
-    return {**trace, "invocation_id": principal.invocation_id, "attempt": trace.get("attempt") or 1}
+    if trace.get("invocation_id") != principal.invocation_id:
+        raise PolicyError("policy-bound: the invocation is set by the grant, and the request must carry it")
+    if not isinstance(trace.get("attempt"), int) or isinstance(trace.get("attempt"), bool) or trace["attempt"] < 1:
+        raise PolicyError("policy-bound: a grant's request carries the caller's attempt (never a default)")
+    return trace
 
 
 def job_visible(job: dict, principal: Principal) -> bool:

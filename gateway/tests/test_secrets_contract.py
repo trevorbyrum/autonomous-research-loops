@@ -82,7 +82,8 @@ def backend(vault: FakeVault, *, token_file: str, clock=None, wall=None, **kw) -
 
 def http(url, method="GET", body=None, token=TOKENS["engine"]):
     data = json.dumps(body).encode() if body is not None else None
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}",
+               "X-Research-Invocation": "inv_secrets001", "X-Research-Attempt": "1"}   # research is attributed (A5)
     req = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=30) as r:

@@ -140,9 +140,16 @@ The surface teaches; an agent never has to guess a source's shape:
   `POST /mcp`): `X-Research-Invocation` (1–128 of `A-Za-z0-9._:-`) and
   `X-Research-Attempt` (a positive integer: the caller's attempt at this exact request —
   1, then one more for each retry). They travel together; a malformed or half-given pair
-  is refused with 400, never dropped. They never enter the payload, cache keys or the job
-  dedup hash. The stdio client sends them when `RESEARCH_INVOCATION_ID` is set, numbering
-  each repeat of the same effective request as the next attempt.
+  is refused with 400, never dropped — and every RESEARCH request needs them (task
+  2b-repair A5: find, resolve, enrich, fetch, data, a download, a batch, a job poll, on
+  either door; none is ever run unattributed — 400, or an in-band `gateway_error_400` tool
+  result). Health, status, the source registry and the MCP handshake are not research and
+  need none. There is no maintenance exemption: an operator's manual query names an
+  invocation too. A grant's requests carry the grant's invocation and the caller's own
+  attempt — never a default. They never enter the payload, cache keys or the job dedup
+  hash. The stdio client sends them when `RESEARCH_INVOCATION_ID` is set (without it, its
+  research calls are refused), numbering each repeat of the same effective request — and
+  each poll of a job — as the next attempt.
 - Every call row (`gateway.calls`: lane dispatches, redirect hops, cache hits, local-index
   lookups, request and coalesce rows) carries `invocation_id`, `attempt` and
   `request_identity`; a queued job keeps its CREATOR's. The schema's trigger refuses any
@@ -155,4 +162,11 @@ The surface teaches; an agent never has to guess a source's shape:
   `capture_loss` saying why it was not written (no database; a failed write). The
   observation is added per caller at the front door, never inside cached or stored
   content, so shared content keeps the dispatcher's identity. A raw-bytes download
-  carries it in the `X-Research-Observation` header.
+  carries it in the `X-Research-Observation` header, which the station client keeps beside
+  the bytes as `observation` (or says it was absent, `observation_loss`: never dropped).
+- A job poll (`GET /v1/jobs/{id}`, `research_job`) is research like any other request
+  (2b-repair A5): bound to the caller (a grant naming another invocation is refused, 403)
+  and recorded as a durable `poll` row in `gateway.calls` under the CALLER's invocation and
+  attempt. The job answer carries the caller's own `observation` (`served: polled`, its
+  `call_ref` or `capture_loss`); when the job was created by another invocation or attempt,
+  `dispatched_by` names it — a shared job never lends its creator's identity to the caller.

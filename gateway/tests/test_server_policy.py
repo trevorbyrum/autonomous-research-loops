@@ -24,7 +24,7 @@ from research_gateway import app
 from research_gateway.adapters.base import FakeTransport
 from research_gateway.api import http as api
 from research_gateway.core import db
-from research_gateway.core.principals import GRANT_PREFIX, Grants, Principal, _b64, _unb64
+from research_gateway.core.principals import GRANT_PREFIX, Grants, PolicyError, Principal, _b64, _unb64
 from research_gateway.registry.load import read_seed
 from tests.test_adapters_articles import CROSSREF_WORK
 
@@ -56,11 +56,16 @@ def serve(use_db=False):
     return gw, server, f"http://127.0.0.1:{server.server_port}"
 
 
+def corr(invocation: str = "inv_alpha0001", attempt: int = 1) -> dict:
+    return {"X-Research-Invocation": invocation, "X-Research-Attempt": str(attempt)}
+
+
 def call(url, path, body=None, token=None, headers=None, method=None):
+    """One HTTP exchange; research is attributed (A5), by default as the alpha grant's invocation."""
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url + path, data=data, method=method or ("POST" if data else "GET"),
                                  headers={"Content-Type": "application/json", **({"Authorization": f"Bearer {token}"} if token else {}),
-                                          **(headers or {})})
+                                          **(corr() if headers is None else headers)})
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             return r.status, json.loads(r.read() or b"{}")
@@ -128,15 +133,31 @@ class Grants_(unittest.TestCase):
         self.assertEqual((status, body["effective_request"]["domain"]), (200, "biomed"), "domain stays advisory")
 
     def test_the_grant_carries_its_invocation(self):
+        """2b-repair A5 (rewritten): the grant's invocation, and the caller's own attempt, on
+        every request — another invocation is refused, and a request without the pair is
+        refused rather than given a default attempt."""
         token = self.grant()
-        status, body = call(self.url, "/v1/find", {"query": "q"}, token,
-                            {"X-Research-Invocation": "inv_other0001", "X-Research-Attempt": "1"})
+        status, body = call(self.url, "/v1/find", {"query": "q"}, token, corr("inv_other0001"))
         self.assertEqual(status, 403, "a grant-bearer cannot act as another invocation")
-        status, body = call(self.url, "/v1/find", {"query": "q"}, token, {"X-Research-Invocation": "inv_alpha0001", "X-Research-Attempt": "4"})
-        self.assertEqual((body["observation"]["invocation_id"], body["observation"]["attempt"]), ("inv_alpha0001", 4))
-        status, body = call(self.url, "/v1/find", {"query": "q"}, token)
-        self.assertEqual((body["observation"]["invocation_id"], body["observation"]["attempt"]), ("inv_alpha0001", 1),
-                         "control: with no headers the grant's invocation, first attempt")
+        for label, headers in (("no correlation", {}), ("no attempt", {"X-Research-Invocation": "inv_alpha0001"})):
+            with self.subTest(label):
+                status, body = call(self.url, "/v1/find", {"query": "q"}, token, headers)
+                self.assertEqual(status, 400, "never a made-up first attempt")
+
+    def test_in_process_a_grant_request_carries_the_pair_too(self):
+        """The binding itself, below the doors: a grant's request naming no invocation, or no
+        attempt, is refused — never given the grant's invocation and a first attempt."""
+        principal = self.gw.grants.verify(self.grant())
+        for trace in ({}, {"attempt": 2}, {"invocation_id": "inv_alpha0001"}, {"invocation_id": "inv_alpha0001", "attempt": 0}):
+            with self.subTest(trace):
+                with self.assertRaises(PolicyError):
+                    self.gw.admit({"request_type": "find", "query": "q"}, principal, trace)
+        self.assertEqual(self.gw.admit({"request_type": "find", "query": "q"}, principal, {"invocation_id": "inv_alpha0001", "attempt": 2})[1],
+                         {"invocation_id": "inv_alpha0001", "attempt": 2}, "control: the pair as given")
+
+    def test_control_the_grants_invocation_with_the_callers_attempt_runs(self):
+        status, body = call(self.url, "/v1/find", {"query": "q"}, self.grant(), corr(attempt=4))
+        self.assertEqual((status, body["observation"]["invocation_id"], body["observation"]["attempt"]), (200, "inv_alpha0001", 4))
 
     def test_the_mcp_door_binds_it_too(self):
         token = self.grant()
@@ -214,21 +235,60 @@ class JobsAreTheirTopicsAlone(unittest.TestCase):
 
     def test_control_its_own_topic_reads_its_job(self):
         job_id = self.queued_job()
-        self.assertEqual(call(self.url, f"/v1/jobs/{job_id}", token=self.grant())[0], 200)
+        status, job = call(self.url, f"/v1/jobs/{job_id}", token=self.grant())
+        self.assertEqual((status, job["observation"]["invocation_id"]), (200, "inv_alpha0001"))
+        self.assertNotIn("dispatched_by", job["observation"], "its creator, same attempt: its own dispatch")
         is_error, job = mcp(self.url, self.grant(), "research_job", {"job_id": job_id})
         self.assertEqual(job["id"], job_id)
 
     def test_polling_never_crosses_topics_or_postures(self):
         job_id = self.queued_job()
         beta = self.grant(topic_id="topic-beta", invocation_id="inv_beta00001")
-        self.assertEqual(call(self.url, f"/v1/jobs/{job_id}", token=beta)[0], 404, "another topic's grant never sees it")
-        is_error, text = mcp(self.url, beta, "research_job", {"job_id": job_id})
+        self.assertEqual(call(self.url, f"/v1/jobs/{job_id}", token=beta, headers=corr("inv_beta00001"))[0], 404,
+                         "another topic's grant never sees it")
+        is_error, text = mcp(self.url, beta, "research_job", {"job_id": job_id}, corr("inv_beta00001"))
         self.assertEqual(text.get("capability_fact") if isinstance(text, dict) else text, "gateway_error_404")
         loosened = self.grant(commercial=False, invocation_id="inv_alpha0002")
-        self.assertEqual(call(self.url, f"/v1/jobs/{job_id}", token=loosened)[0], 404,
+        self.assertEqual(call(self.url, f"/v1/jobs/{job_id}", token=loosened, headers=corr("inv_alpha0002"))[0], 404,
                          "the same topic under another posture does not read results obtained under this one")
         self.assertEqual(call(self.url, f"/v1/jobs/{job_id}", token=TOKENS["engine"])[0], 404,
                          "the grantor's own unbound session is a different client")
+
+    def poll_rows(self, call_ref: int) -> list:
+        with db.connect() as conn, conn.cursor() as cur:
+            cur.execute("SELECT source_id, job_id, invocation_id, attempt, client_id FROM gateway.calls WHERE id = %s", (call_ref,))
+            return cur.fetchall()
+
+    def test_a_poll_is_bound_and_recorded_under_its_own_caller(self):
+        """2b-repair A5: each poll is the CALLER's observation — its own invocation and attempt,
+        a durable `poll` row under them — while the job keeps its creator's; another
+        invocation of the same topic may read the shared job, as itself, never as the creator."""
+        job_id = self.queued_job()   # created by inv_alpha0001, attempt 1
+        for label, token, invocation, attempt in (("its creator, a later attempt", self.grant(), "inv_alpha0001", 2),
+                                                  ("another invocation of the topic", self.grant(invocation_id="inv_alpha0003"),
+                                                   "inv_alpha0003", 1)):
+            with self.subTest(label):
+                status, job = call(self.url, f"/v1/jobs/{job_id}", token=token, headers=corr(invocation, attempt))
+                self.assertEqual(status, 200, job)
+                obs = job["observation"]
+                self.assertEqual({k: obs.get(k) for k in ("invocation_id", "attempt", "served", "job_id", "captured", "dispatched_by")},
+                                 {"invocation_id": invocation, "attempt": attempt, "served": "polled", "job_id": job_id, "captured": True,
+                                  "dispatched_by": {"invocation_id": "inv_alpha0001", "attempt": 1}})
+                self.assertEqual((job["invocation_id"], job["attempt"]), ("inv_alpha0001", 1), "the job stays its creator's")
+                self.assertEqual(self.poll_rows(obs["call_ref"]), [("poll", job_id, invocation, attempt, "engine@topic-alpha")])
+                is_error, via_mcp = mcp(self.url, token, "research_job", {"job_id": job_id}, corr(invocation, attempt + 1))
+                self.assertEqual((is_error, via_mcp["observation"]["invocation_id"], via_mcp["observation"]["attempt"]),
+                                 (False, invocation, attempt + 1))
+                self.assertEqual(self.poll_rows(via_mcp["observation"]["call_ref"])[0][2:4], (invocation, attempt + 1))
+
+    def test_a_poll_naming_another_invocation_or_none_is_refused(self):
+        job_id = self.queued_job()
+        token = self.grant()
+        self.assertEqual(call(self.url, f"/v1/jobs/{job_id}", token=token, headers=corr("inv_other0001"))[0], 403)
+        is_error, text = mcp(self.url, token, "research_job", {"job_id": job_id}, corr("inv_other0001"))
+        self.assertTrue(is_error)
+        self.assertIn("policy-bound: the invocation is set by the grant", text)
+        self.assertEqual(call(self.url, f"/v1/jobs/{job_id}", token=token, headers={})[0], 400, "a poll without correlation")
 
 if __name__ == "__main__":
     unittest.main()

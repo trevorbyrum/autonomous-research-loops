@@ -70,6 +70,14 @@ INVOCATION_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 ATTEMPT_RE = re.compile(r"[1-9][0-9]{0,8}")
 
 
+# every research request (a find/resolve/enrich/fetch/data, a download, a batch, a job poll)
+# arrives with its invocation and attempt: its observation is recorded under them, never
+# unattributed (2b-repair A5; H-1). Health, status and the source registry are not research.
+CORRELATION_REQUIRED = (f"{INVOCATION_HEADER} and {ATTEMPT_HEADER} are required on every research request "
+                        "(find, resolve, enrich, fetch, data, download, batch, job poll): its observation is recorded "
+                        "under that invocation and attempt, never unattributed")
+
+
 def parse_correlation(get) -> tuple[dict, str | None]:
     """({invocation_id, attempt} or {}, None) from a header getter, or ({}, why they are refused).
     They travel together; a malformed one is refused, never dropped (a request whose identity
@@ -437,6 +445,35 @@ class Gateway:
                     if capture is not None:
                         capture["loss"] = f"coalesce row not written: {type(e).__name__}"
             return job_id, created
+
+    def poll(self, job_id: int, who, trace: dict | None) -> dict | None:
+        """A research poll (2b-repair A5): bound like any request — a grant's poll carries its
+        invocation and the caller's attempt, another invocation is refused (PolicyError) —
+        visible only as job() allows, and recorded as a durable `poll` call row under the
+        CALLER. The answer carries the caller's own observation of the job; when someone else
+        created it, `dispatched_by` names them: shared execution never lends the creator's
+        identity to the caller's attempt. None when the job is not this caller's to see."""
+        principal = as_principal(who)
+        trace = bind_correlation(dict(trace or {}), principal)
+        j = self.job(job_id, principal)
+        if j is None:
+            return None
+        obs = {"invocation_id": trace.get("invocation_id"), "attempt": trace.get("attempt"),
+               "request_identity": j.get("request_identity"), "served": "polled", "job_id": job_id,
+               "captured": False, "call_ref": None, "capture_loss": None}
+        if (j.get("invocation_id"), j.get("attempt")) != (obs["invocation_id"], obs["attempt"]):
+            obs["dispatched_by"] = {"invocation_id": j.get("invocation_id"), "attempt": j.get("attempt")}
+        try:
+            with self._lock:
+                obs["call_ref"] = calllog.record(self.conn, calllog.CallRecord(
+                    source_id="poll", request_type=j["request_type"], status=200, latency_ms=0, job_id=job_id,
+                    failure_class="ok", client_id=principal.name, iteration=trace.get("iteration"),
+                    topic=(j.get("payload") or {}).get("topic_id") or trace.get("topic"),
+                    invocation_id=obs["invocation_id"], attempt=obs["attempt"], request_identity=j.get("request_identity")))
+            obs["captured"] = True
+        except Exception as e:   # a lost poll row never hides the job, and is never silent
+            obs["capture_loss"] = f"poll row not written: {type(e).__name__}"[:200]
+        return {**j, "observation": obs}
 
     def job(self, job_id: int, client_id=None) -> dict | None:
         """A job, or None; with a caller, only that caller's own job (clients never see each other's),

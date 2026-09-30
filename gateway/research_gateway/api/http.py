@@ -2,7 +2,7 @@
 
   GET  /v1/health              no auth; polled by monitors
   GET  /v1/status              broker, cache, workers, job counts
-  GET  /v1/jobs/{id}           a queued job's state and (redacted) result
+  GET  /v1/jobs/{id}           a queued job's state and (redacted) result, and the poller's observation
   POST /v1/{find|resolve|enrich|fetch|data}
        body: JSON payload (query/identity/target/params, kind, domain, commercial, ...)
        ?async=1 → {job_id} immediately; otherwise waits up to `timeout` (≤ 120 s)
@@ -62,10 +62,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send(401, {"error": "missing, invalid or expired bearer token"})
         return principal
 
-    def _trace(self) -> dict | None:
+    def _trace(self, *, research: bool = False) -> dict | None:
         """Tracing and correlation from the headers (they never enter the payload, D-33); None
-        after answering 400 for a malformed or half-given invocation/attempt pair (task 2b)."""
+        after answering 400 for a malformed or half-given invocation/attempt pair (task 2b) —
+        or, on a research route, for none at all (2b-repair A5)."""
         correlation, problem = app_module.parse_correlation(self.headers.get)
+        if not problem and research and not correlation:
+            problem = app_module.CORRELATION_REQUIRED
         if problem:
             self._send(400, {"error": problem})
             return None
@@ -120,9 +123,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404 if described.get("capability_fact") == "gateway_error_404" else 200, described)
         m = JOB_ROUTE.match(path)
         if m:
+            trace = self._trace(research=True)   # a poll is research: bound and recorded under its caller (A5)
+            if trace is None:
+                return
             if gw.conn is None:
                 return self._send(404, {"error": "no queue: this gateway runs inline"})
-            job = gw.job(int(m.group(1)), client_id=client)
+            try:
+                job = gw.poll(int(m.group(1)), client, trace)
+            except PolicyError as e:
+                return self._send(403, {"error": str(e)})
             return self._send(200, job) if job else self._send(404, {"error": "no such job"})
         self._send(404, {"error": "no such route"})
 
@@ -138,7 +147,7 @@ class Handler(BaseHTTPRequestHandler):
         client = self._client()
         if client is None:
             return
-        trace = self._trace()
+        trace = self._trace(research=True)
         if trace is None:
             return
         body = self._body()
