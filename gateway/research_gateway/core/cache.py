@@ -19,20 +19,23 @@ from .canonical import member_summary
 from .licenses import content_redistribution
 
 
-def _restrictions_from_facts(member):
-    """A member summary task 2b's writer stored — its own four facts, without the source's
-    statements they came from — with those restriction inputs rebuilt from ITS facts, so a
-    reload re-derives the restriction instead of widening it to what the licence alone allows
-    (2b-repair-2 R1). `prohibited` has one cause, the source forbidding it; `personal_use` is
-    kept by the member-level input that yields it (conservative: a member whose own source's
-    verdict was the cause re-derives personal use either way). A statement kept wins."""
-    facts = member.get("permissions") if isinstance(member, dict) else None
-    if not isinstance(facts, dict):
-        return member
-    rebuilt = {"redistributable": False} if facts.get("redistribution") == "prohibited" else {}
-    if facts.get("access") == "personal_use":
-        rebuilt["third_party_restricted"] = True
-    return {**rebuilt, **member}
+# rows an earlier writer stored without their members' restriction inputs: registry/migrate.py
+# converts them, and a cache never opens a database that still holds one (2b-repair-4 F2)
+UNCONVERTED = "SELECT count(*) FROM gateway.records WHERE NOT restriction_inputs"
+
+
+def stored_members(cur, key: str) -> list[dict]:
+    """A row's members as its record_sources rows hold them: the harvest's rows keep theirs
+    there, one per loader, each with its own content licence and time, so a reload never
+    forgets WHO said what (finding 19); the cache's rows carry theirs in canonical. A stored
+    prohibition is the source's own statement: the member's input, never re-read from the
+    licence alone (A3)."""
+    cur.execute("SELECT source_id, license, fetched_at, redistribution FROM gateway.record_sources "
+                "WHERE identity = %s ORDER BY source_id", (key,))
+    return [{"source_id": sid, "identity": key, "license": lic,
+             "retrieved_at": fetched.isoformat(timespec="seconds") if fetched else None,
+             **({"redistributable": False} if redistribution == "prohibited" else {})}
+            for sid, lic, fetched, redistribution in cur.fetchall()]
 
 
 class Cache:
@@ -50,6 +53,14 @@ class Cache:
         self._lock = threading.RLock()
         self.persisted = 0
         self.evicted = 0
+        if conn is not None:
+            with conn.cursor() as cur:
+                cur.execute(UNCONVERTED)
+                left = cur.fetchone()[0]
+            conn.commit()
+            if left:
+                raise RuntimeError(f"{left} stored records are in an earlier writer's representation: convert them first "
+                                   "(python -m research_gateway.registry.migrate); this gateway never serves them")
 
     # ------------------------------------------------------------ bounds
     def _bound(self, store: dict, limit: int) -> None:
@@ -77,26 +88,13 @@ class Cache:
                 return None
             try:
                 with self.conn.cursor() as cur:
-                    cur.execute("SELECT canonical, restriction_inputs FROM gateway.records "
-                                "WHERE identity = %s AND last_seen > now() - make_interval(secs => %s)", (key, self.metadata_ttl))
+                    # a row an older gateway wrote after this cache opened is never served (F2)
+                    cur.execute("SELECT canonical FROM gateway.records WHERE identity = %s AND restriction_inputs "
+                                "AND last_seen > now() - make_interval(secs => %s)", (key, self.metadata_ttl))
                     row = cur.fetchone()
                     members = []
-                    if row and isinstance(row[0].get("provenance"), list) and row[0]["provenance"] and not row[1]:
-                        # task 2b's writer kept each member's facts, not the inputs they came from (R1)
-                        members = [_restrictions_from_facts(m) for m in row[0]["provenance"]]
-                    elif row and not row[0].get("provenance"):
-                        # legacy rows persisted before the canonical summary existed: rebuild
-                        # what record_sources still knows (licence + persistence time) so a
-                        # reload never forgets WHO said what (finding 19). New rows carry the
-                        # full original summary inside canonical and skip this.
-                        cur.execute("SELECT source_id, license, fetched_at, redistribution FROM gateway.record_sources "
-                                    "WHERE identity = %s ORDER BY source_id", (key,))
-                        # a stored prohibition is the source's own statement: it survives the
-                        # rebuild as the member's input, never re-read from the licence alone (A3)
-                        members = [{"source_id": sid, "identity": key, "license": lic,
-                                    "retrieved_at": fetched.isoformat(timespec="seconds") if fetched else None,
-                                    **({"redistributable": False} if redistribution == "prohibited" else {})}
-                                   for sid, lic, fetched, redistribution in cur.fetchall()]
+                    if row and not row[0].get("provenance"):
+                        members = stored_members(cur, key)
                 self.conn.commit()
             except Exception:
                 try:

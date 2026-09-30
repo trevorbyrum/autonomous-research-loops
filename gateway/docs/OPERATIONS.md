@@ -30,6 +30,15 @@ python3 -m research_gateway.registry.docs --check            # committed docs ma
 Re-run `--load` after editing the seed; it upserts. A source is only
 scheduled if it is `enabled` and its rate policy is `verified`.
 
+A database an earlier gateway wrote may hold stored records in that writer's
+representation; the gateway refuses to start until they are converted, once,
+with every older gateway stopped (`docs/LICENSING.md`):
+
+```bash
+python3 -m research_gateway.registry.migrate --check   # how many are left (exit 1 while any is)
+python3 -m research_gateway.registry.migrate           # convert them (exit 0 once none is left)
+```
+
 ## Running the gateway
 
 ```bash

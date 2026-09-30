@@ -67,10 +67,13 @@ catalogue, a CC0 snapshot) is `metadata_license`, and never stands in for it. A 
 own statements about a member — its terms forbid redistribution, third-party terms — are
 kept with every stored member summary, so a record reloaded from the database and
 annotated again re-derives the same restriction (task 2b-repair A3). Rows stored before
-that kept each member's four facts but not those statements (`gateway.records.restriction_inputs`
-false): a reload rebuilds them from the member's own stored facts — `prohibited` as the
-source's prohibition, `personal_use` as a restriction kept — so an upgrade never widens a
-stored restriction (task 2b-repair-2 R1).
+that (`gateway.records.restriction_inputs` false) are converted once, before a gateway will
+open the database: `python -m research_gateway.registry.migrate` (task 2b-repair-4). A lead
+member's statements come from the record's own fields; task 2b's stored `prohibited` is the
+source's prohibition, its one cause; a stored `personal_use` nothing else explains is kept
+as `inferred_personal_use` — inferred from legacy data, never presented as a statement of
+the source. An upgrade never widens a stored restriction. Running it on a real database is
+a release step the operator approves.
 
 ## Attribution
 

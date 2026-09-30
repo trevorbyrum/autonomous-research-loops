@@ -162,10 +162,10 @@ UPDATE gateway.record_sources SET redistributable = false WHERE redistribution I
 -- CC0 catalogue, a snapshot's CC0 dump) is its own column: it never stands in for `license`,
 -- the record's CONTENT licence, which alone decides `redistribution`.
 ALTER TABLE gateway.record_sources ADD COLUMN IF NOT EXISTS metadata_license text;
--- Task 2b-repair-2 R1: true when the row's provenance summaries were written WITH each
--- member's restriction inputs (the 2b-repair writer). Task 2b's writer kept each member's four
--- permission facts but not the inputs they came from: its rows default to false, and a reload
--- rebuilds those inputs from the member's own stored facts (core/cache.py).
+-- Task 2b-repair-2 R1, 2b-repair-4 F2: true when the row's members carry the source's own
+-- statements about them — in canonical provenance (the cache's writer) or, with none there, in
+-- record_sources (the harvest's). Earlier writers' rows default to false: registry/migrate.py
+-- converts them once, and a gateway never opens a database that still holds one (core/cache.py).
 ALTER TABLE gateway.records ADD COLUMN IF NOT EXISTS restriction_inputs boolean NOT NULL DEFAULT false;
 
 -- Tier 0 local index over harvested registries (Phase 6).

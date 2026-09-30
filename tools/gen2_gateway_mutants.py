@@ -12,7 +12,13 @@ once_written, not mutated); the front door's admit() before submit()/handle() (b
 again: removing one layer is an equivalent mutant); Grants.mint's `grantor.bound` clause
 (a grant's principal is never a grantor: equivalent); crossref._record's own refusal of a work
 with neither DOI nor URL (2b-repair A4: members() and the router both drop the `url:None` it
-would build — a second and third layer that make removing the first equivalent).
+would build — a second and third layer that make removing the first equivalent); the
+migration's `restriction_inputs = true` (2b-repair-4 F2: a migration that marks nothing fails its
+own completion check in every test that converts a row, so no accepted path is left to pair a
+control with); each of its two `NOT restriction_inputs` (the pass's list of rows, and the batch's
+re-check under lock of a row a current writer converted meanwhile: each backs the other, so
+removing one is equivalent without concurrency; that a rerun converts nothing and a current
+writer's row is never rewritten is test_the_migration_runs_once_and_says_when_it_is_done's).
 """
 from __future__ import annotations
 
@@ -37,6 +43,7 @@ CO, SP, PV = "tests.test_correlation.", "tests.test_server_policy.", "tests.test
 SECRETS, ROUTER, BASE, APP = "research_gateway/core/secrets.py", "research_gateway/core/router.py", "research_gateway/adapters/base.py", "research_gateway/app.py"
 PRINC, HTTP, MCP, STDIO = "research_gateway/core/principals.py", "research_gateway/api/http.py", "research_gateway/mcp/homelab_adapter.py", "research_gateway/clients/mcp_stdio.py"
 LIC = "research_gateway/core/licenses.py"
+CACHE, MIGRATE = "research_gateway/core/cache.py", "research_gateway/registry/migrate.py"
 
 MUTANTS: list[Mutant] = [
     # ---- item 6: secrets outcomes (DEPLOYMENT-CONTRACT §3.4) ---------------------------------------------
@@ -329,36 +336,79 @@ MUTANTS: list[Mutant] = [
     # ---- item 5: licence, freshness, provenance -----------------------------------------------------------
     # 2b-repair A3: restrictions survive persistence; metadata licence is not content licence; availability is what was delivered
     Mutant("L-summary-drops-restrictions", "a stored member summary forgets the source's restrictions", "research_gateway/core/canonical.py",
-           "    out.update({k: member[k] for k in MEMBER_RESTRICTIONS if isinstance(member.get(k), bool)})\n", "",
+           "    out.update({k: member[k] for k in MEMBER_RESTRICTIONS + INFERRED_RESTRICTIONS if isinstance(member.get(k), bool)})\n", "",
            (PV + "RestrictionsSurviveReload.test_a_prohibition_survives_a_fresh_process_reload",
             PV + "RestrictionsSurviveReload.test_third_party_terms_survive_a_fresh_process_reload"),
            (PV + "RestrictionsSurviveReload.test_control_an_unrestricted_cc0_record_reloads_permitted",), db=True),
-    Mutant("L-legacy-prohibition-lost", "a legacy row's stored prohibition is not rebuilt on reload", "research_gateway/core/cache.py",
-           '                                    **({"redistributable": False} if redistribution == "prohibited" else {})}',
-           "                                    }",
+    Mutant("L-legacy-prohibition-lost", "a row kept in record_sources loses its stored prohibition on reload", "research_gateway/core/cache.py",
+           '             **({"redistributable": False} if redistribution == "prohibited" else {})}',
+           "             }",
            (PV + "RestrictionsSurviveReload.test_a_legacy_row_keeps_its_stored_prohibition",),
            (PV + "RestrictionsSurviveReload.test_control_a_legacy_permitted_row_reloads_permitted",), db=True),
-    # 2b-repair-2 R1: rows task 2b's own writer stored (each member's facts, not their inputs), read by the current reader
-    Mutant("L-2b-prohibition-not-rebuilt", "a task-2b row's stored prohibition is not rebuilt as its member's input", "research_gateway/core/cache.py",
-           '    rebuilt = {"redistributable": False} if facts.get("redistribution") == "prohibited" else {}\n', "    rebuilt = {}\n",
-           (PV + "RestrictionsSurviveReload.test_a_pre_repair_rows_prohibition_survives_the_upgrade",),
-           (PV + "RestrictionsSurviveReload.test_control_a_pre_repair_unrestricted_row_reloads_permitted",), db=True),
-    Mutant("L-2b-third-party-not-rebuilt", "a task-2b row's stored personal use is not rebuilt as its member's input", "research_gateway/core/cache.py",
-           '    if facts.get("access") == "personal_use":\n', "    if False:\n",
-           (PV + "RestrictionsSurviveReload.test_a_pre_repair_rows_third_party_terms_survive_the_upgrade",),
-           (PV + "RestrictionsSurviveReload.test_control_a_pre_repair_unrestricted_row_reloads_permitted",), db=True),
-    Mutant("L-rows-with-inputs-rebuilt", "a row the current writer stored is rebuilt as if task 2b's", "research_gateway/core/cache.py",
-           'row[0]["provenance"] and not row[1]:', 'row[0]["provenance"]:',
-           (PV + "RestrictionsSurviveReload.test_control_a_row_written_with_its_inputs_is_derived_from_them_alone",),
-           (PV + "RestrictionsSurviveReload.test_a_pre_repair_rows_prohibition_survives_the_upgrade",), db=True),
     Mutant("L-inputs-marker-unwritten", "the current writer's new row is not marked as carrying its inputs", "research_gateway/core/cache.py",
            "now(), true) ", "now(), false) ",
            (PV + "RestrictionsSurviveReload.test_control_a_row_written_with_its_inputs_is_derived_from_them_alone",),
-           (PV + "RestrictionsSurviveReload.test_a_prohibition_survives_a_fresh_process_reload",), db=True),
-    Mutant("L-rewritten-row-keeps-old-marker", "a task-2b row the current writer writes again keeps task 2b's marker", "research_gateway/core/cache.py",
-           '"restriction_inputs = true",', '"restriction_inputs = gateway.records.restriction_inputs",',
+           (PV + "RestrictionsSurviveReload.test_a_pre_repair_row_written_again_is_the_current_writers",), db=True),
+    Mutant("L-rewritten-row-keeps-old-marker", "a row an earlier writer left, written again by the current writer, keeps its old marker",
+           "research_gateway/core/cache.py", '"restriction_inputs = true",', '"restriction_inputs = gateway.records.restriction_inputs",',
            (PV + "RestrictionsSurviveReload.test_a_pre_repair_row_written_again_is_the_current_writers",),
            (PV + "RestrictionsSurviveReload.test_a_prohibition_survives_a_fresh_process_reload",), db=True),
+    # 2b-repair-4 F2: earlier writers' rows are converted once (registry/migrate.py); nothing reads them unconverted
+    Mutant("F2-opens-over-unconverted-rows", "a cache (and so a gateway) opens a database still holding an unconverted row", CACHE,
+           "            if left:\n", "            if False:\n",
+           (PV + "RestrictionsSurviveReload.test_no_gateway_opens_a_database_holding_an_unconverted_row",),
+           (PV + "RestrictionsSurviveReload.test_a_prohibition_survives_a_fresh_process_reload",), db=True),
+    Mutant("F2-serves-unconverted-row", "a row an older gateway writes after the cache opened is served", CACHE,
+           "WHERE identity = %s AND restriction_inputs \"", "WHERE identity = %s \"",
+           (PV + "RestrictionsSurviveReload.test_a_row_an_older_gateway_writes_later_is_never_served",),
+           (PV + "RestrictionsSurviveReload.test_a_prohibition_survives_a_fresh_process_reload",), db=True),
+    Mutant("F2-harvest-rows-unmarked", "the harvest's new row is not marked current", "research_gateway/harvest/index.py",
+           "now(), true) ", "now(), false) ",
+           (PV + "RestrictionsSurviveReload.test_the_harvests_rows_are_current_and_read_from_record_sources",),
+           ("tests.test_harvest.IndexRoundTrip.test_a_metadata_licence_never_becomes_the_content_licence",), db=True),
+    Mutant("F2-marked-unconverted", "the migration marks a row without converting it", MIGRATE,
+           "(json.dumps(converted(canonical, stored), default=str), identity)", "(json.dumps(canonical, default=str), identity)",
+           (PV + "RestrictionsSurviveReload.test_a_pre_repair_rows_prohibition_survives_the_migration",
+            PV + "RestrictionsSurviveReload.test_the_live_gateways_rows_keep_their_leads_statements"),
+           (PV + "RestrictionsSurviveReload.test_control_a_legacy_permitted_row_reloads_permitted",), db=True),
+    Mutant("F2-legacy-members-unread", "a row with no members of its own is converted without its record_sources rows", MIGRATE,
+           '                stored = [] if canonical.get("provenance") else stored_members(cur, identity)\n', "                stored = []\n",
+           (PV + "RestrictionsSurviveReload.test_a_legacy_rows_lead_statement_survives_the_migration",),
+           (PV + "RestrictionsSurviveReload.test_a_legacy_row_keeps_its_stored_prohibition",), db=True),
+    Mutant("F2-lead-statements-dropped", "the lead's own statements, among the record's fields, are not its member's", MIGRATE,
+           "    members[at] = {**lead, **members[at]}\n", "",
+           (PV + "RestrictionsSurviveReload.test_the_live_gateways_rows_keep_their_leads_statements",
+            PV + "RestrictionsSurviveReload.test_a_legacy_rows_lead_statement_survives_the_migration"),
+           (PV + "RestrictionsSurviveReload.test_control_a_pre_repair_unrestricted_row_reloads_permitted",), db=True),
+    Mutant("F2-lead-statements-spread", "a lead with no member of its own puts its statements on the first member", MIGRATE,
+           'm.get("source_id") == canonical.get("source_id")), None)', 'm.get("source_id") == canonical.get("source_id")), 0)',
+           (PV + "RestrictionsSurviveReload.test_a_legacy_rows_lead_statement_survives_the_migration",),
+           (PV + "RestrictionsSurviveReload.test_the_live_gateways_rows_keep_their_leads_statements",), db=True),
+    Mutant("F2-prohibition-not-converted", "task 2b's stored prohibition is not converted into its member's statement", MIGRATE,
+           '    derived = {"redistributable": False} if facts.get("redistribution") == "prohibited" else {}\n', "    derived = {}\n",
+           (PV + "RestrictionsSurviveReload.test_a_pre_repair_rows_prohibition_survives_the_migration",),
+           (PV + "RestrictionsSurviveReload.test_control_a_pre_repair_unrestricted_row_reloads_permitted",), db=True),
+    Mutant("F2-personal-use-not-converted", "task 2b's stored personal use is dropped by the migration", MIGRATE,
+           '        if facts.get("access") == "personal_use" and m.get("third_party_restricted") is not True:\n', "        if False:\n",
+           (PV + "RestrictionsSurviveReload.test_a_pre_repair_rows_personal_use_survives_the_migration_as_inferred",),
+           (PV + "RestrictionsSurviveReload.test_control_a_pre_repair_unrestricted_row_reloads_permitted",), db=True),
+    Mutant("F2-inferred-as-stated", "a personal use inferred from legacy data is recorded as the source's third-party terms", MIGRATE,
+           '            derived["inferred_personal_use"] = True\n', '            derived["third_party_restricted"] = True\n',
+           (PV + "RestrictionsSurviveReload.test_a_pre_repair_rows_personal_use_survives_the_migration_as_inferred",
+            PV + "RestrictionsSurviveReload.test_a_pre_repair_rows_prohibition_survives_the_migration"),
+           (PV + "RestrictionsSurviveReload.test_the_migration_runs_once_and_says_when_it_is_done",), db=True),
+    Mutant("F2-stated-also-inferred", "a personal use its kept third-party statement explains is also recorded as inferred", MIGRATE,
+           ' and m.get("third_party_restricted") is not True:\n', ":\n",
+           (PV + "RestrictionsSurviveReload.test_a_pre_repair_rows_personal_use_survives_the_migration_as_inferred",),
+           (PV + "RestrictionsSurviveReload.test_control_a_pre_repair_unrestricted_row_reloads_permitted",), db=True),
+    Mutant("F2-inferred-not-kept", "a stored member summary forgets its inferred restriction", "research_gateway/core/canonical.py",
+           "MEMBER_RESTRICTIONS + INFERRED_RESTRICTIONS if", "MEMBER_RESTRICTIONS if",
+           (PV + "RestrictionsSurviveReload.test_a_pre_repair_rows_personal_use_survives_the_migration_as_inferred",),
+           (PV + "RestrictionsSurviveReload.test_a_prohibition_survives_a_fresh_process_reload",), db=True),
+    Mutant("F2-inferred-ignored", "an inferred personal use does not restrict access", LIC,
+           ' and not member.get("inferred_personal_use")\n', "\n",
+           (PV + "RestrictionsSurviveReload.test_a_pre_repair_rows_personal_use_survives_the_migration_as_inferred",),
+           (PV + "PermissionFacts.test_each_fact_follows_its_own_rule",), db=True),
     Mutant("L-metadata-licence-as-content", "a harvest loader's metadata licence stands in for the content licence",
            "research_gateway/harvest/index.py", '    content_license = record.get("license")\n',
            '    content_license = metadata_license or record.get("license")\n',

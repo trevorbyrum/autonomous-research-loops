@@ -86,8 +86,11 @@ def upsert(cur, record: dict, source_id: str, *, metadata_license: str | None = 
     cur.execute("SELECT canonical FROM gateway.records WHERE identity = %s", (record["identity"],))
     row = cur.fetchone()
     merged = merge_canonical(row[0] if row else None, incoming)
+    # a new row is in the current representation: its members are its record_sources rows, and
+    # a registry states nothing of one but its licence; a row an earlier writer left keeps its
+    # marker for registry/migrate.py (2b-repair-4 F2)
     cur.execute(
-        "INSERT INTO gateway.records (identity, kind, canonical, last_seen) VALUES (%s, %s, %s, now()) "
+        "INSERT INTO gateway.records (identity, kind, canonical, last_seen, restriction_inputs) VALUES (%s, %s, %s, now(), true) "
         "ON CONFLICT (identity) DO UPDATE SET canonical = EXCLUDED.canonical, last_seen = now()",
         (record["identity"], record["kind"], json.dumps(merged, default=str)),
     )

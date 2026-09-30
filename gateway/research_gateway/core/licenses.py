@@ -203,13 +203,14 @@ def permissions(source: dict, member: dict, *, kind: str | None, has_content: bo
                      (2b-repair A3: decided by what was returned, never by the kind alone);
       access         `commercial_use` when the source's verdict and this member's own
                      licence let it be used commercially (with per-item acceptance),
-                     `personal_use` otherwise — the personal-research baseline;
+                     `personal_use` otherwise — the personal-research baseline, and for a
+                     member with third-party terms or a personal use kept from legacy data;
       storage        `persist` when the gateway may keep it, `transient` when it is only
                      delivered to the caller (and held in memory for at most an hour);
       redistribution content_redistribution() of the member's content licence."""
     record = {"kind": kind, "license": member.get("license")}
     commercial = commercially_usable(source, record, {"commercial": True, "accept_per_item": True}) \
-        and not member.get("third_party_restricted")
+        and not member.get("third_party_restricted") and not member.get("inferred_personal_use")
     return {"availability": "content" if has_content else "metadata",
             "access": "commercial_use" if commercial else "personal_use",
             "storage": "persist" if storable(source, record) else "transient",

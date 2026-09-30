@@ -208,7 +208,7 @@ with db.connect() as conn:
     rec = Cache(conn).get_record(sys.argv[1])
     rec = router.annotate(copy.deepcopy(rec))
     print(json.dumps({"members": {m["source_id"]: m["permissions"] for m in rec.get("provenance") or []}, "record": rec["permissions"],
-                      "inputs": {m["source_id"]: {k: m[k] for k in ("redistributable", "third_party_restricted") if k in m}
+                      "inputs": {m["source_id"]: {k: m[k] for k in ("redistributable", "third_party_restricted", "inferred_personal_use") if k in m}
                                  for m in rec.get("provenance") or []}}))
 """
 
@@ -229,6 +229,13 @@ with db.connect() as conn:
         router.annotate(rec)
         Cache(conn).put_record(rec, storable=router.storable_all(rec), persist_members=router.persistable_members(rec))
 """
+# gen-1's writer at the commit the live gen-1 gateway runs — read from this repository's history, never
+# from a running checkout (2b-repair-4 F2): before task 2b a member summary kept citation fields only,
+# and the lead's own statements are the record's fields
+LIVE = "f4a7a5c"
+LIVE_WRITER = OLD_WRITER.replace("        router.annotate(rec)\n", "").replace(
+    "storable=router.storable_all(rec)", "redistributable=router.redistributable_all(rec)")
+GATEWAY_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 @unittest.skipUnless(HAVE_DB, "needs RESEARCH_GATEWAY_DSN and RESEARCH_GATEWAY_TEST_OK=1 (a scratch database)")
@@ -236,7 +243,9 @@ class RestrictionsSurviveReload(unittest.TestCase):
     """2b-repair A3: a source's own restriction on a member (its terms forbid redistribution;
     third-party terms) is persisted with the member and re-derived by a FRESH PROCESS that
     reloads the record from the database and annotates it again — never widened back to what
-    the licence alone would allow. Oracle: the facts stated here by hand."""
+    the licence alone would allow. 2b-repair-4 F2: rows earlier writers stored are converted
+    once by registry/migrate.py, and no gateway opens a database holding one unconverted.
+    Oracle: the facts stated here by hand."""
 
     def setUp(self):
         import uuid
@@ -250,16 +259,33 @@ class RestrictionsSurviveReload(unittest.TestCase):
         self.conn.commit()
         self.conn.close()
 
-    def reload(self, identity: str) -> dict:
-        import json
+    def run_gateway(self, *argv) -> tuple[int, str, str]:
         import subprocess
         import sys
-        done = subprocess.run([sys.executable, "-c", RELOAD, identity], capture_output=True, text=True, timeout=120,
-                              cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        self.assertEqual(done.returncode, 0, done.stderr)
-        return json.loads(done.stdout)
+        done = subprocess.run([sys.executable, *argv], capture_output=True, text=True, timeout=120, cwd=GATEWAY_DIR)
+        return done.returncode, done.stdout, done.stderr
 
-    def persist(self, name: str, source_id: str, kind: str, also: tuple = (), **extra) -> str:
+    def reload(self, identity: str) -> dict:
+        import json
+        code, out, err = self.run_gateway("-c", RELOAD, identity)
+        self.assertEqual(code, 0, err)
+        return json.loads(out)
+
+    def migrate(self, *argv) -> str:
+        code, out, err = self.run_gateway("-m", "research_gateway.registry.migrate", *argv)
+        self.assertEqual(code, 0, out + err)
+        return out
+
+    def stored(self, identity: str) -> dict:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT restriction_inputs, canonical FROM gateway.records WHERE identity = %s", (identity,))
+            marker, canonical = cur.fetchone()
+        self.conn.commit()
+        return {"marker": marker, "members": {m["source_id"]: {k: m[k] for k in ("redistributable", "third_party_restricted", "inferred_personal_use")
+                                                               if k in m} for m in canonical.get("provenance") or []},
+                "canonical": canonical}
+
+    def persist(self, name: str, source_id: str, kind: str, also: tuple = (), cache=None, **extra) -> str:
         """The current writer; `also` names sources merged in after the lead, unrestricted."""
         from research_gateway.core import dedup
         from research_gateway.core.canonical import make_record
@@ -267,7 +293,7 @@ class RestrictionsSurviveReload(unittest.TestCase):
                            extra=extra if sid == source_id else None, raw={"payload": name}) for sid in (source_id, *also)]
         (rec,) = dedup.cluster(raw)
         self.router.annotate(rec)
-        Cache(self.conn).put_record(rec, storable=self.router.storable_all(rec), persist_members=self.router.persistable_members(rec))
+        (cache or Cache(self.conn)).put_record(rec, storable=self.router.storable_all(rec), persist_members=self.router.persistable_members(rec))
         return rec["identity"]
 
     def test_a_prohibition_survives_a_fresh_process_reload(self):
@@ -290,27 +316,47 @@ class RestrictionsSurviveReload(unittest.TestCase):
         got = self.reload(self.persist("freeseries", "fred", "series"))
         self.assertEqual(got["record"]["access"], "commercial_use")
 
-    def legacy(self, name: str, stored: str) -> str:
-        """A row stored before the canonical carried its members: the reload rebuilds them from record_sources."""
+    def legacy(self, name: str, stored: str, **lead) -> str:
+        """A row stored before the canonical carried its members: record_sources holds them; `lead`,
+        the lead record's own statements among its fields."""
+        import json
         identity = f"doi:10.1000/{self.tag}-{name}"
         with self.conn.cursor() as cur:
             cur.execute("INSERT INTO gateway.records (identity, kind, canonical) VALUES (%s, 'article', %s)",
-                        (identity, '{"identity": "%s", "kind": "article", "source_id": "crossref", "title": "old"}' % identity))
+                        (identity, json.dumps({"identity": identity, "kind": "article", "source_id": "crossref", "title": "old", **lead})))
             cur.execute("INSERT INTO gateway.record_sources (identity, source_id, raw, license, redistributable, redistribution) "
                         "VALUES (%s, 'crossref', '{}', 'cc0', %s, %s)", (identity, stored == "permitted", stored))
         self.conn.commit()
         return identity
 
     def test_a_legacy_row_keeps_its_stored_prohibition(self):
-        self.assertEqual(self.reload(self.legacy("legacy-no", "prohibited"))["members"]["crossref"]["redistribution"], "prohibited")
+        identity = self.legacy("legacy-no", "prohibited")
+        self.migrate()
+        self.assertEqual(self.reload(identity)["members"]["crossref"]["redistribution"], "prohibited")
+
+    def test_a_legacy_rows_lead_statement_survives_the_migration(self):
+        """Its lead's own prohibition, among the record's fields, becomes its lead member's — added
+        from the record's own identity when record_sources kept none for it, never another's."""
+        kept = self.legacy("legacy-lead", "permitted", redistributable=False)
+        unkept = self.legacy("legacy-lead-unkept", "permitted", source_id="semanticscholar", redistributable=False)
+        self.migrate()
+        members = [[(m["source_id"], m.get("license"), m.get("redistributable")) for m in self.stored(i)["canonical"]["provenance"]]
+                   for i in (kept, unkept)]
+        self.assertEqual(members, [[("crossref", "cc0", False)], [("semanticscholar", None, False), ("crossref", "cc0", None)]])
+        self.assertEqual([self.reload(i)["record"]["redistribution"] for i in (kept, unkept)], ["prohibited", "prohibited"])
+        self.assertEqual(self.reload(unkept)["members"]["crossref"]["redistribution"], "permitted", "the lead's prohibition never spreads")
 
     def test_control_a_legacy_permitted_row_reloads_permitted(self):
-        self.assertEqual(self.reload(self.legacy("legacy-ok", "permitted"))["members"]["crossref"]["redistribution"], "permitted")
+        identity = self.legacy("legacy-ok", "permitted")
+        self.migrate()
+        stored = self.stored(identity)
+        self.assertEqual((stored["marker"], "provenance" in stored["canonical"]), (True, False), "only marked: record_sources holds its members")
+        self.assertEqual(self.reload(identity)["members"]["crossref"]["redistribution"], "permitted")
 
-    def pre_repair(self, records: dict) -> list[str]:
-        """2b-repair-2 R1: rows written by task 2b's OWN writer — commit PRE_REPAIR's real dedup,
-        annotate and put_record, in a fresh process on this database — then the current schema
-        applied over them (the upgrade). `records`: name -> each member's make_record arguments."""
+    def written_by(self, commit: str, writer: str, records: dict) -> list[str]:
+        """Rows an earlier writer stored — commit `commit`'s real dedup and put_record, in a fresh
+        process on this database — then the current schema applied over them (the upgrade).
+        `records`: name -> each member's make_record arguments."""
         import io
         import json
         import subprocess
@@ -319,50 +365,109 @@ class RestrictionsSurviveReload(unittest.TestCase):
         import tempfile
         from pathlib import Path
         from research_gateway.registry.load import SCHEMA
-        # the repository holding PRE_REPAIR: this checkout, or the one a mutation run copied gateway/ from
+        # the repository holding the commit: this checkout, or the one a mutation run copied gateway/ from
         root = os.environ.get("GATEWAY_SOURCE_REPOSITORY") or str(Path(__file__).resolve().parents[2])
-        archive = subprocess.run(["git", "-C", root, "archive", PRE_REPAIR, "gateway"], capture_output=True, timeout=60)
-        self.assertEqual(archive.returncode, 0, f"task 2b's writer is read from commit {PRE_REPAIR}: {archive.stderr.decode()}")
+        archive = subprocess.run(["git", "-C", root, "archive", commit, "gateway"], capture_output=True, timeout=60)
+        self.assertEqual(archive.returncode, 0, f"the earlier writer is read from commit {commit}: {archive.stderr.decode()}")
         ids = {name: f"doi:10.1000/{self.tag}-old-{name}" for name in records}
         with tempfile.TemporaryDirectory() as tmp:
             tarfile.open(fileobj=io.BytesIO(archive.stdout)).extractall(tmp, filter="data")
             old = os.path.join(tmp, "gateway")
-            done = subprocess.run([sys.executable, "-c", OLD_WRITER, json.dumps({ids[n]: m for n, m in records.items()})], cwd=old,
+            done = subprocess.run([sys.executable, "-c", writer, json.dumps({ids[n]: m for n, m in records.items()})], cwd=old,
                                   env={**os.environ, "PYTHONPATH": old}, capture_output=True, text=True, timeout=120)
         self.assertEqual(done.returncode, 0, done.stderr)
         with self.conn.cursor() as cur:
             cur.execute(SCHEMA.read_text())
-            cur.execute("SELECT canonical->'provenance' FROM gateway.records WHERE identity = ANY(%s)", (list(ids.values()),))
-            stored = [m for (members,) in cur.fetchall() for m in members]
         self.conn.commit()
-        self.assertEqual((len(stored), [m for m in stored if {"redistributable", "third_party_restricted"} & set(m) or "permissions" not in m]),
-                         (sum(map(len, records.values())), []), "task 2b's summaries: each member's facts, none of the inputs behind them")
+        self.assertEqual([self.stored(ids[n])["marker"] for n in records], [False] * len(records))
         return [ids[name] for name in records]
 
-    def test_a_pre_repair_rows_prohibition_survives_the_upgrade(self):
+    def pre_repair(self, records: dict) -> list[str]:
+        """2b-repair-2 R1: rows written by task 2b's OWN writer (commit PRE_REPAIR)."""
+        identities = self.written_by(PRE_REPAIR, OLD_WRITER, records)
+        stored = [m for i in identities for m in self.stored(i)["canonical"]["provenance"]]
+        self.assertEqual((len(stored), [m for m in stored if {"redistributable", "third_party_restricted"} & set(m) or "permissions" not in m]),
+                         (sum(map(len, records.values())), []), "task 2b's summaries: each member's facts, none of the inputs behind them")
+        return identities
+
+    def test_a_pre_repair_rows_prohibition_survives_the_migration(self):
         forbidden, merged = self.pre_repair({"forbidden": [{"source_id": "crossref", "kind": "article", "extra": {"redistributable": False}}],
                                              "merged": [{"source_id": "crossref", "kind": "article"},
                                                         {"source_id": "semanticscholar", "kind": "article", "extra": {"redistributable": False}}]})
+        self.migrate()
+        self.assertEqual(self.stored(forbidden)["members"], {"crossref": {"redistributable": False}})
         got = self.reload(forbidden)
         self.assertEqual((got["members"]["crossref"]["redistribution"], got["record"]["redistribution"]), ("prohibited", "prohibited"))
         got = self.reload(merged)   # the restricted member is not the lead: each member keeps its own facts, none spreads
         self.assertEqual((got["members"]["semanticscholar"]["redistribution"], got["record"]["redistribution"]), ("prohibited", "prohibited"))
         self.assertEqual((got["members"]["crossref"]["redistribution"], got["members"]["crossref"]["access"]), ("permitted", "commercial_use"))
+        self.assertEqual(self.stored(merged)["members"], {"crossref": {}, "semanticscholar": {"redistributable": False, "inferred_personal_use": True}},
+                         "its personal use (its source's verdict then, the row cannot say) is kept as inferred, never as third-party terms")
 
-    def test_a_pre_repair_rows_third_party_terms_survive_the_upgrade(self):
-        (identity,) = self.pre_repair({"thirdparty": [{"source_id": "fred", "kind": "series", "extra": {"third_party_restricted": True}}]})
-        got = self.reload(identity)
+    def test_a_pre_repair_rows_personal_use_survives_the_migration_as_inferred(self):
+        """A lead's third-party terms are among the record's fields: stated. A non-lead member's
+        personal use is all the old row shows, not why: kept, inferred from legacy data, never as
+        the source's third-party statement."""
+        lead, merged = self.pre_repair({"thirdparty": [{"source_id": "fred", "kind": "series", "extra": {"third_party_restricted": True}}],
+                                        "merged": [{"source_id": "crossref", "kind": "series"},
+                                                   {"source_id": "fred", "kind": "series", "extra": {"third_party_restricted": True}}]})
+        self.migrate()
+        self.assertEqual(self.stored(lead)["members"], {"fred": {"third_party_restricted": True}})
+        self.assertEqual(self.stored(merged)["members"], {"crossref": {}, "fred": {"inferred_personal_use": True}})
+        got = self.reload(lead)
         self.assertEqual((got["members"]["fred"]["access"], got["record"]["access"]), ("personal_use", "personal_use"))
+        got = self.reload(merged)
+        self.assertEqual((got["members"]["fred"]["access"], got["record"]["access"], got["members"]["crossref"]["access"]),
+                         ("personal_use", "personal_use", "commercial_use"))
 
     def test_control_a_pre_repair_unrestricted_row_reloads_permitted(self):
         free, series = self.pre_repair({"free": [{"source_id": "crossref", "kind": "article"}], "series": [{"source_id": "fred", "kind": "series"}]})
+        self.migrate()
         got = self.reload(free)
         self.assertEqual((got["members"]["crossref"]["redistribution"], got["record"]["access"], got["inputs"]), ("permitted", "commercial_use", {"crossref": {}}))
         self.assertEqual((self.reload(series)["record"]["access"], self.reload(series)["inputs"]), ("commercial_use", {"fred": {}}))
 
+    def test_the_migration_runs_once_and_says_when_it_is_done(self):
+        """Bounded and idempotent, with a verifiable end: `--check` fails while a row is left; a
+        rerun converts nothing and changes nothing; a current writer's row is never rewritten."""
+        current = self.persist("current", "crossref", "article", also=("semanticscholar",))
+        (identity,) = self.pre_repair({"once": [{"source_id": "crossref", "kind": "article"},
+                                                {"source_id": "semanticscholar", "kind": "article", "extra": {"redistributable": False}}]})
+        code, out, _ = self.run_gateway("-m", "research_gateway.registry.migrate", "--check")
+        self.assertEqual((code, out.strip()), (1, "converted 0 stored records; 1 left to convert"))
+        self.assertEqual(self.migrate().strip(), "converted 1 stored records; 0 left to convert")
+        first = self.stored(identity)
+        self.assertEqual(self.migrate().strip(), "converted 0 stored records; 0 left to convert")
+        self.assertEqual(self.stored(identity), first)
+        self.assertEqual(self.migrate("--check").strip(), "converted 0 stored records; 0 left to convert")
+        self.assertEqual(self.stored(current)["members"], {"crossref": {}, "semanticscholar": {}})
+
+    def test_no_gateway_opens_a_database_holding_an_unconverted_row(self):
+        """Refuse, then migrate, then serve: the gateway never reads an earlier writer's row."""
+        (identity,) = self.pre_repair({"refused": [{"source_id": "crossref", "kind": "article", "extra": {"redistributable": False}}]})
+        code, _, err = self.run_gateway("-c", RELOAD, identity)
+        self.assertNotEqual(code, 0)
+        self.assertIn("1 stored records are in an earlier writer's representation", err)
+        with self.assertRaisesRegex(RuntimeError, "convert them first"):
+            app.Gateway(app.Settings(tokens={"t": "t"}, workers=1), use_db=True, transport=FakeTransport())
+        self.migrate()
+        gw = app.Gateway(app.Settings(tokens={"t": "t"}, workers=1), use_db=True, transport=FakeTransport())
+        gw.stop()
+        self.assertEqual(self.reload(identity)["record"]["redistribution"], "prohibited")
+
+    def test_a_row_an_older_gateway_writes_later_is_never_served(self):
+        reader, writer = Cache(self.conn), Cache(self.conn)   # both opened on a database with none left
+        (old,) = self.pre_repair({"late": [{"source_id": "crossref", "kind": "article"}]})
+        current = self.persist("current", "crossref", "article", cache=writer)
+        self.assertEqual(reader.get_record(current)["identity"], current, "control: the reader's database path serves a current row")
+        self.assertIsNone(reader.get_record(old))
+
     def test_a_pre_repair_row_written_again_is_the_current_writers(self):
-        self.pre_repair({"rewritten": [{"source_id": "crossref", "kind": "article"}, {"source_id": "semanticscholar", "kind": "article"}]})
-        got = self.reload(self.persist("old-rewritten", "crossref", "article", also=("semanticscholar",)))
+        cache = Cache(self.conn)
+        (identity,) = self.pre_repair({"rewritten": [{"source_id": "crossref", "kind": "article"}, {"source_id": "semanticscholar", "kind": "article"}]})
+        self.assertEqual(self.persist("old-rewritten", "crossref", "article", also=("semanticscholar",), cache=cache), identity)
+        self.assertTrue(self.stored(identity)["marker"])
+        got = self.reload(identity)
         self.assertEqual((got["members"]["semanticscholar"]["access"], got["inputs"]), ("personal_use", {"crossref": {}, "semanticscholar": {}}))
 
     def test_control_a_row_written_with_its_inputs_is_derived_from_them_alone(self):
@@ -370,3 +475,37 @@ class RestrictionsSurviveReload(unittest.TestCase):
         by its source's verdict, and its summary claims no restriction its source never stated."""
         got = self.reload(self.persist("denied", "crossref", "article", also=("semanticscholar",)))
         self.assertEqual((got["members"]["semanticscholar"]["access"], got["inputs"]), ("personal_use", {"crossref": {}, "semanticscholar": {}}))
+
+    def test_the_live_gateways_rows_keep_their_leads_statements(self):
+        """Rows gen-1's writer stored (the commit the live gateway runs; read from history): the lead's
+        prohibition and third-party terms are the record's own fields. Today's reader, before this
+        migration, served both widened (permitted, commercial use) — 2b-repair-4's own probe."""
+        forbidden, thirdparty, free = self.written_by(LIVE, LIVE_WRITER, {
+            "forbidden": [{"source_id": "crossref", "kind": "article", "extra": {"redistributable": False}}],
+            "thirdparty": [{"source_id": "fred", "kind": "series", "extra": {"third_party_restricted": True}}],
+            "free": [{"source_id": "crossref", "kind": "article"}, {"source_id": "semanticscholar", "kind": "article"}]})
+        self.assertEqual([self.stored(i)["members"] for i in (forbidden, thirdparty)], [{"crossref": {}}, {"fred": {}}],
+                         "gen-1's summaries keep citation fields only")
+        self.migrate()
+        self.assertEqual([self.stored(i)["members"] for i in (forbidden, thirdparty, free)],
+                         [{"crossref": {"redistributable": False}}, {"fred": {"third_party_restricted": True}}, {"crossref": {}, "semanticscholar": {}}])
+        self.assertEqual(self.reload(forbidden)["record"]["redistribution"], "prohibited")
+        self.assertEqual(self.reload(thirdparty)["record"]["access"], "personal_use")
+        got = self.reload(free)
+        self.assertEqual((got["members"]["crossref"]["redistribution"], got["members"]["crossref"]["access"]), ("permitted", "commercial_use"))
+
+    def test_the_harvests_rows_are_current_and_read_from_record_sources(self):
+        from research_gateway.core.canonical import make_record
+        from research_gateway.harvest import index
+        identity, old = f"doi:10.1000/{self.tag}-harvested", f"doi:10.1000/{self.tag}-harvested-old"
+        with self.conn.cursor() as cur:
+            index.upsert(cur, make_record(identity=identity, kind="venue", source_id="doaj", title="t", license="CC BY", raw={}), "doaj")
+            cur.execute("INSERT INTO gateway.records (identity, kind, canonical) VALUES (%s, 'venue', '{}')", (old,))
+            index.upsert(cur, make_record(identity=old, kind="venue", source_id="doaj", title="t", license="CC BY", raw={}), "doaj")
+            cur.execute("DELETE FROM gateway.index_docs WHERE identity IN (%s, %s)", (identity, old))
+        self.conn.commit()
+        self.assertEqual((self.stored(identity)["marker"], self.stored(old)["marker"]), (True, False),
+                         "a row an earlier writer left is still the migration's")
+        self.migrate()
+        got = Cache(self.conn).get_record(identity)
+        self.assertEqual([(m["source_id"], m["license"]) for m in got["provenance"]], [("doaj", "CC BY")])

@@ -62,12 +62,16 @@ PERMISSION_FACTS = {"availability": ("content", "metadata"), "access": ("commerc
 # third-party restrictions): booleans, never payloads, and inputs of the member's permission
 # facts — kept by every stored summary so a reload re-derives the same restriction (2b-repair A3)
 MEMBER_RESTRICTIONS = ("redistributable", "third_party_restricted")
+# what a member stored by an earlier writer shows without saying why (registry/migrate.py): it
+# was personal use. Inferred from that legacy data, never a statement of its source; no current
+# writer produces it
+INFERRED_RESTRICTIONS = ("inferred_personal_use",)
 
 
 def member_summary(member: dict) -> dict:
     out = {k: member[k] for k in PROVENANCE_SUMMARY_FIELDS + ("metadata_license", "freshness_lag")
            if isinstance(member.get(k), str) and member[k]}
-    out.update({k: member[k] for k in MEMBER_RESTRICTIONS if isinstance(member.get(k), bool)})
+    out.update({k: member[k] for k in MEMBER_RESTRICTIONS + INFERRED_RESTRICTIONS if isinstance(member.get(k), bool)})
     perms = member.get("permissions")
     if isinstance(perms, dict) and set(perms) == set(PERMISSION_FACTS) and all(perms[k] in v for k, v in PERMISSION_FACTS.items()):
         out["permissions"] = {k: perms[k] for k in PERMISSION_FACTS}   # four enum facts, never a nested payload (task 2b)
