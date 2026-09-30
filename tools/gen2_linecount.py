@@ -15,8 +15,9 @@ reported as `other`, never dropped.
   --check          exit 1 on either size rule (charter "Size rules", the
                    operator's ruling of 2026-09-29, task 2r):
                    * a hand-written tracked file in the gen-2 surface (gen2/,
-                     tools/gen2*, tools/check_*, tools/gen_*, deploy/,
-                     Makefile, .github/) over 1,500 physical lines — each one
+                     gateway/, tools/gen2*, tools/check_*, tools/gen_*,
+                     deploy/, Makefile, .github/) over 1,500 physical lines —
+                     each one
                      named with its count. A generated file is exempt only by
                      an entry in GENERATED, which names the tool that writes
                      it and why; an entry whose file is not tracked, or whose
@@ -25,6 +26,11 @@ reported as `other`, never dropped.
                    * production reaching 15,000 lines: the growth-review
                      trigger. The build stops for a review with the operator
                      of what made it grow before building further.
+                   The gateway service is its own budget (task 2b's split):
+                   its production (gateway/research_gateway/) and tests are
+                   reported on their own lines and never count toward the
+                   engine's trigger; its files are under the per-file limit
+                   like any other in the surface (task 2b-repair A8).
 
 What the allowlist check shows: that the named tool exists and names the
 file. It does not show the committed bytes are that tool's output (for the
@@ -47,7 +53,7 @@ GROWTH_REVIEW = 15_000  # production lines: reaching it stops the build for a gr
 FILE_LIMIT = 1_500  # physical lines per hand-written file in the gen-2 surface; exactly 1,500 passes
 # The gen-2 surface the per-file limit covers: tracked files under these
 # prefixes, and these files.
-SURFACE_PREFIXES = ("gen2/", "tools/gen2", "tools/check_", "tools/gen_", "deploy/", ".github/")
+SURFACE_PREFIXES = ("gen2/", "gateway/", "tools/gen2", "tools/check_", "tools/gen_", "deploy/", ".github/")
 SURFACE_FILES = ("Makefile",)
 # Generated files, exempt from the per-file limit by this list alone:
 # repo-relative path -> (the tracked tool that writes it, why it is exempt).
@@ -77,6 +83,8 @@ BUILD_TOOLING_PREFIXES = ("tools/gen2_", "tools/check_gen2_")
 # artifact cannot grow unreported.
 GEN2_DEPLOY_PREFIXES = ("deploy/gen2",)
 DR_BASELINE = {"research_loops": 14_333, "gateway/research_gateway": 7_894}
+# The gateway service's own budget, reported beside the engine's and never in it.
+GATEWAY_PRODUCTION, GATEWAY_TESTS = "gateway/research_gateway/", "gateway/tests/"
 
 
 def tracked_files(root: Path) -> list[str]:
@@ -174,7 +182,15 @@ def gen2_report(root: Path, files: list[str]) -> dict:
         if cat == "production":
             owner = next((m for m, mp in modules.items() if rel == mp or rel.startswith(mp.rstrip("/") + "/")), "(undeclared)")
             per_module[owner] = per_module.get(owner, 0) + n
-    return {"categories": cats, "production_by_module": dict(sorted(per_module.items()))}
+    gateway = {"production": 0, "tests": 0}
+    for rel in files:
+        if not (root / rel).is_file():
+            continue
+        if rel.startswith(GATEWAY_PRODUCTION) and PurePosixPath(rel).suffix in CODE_SUFFIXES:
+            gateway["production"] += physical_lines(root / rel)
+        elif rel.startswith(GATEWAY_TESTS) and PurePosixPath(rel).suffix in CODE_SUFFIXES:
+            gateway["tests"] += physical_lines(root / rel)
+    return {"categories": cats, "production_by_module": dict(sorted(per_module.items())), "gateway": gateway}
 
 
 def gen1_report(root: Path, files: list[str]) -> dict[str, int]:
@@ -214,6 +230,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {cat:16} {entry['lines']:>7,} lines in {entry['files']:>3} file(s)")
         for module, n in report["production_by_module"].items():
             print(f"    production/{module:12} {n:>7,}")
+        print(f"  gateway service (its own budget, not in the trigger): production {report['gateway']['production']:,}, "
+              f"tests {report['gateway']['tests']:,}")
         if args.gen1_baseline:
             for prefix, n in report["gen1"]["recount"].items():
                 expected = DR_BASELINE[prefix]

@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from .base import LCT, SZ, Mutation
 
-_PREFIXES = ("gen2/", "tools/gen2", "tools/check_", "tools/gen_", "deploy/", ".github/")
-_SURFACE = 'SURFACE_PREFIXES = ("gen2/", "tools/gen2", "tools/check_", "tools/gen_", "deploy/", ".github/")'
+_PREFIXES = ("gen2/", "gateway/", "tools/gen2", "tools/check_", "tools/gen_", "deploy/", ".github/")   # gateway/: task 2b-repair A8
+_SURFACE = 'SURFACE_PREFIXES = ("gen2/", "gateway/", "tools/gen2", "tools/check_", "tools/gen_", "deploy/", ".github/")'
 
 MUTATIONS: list[Mutation] = [
     Mutation("2R-size-limit-inclusive", "2r", "a file of exactly 1,500 lines fails the per-file limit", (SZ + "test_exactly_the_limit_passes",),
@@ -50,6 +50,10 @@ MUTATIONS: list[Mutation] = [
              (SZ + "test_reaching_the_growth_review_trigger_fails",), target=LCT, old="        if production >= GROWTH_REVIEW:\n",
              new="        if production > GROWTH_REVIEW:\n",
              also=(("        if over or bad or production >= GROWTH_REVIEW:", "        if over or bad or production > GROWTH_REVIEW:"),)),
+    Mutation("2R-growth-counts-the-gateway", "2r", "the gateway service's production counts toward the engine's growth trigger (2b-repair A8)",
+             (SZ + "test_the_gateway_is_its_own_budget_not_the_engines",), target=LCT, old='        if cat is None:\n            continue',
+             new='        if cat is None and rel.startswith(GATEWAY_PRODUCTION) and PurePosixPath(rel).suffix in CODE_SUFFIXES:\n            cat = "production"\n'
+                 '        if cat is None:\n            continue'),
     Mutation("2R-growth-trigger-passes", "2r", "the growth review is announced but the check exits 0", (SZ + "test_reaching_the_growth_review_trigger_fails",),
              target=LCT, old="        if over or bad or production >= GROWTH_REVIEW:", new="        if over or bad:"),
     Mutation("2R-growth-trigger-silent", "2r", "the growth review fails the check without saying why", (SZ + "test_reaching_the_growth_review_trigger_fails",),

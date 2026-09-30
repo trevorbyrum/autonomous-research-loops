@@ -6,11 +6,12 @@ Each test writes a throwaway git repository of literal files here (tracked
 with `git add`, which is what the tool counts), runs the tool on it with
 --check as a subprocess, and asserts the exit code and what it names.
 Oracle: the rules as the charter states them, and line counts built here —
-no hand-written file in the gen-2 surface (gen2/, tools/gen2*, tools/check_*,
-tools/gen_*, deploy/, Makefile, .github/) over 1,500 physical lines, exactly
+no hand-written file in the gen-2 surface (gen2/, gateway/, tools/gen2*,
+tools/check_*, tools/gen_*, deploy/, Makefile, .github/) over 1,500 physical lines, exactly
 1,500 passing; a generated file exempt only through the tool's GENERATED
 list, each entry naming a tracked tool that names the file; and reaching
-15,000 production lines stops the build for a growth review.
+15,000 production lines stops the build for a growth review, where the gateway
+service's production is its own budget (task 2b's split) and never counts toward it.
 """
 from __future__ import annotations
 
@@ -25,7 +26,8 @@ TOOL = REPO / "tools" / "gen2_linecount.py"  # module global: tools/gen2_mutatio
 
 # One hand-written file at each place the per-file limit covers.
 SURFACE = ("gen2/store/schema/05-big.sql", "gen2/tests/test_big.py", "tools/gen2_big.py", "tools/check_big.py", "tools/gen_big.py",
-           "deploy/gen2/big.yaml", "Makefile", ".github/workflows/big.yml")
+           "deploy/gen2/big.yaml", "Makefile", ".github/workflows/big.yml",
+           "gateway/research_gateway/big.py", "gateway/tests/test_big.py")   # the gateway since task 2b-repair (A8)
 # The two allowlisted files, and a stub of each tool naming the path it writes.
 GENERATED = {"tools/gen2_mutation_controls.json": "tools/gen2_mutation_controls.py", "deploy/gen2.env.example": "tools/gen_source_catalog.py"}
 
@@ -101,6 +103,14 @@ class SizeRuleTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1, msg=result.stderr)
         self.assertIn("GROWTH REVIEW REQUIRED: 15,000 production lines reach the 15,000-line trigger", result.stderr)
         self.assertNotIn("FILE SIZE LIMIT", result.stderr)
+
+    def test_the_gateway_is_its_own_budget_not_the_engines(self) -> None:
+        """15,000 gateway service lines trigger no engine growth review, and are reported on their own line."""
+        files = {f"gateway/research_gateway/m{i}.py": lines(1500) for i in range(10)} | {"gateway/tests/test_m.py": lines(7)}
+        result = self.check(files)
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertNotIn("GROWTH REVIEW", result.stderr)
+        self.assertIn("gateway service (its own budget, not in the trigger): production 15,000, tests 7", result.stdout)
 
     def test_below_the_growth_review_trigger_passes(self) -> None:
         files = {f"gen2/core/m{i}.py": lines(1500) for i in range(9)} | {"gen2/core/m9.py": lines(1499)}  # 14,999 production lines
