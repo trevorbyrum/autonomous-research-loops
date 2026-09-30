@@ -574,3 +574,12 @@ Traced via topic-folder mtimes and the host journal. **Every gen-1 topic's files
 The operator rejected using gen-1's existing (stale) queue for gen-2's Phase 2f live run: "We need to pick ONE topic and go through the initial process and everything to make sure it works properly with a fucking queue." Confirmed: Phase 2f uses one fresh topic through the real gen-2 S1 intake conversation, once task 2e lands — not an import of gen-1 state. This does not change the Phase 4 migration plan (gen-1's history is still imported then, under the reconciled-import design), only 2f's proving run.
 
 **Draft topic prepared:** `docs/gen2/PHASE2-TOPIC-DRAFT.md` — research frameworks/methodologies for translating research findings into product/system design decisions (survey/dossier only, no playbook; product/system design broadly, not software-only — operator's explicit choices). Marked DRAFT: it is input for the real S1 conversation at 2f, not an actual intake, since real executors (2e) don't exist yet. No router operation was invoked; nothing is committed to any store.
+
+## 2026-09-30 — 2r review (Astra, xhigh) — **ACCEPTED, first round**
+Full report: `~/work/research-loops-public/private/reviews/gen2-2r-astra-review-20260930.md`. Gates A/B/C all PASS.
+
+**DDL split independently proven equivalent:** the four parts concatenate to the exact original bytes (194,578 bytes, matching SHA-256), and the resulting database is structurally identical across five construction paths (original SQL, the four parts run separately, their concatenation, and the real `db.connect` path) — same 44 tables, 77 indexes, 172 triggers, 1 view, 294 rows, `user_version=1`, compared on all five `sqlite_master` columns including exact SQL text, not just counts. The `order.txt` loader was independently attacked (reversed order, missing part, unlisted file) and behaves correctly in each case.
+
+**Boundary conformance confirmed** (same module edges before/after; only the router touches store-write primitives; router/supervisor/importer byte-identical) and **no stale reader of the old single-file path remains** anywhere in the repo. Astra went beyond the task and built the actual scoped Docker image (disabled networking, declared UID): it loads the split parts and produces the identical database inside the real deployment container.
+
+**2r totals:** 1 review round. Gen-2's size rule (1,500 lines/file, 15,000-line growth trigger) is now enforced by `make gen2-check`, not just documented. Production 9,125/15,000.
