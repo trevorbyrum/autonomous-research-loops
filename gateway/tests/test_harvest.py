@@ -158,6 +158,56 @@ class IndexRoundTrip(unittest.TestCase):
             cur.execute("DELETE FROM gateway.index_docs WHERE identity = ANY(%s)", (list(self.IDS),))
         self.conn.commit()
 
+    def test_a_metadata_licence_never_becomes_the_content_licence(self):
+        """2b-repair A3: the loader's registry licence (DOAJ's CC0 catalogue) is stored as the
+        METADATA licence; the record's own content licence — or unknown, when it has none or
+        it cannot be identified — alone decides redistribution. Oracle: stated by hand."""
+        from research_gateway.core.canonical import make_record
+        cases = (("issn:9999-9991", "CC BY-NC-ND", ("CC BY-NC-ND", False, "conditional", "CC0")),
+                 ("issn:9999-9983", None, (None, False, "unknown", "CC0")),
+                 ("repository:datacite:harvest.test", "see the publisher's terms", ("see the publisher's terms", False, "unknown", "CC0")))
+        with self.conn.cursor() as cur:
+            for identity, content_license, _ in cases:
+                index.upsert(cur, make_record(identity=identity, kind="venue", source_id="doaj", title=identity, license=content_license, raw={}),
+                             "doaj", metadata_license="CC0")
+        self.conn.commit()
+        for identity, _, expected in cases:
+            with self.subTest(identity):
+                with self.conn.cursor() as cur:
+                    cur.execute("SELECT license, redistributable, redistribution, metadata_license FROM gateway.record_sources "
+                                "WHERE identity = %s AND source_id = 'doaj'", (identity,))
+                    self.assertEqual(cur.fetchone(), expected)
+                self.conn.commit()
+
+    def test_control_a_content_licence_decides_with_or_without_a_metadata_licence(self):
+        from research_gateway.core.canonical import make_record
+        with self.conn.cursor() as cur:
+            index.upsert(cur, make_record(identity="issn:9999-9991", kind="venue", source_id="doaj", title="t", license="CC BY", raw={}), "doaj")
+            cur.execute("SELECT license, redistributable, redistribution, metadata_license FROM gateway.record_sources "
+                        "WHERE identity = 'issn:9999-9991' AND source_id = 'doaj'")
+            self.assertEqual(cur.fetchone(), ("CC BY", True, "permitted", None))
+            index.upsert(cur, make_record(identity="issn:9999-9983", kind="venue", source_id="doaj", title="t", license="CC BY", raw={}),
+                         "doaj", metadata_license="CC0")
+            cur.execute("SELECT redistribution, metadata_license FROM gateway.record_sources WHERE identity = 'issn:9999-9983'")
+            self.assertEqual(cur.fetchone(), ("permitted", "CC0"))
+        self.conn.commit()
+
+    def test_the_real_loaders_pass_their_licence_as_metadata(self):
+        c, t = client()
+        t.add("GET", "https://doaj.org/csv", body=DOAJ_CSV, headers={"Content-Type": "text/csv"})
+        t.add("GET", "https://api.crossref.org/journals?", body=CROSSREF_PAGE)
+        self.assertEqual(registries.run(self.conn, c, "doaj"), 2)
+        self.assertEqual(registries.run(self.conn, c, "crossref"), 2)
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT identity, source_id, license, redistribution, metadata_license FROM gateway.record_sources "
+                        "WHERE identity = ANY(%s) ORDER BY identity, source_id", (list(self.IDS),))
+            rows = cur.fetchall()
+        self.conn.commit()
+        self.assertIn(("issn:9999-9983", "doaj", "CC BY-NC", "conditional", "CC0"), rows, "DOAJ's CC0 never widens a journal's CC BY-NC")
+        self.assertIn(("issn:9999-9991", "doaj", "CC BY", "permitted", "CC0"), rows)
+        self.assertIn(("issn:9999-9991", "crossref", None, "unknown", "Metadata: no rights asserted (facts)"), rows,
+                      "a journal Crossref states no content licence for is unknown, never its metadata's")
+
     def test_loaders_merge_into_one_record_per_venue_and_the_index_answers_first(self):
         c, t = client()
         t.add("GET", "https://api.crossref.org/journals?", body=CROSSREF_PAGE)

@@ -58,9 +58,16 @@ PERMISSION_FACTS = {"availability": ("content", "metadata"), "access": ("commerc
                     "storage": ("persist", "transient"), "redistribution": ("permitted", "conditional", "prohibited", "unknown")}
 
 
+# a source's own statements about ONE member (its terms forbid redistribution; it carries
+# third-party restrictions): booleans, never payloads, and inputs of the member's permission
+# facts — kept by every stored summary so a reload re-derives the same restriction (2b-repair A3)
+MEMBER_RESTRICTIONS = ("redistributable", "third_party_restricted")
+
+
 def member_summary(member: dict) -> dict:
     out = {k: member[k] for k in PROVENANCE_SUMMARY_FIELDS + ("metadata_license", "freshness_lag")
            if isinstance(member.get(k), str) and member[k]}
+    out.update({k: member[k] for k in MEMBER_RESTRICTIONS if isinstance(member.get(k), bool)})
     perms = member.get("permissions")
     if isinstance(perms, dict) and set(perms) == set(PERMISSION_FACTS) and all(perms[k] in v for k, v in PERMISSION_FACTS.items()):
         out["permissions"] = {k: perms[k] for k in PERMISSION_FACTS}   # four enum facts, never a nested payload (task 2b)

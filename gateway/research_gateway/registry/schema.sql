@@ -158,6 +158,10 @@ CREATE TABLE IF NOT EXISTS gateway.record_sources (
 ALTER TABLE gateway.record_sources ADD COLUMN IF NOT EXISTS redistribution text
   CHECK (redistribution IN ('permitted', 'conditional', 'prohibited', 'unknown'));
 UPDATE gateway.record_sources SET redistributable = false WHERE redistribution IS NULL AND redistributable;
+-- Task 2b-repair A3: the licence of the registry or source METADATA a row came with (DOAJ's
+-- CC0 catalogue, a snapshot's CC0 dump) is its own column: it never stands in for `license`,
+-- the record's CONTENT licence, which alone decides `redistribution`.
+ALTER TABLE gateway.record_sources ADD COLUMN IF NOT EXISTS metadata_license text;
 
 -- Tier 0 local index over harvested registries (Phase 6).
 CREATE TABLE IF NOT EXISTS gateway.index_docs (

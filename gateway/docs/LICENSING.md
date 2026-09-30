@@ -45,7 +45,8 @@ separately in its `permissions` (computed from the registry and the member's own
 licence on every answer, cache hits included; `core/licenses.py`):
 
 - `availability` — `content` when the gateway delivered the item itself (full text, rows,
-  file bytes), `metadata` when it delivered a description of it;
+  file bytes), `metadata` when it delivered a description of it — a file or full-text
+  record that carries only its links is a description (task 2b-repair A3);
 - `access` — `commercial_use` when the source's verdict and the member's own licence let
   it be used commercially (with per-item acceptance), `personal_use` otherwise;
 - `storage` — `persist` when the gateway may keep it (the rules above), `transient` when
@@ -60,7 +61,12 @@ A merged record carries the most restrictive of its members' facts. Records also
 their source's `metadata_license` and `freshness_lag` beside their own content `license`
 and `retrieved_at`. In `gateway.record_sources`, `redistributable` is true only when
 `redistribution` is `permitted`; before this it was true for every persisted row, and
-meant only that the gateway could keep it.
+meant only that the gateway could keep it. Its `license` is the member's CONTENT licence
+(unknown when absent); the licence of the registry data a harvest loader read (DOAJ's CC0
+catalogue, a CC0 snapshot) is `metadata_license`, and never stands in for it. A source's
+own statements about a member — its terms forbid redistribution, third-party terms — are
+kept with every stored member summary, so a record reloaded from the database and
+annotated again re-derives the same restriction (task 2b-repair A3).
 
 ## Attribution
 

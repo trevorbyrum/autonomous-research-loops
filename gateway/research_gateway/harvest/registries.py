@@ -154,19 +154,20 @@ def datacite_repositories(client: Client, *, limit: int | None = None, size: int
         page += 1
 
 
+# each loader and the METADATA licence of the registry it reads (never a record's content licence, A3)
 LOADERS = {"crossref": (crossref_journals, "Metadata: no rights asserted (facts)"),
            "doaj": (doaj_journals, "CC0"),
            "datacite": (datacite_repositories, "CC0")}
 
 
 def run(conn, client: Client, name: str, *, limit: int | None = None) -> int:
-    fn, license = LOADERS[name]
+    fn, metadata_license = LOADERS[name]
 
     def stream():  # built only once the loader lock is held (D-23)
         kw = {"issn_map": index.IssnMap(conn)} if name in ("crossref", "doaj") else {}
         return fn(client, limit=limit, **kw)
 
-    return index.load(conn, stream, name, license=license)
+    return index.load(conn, stream, name, metadata_license=metadata_license)
 
 
 def main(argv: list[str] | None = None) -> int:

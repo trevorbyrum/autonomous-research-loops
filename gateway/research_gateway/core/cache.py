@@ -70,11 +70,14 @@ class Cache:
                         # what record_sources still knows (licence + persistence time) so a
                         # reload never forgets WHO said what (finding 19). New rows carry the
                         # full original summary inside canonical and skip this.
-                        cur.execute("SELECT source_id, license, fetched_at FROM gateway.record_sources "
+                        cur.execute("SELECT source_id, license, fetched_at, redistribution FROM gateway.record_sources "
                                     "WHERE identity = %s ORDER BY source_id", (key,))
+                        # a stored prohibition is the source's own statement: it survives the
+                        # rebuild as the member's input, never re-read from the licence alone (A3)
                         members = [{"source_id": sid, "identity": key, "license": lic,
-                                    "retrieved_at": fetched.isoformat(timespec="seconds") if fetched else None}
-                                   for sid, lic, fetched in cur.fetchall()]
+                                    "retrieved_at": fetched.isoformat(timespec="seconds") if fetched else None,
+                                    **({"redistributable": False} if redistribution == "prohibited" else {})}
+                                   for sid, lic, fetched, redistribution in cur.fetchall()]
                 self.conn.commit()
             except Exception:
                 try:
@@ -142,12 +145,13 @@ class Cache:
                 content_license = prov.get("license") if "license" in prov else record.get("license")   # each member's own (D-23)
                 redistribution = content_redistribution(content_license, prov.get("redistributable", record.get("redistributable")))
                 cur.execute(
-                    "INSERT INTO gateway.record_sources (identity, source_id, raw, fetched_at, license, redistributable, redistribution) "
-                    "VALUES (%s, %s, %s, now(), %s, %s, %s) ON CONFLICT (identity, source_id) DO UPDATE SET "
+                    "INSERT INTO gateway.record_sources (identity, source_id, raw, fetched_at, license, redistributable, redistribution, "
+                    "metadata_license) VALUES (%s, %s, %s, now(), %s, %s, %s, %s) ON CONFLICT (identity, source_id) DO UPDATE SET "
                     "raw = EXCLUDED.raw, fetched_at = now(), license = EXCLUDED.license, "
-                    "redistributable = EXCLUDED.redistributable, redistribution = EXCLUDED.redistribution",
+                    "redistributable = EXCLUDED.redistributable, redistribution = EXCLUDED.redistribution, "
+                    "metadata_license = EXCLUDED.metadata_license",
                     (key, prov["source_id"], json.dumps(prov.get("raw"), default=str), content_license,
-                     redistribution == "permitted", redistribution),
+                     redistribution == "permitted", redistribution, prov.get("metadata_license")),
                 )
         self.conn.commit()
         self.persisted += 1

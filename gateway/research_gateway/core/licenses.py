@@ -175,7 +175,6 @@ def storable(source: dict, record: dict | None = None) -> bool:
 
 
 REDISTRIBUTION = ("permitted", "conditional", "prohibited", "unknown")
-CONTENT_KINDS = ("full_text", "file")
 
 
 def content_redistribution(license: str | None, adapter_flag=None) -> str:
@@ -199,7 +198,9 @@ def permissions(source: dict, member: dict, *, kind: str | None, has_content: bo
     review §9: availability, content licence and permission to store/transmit are separate
     facts, never collapsed into one flag):
       availability   `content` when the gateway delivered the item's content (full text,
-                     rows, file bytes), `metadata` when it delivered a description of it;
+                     rows, file bytes), `metadata` when it delivered a description of it —
+                     a full_text or file record carrying only links is a description
+                     (2b-repair A3: decided by what was returned, never by the kind alone);
       access         `commercial_use` when the source's verdict and this member's own
                      licence let it be used commercially (with per-item acceptance),
                      `personal_use` otherwise — the personal-research baseline;
@@ -209,7 +210,7 @@ def permissions(source: dict, member: dict, *, kind: str | None, has_content: bo
     record = {"kind": kind, "license": member.get("license")}
     commercial = commercially_usable(source, record, {"commercial": True, "accept_per_item": True}) \
         and not member.get("third_party_restricted")
-    return {"availability": "content" if has_content or kind in CONTENT_KINDS else "metadata",
+    return {"availability": "content" if has_content else "metadata",
             "access": "commercial_use" if commercial else "personal_use",
             "storage": "persist" if storable(source, record) else "transient",
             "redistribution": content_redistribution(member.get("license"), member.get("redistributable"))}

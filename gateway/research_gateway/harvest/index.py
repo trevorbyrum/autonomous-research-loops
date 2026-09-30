@@ -75,10 +75,13 @@ def merge_canonical(existing: dict | None, incoming: dict) -> dict:
     return merged
 
 
-def upsert(cur, record: dict, source_id: str, *, license: str | None = None) -> None:
+def upsert(cur, record: dict, source_id: str, *, metadata_license: str | None = None) -> None:
     """Merge one record — a provenance row per loader, the merged canonical, and an index
     document built from the MERGED record, so search terms a previous loader contributed
-    survive the next one (D-23)."""
+    survive the next one (D-23). `metadata_license` is the licence of the loader's own
+    registry data (DOAJ's CC0 catalogue, a snapshot's CC0 dump): it is stored as that, and
+    never stands in for the record's CONTENT licence — the record's own `license`, or unknown
+    when it has none — which alone decides redistribution (2b-repair A3)."""
     incoming = {k: v for k, v in record.items() if k not in ("raw", "provenance")}
     cur.execute("SELECT canonical FROM gateway.records WHERE identity = %s", (record["identity"],))
     row = cur.fetchone()
@@ -88,15 +91,16 @@ def upsert(cur, record: dict, source_id: str, *, license: str | None = None) -> 
         "ON CONFLICT (identity) DO UPDATE SET canonical = EXCLUDED.canonical, last_seen = now()",
         (record["identity"], record["kind"], json.dumps(merged, default=str)),
     )
-    content_license = license or record.get("license")
+    content_license = record.get("license")
     redistribution = content_redistribution(content_license)   # the harvested content's own licence decides (task 2b)
     cur.execute(
-        "INSERT INTO gateway.record_sources (identity, source_id, raw, fetched_at, license, redistributable, redistribution) "
-        "VALUES (%s, %s, %s, now(), %s, %s, %s) ON CONFLICT (identity, source_id) DO UPDATE SET "
+        "INSERT INTO gateway.record_sources (identity, source_id, raw, fetched_at, license, redistributable, redistribution, "
+        "metadata_license) VALUES (%s, %s, %s, now(), %s, %s, %s, %s) ON CONFLICT (identity, source_id) DO UPDATE SET "
         "raw = EXCLUDED.raw, fetched_at = now(), license = EXCLUDED.license, "
-        "redistributable = EXCLUDED.redistributable, redistribution = EXCLUDED.redistribution",
+        "redistributable = EXCLUDED.redistributable, redistribution = EXCLUDED.redistribution, "
+        "metadata_license = EXCLUDED.metadata_license",
         (record["identity"], source_id, json.dumps(record.get("raw"), default=str), content_license,
-         redistribution == "permitted", redistribution),
+         redistribution == "permitted", redistribution, metadata_license),
     )
     cur.execute(
         "INSERT INTO gateway.index_docs (identity, kind, domain, year, tsv) "
@@ -110,7 +114,7 @@ def upsert(cur, record: dict, source_id: str, *, license: str | None = None) -> 
 LOADER_LOCK = 7_310_001   # advisory lock key: loaders run one at a time (they upsert overlapping identities)
 
 
-def load(conn, records, source_id: str, *, license: str | None = None, batch: int = BATCH) -> int:
+def load(conn, records, source_id: str, *, metadata_license: str | None = None, batch: int = BATCH) -> int:
     """Upsert a stream of records in batches under the loader lock; returns how many were written.
     `records` may be an iterable OR a zero-argument factory returning one — a factory is called
     only after the lock is held, so state it builds (the ISSN map) cannot go stale between
@@ -126,10 +130,10 @@ def load(conn, records, source_id: str, *, license: str | None = None, batch: in
         for rec in stream:
             pending.append(rec)
             if len(pending) >= batch:
-                n += _write_batch(conn, pending, source_id, license)
+                n += _write_batch(conn, pending, source_id, metadata_license)
                 pending = []
         if pending:
-            n += _write_batch(conn, pending, source_id, license)
+            n += _write_batch(conn, pending, source_id, metadata_license)
     except BaseException:
         try:
             conn.rollback()   # the aborted transaction would otherwise swallow the unlock too
@@ -146,13 +150,13 @@ def load(conn, records, source_id: str, *, license: str | None = None, batch: in
     return n
 
 
-def _write_batch(conn, batch: list[dict], source_id: str, license: str | None, attempts: int = 3) -> int:
+def _write_batch(conn, batch: list[dict], source_id: str, metadata_license: str | None, attempts: int = 3) -> int:
     import psycopg
     for attempt in range(attempts):
         try:
             with conn.cursor() as cur:
                 for rec in batch:
-                    upsert(cur, rec, source_id, license=license)
+                    upsert(cur, rec, source_id, metadata_license=metadata_license)
             conn.commit()
             return len(batch)
         except psycopg.errors.DeadlockDetected:

@@ -49,6 +49,11 @@ TABLE = [
      ("metadata", "personal_use", "persist", "unknown")),
     ("allow source, delivered rows, unidentifiable licence", "socrata", {"license": "see portal terms"}, "file", True,
      ("content", "personal_use", "transient", "unknown")),
+    # 2b-repair A3: a file or full-text record that carries only links delivered a description, not content
+    ("allow source, file listed by its link only", "socrata", {"license": "see portal terms"}, "file", False,
+     ("metadata", "personal_use", "transient", "unknown")),
+    ("allow source, full text located by its link only, CC0", "core", {"license": "cc0"}, "full_text", False,
+     ("metadata", "personal_use", "transient", "permitted")),
 ]
 
 
@@ -131,6 +136,17 @@ class ReturnedRecords(unittest.TestCase):
             self.assertEqual((rec["metadata_license"], rec["freshness_lag"]), (BY_ID["crossref"]["license"], BY_ID["crossref"]["freshness_lag"]))
             self.assertEqual(rec["permissions"]["storage"], "persist")
 
+    def test_a_link_only_listing_is_metadata_not_content(self):
+        """A3: a real Globe file listing — a file record with its link, no bytes fetched — is a
+        description of the file; the download control below is the content."""
+        seed = [dict(s, enabled=True, rate={**s["rate"], "verified": True}) if s["id"] == "globe" else s for s in SEED]
+        r, c, t = make(seed)
+        out = R.execute(r, {"request_type": "fetch", "target": "https://globeproject.com/data/x.xls"}, c)
+        (rec,) = out["records"]
+        self.assertEqual((rec["kind"], rec["links"], out.get("content")), ("file", ["https://globeproject.com/data/x.xls"], None))
+        self.assertEqual(rec["permissions"]["availability"], "metadata")
+        self.assertEqual(t.calls, [], "nothing was downloaded")
+
     def test_a_download_carries_its_own_facts(self):
         seed = [dict(s, enabled=True, rate={**s["rate"], "verified": True}) if s["id"] == "globe" else s for s in SEED]
         r, c, t = make(seed)
@@ -178,3 +194,94 @@ class DatabaseBackedSources(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+RELOAD = """
+import copy, json, sys
+from research_gateway import adapters
+from research_gateway.core import db
+from research_gateway.core import router as R
+from research_gateway.core.cache import Cache
+from research_gateway.registry.load import read_seed
+router = R.Router(read_seed(), adapters.load_all())
+with db.connect() as conn:
+    rec = Cache(conn).get_record(sys.argv[1])
+    rec = router.annotate(copy.deepcopy(rec))
+    print(json.dumps({"members": {m["source_id"]: m["permissions"] for m in rec.get("provenance") or []}, "record": rec["permissions"]}))
+"""
+
+
+@unittest.skipUnless(HAVE_DB, "needs RESEARCH_GATEWAY_DSN and RESEARCH_GATEWAY_TEST_OK=1 (a scratch database)")
+class RestrictionsSurviveReload(unittest.TestCase):
+    """2b-repair A3: a source's own restriction on a member (its terms forbid redistribution;
+    third-party terms) is persisted with the member and re-derived by a FRESH PROCESS that
+    reloads the record from the database and annotates it again — never widened back to what
+    the licence alone would allow. Oracle: the facts stated here by hand."""
+
+    def setUp(self):
+        import uuid
+        self.conn = db.connect()
+        self.tag = uuid.uuid4().hex[:8]
+        self.router = R.Router(SEED, adapters.load_all())
+
+    def tearDown(self):
+        with self.conn.cursor() as cur:
+            cur.execute("DELETE FROM gateway.records WHERE identity LIKE %s", (f"%10.1000/{self.tag}%",))
+        self.conn.commit()
+        self.conn.close()
+
+    def reload(self, identity: str) -> dict:
+        import json
+        import subprocess
+        import sys
+        done = subprocess.run([sys.executable, "-c", RELOAD, identity], capture_output=True, text=True, timeout=120,
+                              cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return json.loads(done.stdout)
+
+    def persist(self, name: str, source_id: str, kind: str, **extra) -> str:
+        from research_gateway.core import dedup
+        from research_gateway.core.canonical import make_record
+        raw = make_record(identity=f"doi:10.1000/{self.tag}-{name}", kind=kind, source_id=source_id, title=name, license="cc0",
+                          extra=extra, raw={"payload": name})
+        (rec,) = dedup.cluster([raw])
+        self.router.annotate(rec)
+        Cache(self.conn).put_record(rec, storable=self.router.storable_all(rec), persist_members=self.router.persistable_members(rec))
+        return rec["identity"]
+
+    def test_a_prohibition_survives_a_fresh_process_reload(self):
+        identity = self.persist("forbidden", "crossref", "article", redistributable=False)
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT license, redistributable, redistribution FROM gateway.record_sources WHERE identity = %s", (identity,))
+            self.assertEqual(cur.fetchall(), [("cc0", False, "prohibited")])
+        self.conn.commit()
+        got = self.reload(identity)
+        self.assertEqual((got["members"]["crossref"]["redistribution"], got["record"]["redistribution"]), ("prohibited", "prohibited"))
+
+    def test_third_party_terms_survive_a_fresh_process_reload(self):
+        identity = self.persist("thirdparty", "fred", "series", third_party_restricted=True)
+        got = self.reload(identity)
+        self.assertEqual((got["members"]["fred"]["access"], got["record"]["access"]), ("personal_use", "personal_use"))
+
+    def test_control_an_unrestricted_cc0_record_reloads_permitted(self):
+        got = self.reload(self.persist("free", "crossref", "article"))
+        self.assertEqual((got["members"]["crossref"]["redistribution"], got["record"]["redistribution"]), ("permitted", "permitted"))
+        got = self.reload(self.persist("freeseries", "fred", "series"))
+        self.assertEqual(got["record"]["access"], "commercial_use")
+
+    def legacy(self, name: str, stored: str) -> str:
+        """A row stored before the canonical carried its members: the reload rebuilds them from record_sources."""
+        identity = f"doi:10.1000/{self.tag}-{name}"
+        with self.conn.cursor() as cur:
+            cur.execute("INSERT INTO gateway.records (identity, kind, canonical) VALUES (%s, 'article', %s)",
+                        (identity, '{"identity": "%s", "kind": "article", "source_id": "crossref", "title": "old"}' % identity))
+            cur.execute("INSERT INTO gateway.record_sources (identity, source_id, raw, license, redistributable, redistribution) "
+                        "VALUES (%s, 'crossref', '{}', 'cc0', %s, %s)", (identity, stored == "permitted", stored))
+        self.conn.commit()
+        return identity
+
+    def test_a_legacy_row_keeps_its_stored_prohibition(self):
+        self.assertEqual(self.reload(self.legacy("legacy-no", "prohibited"))["members"]["crossref"]["redistribution"], "prohibited")
+
+    def test_control_a_legacy_permitted_row_reloads_permitted(self):
+        self.assertEqual(self.reload(self.legacy("legacy-ok", "permitted"))["members"]["crossref"]["redistribution"], "permitted")
