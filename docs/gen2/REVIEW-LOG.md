@@ -657,4 +657,6 @@ The operator asked whether the build checks architecture against the requirement
 
 **Orchestrator routing:** under the charter's root-cause rule only the operator can accept a mitigation. Both are escalated with a recommendation to repair.
 
+**OPERATOR RULING:** fix both properly; neither is accepted as debt. F1: the DDL enforces the exact late-snapshot relation, or the design changes so late snapshots never enter the supersession graph (fourth correction in this family, so the third-round redesign rule applies). F2: a bounded, idempotent migration with a zero-unconverted-rows completion check, then the legacy read path is deleted and the gateway refuses to serve unconverted rows; inferred restrictions are labelled as inferred. The migration runs only on disposable databases until a release the operator approves. Dispatched as 2b-repair-4.
+
 **Follow-up ruling, same day:** "I want a fresh Astra on the architecture review every time. I don't want other gates tainting it." Gate D is always a new Astra session that has run no other gate and is never reused for one. Clarified by the operator: "it should and can look at the review log. I just don't want tainted context" — the isolation is of session context, not files; Gate D reads the normal repository, review log included.
