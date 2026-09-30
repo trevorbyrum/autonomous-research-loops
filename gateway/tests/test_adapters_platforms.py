@@ -137,13 +137,14 @@ class OpenAlexLocalIndex(unittest.TestCase):
         self.conn = db.connect()
         self.identity = f"doi:10.9999/test-{uuid.uuid4().hex[:8]}"
         with self.conn.cursor() as cur:
-            # the index holds venues/repositories only (D-19/D-25); an article row planted here must NOT surface
-            cur.execute("INSERT INTO gateway.records (identity, kind, canonical) VALUES (%s, 'venue', %s)",
+            # the index holds venues/repositories only (D-19/D-25); an article row planted here must NOT surface.
+            # Both are current rows (2b-repair-5 F2: one an earlier writer left is withheld, test_record_gate)
+            cur.execute("INSERT INTO gateway.records (identity, kind, canonical, restriction_inputs) VALUES (%s, 'venue', %s, true)",
                         (self.identity, json.dumps({"identity": self.identity, "kind": "venue", "title": "Journal of Cross-Encoder Reranking", "year": 2024})))
             cur.execute("INSERT INTO gateway.index_docs (identity, kind, domain, year, tsv) VALUES (%s, 'venue', 'ai-ml', 2024, to_tsvector('english', %s))",
                         (self.identity, "Journal of Cross-Encoder Reranking retrieval"))
             self.article = self.identity + "-art"
-            cur.execute("INSERT INTO gateway.records (identity, kind, canonical) VALUES (%s, 'article', %s)",
+            cur.execute("INSERT INTO gateway.records (identity, kind, canonical, restriction_inputs) VALUES (%s, 'article', %s, true)",
                         (self.article, json.dumps({"identity": self.article, "kind": "article", "title": "Cross-encoder reranking survey"})))
             cur.execute("INSERT INTO gateway.index_docs (identity, kind, domain, year, tsv) VALUES (%s, 'article', 'ai-ml', 2024, to_tsvector('english', %s))",
                         (self.article, "cross-encoder reranking article that must never surface"))

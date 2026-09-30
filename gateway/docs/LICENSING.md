@@ -73,7 +73,11 @@ member's statements come from the record's own fields; task 2b's stored `prohibi
 source's prohibition, its one cause; a stored `personal_use` nothing else explains is kept
 as `inferred_personal_use` — inferred from legacy data, never presented as a statement of
 the source. An upgrade never widens a stored restriction. Running it on a real database is
-a release step the operator approves.
+a release step the operator approves. Every read that serves a stored record, and every count
+of them, goes through one view, `gateway.servable_records`, which withholds a row not yet
+converted (its canonical NULL); a withheld match makes its lane partial, or unobserved when
+nothing else matched — never a complete answer (task 2b-repair-5; tests/test_record_gate.py
+fails on any other serving read of `gateway.records`).
 
 ## Attribution
 

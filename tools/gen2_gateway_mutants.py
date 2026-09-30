@@ -18,7 +18,11 @@ own completion check in every test that converts a row, so no accepted path is l
 control with); each of its two `NOT restriction_inputs` (the pass's list of rows, and the batch's
 re-check under lock of a row a current writer converted meanwhile: each backs the other, so
 removing one is equivalent without concurrency; that a rerun converts nothing and a current
-writer's row is never rewritten is test_the_migration_runs_once_and_says_when_it_is_done's).
+writer's row is never rewritten is test_the_migration_runs_once_and_says_when_it_is_done's); the
+serving gate's own view, gateway.servable_records (2b-repair-5 F2: DDL applied to the shared
+scratch database, like the immutability trigger — the tests that re-apply the schema would leave a
+mutant view there for every later run; it is exercised directly by test_record_gate.AssembledGateway,
+which fails on all four doors with a reader that goes around it).
 """
 from __future__ import annotations
 
@@ -44,6 +48,8 @@ SECRETS, ROUTER, BASE, APP = "research_gateway/core/secrets.py", "research_gatew
 PRINC, HTTP, MCP, STDIO = "research_gateway/core/principals.py", "research_gateway/api/http.py", "research_gateway/mcp/homelab_adapter.py", "research_gateway/clients/mcp_stdio.py"
 LIC = "research_gateway/core/licenses.py"
 CACHE, MIGRATE = "research_gateway/core/cache.py", "research_gateway/registry/migrate.py"
+INDEX, RG = "research_gateway/adapters/openalex_snapshot.py", "tests.test_record_gate."
+LOCAL_INDEX = "tests.test_adapters_platforms.OpenAlexLocalIndex.test_find_hits_local_index_without_network"
 
 MUTANTS: list[Mutant] = [
     # ---- item 6: secrets outcomes (DEPLOYMENT-CONTRACT §3.4) ---------------------------------------------
@@ -358,10 +364,28 @@ MUTANTS: list[Mutant] = [
            "            if left:\n", "            if False:\n",
            (PV + "RestrictionsSurviveReload.test_no_gateway_opens_a_database_holding_an_unconverted_row",),
            (PV + "RestrictionsSurviveReload.test_a_prohibition_survives_a_fresh_process_reload",), db=True),
-    Mutant("F2-serves-unconverted-row", "a row an older gateway writes after the cache opened is served", CACHE,
-           "WHERE identity = %s AND restriction_inputs \"", "WHERE identity = %s \"",
-           (PV + "RestrictionsSurviveReload.test_a_row_an_older_gateway_writes_later_is_never_served",),
+    # 2b-repair-5 F2: every serving read goes through gateway.servable_records, which withholds a row not yet converted
+    Mutant("F2-cache-reads-around-gate", "the record cache reads stored rows around the serving gate", CACHE,
+           '"SELECT canonical FROM gateway.servable_records WHERE identity = %s "', '"SELECT canonical FROM gateway.records WHERE identity = %s "',
+           (PV + "RestrictionsSurviveReload.test_a_row_an_older_gateway_writes_later_is_never_served",
+            RG + "OneServingRead.test_no_production_code_reads_stored_records_around_the_gate"),
            (PV + "RestrictionsSurviveReload.test_a_prohibition_survives_a_fresh_process_reload",), db=True),
+    Mutant("F2-index-reads-around-gate", "the local index serves stored rows read around the serving gate", INDEX,
+           '"FROM gateway.index_docs d JOIN gateway.servable_records r ON r.identity = d.identity "',
+           '"FROM gateway.index_docs d JOIN gateway.records r ON r.identity = d.identity "',
+           (RG + "AssembledGateway.test_a_row_written_after_startup_is_withheld_on_every_door",
+            RG + "OneServingRead.test_no_production_code_reads_stored_records_around_the_gate"),
+           (LOCAL_INDEX,), db=True),
+    Mutant("F2-index-counts-around-gate", "the local index counts around the serving gate: a withheld match is not counted", INDEX,
+           'f"JOIN gateway.servable_records r ON r.identity = d.identity WHERE', 'f"JOIN gateway.records r ON r.identity = d.identity WHERE',
+           (RG + "AssembledGateway.test_a_row_written_after_startup_is_withheld_on_every_door",
+            RG + "AssembledGateway.test_a_search_only_withheld_rows_match_observes_nothing",
+            RG + "OneServingRead.test_no_production_code_reads_stored_records_around_the_gate"),
+           (LOCAL_INDEX,), db=True),
+    Mutant("F2-withheld-complete", "a lane whose stored matches were withheld reports what was served as complete", ROUTER,
+           "    return got, (str(fact) if fact else None), dropped + withheld\n", "    return got, (str(fact) if fact else None), dropped\n",
+           (LO + "LaneOutcomes.test_withheld_stored_records_make_a_partial_lower_bound",),
+           (LO + "LaneOutcomes.test_dropped_records_make_a_partial_lower_bound",)),
     Mutant("F2-harvest-rows-unmarked", "the harvest's new row is not marked current", "research_gateway/harvest/index.py",
            "now(), true) ", "now(), false) ",
            (PV + "RestrictionsSurviveReload.test_the_harvests_rows_are_current_and_read_from_record_sources",),

@@ -483,7 +483,11 @@ def _run_lane(router: Router, rt: str, lane: Lane, payload: dict, client: Client
     if nxt is not None:
         out.setdefault("next", {})[lane.source_id] = nxt
     got, dropped = _valid_records(res.get("records"), out["facts"], lane.source_id)
-    return got, (str(fact) if fact else None), dropped
+    withheld = res.get("withheld") or 0
+    if withheld:   # stored matches the serving read refused (2b-repair-5 F2): dropped, never a shorter complete answer
+        out["facts"].append(f"{lane.source_id}: {withheld} matching stored record(s) withheld — an earlier writer's rows, never "
+                            "served until converted (python -m research_gateway.registry.migrate); the count is a lower bound")
+    return got, (str(fact) if fact else None), dropped + withheld
 
 
 # 9·2b aggregate bound: each request's pool bounds ONE request's fan-out; this semaphore

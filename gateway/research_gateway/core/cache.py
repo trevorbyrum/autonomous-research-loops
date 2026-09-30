@@ -20,8 +20,9 @@ from .licenses import content_redistribution
 
 
 # rows an earlier writer stored without their members' restriction inputs: registry/migrate.py
-# converts them, and a cache never opens a database that still holds one (2b-repair-4 F2)
-UNCONVERTED = "SELECT count(*) FROM gateway.records WHERE NOT restriction_inputs"
+# converts them, and a cache never opens a database that still holds one (2b-repair-4 F2); they
+# are the rows the one serving read, gateway.servable_records, withholds (2b-repair-5 F2)
+UNCONVERTED = "SELECT count(*) FROM gateway.servable_records WHERE canonical IS NULL"
 
 
 def stored_members(cur, key: str) -> list[dict]:
@@ -88,13 +89,12 @@ class Cache:
                 return None
             try:
                 with self.conn.cursor() as cur:
-                    # a row an older gateway wrote after this cache opened is never served (F2)
-                    cur.execute("SELECT canonical FROM gateway.records WHERE identity = %s AND restriction_inputs "
+                    # a row an older gateway wrote after this cache opened is withheld, never served (F2)
+                    cur.execute("SELECT canonical FROM gateway.servable_records WHERE identity = %s "
                                 "AND last_seen > now() - make_interval(secs => %s)", (key, self.metadata_ttl))
                     row = cur.fetchone()
-                    members = []
-                    if row and not row[0].get("provenance"):
-                        members = stored_members(cur, key)
+                    stored = row[0] if row else None
+                    members = stored_members(cur, key) if stored is not None and not stored.get("provenance") else []
                 self.conn.commit()
             except Exception:
                 try:
@@ -102,9 +102,9 @@ class Cache:
                 except Exception:
                     pass
                 raise
-            if row is None:
+            if stored is None:
                 return None
-            return {**row[0], "provenance": members} if members else row[0]
+            return {**stored, "provenance": members} if members else stored
 
     def put_record(self, record: dict, *, storable: bool, persist_members: list[int] | None = None) -> None:
         """Keep the record in memory — for `metadata_ttl` only when EVERY member is storable,

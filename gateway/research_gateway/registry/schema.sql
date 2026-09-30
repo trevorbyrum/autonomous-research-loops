@@ -167,6 +167,13 @@ ALTER TABLE gateway.record_sources ADD COLUMN IF NOT EXISTS metadata_license tex
 -- record_sources (the harvest's). Earlier writers' rows default to false: registry/migrate.py
 -- converts them once, and a gateway never opens a database that still holds one (core/cache.py).
 ALTER TABLE gateway.records ADD COLUMN IF NOT EXISTS restriction_inputs boolean NOT NULL DEFAULT false;
+-- Task 2b-repair-5 F2: the ONE place a stored record is read to be served — every serving read
+-- and count goes through this view, never gateway.records (tests/test_record_gate.py fails on any
+-- other). A row not yet converted is here withheld: its identity and kind, its canonical NULL, so
+-- a reader can count what it refused and can never serve it.
+CREATE OR REPLACE VIEW gateway.servable_records AS
+  SELECT identity, kind, CASE WHEN restriction_inputs THEN canonical END AS canonical, last_seen
+  FROM gateway.records;
 
 -- Tier 0 local index over harvested registries (Phase 6).
 CREATE TABLE IF NOT EXISTS gateway.index_docs (

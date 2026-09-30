@@ -125,6 +125,23 @@ class LaneOutcomes(unittest.TestCase):
         e = self.lane(find(r, c))
         self.assertEqual((e["coverage"], e["completeness"], e["count"], e.get("error_class")), ("searched_ok", "complete", 3, None))
 
+    def test_withheld_stored_records_make_a_partial_lower_bound(self):
+        """2b-repair-5 F2: stored matches the serving read withheld (rows not yet converted) are never a
+        shorter complete answer: what was served is a partial lower bound, and if nothing was, nothing was
+        observed — never searched_empty, never exhausted, never replayed from the search cache."""
+        keys = ("coverage", "completeness", "count", "error_class", "exhausted")
+        cache = Cache()
+        r, c, _ = stub(find=lambda cursor: {"records": [rec(1)], "withheld": 2})
+        out = R.execute(r, {"request_type": "find", "query": "q", "kind": "article"}, c, cache=cache)
+        self.assertEqual(tuple(self.lane(out).get(k) for k in keys), ("searched_ok", "partial", 1, "payload_invalid", None))
+        self.assertTrue(any("2 matching stored record(s) withheld" in f and "lower bound" in f for f in out["facts"]), out["facts"])
+        self.assertIsNone(cache.get_search(cache.search_key("find", R._search_payload({"request_type": "find", "query": "q", "kind": "article"}))))
+        r, c, _ = stub(find=lambda cursor: {"records": [], "withheld": 1})
+        self.assertEqual(tuple(self.lane(find(r, c)).get(k) for k in keys), ("provider_unavailable", "unobserved", None, "payload_invalid", None))
+        r, c, _ = stub(find=lambda cursor: {"records": [rec(1)], "withheld": 0})
+        self.assertEqual(tuple(self.lane(find(r, c)).get(k) for k in keys), ("searched_ok", "complete", 1, None, True),
+                         "control: nothing withheld is complete")
+
     def test_only_unreadable_records_observe_nothing(self):
         for records in ([{"identity": "x"}], ["junk", 7], {"not": "a list"}):
             with self.subTest(records=records):

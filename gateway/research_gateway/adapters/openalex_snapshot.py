@@ -1,8 +1,11 @@
 """OpenAlex from the local index only (D-2): no live calls, ever.
 
 `find` searches gateway.index_docs (Postgres full-text) and returns the
-canonical records the harvest stored in gateway.records. Phase 6 loads them;
-until then the index is simply empty and `find` returns nothing, truthfully.
+canonical records the harvest stored, read through gateway.servable_records, the one
+serving read. Phase 6 loads them; until then the index is simply empty and `find`
+returns nothing, truthfully. A match that view withholds (a row not yet converted,
+2b-repair-5 F2) is never served, and is counted as `withheld`: the router reports the
+lane partial, never complete.
 """
 from __future__ import annotations
 
@@ -37,8 +40,8 @@ def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None
         args.append(year_from_)
     sql = (
         "SELECT r.identity, r.canonical, ts_rank(d.tsv, websearch_to_tsquery('english', %s)) AS rank "
-        "FROM gateway.index_docs d JOIN gateway.records r ON r.identity = d.identity "
-        f"WHERE {' AND '.join(where)} "   # the WHERE clauses are fixed strings; every value is a bound parameter
+        "FROM gateway.index_docs d JOIN gateway.servable_records r ON r.identity = d.identity "
+        f"WHERE {' AND '.join(where)} AND r.canonical IS NOT NULL "   # fixed strings; every value is a bound parameter
         "ORDER BY rank DESC, "
         "CASE WHEN r.canonical->>'works_count' ~ '^[0-9]{1,15}$' THEN (r.canonical->>'works_count')::bigint END DESC NULLS LAST, "
         "d.year DESC NULLS LAST LIMIT %s"
@@ -49,9 +52,9 @@ def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None
             with conn.cursor() as cur:
                 cur.execute(sql, [query, *args, max(1, min(int(limit or 20), 100))])
                 rows = cur.fetchall()
-                cur.execute("SELECT count(*) FROM gateway.index_docs d JOIN gateway.records r ON r.identity = d.identity "
-                            f"WHERE {' AND '.join(where)}", args)
-                total = cur.fetchone()[0]
+                cur.execute("SELECT count(r.canonical), count(*) - count(r.canonical) FROM gateway.index_docs d "
+                            f"JOIN gateway.servable_records r ON r.identity = d.identity WHERE {' AND '.join(where)}", args)
+                total, withheld = cur.fetchone()
             conn.commit()
         except Exception:
             # the transaction is RECOVERED before the lock is released: a failed local query
@@ -70,4 +73,4 @@ def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None
         rec["source_id"] = SOURCE_ID
         rec["rank"] = float(rank)
         records.append(rec)
-    return {"records": records, "total": total}
+    return {"records": records, "total": total, "withheld": withheld}
