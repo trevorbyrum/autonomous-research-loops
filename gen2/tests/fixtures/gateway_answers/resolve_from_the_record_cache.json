@@ -1,0 +1,277 @@
+{
+ "attempt": 1,
+ "exchanges": [
+  {
+   "request": {
+    "authorization": "engine",
+    "body": {
+     "identity": "doi:10.1234/abc"
+    },
+    "correlation": {
+     "attempt": 1,
+     "invocation_id": "inv_fixture0001"
+    },
+    "method": "POST",
+    "path": "/v1/resolve"
+   },
+   "response": {
+    "body": {
+     "domain_resolved": "other",
+     "effective_request": {
+      "accept_per_item": false,
+      "commercial": false,
+      "domain": "other",
+      "identity": "doi:10.1234/abc",
+      "request_type": "resolve",
+      "what": null
+     },
+     "facts": [],
+     "lanes": [
+      {
+       "completeness": "complete",
+       "count": 1,
+       "coverage": "searched_ok",
+       "retrieved": [
+        "doi:10.1234/abc"
+       ],
+       "role": "primary",
+       "source": "crossref"
+      }
+     ],
+     "observation": {
+      "attempt": 1,
+      "call_ref": 101,
+      "capture_loss": null,
+      "captured": true,
+      "invocation_id": "inv_fixture0001",
+      "job_id": null,
+      "request_identity": "sha256:138399238e27ab6ec283748f1124837f43afae9ff3c7c5b87304237b803236e8",
+      "served": "dispatched"
+     },
+     "records": [
+      {
+       "attribution": null,
+       "authors": [
+        "Ada Lovelace",
+        "Consortium X"
+       ],
+       "cited_by_count": 12,
+       "freshness_lag": "origin registry (publishers deposit here first)",
+       "identifiers": {
+        "doi": "10.1234/abc",
+        "issn": "1234-5678"
+       },
+       "identity": "doi:10.1234/abc",
+       "kind": "article",
+       "license": "http://creativecommons.org/licenses/by/4.0/",
+       "links": [
+        "https://doi.org/10.1234/abc"
+       ],
+       "metadata_license": "Metadata: no rights asserted (facts); reference lists as deposited by publishers.",
+       "permissions": {
+        "access": "commercial_use",
+        "availability": "metadata",
+        "redistribution": "permitted",
+        "storage": "persist"
+       },
+       "publisher": "Example Press",
+       "raw": {
+        "DOI": "10.1234/ABC",
+        "ISSN": [
+         "12345678"
+        ],
+        "URL": "https://doi.org/10.1234/abc",
+        "author": [
+         {
+          "family": "Lovelace",
+          "given": "Ada"
+         },
+         {
+          "name": "Consortium X"
+         }
+        ],
+        "container-title": [
+         "Journal of IR"
+        ],
+        "is-referenced-by-count": 12,
+        "issued": {
+         "date-parts": [
+          [
+           2021,
+           3,
+           1
+          ]
+         ]
+        },
+        "license": [
+         {
+          "URL": "http://creativecommons.org/licenses/by/4.0/"
+         }
+        ],
+        "publisher": "Example Press",
+        "reference": [
+         {
+          "DOI": "10.1000/ref1"
+         },
+         {
+          "unstructured": "no doi here"
+         }
+        ],
+        "reference-count": 2,
+        "title": [
+         "Reranking for retrieval"
+        ],
+        "type": "journal-article"
+       },
+       "reference_count": 2,
+       "retrieved_at": "2026-09-30T00:00:00+00:00",
+       "source_id": "crossref",
+       "title": "Reranking for retrieval",
+       "type": "journal-article",
+       "venue": "Journal of IR",
+       "year": 2021
+      }
+     ],
+     "request_identity": "sha256:138399238e27ab6ec283748f1124837f43afae9ff3c7c5b87304237b803236e8",
+     "request_type": "resolve"
+    },
+    "content_type": "application/json",
+    "status": 200,
+    "x_research_gateway": "result"
+   }
+  },
+  {
+   "request": {
+    "authorization": "engine",
+    "body": {
+     "identity": "doi:10.1234/abc"
+    },
+    "correlation": {
+     "attempt": 1,
+     "invocation_id": "inv_fixture0001"
+    },
+    "method": "POST",
+    "path": "/v1/resolve"
+   },
+   "response": {
+    "body": {
+     "cache_hit": true,
+     "domain_resolved": "other",
+     "effective_request": {
+      "accept_per_item": false,
+      "commercial": false,
+      "domain": "other",
+      "identity": "doi:10.1234/abc",
+      "request_type": "resolve",
+      "what": null
+     },
+     "facts": [],
+     "lanes": [],
+     "observation": {
+      "attempt": 1,
+      "call_ref": 102,
+      "capture_loss": null,
+      "captured": true,
+      "invocation_id": "inv_fixture0001",
+      "job_id": null,
+      "request_identity": "sha256:138399238e27ab6ec283748f1124837f43afae9ff3c7c5b87304237b803236e8",
+      "served": "cache"
+     },
+     "records": [
+      {
+       "attribution": null,
+       "authors": [
+        "Ada Lovelace",
+        "Consortium X"
+       ],
+       "cited_by_count": 12,
+       "freshness_lag": "origin registry (publishers deposit here first)",
+       "identifiers": {
+        "doi": "10.1234/abc",
+        "issn": "1234-5678"
+       },
+       "identity": "doi:10.1234/abc",
+       "kind": "article",
+       "license": "http://creativecommons.org/licenses/by/4.0/",
+       "links": [
+        "https://doi.org/10.1234/abc"
+       ],
+       "metadata_license": "Metadata: no rights asserted (facts); reference lists as deposited by publishers.",
+       "permissions": {
+        "access": "commercial_use",
+        "availability": "metadata",
+        "redistribution": "permitted",
+        "storage": "persist"
+       },
+       "publisher": "Example Press",
+       "raw": {
+        "DOI": "10.1234/ABC",
+        "ISSN": [
+         "12345678"
+        ],
+        "URL": "https://doi.org/10.1234/abc",
+        "author": [
+         {
+          "family": "Lovelace",
+          "given": "Ada"
+         },
+         {
+          "name": "Consortium X"
+         }
+        ],
+        "container-title": [
+         "Journal of IR"
+        ],
+        "is-referenced-by-count": 12,
+        "issued": {
+         "date-parts": [
+          [
+           2021,
+           3,
+           1
+          ]
+         ]
+        },
+        "license": [
+         {
+          "URL": "http://creativecommons.org/licenses/by/4.0/"
+         }
+        ],
+        "publisher": "Example Press",
+        "reference": [
+         {
+          "DOI": "10.1000/ref1"
+         },
+         {
+          "unstructured": "no doi here"
+         }
+        ],
+        "reference-count": 2,
+        "title": [
+         "Reranking for retrieval"
+        ],
+        "type": "journal-article"
+       },
+       "reference_count": 2,
+       "retrieved_at": "2026-09-30T00:00:00+00:00",
+       "source_id": "crossref",
+       "title": "Reranking for retrieval",
+       "type": "journal-article",
+       "venue": "Journal of IR",
+       "year": 2021
+      }
+     ],
+     "request_identity": "sha256:138399238e27ab6ec283748f1124837f43afae9ff3c7c5b87304237b803236e8",
+     "request_type": "resolve",
+     "served_from": "record_cache"
+    },
+    "content_type": "application/json",
+    "status": 200,
+    "x_research_gateway": "result"
+   }
+  }
+ ],
+ "invocation_id": "inv_fixture0001",
+ "note": "one resolve twice: dispatched to crossref, then from the record cache",
+ "scenario": "resolve_from_the_record_cache"
+}

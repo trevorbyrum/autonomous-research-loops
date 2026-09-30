@@ -14,6 +14,13 @@ The durable request row is the one substituted part: these scenarios run without
 database, so Gateway._span is replaced by a counter returning row ids 101, 102, ... — the
 gateway's own code still decides `captured` from it. One scenario keeps the real no-DB
 answer (captured: false, with its capture_loss).
+
+The committed file is a DRIFT check only (Astra's 2b review, tests 28-35: a snapshot the
+implementation wrote cannot be its own acceptance oracle). Each scenario therefore also
+asserts, by hand, the contract facts the engine relies on — every lane's coverage,
+completeness, count, identities, error class and cursor; the caller's observation; the
+effective request; the capability fact — stated here from STATION-CONTRACT.md, not read
+back from the answer (task 2b-repair).
 """
 from __future__ import annotations
 
@@ -21,7 +28,6 @@ import json
 import os
 import tempfile
 import threading
-import types
 import unittest
 import urllib.error
 import urllib.request
@@ -41,9 +47,6 @@ RECORD = os.environ.get("GATEWAY_RECORD_FIXTURES") == "1"
 TOKENS = {"engine": "tok-engine-secret"}
 INV, ATT = "inv_fixture0001", 1
 SEED = [dict(s, enabled=False) if s["id"] == "openalex_snapshot" else s for s in read_seed()]
-STUB_ROW = {"id": "stub", "name": "Stub", "kind": "article", "enabled": True, "capabilities": ["find"], "base_for": ["article"],
-            "domains": [], "use_commercial": "allow", "license": "CC0 (fixture)", "freshness_lag": "none",
-            "rate": {"per_second": 100, "verified": True}}
 T0 = 1790019900.0
 
 
@@ -131,6 +134,21 @@ class Recorder:
         return status, json.loads(raw)
 
 
+def lanes_of(body: dict) -> list[tuple]:
+    """(source, coverage, completeness, count, retrieved, error_class, cursor, next, exhausted) per lane."""
+    return [(e["source"], e["coverage"], e["completeness"], e.get("count"), e.get("retrieved"), e.get("error_class"),
+             e.get("cursor"), e.get("next"), e.get("exhausted")) for e in body["lanes"]]
+
+
+def observed(body: dict) -> tuple:
+    """(invocation, attempt, served, captured, call_ref, capture_loss) of the caller's observation."""
+    o = body["observation"]
+    return o["invocation_id"], o["attempt"], o["served"], o["captured"], o["call_ref"], o["capture_loss"]
+
+
+FIND = {"query": "reranking", "kind": "article", "domain": "finance"}
+
+
 class EngineFixtures(unittest.TestCase):
     maxDiff = None
 
@@ -147,28 +165,68 @@ class EngineFixtures(unittest.TestCase):
     def test_find_complete(self):
         rec = Recorder(self)
         rec.t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [CROSSREF_WORK], "total-results": 1}})
-        rec.send("POST", "/v1/find", {"query": "reranking", "kind": "article", "domain": "finance"})
+        status, body = rec.send("POST", "/v1/find", FIND)
+        self.assertEqual(status, 200)
+        self.assertEqual(lanes_of(body), [("crossref", "searched_ok", "complete", 1, ["doi:10.1234/abc"], None, None, None, True),
+                                          ("doaj", "searched_empty", "complete", 0, [], None, None, None, True)])
+        self.assertEqual(observed(body), (INV, ATT, "dispatched", True, 101, None))
+        self.assertEqual({k: body["effective_request"][k] for k in ("request_type", "query", "kind", "domain", "limit", "cursors")},
+                         {"request_type": "find", "query": "reranking", "kind": "article", "domain": "finance", "limit": 20, "cursors": {}})
+        self.assertEqual([r["identity"] for r in body["records"]], ["doi:10.1234/abc"])
         self.check("find_complete", rec, "two lanes, both complete: crossref one record, doaj none")
+
+    def test_find_served_from_cache(self):
+        """The same find asked twice: the second is the cache's replay of the first dispatch,
+        its lanes repeated, observed by this caller as `cache` with its own request row."""
+        rec = Recorder(self)
+        rec.t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [CROSSREF_WORK], "total-results": 1}})
+        first = rec.send("POST", "/v1/find", FIND)[1]
+        status, again = rec.send("POST", "/v1/find", FIND)
+        self.assertEqual((status, lanes_of(again)), (200, lanes_of(first)), "a replayed answer repeats the dispatch's lanes")
+        self.assertEqual((again["cache_hit"], again["served_from"]), (True, "search_cache"))
+        self.assertEqual(observed(again), (INV, ATT, "cache", True, 102, None))
+        self.check("find_served_from_cache", rec, "one find twice: dispatched, then served from the search cache")
+
+    def test_resolve_from_the_record_cache(self):
+        """A resolve answered from the record cache: no lanes, the one record it holds, and says so."""
+        rec = Recorder(self)
+        status, first = rec.send("POST", "/v1/resolve", {"identity": "doi:10.1234/abc"})
+        self.assertEqual(lanes_of(first), [("crossref", "searched_ok", "complete", 1, ["doi:10.1234/abc"], None, None, None, None)])
+        status, again = rec.send("POST", "/v1/resolve", {"identity": "doi:10.1234/abc"})
+        self.assertEqual((status, again["lanes"], again["cache_hit"], again["served_from"]), (200, [], True, "record_cache"))
+        self.assertEqual([(r["identity"], r["source_id"]) for r in again["records"]], [("doi:10.1234/abc", "crossref")])
+        self.assertEqual(observed(again), (INV, ATT, "cache", True, 102, None))
+        self.check("resolve_from_the_record_cache", rec, "one resolve twice: dispatched to crossref, then from the record cache")
 
     def test_find_not_captured(self):
         rec = Recorder(self, durable=False)
         rec.t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [CROSSREF_WORK], "total-results": 1}})
-        rec.send("POST", "/v1/find", {"query": "reranking", "kind": "article", "domain": "finance"})
+        status, body = rec.send("POST", "/v1/find", FIND)
+        self.assertEqual(lanes_of(body), [("crossref", "searched_ok", "complete", 1, ["doi:10.1234/abc"], None, None, None, True),
+                                          ("doaj", "searched_empty", "complete", 0, [], None, None, None, True)])
+        self.assertEqual(observed(body), (INV, ATT, "dispatched", False, None, "no durable call log: this gateway runs without a database"),
+                         "RG-4: the lost durable row is said, never implied captured (the engine then degrades the lanes)")
         self.check("find_not_captured", rec, "a gateway without a database: the durable request row is an explicit loss")
 
     def test_find_unreadable_lane(self):
         rec = Recorder(self)
         rec.t.add("GET", "https://api.crossref.org/works?", body=b'{"message": {"items": [{"DOI": "10.1234/ab')
-        rec.send("POST", "/v1/find", {"query": "reranking", "kind": "article", "domain": "finance"})
+        status, body = rec.send("POST", "/v1/find", FIND)
+        self.assertEqual(lanes_of(body), [("crossref", "provider_unavailable", "unobserved", None, None, "payload_invalid", None, None, None),
+                                          ("doaj", "searched_empty", "complete", 0, [], None, None, None, True)])
+        self.assertNotIn("count", body["lanes"][0], "unreadable is no count, never zero")
         self.check("find_unreadable_lane", rec, "crossref answers truncated JSON: unavailable, payload_invalid, no count")
 
     def test_find_partial_records(self):
-        rec = Recorder(self, extra_sources=[STUB_ROW])
-        good = [{"identity": f"doi:10.1234/p{i}", "kind": "article", "source_id": "stub", "title": f"P{i}"} for i in (1, 2)]
-        rec.gw.router.adapters["stub"] = types.SimpleNamespace(
-            SOURCE_ID="stub", CAPABILITIES=("find",), find=lambda client, query, *, limit=20: {"records": good + [{"identity": None}]})
-        rec.send("POST", "/v1/find", {"query": "q", "kind": "article", "lanes": ["stub"]})
-        self.check("find_partial_records", rec, "one of three records unreadable: searched_ok, partial, a lower bound of 2")
+        """Through the REAL Crossref parser (2b-repair A4): a readable work, then a member that
+        is not one — the readable one stands as a partial lower bound, not exhausted."""
+        rec = Recorder(self)
+        second = dict(CROSSREF_WORK, DOI="10.1234/def", title=["Reranking, continued"])
+        rec.t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [CROSSREF_WORK, 7, second, {}], "total-results": 4}})
+        status, body = rec.send("POST", "/v1/find", {"query": "q", "kind": "article", "lanes": ["crossref"]})
+        self.assertEqual(lanes_of(body), [("crossref", "searched_ok", "partial", 2, ["doi:10.1234/abc", "doi:10.1234/def"],
+                                           "payload_invalid", None, None, None)])
+        self.check("find_partial_records", rec, "two of four crossref members unreadable: searched_ok, partial, a lower bound of 2")
 
     def test_find_paged_then_failed(self):
         rec = Recorder(self)
@@ -176,8 +234,14 @@ class EngineFixtures(unittest.TestCase):
         rec.t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [CROSSREF_WORK], "total-results": 3,
                                                                               "next-cursor": "c2"}})
         request = {"query": "reranking", "kind": "article", "domain": "finance"}
-        rec.send("POST", "/v1/find", request)
-        rec.send("POST", "/v1/find", {**request, "cursors": {"crossref": "c2"}, "lanes": ["crossref"]})
+        first = rec.send("POST", "/v1/find", request)[1]
+        status, second = rec.send("POST", "/v1/find", {**request, "cursors": {"crossref": "c2"}, "lanes": ["crossref"]})
+        self.assertEqual(lanes_of(first)[0], ("crossref", "searched_ok", "complete", 1, ["doi:10.1234/abc"], None, None, "c2", None))
+        self.assertEqual(lanes_of(second), [("crossref", "provider_unavailable", "unobserved", None, None, "provider_outage", "c2", None, None)],
+                         "the failed page keeps the cursor it was asked with; no next, not exhausted")
+        self.assertEqual((second["effective_request"]["cursors"], second["effective_request"]["lanes"]), ({"crossref": "c2"}, ["crossref"]))
+        self.assertNotEqual(second["request_identity"], first["request_identity"], "each page is its own request")
+        self.assertEqual((observed(first)[4], observed(second)[4]), (101, 102))
         self.check("find_paged_then_failed", rec, "page 1 reads one record and a cursor; page 2 fails with HTTP 503")
 
     def test_find_paged_complete(self):
@@ -188,8 +252,11 @@ class EngineFixtures(unittest.TestCase):
         rec.t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [CROSSREF_WORK], "total-results": 2,
                                                                               "next-cursor": "c2"}})
         request = {"query": "reranking", "kind": "article", "domain": "finance"}
-        rec.send("POST", "/v1/find", request)
-        rec.send("POST", "/v1/find", {**request, "cursors": {"crossref": "c2"}, "lanes": ["crossref"]})
+        first = rec.send("POST", "/v1/find", request)[1]
+        status, second = rec.send("POST", "/v1/find", {**request, "cursors": {"crossref": "c2"}, "lanes": ["crossref"]})
+        self.assertEqual(lanes_of(first)[0], ("crossref", "searched_ok", "complete", 1, ["doi:10.1234/abc"], None, None, "c2", None))
+        self.assertEqual(lanes_of(second), [("crossref", "searched_ok", "complete", 1, ["doi:10.1234/def"], None, "c2", None, True)])
+        self.assertNotEqual(second["request_identity"], first["request_identity"], "each page is its own request")
         self.check("find_paged_complete", rec, "page 1 reads one record and a cursor; page 2 reads the last record")
 
     def test_data_secrets_failing(self):
@@ -204,14 +271,21 @@ class EngineFixtures(unittest.TestCase):
                                                                          wall=lambda: T0 + 120))
         with mock.patch.dict(os.environ, {k: v for k, v in os.environ.items() if not k.startswith("RESEARCH_GATEWAY_SECRET_")}, clear=True):
             rec = Recorder(self, secrets_backend=chain)
-            rec.send("POST", "/v1/data", {"source": "fred", "params": {"series": "GDP"}})
+            status, body = rec.send("POST", "/v1/data", {"source": "fred", "params": {"series": "GDP"}})
+        self.assertEqual(lanes_of(body), [("fred", "provider_unavailable", "unobserved", None, None, "secrets_backend_failing", None, None, None)])
+        self.assertEqual(body["capability_facts"], [{"capability": "secrets.vault", "state": "failing", "since": "2026-09-21T19:47:00Z",
+                                                     "last_success_at": None, "detail": "403", "affected_lanes": ["fred"]}],
+                         "the dated fact the engine records before the observation that names it (DEPLOYMENT-CONTRACT §3.4 fixture 5)")
         self.check("data_secrets_failing", rec, "vault answers 403: the lane is secrets_backend_failing with the dated fact")
 
     def test_grant_and_policy_refusal(self):
         rec = Recorder(self)
         status, grant = rec.send("POST", "/v1/grants", {"topic_id": "topic-fixture", "commercial": True, "accept_per_item": False,
                                                         "invocation_id": INV, "ttl_seconds": 3600}, correlated=False)
-        rec.send("POST", "/v1/resolve", {"identity": "doi:10.1234/abc", "commercial": False}, token=grant["token"])
+        self.assertEqual((status, grant["client_id"], grant["invocation_id"], grant["policy"]),
+                         (201, "engine@topic-fixture", INV, {"topic_id": "topic-fixture", "commercial": True, "accept_per_item": False}))
+        status, refused = rec.send("POST", "/v1/resolve", {"identity": "doi:10.1234/abc", "commercial": False}, token=grant["token"])
+        self.assertEqual((status, refused), (403, {"error": "policy-bound: commercial is set by the topic, not the caller"}))
         rec.exchanges[-1]["request"]["authorization"] = "grant"
         self.check("grant_and_policy_refusal", rec, "a grant is minted; a request under it asking to loosen its posture is refused")
 

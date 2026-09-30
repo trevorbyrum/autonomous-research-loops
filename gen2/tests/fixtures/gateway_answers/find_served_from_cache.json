@@ -5,11 +5,9 @@
    "request": {
     "authorization": "engine",
     "body": {
+     "domain": "finance",
      "kind": "article",
-     "lanes": [
-      "crossref"
-     ],
-     "query": "q"
+     "query": "reranking"
     },
     "correlation": {
      "attempt": 1,
@@ -20,40 +18,49 @@
    },
    "response": {
     "body": {
-     "domain_resolved": "other",
+     "domain_resolved": "finance",
      "effective_request": {
       "accept_per_item": false,
       "commercial": false,
       "cursors": {},
-      "domain": "other",
+      "domain": "finance",
       "kind": "article",
-      "lanes": [
-       "crossref"
-      ],
+      "lanes": null,
       "limit": 20,
       "published_after": null,
-      "query": "q",
+      "query": "reranking",
       "request_type": "find",
       "year_from": null
      },
-     "facts": [
-      "crossref: 2 malformed record(s) dropped \u2014 the count is a lower bound"
-     ],
+     "facts": [],
      "lanes": [
       {
-       "completeness": "partial",
-       "count": 2,
+       "completeness": "complete",
+       "count": 1,
        "coverage": "searched_ok",
        "cursor": null,
-       "error_class": "payload_invalid",
+       "exhausted": true,
        "retrieved": [
-        "doi:10.1234/abc",
-        "doi:10.1234/def"
+        "doi:10.1234/abc"
        ],
        "role": "base",
        "source": "crossref"
+      },
+      {
+       "completeness": "complete",
+       "count": 0,
+       "coverage": "searched_empty",
+       "cursor": null,
+       "exhausted": true,
+       "retrieved": [],
+       "role": "base",
+       "source": "doaj"
       }
      ],
+     "next": {
+      "crossref": "exhausted",
+      "doaj": "exhausted"
+     },
      "observation": {
       "attempt": 1,
       "call_ref": 101,
@@ -61,7 +68,7 @@
       "captured": true,
       "invocation_id": "inv_fixture0001",
       "job_id": null,
-      "request_identity": "sha256:de40fdced3f93eb6bc828c8dfbedb0831f6b323f6f6bb24120d6cbacc6e8fa79",
+      "request_identity": "sha256:4050b9fe6b33b35c7aca2d3eed710c6b5f01cc5672da0ecc20dc9d1fa66e34b2",
       "served": "dispatched"
      },
      "records": [
@@ -167,7 +174,88 @@
        "type": "journal-article",
        "venue": "Journal of IR",
        "year": 2021
+      }
+     ],
+     "request_identity": "sha256:4050b9fe6b33b35c7aca2d3eed710c6b5f01cc5672da0ecc20dc9d1fa66e34b2",
+     "request_type": "find"
+    },
+    "content_type": "application/json",
+    "status": 200,
+    "x_research_gateway": "result"
+   }
+  },
+  {
+   "request": {
+    "authorization": "engine",
+    "body": {
+     "domain": "finance",
+     "kind": "article",
+     "query": "reranking"
+    },
+    "correlation": {
+     "attempt": 1,
+     "invocation_id": "inv_fixture0001"
+    },
+    "method": "POST",
+    "path": "/v1/find"
+   },
+   "response": {
+    "body": {
+     "cache_hit": true,
+     "domain_resolved": "finance",
+     "effective_request": {
+      "accept_per_item": false,
+      "commercial": false,
+      "cursors": {},
+      "domain": "finance",
+      "kind": "article",
+      "lanes": null,
+      "limit": 20,
+      "published_after": null,
+      "query": "reranking",
+      "request_type": "find",
+      "year_from": null
+     },
+     "facts": [],
+     "lanes": [
+      {
+       "completeness": "complete",
+       "count": 1,
+       "coverage": "searched_ok",
+       "cursor": null,
+       "exhausted": true,
+       "retrieved": [
+        "doi:10.1234/abc"
+       ],
+       "role": "base",
+       "source": "crossref"
       },
+      {
+       "completeness": "complete",
+       "count": 0,
+       "coverage": "searched_empty",
+       "cursor": null,
+       "exhausted": true,
+       "retrieved": [],
+       "role": "base",
+       "source": "doaj"
+      }
+     ],
+     "next": {
+      "crossref": "exhausted",
+      "doaj": "exhausted"
+     },
+     "observation": {
+      "attempt": 1,
+      "call_ref": 102,
+      "capture_loss": null,
+      "captured": true,
+      "invocation_id": "inv_fixture0001",
+      "job_id": null,
+      "request_identity": "sha256:4050b9fe6b33b35c7aca2d3eed710c6b5f01cc5672da0ecc20dc9d1fa66e34b2",
+      "served": "cache"
+     },
+     "records": [
       {
        "attribution": null,
        "authors": [
@@ -177,10 +265,10 @@
        "cited_by_count": 12,
        "freshness_lag": "origin registry (publishers deposit here first)",
        "identifiers": {
-        "doi": "10.1234/def",
+        "doi": "10.1234/abc",
         "issn": "1234-5678"
        },
-       "identity": "doi:10.1234/def",
+       "identity": "doi:10.1234/abc",
        "kind": "article",
        "license": "http://creativecommons.org/licenses/by/4.0/",
        "links": [
@@ -197,7 +285,7 @@
         {
          "attribution": null,
          "freshness_lag": "origin registry (publishers deposit here first)",
-         "identity": "doi:10.1234/def",
+         "identity": "doi:10.1234/abc",
          "license": "http://creativecommons.org/licenses/by/4.0/",
          "link": "https://doi.org/10.1234/abc",
          "metadata_license": "Metadata: no rights asserted (facts); reference lists as deposited by publishers.",
@@ -208,7 +296,7 @@
           "storage": "persist"
          },
          "raw": {
-          "DOI": "10.1234/def",
+          "DOI": "10.1234/ABC",
           "ISSN": [
            "12345678"
           ],
@@ -251,7 +339,7 @@
           ],
           "reference-count": 2,
           "title": [
-           "Reranking, continued"
+           "Reranking for retrieval"
           ],
           "type": "journal-article"
          },
@@ -266,14 +354,15 @@
        "sources": [
         "crossref"
        ],
-       "title": "Reranking, continued",
+       "title": "Reranking for retrieval",
        "type": "journal-article",
        "venue": "Journal of IR",
        "year": 2021
       }
      ],
-     "request_identity": "sha256:de40fdced3f93eb6bc828c8dfbedb0831f6b323f6f6bb24120d6cbacc6e8fa79",
-     "request_type": "find"
+     "request_identity": "sha256:4050b9fe6b33b35c7aca2d3eed710c6b5f01cc5672da0ecc20dc9d1fa66e34b2",
+     "request_type": "find",
+     "served_from": "search_cache"
     },
     "content_type": "application/json",
     "status": 200,
@@ -282,6 +371,6 @@
   }
  ],
  "invocation_id": "inv_fixture0001",
- "note": "two of four crossref members unreadable: searched_ok, partial, a lower bound of 2",
- "scenario": "find_partial_records"
+ "note": "one find twice: dispatched, then served from the search cache",
+ "scenario": "find_served_from_cache"
 }
