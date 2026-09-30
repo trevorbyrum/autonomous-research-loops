@@ -77,7 +77,10 @@ is never conflated with "not searched" or "unavailable":
   An unreadable successful answer (unparseable, empty, or without the container its
   results live in) and a search endpoint's 404 are `provider_unavailable` with
   `payload_invalid` / `provider_outage` — never `searched_empty`. An answer with any
-  degraded or partial lane is never served again from the search cache.
+  degraded or partial lane is never served again from the search cache; an answer that
+  IS served from it repeats the lanes of the dispatch that produced it, marked
+  `cache_hit` / `served_from`, and the caller's own observation says `served: cache`
+  (§4) — a replayed `searched_ok` is that earlier dispatch's, not a new one.
 - Client → chassis: when `RESEARCH_LOOP_RESEARCH_ACTIVITY` names a writable file, the
   stdio dispatcher appends JSON lines
   `{"at": iso8601, "source": id, "request_type": t, "coverage": state, "query_or_identity": s,

@@ -165,11 +165,14 @@ class Handler(BaseHTTPRequestHandler):
                                             iteration=trace["iteration"], batch_entry=trace.get("batch_entry"),
                                             topic=trace.get("topic"), invocation_id=trace.get("invocation_id"),
                                             attempt=trace.get("attempt"), capture=capture)
+                # the durable record of a queued request is its job row (carrying the creator's
+                # invocation, attempt and request identity) or, for a caller that joined an
+                # in-flight twin, its own coalesce row — acknowledged like the sync door's (2b)
                 return self._send(202, {"job_id": job_id, "created": created, "status": "queued",
                                         "observation": {**{k: trace.get(k) for k in ("invocation_id", "attempt")},
                                                         "request_identity": app_module.request_identity(payload),
-                                                        "served": "queued", "job_id": job_id,
-                                                        "coalesce_ref": capture.get("call_ref"),
+                                                        "served": "queued" if created else "coalesced", "job_id": job_id,
+                                                        "captured": capture.get("loss") is None, "call_ref": capture.get("call_ref"),
                                                         "capture_loss": capture.get("loss")}})
             timeout = min(float(body.get("timeout") or gw.settings.sync_timeout), MAX_TIMEOUT)
             out = gw.handle(payload, client, timeout=timeout, priority=str(body.get("priority") or "interactive"),

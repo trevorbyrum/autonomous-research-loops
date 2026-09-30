@@ -200,7 +200,9 @@ class JobsAreTheirTopicsAlone(unittest.TestCase):
         alpha = self.grant()
         status, body = call(self.url, "/v1/find?async=1", {"query": f"q {self.tag} {uuid.uuid4().hex[:6]}", "kind": "article"}, alpha)
         self.assertEqual(status, 202, body)
-        self.assertEqual(body["observation"]["invocation_id"], "inv_alpha0001")
+        self.assertEqual({k: body["observation"][k] for k in ("invocation_id", "attempt", "served", "captured", "capture_loss")},
+                         {"invocation_id": "inv_alpha0001", "attempt": 1, "served": "queued", "captured": True, "capture_loss": None},
+                         "the job row is the queued request's durable record")
         job = self.gw.wait(body["job_id"], 20)
         self.assertEqual((job["payload"]["topic_id"], job["payload"]["commercial"], job["invocation_id"]),
                          ("topic-alpha", True, "inv_alpha0001"), "the queued job is bound as the grant says")
