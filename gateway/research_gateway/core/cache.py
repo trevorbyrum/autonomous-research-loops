@@ -19,6 +19,22 @@ from .canonical import member_summary
 from .licenses import content_redistribution
 
 
+def _restrictions_from_facts(member):
+    """A member summary task 2b's writer stored — its own four facts, without the source's
+    statements they came from — with those restriction inputs rebuilt from ITS facts, so a
+    reload re-derives the restriction instead of widening it to what the licence alone allows
+    (2b-repair-2 R1). `prohibited` has one cause, the source forbidding it; `personal_use` is
+    kept by the member-level input that yields it (conservative: a member whose own source's
+    verdict was the cause re-derives personal use either way). A statement kept wins."""
+    facts = member.get("permissions") if isinstance(member, dict) else None
+    if not isinstance(facts, dict):
+        return member
+    rebuilt = {"redistributable": False} if facts.get("redistribution") == "prohibited" else {}
+    if facts.get("access") == "personal_use":
+        rebuilt["third_party_restricted"] = True
+    return {**rebuilt, **member}
+
+
 class Cache:
     """Thread-safe: worker threads and front-door threads share one instance; the lock covers
     the memory stores and the cache's own database connection (never a worker's or the control one)."""
@@ -61,11 +77,14 @@ class Cache:
                 return None
             try:
                 with self.conn.cursor() as cur:
-                    cur.execute("SELECT canonical FROM gateway.records WHERE identity = %s AND last_seen > now() - make_interval(secs => %s)",
-                                (key, self.metadata_ttl))
+                    cur.execute("SELECT canonical, restriction_inputs FROM gateway.records "
+                                "WHERE identity = %s AND last_seen > now() - make_interval(secs => %s)", (key, self.metadata_ttl))
                     row = cur.fetchone()
                     members = []
-                    if row and not row[0].get("provenance"):
+                    if row and isinstance(row[0].get("provenance"), list) and row[0]["provenance"] and not row[1]:
+                        # task 2b's writer kept each member's facts, not the inputs they came from (R1)
+                        members = [_restrictions_from_facts(m) for m in row[0]["provenance"]]
+                    elif row and not row[0].get("provenance"):
                         # legacy rows persisted before the canonical summary existed: rebuild
                         # what record_sources still knows (licence + persistence time) so a
                         # reload never forgets WHO said what (finding 19). New rows carry the
@@ -134,8 +153,9 @@ class Cache:
         canonical["provenance"] = [member_summary(m) for m in provenance if isinstance(m, dict)]
         with self.conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO gateway.records (identity, kind, canonical, last_seen) VALUES (%s, %s, %s, now()) "
-                "ON CONFLICT (identity) DO UPDATE SET kind = EXCLUDED.kind, canonical = EXCLUDED.canonical, last_seen = now()",
+                "INSERT INTO gateway.records (identity, kind, canonical, last_seen, restriction_inputs) VALUES (%s, %s, %s, now(), true) "
+                "ON CONFLICT (identity) DO UPDATE SET kind = EXCLUDED.kind, canonical = EXCLUDED.canonical, last_seen = now(), "
+                "restriction_inputs = true",
                 (key, record["kind"], json.dumps(canonical, default=str)),
             )
             for prov in members:

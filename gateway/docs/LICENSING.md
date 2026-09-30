@@ -66,7 +66,11 @@ meant only that the gateway could keep it. Its `license` is the member's CONTENT
 catalogue, a CC0 snapshot) is `metadata_license`, and never stands in for it. A source's
 own statements about a member — its terms forbid redistribution, third-party terms — are
 kept with every stored member summary, so a record reloaded from the database and
-annotated again re-derives the same restriction (task 2b-repair A3).
+annotated again re-derives the same restriction (task 2b-repair A3). Rows stored before
+that kept each member's four facts but not those statements (`gateway.records.restriction_inputs`
+false): a reload rebuilds them from the member's own stored facts — `prohibited` as the
+source's prohibition, `personal_use` as a restriction kept — so an upgrade never widens a
+stored restriction (task 2b-repair-2 R1).
 
 ## Attribution
 

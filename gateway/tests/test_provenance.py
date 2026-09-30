@@ -207,7 +207,27 @@ router = R.Router(read_seed(), adapters.load_all())
 with db.connect() as conn:
     rec = Cache(conn).get_record(sys.argv[1])
     rec = router.annotate(copy.deepcopy(rec))
-    print(json.dumps({"members": {m["source_id"]: m["permissions"] for m in rec.get("provenance") or []}, "record": rec["permissions"]}))
+    print(json.dumps({"members": {m["source_id"]: m["permissions"] for m in rec.get("provenance") or []}, "record": rec["permissions"],
+                      "inputs": {m["source_id"]: {k: m[k] for k in ("redistributable", "third_party_restricted") if k in m}
+                                 for m in rec.get("provenance") or []}}))
+"""
+
+# task 2b's own writer, run from its own commit: the last before 2b-repair (2b-repair-2 R1)
+PRE_REPAIR = "e7856a9"
+OLD_WRITER = """
+import json, sys
+from research_gateway import adapters
+from research_gateway.core import db, dedup
+from research_gateway.core import router as R
+from research_gateway.core.cache import Cache
+from research_gateway.core.canonical import make_record
+from research_gateway.registry.load import read_seed
+router = R.Router(read_seed(), adapters.load_all())
+with db.connect() as conn:
+    for identity, members in json.loads(sys.argv[1]).items():
+        (rec,) = dedup.cluster([make_record(identity=identity, title="old", license="cc0", raw={"payload": identity}, **m) for m in members])
+        router.annotate(rec)
+        Cache(conn).put_record(rec, storable=router.storable_all(rec), persist_members=router.persistable_members(rec))
 """
 
 
@@ -239,12 +259,13 @@ class RestrictionsSurviveReload(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         return json.loads(done.stdout)
 
-    def persist(self, name: str, source_id: str, kind: str, **extra) -> str:
+    def persist(self, name: str, source_id: str, kind: str, also: tuple = (), **extra) -> str:
+        """The current writer; `also` names sources merged in after the lead, unrestricted."""
         from research_gateway.core import dedup
         from research_gateway.core.canonical import make_record
-        raw = make_record(identity=f"doi:10.1000/{self.tag}-{name}", kind=kind, source_id=source_id, title=name, license="cc0",
-                          extra=extra, raw={"payload": name})
-        (rec,) = dedup.cluster([raw])
+        raw = [make_record(identity=f"doi:10.1000/{self.tag}-{name}", kind=kind, source_id=sid, title=name, license="cc0",
+                           extra=extra if sid == source_id else None, raw={"payload": name}) for sid in (source_id, *also)]
+        (rec,) = dedup.cluster(raw)
         self.router.annotate(rec)
         Cache(self.conn).put_record(rec, storable=self.router.storable_all(rec), persist_members=self.router.persistable_members(rec))
         return rec["identity"]
@@ -285,3 +306,67 @@ class RestrictionsSurviveReload(unittest.TestCase):
 
     def test_control_a_legacy_permitted_row_reloads_permitted(self):
         self.assertEqual(self.reload(self.legacy("legacy-ok", "permitted"))["members"]["crossref"]["redistribution"], "permitted")
+
+    def pre_repair(self, records: dict) -> list[str]:
+        """2b-repair-2 R1: rows written by task 2b's OWN writer — commit PRE_REPAIR's real dedup,
+        annotate and put_record, in a fresh process on this database — then the current schema
+        applied over them (the upgrade). `records`: name -> each member's make_record arguments."""
+        import io
+        import json
+        import subprocess
+        import sys
+        import tarfile
+        import tempfile
+        from pathlib import Path
+        from research_gateway.registry.load import SCHEMA
+        # the repository holding PRE_REPAIR: this checkout, or the one a mutation run copied gateway/ from
+        root = os.environ.get("GATEWAY_SOURCE_REPOSITORY") or str(Path(__file__).resolve().parents[2])
+        archive = subprocess.run(["git", "-C", root, "archive", PRE_REPAIR, "gateway"], capture_output=True, timeout=60)
+        self.assertEqual(archive.returncode, 0, f"task 2b's writer is read from commit {PRE_REPAIR}: {archive.stderr.decode()}")
+        ids = {name: f"doi:10.1000/{self.tag}-old-{name}" for name in records}
+        with tempfile.TemporaryDirectory() as tmp:
+            tarfile.open(fileobj=io.BytesIO(archive.stdout)).extractall(tmp, filter="data")
+            old = os.path.join(tmp, "gateway")
+            done = subprocess.run([sys.executable, "-c", OLD_WRITER, json.dumps({ids[n]: m for n, m in records.items()})], cwd=old,
+                                  env={**os.environ, "PYTHONPATH": old}, capture_output=True, text=True, timeout=120)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        with self.conn.cursor() as cur:
+            cur.execute(SCHEMA.read_text())
+            cur.execute("SELECT canonical->'provenance' FROM gateway.records WHERE identity = ANY(%s)", (list(ids.values()),))
+            stored = [m for (members,) in cur.fetchall() for m in members]
+        self.conn.commit()
+        self.assertEqual((len(stored), [m for m in stored if {"redistributable", "third_party_restricted"} & set(m) or "permissions" not in m]),
+                         (sum(map(len, records.values())), []), "task 2b's summaries: each member's facts, none of the inputs behind them")
+        return [ids[name] for name in records]
+
+    def test_a_pre_repair_rows_prohibition_survives_the_upgrade(self):
+        forbidden, merged = self.pre_repair({"forbidden": [{"source_id": "crossref", "kind": "article", "extra": {"redistributable": False}}],
+                                             "merged": [{"source_id": "crossref", "kind": "article"},
+                                                        {"source_id": "semanticscholar", "kind": "article", "extra": {"redistributable": False}}]})
+        got = self.reload(forbidden)
+        self.assertEqual((got["members"]["crossref"]["redistribution"], got["record"]["redistribution"]), ("prohibited", "prohibited"))
+        got = self.reload(merged)   # the restricted member is not the lead: each member keeps its own facts, none spreads
+        self.assertEqual((got["members"]["semanticscholar"]["redistribution"], got["record"]["redistribution"]), ("prohibited", "prohibited"))
+        self.assertEqual((got["members"]["crossref"]["redistribution"], got["members"]["crossref"]["access"]), ("permitted", "commercial_use"))
+
+    def test_a_pre_repair_rows_third_party_terms_survive_the_upgrade(self):
+        (identity,) = self.pre_repair({"thirdparty": [{"source_id": "fred", "kind": "series", "extra": {"third_party_restricted": True}}]})
+        got = self.reload(identity)
+        self.assertEqual((got["members"]["fred"]["access"], got["record"]["access"]), ("personal_use", "personal_use"))
+
+    def test_control_a_pre_repair_unrestricted_row_reloads_permitted(self):
+        free, series = self.pre_repair({"free": [{"source_id": "crossref", "kind": "article"}], "series": [{"source_id": "fred", "kind": "series"}]})
+        got = self.reload(free)
+        self.assertEqual((got["members"]["crossref"]["redistribution"], got["record"]["access"], got["inputs"]), ("permitted", "commercial_use", {"crossref": {}}))
+        self.assertEqual((self.reload(series)["record"]["access"], self.reload(series)["inputs"]), ("commercial_use", {"fred": {}}))
+
+    def test_a_pre_repair_row_written_again_is_the_current_writers(self):
+        self.pre_repair({"rewritten": [{"source_id": "crossref", "kind": "article"}, {"source_id": "semanticscholar", "kind": "article"}]})
+        got = self.reload(self.persist("old-rewritten", "crossref", "article", also=("semanticscholar",)))
+        self.assertEqual((got["members"]["semanticscholar"]["access"], got["inputs"]), ("personal_use", {"crossref": {}, "semanticscholar": {}}))
+
+    def test_control_a_row_written_with_its_inputs_is_derived_from_them_alone(self):
+        """The current writer's rows are never rebuilt: a member of a deny-verdict source is personal use
+        by its source's verdict, and its summary claims no restriction its source never stated."""
+        got = self.reload(self.persist("denied", "crossref", "article", also=("semanticscholar",)))
+        self.assertEqual((got["members"]["semanticscholar"]["access"], got["inputs"]), ("personal_use", {"crossref": {}, "semanticscholar": {}}))

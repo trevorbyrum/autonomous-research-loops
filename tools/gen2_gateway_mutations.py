@@ -63,8 +63,10 @@ def have_db() -> bool:
 
 
 def run_tests(tree: Path, names: list[str]) -> dict:
+    # the copy has no git history: a test reading the gateway's own past (test_provenance's
+    # pre-repair writer, 2b-repair-2 R1) reads it from the repository the copy came from
     proc = subprocess.run([sys.executable, "-c", CHILD, *names], cwd=tree, capture_output=True, text=True, timeout=900,
-                          env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+                          env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "GATEWAY_SOURCE_REPOSITORY": str(ROOT)})
     line = next((ln for ln in proc.stdout.splitlines() if ln.startswith("OUTCOMES ")), None)
     if line is None:
         raise RuntimeError(f"the child printed no outcomes (exit {proc.returncode}): {proc.stderr[-2000:]}")
