@@ -80,7 +80,10 @@ gen2-trigger-order: gen2-venv
 gen2-mutation: gen2-venv
 	$(PYTHON) tools/gen2_mutations.py
 
-# Size budget (charter; design review §10): fails above the 12,000-line ceiling.
+# Size rules (charter "Size rules"; task 2r): fails on a hand-written gen-2
+# file over 1,500 lines (generated files are exempt only by the reasoned list
+# in tools/gen2_linecount.py) and when production reaches the 15,000-line
+# growth-review trigger.
 gen2-size: gen2-venv
 	$(PYTHON) tools/gen2_linecount.py --check
 

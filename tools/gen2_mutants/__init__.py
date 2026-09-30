@@ -10,7 +10,7 @@ that runs a mutant.
 """
 from __future__ import annotations
 
-from . import ddl_0a, store_0b_0d, router_1b, supervisor_1c, registries_1d, operator_1e_1f, workflow_2a
+from . import ddl_0a, store_0b_0d, router_1b, supervisor_1c, registries_1d, operator_1e_1f, workflow_2a, size_2r
 from .base import Mutation
 from .second_layer import SECOND_LAYER, SECOND_LAYER_TRIGGERS
 
@@ -22,4 +22,5 @@ MUTATIONS: list[Mutation] = [
     *registries_1d.MUTATIONS,
     *operator_1e_1f.MUTATIONS,
     *workflow_2a.MUTATIONS,
+    *size_2r.MUTATIONS,
 ]

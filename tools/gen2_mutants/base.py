@@ -110,6 +110,7 @@ WSR, WSD, WSP, WRF, WTR = ("test_router_workflow.ScopingReportTest.", "test_rout
 SWR, SWP = "test_store_workflow.ScopingReportTest.", "test_store_workflow.SourceProposalTest."
 WBS = "test_router_workflow.BriefStandingTest."  # task 2a-repair F1
 WBB, IBR = "test_router_brief_basis.BriefBasisTest.", "test_store_intake.BriefReplacementTest."  # task 2a-repair-3
+LCT, SZ = "tools/gen2_linecount.py", "test_size_rules.SizeRuleTest."  # task 2r: the size rules
 RECEIPT = "gen2/schema/export-delivery-receipt.schema.json"
 MANIFEST = "gen2/schema/export-manifest.schema.json"
 ENVELOPE = "gen2/schema/freshness-envelope.schema.json"

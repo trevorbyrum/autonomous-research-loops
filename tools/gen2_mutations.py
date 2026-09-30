@@ -176,6 +176,7 @@ FILE_TARGETS = {
     "gen2/schema/common.schema.json": ("attr", "test_schema_counterfactuals", "COMMON_SCHEMA"),
     "gen2/schema/decision-receipt.schema.json": ("attr", "test_schema_counterfactuals", "DECISION_RECEIPT_SCHEMA"),
     "gen2/schema/invocation.schema.json": ("attr", "test_schema_counterfactuals", "INVOCATION_SCHEMA"),
+    "tools/gen2_linecount.py": ("attr", "test_size_rules", "TOOL"),  # task 2r: the size rules
 }
 
 
