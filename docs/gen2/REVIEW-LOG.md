@@ -590,3 +590,20 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-2r-astra-review-
 **Orchestrator independently re-ran, not trusted from the coder's log:** `git status --short` clean on the working tree; `make gen2-check` unpiped exit 0, 1,582 tests OK (2 skipped), 1,651/1,651 mutants killed, 9,521 production lines in 31 files. **Live gen-1 gateway boundary re-fingerprinted separately:** `~/work/staging/research-gateway-wt/gateway` clean, HEAD still `f4a7a5c6108d90fd4afd2fa2e1b8164381e0c279` (unchanged), `research-gateway.service` still active — the live deployment was not touched.
 
 Astra dispatched for Gate A/B/C review, task file `~/work/research-loops-public/private/reviews/gen2-2b-review-task-20260930.md`. Explicitly asked to independently re-verify the gen-1-boundary claim itself rather than trust the coder's or orchestrator's fingerprint, and to rebuild several of the eight §3.4 fixtures and the request-identity collision fix from scratch.
+
+## 2026-09-30 — 2b review (Astra, xhigh) — **BLOCK** (Gate A + C; Gate B PASS)
+Full report: `~/work/research-loops-public/private/reviews/gen2-2b-astra-review-20260930.md`. **The live gen-1 gateway boundary held**, independently re-fingerprinted (HEAD `f4a7a5c6` unchanged, clean tree, SHA-256 tree hash, service PID unchanged and uninterrupted since 2026-09-26, no lifecycle events in the journal across the whole task window, rechecked again at review end). `make gen2-check` exit 0 (1,582 tests, 1,651/1,651 mutants), `make gen2-gateway` exit 0 (57/57 gateway mutants) both independently re-run by Astra, unpiped.
+
+**8 findings, all real defects, not test-only or process nitpicks — 5 HIGH, 3 MEDIUM:**
+- **A1 (HIGH):** degraded/uncaptured gateway answers (empty lanes with no records field, `metadata_only`, `capture_loss`) become complete zero-result observations instead of a distinct degraded state — violates RG-4.
+- **A2 (HIGH):** engine request identity is built from the gateway's *echo*, so a timeout/refusal with no echo collapses two genuinely different requests into one observation (H-1/H-5 violation), while `delivery` mode changes (cache vs. dispatched) wrongly split one identical request into two recorded observations. Pagination loses the actual failed cursor per page.
+- **A3 (HIGH):** a persisted restrictive redistribution fact (`prohibited`) reverts to `permitted` on reload/reannotate; a metadata licence override can override a content licence; link-only responses are mislabeled as delivered content.
+- **A4 (HIGH):** malformed individual members (not just malformed containers) produce fabricated identities (`url:None`) or discard valid sibling records entirely instead of a partial lower bound.
+- **A5 (HIGH):** both correlation headers absent is still accepted (contradicts the two-required-headers claim); job polling doesn't bind to the caller's own invocation, letting one invocation read another's job under the creator's identity; the station HTTP client drops the download attribution header.
+- **A6 (MEDIUM):** fixture 5's engine half is test-only SQL insertion, not a real router ingestion path.
+- **A7 (MEDIUM):** Vault reads don't require HTTP 200 — a 201 with a valid body is accepted as a successful read.
+- **A8 (MEDIUM, boundary-drift):** the size checker's `SURFACE_PREFIXES` excludes `gateway/` entirely, so per-file enforcement doesn't actually cover gateway code (no file is currently oversized — pure enforcement gap).
+
+Line accounting, mutation counts, and the Phase 3 scope boundary (breaker/budget/SIGTERM untouched) were all independently confirmed correct. Gate B passes outright — no research-effectiveness claim introduced.
+
+**Orchestrator routing decision:** dispatched to a fresh Opus 5.5 coder as task 2b-repair (`docs/gen2/tasks/2b-repair.md`), covering A1–A8 with Astra's required repairs verbatim.
