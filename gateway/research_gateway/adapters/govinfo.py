@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
-from .base import AdapterError, Client, check, quote
+from .base import AdapterError, Client, PayloadError, check, need, quote
 
 SOURCE_ID = "govinfo"
 SMOKE = {'capability': 'find', 'query': 'artificial intelligence', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -42,23 +42,26 @@ def find(client: Client, query: str, *, limit: int = 20, offset_mark: str = "*",
     body = {"query": q, "pageSize": min(limit, 100), "offsetMark": offset_mark,
             "sorts": [{"field": "score", "sortOrder": "DESC"}]}
     resp = client.post(SOURCE_ID, "find", f"{BASE}/search", body=body, headers=hdrs, query=query)
-    if not check(SOURCE_ID, resp):
-        return {"records": [], "total": 0, "next_offset_mark": None}
-    j = resp.json or {}
-    results = j.get("results") or []
+    check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
+    j = need(SOURCE_ID, resp.json, kind=dict)
+    # an answer may leave `results` out only when it counts nothing
+    results = need(SOURCE_ID, j, "results") if j.get("results") is not None or j.get("count") != 0 else []
     nxt = j.get("offsetMark") if results and j.get("offsetMark") not in (None, offset_mark) else None
     return {"records": [_record(p) for p in results], "total": j.get("count"), "next_offset_mark": nxt}
 
 
 def resolve(client: Client, identity: str) -> dict | None:
     hdrs = _headers(client)
-    if not hdrs:
-        return None
+    if not hdrs:   # an unconfigured key is an auth fact, never "no such package"
+        return {"capability_fact": "no api.data.gov key configured"}
     pid = _package_id(identity)
     resp = client.get(SOURCE_ID, "resolve", f"{BASE}/packages/{quote(pid, safe='')}/summary", headers=hdrs, identity=f"govinfo:{pid}")
     if not check(SOURCE_ID, resp):
         return None
-    return _record(resp.json or {})
+    summary = need(SOURCE_ID, resp.json, kind=dict)
+    if not summary.get("packageId"):
+        raise PayloadError(f"{SOURCE_ID}: the package summary carries no packageId")
+    return _record(summary)
 
 
 def fetch(client: Client, target: str, *, fmt: str = "pdf", download: bool = False) -> dict:
@@ -72,8 +75,8 @@ def fetch(client: Client, target: str, *, fmt: str = "pdf", download: bool = Fal
         return {"identity": identity, "records": [], "capability_fact": "no api.data.gov key configured"}
     if not download:
         rec = resolve(client, identity)
-        if rec is None:
-            return {"identity": identity, "records": []}
+        if rec is None or rec.get("capability_fact"):
+            return {"identity": identity, "records": [], **({"capability_fact": rec["capability_fact"]} if rec else {})}
         files = [make_record(identity=f"{identity}#{f}", kind="file", source_id=SOURCE_ID, title=f"{rec['title']} ({f})",
                              links=[f"{BASE}/packages/{pid}/{f}"], license=rec["license"], extra={"format": f}, raw=None)
                  for f in rec["formats"] if f in FORMATS]

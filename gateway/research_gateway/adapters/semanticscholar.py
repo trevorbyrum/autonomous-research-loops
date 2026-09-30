@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record
 from ..core.identity import normalize_arxiv, normalize_doi
-from .base import Client, check
+from .base import Client, PayloadError, check, need
 
 SOURCE_ID = "semanticscholar"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -61,10 +61,11 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0, year_f
     params = {"query": query, "limit": min(limit, 100), "offset": offset, "fields": FIELDS,
               "year": f"{year_from_}-" if year_from_ else None}
     resp = client.get(SOURCE_ID, "find", f"{BASE}/paper/search", params=params, headers=_headers(client), query=query)
-    if not check(SOURCE_ID, resp):
-        return {"records": [], "total": 0, "next_offset": None}
-    j = resp.json or {}
-    return {"records": [_record(p) for p in j.get("data") or []], "total": j.get("total"), "next_offset": j.get("next")}
+    check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
+    j = need(SOURCE_ID, resp.json, kind=dict)
+    # the search answer omits `data` when nothing matched; then it must say total 0
+    rows = need(SOURCE_ID, j, "data") if "data" in j or j.get("total") != 0 else []
+    return {"records": [_record(p) for p in rows], "total": j.get("total"), "next_offset": j.get("next")}
 
 
 def resolve(client: Client, identity: str) -> dict | None:
@@ -75,7 +76,10 @@ def resolve(client: Client, identity: str) -> dict | None:
                       headers=_headers(client), identity=identity)
     if not check(SOURCE_ID, resp):
         return None
-    return _record(resp.json or {})
+    paper = need(SOURCE_ID, resp.json, kind=dict)
+    if not paper.get("paperId"):
+        raise PayloadError(f"{SOURCE_ID}: the paper answer carries no paperId")
+    return _record(paper)
 
 
 def enrich(client: Client, identity: str, what: str = "citations") -> dict:
@@ -99,7 +103,7 @@ def enrich(client: Client, identity: str, what: str = "citations") -> dict:
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "what": what, "items": []}
     items = []
-    for row in (resp.json or {}).get("data") or []:
+    for row in need(SOURCE_ID, resp.json, "data"):
         p = row.get(key) or {}
         if p.get("paperId") or (p.get("externalIds") or {}).get("DOI"):
             r = _record(p)

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record
-from .base import AdapterError, Client, check
+from .base import AdapterError, Client, PayloadError, check, need
 
 SOURCE_ID = "census"
 SMOKE = {'capability': 'data', 'params': {'dataset': '2022/acs/acs1', 'get': ['NAME'], 'for': 'state:37'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -43,9 +43,11 @@ def data(client: Client, params: dict) -> dict:
     resp = client.get(SOURCE_ID, "data", f"{BASE}/{dataset.strip('/')}", params=query, identity=identity)
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "records": []}
-    j = resp.json
-    if not isinstance(j, list) or not j:
-        return {"identity": identity, "records": [], "capability_fact": f"Census returned no table ({resp.text[:120]!r})"}
+    if resp.status == 204:   # the Census API's answer to a query no data matches: successful and empty
+        return {"identity": identity, "records": []}
+    j = need(SOURCE_ID, resp.json)
+    if not j or not isinstance(j[0], list):
+        raise PayloadError(f"{SOURCE_ID}: the answer is not a table (no header row)")
     header, rows = j[0], [dict(zip(j[0], r)) for r in j[1:]]
     rec = make_record(identity=identity, kind="series", source_id=SOURCE_ID, title=f"{dataset}: {query['get']}",
                       links=[f"https://api.census.gov/data/{dataset.strip('/')}.html"], attribution=ATTRIBUTION,
@@ -67,7 +69,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
             return {"entries": []}
         q = (query or "").lower()
         entries = []
-        for d in ((resp.json or {}).get("dataset") or []):
+        for d in need(SOURCE_ID, resp.json, "dataset"):
             path = "/".join(d.get("c_dataset") or [])
             vintage = d.get("c_vintage")
             # unvintaged datasets (timeseries/bds and 87 friends) are real: their path IS
@@ -85,7 +87,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         return {"entries": []}
     q = (query or "").lower()
     entries = []
-    for name, meta in ((resp.json or {}).get("variables") or {}).items():
+    for name, meta in need(SOURCE_ID, resp.json, "variables", kind=dict).items():
         meta = meta or {}
         label = meta.get("label") or ""
         if q and q not in name.lower() and q not in label.lower():

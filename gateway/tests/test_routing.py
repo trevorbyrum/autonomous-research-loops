@@ -18,6 +18,11 @@ SEED = read_seed()
 ADAPTERS = adapters.load_all()
 
 
+# the local index needs a database; without one its lane is unavailable, and an answer with an
+# unavailable lane is never cached (task 2b) — cache tests run on the seed without it
+SEED_NO_INDEX = [dict(s, enabled=False) if s["id"] == "openalex_snapshot" else s for s in SEED]
+
+
 def make(seed=None):
     t = FakeTransport()
     b = Broker({s["id"]: RatePolicy(per_second=100) for s in SEED})
@@ -246,7 +251,7 @@ class R10_Facts(unittest.TestCase):
 
 class ExecuteMergeAndCache(unittest.TestCase):
     def test_find_dedups_across_lanes_and_caches(self):
-        r, c, t = make()
+        r, c, t = make(SEED_NO_INDEX)
         t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [CROSSREF_WORK], "total-results": 1}})
         doaj_hit = {"id": "abc", "bibjson": {"title": CROSSREF_WORK["title"][0], "year": "2021", "identifier": [{"type": "doi", "id": "10.1234/abc"}],
                                              "author": [{"name": "Ada Lovelace"}], "journal": {"title": "J", "issns": ["1234-5678"]}, "link": [{"url": "https://doaj.org/x"}]}}
@@ -330,7 +335,11 @@ class ExecuteMergeAndCache(unittest.TestCase):
         t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": ["not a work"], "total-results": 1}})
         t.add("GET", "https://doaj.org/api/search/articles/", body={"results": [], "total": 0})
         out = R.execute(r, {"request_type": "find", "kind": "article", "query": "q", "domain": "finance"}, c)
-        self.assertTrue(any(f.startswith("crossref: malformed response") for f in out["facts"]))
+        self.assertTrue(any(f.startswith("crossref: unreadable answer") for f in out["facts"]), out["facts"])
+        crossref = next(ln for ln in out["lanes"] if ln["source"] == "crossref")
+        self.assertEqual((crossref["coverage"], crossref["error_class"], crossref["completeness"]),
+                         ("provider_unavailable", "payload_invalid", "unobserved"))
+        self.assertNotIn("count", crossref, "an unreadable answer has no count, not a zero")
         self.assertEqual(out["records"], [])
         self.assertIn("doaj", [ln["source"] for ln in out["lanes"]], "the job still completes on the other lanes")
 

@@ -4,18 +4,29 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 
+from .canonical import PayloadError
+
 
 def _local(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
 
 
+def _root(text: str, *roots: str) -> ET.Element:
+    """The parsed message, whose root must be one of `roots`: unparseable XML, or a document
+    that is not an SDMX message of that kind, is an unreadable answer — never an empty one."""
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError as e:
+        raise PayloadError(f"unparseable SDMX-ML ({e})") from None
+    if _local(root.tag) not in roots:
+        raise PayloadError(f"an SDMX answer rooted at {_local(root.tag)!r}, not {' or '.join(roots)}")
+    return root
+
+
 def series_xml(text: str) -> list[dict]:
     """StructureSpecificData → same shape as series(): dimension attributes on each
     <Series>, observations from its <Obs TIME_PERIOD OBS_VALUE> children."""
-    try:
-        root = ET.fromstring(text)
-    except ET.ParseError:
-        return []
+    root = _root(text, "StructureSpecificData", "GenericData")
     out = []
     for el in root.iter():
         if _local(el.tag) != "Series":
@@ -62,10 +73,7 @@ def context(j: dict) -> dict:
 
 def context_xml(text: str) -> dict:
     """The SDMX-ML message context: header fields and the structure reference (I-8, D-25)."""
-    try:
-        root = ET.fromstring(text)
-    except ET.ParseError:
-        return {}
+    root = _root(text, "StructureSpecificData", "GenericData")
     out: dict = {"root_attributes": dict(root.attrib)}
     for el in root.iter():
         name = _local(el.tag)
@@ -106,12 +114,8 @@ def dataflows_xml(text: str) -> list[dict]:
     """SDMX structure XML → [{id, label, structure_ref}] for every Dataflow element.
     Namespace-agnostic like the rest of this module; the structure ref is the DSD id
     the flow's key browsing needs (D-32)."""
-    import xml.etree.ElementTree as ET
     flows = []
-    try:
-        root = ET.fromstring(text)
-    except ET.ParseError:
-        return flows
+    root = _root(text, "Structure")
     for el in root.iter():
         if _local(el.tag) != "Dataflow":
             continue
@@ -124,12 +128,8 @@ def dataflows_xml(text: str) -> list[dict]:
 def dimensions_xml(text: str) -> list[str]:
     """SDMX datastructure XML → dimension ids IN KEY ORDER (position attribute when
     present, document order otherwise) — the order an agent needs to build a series key."""
-    import xml.etree.ElementTree as ET
     dims = []
-    try:
-        root = ET.fromstring(text)
-    except ET.ParseError:
-        return dims
+    root = _root(text, "Structure")
     for el in root.iter():
         if _local(el.tag) == "Dimension" and el.attrib.get("id"):
             try:

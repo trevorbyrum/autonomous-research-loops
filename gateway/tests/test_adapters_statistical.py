@@ -149,7 +149,12 @@ class BisEcb(unittest.TestCase):
         self.assertEqual(r["observations"], [("2026-01", 102.25), ("2026-02", 101.12)])
         self.assertEqual(t.calls[0][2]["Accept"], "application/xml")
         self.assertIn("startPeriod=2026-01", t.calls[0][1])
-        self.assertEqual(sdmx.series_xml("<not xml"), [])
+        # unparseable SDMX-ML, or a document that is not an SDMX data message, is an unreadable
+        # answer — never an empty one (task 2b, H-5)
+        from research_gateway.core.canonical import PayloadError
+        for text in ("<not xml", "<html><body>challenge</body></html>"):
+            with self.assertRaises(PayloadError, msg=text):
+                sdmx.series_xml(text)
         with self.assertRaises(AdapterError):
             bis.data(c, {})
 

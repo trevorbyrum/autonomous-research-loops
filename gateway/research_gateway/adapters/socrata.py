@@ -5,7 +5,7 @@ import re
 
 from ..core.canonical import make_record, year_from
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, check
+from .base import AdapterError, Client, PayloadError, check, need
 
 SOURCE_ID = "socrata"
 SMOKE = {'capability': 'find', 'query': 'business licenses', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -42,7 +42,7 @@ def _vouched(client: Client, domain: str) -> None:
         return
     resp = client.get(SOURCE_ID, "resolve", DISCOVERY, params={"domains": domain, "limit": 1, "only": "datasets"},
                       headers=_headers(client), identity=f"socrata:{domain}")
-    listed = {((r.get("metadata") or {}).get("domain") or "").lower() for r in ((resp.json or {}).get("results") or [])
+    listed = {((r.get("metadata") or {}).get("domain") or "").lower() for r in need(SOURCE_ID, resp.json, "results")
               if isinstance(r, dict)} if check(SOURCE_ID, resp) else set()
     if domain not in listed:
         raise AdapterError(f"{domain} is not a Socrata portal known to the discovery catalog (R-6)")
@@ -69,10 +69,9 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0, portal
     the router forwards the request's TOPIC domain to a parameter of that name — D-23.)"""
     params = {"q": query, "only": "datasets", "limit": min(limit, 100), "offset": offset, "domains": portal}
     resp = client.get(SOURCE_ID, "find", DISCOVERY, params=params, headers=_headers(client), query=query)
-    if not check(SOURCE_ID, resp):
-        return {"records": [], "total": 0, "next_offset": None}
-    j = resp.json or {}
-    results, total = j.get("results") or [], j.get("resultSetSize") or 0
+    check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
+    j = resp.json
+    results, total = need(SOURCE_ID, j, "results"), j.get("resultSetSize") or 0
     _KNOWN_DOMAINS.update((r.get("metadata") or {}).get("domain", "").lower() for r in results if (r.get("metadata") or {}).get("domain"))
     return {"records": [_catalog_record(r) for r in results], "total": total,
             "next_offset": offset + len(results) if results and offset + len(results) < total else None}
@@ -84,7 +83,9 @@ def resolve(client: Client, identity: str) -> dict | None:
     resp = client.get(SOURCE_ID, "resolve", f"https://{domain}/api/views/{did}.json", headers=_headers(client), identity=identity)
     if not check(SOURCE_ID, resp):
         return None
-    v = resp.json or {}
+    v = need(SOURCE_ID, resp.json, kind=dict)
+    if not v.get("id"):
+        raise PayloadError(f"{SOURCE_ID}: the view answer carries no id")
     lic = v.get("license") or {}
     return make_record(identity=identity, kind="dataset", source_id=SOURCE_ID, title=v.get("name"), year=year_from(v.get("rowsUpdatedAt")),
                        venue=domain, identifiers={"dataset_id": did}, links=[f"https://{domain}/d/{did}"],
@@ -109,7 +110,7 @@ def fetch(client: Client, target: str, *, limit: int = 1000, offset: int = 0, wh
     resp = client.get(SOURCE_ID, "fetch", f"https://{domain}/resource/{did}.json", params=params, headers=_headers(client), identity=target)
     if not check(SOURCE_ID, resp):
         return {"identity": target, "records": []}
-    rows = resp.json if isinstance(resp.json, list) else []
+    rows = need(SOURCE_ID, resp.json)
     rec = make_record(identity=f"{target}#rows", kind="file", source_id=SOURCE_ID, title=f"{did} rows {offset}-{offset + len(rows)}",
                       links=[f"https://{domain}/resource/{did}.json"], license=meta.get("license"),
                       extra={"rows": rows, "row_count": len(rows), "offset": offset}, raw=None)

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi
-from .base import Client, check
+from .base import Client, check, need
 
 SOURCE_ID = "opencitations"
 SMOKE = {'capability': 'enrich', 'identity': 'doi:10.1162/qss_a_00023', 'what': 'references'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -39,9 +39,12 @@ def enrich(client: Client, identity: str, what: str = "citations") -> dict:
         return {"identity": identity, "what": what, "items": []}
     if what == "metadata":
         resp = client.get(SOURCE_ID, "enrich", f"{META}/metadata/doi:{doi}", identity=f"doi:{doi}")
-        if not check(SOURCE_ID, resp) or not isinstance(resp.json, list) or not resp.json:
+        if not check(SOURCE_ID, resp):
             return {"identity": f"doi:{doi}", "what": what, "items": []}
-        m = resp.json[0]
+        rows = need(SOURCE_ID, resp.json)   # a list; empty when OpenCitations Meta has no record
+        if not rows:
+            return {"identity": f"doi:{doi}", "what": what, "items": []}
+        m = need(SOURCE_ID, rows[0], kind=dict)
         rec = make_record(identity=f"doi:{doi}", kind="article", source_id=SOURCE_ID, title=m.get("title"),
                           authors=[a.strip() for a in (m.get("author") or "").split(";") if a.strip()],
                           year=year_from(m.get("pub_date")), venue=(m.get("venue") or "").split(" [")[0] or None,
@@ -50,7 +53,7 @@ def enrich(client: Client, identity: str, what: str = "citations") -> dict:
     if what not in ("citations", "references"):
         return {"identity": f"doi:{doi}", "what": what, "items": []}
     resp = client.get(SOURCE_ID, "enrich", f"{INDEX}/{what}/doi:{doi}", identity=f"doi:{doi}")
-    if not check(SOURCE_ID, resp) or not isinstance(resp.json, list):
+    if not check(SOURCE_ID, resp):
         return {"identity": f"doi:{doi}", "what": what, "items": []}
     key = "citing" if what == "citations" else "cited"
-    return {"identity": f"doi:{doi}", "what": what, "items": _links(resp.json, key)}
+    return {"identity": f"doi:{doi}", "what": what, "items": _links(need(SOURCE_ID, resp.json), key)}

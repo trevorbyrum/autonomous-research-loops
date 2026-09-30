@@ -63,7 +63,8 @@ class GovInfo(unittest.TestCase):
     def test_no_key(self):
         c, t = client()
         self.assertIn("capability_fact", govinfo.find(c, "q"))
-        self.assertIsNone(govinfo.resolve(c, "govinfo:x"))
+        # an unconfigured key is an auth fact, never "no such package" (task 2b)
+        self.assertEqual(govinfo.resolve(c, "govinfo:x"), {"capability_fact": "no api.data.gov key configured"})
         self.assertEqual(t.calls, [])
 
 

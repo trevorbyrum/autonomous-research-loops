@@ -27,6 +27,7 @@ from urllib.parse import quote  # re-exported: adapters quote path segments thro
 
 from ..core import calllog
 from ..core.broker import Broker, BreakerOpen, BudgetExhausted, NoPolicy
+from ..core.canonical import PayloadError  # noqa: F401 (re-exported: adapters raise it through base)
 
 
 @dataclass
@@ -47,9 +48,20 @@ class Response:
 
     @property
     def json(self):
+        """The parsed body. An empty or unparseable body raises PayloadError instead of standing
+        in as None — the `(resp.json or {})` of an adapter can no longer make it 'no results'."""
+        if not self.body:
+            raise PayloadError(f"empty body (HTTP {self.status})")
         try:
-            return json.loads(self.body) if self.body else None
-        except ValueError:
+            return json.loads(self.body)
+        except (ValueError, UnicodeDecodeError):
+            raise PayloadError(f"unparseable JSON (HTTP {self.status}, {len(self.body)} bytes)") from None
+
+    def json_or_none(self):
+        """The parsed body or None — for bookkeeping that must never raise (the call log's count)."""
+        try:
+            return self.json
+        except PayloadError:
             return None
 
     def retry_after_seconds(self) -> float | None:
@@ -328,7 +340,7 @@ class Client:
                 refused: bool = False, attempt_id: int | None = None, wait_ms: int | None = None,
                 hop: int | None = None) -> None:
         count = None
-        j = resp.json if resp.ok else None
+        j = resp.json_or_none() if resp.ok else None
         if isinstance(j, list):
             count = len(j)
         elif isinstance(j, dict):
@@ -475,6 +487,21 @@ def validate_data_params(mod, params: dict | None) -> str | None:
             if problem and problem not in problems:
                 problems.append(problem)
     return "; ".join(problems) or None
+
+
+def need(source_id: str, value, *path: str, kind: type | tuple = list):
+    """The value at `path` inside a parsed answer; it must exist and be of `kind`. A missing or
+    mistyped container is a PayloadError — an answer shaped wrong is unreadable, and its
+    absent list is never read as an empty one."""
+    cur = value
+    for i, key in enumerate(path):
+        if not isinstance(cur, dict) or key not in cur:
+            raise PayloadError(f"{source_id}: the answer has no {'.'.join(path[:i + 1])}")
+        cur = cur[key]
+    if not isinstance(cur, kind):
+        want = "/".join(k.__name__ for k in (kind if isinstance(kind, tuple) else (kind,)))
+        raise PayloadError(f"{source_id}: {'.'.join(path) or 'the answer'} is {type(cur).__name__}, not {want}")
+    return cur
 
 
 def check(source_id: str, resp: Response, *, allow_404: bool = True, allow_html: bool = False) -> bool:

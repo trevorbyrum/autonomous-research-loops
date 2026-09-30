@@ -19,7 +19,7 @@ from datetime import date, timedelta
 from typing import Callable
 from urllib.parse import urlsplit
 
-from ..adapters.base import AdapterError, Client, SourceUnavailable
+from ..adapters.base import AdapterError, Client, PayloadError, SourceUnavailable
 from . import calllog, dedup, licenses
 from . import canonical as canonical_mod
 from . import identity as ident
@@ -73,6 +73,7 @@ def _add_fact(out: dict, fact: dict | None) -> None:
 
 def _secrets_failing(entry: dict, facts: list[str], sid: str, e: SecretsBackendFailing) -> None:
     entry["error"] = str(e)
+    entry["completeness"] = "unobserved"
     entry["coverage"] = COVERAGE_DOWN   # required research that could not run — never searched_empty, never auth_failed
     entry["error_class"] = ERR_SECRETS
     facts.append(f"{sid}: secrets backend failing ({e.read.reason}) — the lane could not run; this is not a missing key")
@@ -371,15 +372,20 @@ def _payload_fingerprint(payload: dict) -> str | None:
     return hashlib.sha256(json.dumps(sub, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()[:16]
 
 
-def _valid_records(items, facts: list[str], source_id: str) -> list[dict]:
-    """Only well-formed canonical records count as an answer; the rest is a fact (R-10)."""
+def _valid_records(items, facts: list[str], source_id: str) -> tuple[list[dict], int]:
+    """Only well-formed canonical records count as an answer; the rest is a fact (R-10).
+    Returns (the good records, how many were dropped): an answer that lost records is a
+    PARTIAL observation — what was kept is a lower bound, never the total (RG-4)."""
+    if items is not None and not isinstance(items, list):
+        raise PayloadError(f"{source_id}: adapter answered {type(items).__name__} records, not a list")
     good = [r for r in (items or []) if isinstance(r, dict) and r.get("identity") and r.get("kind")]
-    if len(good) != len(items or []):
-        facts.append(f"{source_id}: {len(items) - len(good)} malformed record(s) dropped")
-    return good
+    dropped = len(items or []) - len(good)
+    if dropped:
+        facts.append(f"{source_id}: {dropped} malformed record(s) dropped — the count is a lower bound")
+    return good, dropped
 
 
-def _run_lane(router: Router, rt: str, lane: Lane, payload: dict, client: Client, out: dict) -> list[dict]:
+def _run_lane(router: Router, rt: str, lane: Lane, payload: dict, client: Client, out: dict) -> tuple[list[dict], str | None, int]:
     mod = router.adapters[lane.source_id]
     if rt == "find":
         res = _call_find(mod, client, payload)
@@ -389,7 +395,10 @@ def _run_lane(router: Router, rt: str, lane: Lane, payload: dict, client: Client
             res = {"records": [dict(items[0], kind="article")] if items else []}
         else:
             rec = mod.resolve(client, payload["identity"])
-            res = {"records": [rec] if rec else []}
+            if isinstance(rec, dict) and rec.get("capability_fact") and not rec.get("identity"):
+                res = {"records": [], "capability_fact": rec["capability_fact"]}   # e.g. no key: not "not found"
+            else:
+                res = {"records": [rec] if rec else []}
     elif rt == "enrich":
         res = mod.enrich(client, payload["identity"], payload["what"])
         res = {"records": res.get("items"), **{k: v for k, v in res.items() if k != "items"}}
@@ -424,8 +433,8 @@ def _run_lane(router: Router, rt: str, lane: Lane, payload: dict, client: Client
     nxt = _lane_next(res)
     if nxt is not None:
         out.setdefault("next", {})[lane.source_id] = nxt
-    return _valid_records(res.get("records"), out["facts"], lane.source_id), (str(fact) if fact else None)
-
+    got, dropped = _valid_records(res.get("records"), out["facts"], lane.source_id)
+    return got, (str(fact) if fact else None), dropped
 
 
 # 9·2b aggregate bound: each request's pool bounds ONE request's fan-out; this semaphore
@@ -444,57 +453,123 @@ def _lane_slots() -> threading.BoundedSemaphore:
         return _LANE_SLOTS
 
 
+# The lane-outcome mapping (STATION-CONTRACT.md §2; the engine store's search_observations
+# vocabulary, gen2/store/schema/03-evidence-and-decisions.sql). Every lane entry carries
+# `coverage`, `completeness` (complete | partial | unobserved) and, when degraded or partial,
+# `error_class`; `count` exists only for an observed result set, and for a partial one it is
+# a lower bound. An unreadable answer is provider_unavailable/payload_invalid — never
+# searched_empty, never a zero (H-5, RG-4, RG-U; task 2b).
+ERR_PAYLOAD, ERR_OUTAGE, ERR_TIMEOUT, ERR_TRANSPORT = "payload_invalid", "provider_outage", "timeout", "transport_failure"
+ERR_RATE, ERR_BREAKER, ERR_BUDGET = "rate_limited", "breaker_open", "budget_refused"
+ERR_REJECTED, ERR_UNCONFIGURED = "credentials_rejected", "credentials_not_configured"
+
+
+def _unavailable(resp) -> tuple[str, str]:
+    """(coverage, error_class) for a SourceUnavailable answer."""
+    error = resp.error or ""
+    if resp.status in (401, 403):
+        return COVERAGE_AUTH, ERR_REJECTED
+    if resp.status == 429:
+        return COVERAGE_DOWN, ERR_RATE
+    if error.startswith("BreakerOpen"):
+        return COVERAGE_DOWN, ERR_BREAKER
+    if error.startswith(("BudgetExhausted", "NoPolicy")):
+        return COVERAGE_DOWN, ERR_BUDGET
+    if resp.status is not None and 200 <= resp.status < 300:
+        return COVERAGE_DOWN, ERR_PAYLOAD          # an unreadable answer wearing a success status (HTML)
+    if resp.status is None:
+        return COVERAGE_DOWN, ERR_TIMEOUT if "timed out" in error.lower() or "timeout" in error.lower() else ERR_TRANSPORT
+    return COVERAGE_DOWN, ERR_OUTAGE
+
+
+def _lane_failed(entry: dict, facts: list[str], sid: str, e: Exception) -> dict | None:
+    """Fill a lane entry for a lane that raised; returns the capability fact it carries, if any.
+    calllog.AuditError is never passed here: a broken call log fails the request (I-6)."""
+    entry["completeness"] = "unobserved"
+    if isinstance(e, SecretsBackendFailing):
+        _secrets_failing(entry, facts, sid, e)
+        return e.fact
+    if isinstance(e, SourceUnavailable):
+        entry["error"] = str(e)
+        # a broker refusal (budget spent, breaker open, no policy) means required research
+        # COULD NOT run — that must block completion like any outage, so it is
+        # provider_unavailable, never the non-blocking policy-skip state (finding 4)
+        entry["coverage"], entry["error_class"] = _unavailable(e.response)
+        facts.append(f"{sid}: unavailable ({e.response.error or e.response.status}) — R-10")
+    elif isinstance(e, AdapterError):
+        entry["error"] = str(e)
+        entry["coverage"] = COVERAGE_SKIPPED  # refused before dispatch (keyless tier, policy)
+        facts.append(f"{sid}: refused ({e})")
+    else:  # an unreadable answer, or anything else a lane throws: a source fact, never a dead job
+        entry["error"] = f"{type(e).__name__}: {e}"[:300]
+        entry["coverage"], entry["error_class"] = COVERAGE_DOWN, ERR_PAYLOAD
+        facts.append(f"{sid}: unreadable answer ({type(e).__name__}) — treated as unavailable, never as no results (R-10, H-5)")
+    return None
+
+
+def _lane_observed(entry: dict, got: list[dict], fact: str | None, dropped: int, rt: str, payload: dict, out: dict) -> None:
+    """Fill a lane entry for a lane that answered."""
+    count = len(out.get("entries") or []) if rt == "catalog" else len(got)
+    if dropped and not count:
+        # every record it answered was unreadable: nothing was observed, and nothing is zero
+        entry.update(coverage=COVERAGE_DOWN, completeness="unobserved", error_class=ERR_PAYLOAD)
+        return
+    if count:
+        entry["coverage"] = COVERAGE_OK
+    elif fact:  # answered nothing AND explained why: that is not a successful empty search
+        entry["coverage"] = _fact_coverage(fact)
+        entry["completeness"] = "unobserved"
+        entry["error_class"] = ERR_UNCONFIGURED if entry["coverage"] == COVERAGE_AUTH else ERR_OUTAGE
+        return
+    elif rt == "enrich" and payload.get("what") in ("full_text", "oa_location"):
+        # the caller already HOLDS the record's identity: an empty answer here means
+        # the requested full text is not retrievable, never that nothing exists (finding 7)
+        entry["coverage"] = COVERAGE_METADATA_ONLY
+    else:
+        entry["coverage"] = COVERAGE_EMPTY
+    if rt == "fetch" and (payload.get("params") or {}).get("download") and out.get("content") is None and got:
+        entry["coverage"] = COVERAGE_METADATA_ONLY  # found, but the requested file is not retrievable
+    entry["count"] = count
+    entry["completeness"] = "partial" if dropped else "complete"
+    if dropped:
+        entry["error_class"] = ERR_PAYLOAD
+
+
 def _find_lane_result(router: Router, lane: Lane, payload: dict, client: Client,
                       abort: threading.Event | None = None) -> dict:
     """One find lane, LANE-LOCALLY (9·2b): facts, records, coverage, continuation — nothing
     shared is touched, so lanes may run concurrently and merge deterministically in plan
     order afterward. AuditError propagates AND trips `abort`, so a lane that has not yet
     dispatched when the call log breaks never dispatches (I-6). The process-wide slot
-    semaphore bounds total in-flight lane dispatches across queued AND inline requests."""
+    semaphore bounds total in-flight lane dispatches across queued AND inline requests.
+    The entry names the cursor it was asked with, so a failed continuation page can be
+    retried from where it failed (task 2b: failed pagination is never lost)."""
     if abort is not None and abort.is_set():
         raise calllog.AuditError("not dispatched: a parallel lane's call log write failed first (I-6)")
-    entry: dict = {"source": lane.source_id, "role": lane.role}
+    entry: dict = {"source": lane.source_id, "role": lane.role,
+                   "cursor": (payload.get("cursors") or {}).get(lane.source_id)}
     lane_out: dict = {"facts": []}
     with _lane_slots():
         if abort is not None and abort.is_set():
             raise calllog.AuditError("not dispatched: a parallel lane's call log write failed first (I-6)")
         try:
-            got, fact = _run_lane(router, "find", lane, payload, client, lane_out)
-            entry["count"] = len(got)
-            if got:
-                entry["coverage"] = COVERAGE_OK
-            elif fact:
-                entry["coverage"] = _fact_coverage(fact)
-            else:
-                entry["coverage"] = COVERAGE_EMPTY
-        except SourceUnavailable as e:
-            entry["error"] = str(e)
-            entry["coverage"] = COVERAGE_AUTH if e.response.status in (401, 403) else COVERAGE_DOWN
-            lane_out["facts"].append(f"{lane.source_id}: unavailable ({e.response.error or e.response.status}) — R-10")
-            return {"entry": entry, "records": [], "facts": lane_out["facts"], "next": None}
-        except AdapterError as e:
-            entry["error"] = str(e)
-            entry["coverage"] = COVERAGE_SKIPPED
-            lane_out["facts"].append(f"{lane.source_id}: refused ({e})")
-            return {"entry": entry, "records": [], "facts": lane_out["facts"], "next": None}
-        except SecretsBackendFailing as e:
-            _secrets_failing(entry, lane_out["facts"], lane.source_id, e)
-            return {"entry": entry, "records": [], "facts": lane_out["facts"], "next": None, "capability_fact": e.fact}
+            got, fact, dropped = _run_lane(router, "find", lane, payload, client, lane_out)
+            _lane_observed(entry, got, fact, dropped, "find", payload, lane_out)
         except calllog.AuditError:
             if abort is not None:
                 abort.set()   # set by the FAILING lane, not the merge loop: no window where
             raise             # a queued lane dispatches between the failure and its discovery
         except Exception as e:
-            entry["error"] = f"{type(e).__name__}: {e}"[:300]
-            entry["coverage"] = COVERAGE_DOWN
-            lane_out["facts"].append(f"{lane.source_id}: malformed response ({type(e).__name__}) — treated as unavailable (R-10)")
-            return {"entry": entry, "records": [], "facts": lane_out["facts"], "next": None}
+            fact = _lane_failed(entry, lane_out["facts"], lane.source_id, e)
+            return {"entry": entry, "records": [], "facts": lane_out["facts"], "next": None, "capability_fact": fact}
     nxt = (lane_out.get("next") or {}).get(lane.source_id)
-    if nxt is not None:
+    if nxt is not None and entry["completeness"] != "unobserved":
         entry["next"] = nxt
-    elif entry.get("coverage") in (COVERAGE_OK, COVERAGE_EMPTY):
+    elif entry["coverage"] in (COVERAGE_OK, COVERAGE_EMPTY) and entry["completeness"] == "complete":
         entry["exhausted"] = True
         nxt = EXHAUSTED_CURSOR
+    else:
+        nxt = None   # a lane that answered nothing readable has no continuation, and is not exhausted
     return {"entry": entry, "records": got, "facts": lane_out["facts"], "next": nxt}
 
 
@@ -508,8 +583,10 @@ def _run_find_lanes(router: Router, payload: dict, client: Client, plan: Plan, o
     runnable: list[tuple[int, Lane]] = []
     for idx, lane in enumerate(plan.lanes):
         if (payload.get("cursors") or {}).get(lane.source_id) == EXHAUSTED_CURSOR:
-            entry = {"source": lane.source_id, "role": lane.role, "count": 0,
-                     "coverage": COVERAGE_EXHAUSTED, "exhausted": True}
+            # nothing is dispatched and nothing observed: no count (RG-U), only the fact that
+            # this lane already returned everything it has
+            entry = {"source": lane.source_id, "role": lane.role, "coverage": COVERAGE_EXHAUSTED,
+                     "completeness": "unobserved", "cursor": EXHAUSTED_CURSOR, "exhausted": True}
             slots.append({"entry": entry, "records": [], "facts": [], "next": EXHAUSTED_CURSOR})
         else:
             slots.append(None)
@@ -550,48 +627,12 @@ def _run_serial_lanes(router: Router, payload: dict, client: Client, plan: Plan,
         entry = {"source": lane.source_id, "role": lane.role}
         try:
             with _lane_slots():   # the aggregate bound covers EVERY lane dispatch path —
-                got, fact = _run_lane(router, rt, lane, payload, client, out)   # serial and inline included (9·2b)
-            entry["count"] = len(got)
-            if rt == "catalog":
-                entry["count"] = len(out.get("entries") or [])
-            if got or (rt == "catalog" and out.get("entries")):
-                entry["coverage"] = COVERAGE_OK
-            elif fact:  # answered nothing AND explained why: that is not a successful empty search
-                entry["coverage"] = _fact_coverage(fact)
-            elif rt == "enrich" and payload.get("what") in ("full_text", "oa_location"):
-                # the caller already HOLDS the record's identity: an empty answer here means
-                # the requested full text is not retrievable, never that nothing exists (finding 7)
-                entry["coverage"] = COVERAGE_METADATA_ONLY
-            else:
-                entry["coverage"] = COVERAGE_EMPTY
-            if rt == "fetch" and (payload.get("params") or {}).get("download") and out.get("content") is None and got:
-                entry["coverage"] = COVERAGE_METADATA_ONLY  # found, but the requested file is not retrievable
-        except SourceUnavailable as e:
-            entry["error"] = str(e)
-            # a broker refusal (budget spent, breaker open, no policy) means required research
-            # COULD NOT run — that must block completion like any outage, so it is
-            # provider_unavailable, never the non-blocking policy-skip state (finding 4)
-            entry["coverage"] = COVERAGE_AUTH if e.response.status in (401, 403) else COVERAGE_DOWN
-            out["facts"].append(f"{lane.source_id}: unavailable ({e.response.error or e.response.status}) — R-10")
-            out["lanes"].append(entry)
-            continue
-        except AdapterError as e:
-            entry["error"] = str(e)
-            entry["coverage"] = COVERAGE_SKIPPED  # refused before dispatch (keyless tier, policy)
-            out["facts"].append(f"{lane.source_id}: refused ({e})")
-            out["lanes"].append(entry)
-            continue
-        except SecretsBackendFailing as e:
-            _secrets_failing(entry, out["facts"], lane.source_id, e)
-            _add_fact(out, e.fact)
-            out["lanes"].append(entry)
-            continue
+                got, fact, dropped = _run_lane(router, rt, lane, payload, client, out)   # serial and inline included (9·2b)
+            _lane_observed(entry, got, fact, dropped, rt, payload, out)
         except calllog.AuditError:
             raise  # a broken call log fails the whole job: nothing runs unaudited (I-6, D-23)
-        except Exception as e:  # anything else a lane throws is a source fact, never a dead job
-            entry["error"] = f"{type(e).__name__}: {e}"[:300]
-            entry["coverage"] = COVERAGE_DOWN
-            out["facts"].append(f"{lane.source_id}: malformed response ({type(e).__name__}) — treated as unavailable (R-10)")
+        except Exception as e:
+            _add_fact(out, _lane_failed(entry, out["facts"], lane.source_id, e))
             out["lanes"].append(entry)
             continue
         if rt == "fetch" and got:
@@ -668,7 +709,7 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
         out["request"] = {"source": payload.get("source"), "params": payload.get("params") or {}}
     records = (_run_find_lanes if rt == "find" else _run_serial_lanes)(router, payload, client, plan, out, rt=rt)
     for sid in plan.skipped:  # lanes that exist for this request but were never dispatched
-        out["lanes"].append({"source": sid, "role": "skipped", "coverage": COVERAGE_SKIPPED})
+        out["lanes"].append({"source": sid, "role": "skipped", "coverage": COVERAGE_SKIPPED, "completeness": "unobserved"})
     records = _drop_unlicensed(records, router, payload, out["facts"])
     if rt == "find":
         records = dedup.cluster(records)
@@ -685,7 +726,10 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
                 if any(getattr(router.adapters.get(m["source_id"]), "LOCAL", False) for m in router._members(r)):
                     continue  # index answers came FROM the store; writing them back would erase harvested payloads (D-23)
                 cache.put_record(r, redistributable=router.redistributable_all(r), persist_members=router.persistable_members(r))
-            if rt == "find":
+            if rt == "find" and all(lane.get("completeness") == "complete" or lane.get("coverage") in (COVERAGE_SKIPPED, COVERAGE_EXHAUSTED)
+                                    for lane in out["lanes"]):
+                # only an answer every lane completed is served again from memory: a degraded
+                # or partial one is re-asked, never replayed as if it were the whole answer
                 cache.put_search(cache.search_key(rt, _search_payload(payload)), out)
         except Exception as e:  # a broken cache degrades to no cache, never a failed request
             out["facts"].append(f"cache unavailable ({type(e).__name__})")

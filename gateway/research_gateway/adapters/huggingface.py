@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, check, quote
+from .base import AdapterError, Client, PayloadError, check, need, quote
 
 SOURCE_ID = "huggingface"
 SMOKE = {'capability': 'resolve', 'identity': 'stanfordnlp/imdb'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -45,12 +45,19 @@ def _record(d: dict) -> dict:
                        raw=d)
 
 
+def _dataset(resp) -> dict:
+    """A dataset envelope from a successful answer, or PayloadError: a 200 without one is unreadable."""
+    j = need(SOURCE_ID, resp.json, kind=dict)
+    if not j.get("id"):
+        raise PayloadError(f"{SOURCE_ID}: the dataset answer carries no id")
+    return j
+
+
 def find(client: Client, query: str, *, limit: int = 20, offset: int = 0) -> dict:
     params = {"search": query, "limit": min(limit, 100), "offset": offset, "full": "true"}
     resp = client.get(SOURCE_ID, "find", f"{BASE}/api/datasets", params=params, headers=_headers(client), query=query)
-    if not check(SOURCE_ID, resp):
-        return {"records": [], "total": None, "next_offset": None}
-    items = resp.json if isinstance(resp.json, list) else []
+    check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
+    items = need(SOURCE_ID, resp.json)
     return {"records": [_record(d) for d in items], "total": None,
             "next_offset": offset + len(items) if len(items) >= min(limit, 100) else None}
 
@@ -60,9 +67,11 @@ def resolve(client: Client, identity: str) -> dict | None:
     resp = client.get(SOURCE_ID, "resolve", f"{BASE}/api/datasets/{quote(repo, safe='/')}", headers=_headers(client), identity=f"hf:{repo}")
     if not check(SOURCE_ID, resp):
         return None
-    j = resp.json
-    if not isinstance(j, dict) or not j.get("id"):
-        return None  # an HTTP 200 that is not a dataset envelope (HTML challenge) is not a record (D-24)
+    j = need(SOURCE_ID, resp.json, kind=dict)
+    if not j.get("id"):
+        # an HTTP 200 that is not a dataset envelope is not a record (D-24) — and not "no such
+        # dataset" either: it is an unreadable answer (task 2b, H-5)
+        raise PayloadError(f"{SOURCE_ID}: the dataset answer carries no id")
     return _record(j)
 
 
@@ -76,9 +85,9 @@ def fetch(client: Client, target: str, *, path: str | None = None, download: boo
         # the licence of the EXACT revision being downloaded, not the default branch's (D-24)
         rev_url = f"{BASE}/api/datasets/{quote(repo, safe='/')}" + (f"/revision/{quote(revision, safe='')}" if revision != "main" else "")
         meta = client.get(SOURCE_ID, "fetch", rev_url, headers=_headers(client), identity=f"hf:{repo}@{revision}")
-        if not check(SOURCE_ID, meta) or not isinstance(meta.json, dict) or not meta.json.get("id"):
+        if not check(SOURCE_ID, meta):
             return {"identity": identity, "records": [], "capability_fact": f"repository (revision {revision}) not found"}
-        rec = _record(meta.json)
+        rec = _record(_dataset(meta))
         if client.commercial and not allow_listed(rec["license"]):
             return {"identity": identity, "records": [],
                     "capability_fact": f"download refused before fetching: licence {rec['license'] or 'unknown'} is not usable commercially (R-8)"}
@@ -94,9 +103,9 @@ def fetch(client: Client, target: str, *, path: str | None = None, download: boo
         # does not contain (D-32a finding 1)
         rev_url = f"{BASE}/api/datasets/{quote(repo, safe='/')}/revision/{quote(revision, safe='')}"
         meta = client.get(SOURCE_ID, "fetch", rev_url, headers=_headers(client), identity=f"hf:{repo}@{revision}")
-        if not check(SOURCE_ID, meta) or not isinstance(meta.json, dict) or not meta.json.get("id"):
+        if not check(SOURCE_ID, meta):
             return {"identity": identity, "records": [], "capability_fact": f"repository (revision {revision}) not found"}
-        rec = _record(meta.json)
+        rec = _record(_dataset(meta))
     else:
         rec = resolve(client, identity)
     if rec is None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record
 from ..core.identity import normalize_doi
-from .base import Client, check
+from .base import Client, check, need
 
 SOURCE_ID = "datacite"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.7910/DVN/OY6CBK'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -40,10 +40,9 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1, resource
     if resource_type:
         params["resource-type-id"] = resource_type
     resp = client.get(SOURCE_ID, "find", f"{BASE}/dois", params=params, query=query)
-    if not check(SOURCE_ID, resp):
-        return {"records": [], "total": 0, "next_page": None}
-    j = resp.json or {}
-    data = j.get("data") or []
+    check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
+    j = resp.json
+    data = need(SOURCE_ID, j, "data")
     total = (j.get("meta") or {}).get("total")
     nxt = page + 1 if data and total and page * min(limit, 100) < total else None
     return {"records": [_record(d) for d in data], "total": total, "next_page": nxt}
@@ -56,5 +55,4 @@ def resolve(client: Client, identity: str) -> dict | None:
     resp = client.get(SOURCE_ID, "resolve", f"{BASE}/dois/{doi}", identity=f"doi:{doi}")
     if not check(SOURCE_ID, resp):
         return None
-    d = (resp.json or {}).get("data")
-    return _record(d) if d else None
+    return _record(need(SOURCE_ID, resp.json, "data", kind=dict))

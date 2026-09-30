@@ -53,7 +53,8 @@ class OpenAire(unittest.TestCase):
     def test_no_credentials_refuses_instead_of_running_keyless(self):
         """The enabled policy is the registered 7,200/h tier; keyless would be 60/h (D-23)."""
         c, t = client()
-        self.assertIsNone(openaire.resolve(c, "10.46298/abc"))
+        self.assertIn("no OpenAIRE client credentials", openaire.resolve(c, "10.46298/abc")["capability_fact"],
+                      "an unconfigured credential is an auth fact, never 'not found' (task 2b)")
         out = openaire.find(c, "anything")
         self.assertIn("no OpenAIRE client credentials", out["capability_fact"])
         self.assertEqual(t.calls, [], "no keyless call ever leaves")

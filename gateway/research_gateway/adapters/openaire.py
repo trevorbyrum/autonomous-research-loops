@@ -10,7 +10,7 @@ import time
 
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi
-from .base import Client, check
+from .base import Client, check, need
 
 SOURCE_ID = "openaire"
 SMOKE = {'capability': 'find', 'query': 'management practices', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -45,8 +45,10 @@ def _headers_locked(client: Client) -> dict:
     resp = client.post(SOURCE_ID, "resolve", TOKEN_URL, body=b"grant_type=client_credentials",
                        headers={"Authorization": f"Basic {basic}", "Content-Type": "application/x-www-form-urlencoded"},
                        query="token exchange")
-    j = resp.json if resp.ok else None
-    if not j or not j.get("access_token"):
+    if not resp.ok:
+        return {}   # a refused exchange: the lane reports the missing credentials
+    j = need(SOURCE_ID, resp.json, kind=dict)   # an unreadable 200 is an unreadable answer, not "no credentials"
+    if not j.get("access_token"):
         return {}
     try:
         ttl = float(j.get("expires_in") or 3600)
@@ -99,11 +101,12 @@ def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None
               "type": {"article": "publication", "dataset": "dataset", "software": "software"}.get(kind) if kind else None,
               "fromPublicationDate": f"{year_from_}-01-01" if year_from_ else None}
     resp = client.get(SOURCE_ID, "find", f"{BASE}/researchProducts", params=params, headers=hdrs, query=query)
-    if not check(SOURCE_ID, resp):
-        return {"records": [], "total": 0, "next_cursor": None}
-    j = resp.json or {}
-    return {"records": [_record(r) for r in j.get("results") or []],
-            "total": (j.get("header") or {}).get("numFound"), "next_cursor": (j.get("header") or {}).get("nextCursor")}
+    check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
+    j = need(SOURCE_ID, resp.json, kind=dict)
+    header = need(SOURCE_ID, j, "header", kind=dict)
+    # an answer may leave `results` out only when its header says nothing matched
+    rows = need(SOURCE_ID, j, "results") if j.get("results") is not None or header.get("numFound") != 0 else []
+    return {"records": [_record(r) for r in rows], "total": header.get("numFound"), "next_cursor": header.get("nextCursor")}
 
 
 def resolve(client: Client, identity: str) -> dict | None:
@@ -111,11 +114,12 @@ def resolve(client: Client, identity: str) -> dict | None:
     if not doi:
         return None
     hdrs = _headers(client)
-    if not hdrs:
-        return None  # same as find: the enabled policy assumes the registered tier (D-23)
+    if not hdrs:   # same as find: the enabled policy assumes the registered tier (D-23) — an auth fact, not "not found"
+        return {"capability_fact": "no OpenAIRE client credentials (or token exchange failed); the keyless tier is 60/h and is not enabled"}
     resp = client.get(SOURCE_ID, "resolve", f"{BASE}/researchProducts", params={"pid": doi, "pageSize": 1},
                       headers=hdrs, identity=f"doi:{doi}")
     if not check(SOURCE_ID, resp):
         return None
-    results = (resp.json or {}).get("results") or []
-    return _record(results[0]) if results else None
+    j = need(SOURCE_ID, resp.json, kind=dict)
+    rows = need(SOURCE_ID, j, "results") if j.get("results") is not None or (j.get("header") or {}).get("numFound") != 0 else []
+    return _record(rows[0]) if rows else None

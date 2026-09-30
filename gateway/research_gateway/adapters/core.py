@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record
 from ..core.identity import normalize_doi
-from .base import Client, check, quote
+from .base import Client, check, need, quote
 
 SOURCE_ID = "core"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -39,9 +39,8 @@ def _lookup(client: Client, doi: str, request_type: str, *, want_text: bool) -> 
     resp = client.get(SOURCE_ID, request_type, f"{BASE}/search/works",
                       params={"q": f'doi:"{doi}"', "limit": 1, "exclude": None if want_text else "fullText"},
                       headers=_headers(client), identity=f"doi:{doi}")
-    if not check(SOURCE_ID, resp):
-        return None
-    results = (resp.json or {}).get("results") or []
+    check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
+    results = need(SOURCE_ID, resp.json, "results")
     return results[0] if results else None
 
 

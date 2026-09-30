@@ -4,7 +4,7 @@ from __future__ import annotations
 import base64
 
 from ..core.canonical import make_record, year_from
-from .base import AdapterError, Client, check, quote
+from .base import AdapterError, Client, check, need, quote
 
 SOURCE_ID = "kaggle"
 SMOKE = {'capability': 'find', 'query': 'housing prices', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -42,9 +42,8 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1) -> dict:
     if not hdrs:
         return {"records": [], "total": None, "next_page": None, "capability_fact": "no Kaggle username/key configured"}
     resp = client.get(SOURCE_ID, "find", f"{BASE}/datasets/list", params={"search": query, "page": page}, headers=hdrs, query=query)
-    if not check(SOURCE_ID, resp):
-        return {"records": [], "total": None, "next_page": None}
-    items = resp.json if isinstance(resp.json, list) else []
+    check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
+    items = need(SOURCE_ID, resp.json)
     return {"records": [_record(d) for d in items[:limit]], "total": None, "next_page": page + 1 if len(items) >= 20 else None}
 
 
@@ -64,7 +63,7 @@ def fetch(client: Client, target: str, *, file_name: str | None = None, download
     resp = client.get(SOURCE_ID, "fetch", f"{BASE}/datasets/list/{ref}", headers=hdrs, identity=identity)
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "records": []}
-    files = (resp.json or {}).get("datasetFiles") or []
+    files = need(SOURCE_ID, resp.json, "datasetFiles")
     records = [make_record(identity=f"{identity}#{f.get('name')}", kind="file", source_id=SOURCE_ID, title=f.get("name"),
                            links=[f"{BASE}/datasets/download/{ref}/{quote(f.get('name') or '', safe='')}"],
                            extra={"size": f.get("totalBytes") or f.get("size"), "created": f.get("creationDate")},

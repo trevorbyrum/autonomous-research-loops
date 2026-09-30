@@ -66,7 +66,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
             return {"entries": []}
         flows = sdmx.dataflows_xml(resp.text)
         if not flows:
-            return {"entries": [], "capability_fact": "unparseable dataflow answer (not the expected SDMX XML)"}
+            return {"entries": [], "capability_fact": "no dataflows in the structure answer (a readable listing of nothing is not a catalogue)"}
         q = (query or "").lower()
         flows = [f for f in flows if not q or q in str(f["id"]).lower() or q in str(f["label"]).lower()]
         page = flows[offset:offset + limit]
@@ -80,7 +80,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         return {"entries": []}
     flows = sdmx.dataflows_xml(resp.text)
     if not flows:
-        return {"entries": [], "capability_fact": f"dataflow {within!r}: unparseable structure answer"}
+        return {"entries": [], "capability_fact": f"dataflow {within!r}: no such dataflow in the structure answer"}
     ref = flows[0]["structure_ref"] or within
     ds = client.get(SOURCE_ID, "catalog", STRUCTURE_BASE + "/datastructure/" + AGENCY + "/" + ref,
                     params=STRUCTURE_PARAMS or None, headers={"Accept": "application/xml"},

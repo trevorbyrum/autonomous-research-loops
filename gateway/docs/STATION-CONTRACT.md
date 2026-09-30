@@ -47,8 +47,26 @@ is never conflated with "not searched" or "unavailable":
 | `exhausted`           | a continuation: this lane already returned everything it has (its `next` sentinel skips it) |
 
 - Gateway → client: every `lanes[]` entry in a find/resolve/enrich answer carries
-  `coverage` (one of the states above) next to its existing `source` and `count`;
-  prose `facts` remain for humans and never become the machine channel.
+  `coverage` (one of the states above) next to its existing `source`;
+  prose `facts` remain for humans and never become the machine channel. Each entry
+  also says what was OBSERVED (task 2b; INVARIANTS H-5, RG-4, RG-U):
+  - `completeness`: `complete` (the answer was read whole), `partial` (it was read, but
+    some of it was unreadable: `count` is then a LOWER BOUND, never the total) or
+    `unobserved` (no result set was read: every degraded state, `not_searched`,
+    `exhausted`);
+  - `count` exists only for an observed result set — a lane that could not run, or
+    whose answer was unreadable, has no count, never a zero;
+  - `error_class` names why a lane is degraded or partial, in the engine store's
+    vocabulary (`payload_invalid`, `timeout`, `rate_limited`, `breaker_open`,
+    `budget_refused`, `provider_outage`, `credentials_rejected`,
+    `credentials_not_configured`, `secrets_backend_failing`, `transport_failure`);
+  - find lanes echo the `cursor` they were asked with, so a failed continuation page
+    is retried from where it failed; a failed page gets no `next` and is never
+    `exhausted`.
+  An unreadable successful answer (unparseable, empty, or without the container its
+  results live in) and a search endpoint's 404 are `provider_unavailable` with
+  `payload_invalid` / `provider_outage` — never `searched_empty`. An answer with any
+  degraded or partial lane is never served again from the search cache.
 - Client → chassis: when `RESEARCH_LOOP_RESEARCH_ACTIVITY` names a writable file, the
   stdio dispatcher appends JSON lines
   `{"at": iso8601, "source": id, "request_type": t, "coverage": state, "query_or_identity": s}`

@@ -21,10 +21,10 @@ SEED = read_seed()
 ADAPTERS = adapters.load_all()
 
 
-def make():
+def make(seed=None):
     t = FakeTransport()
     b = Broker({s["id"]: RatePolicy(per_second=100) for s in SEED})
-    return R.Router(SEED, ADAPTERS), Client(broker=b, transport=t), t
+    return R.Router(seed or SEED, ADAPTERS), Client(broker=b, transport=t), t
 
 
 class CoverageStates(unittest.TestCase):
@@ -799,8 +799,13 @@ class CatalogReviewPins(unittest.TestCase):
             ADAPTERS["ecb"].catalog(c, within="EXR")
         t.routes.clear()
         t.add("GET", "https://data-api.ecb.europa.eu/service/dataflow/ECB", body="not xml at all")
+        from research_gateway.core.canonical import PayloadError
+        with self.assertRaises(PayloadError, msg="an unparseable structure is an unreadable answer (task 2b)"):
+            ADAPTERS["ecb"].catalog(c)
+        t.routes.clear()
+        t.add("GET", "https://data-api.ecb.europa.eu/service/dataflow/ECB", body='<mes:Structure xmlns:mes="x"/>')
         out = ADAPTERS["ecb"].catalog(c)
-        self.assertIn("unparseable", out.get("capability_fact") or "")
+        self.assertIn("no dataflows", out.get("capability_fact") or "", "a readable structure listing nothing is still no catalogue")
 
     def test_8_catalog_browses_have_distinct_activity_keys(self):
         self.assertNotEqual(mcp_stdio._subject_of({"source": "ecb", "within": "EXR"}),
@@ -866,7 +871,8 @@ class TracingOutsideIdentity(unittest.TestCase):
 
     def test_two_iterations_share_one_cached_search_and_the_hit_is_traced(self):
         from research_gateway.core.cache import Cache
-        r, c1, t = make()
+        from tests.test_routing import SEED_NO_INDEX
+        r, c1, t = make(SEED_NO_INDEX)
         t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [CROSSREF_WORK], "total-results": 1}})
         t.add("GET", "https://doaj.org/api/search/articles/", body={"results": [], "total": 0})
         cache = Cache(None)

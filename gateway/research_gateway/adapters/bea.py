@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record
-from .base import AdapterError, Client, check
+from .base import AdapterError, Client, check, need
 
 SOURCE_ID = "bea"
 SMOKE = {'capability': 'data', 'params': {'method': 'GETDATASETLIST'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -51,12 +51,13 @@ def data(client: Client, params: dict) -> dict:
     resp = client.get(SOURCE_ID, "data", BASE, params=query, identity=identity)
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "records": []}
-    j = resp.json or {}
+    j = need(SOURCE_ID, resp.json, kind=dict)
     err = _error(j)
     if err:
         return {"identity": identity, "records": [], "capability_fact": f"BEA: {err}"}
-    results = (j.get("BEAAPI") or {}).get("Results") or {}
-    rows = results.get("Data") if isinstance(results.get("Data"), list) else (
+    results = need(SOURCE_ID, j, "BEAAPI", "Results", kind=dict)
+    # GetData answers carry Data; a GetData answer without it is unreadable, never an empty table
+    rows = need(SOURCE_ID, results, "Data") if method.lower() == "getdata" else (
         results.get("Dataset") or results.get("ParamValue") or results.get("Parameter") or [])
     notes = [n.get("NoteText") for n in results.get("Notes", []) if isinstance(n, dict) and n.get("NoteText")]
     rec = make_record(identity=identity, kind="series", source_id=SOURCE_ID,
@@ -86,11 +87,11 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         resp = client.get(SOURCE_ID, "catalog", BASE, params={**base_q, "method": method, **extra}, query=query)
         if not check(SOURCE_ID, resp, allow_404=False):
             return None, None
-        j = resp.json or {}
+        j = need(SOURCE_ID, resp.json, kind=dict)
         err = _error(j)
         if err:
             return None, f"BEA: {err}"
-        return (j.get("BEAAPI") or {}).get("Results") or {}, None
+        return need(SOURCE_ID, j, "BEAAPI", "Results", kind=dict), None
 
     def rows_of(results, *keys):
         for k in keys:

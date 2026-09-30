@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, check, quote
+from .base import AdapterError, Client, check, need, quote
 
 SOURCE_ID = "openml"
 SMOKE = {'capability': 'resolve', 'identity': 'openml:61'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -47,9 +47,12 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0) -> dic
     """OpenML's public API filters by exact data_name only; free-text search is not documented."""
     url = f"{BASE}/data/list/data_name/{quote(query, safe='')}/limit/{min(limit, 100)}/offset/{offset}/status/active"
     resp = client.get(SOURCE_ID, "find", url, query=query)
-    if not check(SOURCE_ID, resp):
-        return {"records": [], "total": None, "next_offset": None}
-    items = ((resp.json or {}).get("data") or {}).get("dataset") or []
+    if resp.status == 412 and str((resp.json_or_none() or {}).get("error", {}).get("code")) == "372":
+        # OpenML's list API answers "no results" as HTTP 412 with error code 372: a successful
+        # empty search, not an outage (any other 412 still is one)
+        return {"records": [], "total": 0, "next_offset": None}
+    check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
+    items = need(SOURCE_ID, resp.json, "data", "dataset")
     return {"records": [_list_record(d) for d in items], "total": None,
             "next_offset": offset + len(items) if len(items) >= min(limit, 100) else None}
 
@@ -59,8 +62,7 @@ def resolve(client: Client, identity: str) -> dict | None:
     resp = client.get(SOURCE_ID, "resolve", f"{BASE}/data/{did}", identity=f"openml:{did}")
     if not check(SOURCE_ID, resp):
         return None
-    d = (resp.json or {}).get("data_set_description")
-    return _desc_record(d) if d else None
+    return _desc_record(need(SOURCE_ID, resp.json, "data_set_description", kind=dict))
 
 
 def fetch(client: Client, target: str, *, download: bool = False, prefer: str = "parquet") -> dict:

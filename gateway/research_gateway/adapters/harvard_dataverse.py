@@ -4,7 +4,7 @@ from __future__ import annotations
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, check
+from .base import AdapterError, Client, check, need
 
 SOURCE_ID = "harvard_dataverse"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.7910/DVN/OY6CBK'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -73,10 +73,9 @@ def find_in(client: Client, base: str, source_id: str, secret_name: str | None, 
     per_page = min(limit, 100)
     params = {"q": query, "type": "dataset", "per_page": per_page, "start": (page - 1) * per_page, "subtree": subtree}
     resp = client.get(source_id, "find", f"{base}/api/search", params=params, headers=headers(client, secret_name), query=query)
-    if not check(source_id, resp):
-        return {"records": [], "total": 0, "next_page": None}
-    data = (resp.json or {}).get("data") or {}
-    items, total = data.get("items") or [], data.get("total_count") or 0
+    check(source_id, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
+    data = need(source_id, resp.json, "data", kind=dict)
+    items, total = need(source_id, data, "items"), data.get("total_count") or 0
     return {"records": [search_record(base, source_id, i) for i in items], "total": total,
             "next_page": page + 1 if items and page * per_page < total else None}
 
@@ -89,7 +88,7 @@ def get_dataset(client: Client, base: str, source_id: str, secret_name: str | No
                       headers=headers(client, secret_name), identity=f"doi:{doi}")
     if not check(source_id, resp):
         return None
-    return (resp.json or {}).get("data")
+    return need(source_id, resp.json, "data", kind=dict)
 
 
 def fetch_in(client: Client, base: str, source_id: str, secret_name: str | None, target: str, *, file_id=None, download: bool = False) -> dict:

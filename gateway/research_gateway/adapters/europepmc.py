@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record
 from ..core.identity import normalize_doi
-from .base import Client, check
+from .base import Client, check, need
 
 SOURCE_ID = "europepmc"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -31,10 +31,9 @@ def _record(r: dict) -> dict:
 def find(client: Client, query: str, *, limit: int = 20, cursor: str | None = None) -> dict:
     params = {"query": query, "format": "json", "pageSize": min(limit, 100), "cursorMark": cursor or "*", "resultType": "lite"}
     resp = client.get(SOURCE_ID, "find", f"{BASE}/search", params=params, query=query)
-    if not check(SOURCE_ID, resp):
-        return {"records": [], "total": 0, "next_cursor": None}
-    j = resp.json or {}
-    results = (j.get("resultList") or {}).get("result") or []
+    check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
+    j = resp.json
+    results = need(SOURCE_ID, j, "resultList", "result")
     nxt = j.get("nextCursorMark") if results and j.get("nextCursorMark") != (cursor or "*") else None
     return {"records": [_record(r) for r in results], "total": j.get("hitCount"), "next_cursor": nxt}
 
@@ -48,5 +47,5 @@ def resolve(client: Client, identity: str) -> dict | None:
                       identity=identity)
     if not check(SOURCE_ID, resp):
         return None
-    results = ((resp.json or {}).get("resultList") or {}).get("result") or []
+    results = need(SOURCE_ID, resp.json, "resultList", "result")
     return _record(results[0]) if results else None

@@ -129,8 +129,9 @@ class RegistrationAgencies:
         if prefix in self._cache:
             return self._cache[prefix]
         resp = self._client.get("doi_org", "resolve", self.URL + doi, identity=f"doi:{doi}")
-        agency = "unknown"
-        if resp.ok and isinstance(resp.json, list) and resp.json:
-            agency = str(resp.json[0].get("RA") or "unknown")
+        if not resp.ok:
+            return "unknown"   # a failed lookup is not remembered as the prefix's answer (task 2b)
+        rows = resp.json   # an unreadable 200 raises PayloadError: the caller reports it, nothing is cached
+        agency = str(rows[0].get("RA") or "unknown") if isinstance(rows, list) and rows and isinstance(rows[0], dict) else "unknown"
         self._cache[prefix] = agency
         return agency

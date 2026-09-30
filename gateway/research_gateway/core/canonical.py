@@ -8,6 +8,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+class PayloadError(ValueError):
+    """An answer that is not the shape its adapter requires — an empty or unparseable body, or
+    a parsed body without the container its results live in. The lane is unavailable with
+    error_class payload_invalid: an unreadable answer is never zero results (INVARIANTS H-5,
+    RG-4; design review §9, task 2b). Adapters use it through adapters.base."""
+
+
 KINDS = ("article", "dataset", "software", "document", "series", "citation", "oa_location", "full_text", "file",
          "venue", "repository")  # venue = journal/conference/book series; repository = data or publication repository
 

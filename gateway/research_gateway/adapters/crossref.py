@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi, normalize_issn
-from .base import Client, check
+from .base import Client, PayloadError, check, need
 
 SOURCE_ID = "crossref"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -48,10 +48,9 @@ def find(client: Client, query: str, *, limit: int = 20, year_from_: int | None 
     params = {"query.bibliographic": query, "rows": min(limit, 100), "mailto": client.contact_email,
               "filter": ",".join(filters) or None, "cursor": cursor}
     resp = client.get(SOURCE_ID, "find", f"{BASE}/works", params=params, query=query)
-    if not check(SOURCE_ID, resp):
-        return {"records": [], "total": 0, "next_cursor": None}
-    msg = (resp.json or {}).get("message") or {}
-    return {"records": [_record(client, w) for w in msg.get("items", [])],
+    check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
+    msg = need(SOURCE_ID, resp.json, "message", kind=dict)
+    return {"records": [_record(client, w) for w in need(SOURCE_ID, msg, "items")],
             "total": msg.get("total-results"), "next_cursor": msg.get("next-cursor")}
 
 
@@ -63,9 +62,11 @@ def resolve(client: Client, identity: str) -> dict | None:
                       identity=f"doi:{doi}")
     if not check(SOURCE_ID, resp):
         return None
-    msg = (resp.json or {}).get("message")
-    if not isinstance(msg, dict) or not normalize_doi(msg.get("DOI")):
-        return None  # an HTTP 200 that is not a Crossref work envelope (bot wall, HTML) is not a record (D-23)
+    msg = need(SOURCE_ID, resp.json, "message", kind=dict)
+    if not normalize_doi(msg.get("DOI")):
+        # an HTTP 200 that is not a Crossref work envelope is not a record (D-23) — and not
+        # "no such DOI" either: it is an unreadable answer (task 2b, H-5)
+        raise PayloadError(f"{SOURCE_ID}: the answer's message carries no DOI")
     return _record(client, msg)
 
 
@@ -78,7 +79,7 @@ def enrich(client: Client, identity: str, what: str = "references") -> dict:
                       identity=f"doi:{doi}")
     if not check(SOURCE_ID, resp):
         return {"identity": f"doi:{doi}", "what": what, "items": []}
-    refs = ((resp.json or {}).get("message") or {}).get("reference") or []
+    refs = need(SOURCE_ID, resp.json, "message", kind=dict).get("reference") or []   # a work that deposited no references has none
     items = [make_record(identity=f"doi:{normalize_doi(r['DOI'])}", kind="citation", source_id=SOURCE_ID,
                          title=r.get("article-title"), year=year_from(r.get("year")), venue=r.get("journal-title"),
                          identifiers={"doi": normalize_doi(r["DOI"])}, extra={"unstructured": r.get("unstructured")}, raw=r)
