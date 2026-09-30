@@ -14,7 +14,7 @@ PYTHON ?= $(GEN2_VENV)/bin/python
 
 GEN2_SQLITE_REPORT ?=
 
-.PHONY: gen2-check gen2-venv gen2-sqlite gen2-boundaries gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount gen2-auth-demo
+.PHONY: gen2-check gen2-venv gen2-sqlite gen2-boundaries gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount gen2-auth-demo gen2-gateway
 
 gen2-check: gen2-sqlite gen2-boundaries gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size
 	@echo "gen2-check: all checks passed"
@@ -99,3 +99,12 @@ gen2-linecount: gen2-venv
 # subset. Exit status is the demonstrations' own: no pipe.
 gen2-auth-demo: gen2-venv
 	$(PYTHON) deploy/gen2/demo/auth_demo.py $(if $(DEMOS),--only $(DEMOS))
+
+# The gateway repairs of task 2b (tools/gen2_gateway_check.py): the gateway's own
+# suite, again on a throwaway PostgreSQL cluster (a temporary directory, a Unix socket,
+# no TCP port; never an existing database), then the gateway mutants. The gateway is a
+# separate package with its own dependency (psycopg), so this runs on the gateway's
+# interpreter ($(PYTHON_BOOTSTRAP)), not the gen-2 venv, and needs PostgreSQL server
+# binaries; not part of gen2-check. Exit status is the checks' own: no pipe.
+gen2-gateway:
+	$(PYTHON_BOOTSTRAP) tools/gen2_gateway_check.py

@@ -24,12 +24,13 @@ import unittest
 from research_gateway.adapters import (bea, bis, bls, census, core, crossref, datacite, doaj, ecb, europepmc, fred, govinfo,
                                        harvard_dataverse, huggingface, kaggle, opencitations, openml, qdr, semanticscholar,
                                        socrata, unpaywall)
-from research_gateway.adapters.base import Client, FakeTransport, PayloadError, SourceUnavailable
+from research_gateway.adapters.base import Client, FakeTransport, PayloadError, Response, SourceUnavailable
+from research_gateway.core.identity import RegistrationAgencies
 from research_gateway.core.broker import Broker, RatePolicy
 
 KEYS = {("kaggle", "username"): "u", ("kaggle", "key"): "k", ("api_data_gov", None): "g", ("core", None): "c",
         ("fred", None): "f", ("bea", None): "b", ("census", None): "cs", ("bls", None): "l"}
-SIDS = ("crossref", "doaj", "europepmc", "semanticscholar", "datacite", "harvard_dataverse", "qdr", "socrata", "kaggle",
+SIDS = ("doi_org", "crossref", "doaj", "europepmc", "semanticscholar", "datacite", "harvard_dataverse", "qdr", "socrata", "kaggle",
         "huggingface", "openml", "govinfo", "unpaywall", "opencitations", "core", "fred", "bea", "census", "bls", "bis", "ecb")
 SOCRATA_VOUCH = ("GET", "https://api.us.socrata.com/api/catalog/v1?domains=data.example.gov",
                  {"results": [{"metadata": {"domain": "data.example.gov"}}]})
@@ -174,6 +175,27 @@ class AdapterBoundary(unittest.TestCase):
             with self.subTest(case[0]):
                 with self.assertRaises(SourceUnavailable):
                     self.run_case(case, 404, b"")
+
+    def test_the_json_reader_refuses_what_it_cannot_read(self):
+        # the boundary's own reader, before any adapter's shape check: an empty or unparseable
+        # success is an error, never None standing in for "nothing" (H-5)
+        for body in (b"", b'{"results": [', b"<html>x</html>", b"\xff\xfe"):
+            with self.subTest(body=body):
+                with self.assertRaises(PayloadError):
+                    Response(200, {}, body, "u").json
+        self.assertEqual(Response(200, {}, b'{"results": []}', "u").json, {"results": []}, "control")
+        self.assertIsNone(Response(200, {}, b"", "u").json_or_none(), "bookkeeping (the call-log count) reads leniently")
+
+    def test_a_garbled_registration_agency_answer_is_not_remembered(self):
+        c, t = client()
+        t.add("GET", "https://doi.org/ra/10.1234/x", body=b'[{"DOI": "10.1234/x", "RA": "Cross')
+        cache: dict = {}
+        with self.assertRaises(PayloadError):
+            RegistrationAgencies(c, cache).agency("10.1234/x")
+        self.assertEqual(cache, {}, "an unreadable answer is not cached as the prefix's agency")
+        t.routes.clear()
+        t.add("GET", "https://doi.org/ra/10.1234/x", body=[{"DOI": "10.1234/x", "RA": "Crossref"}])
+        self.assertEqual((RegistrationAgencies(c, cache).agency("10.1234/x"), cache), ("Crossref", {"10.1234": "Crossref"}), "control")
 
     def test_openml_412_means_no_results_only_with_code_372(self):
         case = next(c for c in CASES if c[0] == "openml find")

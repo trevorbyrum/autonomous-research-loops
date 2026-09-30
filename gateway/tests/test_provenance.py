@@ -60,9 +60,11 @@ class PermissionFacts(unittest.TestCase):
                 self.assertEqual(tuple(got[f] for f in FACTS), expected)
 
     def test_no_fact_is_a_function_of_another(self):
-        """For every ordered pair of facts, two rows agree on the first and differ on the
-        second: none of the four is derivable from another (they were one flag, D-23)."""
-        rows = [dict(zip(FACTS, expected)) for *_, expected in TABLE]
+        """Over the facts the code COMPUTES for the table's inputs, for every ordered pair of
+        facts two rows agree on the first and differ on the second: none of the four is
+        derived from another (storage and redistribution were one flag, D-23)."""
+        rows = [licenses.permissions(BY_ID[sid], member, kind=kind, has_content=has_content)
+                for _, sid, member, kind, has_content, _ in TABLE]
         for x, y in itertools.permutations(FACTS, 2):
             with self.subTest(given=x, varies=y):
                 self.assertTrue(any(a[x] == b[x] and a[y] != b[y] for a, b in itertools.combinations(rows, 2)),
@@ -112,7 +114,7 @@ class ReturnedRecords(unittest.TestCase):
         self.assertEqual(rec["permissions"]["redistribution"], "conditional", "the record is capped by its most restricted member")
         stored = R.redact_for_storage(out, r.sources)["records"][0]["provenance"]
         kept = {m["source_id"]: m for m in stored}
-        self.assertEqual(kept["doaj"]["permissions"], members["doaj"]["permissions"], "a stored job result keeps the four facts")
+        self.assertEqual(kept["doaj"].get("permissions"), members["doaj"]["permissions"], "a stored job result keeps the four facts")
         self.assertEqual((kept["crossref"]["metadata_license"], kept["crossref"]["freshness_lag"]),
                          (BY_ID["crossref"]["license"], BY_ID["crossref"]["freshness_lag"]))
 
@@ -164,13 +166,13 @@ class DatabaseBackedSources(unittest.TestCase):
     def test_control_the_database_is_what_is_read(self):
         with db.connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("UPDATE gateway.sources SET freshness_lag = 'probe-lag' WHERE id = 'doaj'")
+                cur.execute("UPDATE gateway.sources SET notes = 'probe-note' WHERE id = 'doaj'")
             conn.commit()
             try:
-                self.assertEqual({r["id"]: r for r in app.sources_from_db(conn)}["doaj"]["freshness_lag"], "probe-lag")
+                self.assertEqual({r["id"]: r for r in app.sources_from_db(conn)}["doaj"]["notes"], "probe-note")
             finally:
                 with conn.cursor() as cur:
-                    cur.execute("UPDATE gateway.sources SET freshness_lag = %s WHERE id = 'doaj'", (BY_ID["doaj"]["freshness_lag"],))
+                    cur.execute("UPDATE gateway.sources SET notes = %s WHERE id = 'doaj'", (BY_ID["doaj"].get("notes"),))
                 conn.commit()
 
 

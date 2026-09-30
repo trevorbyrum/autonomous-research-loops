@@ -206,7 +206,7 @@ class StdioClient(unittest.TestCase):
             def request(self, rt, payload):
                 return {"lanes": [], "records": []}
         out = mcp_stdio.call_tool(Stub(), "research_find", {"query": "q"}, activity=os.path.join(self.tmp.name, "no", "x.jsonl"))
-        self.assertFalse(out["activity_capture"]["captured"])
+        self.assertEqual(out.get("activity_capture", {}).get("captured"), False)
         out = mcp_stdio.call_tool(Stub(), "research_find", {"query": "q"}, activity=os.path.join(self.tmp.name, "x.jsonl"))
         self.assertNotIn("activity_capture", out, "control: a written observation adds nothing")
 
@@ -289,7 +289,7 @@ class DurableCorrelation(unittest.TestCase):
         second.join(30)
         a, b = answers["first"]["observation"], answers["second"]["observation"]
         self.assertEqual((a["invocation_id"], a["served"]), ("inv_first001", "dispatched"))
-        self.assertEqual((b["invocation_id"], b["served"], b["dispatched_by"]),
+        self.assertEqual((b["invocation_id"], b["served"], b.get("dispatched_by")),
                          ("inv_second01", "coalesced", {"invocation_id": "inv_first001", "attempt": 1}))
         self.assertEqual(answers["first"]["job_id"], answers["second"]["job_id"])
         (job,) = self.rows("SELECT invocation_id FROM gateway.jobs WHERE id = %s", answers["first"]["job_id"])
@@ -345,7 +345,7 @@ class DurableCorrelation(unittest.TestCase):
         with mock.patch.object(calllog, "record", failing):
             out = self.gw.handle(payload, "engine", trace={"invocation_id": "inv_lost0001", "attempt": 1})
         self.assertEqual((out["status"], out["observation"]["captured"], out["observation"]["call_ref"]), ("done", False, None))
-        self.assertIn("request row not written: AuditError", out["observation"]["capture_loss"])
+        self.assertIn("request row not written: AuditError", out["observation"]["capture_loss"] or "")
         self.assertTrue(out["records"], "the research result itself is still delivered")
 
 

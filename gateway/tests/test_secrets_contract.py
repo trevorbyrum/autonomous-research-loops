@@ -209,6 +209,15 @@ class F2ExplicitFileUnreadable(VaultCase):
         self.assertIn(f"RESEARCH_GATEWAY_VAULT_TOKEN_FILE={missing}", err)
         self.assertIn("unreadable", err)
 
+    def test_a_token_read_that_fails_at_startup_is_refused_as_failing(self):
+        # the client tokens come from vault (none in the environment) and vault answers 403:
+        # the refusal names the failure — never the "no client tokens" of an absent secret
+        self.vault.mode = "status:403"
+        status, err = self.outcome(self.start_child(self.env(self.token_file)))
+        self.assertEqual(status, 2, err)
+        self.assertIn("secrets backend failing (HTTP 403)", err)
+        self.assertNotIn("without client tokens", err)
+
     @unittest.skipIf(os.geteuid() == 0, "root reads a 0000 file")
     def test_an_unreadable_file_at_startup_is_refused(self):
         locked = os.path.join(self.tmp.name, "locked-token")

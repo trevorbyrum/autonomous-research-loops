@@ -196,18 +196,28 @@ class JobsAreTheirTopicsAlone(unittest.TestCase):
     def grant(self, **over):
         return call(self.url, "/v1/grants", {**GRANT, **over}, TOKENS["engine"])[1]["token"]
 
-    def test_async_binds_and_polling_never_crosses_topics_or_postures(self):
+    def queued_job(self) -> int:
         alpha = self.grant()
-        status, body = call(self.url, "/v1/resolve?async=1", {"identity": "doi:10.1234/abc", "commercial": False}, alpha)
-        self.assertEqual(status, 403, "the async door binds the policy too")
-        status, body = call(self.url, f"/v1/find?async=1", {"query": f"q {self.tag}", "kind": "article"}, alpha)
+        status, body = call(self.url, "/v1/find?async=1", {"query": f"q {self.tag} {uuid.uuid4().hex[:6]}", "kind": "article"}, alpha)
         self.assertEqual(status, 202, body)
-        job_id = body["job_id"]
         self.assertEqual(body["observation"]["invocation_id"], "inv_alpha0001")
-        job = self.gw.wait(job_id, 20)
+        job = self.gw.wait(body["job_id"], 20)
         self.assertEqual((job["payload"]["topic_id"], job["payload"]["commercial"], job["invocation_id"]),
                          ("topic-alpha", True, "inv_alpha0001"), "the queued job is bound as the grant says")
-        self.assertEqual(call(self.url, f"/v1/jobs/{job_id}", token=alpha)[0], 200, "control: its own topic reads it")
+        return body["job_id"]
+
+    def test_the_async_door_binds_the_policy(self):
+        status, _ = call(self.url, "/v1/resolve?async=1", {"identity": "doi:10.1234/abc", "commercial": False}, self.grant())
+        self.assertEqual(status, 403)
+
+    def test_control_its_own_topic_reads_its_job(self):
+        job_id = self.queued_job()
+        self.assertEqual(call(self.url, f"/v1/jobs/{job_id}", token=self.grant())[0], 200)
+        is_error, job = mcp(self.url, self.grant(), "research_job", {"job_id": job_id})
+        self.assertEqual(job["id"], job_id)
+
+    def test_polling_never_crosses_topics_or_postures(self):
+        job_id = self.queued_job()
         beta = self.grant(topic_id="topic-beta", invocation_id="inv_beta00001")
         self.assertEqual(call(self.url, f"/v1/jobs/{job_id}", token=beta)[0], 404, "another topic's grant never sees it")
         is_error, text = mcp(self.url, beta, "research_job", {"job_id": job_id})
@@ -217,7 +227,6 @@ class JobsAreTheirTopicsAlone(unittest.TestCase):
                          "the same topic under another posture does not read results obtained under this one")
         self.assertEqual(call(self.url, f"/v1/jobs/{job_id}", token=TOKENS["engine"])[0], 404,
                          "the grantor's own unbound session is a different client")
-
 
 if __name__ == "__main__":
     unittest.main()
