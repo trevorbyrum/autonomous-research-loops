@@ -24,6 +24,7 @@ from . import calllog, dedup, licenses
 from . import canonical as canonical_mod
 from . import identity as ident
 from .cache import Cache
+from .secrets import SecretsBackendFailing
 
 from ..registry.load import DOMAINS  # one domain vocabulary: the registry's (I-2, D-24)
 OTHER = "other"
@@ -58,6 +59,23 @@ COVERAGE_SKIPPED, COVERAGE_DOWN = "not_searched", "provider_unavailable"
 COVERAGE_AUTH, COVERAGE_METADATA_ONLY = "auth_failed", "metadata_only"
 COVERAGE_EXHAUSTED = "exhausted"          # a continuation: this lane already returned everything it has
 EXHAUSTED_CURSOR = "exhausted"            # the `next` sentinel for such a lane; handing it back skips the lane
+# why a lane is degraded, machine-readable beside its coverage (the engine store's
+# search_observations.error_class vocabulary, gen2/store/schema/03-evidence-and-decisions.sql)
+ERR_SECRETS = "secrets_backend_failing"   # the gateway's own secrets read FAILED: never "no key configured" (DEPLOYMENT-CONTRACT §3.3)
+
+
+def _add_fact(out: dict, fact: dict | None) -> None:
+    """One current capability fact per capability in an answer (the latest snapshot wins)."""
+    if fact:
+        facts = [f for f in out.setdefault("capability_facts", []) if f.get("capability") != fact.get("capability")]
+        out["capability_facts"] = facts + [fact]
+
+
+def _secrets_failing(entry: dict, facts: list[str], sid: str, e: SecretsBackendFailing) -> None:
+    entry["error"] = str(e)
+    entry["coverage"] = COVERAGE_DOWN   # required research that could not run — never searched_empty, never auth_failed
+    entry["error_class"] = ERR_SECRETS
+    facts.append(f"{sid}: secrets backend failing ({e.read.reason}) — the lane could not run; this is not a missing key")
 
 
 def _fact_coverage(fact: str) -> str:
@@ -459,6 +477,9 @@ def _find_lane_result(router: Router, lane: Lane, payload: dict, client: Client,
             entry["coverage"] = COVERAGE_SKIPPED
             lane_out["facts"].append(f"{lane.source_id}: refused ({e})")
             return {"entry": entry, "records": [], "facts": lane_out["facts"], "next": None}
+        except SecretsBackendFailing as e:
+            _secrets_failing(entry, lane_out["facts"], lane.source_id, e)
+            return {"entry": entry, "records": [], "facts": lane_out["facts"], "next": None, "capability_fact": e.fact}
         except calllog.AuditError:
             if abort is not None:
                 abort.set()   # set by the FAILING lane, not the merge loop: no window where
@@ -513,6 +534,7 @@ def _run_find_lanes(router: Router, payload: dict, client: Client, plan: Plan, o
     for slot, lane in zip(slots, plan.lanes):
         out["facts"].extend(slot["facts"])
         out["lanes"].append(slot["entry"])
+        _add_fact(out, slot.get("capability_fact"))
         if slot["next"] is not None:
             out.setdefault("next", {})[lane.source_id] = slot["next"]
         records.extend(slot["records"])
@@ -557,6 +579,11 @@ def _run_serial_lanes(router: Router, payload: dict, client: Client, plan: Plan,
             entry["error"] = str(e)
             entry["coverage"] = COVERAGE_SKIPPED  # refused before dispatch (keyless tier, policy)
             out["facts"].append(f"{lane.source_id}: refused ({e})")
+            out["lanes"].append(entry)
+            continue
+        except SecretsBackendFailing as e:
+            _secrets_failing(entry, out["facts"], lane.source_id, e)
+            _add_fact(out, e.fact)
             out["lanes"].append(entry)
             continue
         except calllog.AuditError:

@@ -48,9 +48,12 @@ class Secrets(unittest.TestCase):
         finally:
             del os.environ["RESEARCH_GATEWAY_SECRET_FRED"], os.environ["RESEARCH_GATEWAY_SECRET_KAGGLE_USERNAME"]
 
-    def test_vault_backend_without_address_is_inert(self):
-        b = secrets.VaultBackend(addr="")
-        self.assertIsNone(b.get("anything"))
+    def test_vault_backend_without_address_refuses(self):
+        # DEPLOYMENT-CONTRACT §3.2: an empty address reads nothing, and that is a failure —
+        # a startup refusal naming the variable, never an inert backend whose every key looks absent
+        with self.assertRaises(secrets.SecretsConfigError) as caught:
+            secrets.VaultBackend(addr="", token_file="/nonexistent", environ={})
+        self.assertIn("RESEARCH_GATEWAY_VAULT_ADDR", str(caught.exception))
 
     def test_chain_prefers_first_hit(self):
         class A:

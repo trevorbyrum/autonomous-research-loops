@@ -26,7 +26,7 @@ from .core import alerts, calllog, db, queue
 from .core.broker import Broker, load_policies, persist_breaker, policies_from_rows
 from .core.cache import Cache
 from .core.router import Router, execute, make_handlers, redact_for_storage
-from .core.secrets import from_config
+from .core.secrets import FAILING, FOUND, SecretsBackendFailing, SecretsConfigError, from_config, read_from
 from .registry.load import read_seed
 
 VERSION = "0.1"
@@ -103,7 +103,9 @@ def parse_tokens(text: str | None) -> dict[str, str]:
 
 def load_settings(path: Path | None = None, environ: dict | None = None) -> Settings:
     """sources.local.toml [gateway] with environment overrides; tokens only from the environment
-    (RESEARCH_GATEWAY_TOKENS) or the secrets backend (secret 'research_gateway', field 'tokens')."""
+    (RESEARCH_GATEWAY_TOKENS) or the secrets backend (secret 'research_gateway', field 'tokens').
+    Raises SecretsConfigError when the backend cannot run or the token read FAILED — a failed
+    read is a refusal naming the failure, never the 'no tokens' of an absent secret."""
     env = os.environ if environ is None else environ
     s = Settings()
     cfg_path = path or LOCAL_CONFIG
@@ -122,7 +124,10 @@ def load_settings(path: Path | None = None, environ: dict | None = None) -> Sett
     s.workers = int(env.get("RESEARCH_GATEWAY_WORKERS", s.workers))
     s.tokens = parse_tokens(env.get("RESEARCH_GATEWAY_TOKENS"))
     if not s.tokens:
-        s.tokens = parse_tokens(from_config(s.secrets_backend).get("research_gateway", "tokens"))
+        read = read_from(from_config(s.secrets_backend), "research_gateway", "tokens")
+        if read.state == FAILING:
+            raise SecretsConfigError(f"client tokens could not be read: secrets backend failing ({read.reason})")
+        s.tokens = parse_tokens(read.value if read.state == FOUND else None)
     return s
 
 
@@ -173,6 +178,12 @@ class Gateway:
         self.sources = sources or (sources_from_db(self.conn) if self.conn is not None else read_seed())
         self.secrets = secrets if secrets is not None else from_config(settings.secrets_backend)
         self.alerter = alerter if alerter is not None else alerts.from_env(self.secrets)
+        # the backend's dated capability fact (DEPLOYMENT-CONTRACT §3.3 rule 2): its affected
+        # lanes are the sources whose secret the backend failed to read; transitions alert
+        self.secrets_health = getattr(self.secrets, "health", None)
+        if self.secrets_health is not None:
+            self.secrets_health.lanes_for = lambda name: [s["id"] for s in self.sources if s.get("secret_ref") == name]
+            self.secrets_health.on_transition = self.alerter.capability
         if self.conn is not None:
             policies = load_policies(self.conn)
             persist = persist_breaker(self.conn)
@@ -228,11 +239,20 @@ class Gateway:
             self._inline_cv.notify_all()
 
     # ------------------------------------------------------------ clients
+    def secret(self, name: str, field: str | None = None) -> str | None:
+        """What an adapter's `client.secret()` reads: the value, None when the backend answered
+        that nothing is configured, and SecretsBackendFailing (with the dated capability fact)
+        when the read failed — so the lane reports the failure, never a missing key."""
+        read = read_from(self.secrets, name, field)
+        if read.state == FAILING:
+            raise SecretsBackendFailing(name, read, self.secrets_health.fact() if self.secrets_health else None)
+        return read.value if read.state == FOUND else None
+
     def make_client(self, conn, job: dict | None = None, client_id: str | None = None,
                     iteration: str | None = None, batch_entry: int | None = None,
                     topic: str | None = None) -> Client:
         kw = {"transport": self.transport} if self.transport is not None else {}
-        return Client(broker=self.broker, secrets=self.secrets.get, contact_email=self.settings.contact_email,
+        return Client(broker=self.broker, secrets=self.secret, contact_email=self.settings.contact_email,
                       user_agent=f"research-gateway/{VERSION} (mailto:{self.settings.contact_email})",
                       conn=conn, job_id=(job or {}).get("id"), client_id=(job or {}).get("client_id") or client_id,
                       iteration=(job or {}).get("iteration") or iteration,
@@ -498,10 +518,19 @@ class Gateway:
                 "workers": {"alive": alive, "expected": len(self.workers)},
                 "sources": sum(1 for s in self.sources if s.get("enabled")), "uptime_s": int(time.time() - self.started_at)}
 
+    def capabilities(self) -> dict:
+        """Dated capability facts (H-2). `summary` is the operator's one line while failing:
+        'secrets backend failing since <first failed read> (<status or reason>); N lanes degraded'."""
+        if self.secrets_health is None:
+            return {"secrets": {"capability": "secrets.env", "state": "healthy", "summary": None}}
+        return {"secrets": {**self.secrets_health.fact(), "summary": self.secrets_health.summary()}}
+
     def status(self) -> dict:
         out = {"health": self.health(detailed=True), "broker": self.broker.status(), "cache": self.cache.stats(),
+               "capabilities": self.capabilities(),
                "workers": [{"name": w.name, "alive": w.is_alive(), "processed": w.processed, "error": w.error} for w in self.workers],
-               "alerts": {"enabled": self.alerter.enabled, "delivered": self.alerter.delivered,
+               "alerts": {"enabled": self.alerter.enabled, "config_error": getattr(self.alerter, "config_error", None),
+                          "delivered": self.alerter.delivered,
                           "delivery_failures": self.alerter.delivery_failures, "dropped": self.alerter.dropped,
                           "recent": [{"at": t, "key": k, "title": ti} for t, k, ti in self.alerter.history[-10:]],
                           "watcher": {"passes": self.watcher.passes, "error": self.watcher.error,

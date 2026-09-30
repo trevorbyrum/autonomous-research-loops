@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, urlsplit
 from .. import app as app_module
 from ..app import Gateway, Settings, load_settings
 from ..core.queue import REQUEST_TYPES
+from ..core.secrets import SecretsConfigError
 from ..mcp import homelab_adapter
 
 MAX_TIMEOUT = 120.0
@@ -205,11 +206,15 @@ def serve(gateway: Gateway, host: str, port: int) -> Server:
 
 
 def main(argv: list[str] | None = None) -> int:
-    settings = load_settings()
-    if not settings.tokens:
-        print("refusing to start without client tokens (RESEARCH_GATEWAY_TOKENS or the secrets backend)", file=sys.stderr)
+    try:
+        settings = load_settings()
+        if not settings.tokens:
+            print("refusing to start without client tokens (RESEARCH_GATEWAY_TOKENS or the secrets backend)", file=sys.stderr)
+            return 2
+        gw = Gateway(settings)
+    except SecretsConfigError as e:   # DEPLOYMENT-CONTRACT §3.3: a startup error naming the variable, never a fallback
+        print(f"refusing to start: {e}", file=sys.stderr)
         return 2
-    gw = Gateway(settings)
     gw.start()
     server = serve(gw, settings.host, settings.port)
     print(f"research-gateway {gw.health()['version']} listening on {settings.host}:{server.server_port} "

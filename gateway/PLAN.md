@@ -393,7 +393,7 @@ Plus README, ARCHITECTURE, OPERATIONS, PUBLIC-PRIVATE, LICENSING.
 
 ## 12. Public / private boundary checklist (run before every commit on this branch)
 
-- [ ] `git grep -nE '192\.168\.|10\.0\.|vault-token|X-Vault|postgresql://[^ ]+:[^ ]+@|api_key=[A-Za-z0-9]|KGAT_|hvs\.' -- gateway/ ':!gateway/PLAN.md' ':!gateway/research_gateway/core/secrets.py' ':!gateway/tests/test_core_foundations.py'` returns nothing (`core/secrets.py` is the generic Vault KV client: it names the protocol header and the default token-file path, never an address or a value; the foundations test names a private address precisely to assert the transport REFUSES redirecting to it)
+- [ ] `git grep -nE '192\.168\.|10\.0\.|vault-token|X-Vault|postgresql://[^ ]+:[^ ]+@|api_key=[A-Za-z0-9]|KGAT_|hvs\.' -- gateway/ ':!gateway/PLAN.md' ':!gateway/research_gateway/core/secrets.py' ':!gateway/tests/test_core_foundations.py' ':!gateway/tests/fake_vault.py' ':!gateway/tests/test_secrets_contract.py'` returns nothing (`core/secrets.py` is the generic Vault KV client: it names the protocol header, never an address or a value; the foundations test names a private address precisely to assert the transport REFUSES redirecting to it; the fake Vault and the DEPLOYMENT-CONTRACT §3.4 fixtures name the header and the home-directory `~/.vault-token` path precisely to prove the service never reads it — task 2b)
 - [ ] no file under `gateway/research_gateway/` or `gateway/docs/` references the repository's
       parking folder by name, Duke, Fuqua, WRDS, or Elsevier keys (this plan and the test files may
       state the rule itself)

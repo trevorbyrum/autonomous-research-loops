@@ -55,6 +55,7 @@ class Alerter:
         self.delivered = 0
         self.delivery_failures = 0   # sends that raised: visible in /v1/status (8f) — an alert
                                      # channel that silently eats alerts is its own outage
+        self.config_error: str | None = None   # why the channel could not be configured, when it could not
         self._thread: threading.Thread | None = None
         if send is not None:
             self._thread = threading.Thread(target=self._pump, name="gateway-alerts", daemon=True)
@@ -123,19 +124,36 @@ class Alerter:
     def health(self, detail: str) -> None:
         self.alert("health", "research gateway unhealthy", detail, "urgent")
 
+    def capability(self, fact: dict) -> None:
+        """A capability fact changed state (H-2: dated, and alerts on the transition)."""
+        state = fact.get("state")
+        detail = (f"since {fact.get('since')} ({fact.get('detail')}); {len(fact.get('affected_lanes') or [])} lanes degraded; "
+                  f"last success {fact.get('last_success_at') or 'never'}") if state == "failing" \
+            else f"last success {fact.get('last_success_at')}"
+        self.alert(f"capability:{fact.get('capability')}:{state}", f"{fact.get('capability')}: {state}", detail,
+                   "high" if state == "failing" else "default")
+
 
 def from_env(secrets=None, environ: dict | None = None) -> Alerter:
     """An Alerter wired to ntfy when configured (RESEARCH_GATEWAY_NTFY_URL/_TOPIC, or the secrets
-    backend's `ntfy` entry: url, default_topic, username/password or token); otherwise silent."""
+    backend's `ntfy` entry: url, default_topic, username/password or token); otherwise silent.
+    A secrets backend that fails the read leaves the alerter silent WITH the reason recorded
+    (`config_error`, shown in /v1/status) — never silently unconfigured."""
+    from .secrets import SecretsBackendFailing
     env = os.environ if environ is None else environ
     get = (lambda field: secrets.get("ntfy", field)) if secrets is not None else (lambda field: None)
-    url = env.get("RESEARCH_GATEWAY_NTFY_URL") or get("url")
-    topic = env.get("RESEARCH_GATEWAY_NTFY_TOPIC") or get("default_topic") or "research-gateway"
-    if not url:
-        return Alerter(None)
-    return Alerter(ntfy_sender(url, topic, username=env.get("RESEARCH_GATEWAY_NTFY_USERNAME") or get("username"),
-                               password=env.get("RESEARCH_GATEWAY_NTFY_PASSWORD") or get("password"),
-                               token=env.get("RESEARCH_GATEWAY_NTFY_TOKEN") or get("token")))
+    try:
+        url = env.get("RESEARCH_GATEWAY_NTFY_URL") or get("url")
+        topic = env.get("RESEARCH_GATEWAY_NTFY_TOPIC") or get("default_topic") or "research-gateway"
+        if not url:
+            return Alerter(None)
+        return Alerter(ntfy_sender(url, topic, username=env.get("RESEARCH_GATEWAY_NTFY_USERNAME") or get("username"),
+                                   password=env.get("RESEARCH_GATEWAY_NTFY_PASSWORD") or get("password"),
+                                   token=env.get("RESEARCH_GATEWAY_NTFY_TOKEN") or get("token")))
+    except SecretsBackendFailing as e:
+        silent = Alerter(None)
+        silent.config_error = f"alert settings unreadable: {e}"
+        return silent
 
 
 # ---------------------------------------------------------------- the periodic checks
