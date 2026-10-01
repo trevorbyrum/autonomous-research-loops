@@ -116,12 +116,18 @@ def literal_names(path: Path, name: str) -> list[str] | None:
 
 
 def defined_names(path: Path) -> set[str]:
-    """What the file defines at module level itself — a function, a class, a name assigned — and not what it imports."""
+    """What the file offers other modules, and nothing it merely imports: a function, a class, or a name bound to a literal (text, a number, a
+    tuple, list, dict or set of them). A name assigned anything else may hold what the module imports (`loads = json.loads`, `parse = cache.json`),
+    so it is not offered: that is a re-export by another spelling."""
     out = set()
     for node in ast.parse(path.read_text(encoding="utf-8")).body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             out.add(node.name)
-        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:
+            try:
+                ast.literal_eval(node.value)
+            except ValueError:
+                continue
             for t in (node.targets if isinstance(node, ast.Assign) else [node.target]):
                 out.update(n.id for n in ast.walk(t) if isinstance(n, ast.Name))
     return out
@@ -132,7 +138,9 @@ def import_findings(root: Path = ROOT) -> list[tuple[str, str]]:
     can stand (a function, a try block): a star import is refused (it names nothing), a stdlib module is admitted only if listed
     (STDLIB_ALLOWED: no JSON parser, so no provider answer is read by anything but Response.json), a name from adapters.base only if it is in
     its `__all__` (so no parser, module or helper it happens to import can be re-exported), and a name from any other module of the package only
-    if that module defines it (not merely imports it)."""
+    if that module defines it (not merely imports it). A package module imported AS a module (`from ..core import cache`) is analysed through what is
+    done with it: only `module.name` where the module defines `name`, so `cache.json` (the parser that module imports) is refused as `from ..core.cache
+    import json` is, and the module used as a value (passed on, aliased, `getattr(module, ...)`) is refused, for what it reaches cannot be bounded."""
     base = root / "adapters" / "base.py"
     api = set(literal_names(base, "__all__") or [])
     out = [] if api else [("adapters/base.py", "declares no __all__: nothing it exports is admitted")]
@@ -140,7 +148,8 @@ def import_findings(root: Path = ROOT) -> list[tuple[str, str]]:
         rel = path.relative_to(root).as_posix()
         strict = not rel.startswith("harvest/")
         allowed = STDLIB_ALLOWED["*"] | STDLIB_ALLOWED.get(rel, set())
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        tree, modules = ast.parse(path.read_text(encoding="utf-8")), {}   # modules: the name this file gives each package module it imports as a module
+        for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 out += [(rel, f"import {a.name}") for a in node.names if strict and a.name not in allowed]
             elif isinstance(node, ast.ImportFrom):
@@ -160,7 +169,9 @@ def import_findings(root: Path = ROOT) -> list[tuple[str, str]]:
                     if where.is_dir() and (where / f"{a.name}.py").exists():
                         if a.name == "base":   # the client is imported by name, for then its `__all__` decides what is reached; as a module, anything is
                             out.append((rel, "from . import base (as a module: import what it exports by name)"))
-                        continue   # any other module of the package, imported as one: its own imports are checked as its own
+                        else:   # any other module of the package, imported as one: what is done with it is checked below
+                            modules[a.asname or a.name] = where / f"{a.name}.py"
+                        continue
                     if not module.exists():
                         out.append((rel, f"from {'.' * node.level}{node.module or ''} import {a.name} (no such module)"))
                     elif module.name == "base.py" and module.parent.name == "adapters":
@@ -170,6 +181,15 @@ def import_findings(root: Path = ROOT) -> list[tuple[str, str]]:
                         out.append((rel, f"from {'.' * node.level}{node.module or ''} import {a.name} (not defined there: a re-export)"))
             elif isinstance(node, ast.Call) and getattr(node.func, "id", None) in UNANALYSABLE_CALLS:
                 out.append((rel, f"{node.func.id}()"))
+        parents = {id(child): parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name) and node.id in modules:
+                use = parents.get(id(node))
+                if isinstance(use, ast.Attribute) and use.value is node and isinstance(node.ctx, ast.Load):
+                    if use.attr not in defined_names(modules[node.id]):
+                        out.append((rel, f"{node.id}.{use.attr} (not defined in {modules[node.id].relative_to(root).as_posix()}: a module's imports are not its exports)"))
+                else:
+                    out.append((rel, f"{node.id} (a module, used as a value: what it reaches cannot be bounded)"))
     return sorted(set(out))
 
 
@@ -346,7 +366,12 @@ class Imports(unittest.TestCase):
     """R8-3 (Astra, 2b-repair-8): the inventory above names the doors by what a module imports, so an import it cannot read — a star, a
     name re-exported by the client, `__import__` — walks a door in unseen, and two such mutants of OpenCitations passed every structural test.
     The rule is now closed over import forms: what is not admitted by name is refused, and an import that cannot be analysed is refused.
-    Each of the reviewer's two complete mutants is a regression below, each with a permitted-import control."""
+    Each of the reviewer's two complete mutants is a regression below, each with a permitted-import control.
+
+    R9-3 (Astra, 2b-repair-9; closed in 2b-repair-10b): a package module imported AS a module was admitted and not looked into, so
+    `from ..core import cache as provider_helpers` reached `provider_helpers.json.loads` — a parser — with every structural test passing. A module
+    import is now analysed through what is done with it (`module.name` where the module defines `name`; anything else is refused), and a name a
+    module only assigns from something it imports is no more offered than a name it imports."""
 
     @staticmethod
     def tree(root: Path, **edits: list) -> Path:
@@ -373,6 +398,16 @@ class Imports(unittest.TestCase):
               (OC_READ, '    rows = need(SOURCE_ID, [row for row in provider_json.loads(resp.body) if row.get(key)])\n'
                         '    return {"identity": f"doi:{doi}", "what": what, "items": members(SOURCE_ID, rows, lambda row: _link(key, row))}')]
 
+    # the third (R9-3): the body is parsed by a parser that an admitted package module imports, reached as an attribute of that module
+    CACHE_IMPORT = "from ..core import cache as provider_helpers"
+    CACHE_MODULE = [(OC_IMPORT, OC_IMPORT + "\n" + CACHE_IMPORT),
+                    (OC_READ, '    rows = need(SOURCE_ID, [row for row in provider_helpers.json.loads(resp.body) if row.get(key)])\n'
+                              '    return {"identity": f"doi:{doi}", "what": what, "items": members(SOURCE_ID, rows, lambda row: _link(key, row))}')]
+    # and what the same import does when it only uses what the module defines
+    DOI_LINE = '    return normalize_doi(identity.split(":", 1)[-1] if identity.startswith("doi:") else identity)'
+    MODULE_USE = [(OC_IMPORT, OC_IMPORT + "\nfrom ..core import identity as ids"),
+                  (DOI_LINE, '    return ids.normalize_doi(identity.split(":", 1)[-1] if identity.startswith("doi:") else identity)')]
+
     def test_every_provider_data_module_imports_only_what_the_inventory_admits(self):
         self.assertEqual(import_findings(), [])
 
@@ -385,6 +420,20 @@ class Imports(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             findings = import_findings(self.tree(Path(tmp), **{self.OC: self.PARSER}))
         self.assertEqual(findings, [("adapters/opencitations.py", "from base import json (not in its __all__)")])
+
+    def test_a_parser_an_admitted_module_imports_is_refused_and_so_is_the_reviewers_complete_mutant(self):
+        """R9-3: `provider_helpers.json.loads` — the parser `core/cache.py` imports, reached through the module — and no structural test saw it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings = import_findings(self.tree(Path(tmp), **{self.OC: self.CACHE_MODULE}))
+        self.assertEqual(findings, [("adapters/opencitations.py", "provider_helpers.json (not defined in core/cache.py: a module's imports are not its exports)")])
+
+    def test_control_a_module_used_for_what_it_defines_is_not_refused(self):
+        """The same import, using `identity.normalize_doi` (a function that module defines): nothing is refused, and no door is used."""
+        real = door_uses()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.tree(Path(tmp), **{self.OC: self.MODULE_USE})
+            found = door_uses(root)
+            self.assertEqual((import_findings(root), sorted(k for k in found if found[k] != real.get(k))), ([], []))
 
     def test_control_the_permitted_imports_are_not_refused(self):
         """What the same two edits do when they only use what the client exports: nothing is refused for the import — the one thing a name
@@ -421,6 +470,18 @@ class Imports(unittest.TestCase):
             "inside a try": ("try:\n    import json\nexcept ImportError:\n    json = None", [("adapters/new.py", "import json")]),
             "by __import__": ("j = __import__('json')", [("adapters/new.py", "__import__()")]),
             "by eval": ("j = eval('1')", [("adapters/new.py", "eval()")]),
+            "a parser an admitted module imports, as its attribute": ("from ..core import cache\nrows = cache.json.loads('[]')",
+                                                                     [("adapters/new.py", "cache.json (not defined in core/cache.py: a module's imports are not its exports)")]),
+            "the same through an alias of the import": ("from ..core import cache as helpers\nrows = helpers.json.loads('[]')",
+                                                        [("adapters/new.py", "helpers.json (not defined in core/cache.py: a module's imports are not its exports)")]),
+            "a module's own import under another name": ("from ..core import canonical\nrows = canonical.PayloadError",
+                                                         [("adapters/new.py", "canonical.PayloadError (not defined in core/canonical.py: a module's imports are not its exports)")]),
+            "a module passed to getattr": ("from ..core import cache\nloads = getattr(cache, 'json')",
+                                           [("adapters/new.py", "cache (a module, used as a value: what it reaches cannot be bounded)")]),
+            "a module aliased by assignment": ("from ..core import cache\nhelpers = cache\nrows = helpers.json",
+                                               [("adapters/new.py", "cache (a module, used as a value: what it reaches cannot be bounded)")]),
+            "a module's name rebound": ("from ..core import cache\ncache = 5",
+                                        [("adapters/new.py", "cache (a module, used as a value: what it reaches cannot be bounded)")]),
         }
         for name, (source, want) in cases.items():
             with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
@@ -430,8 +491,18 @@ class Imports(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:   # and the forms that are admitted: the names the client exports, a stdlib module that is listed
             root = self.tree(Path(tmp))
             (root / "adapters" / "new.py").write_text("from __future__ import annotations\nimport re\nfrom .base import Client, members, quote as q\n"
-                                                      "from ..core.canonical import make_record\nfrom . import crossref\n", encoding="utf-8")
+                                                      "from ..core.canonical import make_record\nfrom . import crossref\n"
+                                                      "from ..core import canonical, identity as ids\nbuilt = canonical.make_record\nnormal = ids.normalize_doi\n",
+                                                      encoding="utf-8")
             self.assertEqual([f for f in import_findings(root) if f[0] == "adapters/new.py"], [])
+        with tempfile.TemporaryDirectory() as tmp:   # a name that a module assigns from what it imports is no more offered than the import itself
+            root = self.tree(Path(tmp))
+            (root / "core" / "helper.py").write_text("import json\nloads = json.loads\nLIMIT = 5\n", encoding="utf-8")
+            (root / "adapters" / "new.py").write_text("from __future__ import annotations\nfrom ..core.helper import loads, LIMIT\nfrom ..core import helper\n"
+                                                      "x = helper.loads\ny = helper.LIMIT\n", encoding="utf-8")
+            self.assertEqual([f for f in import_findings(root) if f[0] == "adapters/new.py"],
+                             [("adapters/new.py", "from ..core.helper import loads (not defined there: a re-export)"),
+                              ("adapters/new.py", "helper.loads (not defined in core/helper.py: a module's imports are not its exports)")])
 
     def test_the_client_has_no_parser_to_re_export_and_exports_no_module(self):
         from types import ModuleType
