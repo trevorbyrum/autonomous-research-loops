@@ -726,3 +726,15 @@ The operator asked whether the build checks architecture against the requirement
 - a Socrata year read from epoch seconds.
 
 All are fixed, and 24 new mutants are bound to the fixes and invariants. Limits are disclosed with proposed owners: Phase 4 canary for live type and semantic drift; Astra Gate C for hand-parsing and oracle authorship. The completion block's "Remaining: NONE" is sent to Astra for a ruling.
+
+## 2026-10-01 — 2b-repair-9 re-review (Astra, xhigh) — BLOCK; oracle authorship split
+Full report: `~/work/research-loops-public/private/reviews/gen2-2b-repair-9-astra-review-20261001.md`; evidence in `private/evidence/astra-2b-repair-9/`. Boundary PASS at PID 1040. Gate B PASS. The harness's before/after claim was independently confirmed: at `7a90b37`, 117 of 261 tests fail with 3,401 violations; at `cb3caae`, 0. Most behaviour changes are ROOT-CAUSE and accepted, including the Socrata epoch-year fix and DOAJ `ref`. The limits are accepted as owned scope statements.
+
+**Blocks:**
+- **R9-1:** URI-form `rel` values are validated by a forbidden-character rule, not the URI grammar, so `%GG`, a trailing `%`, `https://[broken` and non-ASCII still mean known absence (false exhaustion). The "independent" reader shares the same rule.
+- **R9-2:** OpenML `licence or license` erases a present wrong-kind value. The fixture never populated that field, so the harness never corrupted it.
+- **R9-3:** `from ..core import cache` then `.json.loads` bypasses the import closure; all 27 structural tests pass while records are lost.
+- **R9-4:** the canonical-field oracle uses `run(op, valid)` as its baseline. A title-erasing mutant passes all 261 harness tests.
+- **R9-5:** coverage credits `bis.catalog`, which never executes. A BIS fabrication mutant survives.
+
+**Orchestrator routing:** R9-1 and R9-4 share one root cause: code and oracle written by the same author, so they share blind spots. The fix is to split authorship. **2b-repair-10a**, an oracle author on Sonnet 5.5, writes RFC 3986/8288 conformance vectors, hand-specified expected canonical fields, populated optional-field variants and an execution-derived coverage registry, from specifications and fixtures only and never reading the implementation; these tests are expected to fail on current code. **2b-repair-10b**, a separate coder, then fixes R9-1..R9-5 against them.
