@@ -609,6 +609,48 @@ class RecordedByTheRouter(RouterTestCase):
         self.assertEqual([r["status"] for r in self.record(first)], ["recorded", "recorded"])
         self.assertEqual([r["status"] for r in self.record(again)], ["replayed", "replayed"])
 
+    def test_a_lane_is_paged_to_its_reported_end_and_a_lower_bound_never_continues(self):
+        """2b-repair-6 F3, the engine half: the gateway's local-index pages (offset 2, offset 4, then
+        the page holding what was left, exhausted) are each asked and each recorded whole; a lane
+        the gateway could only call a lower bound (`partial_pagination`: records, no continuation,
+        no reported end) is recorded partial and never asked again. Answers stated by hand."""
+        venues = [f"issn:0000-000{n}" for n in range(5)]
+        observation = {"invocation_id": INV, "attempt": 1, "served": "dispatched", "captured": True}
+
+        def page(ids, call_ref, **lane):
+            return {"lanes": [{"source": "openalex_snapshot", "role": "base", "coverage": "searched_ok", "completeness": "complete",
+                               "count": len(ids), "retrieved": ids, **lane}],
+                    "records": [{"identity": i, "kind": "venue", "source_id": "openalex_snapshot"} for i in ids],
+                    "observation": {**observation, "call_ref": call_ref}}
+        pages = {None: page(venues[:2], 1, next=2), 2: page(venues[2:4], 2, cursor=2, next=4),
+                 4: page(venues[4:], 3, cursor=4, exhausted=True)}
+        sent = []
+
+        def body_of(payload):
+            sent.append(payload)
+            return pages[(payload.get("cursors") or {}).get("openalex_snapshot")]
+        request = {"request_type": "find", "query": "q", "kind": "venue", "limit": 2}
+        out = GatewayClient(BASE, ENGINE_TOKEN, transport=answering(body_of), clock=lambda: "2026-09-30T10:00:00Z").search(
+            request, invocation_id=INV, attempt=1, policy_version="gw-policy/1", pages=5)
+        self.assertEqual([(p.get("cursors"), p.get("lanes")) for p in sent],
+                         [(None, None), ({"openalex_snapshot": 2}, ["openalex_snapshot"]), ({"openalex_snapshot": 4}, ["openalex_snapshot"])],
+                         "asked until the gateway said the lane ended, not until its pages ran out")
+        self.assertEqual([r["status"] for r in self.record(out)], ["recorded"] * 3)
+        self.assertEqual(self.observations(), [("openalex_snapshot", 1, "searched_ok", "complete", 2, None),
+                                               ("openalex_snapshot", 2, "searched_ok", "complete", 2, None),
+                                               ("openalex_snapshot", 3, "searched_ok", "complete", 1, None)])
+        self.assertEqual(sorted(i for (i,) in self.rows("SELECT provider_record_id FROM retrieval_events")), venues)
+        lower = {"lanes": [{"source": "kaggle", "role": "base", "coverage": "searched_ok", "completeness": "partial", "count": 2,
+                            "retrieved": ["kaggle:a/b", "kaggle:c/d"], "error_class": "partial_pagination"}],
+                 "records": [], "observation": {**observation, "call_ref": 4}}
+        sent.clear()
+        out = GatewayClient(BASE, ENGINE_TOKEN, transport=answering(lambda payload: sent.append(payload) or lower),
+                            clock=lambda: "2026-09-30T10:00:00Z").search({**request, "kind": "dataset"}, invocation_id=INV, attempt=1,
+                                                                        policy_version="gw-policy/1", pages=5)
+        self.assertEqual((len(sent), [r["status"] for r in self.record(out)]), (1, ["recorded"]))
+        self.assertEqual(self.rows("SELECT completeness, result_count, error_class FROM search_observations WHERE lane = 'kaggle'"),
+                         [("partial", 2, "partial_pagination")], "a lower bound, kept as one")
+
     def test_metadata_only_is_admissible_as_its_own_state(self):
         answer = {"lanes": [{"source": "unpaywall", "coverage": "metadata_only", "completeness": "complete", "count": 0, "retrieved": []}],
                   "records": [], "observation": {"invocation_id": INV, "attempt": 1, "served": "dispatched", "captured": True, "call_ref": 7}}
