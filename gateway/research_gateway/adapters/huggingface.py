@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, Obj, PayloadError, check, key, listed, members, need, next_link, optional, own_link, plain, quote, text
+from .base import AdapterError, Client, Obj, PayloadError, check, key, listed, members, need, next_link, optional, own_link, plain, preferred, quote, text
 
 SOURCE_ID = "huggingface"
 SMOKE = {'capability': 'resolve', 'identity': 'stanfordnlp/imdb'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -26,15 +26,15 @@ def _repo(target: str) -> str:
 
 def _license(d: Obj) -> str | None:
     """The repository's licence: its card's, else a `license:` tag; none when it states none. A card or tags that are there and are not
-    what they should be (an object, a list) are unreadable, and so is a licence that is not text."""
+    what they should be (an object, a list) are unreadable, and so is a licence that is not text; both places are read before one is chosen
+    (R10-1), so a tags list that cannot be read is not hidden by a card that states a licence."""
     lic = plain(optional(SOURCE_ID, d, "cardData", dict).get("license"))
     if isinstance(lic, list) and all(isinstance(x, str) for x in lic):
         lic = ", ".join(lic)
     if lic is not None and not isinstance(lic, str):
         raise PayloadError(f"{SOURCE_ID}: the card's license is not text")
-    if lic:
-        return lic
-    return next((t.split(":", 1)[1] for t in plain(optional(SOURCE_ID, d, "tags")) if isinstance(t, str) and t.startswith("license:")), None)
+    tagged = next((t.split(":", 1)[1] for t in plain(optional(SOURCE_ID, d, "tags")) if isinstance(t, str) and t.startswith("license:")), None)
+    return preferred(lic, tagged)
 
 
 def _file_count(d: Obj) -> int | None:
@@ -52,7 +52,7 @@ def _record(d: Obj) -> dict:
     record, and one unreadable file would make the dataset unreadable with them (R7-2)."""
     repo, author = key(SOURCE_ID, d.get("id")), text(SOURCE_ID, d.get("author"))
     return make_record(identity=f"hf:{repo}", kind="dataset", source_id=SOURCE_ID, title=repo,
-                       authors=[author] if author else [], year=year_from(text(SOURCE_ID, d.get("lastModified")) or text(SOURCE_ID, d.get("createdAt"))),
+                       authors=[author] if author else [], year=year_from(preferred(text(SOURCE_ID, d.get("lastModified")), text(SOURCE_ID, d.get("createdAt")))),
                        venue="Hugging Face Hub", identifiers={"repo_id": repo}, links=[f"{BASE}/datasets/{repo}"], license=_license(d),
                        extra={"tags": listed(SOURCE_ID, d, "tags"), "downloads": d.get("downloads"), "likes": d.get("likes"), "gated": d.get("gated", False),
                               "private": d.get("private", False), "description": (text(SOURCE_ID, d.get("description")) or "")[:1000],

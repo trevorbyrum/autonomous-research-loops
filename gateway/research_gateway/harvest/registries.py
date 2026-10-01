@@ -16,7 +16,7 @@ import os
 import sys
 from typing import Iterator
 
-from ..adapters.base import Client, Members, Obj, check, field, listed, members, nested, optional, text, token, total
+from ..adapters.base import Client, Members, Obj, check, field, listed, members, nested, optional, preferred, text, token, total
 from ..core import db
 from ..core.canonical import make_record
 from ..core.identity import normalize_issn, normalize_title
@@ -58,7 +58,8 @@ def crossref_journals(client: Client, *, limit: int | None = None, rows: int = 1
     cursor, seen, skipped = "*", 0, skipped if skipped is not None else []
 
     def build(j: Obj) -> dict | None:
-        issns = [text("crossref", x.get("value")) for x in listed("crossref", j, "issn-type")] or listed("crossref", j, "ISSN")
+        typed, untyped = [text("crossref", x.get("value")) for x in listed("crossref", j, "issn-type")], listed("crossref", j, "ISSN")   # both lists are read before one is chosen
+        issns = typed or untyped
         title, publisher = text("crossref", j.get("title")), text("crossref", j.get("publisher"))
         identity, clean = venue_identity(issns, "crossref", title, publisher, issn_map)
         if identity is None:
@@ -134,7 +135,7 @@ def datacite_repositories(client: Client, *, limit: int | None = None, size: int
 
         def build(d: Obj) -> dict | None:
             a = nested("datacite", d, "attributes")
-            symbol = (text("datacite", a.get("symbol")) or text("datacite", d.get("id")) or "").lower()
+            symbol = preferred(text("datacite", a.get("symbol")), text("datacite", d.get("id")), "").lower()
             if not symbol:
                 return None
             re3data, url = text("datacite", a.get("re3data")), text("datacite", a.get("url"))

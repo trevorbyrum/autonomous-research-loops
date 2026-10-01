@@ -11,7 +11,7 @@ import time
 
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi
-from .base import NO_MEMBERS, Client, check, counts_nothing, field, first_member, key, listed, members, need, nested, text, token, total
+from .base import NO_MEMBERS, Client, check, counts_nothing, field, first_member, identity_from, listed, maybe_key, members, need, nested, text, token, total
 
 SOURCE_ID = "openaire"
 SMOKE = {'capability': 'find', 'query': 'management practices', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -74,13 +74,14 @@ def _record(r: dict) -> dict:
         if license_:
             licenses.append(license_)
     schemes = [(text(SOURCE_ID, p.get("scheme")) or "").lower() for p in pids]
-    doi = next((normalize_doi(p.get("value")) for p, scheme in zip(pids, schemes) if scheme == "doi" and normalize_doi(p.get("value"))), None)
+    dois = [normalize_doi(p.get("value")) for p, scheme in zip(pids, schemes) if scheme == "doi"]   # every DOI it lists is read; the first that is one is its DOI
+    doi = next((d for d in dois if d), None)
     others = {scheme: p.get("value") for p, scheme in zip(pids, schemes) if scheme and scheme != "doi"}
     ids = {"doi": doi} if doi else {}
     ids.update({k: v for k, v in others.items() if k in ("handle", "arxiv", "pmid", "urn")})
-    typ, publisher = text(SOURCE_ID, r.get("type")) or "", text(SOURCE_ID, r.get("publisher"))
+    typ, publisher, own = text(SOURCE_ID, r.get("type")) or "", text(SOURCE_ID, r.get("publisher")), maybe_key(SOURCE_ID, r.get("id"))
     return make_record(
-        identity=f"doi:{doi}" if doi else f"openaire:{key(SOURCE_ID, r.get('id'))}",
+        identity=identity_from(SOURCE_ID, ("doi", doi), ("openaire", own)),
         kind=_KIND.get(typ, "document"), source_id=SOURCE_ID, title=r.get("mainTitle"),
         authors=[n for n in (text(SOURCE_ID, a.get("fullName")) for a in listed(SOURCE_ID, r, "authors")) if n],
         year=year_from(r.get("publicationDate")), venue=text(SOURCE_ID, nested(SOURCE_ID, r, "container").get("name")) or publisher,

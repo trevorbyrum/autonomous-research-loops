@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi, normalize_issn
-from .base import OMIT, Client, PayloadError, check, listed, members, need, nested, optional, text, token, total
+from .base import OMIT, Client, PayloadError, check, listed, members, need, nested, optional, preferred, text, token, total
 
 SOURCE_ID = "crossref"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -14,17 +14,23 @@ AGENCIES = ("Crossref",)   # DOI registration agencies this source is the primar
 BASE = "https://api.crossref.org"
 
 
+def _author(a: dict) -> str:
+    """One author's name: the given and family names together, else the `name` of an organisation. All three are read as text before one is chosen."""
+    given, family, name = text(SOURCE_ID, a.get("given")), text(SOURCE_ID, a.get("family")), text(SOURCE_ID, a.get("name"))
+    return preferred(" ".join(p for p in (given, family) if p), name, "")
+
+
 def _record(client: Client, w: dict) -> dict:
     doi, url = normalize_doi(w.get("DOI")), text(SOURCE_ID, w.get("URL"))
     if not doi and not (url and url.strip()):
         raise PayloadError(f"{SOURCE_ID}: a work with neither a DOI nor a URL names nothing (A4)")
-    authors = [" ".join(p for p in (text(SOURCE_ID, a.get("given")), text(SOURCE_ID, a.get("family"))) if p) or text(SOURCE_ID, a.get("name")) or ""
-               for a in listed(SOURCE_ID, w, "author")]
+    authors = [_author(a) for a in listed(SOURCE_ID, w, "author")]
     dated = listed(SOURCE_ID, nested(SOURCE_ID, w, "issued"), "date-parts")
     parts = dated[0] if dated else []
     if not isinstance(parts, list):
         raise PayloadError(f"{SOURCE_ID}: the work's date-parts are not a list of lists")
-    year = parts[0] if parts and parts[0] is not None else year_from(text(SOURCE_ID, nested(SOURCE_ID, w, "created").get("date-time")))
+    created = year_from(text(SOURCE_ID, nested(SOURCE_ID, w, "created").get("date-time")))   # read whether or not the issue date makes it unnecessary
+    year = parts[0] if parts and parts[0] is not None else created
     licenses = [u for u in (text(SOURCE_ID, l.get("URL")) for l in listed(SOURCE_ID, w, "license")) if u]
     issns = [normalize_issn(i) for i in listed(SOURCE_ID, w, "ISSN") if normalize_issn(i)]
     ids = {"doi": doi} if doi else {}

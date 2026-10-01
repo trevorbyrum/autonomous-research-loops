@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record
-from .base import AdapterError, Client, Obj, PayloadError, check, identified, key as member_key, listed, need, optional, plain, text
+from .base import AdapterError, Client, PayloadError, check, identified, key as member_key, listed, need, optional, plain, preferred, text
 
 SOURCE_ID = "bea"
 SMOKE = {'capability': 'data', 'params': {'method': 'GETDATASETLIST'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -13,17 +13,21 @@ ATTRIBUTION = "U.S. Bureau of Economic Analysis"
 
 def _listing(results: dict, *keys: str, required: bool = False) -> list:
     """The rows BEA lists under the first of `keys` its answer carries: a list, or the one row as a bare object (BEA's habit for a list of
-    one). None of the keys is an empty listing, unless the listing is `required`; one that is there and is anything else — `false`, `0`,
-    `""` — is unreadable, and is not an empty list."""
+    one). Every key the answer carries is read before the first is chosen: one that is there and is anything else — `false`, `0`, `""` — is
+    unreadable, and is not an empty list, whichever key stands before it. None of the keys is an empty listing, unless the listing is `required`."""
+    found = []
     for key in keys:
         value = results.get(key)
         if value is None:
             continue
         if isinstance(value, list):
-            return value
-        if isinstance(value, dict) and value:   # a row has something in it
-            return [value]
-        raise PayloadError(f"{SOURCE_ID}: the answer's {key} is {type(value).__name__}, not a list")
+            found.append(value)
+        elif isinstance(value, dict) and value:   # a row has something in it
+            found.append([value])
+        else:
+            raise PayloadError(f"{SOURCE_ID}: the answer's {key} is {type(value).__name__}, not a list")
+    if found:
+        return found[0]
     if required:
         raise PayloadError(f"{SOURCE_ID}: the answer has none of {', '.join(keys)}: a listing of nothing is not a catalogue")
     return []
@@ -31,11 +35,11 @@ def _listing(results: dict, *keys: str, required: bool = False) -> list:
 
 def _error(j: dict) -> str | None:
     """The error BEA reports inside a 200 answer, if it reports one. The envelope and its results are objects before anything is read from them: a
-    `BEAAPI` that is `false` or `[]` is an unreadable answer, not one that reports no error."""
+    `BEAAPI` that is `false` or `[]` is an unreadable answer, not one that reports no error. BEA states an error beside the results or in the envelope; both places
+    are read (each an object when it is there) before one is chosen, so a malformed one never hides behind the other."""
     api = optional(SOURCE_ID, j, "BEAAPI", dict)
-    err = optional(SOURCE_ID, api, "Results", dict).get("Error")
-    err = api.get("Error") if err is None else err
-    return err.get("APIErrorDescription") if isinstance(err, Obj) else None
+    err = preferred(optional(SOURCE_ID, optional(SOURCE_ID, api, "Results", dict), "Error", dict), optional(SOURCE_ID, api, "Error", dict))
+    return text(SOURCE_ID, err.get("APIErrorDescription"))
 
 
 # the agent-facing data contract (research_sources; validated before dispatch, D-31).
@@ -83,7 +87,7 @@ def data(client: Client, params: dict) -> dict:
     if rows and not isinstance(rows[0], dict):
         raise PayloadError(f"{SOURCE_ID}: the table's first row is {type(rows[0]).__name__}, not an object")
     rec = make_record(identity=identity, kind="series", source_id=SOURCE_ID,
-                      title=(text(SOURCE_ID, rows[0].get("TableName")) or text(SOURCE_ID, rows[0].get("LineDescription"))) if rows else method,
+                      title=preferred(text(SOURCE_ID, rows[0].get("TableName")), text(SOURCE_ID, rows[0].get("LineDescription"))) if rows else method,
                       links=["https://apps.bea.gov/iTable/"], attribution=ATTRIBUTION,
                       extra={"rows": rows, "row_count": len(rows), "notes": notes, "method": method,
                              "query": {k: v for k, v in query.items() if k != "UserID"}}, raw=j)
@@ -141,9 +145,10 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         entries, rows = [], rows_of(results, "ParamValue")
         for v in rows:
             range_keys = [k for k in v if k.startswith(("First", "Last"))]
-            exact = next((member_key(SOURCE_ID, v[k]) for k in (parameter, parameter.capitalize(), parameter.upper(), "Key") if v.get(k) not in (None, "")), None)
+            spellings = [member_key(SOURCE_ID, v[k]) for k in (parameter, parameter.capitalize(), parameter.upper(), "Key") if v.get(k) not in (None, "")]   # every spelling the row carries is read
+            exact = spellings[0] if spellings else None
             if exact is not None and not range_keys:
-                entries.append({"id": exact, "label": text(SOURCE_ID, v.get("Desc")) or text(SOURCE_ID, v.get("Description")) or exact, "kind": "value",
+                entries.append({"id": exact, "label": preferred(text(SOURCE_ID, v.get("Desc")), text(SOURCE_ID, v.get("Description")), exact), "kind": "value",
                                 "data_request": {"tool": "research_data", "partial": True,
                                                  "arguments": {"source": SOURCE_ID,
                                                                "params": {"dataset": dataset, parameter.lower(): exact}},

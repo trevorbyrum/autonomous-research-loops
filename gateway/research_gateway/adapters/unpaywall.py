@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record
 from ..core.identity import normalize_doi
-from .base import NO_MEMBERS, OMIT, Client, Members, check, members, need, optional, plain, text
+from .base import NO_MEMBERS, OMIT, Client, Members, PayloadError, check, members, need, optional, plain, preferred, text
 
 SOURCE_ID = "unpaywall"
 SMOKE = {'capability': 'enrich', 'identity': 'doi:10.1038/nature12373', 'what': 'oa_location'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -22,13 +22,19 @@ def enrich(client: Client, identity: str, what: str = "oa_location") -> dict:
         return {"identity": f"doi:{doi}", "what": what, "items": []}
     j = need(SOURCE_ID, resp.json, kind=dict)
     locations = need(SOURCE_ID, j, "oa_locations")
-    if not locations:   # none listed: the best location alone — read only now, for it is the one place its being unreadable costs anything
+    best_alone, best_unreadable = None, False
+    try:   # read whether or not the listed locations make it unnecessary (R10-1): the listed locations are an answer of their own, so one that cannot be read costs completeness, not them
         best_alone = optional(SOURCE_ID, j, "best_oa_location", dict)
+    except PayloadError:
+        best_unreadable = True
+    if not locations:   # none listed: the best location alone stands in, and nothing stands in for it when it cannot be read
+        if best_unreadable:
+            raise PayloadError(f"{SOURCE_ID}: no listed location, and the best location cannot be read")
         locations = Members([plain(best_alone)]) if best_alone else NO_MEMBERS
     best = j.get("best_oa_location")   # what each listed location is compared with, to say whether it is the best one
 
     def location(loc: dict):
-        url = text(SOURCE_ID, loc.get("url_for_pdf")) or text(SOURCE_ID, loc.get("url"))
+        url = preferred(text(SOURCE_ID, loc.get("url_for_pdf")), text(SOURCE_ID, loc.get("url")))
         if not url:   # a location that links nowhere is nothing to report
             return OMIT
         return make_record(
@@ -39,5 +45,8 @@ def enrich(client: Client, identity: str, what: str = "oa_location") -> dict:
                    "version": loc.get("version"), "is_best": loc is best or loc == best},
             raw=loc,
         )
-    return {"identity": f"doi:{doi}", "what": what, "items": members(SOURCE_ID, locations, location),
+    items = members(SOURCE_ID, locations, location)
+    if best_unreadable:
+        items.append(None)   # something the answer says that cannot be read, which the listed locations may not hold: dropped and counted, so the lane is partial
+    return {"identity": f"doi:{doi}", "what": what, "items": items,
             "is_oa": plain(j.get("is_oa")), "oa_status": plain(j.get("oa_status"))}

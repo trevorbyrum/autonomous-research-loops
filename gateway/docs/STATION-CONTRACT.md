@@ -133,14 +133,35 @@ is never conflated with "not searched" or "unavailable":
   loaders changed: OpenML's `licence`/`license`, Europe PMC's `Y`/`N` flags, DOAJ's journal `ref`, FRED's
   `notes` (a restriction note), Dataverse's `restricted` flag and `identifier`/`authority`, Census's
   `predicateOnly` and `label`, BEA's error envelope and value labels, SDMX-JSON's `id`/`name`, and doi.org's `RA` (the agency of a DOI: an
-  `RA` that is not text is unreadable and not remembered as the prefix's agency). Sites reviewed and
-  left, with the reason: a text fallback whose first operand is read as text (`text(a) or text(b)`: a wrong-kind
-  first operand raises before the fallback, and the second is read only when the first says nothing); a filter on
+  `RA` that is not text is unreadable and not remembered as the prefix's agency).
+  Every operand of a choice between alternatives is read before one is chosen (task 2b-repair-11b, R10-1). `text(a) or
+  text(b)` is not an exemption: `or` evaluates `text(b)` only when `a` is empty, so a present, malformed `b` beside a valid
+  `a` (DataCite's `rights` beside `rightsIdentifier`, BEA's `Description` beside `Desc`) was never read. A choice
+  between two provider values is made by `base.preferred` (what `a or b` chooses, with both already read: they are
+  its arguments), an identity between identifiers by `base.identity_from` (the preferred identifier first, the
+  member's own id read through `base.maybe_key` whether or not a preferred one makes it unnecessary), and the first
+  of several list entries (the article's DOI among its identifiers, the DOI among a record's pids) only after every
+  such entry was read. A malformed one makes what holds it unreadable by the scope's rule: a member is dropped and
+  counted, a lookup's record, a single record or a whole catalogue is unreadable; an answer-level alternative beside
+  members that are readable (Unpaywall's `best_oa_location`) costs the lane its completeness, never the members. The
+  same holds where a message states one thing in more than one place (SDMX-JSON's `structure`, `structures` and
+  `data`, BEA's error and its listing keys). `tests/test_alternatives.py` states each site and scans the adapters, the SDMX
+  reader, `canonical.py`, `identity.py` and the loaders for any `or`, `and` or conditional expression that reads two
+  provider values inside itself, so a new one fails unless it is listed there with its reason. Sites reviewed and
+  left, with the reason: a filter on
   a catalogue row's identifier (`if row.get("id")`: the accepted rule that a row naming nothing is skipped, and a
   listing in which none names anything is not a catalogue, `base.identified`); credentials and token lifetimes
   (`expires_in or 3600`: no candidate data); Socrata's portal-vouching predicate (fails closed); the OpenAlex
   snapshot loader's tolerant reading of a local file; and pass-through `extra` fields (`cited_by_count`,
-  `type`, `version`, ...), which are carried as the provider sent them and are not decisions.
+  `type`, `version`, ...), which are carried as the provider sent them and are not decisions. Every site of
+  the sweep, with what it did and what it does, is in `~/work/research-loops-public/private/evidence/2b-repair-11b/fallback-sites.md`.
+  A dataflow browse is about the flow asked for (task 2b-repair-11b, R10-2). BIS and ECB select the Dataflow whose id was
+  asked (`sdmx.dataflow_named`: the flow its agency maintains), then the DataStructure that flow's own `Structure` reference
+  names (id, agency and version as stated), and the label, the dimensions and the request template all come from that one
+  selection. A flow the message does not hold, one that names no structure, and a structure the message does not hold give
+  no entry and no template (a capability fact: unobserved); a flow or structure the message defines twice differently is
+  an unreadable answer (`payload_invalid`), never the first of them; the structure is never guessed from the flow's own id.
+  A flow listing in which no dataflow names itself is unreadable, not a catalogue (`base.identified`).
   The canonical record carries `publisher` (the sample the engine's contract fixtures ship has it beside `venue`)
   wherever the provider states one for a work, a dataset or a venue (Crossref, DataCite, DOAJ journals, CORE,
   OpenAIRE, the Dataverse family), read as text; `venue` keeps what it said.

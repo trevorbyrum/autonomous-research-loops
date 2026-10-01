@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record
 from ..core.identity import normalize_doi
-from .base import Client, check, first_member, key, listed, need, plain, quote, text
+from .base import Client, check, first_member, identity_from, listed, maybe_key, need, plain, quote, text
 
 SOURCE_ID = "core"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -21,12 +21,13 @@ def _headers(client: Client) -> dict:
 def _record(w: dict, *, with_text: bool = False) -> dict:
     doi = normalize_doi(w.get("doi"))
     links = [u for u in (text(SOURCE_ID, w.get("downloadUrl")), *(text(SOURCE_ID, u) for u in listed(SOURCE_ID, w, "sourceFulltextUrls"))) if u]
-    full_text, publisher = text(SOURCE_ID, w.get("fullText")), text(SOURCE_ID, w.get("publisher"))
+    full_text, publisher, own = text(SOURCE_ID, w.get("fullText")), text(SOURCE_ID, w.get("publisher")), maybe_key(SOURCE_ID, w.get("id"))
+    identity = identity_from(SOURCE_ID, ("doi", doi), ("core", own))
     rec = make_record(
-        identity=f"doi:{doi}" if doi else f"core:{key(SOURCE_ID, w.get('id'))}",
+        identity=identity,
         kind="full_text" if with_text else "article", source_id=SOURCE_ID, title=w.get("title"),
         authors=[n for n in (text(SOURCE_ID, a.get("name")) for a in listed(SOURCE_ID, w, "authors")) if n], year=w.get("yearPublished"),
-        venue=publisher or None, identifiers={"doi": doi} if doi else {"core": key(SOURCE_ID, w.get("id"))},
+        venue=publisher or None, identifiers={"doi": doi} if doi else {"core": own},
         links=links, license=None, attribution="CORE",
         extra={"core_id": w.get("id"), "publisher": publisher, "redistributable": False, "has_full_text": bool(full_text)},
         raw={k: v for k, v in plain(w).items() if k != "fullText"},  # the payload minus the text itself (I-7)

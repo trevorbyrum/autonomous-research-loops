@@ -4,7 +4,7 @@ from __future__ import annotations
 import base64
 
 from ..core.canonical import make_record, year_from
-from .base import AdapterError, Client, check, key, members, need, quote, text
+from .base import AdapterError, Client, PayloadError, check, key, members, need, quote, text
 
 SOURCE_ID = "kaggle"
 SMOKE = {'capability': 'find', 'query': 'housing prices', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -37,11 +37,19 @@ def _record(d: dict) -> dict:
                        raw=d)
 
 
+def _bytes(value) -> int | None:
+    """A file's size in bytes: a whole number, or None when the listing states none (missing, null). Anything else is unreadable."""
+    if value is None or (isinstance(value, int) and not isinstance(value, bool)):
+        return value
+    raise PayloadError(f"{SOURCE_ID}: {type(value).__name__} where a size in bytes belongs")
+
+
 def _file(identity: str, ref: str, f: dict) -> dict:
     name = text(SOURCE_ID, f.get("name"))
+    total_bytes, size = _bytes(f.get("totalBytes")), _bytes(f.get("size"))   # both spellings are read before one is chosen
     return make_record(identity=f"{identity}#{name}", kind="file", source_id=SOURCE_ID, title=name,
                        links=[f"{BASE}/datasets/download/{ref}/{quote(name or '', safe='')}"],
-                       extra={"size": f.get("totalBytes") if f.get("totalBytes") is not None else f.get("size"), "created": f.get("creationDate")}, raw=f)
+                       extra={"size": total_bytes if total_bytes is not None else size, "created": f.get("creationDate")}, raw=f)
 
 
 def find(client: Client, query: str, *, limit: int = 20, page: int = 1) -> dict:

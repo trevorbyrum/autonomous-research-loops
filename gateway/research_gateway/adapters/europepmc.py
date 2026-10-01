@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record
 from ..core.identity import normalize_doi
-from .base import Client, check, first_member, key, members, need, text, token, total
+from .base import Client, check, first_member, identity_from, members, need, text, token, total
 
 SOURCE_ID = "europepmc"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -22,8 +22,9 @@ def _record(r: dict) -> dict:
     mined, in_epmc = _yes(r, "hasTextMinedTerms"), _yes(r, "inEPMC")   # both are read before either decides
     pmid, pmcid, published = text(SOURCE_ID, r.get("pmid")), text(SOURCE_ID, r.get("pmcid")), r.get("pubYear")
     ids = {k: v for k, v in (("doi", doi), ("pmid", pmid), ("pmcid", pmcid)) if v}
-    identity = f"doi:{doi}" if doi else (f"pmid:{pmid}" if pmid else f"europepmc:{key(SOURCE_ID, r.get('id'))}")
-    links = [f"https://europepmc.org/abstract/{r.get('source')}/{r.get('id')}"] if text(SOURCE_ID, r.get("id")) and text(SOURCE_ID, r.get("source")) else []
+    own, source = text(SOURCE_ID, r.get("id")), text(SOURCE_ID, r.get("source"))   # both are read: the identity falls back to the id, and the link needs both
+    identity = identity_from(SOURCE_ID, ("doi", doi), ("pmid", pmid), ("europepmc", own))
+    links = [f"https://europepmc.org/abstract/{source}/{own}"] if own and source else []
     return make_record(
         identity=identity, kind="article", source_id=SOURCE_ID, title=r.get("title"),
         authors=[a.strip() for a in (text(SOURCE_ID, r.get("authorString")) or "").rstrip(".").split(",") if a.strip()],

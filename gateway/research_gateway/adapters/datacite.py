@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record
 from ..core.identity import normalize_doi
-from .base import Client, check, field, key, listed, members, need, nested, text, total
+from .base import Client, check, field, identity_from, listed, maybe_key, members, need, nested, preferred, text, total
 
 SOURCE_ID = "datacite"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.7910/DVN/OY6CBK'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -19,13 +19,13 @@ _KIND = {"Dataset": "dataset", "Software": "software", "Text": "document", "Jour
 
 def _record(d: dict) -> dict:
     a = nested(SOURCE_ID, d, "attributes")
-    stated = a.get("doi")
-    doi = normalize_doi(d.get("id") if stated is None or stated == "" else stated)   # the registry's own id is its DOI; an empty one is none
+    stated, own = normalize_doi(a.get("doi")), normalize_doi(d.get("id"))   # the registry's own id is its DOI: both are read as identifiers before either is chosen
+    doi = own if a.get("doi") in (None, "") else stated   # an empty one is none
     rtype = text(SOURCE_ID, nested(SOURCE_ID, a, "types").get("resourceTypeGeneral"))
-    rights = [text(SOURCE_ID, r.get("rightsIdentifier")) or text(SOURCE_ID, r.get("rights")) for r in listed(SOURCE_ID, a, "rightsList")]
+    rights = [preferred(text(SOURCE_ID, r.get("rightsIdentifier")), text(SOURCE_ID, r.get("rights"))) for r in listed(SOURCE_ID, a, "rightsList")]
     titles, url, publisher = listed(SOURCE_ID, a, "titles"), text(SOURCE_ID, a.get("url")), text(SOURCE_ID, a.get("publisher"))
     return make_record(
-        identity=f"doi:{doi}" if doi else f"datacite:{key(SOURCE_ID, d.get('id'))}",
+        identity=identity_from(SOURCE_ID, ("doi", doi), ("datacite", maybe_key(SOURCE_ID, d.get("id")))),
         kind=_KIND.get(rtype, "dataset"), source_id=SOURCE_ID,
         title=(titles[0] if titles else {}).get("title"),
         authors=[n for n in (text(SOURCE_ID, c.get("name")) for c in listed(SOURCE_ID, a, "creators")) if n],

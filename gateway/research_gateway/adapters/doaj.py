@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi, normalize_issn
-from .base import Client, Obj, PayloadError, check, first_member, key, listed, members, need, nested, optional, plain, quote, text, total
+from .base import Client, Obj, PayloadError, check, first_member, identity_from, listed, maybe_key, members, need, nested, optional, plain, quote, text, total
 
 SOURCE_ID = "doaj"
 SMOKE = {'capability': 'find', 'query': 'management', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -15,7 +15,8 @@ MAX_RECORDS_PER_QUERY = 1000  # DOAJ refuses a page that starts at or past recor
 
 def _record(a: dict) -> dict:
     b = nested(SOURCE_ID, a, "bibjson")
-    doi = next((normalize_doi(i.get("id")) for i in listed(SOURCE_ID, b, "identifier") if (text(SOURCE_ID, i.get("type")) or "").lower() == "doi"), None)
+    dois = [normalize_doi(i.get("id")) for i in listed(SOURCE_ID, b, "identifier") if (text(SOURCE_ID, i.get("type")) or "").lower() == "doi"]   # every DOI it lists is read
+    doi = dois[0] if dois else None
     journal = nested(SOURCE_ID, b, "journal")
     issns = [normalize_issn(i) for i in listed(SOURCE_ID, journal, "issns") if normalize_issn(i)]
     ids = {"doi": doi} if doi else {}
@@ -24,7 +25,7 @@ def _record(a: dict) -> dict:
     links = [u for u in (text(SOURCE_ID, l.get("url")) for l in listed(SOURCE_ID, b, "link")) if u]
     licenses = listed(SOURCE_ID, journal, "license")
     return make_record(
-        identity=f"doi:{doi}" if doi else f"doaj:{key(SOURCE_ID, a.get('id'))}",
+        identity=identity_from(SOURCE_ID, ("doi", doi), ("doaj", maybe_key(SOURCE_ID, a.get("id")))),
         kind="article", source_id=SOURCE_ID, title=b.get("title"),
         authors=[n for n in (text(SOURCE_ID, x.get("name")) for x in listed(SOURCE_ID, b, "author")) if n],
         year=year_from(b.get("year")), venue=journal.get("title"), identifiers=ids, links=links,

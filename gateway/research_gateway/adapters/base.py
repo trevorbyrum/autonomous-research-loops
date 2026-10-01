@@ -793,6 +793,33 @@ def key(source_id: str, value) -> str:
     raise PayloadError(f"{source_id}: {'nothing' if value is None else type(value).__name__} where a member's identifier belongs")
 
 
+def maybe_key(source_id: str, value) -> str | None:
+    """What a provider names a member by, when it names it: key()'s reading (its text, or its whole number as text), and None when it states none (missing,
+    null, empty or blank). It is read whether or not a preferred identifier makes it unnecessary (R10-1): one that is there and is anything else is unreadable."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    return key(source_id, value)
+
+
+def preferred(*operands):
+    """What `a or b or c` chooses (the first operand that names something, else the last), with every operand already read. They are the arguments of the call, so
+    none is left unread because an earlier one decided: `text(a) or text(b)` never evaluates `text(b)` when `a` is there, and a present `b` of the wrong kind went
+    unnoticed beside a valid `a` (R10-1). Pass each operand through its reader (`text`, `key`, `listed`, ...) in the call."""
+    for value in operands[:-1]:
+        if value:
+            return value
+    return operands[-1]
+
+
+def identity_from(source_id: str, *candidates: tuple[str, str | None]) -> str:
+    """The identity a member is known by: `scheme:value` of the first candidate that has a value, in the order given (the preferred identifier first). The candidates
+    are arguments, so each was read, and refused when of the wrong kind, before any was chosen (R10-1). A member that carries none of them names nothing: PayloadError."""
+    for scheme, value in candidates:
+        if isinstance(value, str) and value.strip():
+            return f"{scheme}:{value}"
+    raise PayloadError(f"{source_id}: a member that carries no identifier it can be named by")
+
+
 def nested(source_id: str, parent, *keys: str) -> Obj:
     """The object at `keys` below `parent`: empty when a step is missing or null, and unreadable when one is there and is not an object."""
     for key in keys:
@@ -846,7 +873,9 @@ __all__ = (
     # the metered client, and what an adapter says when it cannot answer
     "Client", "AdapterError", "ContinuationInvalid", "PayloadError", "MEMBER_ERRORS", "check",
     # a provider's answer, as views, and the ways to read it (core/payload.py)
-    "Members", "NO_MEMBERS", "OMIT", "Obj", "members", "first_member", "need", "optional", "nested", "listed", "text", "boolean", "key", "plain",
+    "Members", "NO_MEMBERS", "OMIT", "Obj", "members", "first_member", "need", "optional", "nested", "listed", "text", "boolean", "key", "maybe_key", "plain",
+    # choosing between alternatives that were all read first (R10-1)
+    "preferred", "identity_from",
     # a provider's metadata: totals, tokens, the end and the next page
     "token", "offset_after", "total", "counts_nothing", "field", "identified", "next_link", "own_link", "quote",
 )

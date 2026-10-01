@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from ..core.canonical import make_record, year_from
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, Obj, PayloadError, check, key, listed, members, need, nested, plain, text, total
+from .base import AdapterError, Client, Obj, PayloadError, check, key, listed, members, need, nested, plain, preferred, text, total
 
 SOURCE_ID = "socrata"
 SMOKE = {'capability': 'find', 'query': 'business licenses', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -60,7 +60,7 @@ def _catalog_record(r: dict) -> dict:
     domain, did = key(SOURCE_ID, meta.get("domain")), key(SOURCE_ID, res.get("id"))
     return make_record(identity=f"socrata:{domain}:{did}", kind="dataset", source_id=SOURCE_ID, title=res.get("name"),
                        year=year_from(res.get("updatedAt")), venue=domain, identifiers={"dataset_id": did},
-                       links=[text(SOURCE_ID, r.get("permalink")) or text(SOURCE_ID, r.get("link")) or f"https://{domain}/d/{did}"], license=meta.get("license"),
+                       links=[preferred(text(SOURCE_ID, r.get("permalink")), text(SOURCE_ID, r.get("link")), f"https://{domain}/d/{did}")], license=meta.get("license"),
                        extra={"description": (text(SOURCE_ID, res.get("description")) or "")[:1000], "type": res.get("type"), "updated_at": res.get("updatedAt"),
                               "attribution": res.get("attribution")},
                        raw=r)

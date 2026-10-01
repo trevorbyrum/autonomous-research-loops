@@ -4,7 +4,7 @@ from __future__ import annotations
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, Obj, PayloadError, boolean, check, key, listed, members, need, nested, optional, plain, text, total
+from .base import AdapterError, Client, Obj, PayloadError, boolean, check, identity_from, key, listed, maybe_key, members, need, nested, optional, plain, preferred, text, total
 
 SOURCE_ID = "harvard_dataverse"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.7910/DVN/OY6CBK'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -28,7 +28,7 @@ def _field(fields: list, name: str):
 
 def search_record(base: str, source_id: str, item: dict) -> dict:
     doi = normalize_doi((text(source_id, item.get("global_id")) or "").replace("doi:", ""))
-    return make_record(identity=f"doi:{doi}" if doi else f"{source_id}:{key(source_id, item.get('entity_id'))}", kind="dataset", source_id=source_id,
+    return make_record(identity=identity_from(source_id, ("doi", doi), (source_id, maybe_key(source_id, item.get("entity_id")))), kind="dataset", source_id=source_id,
                        title=item.get("name"), authors=listed(source_id, item, "authors"), year=year_from(item.get("published_at")),
                        venue=item.get("name_of_dataverse"), identifiers={"doi": doi} if doi else {},
                        links=[text(source_id, item.get("url")) or f"{base}/dataset.xhtml?persistentId=doi:{doi}"],
@@ -63,7 +63,7 @@ def dataset_context(source_id: str, d: Obj) -> dict:
     version = _version(source_id, d)
     lic = version.get("license")
     doi = _dataset_doi(source_id, d)
-    return {"identity": f"doi:{doi}" if doi else f"{source_id}:{key(source_id, d.get('id'))}",
+    return {"identity": identity_from(source_id, ("doi", doi), (source_id, maybe_key(source_id, d.get("id")))),
             "license": _text(source_id, "license", lic.get("name") if isinstance(lic, Obj) else lic),
             "terms_of_use": _text(source_id, "terms of use", version.get("termsOfUse"))}
 
@@ -98,7 +98,7 @@ def dataset_record(base: str, source_id: str, d: Obj) -> dict:
 def _file(base: str, source_id: str, dataset: dict, f: dict) -> dict:
     df = nested(source_id, f, "dataFile")
     return make_record(identity=f"{dataset['identity']}#{key(source_id, df.get('id'))}", kind="file", source_id=source_id,
-                       title=text(source_id, f.get("label")) or text(source_id, df.get("filename")), license=dataset.get("license"),
+                       title=preferred(text(source_id, f.get("label")), text(source_id, df.get("filename"))), license=dataset.get("license"),
                        links=[f"{base}/api/access/datafile/{df.get('id')}"],
                        extra={"file_id": df.get("id"), "content_type": df.get("contentType"), "size": df.get("filesize"),
                               "restricted": boolean(source_id, f.get("restricted")), "description": df.get("description")},
