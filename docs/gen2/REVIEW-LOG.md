@@ -756,3 +756,11 @@ R9-4 confirmed: the old harness passes 6 of 7 router-output mutants, and the new
 - `publisher`: mapped wherever the canonical contract defines it and the provider supplies it.
 - A self-referential next link: not followed (no progress) and not an end, so unknown/partial.
 **2b-repair-10a, RFC-text verification:** the RFC 3986, 8288 and 9110 texts are fetched into evidence with a manifest. The hand grammar was checked mechanically against an RFC 3986 Appendix A regex compiled from the text: 0 disagreements over 240,267 strings. Corrections: 169 citations fixed and 13 labels or grades changed, all traced to RFC lines. One post-observation tightening (the empty reference) was disclosed and reverted. 191 oracle failures on current code (`650ac23`). Dispatched **2b-repair-10b** (Sonnet 5.5 coder) to make the gateway pass the oracle without editing it; disputed expectations go to Astra with their evidence.
+
+**2b-repair-10b landed (Sonnet 5.5 coder be3b8d97).** 5 commits. All 191 independent-oracle cases pass; no expectation disputed; the oracle files are byte-identical to `650ac23`, which the orchestrator confirmed. Root causes addressed:
+- R9-1: a real RFC 3986 grammar in `core/uri.py`, with relative resolution and self or foreign-anchor next links treated as unknown;
+- R9-2: a present value is typed before any fallback chooses, across 190 scanned sites, including doi.org `RA`;
+- R9-3: import closure through module attributes;
+- R9-5: the per-flow browse.
+
+`publisher` is now mapped. The `openml.fetch` mixed-member failure was the harness generator's error, per OpenML's `Api_data.php`, and the generator was fixed. Sent to a fresh Astra, which is also asked to judge the oracle's independence in substance.
