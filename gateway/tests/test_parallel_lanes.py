@@ -48,14 +48,15 @@ def rec(source_id: str, doi: str, title: str, license: str | None = "cc-by-4.0")
 
 def find_fn(records: list[dict], before: threading.Event | None = None,
             after: threading.Event | None = None, calls: list | None = None):
-    """A fake adapter `find` with the real signature. `before` delays completion until set
-    (shuffling completion order); `after` is set once this lane's answer is built."""
+    """A fake adapter `find` with the real signature, answering its whole result set (it reports
+    the end, 2b-repair-6 F3). `before` delays completion until set (shuffling completion order);
+    `after` is set once this lane's answer is built."""
     def find(client, query, limit=20, kind=None, domain=None):
         if calls is not None:
             calls.append(threading.get_ident())
         if before is not None:
             assert before.wait(10), "test orchestration event never fired"
-        out = {"records": [json.loads(json.dumps(r)) for r in records]}
+        out = {"records": [json.loads(json.dumps(r)) for r in records], "exhausted": True}
         if after is not None:
             after.set()
         return out
@@ -103,7 +104,7 @@ class MergeDeterminism(unittest.TestCase):
                          ["doi:10.1234/abc", "doi:10.9999/solo", "doi:10.9999/second"],
                          "TWO nonduplicate results from one lane keep their within-lane order")
         for ln in parallel["lanes"][1:]:
-            self.assertIn("exhausted", ln, "a completed find lane without a cursor says so")
+            self.assertIn("exhausted", ln, "a completed find lane whose source reported its end says so")
 
     def test_licence_filtering_holds_under_reversed_completion(self):
         # dataset plan (datacite, huggingface, openml): huggingface is a PER-ITEM source, so

@@ -44,7 +44,9 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1) -> dict:
     resp = client.get(SOURCE_ID, "find", f"{BASE}/datasets/list", params={"search": query, "page": page}, headers=hdrs, query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     items = need(SOURCE_ID, resp.json)
-    return {"records": members(SOURCE_ID, items[:limit], _record), "total": None, "next_page": page + 1 if len(items) >= 20 else None}
+    cut = len(items) > limit   # rows of this page left unread: page + 1 would skip them, and this is not the end
+    return {"records": members(SOURCE_ID, items[:limit], _record), "total": None,
+            "next_page": page + 1 if len(items) >= 20 and not cut else None, "exhausted": len(items) < 20 and not cut}
 
 
 def fetch(client: Client, target: str, *, file_name: str | None = None, download: bool = False) -> dict:

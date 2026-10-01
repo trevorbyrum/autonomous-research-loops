@@ -250,16 +250,17 @@ class EngineFixtures(unittest.TestCase):
         rec = Recorder(self)
         second = dict(CROSSREF_WORK, DOI="10.1234/def", title=["Reranking, continued"])
         rec.t.by_substring.append(("cursor=c2", Response(200, {}, json.dumps(
-            {"message": {"items": [second], "total-results": 2}}).encode(), "")))
+            {"message": {"items": [second], "total-results": 2, "next-cursor": "c3"}}).encode(), "")))
         rec.t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [CROSSREF_WORK], "total-results": 2,
                                                                               "next-cursor": "c2"}})
         request = {"query": "reranking", "kind": "article", "domain": "finance"}
         first = rec.send("POST", "/v1/find", request)[1]
         status, second = rec.send("POST", "/v1/find", {**request, "cursors": {"crossref": "c2"}, "lanes": ["crossref"]})
         self.assertEqual(lanes_of(first)[0], ("crossref", "searched_ok", "complete", 1, ["doi:10.1234/abc"], None, None, "c2", None))
-        self.assertEqual(lanes_of(second), [("crossref", "searched_ok", "complete", 1, ["doi:10.1234/def"], None, "c2", None, True)])
+        self.assertEqual(lanes_of(second), [("crossref", "searched_ok", "complete", 1, ["doi:10.1234/def"], None, "c2", "c3", None)],
+                         "a cursor page that is not empty never proves the end: it continues (2b-repair-6 F3)")
         self.assertNotEqual(second["request_identity"], first["request_identity"], "each page is its own request")
-        self.check("find_paged_complete", rec, "page 1 reads one record and a cursor; page 2 reads the last record")
+        self.check("find_paged_complete", rec, "page 1 reads one record and a cursor; page 2 reads another and the next cursor")
 
     def test_data_secrets_failing(self):
         tmp = tempfile.TemporaryDirectory()

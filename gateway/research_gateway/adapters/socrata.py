@@ -73,8 +73,9 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0, portal
     j = resp.json
     results, total = need(SOURCE_ID, j, "results"), j.get("resultSetSize") or 0
     _KNOWN_DOMAINS.update((r.get("metadata") or {}).get("domain", "").lower() for r in results if (r.get("metadata") or {}).get("domain"))
+    end = not results or (type(j.get("resultSetSize")) is int and offset + len(results) >= total)   # a missing size ends nothing
     return {"records": members(SOURCE_ID, results, _catalog_record), "total": total,
-            "next_offset": offset + len(results) if results and offset + len(results) < total else None}
+            "next_offset": offset + len(results) if results and offset + len(results) < total else None, "exhausted": end}
 
 
 def resolve(client: Client, identity: str) -> dict | None:

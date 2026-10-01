@@ -59,7 +59,8 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0) -> dic
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     items = need(SOURCE_ID, resp.json)
     return {"records": members(SOURCE_ID, items, _record), "total": None,
-            "next_offset": offset + len(items) if len(items) >= min(limit, 100) else None}
+            "next_offset": offset + len(items) if len(items) >= min(limit, 100) else None,
+            "exhausted": len(items) < min(limit, 100)}   # a short page is the last
 
 
 def resolve(client: Client, identity: str) -> dict | None:

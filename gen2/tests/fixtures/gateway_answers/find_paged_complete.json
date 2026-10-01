@@ -232,7 +232,7 @@
        "count": 1,
        "coverage": "searched_ok",
        "cursor": "c2",
-       "exhausted": true,
+       "next": "c3",
        "retrieved": [
         "doi:10.1234/def"
        ],
@@ -241,7 +241,7 @@
       }
      ],
      "next": {
-      "crossref": "exhausted"
+      "crossref": "c3"
      },
      "observation": {
       "attempt": 1,
@@ -368,6 +368,6 @@
   }
  ],
  "invocation_id": "inv_fixture0001",
- "note": "page 1 reads one record and a cursor; page 2 reads the last record",
+ "note": "page 1 reads one record and a cursor; page 2 reads another and the next cursor",
  "scenario": "find_paged_complete"
 }

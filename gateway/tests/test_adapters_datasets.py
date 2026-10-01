@@ -39,11 +39,11 @@ GOVINFO_PKG = {"packageId": "CRPT-118hrpt1", "title": "Report on X", "collection
 class GovInfo(unittest.TestCase):
     def test_find_resolve_fetch(self):
         c, t = client({"api_data_gov": "K"})
-        t.add("POST", "https://api.govinfo.gov/search", body={"count": 1, "offsetMark": "AoJ", "results": [GOVINFO_PKG]})
+        t.add("POST", "https://api.govinfo.gov/search", body={"count": 3, "offsetMark": "AoJ", "results": [GOVINFO_PKG]})
         out = govinfo.find(c, "supply chain", limit=5)
         self.assertEqual(out["records"][0]["identity"], "govinfo:CRPT-118hrpt1")
         self.assertEqual(out["records"][0]["year"], 2023)
-        self.assertEqual(out["next_offset_mark"], "AoJ")
+        self.assertEqual((out["next_offset_mark"], out["exhausted"]), ("AoJ", False))
         self.assertEqual(t.calls[0][2]["X-Api-Key"], "K")
         self.assertEqual(json.loads(t.calls[0][3])["query"], "supply chain")
         t.add("GET", "https://api.govinfo.gov/packages/CRPT-118hrpt1/summary", body=GOVINFO_PKG)

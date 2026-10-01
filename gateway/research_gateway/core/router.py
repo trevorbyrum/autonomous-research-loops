@@ -482,6 +482,8 @@ def _run_lane(router: Router, rt: str, lane: Lane, payload: dict, client: Client
     nxt = _lane_next(res)
     if nxt is not None:
         out.setdefault("next", {})[lane.source_id] = nxt
+    if rt == "find" and res.get("exhausted") is True:   # the adapter's own report that nothing remains (2b-repair-6 F3)
+        out.setdefault("ended", []).append(lane.source_id)
     got, dropped = _valid_records(res.get("records"), out["facts"], lane.source_id)
     withheld = res.get("withheld") or 0
     if withheld:   # stored matches the serving read refused (2b-repair-5 F2): dropped, never a shorter complete answer
@@ -515,6 +517,7 @@ def _lane_slots() -> threading.BoundedSemaphore:
 ERR_PAYLOAD, ERR_OUTAGE, ERR_TIMEOUT, ERR_TRANSPORT = "payload_invalid", "provider_outage", "timeout", "transport_failure"
 ERR_RATE, ERR_BREAKER, ERR_BUDGET = "rate_limited", "breaker_open", "budget_refused"
 ERR_REJECTED, ERR_UNCONFIGURED = "credentials_rejected", "credentials_not_configured"
+ERR_PAGINATION = "partial_pagination"   # read whole, but more may remain that cannot be asked for
 
 
 def _unavailable(resp) -> tuple[str, str]:
@@ -621,13 +624,22 @@ def _find_lane_result(router: Router, lane: Lane, payload: dict, client: Client,
             fact = _lane_failed(entry, lane_out["facts"], lane.source_id, e)
             return {"entry": entry, "records": [], "facts": lane_out["facts"], "next": None, "capability_fact": fact}
     nxt = (lane_out.get("next") or {}).get(lane.source_id)
+    ended = lane.source_id in lane_out.get("ended", ())
     if nxt is not None and entry["completeness"] != "unobserved":
         entry["next"] = nxt
-    elif entry["coverage"] in (COVERAGE_OK, COVERAGE_EMPTY) and entry["completeness"] == "complete":
+    elif ended and entry["coverage"] in (COVERAGE_OK, COVERAGE_EMPTY) and entry["completeness"] == "complete":
+        # exhausted only on the ADAPTER'S report that nothing remains — a missing cursor proves
+        # nothing (2b-repair-6 F3: a bounded answer was declared complete and its rest skipped)
         entry["exhausted"] = True
         nxt = EXHAUSTED_CURSOR
     else:
         nxt = None   # a lane that answered nothing readable has no continuation, and is not exhausted
+        if entry["coverage"] == COVERAGE_OK and entry["completeness"] == "complete":
+            # records, but neither a continuation nor a reported end: more may remain that no
+            # one can ask for, so what was read is a lower bound (RG-4) — never complete, never cached
+            entry.update(completeness="partial", error_class=ERR_PAGINATION)
+            lane_out["facts"].append(f"{lane.source_id}: {entry['count']} record(s) and no continuation, but the source did not "
+                                     "report the end of its results — more may remain; the count is a lower bound")
     return {"entry": entry, "records": got, "facts": lane_out["facts"], "next": nxt}
 
 

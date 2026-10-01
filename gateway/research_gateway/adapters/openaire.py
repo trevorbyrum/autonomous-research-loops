@@ -106,7 +106,9 @@ def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None
     header = need(SOURCE_ID, j, "header", kind=dict)
     # an answer may leave `results` out only when its header says nothing matched
     rows = need(SOURCE_ID, j, "results") if j.get("results") is not None or header.get("numFound") != 0 else []
-    return {"records": members(SOURCE_ID, rows, _record), "total": header.get("numFound"), "next_cursor": header.get("nextCursor")}
+    end = not rows or (cursor in (None, "*") and type(header.get("numFound")) is int and len(rows) >= header["numFound"])
+    return {"records": members(SOURCE_ID, rows, _record), "total": header.get("numFound"),
+            "next_cursor": None if end else header.get("nextCursor"), "exhausted": end}
 
 
 def resolve(client: Client, identity: str) -> dict | None:

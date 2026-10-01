@@ -47,7 +47,10 @@ def find(client: Client, query: str, *, limit: int = 20, offset_mark: str = "*",
     # an answer may leave `results` out only when it counts nothing
     results = need(SOURCE_ID, j, "results") if j.get("results") is not None or j.get("count") != 0 else []
     nxt = j.get("offsetMark") if results and j.get("offsetMark") not in (None, offset_mark) else None
-    return {"records": members(SOURCE_ID, results, _record), "total": j.get("count"), "next_offset_mark": nxt}
+    end = not results or j.get("offsetMark") == offset_mark or (offset_mark == "*" and type(j.get("count")) is int
+                                                               and len(results) >= j["count"])
+    return {"records": members(SOURCE_ID, results, _record), "total": j.get("count"), "next_offset_mark": None if end else nxt,
+            "exhausted": end}
 
 
 def resolve(client: Client, identity: str) -> dict | None:

@@ -34,7 +34,7 @@ class OpenAire(unittest.TestCase):
         c, t = client({("openaire", "client_id"): "id", ("openaire", "client_secret"): "sec"})
         t.add("POST", "https://aai.openaire.eu/oidc/token", body={"access_token": "tok", "expires_in": 3600})
         t.add("GET", "https://api.openaire.eu/graph/v1/researchProducts?",
-              body={"header": {"numFound": 2, "nextCursor": "c2"}, "results": [OPENAIRE_PUB, OPENAIRE_NODOI]})
+              body={"header": {"numFound": 5, "nextCursor": "c2"}, "results": [OPENAIRE_PUB, OPENAIRE_NODOI]})
         out = openaire.find(c, "repository", kind="article")
         self.assertEqual(t.calls[0][0], "POST")
         self.assertTrue(t.calls[0][2]["Authorization"].startswith("Basic "))
@@ -46,7 +46,7 @@ class OpenAire(unittest.TestCase):
         self.assertEqual(recs[1]["identity"], "openaire:oa::2")
         self.assertEqual(recs[1]["identifiers"], {"handle": "1234/5678"})
         self.assertFalse(recs[1]["has_doi"])
-        self.assertEqual(out["next_cursor"], "c2")
+        self.assertEqual((out["next_cursor"], out["exhausted"]), ("c2", False))
         openaire.find(c, "again")
         self.assertEqual(sum(1 for m, *_ in t.calls if m == "POST"), 1, "token reused within its lifetime")
 

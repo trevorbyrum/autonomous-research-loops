@@ -98,7 +98,7 @@ class LaneOutcomes(unittest.TestCase):
                           "count": None, "exhausted": None, "next": None})
 
     def test_control_a_readable_empty_answer_is_searched_empty(self):
-        r, c, _ = stub(find=lambda cursor: {"records": []})
+        r, c, _ = stub(find=lambda cursor: {"records": [], "exhausted": True})
         e = self.lane(find(r, c))
         self.assertEqual((e["coverage"], e["completeness"], e["count"], e.get("error_class"), e.get("exhausted")),
                          ("searched_empty", "complete", 0, None, True))
@@ -114,14 +114,15 @@ class LaneOutcomes(unittest.TestCase):
         self.assertEqual(len(out["records"]), 2, "what was observed is kept")
 
     def test_a_partial_lane_is_never_exhausted(self):
-        r, c, _ = stub(find=lambda cursor: {"records": [rec(1), "junk"]})
+        """Not even when its adapter reports the end (2b-repair-6 F3: exhaustion is that report, on a whole answer)."""
+        r, c, _ = stub(find=lambda cursor: {"records": [rec(1), "junk"], "exhausted": True})
         e = self.lane(find(r, c))
         self.assertEqual((e["completeness"], e.get("exhausted")), ("partial", None))
-        r, c, _ = stub(find=lambda cursor: {"records": [rec(1)]})
+        r, c, _ = stub(find=lambda cursor: {"records": [rec(1)], "exhausted": True})
         self.assertTrue(self.lane(find(r, c))["exhausted"], "control: a complete last page is exhausted")
 
     def test_control_all_readable_records_are_complete(self):
-        r, c, _ = stub(find=lambda cursor: {"records": [rec(1), rec(2), rec(3)]})
+        r, c, _ = stub(find=lambda cursor: {"records": [rec(1), rec(2), rec(3)], "exhausted": True})
         e = self.lane(find(r, c))
         self.assertEqual((e["coverage"], e["completeness"], e["count"], e.get("error_class")), ("searched_ok", "complete", 3, None))
 
@@ -131,14 +132,14 @@ class LaneOutcomes(unittest.TestCase):
         observed — never searched_empty, never exhausted, never replayed from the search cache."""
         keys = ("coverage", "completeness", "count", "error_class", "exhausted")
         cache = Cache()
-        r, c, _ = stub(find=lambda cursor: {"records": [rec(1)], "withheld": 2})
+        r, c, _ = stub(find=lambda cursor: {"records": [rec(1)], "withheld": 2, "exhausted": True})
         out = R.execute(r, {"request_type": "find", "query": "q", "kind": "article"}, c, cache=cache)
         self.assertEqual(tuple(self.lane(out).get(k) for k in keys), ("searched_ok", "partial", 1, "payload_invalid", None))
         self.assertTrue(any("2 matching stored record(s) withheld" in f and "lower bound" in f for f in out["facts"]), out["facts"])
         self.assertIsNone(cache.get_search(cache.search_key("find", R._search_payload({"request_type": "find", "query": "q", "kind": "article"}))))
-        r, c, _ = stub(find=lambda cursor: {"records": [], "withheld": 1})
+        r, c, _ = stub(find=lambda cursor: {"records": [], "withheld": 1, "exhausted": True})
         self.assertEqual(tuple(self.lane(find(r, c)).get(k) for k in keys), ("provider_unavailable", "unobserved", None, "payload_invalid", None))
-        r, c, _ = stub(find=lambda cursor: {"records": [rec(1)], "withheld": 0})
+        r, c, _ = stub(find=lambda cursor: {"records": [rec(1)], "withheld": 0, "exhausted": True})
         self.assertEqual(tuple(self.lane(find(r, c)).get(k) for k in keys), ("searched_ok", "complete", 1, None, True),
                          "control: nothing withheld is complete")
 
@@ -227,7 +228,7 @@ class DegradedAnswersAreNotReplayed(unittest.TestCase):
         def flaky(cursor):
             if state["down"]:
                 raise SourceUnavailable("stub", Response(503, {}, b"", "u"))
-            return {"records": [rec(1)]}
+            return {"records": [rec(1)], "exhausted": True}
         r, c, calls = stub(find=flaky)
         cache = Cache(None)
         first = R.execute(r, {"request_type": "find", "query": "q", "kind": "article"}, c, cache)
@@ -238,7 +239,7 @@ class DegradedAnswersAreNotReplayed(unittest.TestCase):
         self.assertEqual((again["lanes"][0]["coverage"], len(calls)), ("searched_ok", 2))
 
     def test_control_a_complete_answer_is_served_from_cache(self):
-        r, c, calls = stub(find=lambda cursor: {"records": [rec(1)]})
+        r, c, calls = stub(find=lambda cursor: {"records": [rec(1)], "exhausted": True})
         cache = Cache(None)
         R.execute(r, {"request_type": "find", "query": "q", "kind": "article"}, c, cache)
         again = R.execute(r, {"request_type": "find", "query": "q", "kind": "article"}, c, cache)

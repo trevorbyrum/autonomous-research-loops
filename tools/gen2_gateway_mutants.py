@@ -22,7 +22,10 @@ writer's row is never rewritten is test_the_migration_runs_once_and_says_when_it
 serving gate's own view, gateway.servable_records (2b-repair-5 F2: DDL applied to the shared
 scratch database, like the immutability trigger — the tests that re-apply the schema would leave a
 mutant view there for every later run; it is exercised directly by test_record_gate.AssembledGateway,
-which fails on all four doors with a reader that goes around it).
+which fails on all four doors with a reader that goes around it); the local index's last tie-breaker,
+`r.identity` (2b-repair-6 F3: it makes offset pages cut one total order — without it, rows tied on
+rank, works and year have no defined order, but a small fixture's ties keep their physical order,
+so no test can reliably see it removed).
 """
 from __future__ import annotations
 
@@ -50,6 +53,7 @@ LIC = "research_gateway/core/licenses.py"
 CACHE, MIGRATE = "research_gateway/core/cache.py", "research_gateway/registry/migrate.py"
 INDEX, RG = "research_gateway/adapters/openalex_snapshot.py", "tests.test_record_gate."
 LOCAL_INDEX = "tests.test_adapters_platforms.OpenAlexLocalIndex.test_find_hits_local_index_without_network"
+EX = "tests.test_exhaustion."
 
 MUTANTS: list[Mutant] = [
     # ---- item 6: secrets outcomes (DEPLOYMENT-CONTRACT §3.4) ---------------------------------------------
@@ -159,8 +163,8 @@ MUTANTS: list[Mutant] = [
            '        entry["error_class"] = ERR_UNCONFIGURED if entry["coverage"] == COVERAGE_AUTH else ERR_OUTAGE\n',
            (LO + "LaneOutcomes.test_a_fact_only_answer_is_degraded_not_empty",), (LO + "LaneOutcomes.test_control_a_readable_empty_answer_is_searched_empty",)),
     Mutant("P-partial-exhausted", "a partial lane is marked exhausted", ROUTER,
-           '    elif entry["coverage"] in (COVERAGE_OK, COVERAGE_EMPTY) and entry["completeness"] == "complete":',
-           '    elif entry["coverage"] in (COVERAGE_OK, COVERAGE_EMPTY):',
+           '    elif ended and entry["coverage"] in (COVERAGE_OK, COVERAGE_EMPTY) and entry["completeness"] == "complete":',
+           '    elif ended and entry["coverage"] in (COVERAGE_OK, COVERAGE_EMPTY):',
            (LO + "LaneOutcomes.test_a_partial_lane_is_never_exhausted",), (LO + "LaneOutcomes.test_control_a_readable_empty_answer_is_searched_empty",)),
     Mutant("P-cursor-lost", "a lane does not echo the cursor it was asked with", ROUTER,
            '                   "cursor": (payload.get("cursors") or {}).get(lane.source_id)}', '                   "cursor": None}',
@@ -386,6 +390,29 @@ MUTANTS: list[Mutant] = [
            "    return got, (str(fact) if fact else None), dropped + withheld\n", "    return got, (str(fact) if fact else None), dropped\n",
            (LO + "LaneOutcomes.test_withheld_stored_records_make_a_partial_lower_bound",),
            (LO + "LaneOutcomes.test_dropped_records_make_a_partial_lower_bound",)),
+    # 2b-repair-6 F3: a lane is exhausted only on its adapter's report that nothing remains
+    Mutant("F3-missing-cursor-is-exhaustion", "the router reads a missing continuation as exhaustion (the defect)", ROUTER,
+           '    elif ended and entry["coverage"] in (COVERAGE_OK, COVERAGE_EMPTY) and entry["completeness"] == "complete":',
+           '    elif entry["coverage"] in (COVERAGE_OK, COVERAGE_EMPTY) and entry["completeness"] == "complete":',
+           (EX + "ReportedEnd.test_records_with_no_continuation_and_no_reported_end_are_a_lower_bound",
+            EX + "ReportedEnd.test_an_empty_answer_is_exhausted_only_when_reported"),
+           (EX + "ReportedEnd.test_control_a_reported_end_is_exhausted", EX + "ReportedEnd.test_control_a_continuation_is_followed_not_exhausted")),
+    Mutant("F3-truncation-complete", "records with neither a continuation nor a reported end stay a complete answer", ROUTER,
+           '            entry.update(completeness="partial", error_class=ERR_PAGINATION)', "            pass",
+           (EX + "ReportedEnd.test_records_with_no_continuation_and_no_reported_end_are_a_lower_bound",),
+           (EX + "ReportedEnd.test_control_a_reported_end_is_exhausted",)),
+    Mutant("F3-end-outranks-continuation", "a reported end wins over the continuation the same answer gave", ROUTER,
+           '    if nxt is not None and entry["completeness"] != "unobserved":\n        entry["next"] = nxt',
+           '    if nxt is not None and entry["completeness"] != "unobserved" and not ended:\n        entry["next"] = nxt',
+           (EX + "ReportedEnd.test_a_continuation_outranks_a_reported_end",),
+           (EX + "ReportedEnd.test_control_a_continuation_is_followed_not_exhausted",)),
+    Mutant("F3-crossref-no-first-cursor", "Crossref's first page is asked without a cursor (it then sends no continuation)",
+           "research_gateway/adapters/crossref.py", '"cursor": cursor or "*"}', '"cursor": cursor}',
+           (EX + "AdapterEnds.test_crossref_asks_for_a_cursor_from_the_first_page",), (EX + "AdapterEnds.test_cursor_sources",)),
+    Mutant("F3-kaggle-cut-page-continues", "a Kaggle page cut to the limit continues at page + 1 (skipping the cut rows) or ends",
+           "research_gateway/adapters/kaggle.py", "    cut = len(items) > limit", "    cut = False",
+           (EX + "AdapterEnds.test_a_kaggle_page_cut_to_the_limit_neither_continues_nor_ends",),
+           (EX + "AdapterEnds.test_control_whole_kaggle_pages_continue_or_end",)),
     Mutant("F2-harvest-rows-unmarked", "the harvest's new row is not marked current", "research_gateway/harvest/index.py",
            "now(), true) ", "now(), false) ",
            (PV + "RestrictionsSurviveReload.test_the_harvests_rows_are_current_and_read_from_record_sources",),

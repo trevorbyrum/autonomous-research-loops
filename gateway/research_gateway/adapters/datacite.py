@@ -45,7 +45,8 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1, resource
     data = need(SOURCE_ID, j, "data")
     total = (j.get("meta") or {}).get("total")
     nxt = page + 1 if data and total and page * min(limit, 100) < total else None
-    return {"records": members(SOURCE_ID, data, _record), "total": total, "next_page": nxt}
+    end = not data or (type(total) is int and page * min(limit, 100) >= total)
+    return {"records": members(SOURCE_ID, data, _record), "total": total, "next_page": nxt, "exhausted": end}
 
 
 def resolve(client: Client, identity: str) -> dict | None:

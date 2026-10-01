@@ -44,7 +44,8 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1) -> dict:
     j = resp.json
     results = need(SOURCE_ID, j, "results")
     nxt = page + 1 if results and (page + 1) * page_size <= MAX_RECORDS_PER_QUERY and page * page_size < (j.get("total") or 0) else None
-    return {"records": members(SOURCE_ID, results, _record), "total": j.get("total"), "next_page": nxt}
+    end = not results or (type(j.get("total")) is int and page * page_size >= j["total"])   # never the cap
+    return {"records": members(SOURCE_ID, results, _record), "total": j.get("total"), "next_page": nxt, "exhausted": end}
 
 
 def resolve(client: Client, identity: str) -> dict | None:

@@ -5,7 +5,9 @@ canonical records the harvest stored, read through gateway.servable_records, the
 serving read. Phase 6 loads them; until then the index is simply empty and `find`
 returns nothing, truthfully. A match that view withholds (a row not yet converted,
 2b-repair-5 F2) is never served, and is counted as `withheld`: the router reports the
-lane partial, never complete.
+lane partial, never complete. Pages are offsets into one total order (rank, then the
+identity breaking ties): a page reads one row past `limit`, so it says positively either
+where the next page starts or that nothing remains (2b-repair-6 F3).
 """
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ LOCAL = True   # answers from the local index; the router runs it before any liv
 
 
 def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None, domain: str | None = None,
-         year_from_: int | None = None) -> dict:
+         year_from_: int | None = None, offset: int = 0) -> dict:
     conn = client.conn
     if conn is None:
         return {"records": [], "total": 0, "capability_fact": "local index needs a database connection"}
@@ -44,13 +46,16 @@ def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None
         f"WHERE {' AND '.join(where)} AND r.canonical IS NOT NULL "   # fixed strings; every value is a bound parameter
         "ORDER BY rank DESC, "
         "CASE WHEN r.canonical->>'works_count' ~ '^[0-9]{1,15}$' THEN (r.canonical->>'works_count')::bigint END DESC NULLS LAST, "
-        "d.year DESC NULLS LAST LIMIT %s"
+        "d.year DESC NULLS LAST, r.identity LIMIT %s OFFSET %s"
     )
+    size, start = max(1, min(int(limit or 20), 100)), int(offset or 0)
+    if start < 0:
+        raise ValueError(f"{SOURCE_ID}: a page cannot start at offset {start}")
     t0 = time.monotonic()
     with client.db_lock:   # the shared connection's TRANSACTION is the hazard under parallel lanes (9·2b)
         try:
             with conn.cursor() as cur:
-                cur.execute(sql, [query, *args, max(1, min(int(limit or 20), 100))])
+                cur.execute(sql, [query, *args, size + 1, start])   # one row past the page: does anything remain?
                 rows = cur.fetchall()
                 cur.execute("SELECT count(r.canonical), count(*) - count(r.canonical) FROM gateway.index_docs d "
                             f"JOIN gateway.servable_records r ON r.identity = d.identity WHERE {' AND '.join(where)}", args)
@@ -65,6 +70,7 @@ def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None
             except Exception:
                 pass
             raise
+    more, rows = len(rows) > size, rows[:size]
     client.local(SOURCE_ID, "find", query=query, result_count=len(rows), latency_ms=int((time.monotonic() - t0) * 1000))
     records = []
     for identity, canonical, rank in rows:
@@ -73,4 +79,5 @@ def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None
         rec["source_id"] = SOURCE_ID
         rec["rank"] = float(rank)
         records.append(rec)
-    return {"records": records, "total": total, "withheld": withheld}
+    return {"records": records, "total": total, "withheld": withheld,
+            "next_offset": start + size if more else None, "exhausted": not more}

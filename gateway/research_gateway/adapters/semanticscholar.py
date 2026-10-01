@@ -65,7 +65,9 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0, year_f
     j = need(SOURCE_ID, resp.json, kind=dict)
     # the search answer omits `data` when nothing matched; then it must say total 0
     rows = need(SOURCE_ID, j, "data") if "data" in j or j.get("total") != 0 else []
-    return {"records": members(SOURCE_ID, rows, _record), "total": j.get("total"), "next_offset": j.get("next")}
+    # `next` stops at S2's 1,000-result cap too: only the stated total reached is the end
+    end = j.get("next") is None and (not rows or (type(j.get("total")) is int and offset + len(rows) >= j["total"]))
+    return {"records": members(SOURCE_ID, rows, _record), "total": j.get("total"), "next_offset": j.get("next"), "exhausted": end}
 
 
 def resolve(client: Client, identity: str) -> dict | None:

@@ -63,7 +63,7 @@ class CoverageStates(unittest.TestCase):
         t.add("GET", "https://doaj.org/api/search/articles/", body={"results": [], "total": 0})
         out = R.execute(r, {"request_type": "find", "query": "exhaustion", "kind": "article"}, c)
         self.assertEqual(out["next"].get("crossref"), R.EXHAUSTED_CURSOR,
-                         "a lane that answered without a continuation says so explicitly")
+                         "a lane whose source reported its end (a first page holding every match) says so explicitly")
         calls_before = len(t.calls)
         again = R.execute(r, {"request_type": "find", "query": "exhaustion", "kind": "article",
                               "cursors": dict(out["next"])}, c)

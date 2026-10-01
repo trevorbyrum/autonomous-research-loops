@@ -34,8 +34,9 @@ def find(client: Client, query: str, *, limit: int = 20, cursor: str | None = No
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     j = resp.json
     results = need(SOURCE_ID, j, "resultList", "result")
-    nxt = j.get("nextCursorMark") if results and j.get("nextCursorMark") != (cursor or "*") else None
-    return {"records": members(SOURCE_ID, results, _record), "total": j.get("hitCount"), "next_cursor": nxt}
+    end = not results or j.get("nextCursorMark") == (cursor or "*")   # Europe PMC's end: the cursor stops advancing
+    return {"records": members(SOURCE_ID, results, _record), "total": j.get("hitCount"),
+            "next_cursor": None if end else j.get("nextCursorMark"), "exhausted": end}
 
 
 def resolve(client: Client, identity: str) -> dict | None:

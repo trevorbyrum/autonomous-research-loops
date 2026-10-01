@@ -45,10 +45,10 @@ class SeedConsistency(unittest.TestCase):
 class Crossref(unittest.TestCase):
     def test_find(self):
         c, t = client()
-        t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [CROSSREF_WORK], "total-results": 1, "next-cursor": "abc"}})
+        t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [CROSSREF_WORK], "total-results": 3, "next-cursor": "abc"}})
         out = crossref.find(c, "reranking", limit=5, year_from_=2020)
-        self.assertEqual(out["total"], 1)
-        self.assertEqual(out["next_cursor"], "abc")
+        self.assertEqual(out["total"], 3)
+        self.assertEqual((out["next_cursor"], out["exhausted"]), ("abc", False))
         r = out["records"][0]
         self.assertEqual(r["identity"], "doi:10.1234/abc")
         self.assertEqual(r["authors"], ["Ada Lovelace", "Consortium X"])
