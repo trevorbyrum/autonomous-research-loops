@@ -704,4 +704,14 @@ The operator asked whether the build checks architecture against the requirement
 
 **Orchestrator routing:** this is the third round of the malformed-member family (Socrata → OpenCitations/8 paths → HF/ECB), so 2b-repair-8 requires a structural redesign: raw provider lists can't be iterated except through isolation. Dispatched to Sonnet 5.5. Owner decisions sent to the operator. **OPERATOR RULINGS:** OpenAIRE deprecation and Kaggle endpoint drift → a Phase 3 gateway adapter-compatibility task, finished before Phase 4 qualification; catalogue partial results → commissioned for Phase 3. Recorded in BUILD-STATE under "Phase 3 items".
 
+**2b-repair-8 landed (Sonnet 5.5 coder 130b5b23), orchestrator verify GREEN** (gen2-check exit 0, 1,615 tests, 1,701/1,701 mutants; gen2-gateway exit 0, 525+525 tests, 164/164 mutants).
+
+**2b-repair-8 re-review (Astra, xhigh) — BLOCK, narrower.** Full report: `~/work/research-loops-public/private/reviews/gen2-2b-repair-8-astra-review-20261001.md`; evidence in `private/evidence/astra-2b-repair-8/`. Boundary PASS at PID 1040. Gate B PASS.
+- **ROOT-CAUSE, accepted:** the runtime view redesign (provider lists can't be iterated, only decoded per member), every original R7 reproduction, all 68 escape uses at 36 locations audited as honest, and every disclosed behaviour change and scope limit (SDMX-ML confirmed inside A4 and correct; the OpenAlex snapshot loader is offline ingestion outside the lane contract).
+- **R8-1 (BLOCK):** decoded `rel` values aren't validated, so `rel="\"next\""`, `rel=""`, `rel="next, prev"` and control characters read as known absence, and HF claims exhaustion.
+- **R8-2 (BLOCK):** truthiness checks skip type validation. ECB `series=false`/`0`/`""` and HF `siblings={}`/`false` become complete-empty, and a falsy wrong-type holder beside a good one loses its drop accounting.
+- **R8-3 (BLOCK):** `from .base import *` and a re-exported `json` parser bypass the escape inventory. Two full adapter mutations pass all 20 structural tests while losing records.
+
+**Orchestrator routing:** fourth round of the same family (malformed input read as a definite answer). Fixing reported instances keeps leaving neighbours, so 2b-repair-9 also requires a seeded generative harness asserting the invariant across every adapter: no complete, empty or exhausted result from unreadable input, and readable peers kept as a partial lower bound. Dispatched to Sonnet 5.5.
+
 **Follow-up ruling, same day:** "I want a fresh Astra on the architecture review every time. I don't want other gates tainting it." Gate D is always a new Astra session that has run no other gate and is never reused for one. Clarified by the operator: "it should and can look at the review log. I just don't want tainted context" — the isolation is of session context, not files; Gate D reads the normal repository, review log included.
