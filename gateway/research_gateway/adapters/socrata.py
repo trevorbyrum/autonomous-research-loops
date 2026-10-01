@@ -72,9 +72,12 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0, portal
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     j = resp.json
     results, total = need(SOURCE_ID, j, "results"), j.get("resultSetSize") or 0
-    _KNOWN_DOMAINS.update((r.get("metadata") or {}).get("domain", "").lower() for r in results if (r.get("metadata") or {}).get("domain"))
+    records = members(SOURCE_ID, results, _catalog_record)
+    # the catalog vouches for a portal only through a member read whole: learning domains from the raw
+    # members, before each is decoded alone, let one non-object member lose the whole page (A4)
+    _KNOWN_DOMAINS.update(r["venue"].lower() for r in records if r and isinstance(r.get("venue"), str) and r["venue"])
     end = not results or (type(j.get("resultSetSize")) is int and offset + len(results) >= total)   # a missing size ends nothing
-    return {"records": members(SOURCE_ID, results, _catalog_record), "total": total,
+    return {"records": records, "total": total,
             "next_offset": offset + len(results) if results and offset + len(results) < total else None, "exhausted": end}
 
 

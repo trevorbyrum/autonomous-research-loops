@@ -445,6 +445,13 @@ MUTANTS: list[Mutant] = [
            "        entry[\"coverage\"], entry[\"error_class\"] = COVERAGE_DOWN, ERR_PAYLOAD\n",
            (EX + "LocalIndexPages.test_a_match_removed_after_page_one_never_hides_the_one_after_it",),
            (EX + "LocalIndexPages.test_a_negative_offset_is_no_page",), db=True),
+    # 2b-repair-7: Socrata's portal cache is learnt only from members read whole (A4)
+    Mutant("A4-socrata-domains-from-raw-members", "Socrata learns portal domains from the raw members before decoding each alone",
+           "research_gateway/adapters/socrata.py",
+           '    _KNOWN_DOMAINS.update(r["venue"].lower() for r in records if r and isinstance(r.get("venue"), str) and r["venue"])\n',
+           '    _KNOWN_DOMAINS.update((r.get("metadata") or {}).get("domain", "").lower() for r in results if (r.get("metadata") or {}).get("domain"))\n',
+           (LO + "RealAdapterMembers.test_a_socrata_member_that_is_not_an_object_keeps_the_readable_ones",),
+           (LO + "RealAdapterMembers.test_control_a_whole_socrata_page_is_complete",)),
     Mutant("F2-harvest-rows-unmarked", "the harvest's new row is not marked current", "research_gateway/harvest/index.py",
            "now(), true) ", "now(), false) ",
            (PV + "RestrictionsSurviveReload.test_the_harvests_rows_are_current_and_read_from_record_sources",),

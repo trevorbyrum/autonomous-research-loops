@@ -13,6 +13,8 @@ from __future__ import annotations
 import types
 import unittest
 
+from research_gateway import adapters
+from research_gateway.adapters import socrata
 from research_gateway.adapters.base import Client, FakeTransport, PayloadError, Response, SourceUnavailable, members
 from research_gateway.core import router as R
 from research_gateway.core.broker import Broker, RatePolicy
@@ -320,6 +322,41 @@ class RealAdapterMembers(unittest.TestCase):
         except KeyError as e:
             self.fail(f"one member's decoding failure escaped as {e!r}: it is that member's, not the answer's")
         self.assertEqual(got, [{"identity": "doi:10.1/a", "kind": "article"}, None, None, None, {"identity": "doi:10.1/b", "kind": "article"}])
+
+    def socrata(self, items: list):
+        """One finance/dataset find on the Socrata lane alone, the catalog answering `items`."""
+        from tests.test_adapters_datasets import client as dataset_client
+        from tests.test_routing import SEED_NO_INDEX
+        socrata.reset_known_domains()
+        self.addCleanup(socrata.reset_known_domains)
+        c, t = dataset_client({})
+        t.add("GET", "https://api.us.socrata.com/api/catalog/v1?", body={"results": items, "resultSetSize": 5})
+        out = R.execute(R.Router(SEED_NO_INDEX, adapters.load_all()), {"request_type": "find", "query": "q", "kind": "dataset",
+                        "domain": "finance", "lanes": ["socrata"], "accept_per_item": True}, c)
+        (entry,) = [e for e in out["lanes"] if e["source"] == "socrata"]
+        self.assertEqual(store_admits(entry), [], entry)
+        return entry
+
+    def test_a_socrata_member_that_is_not_an_object_keeps_the_readable_ones(self):
+        """Astra (2b-repair-6 review): Socrata learnt portal domains from the raw members BEFORE each was
+        decoded alone, so a non-object member beside a readable one lost the whole page — unobserved,
+        the readable member gone (the same on d7cd61b). Now only a member read whole vouches a portal."""
+        from tests.test_adapters_datasets import SOCRATA_CATALOG
+        member = SOCRATA_CATALOG["results"][0]
+        for bad in (7, "not a dataset", {"resource": {"id": "x"}, "metadata": "not an object"}):
+            with self.subTest(bad=bad):
+                entry = self.socrata([member, bad])
+                self.assertEqual((entry["coverage"], entry["completeness"], entry.get("error_class"), entry.get("count"),
+                                  entry.get("retrieved")),
+                                 ("searched_ok", "partial", "payload_invalid", 1, ["socrata:data.cityofchicago.org:abcd-1234"]))
+                self.assertEqual(socrata._KNOWN_DOMAINS, {"data.cityofchicago.org"}, "the readable member vouches its portal")
+
+    def test_control_a_whole_socrata_page_is_complete(self):
+        from tests.test_adapters_datasets import SOCRATA_CATALOG
+        entry = self.socrata(SOCRATA_CATALOG["results"])
+        self.assertEqual((entry["coverage"], entry["completeness"], entry.get("error_class"), entry.get("count")),
+                         ("searched_ok", "complete", None, 1))
+        self.assertEqual(socrata._KNOWN_DOMAINS, {"data.cityofchicago.org"})
 
     def test_control_readable_members_are_complete_and_cached(self):
         for lane in ("crossref", "doaj"):
