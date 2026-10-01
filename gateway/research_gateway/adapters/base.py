@@ -8,12 +8,15 @@
   5. return a Response with parsed JSON when the body is JSON.
 
 Adapters never import urllib; that is the invariant the tests check.
+
+`__all__` is the whole of what an adapter may import from here (tests/test_member_isolation.py reads it from the source): a name that is
+not in it — a module this one happens to import, a parser, a helper of its own — is not for adapters, and importing it, however it is
+spelled (`from .base import json as j`, `from .base import *`), is refused.
 """
 from __future__ import annotations
 
 import email.utils
 import ipaddress
-import json
 import re
 import socket
 import threading
@@ -51,6 +54,7 @@ class Response:
         """The parsed body, plain: for this module's own bookkeeping. Empty or unparseable raises PayloadError."""
         if not self.body:
             raise PayloadError(f"empty body (HTTP {self.status})")
+        import json   # here and nowhere else at module level or in the module's namespace: nothing in adapters.base is a parser to re-export
         try:
             return json.loads(self.body)
         except (ValueError, UnicodeDecodeError):
@@ -321,6 +325,7 @@ class FakeTransport:
     def add(self, method: str, url_prefix: str, status: int = 200, body: bytes | str | dict | list = b"",
             headers: dict | None = None) -> None:
         if isinstance(body, (dict, list)):
+            import json
             body = json.dumps(body).encode()
         elif isinstance(body, str):
             body = body.encode()
@@ -386,6 +391,7 @@ class Client:
     def post(self, source_id: str, request_type: str, url: str, *, body: dict | bytes | None = None,
              headers: dict | None = None, identity: str | None = None, query: str | None = None,
              credits: float = 0.0) -> Response:
+        import json
         data = json.dumps(body).encode() if isinstance(body, dict) else body
         hdrs = dict(headers or {})
         if isinstance(body, dict):
@@ -688,11 +694,35 @@ def first_member(source_id: str, items: Members, build):
     return rec
 
 
-def scalar(value):
-    """A provider's paging token or count as a scalar — a string or an integer — else None: a view of a list or an
-    object is no token, and metadata that cannot be read is never a continuation (and, with no end claimed from it,
-    never an end)."""
-    return value if isinstance(value, (str, int)) and not isinstance(value, bool) else None
+def token(value):
+    """A provider's paging token — a cursor, an offset mark, an offset — as a non-blank string or a non-negative whole number, else
+    None: a view of a list or an object is no token, nor is a boolean, a float, a negative number or a blank, and metadata that
+    cannot be read is never a continuation (and, with no end claimed from it, never an end)."""
+    if isinstance(value, str):
+        return value if value.strip() else None
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
+def total(value, seen: int = 0):
+    """A provider's count of its results as a whole number no smaller than the `seen` results already read, else None: a boolean,
+    a float, a string, or a count that is smaller than what the provider has itself returned is no count, and a count that cannot be
+    read is never an end. (`total: 0` beside three records is not zero results.)"""
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= seen else None
+
+
+def counts_nothing(value) -> bool:
+    """Whether a provider's own count says there is nothing: the whole number zero. A `false`, a `0.0`, a `"0"`, a missing count says nothing."""
+    return type(value) is int and value == 0
+
+
+def field(value, *path):
+    """The value at `path` below `value`, or None when a step is missing or is not an object: how metadata is read — a total, a cursor,
+    the object that holds them — where a malformed container is an unreadable field, never a crash that loses the members beside it."""
+    for key in path:
+        if not isinstance(value, Obj):
+            return None
+        value = value.get(key)
+    return value
 
 
 NO_MEMBERS = Members(())   # a container the provider leaves out only when it lists nothing: no members, not an unreadable answer
@@ -713,6 +743,57 @@ def need(source_id: str, value, *path: str, kind: type | tuple = list):
         got = {Obj: "dict", Members: "list"}.get(type(cur), type(cur).__name__)
         raise PayloadError(f"{source_id}: {'.'.join(path) or 'the answer'} is {got}, not {'/'.join(k.__name__ for k in kinds)}")
     return cur
+
+
+def identified(source_id: str, rows, entries: list) -> list:
+    """The catalogue entries a listing's rows gave: a listing that has rows and not one names anything is unreadable, not an empty catalogue
+    (a readable listing of nothing is not a catalogue; and a row of no id is skipped, never the whole answer)."""
+    if rows and not entries:
+        raise PayloadError(f"{source_id}: none of the {len(rows)} listed row(s) names an identifier: a listing of nothing is not a catalogue")
+    return entries
+
+
+def text(source_id: str, value):
+    """A provider's text, or None when it sends none (missing, null). Anything else — a number, a boolean, a list, an object — is not text and is
+    unreadable, the falsy ones included: `false` and `0` are not an empty title (PayloadError, so the member that holds it is dropped and
+    counted, not kept with a field that silently says nothing)."""
+    if value is None or isinstance(value, str):
+        return value
+    raise PayloadError(f"{source_id}: {type(value).__name__} where text belongs")
+
+
+def key(source_id: str, value) -> str:
+    """What a provider names a member by (its id, a series id, a package id), as text: its text, or its whole number. Missing, null, empty, or
+    anything else — a boolean, a list, an object — names nothing, and is unreadable (PayloadError): the identity of a candidate is never
+    `openml:False` or `series:bls:[]`, which would be a fabricated candidate with a different name from the one the provider gave."""
+    if isinstance(value, str) and value.strip():
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return str(value)
+    raise PayloadError(f"{source_id}: {'nothing' if value is None else type(value).__name__} where a member's identifier belongs")
+
+
+def nested(source_id: str, parent, *keys: str) -> Obj:
+    """The object at `keys` below `parent`: empty when a step is missing or null, and unreadable when one is there and is not an object."""
+    for key in keys:
+        parent = optional(source_id, parent, key, dict)
+    return parent
+
+
+def listed(source_id: str, parent, key: str) -> list:
+    """The list at `parent[key]` as plain data — one record's own list (its authors, its licences): empty when missing or null, and unreadable
+    when it is there and is not a list. Like plain(), every use of it is listed with its reason in tests/test_member_isolation.py."""
+    return list(plain(optional(source_id, parent, key)))
+
+
+def optional(source_id: str, parent, key: str, kind: type = list):
+    """The container at `parent[key]` that a provider may leave out: an empty one (no members, or an empty object) when the key is
+    missing or null, and otherwise the container, which must be of `kind` — checked before its length or its truth is ever looked at.
+    A present `false`, `0`, `""` or `{}` where a list belongs (or `[]` where an object does) is not an empty container but an unreadable
+    one: a PayloadError, so the member that holds it (or the answer) is dropped and counted, never read as holding nothing (R8-2)."""
+    if parent.get(key) is None:
+        return NO_MEMBERS if kind is list else Obj({})
+    return need(source_id, parent, key, kind=kind)
 
 
 def check(source_id: str, resp: Response, *, allow_404: bool = True, allow_html: bool = False) -> bool:
@@ -737,3 +818,13 @@ def check(source_id: str, resp: Response, *, allow_404: bool = True, allow_html:
     if resp.status == 404 and allow_404:
         return False
     raise SourceUnavailable(source_id, resp)
+
+
+__all__ = (
+    # the metered client, and what an adapter says when it cannot answer
+    "Client", "AdapterError", "ContinuationInvalid", "PayloadError", "check",
+    # a provider's answer, as views, and the ways to read it (core/payload.py)
+    "Members", "NO_MEMBERS", "OMIT", "Obj", "members", "first_member", "need", "optional", "nested", "listed", "text", "key", "plain",
+    # a provider's metadata: totals, tokens, the end and the next page
+    "token", "total", "counts_nothing", "field", "identified", "next_link", "own_link", "quote",
+)

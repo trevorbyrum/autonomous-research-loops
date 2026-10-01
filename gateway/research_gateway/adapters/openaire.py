@@ -6,11 +6,12 @@ The exchange is an outbound call and is metered under this source.
 from __future__ import annotations
 
 import base64
+import threading
 import time
 
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi
-from .base import NO_MEMBERS, Client, check, first_member, members, need, plain, scalar
+from .base import NO_MEMBERS, Client, check, counts_nothing, field, first_member, key, listed, members, need, nested, text, token, total
 
 SOURCE_ID = "openaire"
 SMOKE = {'capability': 'find', 'query': 'management practices', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -20,7 +21,7 @@ AGENCIES = ("*",)   # primary for DOIs from any other registration agency (mEDRA
 BASE = "https://api.openaire.eu/graph/v1"
 TOKEN_URL = "https://aai.openaire.eu/oidc/token"
 _TOKEN: dict[str, object] = {}   # {"value": str, "exp": float}; one per process
-_TOKEN_LOCK = __import__("threading").Lock()   # single-flight mint under parallel lanes: a concurrent
+_TOKEN_LOCK = threading.Lock()   # single-flight mint under parallel lanes: a concurrent
                                                # refresh must never hand out a token the requesting
                                                # client did not register for redaction (9·2b)
 _KIND = {"publication": "article", "dataset": "dataset", "software": "software", "other": "document"}
@@ -64,26 +65,28 @@ def reset_token() -> None:
 
 
 def _record(r: dict) -> dict:
-    pids = list(plain(r.get("pids")) or [])
+    pids = list(listed(SOURCE_ID, r, "pids"))
     links, licenses = [], []
-    for inst in plain(r.get("instances")) or []:
-        pids += list(inst.get("alternateIdentifiers") or []) + list(inst.get("pids") or [])
-        links += [u for u in (inst.get("urls") or []) if u]
-        if inst.get("license"):
-            licenses.append(inst["license"])
-    doi = next((normalize_doi(p.get("value")) for p in pids if (p.get("scheme") or "").lower() == "doi" and normalize_doi(p.get("value"))), None)
-    others = {(p.get("scheme") or "").lower(): p.get("value") for p in pids if p.get("scheme") and (p.get("scheme") or "").lower() != "doi"}
+    for inst in listed(SOURCE_ID, r, "instances"):
+        pids += listed(SOURCE_ID, inst, "alternateIdentifiers") + listed(SOURCE_ID, inst, "pids")
+        links += [u for u in (text(SOURCE_ID, u) for u in listed(SOURCE_ID, inst, "urls")) if u]
+        license_ = text(SOURCE_ID, inst.get("license"))
+        if license_:
+            licenses.append(license_)
+    schemes = [(text(SOURCE_ID, p.get("scheme")) or "").lower() for p in pids]
+    doi = next((normalize_doi(p.get("value")) for p, scheme in zip(pids, schemes) if scheme == "doi" and normalize_doi(p.get("value"))), None)
+    others = {scheme: p.get("value") for p, scheme in zip(pids, schemes) if scheme and scheme != "doi"}
     ids = {"doi": doi} if doi else {}
     ids.update({k: v for k, v in others.items() if k in ("handle", "arxiv", "pmid", "urn")})
-    typ = r.get("type") or ""
+    typ = text(SOURCE_ID, r.get("type")) or ""
     return make_record(
-        identity=f"doi:{doi}" if doi else f"openaire:{r.get('id')}",
+        identity=f"doi:{doi}" if doi else f"openaire:{key(SOURCE_ID, r.get('id'))}",
         kind=_KIND.get(typ, "document"), source_id=SOURCE_ID, title=r.get("mainTitle"),
-        authors=[a.get("fullName") for a in (plain(r.get("authors")) or []) if a.get("fullName")],
-        year=year_from(r.get("publicationDate")), venue=(r.get("container") or {}).get("name") or r.get("publisher"),
+        authors=[n for n in (text(SOURCE_ID, a.get("fullName")) for a in listed(SOURCE_ID, r, "authors")) if n],
+        year=year_from(r.get("publicationDate")), venue=text(SOURCE_ID, nested(SOURCE_ID, r, "container").get("name")) or text(SOURCE_ID, r.get("publisher")),
         identifiers=ids, links=links, license=licenses[0] if licenses else None,
         attribution="OpenAIRE",   # the CC-BY verdict is conditional on attribution (seed evidence)
-        extra={"openaire_id": r.get("id"), "access_right": (r.get("bestAccessRight") or {}).get("label"),
+        extra={"openaire_id": r.get("id"), "access_right": nested(SOURCE_ID, r, "bestAccessRight").get("label"),
                "has_doi": bool(doi)},
         raw=r,
     )
@@ -103,16 +106,16 @@ def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None
     resp = client.get(SOURCE_ID, "find", f"{BASE}/researchProducts", params=params, headers=hdrs, query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     j = need(SOURCE_ID, resp.json, kind=dict)
-    header = need(SOURCE_ID, j, "header", kind=dict)
-    # an answer may leave `results` out only when its header says nothing matched
-    rows = need(SOURCE_ID, j, "results") if j.get("results") is not None or header.get("numFound") != 0 else NO_MEMBERS
+    # an answer may leave `results` out only when its header says nothing matched; a header that cannot be read says nothing, and costs the
+    # members beside it only what it alone establishes — an end, a continuation
+    rows = need(SOURCE_ID, j, "results") if j.get("results") is not None or not counts_nothing(field(j, "header", "numFound")) else NO_MEMBERS
     # OpenAIRE's end: "the nextCursor returned matches the current cursor you've already specified"; and
     # numFound is "the total number of entities found", so a first page holding that many holds them all.
     # A missing nextCursor is undocumented: it neither continues nor ends (docs/PROVIDER-PAGINATION.md)
-    sent, found = cursor or "*", scalar(header.get("numFound"))
-    end = header.get("nextCursor") == sent or (sent == "*" and type(found) is int and len(rows) >= found)
+    sent, found, mark = cursor or "*", total(field(j, "header", "numFound"), len(rows)), token(field(j, "header", "nextCursor"))
+    end = mark == sent or (sent == "*" and found is not None and len(rows) >= found)
     return {"records": members(SOURCE_ID, rows, _record), "total": found,
-            "next_cursor": None if end else scalar(header.get("nextCursor")), "exhausted": end}
+            "next_cursor": None if end else mark, "exhausted": end}
 
 
 def resolve(client: Client, identity: str) -> dict | None:
@@ -127,5 +130,5 @@ def resolve(client: Client, identity: str) -> dict | None:
     if not check(SOURCE_ID, resp):
         return None
     j = need(SOURCE_ID, resp.json, kind=dict)
-    rows = need(SOURCE_ID, j, "results") if j.get("results") is not None or (j.get("header") or {}).get("numFound") != 0 else NO_MEMBERS
+    rows = need(SOURCE_ID, j, "results") if j.get("results") is not None or not counts_nothing(field(j, "header", "numFound")) else NO_MEMBERS
     return first_member(SOURCE_ID, rows, _record)

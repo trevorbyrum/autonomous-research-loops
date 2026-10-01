@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, Obj, check, members, need, plain, quote
+from .base import AdapterError, Client, Obj, check, key, listed, members, need, plain, quote, text
 
 SOURCE_ID = "openml"
 SMOKE = {'capability': 'resolve', 'identity': 'openml:61'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -20,8 +20,8 @@ def _did(target: str) -> str:
 
 
 def _list_record(d: dict) -> dict:
-    did = str(d.get("did"))
-    quality = {q.get("name"): q.get("value") for q in plain(d.get("quality")) or [] if q.get("name")}
+    did = key(SOURCE_ID, d.get("did"))
+    quality = {n: q.get("value") for q in listed(SOURCE_ID, d, "quality") if (n := text(SOURCE_ID, q.get("name")))}
     return make_record(identity=f"openml:{did}", kind="dataset", source_id=SOURCE_ID, title=d.get("name"), venue="OpenML",
                        identifiers={"dataset_id": did}, links=[f"https://www.openml.org/d/{did}"],
                        license=d.get("licence") or d.get("license"),   # captured whenever the listing carries it (D-25)
@@ -31,13 +31,13 @@ def _list_record(d: dict) -> dict:
 
 
 def _desc_record(d: dict) -> dict:
-    did = str(d.get("id"))
+    did = key(SOURCE_ID, d.get("id"))
     return make_record(identity=f"openml:{did}", kind="dataset", source_id=SOURCE_ID, title=d.get("name"),
-                       authors=[d.get("creator")] if isinstance(d.get("creator"), str) else list(plain(d.get("creator")) or []),
+                       authors=[d.get("creator")] if isinstance(d.get("creator"), str) else listed(SOURCE_ID, d, "creator"),
                        year=year_from(d.get("upload_date")), venue="OpenML", identifiers={"dataset_id": did},
-                       links=[f"https://www.openml.org/d/{did}"] + [u for u in (d.get("url"), d.get("parquet_url")) if u],
+                       links=[f"https://www.openml.org/d/{did}"] + [u for u in (text(SOURCE_ID, d.get("url")), text(SOURCE_ID, d.get("parquet_url"))) if u],
                        license=d.get("licence"),
-                       extra={"version": d.get("version"), "format": d.get("format"), "description": (d.get("description") or "")[:1000],
+                       extra={"version": d.get("version"), "format": d.get("format"), "description": (text(SOURCE_ID, d.get("description")) or "")[:1000],
                               "default_target": d.get("default_target_attribute"), "file_id": d.get("file_id"), "url": d.get("url"),
                               "parquet_url": d.get("parquet_url")},
                        raw=d)

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record
-from .base import AdapterError, Client, check, need, plain
+from .base import AdapterError, Client, check, identified, need, plain
 
 SOURCE_ID = "fred"
 SMOKE = {'capability': 'data', 'params': {'series': 'GDP', 'limit': 1}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -90,11 +90,11 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
         seriess = plain(need(SOURCE_ID, resp.json, "seriess"))
-    entries = [{"id": s.get("id"), "label": s.get("title"), "kind": "series",
-                "units": s.get("units"), "frequency": s.get("frequency"),
-                "observation_range": f"{s.get('observation_start')}..{s.get('observation_end')}",
-                "data_request": {"tool": "research_data",
-                                 "arguments": {"source": SOURCE_ID, "params": {"series": s.get("id")}}}}
-               for s in seriess if s.get("id")]
+    entries = identified(SOURCE_ID, seriess, [{"id": s.get("id"), "label": s.get("title"), "kind": "series",
+                                               "units": s.get("units"), "frequency": s.get("frequency"),
+                                               "observation_range": f"{s.get('observation_start')}..{s.get('observation_end')}",
+                                               "data_request": {"tool": "research_data",
+                                                                "arguments": {"source": SOURCE_ID, "params": {"series": s.get("id")}}}}
+                                              for s in seriess if s.get("id")])
     nxt = str(int(cursor or 0) + limit) if (not within and len(entries) == limit) else None
     return {"entries": entries, "next": nxt}

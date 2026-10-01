@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record
-from .base import AdapterError, Client, PayloadError, check, need, plain
+from .base import AdapterError, Client, PayloadError, check, identified, need, plain
 
 SOURCE_ID = "census"
 SMOKE = {'capability': 'data', 'params': {'dataset': '2022/acs/acs1', 'get': ['NAME'], 'for': 'state:37'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -48,6 +48,8 @@ def data(client: Client, params: dict) -> dict:
     j = plain(need(SOURCE_ID, resp.json))   # the rows of ONE table record: read whole, a malformed row makes it unreadable
     if not j or not isinstance(j[0], list):
         raise PayloadError(f"{SOURCE_ID}: the answer is not a table (no header row)")
+    if not all(isinstance(r, list) for r in j[1:]) or not all(isinstance(h, str) for h in j[0]):
+        raise PayloadError(f"{SOURCE_ID}: a row or a column name of the table is not what it should be: the table is unreadable, not shorter")
     header, rows = j[0], [dict(zip(j[0], r)) for r in j[1:]]
     rec = make_record(identity=identity, kind="series", source_id=SOURCE_ID, title=f"{dataset}: {query['get']}",
                       links=[f"https://api.census.gov/data/{dataset.strip('/')}.html"], attribution=ATTRIBUTION,
@@ -68,17 +70,20 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
         q = (query or "").lower()
-        entries = []
-        for d in plain(need(SOURCE_ID, resp.json, "dataset")):
+        entries, listed, named = [], plain(need(SOURCE_ID, resp.json, "dataset")), []
+        for d in listed:
             path = "/".join(d.get("c_dataset") or [])
             vintage = d.get("c_vintage")
             # unvintaged datasets (timeseries/bds and 87 friends) are real: their path IS
             # the dataset id (D-32a finding 6)
             ds = (f"{vintage}/{path}" if vintage else path) if path else None
             title = d.get("title") or ""
+            if ds:
+                named.append(ds)
             if not ds or (q and q not in title.lower() and q not in ds.lower()):
                 continue
             entries.append({"id": ds, "label": title, "kind": "dataset", "children": True, "within": ds})
+        identified(SOURCE_ID, listed, named)
         page = entries[offset:offset + limit]
         return {"entries": page, "next": str(offset + limit) if len(entries) > offset + limit else None}
     resp = client.get(SOURCE_ID, "catalog", f"https://api.census.gov/data/{within.strip('/')}/variables.json",
@@ -88,7 +93,10 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
     q = (query or "").lower()
     entries = []
     for name, meta in plain(need(SOURCE_ID, resp.json, "variables", kind=dict)).items():
-        meta = meta or {}
+        if meta is None:
+            meta = {}
+        if not isinstance(meta, dict):
+            raise PayloadError(f"{SOURCE_ID}: the variable {name!r} is {type(meta).__name__}, not an object: the catalogue is unreadable, not shorter")
         label = meta.get("label") or ""
         if q and q not in name.lower() and q not in label.lower():
             continue

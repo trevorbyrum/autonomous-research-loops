@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.licenses import allow_listed
-from .base import NO_MEMBERS, AdapterError, Client, Obj, PayloadError, check, members, need, next_link, own_link, plain, quote
+from .base import AdapterError, Client, Obj, PayloadError, check, key, listed, members, need, next_link, optional, own_link, plain, quote, text
 
 SOURCE_ID = "huggingface"
 SMOKE = {'capability': 'resolve', 'identity': 'stanfordnlp/imdb'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -25,34 +25,51 @@ def _repo(target: str) -> str:
 
 
 def _license(d: Obj) -> str | None:
-    card = d.get("cardData") or {}
-    lic = plain(card.get("license"))
-    if isinstance(lic, list):
-        lic = ", ".join(str(x) for x in lic)
+    """The repository's licence: its card's, else a `license:` tag; none when it states none. A card or tags that are there and are not
+    what they should be (an object, a list) are unreadable, and so is a licence that is not text."""
+    lic = plain(optional(SOURCE_ID, d, "cardData", dict).get("license"))
+    if isinstance(lic, list) and all(isinstance(x, str) for x in lic):
+        lic = ", ".join(lic)
+    if lic is not None and not isinstance(lic, str):
+        raise PayloadError(f"{SOURCE_ID}: the card's license is not text")
     if lic:
-        return str(lic)
-    return next((t.split(":", 1)[1] for t in plain(d.get("tags")) or [] if t.startswith("license:")), None)
+        return lic
+    return next((t.split(":", 1)[1] for t in plain(optional(SOURCE_ID, d, "tags")) if isinstance(t, str) and t.startswith("license:")), None)
+
+
+def _file_count(d: Obj) -> int | None:
+    """How many files the Hub lists: none when it leaves `siblings` out, and unknown when it is there and cannot be read — never zero from a
+    holder that was not read."""
+    try:
+        return len(optional(SOURCE_ID, d, "siblings"))
+    except PayloadError:
+        return None
 
 
 def _record(d: Obj) -> dict:
     """A dataset's record. Its files are not read here: they are members of their own, listed by fetch() from the
     envelope, each decoded alone — a list of them copied into this record would be read by whatever builds this
     record, and one unreadable file would make the dataset unreadable with them (R7-2)."""
-    repo = d.get("id")
+    repo, author = key(SOURCE_ID, d.get("id")), text(SOURCE_ID, d.get("author"))
     return make_record(identity=f"hf:{repo}", kind="dataset", source_id=SOURCE_ID, title=repo,
-                       authors=[d.get("author")] if d.get("author") else [], year=year_from(d.get("lastModified") or d.get("createdAt")),
+                       authors=[author] if author else [], year=year_from(text(SOURCE_ID, d.get("lastModified")) or text(SOURCE_ID, d.get("createdAt"))),
                        venue="Hugging Face Hub", identifiers={"repo_id": repo}, links=[f"{BASE}/datasets/{repo}"], license=_license(d),
-                       extra={"tags": d.get("tags") or [], "downloads": d.get("downloads"), "likes": d.get("likes"), "gated": d.get("gated", False),
-                              "private": d.get("private", False), "description": (d.get("description") or "")[:1000],
-                              "file_count": len(d.get("siblings") or [])},
+                       extra={"tags": listed(SOURCE_ID, d, "tags"), "downloads": d.get("downloads"), "likes": d.get("likes"), "gated": d.get("gated", False),
+                              "private": d.get("private", False), "description": (text(SOURCE_ID, d.get("description")) or "")[:1000],
+                              "file_count": _file_count(d)},
                        raw=d)
+
+
+def _context(d: Obj) -> dict:
+    """What every file of a repository takes from it — its licence, and whether it is gated — and nothing else: the files are listed
+    from `siblings`, so a field of the repository that no file needs (its author, its tags' other entries) cannot cost them (R8)."""
+    return {"license": _license(d), "gated": d.get("gated", False)}
 
 
 def _dataset(resp) -> Obj:
     """A dataset envelope from a successful answer, or PayloadError: a 200 without one is unreadable."""
     j = need(SOURCE_ID, resp.json, kind=dict)
-    if not j.get("id"):
-        raise PayloadError(f"{SOURCE_ID}: the dataset answer carries no id")
+    key(SOURCE_ID, j.get("id"))   # a dataset answer that names no dataset is not one
     return j
 
 
@@ -115,7 +132,7 @@ def fetch(client: Client, target: str, *, path: str | None = None, download: boo
         d = _read(client, "fetch", rev_url, f"hf:{repo}@{revision}")
         if d is None:
             return {"identity": identity, "records": [], "capability_fact": f"repository (revision {revision}) not found"}
-        rec = _record(d)
+        rec = _context(d)
         if client.commercial and not allow_listed(rec["license"]):
             return {"identity": identity, "records": [],
                     "capability_fact": f"download refused before fetching: licence {rec['license'] or 'unknown'} is not usable commercially (R-8)"}
@@ -137,10 +154,10 @@ def fetch(client: Client, target: str, *, path: str | None = None, download: boo
         d = _read(client, "resolve", f"{BASE}/api/datasets/{quote(repo, safe='/')}", identity)
         if d is None:
             return {"identity": identity, "records": []}
-    rec = _record(d)
-    # the files are the envelope's `siblings`, each decoded alone: one that cannot be read costs that file only
-    siblings = need(SOURCE_ID, d, "siblings") if d.get("siblings") else NO_MEMBERS
-    files = members(SOURCE_ID, siblings, lambda sibling: _file(identity, repo, revision, rec["license"], sibling))
+    rec = _context(d)
+    # the files are the envelope's `siblings`, each decoded alone: one that cannot be read costs that file only; a `siblings` that is
+    # there and is not a list is not a repository with no files
+    files = members(SOURCE_ID, optional(SOURCE_ID, d, "siblings"), lambda sibling: _file(identity, repo, revision, rec["license"], sibling))
     return {"identity": identity, "records": files, "gated": rec["gated"]}
 
 

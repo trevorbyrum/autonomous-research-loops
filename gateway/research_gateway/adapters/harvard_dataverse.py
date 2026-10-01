@@ -4,7 +4,7 @@ from __future__ import annotations
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi
 from ..core.licenses import allow_listed
-from .base import NO_MEMBERS, AdapterError, Client, Obj, PayloadError, check, members, need, plain, scalar
+from .base import AdapterError, Client, Obj, PayloadError, check, key, listed, members, need, nested, optional, plain, text, total
 
 SOURCE_ID = "harvard_dataverse"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.7910/DVN/OY6CBK'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -27,38 +27,73 @@ def _field(fields: list, name: str):
 
 
 def search_record(base: str, source_id: str, item: dict) -> dict:
-    doi = normalize_doi((item.get("global_id") or "").replace("doi:", ""))
-    return make_record(identity=f"doi:{doi}" if doi else f"{source_id}:{item.get('entity_id')}", kind="dataset", source_id=source_id,
-                       title=item.get("name"), authors=item.get("authors") or [], year=year_from(item.get("published_at")),
+    doi = normalize_doi((text(source_id, item.get("global_id")) or "").replace("doi:", ""))
+    return make_record(identity=f"doi:{doi}" if doi else f"{source_id}:{key(source_id, item.get('entity_id'))}", kind="dataset", source_id=source_id,
+                       title=item.get("name"), authors=listed(source_id, item, "authors"), year=year_from(item.get("published_at")),
                        venue=item.get("name_of_dataverse"), identifiers={"doi": doi} if doi else {},
-                       links=[item.get("url") or f"{base}/dataset.xhtml?persistentId=doi:{doi}"],
+                       links=[text(source_id, item.get("url")) or f"{base}/dataset.xhtml?persistentId=doi:{doi}"],
                        license=item.get("license"),   # some Dataverse search hits state it; commercial use of the rest needs a resolve (D-25)
-                       extra={"description": (item.get("description") or "")[:1000], "subjects": item.get("subjects") or [],
+                       extra={"description": (text(source_id, item.get("description")) or "")[:1000], "subjects": listed(source_id, item, "subjects"),
                               "file_count": item.get("fileCount")},
                        raw=item)
 
 
-def dataset_record(base: str, source_id: str, d: dict) -> dict:
-    v = d.get("latestVersion") or {}
-    fields = plain(((v.get("metadataBlocks") or {}).get("citation") or {}).get("fields")) or []
-    doi = normalize_doi(f"{d.get('authority')}/{d.get('identifier')}") if d.get("identifier") else None
-    authors = [(a.get("authorName") or {}).get("value") for a in (_field(fields, "author") or []) if isinstance(a, dict)]
-    lic = v.get("license")
-    lic_name = lic.get("name") if isinstance(lic, Obj) else lic
-    files = v.get("files") or []
-    return make_record(identity=f"doi:{doi}" if doi else f"{source_id}:{d.get('id')}", kind="dataset", source_id=source_id,
+def _version(source_id: str, d: Obj) -> Obj:
+    """The dataset's latest version: empty when the dataset names none (missing or null), unreadable when it is there and is not an object."""
+    return optional(source_id, d, "latestVersion", dict)
+
+
+def _dataset_doi(d: Obj) -> str | None:
+    return normalize_doi(f"{d.get('authority')}/{d.get('identifier')}") if d.get("identifier") else None
+
+
+def _text(source_id: str, what: str, value):
+    if value is not None and not isinstance(value, str):
+        raise PayloadError(f"{source_id}: the dataset's {what} is not text")
+    return value
+
+
+def dataset_context(source_id: str, d: Obj) -> dict:
+    """What every file of a dataset takes from it, and nothing else: its identity, its licence, and the terms of use that limit a download.
+    The files are listed from the version's `files`, so a field no file needs (the title, the authors) cannot cost them (R8)."""
+    version = _version(source_id, d)
+    lic = version.get("license")
+    doi = _dataset_doi(d)
+    return {"identity": f"doi:{doi}" if doi else f"{source_id}:{key(source_id, d.get('id'))}",
+            "license": _text(source_id, "license", lic.get("name") if isinstance(lic, Obj) else lic),
+            "terms_of_use": _text(source_id, "terms of use", version.get("termsOfUse"))}
+
+
+def _file_count(source_id: str, version: Obj) -> int | None:
+    """How many files the version lists: none when it leaves `files` out, unknown when they are there and cannot be read."""
+    try:
+        return len(optional(source_id, version, "files"))
+    except PayloadError:
+        return None
+
+
+def dataset_record(base: str, source_id: str, d: Obj) -> dict:
+    v = _version(source_id, d)
+    context = dataset_context(source_id, d)
+    fields = plain(optional(source_id, optional(source_id, optional(source_id, v, "metadataBlocks", dict), "citation", dict), "fields"))
+    doi = _dataset_doi(d)
+    named = _field(fields, "author")
+    if named is not None and not isinstance(named, list):
+        raise PayloadError(f"{source_id}: the dataset's author field is {type(named).__name__}, not a list")
+    authors = [text(source_id, nested(source_id, a, "authorName").get("value")) for a in named or []]
+    return make_record(identity=context["identity"], kind="dataset", source_id=source_id,
                        title=_field(fields, "title"), authors=[a for a in authors if a], year=year_from(v.get("releaseTime")),
                        venue=d.get("publisher"), identifiers={"doi": doi} if doi else {},
-                       links=[d.get("persistentUrl") or f"{base}/dataset.xhtml?persistentId=doi:{doi}"], license=lic_name,
-                       extra={"version": f"{v.get('versionNumber')}.{v.get('versionMinorNumber')}", "file_count": len(files),
-                              "terms_of_use": v.get("termsOfUse")},
+                       links=[text(source_id, d.get("persistentUrl")) or f"{base}/dataset.xhtml?persistentId=doi:{doi}"], license=context["license"],
+                       extra={"version": f"{v.get('versionNumber')}.{v.get('versionMinorNumber')}", "file_count": _file_count(source_id, v),
+                              "terms_of_use": context["terms_of_use"]},
                        raw=d)
 
 
 def _file(base: str, source_id: str, dataset: dict, f: dict) -> dict:
-    df = f.get("dataFile") or {}
-    return make_record(identity=f"{dataset['identity']}#{df.get('id')}", kind="file", source_id=source_id,
-                       title=f.get("label") or df.get("filename"), license=dataset.get("license"),
+    df = nested(source_id, f, "dataFile")
+    return make_record(identity=f"{dataset['identity']}#{key(source_id, df.get('id'))}", kind="file", source_id=source_id,
+                       title=text(source_id, f.get("label")) or text(source_id, df.get("filename")), license=dataset.get("license"),
                        links=[f"{base}/api/access/datafile/{df.get('id')}"],
                        extra={"file_id": df.get("id"), "content_type": df.get("contentType"), "size": df.get("filesize"),
                               "restricted": f.get("restricted", False), "description": df.get("description")},
@@ -67,8 +102,7 @@ def _file(base: str, source_id: str, dataset: dict, f: dict) -> dict:
 
 def file_records(base: str, source_id: str, dataset: dict, d: dict) -> list:
     """The dataset's files, each decoded alone (base.members): None where a file member is unreadable."""
-    version = d.get("latestVersion") or {}
-    files = need(source_id, version, "files") if version.get("files") else NO_MEMBERS   # a dataset without files has none
+    files = optional(source_id, _version(source_id, d), "files")   # a dataset without files has none; files that are not a list are not none
     return members(source_id, files, lambda f: _file(base, source_id, dataset, f))
 
 
@@ -79,12 +113,13 @@ def find_in(client: Client, base: str, source_id: str, secret_name: str | None, 
     resp = client.get(source_id, "find", f"{base}/api/search", params=params, headers=headers(client, secret_name), query=query)
     check(source_id, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     data = need(source_id, resp.json, "data", kind=dict)
-    items, total = need(source_id, data, "items"), scalar(data.get("total_count"))
+    items = need(source_id, data, "items")
+    count = total(data.get("total_count"), (page - 1) * per_page + len(items))
     # the Dataverse guide pages by moving `start` on by the page size "until you reach the total_count"
     # (its loop: `condition = start < total`); a missing total neither continues nor ends (docs/PROVIDER-PAGINATION.md)
-    reached = type(total) is int and page * per_page >= total
-    return {"records": members(source_id, items, lambda i: search_record(base, source_id, i)), "total": total,
-            "next_page": page + 1 if type(total) is int and not reached else None, "exhausted": reached}
+    reached = count is not None and page * per_page >= count
+    return {"records": members(source_id, items, lambda i: search_record(base, source_id, i)), "total": count,
+            "next_page": page + 1 if count is not None and not reached else None, "exhausted": reached}
 
 
 def get_dataset(client: Client, base: str, source_id: str, secret_name: str | None, target: str, request_type: str) -> dict | None:
@@ -108,7 +143,7 @@ def fetch_in(client: Client, base: str, source_id: str, secret_name: str | None,
         d = get_dataset(client, base, source_id, secret_name, target, "fetch")
         if d is None:
             return {"identity": target, "records": [], "capability_fact": "dataset not found"}
-        ds = dataset_record(base, source_id, d)
+        ds = dataset_context(source_id, d)
         files = file_records(base, source_id, ds, d)
         wanted = [f for f in files if f and f["file_id"] == int(file_id)]
         if not wanted:
@@ -133,7 +168,7 @@ def fetch_in(client: Client, base: str, source_id: str, secret_name: str | None,
     d = get_dataset(client, base, source_id, secret_name, target, "fetch")
     if d is None:
         return {"identity": target, "records": []}
-    ds = dataset_record(base, source_id, d)
+    ds = dataset_context(source_id, d)
     return {"identity": ds["identity"], "records": file_records(base, source_id, ds, d)}
 
 

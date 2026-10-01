@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record
-from .base import AdapterError, Client, check, members, need, plain
+from .base import AdapterError, Client, check, identified, key, members, need, optional, plain, text
 
 SOURCE_ID = "bls"
 SMOKE = {'capability': 'data', 'params': {'series': 'CUUR0000SA0', 'start_year': 2025, 'end_year': 2025}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -24,11 +24,13 @@ DATA_PARAMS = {
 }
 
 def _series(s: dict) -> dict:
-    obs = [(f"{d.get('year')}-{d.get('period')}", d.get("value")) for d in reversed(plain(s.get("data")) or [])]
-    cat = s.get("catalog") or {}
-    return make_record(identity=f"series:bls:{s.get('seriesID')}", kind="series", source_id=SOURCE_ID,
-                       title=cat.get("series_title") or s.get("seriesID"),
-                       links=[f"https://data.bls.gov/timeseries/{s.get('seriesID')}"], attribution=ATTRIBUTION,
+    series_id = key(SOURCE_ID, s.get("seriesID"))
+    obs = [(f"{key(SOURCE_ID, d.get('year'))}-{key(SOURCE_ID, d.get('period'))}", d.get("value"))
+           for d in reversed(plain(optional(SOURCE_ID, s, "data")))]   # a series with no data has none; data that is not a list is unreadable
+    cat = optional(SOURCE_ID, s, "catalog", dict)
+    return make_record(identity=f"series:bls:{series_id}", kind="series", source_id=SOURCE_ID,
+                       title=text(SOURCE_ID, cat.get("series_title")) or series_id,
+                       links=[f"https://data.bls.gov/timeseries/{series_id}"], attribution=ATTRIBUTION,
                        extra={"observations": obs, "survey": cat.get("survey_name"), "seasonality": cat.get("seasonality")},
                        raw=s)
 
@@ -75,9 +77,11 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
         q = (query or "").lower()
+        surveys = plain(need(SOURCE_ID, resp.json, "Results", "survey"))
+        identified(SOURCE_ID, surveys, [s for s in surveys if s.get("survey_abbreviation")])
         entries = [{"id": s.get("survey_abbreviation"), "label": s.get("survey_name"), "kind": "survey",
                     "children": True, "within": s.get("survey_abbreviation")}
-                   for s in plain(need(SOURCE_ID, resp.json, "Results", "survey"))
+                   for s in surveys
                    if s.get("survey_abbreviation")
                    and (not q or q in str(s.get("survey_name", "")).lower()
                         or q in str(s.get("survey_abbreviation", "")).lower())]
@@ -90,10 +94,10 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
     if not check(SOURCE_ID, resp, allow_404=False):
         return {"entries": []}
     series = plain(need(SOURCE_ID, resp.json, "Results", "series"))
-    entries = [{"id": s.get("seriesID"), "label": s.get("seriesID"), "kind": "series",
-                "data_request": {"tool": "research_data",
-                                 "arguments": {"source": SOURCE_ID, "params": {"series": s.get("seriesID")}}}}
-               for s in series if s.get("seriesID")]
+    entries = identified(SOURCE_ID, series, [{"id": s.get("seriesID"), "label": s.get("seriesID"), "kind": "series",
+                                              "data_request": {"tool": "research_data",
+                                                               "arguments": {"source": SOURCE_ID, "params": {"series": s.get("seriesID")}}}}
+                                             for s in series if s.get("seriesID")])
     offset = int(cursor or 0)
     page = entries[offset:offset + limit]
     return {"entries": page, "next": str(offset + limit) if len(entries) > offset + limit else None,

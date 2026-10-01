@@ -31,6 +31,7 @@ reviewer reads it. The behaviour of the lists that ARE members is tested in test
 from __future__ import annotations
 
 import ast
+import shutil
 import tempfile
 import textwrap
 import unittest
@@ -42,7 +43,7 @@ from research_gateway.core.canonical import make_record
 from research_gateway.core.payload import OMIT, Members, Obj, PayloadError, plain, view
 
 ROOT = Path(__file__).resolve().parents[1] / "research_gateway"
-DOORS = ("plain", "view")        # functions that hand a raw value back, or wrap one the caller holds
+DOORS = ("plain", "view", "listed")   # functions that hand a raw value back (`listed`: one record's own list, plain), or wrap one the caller holds
 CONSTRUCTORS = ("Members",)       # `Members(items)` wraps a list the caller already holds
 METHODS = ("each",)               # `Members.each(build)` hands back a plain list of whatever the builder returned
 
@@ -52,8 +53,9 @@ USES = {
     ("adapters/base.py", "<module>"): (2, "NO_MEMBERS, the empty list, and the table from a kind to its view"),
     ("adapters/base.py", "members"): (1, "the one place that reads a list's members with each(): it keeps only records that name something and leaves the rest dropped"),
     ("adapters/base.py", "Response.json"): (1, "the one place a parsed answer becomes a view"),
+    ("adapters/base.py", "listed"): (1, "the one place a record's own list is handed out as plain data: every call of `listed` is a use of it, listed below like plain()"),
     ("adapters/base.py", "need"): (2, "wraps what it is given (a plain dict or list handed to it is made a view, never read) and maps a requested kind to its view"),
-    ("adapters/bea.py", "data"): (2, "BEA's rows are the payload of ONE table record, kept whole and never decoded one by one (Astra, 2b-repair-7)"),
+    ("adapters/bea.py", "data"): (3, "BEA's rows and the table's notes are the payload of ONE table record, kept whole and never decoded one by one (Astra, 2b-repair-7)"),
     ("adapters/bea.py", "catalog.call"): (1, "a catalogue's entries, answered whole: one that cannot be read makes the catalogue unreadable, never a shorter one"),
     ("adapters/bis.py", "data.record"): (1, "the dimension attributes of ONE <Series> element"),
     ("adapters/bls.py", "_series"): (1, "the observations of ONE series: rows of one record"),
@@ -71,7 +73,9 @@ USES = {
     ("adapters/govinfo.py", "_record"): (1, "ONE package's download links"),
     ("adapters/harvard_dataverse.py", "dataset_record"): (1, "ONE dataset's citation fields"),
     ("adapters/huggingface.py", "_license"): (2, "ONE repository's licence value and tags (its files are members, read by fetch)"),
-    ("adapters/openaire.py", "_record"): (3, "ONE product's own pids, instances and authors"),
+    ("adapters/huggingface.py", "_record"): (1, "ONE repository's own tags"),
+    ("adapters/harvard_dataverse.py", "search_record"): (2, "ONE dataset hit's own authors and subjects"),
+    ("adapters/openaire.py", "_record"): (6, "ONE product's own pids, instances (their alternate identifiers, pids and urls) and authors"),
     ("adapters/openml.py", "_list_record"): (1, "ONE dataset's own qualities"),
     ("adapters/openml.py", "_desc_record"): (1, "ONE dataset's own creators"),
     ("adapters/semanticscholar.py", "_record"): (2, "ONE paper's own authors and publication types"),
@@ -79,13 +83,94 @@ USES = {
     ("adapters/socrata.py", "resolve"): (1, "ONE view's own columns"),
     ("adapters/unpaywall.py", "enrich"): (4, "an answer with no location list is its one best location: a list of one, built here from an object; and the two flags handed back"),
     ("core/canonical.py", "make_record"): (1, "a record is plain data: no view of the provider's answer ends up inside one"),
+    ("core/canonical.py", "_text"): (1, "one typed field of a record, read as plain data to check its kind (never a candidate list)"),
+    ("core/canonical.py", "_texts"): (1, "one list field of a record (authors, links), read as plain data to check its kind"),
+    ("core/canonical.py", "_year"): (1, "one typed field of a record, read as plain data to check its kind"),
+    ("core/canonical.py", "_identifiers"): (1, "one map field of a record, read as plain data to check its kind"),
     ("core/sdmx.py", "<module>"): (1, "NO_SERIES, the empty list"),
     ("core/sdmx.py", "series_xml"): (1, "the series of an XML message the gateway parsed itself, as members"),
-    ("core/sdmx.py", "series_reader"): (1, "the message's shared structure, read once and whole (every series needs it)"),
-    ("core/sdmx.py", "series_reader.read"): (1, "the observations of ONE series: rows of one record"),
+    ("core/sdmx.py", "_held"): (1, "the message's shared structure definitions (its dimensions), read once and whole: every series needs them"),
     ("harvest/registries.py", "crossref_journals.build"): (3, "ONE journal's own ISSNs and subjects"),
     ("harvest/registries.py", "datacite_repositories.build"): (1, "ONE repository's own subjects"),
 }
+
+
+# ---- what a provider-data module may import (R8-3): closed over every import form, not over the names the checker happens to look for
+STDLIB_ALLOWED = {"*": {"__future__", "re", "base64", "datetime", "time", "typing"}, "core/sdmx.py": {"xml.etree.ElementTree"},
+                  "adapters/openaire.py": {"threading"}}   # no JSON parser, no `ast`, no `sys`/`importlib`
+UNANALYSABLE_CALLS = ("eval", "exec", "compile", "vars", "globals", "locals", "__import__")
+
+
+def provider_modules(root: Path = ROOT) -> list[Path]:
+    """The modules that read a provider's answer: every adapter but the client, the SDMX helper, and the harvest loaders."""
+    return sorted([*(p for p in (root / "adapters").glob("*.py") if p.name not in ("base.py", "__init__.py")), root / "core" / "sdmx.py",
+                   *(p for p in (root / "harvest").glob("*.py") if p.name != "__init__.py")])
+
+
+def literal_names(path: Path, name: str) -> list[str] | None:
+    """The strings of the module-level `name = (...)` of the file, or None when it declares none."""
+    for node in ast.parse(path.read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == name for t in node.targets) and isinstance(node.value, (ast.Tuple, ast.List)):
+            return [e.value for e in node.value.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+    return None
+
+
+def defined_names(path: Path) -> set[str]:
+    """What the file defines at module level itself — a function, a class, a name assigned — and not what it imports."""
+    out = set()
+    for node in ast.parse(path.read_text(encoding="utf-8")).body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            out.add(node.name)
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            for t in (node.targets if isinstance(node, ast.Assign) else [node.target]):
+                out.update(n.id for n in ast.walk(t) if isinstance(n, ast.Name))
+    return out
+
+
+def import_findings(root: Path = ROOT) -> list[tuple[str, str]]:
+    """(file, what) for every import in a provider-data module that is not one the inventory admits. Every form is analysed, in every place it
+    can stand (a function, a try block): a star import is refused (it names nothing), a stdlib module is admitted only if listed
+    (STDLIB_ALLOWED: no JSON parser, so no provider answer is read by anything but Response.json), a name from adapters.base only if it is in
+    its `__all__` (so no parser, module or helper it happens to import can be re-exported), and a name from any other module of the package only
+    if that module defines it (not merely imports it)."""
+    base = root / "adapters" / "base.py"
+    api = set(literal_names(base, "__all__") or [])
+    out = [] if api else [("adapters/base.py", "declares no __all__: nothing it exports is admitted")]
+    for path in provider_modules(root):
+        rel = path.relative_to(root).as_posix()
+        strict = not rel.startswith("harvest/")
+        allowed = STDLIB_ALLOWED["*"] | STDLIB_ALLOWED.get(rel, set())
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Import):
+                out += [(rel, f"import {a.name}") for a in node.names if strict and a.name not in allowed]
+            elif isinstance(node, ast.ImportFrom):
+                if any(a.name == "*" for a in node.names):
+                    out.append((rel, f"from {'.' * node.level}{node.module or ''} import *"))
+                    continue
+                if node.level == 0:
+                    if strict and (node.module or "") not in allowed:
+                        out.append((rel, f"from {node.module} import"))
+                    continue
+                package = path.parent
+                for _ in range(node.level - 1):
+                    package = package.parent
+                where = package.joinpath(*(node.module or "").split(".")) if node.module else package
+                module = where / "__init__.py" if where.is_dir() else where.with_suffix(".py")
+                for a in node.names:
+                    if where.is_dir() and (where / f"{a.name}.py").exists():
+                        if a.name == "base":   # the client is imported by name, for then its `__all__` decides what is reached; as a module, anything is
+                            out.append((rel, "from . import base (as a module: import what it exports by name)"))
+                        continue   # any other module of the package, imported as one: its own imports are checked as its own
+                    if not module.exists():
+                        out.append((rel, f"from {'.' * node.level}{node.module or ''} import {a.name} (no such module)"))
+                    elif module.name == "base.py" and module.parent.name == "adapters":
+                        if a.name not in api:
+                            out.append((rel, f"from base import {a.name} (not in its __all__)"))
+                    elif a.name not in defined_names(module):
+                        out.append((rel, f"from {'.' * node.level}{node.module or ''} import {a.name} (not defined there: a re-export)"))
+            elif isinstance(node, ast.Call) and getattr(node.func, "id", None) in UNANALYSABLE_CALLS:
+                out.append((rel, f"{node.func.id}()"))
+    return sorted(set(out))
 
 
 def functions(tree: ast.AST):
@@ -255,6 +340,117 @@ class Doors(unittest.TestCase):
             self.assertEqual(reflection_in_adapters(root), [("adapters/new_lane.py", "import json"),
                                                             ("adapters/new_lane.py", "getattr() of a private name"),
                                                             ("adapters/new_lane.py", "__getattribute__")])
+
+
+class Imports(unittest.TestCase):
+    """R8-3 (Astra, 2b-repair-8): the inventory above names the doors by what a module imports, so an import it cannot read — a star, a
+    name re-exported by the client, `__import__` — walks a door in unseen, and two such mutants of OpenCitations passed every structural test.
+    The rule is now closed over import forms: what is not admitted by name is refused, and an import that cannot be analysed is refused.
+    Each of the reviewer's two complete mutants is a regression below, each with a permitted-import control."""
+
+    @staticmethod
+    def tree(root: Path, **edits: list) -> Path:
+        copy = root / "research_gateway"
+        shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        for rel, pairs in edits.items():
+            path = copy / rel.replace("__", "/", 1)
+            text = path.read_text(encoding="utf-8")
+            for old, new in pairs:
+                assert text.count(old) == 1, f"{rel}: {old!r} is found {text.count(old)} times"
+                text = text.replace(old, new)
+            path.write_text(text, encoding="utf-8")
+        return copy
+
+    OC = "adapters__opencitations.py"
+    OC_IMPORT = "from .base import OMIT, Client, check, first_member, members, need, text"
+    OC_READ = '    return {"identity": f"doi:{doi}", "what": what, "items": members(SOURCE_ID, need(SOURCE_ID, resp.json), lambda row: _link(key, row))}'
+    # the reviewer's first mutant: the rows are filtered with plain() before the decoder runs; the checker saw no `plain` because nothing named it
+    STAR = [(OC_IMPORT, "from .base import *"),
+            (OC_READ, '    rows = need(SOURCE_ID, [row for row in plain(need(SOURCE_ID, resp.json)) if row.get(key)])\n'
+                      '    return {"identity": f"doi:{doi}", "what": what, "items": members(SOURCE_ID, rows, lambda row: _link(key, row))}')]
+    # the second: the body is parsed and filtered by a parser imported from the client, which uses no door at all
+    PARSER = [(OC_IMPORT, OC_IMPORT + ", json as provider_json"),
+              (OC_READ, '    rows = need(SOURCE_ID, [row for row in provider_json.loads(resp.body) if row.get(key)])\n'
+                        '    return {"identity": f"doi:{doi}", "what": what, "items": members(SOURCE_ID, rows, lambda row: _link(key, row))}')]
+
+    def test_every_provider_data_module_imports_only_what_the_inventory_admits(self):
+        self.assertEqual(import_findings(), [])
+
+    def test_a_star_import_is_refused_and_so_is_the_reviewers_mutant(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            findings = import_findings(self.tree(Path(tmp), **{self.OC: self.STAR}))
+        self.assertEqual(findings, [("adapters/opencitations.py", "from .base import *")])
+
+    def test_a_parser_re_exported_by_the_client_is_refused_and_so_is_the_reviewers_mutant(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            findings = import_findings(self.tree(Path(tmp), **{self.OC: self.PARSER}))
+        self.assertEqual(findings, [("adapters/opencitations.py", "from base import json (not in its __all__)")])
+
+    def test_control_the_permitted_imports_are_not_refused(self):
+        """What the same two edits do when they only use what the client exports: nothing is refused for the import — the one thing a name
+        from `__all__` can still be is an unlisted door, which the inventory above catches by name, as it always did."""
+        permitted = [(self.OC_IMPORT, self.OC_IMPORT + ", quote as q, optional")]   # a permitted re-export (quote), and a helper in __all__
+        spelled_out = [(self.OC_IMPORT, self.OC_IMPORT + ", plain"), self.STAR[1]]
+        real = door_uses()
+
+        def changed(root: Path) -> list:
+            found = door_uses(root)
+            return sorted(k for k in found if found[k] != real.get(k))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.tree(Path(tmp), **{self.OC: permitted})
+            self.assertEqual((import_findings(root), changed(root)), ([], []))
+            root = self.tree(Path(tmp, "b"), **{self.OC: spelled_out})
+            self.assertEqual(import_findings(root), [])
+            self.assertEqual(changed(root), [("adapters/opencitations.py", "enrich")], "spelled out, the same body is an unlisted door the inventory reports")
+
+    def test_every_other_form_an_import_can_take_is_refused_or_analysed(self):
+        cases = {
+            "an import of a parser": ("import json", [("adapters/new.py", "import json")]),
+            "an aliased parser": ("import json as j", [("adapters/new.py", "import json")]),
+            "a parser from a stdlib module": ("from json import loads", [("adapters/new.py", "from json import")]),
+            "importlib": ("import importlib", [("adapters/new.py", "import importlib")]),
+            "sys": ("import sys", [("adapters/new.py", "import sys")]),
+            "the module the client imports it as": ("from .base import _parsed", [("adapters/new.py", "from base import _parsed (not in its __all__)")]),
+            "a module of the client, by name": ("from .base import urllib", [("adapters/new.py", "from base import urllib (not in its __all__)")]),
+            "the client as a module": ("from . import base", [("adapters/new.py", "from . import base (as a module: import what it exports by name)")]),
+            "a star from another module": ("from ..core.canonical import *", [("adapters/new.py", "from ..core.canonical import *")]),
+            "a name another module only re-exports": ("from ..core.canonical import PayloadError",
+                                                      [("adapters/new.py", "from ..core.canonical import PayloadError (not defined there: a re-export)")]),
+            "a module that is not there": ("from .nowhere import thing", [("adapters/new.py", "from .nowhere import thing (no such module)")]),
+            "inside a function": ("def f():\n    import json", [("adapters/new.py", "import json")]),
+            "inside a try": ("try:\n    import json\nexcept ImportError:\n    json = None", [("adapters/new.py", "import json")]),
+            "by __import__": ("j = __import__('json')", [("adapters/new.py", "__import__()")]),
+            "by eval": ("j = eval('1')", [("adapters/new.py", "eval()")]),
+        }
+        for name, (source, want) in cases.items():
+            with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
+                root = self.tree(Path(tmp))
+                (root / "adapters" / "new.py").write_text(f"from __future__ import annotations\n{source}\n", encoding="utf-8")
+                self.assertEqual(import_findings(root), want)
+        with tempfile.TemporaryDirectory() as tmp:   # and the forms that are admitted: the names the client exports, a stdlib module that is listed
+            root = self.tree(Path(tmp))
+            (root / "adapters" / "new.py").write_text("from __future__ import annotations\nimport re\nfrom .base import Client, members, quote as q\n"
+                                                      "from ..core.canonical import make_record\nfrom . import crossref\n", encoding="utf-8")
+            self.assertEqual(import_findings(root), [])
+
+    def test_the_client_has_no_parser_to_re_export_and_exports_no_module(self):
+        from types import ModuleType
+
+        from research_gateway.adapters import base
+        parsers = {"json", "ast", "simplejson", "orjson", "ujson", "yaml", "tomllib", "pickle", "marshal", "csv", "plistlib", "configparser", "xml"}
+        self.assertEqual({n for n, o in vars(base).items() if isinstance(o, ModuleType) and o.__name__.split(".")[0] in parsers}, set())
+        self.assertFalse(hasattr(base, "json"))
+        declared = literal_names(ROOT / "adapters" / "base.py", "__all__")
+        self.assertEqual(sorted(declared), sorted(base.__all__), "the checker reads the same __all__ the module has")
+        for name in base.__all__:
+            self.assertFalse(isinstance(getattr(base, name), ModuleType), name)
+
+    def test_provider_data_modules_are_exactly_the_ones_that_read_an_answer(self):
+        names = [p.relative_to(ROOT).as_posix() for p in provider_modules()]
+        self.assertIn("adapters/crossref.py", names)
+        self.assertIn("core/sdmx.py", names)
+        self.assertIn("harvest/registries.py", names)
+        self.assertNotIn("adapters/base.py", names)
 
 
 BODY = [{"id": "a", "n": 1}, 7, {"id": "b", "n": 2}]

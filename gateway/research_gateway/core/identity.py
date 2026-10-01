@@ -48,8 +48,19 @@ def register_schemes(schemes) -> None:
 _DOI_PREFIXES = ("https://doi.org/", "http://doi.org/", "https://dx.doi.org/", "http://dx.doi.org/", "doi:", "DOI:")
 
 
+def _identifier(value) -> str:
+    """The text of an identifier a provider sent, "" when it sent none (missing, null). Anything that is not text — a number, `false`, a list —
+    is not an identifier that happens to be empty, and no member of an answer may take it for one: PayloadError."""
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise PayloadError(f"{type(value).__name__} where an identifier belongs")
+    return value
+
+
 def normalize_doi(value: str | None) -> str | None:
-    """Lower-cased DOI without resolver prefix, or None if it is not a DOI."""
+    """Lower-cased DOI without resolver prefix, or None if it is not a DOI (or there is none). Not text at all is unreadable."""
+    value = _identifier(value)
     if not value:
         return None
     v = value.strip()
@@ -64,6 +75,7 @@ def normalize_doi(value: str | None) -> str | None:
 
 
 def normalize_issn(value: str | None) -> str | None:
+    value = _identifier(value)
     if not value:
         return None
     v = value.strip().upper().replace(" ", "")
@@ -74,6 +86,7 @@ def normalize_issn(value: str | None) -> str | None:
 
 
 def normalize_arxiv(value: str | None) -> str | None:
+    value = _identifier(value)
     if not value:
         return None
     v = value.strip()

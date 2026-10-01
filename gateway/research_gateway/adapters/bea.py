@@ -2,13 +2,31 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record
-from .base import AdapterError, Client, Obj, check, need, plain
+from .base import AdapterError, Client, Obj, PayloadError, check, identified, listed, need, plain, text
 
 SOURCE_ID = "bea"
 SMOKE = {'capability': 'data', 'params': {'method': 'GETDATASETLIST'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("data", "catalog",)
 BASE = "https://apps.bea.gov/api/data/"
 ATTRIBUTION = "U.S. Bureau of Economic Analysis"
+
+
+def _listing(results: dict, *keys: str, required: bool = False) -> list:
+    """The rows BEA lists under the first of `keys` its answer carries: a list, or the one row as a bare object (BEA's habit for a list of
+    one). None of the keys is an empty listing, unless the listing is `required`; one that is there and is anything else — `false`, `0`,
+    `""` — is unreadable, and is not an empty list."""
+    for key in keys:
+        value = results.get(key)
+        if value is None:
+            continue
+        if isinstance(value, list):
+            return value
+        if isinstance(value, dict) and value:   # a row has something in it
+            return [value]
+        raise PayloadError(f"{SOURCE_ID}: the answer's {key} is {type(value).__name__}, not a list")
+    if required:
+        raise PayloadError(f"{SOURCE_ID}: the answer has none of {', '.join(keys)}: a listing of nothing is not a catalogue")
+    return []
 
 
 def _error(j: dict) -> str | None:
@@ -57,11 +75,12 @@ def data(client: Client, params: dict) -> dict:
         return {"identity": identity, "records": [], "capability_fact": f"BEA: {err}"}
     results = plain(need(SOURCE_ID, j, "BEAAPI", "Results", kind=dict))   # the rows of ONE table record, kept whole
     # GetData answers carry Data; a GetData answer without it is unreadable, never an empty table
-    rows = plain(need(SOURCE_ID, results, "Data")) if method.lower() == "getdata" else (
-        results.get("Dataset") or results.get("ParamValue") or results.get("Parameter") or [])
-    notes = [n.get("NoteText") for n in results.get("Notes", []) if isinstance(n, dict) and n.get("NoteText")]
+    rows = plain(need(SOURCE_ID, results, "Data")) if method.lower() == "getdata" else _listing(results, "Dataset", "ParamValue", "Parameter")
+    notes = [t for t in (text(SOURCE_ID, n.get("NoteText")) for n in listed(SOURCE_ID, results, "Notes")) if t]
+    if rows and not isinstance(rows[0], dict):
+        raise PayloadError(f"{SOURCE_ID}: the table's first row is {type(rows[0]).__name__}, not an object")
     rec = make_record(identity=identity, kind="series", source_id=SOURCE_ID,
-                      title=(rows[0].get("TableName") or rows[0].get("LineDescription")) if rows and isinstance(rows[0], dict) else method,
+                      title=(text(SOURCE_ID, rows[0].get("TableName")) or text(SOURCE_ID, rows[0].get("LineDescription"))) if rows else method,
                       links=["https://apps.bea.gov/iTable/"], attribution=ATTRIBUTION,
                       extra={"rows": rows, "row_count": len(rows), "notes": notes, "method": method,
                              "query": {k: v for k, v in query.items() if k != "UserID"}}, raw=j)
@@ -94,34 +113,30 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         return plain(need(SOURCE_ID, j, "BEAAPI", "Results", kind=dict)), None   # a catalogue: its entries are read whole
 
     def rows_of(results, *keys):
-        for k in keys:
-            v = results.get(k)
-            if isinstance(v, list):
-                return v
-            if isinstance(v, dict):
-                return [v]
-        return []
+        return _listing(results, *keys, required=True)
 
     if not dataset:
         results, err = call("GETDATASETLIST")
         if results is None:
             return {"entries": [], **({"capability_fact": err} if err else {})}
-        entries = [{"id": d.get("DatasetName"), "label": d.get("DatasetDescription"), "kind": "dataset",
-                    "children": True, "within": d.get("DatasetName")}
-                   for d in rows_of(results, "Dataset") if d.get("DatasetName")]
+        rows = rows_of(results, "Dataset")
+        entries = identified(SOURCE_ID, rows, [{"id": d.get("DatasetName"), "label": d.get("DatasetDescription"), "kind": "dataset",
+                                                "children": True, "within": d.get("DatasetName")}
+                                               for d in rows if d.get("DatasetName")])
     elif not parameter:
         results, err = call("GetParameterList", DataSetName=dataset)
         if results is None:
             return {"entries": [], **({"capability_fact": err} if err else {})}
-        entries = [{"id": p.get("ParameterName"), "label": p.get("ParameterDescription"), "kind": "parameter",
-                    "children": True, "within": f"{dataset}/{p.get('ParameterName')}"}
-                   for p in rows_of(results, "Parameter") if p.get("ParameterName")]
+        rows = rows_of(results, "Parameter")
+        entries = identified(SOURCE_ID, rows, [{"id": p.get("ParameterName"), "label": p.get("ParameterDescription"), "kind": "parameter",
+                                                "children": True, "within": f"{dataset}/{p.get('ParameterName')}"}
+                                               for p in rows if p.get("ParameterName")])
     else:
         results, err = call("GetParameterValues", DataSetName=dataset, ParameterName=parameter)
         if results is None:
             return {"entries": [], **({"capability_fact": err} if err else {})}
-        entries = []
-        for v in rows_of(results, "ParamValue"):
+        entries, rows = [], rows_of(results, "ParamValue")
+        for v in rows:
             range_keys = [k for k in v if k.startswith(("First", "Last"))]
             exact = next((v[k] for k in (parameter, parameter.capitalize(), parameter.upper(), "Key") if v.get(k)), None)
             if exact is not None and not range_keys:
@@ -137,6 +152,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                                                  "arguments": {"source": SOURCE_ID,
                                                                "params": {"dataset": dataset, "table": v["TableName"]}},
                                                  "missing": f"a {parameter.lower()} within the listed span (plus frequency)"}})
+    identified(SOURCE_ID, rows, entries)
     if query:
         q = query.lower()
         entries = [e for e in entries if q in str(e.get("id", "")).lower() or q in str(e.get("label", "")).lower()]

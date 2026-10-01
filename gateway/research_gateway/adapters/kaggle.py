@@ -4,7 +4,7 @@ from __future__ import annotations
 import base64
 
 from ..core.canonical import make_record, year_from
-from .base import AdapterError, Client, check, members, need, quote
+from .base import AdapterError, Client, check, key, members, need, quote, text
 
 SOURCE_ID = "kaggle"
 SMOKE = {'capability': 'find', 'query': 'housing prices', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -27,10 +27,10 @@ def _ref(target: str) -> str:
 
 
 def _record(d: dict) -> dict:
-    ref = d.get("ref")
+    ref, owner = key(SOURCE_ID, d.get("ref")), text(SOURCE_ID, d.get("ownerName"))
     return make_record(identity=f"kaggle:{ref}", kind="dataset", source_id=SOURCE_ID, title=d.get("title"),
-                       authors=[d.get("ownerName")] if d.get("ownerName") else [], year=year_from(d.get("lastUpdated")),
-                       venue="Kaggle", identifiers={"dataset_ref": ref}, links=[d.get("url") or f"https://www.kaggle.com/datasets/{ref}"],
+                       authors=[owner] if owner else [], year=year_from(d.get("lastUpdated")),
+                       venue="Kaggle", identifiers={"dataset_ref": ref}, links=[text(SOURCE_ID, d.get("url")) or f"https://www.kaggle.com/datasets/{ref}"],
                        license=d.get("licenseName"),
                        extra={"subtitle": d.get("subtitle"), "total_bytes": d.get("totalBytes"), "last_updated": d.get("lastUpdated"),
                               "download_count": d.get("downloadCount"), "usability": d.get("usabilityRating")},
@@ -38,9 +38,10 @@ def _record(d: dict) -> dict:
 
 
 def _file(identity: str, ref: str, f: dict) -> dict:
-    return make_record(identity=f"{identity}#{f.get('name')}", kind="file", source_id=SOURCE_ID, title=f.get("name"),
-                       links=[f"{BASE}/datasets/download/{ref}/{quote(f.get('name') or '', safe='')}"],
-                       extra={"size": f.get("totalBytes") or f.get("size"), "created": f.get("creationDate")}, raw=f)
+    name = text(SOURCE_ID, f.get("name"))
+    return make_record(identity=f"{identity}#{name}", kind="file", source_id=SOURCE_ID, title=name,
+                       links=[f"{BASE}/datasets/download/{ref}/{quote(name or '', safe='')}"],
+                       extra={"size": f.get("totalBytes") if f.get("totalBytes") is not None else f.get("size"), "created": f.get("creationDate")}, raw=f)
 
 
 def find(client: Client, query: str, *, limit: int = 20, page: int = 1) -> dict:

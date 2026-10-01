@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 
 from ..core.canonical import make_record, year_from
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, Obj, PayloadError, check, members, need, plain, scalar
+from .base import AdapterError, Client, Obj, PayloadError, check, key, listed, members, need, nested, plain, text, total
 
 SOURCE_ID = "socrata"
 SMOKE = {'capability': 'find', 'query': 'business licenses', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -43,9 +44,9 @@ def _vouched(client: Client, domain: str) -> None:
         return
     resp = client.get(SOURCE_ID, "resolve", DISCOVERY, params={"domains": domain, "limit": 1, "only": "datasets"},
                       headers=_headers(client), identity=f"socrata:{domain}")
-    listed = {((r.get("metadata") or {}).get("domain") or "").lower() for r in plain(need(SOURCE_ID, resp.json, "results"))
-              if isinstance(r, dict)} if check(SOURCE_ID, resp) else set()
-    if domain not in listed:
+    vouched = {((r.get("metadata") or {}).get("domain") or "").lower() for r in plain(need(SOURCE_ID, resp.json, "results"))
+               if isinstance(r, dict)} if check(SOURCE_ID, resp) else set()
+    if domain not in vouched:
         raise AdapterError(f"{domain} is not a Socrata portal known to the discovery catalog (R-6)")
     _KNOWN_DOMAINS.add(domain)
 
@@ -55,12 +56,12 @@ def reset_known_domains() -> None:
 
 
 def _catalog_record(r: dict) -> dict:
-    res, meta = r.get("resource") or {}, r.get("metadata") or {}
-    domain, did = meta.get("domain"), res.get("id")
+    res, meta = nested(SOURCE_ID, r, "resource"), nested(SOURCE_ID, r, "metadata")
+    domain, did = key(SOURCE_ID, meta.get("domain")), key(SOURCE_ID, res.get("id"))
     return make_record(identity=f"socrata:{domain}:{did}", kind="dataset", source_id=SOURCE_ID, title=res.get("name"),
                        year=year_from(res.get("updatedAt")), venue=domain, identifiers={"dataset_id": did},
-                       links=[r.get("permalink") or r.get("link") or f"https://{domain}/d/{did}"], license=meta.get("license"),
-                       extra={"description": (res.get("description") or "")[:1000], "type": res.get("type"), "updated_at": res.get("updatedAt"),
+                       links=[text(SOURCE_ID, r.get("permalink")) or text(SOURCE_ID, r.get("link")) or f"https://{domain}/d/{did}"], license=meta.get("license"),
+                       extra={"description": (text(SOURCE_ID, res.get("description")) or "")[:1000], "type": res.get("type"), "updated_at": res.get("updatedAt"),
                               "attribution": res.get("attribution")},
                        raw=r)
 
@@ -73,7 +74,8 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0, portal
     resp = client.get(SOURCE_ID, "find", DISCOVERY, params=params, headers=_headers(client), query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     j = resp.json
-    results, total = need(SOURCE_ID, j, "results"), scalar(j.get("resultSetSize"))
+    results = need(SOURCE_ID, j, "results")
+    count = total(j.get("resultSetSize"), offset + len(results))
     records = members(SOURCE_ID, results, _catalog_record)
     # the catalog vouches for a portal only through a member read whole: learning domains from the raw
     # members, before each is decoded alone, let one non-object member lose the whole page (A4)
@@ -82,9 +84,22 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0, portal
     # is the last, and a missing size ends nothing. A next page past the 10,000 window would be refused, so
     # none is offered there — the window ends nothing either
     following = offset + len(results)
-    reached = type(total) is int and following >= total
-    nxt = following if results and type(total) is int and not reached and following + size <= SEARCH_WINDOW else None
-    return {"records": records, "total": total, "next_offset": nxt, "exhausted": reached}
+    reached = count is not None and following >= count
+    nxt = following if results and count is not None and not reached and following + size <= SEARCH_WINDOW else None
+    return {"records": records, "total": count, "next_offset": nxt, "exhausted": reached}
+
+
+def _epoch_year(value) -> int | None:
+    """The year of a view's timestamp, which Socrata states as epoch seconds (the leading digits of 1694726470 are not a year); none when
+    the view states none, and anything but a whole number of seconds is unreadable."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise PayloadError(f"{SOURCE_ID}: {type(value).__name__} where a timestamp belongs")
+    try:
+        return datetime.fromtimestamp(value, timezone.utc).year
+    except (OverflowError, OSError, ValueError):
+        raise PayloadError(f"{SOURCE_ID}: {value} is no timestamp") from None
 
 
 def resolve(client: Client, identity: str) -> dict | None:
@@ -96,11 +111,12 @@ def resolve(client: Client, identity: str) -> dict | None:
     v = need(SOURCE_ID, resp.json, kind=dict)
     if not v.get("id"):
         raise PayloadError(f"{SOURCE_ID}: the view answer carries no id")
-    lic = v.get("license") or {}
-    return make_record(identity=identity, kind="dataset", source_id=SOURCE_ID, title=v.get("name"), year=year_from(v.get("rowsUpdatedAt")),
+    lic = v.get("license")
+    return make_record(identity=identity, kind="dataset", source_id=SOURCE_ID, title=v.get("name"), year=_epoch_year(v.get("rowsUpdatedAt")),
                        venue=domain, identifiers={"dataset_id": did}, links=[f"https://{domain}/d/{did}"],
                        license=lic.get("name") if isinstance(lic, Obj) else lic,
-                       extra={"description": (v.get("description") or "")[:1000], "columns": [c.get("fieldName") for c in plain(v.get("columns")) or []],
+                       extra={"description": (text(SOURCE_ID, v.get("description")) or "")[:1000],
+                              "columns": [text(SOURCE_ID, c.get("fieldName")) for c in listed(SOURCE_ID, v, "columns")],
                               "attribution": v.get("attribution"), "license_link": lic.get("termsLink") if isinstance(lic, Obj) else None},
                        raw=v)
 

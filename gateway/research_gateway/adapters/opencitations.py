@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi
-from .base import OMIT, Client, check, first_member, members, need
+from .base import OMIT, Client, check, first_member, members, need, text
 
 SOURCE_ID = "opencitations"
 SMOKE = {'capability': 'enrich', 'identity': 'doi:10.1162/qss_a_00023', 'what': 'references'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -19,7 +19,7 @@ def _doi_of(identity: str) -> str | None:
 
 def _link(key: str, row: dict):
     """One citation row: the work on its `key` end, or OMIT when that end names no DOI."""
-    doi = next((part[4:] for part in (row.get(key) or "").split(" ") if part.startswith("doi:")), None)
+    doi = next((part[4:] for part in (text(SOURCE_ID, row.get(key)) or "").split(" ") if part.startswith("doi:")), None)
     if doi is None:
         return OMIT
     doi = normalize_doi(doi) or doi
@@ -30,8 +30,8 @@ def _link(key: str, row: dict):
 def _article(doi: str, m: dict) -> dict:
     """OpenCitations Meta's record for `doi`."""
     return make_record(identity=f"doi:{doi}", kind="article", source_id=SOURCE_ID, title=m.get("title"),
-                       authors=[a.strip() for a in (m.get("author") or "").split(";") if a.strip()],
-                       year=year_from(m.get("pub_date")), venue=(m.get("venue") or "").split(" [")[0] or None,
+                       authors=[a.strip() for a in (text(SOURCE_ID, m.get("author")) or "").split(";") if a.strip()],
+                       year=year_from(m.get("pub_date")), venue=(text(SOURCE_ID, m.get("venue")) or "").split(" [")[0] or None,
                        identifiers={"doi": doi}, raw=m)
 
 

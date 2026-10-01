@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record
 from ..core.identity import normalize_doi
-from .base import Client, check, first_member, members, need, scalar
+from .base import Client, check, first_member, key, members, need, text, token, total
 
 SOURCE_ID = "europepmc"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -14,13 +14,14 @@ BASE = "https://www.ebi.ac.uk/europepmc/webservices/rest"
 
 def _record(r: dict) -> dict:
     doi = normalize_doi(r.get("doi"))
-    ids = {k: v for k, v in (("doi", doi), ("pmid", r.get("pmid")), ("pmcid", r.get("pmcid"))) if v}
-    identity = f"doi:{doi}" if doi else (f"pmid:{r.get('pmid')}" if r.get("pmid") else f"europepmc:{r.get('id')}")
-    links = [f"https://europepmc.org/abstract/{r.get('source')}/{r.get('id')}"] if r.get("id") and r.get("source") else []
+    pmid, pmcid, published = text(SOURCE_ID, r.get("pmid")), text(SOURCE_ID, r.get("pmcid")), r.get("pubYear")
+    ids = {k: v for k, v in (("doi", doi), ("pmid", pmid), ("pmcid", pmcid)) if v}
+    identity = f"doi:{doi}" if doi else (f"pmid:{pmid}" if pmid else f"europepmc:{key(SOURCE_ID, r.get('id'))}")
+    links = [f"https://europepmc.org/abstract/{r.get('source')}/{r.get('id')}"] if text(SOURCE_ID, r.get("id")) and text(SOURCE_ID, r.get("source")) else []
     return make_record(
         identity=identity, kind="article", source_id=SOURCE_ID, title=r.get("title"),
-        authors=[a.strip() for a in (r.get("authorString") or "").rstrip(".").split(",") if a.strip()],
-        year=int(r["pubYear"]) if str(r.get("pubYear", "")).isdigit() else None, venue=r.get("journalTitle"),
+        authors=[a.strip() for a in (text(SOURCE_ID, r.get("authorString")) or "").rstrip(".").split(",") if a.strip()],
+        year=None if isinstance(published, str) and not published.isdigit() else published, venue=r.get("journalTitle"),   # text that is no year names none
         identifiers=ids, links=links, license=r.get("license"),  # per-article CC variant when the source states one
         extra={"open_access": (r.get("isOpenAccess") == "Y"), "has_full_text": (r.get("hasTextMinedTerms") == "Y") or (r.get("inEPMC") == "Y"),
                "redistributable": False},
@@ -37,9 +38,9 @@ def find(client: Client, query: str, *, limit: int = 20, cursor: str | None = No
     # Europe PMC documents only the continuation — "For every following page use the value of the returned
     # nextCursorMark element" — and no last page: a cursor that moves continues, nothing here ends the lane, and
     # a cursor handed back unchanged would only repeat this page (docs/PROVIDER-PAGINATION.md)
-    mark = scalar(j.get("nextCursorMark"))
+    mark = token(j.get("nextCursorMark"))
     nxt = mark if mark not in (None, cursor or "*") else None
-    return {"records": members(SOURCE_ID, results, _record), "total": scalar(j.get("hitCount")), "next_cursor": nxt,
+    return {"records": members(SOURCE_ID, results, _record), "total": total(j.get("hitCount"), len(results)), "next_cursor": nxt,
             "exhausted": False}
 
 

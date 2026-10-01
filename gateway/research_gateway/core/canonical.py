@@ -15,23 +15,69 @@ KINDS = ("article", "dataset", "software", "document", "series", "citation", "oa
          "venue", "repository")  # venue = journal/conference/book series; repository = data or publication repository
 
 
+def _text(name: str, value) -> str | None:
+    """A canonical text field: text, or nothing. Any other kind is an unreadable member (PayloadError) — never a title of 5, a venue of
+    `false` or a licence that is a list, which every later reader of a record (the merge, the licence gate) would take for text."""
+    value = plain(value)
+    if value is None or isinstance(value, str):
+        return value
+    raise PayloadError(f"a record's {name} is {type(value).__name__}, not text")
+
+
+def _texts(name: str, value) -> list[str]:
+    """A canonical list of text (authors, links): the text in it, with a missing entry left out; a list that holds anything else, or a
+    value that is not a list, is unreadable."""
+    value = plain(value)
+    if value is None:
+        return []
+    if not isinstance(value, (list, tuple)) or not all(v is None or isinstance(v, str) for v in value):
+        raise PayloadError(f"a record's {name} is not a list of text")
+    return [v for v in value if v is not None]
+
+
+def _year(value) -> int | None:
+    """A canonical year: a whole number, or the digits of one a provider sent as text; nothing when it names none. Anything else is unreadable."""
+    value = plain(value)
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    if isinstance(value, str) and value.isdigit():
+        value = int(value)
+    if value is None or (isinstance(value, int) and not isinstance(value, bool)):
+        return value
+    raise PayloadError(f"a record's year is {type(value).__name__} {value!r}, not a year")
+
+
+def _identifiers(value) -> dict:
+    value = plain(value)
+    if value is None:
+        return {}
+    if not isinstance(value, dict) or not all(isinstance(k, str) and (v is None or isinstance(v, str)) for k, v in value.items()):
+        raise PayloadError("a record's identifiers are not a map of text")
+    return {k: v for k, v in value.items() if v is not None}
+
+
 def make_record(*, identity: str, kind: str, source_id: str, title: str | None = None,
                 authors: list[str] | None = None, year: int | None = None, venue: str | None = None,
                 identifiers: dict[str, str] | None = None, links: list[str] | None = None,
                 license: str | None = None, attribution: str | None = None, extra: dict | None = None,
                 raw: Any = None) -> dict:
+    """The one constructor of a canonical record. Its typed fields are checked here, whatever the adapter passed: a value of the wrong
+    kind makes the member that carried it unreadable (PayloadError; members() drops and counts it), instead of travelling on as a
+    title that is a number to code that calls `.lower()` on it (R8: one such member made the whole request raise)."""
     if kind not in KINDS:
         raise ValueError(f"unknown record kind {kind!r}")
+    title, venue, license, attribution = _text("title", title), _text("venue", venue), _text("license", license), _text("attribution", attribution)
+    authors, links, year, identifiers = _texts("authors", authors), _texts("links", links), _year(year), _identifiers(identifiers)
     rec = {
         "identity": identity,
         "kind": kind,
         "source_id": source_id,
         "title": title,
-        "authors": authors or [],
+        "authors": authors,
         "year": year,
         "venue": venue,
-        "identifiers": identifiers or {},
-        "links": links or [],
+        "identifiers": identifiers,
+        "links": links,
         "license": license,
         "attribution": attribution,
         # when THIS source's answer was obtained — a citation's retrieval date, never a
@@ -75,10 +121,13 @@ def member_summary(member: dict) -> dict:
 
 
 def year_from(text: str | None) -> int | None:
-    """First 4-digit year in a date-ish string, or None."""
+    """First 4-digit year in a date-ish string, or None when there is none (or no string). Anything that is not text — a number, a boolean, a
+    list — is unreadable, not a date that names no year."""
+    if text is not None and not isinstance(text, str):
+        raise PayloadError(f"{type(text).__name__} where a date belongs")
     if not text:
         return None
-    s = str(text)
+    s = text
     for i in range(len(s) - 3):
         chunk = s[i:i + 4]
         if chunk.isdigit() and 1500 <= int(chunk) <= 2100:

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record
 from ..core.identity import normalize_arxiv, normalize_doi
-from .base import NO_MEMBERS, OMIT, Client, PayloadError, check, members, need, plain, scalar
+from .base import NO_MEMBERS, OMIT, Client, PayloadError, check, counts_nothing, listed, members, need, nested, plain, text, token, total
 
 SOURCE_ID = "semanticscholar"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -40,17 +40,18 @@ def _paper_id(identity: str) -> str | None:
 
 
 def _record(p: dict) -> dict:
-    ext = p.get("externalIds") or {}
+    ext, access = nested(SOURCE_ID, p, "externalIds"), nested(SOURCE_ID, p, "openAccessPdf")
     doi = normalize_doi(ext.get("DOI"))
     arx = normalize_arxiv(ext.get("ArXiv"))
-    ids = {k: v for k, v in (("doi", doi), ("arxiv", arx), ("pmid", ext.get("PubMed")), ("s2", p.get("paperId"))) if v}
-    pdf = (p.get("openAccessPdf") or {}).get("url")
-    identity = f"doi:{doi}" if doi else (f"arxiv:{arx}" if arx else f"s2:{p.get('paperId')}")
+    pmid, paper_id = text(SOURCE_ID, ext.get("PubMed")), text(SOURCE_ID, p.get("paperId"))
+    ids = {k: v for k, v in (("doi", doi), ("arxiv", arx), ("pmid", pmid), ("s2", paper_id)) if v}
+    pdf = text(SOURCE_ID, access.get("url"))
+    identity = f"doi:{doi}" if doi else (f"arxiv:{arx}" if arx else f"s2:{paper_id}")
     return make_record(
         identity=identity, kind="article", source_id=SOURCE_ID, title=p.get("title"),
-        authors=[a.get("name") for a in (plain(p.get("authors")) or []) if a.get("name")], year=p.get("year"),
-        venue=p.get("venue") or None, identifiers=ids, links=[u for u in (pdf,) if u],
-        license=(p.get("openAccessPdf") or {}).get("license"),
+        authors=[n for n in (text(SOURCE_ID, a.get("name")) for a in listed(SOURCE_ID, p, "authors")) if n], year=p.get("year"),
+        venue=text(SOURCE_ID, p.get("venue")) or None, identifiers=ids, links=[pdf] if pdf else [],
+        license=access.get("license"),
         attribution="Semantic Scholar",
         extra={"cited_by_count": p.get("citationCount"), "reference_count": p.get("referenceCount"),
                "publication_types": plain(p.get("publicationTypes")), "redistributable": False},
@@ -60,8 +61,8 @@ def _record(p: dict) -> dict:
 
 def _linked(key: str, row: dict):
     """One citation or reference row: its linked paper as a citation record, or OMIT when that paper is unidentified."""
-    paper = row.get(key) or {}
-    if not (paper.get("paperId") or (paper.get("externalIds") or {}).get("DOI")):
+    paper = nested(SOURCE_ID, row, key)
+    if not (text(SOURCE_ID, paper.get("paperId")) or text(SOURCE_ID, nested(SOURCE_ID, paper, "externalIds").get("DOI"))):
         return OMIT
     return {**_record(paper), "kind": "citation"}
 
@@ -73,11 +74,11 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0, year_f
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     j = need(SOURCE_ID, resp.json, kind=dict)
     # the search answer omits `data` when nothing matched; then it must say total 0
-    rows = need(SOURCE_ID, j, "data") if "data" in j or j.get("total") != 0 else NO_MEMBERS
+    rows = need(SOURCE_ID, j, "data") if "data" in j or not counts_nothing(j.get("total")) else NO_MEMBERS
     # `next` is "Absent if no more data exists" — short of the 1,000-result cap, where the documentation
     # does not say what an absent `next` means; `total` is "approximate" and ends nothing
     end = j.get("next") is None and offset + len(rows) < SEARCH_CAP
-    return {"records": members(SOURCE_ID, rows, _record), "total": scalar(j.get("total")), "next_offset": scalar(j.get("next")), "exhausted": end}
+    return {"records": members(SOURCE_ID, rows, _record), "total": total(j.get("total"), offset + len(rows)), "next_offset": token(j.get("next")), "exhausted": end}
 
 
 def resolve(client: Client, identity: str) -> dict | None:

@@ -16,7 +16,7 @@ import os
 import sys
 from typing import Iterator
 
-from ..adapters.base import Client, Members, Obj, check, members, plain, scalar
+from ..adapters.base import Client, Members, Obj, check, field, members, optional, plain, token, total
 from ..core import db
 from ..core.canonical import make_record
 from ..core.identity import normalize_issn, normalize_title
@@ -86,7 +86,12 @@ def crossref_journals(client: Client, *, limit: int | None = None, rows: int = 1
             seen += 1
             if limit and seen >= limit:
                 return
-        cursor = scalar(msg.get("next-cursor")) if items and len(items) >= rows else None
+        if len(items) < rows:   # Crossref: "fewer than the number of expected rows" is the end of the result set
+            cursor = None
+        else:
+            cursor = token(msg.get("next-cursor"))
+            if cursor is None:   # a full page whose continuation cannot be read is not the end of the registry (the lane's own rule)
+                raise ValueError("Crossref journals answered a full page without a next-cursor that can be read — load failed, not complete (D-23)")
 
 
 # ---------------------------------------------------------------- DOAJ journals (CSV)
@@ -146,8 +151,10 @@ def datacite_repositories(client: Client, *, limit: int | None = None, size: int
             seen += 1
             if limit and seen >= limit:
                 return
-        total_pages = scalar((j.get("meta") or {}).get("totalPages")) or 0
-        if not data or page >= total_pages:
+        pages = total(field(j, "meta", "totalPages"), page)   # the last page reaches the number of pages, and no page is past it
+        if pages is None:
+            raise ValueError("DataCite repositories answered a page whose meta.totalPages cannot be read — load failed, not complete (D-23)")
+        if not data or page >= pages:
             return
         page += 1
 

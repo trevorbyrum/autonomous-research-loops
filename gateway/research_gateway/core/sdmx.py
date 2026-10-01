@@ -48,27 +48,47 @@ def series_xml(text: str) -> Members:
     return Members(out)
 
 
+def _kind(value) -> str:
+    return {"Obj": "an object", "Members": "a list"}.get(type(value).__name__, type(value).__name__)
+
+
 def structure(j: Obj):
-    """The message's structure (its dimension and attribute definitions): an Obj, or {} when it names none. A
-    `structures` list is read for its first, as a lookup reads its first result."""
-    if isinstance(j.get("structure"), Obj):
-        return j["structure"]
-    if isinstance(j.get("structures"), Members) and j["structures"]:
-        return j["structures"].first(lambda s: s, "sdmx")
-    if isinstance(j.get("data"), Obj):  # 2.0 wraps everything under data
-        return structure(j["data"])
+    """The message's structure (its dimension and attribute definitions): an Obj, or {} when the message names none (nothing there, or
+    null). A `structures` list is read for its first, as a lookup reads its first result. A structure that is there and is anything
+    else — `false`, `0`, `""`, `[]` included — is an unreadable message: it is not "no structure", and every series needs it."""
+    found = j.get("structure")
+    if found is not None:
+        if not isinstance(found, Obj):
+            raise PayloadError(f"an SDMX answer whose structure is {_kind(found)}, not an object")
+        return found
+    many = j.get("structures")
+    if many is not None:
+        if not isinstance(many, Members):
+            raise PayloadError(f"an SDMX answer whose structures is {_kind(many)}, not a list")
+        if many:
+            return many.first(lambda s: s, "sdmx")
+    wrapped = j.get("data")  # 2.0 wraps everything under data
+    if wrapped is not None:
+        if not isinstance(wrapped, Obj):
+            raise PayloadError(f"an SDMX answer whose data is {_kind(wrapped)}, not an object")
+        return structure(wrapped)
     return {}
 
 
 def datasets(j: Obj) -> Members:
-    """The message's data sets: none when it names none; a `dataSets` that is anything but a list is an
+    """The message's data sets: none when it names none (missing or null); a `dataSets` that is there and is anything but a list is an
     unreadable message, never an empty one."""
-    holder = j if "dataSets" in j else j["data"] if isinstance(j.get("data"), Obj) else {}
+    holder = j
+    if "dataSets" not in j:
+        wrapped = j.get("data")
+        if wrapped is not None and not isinstance(wrapped, Obj):
+            raise PayloadError(f"an SDMX answer whose data is {_kind(wrapped)}, not an object")
+        holder = wrapped if wrapped is not None else {}
     found = holder.get("dataSets")
     if isinstance(found, Members):
         return found
     if found is not None:
-        raise PayloadError(f"an SDMX answer whose dataSets is {type(found).__name__}, not a list")
+        raise PayloadError(f"an SDMX answer whose dataSets is {_kind(found)}, not a list")
     return NO_SERIES
 
 
@@ -93,11 +113,13 @@ def context_xml(text: str) -> dict:
 
 
 def _series_of(dataset: Obj) -> Members:
+    """The series a data set holds: none when it names none (missing or null); `series` that is there is an object before its size or its
+    truth is looked at — a `false`, `0`, `""` or `[]` in its place is an unreadable data set (one loss), not one with no series."""
     series = dataset.get("series")
-    if not series:
+    if series is None:
         return NO_SERIES
     if not isinstance(series, Obj):
-        raise PayloadError(f"an SDMX data set whose series is {type(series).__name__}, not an object")
+        raise PayloadError(f"an SDMX data set whose series is {_kind(series)}, not an object")
     return series.entries()
 
 
@@ -109,26 +131,37 @@ def series_members(j: Obj) -> Members:
     return datasets(j).expand(_series_of)
 
 
+def _held(holder, key: str, kind: type):
+    """What `holder[key]` holds, as plain data: an empty `kind` when it is missing or null, and exactly a `kind` when it is there — one
+    that is not (a `false`, a `0`, an `{}` for a list) is an unreadable structure, not an empty one."""
+    value = plain(holder.get(key))
+    if value is None:
+        return kind()
+    if not isinstance(value, kind):
+        raise PayloadError(f"an SDMX structure whose {key} is {type(value).__name__}, not {kind.__name__}")
+    return value
+
+
 def series_reader(j: Obj):
     """The function that reads one `series_members` member into {key: {dim: value}, observations: [(period,
     value)], observations_raw}; the message's structure is read once, here, whole — every series needs it."""
-    st = plain(structure(j))
-    dims = st.get("dimensions") or {}
-    series_dims = dims.get("series") or []
-    obs_dims = dims.get("observation") or []
-    periods = [v.get("id") or v.get("name") for v in (obs_dims[0].get("values") if obs_dims else [])]
+    st = structure(j)
+    dims = _held(st, "dimensions", dict)
+    series_dims = _held(dims, "series", list)
+    obs_dims = _held(dims, "observation", list)
+    periods = [v.get("id") or v.get("name") for v in (_held(obs_dims[0], "values", list) if obs_dims else [])]
 
     def read(member: Obj) -> dict:
         key, s = member["key"], member["value"]
         idx = [int(i) for i in key.split(":")] if key else []
         dim_values = {}
         for pos, d in zip(idx, series_dims):
-            vals = d.get("values") or []
+            vals = _held(d, "values", list)
             if pos < len(vals):
                 dim_values[d.get("id") or d.get("name")] = vals[pos].get("id") or vals[pos].get("name")
-        observed = plain(s.get("observations"))   # the observations of ONE series: read whole, a malformed one makes it unreadable
+        observed = _held(s, "observations", dict)   # the observations of ONE series: read whole, a malformed one makes it unreadable
         observations = []
-        for oi, arr in sorted(((int(k), v) for k, v in (observed or {}).items()), key=lambda kv: kv[0]):
+        for oi, arr in sorted(((int(k), v) for k, v in observed.items()), key=lambda kv: kv[0]):
             period = periods[oi] if oi < len(periods) else str(oi)
             value = arr[0] if isinstance(arr, list) and arr else arr
             observations.append((period, value))
