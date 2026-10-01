@@ -715,3 +715,14 @@ The operator asked whether the build checks architecture against the requirement
 **Orchestrator routing:** fourth round of the same family (malformed input read as a definite answer). Fixing reported instances keeps leaving neighbours, so 2b-repair-9 also requires a seeded generative harness asserting the invariant across every adapter: no complete, empty or exhausted result from unreadable input, and readable peers kept as a partial lower bound. Dispatched to Sonnet 5.5.
 
 **Follow-up ruling, same day:** "I want a fresh Astra on the architecture review every time. I don't want other gates tainting it." Gate D is always a new Astra session that has run no other gate and is never reused for one. Clarified by the operator: "it should and can look at the review log. I just don't want tainted context" — the isolation is of session context, not files; Gate D reads the normal repository, review log included.
+
+## 2026-10-01 — 2b-repair-9 landed (Sonnet 5.5 coder fac04fcb)
+7 commits `47357b0..cb3caae`. R8-1: `rel` values are validated as RFC 8288 relation-type lists before anything concludes absence. R8-2: `base.optional()` and its siblings are the single typed reading of optional provider containers. R8-3: `adapters.base` has an explicit `__all__`, binds no parser, and the inventory check refuses import forms it can't analyse. **The invariant harness** corrupts every position (and co-dependent pairs) of every adapter's valid answers and runs them through the real router against four invariants. It **failed 117 of 261 tests with 3,401 violations on the unfixed tree** and passes now. Beyond the named findings it surfaced:
+- a wrong-kind member field crashing the whole request in 21 operations;
+- falsy bypasses across many holders;
+- ~1,800 silent wrong-kind reads inside kept records;
+- totals and cursors producing false ends;
+- fabricated identities;
+- a Socrata year read from epoch seconds.
+
+All are fixed, and 24 new mutants are bound to the fixes and invariants. Limits are disclosed with proposed owners: Phase 4 canary for live type and semantic drift; Astra Gate C for hand-parsing and oracle authorship. The completion block's "Remaining: NONE" is sent to Astra for a ruling.
