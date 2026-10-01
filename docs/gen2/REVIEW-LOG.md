@@ -789,3 +789,12 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-2b-repair-10-ast
 - 6 R10-3 failure-mode accounting gaps.
 
 Unnamed-flow cases pass on current code and kill a boundary-level reproduction of the deleted-validation mutant. Failure-mode accounting is now separate from execution accounting. Disclosed qualification: one black-box probe chose which 2 of 40 documented fallback pairs the gateway reads. Evidence corrections made (63 variants; qualified independence; narrowed OpenML explanation). Dispatching the 11b fix coder.
+**2b-repair-11b landed (coder 05f61d77).**
+- 2 commits, `33e2c2d` and `c1b9351`. All 68 oracle cases pass, none disputed, oracle unchanged since `99e3f2c`.
+- **R10-1:** every alternative is read before selection, through `base.preferred`/`identity_from`. The contract exemption is removed. Full site inventory is in `fallback-sites.md` (83 sites, 12 changed, 71 with reasons; plus 17 further changes), with a scan test against new lazy choices.
+- **R10-2:** the browse is bound to the requested flow's own structure; absent or ambiguous flows produce no template.
+- **R10-3:** the BIS/ECB validation mutants are now killed by the oracle.
+- **Coder decisions sent to Astra:** Unpaywall `best_oa_location`; Kaggle whole-number sizes; URN structure references.
+- **OpenAlex snapshot defaults:** left as is. Astra's 2b-repair-8 ruling (offline ingestion outside the A4 lane contract) already covers this, so no operator question; Astra is asked to confirm.
+
+Sent to a fresh Astra once the orchestrator's verification completes.
