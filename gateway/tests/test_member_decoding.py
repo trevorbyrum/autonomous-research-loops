@@ -21,9 +21,11 @@ a time). The property now lives in one place, base.members(), and two checks hol
 
 The check does not see: a record built by a loop that calls no builder (a dict copied from the
 gateway's own database in the local index, which is no provider), iteration that builds no record
-(socrata's portal vouching skips a non-object itself; fred's observations, census's and bea's rows are the
-payload of ONE record, which a malformed row makes unreadable rather than shorter; catalogue entries have
-no dropped-record accounting in the router), and a list reached through reflection.
+(socrata's portal vouching skips a non-object itself; fred's observations and census's rows are the payload
+of ONE record, which a malformed row makes unreadable rather than shorter, while bea's and socrata's fetch rows
+are stored whole, never iterated; catalogue entries are not records and the router keeps no dropped-entry
+account of them, so a malformed entry makes its whole catalogue answer unreadable: bls, fred, census and bea),
+and a list reached through reflection.
 """
 from __future__ import annotations
 

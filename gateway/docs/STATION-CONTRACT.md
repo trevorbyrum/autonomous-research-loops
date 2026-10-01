@@ -84,14 +84,15 @@ is never conflated with "not searched" or "unavailable":
     has since changed — reads nothing and ends nothing: `provider_unavailable`,
     `unobserved`, `partial_pagination`, no `next` (task 2b-repair-7). Each find adapter's end
     rule rests on its provider's own evidence, recorded in `PROVIDER-PAGINATION.md`.
-  One member that cannot be read costs that member only, on every request type: an adapter
-  hands a provider's list to `base.members()`, which decodes each member alone (a member
+  One member that cannot be read costs that member only, in every lane that returns records
+  (find, resolve, enrich, fetch, data): an adapter hands a provider's list to `base.members()`, which decodes each member alone (a member
   that is not an object, whose decoding fails, or whose record names nothing is dropped and
   counted, so the lane is `partial` with a lower-bound `count`); a member that is readable and
   names nothing to report (a reference with no DOI) is omitted, not counted. A lookup's first
   result goes through `base.first_member()`: one that cannot be read is an unreadable answer,
   never "not found". An adapter that builds records in a loop of its own fails
-  `tests/test_member_decoding.py` (task 2b-repair-7b).
+  `tests/test_member_decoding.py` (task 2b-repair-7b). A catalogue's entries are not records: one
+  that cannot be read makes its whole catalogue answer unreadable, never a shorter catalogue.
   An unreadable successful answer (unparseable, empty, or without the container its
   results live in) and a search endpoint's 404 are `provider_unavailable` with
   `payload_invalid` / `provider_outage` — never `searched_empty`. An answer with any
