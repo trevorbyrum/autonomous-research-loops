@@ -2,8 +2,9 @@
 
 Why: the harness took `run(op, valid)[0]` as the baseline a corrupted answer is compared with, so a mutant that erased every title from the
 valid answer too passed. These expectations are written from the fixture data (tests/invariant_ops.py, read as data) and the documents below,
-never from what the gateway answers. They are written before the gateway was ever compared with them, and a field is left out, with the
-reason in `UNDOCUMENTED`, wherever no document decides it.
+not from what the gateway answers. They were committed (e4b7eac) before the first comparison with the gateway, and several were changed or removed after it (GovInfo `kind`, an
+inherited OpenML licence expectation, the venue field names of the loaders: evidence/2b-repair-10a/corrections-after-observation.md; the qualifications are in
+evidence/2b-repair-11a/independence-statement.md). A field is left out, with the reason in `UNDOCUMENTED`, wherever no document decides it.
 
 A field is asserted only when all three hold:
   1. the canonical field's NAME is documented: it is shown by the record sample the engine's contract fixtures ship

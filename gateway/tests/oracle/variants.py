@@ -100,7 +100,9 @@ def datacite_attributes(a: dict) -> dict:
     })
     a["creators"] = [merge(c, {"nameType": "Personal", "affiliation": [{"name": "U"}], "nameIdentifiers": [
         {"nameIdentifier": "https://orcid.org/0000-0002-1825-0097", "nameIdentifierScheme": "ORCID", "schemeUri": "https://orcid.org"}]}) for c in a["creators"]]
-    a["rightsList"] = [merge(r, {"rightsIdentifierScheme": "SPDX", "lang": "en"}) for r in a["rightsList"]]
+    # 2b-repair-11a (R10-1): BOTH documented ways of stating the rights are populated, `rightsIdentifier` (already in the fixture) beside `rights` and `rightsUri`
+    a["rightsList"] = [merge(r, {"rights": "CC0 1.0 Universal", "rightsUri": "https://creativecommons.org/publicdomain/zero/1.0/", "rightsIdentifierScheme": "SPDX",
+                                 "lang": "en"}) for r in a["rightsList"]]
     return a
 
 
@@ -363,6 +365,11 @@ def bea_parameter(p: dict) -> dict:
     return merge(p, {"ParameterIsRequiredFlag": "1", "ParameterDefaultValue": "", "MultipleAcceptedFlag": "0", "AllValue": "", "ParameterDataType": "string"})
 
 
+def bea_value_entry(v: dict) -> dict:
+    """GetParameterValues: `Key` and `Desc` (BEA API user guide, p.10-12). `Description` is the alternative the gateway reads beside `Desc` (R10-1)."""
+    return merge(v, {"Description": v["Desc"]})
+
+
 def census_variable(v: dict) -> dict:
     return merge(v, {"concept": "SEX BY AGE", "group": "B01001", "limit": 0, "attributes": "B01001_001EA,B01001_001M", "predicateType": "int", "required": "false"})
 
@@ -458,6 +465,7 @@ def build(ops) -> dict:
         populated(ops.FRED_CATALOG, lambda b: each(b, ("seriess",), fred_series)),
         populated(ops.FRED_SERIES_ENTRY, lambda b: each(b, ("seriess",), fred_series)),
         populated(ops.BEA_PARAMETERS, lambda b: each(b, ("BEAAPI", "Results", "Parameter"), bea_parameter)),
+        populated(ops.BEA_VALUES, lambda b: each(b, ("BEAAPI", "Results", "ParamValue"), bea_value_entry)),
         populated(ops.CENSUS_VARIABLES, lambda b: {**b, "variables": {k: census_variable(v) for k, v in b["variables"].items()}}),
     )
     return {"find": find, "resolve": resolve, "enrich": enrich, "data": data, "fetch": fetch, "catalog": catalog, "outside the harness": outside}

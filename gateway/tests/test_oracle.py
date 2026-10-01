@@ -2,7 +2,8 @@
 
 The metamorphic harness holds an answer to statements about how a CORRUPTION of a valid answer may differ from the valid answer. That cannot see a defect
 the valid answer already has, and it shared its blind spots with the code under test (Astra's R9-1, R9-4, R9-5). These tests hold the gateway to statements
-written from specifications, documentation and fixtures only (tests/oracle/*), by an author who never read the implementation:
+written from specifications, documentation and fixtures (tests/oracle/*), by an author who did not read the adapters, payload, SDMX or canonical code (a qualified, source-based
+oracle: tests/oracle/__init__.py and evidence/2b-repair-11a/independence-statement.md say what that does and does not mean):
 
   LinkConformance          RFC 3986 / RFC 8288 vectors through the real adapter and router: a next URL, a known absence, or neither        (R9-1)
   ExpectedCanonicalFields  the identities and canonical fields every valid answer must produce, hand-written, for every operation and populated variant  (R9-4)
@@ -12,6 +13,9 @@ written from specifications, documentation and fixtures only (tests/oracle/*), b
   RegistryLoaders          the venue and repository records the Tier 0 loaders must produce
   ExecutedCoverage         an operation is covered only if it executed (instrumented); what is not run is listed with its reason          (R9-5)
   OracleNoticesMutants     damage done to the router's answer is noticed by the expectations                                                (R9-4)
+  FallbackAlternatives     a malformed alternative beside a valid preferred value is not ignored                                              (R10-1)
+  FlowBinding              a BIS/ECB browse answers the flow asked for, in any position; one that is absent, ambiguous or unbound yields no template   (R10-2)
+  UnnamedFlows             a listing in which no dataflow has an id is unobserved with no count                                              (R10-3)
 
 These tests are EXPECTED to fail on the tree they were written against, wherever the gateway disagrees with the specifications; each failing case names the
 vector or field, the document that decides it, and what the gateway did.
@@ -421,7 +425,7 @@ class FallbackAlternatives(unittest.TestCase):
     def test_a_malformed_preferred_value_beside_a_valid_alternate_is_not_ignored(self):
         for pair in fallbacks.PAIRS:
             op, body = self.op_body(pair)
-            for wrong in pair.wrong:
+            for wrong in pair.wrong_for_p:
                 with self.subTest(pair=pair.name, preferred=repr(wrong)):
                     problems = unreadable_problems(pair, *lane_of(op, pair.with_(body, p=wrong)),
                                                    f"{pair.p[-1]}={wrong!r}, {pair.a[-1]}={pair.a_valid!r} valid")
@@ -470,22 +474,33 @@ class FlowBinding(unittest.TestCase):
             with self.subTest(case=case.name):
                 out, lane = flow_outcome(case)
                 entries = out.get("entries") or []
-                self.assertEqual([e.get("id") for e in entries], [case.requested], f"{case.name}: {lane}")
-                entry = entries[0]
-                text = list(strings(entry))
-                self.assertTrue(any(case.flow_name in t for t in text), f"{case.name}: the entry does not carry the name {case.flow_name!r}: {text}")
-                for oid, oname, _ in case.others:
-                    self.assertFalse(oname and any(oname in t for t in text), f"{case.name}: the entry carries the name of another flow, {oname!r}")
-                    self.assertNotIn(oid, text, f"{case.name}: the entry names another flow, {oid}")
-                lists = list(string_lists(entry))
-                self.assertIn(list(case.dims), lists, f"{case.name}: the dimensions of {case.requested}'s own structure are {list(case.dims)}; the entry's lists are {lists}")
-                for oid, _, odims in case.others:
-                    self.assertNotIn(list(odims), lists, f"{case.name}: the entry holds the dimensions of {oid} ({list(odims)})")
-                found = list(templates(entry))
-                self.assertTrue(found, f"{case.name}: the entry carries no research_data request template")
-                for t in found:
-                    self.assertEqual(t["dataflow"], case.requested, f"{case.name}: a template for {t['dataflow']!r} under {case.requested!r}")
-                    self.assertEqual(len(str(t["key"]).split(".")), len(case.dims), f"{case.name}: key {t['key']!r} for {len(case.dims)} dimensions")
+                problems = []
+                if [e.get("id") for e in entries] != [case.requested]:
+                    problems.append(f"the entries are {[e.get('id') for e in entries]}, not [{case.requested!r}] ({lane})")
+                for entry in entries[:1]:
+                    text = list(strings(entry))
+                    if not any(case.flow_name in t for t in text):
+                        problems.append(f"the entry does not carry the name {case.flow_name!r}: its text is {[t for t in text if ' ' in t]}")
+                    for oid, oname, _ in case.others:
+                        if oname and any(oname in t for t in text):
+                            problems.append(f"the entry carries the name of another flow, {oname!r}")
+                        if oid in text:
+                            problems.append(f"the entry names another flow, {oid}")
+                    lists = list(string_lists(entry))
+                    if list(case.dims) not in lists:
+                        problems.append(f"the dimensions of {case.requested}'s own structure are {list(case.dims)}; the entry's lists are {lists}")
+                    for oid, _, odims in case.others:
+                        if list(odims) in lists:
+                            problems.append(f"the entry holds the dimensions of {oid} ({list(odims)})")
+                    found = list(templates(entry))
+                    if not found:
+                        problems.append("the entry carries no research_data request template")
+                    for t in found:
+                        if t["dataflow"] != case.requested:
+                            problems.append(f"a request template for {t['dataflow']!r} under {case.requested!r}")
+                        if len(str(t["key"]).split(".")) != len(case.dims):
+                            problems.append(f"the template's key {t['key']!r} has {len(str(t['key']).split('.'))} components for {len(case.dims)} dimensions")
+                self.assertEqual(problems, [], f"{case.name} ({case.why})")
 
     def test_a_flow_that_cannot_be_bound_yields_no_entry_and_no_template(self):
         for case in FLOW.values():
@@ -493,12 +508,18 @@ class FlowBinding(unittest.TestCase):
                 continue
             with self.subTest(case=case.name):
                 out, lane = flow_outcome(case)
-                self.assertFalse(out.get("entries"), f"{case.name} ({case.why}): entries {[e.get('id') for e in out.get('entries') or []]}")
-                self.assertEqual(list(templates(out)), [], f"{case.name} ({case.why}): a template for a flow that is not there")
-                self.assertNotEqual(lane.get("completeness"), "complete", f"{case.name} ({case.why}): {lane}")
-                self.assertNotIn(lane.get("coverage"), ("searched_ok", "searched_empty"), f"{case.name} ({case.why}): {lane}")
-                self.assertTrue(lane.get("completeness") == "unobserved" or lane.get("coverage") == "provider_unavailable", f"{case.name}: {lane}")
-                self.assertNotIn("count", lane, f"{case.name}: an answer that observed nothing has no count")
+                problems = []
+                if out.get("entries"):
+                    problems.append(f"entries {[(e.get('id'), e.get('label')) for e in out.get('entries')]}")
+                if list(templates(out)):
+                    problems.append("a research_data request template for a flow that is not there: " + str([t["dataflow"] for t in templates(out)]))
+                if lane.get("completeness") == "complete" or lane.get("coverage") in ("searched_ok", "searched_empty"):
+                    problems.append(f"the lane is {lane.get('coverage')}/{lane.get('completeness')}, not unobserved or unavailable")
+                if not (lane.get("completeness") == "unobserved" or lane.get("coverage") == "provider_unavailable"):
+                    problems.append(f"neither unobserved nor provider_unavailable: {lane}")
+                if "count" in lane:
+                    problems.append(f"an answer that observed nothing has a count ({lane.get('count')})")
+                self.assertEqual(problems, [], f"{case.name} ({case.why})")
 
 
 class FlowCasesAreConsistent(unittest.TestCase):
@@ -524,6 +545,20 @@ class FlowCasesAreConsistent(unittest.TestCase):
             self.assertEqual(len(orders), 3, orders)
 
 
+def unnamed_problems(case) -> list:
+    out, lane = flow_outcome(case)
+    found = []
+    if (lane.get("coverage"), lane.get("error_class"), lane.get("completeness")) != ("provider_unavailable", "payload_invalid", "unobserved"):
+        found.append(f"the listing ended {lane.get('coverage')}/{lane.get('completeness')}/{lane.get('error_class')}, not provider_unavailable/unobserved/payload_invalid")
+    if "count" in lane:
+        found.append(f"an unreadable listing has no count, and this one counts {lane.get('count')} (retrieved {lane.get('retrieved')})")
+    if out.get("entries"):
+        found.append(f"entries {out.get('entries')}")
+    if out.get("records"):
+        found.append(f"records {out.get('records')}")
+    return found
+
+
 class UnnamedFlows(unittest.TestCase):
     """R10-3: a listing in which no dataflow has an id is unreadable whole; the same listing with its ids is read."""
 
@@ -532,12 +567,7 @@ class UnnamedFlows(unittest.TestCase):
             if case.kind not in ("unnamed", "unnamed-empty"):
                 continue
             with self.subTest(case=case.name):
-                out, lane = flow_outcome(case)
-                self.assertEqual((lane.get("coverage"), lane.get("error_class"), lane.get("completeness")), ("provider_unavailable", "payload_invalid", "unobserved"),
-                                 f"{case.name}: {lane}")
-                self.assertNotIn("count", lane, f"{case.name}: an unreadable listing has no count, never one called None: {lane.get('retrieved')}")
-                self.assertFalse(out.get("entries"), f"{case.name}: entries {out.get('entries')}")
-                self.assertFalse(out.get("records"))
+                self.assertEqual(unnamed_problems(case), [], case.name)
 
     def test_the_readable_control_is_read(self):
         for case in FLOW.values():
@@ -723,6 +753,54 @@ def all_problems() -> int:
     return sum(len(problems_of(name, op)) for name, op in ALL_OPS.items())
 
 
+UNNAMED_FLOW = re.compile(r'<structure:Dataflow(?=[\s>])(?![^>]*\sid="[^"])')
+
+
+def has_unnamed_flow(op) -> bool:
+    return any(isinstance(r.body, str) and UNNAMED_FLOW.search(r.body) for r in op.routes)
+
+
+class FailureModesAreKilled(unittest.TestCase):
+    """R10-3: Astra's mutant deleted BIS's validation of a flow's id; every readable listing stayed complete, every older unreadable-catalogue case (HTML, text, empty,
+    no dimensions) still ended unreadable through another check, and all 30 oracle tests passed. Reproduced here at the router's boundary with a mutant that does what the
+    review says it did, but ONLY for a listing that holds an unnamed dataflow: an unreadable answer becomes a complete one-entry answer named None."""
+
+    def run_all(self, mutate):
+        current = []
+
+        def when(out):
+            if current and has_unnamed_flow(current[0]):
+                mutate(out)
+        with damaged(when):
+            for name, case in XML.items():
+                if case["entries"] is None and case["browse"] is None and not name.startswith("bis.data"):
+                    current[:] = [case["op"]]
+                    yield "older", name, inv.run(case["op"], None)
+            for case in FLOW.values():
+                if case.kind in ("unnamed", "unnamed-empty"):
+                    current[:] = [case.op]
+                    yield "new", case.name, case
+
+    def test_the_older_cases_cannot_see_the_mutant_and_the_unnamed_flow_cases_kill_it(self):
+        older = new = 0
+        for group, name, what in self.run_all(mutants.launder_unreadable_catalog):
+            if group == "older":
+                out, lane = what
+                older += 1
+                self.assertNotEqual(lane.get("coverage"), "searched_ok", f"{name}: this case holds no unnamed flow, so the mutant leaves it alone")
+            else:
+                new += 1
+                with self.subTest(case=name):
+                    self.assertNotEqual(unnamed_problems(what), [], f"{name}: the laundering of an unreadable listing went unnoticed")
+        self.assertGreaterEqual((older, new), (8, 4))
+
+    def test_the_unnamed_cases_pass_on_the_gateway_as_it_is(self):
+        """R10-3 is about the mutant, not a present defect: without it the unnamed-flow cases pass."""
+        for case in FLOW.values():
+            if case.kind in ("unnamed", "unnamed-empty"):
+                self.assertEqual(unnamed_problems(case), [], case.name)
+
+
 class OracleNoticesMutants(unittest.TestCase):
     def test_each_kind_of_damage_to_the_answer_is_noticed(self):
         """R9-4: a mutant that erased every title passed all 261 harness tests. Each of these damages the router's answer, knowing nothing of the gateway, and the
@@ -779,6 +857,14 @@ class Evidence(unittest.TestCase):
         (out / "expected-sources.json").write_text(json.dumps({"expected_records": rows, "catalogue_entries": ex.CATALOG_ENTRIES, "undocumented": ex.UNDOCUMENTED}, indent=1))
         (out / "link-vectors.json").write_text(json.dumps([{"name": v.name, "header": v.header, "expect": v.expect, "also": list(v.also), "grade": v.grade, "rfc": v.rfc,
                                                             "next_url": v.next_url} for v in lv.VECTORS], indent=1, ensure_ascii=True))
+        (out / "fallback-pairs.json").write_text(json.dumps([{"pair": p.name, "operation": p.op, "scope": p.scope, "preferred": list(map(str, p.p)), "alternate": list(map(str, p.a)),
+                                                               "named_by_brief": p.named, "asserted": p.named or bool(p.supported), "read_by_probe": p.supported,
+                                                               "documentation": p.doc, "wrong_values_for_alternate": [repr(w) for w in p.wrong]}
+                                                              for p in (*fallbacks.NAMED, *fallbacks.CANDIDATES)], indent=1))
+        (out / "flow-cases.json").write_text(json.dumps([{"case": c.name, "source": c.sid, "kind": c.kind, "requested": c.requested, "expected_dimensions": list(c.dims),
+                                                           "expected_name": c.flow_name, "fails_closed": c.fails_closed, "why": c.why,
+                                                           "reference_reader": list(flow_cases.reference_browse(c.op.routes[0].body, c.sid.upper(), c.requested)[:1]) if c.requested else None}
+                                                          for c in FLOW.values()], indent=1))
         uni = coverage.universe()
         (out / "coverage-universe.json").write_text(json.dumps({f"{s}.{k}[{sel}]": reason for (s, k, sel), reason in sorted(uni.items())}, indent=1))
 

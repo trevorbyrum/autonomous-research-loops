@@ -1,8 +1,10 @@
 # tests/oracle — independent oracles (task 2b-repair-10a)
 
-Written from specifications, documentation and the harness's valid fixtures by an author who did not read the gateway implementation. They are
-meant to FAIL wherever the gateway disagrees with those sources; a failing case here is a finding, not a broken test, until a ruling says the
-specification reading was wrong. The fixing (task 2b-repair-10b) is a separate author's.
+Written from specifications, documentation and the harness's valid fixtures by an author who did not read the gateway's adapter, payload, SDMX or canonical code. A
+QUALIFIED, source-based oracle, not a clean-room or fully pre-registered one: the author saw some harness internals and production signatures, ran the gateway as a black box
+for answer shapes, and changed or removed some expectations after seeing its output (the ledger and every qualification: evidence/2b-repair-11a/independence-statement.md).
+They are meant to FAIL wherever the gateway disagrees with those sources; a failing case here is a finding, not a broken test, until a ruling says the specification reading
+was wrong. The fixing is a separate author's (2b-repair-10b, 2b-repair-11b).
 
 | module | holds | consumed by |
 |---|---|---|
@@ -19,3 +21,6 @@ expectation sources and the coverage universe as JSON.
 
 Adding a source, an operation or a capability: give it an `Op` in `tests/invariant_ops.py`, its hand-written expectation in `expected_records.py`
 (or leave the field out and list it in `UNDOCUMENTED`), and a case that runs it; `ExecutedCoverage` fails on a seed capability no execution reached.
+
+2b-repair-11a adds `fallbacks.py` (a malformed alternative beside a valid preferred value, R10-1), `flow_cases.py` (which flow a BIS/ECB browse answers, and a listing whose flows
+name no id, R10-2 and R10-3) and, in `coverage.py`, failure-mode accounting kept distinct from execution accounting.

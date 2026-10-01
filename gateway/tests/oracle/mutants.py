@@ -80,3 +80,21 @@ def erase_counts(out):
 
 MUTANTS = {fn.__name__: fn for fn in (erase_titles, erase_authors, shift_years, erase_licences, fabricate_record, drop_first_record, reorder_retrieved,
                                        fabricate_entry, drop_first_entry, erase_counts)}
+
+
+# Mutants of FAILURE handling, not of valid answers (they leave every valid answer alone, so they are not in MUTANTS: `all_problems` would not notice them, and should not).
+def launder_unreadable_catalog(out):
+    """What Astra's R10-3 mutant did, at the router's boundary: the BIS validation `identified(...)` deleted turns an unreadable flow listing into a complete one-entry answer
+    whose entry is named None (the review: "searched_ok, complete, count one, retrieved ['None']"). The caller applies it only where the input holds an unnamed flow: the
+    real mutant changed nothing else."""
+    if out.get("request_type") != "catalog":
+        return
+    for lane in out.get("lanes") or []:
+        if lane.get("coverage") == "provider_unavailable" and lane.get("error_class") == "payload_invalid":
+            lane.pop("error_class", None)
+            lane.update(coverage="searched_ok", completeness="complete", count=1, retrieved=["None"])
+            out["entries"] = [{"id": None, "kind": "dataflow"}]
+
+
+FAILURE_MUTANTS = {fn.__name__: fn for fn in (launder_unreadable_catalog,)}
+
