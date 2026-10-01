@@ -20,6 +20,12 @@ are documentation pages, published specification documents (some served from the
 host), the providers' documentation repositories, and provider-owned packages. Whether a live provider still answers as documented is Phase 4 canary
 qualification, not this file.
 
+The captured copies are kept outside the repository (they are third parties' documents), with the
+source, the date fetched and the SHA-256 of every copy, in
+`~/work/research-loops-public/private/evidence/2b-repair-7/` (`manifest.json`). The excerpts below were
+checked against those copies by `verify_quotes.py` in the same directory. A copy is evidence for what
+the provider said on the date read, not for what it says now.
+
 ## Local index (`openalex_snapshot`)
 
 The gateway's own store, so no provider is involved. The continuation is `<offset>:<digest>`,
@@ -51,8 +57,9 @@ nothing past this page, in the population its continuation names.
 - **Unsaid:**
   - Whether `total-results` is exact. It ends nothing, so a full first page "holding" the total
     still continues.
-  - Whether a short last page carries `next-cursor`. The tips page (crossref.org, read
-    2026-10-01) says "Note that our REST API does not return a cursor if there are no further
+  - Whether a short last page carries `next-cursor`. The tips page
+    (https://www.crossref.org/documentation/retrieve-metadata/rest-api/tips-for-using-the-crossref-rest-api/,
+    read 2026-10-01) says "Note that our REST API does not return a cursor if there are no further
     results." The short page ends the lane either way.
 
 ## DataCite (`datacite`)
@@ -73,7 +80,8 @@ nothing past this page, in the population its continuation names.
 
     > Only the first 10,000 records (10 x 1000 per page) can be retrieved.
 - **Cap:** a next page that would end past record 10,000 is not offered. The lane is then a lower
-  bound, not ended. Cursor paging (`page[cursor]`) is documented as uncapped, but this adapter
+  bound, not ended. Cursor paging (`page[cursor]`) is documented as uncapped ("Cursor-based
+  pagination has no limitations on the number of records that can be retrieved."), but this adapter
   does not use it.
 - **Unsaid:**
   - Whether `links.next` is absent on the last page. The adapter does not read it.
@@ -124,10 +132,13 @@ nothing past this page, in the population its continuation names.
     > Specify the cursorMark for pagination of the result list. For the first request you can omit the parameter or leave the cursorMark empty or use the default value * (asterisk sign). For every following page use the value of the returned nextCursorMark element.
 
     > The maximum allowable number of results per page is 1000.
-  - The provider's REST release notes (capture 2025-06-27) point to "the Apache Wiki: Pagination of
-    Results". That is a third party's description of Solr. The provider's own web service reference
-    records "Repository migrated from Oracle/Solr to MongoDB.", so Solr's end-of-cursor rule is not
-    taken as Europe PMC's.
+  - The provider's REST release notes
+    (https://web.archive.org/web/20250627124830id_/https://europepmc.org/docs/Europe_PMC_RESTful_Release_Notes.pdf,
+    capture 2025-06-27) point to "the Apache Wiki: Pagination of Results". That is a third party's
+    description of Solr. The provider's own web service reference
+    (https://web.archive.org/web/20250627172404id_/https://europepmc.org/docs/EBI_Europe_PMC_Web_Service_Reference.pdf,
+    capture 2025-06-27) records "Repository migrated from Oracle/Solr to MongoDB.", so Solr's
+    end-of-cursor rule is not taken as Europe PMC's.
 - **Unsaid:**
   - What the last page looks like.
   - What `hitCount` counts. It ends nothing.
@@ -194,7 +205,8 @@ QDR is a Dataverse installation and shares this implementation.
     The first-page rule follows from that definition: a page starting at the first result that
     holds `numFound` results holds them all.
 - **Cap:** `pageSize` maximum 100 in the specification. The adapter uses cursor paging, which the
-  documentation recommends for more than 10,000 records. Offset paging is limited to 10,000.
+  specification recommends for more than 10,000 records: the `page` parameter reads "Max dataset to
+  retrieve - 10000 records. To get more than that, use cursor-based pagination."
 - **Unsaid:** whether `nextCursor` is ever absent.
 - **Recorded, not acted on here:** the specification marks `/v1/researchProducts` **deprecated**
   ("Deprecated: Use version 3.0 instead. This version is no longer supported and will be removed in
@@ -277,7 +289,8 @@ QDR is a Dataverse installation and shares this implementation.
     read 2026-10-01). Its only paging parameter, `page`:
     > description: Page number
   - The provider-owned client that calls this endpoint, `kaggle` 1.7.4.5 (PyPI, published by
-    Kaggle). Read 2026-10-01: the path, and the answer read as a bare array with no paging
+    Kaggle; `kagglesdk/datasets/types/dataset_api_service.py`, `ApiListDatasetsRequest` and its
+    response). Read 2026-10-01: the path, and the answer read as a bare array with no paging
     metadata.
     > path = '/api/v1/datasets/list'
 
@@ -290,10 +303,15 @@ QDR is a Dataverse installation and shares this implementation.
 - **Unsaid:**
   - The page size of `GET /api/v1/datasets/list`.
   - Its last page and any total.
-- **Recorded, not acted on here:** Kaggle's current client (2.x with `kagglesdk`) no longer calls
-  this endpoint. It calls `POST https://api.kaggle.com/v1/datasets.DatasetApiService/ListDatasets`,
-  with `pageSize` and `pageToken`. Whether the legacy endpoint is still served is unverified (no live
-  call). Moving the adapter is outside this task. See the task's completion report.
+- **Recorded, not acted on here:** Kaggle's current client (`kaggle` 2.2.4 with `kagglesdk` 0.1.37,
+  read 2026-10-01) no longer calls this endpoint. `kaggle_api_extended.py` calls
+  `self._client.call("datasets.DatasetApiService", "ListDatasets", ...)`, and `KaggleHttpClient`
+  makes that a `POST` to `{base}/v1/{service_name}/{request_name}`, so
+  `POST https://api.kaggle.com/v1/datasets.DatasetApiService/ListDatasets`. Its request type takes
+  `page`, `pageSize` and `pageToken`, and its response carries `nextPageToken`. (The request type
+  still names `/api/v1/datasets/list` as its `endpoint`; the HTTP client does not use it.) Whether
+  the legacy endpoint is still served is unverified (no live call). Moving the adapter is outside
+  this task. See the task's completion report.
 
 ## OpenML (`openml`)
 
@@ -316,7 +334,8 @@ QDR is a Dataverse installation and shares this implementation.
 
     > /limit/{limit}/offset/{offset} - returns only {limit} results starting from result number {offset}. Useful for paginating results. With /limit/5/offset/10, results 11..15 will be returned. Both limit and offset need to be specified.
 
-    The server answers errors with HTTP 412 by default (`MY_Api_Model.php`: `$httpErrorCode = 412`).
+    The server answers errors with HTTP 412 by default (`openml_OS/core/MY_Api_Model.php` at the same
+    commit, `returnError(..., $httpErrorCode = 412, ...)`).
 - **Unsaid:**
   - A maximum `limit` for this listing. The adapter asks for at most 100.
   - Whether the live host runs that source.
