@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record
-from .base import AdapterError, Client, check, members, need
+from .base import AdapterError, Client, check, members, need, plain
 
 SOURCE_ID = "bls"
 SMOKE = {'capability': 'data', 'params': {'series': 'CUUR0000SA0', 'start_year': 2025, 'end_year': 2025}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -24,7 +24,7 @@ DATA_PARAMS = {
 }
 
 def _series(s: dict) -> dict:
-    obs = [(f"{d.get('year')}-{d.get('period')}", d.get("value")) for d in reversed(s.get("data") or [])]
+    obs = [(f"{d.get('year')}-{d.get('period')}", d.get("value")) for d in reversed(plain(s.get("data")) or [])]
     cat = s.get("catalog") or {}
     return make_record(identity=f"series:bls:{s.get('seriesID')}", kind="series", source_id=SOURCE_ID,
                        title=cat.get("series_title") or s.get("seriesID"),
@@ -60,9 +60,9 @@ def data(client: Client, params: dict) -> dict:
     j = need(SOURCE_ID, resp.json, kind=dict)
     need(SOURCE_ID, j, "status", kind=str)   # every BLS answer states its status; one without it is unreadable
     if j.get("status") != "REQUEST_SUCCEEDED":
-        return {"identity": identity, "records": [], "capability_fact": f"BLS: {j.get('status')} {'; '.join(j.get('message') or [])}"[:300]}
+        return {"identity": identity, "records": [], "capability_fact": f"BLS: {j.get('status')} {'; '.join(plain(j.get('message')) or [])}"[:300]}
     records = members(SOURCE_ID, need(SOURCE_ID, j, "Results", "series"), _series)
-    return {"identity": identity, "records": records, "messages": j.get("message") or []}
+    return {"identity": identity, "records": records, "messages": plain(j.get("message")) or []}
 
 
 def catalog(client: Client, *, query: str | None = None, within: str | None = None,
@@ -77,7 +77,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         q = (query or "").lower()
         entries = [{"id": s.get("survey_abbreviation"), "label": s.get("survey_name"), "kind": "survey",
                     "children": True, "within": s.get("survey_abbreviation")}
-                   for s in need(SOURCE_ID, resp.json, "Results", "survey")
+                   for s in plain(need(SOURCE_ID, resp.json, "Results", "survey"))
                    if s.get("survey_abbreviation")
                    and (not q or q in str(s.get("survey_name", "")).lower()
                         or q in str(s.get("survey_abbreviation", "")).lower())]
@@ -89,7 +89,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                       identity=f"series:bls:{within}")
     if not check(SOURCE_ID, resp, allow_404=False):
         return {"entries": []}
-    series = need(SOURCE_ID, resp.json, "Results", "series")
+    series = plain(need(SOURCE_ID, resp.json, "Results", "series"))
     entries = [{"id": s.get("seriesID"), "label": s.get("seriesID"), "kind": "series",
                 "data_request": {"tool": "research_data",
                                  "arguments": {"source": SOURCE_ID, "params": {"series": s.get("seriesID")}}}}

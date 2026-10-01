@@ -6,6 +6,7 @@ from research_gateway.adapters import bea, bis, bls, census, ecb, fred
 from research_gateway.adapters.base import AdapterError, Client, FakeTransport
 from research_gateway.core import sdmx
 from research_gateway.core.broker import Broker, RatePolicy
+from research_gateway.core.payload import view
 
 
 def client(secrets=None):
@@ -118,15 +119,21 @@ BIS_XML = """<?xml version="1.0" encoding="UTF-8"?>
 </message:StructureSpecificData>"""
 
 
+def read_series(message: dict) -> list:
+    """Every series of an SDMX-JSON message, each read alone (None for one that cannot be)."""
+    j = view(message)
+    return sdmx.series_members(j).decode(sdmx.series_reader(j))
+
+
 class Sdmx(unittest.TestCase):
     def test_parser_both_versions(self):
-        s10 = sdmx.series(SDMX_10)
+        s10 = read_series(SDMX_10)
         self.assertEqual(s10[0]["key"], {"FREQ": "D", "CURRENCY": "USD"})
         self.assertEqual(s10[0]["observations"], [("2026-09-01", 1.08), ("2026-09-02", 1.09)])
-        s20 = sdmx.series(SDMX_20)
+        s20 = read_series(SDMX_20)
         self.assertEqual(s20[0]["key"], {"FREQ": "Q"})
         self.assertEqual(s20[0]["observations"], [("2025-Q4", 42.5)])
-        self.assertEqual(sdmx.series({}), [])
+        self.assertEqual(read_series({}), [])
 
 
 class BisEcb(unittest.TestCase):

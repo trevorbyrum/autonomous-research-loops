@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import re
 
+from .payload import Members, PayloadError
+
 _DOI_RE = re.compile(r"10\.\d{4,9}/\S+", re.I)
 _ISSN_RE = re.compile(r"^\d{4}-?\d{3}[\dXx]$")
 _ARXIV_NEW = re.compile(r"^\d{4}\.\d{4,5}(v\d+)?$")
@@ -149,6 +151,12 @@ class RegistrationAgencies:
         if not resp.ok:
             return "unknown"   # a failed lookup is not remembered as the prefix's answer (task 2b)
         rows = resp.json   # an unreadable 200 raises PayloadError: the caller reports it, nothing is cached
-        agency = str(rows[0].get("RA") or "unknown") if isinstance(rows, list) and rows and isinstance(rows[0], dict) else "unknown"
+        agency = None
+        if isinstance(rows, Members):   # one object per DOI asked, and one was: its first result, read like any lookup's
+            try:
+                agency = rows.first(lambda r: str(r.get("RA") or "unknown"))
+            except PayloadError:   # a first result that is not an object names no agency
+                pass
+        agency = agency or "unknown"
         self._cache[prefix] = agency
         return agency

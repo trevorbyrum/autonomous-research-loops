@@ -54,7 +54,7 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1) -> dict:
     # total (docs/PROVIDER-PAGINATION.md): a non-empty page read whole continues at page + 1, and nothing here
     # ever ends the lane. A page cut to `limit` cannot continue: page + 1 would skip the rows cut here
     cut = len(items) > limit
-    return {"records": members(SOURCE_ID, items[:limit], _record), "total": None,
+    return {"records": members(SOURCE_ID, items.take(limit), _record), "total": None,
             "next_page": page + 1 if items and not cut else None, "exhausted": False}
 
 

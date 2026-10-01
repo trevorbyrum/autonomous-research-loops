@@ -14,6 +14,7 @@ qualifies that); they show the adapter acts on what the documentation says.
 """
 from __future__ import annotations
 
+import copy
 import unittest
 
 from research_gateway import adapters
@@ -394,6 +395,76 @@ class SocrataCatalog(Cases):
             "an empty page short of the size": (self.page(0, 5), {"limit": 2, "offset": 2}, neither(0)),
             "a page whose successor the 10,000 window refuses": (self.page(100, 50_000), {"limit": 100, "offset": 9900}, neither(100)),
         })
+
+
+def garbled(body: dict, *path_and_value) -> dict:
+    """`body` with the value at the path replaced (a deep copy): the paging metadata present but not what it should be."""
+    *path, value = path_and_value
+    out = copy.deepcopy(body)
+    cur = out
+    for key in path[:-1]:
+        cur = cur[key]
+    cur[path[-1]] = value
+    return out
+
+
+class UnreadableMetadataNeverEnds(Cases):
+    """2b-repair-8 R7-1, everywhere an adapter derives an end from the provider's own metadata: metadata that is THERE
+    but cannot be read — a total that is not a number, a cursor that is a list — is neither a continuation nor an end.
+    The adapters end a lane only from a positive reading (a number reaching a number, a cursor handed back unchanged, a
+    short page, a header read whole) and a continuation is a cursor or a number read as one, so a reading that fails
+    lands on `neither`, which the router makes a lower bound (partial_pagination). Hugging Face's header is
+    tests/test_link_header.py; the oracle here is the `neither` of each provider's own table above."""
+
+    COUNTS = ("5", ["5"], {"n": 5}, 2.5, True)   # present, and not a number
+    TOKENS = (["c2"], {"n": 2}, 2.5, True)      # present, and not a string or an integer
+
+    def test_a_count_that_cannot_be_read_ends_nothing(self):
+        for value in self.COUNTS:
+            with self.subTest(value=value):
+                self.check(datacite, "GET", DataCiteDois.URL, {"a total that is not a number": (
+                    garbled(DataCiteDois.page(2, 1, 2, 5), "meta", "total", value), {"limit": 2}, neither(2))})
+                self.check(doaj, "GET", DoajArticles.URL, {"a total that is not a number": (
+                    garbled(DoajArticles.page(2, 1, 2, 5), "total", value), {"limit": 2}, neither(2))})
+                for mod, url in DataverseSearch.SOURCES:
+                    self.check(mod, "GET", url, {"a total_count that is not a number": (
+                        garbled(DataverseSearch.page(2, 1, 2, 5), "data", "total_count", value), {"limit": 2}, neither(2))})
+                self.check(socrata, "GET", SocrataCatalog.URL, {"a resultSetSize that is not a number": (
+                    garbled(SocrataCatalog.page(2, 5), "resultSetSize", value), {"limit": 2}, neither(2))})
+                self.check(openaire, "GET", OpenAireProducts.URL, {"a numFound that is not a number, on a first page that would hold it": (
+                    garbled(OpenAireProducts.page(2, "c3", found=2), "header", "numFound", value), {"limit": 2}, more("c3", 2))})
+
+    def test_a_cursor_that_cannot_be_read_continues_nothing_and_ends_nothing(self):
+        for value in self.TOKENS:
+            with self.subTest(value=value):
+                self.check(crossref, "GET", Crossref.URL, {"a next-cursor that is not a string": (
+                    garbled(Crossref.page(2), "message", "next-cursor", value), {"limit": 2, "cursor": "c1"}, neither(2))})
+                self.check(openaire, "GET", OpenAireProducts.URL, {"a nextCursor that is not a string": (
+                    garbled(OpenAireProducts.page(2, "c3"), "header", "nextCursor", value), {"limit": 2, "cursor": "c2"}, neither(2))})
+                self.check(europepmc, "GET", EuropePmcSearch.URL, {"a nextCursorMark that is not a string": (
+                    garbled(EuropePmcSearch.page(2, "c2"), "nextCursorMark", value), {"limit": 2, "cursor": "c1"}, neither(2))})
+                self.check(govinfo, "POST", GovInfoSearch.URL, {"an offsetMark that is not a string": (
+                    garbled(GovInfoSearch.page(2, "m2"), "offsetMark", value), {"limit": 2, "offset_mark": "m1"}, neither(2))})
+
+    def test_a_next_offset_that_cannot_be_read_is_not_a_continuation(self):
+        for value in (["2"], {"n": 2}, True, 2.5):
+            with self.subTest(value=value):
+                self.check(semanticscholar, "GET", SemanticScholarSearch.URL, {"a `next` that is not a number": (
+                    garbled(SemanticScholarSearch.page(2, 0, 2), "next", value), {"limit": 2}, neither(2))})
+
+    def test_an_openml_error_that_cannot_be_read_is_an_outage_never_no_results(self):
+        for name, body in (("an unparseable body", b'{"error": {"code": "37'), ("an error that is a string", {"error": "372"}),
+                           ("a code that is a list", {"error": {"code": ["372"]}}), ("no error at all", {}), ("a list", [])):
+            with self.subTest(name):
+                with self.assertRaises(SourceUnavailable):
+                    ask(openml, "GET", OpenMLDatasets.URL, body, 412, limit=2, offset=6)
+
+    def test_control_the_readable_forms_still_end_and_continue(self):
+        self.check(datacite, "GET", DataCiteDois.URL, {"a total read": (DataCiteDois.page(1, 3, 2, 5), {"limit": 2, "page": 3}, last(1)),
+                                                      "a page short of it": (DataCiteDois.page(2, 1, 2, 5), {"limit": 2}, more(2, 2))})
+        self.check(openml, "GET", OpenMLDatasets.URL, {"error 372": ({"error": {"code": "372", "message": "No results"}},
+                                                                    {"limit": 2, "offset": 6}, last(0), 412)})
+        self.check(semanticscholar, "GET", SemanticScholarSearch.URL, {"a next offset": (SemanticScholarSearch.page(2, 0, 2), {"limit": 2}, more(2, 2))})
 
 
 class HuggingFaceDatasets(unittest.TestCase):

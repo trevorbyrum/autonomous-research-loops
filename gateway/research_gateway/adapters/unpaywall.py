@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record
 from ..core.identity import normalize_doi
-from .base import OMIT, Client, check, members, need
+from .base import NO_MEMBERS, OMIT, Client, Members, check, members, need, plain
 
 SOURCE_ID = "unpaywall"
 SMOKE = {'capability': 'enrich', 'identity': 'doi:10.1038/nature12373', 'what': 'oa_location'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -22,7 +22,7 @@ def enrich(client: Client, identity: str, what: str = "oa_location") -> dict:
         return {"identity": f"doi:{doi}", "what": what, "items": []}
     j = need(SOURCE_ID, resp.json, kind=dict)
     best = j.get("best_oa_location") or {}
-    locations = need(SOURCE_ID, j, "oa_locations") or ([best] if best else [])
+    locations = need(SOURCE_ID, j, "oa_locations") or (Members([plain(best)]) if best else NO_MEMBERS)   # no list: the best location alone
 
     def location(loc: dict):
         url = loc.get("url_for_pdf") or loc.get("url")

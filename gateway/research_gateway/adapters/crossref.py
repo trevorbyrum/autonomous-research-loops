@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi, normalize_issn
-from .base import OMIT, Client, PayloadError, check, members, need
+from .base import NO_MEMBERS, OMIT, Client, PayloadError, check, members, need, plain, scalar
 
 SOURCE_ID = "crossref"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -19,19 +19,19 @@ def _record(client: Client, w: dict) -> dict:
     if not doi and not (isinstance(w.get("URL"), str) and w["URL"].strip()):
         raise PayloadError(f"{SOURCE_ID}: a work with neither a DOI nor a URL names nothing (A4)")
     authors = [" ".join(p for p in (a.get("given"), a.get("family")) if p) or a.get("name", "")
-               for a in w.get("author", [])]
-    issued = (w.get("issued") or {}).get("date-parts") or [[None]]
+               for a in plain(w.get("author", []))]
+    issued = plain((w.get("issued") or {}).get("date-parts")) or [[None]]
     year = issued[0][0] if issued and issued[0] and issued[0][0] else year_from((w.get("created") or {}).get("date-time"))
-    licenses = [l.get("URL") for l in w.get("license", []) if l.get("URL")]
-    issns = [normalize_issn(i) for i in w.get("ISSN", []) if normalize_issn(i)]
+    licenses = [l.get("URL") for l in plain(w.get("license", [])) if l.get("URL")]
+    issns = [normalize_issn(i) for i in plain(w.get("ISSN", [])) if normalize_issn(i)]
     ids = {"doi": doi} if doi else {}
     if issns:
         ids["issn"] = issns[0]
     return make_record(
         identity=f"doi:{doi}" if doi else f"url:{w.get('URL')}",
         kind="article", source_id=SOURCE_ID,
-        title=(w.get("title") or [None])[0], authors=[a for a in authors if a], year=year,
-        venue=(w.get("container-title") or [None])[0], identifiers=ids,
+        title=(plain(w.get("title")) or [None])[0], authors=[a for a in authors if a], year=year,
+        venue=(plain(w.get("container-title")) or [None])[0], identifiers=ids,
         links=[u for u in (w.get("URL"),) if u], license=licenses[0] if licenses else None,
         attribution=None,
         extra={"type": w.get("type"), "cited_by_count": w.get("is-referenced-by-count"),
@@ -63,12 +63,12 @@ def find(client: Client, query: str, *, limit: int = 20, year_from_: int | None 
     resp = client.get(SOURCE_ID, "find", f"{BASE}/works", params=params, query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     msg = need(SOURCE_ID, resp.json, "message", kind=dict)
-    items, total = need(SOURCE_ID, msg, "items"), msg.get("total-results")
+    items, total = need(SOURCE_ID, msg, "items"), scalar(msg.get("total-results"))
     # Crossref: "If the number of returned items is fewer than the number of expected rows then the end of
     # the result set has been reached"; a full page continues by its next-cursor (docs/PROVIDER-PAGINATION.md)
     end = len(items) < rows
     return {"records": members(SOURCE_ID, items, lambda w: _record(client, w)),
-            "total": total, "next_cursor": None if end else msg.get("next-cursor"), "exhausted": end}
+            "total": total, "next_cursor": None if end else scalar(msg.get("next-cursor")), "exhausted": end}
 
 
 def resolve(client: Client, identity: str) -> dict | None:
@@ -97,5 +97,5 @@ def enrich(client: Client, identity: str, what: str = "references") -> dict:
     if not check(SOURCE_ID, resp):
         return {"identity": f"doi:{doi}", "what": what, "items": []}
     msg = need(SOURCE_ID, resp.json, "message", kind=dict)
-    refs = need(SOURCE_ID, msg, "reference") if msg.get("reference") else []   # a work that deposited no references has none
+    refs = need(SOURCE_ID, msg, "reference") if msg.get("reference") else NO_MEMBERS   # a work that deposited no references has none
     return {"identity": f"doi:{doi}", "what": what, "items": members(SOURCE_ID, refs, _reference)}

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core import sdmx
 from ..core.canonical import make_record
-from .base import AdapterError, Client, check, members
+from .base import AdapterError, Client, check, members, plain
 
 SOURCE_ID = "bis"
 SMOKE = {'capability': 'data', 'params': {'dataflow': 'WS_EER', 'key': 'M.N.B.US', 'start': '2026-01'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -42,7 +42,7 @@ def data(client: Client, params: dict) -> dict:
     ctx = sdmx.context_xml(resp.text)
 
     def record(s: dict) -> dict:
-        dims = {k: v for k, v in s["key"].items() if k not in LABEL_ATTRS}
+        dims = {k: v for k, v in plain(s["key"]).items() if k not in LABEL_ATTRS}   # the attributes of ONE <Series> element
         skey = ".".join(dims.values())
         return make_record(identity=f"series:bis:{flow}:{skey}", kind="series", source_id=SOURCE_ID,
                            title=s["key"].get("TITLE_TS") or f"{flow} {skey}", links=["https://data.bis.org/topics"],

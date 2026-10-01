@@ -1,167 +1,42 @@
-"""Task 2b-repair-7b: every provider member is decoded alone, through the one decoder.
+"""Task 2b-repair-7b / 2b-repair-8: every provider member is decoded alone.
 
-An adapter that builds records from a provider's list in a loop of its own lets one member that is not
-an object (or whose decoding raises) lose the whole answer. OpenCitations' enrich did, and an audit found
-the same in Crossref's and Semantic Scholar's enrich, Unpaywall, the Kaggle and Dataverse file listings,
-BLS series and ECB series (2b-repair A4 and the Socrata page of 2b-repair-7 were this defect, one adapter at
-a time). The property now lives in one place, base.members(), and two checks hold it:
+One member that is not an object (or whose decoding raises) must cost that member only: the readable ones
+beside it stand as a partial lower bound. OpenCitations' enrich lost the whole answer to one (2b-repair-7b), an
+audit found nine more such paths, Socrata's page and 2b-repair-7's reproductions were the same defect one adapter at a
+time (2b-repair A4), and Hugging Face's file siblings and ECB's data sets were still the same after all of that
+(Astra, 2b-repair-7 review). A source scan for loops that call a record builder missed each new spelling, so it is
+gone: a provider's list reaches an adapter as a `Members` that can only be decoded member by member
+(core/payload.py), and tests/test_member_isolation.py holds that property directly. This file holds the behaviour:
 
-  * OneDecoder reads the SOURCE: code under adapters/ that builds records in a loop, comprehension or
-    map of its own, a call to make_record or to a function that builds records outside the arguments of
-    members() or first_member(), fails here, unless NOT_PROVIDER_MEMBERS lists it with why. What it covers is the
-    provider's members that become records; payload rows of one record (a table's, a series'
-    observations) and catalogue entries are not those, and a statement of what the check does not
-    see is below.
-  * EveryMemberAlone is the behaviour, through the real adapters and the real router: for every path
-    that turns a provider's list into records, one member that is not an object beside readable ones
-    costs that member only, the readable ones stand as a partial lower bound, and a member that is
-    readable but names nothing to report (a reference with no DOI) is omitted, not counted as lost.
-    The single-result lookups (resolve) read their first result the same way (FirstResult).
-    Oracle: the identities the bodies below name, stated here by hand.
+  * EveryMemberAlone: for every path that turns a provider's list into records, through the real adapters, one member
+    that is not an object beside readable ones costs that member only, the readable ones stand, and a member that is
+    readable but names nothing to report (a reference with no DOI) is omitted, not counted as lost. The paths include
+    the lists inside a member whose members become records: Hugging Face's `siblings` and ECB's `dataSets`.
+  * ThroughTheRouter and RoutedMixedAnswers: what the lane entry says about each such answer through the real router
+    (Astra's Hugging Face and ECB reproductions among them), each with a readable control.
+  * FirstResult: a lookup asks for ONE result and reads the first, through the same decoder (OpenCitations'
+    metadata lookup read `rows[0]` itself until 2b-repair-8).
 
-The check does not see: a record built by a loop that calls no builder (a dict copied from the
-gateway's own database in the local index, which is no provider), iteration that builds no record
-(socrata's portal vouching skips a non-object itself; fred's observations and census's rows are the payload
-of ONE record, which a malformed row makes unreadable rather than shorter, while bea's and socrata's fetch rows
-are stored whole, never iterated; catalogue entries are not records and the router keeps no dropped-entry
-account of them, so a malformed entry makes its whole catalogue answer unreadable: bls, fred, census and bea),
-and a list reached through reflection.
+Oracle: the identities the bodies below name, stated here by hand. What the lists that are NOT members do — a table's
+rows, a catalogue's entries — is not decided here: tests/test_member_isolation.py lists them, with why.
 """
 from __future__ import annotations
 
-import ast
-import tempfile
-import textwrap
 import unittest
-from pathlib import Path
 
 from research_gateway import adapters
-from research_gateway.adapters import (bis, bls, core, crossref, doaj, ecb, europepmc, harvard_dataverse as dv, kaggle, openaire,
+from research_gateway.adapters import (bis, bls, core, crossref, doaj, ecb, europepmc, harvard_dataverse as dv, huggingface, kaggle, openaire,
                                        opencitations, semanticscholar, unpaywall)
 from research_gateway.adapters.base import AdapterError, Client, FakeTransport, PayloadError
 from research_gateway.core import router as R
 from research_gateway.core.broker import Broker, RatePolicy
+from research_gateway.registry.load import read_seed
 from tests.test_routing import SEED_NO_INDEX
 
-ADAPTERS = Path(__file__).resolve().parents[1] / "research_gateway" / "adapters"
 SIDS = ("crossref", "semanticscholar", "unpaywall", "opencitations", "kaggle", "harvard_dataverse", "bls", "ecb", "bis", "core", "doaj",
-        "europepmc", "openaire")
+        "europepmc", "openaire", "huggingface")
 KEYS = {("kaggle", "username"): "u", ("kaggle", "key"): "k", ("bls", None): "REG", ("core", None): "c",
         ("openaire", "client_id"): "i", ("openaire", "client_secret"): "s"}
-
-# the loops that build records from data that is not a provider's list of members, by (file, function), each with why
-NOT_PROVIDER_MEMBERS = {
-    ("govinfo.py", "fetch"): "its download links, listed from the formats of the package record this adapter already decoded",
-    ("huggingface.py", "fetch"): "its file records, listed from the files of the dataset record this adapter already decoded",
-    ("openml.py", "fetch"): "its file records, listed from the two URLs of the dataset record this adapter already decoded",
-}
-LOOPS = (ast.For, ast.AsyncFor, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
-
-
-def callee(call: ast.Call) -> str | None:
-    f = call.func
-    return f.id if isinstance(f, ast.Name) else f.attr if isinstance(f, ast.Attribute) else None
-
-
-def builds(node: ast.AST, builders: set[str]) -> bool:
-    """Does this code call make_record, or a function that does? The arguments of members() are the one
-    place that may: they are what it decodes each member with. A nested def is its own function."""
-    if isinstance(node, ast.Call):
-        name = callee(node)
-        if name in ("members", "first_member"):
-            return False
-        if name in builders or name == "make_record":
-            return True
-        if name in ("map", "filter") and any(isinstance(n, (ast.Name, ast.Attribute)) and (getattr(n, "id", None) or n.attr) in builders
-                                             for a in node.args for n in ast.walk(a)):
-            return True   # map(_record, members): the same loop, spelled as a call
-    return any(builds(child, builders) for child in ast.iter_child_nodes(node) if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)))
-
-
-def functions(tree: ast.AST):
-    """(qualified name, node) for every function in the module."""
-    def visit(node, scope):
-        for child in ast.iter_child_nodes(node):
-            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                yield ".".join((*scope, child.name)), child
-                yield from visit(child, (*scope, child.name))
-            else:
-                yield from visit(child, scope)
-    return visit(tree, ())
-
-
-def builder_names(trees: list[ast.AST]) -> set[str]:
-    """The functions that build records: those that call make_record or, as far as that goes, another of them."""
-    found: set[str] = set()
-    while True:
-        more = {fn.name for tree in trees for _, fn in functions(tree) if fn.name not in found and builds(fn, found)}
-        if not more:
-            return found
-        found |= more
-
-
-def own_loops(fn: ast.AST):
-    """Every loop in this function's own body (not those of the functions defined inside it)."""
-    for child in ast.iter_child_nodes(fn):
-        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        if isinstance(child, LOOPS) or isinstance(child, ast.Call) and callee(child) in ("map", "filter"):
-            yield child
-        yield from own_loops(child)
-
-
-def record_loops(root: Path = ADAPTERS) -> list[tuple[str, str]]:
-    """(file, function) for every loop under `root` (but base.py, the decoder) that builds records on its own."""
-    trees = {p: ast.parse(p.read_text(encoding="utf-8")) for p in sorted(root.glob("*.py")) if p.name != "base.py"}
-    names = builder_names(list(trees.values()))
-    return sorted({(p.name, qual) for p, tree in trees.items() for qual, fn in functions(tree)
-                   for loop in own_loops(fn) if builds(loop, names)})
-
-
-class OneDecoder(unittest.TestCase):
-    def test_no_adapter_builds_records_from_a_provider_list_around_the_decoder(self):
-        found = record_loops()
-        self.assertEqual([f for f in found if f not in NOT_PROVIDER_MEMBERS], [],
-                         "a provider's list becomes records through base.members(), which decodes each member alone")
-        self.assertEqual(sorted(found), sorted(NOT_PROVIDER_MEMBERS), "each listed loop is still there")
-
-    def test_control_the_check_finds_a_loop_of_an_adapters_own(self):
-        """The check's own oracle: a record-building loop in each form it takes is found; the decoder's
-        own use, a single record, and loops that build no record are not."""
-        with tempfile.TemporaryDirectory() as tmp:
-            (Path(tmp) / "new_lane.py").write_text(textwrap.dedent('''\
-                from .base import members
-                def _row(r):
-                    return make_record(identity=r["id"], kind="citation", source_id="x")
-                def a_loop(rows):
-                    out = []
-                    for r in rows:
-                        out.append(make_record(identity=r["id"], kind="citation", source_id="x"))
-                    return out
-                def a_comprehension(rows):
-                    return [make_record(identity=r["id"], kind="citation", source_id="x") for r in rows]
-                def through_a_builder(rows):
-                    return [_row(r) for r in rows]
-                def a_generator(rows):
-                    return sorted(_row(r) for r in rows)
-                def a_map(rows):
-                    return list(map(_row, rows))
-                def nested(rows):
-                    def inner():
-                        for r in rows:
-                            _row(r)
-                    return inner
-                def through_the_decoder(rows):
-                    return members("x", rows, _row)
-                def through_the_decoder_with_a_lambda(rows):
-                    return members("x", rows, lambda r: _row(r))
-                def a_single_record(r):
-                    return _row(r)
-                def a_loop_with_no_record(rows):
-                    return [r["id"] for r in rows]
-                '''))
-            self.assertEqual(record_loops(Path(tmp)), [("new_lane.py", name) for name in
-                                                       ("a_comprehension", "a_generator", "a_loop", "a_map", "nested.inner", "through_a_builder")])
 
 
 def client():
@@ -186,6 +61,20 @@ def sdmx(series: list) -> dict:
     return {"structure": {"dimensions": {"series": [{"id": "FREQ", "values": [{"id": "D"}]}, {"id": "CURRENCY", "values": [{"id": "USD"}, {"id": "GBP"}]}],
                                          "observation": [{"id": "TIME_PERIOD", "values": [{"id": "2026-09-01"}]}]}},
             "dataSets": [{"series": {("0:0" if isinstance(m, dict) else f"0:{i + 1}"): m for i, m in enumerate(series)}}]}
+
+
+SDMX_STRUCTURE = {"dimensions": {"series": [{"id": "FREQ", "values": [{"id": "D"}]}, {"id": "CURRENCY", "values": [{"id": "USD"}, {"id": "GBP"}]}],
+                                 "observation": [{"id": "TIME_PERIOD", "values": [{"id": "2026-09-01"}]}]}}
+
+
+def sdmx_sets(datasets: list) -> dict:
+    """An SDMX-JSON message whose DATA SETS are the members, each holding series: ECB's other list of members."""
+    return {"structure": SDMX_STRUCTURE, "dataSets": datasets}
+
+
+def siblings(files: list) -> dict:
+    """A Hugging Face dataset envelope (valid id and licence) whose `siblings`, its files, are the members."""
+    return {"id": "review/dataset", "cardData": {"license": "cc0-1.0"}, "siblings": files}
 
 
 # label, call, url prefix, body for a list of members, a readable member, the identity it names, the answer's list
@@ -216,6 +105,11 @@ PATHS = [
      "series:bls:CUUR0000SA0", "records"),
     ("ecb series", lambda c: ecb.data(c, {"dataflow": "EXR", "key": "D.USD"}), "https://data-api.ecb.europa.eu/service/data/EXR/",
      sdmx, {"observations": {"0": [1.08]}}, "series:ecb:EXR:D.USD", "records"),
+    # the lists inside a member whose members become records (2b-repair-8): each was read before the decoder ran
+    ("ecb data sets", lambda c: ecb.data(c, {"dataflow": "EXR", "key": "D.USD"}), "https://data-api.ecb.europa.eu/service/data/EXR/",
+     sdmx_sets, {"series": {"0:0": {"observations": {"0": [1.08]}}}}, "series:ecb:EXR:D.USD", "records"),
+    ("hugging face files", lambda c: huggingface.fetch(c, "hf:review/dataset"), "https://huggingface.co/api/datasets/review/dataset",
+     siblings, {"rfilename": "train.csv"}, "hf:review/dataset#train.csv", "records"),
 ]
 
 
@@ -256,7 +150,8 @@ class EveryMemberAlone(unittest.TestCase):
         """Not only a non-object: an object whose own decoding raises (a DOI that is a number, a linked paper that is
         not an object) is the same, in the paths that read such fields themselves."""
         bad = {"crossref references": {"DOI": 7}, "semanticscholar citations": {"citingPaper": 7},
-               "opencitations citations": {**OC, "citing": 7}}
+               "opencitations citations": {**OC, "citing": 7}, "hugging face files": {"rfilename": 7},
+               "ecb data sets": {"series": [1]}}
         for label, call, prefix, body, ok, identity, key in PATHS:
             if label in bad:
                 with self.subTest(path=label):
@@ -316,6 +211,90 @@ class ThroughTheRouter(unittest.TestCase):
         self.assertEqual((e["coverage"], e["completeness"], e["count"], e.get("error_class")), ("searched_ok", "complete", 1, None))
 
 
+class RoutedMixedAnswers(unittest.TestCase):
+    """Astra's two R7-2 reproductions through the real adapters and router, each with a readable control: the dataset's
+    own identity and licence (HF) and the message's own structure (ECB) were intact, and one malformed member of a list
+    inside the answer lost every readable record beside it — no records, unavailable, no lower-bound count."""
+
+    def lane(self, sid, body, request, url):
+        c, t = client()
+        t.add("GET", url, body=body)
+        out = R.execute(R.Router(read_seed(), adapters.load_all()), request, c)
+        return out, {e["source"]: e for e in out["lanes"]}[sid]
+
+    def hf(self, files):
+        return self.lane("huggingface", siblings(files), {"request_type": "fetch", "target": "hf:review/dataset"},
+                         "https://huggingface.co/api/datasets/review/dataset")
+
+    def ecb(self, datasets):
+        return self.lane("ecb", sdmx_sets(datasets), {"request_type": "data", "source": "ecb", "params": {"dataflow": "EXR", "key": "D.USD"}},
+                         "https://data-api.ecb.europa.eu/service/data/EXR/")
+
+    GOOD_FILE, GOOD_SET = {"rfilename": "train.csv"}, {"series": {"0:0": {"observations": {"0": [1.25]}}}}
+    HF_ID, ECB_ID = "hf:review/dataset#train.csv", "series:ecb:EXR:D.USD"
+
+    def shape(self, e):
+        return (e["coverage"], e["completeness"], e.get("count"), e.get("error_class"), e.get("retrieved"))
+
+    def test_a_readable_file_survives_a_malformed_sibling(self):
+        for files in ([self.GOOD_FILE, 7], [7, self.GOOD_FILE], [{}, self.GOOD_FILE, "x", {"rfilename": 5}]):
+            with self.subTest(files=files):
+                out, e = self.hf(files)
+                self.assertEqual(self.shape(e), ("searched_ok", "partial", 1, "payload_invalid", [self.HF_ID]))
+                self.assertEqual([r["identity"] for r in out["records"]], [self.HF_ID], "what was readable is kept")
+                self.assertTrue(any("malformed record(s) dropped" in f for f in out["facts"]))
+
+    def test_a_readable_series_survives_a_malformed_data_set(self):
+        for datasets in ([self.GOOD_SET, 7], [7, self.GOOD_SET], [self.GOOD_SET, {"series": 5}], [{"series": [self.GOOD_SET]}, self.GOOD_SET]):
+            with self.subTest(datasets=datasets):
+                out, e = self.ecb(datasets)
+                self.assertEqual(self.shape(e), ("searched_ok", "partial", 1, "payload_invalid", [self.ECB_ID]))
+                self.assertEqual([r["identity"] for r in out["records"]], [self.ECB_ID])
+
+    def test_nothing_readable_is_unobserved_never_zero(self):
+        for out, e in (self.hf([7]), self.hf([{}, "x"]), self.ecb([7]), self.ecb([7, {"series": 5}])):
+            self.assertEqual((e["coverage"], e["completeness"], e["error_class"]), ("provider_unavailable", "unobserved", "payload_invalid"))
+            self.assertNotIn("count", e)
+
+    def test_control_readable_lists_are_complete(self):
+        for out, identity in ((self.hf([self.GOOD_FILE, {"rfilename": "test.csv"}])[0], self.HF_ID), (self.ecb([self.GOOD_SET])[0], self.ECB_ID)):
+            (e,) = [e for e in out["lanes"] if e["source"] in ("huggingface", "ecb")]
+            self.assertEqual((e["coverage"], e["completeness"], e.get("error_class")), ("searched_ok", "complete", None))
+            self.assertIn(identity, [r["identity"] for r in out["records"]])
+
+    def test_a_dataset_is_read_whole_beside_unreadable_files_in_every_lane_that_returns_it(self):
+        """The dataset record no longer carries its files, so a file that cannot be read cannot take the dataset
+        with it: resolve and find both return it, with the count of files the Hub listed."""
+        dataset = {"id": "review/dataset", "cardData": {"license": "cc0-1.0"}, "siblings": [7, {"rfilename": "a"}, None]}
+        try:
+            c, t = client()
+            t.add("GET", "https://huggingface.co/api/datasets/review/dataset", body=dataset)
+            resolved = huggingface.resolve(c, "hf:review/dataset")
+            c, t = client()
+            t.add("GET", "https://huggingface.co/api/datasets?", body=[dataset])
+            found = huggingface.find(c, "review", limit=2)
+        except Exception as e:
+            self.fail(f"one unreadable file lost the dataset ({e!r}): it is that file's, not the dataset's")
+        for record in (resolved, found["records"][0]):
+            self.assertEqual((record["identity"], record["license"], record["file_count"]), ("hf:review/dataset", "cc0-1.0", 3))
+            self.assertNotIn("files", record)
+        self.assertEqual(len(found["records"]), 1, "the dataset is not dropped")
+
+    def test_opencitations_metadata_is_the_first_result_or_an_unreadable_answer(self):
+        def lane(body):
+            c, t = client()
+            t.add("GET", "https://api.opencitations.net/meta/v1/metadata/doi:10.1000/x", body=body)
+            out = R.execute(R.Router(SEED_NO_INDEX, adapters.load_all()),
+                            {"request_type": "enrich", "identity": "doi:10.1000/x", "what": "metadata"}, c)
+            return out, {e["source"]: e for e in out["lanes"]}["opencitations"]
+        out, e = lane([{"title": "T", "author": "A", "pub_date": "2020", "venue": "V"}, 7])
+        self.assertEqual((e["coverage"], e["completeness"], e["count"]), ("searched_ok", "complete", 1), "only the first result is read")
+        out, e = lane([7, {"title": "T"}])
+        self.assertEqual((e["coverage"], e["completeness"], e["error_class"]), ("provider_unavailable", "unobserved", "payload_invalid"),
+                         "an unreadable first result is not 'not found', and is not answered by the one after it")
+        self.assertNotIn("count", e)
+
+
 class FirstResult(unittest.TestCase):
     """A lookup asks for ONE result and reads the first, through the same decoder (base.first_member): a first result
     that cannot be read is an unreadable answer, never 'not found' and never answered by the result after it, which
@@ -336,6 +315,9 @@ class FirstResult(unittest.TestCase):
         ("openaire", lambda c: openaire.resolve(c, "doi:10.1234/x"), "https://api.openaire.eu/graph/v1/researchProducts",
          lambda ms: {"header": {"numFound": len(ms)}, "results": ms},
          {"id": "x", "mainTitle": "T", "pids": [{"scheme": "doi", "value": "10.1234/x"}]}, "doi:10.1234/x"),
+        ("opencitations metadata", lambda c: opencitations.enrich(c, "doi:10.1234/x", "metadata"),
+         "https://api.opencitations.net/meta/v1/metadata/", lambda ms: ms,
+         {"title": "T", "author": "A, B; C, D", "pub_date": "2020-05", "venue": "J [issn:1234-5679]"}, "doi:10.1234/x"),
     ]
 
     def outcome(self, call, prefix, body):

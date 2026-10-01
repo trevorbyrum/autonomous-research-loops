@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi
-from .base import OMIT, Client, check, members, need
+from .base import OMIT, Client, check, first_member, members, need
 
 SOURCE_ID = "opencitations"
 SMOKE = {'capability': 'enrich', 'identity': 'doi:10.1162/qss_a_00023', 'what': 'references'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -27,6 +27,14 @@ def _link(key: str, row: dict):
                        identifiers={"doi": doi}, extra={"oci": row.get("oci"), "timespan": row.get("timespan")}, raw=row)
 
 
+def _article(doi: str, m: dict) -> dict:
+    """OpenCitations Meta's record for `doi`."""
+    return make_record(identity=f"doi:{doi}", kind="article", source_id=SOURCE_ID, title=m.get("title"),
+                       authors=[a.strip() for a in (m.get("author") or "").split(";") if a.strip()],
+                       year=year_from(m.get("pub_date")), venue=(m.get("venue") or "").split(" [")[0] or None,
+                       identifiers={"doi": doi}, raw=m)
+
+
 def enrich(client: Client, identity: str, what: str = "citations") -> dict:
     """citations: works citing this DOI; references: works this DOI cites; metadata: OpenCitations Meta record."""
     doi = _doi_of(identity)
@@ -36,15 +44,9 @@ def enrich(client: Client, identity: str, what: str = "citations") -> dict:
         resp = client.get(SOURCE_ID, "enrich", f"{META}/metadata/doi:{doi}", identity=f"doi:{doi}")
         if not check(SOURCE_ID, resp):
             return {"identity": f"doi:{doi}", "what": what, "items": []}
-        rows = need(SOURCE_ID, resp.json)   # a list; empty when OpenCitations Meta has no record
-        if not rows:
-            return {"identity": f"doi:{doi}", "what": what, "items": []}
-        m = need(SOURCE_ID, rows[0], kind=dict)
-        rec = make_record(identity=f"doi:{doi}", kind="article", source_id=SOURCE_ID, title=m.get("title"),
-                          authors=[a.strip() for a in (m.get("author") or "").split(";") if a.strip()],
-                          year=year_from(m.get("pub_date")), venue=(m.get("venue") or "").split(" [")[0] or None,
-                          identifiers={"doi": doi}, raw=m)
-        return {"identity": f"doi:{doi}", "what": what, "items": [rec]}
+        # a list, empty when OpenCitations Meta has no record; its first result is read like any lookup's
+        rec = first_member(SOURCE_ID, need(SOURCE_ID, resp.json), lambda m: _article(doi, m))
+        return {"identity": f"doi:{doi}", "what": what, "items": [rec] if rec else []}
     if what not in ("citations", "references"):
         return {"identity": f"doi:{doi}", "what": what, "items": []}
     resp = client.get(SOURCE_ID, "enrich", f"{INDEX}/{what}/doi:{doi}", identity=f"doi:{doi}")

@@ -246,8 +246,17 @@ QDR is a Dataverse installation and shares this implementation.
 
   The adapter's token travels only in its own `Authorization` header. The first request carries
   `search`, `limit` and `full`, and never an offset.
-- **End:** an answer without a next link. A next link that is present is never the end. One the
-  gateway may not follow is neither a continuation nor an end, so the lane is a lower bound.
+- **Reading the header:** `Link` is read as RFC 8288 does (`base.parse_links`, `base.next_link`): a comma
+  or semicolon inside `<...>` or a quoted parameter belongs to it, a header may hold several links and
+  several lines (the transport joins repeated lines, RFC 9110 §5.3), parameters come in any order, only a
+  link's first `rel` counts, and `rel` is a space-separated list of relation types. The reading has three
+  outcomes: a next URL; a header read whole that names none; and a header that could not be read, or names
+  several different next pages. (An earlier reader split on every comma, so a valid header with a quoted
+  comma lost its relation and the lane claimed the end of the listing: R7-1.)
+- **End:** a header read whole that names no next link (or no header): the absence the official clients stop
+  on. A next link that is present is never the end. One the gateway may not follow, and a header that could
+  not be read, are neither a continuation nor an end, so the lane is a lower bound
+  (`partial_pagination`). An end is never concluded from a failure to read.
 - **Evidence:**
   - Provider-owned client `huggingface_hub` 2.0.0, published by Hugging Face from
     github.com/huggingface/huggingface_hub (PyPI provenance). File `utils/_pagination.py`, read

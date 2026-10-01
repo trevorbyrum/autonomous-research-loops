@@ -5,7 +5,7 @@ import re
 
 from ..core.canonical import make_record, year_from
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, PayloadError, check, members, need
+from .base import AdapterError, Client, Obj, PayloadError, check, members, need, plain, scalar
 
 SOURCE_ID = "socrata"
 SMOKE = {'capability': 'find', 'query': 'business licenses', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -43,7 +43,7 @@ def _vouched(client: Client, domain: str) -> None:
         return
     resp = client.get(SOURCE_ID, "resolve", DISCOVERY, params={"domains": domain, "limit": 1, "only": "datasets"},
                       headers=_headers(client), identity=f"socrata:{domain}")
-    listed = {((r.get("metadata") or {}).get("domain") or "").lower() for r in need(SOURCE_ID, resp.json, "results")
+    listed = {((r.get("metadata") or {}).get("domain") or "").lower() for r in plain(need(SOURCE_ID, resp.json, "results"))
               if isinstance(r, dict)} if check(SOURCE_ID, resp) else set()
     if domain not in listed:
         raise AdapterError(f"{domain} is not a Socrata portal known to the discovery catalog (R-6)")
@@ -73,7 +73,7 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0, portal
     resp = client.get(SOURCE_ID, "find", DISCOVERY, params=params, headers=_headers(client), query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     j = resp.json
-    results, total = need(SOURCE_ID, j, "results"), j.get("resultSetSize")
+    results, total = need(SOURCE_ID, j, "results"), scalar(j.get("resultSetSize"))
     records = members(SOURCE_ID, results, _catalog_record)
     # the catalog vouches for a portal only through a member read whole: learning domains from the raw
     # members, before each is decoded alone, let one non-object member lose the whole page (A4)
@@ -99,9 +99,9 @@ def resolve(client: Client, identity: str) -> dict | None:
     lic = v.get("license") or {}
     return make_record(identity=identity, kind="dataset", source_id=SOURCE_ID, title=v.get("name"), year=year_from(v.get("rowsUpdatedAt")),
                        venue=domain, identifiers={"dataset_id": did}, links=[f"https://{domain}/d/{did}"],
-                       license=lic.get("name") if isinstance(lic, dict) else lic,
-                       extra={"description": (v.get("description") or "")[:1000], "columns": [c.get("fieldName") for c in v.get("columns") or []],
-                              "attribution": v.get("attribution"), "license_link": lic.get("termsLink") if isinstance(lic, dict) else None},
+                       license=lic.get("name") if isinstance(lic, Obj) else lic,
+                       extra={"description": (v.get("description") or "")[:1000], "columns": [c.get("fieldName") for c in plain(v.get("columns")) or []],
+                              "attribution": v.get("attribution"), "license_link": lic.get("termsLink") if isinstance(lic, Obj) else None},
                        raw=v)
 
 

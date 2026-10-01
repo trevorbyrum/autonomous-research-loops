@@ -16,7 +16,7 @@ import os
 import sys
 from typing import Iterator
 
-from ..adapters.base import Client, check
+from ..adapters.base import Client, Members, Obj, check, plain, scalar
 from ..core import db
 from ..core.canonical import make_record
 from ..core.identity import normalize_issn, normalize_title
@@ -57,15 +57,15 @@ def crossref_journals(client: Client, *, limit: int | None = None, rows: int = 1
                       skipped: list[str] | None = None) -> Iterator[dict]:
     cursor, seen, skipped = "*", 0, skipped if skipped is not None else []
 
-    def build(j: dict) -> dict | None:
-        issns = [x.get("value") for x in j.get("issn-type") or []] or j.get("ISSN") or []
+    def build(j: Obj) -> dict | None:
+        issns = [x.get("value") for x in plain(j.get("issn-type")) or []] or plain(j.get("ISSN")) or []
         identity, clean = venue_identity(issns, "crossref", j.get("title"), j.get("publisher"), issn_map)
         if identity is None:
             return None
         counts = j.get("counts") or {}
         return make_record(identity=identity, kind="venue", source_id="crossref", title=j.get("title"), venue=j.get("publisher"),
                            identifiers={"issn": clean[0]} if clean else {}, links=[],
-                           extra={"issns": clean, "subjects": [s.get("name") for s in j.get("subjects") or [] if s.get("name")],
+                           extra={"issns": clean, "subjects": [s.get("name") for s in plain(j.get("subjects")) or [] if s.get("name")],
                                   "works_count": counts.get("total-dois"), "current_dois": counts.get("current-dois")},
                            raw=j)
 
@@ -74,20 +74,19 @@ def crossref_journals(client: Client, *, limit: int | None = None, rows: int = 1
                           params={"rows": rows, "cursor": cursor, "mailto": client.contact_email}, query="journals harvest")
         check("crossref", resp, allow_404=False)   # a failed page fails the load (D-23)
         j = resp.json
-        msg = j.get("message") if isinstance(j, dict) else None
-        if not isinstance(msg, dict) or not isinstance(msg.get("items"), list):
+        msg = j.get("message") if isinstance(j, Obj) else None
+        if not isinstance(msg, Obj) or not isinstance(msg.get("items"), Members):
             raise ValueError(f"Crossref journals answered 200 but not with an items list "
                              f"(content-type {resp.headers.get('content-type')!r}) — load failed, not empty (D-24/D-25)")
         items = msg["items"]
-        for j in items:
-            rec = _safe(build, j, skipped) if isinstance(j, dict) else None
+        for rec in items.decode(lambda member: _safe(build, member, skipped)):   # each member alone; None is one that was skipped
             if rec is None:
                 continue
             yield rec
             seen += 1
             if limit and seen >= limit:
                 return
-        cursor = msg.get("next-cursor") if items and len(items) >= rows else None
+        cursor = scalar(msg.get("next-cursor")) if items and len(items) >= rows else None
 
 
 # ---------------------------------------------------------------- DOAJ journals (CSV)
@@ -122,12 +121,12 @@ def datacite_repositories(client: Client, *, limit: int | None = None, size: int
                           query="repositories harvest")
         check("datacite", resp, allow_404=False)   # a failed page fails the load (D-23)
         j = resp.json
-        if not isinstance(j, dict) or not isinstance(j.get("data"), list):
+        if not isinstance(j, Obj) or not isinstance(j.get("data"), Members):
             raise ValueError(f"DataCite repositories answered 200 but not with a data list "
                              f"(content-type {resp.headers.get('content-type')!r}) — load failed, not empty (D-24/D-25)")
         data = j["data"]
 
-        def build(d: dict) -> dict | None:
+        def build(d: Obj) -> dict | None:
             a = d.get("attributes") or {}
             symbol = str(a.get("symbol") or d.get("id") or "").lower()
             if not symbol:
@@ -136,19 +135,18 @@ def datacite_repositories(client: Client, *, limit: int | None = None, size: int
                                identifiers={"datacite_client": symbol, **({"re3data": a["re3data"]} if a.get("re3data") else {})},
                                links=[u for u in (a.get("url"),) if u],
                                extra={"description": (a.get("description") or "")[:1000], "client_type": a.get("clientType"),
-                                      "subjects": [s.get("name") if isinstance(s, dict) else str(s) for s in a.get("subjects") or []],
+                                      "subjects": [s.get("name") if isinstance(s, dict) else str(s) for s in plain(a.get("subjects")) or []],
                                       "active": a.get("isActive"), "language": a.get("language")},
                                raw=d)
 
-        for d in data:
-            rec = _safe(build, d, []) if isinstance(d, dict) else None
+        for rec in data.decode(lambda member: _safe(build, member, [])):
             if rec is None:
                 continue
             yield rec
             seen += 1
             if limit and seen >= limit:
                 return
-        total_pages = (j.get("meta") or {}).get("totalPages") or 0
+        total_pages = scalar((j.get("meta") or {}).get("totalPages")) or 0
         if not data or page >= total_pages:
             return
         page += 1

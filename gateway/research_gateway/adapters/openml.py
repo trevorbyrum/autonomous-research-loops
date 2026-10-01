@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, check, members, need, quote
+from .base import AdapterError, Client, Obj, check, members, need, plain, quote
 
 SOURCE_ID = "openml"
 SMOKE = {'capability': 'resolve', 'identity': 'openml:61'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -21,7 +21,7 @@ def _did(target: str) -> str:
 
 def _list_record(d: dict) -> dict:
     did = str(d.get("did"))
-    quality = {q.get("name"): q.get("value") for q in d.get("quality") or [] if q.get("name")}
+    quality = {q.get("name"): q.get("value") for q in plain(d.get("quality")) or [] if q.get("name")}
     return make_record(identity=f"openml:{did}", kind="dataset", source_id=SOURCE_ID, title=d.get("name"), venue="OpenML",
                        identifiers={"dataset_id": did}, links=[f"https://www.openml.org/d/{did}"],
                        license=d.get("licence") or d.get("license"),   # captured whenever the listing carries it (D-25)
@@ -33,7 +33,7 @@ def _list_record(d: dict) -> dict:
 def _desc_record(d: dict) -> dict:
     did = str(d.get("id"))
     return make_record(identity=f"openml:{did}", kind="dataset", source_id=SOURCE_ID, title=d.get("name"),
-                       authors=[d.get("creator")] if isinstance(d.get("creator"), str) else list(d.get("creator") or []),
+                       authors=[d.get("creator")] if isinstance(d.get("creator"), str) else list(plain(d.get("creator")) or []),
                        year=year_from(d.get("upload_date")), venue="OpenML", identifiers={"dataset_id": did},
                        links=[f"https://www.openml.org/d/{did}"] + [u for u in (d.get("url"), d.get("parquet_url")) if u],
                        license=d.get("licence"),
@@ -47,7 +47,9 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0) -> dic
     """OpenML's public API filters by exact data_name only; free-text search is not documented."""
     url = f"{BASE}/data/list/data_name/{quote(query, safe='')}/limit/{min(limit, 100)}/offset/{offset}/status/active"
     resp = client.get(SOURCE_ID, "find", url, query=query)
-    if resp.status == 412 and str((resp.json_or_none() or {}).get("error", {}).get("code")) == "372":
+    body = resp.json_or_none()   # an error answer that cannot be read is no "no results": it is an outage, below
+    error = body.get("error") if isinstance(body, Obj) else None
+    if resp.status == 412 and isinstance(error, Obj) and str(error.get("code")) == "372":
         # OpenML's list API answers "no results" — no match at this offset — as HTTP 412 with error code 372;
         # its own client ends a listing there: a successful empty page, not an outage (any other 412 still is one)
         return {"records": [], "total": 0, "next_offset": None, "exhausted": True}

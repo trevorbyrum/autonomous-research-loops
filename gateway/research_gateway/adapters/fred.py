@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record
-from .base import AdapterError, Client, check, need
+from .base import AdapterError, Client, check, need, plain
 
 SOURCE_ID = "fred"
 SMOKE = {'capability': 'data', 'params': {'series': 'GDP', 'limit': 1}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -46,10 +46,10 @@ def data(client: Client, params: dict) -> dict:
                       identity=f"series:fred:{series_id}")
     if not check(SOURCE_ID, resp):
         return {"identity": f"series:fred:{series_id}", "records": []}
-    obs = [(o.get("date"), o.get("value")) for o in need(SOURCE_ID, resp.json, "observations")]
+    obs = [(o.get("date"), o.get("value")) for o in plain(need(SOURCE_ID, resp.json, "observations"))]
     m = client.get(SOURCE_ID, "data", f"{BASE}/series", params={**common, "series_id": series_id},
                    identity=f"series:fred:{series_id}")
-    seriess = need(SOURCE_ID, m.json, "seriess") if m.ok else []
+    seriess = plain(need(SOURCE_ID, m.json, "seriess")) if m.ok else []
     s = seriess[0] if seriess and isinstance(seriess[0], dict) else {}
     if not s.get("id") and not s.get("title"):
         # an empty or shapeless metadata object is no metadata: the restriction check could not
@@ -79,7 +79,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                           identity=f"series:fred:{within}")
         if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
-        seriess = need(SOURCE_ID, resp.json, "seriess")
+        seriess = plain(need(SOURCE_ID, resp.json, "seriess"))
     else:
         if not query:
             return {"entries": [], "capability_fact": "fred catalog needs a query (or within=<series id>)"}
@@ -89,7 +89,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                           query=query)
         if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
-        seriess = need(SOURCE_ID, resp.json, "seriess")
+        seriess = plain(need(SOURCE_ID, resp.json, "seriess"))
     entries = [{"id": s.get("id"), "label": s.get("title"), "kind": "series",
                 "units": s.get("units"), "frequency": s.get("frequency"),
                 "observation_range": f"{s.get('observation_start')}..{s.get('observation_end')}",

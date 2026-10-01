@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record
 from ..core.identity import normalize_arxiv, normalize_doi
-from .base import OMIT, Client, PayloadError, check, members, need
+from .base import NO_MEMBERS, OMIT, Client, PayloadError, check, members, need, plain, scalar
 
 SOURCE_ID = "semanticscholar"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -48,12 +48,12 @@ def _record(p: dict) -> dict:
     identity = f"doi:{doi}" if doi else (f"arxiv:{arx}" if arx else f"s2:{p.get('paperId')}")
     return make_record(
         identity=identity, kind="article", source_id=SOURCE_ID, title=p.get("title"),
-        authors=[a.get("name") for a in (p.get("authors") or []) if a.get("name")], year=p.get("year"),
+        authors=[a.get("name") for a in (plain(p.get("authors")) or []) if a.get("name")], year=p.get("year"),
         venue=p.get("venue") or None, identifiers=ids, links=[u for u in (pdf,) if u],
         license=(p.get("openAccessPdf") or {}).get("license"),
         attribution="Semantic Scholar",
         extra={"cited_by_count": p.get("citationCount"), "reference_count": p.get("referenceCount"),
-               "publication_types": p.get("publicationTypes"), "redistributable": False},
+               "publication_types": plain(p.get("publicationTypes")), "redistributable": False},
         raw=p,
     )
 
@@ -73,11 +73,11 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0, year_f
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     j = need(SOURCE_ID, resp.json, kind=dict)
     # the search answer omits `data` when nothing matched; then it must say total 0
-    rows = need(SOURCE_ID, j, "data") if "data" in j or j.get("total") != 0 else []
+    rows = need(SOURCE_ID, j, "data") if "data" in j or j.get("total") != 0 else NO_MEMBERS
     # `next` is "Absent if no more data exists" — short of the 1,000-result cap, where the documentation
     # does not say what an absent `next` means; `total` is "approximate" and ends nothing
     end = j.get("next") is None and offset + len(rows) < SEARCH_CAP
-    return {"records": members(SOURCE_ID, rows, _record), "total": j.get("total"), "next_offset": j.get("next"), "exhausted": end}
+    return {"records": members(SOURCE_ID, rows, _record), "total": scalar(j.get("total")), "next_offset": scalar(j.get("next")), "exhausted": end}
 
 
 def resolve(client: Client, identity: str) -> dict | None:

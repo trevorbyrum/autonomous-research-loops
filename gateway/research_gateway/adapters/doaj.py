@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi, normalize_issn
-from .base import Client, check, first_member, members, need, quote
+from .base import Client, Obj, check, first_member, members, need, plain, quote, scalar
 
 SOURCE_ID = "doaj"
 SMOKE = {'capability': 'find', 'query': 'management', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -15,19 +15,19 @@ MAX_RECORDS_PER_QUERY = 1000  # DOAJ refuses a page that starts at or past recor
 
 def _record(a: dict) -> dict:
     b = a.get("bibjson") or {}
-    doi = next((normalize_doi(i.get("id")) for i in b.get("identifier", []) if (i.get("type") or "").lower() == "doi"), None)
+    doi = next((normalize_doi(i.get("id")) for i in plain(b.get("identifier", [])) if (i.get("type") or "").lower() == "doi"), None)
     journal = b.get("journal") or {}
-    issns = [normalize_issn(i) for i in journal.get("issns", []) if normalize_issn(i)]
+    issns = [normalize_issn(i) for i in plain(journal.get("issns", [])) if normalize_issn(i)]
     ids = {"doi": doi} if doi else {}
     if issns:
         ids["issn"] = issns[0]
-    links = [l.get("url") for l in b.get("link", []) if l.get("url")]
+    links = [l.get("url") for l in plain(b.get("link", [])) if l.get("url")]
     return make_record(
         identity=f"doi:{doi}" if doi else f"doaj:{a.get('id')}",
         kind="article", source_id=SOURCE_ID, title=b.get("title"),
-        authors=[x.get("name") for x in b.get("author", []) if x.get("name")],
+        authors=[x.get("name") for x in plain(b.get("author", [])) if x.get("name")],
         year=year_from(b.get("year")), venue=journal.get("title"), identifiers=ids, links=links,
-        license=(journal.get("license") or [{}])[0].get("type") if journal.get("license") else None,
+        license=(plain(journal.get("license")) or [{}])[0].get("type") if journal.get("license") else None,
         extra={"open_access": True, "doaj_id": a.get("id")},
         raw=a,
     )
@@ -43,7 +43,7 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1) -> dict:
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     j = resp.json
     results = need(SOURCE_ID, j, "results")
-    total = j.get("total")
+    total = scalar(j.get("total"))
     # DOAJ's own code: the last page is the one reaching `total` (page_count = ((total - 1) // page_size) + 1),
     # and the next page exists only while it starts below record 1,000 — the cap ends nothing
     reached = type(total) is int and page * page_size >= total
@@ -54,10 +54,10 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1) -> dict:
 def _journal(issn: str, a: dict) -> dict:
     b = a.get("bibjson") or {}
     return make_record(identity=f"issn:{issn}", kind="venue", source_id=SOURCE_ID, title=b.get("title"),
-                       venue=b.get("publisher", {}).get("name") if isinstance(b.get("publisher"), dict) else b.get("publisher"),
-                       identifiers={"issn": issn}, links=[r.get("url") for r in b.get("ref", {}).values()] if isinstance(b.get("ref"), dict) else [],
-                       license=((b.get("license") or [{}])[0]).get("type"),
-                       extra={"in_doaj": True, "subjects": [s.get("term") for s in b.get("subject") or [] if s.get("term")]},
+                       venue=b.get("publisher", {}).get("name") if isinstance(b.get("publisher"), Obj) else b.get("publisher"),
+                       identifiers={"issn": issn}, links=[r.get("url") for r in plain(b.get("ref")).values()] if isinstance(b.get("ref"), Obj) else [],
+                       license=((plain(b.get("license")) or [{}])[0]).get("type"),
+                       extra={"in_doaj": True, "subjects": [s.get("term") for s in plain(b.get("subject")) or [] if s.get("term")]},
                        raw=a)
 
 

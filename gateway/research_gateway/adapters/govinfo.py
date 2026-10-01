@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
-from .base import AdapterError, Client, PayloadError, check, members, need, quote
+from .base import NO_MEMBERS, AdapterError, Client, PayloadError, check, members, need, plain, quote, scalar
 
 SOURCE_ID = "govinfo"
 SMOKE = {'capability': 'find', 'query': 'artificial intelligence', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -22,7 +22,7 @@ def _package_id(target: str) -> str:
 
 def _record(p: dict) -> dict:
     pid = p.get("packageId")
-    dl = p.get("download") or {}
+    dl = plain(p.get("download")) or {}
     links = [f"https://www.govinfo.gov/app/details/{pid}"] + [v for v in dl.values() if isinstance(v, str)]
     return make_record(identity=f"govinfo:{pid}", kind="document", source_id=SOURCE_ID, title=p.get("title"),
                        authors=[a for a in (p.get("governmentAuthor1"), p.get("governmentAuthor2")) if a],
@@ -45,12 +45,13 @@ def find(client: Client, query: str, *, limit: int = 20, offset_mark: str = "*",
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     j = need(SOURCE_ID, resp.json, kind=dict)
     # an answer may leave `results` out only when it counts nothing
-    results = need(SOURCE_ID, j, "results") if j.get("results") is not None or j.get("count") != 0 else []
+    results = need(SOURCE_ID, j, "results") if j.get("results") is not None or j.get("count") != 0 else NO_MEMBERS
     # GovInfo documents only the continuation — `*` first, then the answer's offsetMark — and no last
     # page, nor what `count` counts: a mark that moves continues, and nothing here ever ends the lane
     # (docs/PROVIDER-PAGINATION.md); a mark handed back unchanged would only repeat this page
-    nxt = j.get("offsetMark") if j.get("offsetMark") not in (None, offset_mark) else None
-    return {"records": members(SOURCE_ID, results, _record), "total": j.get("count"), "next_offset_mark": nxt,
+    mark = scalar(j.get("offsetMark"))
+    nxt = mark if mark not in (None, offset_mark) else None
+    return {"records": members(SOURCE_ID, results, _record), "total": scalar(j.get("count")), "next_offset_mark": nxt,
             "exhausted": False}
 
 

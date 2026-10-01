@@ -10,7 +10,7 @@ import time
 
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi
-from .base import Client, check, first_member, members, need
+from .base import NO_MEMBERS, Client, check, first_member, members, need, plain, scalar
 
 SOURCE_ID = "openaire"
 SMOKE = {'capability': 'find', 'query': 'management practices', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -64,9 +64,9 @@ def reset_token() -> None:
 
 
 def _record(r: dict) -> dict:
-    pids = list(r.get("pids") or [])
+    pids = list(plain(r.get("pids")) or [])
     links, licenses = [], []
-    for inst in r.get("instances") or []:
+    for inst in plain(r.get("instances")) or []:
         pids += list(inst.get("alternateIdentifiers") or []) + list(inst.get("pids") or [])
         links += [u for u in (inst.get("urls") or []) if u]
         if inst.get("license"):
@@ -79,7 +79,7 @@ def _record(r: dict) -> dict:
     return make_record(
         identity=f"doi:{doi}" if doi else f"openaire:{r.get('id')}",
         kind=_KIND.get(typ, "document"), source_id=SOURCE_ID, title=r.get("mainTitle"),
-        authors=[a.get("fullName") for a in (r.get("authors") or []) if a.get("fullName")],
+        authors=[a.get("fullName") for a in (plain(r.get("authors")) or []) if a.get("fullName")],
         year=year_from(r.get("publicationDate")), venue=(r.get("container") or {}).get("name") or r.get("publisher"),
         identifiers=ids, links=links, license=licenses[0] if licenses else None,
         attribution="OpenAIRE",   # the CC-BY verdict is conditional on attribution (seed evidence)
@@ -105,14 +105,14 @@ def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None
     j = need(SOURCE_ID, resp.json, kind=dict)
     header = need(SOURCE_ID, j, "header", kind=dict)
     # an answer may leave `results` out only when its header says nothing matched
-    rows = need(SOURCE_ID, j, "results") if j.get("results") is not None or header.get("numFound") != 0 else []
+    rows = need(SOURCE_ID, j, "results") if j.get("results") is not None or header.get("numFound") != 0 else NO_MEMBERS
     # OpenAIRE's end: "the nextCursor returned matches the current cursor you've already specified"; and
     # numFound is "the total number of entities found", so a first page holding that many holds them all.
     # A missing nextCursor is undocumented: it neither continues nor ends (docs/PROVIDER-PAGINATION.md)
-    sent, found = cursor or "*", header.get("numFound")
+    sent, found = cursor or "*", scalar(header.get("numFound"))
     end = header.get("nextCursor") == sent or (sent == "*" and type(found) is int and len(rows) >= found)
     return {"records": members(SOURCE_ID, rows, _record), "total": found,
-            "next_cursor": None if end else header.get("nextCursor"), "exhausted": end}
+            "next_cursor": None if end else scalar(header.get("nextCursor")), "exhausted": end}
 
 
 def resolve(client: Client, identity: str) -> dict | None:
@@ -127,5 +127,5 @@ def resolve(client: Client, identity: str) -> dict | None:
     if not check(SOURCE_ID, resp):
         return None
     j = need(SOURCE_ID, resp.json, kind=dict)
-    rows = need(SOURCE_ID, j, "results") if j.get("results") is not None or (j.get("header") or {}).get("numFound") != 0 else []
+    rows = need(SOURCE_ID, j, "results") if j.get("results") is not None or (j.get("header") or {}).get("numFound") != 0 else NO_MEMBERS
     return first_member(SOURCE_ID, rows, _record)

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 
-from .canonical import PayloadError
+from .payload import Members, Obj, PayloadError, plain
+
+NO_SERIES = Members([])
 
 
 def _local(tag: str) -> str:
@@ -23,9 +25,9 @@ def _root(text: str, *roots: str) -> ET.Element:
     return root
 
 
-def series_xml(text: str) -> list[dict]:
-    """StructureSpecificData → same shape as series(): dimension attributes on each
-    <Series>, observations from its <Obs TIME_PERIOD OBS_VALUE> children."""
+def series_xml(text: str) -> Members:
+    """StructureSpecificData → the series as members, each {key: {dimension attribute: value}, observations, observations_raw}:
+    dimension attributes on each <Series>, observations from its <Obs TIME_PERIOD OBS_VALUE> children."""
     root = _root(text, "StructureSpecificData", "GenericData")
     out = []
     for el in root.iter():
@@ -43,31 +45,37 @@ def series_xml(text: str) -> list[dict]:
             observations.append((obs.get("TIME_PERIOD"), value))
             observations_raw.append(dict(obs.attrib))   # status/confidentiality flags survive into raw (I-8)
         out.append({"key": dict(el.attrib), "observations": observations, "observations_raw": observations_raw})
-    return out
+    return Members(out)
 
 
-def _structure(j: dict) -> dict:
-    if isinstance(j.get("structure"), dict):
+def structure(j: Obj):
+    """The message's structure (its dimension and attribute definitions): an Obj, or {} when it names none. A
+    `structures` list is read for its first, as a lookup reads its first result."""
+    if isinstance(j.get("structure"), Obj):
         return j["structure"]
-    if isinstance(j.get("structures"), list) and j["structures"]:
-        return j["structures"][0]
-    if isinstance(j.get("data"), dict):  # 2.0 wraps everything under data
-        return _structure(j["data"])
+    if isinstance(j.get("structures"), Members) and j["structures"]:
+        return j["structures"].first(lambda s: s, "sdmx")
+    if isinstance(j.get("data"), Obj):  # 2.0 wraps everything under data
+        return structure(j["data"])
     return {}
 
 
-def _datasets(j: dict) -> list:
-    if isinstance(j.get("dataSets"), list):
-        return j["dataSets"]
-    if isinstance(j.get("data"), dict):
-        return j["data"].get("dataSets") or []
-    return []
+def datasets(j: Obj) -> Members:
+    """The message's data sets: none when it names none; a `dataSets` that is anything but a list is an
+    unreadable message, never an empty one."""
+    holder = j if "dataSets" in j else j["data"] if isinstance(j.get("data"), Obj) else {}
+    found = holder.get("dataSets")
+    if isinstance(found, Members):
+        return found
+    if found is not None:
+        raise PayloadError(f"an SDMX answer whose dataSets is {type(found).__name__}, not a list")
+    return NO_SERIES
 
 
-def context(j: dict) -> dict:
+def context(j: Obj) -> dict:
     """The SDMX-JSON structural context (dimension and attribute definitions) without the data —
     kept with each record's raw so nothing needed to reread the observations is lost (I-8, D-25)."""
-    st = _structure(j)
+    st = structure(j)
     return {k: st.get(k) for k in ("dimensions", "attributes", "annotations", "name", "names") if st.get(k) is not None}
 
 
@@ -84,44 +92,49 @@ def context_xml(text: str) -> dict:
     return out
 
 
-def series_members(j: dict) -> list[dict]:
-    """Every series of every data set as one member, `{"position": <its key>, "series": <as sent>}`: wrapped and
-    not read, so the caller decodes each alone (adapters.base.members) and a series that cannot be read is that
-    series' loss only. A data set that is not an object is the message itself unreadable, not a member."""
-    return [{"position": key, "series": s} for ds in _datasets(j) for key, s in (ds.get("series") or {}).items()]
+def _series_of(dataset: Obj) -> Members:
+    series = dataset.get("series")
+    if not series:
+        return NO_SERIES
+    if not isinstance(series, Obj):
+        raise PayloadError(f"an SDMX data set whose series is {type(series).__name__}, not an object")
+    return series.entries()
 
 
-def series_reader(j: dict):
+def series_members(j: Obj) -> Members:
+    """Every series of every data set as one member, `{"key": <its position>, "value": <as sent>}`, so the caller decodes
+    each alone (adapters.base.members) and a series that cannot be read is that series' loss only. A data set that
+    cannot be read — not an object, or `series` of the wrong kind — is ONE unreadable member in place of its series, and
+    the series of the other data sets stand (Members.expand): it is dropped and counted, not the whole message lost."""
+    return datasets(j).expand(_series_of)
+
+
+def series_reader(j: Obj):
     """The function that reads one `series_members` member into {key: {dim: value}, observations: [(period,
-    value)], observations_raw}; the message's structure is read once, here."""
-    st = _structure(j)
+    value)], observations_raw}; the message's structure is read once, here, whole — every series needs it."""
+    st = plain(structure(j))
     dims = st.get("dimensions") or {}
     series_dims = dims.get("series") or []
     obs_dims = dims.get("observation") or []
     periods = [v.get("id") or v.get("name") for v in (obs_dims[0].get("values") if obs_dims else [])]
 
-    def read(member: dict) -> dict:
-        key, s = member["position"], member["series"]
+    def read(member: Obj) -> dict:
+        key, s = member["key"], member["value"]
         idx = [int(i) for i in key.split(":")] if key else []
         dim_values = {}
         for pos, d in zip(idx, series_dims):
             vals = d.get("values") or []
             if pos < len(vals):
                 dim_values[d.get("id") or d.get("name")] = vals[pos].get("id") or vals[pos].get("name")
+        observed = plain(s.get("observations"))   # the observations of ONE series: read whole, a malformed one makes it unreadable
         observations = []
-        for oi, arr in sorted(((int(k), v) for k, v in (s.get("observations") or {}).items()), key=lambda kv: kv[0]):
+        for oi, arr in sorted(((int(k), v) for k, v in (observed or {}).items()), key=lambda kv: kv[0]):
             period = periods[oi] if oi < len(periods) else str(oi)
             value = arr[0] if isinstance(arr, list) and arr else arr
             observations.append((period, value))
         return {"key": dim_values, "observations": observations,
-                "observations_raw": s.get("observations")}   # full per-observation arrays survive (I-8)
+                "observations_raw": observed}   # full per-observation arrays survive (I-8)
     return read
-
-
-def series(j: dict) -> list[dict]:
-    """Flatten SDMX-JSON into [{key: {dim: value}, observations: [(period, value)]}]; one unreadable series raises."""
-    read = series_reader(j)
-    return [read(m) for m in series_members(j)]
 
 
 def dataflows_xml(text: str) -> list[dict]:

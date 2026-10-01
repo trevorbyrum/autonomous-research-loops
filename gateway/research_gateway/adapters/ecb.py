@@ -38,7 +38,7 @@ def data(client: Client, params: dict) -> dict:
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "records": []}
     j = need(SOURCE_ID, resp.json, kind=dict)
-    if not sdmx._datasets(j) and not sdmx._structure(j):
+    if not sdmx.datasets(j) and not sdmx.structure(j):
         raise PayloadError(f"{SOURCE_ID}: the answer is not an SDMX-JSON message (no structure, no data sets)")
     ctx, read = sdmx.context(j), sdmx.series_reader(j)
 

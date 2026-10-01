@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record
-from .base import AdapterError, Client, PayloadError, check, need
+from .base import AdapterError, Client, PayloadError, check, need, plain
 
 SOURCE_ID = "census"
 SMOKE = {'capability': 'data', 'params': {'dataset': '2022/acs/acs1', 'get': ['NAME'], 'for': 'state:37'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -45,7 +45,7 @@ def data(client: Client, params: dict) -> dict:
         return {"identity": identity, "records": []}
     if resp.status == 204:   # the Census API's answer to a query no data matches: successful and empty
         return {"identity": identity, "records": []}
-    j = need(SOURCE_ID, resp.json)
+    j = plain(need(SOURCE_ID, resp.json))   # the rows of ONE table record: read whole, a malformed row makes it unreadable
     if not j or not isinstance(j[0], list):
         raise PayloadError(f"{SOURCE_ID}: the answer is not a table (no header row)")
     header, rows = j[0], [dict(zip(j[0], r)) for r in j[1:]]
@@ -69,7 +69,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
             return {"entries": []}
         q = (query or "").lower()
         entries = []
-        for d in need(SOURCE_ID, resp.json, "dataset"):
+        for d in plain(need(SOURCE_ID, resp.json, "dataset")):
             path = "/".join(d.get("c_dataset") or [])
             vintage = d.get("c_vintage")
             # unvintaged datasets (timeseries/bds and 87 friends) are real: their path IS
@@ -87,7 +87,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         return {"entries": []}
     q = (query or "").lower()
     entries = []
-    for name, meta in need(SOURCE_ID, resp.json, "variables", kind=dict).items():
+    for name, meta in plain(need(SOURCE_ID, resp.json, "variables", kind=dict)).items():
         meta = meta or {}
         label = meta.get("label") or ""
         if q and q not in name.lower() and q not in label.lower():

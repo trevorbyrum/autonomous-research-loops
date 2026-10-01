@@ -8,11 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-class PayloadError(ValueError):
-    """An answer that is not the shape its adapter requires — an empty or unparseable body, or
-    a parsed body without the container its results live in. The lane is unavailable with
-    error_class payload_invalid: an unreadable answer is never zero results (INVARIANTS H-5,
-    RG-4; design review §9, task 2b). Adapters use it through adapters.base."""
+from .payload import PayloadError, plain  # noqa: F401 (PayloadError: re-exported, it lives with the views now)
 
 
 KINDS = ("article", "dataset", "software", "document", "series", "citation", "oa_location", "full_text", "file",
@@ -45,7 +41,7 @@ def make_record(*, identity: str, kind: str, source_id: str, title: str | None =
     if extra:
         rec.update({k: v for k, v in extra.items() if k not in rec})
     rec["raw"] = raw
-    return rec
+    return plain(rec)   # a record is plain data: a view of the provider's answer never ends up inside one
 
 
 PROVENANCE_SUMMARY_FIELDS = ("source_id", "identity", "license", "retrieved_at", "attribution", "link")

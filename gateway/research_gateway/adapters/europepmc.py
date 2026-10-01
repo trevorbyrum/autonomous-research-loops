@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record
 from ..core.identity import normalize_doi
-from .base import Client, check, first_member, members, need
+from .base import Client, check, first_member, members, need, scalar
 
 SOURCE_ID = "europepmc"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -37,8 +37,9 @@ def find(client: Client, query: str, *, limit: int = 20, cursor: str | None = No
     # Europe PMC documents only the continuation — "For every following page use the value of the returned
     # nextCursorMark element" — and no last page: a cursor that moves continues, nothing here ends the lane, and
     # a cursor handed back unchanged would only repeat this page (docs/PROVIDER-PAGINATION.md)
-    nxt = j.get("nextCursorMark") if j.get("nextCursorMark") not in (None, cursor or "*") else None
-    return {"records": members(SOURCE_ID, results, _record), "total": j.get("hitCount"), "next_cursor": nxt,
+    mark = scalar(j.get("nextCursorMark"))
+    nxt = mark if mark not in (None, cursor or "*") else None
+    return {"records": members(SOURCE_ID, results, _record), "total": scalar(j.get("hitCount")), "next_cursor": nxt,
             "exhausted": False}
 
 

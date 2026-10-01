@@ -84,15 +84,25 @@ is never conflated with "not searched" or "unavailable":
     has since changed — reads nothing and ends nothing: `provider_unavailable`,
     `unobserved`, `partial_pagination`, no `next` (task 2b-repair-7). Each find adapter's end
     rule rests on its provider's own evidence, recorded in `PROVIDER-PAGINATION.md`.
-  One member that cannot be read costs that member only, in every lane that returns records
-  (find, resolve, enrich, fetch, data): an adapter hands a provider's list to `base.members()`, which decodes each member alone (a member
-  that is not an object, whose decoding fails, or whose record names nothing is dropped and
-  counted, so the lane is `partial` with a lower-bound `count`); a member that is readable and
-  names nothing to report (a reference with no DOI) is omitted, not counted. A lookup's first
-  result goes through `base.first_member()`: one that cannot be read is an unreadable answer,
-  never "not found". An adapter that builds records in a loop of its own fails
-  `tests/test_member_decoding.py` (task 2b-repair-7b). A catalogue's entries are not records: one
-  that cannot be read makes its whole catalogue answer unreadable, never a shorter catalogue.
+  One member of a provider's list that cannot be read costs that member only, in every lane that returns
+  records (find, resolve, enrich, fetch, data) from such a list. A provider's list reaches an adapter as a
+  `Members` (`core/payload.py`), which cannot be iterated, indexed, sliced or filtered, so no adapter can touch a
+  member before it is decoded; it is read only through `base.members()` (each member decoded alone: one that is not
+  an object, whose decoding fails, or whose record names nothing is dropped and counted, so the lane is `partial`
+  with a lower-bound `count`, and one that is readable and names nothing to report, a reference with no DOI, is
+  omitted, not counted), `base.first_member()` (a lookup's first result: one that cannot be read is an unreadable
+  answer, never "not found", and never answered by the result after it) or `Members.expand()` (a member that
+  holds members of its own, an SDMX data set's series, and cannot be unfolded is one dropped member in place of
+  what it held: the series of the other data sets stand). The same holds for a list inside a member whose members
+  become records (a Hugging Face dataset's files), because the member's own lists are views too. What this does NOT
+  cover is the one way out of a view, `plain()`: a list that is one record's own data (its authors, tags or
+  licences; a series' observations; the rows of one table record, which FRED, Census and BEA keep whole), the
+  local index's own rows, Socrata's portal vouching (a guarded predicate that fails closed), and a catalogue's
+  entries (BLS, FRED, Census, BEA), which are not records: one that cannot be read makes its whole catalogue answer
+  unreadable, never a shorter catalogue. The source check in `tests/test_member_isolation.py` lists every use of
+  `plain()` in the gateway with why it is not a pass over independent members; a use that is not listed fails. Whether
+  a given list is one record's data or a set of independent candidates is the adapter author's declaration, and that
+  list is where a reviewer reads it (tasks 2b-repair-7b, 2b-repair-8).
   An unreadable successful answer (unparseable, empty, or without the container its
   results live in) and a search endpoint's 404 are `provider_unavailable` with
   `payload_invalid` / `provider_outage` — never `searched_empty`. An answer with any

@@ -27,8 +27,8 @@ from urllib.parse import quote  # re-exported: adapters quote path segments thro
 
 from ..core import calllog
 from ..core.broker import Broker, BreakerOpen, BudgetExhausted, NoPolicy
-from ..core.canonical import PayloadError  # noqa: F401 (re-exported: adapters raise it through base)
 from ..core.identity import meaningful
+from ..core.payload import MEMBER_ERRORS, OMIT, Members, Obj, PayloadError, plain, view  # noqa: F401 (re-exported: adapters read and raise through base)
 
 
 @dataclass
@@ -47,10 +47,8 @@ class Response:
     def text(self) -> str:
         return self.body.decode("utf-8", "replace")
 
-    @property
-    def json(self):
-        """The parsed body. An empty or unparseable body raises PayloadError instead of standing
-        in as None — the `(resp.json or {})` of an adapter can no longer make it 'no results'."""
+    def _parsed(self):
+        """The parsed body, plain: for this module's own bookkeeping. Empty or unparseable raises PayloadError."""
         if not self.body:
             raise PayloadError(f"empty body (HTTP {self.status})")
         try:
@@ -58,8 +56,15 @@ class Response:
         except (ValueError, UnicodeDecodeError):
             raise PayloadError(f"unparseable JSON (HTTP {self.status}, {len(self.body)} bytes)") from None
 
+    @property
+    def json(self):
+        """The parsed body, as a VIEW (core/payload.py): an Obj for an object, a Members for a list — a provider's
+        list is never in an adapter's hands as a plain one. An empty or unparseable body raises PayloadError instead
+        of standing in as None — the `(resp.json or {})` of an adapter can no longer make it 'no results'."""
+        return view(self._parsed())
+
     def json_or_none(self):
-        """The parsed body or None — for bookkeeping that must never raise (the call log's count)."""
+        """The body's view or None — for a check that must never raise (OpenML's error code on a 412)."""
         try:
             return self.json
         except PayloadError:
@@ -471,15 +476,15 @@ class Client:
                 hop: int | None = None) -> None:
         count = None
         j = resp.json_or_none() if resp.ok else None
-        if isinstance(j, list):
+        if isinstance(j, Members):
             count = len(j)
-        elif isinstance(j, dict):
+        elif isinstance(j, Obj):
             for k in ("items", "results", "data", "observations", "hits", "message"):
                 v = j.get(k)
-                if isinstance(v, list):
+                if isinstance(v, Members):
                     count = len(v)
                     break
-                if isinstance(v, dict) and isinstance(v.get("items"), list):
+                if isinstance(v, Obj) and isinstance(v.get("items"), Members):
                     count = len(v["items"])
                     break
         rec = calllog.CallRecord(
@@ -625,62 +630,62 @@ def validate_data_params(mod, params: dict | None) -> str | None:
     return "; ".join(problems) or None
 
 
-# what decoding one unreadable provider member raises (a missing key, a list where an object
-# was expected, a value that is not a date ...): that member's failure, never the answer's
-MEMBER_ERRORS = (PayloadError, KeyError, TypeError, AttributeError, ValueError, IndexError)
-
-# what `build` returns for a member it read whole and found to name nothing to report (a deposited
-# reference with no DOI): no record, and no malformed member either — that one is None, which the router counts
-OMIT = object()
+def _require_members(source_id: str, items) -> None:
+    if not isinstance(items, Members):
+        raise TypeError(f"{source_id}: a provider's list is decoded as need() hands it over (a Members), not as a {type(items).__name__}")
 
 
-def members(source_id: str, items: list, build) -> list:
-    """Each provider member through `build` on its own (task 2b-repair A4; RG-4): a member
-    that is not an object, whose decoding fails, or whose record names no meaningful
-    identity becomes None — dropped and counted by the router, so the members read beside
-    it stand as a PARTIAL lower bound instead of the whole answer being lost, and an
-    unreadable member never becomes a fabricated candidate (`url:None`).
+def members(source_id: str, items: Members, build) -> list:
+    """Each provider member through `build` on its own (task 2b-repair A4; RG-4): a member that is not an object,
+    whose decoding fails, or whose record names no meaningful identity becomes None — dropped and counted by the
+    router, so the members read beside it stand as a PARTIAL lower bound instead of the whole answer being lost,
+    and an unreadable member never becomes a fabricated candidate (`url:None`). `build` may return OMIT for a
+    member it read whole and found to name nothing to report: no record, and no dropped member either.
 
-    This is the ONE place a provider's list becomes records (2b-repair-7b): an adapter hands
-    the provider's list here and never iterates it itself, so one member's failure can only
-    ever be that member's. tests/test_member_decoding.py fails on an adapter that builds
-    records in a loop of its own."""
-    out = []
-    for member in items:
-        try:
-            rec = build(member) if isinstance(member, dict) else None
-        except MEMBER_ERRORS:
-            rec = None
-        if rec is OMIT:
-            continue
-        out.append(rec if isinstance(rec, dict) and meaningful(rec.get("identity")) else None)
-    return out
+    What 2b-repair-8 makes true by construction (core/payload.py): the provider's list reaches an adapter as a
+    `Members`, which has no iteration or indexing, so an adapter cannot touch a member before this decodes it.
+    `items` must be one; a plain list is refused, not decoded."""
+    _require_members(source_id, items)
+    return [rec if isinstance(rec, dict) and meaningful(rec.get("identity")) else None for rec in items.decode(build)]
 
 
-def first_member(source_id: str, items: list, build):
+def first_member(source_id: str, items: Members, build):
     """The one record a lookup asked for: the first of the provider's results, decoded like any member (None
     when there are none). An answer whose first result cannot be read is unreadable, never 'not found'; and
     never answered by the result after it, which may be some other work."""
-    if not items:
-        return None
-    (rec,) = members(source_id, items[:1], build)
+    _require_members(source_id, items)
+    rec = items.first(build, source_id)
     if rec is None:
+        return None
+    if not (isinstance(rec, dict) and meaningful(rec.get("identity"))):
         raise PayloadError(f"{source_id}: the answer's first result cannot be read")
     return rec
 
 
+def scalar(value):
+    """A provider's paging token or count as a scalar — a string or an integer — else None: a view of a list or an
+    object is no token, and metadata that cannot be read is never a continuation (and, with no end claimed from it,
+    never an end)."""
+    return value if isinstance(value, (str, int)) and not isinstance(value, bool) else None
+
+
+NO_MEMBERS = Members([])   # a container the provider leaves out only when it lists nothing: no members, not an unreadable answer
+_VIEW_OF = {list: Members, dict: Obj}
+
+
 def need(source_id: str, value, *path: str, kind: type | tuple = list):
-    """The value at `path` inside a parsed answer; it must exist and be of `kind`. A missing or
-    mistyped container is a PayloadError — an answer shaped wrong is unreadable, and its
-    absent list is never read as an empty one."""
-    cur = value
+    """The value at `path` inside an answer, as a view; it must exist and be of `kind` (an Obj for dict, a Members
+    for list). A missing or mistyped container is a PayloadError — an answer shaped wrong is unreadable, and its
+    absent list is never read as an empty one. The list it returns cannot be iterated: see core/payload.py."""
+    cur = view(value)
     for i, key in enumerate(path):
-        if not isinstance(cur, dict) or key not in cur:
+        if not isinstance(cur, Obj) or key not in cur:
             raise PayloadError(f"{source_id}: the answer has no {'.'.join(path[:i + 1])}")
         cur = cur[key]
-    if not isinstance(cur, kind):
-        want = "/".join(k.__name__ for k in (kind if isinstance(kind, tuple) else (kind,)))
-        raise PayloadError(f"{source_id}: {'.'.join(path) or 'the answer'} is {type(cur).__name__}, not {want}")
+    kinds = kind if isinstance(kind, tuple) else (kind,)
+    if not isinstance(cur, tuple(_VIEW_OF.get(k, k) for k in kinds)):
+        got = {Obj: "dict", Members: "list"}.get(type(cur), type(cur).__name__)
+        raise PayloadError(f"{source_id}: {'.'.join(path) or 'the answer'} is {got}, not {'/'.join(k.__name__ for k in kinds)}")
     return cur
 
 

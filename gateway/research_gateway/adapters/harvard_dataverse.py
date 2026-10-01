@@ -4,7 +4,7 @@ from __future__ import annotations
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, PayloadError, check, members, need
+from .base import NO_MEMBERS, AdapterError, Client, Obj, PayloadError, check, members, need, plain, scalar
 
 SOURCE_ID = "harvard_dataverse"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.7910/DVN/OY6CBK'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -40,11 +40,11 @@ def search_record(base: str, source_id: str, item: dict) -> dict:
 
 def dataset_record(base: str, source_id: str, d: dict) -> dict:
     v = d.get("latestVersion") or {}
-    fields = ((v.get("metadataBlocks") or {}).get("citation") or {}).get("fields") or []
+    fields = plain(((v.get("metadataBlocks") or {}).get("citation") or {}).get("fields")) or []
     doi = normalize_doi(f"{d.get('authority')}/{d.get('identifier')}") if d.get("identifier") else None
     authors = [(a.get("authorName") or {}).get("value") for a in (_field(fields, "author") or []) if isinstance(a, dict)]
     lic = v.get("license")
-    lic_name = lic.get("name") if isinstance(lic, dict) else lic
+    lic_name = lic.get("name") if isinstance(lic, Obj) else lic
     files = v.get("files") or []
     return make_record(identity=f"doi:{doi}" if doi else f"{source_id}:{d.get('id')}", kind="dataset", source_id=source_id,
                        title=_field(fields, "title"), authors=[a for a in authors if a], year=year_from(v.get("releaseTime")),
@@ -68,7 +68,7 @@ def _file(base: str, source_id: str, dataset: dict, f: dict) -> dict:
 def file_records(base: str, source_id: str, dataset: dict, d: dict) -> list:
     """The dataset's files, each decoded alone (base.members): None where a file member is unreadable."""
     version = d.get("latestVersion") or {}
-    files = need(source_id, version, "files") if version.get("files") else []   # a dataset without files has none
+    files = need(source_id, version, "files") if version.get("files") else NO_MEMBERS   # a dataset without files has none
     return members(source_id, files, lambda f: _file(base, source_id, dataset, f))
 
 
@@ -79,7 +79,7 @@ def find_in(client: Client, base: str, source_id: str, secret_name: str | None, 
     resp = client.get(source_id, "find", f"{base}/api/search", params=params, headers=headers(client, secret_name), query=query)
     check(source_id, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     data = need(source_id, resp.json, "data", kind=dict)
-    items, total = need(source_id, data, "items"), data.get("total_count")
+    items, total = need(source_id, data, "items"), scalar(data.get("total_count"))
     # the Dataverse guide pages by moving `start` on by the page size "until you reach the total_count"
     # (its loop: `condition = start < total`); a missing total neither continues nor ends (docs/PROVIDER-PAGINATION.md)
     reached = type(total) is int and page * per_page >= total

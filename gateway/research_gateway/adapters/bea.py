@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record
-from .base import AdapterError, Client, check, need
+from .base import AdapterError, Client, Obj, check, need, plain
 
 SOURCE_ID = "bea"
 SMOKE = {'capability': 'data', 'params': {'method': 'GETDATASETLIST'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -14,7 +14,7 @@ ATTRIBUTION = "U.S. Bureau of Economic Analysis"
 def _error(j: dict) -> str | None:
     api = j.get("BEAAPI") or {}
     err = (api.get("Results") or {}).get("Error") or api.get("Error")
-    return err.get("APIErrorDescription") if isinstance(err, dict) else None
+    return err.get("APIErrorDescription") if isinstance(err, Obj) else None
 
 
 # the agent-facing data contract (research_sources; validated before dispatch, D-31).
@@ -55,9 +55,9 @@ def data(client: Client, params: dict) -> dict:
     err = _error(j)
     if err:
         return {"identity": identity, "records": [], "capability_fact": f"BEA: {err}"}
-    results = need(SOURCE_ID, j, "BEAAPI", "Results", kind=dict)
+    results = plain(need(SOURCE_ID, j, "BEAAPI", "Results", kind=dict))   # the rows of ONE table record, kept whole
     # GetData answers carry Data; a GetData answer without it is unreadable, never an empty table
-    rows = need(SOURCE_ID, results, "Data") if method.lower() == "getdata" else (
+    rows = plain(need(SOURCE_ID, results, "Data")) if method.lower() == "getdata" else (
         results.get("Dataset") or results.get("ParamValue") or results.get("Parameter") or [])
     notes = [n.get("NoteText") for n in results.get("Notes", []) if isinstance(n, dict) and n.get("NoteText")]
     rec = make_record(identity=identity, kind="series", source_id=SOURCE_ID,
@@ -91,7 +91,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         err = _error(j)
         if err:
             return None, f"BEA: {err}"
-        return need(SOURCE_ID, j, "BEAAPI", "Results", kind=dict), None
+        return plain(need(SOURCE_ID, j, "BEAAPI", "Results", kind=dict)), None   # a catalogue: its entries are read whole
 
     def rows_of(results, *keys):
         for k in keys:
