@@ -491,6 +491,9 @@ SOCRATA_ROWS = Op("socrata.fetch (the rows)", "socrata", request("fetch", target
 GOVINFO_RESOLVE = Op("govinfo.resolve", "govinfo", request("resolve", identity="govinfo:CRPT-1"),
                      (Route("GET", "https://api.govinfo.gov/packages/CRPT-1/summary", GOVINFO_SUMMARY, corrupt=True),), ("govinfo:CRPT-1",), single=(),
                      shared=(("packageId",),))
+# OpenML's documented payload (Api_data.php, `data`): `url` is built only `if ($dataset->file_id != NULL)` (legacy datasets have none) and `parquet_url` only if the
+# format is not Sparse_ARFF; so a link that is null, missing or empty is a file the dataset does not have, and is not an unreadable one (leaf "url": text; empty is
+# none). The mixed-member generator takes that from `classify`, and draws only what is a bad member of this operation (2b-repair-10b).
 OPENML_FETCH = Op("openml.fetch (a dataset's file links)", "openml", request("fetch", target="openml:61"),
                   (Route("GET", "https://www.openml.org/api/v1/json/data/61", OPENML_DESC, corrupt=True),),
                   ("openml:61#dataset_61.pq", "openml:61#iris.arff"),

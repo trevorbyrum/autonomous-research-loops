@@ -24,11 +24,20 @@ through the real adapter and the real router, and the lane it comes out as is he
 What is read is decided here, by position and kind, and never by asking the adapter (`classify`, `readable`). The position pass is
 exhaustive, so it is the same on every run. What is generated is seeded (SEED below; random.Random(seed).random() is the one function the
 language guarantees across versions): non-objects mixed among readable members in every combination (MixedMembers), `Link` headers written
-and damaged by grammar and read by an independent reader (LinkHeaders, tests/invariant_links.py), SDMX-ML corruptions (XmlAnswers), and the
+and damaged by grammar and read by a second reader (LinkHeaders, tests/invariant_links.py), SDMX-ML corruptions (XmlAnswers), and the
 registry loaders' pages (RegistryLoaders). INVARIANT_SCALE=n multiplies the generated headers and cuts; INVARIANT_REPORT=<file> writes every
 violation found as JSON, which is how the evidence for the repair was taken. A whole run takes about ten seconds.
 What it cannot show: that a provider still answers as the fixtures say (Phase 4's canary), and anything about two corruptions of one answer
 beyond the pairs of positions above, the mixed members and the damaged headers.
+
+Metamorphic, not independent (2b-repair-9's R9-4, closed in 2b-repair-10b). Statement (b)'s field comparison and the loaders' field-loss comparison take
+their baseline from the gateway itself (`baseline = run(op, valid)[0]`): a corrupted answer is held to how it may DIFFER from the gateway's answer to the
+valid one. A defect the valid answer already has is in both, and nothing here sees it (a mutant that erased every title passed all 261 tests), and a second
+implementation by the same authors (the Link reader below) shares the first one's blind spots. This harness stays as supplementary coverage of
+how corruption changes an answer. It is not an oracle of what the answer must say, and nothing about it is to be described as independent: the
+independent oracles are tests/test_oracle.py's (tests/oracle/*: expectations written from the RFC texts, the providers' documentation and the fixtures
+by an author who had not read the gateway), which also append the documented optional fields of each provider to this harness's operations
+(tests/oracle/variants.py, through tests/invariant_ops.py), so that this pass corrupts them too.
 """
 from __future__ import annotations
 
@@ -474,7 +483,8 @@ def register(extra) -> None:
 
 # ------------------------------------------------------------------ the tests
 class Controls(unittest.TestCase):
-    """The valid answer of each operation is read whole, and says what the operation's fixture says: the oracle's own check."""
+    """The valid answer of each operation is read whole, and says what the operation's fixture says (its identities and lane shape; the canonical
+    fields of each record are tests/test_oracle.py's, from hand-written expectations: this harness only compares a corrupted answer with the valid one)."""
 
     def test_the_valid_answer_of_each_operation_is_its_stated_answer(self):
         for name, op in ALL.items():
@@ -548,12 +558,15 @@ class MixedMembers(unittest.TestCase):
             if op.single is not None or op.leaf == "any":
                 continue
             valid = json.loads(json.dumps(corrupt_route(op).body))
-            mem, _, _ = members_of(op, valid)
+            mem, optional, keyed = members_of(op, valid)
             for mask in range(1, 2 ** len(mem)):
                 body = valid
                 for j, m in enumerate(mem):
                     if mask >> j & 1:
-                        body = put(body, m.path, rng.pick(BAD_MEMBERS))
+                        # only what the harness's own classifier calls a bad member of this operation: for a `url` leaf, `None` and `""` are a link the
+                        # provider leaves out (no file, not an unreadable one) and text is a link, however odd (OpenML's `url`, `parquet_url`)
+                        bad = [v for v in BAD_MEMBERS if classify(m, m.path, v, optional, keyed, op.leaf, op.bare_row) == BAD]
+                        body = put(body, m.path, rng.pick(bad))
                 kept = [m.ident for j, m in enumerate(mem) if not mask >> j & 1]
                 out, lane = run(op, body)
                 runs += 1
@@ -579,12 +592,13 @@ class MixedMembers(unittest.TestCase):
 
 
 class LinkHeaders(unittest.TestCase):
-    """Hugging Face pages by its `Link` header: every generated header is read by the independent reader (tests/invariant_links.py)
-    and by the gateway, through the real adapter and router, and they must agree — a continuation where the reader found a next
-    link, an end only where it read a header whole that names none, and neither for a header that does not read through."""
+    """Hugging Face pages by its `Link` header: every generated header is read by a second reader (tests/invariant_links.py: not independent of the
+    gateway's authors, with the URI productions of the oracle's RFC 3986 transcription) and by the gateway, through the real adapter and router, and they must
+    agree — a continuation where the reader found a next link, an end only where it read a header whole that names none, and neither for a header that does
+    not read through. What holds the reading to the RFCs is tests/test_oracle.py's vectors."""
     OP = ops.HF_FIND_END
 
-    def test_the_independent_reader_agrees_with_the_grammar(self):
+    def test_the_second_reader_agrees_with_the_grammar(self):
         nxt = "https://example.org/n"
         for header, want in ((f'<{nxt}>; rel="next"', ("known", {nxt})), (f"<{nxt}>; rel=next; rel=prev", ("known", {nxt})),
                              (f'<{nxt}>; rel="prev"; rel="next"', ("known", set())), (f'<{nxt}>; rel="https://example.org/next"', ("known", set())),
