@@ -60,7 +60,7 @@ class Reading(unittest.TestCase):
             "a tab inside a quoted string, which RFC 9110 allows": f'<{NEXT}>; title="a\tb"; rel="next"',
             "empty list elements": f',, <{NEXT}>; rel="next",',
             "the first rel only counts, and it says next": f'<{NEXT}>; rel="next"; rel="prev"',
-            "a parameter with no value": f'<{NEXT}>; anchor; rel="next"',
+            "an extension parameter with no value": f'<{NEXT}>; ext; rel="next"',
         }
         for name, header in cases.items():
             with self.subTest(name):
@@ -127,6 +127,87 @@ class Reading(unittest.TestCase):
                          [(PREV, [("rel", "prev"), ("title", 'a, "b"'), ("hreflang", "en")]), (NEXT, [("rel", "next")])])
         with self.assertRaises(LinkSyntax):
             parse_links('<x>; title="open')
+
+
+class Uris(unittest.TestCase):
+    """Task 2b-repair-10b, R9-1 (Astra): a target and a URI-form relation type are what RFC 3986's grammar says, not what avoids a list of characters. The
+    grammar itself is tests/test_uri.py's; what is stated here is what the reading of a header does with it. Independent vectors for the whole reading are
+    tests/test_oracle.py's."""
+    BROKEN = ("https://example.org/%GG", "https://example.org/%", "https://[broken", "https://example.org/\u00e9", "https://[::1]x/", "https://example.org:80a/",
+              "https://example.org/#a#b")   # (a space is no part of a relation type: it separates two, so `https://example.org/a b` is two valid ones)
+
+    def test_a_relation_type_that_is_not_a_uri_is_unreadable_not_another_relation(self):
+        for target in self.BROKEN:
+            with self.subTest(target):
+                self.assertEqual(read(f'<{NEXT}>; rel="{target}"'), NextLink(None, False))
+                self.assertEqual(read(f'<{PREV}>; rel="prev", <{NEXT}>; rel="next {target}"'), NextLink(None, False))
+
+    def test_a_target_that_is_not_a_uri_reference_is_unreadable_wherever_it_stands(self):
+        for target in (*self.BROKEN, "https://example.org/a b"):
+            with self.subTest(target):
+                self.assertEqual(read(f'<{target}>; rel="prev"'), NextLink(None, False))
+                self.assertEqual(read(f'<{target}>; rel="next"'), NextLink(None, False))
+                with self.assertRaises(LinkSyntax):
+                    parse_links(f"<{target}>; rel=prev")
+
+    def test_control_the_relation_types_and_targets_that_are_uris_are_read(self):
+        for rel in ("https://example.org/rels/next", "urn:example:next", "https://example.org/r%41", "https://[::1]/r", "https://example.org/r?x#f", "a:"):
+            with self.subTest(rel):
+                self.assertEqual(read(f'<{PREV}>; rel="{rel}"'), NextLink(None, True))
+                self.assertEqual(read(f'<{NEXT}>; rel="next {rel}"'), NextLink(NEXT, True))
+        for target in ("https://example.org/a%7e", "https://[2001:db8::1]/x", "//example.org/x", "../up", "?q=1", "#frag", "mailto:x@example.org"):
+            with self.subTest(target):
+                self.assertEqual(read(f'<{target}>; rel="prev"'), NextLink(None, True))
+
+
+class Context(unittest.TestCase):
+    """RFC 8288 §3.1 (a relative target is resolved as RFC 3986 §5 says), §3.2 (an `anchor` puts a link's context elsewhere), and a continuation that does not
+    move on: asking the request's own URL again is the same page, which is a lower bound and not an end."""
+    ITSELF = ("", ASKED, "?search=q&limit=2&full=true", "/api/datasets?search=q&limit=2&full=true", "//huggingface.co/api/datasets?search=q&limit=2&full=true",
+              ASKED + "#frag", "HTTPS://HUGGINGFACE.CO:443/api/datasets?search=q&limit=2&full=true", "datasets?search=q&limit=2&full=true")
+
+    def test_a_relative_target_is_resolved_the_way_the_rfc_says(self):
+        for target, want in (("/api/datasets?search=q&cursor=n", "https://huggingface.co/api/datasets?search=q&cursor=n"),
+                             ("//huggingface.co/api/datasets?search=q&cursor=n", "https://huggingface.co/api/datasets?search=q&cursor=n"),
+                             ("datasets?search=q&cursor=n", "https://huggingface.co/api/datasets?search=q&cursor=n"),
+                             ("?search=q&cursor=n", "https://huggingface.co/api/datasets?search=q&cursor=n"),
+                             ("./datasets?search=q&cursor=n", "https://huggingface.co/api/datasets?search=q&cursor=n"),
+                             ("../api/datasets?search=q&cursor=n", "https://huggingface.co/api/datasets?search=q&cursor=n")):
+            with self.subTest(target):
+                self.assertEqual(read(f'<{target}>; rel="next"'), NextLink(want, True))
+
+    def test_a_next_link_that_is_the_request_itself_is_neither_followed_nor_an_end(self):
+        for target in self.ITSELF:
+            with self.subTest(target):
+                self.assertEqual(read(f'<{target}>; rel="next"'), NextLink(None, False))
+                self.assertEqual(read(f'<{NEXT}>; rel="next", <{target}>; rel="next"'), NextLink(None, False), "two next pages, one of which goes nowhere")
+        self.assertEqual(read(f'<{ASKED}>; rel="prev"'), NextLink(None, True), "a link to itself that is not a next link is nothing")
+
+    def test_a_next_link_whose_context_is_another_resource_is_neither_followed_nor_an_end(self):
+        for anchor in ("https://other.example/ctx", "#foo", "https://huggingface.co/api/models", ASKED + "#foo", "other"):
+            for header in (f'<{NEXT}>; rel="next"; anchor="{anchor}"', f'<{NEXT}>; anchor="{anchor}"; rel="next"'):
+                with self.subTest(header):
+                    self.assertEqual(read(header), NextLink(None, False))
+
+    def test_an_anchor_that_is_the_request_changes_nothing_and_one_that_is_not_a_uri_makes_the_header_unreadable(self):
+        for anchor in (ASKED, "", "?search=q&limit=2&full=true", "/api/datasets?search=q&limit=2&full=true"):
+            with self.subTest(anchor):
+                self.assertEqual(read(f'<{NEXT}>; rel="next"; anchor="{anchor}"'), NextLink(NEXT, True))
+        for header in (f'<{NEXT}>; rel="next"; anchor', f'<{NEXT}>; rel="next"; anchor="%GG"', f'<{PREV}>; rel="prev"; anchor="https://[broken"',
+                       f"<{NEXT}>; rel=next; anchor=a b"):
+            with self.subTest(header):
+                self.assertEqual(read(header), NextLink(None, False))
+
+    def test_an_anchor_on_a_link_that_is_not_next_is_not_this_listings_end_or_beginning(self):
+        self.assertEqual(read(f'<{PREV}>; rel="prev"; anchor="https://other.example/"'), NextLink(None, True))
+
+    def test_a_next_link_to_itself_is_a_lower_bound_through_the_router(self):
+        c, _ = HuggingFace().client(f'<{ASKED}>; rel="next"', items=2)
+        out = R.execute(R.Router(read_seed(), adapters.load_all()), HuggingFace.FIND, c)
+        lane = out["lanes"][0]
+        self.assertEqual((lane["coverage"], lane["completeness"], lane.get("error_class"), lane.get("next"), lane.get("exhausted")),
+                         ("searched_ok", "partial", "partial_pagination", None, None))
+        self.assertNotIn("huggingface", out.get("next") or {})
 
 
 class RepeatedFieldLines(unittest.TestCase):

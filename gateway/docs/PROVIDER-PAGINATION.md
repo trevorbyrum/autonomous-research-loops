@@ -260,6 +260,16 @@ QDR is a Dataverse installation and shares this implementation.
   or control character of its own. `rel="\"next\""`, `rel=""`, `rel="next, prev"`, `rel="next\x01"` and
   `rel='next'` are therefore not "a header that names no next link": they are headers that cannot be read.
   A continuation must also name the search it continues (`search` present, with this query: `base.own_link`).
+  "A URI" is RFC 3986 Appendix A, not a list of forbidden characters (R9-1, closed in 2b-repair-10b; `core/uri.py`):
+  a target must be a URI-reference and an extension relation type a URI, so `%GG`, a trailing `%`, an unclosed `[`,
+  a non-ASCII letter and a space are each outside it for the production they break, and a header that holds one
+  cannot be read: it is unknown, never an end. A relative target is resolved against the URL asked as RFC 8288 §3.1
+  says (RFC 3986 §5.2: `core/uri.py` `resolve`; `urljoin` is not it). A next link is no continuation, and no end
+  either, when it is not this listing's: its `anchor` (RFC 8288 §3.2) names another resource or a fragment of this
+  one (an `anchor` that is no URI-reference, or has no value, makes the header unreadable), or its target is the
+  request itself (by the comparison of RFC 3986 §6.2.2 and §6.2.3, the fragment aside, which is never sent: RFC 3986
+  §6.1): asking it again is the same page again. All three leave the lane `partial_pagination`, the records read
+  kept as a lower bound.
 - **End:** a header read whole that names no next link (or no header): the absence the official clients stop
   on. A next link that is present is never the end. One the gateway may not follow, and a header that could
   not be read, are neither a continuation nor an end, so the lane is a lower bound

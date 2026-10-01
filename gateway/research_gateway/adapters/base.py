@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from typing import Callable, NamedTuple
 from urllib.parse import quote  # re-exported: adapters quote path segments through base, never urllib directly
 
-from ..core import calllog
+from ..core import calllog, uri
 from ..core.broker import Broker, BreakerOpen, BudgetExhausted, NoPolicy
 from ..core.identity import meaningful
 from ..core.payload import MEMBER_ERRORS, OMIT, Members, Obj, PayloadError, plain, view  # noqa: F401 (re-exported: adapters read and raise through base)
@@ -148,9 +148,8 @@ _TCHAR = frozenset("!#$%&'*+-.^_`|~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi
 _QDTEXT = frozenset("\t !") | frozenset(chr(c) for c in (*range(0x23, 0x5C), *range(0x5D, 0x7F), *range(0x80, 0x100)))   # RFC 9110 §5.6.4
 _QUOTABLE = frozenset("\t") | frozenset(chr(c) for c in (*range(0x20, 0x7F), *range(0x80, 0x100)))                        # what a `\` may precede
 # RFC 8288 §3.3: a relation type is a registered name (`LOALPHA *( LOALPHA / DIGIT / "." / "-" )`, compared without regard to case) or an
-# absolute URI (an extension relation); the `rel` value is one, or several separated by spaces
-_URI_REFERENCE = re.compile(r"[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]*")   # RFC 3986: a link target holds nothing else
-_REL_TYPE = re.compile(r"[A-Za-z][A-Za-z0-9.\-]*|[A-Za-z][A-Za-z0-9+.\-]*:[^\s\"<>\\^`{|}\x00-\x1f\x7f]*")
+# absolute URI (an extension relation, core/uri.py); the `rel` value is one, or several separated by spaces
+_REGISTERED_REL = re.compile(r"[A-Za-z][A-Za-z0-9.\-]*")
 
 
 def parse_links(header: str) -> list[tuple[str, list[tuple[str, str | None]]]]:
@@ -186,8 +185,8 @@ def parse_links(header: str) -> list[tuple[str, list[tuple[str, str | None]]]]:
         if end < 0:
             raise LinkSyntax(f"Link header: no <target> at character {i}")
         target, params, i = header[i + 1:end], [], space(end + 1)
-        if _URI_REFERENCE.fullmatch(target) is None:
-            raise LinkSyntax(f"Link header: a target that is no URI reference, at character {end}")
+        if not uri.is_uri_reference(target):
+            raise LinkSyntax(f"Link header: a target that is no URI-reference (RFC 3986), at character {end}")
         while i < n and header[i] == ";":
             i, name = read_token(space(i + 1))
             i, value = space(i), None
@@ -222,7 +221,7 @@ def relation_types(value: str | None) -> list[str]:
     character of its own, a comma, a space at either end, another quoting — because a relation that cannot be told is not a relation
     that names no next page."""
     parts = value.split(" ") if value else [""]
-    if "" in (parts[0], parts[-1]) or not all(_REL_TYPE.fullmatch(p) for p in parts if p):
+    if "" in (parts[0], parts[-1]) or not all(_REGISTERED_REL.fullmatch(p) or uri.is_uri(p) for p in parts if p):
         raise LinkSyntax("Link header: a relation that is not a list of relation types")
     return [p.lower() for p in parts if p]
 
@@ -237,20 +236,29 @@ class NextLink(NamedTuple):
 
 
 def next_link(resp: Response) -> NextLink:
-    """The answer's `Link: <...>; rel="next"` (RFC 8288), its target resolved against the URL asked. Only the first
+    """The answer's `Link: <...>; rel="next"` (RFC 8288), its target resolved against the URL asked (§3.1: RFC 3986 §5). Only the first
     `rel` of a link counts (§3.3), and its value must be a list of relation types (`relation_types`): a header that does not
     parse, a `rel` with no value or one that is no such list (`rel='next'`, `rel="\\"next\\""`, `rel=""`, `rel="next, prev"`), or two
-    different next targets is not `known`. A link with no `rel` names no relation."""
+    different next targets is not `known`. A link with no `rel` names no relation. A next link is no continuation, and no end either,
+    when it is not this listing's: its `anchor` puts its context at another resource (§3.2), or its target is the request itself (a
+    continuation that does not move on: asking it again is the same page again)."""
     lines = [v for k, v in resp.headers.items() if k.lower() == "link"]
     try:
-        targets = set()
+        targets, unusable = set(), False
         for target, params in parse_links(", ".join(lines)):
-            rel = next(((v,) for k, v in params if k == "rel"), None)
-            if rel is not None and "next" in relation_types(rel[0]):
-                targets.add(urllib.parse.urljoin(resp.url, target))
-    except ValueError:   # LinkSyntax, and urljoin on a target that is no URL
+            rel, anchor = (next(((v,) for k, v in params if k == name), None) for name in ("rel", "anchor"))   # the first of each counts; (None,) is one with no value
+            if anchor is not None and (anchor[0] is None or not uri.is_uri_reference(anchor[0])):
+                raise LinkSyntax("Link header: an anchor that is no URI-reference")
+            if rel is None or "next" not in relation_types(rel[0]):
+                continue
+            url = uri.resolve(resp.url, target)
+            if (anchor is not None and not uri.same_resource(uri.resolve(resp.url, anchor[0]), resp.url, fragment=True)) or uri.same_resource(url, resp.url):
+                unusable = True
+            else:
+                targets.add(url)
+    except ValueError:   # LinkSyntax
         return NextLink(None, False)
-    return NextLink(targets.pop() if len(targets) == 1 else None, len(targets) <= 1)
+    return NextLink(targets.pop() if len(targets) == 1 and not unusable else None, len(targets) <= 1 and not unusable)
 
 
 def own_link(url, endpoint: str, **same: str) -> str | None:
@@ -766,6 +774,14 @@ def text(source_id: str, value):
     raise PayloadError(f"{source_id}: {type(value).__name__} where text belongs")
 
 
+def boolean(source_id: str, value) -> bool:
+    """A provider's flag (a restriction, a predicate): true or false as sent, and false when it sends none (missing, null). Anything else — `0`,
+    `""`, `[]`, `{}`, `"no"` — is not a flag, and is unreadable: read by its truth, a falsy `restricted` would be a file that is not restricted."""
+    if value is None or isinstance(value, bool):
+        return bool(value)
+    raise PayloadError(f"{source_id}: {type(value).__name__} where a flag belongs")
+
+
 def key(source_id: str, value) -> str:
     """What a provider names a member by (its id, a series id, a package id), as text: its text, or its whole number. Missing, null, empty, or
     anything else — a boolean, a list, an object — names nothing, and is unreadable (PayloadError): the identity of a candidate is never
@@ -830,7 +846,7 @@ __all__ = (
     # the metered client, and what an adapter says when it cannot answer
     "Client", "AdapterError", "ContinuationInvalid", "PayloadError", "MEMBER_ERRORS", "check",
     # a provider's answer, as views, and the ways to read it (core/payload.py)
-    "Members", "NO_MEMBERS", "OMIT", "Obj", "members", "first_member", "need", "optional", "nested", "listed", "text", "key", "plain",
+    "Members", "NO_MEMBERS", "OMIT", "Obj", "members", "first_member", "need", "optional", "nested", "listed", "text", "boolean", "key", "plain",
     # a provider's metadata: totals, tokens, the end and the next page
     "token", "offset_after", "total", "counts_nothing", "field", "identified", "next_link", "own_link", "quote",
 )
