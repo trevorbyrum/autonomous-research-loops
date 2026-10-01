@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi, normalize_issn
-from .base import Client, check, members, need, quote
+from .base import Client, check, first_member, members, need, quote
 
 SOURCE_ID = "doaj"
 SMOKE = {'capability': 'find', 'query': 'management', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -51,6 +51,16 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1) -> dict:
     return {"records": members(SOURCE_ID, results, _record), "total": total, "next_page": nxt, "exhausted": reached}
 
 
+def _journal(issn: str, a: dict) -> dict:
+    b = a.get("bibjson") or {}
+    return make_record(identity=f"issn:{issn}", kind="venue", source_id=SOURCE_ID, title=b.get("title"),
+                       venue=b.get("publisher", {}).get("name") if isinstance(b.get("publisher"), dict) else b.get("publisher"),
+                       identifiers={"issn": issn}, links=[r.get("url") for r in b.get("ref", {}).values()] if isinstance(b.get("ref"), dict) else [],
+                       license=((b.get("license") or [{}])[0]).get("type"),
+                       extra={"in_doaj": True, "subjects": [s.get("term") for s in b.get("subject") or [] if s.get("term")]},
+                       raw=a)
+
+
 def resolve(client: Client, identity: str) -> dict | None:
     """A DOI resolves to its article; an ISSN resolves to its journal (both declared in SCHEMES)."""
     value = identity.split(":", 1)[-1] if ":" in identity else identity
@@ -60,16 +70,7 @@ def resolve(client: Client, identity: str) -> dict | None:
                           params={"pageSize": 1}, identity=f"issn:{issn}")
         if not check(SOURCE_ID, resp):
             return None
-        results = need(SOURCE_ID, resp.json, "results")
-        if not results:
-            return None
-        b = results[0].get("bibjson") or {}
-        return make_record(identity=f"issn:{issn}", kind="venue", source_id=SOURCE_ID, title=b.get("title"),
-                           venue=b.get("publisher", {}).get("name") if isinstance(b.get("publisher"), dict) else b.get("publisher"),
-                           identifiers={"issn": issn}, links=[r.get("url") for r in b.get("ref", {}).values()] if isinstance(b.get("ref"), dict) else [],
-                           license=((b.get("license") or [{}])[0]).get("type"),
-                           extra={"in_doaj": True, "subjects": [s.get("term") for s in b.get("subject") or [] if s.get("term")]},
-                           raw=results[0])
+        return first_member(SOURCE_ID, need(SOURCE_ID, resp.json, "results"), lambda a: _journal(issn, a))
     doi = normalize_doi(value)
     if not doi:
         return None
@@ -77,5 +78,4 @@ def resolve(client: Client, identity: str) -> dict | None:
                       params={"pageSize": 1}, identity=f"doi:{doi}")
     if not check(SOURCE_ID, resp):
         return None
-    results = need(SOURCE_ID, resp.json, "results")
-    return _record(results[0]) if results else None
+    return first_member(SOURCE_ID, need(SOURCE_ID, resp.json, "results"), _record)

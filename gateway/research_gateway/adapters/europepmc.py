@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record
 from ..core.identity import normalize_doi
-from .base import Client, check, members, need
+from .base import Client, check, first_member, members, need
 
 SOURCE_ID = "europepmc"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -51,5 +51,4 @@ def resolve(client: Client, identity: str) -> dict | None:
                       identity=identity)
     if not check(SOURCE_ID, resp):
         return None
-    results = need(SOURCE_ID, resp.json, "resultList", "result")
-    return _record(results[0]) if results else None
+    return first_member(SOURCE_ID, need(SOURCE_ID, resp.json, "resultList", "result"), _record)

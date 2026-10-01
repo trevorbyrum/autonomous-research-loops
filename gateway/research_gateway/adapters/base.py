@@ -569,6 +569,18 @@ def members(source_id: str, items: list, build) -> list:
     return out
 
 
+def first_member(source_id: str, items: list, build):
+    """The one record a lookup asked for: the first of the provider's results, decoded like any member (None
+    when there are none). An answer whose first result cannot be read is unreadable, never 'not found'; and
+    never answered by the result after it, which may be some other work."""
+    if not items:
+        return None
+    (rec,) = members(source_id, items[:1], build)
+    if rec is None:
+        raise PayloadError(f"{source_id}: the answer's first result cannot be read")
+    return rec
+
+
 def need(source_id: str, value, *path: str, kind: type | tuple = list):
     """The value at `path` inside a parsed answer; it must exist and be of `kind`. A missing or
     mistyped container is a PayloadError — an answer shaped wrong is unreadable, and its

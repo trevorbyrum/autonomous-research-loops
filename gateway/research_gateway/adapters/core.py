@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record
 from ..core.identity import normalize_doi
-from .base import Client, check, need, quote
+from .base import Client, check, first_member, need, quote
 
 SOURCE_ID = "core"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -40,21 +40,19 @@ def _lookup(client: Client, doi: str, request_type: str, *, want_text: bool) -> 
                       params={"q": f'doi:"{doi}"', "limit": 1, "exclude": None if want_text else "fullText"},
                       headers=_headers(client), identity=f"doi:{doi}")
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
-    results = need(SOURCE_ID, resp.json, "results")
-    return results[0] if results else None
+    return first_member(SOURCE_ID, need(SOURCE_ID, resp.json, "results"), lambda w: _record(w, with_text=want_text))
 
 
 def resolve(client: Client, identity: str) -> dict | None:
     doi = normalize_doi(identity.split(":", 1)[-1] if identity.startswith("doi:") else identity)
     if not doi:
         return None
-    w = _lookup(client, doi, "resolve", want_text=False)
-    return _record(w) if w else None
+    return _lookup(client, doi, "resolve", want_text=False)
 
 
 def enrich(client: Client, identity: str, what: str = "full_text") -> dict:
     doi = normalize_doi(identity.split(":", 1)[-1] if identity.startswith("doi:") else identity)
     if not doi or what != "full_text":
         return {"identity": identity, "what": what, "items": []}
-    w = _lookup(client, doi, "enrich", want_text=True)
-    return {"identity": f"doi:{doi}", "what": what, "items": [_record(w, with_text=True)] if w else []}
+    rec = _lookup(client, doi, "enrich", want_text=True)
+    return {"identity": f"doi:{doi}", "what": what, "items": [rec] if rec else []}
