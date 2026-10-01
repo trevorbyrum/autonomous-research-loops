@@ -8,8 +8,9 @@ instances of the defect instead of asserting what must hold for every input. Thi
 For each operation in tests/invariant_ops.py (each adapter's find, resolve, enrich, data, catalog and fetch, with valid provider-shaped
 answers whose members, end fields and continuations are stated there by hand), it takes the valid answer and corrupts it at
 every position of its structure: a wrong-typed value in the place of each container and scalar — false, 0, "", {}, [], null,
-and a truthy wrong kind of each — or no value at all. Each corrupted answer goes through the real adapter and the real router, and the
-lane it comes out as is held to four statements:
+and a truthy wrong kind of each — or no value at all; and, for the fields that matter to a lane together (the containers that hold members, the
+fields its end and continuation are read from, the count that lets a list be left out), at two of them at once. Each corrupted answer goes
+through the real adapter and the real router, and the lane it comes out as is held to four statements:
 
   (a) a lane is `exhausted` or `complete` only if every field its end rule depends on was readable (and a continuation is
       offered only from a readable one);
@@ -27,7 +28,7 @@ and damaged by grammar and read by an independent reader (LinkHeaders, tests/inv
 registry loaders' pages (RegistryLoaders). INVARIANT_SCALE=n multiplies the generated headers and cuts; INVARIANT_REPORT=<file> writes every
 violation found as JSON, which is how the evidence for the repair was taken. A whole run takes about ten seconds.
 What it cannot show: that a provider still answers as the fixtures say (Phase 4's canary), and anything about two corruptions of one answer
-beyond the mixed members and the damaged headers.
+beyond the pairs of positions above, the mixed members and the damaged headers.
 """
 from __future__ import annotations
 
@@ -305,18 +306,35 @@ def kind_of(value) -> str:
     return "null" if value is None else "bool" if isinstance(value, bool) else type(value).__name__
 
 
+ORDER = (OK, MAYBE, GONE, BAD)   # what two corruptions of one member come to: the worse of the two (one that is gone is gone; one that is unreadable is unreadable)
+
+
 def judge(op: Op, valid, path: tuple, value, optional: frozenset, keyed: bool, mem: list[Member], lane: dict, out: dict | None,
           error: BaseException | None, records: list | None = None, baseline: dict | None = None) -> list[Violation]:
     """The lane `lane` that corrupting `path` with `value` produced, held to the four invariants. `lane` is the router's lane entry."""
+    return judge_changes(op, valid, ((path, value),), optional, keyed, mem, lane, out, error, records, baseline)
+
+
+def judge_changes(op: Op, valid, changes: tuple, optional: frozenset, keyed: bool, mem: list[Member], lane: dict, out: dict | None,
+                  error: BaseException | None, records: list | None = None, baseline: dict | None = None) -> list[Violation]:
+    """The same, for an answer corrupted at one position (`changes` of one) or at two that neither contains the other."""
+    path, value = changes[0]
+
     def violation(inv, detail):
-        return Violation(inv, op.name, list(path), show(value), detail)
+        return Violation(inv, op.name, list(path) if len(changes) == 1 else [list(p) for p, _ in changes],
+                         show(value) if len(changes) == 1 else " & ".join(show(v) for _, v in changes), detail)
 
     if error is not None:
         return [violation("d", f"the router raised {type(error).__name__}: {str(error)[:120]}")]
-    found = [(classify(m, path, value, optional, keyed, op.leaf, op.bare_row), m) for m in mem]
+    corrupted = valid
+    for p, v in changes:
+        corrupted = put(corrupted, p, v) if p else v
+    found = [(max((classify(m, p, v, optional, keyed, op.leaf, op.bare_row) for p, v in changes), key=ORDER.index), m) for m in mem]
+    if any(safe_get(corrupted, holder) in (MISSING, None) and type(safe_get(corrupted, count)) is int and safe_get(corrupted, count) == 0
+           for holder, count in op.empty_when):
+        found = [(GONE, m) for _, m in found]   # the provider may leave a list out when it counts nothing
     state = {s: [m for st, m in found if st == s] for s in (OK, MAYBE, BAD, GONE)}
-    corrupted = put(valid, path, value) if path else value
-    shared_hit = any(related(path, s) for s in op.shared)
+    shared_hit = any(related(p, s) for p, _ in changes for s in op.shared)
     completeness, coverage = lane.get("completeness"), lane.get("coverage")
     retrieved, count = lane.get("retrieved") or [], lane.get("count")
     problems = []
@@ -344,7 +362,7 @@ def judge(op: Op, valid, path: tuple, value, optional: frozenset, keyed: bool, m
     if state[BAD] and not state[OK] and not state[MAYBE]:
         if completeness != "unobserved" or count is not None:
             problems.append(violation("b", f"every member's container is unreadable, yet the lane is {completeness} with count {count}"))
-    for field, holder, leaving_out_is_empty in op.zero_counts:
+    for field, holder, leaving_out_is_empty in op.zero_counts if len(changes) == 1 else ():
         for rec in records or []:
             if rec.get(field) in (0, []):
                 for m in mem:
@@ -354,7 +372,7 @@ def judge(op: Op, valid, path: tuple, value, optional: frozenset, keyed: bool, m
                         problems.append(violation("b", f"{field} is {rec[field]!r}, and what it counts ({'.'.join(map(str, holder)) or 'the answer'}) is unreadable"))
     # (b), in a record that is kept: a value of the wrong kind inside a readable member never reads as an empty or absent one — it changes
     # nothing the record says, or the member is dropped and counted. (A value carried into the record as it was sent is not changed.)
-    if baseline and records is not None and len(set(op.ids)) == len(op.ids) and path and value is not MISSING and value is not None:
+    if len(changes) == 1 and baseline and records is not None and len(set(op.ids)) == len(op.ids) and path and value is not MISSING and value is not None:
         here = valid if not path else get(valid, path)
         inside = [m for m in mem if len(path) > len(m.path) and path[:len(m.path)] == m.path]
         if inside and kind_of(value) != kind_of(here):
@@ -367,8 +385,9 @@ def judge(op: Op, valid, path: tuple, value, optional: frozenset, keyed: bool, m
     # (a) a lane is complete or exhausted, and offers a continuation, only from fields it could read
     if completeness == "complete" and state[BAD]:
         problems.append(violation("a", f"complete, with {len(state[BAD])} member(s) whose container is unreadable"))
+    present = len([m for st, m in found if st != GONE])   # what the corrupted answer lists: a total may not be smaller than that
     if lane.get("exhausted") is True:
-        floor = sum(1 for _ in mem)
+        floor = present
         if completeness != "complete" or state[BAD]:
             problems.append(violation("a", f"exhausted while {completeness}, with {len(state[BAD])} unreadable member(s)"))
         if not any(all(readable(corrupted, p, k, floor) for p, k in alternative) for alternative in op.end):
@@ -376,7 +395,7 @@ def judge(op: Op, valid, path: tuple, value, optional: frozenset, keyed: bool, m
     if "next" in lane:
         if completeness == "unobserved":
             problems.append(violation("a", "a continuation from a lane that observed nothing"))
-        if not all(readable(corrupted, p, k, sum(1 for _ in mem)) for p, k in op.cursor):
+        if not all(readable(corrupted, p, k, present) for p, k in op.cursor):
             problems.append(violation("a", "a continuation offered although the field it is made from is unreadable"))
     return problems
 
@@ -392,6 +411,27 @@ def positions(op: Op, valid, mem: list[Member]):
         values = INSIDE_A_MEMBER if under else STRUCTURAL
         current = get(valid, path) if path else valid
         yield path, [v for v in values if not same(v, current) and not (v is MISSING and (not path or isinstance(path[-1], int)))]
+
+
+PAIR_VALUES = (False, 0, 0.0, "0", [], None, MISSING)
+
+
+def pairs(op: Op, valid, mem: list[Member]):
+    """((path, value), (path, value)) for two positions of the answer that matter to a lane — the containers that hold members, the fields
+    its end and its continuation are read from, the fields every member shares, the count that lets a list be left out — neither of which
+    contains the other. What one corruption of each does together is not what each does alone: a list left out is empty only when the
+    count says zero, and a count garbled beside it says nothing."""
+    relevant = {m.path[:k] for m in mem for k in range(1, len(m.path))} | {p for alt in op.end for p, _ in alt} | {p for p, _ in op.cursor} | set(op.shared)
+    relevant |= {p for pair in op.empty_when for p in pair}
+    paths = sorted(p for p in relevant if p and safe_get(valid, p) is not MISSING)
+    for i, a in enumerate(paths):
+        for b in paths[i + 1:]:
+            if related(a, b):
+                continue
+            first, second = ([v for v in PAIR_VALUES if not same(v, get(valid, p)) and not (v is MISSING and isinstance(p[-1], int))] for p in (a, b))
+            for va in first:
+                for vb in second:
+                    yield (a, va), (b, vb)
 
 
 @functools.lru_cache(maxsize=None)
@@ -411,6 +451,17 @@ def corruption_report(name: str) -> tuple:
             except Exception as e:   # (d): nothing may escape the router
                 error = e
             found += judge(op, valid, path, value, optional, keyed, mem, lane, out, error, (out or {}).get("records"), baseline)
+    for changes in pairs(op, valid, mem):
+        runs += 1
+        corrupted = valid
+        for p, v in changes:
+            corrupted = put(corrupted, p, v)
+        error = out = lane = None
+        try:
+            out, lane = run(op, corrupted)
+        except Exception as e:   # (d)
+            error = e
+        found += judge_changes(op, valid, changes, optional, keyed, mem, lane, out, error)
     return tuple(found), runs
 
 

@@ -59,6 +59,7 @@ class Op:
     agency: str | None = None           # a DOI lookup is routed by the registration agency doi.org names
     whole: bool = False                 # an answer read whole: one member that cannot be read makes it unreadable
     bare_row: bool = False              # a list of one may come as the one object (BEA's habit): a non-empty object holds one member
+    empty_when: tuple = ()              # (holder path, count path): the provider may leave the holder out only when its count is the whole number zero
     leaf: str = "object"                # what a member is: an object, a list, any value (a keyed entry whose key is all that is read), or a "url" (text; empty is none)
     typed: bool = True                  # a lane's failure on a garbled answer must be a PayloadError
     seed: dict | None = None            # what the registry row says differently, so the router plans this lane (OpenAIRE is no discovery lane)
@@ -165,7 +166,7 @@ GOVINFO_IDS = tuple(f"govinfo:CRPT-{i}" for i in (1, 2, 3))
 GOVINFO_FIND = Op(
     "govinfo.find", "govinfo", {"request_type": "find", "kind": "dataset", "query": "q", "limit": 3, "domain": "finance"},
     (Route("POST", GOVINFO_URL, {"count": 9, "offsetMark": "AoE-1", "results": [govinfo_package(i) for i in (1, 2, 3)]}, corrupt=True),),
-    GOVINFO_IDS, levels=(Level(("results",)),), cursor=((("offsetMark",), "token"),), find=True, continues=True)
+    GOVINFO_IDS, levels=(Level(("results",)),), cursor=((("offsetMark",), "token"),), find=True, continues=True, empty_when=((("results",), ("count",)),))
 
 # ------------------------------------------------------------------ Harvard Dataverse (and QDR, which is the same client)
 DV_SEARCH_URL = "https://dataverse.harvard.edu/api/search"
@@ -232,7 +233,7 @@ def openaire_page(found: int) -> dict:
 OPENAIRE_IDS = tuple(f"doi:10.46298/abc{i}" for i in (1, 2, 3))
 OPENAIRE_FIND_MORE = Op(
     "openaire.find (a full page)", "openaire", FIND, (Route("GET", OPENAIRE_URL, openaire_page(9), corrupt=True),), OPENAIRE_IDS,
-    levels=(Level(("results",)),), seed={"base_for": ["article"]},
+    levels=(Level(("results",)),), seed={"base_for": ["article"]}, empty_when=((("results",), ("header", "numFound")),),
     end=(((("header", "nextCursor"), "same"),), ((("header", "numFound"), "total"), (("results",), "list"))),
     cursor=((("header", "nextCursor"), "token"),), find=True, continues=True)
 OPENAIRE_FIND_END = replace(OPENAIRE_FIND_MORE, name="openaire.find (the first page holds every match)",
@@ -273,7 +274,7 @@ def s2_page(more: bool) -> dict:
 S2_IDS = tuple(f"doi:10.1000/s{i}" for i in (1, 2, 3))
 S2_FIND_MORE = Op(
     "semanticscholar.find (a next offset)", "semanticscholar", {"request_type": "find", "kind": "article", "query": "q", "limit": 3, "domain": "ai-ml"},
-    (Route("GET", S2_SEARCH, s2_page(True), corrupt=True),), S2_IDS, levels=(Level(("data",)),), end=(((("next",), "absent"),),),
+    (Route("GET", S2_SEARCH, s2_page(True), corrupt=True),), S2_IDS, levels=(Level(("data",)),), end=(((("next",), "absent"),),), empty_when=((("data",), ("total",)),),
     cursor=((("next",), "offset"),), find=True, continues=True)
 S2_FIND_END = replace(S2_FIND_MORE, name="semanticscholar.find (no next offset)", routes=(Route("GET", S2_SEARCH, s2_page(False), corrupt=True),),
                       continues=False, exhausted=True)

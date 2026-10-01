@@ -142,6 +142,44 @@ class HoldersOfMembers(unittest.TestCase):
         self.assertEqual(shape(self.govinfo_formats({})), EMPTY)
 
 
+class ListsLeftOutWhenNothingMatched(unittest.TestCase):
+    """GovInfo's `results`, OpenAIRE's `results` and Semantic Scholar's `data` may be left out of an answer only when the provider's own count
+    says nothing matched. Two fields of one answer, so one corruption of each: a count that is not the whole number zero says nothing, and a list
+    that is not there is then not an empty one (the harness's pair pass finds this for every such lane; these are the cases by hand)."""
+    WRONG_COUNTS = (False, 0.0, "0", None, ..., 5, [], {})
+
+    LANES = (
+        ("govinfo", {"request_type": "find", "kind": "dataset", "query": "q", "limit": 3, "domain": "finance"}, "https://api.govinfo.gov/search", "POST",
+         lambda count: {"offsetMark": "x", **({} if count is ... else {"count": count})}),
+        ("semanticscholar", {"request_type": "find", "kind": "article", "query": "q", "limit": 3, "domain": "ai-ml"},
+         "https://api.semanticscholar.org/graph/v1/paper/search", "GET", lambda count: {} if count is ... else {"total": count}),
+    )
+
+    def test_a_list_that_is_left_out_is_empty_only_when_the_count_is_the_whole_number_zero(self):
+        for sid, request, url, method, body in self.LANES:
+            with self.subTest(sid, count=0):
+                self.assertEqual(shape(lane(sid, request, url, body(0), method)[1])[:2], ("searched_empty", "complete"))
+            for count in self.WRONG_COUNTS:
+                with self.subTest(sid, count=count):
+                    self.assertEqual(shape(lane(sid, request, url, body(count), method)[1]), UNOBSERVED)
+
+    def test_openaire_the_same_through_the_adapter(self):
+        from research_gateway.adapters import openaire
+        for count, ok in [(0, True), *((c, False) for c in self.WRONG_COUNTS)]:
+            with self.subTest(count=count):
+                openaire.reset_token()
+                self.addCleanup(openaire.reset_token)
+                t = FakeTransport()
+                t.add("POST", openaire.TOKEN_URL, body={"access_token": "tok", "expires_in": 3600})
+                t.add("GET", "https://api.openaire.eu/graph/v1/researchProducts", body={"header": {"nextCursor": "c1", **({} if count is ... else {"numFound": count})}})
+                c = Client(broker=Broker({"openaire": RatePolicy(per_second=1000)}), transport=t, secrets=lambda n, f=None: "k")
+                if ok:
+                    self.assertEqual(openaire.find(c, "q")["records"], [])
+                else:
+                    with self.assertRaises(PayloadError):
+                        openaire.find(c, "q")
+
+
 class Readers(unittest.TestCase):
     """The readers of provider data in adapters.base: what each accepts is stated here, and every other kind is unreadable."""
 
