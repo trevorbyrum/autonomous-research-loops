@@ -93,8 +93,6 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
     q = (query or "").lower()
     entries = []
     for name, meta in plain(need(SOURCE_ID, resp.json, "variables", kind=dict)).items():
-        if meta is None:
-            meta = {}
         if not isinstance(meta, dict):
             raise PayloadError(f"{SOURCE_ID}: the variable {name!r} is {type(meta).__name__}, not an object: the catalogue is unreadable, not shorter")
         label = meta.get("label") or ""

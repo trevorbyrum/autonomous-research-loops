@@ -69,7 +69,7 @@ def crossref_journals(client: Client, *, limit: int | None = None, rows: int = 1
                                   "works_count": counts.get("total-dois"), "current_dois": counts.get("current-dois")},
                            raw=j)
 
-    while cursor:
+    while cursor is not None:
         resp = client.get("crossref", "find", CROSSREF_JOURNALS,
                           params={"rows": rows, "cursor": cursor, "mailto": client.contact_email}, query="journals harvest")
         check("crossref", resp, allow_404=False)   # a failed page fails the load (D-23)

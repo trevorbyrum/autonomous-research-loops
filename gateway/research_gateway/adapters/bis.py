@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core import sdmx
 from ..core.canonical import make_record
-from .base import AdapterError, Client, check, members, plain
+from .base import AdapterError, Client, check, identified, members, plain
 
 SOURCE_ID = "bis"
 SMOKE = {'capability': 'data', 'params': {'dataflow': 'WS_EER', 'key': 'M.N.B.US', 'start': '2026-01'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -69,6 +69,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         if not flows:
             return {"entries": [], "capability_fact": "no dataflows in the structure answer (a readable listing of nothing is not a catalogue)"}
         q = (query or "").lower()
+        flows = identified(SOURCE_ID, flows, [f for f in flows if f["id"]])   # a flow that names nothing is skipped; none that does is not a catalogue
         flows = [f for f in flows if not q or q in str(f["id"]).lower() or q in str(f["label"]).lower()]
         page = flows[offset:offset + limit]
         return {"entries": [{"id": f["id"], "label": f["label"], "kind": "dataflow",

@@ -167,7 +167,7 @@ def parse_links(header: str) -> list[tuple[str, list[tuple[str, str | None]]]]:
             at += 1
         return at
 
-    def token(at: int) -> tuple[int, str]:
+    def read_token(at: int) -> tuple[int, str]:
         start = at
         while at < n and header[at] in _TCHAR:
             at += 1
@@ -189,7 +189,7 @@ def parse_links(header: str) -> list[tuple[str, list[tuple[str, str | None]]]]:
         if _URI_REFERENCE.fullmatch(target) is None:
             raise LinkSyntax(f"Link header: a target that is no URI reference, at character {end}")
         while i < n and header[i] == ";":
-            i, name = token(space(i + 1))
+            i, name = read_token(space(i + 1))
             i, value = space(i), None
             if i < n and header[i] == "=":
                 i = space(i + 1)
@@ -208,7 +208,7 @@ def parse_links(header: str) -> list[tuple[str, list[tuple[str, str | None]]]]:
                         raise LinkSyntax("Link header: a quoted string is not closed")
                     i, value = i + 1, "".join(chars)
                 else:
-                    i, value = token(i)
+                    i, value = read_token(i)
             params.append((name.lower(), value))
             i = space(i)
         out.append((target, params))
@@ -695,12 +695,16 @@ def first_member(source_id: str, items: Members, build):
 
 
 def token(value):
-    """A provider's paging token — a cursor, an offset mark, an offset — as a non-blank string or a non-negative whole number, else
-    None: a view of a list or an object is no token, nor is a boolean, a float, a negative number or a blank, and metadata that
-    cannot be read is never a continuation (and, with no end claimed from it, never an end)."""
-    if isinstance(value, str):
-        return value if value.strip() else None
-    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+    """A provider's opaque paging token — a cursor, an offset mark — as a non-blank string, else None: a view of a list or an object is
+    no token, nor is a number, a boolean or a blank (a cursor of `0` would be handed back as "no cursor" and restart the listing), and
+    metadata that cannot be read is never a continuation (and, with no end claimed from it, never an end)."""
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def offset_after(value, offset: int):
+    """A provider's next offset: a whole number past the `offset` this page started at, else None. A boolean, a float, a text, a negative
+    number — or one that does not advance, which would ask for this page again for ever — is no continuation."""
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > offset else None
 
 
 def total(value, seen: int = 0):
@@ -822,9 +826,9 @@ def check(source_id: str, resp: Response, *, allow_404: bool = True, allow_html:
 
 __all__ = (
     # the metered client, and what an adapter says when it cannot answer
-    "Client", "AdapterError", "ContinuationInvalid", "PayloadError", "check",
+    "Client", "AdapterError", "ContinuationInvalid", "PayloadError", "MEMBER_ERRORS", "check",
     # a provider's answer, as views, and the ways to read it (core/payload.py)
     "Members", "NO_MEMBERS", "OMIT", "Obj", "members", "first_member", "need", "optional", "nested", "listed", "text", "key", "plain",
     # a provider's metadata: totals, tokens, the end and the next page
-    "token", "total", "counts_nothing", "field", "identified", "next_link", "own_link", "quote",
+    "token", "offset_after", "total", "counts_nothing", "field", "identified", "next_link", "own_link", "quote",
 )

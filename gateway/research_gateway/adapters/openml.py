@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, Obj, check, key, listed, members, need, plain, quote, text
+from .base import MEMBER_ERRORS, AdapterError, Client, Obj, check, key, listed, members, need, plain, quote, text
 
 SOURCE_ID = "openml"
 SMOKE = {'capability': 'resolve', 'identity': 'openml:61'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -62,35 +62,53 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0) -> dic
             "exhausted": len(items) < min(limit, 100)}
 
 
-def resolve(client: Client, identity: str) -> dict | None:
-    did = _did(identity)
+def _description(client: Client, did: str) -> Obj | None:
+    """The dataset's description, None when OpenML has no such dataset."""
     resp = client.get(SOURCE_ID, "resolve", f"{BASE}/data/{did}", identity=f"openml:{did}")
     if not check(SOURCE_ID, resp):
         return None
-    return _desc_record(need(SOURCE_ID, resp.json, "data_set_description", kind=dict))
+    return need(SOURCE_ID, resp.json, "data_set_description", kind=dict)
+
+
+def resolve(client: Client, identity: str) -> dict | None:
+    d = _description(client, _did(identity))
+    return _desc_record(d) if d is not None else None
 
 
 def fetch(client: Client, target: str, *, download: bool = False, prefer: str = "parquet") -> dict:
-    """The dataset's data file link(s); with download=True the preferred file's bytes (never persisted)."""
-    rec = resolve(client, target)
-    identity = f"openml:{_did(target)}"
-    if rec is None:
+    """The dataset's data file link(s); with download=True the preferred file's bytes (never persisted). Each link the description carries
+    is a file of its own: one it leaves out (missing, null, empty) lists no file, and one that is there and is not text is one unreadable
+    file — dropped and counted, and never replaced by the other link when it is the one a download asked for."""
+    did = _did(target)
+    identity = f"openml:{did}"
+    d = _description(client, did)
+    if d is None:
         return {"identity": identity, "records": []}
-    urls = [u for u in ((rec["parquet_url"], rec["url"]) if prefer == "parquet" else (rec["url"], rec["parquet_url"])) if u]
-    files = [make_record(identity=f"{identity}#{u.rsplit('/', 1)[-1]}", kind="file", source_id=SOURCE_ID, title=u.rsplit("/", 1)[-1],
-                         license=rec["license"], links=[u], raw=None) for u in urls]
+    license_ = text(SOURCE_ID, d.get("licence"))
+    files = []
+    for name in ("parquet_url", "url") if prefer == "parquet" else ("url", "parquet_url"):
+        link = d.get(name)
+        if link is None or link == "":
+            continue
+        try:
+            u = text(SOURCE_ID, link)
+            files.append(make_record(identity=f"{identity}#{u.rsplit('/', 1)[-1]}", kind="file", source_id=SOURCE_ID, title=u.rsplit("/", 1)[-1],
+                                     license=license_, links=[u], raw=None))
+        except MEMBER_ERRORS:
+            files.append(None)
     if not download:
         return {"identity": identity, "records": files}
-    if client.commercial and not allow_listed(rec["license"]):
+    if client.commercial and not allow_listed(license_):
         return {"identity": identity, "records": files,
-                "capability_fact": f"download refused before fetching: licence {rec['license'] or 'unknown'} is not usable commercially (R-8)"}
-    if not urls or not urls[0].startswith(HOSTS):
-        return {"identity": identity, "records": files, "capability_fact": "no OpenML-hosted data file to download"}
-    resp = client.get(SOURCE_ID, "fetch", urls[0], headers={"Accept": "*/*"}, identity=files[0]["identity"])
+                "capability_fact": f"download refused before fetching: licence {license_ or 'unknown'} is not usable commercially (R-8)"}
+    if not files or files[0] is None or not files[0]["links"][0].startswith(HOSTS):
+        why = "a data file link of the dataset cannot be read" if files and files[0] is None else "no OpenML-hosted data file to download"
+        return {"identity": identity, "records": files, "capability_fact": why}
+    resp = client.get(SOURCE_ID, "fetch", files[0]["links"][0], headers={"Accept": "*/*"}, identity=files[0]["identity"])
     if not check(SOURCE_ID, resp, allow_html=True):  # raw file download: an HTML document can be legitimate content here
         return {"identity": identity, "records": files}
     return {"identity": identity, "records": files, "content": resp.body,
-            "content_type": resp.headers.get("content-type"), "license": rec["license"]}
+            "content_type": resp.headers.get("content-type"), "license": license_}
 
 
 def download_request(record: dict, target: str) -> dict | None:

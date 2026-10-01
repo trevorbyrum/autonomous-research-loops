@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record
 from ..core.identity import normalize_arxiv, normalize_doi
-from .base import NO_MEMBERS, OMIT, Client, PayloadError, check, counts_nothing, listed, members, need, nested, plain, text, token, total
+from .base import NO_MEMBERS, OMIT, Client, PayloadError, check, counts_nothing, listed, members, need, nested, offset_after, plain, text, total
 
 SOURCE_ID = "semanticscholar"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -78,7 +78,7 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0, year_f
     # `next` is "Absent if no more data exists" — short of the 1,000-result cap, where the documentation
     # does not say what an absent `next` means; `total` is "approximate" and ends nothing
     end = j.get("next") is None and offset + len(rows) < SEARCH_CAP
-    return {"records": members(SOURCE_ID, rows, _record), "total": total(j.get("total"), offset + len(rows)), "next_offset": token(j.get("next")), "exhausted": end}
+    return {"records": members(SOURCE_ID, rows, _record), "total": total(j.get("total"), offset + len(rows)), "next_offset": offset_after(j.get("next"), offset), "exhausted": end}
 
 
 def resolve(client: Client, identity: str) -> dict | None:
