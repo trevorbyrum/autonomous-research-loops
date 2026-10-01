@@ -80,24 +80,26 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                       identity=f"series:{SOURCE_ID}:{within}")
     if not check(SOURCE_ID, resp, allow_404=False):
         return {"entries": []}
-    flows = sdmx.dataflows_xml(resp.text)
-    if not flows:
+    flow = sdmx.dataflow_named(sdmx.dataflows_xml(resp.text), within, AGENCY)   # the flow asked for, and everything below is that flow's own (R10-2)
+    if flow is None:
         return {"entries": [], "capability_fact": f"dataflow {within!r}: no such dataflow in the structure answer"}
-    ref = flows[0]["structure_ref"] or within
-    ds = client.get(SOURCE_ID, "catalog", STRUCTURE_BASE + "/datastructure/" + AGENCY + "/" + ref,
+    ref = flow["structure"]
+    if not ref.get("id"):
+        return {"entries": [], "capability_fact": f"dataflow {within!r}: names no data structure — refusing to invent a series template"}
+    ds = client.get(SOURCE_ID, "catalog", STRUCTURE_BASE + "/datastructure/" + AGENCY + "/" + ref["id"],
                     params=STRUCTURE_PARAMS or None, headers={"Accept": "application/xml"},
                     identity=f"series:{SOURCE_ID}:{within}")
     if not check(SOURCE_ID, ds, allow_404=False):
         return {"entries": []}
-    dims = sdmx.dimensions_xml(ds.text, {**flows[0]["structure"], "id": ref})
+    dims = sdmx.dimensions_xml(ds.text, ref)
     if not dims:
-        return {"entries": [], "capability_fact": f"datastructure {ref!r}: no dimensions parsed — refusing to "
+        return {"entries": [], "capability_fact": f"datastructure {ref['id']!r}: no dimensions parsed — refusing to "
                                                   "invent an empty series template"}
-    entry = {"id": within, "label": flows[0]["label"], "kind": "dataflow",
+    entry = {"id": flow["id"], "label": flow["label"], "kind": "dataflow",
              "dimensions_in_key_order": dims,
              "data_request": {"tool": "research_data", "partial": True,
                               "arguments": {"source": SOURCE_ID,
-                                            "params": {"dataflow": within, "key": ".".join("?" * len(dims))}},
+                                            "params": {"dataflow": flow["id"], "key": ".".join("?" * len(dims))}},
                               "missing": "one code per dimension, dot-separated in the order above"}}
     return {"entries": [entry], "next": None,
             "notes": "codelists per dimension are not yet exposed; the source's own data portal documents them"}

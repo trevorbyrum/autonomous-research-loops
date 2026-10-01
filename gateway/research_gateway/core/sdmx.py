@@ -52,38 +52,36 @@ def _kind(value) -> str:
     return {"Obj": "an object", "Members": "a list"}.get(type(value).__name__, type(value).__name__)
 
 
+def _wrapper(j: Obj):
+    """The `data` object SDMX-JSON 2.0 wraps its data sets and structures in: None when the message has none; one that is there and is not an object is an unreadable message."""
+    wrapped = j.get("data")
+    if wrapped is not None and not isinstance(wrapped, Obj):
+        raise PayloadError(f"an SDMX answer whose data is {_kind(wrapped)}, not an object")
+    return wrapped
+
+
 def structure(j: Obj):
     """The message's structure (its dimension and attribute definitions): an Obj, or {} when the message names none (nothing there, or
     null). A `structures` list is read for its first, as a lookup reads its first result. A structure that is there and is anything
-    else — `false`, `0`, `""`, `[]` included — is an unreadable message: it is not "no structure", and every series needs it."""
-    found = j.get("structure")
+    else — `false`, `0`, `""`, `[]` included — is an unreadable message: it is not "no structure", and every series needs it. Every place a message
+    may state it (`structure`, `structures`, and what 2.0 wraps under `data`) is read for its kind before one is chosen (R10-1)."""
+    found, many, wrapped = j.get("structure"), j.get("structures"), _wrapper(j)
+    if found is not None and not isinstance(found, Obj):
+        raise PayloadError(f"an SDMX answer whose structure is {_kind(found)}, not an object")
+    if many is not None and not isinstance(many, Members):
+        raise PayloadError(f"an SDMX answer whose structures is {_kind(many)}, not a list")
     if found is not None:
-        if not isinstance(found, Obj):
-            raise PayloadError(f"an SDMX answer whose structure is {_kind(found)}, not an object")
         return found
-    many = j.get("structures")
-    if many is not None:
-        if not isinstance(many, Members):
-            raise PayloadError(f"an SDMX answer whose structures is {_kind(many)}, not a list")
-        if many:
-            return many.first(lambda s: s, "sdmx")
-    wrapped = j.get("data")  # 2.0 wraps everything under data
-    if wrapped is not None:
-        if not isinstance(wrapped, Obj):
-            raise PayloadError(f"an SDMX answer whose data is {_kind(wrapped)}, not an object")
-        return structure(wrapped)
-    return {}
+    if many:
+        return many.first(lambda s: s, "sdmx")
+    return structure(wrapped) if wrapped is not None else {}   # 2.0 wraps everything under data
 
 
 def datasets(j: Obj) -> Members:
     """The message's data sets: none when it names none (missing or null); a `dataSets` that is there and is anything but a list is an
     unreadable message, never an empty one."""
-    holder = j
-    if "dataSets" not in j:
-        wrapped = j.get("data")
-        if wrapped is not None and not isinstance(wrapped, Obj):
-            raise PayloadError(f"an SDMX answer whose data is {_kind(wrapped)}, not an object")
-        holder = wrapped if wrapped is not None else {}
+    wrapped = _wrapper(j)   # read whether or not the data sets are at the top
+    holder = j if "dataSets" in j else (wrapped if wrapped is not None else {})
     found = holder.get("dataSets")
     if isinstance(found, Members):
         return found
@@ -179,29 +177,41 @@ def series_reader(j: Obj):
     return read
 
 
+def _children(el: ET.Element, name: str) -> list[ET.Element]:
+    return [c for c in el if _local(c.tag) == name]
+
+
 def dataflows_xml(text: str) -> list[dict]:
-    """SDMX structure XML → [{id, label, structure_ref, structure}] for every Dataflow element. Namespace-agnostic like the rest of this
-    module; `structure_ref` is the id of the data structure the flow names (D-32) and `structure` its whole reference (agency and version too)."""
+    """SDMX structure XML → one entry per Dataflow element, in document order: {id, agency, version, label, structure}. Namespace-agnostic like the rest of this
+    module. `label` is the flow's own `Name` child (its id when it has none) and `structure` the reference its own `Structure` child makes to its data structure — `id`,
+    `agencyID` and `version` as that reference states them, and {} when the flow names none (D-32). Nothing is taken from another element of the message."""
     flows = []
-    root = _root(text, "Structure")
-    for el in root.iter():
+    for el in _root(text, "Structure").iter():
         if _local(el.tag) != "Dataflow":
             continue
-        label = next((c.text for c in el.iter() if _local(c.tag) == "Name" and c.text), None)
-        ref = next((dict(c.attrib) for c in el.iter() if _local(c.tag) == "Ref" and c.attrib.get("id")), {})
-        flows.append({"id": el.attrib.get("id"), "label": label or el.attrib.get("id"), "structure_ref": ref.get("id"), "structure": ref})
+        ref = next((dict(r.attrib) for s in _children(el, "Structure") for r in _children(s, "Ref") if r.attrib.get("id")), {})
+        label = next((c.text for c in _children(el, "Name") if c.text), None)
+        flows.append({"id": el.attrib.get("id"), "agency": el.attrib.get("agencyID"), "version": el.attrib.get("version"),
+                      "label": label or el.attrib.get("id"), "structure": ref})
     return flows
 
 
-def dimensions_xml(text: str, structure: dict) -> list[str]:
-    """The dimension ids of ONE data structure IN KEY ORDER (position attribute when present, document order otherwise): the one `structure`
-    names (its `id`, and its `agencyID` and `version` when the reference states them). A message may hold many (a wildcard query, a
-    `references=descendants` answer): their dimensions are theirs, never this one's, and each id stands once. The time dimension is no part of a key."""
-    root = _root(text, "Structure")
-    found = [el for el in root.iter() if _local(el.tag) == "DataStructure"
-             and all(el.attrib.get(k) == structure[k] for k in ("id", "agencyID", "version") if structure.get(k) is not None)]
+def dataflow_named(flows: list[dict], wanted: str, agency: str) -> dict | None:
+    """The one Dataflow `wanted` that `agency` maintains, from `dataflows_xml`'s entries: None when the message defines none (a flow that states another agency is
+    that agency's, not this one). Its label and its structure reference are what the answer is about, and nothing of another flow. A message that defines it more than once,
+    differently — another version, another agency's definition, another name or another structure — does not say which is meant: PayloadError, never the first of them.
+    The same definition twice is one."""
+    found = [f for f in flows if f["id"] == wanted and f["agency"] in (None, agency)]
+    distinct = {(f["agency"], f["version"], f["label"], tuple(sorted(f["structure"].items()))) for f in found}
+    if len(distinct) > 1:
+        raise PayloadError(f"an SDMX answer that defines the dataflow {wanted!r} {len(distinct)} times, differently: nothing says which one is meant")
+    return found[0] if found else None
+
+
+def _dimension_ids(structure: ET.Element) -> list[str]:
+    """One data structure's dimension ids IN KEY ORDER (position attribute when present, document order otherwise), each once; the time dimension is none of them."""
     dims = []
-    for el in (found[0].iter() if found else ()):
+    for el in structure.iter():
         if _local(el.tag) == "Dimension" and el.attrib.get("id") and all(el.attrib["id"] != d for _, d in dims):
             try:
                 position = int(el.attrib.get("position", len(dims)))
@@ -209,3 +219,16 @@ def dimensions_xml(text: str, structure: dict) -> list[str]:
                 position = len(dims)
             dims.append((position, el.attrib["id"]))
     return [d for _, d in sorted(dims)]
+
+
+def dimensions_xml(text: str, structure: dict) -> list[str]:
+    """The dimension ids of ONE data structure IN KEY ORDER: the one `structure` names (its `id`, and its `agencyID` and `version` when the reference states them). A message may
+    hold many (a wildcard query, a `references=descendants` answer): their dimensions are theirs, never this one's. [] when the message holds none of that structure. A
+    reference that more than one structure of the message answers to, with different dimensions, does not say which is meant: PayloadError."""
+    root = _root(text, "Structure")
+    found = [el for el in root.iter() if _local(el.tag) == "DataStructure"
+             and all(el.attrib.get(k) == structure[k] for k in ("id", "agencyID", "version") if structure.get(k) is not None)]
+    answers = {tuple(_dimension_ids(el)) for el in found}
+    if len(answers) > 1:
+        raise PayloadError(f"an SDMX answer in which the data structure {structure.get('id')!r} names {len(found)} structures with different dimensions: nothing says which one is meant")
+    return list(next(iter(answers))) if answers else []

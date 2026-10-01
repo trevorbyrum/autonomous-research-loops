@@ -66,6 +66,7 @@ HX = "tests.test_invariants."
 TP = "tests.test_present_means_typed."
 TF = "tests.test_typed_fields."
 ST = "tests.test_station_contract."
+OR, AL, FB = "tests.test_oracle.", "tests.test_alternatives.", "tests.test_flow_binding."
 
 
 def harness(letter: str, op: str) -> str:
@@ -1090,7 +1091,7 @@ MUTANTS: list[Mutant] = [
            (TF + "RegistrationAgency.test_control_text_is_the_agency_and_no_agency_is_unknown",)),
     # R9-5: a dimension browse is the flow's own structure's
     Mutant("R9-browse-merges-the-structures-of-a-message", "a dimension browse reads the dimensions of every data structure in the message", "research_gateway/core/sdmx.py",
-           "    for el in (found[0].iter() if found else ()):\n", "    for el in root.iter():\n",
+           "    answers = {tuple(_dimension_ids(el)) for el in found}\n", "    answers = {tuple(_dimension_ids(root)) for el in found}\n",
            (ST + "CatalogDiscovery.test_a_browse_names_the_dimensions_of_the_flows_own_structure_and_never_merges_the_structures_of_a_message",
             "tests.test_oracle.Catalogues.test_a_browse_names_the_dimensions_of_the_flows_own_data_structure_in_key_order"),
            (ST + "CatalogDiscovery.test_ecb_dataflows_then_dimensions_in_key_order",)),
@@ -1109,4 +1110,55 @@ MUTANTS: list[Mutant] = [
            "                        bad = list(BAD_MEMBERS)\n",
            ("tests.test_oracle.MixedMembersOtherSeeds.test_the_mixed_members_hold_at_other_seeds",),
            (HX + "MixedMembers.test_the_members_that_are_readable_are_exactly_the_ones_kept",)),
+    # R10-2: the browse is the requested flow's own
+    Mutant("R10-bis-browse-takes-the-first-flow", "BIS answers a browse with the first dataflow of the message, whichever was asked for", "research_gateway/adapters/bis.py",
+           '    flow = sdmx.dataflow_named(sdmx.dataflows_xml(resp.text), within, AGENCY)   # the flow asked for, and everything below is that flow\'s own (R10-2)\n',
+           '    flow = (sdmx.dataflows_xml(resp.text) or [None])[0]\n',
+           (OR + "FlowBinding.test_the_answer_is_about_the_flow_asked_for_wherever_it_stands", OR + "FlowBinding.test_a_flow_that_cannot_be_bound_yields_no_entry_and_no_template",
+            FB + "BrowseOfTheFlowAskedFor.test_the_entry_is_the_flows_own_in_every_position_for_both_providers"),
+           (ST + "CatalogDiscovery.test_a_browse_names_the_dimensions_of_the_flows_own_structure_and_never_merges_the_structures_of_a_message",)),
+    Mutant("R10-ecb-browse-takes-the-first-flow", "ECB answers a browse with the first dataflow of the message, whichever was asked for", "research_gateway/adapters/ecb.py",
+           '    flow = sdmx.dataflow_named(sdmx.dataflows_xml(resp.text), within, AGENCY)   # the flow asked for, and everything below is that flow\'s own (R10-2)\n',
+           '    flow = (sdmx.dataflows_xml(resp.text) or [None])[0]\n',
+           (OR + "FlowBinding.test_the_answer_is_about_the_flow_asked_for_wherever_it_stands", OR + "FlowBinding.test_a_flow_that_cannot_be_bound_yields_no_entry_and_no_template",
+            FB + "BrowseOfTheFlowAskedFor.test_the_entry_is_the_flows_own_in_every_position_for_both_providers"),
+           (ST + "CatalogDiscovery.test_a_browse_names_the_dimensions_of_the_flows_own_structure_and_never_merges_the_structures_of_a_message",)),
+    Mutant("R10-bis-structure-is-guessed-from-the-flow-id", "a BIS flow that names no structure is given the structure of its own id", "research_gateway/adapters/bis.py",
+           '    ref = flow["structure"]\n    if not ref.get("id"):\n        return {"entries": [], "capability_fact": f"dataflow {within!r}: names no data structure — refusing to invent a series template"}\n',
+           '    ref = {**flow["structure"], "id": flow["structure"].get("id") or within}\n',
+           (FB + "BrowseOfTheFlowAskedFor.test_a_flow_that_names_no_structure_yields_no_template_and_is_not_guessed_from_its_own_id",),
+           (ST + "CatalogDiscovery.test_ecb_dataflows_then_dimensions_in_key_order",)),
+    Mutant("R10-ecb-structure-is-guessed-from-the-flow-id", "an ECB flow that names no structure is given the structure of its own id", "research_gateway/adapters/ecb.py",
+           '    ref = flow["structure"]\n    if not ref.get("id"):\n        return {"entries": [], "capability_fact": f"dataflow {within!r}: names no data structure — refusing to invent a series template"}\n',
+           '    ref = {**flow["structure"], "id": flow["structure"].get("id") or within}\n',
+           (FB + "BrowseOfTheFlowAskedFor.test_a_flow_that_names_no_structure_yields_no_template_and_is_not_guessed_from_its_own_id",),
+           (ST + "CatalogDiscovery.test_ecb_dataflows_then_dimensions_in_key_order",)),
+    Mutant("R10-ambiguous-flow-is-read-as-the-first", "a message that defines the requested flow twice, differently, is read as its first definition", "research_gateway/core/sdmx.py",
+           '    if len(distinct) > 1:\n        raise PayloadError(f"an SDMX answer that defines the dataflow {wanted!r} {len(distinct)} times, differently: nothing says which one is meant")\n',
+           '',
+           (OR + "FlowBinding.test_a_flow_that_cannot_be_bound_yields_no_entry_and_no_template", FB + "SelectionOfTheFlow.test_the_same_definition_twice_is_one_flow_and_a_different_one_is_ambiguous"),
+           (FB + "SelectionOfTheFlow.test_the_flow_asked_for_is_the_one_found_by_its_id", FB + "BrowseOfTheFlowAskedFor.test_control_the_same_message_without_the_second_definition_is_read")),
+    Mutant("R10-a-flow-of-another-agency-is-the-flow-asked-for", "a dataflow another agency maintains answers a browse of the requested id", "research_gateway/core/sdmx.py",
+           'found = [f for f in flows if f["id"] == wanted and f["agency"] in (None, agency)]', 'found = [f for f in flows if f["id"] == wanted]',
+           (FB + "SelectionOfTheFlow.test_a_flow_another_agency_maintains_is_not_the_flow_asked_for",),
+           (FB + "SelectionOfTheFlow.test_the_flow_asked_for_is_the_one_found_by_its_id",)),
+    Mutant("R10-ambiguous-structure-is-read-as-the-first", "a structure reference that two structures with different dimensions answer to is read as the first", "research_gateway/core/sdmx.py",
+           '    if len(answers) > 1:\n        raise PayloadError(f"an SDMX answer in which the data structure {structure.get(\'id\')!r} names {len(found)} structures with different dimensions: nothing says which one is meant")\n    return list(next(iter(answers))) if answers else []',
+           '    return list(_dimension_ids(found[0])) if found else []',
+           (FB + "SelectionOfTheFlow.test_a_reference_that_more_than_one_structure_answers_to_is_ambiguous_unless_they_agree", FB + "BrowseOfTheFlowAskedFor.test_an_ambiguous_flow_or_structure_is_an_unreadable_answer_and_not_the_first_of_them"),
+           (ST + "CatalogDiscovery.test_ecb_dataflows_then_dimensions_in_key_order", ST + "CatalogDiscovery.test_a_reference_that_states_only_an_id_matches_the_structure_of_that_id")),
+    Mutant("R10-a-flows-structure-is-any-ref-under-it", "a dataflow's structure is the first `Ref` anywhere under the flow, not its own Structure child's", "research_gateway/core/sdmx.py",
+           'ref = next((dict(r.attrib) for s in _children(el, "Structure") for r in _children(s, "Ref") if r.attrib.get("id")), {})',
+           'ref = next((dict(r.attrib) for r in el.iter() if _local(r.tag) == "Ref" and r.attrib.get("id")), {})',
+           (FB + "SelectionOfTheFlow.test_only_the_structure_child_of_the_flow_names_its_structure",),
+           (FB + "SelectionOfTheFlow.test_the_flow_asked_for_is_the_one_found_by_its_id",)),
+    # R10-3: a listing whose every flow is unnamed is not a catalogue (Astra's mutant: the `identified(...)` validation deleted from the listing)
+    Mutant("R10-bis-listing-of-unnamed-flows-is-a-catalogue", "the BIS dataflow listing no longer refuses a listing in which no flow names itself", "research_gateway/adapters/bis.py",
+           '        flows = identified(SOURCE_ID, flows, [f for f in flows if f["id"]])   # a flow that names nothing is skipped; none that does is not a catalogue\n', '',
+           (OR + "UnnamedFlows.test_a_listing_that_names_no_flow_is_unobserved_with_no_count",),
+           (OR + "UnnamedFlows.test_the_readable_control_is_read", ST + "CatalogDiscovery.test_bis_dataflow_listing")),
+    Mutant("R10-ecb-listing-of-unnamed-flows-is-a-catalogue", "the ECB dataflow listing no longer refuses a listing in which no flow names itself", "research_gateway/adapters/ecb.py",
+           '        flows = identified(SOURCE_ID, flows, [f for f in flows if f["id"]])   # a flow that names nothing is skipped; none that does is not a catalogue\n', '',
+           (OR + "UnnamedFlows.test_a_listing_that_names_no_flow_is_unobserved_with_no_count",),
+           (OR + "UnnamedFlows.test_the_readable_control_is_read", ST + "CatalogDiscovery.test_ecb_dataflows_then_dimensions_in_key_order")),
 ]
