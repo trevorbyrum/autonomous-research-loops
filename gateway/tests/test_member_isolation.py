@@ -75,7 +75,7 @@ USES = {
     ("adapters/semanticscholar.py", "_record"): (2, "ONE paper's own authors and publication types"),
     ("adapters/socrata.py", "_vouched"): (1, "the portal-vouching predicate: a guarded security check that fails closed when the portal cannot be established, not a record-producing list"),
     ("adapters/socrata.py", "resolve"): (1, "ONE view's own columns"),
-    ("adapters/unpaywall.py", "enrich"): (2, "an answer with no location list is its one best location: a list of one, built here from an object"),
+    ("adapters/unpaywall.py", "enrich"): (4, "an answer with no location list is its one best location: a list of one, built here from an object; and the two flags handed back"),
     ("core/canonical.py", "make_record"): (1, "a record is plain data: no view of the provider's answer ends up inside one"),
     ("core/sdmx.py", "<module>"): (1, "NO_SERIES, the empty list"),
     ("core/sdmx.py", "series_xml"): (1, "the series of an XML message the gateway parsed itself, as members"),
@@ -370,15 +370,17 @@ class Views(unittest.TestCase):
                 what()
         self.assertEqual((len(rows), bool(rows), bool(view([]))), (2, True, False), "its length and truth are all it shows")
 
-    def test_an_object_cannot_hand_out_its_values_in_bulk(self):
+    def test_an_object_cannot_be_walked_to_get_at_its_values(self):
+        """A keyed container holds members the same way a list does (ECB's series, keyed by position): looping over
+        its keys and indexing each would be the same bypass, so there is nothing to loop over."""
         series = view({"0:0": {"observations": {}}, "0:1": 7})
-        with self.assertRaises(TypeError):
-            series.items()
-        with self.assertRaises(TypeError):
-            series.values()
-        self.assertEqual(sorted(series), ["0:0", "0:1"], "its keys are structure, not members")
+        for what in (lambda: iter(series), lambda: list(series), lambda: series.keys(), lambda: series.items(), lambda: series.values(),
+                     lambda: sorted(series), lambda: dict(series), lambda: {**series}, lambda: [series[k] for k in series]):
+            with self.assertRaises(TypeError):
+                what()
+        self.assertEqual((len(series), "0:0" in series, "9" in series, series.get("9", "none")), (2, True, False, "none"),
+                         "what is left reads one key at a time")
         self.assertIsInstance(series["0:0"], Obj)
-        self.assertIsInstance(dict(series)["0:0"], Obj, "a copy of it holds views")
 
     def test_a_list_inside_an_object_is_a_view_too(self):
         member = view({"siblings": [{"rfilename": "a"}], "tags": ["x"], "card": {"inner": [1]}})
@@ -415,6 +417,7 @@ class Views(unittest.TestCase):
     def test_a_keyed_container_hands_its_members_as_entries(self):
         entries = view({"a": {"v": 1}, "b": 7}).entries()
         self.assertEqual(entries.decode(lambda e: (e["key"], e["value"]["v"])), [("a", 1), None])
+        self.assertEqual(len(entries), 2)
 
     def test_plain_is_the_one_way_out_and_a_record_is_plain(self):
         answer = view({"tags": ["x", "y"], "card": {"k": [1]}})

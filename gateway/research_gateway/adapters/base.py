@@ -642,9 +642,13 @@ def members(source_id: str, items: Members, build) -> list:
     and an unreadable member never becomes a fabricated candidate (`url:None`). `build` may return OMIT for a
     member it read whole and found to name nothing to report: no record, and no dropped member either.
 
-    What 2b-repair-8 makes true by construction (core/payload.py): the provider's list reaches an adapter as a
-    `Members`, which has no iteration or indexing, so an adapter cannot touch a member before this decodes it.
-    `items` must be one; a plain list is refused, not decoded."""
+    What this does and does not guarantee (2b-repair-8; core/payload.py). A provider's list reaches an adapter as a
+    `Members`, which has no iteration, indexing, slicing or membership test, so no adapter can touch its members
+    before something that isolates them runs: this, first_member() or Members.expand(). `items` must be one; a plain
+    list is refused, not decoded. The one way to a plain list is `plain()`, for a list that is one record's own data
+    (a record's authors, a table's rows, a catalogue's entries), and every use of it is listed with its reason in
+    tests/test_member_isolation.py. Whether a given list is such data or a set of independent members is the adapter
+    author's declaration; the structure makes the declaration explicit and listed, it cannot make it for them."""
     _require_members(source_id, items)
     return [rec if isinstance(rec, dict) and meaningful(rec.get("identity")) else None for rec in items.decode(build)]
 
@@ -669,7 +673,7 @@ def scalar(value):
     return value if isinstance(value, (str, int)) and not isinstance(value, bool) else None
 
 
-NO_MEMBERS = Members([])   # a container the provider leaves out only when it lists nothing: no members, not an unreadable answer
+NO_MEMBERS = Members(())   # a container the provider leaves out only when it lists nothing: no members, not an unreadable answer
 _VIEW_OF = {list: Members, dict: Obj}
 
 

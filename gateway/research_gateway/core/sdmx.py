@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 
 from .payload import Members, Obj, PayloadError, plain
 
-NO_SERIES = Members([])
+NO_SERIES = Members(())
 
 
 def _local(tag: str) -> str:

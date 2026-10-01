@@ -37,4 +37,4 @@ def enrich(client: Client, identity: str, what: str = "oa_location") -> dict:
             raw=loc,
         )
     return {"identity": f"doi:{doi}", "what": what, "items": members(SOURCE_ID, locations, location),
-            "is_oa": j.get("is_oa"), "oa_status": j.get("oa_status")}
+            "is_oa": plain(j.get("is_oa")), "oa_status": plain(j.get("oa_status"))}

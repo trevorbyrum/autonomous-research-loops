@@ -16,8 +16,9 @@ any other value is itself. A view wraps the parsed data and gives nothing back b
     unreadable member, and the rest stand), `first` (a lookup's first result) and `expand` (the members each member
     holds, where a member that cannot be unfolded is one unreadable member in place of what it held). Reading a
     member hands the builder an `Obj` too, so a list inside a member is a `Members` as well.
-  * an `Obj` is read by key; its values are views. It has no `items()` or `values()`, because a keyed container
-    (an SDMX data set's series) holds members the same way a list does: `entries()` gives them as members.
+  * an `Obj` is read by key (`obj[k]`, `obj.get(k)`, `k in obj`); its values are views. It cannot be iterated and
+    has no `keys()`, `items()` or `values()`, because a keyed container (an SDMX data set's series) holds members the
+    same way a list does: `entries()` gives them as members.
 
 So preprocessing a provider's members before decoding them — a filter comprehension, a `while` loop over an index,
 `rows[0]`, a loop under another name, a flatten — has nothing to work on: the operation does not exist. What the
@@ -48,6 +49,8 @@ OMIT = object()
 
 _UNREADABLE = object()   # in a Members built by expand(): a member that could not be unfolded; decodes as unreadable
 
+_OBJ_USE = ("an Obj is read by key; a keyed container's members are read through entries() (each decoded alone), "
+            "an object that is one record's own data through plain()")
 _LIST_USE = ("a provider's list is read through base.members() or first_member() (each member decoded alone), "
              "or, when it is one record's own data, through plain()")
 
@@ -139,7 +142,7 @@ class Obj(Mapping):
         return view(self._d[key])
 
     def __iter__(self):
-        return iter(self._d)
+        raise TypeError(_OBJ_USE)
 
     def __len__(self) -> int:
         return len(self._d)
@@ -150,11 +153,10 @@ class Obj(Mapping):
     def __eq__(self, other) -> bool:
         return plain(self) == plain(other)
 
-    def items(self):
-        raise TypeError("an Obj has no items(): a keyed container's members are read through entries(); "
-                        "an object that is one record's own data through plain()")
+    def keys(self):
+        raise TypeError(_OBJ_USE)
 
-    values = items
+    items = values = keys
 
     def entries(self) -> Members:
         """The members of a keyed container: one `{"key": ..., "value": ...}` object per entry."""
