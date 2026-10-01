@@ -783,3 +783,9 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-2b-repair-10-ast
 **Evidence corrections required:** 63 populated variants, not 61; independence claims to carry their qualifications; the OpenML documentary explanation to be narrowed.
 
 **Orchestrator routing:** the R10-2 and R10-3 gaps are oracle gaps, so the authorship split is kept. 11a: the independent oracle author adds fallback-pair, flow-binding and unnamed-flow cases from the specifications. 11b: a separate coder fixes against them.
+**2b-repair-11a landed (oracle author fb7bc4cf).** `caf4b13` (new cases, committed before any comparison) and `99e3f2c`. No production code touched. 68 new oracle cases fail on current code, each for Astra's stated reason:
+- 30 R10-1 fallback-beside-valid-preferred cases (DataCite rights find/resolve, BEA `Desc`/`Description`);
+- 32 R10-2 flow-binding cases (24 non-first-flow, 8 fail-closed for absent, missing-structure or ambiguous flows);
+- 6 R10-3 failure-mode accounting gaps.
+
+Unnamed-flow cases pass on current code and kill a boundary-level reproduction of the deleted-validation mutant. Failure-mode accounting is now separate from execution accounting. Disclosed qualification: one black-box probe chose which 2 of 40 documented fallback pairs the gateway reads. Evidence corrections made (63 variants; qualified independence; narrowed OpenML explanation). Dispatching the 11b fix coder.
