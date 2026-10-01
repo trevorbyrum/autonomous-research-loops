@@ -212,7 +212,7 @@ class Kaggle(unittest.TestCase):
         out = kaggle.find(c, "housing")
         self.assertEqual(out["records"][0]["identity"], "kaggle:owner/ds")
         self.assertEqual(out["records"][0]["license"], "CC0-1.0")
-        self.assertIsNone(out["next_page"])
+        self.assertEqual((out["next_page"], out["exhausted"]), (2, False), "a page read whole continues; nothing documents an end")
         self.assertEqual(t.calls[0][2]["Authorization"], "Basic " + base64.b64encode(b"u:k").decode())
         t.add("GET", "https://www.kaggle.com/api/v1/datasets/list/owner/ds", body={"datasetFiles": [{"name": "train.csv", "totalBytes": 10}]})
         files = kaggle.fetch(c, "kaggle:owner/ds")

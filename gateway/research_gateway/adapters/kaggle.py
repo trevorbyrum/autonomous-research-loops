@@ -44,9 +44,12 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1) -> dict:
     resp = client.get(SOURCE_ID, "find", f"{BASE}/datasets/list", params={"search": query, "page": page}, headers=hdrs, query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     items = need(SOURCE_ID, resp.json)
-    cut = len(items) > limit   # rows of this page left unread: page + 1 would skip them, and this is not the end
+    # Kaggle's own clients page this listing by number and document neither its page size, a last page nor a
+    # total (docs/PROVIDER-PAGINATION.md): a non-empty page read whole continues at page + 1, and nothing here
+    # ever ends the lane. A page cut to `limit` cannot continue: page + 1 would skip the rows cut here
+    cut = len(items) > limit
     return {"records": members(SOURCE_ID, items[:limit], _record), "total": None,
-            "next_page": page + 1 if len(items) >= 20 and not cut else None, "exhausted": len(items) < 20 and not cut}
+            "next_page": page + 1 if items and not cut else None, "exhausted": False}
 
 
 def fetch(client: Client, target: str, *, file_name: str | None = None, download: bool = False) -> dict:

@@ -262,3 +262,84 @@ QDR is a Dataverse installation and shares this implementation.
   - The `limit` maximum. The adapter asks for at most 100.
   - The exact form of the next URL for `/api/datasets`. The JavaScript client's documented example
     is for a different endpoint and carries a `cursor` parameter.
+
+## Kaggle (`kaggle`)
+
+- **Continuation:** `page + 1`, while the page answered records and none were cut. The adapter keeps
+  `limit` of the page, so a page cut to `limit` has no continuation: `page + 1` would skip the rows
+  cut.
+- **End:** none. Nothing documents a page size, a last page or a total for this listing, so this lane
+  never reports `exhausted`. An empty page has no continuation and is not the end.
+- **Evidence:**
+  - Kaggle's own API specification for the endpoint this adapter calls, `GET /api/v1/datasets/list`:
+    `KaggleSwagger.yaml` in Kaggle/kaggle-cli at commit 68c89f46
+    (https://raw.githubusercontent.com/Kaggle/kaggle-cli/68c89f469baa5c09051b07461920c1148d68a6e4/src/KaggleSwagger.yaml,
+    read 2026-10-01). Its only paging parameter, `page`:
+    > description: Page number
+  - The provider-owned client that calls this endpoint, `kaggle` 1.7.4.5 (PyPI, published by
+    Kaggle). Read 2026-10-01: the path, and the answer read as a bare array with no paging
+    metadata.
+    > path = '/api/v1/datasets/list'
+
+    > return cls.from_dict({'datasets': json.loads(http_response.text)})
+  - The current client, `kaggle` 2.2.4 (`kaggle/cli.py`, read 2026-10-01). It states a default page
+    size for its own, different listing call:
+    > param_page = "Page number for results paging. Page size is 20 by default"
+
+    > # NOTE: Default and max page size are set by the mid-tier code.
+- **Unsaid:**
+  - The page size of `GET /api/v1/datasets/list`.
+  - Its last page and any total.
+- **Recorded, not acted on here:** Kaggle's current client (2.x with `kagglesdk`) no longer calls
+  this endpoint. It calls `POST https://api.kaggle.com/v1/datasets.DatasetApiService/ListDatasets`,
+  with `pageSize` and `pageToken`. Whether the legacy endpoint is still served is unverified (no live
+  call). Moving the adapter is outside this task. See the task's completion report.
+
+## OpenML (`openml`)
+
+- **Continuation:** `offset + len(page)` after a full page.
+- **End:** either of two answers:
+  - a page shorter than the `limit` asked;
+  - error 372 ("No results") answered with HTTP 412. Any other 412 is an unusable answer.
+- **Evidence:**
+  - The provider-owned client `openml` 0.15.1 (openml-python, published by the OpenML organisation;
+    `openml/utils.py` and `openml/_api_calls.py`, read 2026-10-01):
+    > if len(new_batch) < batch_size:
+
+    > except openml.exceptions.OpenMLServerNoResult:
+
+    > if code in [111, 372, 512, 500, 482, 542, 674]:
+  - OpenML's server source, openml/OpenML at commit 9a9f875f, `openml_OS/models/api/v1/Api_data.php`
+    (https://raw.githubusercontent.com/openml/OpenML/9a9f875f45c7765440ea378e84b34ddd1284e724/openml_OS/models/api/v1/Api_data.php,
+    read 2026-10-01):
+    > 372 - No results. There where no matches for the given constraints.
+
+    > /limit/{limit}/offset/{offset} - returns only {limit} results starting from result number {offset}. Useful for paginating results. With /limit/5/offset/10, results 11..15 will be returned. Both limit and offset need to be specified.
+
+    The server answers errors with HTTP 412 by default (`MY_Api_Model.php`: `$httpErrorCode = 412`).
+- **Unsaid:**
+  - A maximum `limit` for this listing. The adapter asks for at most 100.
+  - Whether the live host runs that source.
+  - The JSON form of the 372 body. The adapter reads `error.code`.
+  - Whether the server orders the listing. Its paged query in that source names no order, so
+    stability across pages is the provider's. The provider's own client pages it by offset all the
+    same.
+
+## Socrata (`socrata`)
+
+- **Continuation:** `offset + len(page)`, while that is short of `resultSetSize` and the next page's
+  `offset + limit` stays within 10,000.
+- **End:** the page that reaches `resultSetSize`. A missing size, an empty page short of it, and the
+  10,000 window end nothing.
+- **Evidence:** Socrata's Discovery API specification, the document its developer page loads
+  (https://dev.socrata.com/apis/discovery.yaml, read 2026-10-01):
+  > The total number of assets that could be returned from a query. This will only equal the size of
+
+  > If the sum of the `offset` and `limit` parameters is greater than 10000, the server will respond
+
+  > with a 400. If your use-case involves scanning over a large set of results, you will want to use
+- **Cap:** the 10,000 window above. Beyond it Socrata offers `scroll_id` deep paging, which this
+  adapter does not use.
+- **Unsaid:**
+  - What a page at or past `resultSetSize` returns.
+  - How a scroll ends.

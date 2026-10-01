@@ -18,8 +18,8 @@ import unittest
 
 from research_gateway import adapters
 from research_gateway.adapters import (crossref, datacite, doaj, europepmc, govinfo, harvard_dataverse, huggingface, kaggle, openaire,
-                                       qdr, semanticscholar)
-from research_gateway.adapters.base import Client, FakeTransport
+                                       openml, qdr, semanticscholar, socrata)
+from research_gateway.adapters.base import Client, FakeTransport, SourceUnavailable
 from research_gateway.core import router as R
 from research_gateway.core.broker import Broker, RatePolicy
 from research_gateway.registry.load import read_seed
@@ -318,19 +318,82 @@ class SemanticScholarSearch(Cases):
 
 
 class KaggleDatasets(Cases):
-    """Kaggle answers pages of 20; the adapter keeps `limit` of them."""
+    """Kaggle pages its datasets listing by number ("Page number" in its own specification) and answers a bare
+    array: no page size, last page or total is documented. A non-empty page read whole continues at page + 1;
+    a page cut to `limit` cannot continue (page + 1 would skip the rows cut); nothing ever ends the lane."""
     URL = "https://www.kaggle.com/api/v1/datasets/list"
     MEMBER = {"ref": "owner/data", "title": "A dataset", "ownerName": "owner", "lastUpdated": "2026-01-01T00:00:00Z"}
 
-    def test_a_page_cut_to_the_limit_neither_continues_nor_ends(self):
-        """Page 2 would skip the rows cut here, and a short page cut here is not the end."""
-        self.check(kaggle, "GET", self.URL, {"a full page cut": ([self.MEMBER] * 20, {"limit": 5}, neither(5)),
-                                             "a short page cut": ([self.MEMBER] * 8, {"limit": 5}, neither(5))})
+    def test_continues(self):
+        self.check(kaggle, "GET", self.URL, {"twenty, all kept": ([self.MEMBER] * 20, {"limit": 20}, more(2, 20)),
+                                             "five of a limit of twenty": ([self.MEMBER] * 5, {"limit": 20}, more(2, 5)),
+                                             "five of a limit of five, on page 3": ([self.MEMBER] * 5, {"limit": 5, "page": 3}, more(4, 5))})
 
-    def test_control_whole_pages_continue_or_end(self):
-        self.check(kaggle, "GET", self.URL, {"a full page": ([self.MEMBER] * 20, {"limit": 20}, more(2, 20)),
-                                             "a short page": ([self.MEMBER] * 5, {"limit": 20}, last(5)),
-                                             "a short page within the limit": ([self.MEMBER] * 5, {"limit": 5}, last(5))})
+    def test_a_page_cut_to_the_limit_neither_continues_nor_ends(self):
+        self.check(kaggle, "GET", self.URL, {"a page of twenty cut to five": ([self.MEMBER] * 20, {"limit": 5}, neither(5)),
+                                             "a page of eight cut to five": ([self.MEMBER] * 8, {"limit": 5}, neither(5))})
+
+    def test_an_empty_page_is_not_the_end(self):
+        self.check(kaggle, "GET", self.URL, {"an empty page": ([], {"limit": 20, "page": 2}, neither(0))})
+
+
+class OpenMLDatasets(Cases):
+    """OpenML: its own client (openml-python) ends a listing on a batch shorter than the limit it asked, and on
+    error 372 ("No results. There where no matches for the given constraints."), which the server answers with
+    HTTP 412. A full page continues at the next offset."""
+    URL = "https://www.openml.org/api/v1/json/data/list/"
+    MEMBER = datasets.OPENML_LIST["data"]["dataset"][0]
+
+    def test_continues(self):
+        self.check(openml, "GET", self.URL, {"a full page": ({"data": {"dataset": [self.MEMBER] * 2}}, {"limit": 2}, more(2, 2)),
+                                             "a full later page": ({"data": {"dataset": [self.MEMBER] * 2}}, {"limit": 2, "offset": 4},
+                                                                   more(6, 2))})
+
+    def test_ends(self):
+        self.check(openml, "GET", self.URL, {
+            "a short final page": ({"data": {"dataset": [self.MEMBER]}}, {"limit": 2, "offset": 4}, last(1)),
+            "no match at this offset (372)": ({"error": {"code": "372", "message": "No results"}}, {"limit": 2, "offset": 6}, last(0), 412),
+        })
+
+    def test_another_precondition_failure_is_no_answer(self):
+        """Only code 372 is "no results": any other 412 (370 "Illegal filter specified") is an unusable answer."""
+        with self.assertRaises(SourceUnavailable):
+            ask(openml, "GET", self.URL, {"error": {"code": "370", "message": "Illegal filter specified"}}, 412, limit=2)
+
+
+class SocrataCatalog(Cases):
+    """Socrata's discovery API: resultSetSize is "The total number of assets that could be returned from a
+    query", and a search whose offset + limit exceeds 10000 is refused with a 400. The page reaching the size
+    is the last; no next page is offered past the window, and the window ends nothing."""
+    URL = "https://api.us.socrata.com/api/catalog/v1"
+
+    def setUp(self):
+        self.addCleanup(socrata.reset_known_domains)
+
+    @staticmethod
+    def page(items: int, size=None) -> dict:
+        body = {"results": [datasets.SOCRATA_CATALOG["results"][0]] * items, "timings": {"serviceMillis": 9, "searchMillis": [4, 3]}}
+        return body if size is None else {**body, "resultSetSize": size}
+
+    def test_continues(self):
+        self.check(socrata, "GET", self.URL, {
+            "a page short of the size": (self.page(2, 5), {"limit": 2}, more(2, 2)),
+            "the last page the window admits a successor to": (self.page(100, 50_000), {"limit": 100, "offset": 9800}, more(9900, 100)),
+        })
+
+    def test_ends(self):
+        self.check(socrata, "GET", self.URL, {
+            "the final non-empty page reaches the size": (self.page(1, 5), {"limit": 2, "offset": 4}, last(1)),
+            "a full final page reaches the size": (self.page(2, 4), {"limit": 2, "offset": 2}, last(2)),
+            "nothing matched": (self.page(0, 0), {"limit": 2}, last(0)),
+        })
+
+    def test_neither(self):
+        self.check(socrata, "GET", self.URL, {
+            "no resultSetSize": (self.page(2), {"limit": 2}, neither(2)),
+            "an empty page short of the size": (self.page(0, 5), {"limit": 2, "offset": 2}, neither(0)),
+            "a page whose successor the 10,000 window refuses": (self.page(100, 50_000), {"limit": 100, "offset": 9900}, neither(100)),
+        })
 
 
 class HuggingFaceDatasets(unittest.TestCase):

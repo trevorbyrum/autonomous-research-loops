@@ -48,14 +48,16 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0) -> dic
     url = f"{BASE}/data/list/data_name/{quote(query, safe='')}/limit/{min(limit, 100)}/offset/{offset}/status/active"
     resp = client.get(SOURCE_ID, "find", url, query=query)
     if resp.status == 412 and str((resp.json_or_none() or {}).get("error", {}).get("code")) == "372":
-        # OpenML's list API answers "no results" as HTTP 412 with error code 372: a successful
-        # empty search, not an outage (any other 412 still is one)
+        # OpenML's list API answers "no results" — no match at this offset — as HTTP 412 with error code 372;
+        # its own client ends a listing there: a successful empty page, not an outage (any other 412 still is one)
         return {"records": [], "total": 0, "next_offset": None, "exhausted": True}
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     items = need(SOURCE_ID, resp.json, "data", "dataset")
+    # openml-python, OpenML's own client, ends a listing on a batch shorter than the limit it asked
+    # (docs/PROVIDER-PAGINATION.md); a full page continues at the next offset
     return {"records": members(SOURCE_ID, items, _list_record), "total": None,
             "next_offset": offset + len(items) if len(items) >= min(limit, 100) else None,
-            "exhausted": len(items) < min(limit, 100)}   # a short page is the last
+            "exhausted": len(items) < min(limit, 100)}
 
 
 def resolve(client: Client, identity: str) -> dict | None:

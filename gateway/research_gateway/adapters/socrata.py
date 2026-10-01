@@ -11,6 +11,7 @@ SOURCE_ID = "socrata"
 SMOKE = {'capability': 'find', 'query': 'business licenses', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("find", "resolve", "fetch")
 DISCOVERY = "https://api.us.socrata.com/api/catalog/v1"
+SEARCH_WINDOW = 10_000   # Socrata refuses a search whose offset + limit exceeds 10,000 (docs/PROVIDER-PAGINATION.md)
 
 
 def _headers(client: Client) -> dict:
@@ -67,18 +68,23 @@ def _catalog_record(r: dict) -> dict:
 def find(client: Client, query: str, *, limit: int = 20, offset: int = 0, portal: str | None = None) -> dict:
     """`portal` restricts to one Socrata-hosted portal hostname. (Deliberately NOT named `domain`:
     the router forwards the request's TOPIC domain to a parameter of that name — D-23.)"""
-    params = {"q": query, "only": "datasets", "limit": min(limit, 100), "offset": offset, "domains": portal}
+    size = min(limit, 100)
+    params = {"q": query, "only": "datasets", "limit": size, "offset": offset, "domains": portal}
     resp = client.get(SOURCE_ID, "find", DISCOVERY, params=params, headers=_headers(client), query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     j = resp.json
-    results, total = need(SOURCE_ID, j, "results"), j.get("resultSetSize") or 0
+    results, total = need(SOURCE_ID, j, "results"), j.get("resultSetSize")
     records = members(SOURCE_ID, results, _catalog_record)
     # the catalog vouches for a portal only through a member read whole: learning domains from the raw
     # members, before each is decoded alone, let one non-object member lose the whole page (A4)
     _KNOWN_DOMAINS.update(r["venue"].lower() for r in records if r and isinstance(r.get("venue"), str) and r["venue"])
-    end = not results or (type(j.get("resultSetSize")) is int and offset + len(results) >= total)   # a missing size ends nothing
-    return {"records": records, "total": total,
-            "next_offset": offset + len(results) if results and offset + len(results) < total else None, "exhausted": end}
+    # resultSetSize is "The total number of assets that could be returned from a query": the page reaching it
+    # is the last, and a missing size ends nothing. A next page past the 10,000 window would be refused, so
+    # none is offered there — the window ends nothing either
+    following = offset + len(results)
+    reached = type(total) is int and following >= total
+    nxt = following if results and type(total) is int and not reached and following + size <= SEARCH_WINDOW else None
+    return {"records": records, "total": total, "next_offset": nxt, "exhausted": reached}
 
 
 def resolve(client: Client, identity: str) -> dict | None:
