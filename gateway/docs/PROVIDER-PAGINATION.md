@@ -15,9 +15,9 @@ page then has neither a continuation nor an end, and the router makes it a lower
 
 The offline cases for every rule are in `tests/test_provider_pagination.py`. They use bodies shaped as
 each provider documents them, with continuation, end, absent-metadata and cap cases. The evidence was
-read on 2026-10-01 (UTC). No provider API was called to establish any of it: the sources are
-documentation pages, published specification documents, the providers' documentation repositories, and
-provider-owned packages. Whether a live provider still answers as documented is Phase 4 canary
+read on 2026-10-01 (UTC). No provider data endpoint was called to establish any of it. The sources
+are documentation pages, published specification documents (some served from the provider's API
+host), the providers' documentation repositories, and provider-owned packages. Whether a live provider still answers as documented is Phase 4 canary
 qualification, not this file.
 
 ## Local index (`openalex_snapshot`)
