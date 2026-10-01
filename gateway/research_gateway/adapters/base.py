@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Callable, NamedTuple
 from urllib.parse import quote  # re-exported: adapters quote path segments through base, never urllib directly
 
 from ..core import calllog
@@ -131,18 +131,96 @@ def redirect_target(current_url: str, location: str) -> tuple[str | None, str | 
     return nxt, None
 
 
-_LINK = re.compile(r"<([^>]*)>((?:\s*;\s*[^;,]+)*)")
+class LinkSyntax(ValueError):
+    """A `Link` header (RFC 8288) that cannot be read to its last character, or whose relations cannot be told."""
 
 
-def next_link(resp: Response) -> str | None:
-    """The target of the answer's `Link: <...>; rel="next"` header (RFC 8288), resolved against the
-    URL asked: the continuation a provider that pages by Link headers hands back. None without one."""
-    for target, params in _LINK.findall(resp.headers.get("link") or ""):
-        for param in params.split(";"):
-            key, _, value = param.partition("=")
-            if key.strip().lower() == "rel" and "next" in value.strip(" \t\"'").lower().split():
-                return urllib.parse.urljoin(resp.url, target.strip())
-    return None
+_TCHAR = frozenset("!#$%&'*+-.^_`|~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+
+
+def parse_links(header: str) -> list[tuple[str, list[tuple[str, str | None]]]]:
+    """Every link-value of a `Link` header as (target, [(parameter name lower-cased, value)]), RFC 8288 §3
+    on the list syntax of RFC 9110: `<` target `>` and then `;` parameters in any order, each a token with an
+    optional token or quoted value (backslash escapes undone). A comma or semicolon inside `<...>` or a quoted
+    string belongs to it, and empty list elements are ignored. LinkSyntax for anything else, wherever it
+    stands: nothing is guessed from a header that does not read through, because the one thing a reader cannot do
+    with it is call it free of a next link."""
+    n, i, out = len(header), 0, []
+
+    def space(at: int) -> int:
+        while at < n and header[at] in " \t":
+            at += 1
+        return at
+
+    def token(at: int) -> tuple[int, str]:
+        start = at
+        while at < n and header[at] in _TCHAR:
+            at += 1
+        if at == start:
+            raise LinkSyntax(f"Link header: expected a token at character {start}")
+        return at, header[start:at]
+
+    while True:
+        i = space(i)
+        if i == n:
+            return out
+        if header[i] == ",":
+            i += 1
+            continue
+        end = header.find(">", i + 1) if header[i] == "<" else -1
+        if end < 0:
+            raise LinkSyntax(f"Link header: no <target> at character {i}")
+        target, params, i = header[i + 1:end], [], space(end + 1)
+        while i < n and header[i] == ";":
+            i, name = token(space(i + 1))
+            i, value = space(i), None
+            if i < n and header[i] == "=":
+                i = space(i + 1)
+                if i < n and header[i] == '"':
+                    chars, i = [], i + 1
+                    while i < n and header[i] != '"':
+                        if header[i] == "\\" and i + 1 < n:
+                            i += 1
+                        chars.append(header[i])
+                        i += 1
+                    if i == n:
+                        raise LinkSyntax("Link header: a quoted string is not closed")
+                    i, value = i + 1, "".join(chars)
+                else:
+                    i, value = token(i)
+            params.append((name.lower(), value))
+            i = space(i)
+        out.append((target, params))
+        if i < n and header[i] != ",":
+            raise LinkSyntax(f"Link header: unexpected {header[i]!r} at character {i}")
+
+
+class NextLink(NamedTuple):
+    """What a `Link` header says about the next page: `url` and `known`. A url is the continuation; no url with
+    `known` is the header read whole and naming no next link (the absence a provider's own client treats as the end);
+    no url and not `known` is a header that could not be read or names several different next pages — nothing is
+    established, so it is neither a continuation nor an end."""
+    url: str | None
+    known: bool
+
+
+def next_link(resp: Response) -> NextLink:
+    """The answer's `Link: <...>; rel="next"` (RFC 8288), its target resolved against the URL asked. Only the first
+    `rel` of a link counts (§3.3), its value is a space-separated list of relation types, and a header that does not
+    parse, a `rel` with no value or with quote characters of its own (`rel='next'`: quoted by some other grammar), or
+    two different next targets is not `known`."""
+    lines = [v for k, v in resp.headers.items() if k.lower() == "link"]
+    try:
+        targets = set()
+        for target, params in parse_links(", ".join(lines)):
+            rel = next((v for k, v in params if k == "rel"), "")
+            if rel is None or "'" in rel:
+                raise LinkSyntax("Link header: a relation that cannot be read")
+            if "next" in rel.lower().split():
+                targets.add(urllib.parse.urljoin(resp.url, target.strip()))
+    except ValueError:   # LinkSyntax, and urljoin on a target that is no URL
+        return NextLink(None, False)
+    return NextLink(targets.pop() if len(targets) == 1 else None, len(targets) <= 1)
 
 
 def own_link(url, endpoint: str, **same: str) -> str | None:
@@ -169,6 +247,16 @@ def same_origin(a: str, b: str) -> bool:
     return (ua.scheme, ua.hostname, ua.port) == (ub.scheme, ub.hostname, ub.port)
 
 
+def header_map(headers) -> dict:
+    """Header name (lower-cased) -> value. Field lines that repeat a name are one list-valued field, joined with ", "
+    (RFC 9110 §5.3): a dict built line by line kept only the last and dropped the rest, a `Link` relation among them."""
+    out: dict = {}
+    for name, value in headers.items():
+        name = name.lower()
+        out[name] = f"{out[name]}, {value}" if name in out else value
+    return out
+
+
 class Transport:
     """Real network transport. Never raises and never follows redirects: every outcome —
     including a 3xx, an oversized body, or a mid-read failure — is a Response, so the
@@ -183,15 +271,15 @@ class Transport:
             with _OPENER.open(req, timeout=timeout) as resp:
                 data = resp.read(MAX_BODY_BYTES + 1)
                 if len(data) > MAX_BODY_BYTES:
-                    return Response(None, {k.lower(): v for k, v in resp.headers.items()}, b"", url,
+                    return Response(None, header_map(resp.headers), b"", url,
                                     error=f"response exceeds {MAX_BODY_BYTES} bytes")
-                return Response(resp.status, {k.lower(): v for k, v in resp.headers.items()}, data, url)
+                return Response(resp.status, header_map(resp.headers), data, url)
         except urllib.error.HTTPError as e:
             try:
                 payload = e.read(MAX_BODY_BYTES) or b""
             except Exception:
                 payload = b""
-            return Response(e.code, {k.lower(): v for k, v in e.headers.items()}, payload, url)
+            return Response(e.code, header_map(e.headers), payload, url)
         except Exception as e:  # URLError, timeouts, IncompleteRead, TLS errors, anything: an error Response
             return Response(None, {}, b"", url, error=f"{type(e).__name__}: {e}")
 

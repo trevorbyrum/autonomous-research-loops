@@ -59,6 +59,7 @@ LOCAL_INDEX = "tests.test_adapters_platforms.OpenAlexLocalIndex.test_find_hits_l
 EX = "tests.test_exhaustion."
 PP = "tests.test_provider_pagination."
 MD = "tests.test_member_decoding."
+LH = "tests.test_link_header."
 ONE_DECODER = MD + "OneDecoder.test_no_adapter_builds_records_from_a_provider_list_around_the_decoder"
 
 MUTANTS: list[Mutant] = [
@@ -509,11 +510,12 @@ MUTANTS: list[Mutant] = [
            (PP + "SocrataCatalog.test_neither",), (PP + "SocrataCatalog.test_ends", PP + "SocrataCatalog.test_continues")),
     # 2b-repair-7 F3-R2: Hugging Face pages by its own Link rel="next", inside the gateway's URL and credential boundary
     Mutant("F3R2-hf-short-page-ends", "Hugging Face ends on a short page and continues a full one, whatever its Link header says",
-           "research_gateway/adapters/huggingface.py", '"exhausted": link is None}', '"exhausted": len(items) < min(limit, 100)}',
+           "research_gateway/adapters/huggingface.py", '"exhausted": link.url is None and link.known}',
+           '"exhausted": len(items) < min(limit, 100)}',
            (PP + "HuggingFaceDatasets.test_continues", PP + "HuggingFaceDatasets.test_ends"),
            (PP + "HuggingFaceDatasets.test_the_next_page_is_asked_at_the_providers_own_url",)),
     Mutant("F3R2-hf-any-link-followed", "a next link that leaves this search on the Hub is handed back as the continuation",
-           "research_gateway/adapters/huggingface.py", '"next_cursor": own_link(link, listing, search=query),', '"next_cursor": link,',
+           "research_gateway/adapters/huggingface.py", '"next_cursor": own_link(link.url, listing, search=query),', '"next_cursor": link.url,',
            (PP + "HuggingFaceDatasets.test_a_next_link_that_leaves_this_search_is_not_a_continuation",),
            (PP + "HuggingFaceDatasets.test_continues",)),
     Mutant("F3R2-hf-any-continuation-asked", "a continuation handed back is asked wherever it points",
@@ -526,6 +528,34 @@ MUTANTS: list[Mutant] = [
            (PP + "HuggingFaceDatasets.test_a_next_link_that_leaves_this_search_is_not_a_continuation",
             PP + "HuggingFaceDatasets.test_a_continuation_that_leaves_this_search_is_never_asked"),
            (PP + "HuggingFaceDatasets.test_continues",)),
+    # 2b-repair-8 R7-1: a Link header that cannot be read is never an end (RFC 8288 reading, three outcomes)
+    Mutant("R8-link-unreadable-is-absence", "a Link header that cannot be read is taken for one that names no next link", BASE,
+           "        return NextLink(None, False)\n    return NextLink(targets.pop()", "        return NextLink(None, True)\n    return NextLink(targets.pop()",
+           (LH + "Reading.test_a_header_that_cannot_be_read_is_neither_a_next_link_nor_the_end",
+            LH + "HuggingFace.test_a_header_that_cannot_be_read_never_ends_the_lane"),
+           (LH + "Reading.test_a_header_read_whole_that_names_no_next_link_is_an_established_end",
+            LH + "HuggingFace.test_control_a_header_read_whole_with_no_next_link_is_the_end")),
+    Mutant("R8-link-two-next-pages-pick-one", "two different next pages: the last one is taken, as if the header were certain", BASE,
+           "    return NextLink(targets.pop() if len(targets) == 1 else None, len(targets) <= 1)",
+           "    return NextLink(targets.pop() if targets else None, True)",
+           (LH + "Reading.test_a_header_that_cannot_be_read_is_neither_a_next_link_nor_the_end",),
+           (LH + "Reading.test_a_next_link_is_found_however_the_header_is_written",)),
+    Mutant("R8-hf-ignores-known", "Hugging Face reads no next URL as the end whether or not the header was read", "research_gateway/adapters/huggingface.py",
+           '"exhausted": link.url is None and link.known}', '"exhausted": link.url is None}',
+           (LH + "HuggingFace.test_a_header_that_cannot_be_read_never_ends_the_lane",),
+           (LH + "HuggingFace.test_control_a_header_read_whole_with_no_next_link_is_the_end",
+            LH + "HuggingFace.test_a_next_link_with_a_quoted_comma_continues_through_the_router")),
+    Mutant("R8-link-comma-ends-a-quoted-string", "a comma ends a quoted parameter (the reader that lost the reported relation)", BASE,
+           "                    while i < n and header[i] != '\"':\n", "                    while i < n and header[i] not in '\",':\n",
+           (LH + "Reading.test_a_next_link_is_found_however_the_header_is_written",
+            LH + "HuggingFace.test_a_next_link_with_a_quoted_comma_continues_through_the_router"),
+           (LH + "Reading.test_a_relative_target_is_resolved_against_the_url_asked",
+            LH + "HuggingFace.test_control_a_header_read_whole_with_no_next_link_is_the_end")),
+    Mutant("R8-transport-keeps-the-last-link-line", "a repeated header line replaces the earlier ones instead of joining them", BASE,
+           '        out[name] = f"{out[name]}, {value}" if name in out else value\n', "        out[name] = value\n",
+           (LH + "RepeatedFieldLines.test_repeated_lines_are_joined_in_order",
+            LH + "RepeatedFieldLines.test_the_real_transport_keeps_every_link_line"),
+           ("tests.test_core_foundations.MeteredClient.test_real_transport_never_raises",)),
     # 2b-repair-7: Socrata's portal cache is learnt only from members read whole (A4)
     Mutant("A4-socrata-domains-from-raw-members", "Socrata learns portal domains from the raw members before decoding each alone",
            "research_gateway/adapters/socrata.py",

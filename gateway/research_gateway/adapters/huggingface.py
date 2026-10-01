@@ -58,7 +58,8 @@ def find(client: Client, query: str, *, limit: int = 20, cursor: str | None = No
     utils/_pagination.py): the next URL already carries its parameters, and no next link is the end
     (docs/PROVIDER-PAGINATION.md). That URL is the lane's continuation, asked verbatim for the next page,
     but only while it stays this search on the Hub's own listing (base.own_link). A next link that
-    does not is followed by nothing and ends nothing."""
+    does not is followed by nothing and ends nothing, and neither does a header that cannot be read
+    (base.next_link: `known`): the end is an absence established by reading the whole header."""
     listing = f"{BASE}/api/datasets"
     if cursor is None:
         url, params = listing, {"search": query, "limit": min(limit, 100), "full": "true"}
@@ -70,8 +71,9 @@ def find(client: Client, query: str, *, limit: int = 20, cursor: str | None = No
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     items = need(SOURCE_ID, resp.json)
     link = next_link(resp)
+    # the end is a header read whole that names no next link; one that could not be read is no end (R7-1)
     return {"records": members(SOURCE_ID, items, _record), "total": None,
-            "next_cursor": own_link(link, listing, search=query), "exhausted": link is None}
+            "next_cursor": own_link(link.url, listing, search=query), "exhausted": link.url is None and link.known}
 
 
 def resolve(client: Client, identity: str) -> dict | None:
