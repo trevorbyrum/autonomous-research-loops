@@ -16,7 +16,7 @@ import os
 import sys
 from typing import Iterator
 
-from ..adapters.base import Client, Members, Obj, check, plain, scalar
+from ..adapters.base import Client, Members, Obj, check, members, plain, scalar
 from ..core import db
 from ..core.canonical import make_record
 from ..core.identity import normalize_issn, normalize_title
@@ -79,7 +79,7 @@ def crossref_journals(client: Client, *, limit: int | None = None, rows: int = 1
             raise ValueError(f"Crossref journals answered 200 but not with an items list "
                              f"(content-type {resp.headers.get('content-type')!r}) — load failed, not empty (D-24/D-25)")
         items = msg["items"]
-        for rec in items.decode(lambda member: _safe(build, member, skipped)):   # each member alone; None is one that was skipped
+        for rec in members("crossref", items, lambda member: _safe(build, member, skipped)):   # each member alone; None is one that was skipped
             if rec is None:
                 continue
             yield rec
@@ -139,7 +139,7 @@ def datacite_repositories(client: Client, *, limit: int | None = None, size: int
                                       "active": a.get("isActive"), "language": a.get("language")},
                                raw=d)
 
-        for rec in data.decode(lambda member: _safe(build, member, [])):
+        for rec in members("datacite", data, lambda member: _safe(build, member, [])):
             if rec is None:
                 continue
             yield rec

@@ -44,11 +44,13 @@ from research_gateway.core.payload import OMIT, Members, Obj, PayloadError, plai
 ROOT = Path(__file__).resolve().parents[1] / "research_gateway"
 DOORS = ("plain", "view")        # functions that hand a raw value back, or wrap one the caller holds
 CONSTRUCTORS = ("Members",)       # `Members(items)` wraps a list the caller already holds
+METHODS = ("each",)               # `Members.each(build)` hands back a plain list of whatever the builder returned
 
 # Every use of a door in the gateway, by (file, function): how many there are there, and why they are not a pass over a
 # provider's independent members. A use added to a function already listed changes its count, so it is read, not inherited.
 USES = {
     ("adapters/base.py", "<module>"): (2, "NO_MEMBERS, the empty list, and the table from a kind to its view"),
+    ("adapters/base.py", "members"): (1, "the one place that reads a list's members with each(): it keeps only records that name something and leaves the rest dropped"),
     ("adapters/base.py", "Response.json"): (1, "the one place a parsed answer becomes a view"),
     ("adapters/base.py", "need"): (2, "wraps what it is given (a plain dict or list handed to it is made a view, never read) and maps a requested kind to its view"),
     ("adapters/bea.py", "data"): (2, "BEA's rows are the payload of ONE table record, kept whole and never decoded one by one (Astra, 2b-repair-7)"),
@@ -103,8 +105,8 @@ def functions(tree: ast.AST):
 def door_uses(root: Path = ROOT) -> dict[tuple[str, str], list[str]]:
     """{(file, innermost function or <module>): each door used there, one entry per use} for every module under `root` but the views' own.
     A door is used when the module imports it (under any name: `as`, from base, canonical or payload), calls it,
-    passes it on or aliases it (a bare reference), reaches it as an attribute of a module (`payload.plain`), or reaches
-    for the views' private storage."""
+    passes it on or aliases it (a bare reference), reaches it as an attribute of a module (`payload.plain`), calls
+    the one method that hands back a plain list (`.each`), or reaches for the views' private storage."""
     found: dict[tuple[str, str], list[str]] = {}
     for path in sorted(root.rglob("*.py")):
         rel = path.relative_to(root).as_posix()
@@ -141,7 +143,7 @@ def door_uses(root: Path = ROOT) -> dict[tuple[str, str], list[str]]:
                     add(node, f"call {kind}")
                 elif not (kind in CONSTRUCTORS and id(node) in isinstance_args):
                     add(node, f"reference {kind}")
-            elif isinstance(node, ast.Attribute) and node.attr in DOORS + CONSTRUCTORS:
+            elif isinstance(node, ast.Attribute) and node.attr in DOORS + CONSTRUCTORS + METHODS:
                 add(node, f"attribute {node.attr}")
             elif isinstance(node, ast.Attribute) and node.attr in ("_d", "_items"):
                 add(node, f"private {node.attr}")
@@ -165,6 +167,8 @@ def reflection_in_adapters(root: Path = ROOT) -> list[tuple[str, str]]:
                 out.append((rel, f"from {node.module} import"))
             elif isinstance(node, ast.Call) and getattr(node.func, "id", None) in ("eval", "exec", "vars"):
                 out.append((rel, f"{node.func.id}()"))
+            elif isinstance(node, ast.Attribute) and node.attr in ("__getattribute__", "__getattr__", "__setattr__"):
+                out.append((rel, node.attr))
             elif isinstance(node, ast.Call) and getattr(node.func, "id", None) in ("getattr", "setattr", "delattr") and any(
                     isinstance(a, ast.Constant) and isinstance(a.value, str) and a.value.startswith("_") for a in node.args[1:2]):
                 out.append((rel, f"{node.func.id}() of a private name"))
@@ -233,6 +237,12 @@ class Doors(unittest.TestCase):
                 def an_isinstance(rows):
                     return isinstance(rows, Members)
 
+                def an_identity_decode(rows):
+                    return [build(r) for r in rows.each(lambda member: member)]
+
+                def by_the_back_door(rows):
+                    return object.__getattribute__(rows, "_items")
+
                 def reading(resp):
                     return need("x", resp.json, "results")
                 '''))
@@ -240,9 +250,11 @@ class Doors(unittest.TestCase):
             by_function = {fn: sorted(v) for (_, fn), v in found.items() if fn != "<module>"}
             self.assertEqual(by_function, {"a_call": ["call plain"], "an_alias": ["reference plain"], "passed_on": ["reference plain"],
                                            "an_import_as": ["call plain"], "a_module_attribute": ["attribute plain"],
-                                           "a_constructor": ["call Members"], "storage": ["private _items"]})
+                                           "a_constructor": ["call Members"], "storage": ["private _items"],
+                                           "an_identity_decode": ["attribute each"]})
             self.assertEqual(reflection_in_adapters(root), [("adapters/new_lane.py", "import json"),
-                                                            ("adapters/new_lane.py", "getattr() of a private name")])
+                                                            ("adapters/new_lane.py", "getattr() of a private name"),
+                                                            ("adapters/new_lane.py", "__getattribute__")])
 
 
 BODY = [{"id": "a", "n": 1}, 7, {"id": "b", "n": 2}]
@@ -397,7 +409,7 @@ class Views(unittest.TestCase):
             if "skip" in row:
                 return OMIT
             return row["id"]
-        self.assertEqual(rows.decode(read), ["a", None, "b", None, None])
+        self.assertEqual(rows.each(read), ["a", None, "b", None, None])
 
     def test_the_first_member_is_read_like_any_other_and_never_replaced_by_the_next(self):
         self.assertIsNone(view([]).first(lambda r: r["id"]))
@@ -411,12 +423,12 @@ class Views(unittest.TestCase):
         """Hugging Face's siblings and ECB's data sets: the container is a member too."""
         sets = view([{"files": [{"n": 1}, {"n": 2}]}, 7, {"files": 5}, {"files": [{"n": 3}]}])
         flat = sets.expand(lambda s: need("x", s, "files"))
-        self.assertEqual((len(flat), flat.decode(lambda f: f["n"])), (5, [1, 2, None, None, 3]),
+        self.assertEqual((len(flat), flat.each(lambda f: f["n"])), (5, [1, 2, None, None, 3]),
                          "the two holders that cannot be unfolded are one loss each; the series of the others stand")
 
     def test_a_keyed_container_hands_its_members_as_entries(self):
         entries = view({"a": {"v": 1}, "b": 7}).entries()
-        self.assertEqual(entries.decode(lambda e: (e["key"], e["value"]["v"])), [("a", 1), None])
+        self.assertEqual(entries.each(lambda e: (e["key"], e["value"]["v"])), [("a", 1), None])
         self.assertEqual(len(entries), 2)
 
     def test_plain_is_the_one_way_out_and_a_record_is_plain(self):
@@ -445,7 +457,7 @@ class Sdmx(unittest.TestCase):
         found = sdmx.series_members(message)
         self.assertEqual(len(found), 4, "one series, two data sets that cannot be unfolded, one series that is not an object")
         read = sdmx.series_reader(message)
-        self.assertEqual(found.decode(read), [{"key": {"FREQ": "D"}, "observations": [("2026-01-01", 1.25)], "observations_raw": {"0": [1.25]}},
+        self.assertEqual(found.each(read), [{"key": {"FREQ": "D"}, "observations": [("2026-01-01", 1.25)], "observations_raw": {"0": [1.25]}},
                                               None, None, None])
 
     def test_a_data_sets_that_is_not_a_list_is_an_unreadable_message_not_an_empty_one(self):

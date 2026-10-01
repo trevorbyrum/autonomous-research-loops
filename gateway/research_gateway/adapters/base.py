@@ -650,7 +650,7 @@ def members(source_id: str, items: Members, build) -> list:
     tests/test_member_isolation.py. Whether a given list is such data or a set of independent members is the adapter
     author's declaration; the structure makes the declaration explicit and listed, it cannot make it for them."""
     _require_members(source_id, items)
-    return [rec if isinstance(rec, dict) and meaningful(rec.get("identity")) else None for rec in items.decode(build)]
+    return [rec if isinstance(rec, dict) and meaningful(rec.get("identity")) else None for rec in items.each(build)]
 
 
 def first_member(source_id: str, items: Members, build):

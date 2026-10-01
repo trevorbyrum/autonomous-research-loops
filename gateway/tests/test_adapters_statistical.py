@@ -122,7 +122,7 @@ BIS_XML = """<?xml version="1.0" encoding="UTF-8"?>
 def read_series(message: dict) -> list:
     """Every series of an SDMX-JSON message, each read alone (None for one that cannot be)."""
     j = view(message)
-    return sdmx.series_members(j).decode(sdmx.series_reader(j))
+    return sdmx.series_members(j).each(sdmx.series_reader(j))
 
 
 class Sdmx(unittest.TestCase):

@@ -12,13 +12,16 @@ any other value is itself. A view wraps the parsed data and gives nothing back b
 
   * a `Members` cannot be iterated, indexed, sliced or tested for membership. It has a length (how many members the
     provider listed, readable or not: what paging arithmetic needs) and three ways to read its members, each
-    isolating them: `decode` (each member on its own: one that is not an object or whose decoding fails is one
+    isolating them: `each` (each member on its own: one that is not an object or whose decoding fails is one
     unreadable member, and the rest stand), `first` (a lookup's first result) and `expand` (the members each member
     holds, where a member that cannot be unfolded is one unreadable member in place of what it held). Reading a
     member hands the builder an `Obj` too, so a list inside a member is a `Members` as well.
   * an `Obj` is read by key (`obj[k]`, `obj.get(k)`, `k in obj`); its values are views. It cannot be iterated and
     has no `keys()`, `items()` or `values()`, because a keyed container (an SDMX data set's series) holds members the
     same way a list does: `entries()` gives them as members.
+
+`each` hands back a plain list of whatever the builder returned, so it is not for adapters: they reach it through
+`base.members()`, which keeps only records that name something. Like `plain()` it is gated by the source check.
 
 So preprocessing a provider's members before decoding them — a filter comprehension, a `while` loop over an index,
 `rows[0]`, a loop under another name, a flatten — has nothing to work on: the operation does not exist. What the
@@ -87,7 +90,7 @@ class Members:
     def __contains__(self, _):
         raise TypeError(f"a Members cannot be searched: {_LIST_USE}")
 
-    def decode(self, build) -> list:
+    def each(self, build) -> list:
         """Each member through `build` on its own, as an `Obj`: what `build` returns for it, None for a member that is
         not an object or whose decoding raises (what the router counts as dropped), nothing for one `build` calls OMIT."""
         out = []
@@ -106,7 +109,7 @@ class Members:
         after it, which may be some other work."""
         if not self._items:
             return None
-        got = Members(self._items[:1]).decode(build)
+        got = Members(self._items[:1]).each(build)
         if got and got[0] is None:
             raise PayloadError(f"{source_id + ': ' if source_id else ''}the answer's first result cannot be read")
         return got[0] if got else None
