@@ -11,19 +11,45 @@ adapter's answer says one of three things: a continuation (more may remain), `ex
   * ReportedEnd — the rule at the router, with a stub adapter.
   * AdapterEnds — each find adapter's own evidence of its end, from provider bodies stated here by
     hand: what continues, what positively ends, and what can only be a lower bound.
+  * LocalIndexPages (DB) — the local index pages by offset over one total order, reading one row
+    past the page to know positively whether anything remains; withheld matches.
+  * AssembledPaging (DB) — the running gateway: strictly more converted matches than `limit`, on
+    HTTP /v1/find, HTTP MCP, a queued job and the stdio MCP bridge, each continued to the end; the
+    all-fit controls; withheld matches; the engine's GatewayClient paging in its own process.
+DB cases need RESEARCH_GATEWAY_DSN and RESEARCH_GATEWAY_TEST_OK=1 (a scratch database).
 """
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import sys
+import threading
+import time
 import unittest
+import urllib.request
+import uuid
+from pathlib import Path
 
+from research_gateway import adapters, app
 from research_gateway.adapters import (crossref, datacite, doaj, europepmc, govinfo, harvard_dataverse, huggingface, kaggle,
-                                       openaire, openml, semanticscholar, socrata)
+                                       openaire, openalex_snapshot, openml, semanticscholar, socrata)
 from research_gateway.adapters.base import Client, FakeTransport
+from research_gateway.api import http as api
+from research_gateway.core import db
+from research_gateway.core import identity as ident
 from research_gateway.core import router as R
 from research_gateway.core.broker import Broker, RatePolicy
 from research_gateway.core.cache import Cache
+from research_gateway.core.canonical import make_record
+from research_gateway.harvest import index
+from research_gateway.registry.load import read_seed
 from tests.test_lane_outcomes import rec, store_admits, stub
+from tests.test_record_gate import INVOCATION, answer
 
+HAVE_DB = db.configured() and os.environ.get("RESEARCH_GATEWAY_TEST_OK") == "1"
+GATEWAY_DIR = Path(__file__).resolve().parents[1]
+REPOSITORY = Path(os.environ.get("GATEWAY_SOURCE_REPOSITORY") or GATEWAY_DIR.parent)
 FIND = {"request_type": "find", "query": "q", "kind": "article"}
 KEYS = ("coverage", "completeness", "count", "error_class", "next", "exhausted")
 
@@ -215,6 +241,230 @@ class AdapterEnds(unittest.TestCase):
         self.check({"a full page": (kaggle, "GET", self.KAGGLE, [{}] * 20, {"limit": 20}, more("next_page", 2)),
                     "a short page": (kaggle, "GET", self.KAGGLE, [{}] * 5, {"limit": 20}, end("next_page")),
                     "a short page within the limit": (kaggle, "GET", self.KAGGLE, [{}] * 5, {"limit": 5}, end("next_page"))})
+
+
+def venue(cur, identity: str, title: str, current: bool = True) -> None:
+    """A stored, indexed venue; `current` False is a row an earlier writer left (the view withholds it)."""
+    cur.execute("INSERT INTO gateway.records (identity, kind, canonical, restriction_inputs) VALUES (%s, 'venue', %s, %s)",
+                (identity, json.dumps({"identity": identity, "kind": "venue", "title": title}), current))
+    cur.execute("INSERT INTO gateway.index_docs (identity, kind, domain, year, tsv) VALUES (%s, 'venue', NULL, NULL, "
+                "to_tsvector('english', %s))", (identity, title))
+
+
+@unittest.skipUnless(HAVE_DB, "needs RESEARCH_GATEWAY_DSN and RESEARCH_GATEWAY_TEST_OK=1 (a scratch database)")
+class LocalIndexPages(unittest.TestCase):
+    """Five converted venues match; the router and the real local-index adapter, no HTTP."""
+
+    def setUp(self):
+        self.tag = uuid.uuid4().hex[:8]
+        self.word = f"pagecheck{self.tag}"
+        self.venues = sorted(f"issn:page-{self.tag}-{n}" for n in range(5))
+        self.conn = db.connect()
+        self.addCleanup(self.cleanup)
+        with self.conn.cursor() as cur:
+            for n, identity in enumerate(self.venues):
+                venue(cur, identity, f"{self.word} venue {n}")
+        self.conn.commit()
+        self.router = R.Router(read_seed(), adapters.load_all())
+
+    def cleanup(self):
+        with self.conn.cursor() as cur:
+            cur.execute("DELETE FROM gateway.index_docs WHERE identity LIKE %s", (f"%{self.tag}%",))
+            cur.execute("DELETE FROM gateway.records WHERE identity LIKE %s", (f"%{self.tag}%",))
+        self.conn.commit()
+        self.conn.close()
+
+    def find(self, limit: int, cursors: dict | None = None) -> dict:
+        client = Client(broker=Broker({"openalex_snapshot": RatePolicy(per_second=1000)}), transport=FakeTransport(), conn=self.conn)
+        return R.execute(self.router, {"request_type": "find", "query": self.word, "kind": "venue", "limit": limit,
+                                       **({"cursors": cursors} if cursors else {})}, client)
+
+    def pages(self, limit: int) -> list[dict]:
+        out, cursors = [], None
+        while len(out) < 10:
+            answered = self.find(limit, cursors)
+            (lane,) = answered["lanes"]
+            out.append(lane)
+            if lane.get("next") is None:
+                return out
+            cursors = answered["next"]
+        self.fail("the pages never ended")
+
+    def test_more_matches_than_the_limit_page_to_the_end(self):
+        pages = self.pages(2)
+        self.assertEqual([{k: p.get(k) for k in KEYS} for p in pages],
+                         [{"coverage": "searched_ok", "completeness": "complete", "count": 2, "error_class": None, "next": 2, "exhausted": None},
+                          {"coverage": "searched_ok", "completeness": "complete", "count": 2, "error_class": None, "next": 4, "exhausted": None},
+                          {"coverage": "searched_ok", "completeness": "complete", "count": 1, "error_class": None, "next": None, "exhausted": True}],
+                         "two, two, then the one left: the first page is never the end")
+        read = [i for p in pages for i in p["retrieved"]]
+        self.assertEqual(read, self.find(10)["lanes"][0]["retrieved"], "the pages are the one ordering, cut in pages")
+        self.assertEqual(sorted(read), self.venues, "every match once")
+
+    def test_control_everything_fitting_on_the_final_page_is_exhausted(self):
+        for limit in (5, 10):
+            with self.subTest(limit=limit):
+                self.assertEqual({k: self.find(limit)["lanes"][0].get(k) for k in KEYS},
+                                 {"coverage": "searched_ok", "completeness": "complete", "count": 5, "error_class": None,
+                                  "next": None, "exhausted": True})
+
+    def test_withheld_matches_leave_every_page_partial_and_the_last_unexhausted(self):
+        with self.conn.cursor() as cur:
+            venue(cur, f"issn:page-{self.tag}-old", f"{self.word} venue an earlier writer left", current=False)
+        self.conn.commit()
+        pages = self.pages(2)
+        self.assertEqual([(p["completeness"], p["count"], p["error_class"], p.get("next"), p.get("exhausted")) for p in pages],
+                         [("partial", 2, "payload_invalid", 2, None), ("partial", 2, "payload_invalid", 4, None),
+                          ("partial", 1, "payload_invalid", None, None)],
+                         "each page a lower bound that still continues; the last is not the end while a match is withheld")
+        self.assertEqual(sorted(i for p in pages for i in p["retrieved"]), self.venues, "the withheld row is never served")
+
+    def test_a_negative_offset_is_no_page(self):
+        lane = self.find(2, {"openalex_snapshot": -2})["lanes"][0]
+        self.assertEqual((lane["coverage"], lane["completeness"], lane.get("count")), ("provider_unavailable", "unobserved", None))
+
+
+ENGINE = """
+import json, sys
+from gen2.gateway_client.client import GatewayClient
+out = GatewayClient(sys.argv[1], "t").search(json.loads(sys.argv[2]), invocation_id="inv_exhaustion01", attempt=1,
+                                            policy_version="exhaustion/1", pages=int(sys.argv[3]))
+print(json.dumps([[o["observation"][k] for k in ("lane", "coverage_state", "completeness", "result_count", "error_class")]
+                  + [o["observation"]["request"]["page"], [e["provider_record_id"] for e in o["retrieval_events"]]]
+                  for o in out["observations"]]))
+"""
+
+
+@unittest.skipUnless(HAVE_DB, "needs RESEARCH_GATEWAY_DSN and RESEARCH_GATEWAY_TEST_OK=1 (a scratch database)")
+class AssembledPaging(unittest.TestCase):
+    def setUp(self):
+        self.tag = uuid.uuid4().hex[:8]
+        self.gw = app.Gateway(app.Settings(tokens={"engine": "t"}, workers=1), use_db=True, transport=FakeTransport())
+        self.gw.start()
+        self.server = api.serve(self.gw, "127.0.0.1", 0)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.url = f"http://127.0.0.1:{self.server.server_port}"
+        self.addCleanup(self.cleanup)
+        self.word = f"doorpage{self.tag}"
+        self.venues = sorted(ident.canonical(f"issn:door-{self.tag}-{n}") for n in range(5))
+        with db.connect() as conn:
+            with conn.cursor() as cur:
+                for n, identity in enumerate(self.venues):
+                    index.upsert(cur, make_record(identity=identity, kind="venue", source_id="doaj", title=f"{self.word} venue {n}",
+                                                  license="CC BY", raw={}), "doaj")
+            conn.commit()
+
+    def cleanup(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.gw.stop()
+        with db.connect() as conn, conn.cursor() as cur:
+            cur.execute("DELETE FROM gateway.index_docs WHERE identity ILIKE %s", (f"%{self.tag}%",))
+            cur.execute("DELETE FROM gateway.records WHERE identity ILIKE %s", (f"%{self.tag}%",))
+            conn.commit()
+
+    def post(self, path: str, body: dict) -> dict:
+        req = urllib.request.Request(self.url + path, json.dumps(body).encode(),
+                                     headers={"Content-Type": "application/json", "Authorization": "Bearer t", **INVOCATION})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.load(r)
+
+    def door(self, name: str, limit: int, cursors: dict | None) -> dict:
+        """One find page through the named door."""
+        args = {"query": self.word, "kind": "venue", "limit": limit, **({"cursors": cursors} if cursors else {})}
+        call = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "research_find", "arguments": args}}
+        if name == "http":
+            return answer(self.post("/v1/find", args))
+        if name == "mcp":
+            return answer(self.post("/mcp", call))
+        if name == "queued":
+            job = self.post("/v1/find?async=1", args)["job_id"]
+            for _ in range(300):
+                req = urllib.request.Request(f"{self.url}/v1/jobs/{job}", headers={"Authorization": "Bearer t", **INVOCATION})
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    found = answer(json.load(r))
+                if found is not None:
+                    return found
+                time.sleep(0.05)
+            self.fail(f"job {job} never answered")
+        done = subprocess.run([sys.executable, "-m", "research_gateway.clients.mcp_stdio"], input=json.dumps(call) + "\n",
+                              capture_output=True, text=True, timeout=60, cwd=GATEWAY_DIR,
+                              env={**os.environ, "RESEARCH_GATEWAY_URL": self.url, "RESEARCH_GATEWAY_TOKEN": "t",
+                                   "RESEARCH_INVOCATION_ID": "inv_exhaustion02"})
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return answer(done.stdout)
+
+    def pages(self, name: str, limit: int) -> list[tuple[dict, list]]:
+        """A find through `door` continued to its end, each page handing back the `next` map it was given."""
+        out, cursors = [], None
+        while len(out) < 10:
+            answered = self.door(name, limit, cursors)
+            self.assertIsNotNone(answered, name)
+            (lane,) = [lane for lane in answered["lanes"] if lane["source"] == "openalex_snapshot"]
+            out.append((lane, answered))
+            if lane.get("next") is None:
+                return out
+            cursors = answered["next"]
+        self.fail(f"{name}: the pages never ended")
+
+    def test_more_converted_matches_than_the_limit_continue_on_every_door(self):
+        for name, limit in (("http", 2), ("mcp", 3), ("queued", 4), ("stdio", 1)):   # a distinct request per door
+            with self.subTest(name):
+                pages = self.pages(name, limit)
+                sizes = [limit] * (5 // limit) + ([5 % limit] if 5 % limit else [])
+                self.assertEqual([(lane["coverage"], lane["completeness"], lane["count"], lane.get("next"), lane.get("exhausted"))
+                                  for lane, _ in pages],
+                                 [("searched_ok", "complete", n, limit * (i + 1) if i < len(sizes) - 1 else None,
+                                   None if i < len(sizes) - 1 else True) for i, n in enumerate(sizes)],
+                                 "each page but the last continues; only the last, holding what was left, is exhausted")
+                self.assertEqual(pages[0][1]["next"], {"openalex_snapshot": limit}, "the first page's continuation, never the sentinel")
+                self.assertEqual(pages[-1][1]["next"], {"openalex_snapshot": "exhausted"})
+                read = [i for lane, _ in pages for i in lane["retrieved"]]
+                self.assertEqual(sorted(read), self.venues, "every converted match, each once")
+
+    def test_control_everything_fitting_is_exhausted_and_its_sentinel_skips_the_lane(self):
+        (lane, out), = self.pages("http", 5)
+        self.assertEqual((lane["coverage"], lane["completeness"], lane["count"], lane.get("exhausted")), ("searched_ok", "complete", 5, True))
+        self.assertEqual(sorted(lane["retrieved"]), self.venues)
+        after = answer(self.post("/v1/find", {"query": self.word, "kind": "venue", "limit": 5, "cursors": out["next"]}))
+        (lane,) = after["lanes"]
+        self.assertEqual((lane["coverage"], lane["completeness"], lane.get("count")), ("exhausted", "unobserved", None))
+
+    def test_withheld_matches_continue_as_lower_bounds_and_never_end(self):
+        identity = ident.canonical(f"issn:door-{self.tag}-old")
+        with db.connect() as conn:   # after startup: a gateway never opens over an unconverted row
+            with conn.cursor() as cur:
+                venue(cur, identity, f"{self.word} venue an earlier writer left", current=False)
+            conn.commit()
+        pages = self.pages("http", 2)
+        self.assertEqual([(lane["completeness"], lane["count"], lane.get("error_class"), lane.get("next"), lane.get("exhausted"))
+                          for lane, _ in pages],
+                         [("partial", 2, "payload_invalid", 2, None), ("partial", 2, "payload_invalid", 4, None),
+                          ("partial", 1, "payload_invalid", None, None)])
+        self.assertNotIn("openalex_snapshot", pages[-1][1].get("next") or {}, "no sentinel while a match is withheld")
+        self.assertEqual(sorted(i for lane, _ in pages for i in lane["retrieved"]), self.venues)
+        self.assertTrue(all("1 matching stored record(s) withheld" in " ".join(out["facts"]) for _, out in pages))
+
+    def test_the_engine_client_pages_to_the_end(self):
+        """The real engine GatewayClient, in its own process with the engine's interpreter, against this
+        gateway: limit 2 and up to 5 pages asks three times and records each page whole; asked for
+        two pages, it records two, the second still continuing — never one page called complete."""
+        engine = REPOSITORY / ".venv-gen2" / "bin" / "python"
+        self.assertTrue(engine.exists(), f"{engine}: the engine's interpreter (make gen2-venv)")
+        request = {"request_type": "find", "query": self.word, "kind": "venue", "limit": 2, "lanes": ["openalex_snapshot"]}
+        for pages, want in ((5, [(1, 2), (2, 2), (3, 1)]), (2, [(1, 2), (2, 2)])):
+            with self.subTest(pages=pages):
+                done = subprocess.run([str(engine), "-B", "-c", ENGINE, self.url, json.dumps(request), str(pages)],
+                                      cwd=REPOSITORY, capture_output=True, text=True, timeout=120)
+                self.assertEqual(done.returncode, 0, done.stderr)
+                observed = json.loads(done.stdout)
+                self.assertEqual([(o[5], o[3]) for o in observed], want)
+                self.assertEqual({tuple(o[:3]) + (o[4],) for o in observed}, {("openalex_snapshot", "searched_ok", "complete", None)})
+                read = [i for o in observed for i in o[6]]
+                self.assertEqual(len(read), len(set(read)))
+                self.assertTrue(set(read) <= set(self.venues))
+                if pages == 5:
+                    self.assertEqual(sorted(read), self.venues, "all five, across three pages")
 
 
 if __name__ == "__main__":
