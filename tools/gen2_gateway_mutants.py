@@ -25,7 +25,10 @@ mutant view there for every later run; it is exercised directly by test_record_g
 which fails on all four doors with a reader that goes around it); the local index's last tie-breaker,
 `r.identity` (2b-repair-6 F3: it makes offset pages cut one total order — without it, rows tied on
 rank, works and year have no defined order, but a small fixture's ties keep their physical order,
-so no test can reliably see it removed).
+so no test can reliably see it removed); the local index's separate count around the gate
+(F2-index-counts-around-gate, retired in 2b-repair-7: the page, the counts and the population digest are
+now one statement over ONE join to gateway.servable_records, so reading and counting around the gate is
+the single edit F2-index-reads-around-gate makes, and its killers include the count's).
 """
 from __future__ import annotations
 
@@ -378,11 +381,6 @@ MUTANTS: list[Mutant] = [
     Mutant("F2-index-reads-around-gate", "the local index serves stored rows read around the serving gate", INDEX,
            '"FROM gateway.index_docs d JOIN gateway.servable_records r ON r.identity = d.identity "',
            '"FROM gateway.index_docs d JOIN gateway.records r ON r.identity = d.identity "',
-           (RG + "AssembledGateway.test_a_row_written_after_startup_is_withheld_on_every_door",
-            RG + "OneServingRead.test_no_production_code_reads_stored_records_around_the_gate"),
-           (LOCAL_INDEX,), db=True),
-    Mutant("F2-index-counts-around-gate", "the local index counts around the serving gate: a withheld match is not counted", INDEX,
-           'f"JOIN gateway.servable_records r ON r.identity = d.identity WHERE', 'f"JOIN gateway.records r ON r.identity = d.identity WHERE',
            (RG + "AssembledGateway.test_a_row_written_after_startup_is_withheld_on_every_door",
             RG + "AssembledGateway.test_a_search_only_withheld_rows_match_observes_nothing",
             RG + "OneServingRead.test_no_production_code_reads_stored_records_around_the_gate"),
