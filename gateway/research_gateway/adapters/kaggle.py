@@ -37,6 +37,12 @@ def _record(d: dict) -> dict:
                        raw=d)
 
 
+def _file(identity: str, ref: str, f: dict) -> dict:
+    return make_record(identity=f"{identity}#{f.get('name')}", kind="file", source_id=SOURCE_ID, title=f.get("name"),
+                       links=[f"{BASE}/datasets/download/{ref}/{quote(f.get('name') or '', safe='')}"],
+                       extra={"size": f.get("totalBytes") or f.get("size"), "created": f.get("creationDate")}, raw=f)
+
+
 def find(client: Client, query: str, *, limit: int = 20, page: int = 1) -> dict:
     hdrs = _headers(client)
     if not hdrs:
@@ -68,11 +74,7 @@ def fetch(client: Client, target: str, *, file_name: str | None = None, download
     resp = client.get(SOURCE_ID, "fetch", f"{BASE}/datasets/list/{ref}", headers=hdrs, identity=identity)
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "records": []}
-    files = need(SOURCE_ID, resp.json, "datasetFiles")
-    records = [make_record(identity=f"{identity}#{f.get('name')}", kind="file", source_id=SOURCE_ID, title=f.get("name"),
-                           links=[f"{BASE}/datasets/download/{ref}/{quote(f.get('name') or '', safe='')}"],
-                           extra={"size": f.get("totalBytes") or f.get("size"), "created": f.get("creationDate")},
-                           raw=f) for f in files]
+    records = members(SOURCE_ID, need(SOURCE_ID, resp.json, "datasetFiles"), lambda f: _file(identity, ref, f))
     return {"identity": identity, "records": records}
 
 

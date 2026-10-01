@@ -4,7 +4,7 @@ from __future__ import annotations
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, check, members, need
+from .base import AdapterError, Client, PayloadError, check, members, need
 
 SOURCE_ID = "harvard_dataverse"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.7910/DVN/OY6CBK'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -55,17 +55,21 @@ def dataset_record(base: str, source_id: str, d: dict) -> dict:
                        raw=d)
 
 
-def file_records(base: str, source_id: str, dataset: dict, d: dict) -> list[dict]:
-    out = []
-    for f in ((d.get("latestVersion") or {}).get("files") or []):
-        df = f.get("dataFile") or {}
-        out.append(make_record(identity=f"{dataset['identity']}#{df.get('id')}", kind="file", source_id=source_id,
-                               title=f.get("label") or df.get("filename"), license=dataset.get("license"),
-                               links=[f"{base}/api/access/datafile/{df.get('id')}"],
-                               extra={"file_id": df.get("id"), "content_type": df.get("contentType"), "size": df.get("filesize"),
-                                      "restricted": f.get("restricted", False), "description": df.get("description")},
-                               raw=df))
-    return out
+def _file(base: str, source_id: str, dataset: dict, f: dict) -> dict:
+    df = f.get("dataFile") or {}
+    return make_record(identity=f"{dataset['identity']}#{df.get('id')}", kind="file", source_id=source_id,
+                       title=f.get("label") or df.get("filename"), license=dataset.get("license"),
+                       links=[f"{base}/api/access/datafile/{df.get('id')}"],
+                       extra={"file_id": df.get("id"), "content_type": df.get("contentType"), "size": df.get("filesize"),
+                              "restricted": f.get("restricted", False), "description": df.get("description")},
+                       raw=df)
+
+
+def file_records(base: str, source_id: str, dataset: dict, d: dict) -> list:
+    """The dataset's files, each decoded alone (base.members): None where a file member is unreadable."""
+    version = d.get("latestVersion") or {}
+    files = need(source_id, version, "files") if version.get("files") else []   # a dataset without files has none
+    return members(source_id, files, lambda f: _file(base, source_id, dataset, f))
 
 
 def find_in(client: Client, base: str, source_id: str, secret_name: str | None, query: str, *, limit: int = 20, page: int = 1,
@@ -105,12 +109,14 @@ def fetch_in(client: Client, base: str, source_id: str, secret_name: str | None,
         if d is None:
             return {"identity": target, "records": [], "capability_fact": "dataset not found"}
         ds = dataset_record(base, source_id, d)
-        member_ids = {(f.get("dataFile") or {}).get("id") for f in (d.get("latestVersion") or {}).get("files") or []}
-        if int(file_id) not in member_ids:
+        files = file_records(base, source_id, ds, d)
+        wanted = [f for f in files if f and f["file_id"] == int(file_id)]
+        if not wanted:
+            if None in files:   # a file member that cannot be read might be this one: its membership is not established
+                raise PayloadError(f"{source_id}: {files.count(None)} file member(s) unreadable; file {file_id} cannot be shown to belong to {ds['identity']}")
             raise AdapterError(f"{source_id}: file {file_id} does not belong to {ds['identity']}")
         if client.commercial:
-            file_restricted = any((f.get("dataFile") or {}).get("id") == int(file_id) and f.get("restricted")
-                                  for f in (d.get("latestVersion") or {}).get("files") or [])
+            file_restricted = any(f["restricted"] for f in wanted)
             if not allow_listed(ds.get("license")) or ds.get("terms_of_use") or file_restricted:
                 # a CC0 label with extra terms of use, or a restricted member file, is not CC0 (D-25)
                 why = ("restricted file" if file_restricted else

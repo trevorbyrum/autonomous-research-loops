@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi
-from .base import Client, check, need
+from .base import OMIT, Client, check, members, need
 
 SOURCE_ID = "opencitations"
 SMOKE = {'capability': 'enrich', 'identity': 'doi:10.1162/qss_a_00023', 'what': 'references'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -17,19 +17,14 @@ def _doi_of(identity: str) -> str | None:
     return normalize_doi(identity.split(":", 1)[-1] if identity.startswith("doi:") else identity)
 
 
-def _links(rows: list[dict], key: str) -> list[dict]:
-    items = []
-    for r in rows:
-        ref = r.get(key) or ""
-        for part in ref.split(" "):
-            if part.startswith("doi:"):
-                items.append(make_record(identity=f"doi:{normalize_doi(part[4:]) or part[4:]}", kind="citation",
-                                         source_id=SOURCE_ID, year=year_from(r.get("creation")),
-                                         identifiers={"doi": normalize_doi(part[4:]) or part[4:]},
-                                         extra={"oci": r.get("oci"), "timespan": r.get("timespan")},
-                                         raw=r))
-                break
-    return items
+def _link(key: str, row: dict):
+    """One citation row: the work on its `key` end, or OMIT when that end names no DOI."""
+    doi = next((part[4:] for part in (row.get(key) or "").split(" ") if part.startswith("doi:")), None)
+    if doi is None:
+        return OMIT
+    doi = normalize_doi(doi) or doi
+    return make_record(identity=f"doi:{doi}", kind="citation", source_id=SOURCE_ID, year=year_from(row.get("creation")),
+                       identifiers={"doi": doi}, extra={"oci": row.get("oci"), "timespan": row.get("timespan")}, raw=row)
 
 
 def enrich(client: Client, identity: str, what: str = "citations") -> dict:
@@ -56,4 +51,4 @@ def enrich(client: Client, identity: str, what: str = "citations") -> dict:
     if not check(SOURCE_ID, resp):
         return {"identity": f"doi:{doi}", "what": what, "items": []}
     key = "citing" if what == "citations" else "cited"
-    return {"identity": f"doi:{doi}", "what": what, "items": _links(need(SOURCE_ID, resp.json), key)}
+    return {"identity": f"doi:{doi}", "what": what, "items": members(SOURCE_ID, need(SOURCE_ID, resp.json), lambda row: _link(key, row))}

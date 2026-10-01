@@ -84,30 +84,44 @@ def context_xml(text: str) -> dict:
     return out
 
 
-def series(j: dict) -> list[dict]:
-    """Flatten SDMX-JSON into [{key: {dim: value}, observations: [(period, value)]}]."""
+def series_members(j: dict) -> list[dict]:
+    """Every series of every data set as one member, `{"position": <its key>, "series": <as sent>}`: wrapped and
+    not read, so the caller decodes each alone (adapters.base.members) and a series that cannot be read is that
+    series' loss only. A data set that is not an object is the message itself unreadable, not a member."""
+    return [{"position": key, "series": s} for ds in _datasets(j) for key, s in (ds.get("series") or {}).items()]
+
+
+def series_reader(j: dict):
+    """The function that reads one `series_members` member into {key: {dim: value}, observations: [(period,
+    value)], observations_raw}; the message's structure is read once, here."""
     st = _structure(j)
     dims = st.get("dimensions") or {}
     series_dims = dims.get("series") or []
     obs_dims = dims.get("observation") or []
     periods = [v.get("id") or v.get("name") for v in (obs_dims[0].get("values") if obs_dims else [])]
-    out = []
-    for ds in _datasets(j):
-        for key, s in (ds.get("series") or {}).items():
-            idx = [int(i) for i in key.split(":")] if key else []
-            dim_values = {}
-            for pos, d in zip(idx, series_dims):
-                vals = d.get("values") or []
-                if pos < len(vals):
-                    dim_values[d.get("id") or d.get("name")] = vals[pos].get("id") or vals[pos].get("name")
-            observations = []
-            for oi, arr in sorted(((int(k), v) for k, v in (s.get("observations") or {}).items()), key=lambda kv: kv[0]):
-                period = periods[oi] if oi < len(periods) else str(oi)
-                value = arr[0] if isinstance(arr, list) and arr else arr
-                observations.append((period, value))
-            out.append({"key": dim_values, "observations": observations,
-                        "observations_raw": s.get("observations")})   # full per-observation arrays survive (I-8)
-    return out
+
+    def read(member: dict) -> dict:
+        key, s = member["position"], member["series"]
+        idx = [int(i) for i in key.split(":")] if key else []
+        dim_values = {}
+        for pos, d in zip(idx, series_dims):
+            vals = d.get("values") or []
+            if pos < len(vals):
+                dim_values[d.get("id") or d.get("name")] = vals[pos].get("id") or vals[pos].get("name")
+        observations = []
+        for oi, arr in sorted(((int(k), v) for k, v in (s.get("observations") or {}).items()), key=lambda kv: kv[0]):
+            period = periods[oi] if oi < len(periods) else str(oi)
+            value = arr[0] if isinstance(arr, list) and arr else arr
+            observations.append((period, value))
+        return {"key": dim_values, "observations": observations,
+                "observations_raw": s.get("observations")}   # full per-observation arrays survive (I-8)
+    return read
+
+
+def series(j: dict) -> list[dict]:
+    """Flatten SDMX-JSON into [{key: {dim: value}, observations: [(period, value)]}]; one unreadable series raises."""
+    read = series_reader(j)
+    return [read(m) for m in series_members(j)]
 
 
 def dataflows_xml(text: str) -> list[dict]:

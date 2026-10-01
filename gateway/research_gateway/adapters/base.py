@@ -541,19 +541,30 @@ def validate_data_params(mod, params: dict | None) -> str | None:
 # was expected, a value that is not a date ...): that member's failure, never the answer's
 MEMBER_ERRORS = (PayloadError, KeyError, TypeError, AttributeError, ValueError, IndexError)
 
+# what `build` returns for a member it read whole and found to name nothing to report (a deposited
+# reference with no DOI): no record, and no malformed member either — that one is None, which the router counts
+OMIT = object()
+
 
 def members(source_id: str, items: list, build) -> list:
     """Each provider member through `build` on its own (task 2b-repair A4; RG-4): a member
     that is not an object, whose decoding fails, or whose record names no meaningful
     identity becomes None — dropped and counted by the router, so the members read beside
     it stand as a PARTIAL lower bound instead of the whole answer being lost, and an
-    unreadable member never becomes a fabricated candidate (`url:None`)."""
+    unreadable member never becomes a fabricated candidate (`url:None`).
+
+    This is the ONE place a provider's list becomes records (2b-repair-7b): an adapter hands
+    the provider's list here and never iterates it itself, so one member's failure can only
+    ever be that member's. tests/test_member_decoding.py fails on an adapter that builds
+    records in a loop of its own."""
     out = []
     for member in items:
         try:
             rec = build(member) if isinstance(member, dict) else None
         except MEMBER_ERRORS:
             rec = None
+        if rec is OMIT:
+            continue
         out.append(rec if isinstance(rec, dict) and meaningful(rec.get("identity")) else None)
     return out
 

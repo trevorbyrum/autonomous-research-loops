@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core import sdmx
 from ..core.canonical import make_record
-from .base import AdapterError, Client, PayloadError, check, need
+from .base import AdapterError, Client, PayloadError, check, members, need
 
 SOURCE_ID = "ecb"
 SMOKE = {'capability': 'data', 'params': {'dataflow': 'EXR', 'key': 'D.USD.EUR.SP00.A', 'start': '2026-08-01'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -37,17 +37,19 @@ def data(client: Client, params: dict) -> dict:
                       identity=identity)
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "records": []}
-    records = []
     j = need(SOURCE_ID, resp.json, kind=dict)
     if not sdmx._datasets(j) and not sdmx._structure(j):
         raise PayloadError(f"{SOURCE_ID}: the answer is not an SDMX-JSON message (no structure, no data sets)")
-    ctx = sdmx.context(j)
-    for s in sdmx.series(j):
+    ctx, read = sdmx.context(j), sdmx.series_reader(j)
+
+    def record(member: dict) -> dict:
+        s = read(member)
         skey = ".".join(str(v) for v in s["key"].values()) or key
-        records.append(make_record(identity=f"series:ecb:{flow}:{skey}", kind="series", source_id=SOURCE_ID, title=f"{flow} {skey}",
-                                   links=[f"https://data.ecb.europa.eu/data/datasets/{flow}"], attribution=ATTRIBUTION,
-                                   extra={"dimensions": s["key"], "observations": s["observations"]},
-                                   raw={"series": s, "context": ctx}))
+        return make_record(identity=f"series:ecb:{flow}:{skey}", kind="series", source_id=SOURCE_ID, title=f"{flow} {skey}",
+                           links=[f"https://data.ecb.europa.eu/data/datasets/{flow}"], attribution=ATTRIBUTION,
+                           extra={"dimensions": s["key"], "observations": s["observations"]},
+                           raw={"series": s, "context": ctx})
+    records = members(SOURCE_ID, sdmx.series_members(j), record)
     return {"identity": identity, "records": records}
 
 def catalog(client: Client, *, query: str | None = None, within: str | None = None,

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record
 from ..core.identity import normalize_arxiv, normalize_doi
-from .base import Client, PayloadError, check, members, need
+from .base import OMIT, Client, PayloadError, check, members, need
 
 SOURCE_ID = "semanticscholar"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -56,6 +56,14 @@ def _record(p: dict) -> dict:
                "publication_types": p.get("publicationTypes"), "redistributable": False},
         raw=p,
     )
+
+
+def _linked(key: str, row: dict):
+    """One citation or reference row: its linked paper as a citation record, or OMIT when that paper is unidentified."""
+    paper = row.get(key) or {}
+    if not (paper.get("paperId") or (paper.get("externalIds") or {}).get("DOI")):
+        return OMIT
+    return {**_record(paper), "kind": "citation"}
 
 
 def find(client: Client, query: str, *, limit: int = 20, offset: int = 0, year_from_: int | None = None) -> dict:
@@ -106,11 +114,4 @@ def enrich(client: Client, identity: str, what: str = "citations") -> dict:
                       params={"fields": "externalIds,title,year,venue", "limit": 100}, headers=_headers(client), identity=identity)
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "what": what, "items": []}
-    items = []
-    for row in need(SOURCE_ID, resp.json, "data"):
-        p = row.get(key) or {}
-        if p.get("paperId") or (p.get("externalIds") or {}).get("DOI"):
-            r = _record(p)
-            r["kind"] = "citation"
-            items.append(r)
-    return {"identity": identity, "what": what, "items": items}
+    return {"identity": identity, "what": what, "items": members(SOURCE_ID, need(SOURCE_ID, resp.json, "data"), lambda row: _linked(key, row))}

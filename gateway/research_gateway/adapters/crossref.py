@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi, normalize_issn
-from .base import Client, PayloadError, check, members, need
+from .base import OMIT, Client, PayloadError, check, members, need
 
 SOURCE_ID = "crossref"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -38,6 +38,16 @@ def _record(client: Client, w: dict) -> dict:
                "reference_count": w.get("reference-count"), "publisher": w.get("publisher")},
         raw=w,
     )
+
+
+def _reference(r: dict):
+    """One deposited reference as a citation record, or OMIT when it deposited no DOI (most do not)."""
+    doi = normalize_doi(r.get("DOI"))
+    if not doi:
+        return OMIT
+    return make_record(identity=f"doi:{doi}", kind="citation", source_id=SOURCE_ID, title=r.get("article-title"),
+                       year=year_from(r.get("year")), venue=r.get("journal-title"), identifiers={"doi": doi},
+                       extra={"unstructured": r.get("unstructured")}, raw=r)
 
 
 def find(client: Client, query: str, *, limit: int = 20, year_from_: int | None = None,
@@ -86,9 +96,6 @@ def enrich(client: Client, identity: str, what: str = "references") -> dict:
                       identity=f"doi:{doi}")
     if not check(SOURCE_ID, resp):
         return {"identity": f"doi:{doi}", "what": what, "items": []}
-    refs = need(SOURCE_ID, resp.json, "message", kind=dict).get("reference") or []   # a work that deposited no references has none
-    items = [make_record(identity=f"doi:{normalize_doi(r['DOI'])}", kind="citation", source_id=SOURCE_ID,
-                         title=r.get("article-title"), year=year_from(r.get("year")), venue=r.get("journal-title"),
-                         identifiers={"doi": normalize_doi(r["DOI"])}, extra={"unstructured": r.get("unstructured")}, raw=r)
-             for r in refs if r.get("DOI") and normalize_doi(r.get("DOI"))]
-    return {"identity": f"doi:{doi}", "what": what, "items": items}
+    msg = need(SOURCE_ID, resp.json, "message", kind=dict)
+    refs = need(SOURCE_ID, msg, "reference") if msg.get("reference") else []   # a work that deposited no references has none
+    return {"identity": f"doi:{doi}", "what": what, "items": members(SOURCE_ID, refs, _reference)}

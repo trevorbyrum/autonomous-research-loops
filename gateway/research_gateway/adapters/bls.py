@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record
-from .base import AdapterError, Client, check, need
+from .base import AdapterError, Client, check, members, need
 
 SOURCE_ID = "bls"
 SMOKE = {'capability': 'data', 'params': {'series': 'CUUR0000SA0', 'start_year': 2025, 'end_year': 2025}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -22,6 +22,16 @@ DATA_PARAMS = {
     "example": {"series": "LNS14000000", "start_year": 2020, "end_year": 2025},
     "notes": "at most 50 series ids per call; larger lists are rejected, never silently truncated",
 }
+
+def _series(s: dict) -> dict:
+    obs = [(f"{d.get('year')}-{d.get('period')}", d.get("value")) for d in reversed(s.get("data") or [])]
+    cat = s.get("catalog") or {}
+    return make_record(identity=f"series:bls:{s.get('seriesID')}", kind="series", source_id=SOURCE_ID,
+                       title=cat.get("series_title") or s.get("seriesID"),
+                       links=[f"https://data.bls.gov/timeseries/{s.get('seriesID')}"], attribution=ATTRIBUTION,
+                       extra={"observations": obs, "survey": cat.get("survey_name"), "seasonality": cat.get("seasonality")},
+                       raw=s)
+
 
 def data(client: Client, params: dict) -> dict:
     """params: series (id or list of ids), start_year, end_year, catalog (bool)."""
@@ -51,15 +61,7 @@ def data(client: Client, params: dict) -> dict:
     need(SOURCE_ID, j, "status", kind=str)   # every BLS answer states its status; one without it is unreadable
     if j.get("status") != "REQUEST_SUCCEEDED":
         return {"identity": identity, "records": [], "capability_fact": f"BLS: {j.get('status')} {'; '.join(j.get('message') or [])}"[:300]}
-    records = []
-    for s in need(SOURCE_ID, j, "Results", "series"):
-        obs = [(f"{d.get('year')}-{d.get('period')}", d.get("value")) for d in reversed(s.get("data") or [])]
-        cat = s.get("catalog") or {}
-        records.append(make_record(identity=f"series:bls:{s.get('seriesID')}", kind="series", source_id=SOURCE_ID,
-                                   title=cat.get("series_title") or s.get("seriesID"),
-                                   links=[f"https://data.bls.gov/timeseries/{s.get('seriesID')}"], attribution=ATTRIBUTION,
-                                   extra={"observations": obs, "survey": cat.get("survey_name"), "seasonality": cat.get("seasonality")},
-                                   raw=s))
+    records = members(SOURCE_ID, need(SOURCE_ID, j, "Results", "series"), _series)
     return {"identity": identity, "records": records, "messages": j.get("message") or []}
 
 

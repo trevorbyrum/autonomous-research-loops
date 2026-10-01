@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core import sdmx
 from ..core.canonical import make_record
-from .base import AdapterError, Client, check
+from .base import AdapterError, Client, check, members
 
 SOURCE_ID = "bis"
 SMOKE = {'capability': 'data', 'params': {'dataflow': 'WS_EER', 'key': 'M.N.B.US', 'start': '2026-01'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -39,15 +39,16 @@ def data(client: Client, params: dict) -> dict:
                       headers={"Accept": "application/xml"}, identity=identity)
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "records": []}
-    records = []
     ctx = sdmx.context_xml(resp.text)
-    for s in sdmx.series_xml(resp.text):
+
+    def record(s: dict) -> dict:
         dims = {k: v for k, v in s["key"].items() if k not in LABEL_ATTRS}
         skey = ".".join(dims.values())
-        records.append(make_record(identity=f"series:bis:{flow}:{skey}", kind="series", source_id=SOURCE_ID,
-                                   title=s["key"].get("TITLE_TS") or f"{flow} {skey}", links=["https://data.bis.org/topics"],
-                                   attribution=ATTRIBUTION, extra={"dimensions": dims, "observations": s["observations"]},
-                                   raw={"series": s, "context": ctx}))
+        return make_record(identity=f"series:bis:{flow}:{skey}", kind="series", source_id=SOURCE_ID,
+                           title=s["key"].get("TITLE_TS") or f"{flow} {skey}", links=["https://data.bis.org/topics"],
+                           attribution=ATTRIBUTION, extra={"dimensions": dims, "observations": s["observations"]},
+                           raw={"series": s, "context": ctx})
+    records = members(SOURCE_ID, sdmx.series_xml(resp.text), record)
     return {"identity": identity, "records": records}
 
 def catalog(client: Client, *, query: str | None = None, within: str | None = None,

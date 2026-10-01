@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record
 from ..core.identity import normalize_doi
-from .base import Client, check, need
+from .base import OMIT, Client, check, members, need
 
 SOURCE_ID = "unpaywall"
 SMOKE = {'capability': 'enrich', 'identity': 'doi:10.1038/nature12373', 'what': 'oa_location'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -21,20 +21,20 @@ def enrich(client: Client, identity: str, what: str = "oa_location") -> dict:
     if not check(SOURCE_ID, resp):
         return {"identity": f"doi:{doi}", "what": what, "items": []}
     j = need(SOURCE_ID, resp.json, kind=dict)
-    items = []
     best = j.get("best_oa_location") or {}
     locations = need(SOURCE_ID, j, "oa_locations") or ([best] if best else [])
-    for loc in locations:
+
+    def location(loc: dict):
         url = loc.get("url_for_pdf") or loc.get("url")
-        if not url:
-            continue
-        items.append(make_record(
+        if not url:   # a location that links nowhere is nothing to report
+            return OMIT
+        return make_record(
             identity=f"doi:{doi}", kind="oa_location", source_id=SOURCE_ID, title=j.get("title"),
             year=j.get("year"), venue=j.get("journal_name"), identifiers={"doi": doi}, links=[url],
             license=loc.get("license"),
             extra={"is_oa": j.get("is_oa"), "oa_status": j.get("oa_status"), "host_type": loc.get("host_type"),
                    "version": loc.get("version"), "is_best": loc is best or loc == best},
             raw=loc,
-        ))
-    return {"identity": f"doi:{doi}", "what": what, "items": items,
+        )
+    return {"identity": f"doi:{doi}", "what": what, "items": members(SOURCE_ID, locations, location),
             "is_oa": j.get("is_oa"), "oa_status": j.get("oa_status")}
