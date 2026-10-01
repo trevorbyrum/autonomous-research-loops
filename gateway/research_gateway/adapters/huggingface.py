@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, PayloadError, check, members, need, quote
+from .base import AdapterError, Client, PayloadError, check, members, need, next_link, own_link, quote
 
 SOURCE_ID = "huggingface"
 SMOKE = {'capability': 'resolve', 'identity': 'stanfordnlp/imdb'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -53,14 +53,25 @@ def _dataset(resp) -> dict:
     return j
 
 
-def find(client: Client, query: str, *, limit: int = 20, offset: int = 0) -> dict:
-    params = {"search": query, "limit": min(limit, 100), "offset": offset, "full": "true"}
-    resp = client.get(SOURCE_ID, "find", f"{BASE}/api/datasets", params=params, headers=_headers(client), query=query)
+def find(client: Client, query: str, *, limit: int = 20, cursor: str | None = None) -> dict:
+    """The Hub pages by its `Link: <url>; rel="next"` header, as its official clients do (huggingface_hub,
+    utils/_pagination.py): the next URL already carries its parameters, and no next link is the end
+    (docs/PROVIDER-PAGINATION.md). That URL is the lane's continuation, asked verbatim for the next page,
+    but only while it stays this search on the Hub's own listing (base.own_link). A next link that
+    does not is followed by nothing and ends nothing."""
+    listing = f"{BASE}/api/datasets"
+    if cursor is None:
+        url, params = listing, {"search": query, "limit": min(limit, 100), "full": "true"}
+    else:
+        url, params = own_link(cursor, listing, search=query), None
+        if url is None:
+            raise ValueError(f"{SOURCE_ID}: not a continuation this lane gave")
+    resp = client.get(SOURCE_ID, "find", url, params=params, headers=_headers(client), query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     items = need(SOURCE_ID, resp.json)
+    link = next_link(resp)
     return {"records": members(SOURCE_ID, items, _record), "total": None,
-            "next_offset": offset + len(items) if len(items) >= min(limit, 100) else None,
-            "exhausted": len(items) < min(limit, 100)}   # a short page is the last
+            "next_cursor": own_link(link, listing, search=query), "exhausted": link is None}
 
 
 def resolve(client: Client, identity: str) -> dict | None:

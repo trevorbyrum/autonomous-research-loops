@@ -16,10 +16,13 @@ from __future__ import annotations
 
 import unittest
 
-from research_gateway.adapters import (crossref, datacite, doaj, europepmc, govinfo, harvard_dataverse, kaggle, openaire, qdr,
-                                       semanticscholar)
+from research_gateway import adapters
+from research_gateway.adapters import (crossref, datacite, doaj, europepmc, govinfo, harvard_dataverse, huggingface, kaggle, openaire,
+                                       qdr, semanticscholar)
 from research_gateway.adapters.base import Client, FakeTransport
+from research_gateway.core import router as R
 from research_gateway.core.broker import Broker, RatePolicy
+from research_gateway.registry.load import read_seed
 from tests import test_adapters_articles as articles, test_adapters_datasets as datasets, test_adapters_platforms as platforms
 
 NEXT_KEYS = ("next_cursor", "next_page", "next_offset", "next_offset_mark")
@@ -328,6 +331,86 @@ class KaggleDatasets(Cases):
         self.check(kaggle, "GET", self.URL, {"a full page": ([self.MEMBER] * 20, {"limit": 20}, more(2, 20)),
                                              "a short page": ([self.MEMBER] * 5, {"limit": 20}, last(5)),
                                              "a short page within the limit": ([self.MEMBER] * 5, {"limit": 5}, last(5))})
+
+
+class HuggingFaceDatasets(unittest.TestCase):
+    """Hugging Face: the official client's pagination helper (huggingface_hub, utils/_pagination.py) follows
+    the answer's `Link` header with rel="next" — "Next link already contains query params" — and stops when
+    there is none; the official JavaScript client (@huggingface/hub, list-datasets) does the same. The
+    adapter hands that URL back as the lane's continuation and asks it verbatim; a next link present is
+    never the end, and no offset is ever invented."""
+    LISTING = "https://huggingface.co/api/datasets"
+    NEXT = "https://huggingface.co/api/datasets?search=q&limit=2&full=true&cursor=eyJfaWQiOiI2NTAwIn0"
+
+    def page(self, items: int, link: str | None = None, cursor: str | None = None) -> tuple[dict, list]:
+        t = FakeTransport()
+        t.add("GET", self.LISTING, body=[datasets.HF_DATASET] * items, headers={"Link": link} if link else None)
+        c = Client(broker=Broker({"huggingface": RatePolicy(per_second=1000)}), transport=t, secrets=lambda name, field=None: "hf_tok")
+        out = huggingface.find(c, "q", limit=2, **({"cursor": cursor} if cursor else {}))
+        return {"next": out.get("next_cursor"), "exhausted": out.get("exhausted") is True, "records": len(out["records"])}, t.calls
+
+    def test_continues(self):
+        for name, items in (("a full page", 2), ("a short page", 1), ("an empty page", 0)):
+            with self.subTest(name):
+                self.assertEqual(self.page(items, f'<{self.NEXT}>; rel="next"')[0], more(self.NEXT, items))
+        with self.subTest("a relative next link beside another relation"):
+            got, _ = self.page(2, f'<{self.LISTING}?search=q&cursor=p>; rel="prev", </api/datasets?search=q&cursor=n>; rel="next"')
+            self.assertEqual(got, more(f"{self.LISTING}?search=q&cursor=n", 2))
+
+    def test_ends(self):
+        for name, items, link in (("a full page", 2, None), ("a short page", 1, None), ("an empty page", 0, None),
+                                  ("a page linking only back", 2, f'<{self.NEXT}>; rel="prev"')):
+            with self.subTest(name):
+                self.assertEqual(self.page(items, link)[0], last(items))
+
+    def test_the_next_page_is_asked_at_the_providers_own_url(self):
+        first, asked = self.page(2, f'<{self.NEXT}>; rel="next"')
+        self.assertNotIn("offset", asked[0][1], "the first page invents no offset")
+        _, asked = self.page(1, cursor=first["next"])
+        self.assertEqual([call[1] for call in asked], [self.NEXT], "verbatim: the provider's cursor URL, nothing rewritten")
+        self.assertEqual(asked[0][2]["Authorization"], "Bearer hf_tok", "the adapter's own credentials, in its own header")
+
+    LEAVING = ("https://evil.example/api/datasets?search=q&cursor=x", "http://huggingface.co/api/datasets?search=q&cursor=x",
+               "https://huggingface.co:8443/api/datasets?search=q&cursor=x", "https://user:pw@huggingface.co/api/datasets?search=q&cursor=x",
+               "https://huggingface.co/api/models?search=q&cursor=x", "https://huggingface.co/api/datasets?search=another&cursor=x",
+               "https://huggingface.co/api/datasets?search=q&cursor=x#frag")
+
+    def test_a_next_link_that_leaves_this_search_is_not_a_continuation(self):
+        for link in self.LEAVING:
+            with self.subTest(link):
+                self.assertEqual(self.page(2, f'<{link}>; rel="next"')[0], neither(2), "nothing to follow, and a next link is not the end")
+
+    def test_a_continuation_that_leaves_this_search_is_never_asked(self):
+        for link in self.LEAVING:
+            with self.subTest(link):
+                t = FakeTransport()
+                c = Client(broker=Broker({"huggingface": RatePolicy(per_second=1000)}), transport=t, secrets=lambda name, field=None: "hf_tok")
+                try:
+                    huggingface.find(c, "q", cursor=link)
+                    raised = None
+                except Exception as e:   # whatever a request sent to it would have raised, it must not be sent
+                    raised = e
+                self.assertEqual(t.calls, [], "refused before any request: no credentials leave for it")
+                self.assertIsInstance(raised, ValueError, "a continuation this lane never gave")
+
+    def test_the_lane_continues_until_the_hub_stops_linking(self):
+        """Through the router: a short page WITH a next link continues (Astra's reproduction was called
+        complete and exhausted); a full page WITHOUT one is the end, and its sentinel skips the lane."""
+        t = FakeTransport()
+        c = Client(broker=Broker({"huggingface": RatePolicy(per_second=1000)}), transport=t, secrets=lambda name, field=None: None)
+        router = R.Router(read_seed(), adapters.load_all())
+        find = {"request_type": "find", "query": "q", "kind": "dataset", "domain": "ai-ml", "lanes": ["huggingface"],
+                "accept_per_item": True, "limit": 2}
+        t.add("GET", self.LISTING + "?", body=[datasets.HF_DATASET], headers={"Link": f'<{self.NEXT}>; rel="next"'})
+        first = R.execute(router, find, c)
+        t.routes.clear()
+        t.add("GET", self.NEXT, body=[datasets.HF_DATASET, dict(datasets.HF_DATASET, id="owner/other")])
+        second = R.execute(router, {**find, "cursors": first["next"]}, c)
+        lanes = [{k: out["lanes"][0].get(k) for k in ("coverage", "completeness", "count", "next", "exhausted")} for out in (first, second)]
+        self.assertEqual(lanes, [{"coverage": "searched_ok", "completeness": "complete", "count": 1, "next": self.NEXT, "exhausted": None},
+                                 {"coverage": "searched_ok", "completeness": "complete", "count": 2, "next": None, "exhausted": True}])
+        self.assertEqual([call[1] for call in t.calls][1:], [self.NEXT])
+        self.assertEqual(second["next"], {"huggingface": R.EXHAUSTED_CURSOR})
 
 
 if __name__ == "__main__":

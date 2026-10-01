@@ -237,11 +237,13 @@ HF_DATASET = {"id": "owner/corpus", "author": "owner", "lastModified": "2026-02-
 class HuggingFace(unittest.TestCase):
     def test_find_resolve_fetch(self):
         c, t = client({"huggingface": "hf_x"})
-        t.add("GET", "https://huggingface.co/api/datasets?", body=[HF_DATASET])
+        following = "https://huggingface.co/api/datasets?search=corpus&limit=1&full=true&cursor=eyJh"
+        t.add("GET", "https://huggingface.co/api/datasets?", body=[HF_DATASET], headers={"Link": f'<{following}>; rel="next"'})
         out = huggingface.find(c, "corpus", limit=1)
         self.assertEqual(out["records"][0]["identity"], "hf:owner/corpus")
         self.assertEqual(out["records"][0]["license"], "cc-by-4.0")
-        self.assertEqual(out["next_offset"], 1)
+        self.assertEqual((out["next_cursor"], out["exhausted"]), (following, False), "the Hub's own next link (its Link header)")
+        self.assertNotIn("offset", t.calls[0][1])
         self.assertEqual(t.calls[0][2]["Authorization"], "Bearer hf_x")
         t.add("GET", "https://huggingface.co/api/datasets/owner/corpus", body={**HF_DATASET, "cardData": {}})
         rec = huggingface.resolve(c, "hf:owner/corpus")

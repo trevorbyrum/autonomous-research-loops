@@ -131,6 +131,39 @@ def redirect_target(current_url: str, location: str) -> tuple[str | None, str | 
     return nxt, None
 
 
+_LINK = re.compile(r"<([^>]*)>((?:\s*;\s*[^;,]+)*)")
+
+
+def next_link(resp: Response) -> str | None:
+    """The target of the answer's `Link: <...>; rel="next"` header (RFC 8288), resolved against the
+    URL asked: the continuation a provider that pages by Link headers hands back. None without one."""
+    for target, params in _LINK.findall(resp.headers.get("link") or ""):
+        for param in params.split(";"):
+            key, _, value = param.partition("=")
+            if key.strip().lower() == "rel" and "next" in value.strip(" \t\"'").lower().split():
+                return urllib.parse.urljoin(resp.url, target.strip())
+    return None
+
+
+def own_link(url, endpoint: str, **same: str) -> str | None:
+    """`url` when a request may follow it as a continuation of `endpoint`, else None. It must keep
+    the endpoint's scheme, host, port and path, and carry no user info or fragment, so a continuation
+    can never send a request elsewhere or carry credentials of its own: the adapter's credentials
+    travel only in its own headers. Each `same` parameter the URL names must have the given value."""
+    if not isinstance(url, str):
+        return None
+    try:
+        u, e = urllib.parse.urlsplit(url), urllib.parse.urlsplit(endpoint)
+        if (u.scheme, u.hostname, u.port, u.path) != (e.scheme, e.hostname, e.port, e.path):
+            return None
+    except ValueError:   # a malformed port
+        return None
+    if u.username is not None or u.password is not None or u.fragment:
+        return None
+    named = urllib.parse.parse_qs(u.query, keep_blank_values=True)
+    return url if all(named.get(k, [v]) == [v] for k, v in same.items()) else None
+
+
 def same_origin(a: str, b: str) -> bool:
     ua, ub = urllib.parse.urlsplit(a), urllib.parse.urlsplit(b)
     return (ua.scheme, ua.hostname, ua.port) == (ub.scheme, ub.hostname, ub.port)

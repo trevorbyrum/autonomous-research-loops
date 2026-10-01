@@ -222,3 +222,43 @@ QDR is a Dataverse installation and shares this implementation.
 - **Unsaid:**
   - Whether `next` is present or absent exactly at the cap.
   - What a request past the cap returns.
+
+## Hugging Face (`huggingface`)
+
+- **Continuation:** the URL in the answer's `Link: <...>; rel="next"` header. It is handed back as the
+  lane's continuation and asked verbatim, but only while it stays this search on the Hub's datasets
+  listing (`base.own_link`):
+  - `https`, on `huggingface.co` at the default port, with path `/api/datasets`;
+  - no user info and no fragment;
+  - no `search` other than this query.
+
+  The adapter's token travels only in its own `Authorization` header. The first request carries
+  `search`, `limit` and `full`, and never an offset.
+- **End:** an answer without a next link. A next link that is present is never the end. One the
+  gateway may not follow is neither a continuation nor an end, so the lane is a lower bound.
+- **Evidence:**
+  - Provider-owned client `huggingface_hub` 2.0.0, published by Hugging Face from
+    github.com/huggingface/huggingface_hub (PyPI provenance). File `utils/_pagination.py`, read
+    2026-10-01. Version 1.29.0, read by the 2b-repair-6 review, has the same logic.
+    > This is using the same "Link" header format as GitHub.
+
+    > # Next link already contains query params
+
+    > while next_page is not None:
+
+    > return response.links.get("next", {}).get("url")
+
+    In `hf_api.py` (`list_datasets`), the `limit` only cuts what the client iterates:
+    > items = islice(items, limit)  # Do not iterate over all pages
+  - Provider-owned JavaScript client, huggingface/huggingface.js
+    `packages/hub/src/lib/list-datasets.ts` at commit e016dde7, read 2026-10-01:
+    > url = linkHeader ? parseLinkHeader(linkHeader).next : undefined;
+  - Hub API documentation, hub-docs `docs/hub/api.md` at commit 4910c3c9
+    (https://raw.githubusercontent.com/huggingface/hub-docs/4910c3c90009c5f906da11a89793bc9216f6ec7f/docs/hub/api.md,
+    read 2026-10-01). This section was removed on 2025-12-10, when the docs moved to an OpenAPI
+    playground that does not describe `/api/datasets`.
+    > Get information from all datasets in the Hub. The response is paginated, use the [`Link` header](https://docs.github.com/en/rest/guides/using-pagination-in-the-rest-api?apiVersion=2022-11-28#link-header) to get the next pages. You can specify additional parameters to have more specific results.
+- **Unsaid:**
+  - The `limit` maximum. The adapter asks for at most 100.
+  - The exact form of the next URL for `/api/datasets`. The JavaScript client's documented example
+    is for a different endpoint and carries a `cursor` parameter.
