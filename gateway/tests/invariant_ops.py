@@ -545,3 +545,16 @@ CATALOG_OPS = (BEA_CATALOG, BEA_PARAMETERS, BEA_VALUES, BLS_CATALOG, BLS_POPULAR
 FIND_OPS = (CROSSREF_FIND_MORE, CROSSREF_FIND_END, DATACITE_FIND_MORE, DATACITE_FIND_END, DOAJ_FIND_MORE, DOAJ_FIND_END, EPMC_FIND, GOVINFO_FIND,
             DV_FIND_MORE, DV_FIND_END, HF_FIND_MORE, HF_FIND_END, KAGGLE_FIND, OPENAIRE_FIND_MORE, OPENAIRE_FIND_END, OPENML_FIND_MORE, OPENML_FIND_END,
             S2_FIND_MORE, S2_FIND_END, SOCRATA_FIND_MORE, SOCRATA_FIND_END)
+
+# ================================================================== populated optional-field variants (task 2b-repair-10a)
+# Each operation again, with every optional field its provider documents populated (tests/oracle/variants.py), so that the corruption pass reaches those
+# fields too. They are appended LAST, after every minimal operation: the harness draws its generated cases (MixedMembers) from one seeded stream in the
+# order of `ALL`, so appending anywhere else would shift the draws of the minimal operations. The XML catalogue and data cases
+# (tests/oracle/xml_ops.py) are not here: this pass corrupts JSON.
+import sys as _sys  # noqa: E402
+
+from tests.oracle import variants as _variants  # noqa: E402
+
+_POPULATED = _variants.build(_sys.modules[__name__])
+POPULATED_OPS = tuple(op for group in ("find", "resolve", "enrich", "data", "fetch", "catalog") for op in _POPULATED[group])
+CATALOG_OPS = (*CATALOG_OPS, *POPULATED_OPS)

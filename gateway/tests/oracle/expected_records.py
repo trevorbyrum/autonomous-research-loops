@@ -119,7 +119,9 @@ def openaire(i: int, kind: bool = True) -> Rec:
 
 # ------------------------------------------------------------------ datasets
 def govinfo_find(i: int) -> Rec:
-    return rec(f"govinfo:CRPT-{i}", kind=("dataset", "contract"), title=(f"T{i}", "schema"), year=(2023, "schema"))
+    # no `kind`: PLAN.md §3 calls GovInfo's packages DOCUMENTS ("D(documents)") while routing treats the lane as a dataset lane, so the documents disagree
+    # with themselves about the kind of a GovInfo record (corrected after the first comparison: see UNDOCUMENTED and the evidence log)
+    return rec(f"govinfo:CRPT-{i}", title=(f"T{i}", "schema"), year=(2023, "schema"))
 
 
 def dataverse_find(i: int) -> Rec:
@@ -235,7 +237,10 @@ UNDOCUMENTED: dict = {
     "socrata.*": "`year` (`updatedAt` is a modification date), `links` (`permalink`).",
     "openml.*": "`year` (`upload_date` is an upload date), `format`, `version`.",
     "europepmc.*": "`authors`: `authorString` is one string holding a list in Europe PMC's own convention; how it is split is not documented.",
-    "govinfo.*": "`authors`: `governmentAuthor1` names an issuing body, not a person.",
+    "govinfo.*": "`authors`: `governmentAuthor1` names an issuing body, not a person. `kind` of a package from `find kind=dataset`: PLAN.md §3 calls the packages "
+                 "documents, the seed and routing treat the lane as a dataset lane; the documents do not decide it.",
+    "openml.resolve (license only)": "`license`: OpenML documents the British spelling `licence` only (Api_data.php); what the US spelling means is not documented, so this "
+                                     "variant asserts nothing about it (it exists so that the harness corrupts it).",
     "census.data": "`row_count`: whether a table's header row is a row is not documented.",
     "fred.*": "`observations`: whether the record's field is the list or its length is not documented.",
     "ecb.*": "`title`: an SDMX series has no title in the fixture; its identity is its dataflow and key.",

@@ -502,8 +502,14 @@ FOLLOW = (
      "a scheme-relative reference; resolving it against the request is allowed"),
     ("/api/datasets?search=q&limit=3&full=true&cursor=a", UNKNOWN, "RFC 3986 §4.2, §5 / Hugging Face", "judgement",
      "a relative reference; resolving it against the request is allowed"),
-    ("", UNKNOWN, "RFC 3986 §4.2, §5", "judgement", "the empty reference is the request itself: a loop, not a next page"),
+    ("", UNKNOWN, "RFC 3986 §4.2, §5; PROVIDER-PAGINATION.md (an unchanged continuation ends the paging, not the search)", "judgement",
+     "the empty reference resolves to the request itself: a next page that is the page just asked makes no progress"),
 )
+# what the relative references of FOLLOW resolve to against the request (RFC 3986 §5.2.2); the gateway may follow them as that URL, or decline
+RESOLVED = {
+    "//huggingface.co/api/datasets?search=q&limit=3&full=true&cursor=a": "https://huggingface.co/api/datasets?search=q&limit=3&full=true&cursor=a",
+    "/api/datasets?search=q&limit=3&full=true&cursor=a": "https://huggingface.co/api/datasets?search=q&limit=3&full=true&cursor=a",
+}
 
 
 def _vectors() -> list:
@@ -565,9 +571,9 @@ def _vectors() -> list:
         base = f"RFC 3986 {section}"
         add(Vector(f"target-invalid:{target!r}", f'<{target}>; rel="prev"', UNKNOWN, base, note="not a URI-Reference: the header cannot be read, so it ends nothing"))
         add(Vector(f"target-invalid-beside-next:{target!r}", f'<{NEXT_URL}>; rel="next", <{target}>; rel="prev"', UNKNOWN, base, "contract",
-                   also=(NEXT,), note="one unreadable link-value: all-or-nothing reading is documented; salvaging the clean next link is also conformant"))
+                   also=(NEXT,), next_url=NEXT_URL, note="one unreadable link-value: all-or-nothing reading is documented; salvaging the clean next link is also conformant"))
         add(Vector(f"target-invalid-before-next:{target!r}", f'<{target}>; rel="prev", <{NEXT_URL}>; rel="next"', UNKNOWN, base, "contract",
-                   also=(NEXT,), note="as above"))
+                   also=(NEXT,), next_url=NEXT_URL, note="as above"))
         add(Vector(f"target-invalid-as-next:{target!r}", f'<{target}>; rel="next"', UNKNOWN, base, note="a next link that is no URI-Reference is no continuation"))
     for cursor, section in VALID_CURSORS:
         url = f"{OWN}&cursor={cursor}"
@@ -578,8 +584,10 @@ def _vectors() -> list:
         add(Vector(f"cursor-invalid-prev:{cursor!r}", f'<{OWN}&cursor={cursor}>; rel="prev"', UNKNOWN, f"RFC 3986 {section}",
                    note="and a header that holds one cannot be read, so it is not the end"))
     for target, expect, why, grade, note in FOLLOW:
-        also = (NEXT,) if expect == UNKNOWN and grade == "judgement" else (UNKNOWN,) if expect == NEXT and grade == "judgement" else ()
-        add(Vector(f"follow:{target}", f'<{target}>; rel="next"', expect, why, grade, next_url=target if expect == NEXT else None, also=also, note=note))
+        resolved = RESOLVED.get(target)
+        also = (NEXT,) if resolved else (UNKNOWN,) if expect == NEXT and grade == "judgement" else ()
+        next_url = resolved or (target if expect == NEXT and grade != "judgement" else None)
+        add(Vector(f"follow:{target}", f'<{target}>; rel="next"', expect, why, grade, next_url=next_url, also=also, note=note))
     return out
 
 
