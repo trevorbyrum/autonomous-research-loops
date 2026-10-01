@@ -795,6 +795,8 @@ def optional(source_id: str, parent, key: str, kind: type = list):
     missing or null, and otherwise the container, which must be of `kind` — checked before its length or its truth is ever looked at.
     A present `false`, `0`, `""` or `{}` where a list belongs (or `[]` where an object does) is not an empty container but an unreadable
     one: a PayloadError, so the member that holds it (or the answer) is dropped and counted, never read as holding nothing (R8-2)."""
+    if not isinstance(parent, (Obj, dict)):
+        raise PayloadError(f"{source_id}: {type(parent).__name__} where an object belongs")
     if parent.get(key) is None:
         return NO_MEMBERS if kind is list else Obj({})
     return need(source_id, parent, key, kind=kind)

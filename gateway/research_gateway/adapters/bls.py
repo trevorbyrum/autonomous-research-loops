@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record
-from .base import AdapterError, Client, check, identified, key, members, need, optional, plain, text
+from .base import AdapterError, Client, PayloadError, check, identified, key, listed, members, need, optional, plain, text
 
 SOURCE_ID = "bls"
 SMOKE = {'capability': 'data', 'params': {'series': 'CUUR0000SA0', 'start_year': 2025, 'end_year': 2025}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -35,6 +35,15 @@ def _series(s: dict) -> dict:
                        raw=s)
 
 
+def _messages(j) -> list[str]:
+    """What BLS says beside the data, as text. Commentary that is not a list of text is dropped and the answer stands without it: nothing
+    is claimed from it, and the series beside it are readable."""
+    try:
+        return [text(SOURCE_ID, m) or "" for m in listed(SOURCE_ID, j, "message")]
+    except PayloadError:
+        return []
+
+
 def data(client: Client, params: dict) -> dict:
     """params: series (id or list of ids), start_year, end_year, catalog (bool)."""
     ids = (params or {}).get("series")
@@ -61,10 +70,11 @@ def data(client: Client, params: dict) -> dict:
         return {"identity": identity, "records": []}
     j = need(SOURCE_ID, resp.json, kind=dict)
     need(SOURCE_ID, j, "status", kind=str)   # every BLS answer states its status; one without it is unreadable
+    messages = _messages(j)
     if j.get("status") != "REQUEST_SUCCEEDED":
-        return {"identity": identity, "records": [], "capability_fact": f"BLS: {j.get('status')} {'; '.join(plain(j.get('message')) or [])}"[:300]}
+        return {"identity": identity, "records": [], "capability_fact": f"BLS: {j.get('status')} {'; '.join(messages)}"[:300]}
     records = members(SOURCE_ID, need(SOURCE_ID, j, "Results", "series"), _series)
-    return {"identity": identity, "records": records, "messages": plain(j.get("message")) or []}
+    return {"identity": identity, "records": records, "messages": messages}
 
 
 def catalog(client: Client, *, query: str | None = None, within: str | None = None,

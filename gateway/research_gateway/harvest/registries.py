@@ -16,7 +16,7 @@ import os
 import sys
 from typing import Iterator
 
-from ..adapters.base import Client, Members, Obj, check, field, members, optional, plain, token, total
+from ..adapters.base import Client, Members, Obj, check, field, listed, members, nested, optional, text, token, total
 from ..core import db
 from ..core.canonical import make_record
 from ..core.identity import normalize_issn, normalize_title
@@ -33,7 +33,7 @@ def venue_identity(issns: list[str | None], registry: str, title: str | None, pu
     ISSN-L — registries disagree about which one comes first), else `issn:<first>`; a journal with no
     ISSN is keyed by registry, full normalised title and publisher, so two different journals whose
     names merely share a prefix stay apart. None when there is nothing to key on."""
-    clean = [i for i in (normalize_issn(x) for x in issns if x) if i]
+    clean = [i for i in (normalize_issn(x) for x in issns if x is not None) if i]
     if clean:
         preferred = f"issn:{clean[0]}"
         return (issn_map.identity_for(clean, preferred) if issn_map is not None else preferred), clean
@@ -58,14 +58,15 @@ def crossref_journals(client: Client, *, limit: int | None = None, rows: int = 1
     cursor, seen, skipped = "*", 0, skipped if skipped is not None else []
 
     def build(j: Obj) -> dict | None:
-        issns = [x.get("value") for x in plain(j.get("issn-type")) or []] or plain(j.get("ISSN")) or []
-        identity, clean = venue_identity(issns, "crossref", j.get("title"), j.get("publisher"), issn_map)
+        issns = [text("crossref", x.get("value")) for x in listed("crossref", j, "issn-type")] or listed("crossref", j, "ISSN")
+        title, publisher = text("crossref", j.get("title")), text("crossref", j.get("publisher"))
+        identity, clean = venue_identity(issns, "crossref", title, publisher, issn_map)
         if identity is None:
             return None
-        counts = j.get("counts") or {}
-        return make_record(identity=identity, kind="venue", source_id="crossref", title=j.get("title"), venue=j.get("publisher"),
+        counts = nested("crossref", j, "counts")
+        return make_record(identity=identity, kind="venue", source_id="crossref", title=title, venue=publisher,
                            identifiers={"issn": clean[0]} if clean else {}, links=[],
-                           extra={"issns": clean, "subjects": [s.get("name") for s in plain(j.get("subjects")) or [] if s.get("name")],
+                           extra={"issns": clean, "subjects": [n for n in (text("crossref", s.get("name")) for s in listed("crossref", j, "subjects")) if n],
                                   "works_count": counts.get("total-dois"), "current_dois": counts.get("current-dois")},
                            raw=j)
 
@@ -132,15 +133,16 @@ def datacite_repositories(client: Client, *, limit: int | None = None, size: int
         data = j["data"]
 
         def build(d: Obj) -> dict | None:
-            a = d.get("attributes") or {}
-            symbol = str(a.get("symbol") or d.get("id") or "").lower()
+            a = nested("datacite", d, "attributes")
+            symbol = (text("datacite", a.get("symbol")) or text("datacite", d.get("id")) or "").lower()
             if not symbol:
                 return None
+            re3data, url = text("datacite", a.get("re3data")), text("datacite", a.get("url"))
             return make_record(identity=f"repository:datacite:{symbol}", kind="repository", source_id="datacite", title=a.get("name"),
-                               identifiers={"datacite_client": symbol, **({"re3data": a["re3data"]} if a.get("re3data") else {})},
-                               links=[u for u in (a.get("url"),) if u],
-                               extra={"description": (a.get("description") or "")[:1000], "client_type": a.get("clientType"),
-                                      "subjects": [s.get("name") if isinstance(s, dict) else str(s) for s in plain(a.get("subjects")) or []],
+                               identifiers={"datacite_client": symbol, **({"re3data": re3data} if re3data else {})},
+                               links=[url] if url else [],
+                               extra={"description": (text("datacite", a.get("description")) or "")[:1000], "client_type": a.get("clientType"),
+                                      "subjects": [s.get("name") if isinstance(s, dict) else text("datacite", s) for s in listed("datacite", a, "subjects")],
                                       "active": a.get("isActive"), "language": a.get("language")},
                                raw=d)
 

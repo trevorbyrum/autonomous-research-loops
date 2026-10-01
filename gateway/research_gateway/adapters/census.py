@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record
-from .base import AdapterError, Client, PayloadError, check, identified, need, plain
+from .base import AdapterError, Client, PayloadError, check, identified, key, listed, need, plain, text
 
 SOURCE_ID = "census"
 SMOKE = {'capability': 'data', 'params': {'dataset': '2022/acs/acs1', 'get': ['NAME'], 'for': 'state:37'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -70,20 +70,21 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
         q = (query or "").lower()
-        entries, listed, named = [], plain(need(SOURCE_ID, resp.json, "dataset")), []
-        for d in listed:
-            path = "/".join(d.get("c_dataset") or [])
-            vintage = d.get("c_vintage")
+        entries, rows, named = [], plain(need(SOURCE_ID, resp.json, "dataset")), []
+        for d in rows:
+            path = "/".join(text(SOURCE_ID, part) or "" for part in listed(SOURCE_ID, d, "c_dataset"))
+            stated = d.get("c_vintage")
+            vintage = key(SOURCE_ID, stated) if stated not in (None, "") else None
             # unvintaged datasets (timeseries/bds and 87 friends) are real: their path IS
             # the dataset id (D-32a finding 6)
             ds = (f"{vintage}/{path}" if vintage else path) if path else None
-            title = d.get("title") or ""
+            title = text(SOURCE_ID, d.get("title")) or ""
             if ds:
                 named.append(ds)
             if not ds or (q and q not in title.lower() and q not in ds.lower()):
                 continue
             entries.append({"id": ds, "label": title, "kind": "dataset", "children": True, "within": ds})
-        identified(SOURCE_ID, listed, named)
+        identified(SOURCE_ID, rows, named)
         page = entries[offset:offset + limit]
         return {"entries": page, "next": str(offset + limit) if len(entries) > offset + limit else None}
     resp = client.get(SOURCE_ID, "catalog", f"https://api.census.gov/data/{within.strip('/')}/variables.json",

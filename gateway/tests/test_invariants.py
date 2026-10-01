@@ -678,6 +678,19 @@ class RegistryLoaders(unittest.TestCase):
                [(second_d, {"data": [self.REPO(3)], "meta": {"totalPages": 2}})], first_d, lambda c: reg.datacite_repositories(c, size=2),
                ["repository:datacite:r.1", "repository:datacite:r.2"], ["repository:datacite:r.3"], 2)
 
+    def records(self, load, first_url, first, rest) -> list:
+        t = FakeTransport()
+        t.add("GET", first_url, body=encode(first))
+        for url, body in rest:
+            t.add("GET", url, body=body)
+        c = Client(broker=Broker({"crossref": RatePolicy(per_second=1000), "datacite": RatePolicy(per_second=1000)}), transport=t, sleep=lambda s: None)
+        out = []
+        try:
+            out = list(load(c))
+        except Exception:   # the loader's failure is judged by run_load
+            pass
+        return out
+
     def run_load(self, load, first_url, first, rest):
         t = FakeTransport()
         t.add("GET", first_url, body=encode(first))
@@ -696,6 +709,7 @@ class RegistryLoaders(unittest.TestCase):
         wrong, runs = [], 0
         for name, page, holder, rest, url, load, ids_here, ids_next, per_page in self.cases():
             valid = json.loads(json.dumps(page))
+            baseline = {r["identity"]: r for r in self.records(load, url, valid, rest)}
             members_at = [holder + (i,) for i in range(len(get(valid, holder)))]
             for path, values in positions(Op("", "", {}, (), tuple(ids_here), levels=(Level(holder),)), valid, [Member(p, i) for p, i in zip(members_at, ids_here)]):
                 for value in values:
@@ -705,6 +719,13 @@ class RegistryLoaders(unittest.TestCase):
                         wrong.append((name, path, show(value), f"(d) the load raised {type(failed).__name__}: {str(failed)[:80]}"))
                         continue
                     inside = len(path) > len(holder) and path[:len(holder)] == holder
+                    if inside and failed is None and value is not MISSING and value is not None and kind_of(value) != kind_of(get(valid, path)):
+                        for rec in self.records(load, url, put(valid, path, value), rest):   # (b) a wrong-kind value inside a kept record says nothing less
+                            was = baseline.get(rec["identity"])
+                            if was is None:
+                                wrong.append((name, path, show(value), f"(b) a record the valid answer never had: {rec['identity']!r}"))
+                            elif any(f not in VOLATILE and emptier(w, rec.get(f), value) for f, w in was.items()):
+                                wrong.append((name, path, show(value), f"(b) {rec['identity']} says less than it did"))
                     items = (put(valid, path, value) if path else value)
                     held = safe_get(items, holder)
                     shorter = isinstance(held, list) and len(held) < per_page

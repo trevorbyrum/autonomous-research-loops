@@ -125,8 +125,8 @@ class Shapes(unittest.TestCase):
         skipped = []
         recs = list(registries.crossref_journals(c, skipped=skipped))
         self.assertEqual([r["identity"] for r in recs], ["issn:9999-9991"], "nothing to key on → skipped; malformed → skipped")
-        self.assertEqual(len(skipped), 1, "only the row that raised is reported")
-        self.assertIn("AttributeError", skipped[0])
+        self.assertEqual(len(skipped), 2, "the two rows that were there and malformed are reported (an ISSN that is no list; an issn-type that is no list)")
+        self.assertTrue(all("PayloadError" in why for why in skipped), skipped)
         self.assertIsNone(openalex_snapshot.record_from("junk"))
         odd = openalex_snapshot.record_from({"id": "https://openalex.org/S2", "issn": "notalist", "display_name": "x"})
         self.assertEqual((odd["identity"], odd["issns"]), ("venue:openalex:s2", []))

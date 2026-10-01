@@ -940,6 +940,11 @@ MUTANTS: list[Mutant] = [
            (TP + "Records.test_a_field_of_the_wrong_kind_is_unreadable_whatever_its_truth", TP + "Records.test_one_member_whose_title_is_a_number_is_dropped_and_counted_not_raised",
             harness("d", "crossref.find (a full page)"), harness("d", "datacite.find (a full page)")),
            (TP + "Records.test_control_the_fields_that_are_right_are_kept_and_nothing_is_nothing",)),
+    Mutant("R9-loader-issn-falsy-filter", "a registry row's ISSN that is false or 0 is filtered out as nothing, and the journal is keyed by its title instead",
+           "research_gateway/harvest/registries.py", "    clean = [i for i in (normalize_issn(x) for x in issns if x is not None) if i]",
+           "    clean = [i for i in (normalize_issn(x) for x in issns if x) if i]",
+           (HX + "RegistryLoaders.test_a_loader_that_cannot_read_where_to_go_on_fails_and_never_finishes_early",),
+           (TP + "Loaders.test_crossref_journals_control_a_cursor_that_is_read_continues_and_a_short_page_ends",)),
     # R8-3: the closed import inventory
     Mutant("R9-star-import-in-an-adapter", "an adapter imports `*` from the client, so the door check cannot see what it uses",
            "research_gateway/adapters/opencitations.py", "from .base import OMIT, Client, check, first_member, members, need, text", "from .base import *",

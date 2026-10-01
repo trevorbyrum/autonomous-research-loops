@@ -16,8 +16,8 @@ import unittest
 from datetime import datetime, timezone
 
 from research_gateway import adapters
-from research_gateway.adapters import bea, census, huggingface, socrata
-from research_gateway.adapters.base import (Client, FakeTransport, Members, PayloadError, counts_nothing, field, identified, key, listed, nested,
+from research_gateway.adapters import bea, census, harvard_dataverse as dv, huggingface, socrata
+from research_gateway.adapters.base import (Client, FakeTransport, Members, Obj, PayloadError, counts_nothing, field, identified, key, listed, nested,
                                             offset_after, optional, text, token, total)
 from research_gateway.core import canonical, identity as ident, router as R, sdmx
 from research_gateway.core.broker import Broker, RatePolicy
@@ -288,6 +288,63 @@ class DatasetFiles(unittest.TestCase):
         c = Client(broker=Broker({"govinfo": RatePolicy(per_second=1000)}), transport=t, secrets=lambda n, f=None: "k")
         out = R.execute(R.Router(read_seed(), adapters.load_all()), {"request_type": "fetch", "target": "govinfo:CRPT-1"}, c)
         self.assertEqual([r["identity"] for r in out["records"]], ["govinfo:CRPT-1#pdf", "govinfo:CRPT-1#txt"])
+
+
+class DatasetRecords(unittest.TestCase):
+    """harvard_dataverse.dataset_record and search_record: no route of the router reaches the first (a DOI goes to its registration agency's
+    resolver, never to Dataverse; qdr's resolve is the same code), so what they do with a container of the wrong kind is stated here directly."""
+
+    @staticmethod
+    def dataset(**version) -> Obj:
+        body = dataverse([{"label": "a.csv", "restricted": False, "dataFile": {"id": 1, "filename": "a.csv"}}])["data"]
+        body["latestVersion"]["metadataBlocks"]["citation"]["fields"].append(
+            {"typeName": "author", "value": [{"authorName": {"value": "Bloom, Nicholas"}}, {"authorName": {"value": "Van Reenen, John"}}]})
+        body["latestVersion"].update(version)
+        return view(body)
+
+    def record(self, d):
+        return dv.dataset_record(dv.BASE, "harvard_dataverse", d)
+
+    def test_a_dataset_is_read_whole(self):
+        r = self.record(self.dataset())
+        self.assertEqual((r["identity"], r["title"], r["authors"], r["license"], r["file_count"]),
+                         ("doi:10.7910/dvn/oy6cbk", "WMS", ["Bloom, Nicholas", "Van Reenen, John"], "CC0 1.0", 1))
+
+    def test_a_container_that_is_there_and_the_wrong_kind_is_unreadable_not_empty(self):
+        for version in (False, 0, "", [], "x"):
+            with self.subTest(latestVersion=version), self.assertRaises(PayloadError):
+                body = self.dataset()._d
+                body["latestVersion"] = version
+                self.record(view(body))
+        for what, wrong in (("metadataBlocks", True), ("metadataBlocks", []), ("metadataBlocks", {"citation": 5}),
+                            ("metadataBlocks", {"citation": {"fields": {}}}), ("metadataBlocks", {"citation": {"fields": False}})):
+            with self.subTest(what=what, wrong=wrong), self.assertRaises(PayloadError):
+                self.record(self.dataset(**{what: wrong}))
+        for wrong in ({}, "x", 5, [5], [{"authorName": 5}], [{"authorName": {"value": 5}}], [7]):
+            with self.subTest(author=wrong), self.assertRaises(PayloadError):
+                d = self.dataset()
+                d["latestVersion"]["metadataBlocks"]["citation"]["fields"]._items[-1]["value"] = wrong
+                self.record(d)
+
+    def test_nothing_where_a_container_may_be_left_out_is_nothing(self):
+        for version in (None, {}):
+            d = self.dataset()
+            body = d._d
+            body["latestVersion"] = version
+            r = self.record(view(body))
+            self.assertEqual((r["title"], r["authors"], r["file_count"]), (None, [], 0))
+
+    def test_the_file_count_is_unknown_when_the_files_cannot_be_read_and_never_zero(self):
+        for files, want in ((False, None), ({}, None), ("x", None), ([], 0), (None, 0), ([7, {"label": "a"}], 2)):
+            with self.subTest(files=files):
+                self.assertEqual(self.record(self.dataset(files=files))["file_count"], want)
+
+    def test_a_search_hit_whose_lists_are_not_lists_is_unreadable(self):
+        hit = {"name": "N", "global_id": "doi:10.7910/DVN/X1", "authors": ["B"], "subjects": ["S"], "published_at": "2021-05-01T00:00:00Z", "fileCount": 2}
+        self.assertEqual(dv.search_record(dv.BASE, "harvard_dataverse", view(hit))["identity"], "doi:10.7910/dvn/x1")
+        for name, wrong in (("authors", 5), ("authors", {}), ("authors", "B"), ("subjects", False), ("subjects", ""), ("global_id", 5), ("description", [1])):
+            with self.subTest(name=name, wrong=wrong), self.assertRaises(PayloadError):
+                dv.search_record(dv.BASE, "harvard_dataverse", view({**hit, name: wrong}))
 
 
 class StatisticalAnswers(unittest.TestCase):
