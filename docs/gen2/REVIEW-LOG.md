@@ -764,3 +764,22 @@ R9-4 confirmed: the old harness passes 6 of 7 router-output mutants, and the new
 - R9-5: the per-flow browse.
 
 `publisher` is now mapped. The `openml.fetch` mixed-member failure was the harness generator's error, per OpenML's `Api_data.php`, and the generator was fixed. Sent to a fresh Astra, which is also asked to judge the oracle's independence in substance.
+
+## 2026-10-01 — 2b-repair-10 re-review (Astra, xhigh) — BLOCK, narrower
+Full report: `~/work/research-loops-public/private/reviews/gen2-2b-repair-10-astra-review-20261001.md`; evidence in `private/evidence/astra-2b-repair-10/`. Boundary PASS at PID 1040. Gate B PASS.
+
+**ROOT-CAUSE, accepted:**
+- R9-1: the RFC 3986 grammar. 330,513-string differential reproduced; all 41 §5.4 examples pass.
+- R9-3: the import closure. The `core.cache.json` mutant is refused.
+- R9-4: the oracle's field expectations. The title-erasing mutant now produces 170 violations, and all 10 router mutants are caught.
+- Typed reading at the corrected sites, publisher mapping, the per-structure dimension reader, and execution-registry accounting.
+- The oracle is judged substantively independent and source-based but not a flawless clean room: it saw the old URI regex and changed some expectations after observation, each documented. 30 vectors and 17 fields were spot-checked as supported.
+
+**Blocks:**
+- **R10-1:** `text(a) or text(b)` short-circuits validation of a present malformed fallback. DataCite `rights` and BEA `Description` are reproduced, and the contract text wrongly exempts the pattern.
+- **R10-2:** the BIS and ECB browse takes the structure reference from `flows[0]` and labels it with the requested flow, fabricating templates for non-first and absent flows (6 failures). The oracle always browsed `flows[0]`.
+- **R10-3:** the original BIS `identified(...)` deletion mutant survives all 501 harness and 30 oracle tests.
+
+**Evidence corrections required:** 63 populated variants, not 61; independence claims to carry their qualifications; the OpenML documentary explanation to be narrowed.
+
+**Orchestrator routing:** the R10-2 and R10-3 gaps are oracle gaps, so the authorship split is kept. 11a: the independent oracle author adds fallback-pair, flow-binding and unnamed-flow cases from the specifications. 11b: a separate coder fixes against them.
