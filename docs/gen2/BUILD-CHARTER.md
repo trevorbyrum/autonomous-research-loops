@@ -48,5 +48,6 @@ Both are re-indexed from the reviewed commit before every Gate D and are availab
 - Machine-checkable module-boundary graph in CI from the first commit; a boundary-graph violation fails the build.
 - Jev is not a build dependency: everything must run and be testable with the decision layer disabled.
 - No personal data in any live network call. Coders and reviewers never send the operator's email, name, accounts or credentials to a third-party service (for example a provider's contact or `mailto` field); use a placeholder or skip the live check. Tests use fixtures and fakes only.
+- **Evidence is durable.** Coders and reviewers write probes, captures, fetched documentation and logs to `~/work/research-loops-public/private/evidence/<task-or-review>/`, never only to `/tmp` (a host reboot on 2026-10-01 wiped `/tmp` and lost 2b-repair-7's provider captures and the prior review's probes). Throwaway databases and scratch trees may stay in `/tmp`.
 - No merging to main, ever, without the operator. No touching gen-1 runtime state, live topics, or the running gateway service.
 - Loop hygiene: orchestrator wakes on agent notifications with a fallback timer; every wake updates BUILD-STATE.md; a stalled agent (no progress across two wakes) is nudged once, then reported to the operator.
