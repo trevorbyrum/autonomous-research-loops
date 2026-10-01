@@ -35,7 +35,7 @@ from research_gateway.harvest import openalex_snapshot, registries
 from tests import invariant_ops as ops
 from tests import test_invariants as inv
 from tests.invariant_ops import corrupt_route
-from tests.oracle import coverage, loaders, mutants, variants, xml_ops
+from tests.oracle import coverage, fallbacks, flow_cases, loaders, mutants, variants, xml_ops
 from tests.oracle import expected_records as ex
 from tests.oracle import link_vectors as lv
 
@@ -44,6 +44,7 @@ ALL_OPS = {**inv.ALL, **{op.name: op for op in ops._POPULATED["outside the harne
 HF = ops.HF_FIND_MORE
 HF_PAGE = corrupt_route(HF).body
 XML = xml_ops.build(ops)
+FLOW = flow_cases.build(ops)
 # what the answer says about a record that is not a field of its own: provenance and raw copies hold every provider value
 NOT_THE_RECORD = ("raw", "provenance", "sources", "retrieved_at", "metadata_license", "freshness_lag", "permissions", "download_request")
 
@@ -337,6 +338,224 @@ class Catalogues(unittest.TestCase):
         self.assertEqual((lane.get("coverage"), lane.get("count"), len(lane.get("retrieved") or [])), ("searched_ok", 2, 2), str(lane))
 
 
+
+# ------------------------------------------------------------------ R10-1: a malformed alternative beside a valid preferred value
+def lane_of(op, body):
+    return inv.run(op, body)
+
+
+def unreadable_problems(pair, out, lane, shown) -> list:
+    """What the contract requires of a present malformed supported field, by the pair's scope; the list of what the answer did instead."""
+    found = []
+    base = pair.op
+    if pair.scope == "member":
+        ids = [r.identity for r in ex.EXPECTED[base]]
+        kept = [r.get("identity") for r in out.get("records") or []]
+        if ids[0] in kept:
+            found.append(f"{shown}: the member {ids[0]} was kept (lane {lane.get('coverage')}/{lane.get('completeness')}/{lane.get('error_class')}, count {lane.get('count')})")
+        got = (lane.get("completeness"), lane.get("error_class"), lane.get("count"))
+        if got != ("partial", "payload_invalid", len(ids) - 1):
+            found.append(f"{shown}: the lane is {got}, not a partial lower bound of {len(ids) - 1} (payload_invalid)")
+        if lane.get("retrieved") != ids[1:]:
+            found.append(f"{shown}: the lane retrieved {lane.get('retrieved')}, the readable members are {ids[1:]}")
+    else:
+        if (lane.get("coverage"), lane.get("error_class"), lane.get("completeness")) != ("provider_unavailable", "payload_invalid", "unobserved"):
+            found.append(f"{shown}: the answer was {lane.get('coverage')}/{lane.get('completeness')}/{lane.get('error_class')}, not an unreadable one (provider_unavailable, "
+                         "payload_invalid, unobserved)")
+        if "count" in lane:
+            found.append(f"{shown}: an unreadable answer has no count, and this one counts {lane.get('count')}")
+        if out.get("records"):
+            found.append(f"{shown}: records came back: {[r.get('identity') for r in out['records']]}")
+        if pair.scope == "whole" and out.get("entries"):
+            found.append(f"{shown}: the catalogue kept {len(out['entries'])} entries")
+    return found
+
+
+class FallbackAlternatives(unittest.TestCase):
+    """R10-1. See tests/oracle/fallbacks.py: both fields populated; A alone malformed (the alternate is read); A malformed beside a valid P; P malformed beside a valid A."""
+
+    def op_body(self, pair):
+        op = ALL_OPS[pair.op]
+        return op, corrupt_route(op).body
+
+    def test_the_pairs_are_documented_and_their_operations_exist(self):
+        self.assertGreaterEqual(len(fallbacks.NAMED), 4)
+        for pair in fallbacks.PAIRS:
+            with self.subTest(pair=pair.name):
+                self.assertIn(pair.op, ALL_OPS)
+                self.assertTrue(pair.doc.strip())
+                self.assertTrue(pair.op in ex.EXPECTED or pair.op in ex.CATALOG_ENTRIES)
+
+    def test_with_both_populated_and_valid_the_answer_is_read_whole(self):
+        """The control: nothing is wrong with the answer, so nothing is dropped."""
+        for pair in fallbacks.PAIRS:
+            op, body = self.op_body(pair)
+            with self.subTest(pair=pair.name):
+                out, lane = lane_of(op, pair.both_valid(body))
+                self.assertEqual(lane.get("coverage"), "searched_ok", f"{pair.name}: {lane}")
+                self.assertNotEqual(lane.get("error_class"), "payload_invalid", f"{pair.name}: {lane}")
+                if pair.scope == "whole":
+                    self.assertEqual([e.get("id") for e in out.get("entries") or []], list(ex.CATALOG_ENTRIES[pair.op]))
+                else:
+                    self.assertEqual(lane.get("retrieved"), [r.identity for r in ex.EXPECTED[pair.op]])
+
+    def test_the_alternate_alone_is_read_when_it_is_malformed(self):
+        """Astra's isolation: with the preferred field absent, a malformed alternate IS rejected; so the gateway reads it, and a pair that fails the next test fails it
+        because of the short circuit and not because the field is unsupported."""
+        for pair in fallbacks.PAIRS:
+            op, body = self.op_body(pair)
+            for wrong in pair.wrong:
+                with self.subTest(pair=pair.name, alternate=repr(wrong)):
+                    problems = unreadable_problems(pair, *lane_of(op, pair.with_(body, p=fallbacks.ABSENT, a=wrong)), f"{pair.a[-1]}={wrong!r} (alone)")
+                    self.assertEqual(problems, [], problems)
+
+    def test_a_malformed_alternate_beside_a_valid_preferred_value_is_not_ignored(self):
+        for pair in fallbacks.PAIRS:
+            op, body = self.op_body(pair)
+            for wrong in pair.wrong:
+                with self.subTest(pair=pair.name, alternate=repr(wrong)):
+                    problems = unreadable_problems(pair, *lane_of(op, pair.with_(body, a=wrong)),
+                                                   f"{pair.p[-1]}={pair.p_valid!r} valid, {pair.a[-1]}={wrong!r}")
+                    self.assertEqual(problems, [], f"[{pair.doc}] " + "; ".join(problems))
+
+    def test_a_malformed_preferred_value_beside_a_valid_alternate_is_not_ignored(self):
+        for pair in fallbacks.PAIRS:
+            op, body = self.op_body(pair)
+            for wrong in pair.wrong:
+                with self.subTest(pair=pair.name, preferred=repr(wrong)):
+                    problems = unreadable_problems(pair, *lane_of(op, pair.with_(body, p=wrong)),
+                                                   f"{pair.p[-1]}={wrong!r}, {pair.a[-1]}={pair.a_valid!r} valid")
+                    self.assertEqual(problems, [], f"[{pair.doc}] " + "; ".join(problems))
+
+
+# ------------------------------------------------------------------ R10-2 and R10-3: which flow a browse answers; a listing that names no flow
+def strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for k, v in value.items():
+            yield from strings(k)
+            yield from strings(v)
+    elif isinstance(value, (list, tuple)):
+        for x in value:
+            yield from strings(x)
+
+
+def templates(value):
+    """Every `research_data` parameter map in the value: the documented parameters of an SDMX data request are `dataflow` and `key` (the harness's `ecb.data` request)."""
+    if isinstance(value, dict):
+        if "dataflow" in value and "key" in value:
+            yield value
+        for v in value.values():
+            yield from templates(v)
+    elif isinstance(value, (list, tuple)):
+        for x in value:
+            yield from templates(x)
+
+
+def flow_outcome(case):
+    try:
+        return inv.run(case.op, None)
+    except Exception as e:  # noqa: BLE001  a raise is not a successful answer either
+        return {"entries": [], "records": []}, {"coverage": "provider_unavailable", "completeness": "unobserved", "raised": str(e)}
+
+
+class FlowBinding(unittest.TestCase):
+    """R10-2. See tests/oracle/flow_cases.py."""
+
+    def test_the_answer_is_about_the_flow_asked_for_wherever_it_stands(self):
+        for case in FLOW.values():
+            if case.kind not in ("bind", "versions"):
+                continue
+            with self.subTest(case=case.name):
+                out, lane = flow_outcome(case)
+                entries = out.get("entries") or []
+                self.assertEqual([e.get("id") for e in entries], [case.requested], f"{case.name}: {lane}")
+                entry = entries[0]
+                text = list(strings(entry))
+                self.assertTrue(any(case.flow_name in t for t in text), f"{case.name}: the entry does not carry the name {case.flow_name!r}: {text}")
+                for oid, oname, _ in case.others:
+                    self.assertFalse(oname and any(oname in t for t in text), f"{case.name}: the entry carries the name of another flow, {oname!r}")
+                    self.assertNotIn(oid, text, f"{case.name}: the entry names another flow, {oid}")
+                lists = list(string_lists(entry))
+                self.assertIn(list(case.dims), lists, f"{case.name}: the dimensions of {case.requested}'s own structure are {list(case.dims)}; the entry's lists are {lists}")
+                for oid, _, odims in case.others:
+                    self.assertNotIn(list(odims), lists, f"{case.name}: the entry holds the dimensions of {oid} ({list(odims)})")
+                found = list(templates(entry))
+                self.assertTrue(found, f"{case.name}: the entry carries no research_data request template")
+                for t in found:
+                    self.assertEqual(t["dataflow"], case.requested, f"{case.name}: a template for {t['dataflow']!r} under {case.requested!r}")
+                    self.assertEqual(len(str(t["key"]).split(".")), len(case.dims), f"{case.name}: key {t['key']!r} for {len(case.dims)} dimensions")
+
+    def test_a_flow_that_cannot_be_bound_yields_no_entry_and_no_template(self):
+        for case in FLOW.values():
+            if not case.fails_closed or case.kind in ("unnamed", "unnamed-empty"):
+                continue
+            with self.subTest(case=case.name):
+                out, lane = flow_outcome(case)
+                self.assertFalse(out.get("entries"), f"{case.name} ({case.why}): entries {[e.get('id') for e in out.get('entries') or []]}")
+                self.assertEqual(list(templates(out)), [], f"{case.name} ({case.why}): a template for a flow that is not there")
+                self.assertNotEqual(lane.get("completeness"), "complete", f"{case.name} ({case.why}): {lane}")
+                self.assertNotIn(lane.get("coverage"), ("searched_ok", "searched_empty"), f"{case.name} ({case.why}): {lane}")
+                self.assertTrue(lane.get("completeness") == "unobserved" or lane.get("coverage") == "provider_unavailable", f"{case.name}: {lane}")
+                self.assertNotIn("count", lane, f"{case.name}: an answer that observed nothing has no count")
+
+
+class FlowCasesAreConsistent(unittest.TestCase):
+    """The cases' expected answers, derived a second time from the message itself by a reference reader of the SDMX information model (flow_cases.reference_browse)."""
+
+    def test_every_case_expects_what_the_message_says(self):
+        for case in FLOW.values():
+            if case.requested is None:
+                continue
+            with self.subTest(case=case.name):
+                agency = case.sid.upper()
+                state, dims, name = flow_cases.reference_browse(case.op.routes[0].body, agency, case.requested)
+                if case.fails_closed:
+                    self.assertNotEqual(state, "ok", case.name)
+                else:
+                    self.assertEqual((state, dims, name), ("ok", tuple(case.dims), case.flow_name), case.name)
+
+    def test_every_position_of_the_message_is_asked(self):
+        for sid in ("bis", "ecb"):
+            where = {c.why for c in FLOW.values() if c.sid == sid and c.kind == "bind"}
+            self.assertEqual(where, {"requested flow is first", "requested flow is middle", "requested flow is last"})
+            orders = {c.name.split(" of ")[1].split(",")[0] for c in FLOW.values() if c.sid == sid and c.kind == "bind"}
+            self.assertEqual(len(orders), 3, orders)
+
+
+class UnnamedFlows(unittest.TestCase):
+    """R10-3: a listing in which no dataflow has an id is unreadable whole; the same listing with its ids is read."""
+
+    def test_a_listing_that_names_no_flow_is_unobserved_with_no_count(self):
+        for case in FLOW.values():
+            if case.kind not in ("unnamed", "unnamed-empty"):
+                continue
+            with self.subTest(case=case.name):
+                out, lane = flow_outcome(case)
+                self.assertEqual((lane.get("coverage"), lane.get("error_class"), lane.get("completeness")), ("provider_unavailable", "payload_invalid", "unobserved"),
+                                 f"{case.name}: {lane}")
+                self.assertNotIn("count", lane, f"{case.name}: an unreadable listing has no count, never one called None: {lane.get('retrieved')}")
+                self.assertFalse(out.get("entries"), f"{case.name}: entries {out.get('entries')}")
+                self.assertFalse(out.get("records"))
+
+    def test_the_readable_control_is_read(self):
+        for case in FLOW.values():
+            if case.kind != "control":
+                continue
+            with self.subTest(case=case.name):
+                out, lane = flow_outcome(case)
+                self.assertEqual((lane.get("coverage"), lane.get("completeness")), ("searched_ok", "complete"), f"{case.name}: {lane}")
+                self.assertEqual([e.get("id") for e in out.get("entries") or []], list(case.entries))
+                self.assertEqual(lane.get("count"), len(case.entries))
+
+    def test_the_unnamed_cases_differ_from_the_control_only_in_the_ids(self):
+        for sid in ("bis", "ecb"):
+            unnamed = FLOW[f"{sid}.catalog (a listing whose every dataflow has no id)"].op.routes[0].body
+            control = FLOW[f"{sid}.catalog (the same listing with its ids: the control)"].op.routes[0].body
+            self.assertEqual(unnamed, re.sub(r'(<structure:Dataflow) id="[^"]*"', r"\1", control), sid)
+
+
 # ------------------------------------------------------------------ the Tier 0 registry loaders
 def loader_client(sid: str, url: str, body):
     t = FakeTransport()
@@ -376,6 +595,9 @@ class RegistryLoaders(unittest.TestCase):
 
 
 # ------------------------------------------------------------------ R9-5: coverage by execution
+# the failure modes of the first catalogue cases (tests/oracle/xml_ops.py), by the words of their names; the new ones are flow_cases.FAILURE_MODES
+XML_MODES = {"an HTML challenge page": "an HTML challenge page", "not XML at all": "not XML at all", "an empty body": "an empty body",
+             "a dataflow whose data structure has no dimensions": "a structure with no dimensions"}
 FRESH_PREFIXES = itertools.count(91001)
 LOADER_WATCH = ((registries, "crossref_journals"), (registries, "datacite_repositories"), (openalex_snapshot, "record_from"), (registries, "doaj_journals"))
 
@@ -390,11 +612,12 @@ class ExecutedCoverage(unittest.TestCase):
             cls.rec.watch_loader(module, name) if name != "record_from" else cls.rec.watch_function(module, name)
         for op in ALL_OPS.values():                                    # every operation of the oracle, as its valid answer
             inv.run(op, corrupt_route(op).body)
-        for case in XML.values():                                      # the BIS and ECB cases
-            try:
-                inv.run(case["op"], None)
-            except Exception:  # noqa: BLE001  a case that raises still executed (the catalogue tests judge its outcome)
-                pass
+        cls.mode_outcomes = {}
+        for name, case in XML.items():                                 # the BIS and ECB cases
+            mode = XML_MODES.get(name.split(" (", 1)[1].rstrip(")")) if " (" in name else None
+            cls.execute(case["op"], (name.split(".")[0], mode) if mode else None)
+        for case in FLOW.values():                                     # the flow cases: binding, absent, ambiguous, unnamed
+            cls.execute(case.op, (case.sid, case.kind) if case.kind in flow_cases.FAILURE_MODES else None)
         for which in loaders.EXPECTED:
             loader_records(which)
         # the registration-agency lookup is cached per DOI prefix for the life of the process, so a prefix an earlier test used is not asked again: a DOI under a
@@ -405,6 +628,17 @@ class ExecutedCoverage(unittest.TestCase):
         fresh = replace(base, name=f"datacite.resolve ({doi})", request=ops.request("resolve", identity=f"doi:{doi}"),
                         routes=(ops.Route("GET", f"https://api.datacite.org/dois/{doi}", body, corrupt=True),))
         inv.run(fresh, body)
+
+    @classmethod
+    def execute(cls, op, mode):
+        """Run one case under the recorder and keep what the execution ENDED as, by failure mode: an executed case says the operation ran; the outcome says the mode was exercised."""
+        before = len(cls.rec.executions)
+        try:
+            inv.run(op, None)
+        except Exception:  # noqa: BLE001  a case that raises still executed (the catalogue tests judge its outcome)
+            pass
+        if mode and len(cls.rec.executions) > before:
+            cls.mode_outcomes.setdefault(mode, []).append((op.name, cls.rec.executions[before]))
 
     @classmethod
     def tearDownClass(cls):
@@ -418,6 +652,25 @@ class ExecutedCoverage(unittest.TestCase):
                     self.assertGreater(ran, 0, f"{sid}.{kind} [{sel}] is credited by no execution: no request of that kind went through the router and reached the source")
                 else:
                     self.assertEqual(ran, 0, f"{sid}.{kind} [{sel}] is excluded ({reason}) but executed {ran} times: a stale exclusion")
+
+    def test_every_failure_mode_of_a_catalogue_was_exercised_and_ended_unobserved_or_unavailable(self):
+        """Execution accounting says an operation ran (above). It does not say a way for its input to be wrong was tried: R10-3's mutant, the deleted `identified(...)`
+        validation, left every executed operation executed. A failure MODE counts only if a case of that mode ran and the lane ended as an unreadable answer."""
+        for sid in ("bis", "ecb"):
+            for mode in sorted({*XML_MODES.values(), *flow_cases.FAILURE_MODES}):
+                with self.subTest(source=sid, mode=mode):
+                    ran = self.mode_outcomes.get((sid, mode), [])
+                    self.assertTrue(ran, f"{sid}.catalog: no case of the failure mode {mode!r} ran")
+                    for name, execution in ran:
+                        coverage_state, completeness, _count, _error = execution.lanes.get(sid, (None, None, False, None))
+                        self.assertTrue(execution.raised or coverage_state == "provider_unavailable" or completeness == "unobserved",
+                                        f"{name}: ended {coverage_state}/{completeness}, so the mode {mode!r} was not exercised as a failure")
+                        self.assertNotEqual(completeness, "complete", name)
+
+    def test_the_modes_are_named_for_every_case_that_claims_one(self):
+        for case in FLOW.values():
+            if case.fails_closed:
+                self.assertIn(case.kind, flow_cases.FAILURE_MODES, case.name)
 
     def test_bis_and_ecb_catalogues_executed(self):
         for sid in ("bis", "ecb"):

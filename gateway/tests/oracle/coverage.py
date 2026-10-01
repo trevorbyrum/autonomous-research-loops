@@ -51,6 +51,8 @@ class Execution:
     request_type: str
     selector: str
     reached: frozenset                      # the sources whose adapters reached their provider (or the local index) while this request ran
+    lanes: dict = field(default_factory=dict)   # source -> (coverage, completeness, has a count, error_class) of the lane the answer gave it: what the execution ENDED as
+    raised: bool = False
 
 
 @dataclass
@@ -102,12 +104,18 @@ class Recorder:
         def execute_wrapper(router, request, *args, **kwargs):
             with rec._lock:
                 outer, rec._current = rec._current, []
+            out, raised = None, True
             try:
-                return execute(router, request, *args, **kwargs)
+                out = execute(router, request, *args, **kwargs)
+                raised = False
+                return out
             finally:
                 with rec._lock:
                     reached, rec._current = rec._current, outer
-                rec.executions.append(Execution(str(request.get("request_type")), selector(request), frozenset(reached)))
+                lanes = {}
+                for lane in (out.get("lanes") or []) if isinstance(out, dict) else []:
+                    lanes[lane.get("source")] = (lane.get("coverage"), lane.get("completeness"), "count" in lane, lane.get("error_class"))
+                rec.executions.append(Execution(str(request.get("request_type")), selector(request), frozenset(reached), lanes, raised))
         R.execute = execute_wrapper
         return self
 
