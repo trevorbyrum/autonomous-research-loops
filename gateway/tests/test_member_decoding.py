@@ -8,7 +8,7 @@ a time). The property now lives in one place, base.members(), and two checks hol
 
   * OneDecoder reads the SOURCE: code under adapters/ that builds records in a loop, comprehension or
     map of its own, a call to make_record or to a function that builds records outside the arguments of
-    members(), fails here, unless NOT_PROVIDER_MEMBERS lists it with why. What it covers is the
+    members() or first_member(), fails here, unless NOT_PROVIDER_MEMBERS lists it with why. What it covers is the
     provider's members that become records; payload rows of one record (a table's, a series'
     observations) and catalogue entries are not those, and a statement of what the check does not
     see is below.
@@ -16,6 +16,7 @@ a time). The property now lives in one place, base.members(), and two checks hol
     that turns a provider's list into records, one member that is not an object beside readable ones
     costs that member only, the readable ones stand as a partial lower bound, and a member that is
     readable but names nothing to report (a reference with no DOI) is omitted, not counted as lost.
+    The single-result lookups (resolve) read their first result the same way (FirstResult).
     Oracle: the identities the bodies below name, stated here by hand.
 
 The check does not see: a record built by a loop that calls no builder (a dict copied from the
@@ -33,15 +34,18 @@ import unittest
 from pathlib import Path
 
 from research_gateway import adapters
-from research_gateway.adapters import bis, bls, crossref, ecb, harvard_dataverse as dv, kaggle, opencitations, semanticscholar, unpaywall
+from research_gateway.adapters import (bis, bls, core, crossref, doaj, ecb, europepmc, harvard_dataverse as dv, kaggle, openaire,
+                                       opencitations, semanticscholar, unpaywall)
 from research_gateway.adapters.base import AdapterError, Client, FakeTransport, PayloadError
 from research_gateway.core import router as R
 from research_gateway.core.broker import Broker, RatePolicy
 from tests.test_routing import SEED_NO_INDEX
 
 ADAPTERS = Path(__file__).resolve().parents[1] / "research_gateway" / "adapters"
-SIDS = ("crossref", "semanticscholar", "unpaywall", "opencitations", "kaggle", "harvard_dataverse", "bls", "ecb", "bis")
-KEYS = {("kaggle", "username"): "u", ("kaggle", "key"): "k", ("bls", None): "REG"}
+SIDS = ("crossref", "semanticscholar", "unpaywall", "opencitations", "kaggle", "harvard_dataverse", "bls", "ecb", "bis", "core", "doaj",
+        "europepmc", "openaire")
+KEYS = {("kaggle", "username"): "u", ("kaggle", "key"): "k", ("bls", None): "REG", ("core", None): "c",
+        ("openaire", "client_id"): "i", ("openaire", "client_secret"): "s"}
 
 # the loops that build records from data that is not a provider's list of members, by (file, function), each with why
 NOT_PROVIDER_MEMBERS = {
@@ -62,7 +66,7 @@ def builds(node: ast.AST, builders: set[str]) -> bool:
     place that may: they are what it decodes each member with. A nested def is its own function."""
     if isinstance(node, ast.Call):
         name = callee(node)
-        if name == "members":
+        if name in ("members", "first_member"):
             return False
         if name in builders or name == "make_record":
             return True
@@ -308,6 +312,58 @@ class ThroughTheRouter(unittest.TestCase):
     def test_control_readable_rows_are_complete(self):
         _, e = self.lane([OC])
         self.assertEqual((e["coverage"], e["completeness"], e["count"], e.get("error_class")), ("searched_ok", "complete", 1, None))
+
+
+class FirstResult(unittest.TestCase):
+    """A lookup asks for ONE result and reads the first, through the same decoder (base.first_member): a first result
+    that cannot be read is an unreadable answer, never 'not found' and never answered by the result after it, which
+    may be some other work. Oracle: the identity each body names, stated by hand."""
+
+    CORE = {"id": 1, "doi": "10.1038/nature12373", "title": "T"}
+    LOOKUPS = [
+        ("core", lambda c: core.resolve(c, "doi:10.1038/nature12373"), "https://api.core.ac.uk/v3/search/works",
+         lambda ms: {"results": ms}, CORE, "doi:10.1038/nature12373"),
+        ("core full text", lambda c: core.enrich(c, "doi:10.1038/nature12373"), "https://api.core.ac.uk/v3/search/works",
+         lambda ms: {"results": ms}, CORE, "doi:10.1038/nature12373"),
+        ("doaj article", lambda c: doaj.resolve(c, "doi:10.1234/x"), "https://doaj.org/api/search/articles/", lambda ms: {"results": ms},
+         {"id": "d1", "bibjson": {"title": "T", "identifier": [{"type": "doi", "id": "10.1234/x"}]}}, "doi:10.1234/x"),
+        ("doaj journal", lambda c: doaj.resolve(c, "issn:1234-5679"), "https://doaj.org/api/search/journals/", lambda ms: {"results": ms},
+         {"bibjson": {"title": "J", "publisher": {"name": "P"}}}, "issn:1234-5679"),
+        ("europepmc", lambda c: europepmc.resolve(c, "doi:10.1234/x"), "https://www.ebi.ac.uk/europepmc/webservices/rest/search",
+         lambda ms: {"resultList": {"result": ms}}, {"doi": "10.1234/x", "title": "T", "id": "1", "source": "MED"}, "doi:10.1234/x"),
+        ("openaire", lambda c: openaire.resolve(c, "doi:10.1234/x"), "https://api.openaire.eu/graph/v1/researchProducts",
+         lambda ms: {"header": {"numFound": len(ms)}, "results": ms},
+         {"id": "x", "mainTitle": "T", "pids": [{"scheme": "doi", "value": "10.1234/x"}]}, "doi:10.1234/x"),
+    ]
+
+    def outcome(self, call, prefix, body):
+        """('record', identity) | ('none',) | (the exception's type name, its message)."""
+        openaire.reset_token()
+        c, t = client()
+        t.add("POST", "https://aai.openaire.eu/oidc/token", body={"access_token": "tok", "expires_in": 3600})
+        t.add("GET", prefix, body=body)
+        try:
+            out = call(c)
+        except Exception as e:
+            return type(e).__name__, str(e)
+        if isinstance(out, dict) and "items" in out:   # an enrich: its one item, or none
+            out = out["items"][0] if out["items"] else None
+        return ("none",) if out is None else ("record", out["identity"])
+
+    def test_control_a_readable_first_result_is_the_record_and_none_is_not_found(self):
+        for label, call, prefix, body, ok, identity in self.LOOKUPS:
+            with self.subTest(lookup=label):
+                self.assertEqual(self.outcome(call, prefix, body([ok])), ("record", identity))
+                self.assertEqual(self.outcome(call, prefix, body([ok, 7])), ("record", identity), "only the first result is read")
+                self.assertEqual(self.outcome(call, prefix, body([])), ("none",))
+
+    def test_an_unreadable_first_result_is_an_unreadable_answer(self):
+        for label, call, prefix, body, ok, identity in self.LOOKUPS:
+            for members in ([7], [7, ok]):
+                with self.subTest(lookup=label, members=members):
+                    got = self.outcome(call, prefix, body(members))
+                    self.assertEqual(got[0], "PayloadError", got)
+                    self.assertIn("first result cannot be read", got[1])
 
 
 class DataverseDownloadMembership(unittest.TestCase):
