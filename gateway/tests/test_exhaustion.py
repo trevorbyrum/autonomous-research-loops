@@ -12,10 +12,14 @@ adapter's answer says one of three things: a continuation (more may remain), `ex
   * AdapterEnds — each find adapter's own evidence of its end, from provider bodies stated here by
     hand: what continues, what positively ends, and what can only be a lower bound.
   * LocalIndexPages (DB) — the local index pages by offset over one total order, reading one row
-    past the page to know positively whether anything remains; withheld matches.
+    past the page to know positively whether anything remains; withheld matches. Task 2b-repair-7
+    F3-R1: the index changes between pages (a delete, an insert, a reordering, and cached pages
+    before the change) — the continuation names the population it was counted in, so a page of a
+    changed one reads nothing and ends nothing.
   * AssembledPaging (DB) — the running gateway: strictly more converted matches than `limit`, on
     HTTP /v1/find, HTTP MCP, a queued job and the stdio MCP bridge, each continued to the end; the
-    all-fit controls; withheld matches; the engine's GatewayClient paging in its own process.
+    all-fit controls; withheld matches; a changed index on every door; the engine's GatewayClient
+    paging in its own process.
 DB cases need RESEARCH_GATEWAY_DSN and RESEARCH_GATEWAY_TEST_OK=1 (a scratch database).
 """
 from __future__ import annotations
@@ -274,10 +278,10 @@ class LocalIndexPages(unittest.TestCase):
         self.conn.commit()
         self.conn.close()
 
-    def find(self, limit: int, cursors: dict | None = None) -> dict:
+    def find(self, limit: int, cursors: dict | None = None, cache: Cache | None = None) -> dict:
         client = Client(broker=Broker({"openalex_snapshot": RatePolicy(per_second=1000)}), transport=FakeTransport(), conn=self.conn)
         return R.execute(self.router, {"request_type": "find", "query": self.word, "kind": "venue", "limit": limit,
-                                       **({"cursors": cursors} if cursors else {})}, client)
+                                       **({"cursors": cursors} if cursors else {})}, client, cache=cache)
 
     def pages(self, limit: int) -> list[dict]:
         out, cursors = [], None
@@ -292,11 +296,12 @@ class LocalIndexPages(unittest.TestCase):
 
     def test_more_matches_than_the_limit_page_to_the_end(self):
         pages = self.pages(2)
-        self.assertEqual([{k: p.get(k) for k in KEYS} for p in pages],
-                         [{"coverage": "searched_ok", "completeness": "complete", "count": 2, "error_class": None, "next": 2, "exhausted": None},
-                          {"coverage": "searched_ok", "completeness": "complete", "count": 2, "error_class": None, "next": 4, "exhausted": None},
-                          {"coverage": "searched_ok", "completeness": "complete", "count": 1, "error_class": None, "next": None, "exhausted": True}],
+        self.assertEqual([{k: p.get(k) for k in KEYS if k != "next"} for p in pages],
+                         [{"coverage": "searched_ok", "completeness": "complete", "count": 2, "error_class": None, "exhausted": None},
+                          {"coverage": "searched_ok", "completeness": "complete", "count": 2, "error_class": None, "exhausted": None},
+                          {"coverage": "searched_ok", "completeness": "complete", "count": 1, "error_class": None, "exhausted": True}],
                          "two, two, then the one left: the first page is never the end")
+        self.assertTrue(all(continues(p) for p in pages[:2]) and pages[2].get("next") is None, pages)
         read = [i for p in pages for i in p["retrieved"]]
         self.assertEqual(read, self.find(10)["lanes"][0]["retrieved"], "the pages are the one ordering, cut in pages")
         self.assertEqual(sorted(read), self.venues, "every match once")
@@ -313,15 +318,102 @@ class LocalIndexPages(unittest.TestCase):
             venue(cur, f"issn:page-{self.tag}-old", f"{self.word} venue an earlier writer left", current=False)
         self.conn.commit()
         pages = self.pages(2)
-        self.assertEqual([(p["completeness"], p["count"], p["error_class"], p.get("next"), p.get("exhausted")) for p in pages],
-                         [("partial", 2, "payload_invalid", 2, None), ("partial", 2, "payload_invalid", 4, None),
-                          ("partial", 1, "payload_invalid", None, None)],
+        self.assertEqual([(p["completeness"], p["count"], p["error_class"], continues(p), p.get("exhausted")) for p in pages],
+                         [("partial", 2, "payload_invalid", True, None), ("partial", 2, "payload_invalid", True, None),
+                          ("partial", 1, "payload_invalid", False, None)],
                          "each page a lower bound that still continues; the last is not the end while a match is withheld")
         self.assertEqual(sorted(i for p in pages for i in p["retrieved"]), self.venues, "the withheld row is never served")
 
     def test_a_negative_offset_is_no_page(self):
         lane = self.find(2, {"openalex_snapshot": -2})["lanes"][0]
         self.assertEqual((lane["coverage"], lane["completeness"], lane.get("count")), ("provider_unavailable", "unobserved", None))
+
+    # ---- 2b-repair-7 F3-R1: the index changes between pages ----------------------------------------------------
+    def first_page(self, cache: Cache | None = None) -> tuple[dict, list[str]]:
+        """Page one at limit 2, and the order a fresh all-fit query puts the five matches in."""
+        order = self.find(10)["lanes"][0]["retrieved"]
+        first = self.find(2, cache=cache)
+        self.assertEqual(first["lanes"][0]["retrieved"], order[:2])
+        self.assertTrue(continues(first["lanes"][0]))
+        return first, order
+
+    def unindex(self, identity: str) -> None:
+        with self.conn.cursor() as cur:
+            cur.execute("DELETE FROM gateway.index_docs WHERE identity = %s", (identity,))
+        self.conn.commit()
+
+    def outranking(self, identity: str) -> None:
+        """Index `identity` with the term three times: it then ranks ahead of every other match."""
+        with self.conn.cursor() as cur:
+            cur.execute("UPDATE gateway.index_docs SET tsv = to_tsvector('english', %s) WHERE identity = %s",
+                        (f"{self.word} {self.word} {self.word} venue", identity))
+        self.conn.commit()
+
+    def changed(self, out: dict) -> None:
+        """A continuation page asked of a changed index: nothing read, nothing ended, and said why."""
+        (lane,) = out["lanes"]
+        self.assertEqual({k: lane.get(k) for k in KEYS},
+                         {"coverage": "provider_unavailable", "completeness": "unobserved", "count": None,
+                          "error_class": "partial_pagination", "next": None, "exhausted": None}, out["facts"])
+        self.assertEqual(store_admits(lane), [], lane)
+        self.assertNotIn("openalex_snapshot", out.get("next") or {}, "no sentinel: nothing says this lane returned everything")
+        self.assertTrue(any("changed since this search's first page" in f for f in out["facts"]), out["facts"])
+
+    def test_a_match_removed_after_page_one_never_hides_the_one_after_it(self):
+        """Astra's reproduction (2b-repair-6 review, F3-R1): page one reads the first two of five
+        matches; the first is then removed from the index. Counted again, offset 2 starts one match
+        later, so the third match of the order page one cut — still a converted match — would never
+        be returned, and the last page would say the lane had returned everything."""
+        first, order = self.first_page()
+        self.unindex(order[0])
+        self.assertIn(order[2], self.find(10)["lanes"][0]["retrieved"], "the match an offset would pass over still matches")
+        self.changed(self.find(2, first["next"]))
+        again = self.pages(2)   # the search asked again from its first page: every remaining match, once
+        self.assertEqual(sorted(i for p in again for i in p["retrieved"]), sorted(order[1:]))
+        self.assertTrue(again[-1]["exhausted"])
+
+    def test_a_match_inserted_ahead_of_the_offset_is_never_passed_over(self):
+        first, order = self.first_page()
+        newcomer = f"issn:page-{self.tag}-new"
+        with self.conn.cursor() as cur:
+            venue(cur, newcomer, f"{self.word} {self.word} {self.word} venue")
+        self.conn.commit()
+        self.assertEqual(self.find(10)["lanes"][0]["retrieved"][0], newcomer, "it ranks ahead of page one's matches")
+        self.changed(self.find(2, first["next"]))
+
+    def test_a_match_reordered_ahead_of_the_offset_is_never_passed_over(self):
+        """The same five matches, in another order: the last now ranks first, so offset 2 would repeat
+        page one's second match and never reach the moved one — membership alone does not bind an offset."""
+        first, order = self.first_page()
+        self.outranking(order[-1])
+        now = self.find(10)["lanes"][0]["retrieved"]
+        self.assertEqual((sorted(now), now[0]), (sorted(order), order[-1]))
+        self.changed(self.find(2, first["next"]))
+
+    def test_cached_pages_never_splice_two_populations(self):
+        """Pages one and two are answered and cached; the index then changes. Asked again, both are
+        replayed from the cache as the earlier dispatch's answers, with the earlier continuations —
+        and page three, which only the changed index can answer, is asked with the population page
+        one counted in, so it reads nothing and ends nothing."""
+        cache = Cache()
+        first, order = self.first_page(cache)
+        replayed = self.find(2, cache=cache)
+        self.assertEqual((replayed.get("cache_hit"), replayed["next"]), (True, first["next"]))
+        second = self.find(2, first["next"], cache=cache)   # control: unchanged, a fresh page after a cached one continues
+        self.assertEqual((second.get("cache_hit"), second["lanes"][0]["retrieved"]), (None, order[2:4]))
+        self.assertTrue(continues(second["lanes"][0]))
+        self.unindex(order[0])
+        for cursors, page in ((None, first), (first["next"], second)):
+            again = self.find(2, cursors, cache=cache)
+            self.assertEqual((again.get("cache_hit"), again["lanes"][0]["retrieved"], again["next"]),
+                             (True, page["lanes"][0]["retrieved"], page["next"]))
+        self.changed(self.find(2, second["next"], cache=cache))
+        self.assertIsNone(self.find(2, second["next"], cache=cache).get("cache_hit"), "an unread page is never cached")
+
+
+def continues(lane: dict) -> bool:
+    """The lane handed back a continuation of its own — never the exhausted sentinel."""
+    return isinstance(lane.get("next"), str) and lane["next"] != R.EXHAUSTED_CURSOR
 
 
 ENGINE = """
@@ -346,13 +438,18 @@ class AssembledPaging(unittest.TestCase):
         self.url = f"http://127.0.0.1:{self.server.server_port}"
         self.addCleanup(self.cleanup)
         self.word = f"doorpage{self.tag}"
-        self.venues = sorted(ident.canonical(f"issn:door-{self.tag}-{n}") for n in range(5))
+        self.venues = self.five(self.word)
+
+    def five(self, word: str) -> list[str]:
+        """Five converted venues matching `word`, written through the harvest's own writer."""
+        venues = sorted(ident.canonical(f"issn:{word}-{self.tag}-{n}") for n in range(5))
         with db.connect() as conn:
             with conn.cursor() as cur:
-                for n, identity in enumerate(self.venues):
-                    index.upsert(cur, make_record(identity=identity, kind="venue", source_id="doaj", title=f"{self.word} venue {n}",
+                for n, identity in enumerate(venues):
+                    index.upsert(cur, make_record(identity=identity, kind="venue", source_id="doaj", title=f"{word} venue {n}",
                                                   license="CC BY", raw={}), "doaj")
             conn.commit()
+        return venues
 
     def cleanup(self):
         self.server.shutdown()
@@ -369,9 +466,9 @@ class AssembledPaging(unittest.TestCase):
         with urllib.request.urlopen(req, timeout=30) as r:
             return json.load(r)
 
-    def door(self, name: str, limit: int, cursors: dict | None) -> dict:
+    def door(self, name: str, limit: int, cursors: dict | None, word: str | None = None) -> dict:
         """One find page through the named door."""
-        args = {"query": self.word, "kind": "venue", "limit": limit, **({"cursors": cursors} if cursors else {})}
+        args = {"query": word or self.word, "kind": "venue", "limit": limit, **({"cursors": cursors} if cursors else {})}
         call = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "research_find", "arguments": args}}
         if name == "http":
             return answer(self.post("/v1/find", args))
@@ -412,12 +509,12 @@ class AssembledPaging(unittest.TestCase):
             with self.subTest(name):
                 pages = self.pages(name, limit)
                 sizes = [limit] * (5 // limit) + ([5 % limit] if 5 % limit else [])
-                self.assertEqual([(lane["coverage"], lane["completeness"], lane["count"], lane.get("next"), lane.get("exhausted"))
+                self.assertEqual([(lane["coverage"], lane["completeness"], lane["count"], continues(lane), lane.get("exhausted"))
                                   for lane, _ in pages],
-                                 [("searched_ok", "complete", n, limit * (i + 1) if i < len(sizes) - 1 else None,
-                                   None if i < len(sizes) - 1 else True) for i, n in enumerate(sizes)],
+                                 [("searched_ok", "complete", n, i < len(sizes) - 1, None if i < len(sizes) - 1 else True)
+                                  for i, n in enumerate(sizes)],
                                  "each page but the last continues; only the last, holding what was left, is exhausted")
-                self.assertEqual(pages[0][1]["next"], {"openalex_snapshot": limit}, "the first page's continuation, never the sentinel")
+                self.assertEqual(pages[0][1]["next"], {"openalex_snapshot": pages[0][0]["next"]}, "the first page's continuation, never the sentinel")
                 self.assertEqual(pages[-1][1]["next"], {"openalex_snapshot": "exhausted"})
                 read = [i for lane, _ in pages for i in lane["retrieved"]]
                 self.assertEqual(sorted(read), self.venues, "every converted match, each once")
@@ -437,13 +534,33 @@ class AssembledPaging(unittest.TestCase):
                 venue(cur, identity, f"{self.word} venue an earlier writer left", current=False)
             conn.commit()
         pages = self.pages("http", 2)
-        self.assertEqual([(lane["completeness"], lane["count"], lane.get("error_class"), lane.get("next"), lane.get("exhausted"))
+        self.assertEqual([(lane["completeness"], lane["count"], lane.get("error_class"), continues(lane), lane.get("exhausted"))
                           for lane, _ in pages],
-                         [("partial", 2, "payload_invalid", 2, None), ("partial", 2, "payload_invalid", 4, None),
-                          ("partial", 1, "payload_invalid", None, None)])
+                         [("partial", 2, "payload_invalid", True, None), ("partial", 2, "payload_invalid", True, None),
+                          ("partial", 1, "payload_invalid", False, None)])
         self.assertNotIn("openalex_snapshot", pages[-1][1].get("next") or {}, "no sentinel while a match is withheld")
         self.assertEqual(sorted(i for lane, _ in pages for i in lane["retrieved"]), self.venues)
         self.assertTrue(all("1 matching stored record(s) withheld" in " ".join(out["facts"]) for _, out in pages))
+
+    def test_a_changed_index_ends_no_doors_search(self):
+        """F3-R1 on every door: page one, then its first match removed from the index; the page its
+        continuation asks for reads nothing and ends nothing — no records, no count, no sentinel."""
+        for name, limit in (("http", 2), ("mcp", 3), ("queued", 4), ("stdio", 1)):
+            with self.subTest(name):
+                word = f"doorchange{name}{self.tag}"
+                self.five(word)
+                first = self.door(name, limit, None, word)
+                (lane,) = [lane for lane in first["lanes"] if lane["source"] == "openalex_snapshot"]
+                self.assertTrue(continues(lane), lane)
+                with db.connect() as conn, conn.cursor() as cur:
+                    cur.execute("DELETE FROM gateway.index_docs WHERE identity = %s", (lane["retrieved"][0],))
+                    conn.commit()
+                after = self.door(name, limit, first["next"], word)
+                (lane,) = [lane for lane in after["lanes"] if lane["source"] == "openalex_snapshot"]
+                self.assertEqual((lane["coverage"], lane["completeness"], lane.get("count"), lane.get("error_class"),
+                                  lane.get("next"), lane.get("exhausted")),
+                                 ("provider_unavailable", "unobserved", None, "partial_pagination", None, None), after["facts"])
+                self.assertNotIn("openalex_snapshot", after.get("next") or {})
 
     def test_the_engine_client_pages_to_the_end(self):
         """The real engine GatewayClient, in its own process with the engine's interpreter, against this

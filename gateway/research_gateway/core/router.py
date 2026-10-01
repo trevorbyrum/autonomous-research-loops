@@ -20,7 +20,7 @@ from datetime import date, timedelta
 from typing import Callable
 from urllib.parse import urlsplit
 
-from ..adapters.base import AdapterError, Client, PayloadError, SourceUnavailable
+from ..adapters.base import AdapterError, Client, ContinuationInvalid, PayloadError, SourceUnavailable
 from . import calllog, dedup, licenses
 from . import canonical as canonical_mod
 from . import identity as ident
@@ -517,7 +517,8 @@ def _lane_slots() -> threading.BoundedSemaphore:
 ERR_PAYLOAD, ERR_OUTAGE, ERR_TIMEOUT, ERR_TRANSPORT = "payload_invalid", "provider_outage", "timeout", "transport_failure"
 ERR_RATE, ERR_BREAKER, ERR_BUDGET = "rate_limited", "breaker_open", "budget_refused"
 ERR_REJECTED, ERR_UNCONFIGURED = "credentials_rejected", "credentials_not_configured"
-ERR_PAGINATION = "partial_pagination"   # read whole, but more may remain that cannot be asked for
+ERR_PAGINATION = "partial_pagination"   # more may remain that cannot be asked for: a page read whole with neither a
+                                        # continuation nor an end, or a continuation that can no longer be read
 
 
 def _unavailable(resp) -> tuple[str, str]:
@@ -556,6 +557,10 @@ def _lane_failed(entry: dict, facts: list[str], sid: str, e: Exception) -> dict 
         entry["error"] = str(e)
         entry["coverage"] = COVERAGE_SKIPPED  # refused before dispatch (keyless tier, policy)
         facts.append(f"{sid}: refused ({e})")
+    elif isinstance(e, ContinuationInvalid):   # the page could not be read where the search left off: not an outage
+        entry["error"] = str(e)
+        entry["coverage"], entry["error_class"] = COVERAGE_DOWN, ERR_PAGINATION
+        facts.append(f"{sid}: {e}")
     else:  # an unreadable answer, or anything else a lane throws: a source fact, never a dead job
         entry["error"] = f"{type(e).__name__}: {e}"[:300]
         entry["coverage"], entry["error_class"] = COVERAGE_DOWN, ERR_PAYLOAD

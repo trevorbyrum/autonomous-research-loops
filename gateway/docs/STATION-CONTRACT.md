@@ -79,7 +79,10 @@ is never conflated with "not searched" or "unavailable":
     `exhausted`. A find lane's adapter answers a continuation (`next`: more may remain),
     `exhausted: true` (nothing remains), or neither (`partial_pagination` above); a
     continuation outranks a reported end. A complete page is not a complete search: only
-    the page that says `exhausted` ends the lane.
+    the page that says `exhausted` ends the lane. A continuation its source can no longer
+    honour — the local index's names the population it was counted in, and that population
+    has since changed — reads nothing and ends nothing: `provider_unavailable`,
+    `unobserved`, `partial_pagination`, no `next` (task 2b-repair-7).
   An unreadable successful answer (unparseable, empty, or without the container its
   results live in) and a search endpoint's 404 are `provider_unavailable` with
   `payload_invalid` / `provider_outage` — never `searched_empty`. An answer with any

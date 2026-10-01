@@ -388,6 +388,12 @@ class AdapterError(Exception):
     """Raised by adapters for malformed input; never for source failures (those are Responses)."""
 
 
+class ContinuationInvalid(Exception):
+    """A continuation its source can no longer honour — the population it was counted in has
+    changed (2b-repair-7 F3-R1). Nothing is read for it and nothing ends: more may remain
+    that it cannot ask for. The router reports it unobserved, `partial_pagination`."""
+
+
 class SourceUnavailable(Exception):
     """A source answered with an error (or the broker refused). The router turns
     this into a capability fact on the job (R-10); it is never a 'not found'."""
