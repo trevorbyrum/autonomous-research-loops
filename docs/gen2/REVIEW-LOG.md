@@ -738,3 +738,20 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-2b-repair-9-astr
 - **R9-5:** coverage credits `bis.catalog`, which never executes. A BIS fabrication mutant survives.
 
 **Orchestrator routing:** R9-1 and R9-4 share one root cause: code and oracle written by the same author, so they share blind spots. The fix is to split authorship. **2b-repair-10a**, an oracle author on Sonnet 5.5, writes RFC 3986/8288 conformance vectors, hand-specified expected canonical fields, populated optional-field variants and an execution-derived coverage registry, from specifications and fixtures only and never reading the implementation; these tests are expected to fail on current code. **2b-repair-10b**, a separate coder, then fixes R9-1..R9-5 against them.
+
+**2b-repair-10a landed (oracle author fb7bc4cf, Sonnet 5.5, spec-only).** Commits `e4b7eac` (pre-registration), then `206afe4`. Production code untouched. It adds 637 hand-labelled RFC Link/URI vectors with a reference grammar, hand-specified expected canonical fields tagged by source, 61 populated optional-field variants, an execution-derived coverage registry with the BIS and ECB catalogue cases, and router-output mutants. On current code `make gen2-gateway` exits 2 with 189 failures, as intended:
+- 144 Link/URI conformance (R9-1, including invalid targets, URI rels, cursors and the empty reference);
+- 10 OpenML licence (R9-2, the find path only);
+- 2 multi-structure catalogue dimension merges;
+- 18 missing `publisher`;
+- 10 harness mixed-member failures for `openml.fetch` at other seeds;
+- 5 populated-variant harness failures (DOAJ `ref`, Europe PMC `isOpenAccess`, OpenML licence).
+
+R9-4 confirmed: the old harness passes 6 of 7 router-output mutants, and the new expectations catch all 10.
+
+**Disclosed weakness:** the RFC grammars were written from memory, because the orchestrator's brief wrongly forbade all network calls; fetching public documentation is allowed. Sent back to fetch the RFC text and verify every vector, logging any correction as RFC-text or post-observation.
+
+**"Needs a ruling" items, settled by the orchestrator from existing contracts and principles; none needs the operator:**
+- openml.fetch url members: decided from OpenML's documented payload in 10b.
+- `publisher`: mapped wherever the canonical contract defines it and the provider supplies it.
+- A self-referential next link: not followed (no progress) and not an end, so unknown/partial.
