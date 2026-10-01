@@ -766,10 +766,10 @@ def _case(name: str, invariant: str):
     return test
 
 
-WHY = {"a": "a_lane_ends_or_continues_only_on_fields_it_read",
-       "b": "an_unreadable_container_is_never_an_empty_one",
-       "c": "readable_members_beside_an_unreadable_one_survive",
-       "d": "nothing_escapes_as_an_unhandled_error"}
+WHY = {"a": "ends_or_continues_only_on_what_it_read",
+       "b": "an_unreadable_container_is_never_empty",
+       "c": "readable_peers_survive",
+       "d": "nothing_escapes_unhandled"}   # tools/gen2_gateway_mutants.py names these tests
 
 
 def build_tests() -> None:

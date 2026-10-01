@@ -252,7 +252,14 @@ QDR is a Dataverse installation and shares this implementation.
   link's first `rel` counts, and `rel` is a space-separated list of relation types. The reading has three
   outcomes: a next URL; a header read whole that names none; and a header that could not be read, or names
   several different next pages. (An earlier reader split on every comma, so a valid header with a quoted
-  comma lost its relation and the lane claimed the end of the listing: R7-1.)
+  comma lost its relation and the lane claimed the end of the listing: R7-1.) "Read" includes the grammar
+  of each part (R8-1): a quoted string holds only what RFC 9110 §5.6.4 allows (no control character, a
+  backslash only before a character it may quote), a target is a URI reference (RFC 3986), and the
+  decoded `rel` value is a list of relation types — registered names (`LOALPHA *( LOALPHA / DIGIT / "." /
+  "-" )`, any case) or absolute URIs (RFC 8288 §3.3), separated by spaces, none empty and none with a quote
+  or control character of its own. `rel="\"next\""`, `rel=""`, `rel="next, prev"`, `rel="next\x01"` and
+  `rel='next'` are therefore not "a header that names no next link": they are headers that cannot be read.
+  A continuation must also name the search it continues (`search` present, with this query: `base.own_link`).
 - **End:** a header read whole that names no next link (or no header): the absence the official clients stop
   on. A next link that is present is never the end. One the gateway may not follow, and a header that could
   not be read, are neither a continuation nor an end, so the lane is a lower bound

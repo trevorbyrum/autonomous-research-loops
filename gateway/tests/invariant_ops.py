@@ -429,6 +429,10 @@ ECB_DATA = Op("ecb.data", "ecb", request("data", source="ecb", params={"dataflow
               tuple(f"series:ecb:EXR:D.{c}" for c in ("USD", "GBP", "CHF")),
               levels=(Level(("dataSets",), optional_from=0), Level(("series",), dict, optional_from=0)), shared=(("structure",),), leaf="object")
 
+ECB_BODY_ONE = {"structure": SDMX_STRUCTURE, "dataSets": [{"series": {"0:0": {"observations": {"0": [1.08]}}, "0:1": {"observations": {"0": [0.85]}},
+                                                                  "0:2": {"observations": {"0": [0.96]}}}}]}
+ECB_DATA_ONE = replace(ECB_DATA, name="ecb.data (one data set)", routes=(Route("GET", "https://data-api.ecb.europa.eu/service/data/EXR/", ECB_BODY_ONE, corrupt=True),))
+
 FRED_OBSERVATIONS = Route("GET", "https://api.stlouisfed.org/fred/series/observations?",
                           {"observations": [{"date": "2026-01-01", "value": "1"}, {"date": "2026-04-01", "value": "2"}]})
 FRED_SERIES = Route("GET", "https://api.stlouisfed.org/fred/series?", {"seriess": [{"id": "GDP", "title": "GDP", "units": "B", "frequency": "Q", "notes": "n"}]})
@@ -451,7 +455,7 @@ CENSUS_DATA = Op("census.data", "census", request("data", source="census", param
                  (Route("GET", "https://api.census.gov/data/2022/acs/acs1", [["NAME", "B01001_001E", "state"], ["Alabama", "1", "01"], ["Alaska", "2", "02"]],
                         corrupt=True),), ("table:census:2022/acs/acs1:NAME,B01001_001E",), single=(), leaf="list", zero_counts=(("row_count", (), False),))
 
-DATA_OPS = (BLS_DATA, ECB_DATA, FRED_OBS, FRED_META, BEA_GETDATA, BEA_LIST, CENSUS_DATA)
+DATA_OPS = (BLS_DATA, ECB_DATA, ECB_DATA_ONE, FRED_OBS, FRED_META, BEA_GETDATA, BEA_LIST, CENSUS_DATA)
 
 # ================================================================== fetch: a dataset's files
 def dataverse_file(i: int) -> dict:

@@ -227,6 +227,17 @@ class HuggingFace(unittest.TestCase):
                                         "next": None, "exhausted": True})
                 self.assertEqual(out["next"], {"huggingface": R.EXHAUSTED_CURSOR})
 
+    def test_a_next_link_that_names_no_search_is_not_the_continuation(self):
+        """A continuation must name the search it continues (found by the invariant harness's generated headers): a next link without the `search`
+        parameter would list some other population, so it is neither followed as a continuation nor taken for the end, and a cursor like it is never asked."""
+        target = "https://huggingface.co/api/datasets?limit=2&full=true&cursor=x"
+        c, t = self.client(f'<{target}>; rel="next"', items=2)
+        out = huggingface.find(c, "q", limit=2)
+        self.assertEqual((out["exhausted"], out["next_cursor"], len(out["records"])), (False, None, 2))
+        with self.assertRaises(ValueError):
+            huggingface.find(c, "q", limit=2, cursor=target)
+        self.assertEqual(len(t.calls), 1, "the second request was never made")
+
     def test_a_next_link_that_leaves_the_search_is_still_refused_with_a_quoted_comma(self):
         """URL and credential validation is kept: the parser reads the link, own_link decides whether it is followed."""
         for target in ("https://evil.example/api/datasets?search=q&cursor=x", "https://user:pw@huggingface.co/api/datasets?search=q&cursor=x"):

@@ -103,6 +103,21 @@ is never conflated with "not searched" or "unavailable":
   `plain()` in the gateway with why it is not a pass over independent members; a use that is not listed fails. Whether
   a given list is one record's data or a set of independent candidates is the adapter author's declaration, and that
   list is where a reviewer reads it (tasks 2b-repair-7b, 2b-repair-8).
+  A container a provider sends is validated for its kind before its length or its truth is looked at (task
+  2b-repair-9, R8-2). One the provider may leave out (a Hugging Face repository's `siblings`, an ECB data set's
+  `series`, a Crossref work's `reference`, a Dataverse version's `files`, a GovInfo package's `download`) is empty
+  only when it is missing or null (`base.optional`); a `false`, `0`, `""`, `{}` where a list belongs, or `[]` where an
+  object does, is an unreadable holder, never an empty one: it is dropped-member accounting (the lane is `partial`
+  beside readable peers, `unobserved` with no count when there are none), and a count derived from it (a repository's
+  `file_count`) is unknown, never zero. The same rule reads every container and every typed field of a record
+  (`nested`, `listed`, `text`, `key`; `make_record` checks the canonical fields, so one member whose title is a number is
+  dropped and counted, not raised out of the router), and a lane's end and continuation: a total is a whole number no
+  smaller than what was read (`base.total`), an opaque cursor a non-blank string (`base.token`), a next offset a
+  number past the page (`base.offset_after`), and a metadata container that cannot be read costs only what it alone
+  establishes (`base.field`), never the members beside it. `tests/test_invariants.py` asserts this as four
+  invariants over every adapter operation, corrupted at every position of a valid answer (an end or a continuation
+  only from fields it read; an unreadable container never an empty one; readable peers survive; nothing escapes
+  unhandled), and fails for an adapter capability it does not run.
   An unreadable successful answer (unparseable, empty, or without the container its
   results live in) and a search endpoint's 404 are `provider_unavailable` with
   `payload_invalid` / `provider_outage` — never `searched_empty`. An answer with any

@@ -250,8 +250,11 @@ class Records(unittest.TestCase):
     def test_one_member_whose_title_is_a_number_is_dropped_and_counted_not_raised(self):
         """Found by the invariant harness: the member decoded (title=5), reached the merge, and `.lower()` raised out of the router."""
         body = {"message": {"items": [{"DOI": "10.1000/A1", "title": [5]}, {"DOI": "10.1000/A2", "title": ["Two"]}], "total-results": 2}}
-        out, e = lane("crossref", {"request_type": "find", "kind": "article", "query": "q", "limit": 5}, "https://api.crossref.org/works", body)
-        self.assertEqual((shape(e), e["retrieved"]), (("searched_ok", "partial", 1, "payload_invalid"), ["doi:10.1000/a2"]))
+        try:
+            out, e = lane("crossref", {"request_type": "find", "kind": "article", "query": "q", "limit": 5}, "https://api.crossref.org/works", body)
+        except Exception as error:
+            self.fail(f"one member's title raised out of the router: {error!r}")
+        self.assertEqual((shape(e), e.get("retrieved")), (("searched_ok", "partial", 1, "payload_invalid"), ["doi:10.1000/a2"]))
 
 
 class DatasetFiles(unittest.TestCase):
@@ -262,7 +265,7 @@ class DatasetFiles(unittest.TestCase):
             with self.subTest(field=field_):
                 out, e = lane("huggingface", {"request_type": "fetch", "target": "hf:review/dataset"}, "https://huggingface.co/api/datasets/review/dataset",
                               {**siblings([{"rfilename": "a.csv"}, {"rfilename": "b.csv"}]), field_: value})
-                self.assertEqual((shape(e), e["retrieved"]), (("searched_ok", "complete", 2, None), ["hf:review/dataset#a.csv", "hf:review/dataset#b.csv"]))
+                self.assertEqual((shape(e), e.get("retrieved")), (("searched_ok", "complete", 2, None), ["hf:review/dataset#a.csv", "hf:review/dataset#b.csv"]))
 
     def test_a_garbled_title_or_author_does_not_cost_the_files_of_a_dataverse_dataset(self):
         for version_field, value in (("metadataBlocks", True), ("releaseTime", 5), ("versionNumber", [1])):
@@ -271,7 +274,7 @@ class DatasetFiles(unittest.TestCase):
                 body["data"]["latestVersion"][version_field] = value
                 out, e = lane("harvard_dataverse", {"request_type": "fetch", "target": "doi:10.7910/DVN/OY6CBK"},
                               "https://dataverse.harvard.edu/api/datasets/:persistentId/", body)
-                self.assertEqual((shape(e), e["retrieved"]), (("searched_ok", "complete", 1, None), ["doi:10.7910/dvn/oy6cbk#1"]))
+                self.assertEqual((shape(e), e.get("retrieved")), (("searched_ok", "complete", 1, None), ["doi:10.7910/dvn/oy6cbk#1"]))
 
     def test_a_licence_that_cannot_be_read_costs_every_file_because_every_file_carries_it(self):
         out, e = lane("huggingface", {"request_type": "fetch", "target": "hf:review/dataset"}, "https://huggingface.co/api/datasets/review/dataset",

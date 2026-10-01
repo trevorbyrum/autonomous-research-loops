@@ -426,12 +426,12 @@ class Imports(unittest.TestCase):
             with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
                 root = self.tree(Path(tmp))
                 (root / "adapters" / "new.py").write_text(f"from __future__ import annotations\n{source}\n", encoding="utf-8")
-                self.assertEqual(import_findings(root), want)
+                self.assertEqual([f for f in import_findings(root) if f[0] == "adapters/new.py"], want)   # what is found in the new file, whatever else the tree holds
         with tempfile.TemporaryDirectory() as tmp:   # and the forms that are admitted: the names the client exports, a stdlib module that is listed
             root = self.tree(Path(tmp))
             (root / "adapters" / "new.py").write_text("from __future__ import annotations\nimport re\nfrom .base import Client, members, quote as q\n"
                                                       "from ..core.canonical import make_record\nfrom . import crossref\n", encoding="utf-8")
-            self.assertEqual(import_findings(root), [])
+            self.assertEqual([f for f in import_findings(root) if f[0] == "adapters/new.py"], [])
 
     def test_the_client_has_no_parser_to_re_export_and_exports_no_module(self):
         from types import ModuleType

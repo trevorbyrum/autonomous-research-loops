@@ -75,7 +75,7 @@ OWN = "https://huggingface.co/api/datasets?search=q&limit=3&full=true"
 TARGETS_NEXT = [OWN + "&cursor=a1", OWN + "&cursor=b%2Bc", OWN + "&cursor=x,y", OWN + "&cursor=eyJfaWQiOiI2NTAwIn0"]
 TARGETS_OTHER = [OWN + "&cursor=prev", "https://huggingface.co/api/datasets?search=q&limit=3&full=true&cursor=first", "https://example.org/elsewhere"]
 DESCRIPTIVE = ['title="next, page"', 'title="a; rel=\\"prev\\", b"', 'title="x"', 'type="text/html"', "hreflang=en", "anchor", "title*=UTF-8''n%20p",
-               'title="\\\\"', 'title=""', 'title="rel=next"']
+               'title="\\\\"', 'title=""', 'title="rel=next"', 'title="a\x01b"', 'title="\x7f"', 'title="tab\there"', 'title="caf\xe9"']
 RELATIONS = ['rel="next"', "rel=next", 'rel="prev next"', 'rel="next prev"', 'rel="NEXT"', "rel=prev", 'rel="prev"', 'rel="first last"',
              'rel="https://example.org/rels/next"', 'rel="nextpage"', 'rel="https://example.org/rel next"', 'rel="a.b-c1 next"', 'rel="next  prev"',
              # what is not a relation-type list: stray quotes, nothing, a comma, a control character, another quoting, a space too many
