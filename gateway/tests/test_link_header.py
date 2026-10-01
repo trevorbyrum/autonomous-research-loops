@@ -54,6 +54,10 @@ class Reading(unittest.TestCase):
             "three links, next in the middle": f'<{PREV}>; rel="first", <{NEXT}>; rel="next", <{PREV}>; rel="last"',
             "the same next link twice": f'<{NEXT}>; rel="next", <{NEXT}>; rel="next"',
             "an extended parameter": f"<{NEXT}>; title*=UTF-8''next%20page; rel=\"next\"",
+            "several spaces between relation types": f'<{NEXT}>; rel="prev   next"',
+            "an extension relation beside next": f'<{NEXT}>; rel="https://example.org/rels/other next"',
+            "a quoted-pair in a descriptive parameter": f'<{NEXT}>; title="a \\"quoted\\" \\\\ word"; rel="next"',
+            "a tab inside a quoted string, which RFC 9110 allows": f'<{NEXT}>; title="a\tb"; rel="next"',
             "empty list elements": f',, <{NEXT}>; rel="next",',
             "the first rel only counts, and it says next": f'<{NEXT}>; rel="next"; rel="prev"',
             "a parameter with no value": f'<{NEXT}>; anchor; rel="next"',
@@ -80,6 +84,9 @@ class Reading(unittest.TestCase):
             "a relation that only starts with next": f'<{NEXT}>; rel="nextpage"',
             "next said only by a later rel, which does not count (RFC 8288 §3.3)": f'<{NEXT}>; rel="prev"; rel="next"',
             "next said by another parameter": f'<{NEXT}>; type="rel=next"',
+            "an extension relation, which is a URI (RFC 8288 §2.1.2)": f'<{NEXT}>; rel="https://example.org/rels/next"',
+            "relations that only contain next": f'<{NEXT}>; rel="a.next next-page"',
+            "a relation that is a registered name, in capitals": f'<{NEXT}>; rel="PREV"',
         }
         for name, header in cases.items():
             with self.subTest(name):
@@ -97,6 +104,16 @@ class Reading(unittest.TestCase):
             "a parameter value that is not a token or a quoted string": f"<{NEXT}>; rel=next/page",
             "a relation with no value": f"<{NEXT}>; rel",
             "a relation quoted with apostrophes, which no grammar here reads": f"<{NEXT}>; rel='next'",
+            "a relation with quote characters of its own (R8-1)": f'<{NEXT}>; rel="\\"next\\""',
+            "an empty relation (R8-1)": f'<{NEXT}>; rel=""',
+            "a comma in a relation (R8-1)": f'<{NEXT}>; rel="next, prev"',
+            "a control character in a relation (R8-1)": f'<{NEXT}>; rel="next\x01"',
+            "a control character in a parameter that is not the relation": f'<{NEXT}>; title="a\x01b"; rel="prev"',
+            "a space at either end of the relation list": f'<{NEXT}>; rel=" next"',
+            "a relation that starts with a digit": f'<{NEXT}>; rel="1next"',
+            "a relation that is neither a name nor a URI": f'<{NEXT}>; rel="ne;xt"',
+            "a quoted-pair with nothing to quote": f'<{NEXT}>; title="a\\',
+            "a target that is no URI reference": f"<{NEXT} x>; rel=\"next\"",
             "two different next pages": f'<{NEXT}>; rel="next", <{PREV}>; rel="next"',
             "a next page whose target is no URL": '<http://[bad>; rel="next"',
             "an unreadable link after a readable next one": f'<{NEXT}>; rel="next", <{PREV}',
@@ -157,7 +174,9 @@ class HuggingFace(unittest.TestCase):
     FIND = {"request_type": "find", "query": "q", "kind": "dataset", "domain": "ai-ml", "lanes": ["huggingface"],
             "accept_per_item": True, "limit": 2}
     UNREADABLE = (f'<{NEXT}; rel="next"', f'<{NEXT}>; rel="next" junk', f'<{NEXT}>; title="open; rel="next"', f"<{NEXT}>; rel='next'",
-                  f'<{NEXT}>; rel="next", <{PREV}>; rel="next"', f'<{NEXT}>; rel')
+                  f'<{NEXT}>; rel="next", <{PREV}>; rel="next"', f'<{NEXT}>; rel',
+                  # R8-1 (Astra): relations that are no relation-type list, decoded from a quoted string that itself reads
+                  f'<{NEXT}>; rel="\\"next\\""', f'<{NEXT}>; rel=""', f'<{NEXT}>; rel="next, prev"', f'<{NEXT}>; rel="next\x01"')
 
     def client(self, link: str | None, items: int = 1) -> tuple[Client, FakeTransport]:
         t = FakeTransport()
@@ -201,7 +220,7 @@ class HuggingFace(unittest.TestCase):
                 self.assertNotIn("huggingface", routed.get("next") or {}, "no sentinel: nothing says the lane returned everything")
 
     def test_control_a_header_read_whole_with_no_next_link_is_the_end(self):
-        for link in (None, "", f'<{PREV}>; rel="prev"'):
+        for link in (None, "", f'<{PREV}>; rel="prev"', f'<{PREV}>; rel="https://example.org/rels/next"', f'<{PREV}>; rel="prev   first"'):
             with self.subTest(link):
                 out, lane = self.lane(link)
                 self.assertEqual(lane, {"coverage": "searched_ok", "completeness": "complete", "count": 1, "error_class": None,

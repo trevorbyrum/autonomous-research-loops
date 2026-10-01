@@ -141,15 +141,21 @@ class LinkSyntax(ValueError):
 
 
 _TCHAR = frozenset("!#$%&'*+-.^_`|~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+_QDTEXT = frozenset("\t !") | frozenset(chr(c) for c in (*range(0x23, 0x5C), *range(0x5D, 0x7F), *range(0x80, 0x100)))   # RFC 9110 §5.6.4
+_QUOTABLE = frozenset("\t") | frozenset(chr(c) for c in (*range(0x20, 0x7F), *range(0x80, 0x100)))                        # what a `\` may precede
+# RFC 8288 §3.3: a relation type is a registered name (`LOALPHA *( LOALPHA / DIGIT / "." / "-" )`, compared without regard to case) or an
+# absolute URI (an extension relation); the `rel` value is one, or several separated by spaces
+_URI_REFERENCE = re.compile(r"[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]*")   # RFC 3986: a link target holds nothing else
+_REL_TYPE = re.compile(r"[A-Za-z][A-Za-z0-9.\-]*|[A-Za-z][A-Za-z0-9+.\-]*:[^\s\"<>\\^`{|}\x00-\x1f\x7f]*")
 
 
 def parse_links(header: str) -> list[tuple[str, list[tuple[str, str | None]]]]:
-    """Every link-value of a `Link` header as (target, [(parameter name lower-cased, value)]), RFC 8288 §3
-    on the list syntax of RFC 9110: `<` target `>` and then `;` parameters in any order, each a token with an
-    optional token or quoted value (backslash escapes undone). A comma or semicolon inside `<...>` or a quoted
-    string belongs to it, and empty list elements are ignored. LinkSyntax for anything else, wherever it
-    stands: nothing is guessed from a header that does not read through, because the one thing a reader cannot do
-    with it is call it free of a next link."""
+    """Every link-value of a `Link` header as (target, [(parameter name lower-cased, value)]), RFC 8288 §3 on the
+    list syntax of RFC 9110: `<` target `>` and then `;` parameters in any order, each a token with an optional token
+    or quoted-string value (backslash escapes undone; a quoted string holds only what RFC 9110 §5.6.4 allows). A comma
+    or semicolon inside `<...>` or a quoted string belongs to it, and empty list elements are ignored. LinkSyntax for
+    anything else, wherever it stands: nothing is guessed from a header that does not read through, because the one
+    thing a reader cannot do with it is call it free of a next link."""
     n, i, out = len(header), 0, []
 
     def space(at: int) -> int:
@@ -176,6 +182,8 @@ def parse_links(header: str) -> list[tuple[str, list[tuple[str, str | None]]]]:
         if end < 0:
             raise LinkSyntax(f"Link header: no <target> at character {i}")
         target, params, i = header[i + 1:end], [], space(end + 1)
+        if _URI_REFERENCE.fullmatch(target) is None:
+            raise LinkSyntax(f"Link header: a target that is no URI reference, at character {end}")
         while i < n and header[i] == ";":
             i, name = token(space(i + 1))
             i, value = space(i), None
@@ -184,8 +192,12 @@ def parse_links(header: str) -> list[tuple[str, list[tuple[str, str | None]]]]:
                 if i < n and header[i] == '"':
                     chars, i = [], i + 1
                     while i < n and header[i] != '"':
-                        if header[i] == "\\" and i + 1 < n:
+                        if header[i] == "\\":
                             i += 1
+                            if i == n or header[i] not in _QUOTABLE:
+                                raise LinkSyntax(f"Link header: a quoted-pair that is not one, at character {i}")
+                        elif header[i] not in _QDTEXT:
+                            raise LinkSyntax(f"Link header: a character a quoted string cannot hold, at character {i}")
                         chars.append(header[i])
                         i += 1
                     if i == n:
@@ -200,6 +212,17 @@ def parse_links(header: str) -> list[tuple[str, list[tuple[str, str | None]]]]:
             raise LinkSyntax(f"Link header: unexpected {header[i]!r} at character {i}")
 
 
+def relation_types(value: str | None) -> list[str]:
+    """The relation types a `rel` value names, lower-cased: one or more, each a registered name or an absolute URI, separated by
+    spaces (RFC 8288 §3.3). LinkSyntax for a value that is anything else — none at all, empty, a quote character or a control
+    character of its own, a comma, a space at either end, another quoting — because a relation that cannot be told is not a relation
+    that names no next page."""
+    parts = value.split(" ") if value else [""]
+    if "" in (parts[0], parts[-1]) or not all(_REL_TYPE.fullmatch(p) for p in parts if p):
+        raise LinkSyntax("Link header: a relation that is not a list of relation types")
+    return [p.lower() for p in parts if p]
+
+
 class NextLink(NamedTuple):
     """What a `Link` header says about the next page: `url` and `known`. A url is the continuation; no url with
     `known` is the header read whole and naming no next link (the absence a provider's own client treats as the end);
@@ -211,18 +234,16 @@ class NextLink(NamedTuple):
 
 def next_link(resp: Response) -> NextLink:
     """The answer's `Link: <...>; rel="next"` (RFC 8288), its target resolved against the URL asked. Only the first
-    `rel` of a link counts (§3.3), its value is a space-separated list of relation types, and a header that does not
-    parse, a `rel` with no value or with quote characters of its own (`rel='next'`: quoted by some other grammar), or
-    two different next targets is not `known`."""
+    `rel` of a link counts (§3.3), and its value must be a list of relation types (`relation_types`): a header that does not
+    parse, a `rel` with no value or one that is no such list (`rel='next'`, `rel="\\"next\\""`, `rel=""`, `rel="next, prev"`), or two
+    different next targets is not `known`. A link with no `rel` names no relation."""
     lines = [v for k, v in resp.headers.items() if k.lower() == "link"]
     try:
         targets = set()
         for target, params in parse_links(", ".join(lines)):
-            rel = next((v for k, v in params if k == "rel"), "")
-            if rel is None or "'" in rel:
-                raise LinkSyntax("Link header: a relation that cannot be read")
-            if "next" in rel.lower().split():
-                targets.add(urllib.parse.urljoin(resp.url, target.strip()))
+            rel = next(((v,) for k, v in params if k == "rel"), None)
+            if rel is not None and "next" in relation_types(rel[0]):
+                targets.add(urllib.parse.urljoin(resp.url, target))
     except ValueError:   # LinkSyntax, and urljoin on a target that is no URL
         return NextLink(None, False)
     return NextLink(targets.pop() if len(targets) == 1 else None, len(targets) <= 1)
@@ -232,7 +253,8 @@ def own_link(url, endpoint: str, **same: str) -> str | None:
     """`url` when a request may follow it as a continuation of `endpoint`, else None. It must keep
     the endpoint's scheme, host, port and path, and carry no user info or fragment, so a continuation
     can never send a request elsewhere or carry credentials of its own: the adapter's credentials
-    travel only in its own headers. Each `same` parameter the URL names must have the given value."""
+    travel only in its own headers. Each `same` parameter must be named by the URL, with the given value: a continuation that
+    leaves one out is some other listing's."""
     if not isinstance(url, str):
         return None
     try:
@@ -244,7 +266,7 @@ def own_link(url, endpoint: str, **same: str) -> str | None:
     if u.username is not None or u.password is not None or u.fragment:
         return None
     named = urllib.parse.parse_qs(u.query, keep_blank_values=True)
-    return url if all(named.get(k, [v]) == [v] for k, v in same.items()) else None
+    return url if all(named.get(k) == [v] for k, v in same.items()) else None
 
 
 def same_origin(a: str, b: str) -> bool:
