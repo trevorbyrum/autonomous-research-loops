@@ -131,6 +131,7 @@ class Comparison(unittest.TestCase):
     def test_the_rfc_examples_of_equivalence(self):
         """§6.2.2 (case, percent-encoding, dot segments) and §6.2.3 (the scheme's default port, an empty path), as the RFC prints them."""
         self.assertTrue(uri.same_resource("example://a/b/c/%7Bfoo%7D", "eXAMPLE://a/./b/../b/%63/%7bfoo%7d"))
+        self.assertTrue(uri.same_resource("http://h/a/b", "http://h/a/%2e%2e/a/b"), "§6.2.2.2 decodes an unreserved character, then §6.2.2.3 removes the dot segments")
         for other in ("http://example.com/", "http://example.com:/", "http://example.com:80/", "HTTP://EXAMPLE.COM"):
             with self.subTest(other):
                 self.assertTrue(uri.same_resource("http://example.com", other))

@@ -132,7 +132,8 @@ is never conflated with "not searched" or "unavailable":
   dropped and counted, never read as holding nothing. Sites the sweep of the adapters, the SDMX reader and the
   loaders changed: OpenML's `licence`/`license`, Europe PMC's `Y`/`N` flags, DOAJ's journal `ref`, FRED's
   `notes` (a restriction note), Dataverse's `restricted` flag and `identifier`/`authority`, Census's
-  `predicateOnly` and `label`, BEA's error envelope and value labels, SDMX-JSON's `id`/`name`. Sites reviewed and
+  `predicateOnly` and `label`, BEA's error envelope and value labels, SDMX-JSON's `id`/`name`, and doi.org's `RA` (the agency of a DOI: an
+  `RA` that is not text is unreadable and not remembered as the prefix's agency). Sites reviewed and
   left, with the reason: a text fallback whose first operand is read as text (`text(a) or text(b)`: a wrong-kind
   first operand raises before the fallback, and the second is read only when the first says nothing); a filter on
   a catalogue row's identifier (`if row.get("id")`: the accepted rule that a row naming nothing is skipped, and a

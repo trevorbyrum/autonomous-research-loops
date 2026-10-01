@@ -169,14 +169,14 @@ def _pct(text: str) -> str:
 
 
 def _normal(url: str) -> tuple:
-    """The parts of a URI that name a resource, normalised by §6.2.2 and §6.2.3: scheme and host lower-cased, escapes as `_pct`, dot segments
-    removed, the default port and an empty path made explicit; the fragment last."""
+    """The parts of a URI that name a resource, normalised by §6.2.2 and §6.2.3 in the RFC's order: scheme and host lower-cased, escapes as `_pct`, then dot
+    segments removed, the default port and an empty path made explicit; the fragment last."""
     scheme, authority, path, query, fragment = split(url)
     scheme = (scheme or "").lower()
     userinfo, _, hostport = (authority or "").rpartition("@")
     end = hostport.find("]") + 1 if hostport.startswith("[") else len(hostport.split(":")[0])   # an IP-literal holds colons of its own
     host, port = hostport[:end], hostport[end:].lstrip(":")
-    path = _pct(_remove_dot_segments(path)) or ("/" if authority is not None and scheme in _DEFAULT_PORTS else "")
+    path = _remove_dot_segments(_pct(path)) or ("/" if authority is not None and scheme in _DEFAULT_PORTS else "")   # §6.2.2.2 before §6.2.2.3: `%2e%2e` is `..`
     return (scheme, _pct(userinfo), _pct(host).lower(), "" if port == _DEFAULT_PORTS.get(scheme) else port, path, None if query is None else _pct(query),
             None if fragment is None else _pct(fragment))
 

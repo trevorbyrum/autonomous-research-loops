@@ -144,6 +144,17 @@ def doi_prefix(doi: str) -> str:
     return doi.split("/", 1)[0]
 
 
+def _agency_named(row) -> str:
+    """The agency doi.org names for a DOI: its `RA` text; `unknown` when it names none (a DOI doi.org does not know has no `RA`). An `RA` that is there and is not
+    text — `false`, `0`, `[]`, `{}`, a number — is unreadable, not an unknown agency (and a number or a list is not an agency's name)."""
+    named = row.get("RA")
+    if named is None or named == "":
+        return "unknown"
+    if not isinstance(named, str):
+        raise PayloadError(f"doi.org: {type(named).__name__} where an agency's name belongs")
+    return named
+
+
 class RegistrationAgencies:
     """Which agency issued a DOI (Crossref, DataCite, mEDRA, ...) via doi.org/ra,
     cached by prefix — the prefix, not the suffix, determines the agency.
@@ -167,9 +178,9 @@ class RegistrationAgencies:
         agency = None
         if isinstance(rows, Members):   # one object per DOI asked, and one was: its first result, read like any lookup's
             try:
-                agency = rows.first(lambda r: str(r.get("RA") or "unknown"))
-            except PayloadError:   # a first result that is not an object names no agency
-                pass
+                agency = rows.first(_agency_named)
+            except PayloadError:   # a first result that is not an object, or whose `RA` is there and is not text, names no agency — and is not remembered as one
+                return "unknown"
         agency = agency or "unknown"
         self._cache[prefix] = agency
         return agency

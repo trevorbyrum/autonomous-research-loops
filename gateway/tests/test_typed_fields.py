@@ -16,8 +16,10 @@ import copy
 import unittest
 
 from research_gateway.adapters import bea, harvard_dataverse as dv
-from research_gateway.adapters.base import PayloadError, boolean
+from research_gateway.adapters.base import Client, FakeTransport, PayloadError, boolean
 from research_gateway.core import sdmx
+from research_gateway.core.broker import Broker, RatePolicy
+from research_gateway.core.identity import RegistrationAgencies
 from research_gateway.core.payload import view
 
 from tests import invariant_ops as ops
@@ -223,6 +225,29 @@ class SdmxEntries(unittest.TestCase):
     def test_control_the_id_wins_and_the_name_stands_in(self):
         for entry, want in (({"id": "I", "name": "N"}, "I"), ({"id": None, "name": "N"}, "N"), ({"id": "", "name": "N"}, "N"), ({"name": "N"}, "N"), ({}, None)):
             self.assertEqual(sdmx._named(entry), want)
+
+
+class RegistrationAgency(unittest.TestCase):
+    """doi.org names the agency of a DOI as `RA`: text, or nothing for a DOI it does not know. `str(r.get("RA") or "unknown")` made a `false` or `[]` an unknown
+    agency (remembered for the prefix) and a number or a list an agency of that spelling; an `RA` that is there and is not text is unreadable, and is not remembered."""
+
+    def agency(self, body):
+        t = FakeTransport()
+        t.add("GET", "https://doi.org/ra/10.1234/x", body=body)
+        cache: dict = {}
+        client = Client(broker=Broker({"doi_org": RatePolicy(per_second=1000)}), transport=t, secrets=lambda n, f=None: "k")
+        return RegistrationAgencies(client, cache).agency("10.1234/x"), cache
+
+    def test_an_agency_that_is_not_text_is_neither_one_nor_remembered(self):
+        for wrong in (False, 0, [], {}, 5, ["Crossref"], True, 1.5):
+            with self.subTest(ra=repr(wrong)):
+                self.assertEqual(self.agency([{"DOI": "10.1234/x", "RA": wrong}]), ("unknown", {}))
+        self.assertEqual(self.agency([5]), ("unknown", {}), "a first result that is not an object names no agency, and is not remembered either")
+
+    def test_control_text_is_the_agency_and_no_agency_is_unknown(self):
+        self.assertEqual(self.agency([{"DOI": "10.1234/x", "RA": "Crossref"}]), ("Crossref", {"10.1234": "Crossref"}))
+        for nothing in ({"DOI": "10.1234/x"}, {"DOI": "10.1234/x", "RA": None}, {"DOI": "10.1234/x", "RA": ""}):
+            self.assertEqual(self.agency([nothing]), ("unknown", {"10.1234": "unknown"}))
 
 
 class Publisher(unittest.TestCase):
