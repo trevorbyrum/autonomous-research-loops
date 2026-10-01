@@ -90,7 +90,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                     identity=f"series:{SOURCE_ID}:{within}")
     if not check(SOURCE_ID, ds, allow_404=False):
         return {"entries": []}
-    dims = sdmx.dimensions_xml(ds.text)
+    dims = sdmx.dimensions_xml(ds.text, {**flows[0]["structure"], "id": ref})
     if not dims:
         return {"entries": [], "capability_fact": f"datastructure {ref!r}: no dimensions parsed — refusing to "
                                                   "invent an empty series template"}

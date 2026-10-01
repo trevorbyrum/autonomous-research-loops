@@ -4,7 +4,7 @@ from __future__ import annotations
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, Obj, PayloadError, check, key, listed, members, need, nested, optional, plain, text, total
+from .base import AdapterError, Client, Obj, PayloadError, boolean, check, key, listed, members, need, nested, optional, plain, text, total
 
 SOURCE_ID = "harvard_dataverse"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.7910/DVN/OY6CBK'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -33,7 +33,8 @@ def search_record(base: str, source_id: str, item: dict) -> dict:
                        venue=item.get("name_of_dataverse"), identifiers={"doi": doi} if doi else {},
                        links=[text(source_id, item.get("url")) or f"{base}/dataset.xhtml?persistentId=doi:{doi}"],
                        license=item.get("license"),   # some Dataverse search hits state it; commercial use of the rest needs a resolve (D-25)
-                       extra={"description": (text(source_id, item.get("description")) or "")[:1000], "subjects": listed(source_id, item, "subjects"),
+                       extra={"publisher": text(source_id, item.get("publisher")), "description": (text(source_id, item.get("description")) or "")[:1000],
+                              "subjects": listed(source_id, item, "subjects"),
                               "file_count": item.get("fileCount")},
                        raw=item)
 
@@ -43,8 +44,11 @@ def _version(source_id: str, d: Obj) -> Obj:
     return optional(source_id, d, "latestVersion", dict)
 
 
-def _dataset_doi(d: Obj) -> str | None:
-    return normalize_doi(f"{d.get('authority')}/{d.get('identifier')}") if d.get("identifier") else None
+def _dataset_doi(source_id: str, d: Obj) -> str | None:
+    """The dataset's DOI, from its `authority` and `identifier`: none when it states no identifier (missing, null, empty). One that is there and is
+    not text is unreadable, and is not a dataset with no DOI (whose identity would then be another one)."""
+    identifier, authority = text(source_id, d.get("identifier")), text(source_id, d.get("authority"))
+    return normalize_doi(f"{authority}/{identifier}") if identifier else None
 
 
 def _text(source_id: str, what: str, value):
@@ -58,7 +62,7 @@ def dataset_context(source_id: str, d: Obj) -> dict:
     The files are listed from the version's `files`, so a field no file needs (the title, the authors) cannot cost them (R8)."""
     version = _version(source_id, d)
     lic = version.get("license")
-    doi = _dataset_doi(d)
+    doi = _dataset_doi(source_id, d)
     return {"identity": f"doi:{doi}" if doi else f"{source_id}:{key(source_id, d.get('id'))}",
             "license": _text(source_id, "license", lic.get("name") if isinstance(lic, Obj) else lic),
             "terms_of_use": _text(source_id, "terms of use", version.get("termsOfUse"))}
@@ -76,16 +80,17 @@ def dataset_record(base: str, source_id: str, d: Obj) -> dict:
     v = _version(source_id, d)
     context = dataset_context(source_id, d)
     fields = plain(optional(source_id, optional(source_id, optional(source_id, v, "metadataBlocks", dict), "citation", dict), "fields"))
-    doi = _dataset_doi(d)
+    doi = _dataset_doi(source_id, d)
     named = _field(fields, "author")
     if named is not None and not isinstance(named, list):
         raise PayloadError(f"{source_id}: the dataset's author field is {type(named).__name__}, not a list")
     authors = [text(source_id, nested(source_id, a, "authorName").get("value")) for a in named or []]
+    publisher = text(source_id, d.get("publisher"))
     return make_record(identity=context["identity"], kind="dataset", source_id=source_id,
                        title=_field(fields, "title"), authors=[a for a in authors if a], year=year_from(v.get("releaseTime")),
-                       venue=d.get("publisher"), identifiers={"doi": doi} if doi else {},
+                       venue=publisher, identifiers={"doi": doi} if doi else {},
                        links=[text(source_id, d.get("persistentUrl")) or f"{base}/dataset.xhtml?persistentId=doi:{doi}"], license=context["license"],
-                       extra={"version": f"{v.get('versionNumber')}.{v.get('versionMinorNumber')}", "file_count": _file_count(source_id, v),
+                       extra={"publisher": publisher, "version": f"{v.get('versionNumber')}.{v.get('versionMinorNumber')}", "file_count": _file_count(source_id, v),
                               "terms_of_use": context["terms_of_use"]},
                        raw=d)
 
@@ -96,7 +101,7 @@ def _file(base: str, source_id: str, dataset: dict, f: dict) -> dict:
                        title=text(source_id, f.get("label")) or text(source_id, df.get("filename")), license=dataset.get("license"),
                        links=[f"{base}/api/access/datafile/{df.get('id')}"],
                        extra={"file_id": df.get("id"), "content_type": df.get("contentType"), "size": df.get("filesize"),
-                              "restricted": f.get("restricted", False), "description": df.get("description")},
+                              "restricted": boolean(source_id, f.get("restricted")), "description": df.get("description")},
                        raw=df)
 
 
@@ -178,7 +183,7 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1, subtree:
 
 def resolve(client: Client, identity: str) -> dict | None:
     d = get_dataset(client, BASE, SOURCE_ID, SOURCE_ID, identity, "resolve")
-    return dataset_record(BASE, SOURCE_ID, d) if d else None
+    return dataset_record(BASE, SOURCE_ID, d) if d is not None else None
 
 
 def fetch(client: Client, target: str, *, file_id=None, download: bool = False) -> dict:

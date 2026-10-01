@@ -117,7 +117,32 @@ is never conflated with "not searched" or "unavailable":
   establishes (`base.field`), never the members beside it. `tests/test_invariants.py` asserts this as four
   invariants over every adapter operation, corrupted at every position of a valid answer (an end or a continuation
   only from fields it read; an unreadable container never an empty one; readable peers survive; nothing escapes
-  unhandled), and fails for an adapter capability it does not run.
+  unhandled). That harness is metamorphic: it holds a corrupted answer to how it may differ from the gateway's own
+  answer to the valid one, so it is supplementary coverage, not an independent oracle (task 2b-repair-10b, R9-4).
+  The independent oracles are `tests/test_oracle.py`'s (`tests/oracle/`): the canonical fields every valid answer
+  must produce, hand-written from the providers' documentation and the fixtures, the RFC 3986 / 8288 `Link`
+  vectors written from the RFC text, the BIS and ECB catalogue cases, the registry loaders' records, and a coverage
+  record computed from what actually ran. They were written by an author who had not read the gateway.
+  A present value is read as what it is before a fallback chooses between spellings and before its truth decides
+  anything (task 2b-repair-10b, R9-2): `license=d.get("licence") or d.get("license")` made a present `false`, `0`,
+  `[]` or `{}` licence into no licence, because `or` looks at truth and the value never reached the validator.
+  Each spelling is read as text (`base.text`), a flag as a flag (`base.boolean`: true, false, or missing; a
+  restriction read by its truth would make a falsy wrong kind "not restricted"), an object as an object
+  (`base.optional`, `base.nested`), and only then is one chosen. A member that carries a wrong-kind present value is
+  dropped and counted, never read as holding nothing. Sites the sweep of the adapters, the SDMX reader and the
+  loaders changed: OpenML's `licence`/`license`, Europe PMC's `Y`/`N` flags, DOAJ's journal `ref`, FRED's
+  `notes` (a restriction note), Dataverse's `restricted` flag and `identifier`/`authority`, Census's
+  `predicateOnly` and `label`, BEA's error envelope and value labels, SDMX-JSON's `id`/`name`. Sites reviewed and
+  left, with the reason: a text fallback whose first operand is read as text (`text(a) or text(b)`: a wrong-kind
+  first operand raises before the fallback, and the second is read only when the first says nothing); a filter on
+  a catalogue row's identifier (`if row.get("id")`: the accepted rule that a row naming nothing is skipped, and a
+  listing in which none names anything is not a catalogue, `base.identified`); credentials and token lifetimes
+  (`expires_in or 3600`: no candidate data); Socrata's portal-vouching predicate (fails closed); the OpenAlex
+  snapshot loader's tolerant reading of a local file; and pass-through `extra` fields (`cited_by_count`,
+  `type`, `version`, ...), which are carried as the provider sent them and are not decisions.
+  The canonical record carries `publisher` (the sample the engine's contract fixtures ship has it beside `venue`)
+  wherever the provider states one for a work, a dataset or a venue (Crossref, DataCite, DOAJ journals, CORE,
+  OpenAIRE, the Dataverse family), read as text; `venue` keeps what it said.
   An unreadable successful answer (unparseable, empty, or without the container its
   results live in) and a search endpoint's 404 are `provider_unavailable` with
   `payload_invalid` / `provider_outage` — never `searched_empty`. An answer with any

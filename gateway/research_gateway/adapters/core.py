@@ -21,14 +21,14 @@ def _headers(client: Client) -> dict:
 def _record(w: dict, *, with_text: bool = False) -> dict:
     doi = normalize_doi(w.get("doi"))
     links = [u for u in (text(SOURCE_ID, w.get("downloadUrl")), *(text(SOURCE_ID, u) for u in listed(SOURCE_ID, w, "sourceFulltextUrls"))) if u]
-    full_text = text(SOURCE_ID, w.get("fullText"))
+    full_text, publisher = text(SOURCE_ID, w.get("fullText")), text(SOURCE_ID, w.get("publisher"))
     rec = make_record(
         identity=f"doi:{doi}" if doi else f"core:{key(SOURCE_ID, w.get('id'))}",
         kind="full_text" if with_text else "article", source_id=SOURCE_ID, title=w.get("title"),
         authors=[n for n in (text(SOURCE_ID, a.get("name")) for a in listed(SOURCE_ID, w, "authors")) if n], year=w.get("yearPublished"),
-        venue=text(SOURCE_ID, w.get("publisher")) or None, identifiers={"doi": doi} if doi else {"core": key(SOURCE_ID, w.get("id"))},
+        venue=publisher or None, identifiers={"doi": doi} if doi else {"core": key(SOURCE_ID, w.get("id"))},
         links=links, license=None, attribution="CORE",
-        extra={"core_id": w.get("id"), "redistributable": False, "has_full_text": bool(full_text)},
+        extra={"core_id": w.get("id"), "publisher": publisher, "redistributable": False, "has_full_text": bool(full_text)},
         raw={k: v for k, v in plain(w).items() if k != "fullText"},  # the payload minus the text itself (I-7)
     )
     if with_text and full_text:

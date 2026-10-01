@@ -38,7 +38,7 @@ def _record(client: Client, w: dict) -> dict:
         links=[url] if url else [], license=licenses[0] if licenses else None,
         attribution=None,
         extra={"type": w.get("type"), "cited_by_count": w.get("is-referenced-by-count"),
-               "reference_count": w.get("reference-count"), "publisher": w.get("publisher")},
+               "reference_count": w.get("reference-count"), "publisher": text(SOURCE_ID, w.get("publisher"))},
         raw=w,
     )
 

@@ -78,15 +78,15 @@ def _record(r: dict) -> dict:
     others = {scheme: p.get("value") for p, scheme in zip(pids, schemes) if scheme and scheme != "doi"}
     ids = {"doi": doi} if doi else {}
     ids.update({k: v for k, v in others.items() if k in ("handle", "arxiv", "pmid", "urn")})
-    typ = text(SOURCE_ID, r.get("type")) or ""
+    typ, publisher = text(SOURCE_ID, r.get("type")) or "", text(SOURCE_ID, r.get("publisher"))
     return make_record(
         identity=f"doi:{doi}" if doi else f"openaire:{key(SOURCE_ID, r.get('id'))}",
         kind=_KIND.get(typ, "document"), source_id=SOURCE_ID, title=r.get("mainTitle"),
         authors=[n for n in (text(SOURCE_ID, a.get("fullName")) for a in listed(SOURCE_ID, r, "authors")) if n],
-        year=year_from(r.get("publicationDate")), venue=text(SOURCE_ID, nested(SOURCE_ID, r, "container").get("name")) or text(SOURCE_ID, r.get("publisher")),
+        year=year_from(r.get("publicationDate")), venue=text(SOURCE_ID, nested(SOURCE_ID, r, "container").get("name")) or publisher,
         identifiers=ids, links=links, license=licenses[0] if licenses else None,
         attribution="OpenAIRE",   # the CC-BY verdict is conditional on attribution (seed evidence)
-        extra={"openaire_id": r.get("id"), "access_right": nested(SOURCE_ID, r, "bestAccessRight").get("label"),
+        extra={"openaire_id": r.get("id"), "publisher": publisher, "access_right": nested(SOURCE_ID, r, "bestAccessRight").get("label"),
                "has_doi": bool(doi)},
         raw=r,
     )

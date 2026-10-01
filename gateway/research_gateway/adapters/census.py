@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record
-from .base import AdapterError, Client, PayloadError, check, identified, key, listed, need, plain, text
+from .base import AdapterError, Client, PayloadError, boolean, check, identified, key, listed, need, plain, text
 
 SOURCE_ID = "census"
 SMOKE = {'capability': 'data', 'params': {'dataset': '2022/acs/acs1', 'get': ['NAME'], 'for': 'state:37'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -96,10 +96,10 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
     for name, meta in plain(need(SOURCE_ID, resp.json, "variables", kind=dict)).items():
         if not isinstance(meta, dict):
             raise PayloadError(f"{SOURCE_ID}: the variable {name!r} is {type(meta).__name__}, not an object: the catalogue is unreadable, not shorter")
-        label = meta.get("label") or ""
+        label = text(SOURCE_ID, meta.get("label")) or ""   # a label that is not text makes the catalogue unreadable, not a variable without one
         if q and q not in name.lower() and q not in label.lower():
             continue
-        if meta.get("predicateOnly"):
+        if boolean(SOURCE_ID, meta.get("predicateOnly")):
             # a predicate is a FILTER, never a selectable column: putting it in `get`
             # produces an HTTP 400 (D-32a finding 5)
             entries.append({"id": name, "label": label, "kind": "predicate",

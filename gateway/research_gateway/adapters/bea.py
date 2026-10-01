@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record
-from .base import AdapterError, Client, Obj, PayloadError, check, identified, listed, need, plain, text
+from .base import AdapterError, Client, Obj, PayloadError, check, identified, key as member_key, listed, need, optional, plain, text
 
 SOURCE_ID = "bea"
 SMOKE = {'capability': 'data', 'params': {'method': 'GETDATASETLIST'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -30,8 +30,11 @@ def _listing(results: dict, *keys: str, required: bool = False) -> list:
 
 
 def _error(j: dict) -> str | None:
-    api = j.get("BEAAPI") or {}
-    err = (api.get("Results") or {}).get("Error") or api.get("Error")
+    """The error BEA reports inside a 200 answer, if it reports one. The envelope and its results are objects before anything is read from them: a
+    `BEAAPI` that is `false` or `[]` is an unreadable answer, not one that reports no error."""
+    api = optional(SOURCE_ID, j, "BEAAPI", dict)
+    err = optional(SOURCE_ID, api, "Results", dict).get("Error")
+    err = api.get("Error") if err is None else err
     return err.get("APIErrorDescription") if isinstance(err, Obj) else None
 
 
@@ -138,14 +141,14 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         entries, rows = [], rows_of(results, "ParamValue")
         for v in rows:
             range_keys = [k for k in v if k.startswith(("First", "Last"))]
-            exact = next((v[k] for k in (parameter, parameter.capitalize(), parameter.upper(), "Key") if v.get(k)), None)
+            exact = next((member_key(SOURCE_ID, v[k]) for k in (parameter, parameter.capitalize(), parameter.upper(), "Key") if v.get(k) not in (None, "")), None)
             if exact is not None and not range_keys:
-                entries.append({"id": exact, "label": v.get("Desc") or v.get("Description") or exact, "kind": "value",
+                entries.append({"id": exact, "label": text(SOURCE_ID, v.get("Desc")) or text(SOURCE_ID, v.get("Description")) or exact, "kind": "value",
                                 "data_request": {"tool": "research_data", "partial": True,
                                                  "arguments": {"source": SOURCE_ID,
                                                                "params": {"dataset": dataset, parameter.lower(): exact}},
                                                  "missing": "the dataset's other required parameters (browse them the same way)"}})
-            elif range_keys and v.get("TableName"):
+            elif range_keys and text(SOURCE_ID, v.get("TableName")):
                 spans = ", ".join(f"{k}={v[k]}" for k in sorted(range_keys) if v.get(k))
                 entries.append({"id": v["TableName"], "label": f"{v['TableName']}: {spans}", "kind": "range",
                                 "data_request": {"tool": "research_data", "partial": True,

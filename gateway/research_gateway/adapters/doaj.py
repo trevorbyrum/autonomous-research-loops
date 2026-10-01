@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi, normalize_issn
-from .base import Client, Obj, check, first_member, key, listed, members, need, nested, optional, plain, quote, text, total
+from .base import Client, Obj, PayloadError, check, first_member, key, listed, members, need, nested, optional, plain, quote, text, total
 
 SOURCE_ID = "doaj"
 SMOKE = {'capability': 'find', 'query': 'management', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -52,15 +52,26 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1) -> dict:
     return {"records": members(SOURCE_ID, results, _record), "total": count, "next_page": nxt, "exhausted": reached}
 
 
+def _ref_url(value) -> str | None:
+    """One URL of a journal's `ref`: text, or (as an earlier reading of the schema had it) an object that carries it as `url`; null names none.
+    Anything else is unreadable — a `{}` with no `url` included: it is a URL that is not there, not one the journal leaves out."""
+    if isinstance(value, dict):
+        if "url" not in value:
+            raise PayloadError(f"{SOURCE_ID}: a journal's ref is an object that names no url")
+        value = value["url"]
+    return text(SOURCE_ID, value)
+
+
 def _journal(issn: str, a: dict) -> dict:
     b = nested(SOURCE_ID, a, "bibjson")
-    publisher, licenses = b.get("publisher"), listed(SOURCE_ID, b, "license")
+    stated, licenses = b.get("publisher"), listed(SOURCE_ID, b, "license")
+    publisher = text(SOURCE_ID, stated.get("name") if isinstance(stated, Obj) else stated)   # an object that names it (DOAJ's schema), or the name itself
     return make_record(identity=f"issn:{issn}", kind="venue", source_id=SOURCE_ID, title=b.get("title"),
-                       venue=publisher.get("name") if isinstance(publisher, Obj) else publisher,
+                       venue=publisher,
                        identifiers={"issn": issn},
-                       links=[u for u in (v if isinstance(v, str) else text(SOURCE_ID, v.get("url")) for v in plain(optional(SOURCE_ID, b, "ref", dict)).values()) if u],
+                       links=[u for u in (_ref_url(v) for v in plain(optional(SOURCE_ID, b, "ref", dict)).values()) if u],
                        license=(licenses[0] if licenses else {}).get("type"),
-                       extra={"in_doaj": True, "subjects": [t for t in (text(SOURCE_ID, s.get("term")) for s in listed(SOURCE_ID, b, "subject")) if t]},
+                       extra={"publisher": publisher, "in_doaj": True, "subjects": [t for t in (text(SOURCE_ID, s.get("term")) for s in listed(SOURCE_ID, b, "subject")) if t]},
                        raw=a)
 
 

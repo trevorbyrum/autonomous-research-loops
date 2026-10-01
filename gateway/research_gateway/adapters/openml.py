@@ -22,9 +22,10 @@ def _did(target: str) -> str:
 def _list_record(d: dict) -> dict:
     did = key(SOURCE_ID, d.get("did"))
     quality = {n: q.get("value") for q in listed(SOURCE_ID, d, "quality") if (n := text(SOURCE_ID, q.get("name")))}
+    licence, license_ = text(SOURCE_ID, d.get("licence")), text(SOURCE_ID, d.get("license"))   # each is read as text before either is chosen: a `false` is not no licence
     return make_record(identity=f"openml:{did}", kind="dataset", source_id=SOURCE_ID, title=d.get("name"), venue="OpenML",
                        identifiers={"dataset_id": did}, links=[f"https://www.openml.org/d/{did}"],
-                       license=d.get("licence") or d.get("license"),   # captured whenever the listing carries it (D-25)
+                       license=licence or license_,   # captured whenever the listing carries it (D-25); OpenML's own spelling first
                        extra={"version": d.get("version"), "status": d.get("status"), "format": d.get("format"),
                               "instances": quality.get("NumberOfInstances"), "features": quality.get("NumberOfFeatures")},
                        raw=d)

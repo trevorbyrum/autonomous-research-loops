@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..core.canonical import make_record
-from .base import AdapterError, Client, check, identified, need, plain
+from .base import AdapterError, Client, check, identified, need, plain, text
 
 SOURCE_ID = "fred"
 SMOKE = {'capability': 'data', 'params': {'series': 'GDP', 'limit': 1}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -14,8 +14,10 @@ _RESTRICTION_MARKERS = ("restrict", "non-commercial", "noncommercial", "written 
                         "may not be", "copyrighted", "proprietary", "licens")
 
 
-def _restricted(notes: str | None) -> bool:
-    low = (notes or "").lower()
+def _restricted(notes) -> bool:
+    """Whether the series' notes carry a restriction marker. Notes that are there and are not text cannot be checked, and a series whose restrictions
+    cannot be checked is unreadable: `[]` or `false` are not notes that say nothing."""
+    low = (text(SOURCE_ID, notes) or "").lower()
     return any(m in low for m in _RESTRICTION_MARKERS)
 
 

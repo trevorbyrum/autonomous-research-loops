@@ -142,6 +142,15 @@ def _held(holder, key: str, kind: type):
     return value
 
 
+def _named(entry) -> str | None:
+    """What an SDMX-JSON entry (a dimension, one of its values) is called: its `id`, else its `name`. Both are text when they are there, and are read as
+    such before either is chosen: an `id` that is `false` or `[]` is not a missing one with a `name` to fall back to."""
+    ident, name = entry.get("id"), entry.get("name")
+    if any(v is not None and not isinstance(v, str) for v in (ident, name)):
+        raise PayloadError("an SDMX entry whose id or name is not text")
+    return ident or name
+
+
 def series_reader(j: Obj):
     """The function that reads one `series_members` member into {key: {dim: value}, observations: [(period,
     value)], observations_raw}; the message's structure is read once, here, whole — every series needs it."""
@@ -149,7 +158,7 @@ def series_reader(j: Obj):
     dims = _held(st, "dimensions", dict)
     series_dims = _held(dims, "series", list)
     obs_dims = _held(dims, "observation", list)
-    periods = [v.get("id") or v.get("name") for v in (_held(obs_dims[0], "values", list) if obs_dims else [])]
+    periods = [_named(v) for v in (_held(obs_dims[0], "values", list) if obs_dims else [])]
 
     def read(member: Obj) -> dict:
         key, s = member["key"], member["value"]
@@ -158,7 +167,7 @@ def series_reader(j: Obj):
         for pos, d in zip(idx, series_dims):
             vals = _held(d, "values", list)
             if pos < len(vals):
-                dim_values[d.get("id") or d.get("name")] = vals[pos].get("id") or vals[pos].get("name")
+                dim_values[_named(d)] = _named(vals[pos])
         observed = _held(s, "observations", dict)   # the observations of ONE series: read whole, a malformed one makes it unreadable
         observations = []
         for oi, arr in sorted(((int(k), v) for k, v in observed.items()), key=lambda kv: kv[0]):
@@ -171,27 +180,29 @@ def series_reader(j: Obj):
 
 
 def dataflows_xml(text: str) -> list[dict]:
-    """SDMX structure XML → [{id, label, structure_ref}] for every Dataflow element.
-    Namespace-agnostic like the rest of this module; the structure ref is the DSD id
-    the flow's key browsing needs (D-32)."""
+    """SDMX structure XML → [{id, label, structure_ref, structure}] for every Dataflow element. Namespace-agnostic like the rest of this
+    module; `structure_ref` is the id of the data structure the flow names (D-32) and `structure` its whole reference (agency and version too)."""
     flows = []
     root = _root(text, "Structure")
     for el in root.iter():
         if _local(el.tag) != "Dataflow":
             continue
         label = next((c.text for c in el.iter() if _local(c.tag) == "Name" and c.text), None)
-        ref = next((c.attrib.get("id") for c in el.iter() if _local(c.tag) == "Ref" and c.attrib.get("id")), None)
-        flows.append({"id": el.attrib.get("id"), "label": label or el.attrib.get("id"), "structure_ref": ref})
+        ref = next((dict(c.attrib) for c in el.iter() if _local(c.tag) == "Ref" and c.attrib.get("id")), {})
+        flows.append({"id": el.attrib.get("id"), "label": label or el.attrib.get("id"), "structure_ref": ref.get("id"), "structure": ref})
     return flows
 
 
-def dimensions_xml(text: str) -> list[str]:
-    """SDMX datastructure XML → dimension ids IN KEY ORDER (position attribute when
-    present, document order otherwise) — the order an agent needs to build a series key."""
-    dims = []
+def dimensions_xml(text: str, structure: dict) -> list[str]:
+    """The dimension ids of ONE data structure IN KEY ORDER (position attribute when present, document order otherwise): the one `structure`
+    names (its `id`, and its `agencyID` and `version` when the reference states them). A message may hold many (a wildcard query, a
+    `references=descendants` answer): their dimensions are theirs, never this one's, and each id stands once. The time dimension is no part of a key."""
     root = _root(text, "Structure")
-    for el in root.iter():
-        if _local(el.tag) == "Dimension" and el.attrib.get("id"):
+    found = [el for el in root.iter() if _local(el.tag) == "DataStructure"
+             and all(el.attrib.get(k) == structure[k] for k in ("id", "agencyID", "version") if structure.get(k) is not None)]
+    dims = []
+    for el in (found[0].iter() if found else ()):
+        if _local(el.tag) == "Dimension" and el.attrib.get("id") and all(el.attrib["id"] != d for _, d in dims):
             try:
                 position = int(el.attrib.get("position", len(dims)))
             except ValueError:

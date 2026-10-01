@@ -12,8 +12,14 @@ SCHEMES = ("doi", "pmid")
 BASE = "https://www.ebi.ac.uk/europepmc/webservices/rest"
 
 
+def _yes(r: dict, name: str) -> bool:
+    """One of Europe PMC's "Y"/"N" flags: whether it says Y. A flag that is not text (a list, a number, `false`) is unreadable, not an N."""
+    return text(SOURCE_ID, r.get(name)) == "Y"
+
+
 def _record(r: dict) -> dict:
     doi = normalize_doi(r.get("doi"))
+    mined, in_epmc = _yes(r, "hasTextMinedTerms"), _yes(r, "inEPMC")   # both are read before either decides
     pmid, pmcid, published = text(SOURCE_ID, r.get("pmid")), text(SOURCE_ID, r.get("pmcid")), r.get("pubYear")
     ids = {k: v for k, v in (("doi", doi), ("pmid", pmid), ("pmcid", pmcid)) if v}
     identity = f"doi:{doi}" if doi else (f"pmid:{pmid}" if pmid else f"europepmc:{key(SOURCE_ID, r.get('id'))}")
@@ -23,7 +29,7 @@ def _record(r: dict) -> dict:
         authors=[a.strip() for a in (text(SOURCE_ID, r.get("authorString")) or "").rstrip(".").split(",") if a.strip()],
         year=None if isinstance(published, str) and not published.isdigit() else published, venue=r.get("journalTitle"),   # text that is no year names none
         identifiers=ids, links=links, license=r.get("license"),  # per-article CC variant when the source states one
-        extra={"open_access": (r.get("isOpenAccess") == "Y"), "has_full_text": (r.get("hasTextMinedTerms") == "Y") or (r.get("inEPMC") == "Y"),
+        extra={"open_access": _yes(r, "isOpenAccess"), "has_full_text": mined or in_epmc,
                "redistributable": False},
         raw=r,
     )

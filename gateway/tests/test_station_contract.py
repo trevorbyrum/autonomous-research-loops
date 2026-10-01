@@ -666,9 +666,9 @@ class CatalogDiscovery(unittest.TestCase):
     SDMX_FLOWS = ('<mes:Structure xmlns:mes="x" xmlns:str="y"><str:Dataflow id="EXR">'
                   '<str:Name>Exchange Rates</str:Name><str:Structure><Ref id="ECB_EXR1"/></str:Structure>'
                   '</str:Dataflow></mes:Structure>')
-    SDMX_DSD = ('<mes:Structure xmlns:mes="x" xmlns:str="y"><str:DimensionList>'
-                '<str:Dimension id="FREQ" position="1"/><str:Dimension id="CURRENCY" position="2"/>'
-                '</str:DimensionList></mes:Structure>')
+    SDMX_DSD = ('<mes:Structure xmlns:mes="x" xmlns:str="y"><str:DataStructures><str:DataStructure id="ECB_EXR1"><str:DataStructureComponents>'
+                '<str:DimensionList><str:Dimension id="FREQ" position="1"/><str:Dimension id="CURRENCY" position="2"/>'
+                '</str:DimensionList></str:DataStructureComponents></str:DataStructure></str:DataStructures></mes:Structure>')   # a dimension belongs to a data structure
 
     def test_ecb_dataflows_then_dimensions_in_key_order(self):
         c, t = self._client()
@@ -684,6 +684,54 @@ class CatalogDiscovery(unittest.TestCase):
         self.assertEqual(entry["dimensions_in_key_order"], ["FREQ", "CURRENCY"])
         self.assertTrue(entry["data_request"]["partial"])
         self.assertEqual(entry["data_request"]["arguments"]["params"]["key"], "?.?")
+
+    @staticmethod
+    def structures(*specs) -> str:
+        """An SDMX-ML structure message holding the data structures `specs` = (id, agency, version, (dimension ids...), time dimension or None) describe."""
+        body = "".join(f'<str:DataStructure id="{i}" agencyID="{a}" version="{v}"><str:DataStructureComponents><str:DimensionList>'
+                       + "".join(f'<str:Dimension id="{d}" position="{n}"/>' for n, d in enumerate(dims, 1))
+                       + (f'<str:TimeDimension id="{t}" position="{len(dims) + 1}"/>' if t else "") + "</str:DimensionList></str:DataStructureComponents></str:DataStructure>"
+                       for i, a, v, dims, t in specs)
+        return f'<mes:Structure xmlns:mes="x" xmlns:str="y"><str:DataStructures>{body}</str:DataStructures></mes:Structure>'
+
+    def browse(self, source: str, message: str, ref: str = '<Ref id="S_EXR" agencyID="ECB" version="1.0"/>'):
+        flows = ('<mes:Structure xmlns:mes="x" xmlns:str="y"><str:Dataflow id="EXR"><str:Name>Exchange Rates</str:Name>'
+                 f'<str:Structure>{ref}</str:Structure></str:Dataflow></mes:Structure>')
+        c, t = self._client()
+        base = {"ecb": "https://data-api.ecb.europa.eu/service", "bis": "https://stats.bis.org/api/v2/structure"}[source]
+        t.add("GET", f"{base}/dataflow/{source.upper()}/EXR", body=flows)
+        t.add("GET", f"{base}/datastructure/{source.upper()}/S_EXR", body=message)
+        return ADAPTERS[source].catalog(c, within="EXR")
+
+    def test_a_browse_names_the_dimensions_of_the_flows_own_structure_and_never_merges_the_structures_of_a_message(self):
+        """R9-5 (Astra's coverage finding, and the oracle's multi-structure case): a message may hold many data structures (a wildcard query); each keeps its own
+        dimensions, and the flow's key template is its structure's alone, each dimension once, and without the time dimension."""
+        message = self.structures(("S_ICP", "ECB", "1.0", ("FREQ", "REF_AREA", "ADJUSTMENT"), "TIME_PERIOD"),
+                                  ("S_EXR", "ECB", "1.0", ("FREQ", "CURRENCY", "CURRENCY_DENOM"), "TIME_PERIOD"),
+                                  ("S_BSI", "ECB", "1.0", ("FREQ", "REF_AREA", "BS_ITEM"), "TIME_PERIOD"))
+        for source in ("ecb", "bis"):
+            with self.subTest(source):
+                entry = self.browse(source, message)["entries"][0]
+                self.assertEqual(entry["dimensions_in_key_order"], ["FREQ", "CURRENCY", "CURRENCY_DENOM"])
+                self.assertEqual(entry["data_request"]["arguments"]["params"]["key"], "?.?.?")
+
+    def test_a_dimension_listed_twice_in_one_structure_stands_once_and_the_order_is_the_position(self):
+        message = self.structures(("S_EXR", "ECB", "1.0", ("CURRENCY", "FREQ", "CURRENCY"), "TIME_PERIOD"))
+        message = message.replace('id="CURRENCY" position="1"', 'id="CURRENCY" position="2"').replace('id="FREQ" position="2"', 'id="FREQ" position="1"')
+        self.assertEqual(self.browse("ecb", message)["entries"][0]["dimensions_in_key_order"], ["FREQ", "CURRENCY"])
+
+    def test_a_structure_other_than_the_one_the_flow_names_is_no_structure_of_the_flow(self):
+        """The reference names the structure by id, agency and version: another agency's or another version's structure of the same id is another structure, and a
+        message that holds none of the named one gives no template, never someone else's."""
+        for other in (("S_EXR", "BIS", "1.0"), ("S_EXR", "ECB", "2.0"), ("S_OTHER", "ECB", "1.0")):
+            with self.subTest(other):
+                out = self.browse("ecb", self.structures((*other, ("FREQ", "CURRENCY"), "TIME_PERIOD")))
+                self.assertEqual(out["entries"], [])
+                self.assertIn("no dimensions parsed", out["capability_fact"])
+
+    def test_a_reference_that_states_only_an_id_matches_the_structure_of_that_id(self):
+        out = self.browse("ecb", self.structures(("S_EXR", "ECB", "1.0", ("FREQ", "CURRENCY"), None)), ref='<Ref id="S_EXR"/>')
+        self.assertEqual(out["entries"][0]["dimensions_in_key_order"], ["FREQ", "CURRENCY"])
 
     def test_bis_dataflow_listing(self):
         c, t = self._client()

@@ -23,16 +23,16 @@ def _record(d: dict) -> dict:
     doi = normalize_doi(d.get("id") if stated is None or stated == "" else stated)   # the registry's own id is its DOI; an empty one is none
     rtype = text(SOURCE_ID, nested(SOURCE_ID, a, "types").get("resourceTypeGeneral"))
     rights = [text(SOURCE_ID, r.get("rightsIdentifier")) or text(SOURCE_ID, r.get("rights")) for r in listed(SOURCE_ID, a, "rightsList")]
-    titles, url = listed(SOURCE_ID, a, "titles"), text(SOURCE_ID, a.get("url"))
+    titles, url, publisher = listed(SOURCE_ID, a, "titles"), text(SOURCE_ID, a.get("url")), text(SOURCE_ID, a.get("publisher"))
     return make_record(
         identity=f"doi:{doi}" if doi else f"datacite:{key(SOURCE_ID, d.get('id'))}",
         kind=_KIND.get(rtype, "dataset"), source_id=SOURCE_ID,
         title=(titles[0] if titles else {}).get("title"),
         authors=[n for n in (text(SOURCE_ID, c.get("name")) for c in listed(SOURCE_ID, a, "creators")) if n],
-        year=a.get("publicationYear"), venue=a.get("publisher"),
+        year=a.get("publicationYear"), venue=publisher,
         identifiers={"doi": doi} if doi else {},
         links=[url] if url else [], license=next((r for r in rights if r), None),
-        extra={"resource_type": rtype, "client_id": nested(SOURCE_ID, d, "relationships", "client", "data").get("id")},
+        extra={"publisher": publisher, "resource_type": rtype, "client_id": nested(SOURCE_ID, d, "relationships", "client", "data").get("id")},
         raw=d,
     )
 
