@@ -47,5 +47,6 @@ Both are re-indexed from the reviewed commit before every Gate D and are availab
   - **Total production code: 15,000 lines is a growth-review trigger.** When it is reached, the loop stops for a review with the user of what made it grow before building further. The total is reported at every task boundary. Tests, schemas, SQL, prompts and tooling are reported separately.
 - Machine-checkable module-boundary graph in CI from the first commit; a boundary-graph violation fails the build.
 - Jev is not a build dependency: everything must run and be testable with the decision layer disabled.
+- No personal data in any live network call. Coders and reviewers never send the operator's email, name, accounts or credentials to a third-party service (for example a provider's contact or `mailto` field); use a placeholder or skip the live check. Tests use fixtures and fakes only.
 - No merging to main, ever, without the operator. No touching gen-1 runtime state, live topics, or the running gateway service.
 - Loop hygiene: orchestrator wakes on agent notifications with a fallback timer; every wake updates BUILD-STATE.md; a stalled agent (no progress across two wakes) is nudged once, then reported to the operator.
