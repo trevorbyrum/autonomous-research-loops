@@ -19,6 +19,10 @@ and the interpretation a conformant reader must reach:
   judgement  the specifications leave it open; `also` lists the other outcomes a conformant reader may reach. ABSENT is never among them: a
              case the documents leave open is never a licence to conclude that the listing ended.
 
+Section numbers, quoted rules and every label were checked against the text of the three RFCs (fetched to private/evidence/2b-repair-10a/rfc/; corrections in
+corrections-after-rfc-text.md there), and the URI grammar below was compiled a second time, mechanically, from the RFC 3986 Appendix A text and compared with it
+on 240,000 strings (rfc/check_abnf.py): the first version of the citations was written from memory.
+
 The reference grammar below (`URI_REFERENCE`, `read`, `interpret`) is an independent transcription of the ABNF. It labels nothing: the vectors'
 `expect` is written by hand, and `tests/test_oracle.py` checks hand and grammar against each other so a typo in a label is found here, not in
 the gateway.
@@ -102,7 +106,7 @@ URI_REFERENCE = re.compile(rf"(?:{_URI}|{_RELREF})")            # §4.1 (a link 
 _TCHAR = r"[!#$%&'*+\-.^_`|~0-9A-Za-z]"
 _TOKEN = re.compile(rf"{_TCHAR}+")
 _QUOTED = re.compile(r'"(?:[\t \x21\x23-\x5b\x5d-\x7e\x80-\xff]|\\[\t \x21-\x7e\x80-\xff])*"')
-_RELTYPE = rf"(?:[A-Za-z][A-Za-z0-9.\-]*|{_URI})"
+_RELTYPE = rf"(?:[a-z][a-z0-9.\-]*|{_URI})"                 # reg-rel-type = LOALPHA *( LOALPHA / DIGIT / "." / "-" ): lowercase ASCII (RFC 8288 §3.3, §6)
 _REL_LIST = re.compile(rf"{_RELTYPE}(?: +{_RELTYPE})*")
 _OWS = " \t"
 
@@ -123,7 +127,7 @@ def read(header: str) -> list:
             i += 1
         if i >= n:
             return links
-        if header[i] == ",":                                    # an empty list element (RFC 9110 §5.6.1: recipients accept them)
+        if header[i] == ",":                                    # an empty list element (RFC 9110 §5.6.1.2: a recipient MUST accept them)
             i += 1
             continue
         if header[i] != "<":
@@ -217,7 +221,7 @@ VALID_TARGETS = (
     ("../up", "§4.2", "dot segments are segments"),
     ("?q=1", "§4.2, §3.4", "a query-only reference"),
     ("#frag", "§4.2, §3.5", "a fragment-only reference"),
-    ("", "§4.2 path-empty", "the empty reference is a relative-ref (same-document)"),
+    ("", "§4.2 path-empty; §4.4 (empty references are same-document references)", "the empty reference is a relative-ref (same-document)"),
     ("a:b", "§3.1, §3.3 path-rootless", "scheme and a rootless path"),
     ("mailto:x@example.org", "§3.3 path-rootless", "pchar admits ':' and '@'"),
     ("urn:isbn:0451450523", "§3.3 path-rootless", "colons in a rootless path"),
@@ -225,7 +229,7 @@ VALID_TARGETS = (
     ("https://u:p:q@h.example/", "§3.2.1 userinfo", "user info may contain ':'"),
     ("https://example.org:/", "§3.2.3 port = *DIGIT", "an empty port"),
     ("https://example.org:65536/", "§3.2.3", "the grammar bounds no port number"),
-    ("https:///p", "§3.2.2 reg-name = *(...)", "an empty host is a reg-name"),
+    ("https:///p", "§3.2.2 reg-name = *(...); but §3.2.2 and §6.2.3 note that http(s) considers an empty host an error (scheme-specific, §3.1)", "an empty host is a reg-name"),
     ("https://[::1]/", "§3.2.2 IPv6address", "IP-literal"),
     ("https://[::1]:8080/", "§3.2.2, §3.2.3", "IP-literal with a port"),
     ("https://[2001:db8::1]/x", "§3.2.2 IPv6address", "compressed IPv6"),
@@ -233,14 +237,14 @@ VALID_TARGETS = (
     ("https://[::ffff:192.0.2.1]/", "§3.2.2 ls32 = IPv4address", "IPv6 with a dotted-quad tail"),
     ("https://[v7.fe80]/", "§3.2.2 IPvFuture", "IPvFuture"),
     ("https://192.0.2.1/", "§3.2.2 IPv4address", "dotted quad"),
-    ("https://999.1.1.1/", "§3.2.2 reg-name", "an out-of-range 'octet' is not an IPv4address but is a reg-name"),
-    ("https://01.2.3.4/", "§3.2.2 reg-name", "a leading zero is not a dec-octet but is a reg-name"),
+    ("https://999.1.1.1/", "§3.2.2 (first-match-wins: a host that does not match IPv4address is a reg-name)", "an out-of-range 'octet' is not an IPv4address but is a reg-name"),
+    ("https://01.2.3.4/", "§3.2.2 (first-match-wins: a leading zero is no dec-octet, so a reg-name)", "a leading zero is not a dec-octet but is a reg-name"),
     ("https://example.org/a%20b", "§2.1 pct-encoded", "percent-encoded space"),
     ("https://example.org/a%7e", "§2.1", "lowercase hex digits are equivalent to uppercase"),
     ("https://example.org/a%7E", "§2.1", "uppercase hex digits"),
     ("https://example.org/a%2Fb", "§2.1", "percent-encoded reserved character"),
     ("https://example.org/a%25b", "§2.1", "percent-encoded percent sign"),
-    ("https://example.org/?q=%E2%82%AC", "§2.1, §2.5", "percent-encoded UTF-8"),
+    ("https://example.org/?q=%E2%82%AC", "§2.1 (any two HEXDIG; §2.5 only advises UTF-8 for the textual data of new schemes)", "percent-encoded UTF-8"),
     ("https://example.org/?q=%FF", "§2.1", "the grammar does not require the octets to be UTF-8"),
     ("https://example.org/?q=%00", "§2.1", "the grammar admits %00"),
     ("https://example.org/p;params", "§3.3 sub-delims", "';' is a sub-delim"),
@@ -269,27 +273,27 @@ INVALID_TARGETS = (
     ("https://example.org%GG/", "§2.1 in the host (reg-name)"),
     ("https://example.org%/", "§2.1: trailing '%' in the host"),
     ("%", "§2.1: a lone '%'"),
-    ("https://example.org/a%\u0663\u0663", "§2.1: HEXDIG is ASCII; ARABIC-INDIC DIGIT THREE is not a digit"),
-    ("https://example.org/a%\uff14\uff11", "§2.1: HEXDIG is ASCII; FULLWIDTH DIGITS are not"),
-    ("https://example.org/a\uff05\x34\x31", "§2: FULLWIDTH PERCENT SIGN is not '%'"),
+    ("https://example.org/a%\u0663\u0663", "§2.1: HEXDIG is ASCII (core rule, §1.3; the ABNF terminals are US-ASCII code points, §2); ARABIC-INDIC DIGIT THREE is not a digit"),
+    ("https://example.org/a%\uff14\uff11", "§2.1: HEXDIG is ASCII (core rule, §1.3; the ABNF terminals are US-ASCII code points, §2); FULLWIDTH DIGITS are not"),
+    ("https://example.org/a\uff05\x34\x31", "§2, §2.1-§2.3, App. A: FULLWIDTH PERCENT SIGN is not '%'"),
     ("https://example.org/a b", "§2.2/§2.3: a space is neither reserved nor unreserved"),
-    ("https://example.org/a\tb", "§2: a TAB is not a URI character"),
-    ("https://example.org/a\x01b", "§2: a control character"),
-    ("https://example.org/a\x7fb", "§2: DEL"),
-    ("https://example.org/a\"b", "§2.4: '\"' must be percent-encoded"),
-    ("https://example.org/a<b", "§2.4: '<' must be percent-encoded"),
-    ("https://example.org/a\\b", "§2.4: '\\' must be percent-encoded"),
-    ("https://example.org/a^b", "§2.4: '^'"),
-    ("https://example.org/a`b", "§2.4: '`'"),
-    ("https://example.org/a{b}", "§2.4: '{' '}'"),
-    ("https://example.org/a|b", "§2.4: '|'"),
-    ("https://example.org/\u00e9", "§2, §2.5: non-ASCII must be percent-encoded (that is RFC 3987, not 3986)"),
-    ("https://example.org/\u4e2d", "§2, §2.5: non-ASCII"),
-    ("https://example.org/\U0001f600", "§2, §2.5: non-ASCII outside the BMP"),
-    ("https://example.org/a\u00a0b", "§2: NO-BREAK SPACE"),
-    ("https://example.org/a\u200bb", "§2: ZERO WIDTH SPACE"),
-    ("https://example.org/a\u202eb", "§2: RIGHT-TO-LEFT OVERRIDE"),
-    ("https://example.org/a\ufeffb", "§2: BYTE ORDER MARK"),
+    ("https://example.org/a\tb", "§2, §2.1-§2.3, App. A: a TAB is not a URI character"),
+    ("https://example.org/a\x01b", "§2, §2.1-§2.3, App. A: a control character"),
+    ("https://example.org/a\x7fb", "§2, §2.1-§2.3, App. A: DEL"),
+    ("https://example.org/a\"b", "§2.1-§2.3, App. A (in neither reserved nor unreserved): '\"' must be percent-encoded"),
+    ("https://example.org/a<b", "§2.1-§2.3, App. A (in neither reserved nor unreserved): '<' must be percent-encoded"),
+    ("https://example.org/a\\b", "§2.1-§2.3, App. A (in neither reserved nor unreserved): '\\' must be percent-encoded"),
+    ("https://example.org/a^b", "§2.1-§2.3, App. A (in neither reserved nor unreserved): '^'"),
+    ("https://example.org/a`b", "§2.1-§2.3, App. A (in neither reserved nor unreserved): '`'"),
+    ("https://example.org/a{b}", "§2.1-§2.3, App. A (in neither reserved nor unreserved): '{' '}'"),
+    ("https://example.org/a|b", "§2.1-§2.3, App. A (in neither reserved nor unreserved): '|'"),
+    ("https://example.org/\u00e9", "§2, §2.1, §2.4, App. A; RFC 8288 §3.1, §6: no non-ASCII character is in the RFC 3986 grammar (IRIs are RFC 3987)"),
+    ("https://example.org/\u4e2d", "§2, §2.1, §2.4, App. A; RFC 8288 §3.1, §6: non-ASCII"),
+    ("https://example.org/\U0001f600", "§2, §2.1, §2.4, App. A; RFC 8288 §3.1, §6: non-ASCII outside the BMP"),
+    ("https://example.org/a\u00a0b", "§2, §2.1-§2.3, App. A: NO-BREAK SPACE"),
+    ("https://example.org/a\u200bb", "§2, §2.1-§2.3, App. A: ZERO WIDTH SPACE"),
+    ("https://example.org/a\u202eb", "§2, §2.1-§2.3, App. A: RIGHT-TO-LEFT OVERRIDE"),
+    ("https://example.org/a\ufeffb", "§2, §2.1-§2.3, App. A: BYTE ORDER MARK"),
     ("https://\u00e9xample.org/", "§3.2.2: non-ASCII in a reg-name"),
     ("https://example.org/?q=\u00e9", "§3.4: non-ASCII in the query"),
     ("https://example.org/#\u00e9", "§3.5: non-ASCII in the fragment"),
@@ -314,28 +318,31 @@ INVALID_TARGETS = (
     ("https://example.org:\u0663/", "§3.2.3: ARABIC-INDIC DIGIT is not a DIGIT"),
     ("https://example.org:80:80/", "§3.2.3: one port"),
     ("https://u@v@example.org/", "§3.2.1: '@' is not a user info or reg-name character"),
-    ("https://example.org/a[0]", "§3.3: '[' and ']' are gen-delims, only valid in an IP-literal"),
-    ("https://example.org/?x[0]=1", "§3.4: '[' and ']' are not query characters"),
+    ("https://example.org/a[0]", "§3.2.2: an IP-literal is 'the only place where square bracket characters are allowed in the URI syntax'; §2.2"),
+    ("https://example.org/?x[0]=1", "§3.2.2: square brackets are allowed only in an IP-literal; §3.4 query = *( pchar / '/' / '?' )"),
     ("https://example.org/#a#b", "§3.5: '#' does not occur in a fragment"),
-    ("1ab://example.org/", "§3.1: a scheme starts with ALPHA, and a first segment may not hold ':'"),
-    ("h_t://example.org/", "§3.1: '_' is not a scheme character, and a first segment may not hold ':'"),
+    ("1ab://example.org/", "§3.1 (a scheme starts with ALPHA), §4.1 (a prefix that is no scheme makes it a relative reference), §4.2 (a first segment holding ':' is no relative-path reference)"),
+    ("h_t://example.org/", "§3.1 ('_' is not a scheme character), §4.1, §4.2 (a first segment holding ':' is no relative-path reference)"),
     ("://example.org/", "§3.1: an empty scheme"),
-    (":x", "§3.1, §4.2: no scheme, and a first segment may not hold ':'"),
+    (":x", "§3.1, §4.1, §4.2: no scheme, and a first segment may not hold ':'"),
     ("a b:c", "§3.1: a space in a scheme"),
 )
+
+# valid URI-References that violate a SCHEME-SPECIFIC restriction (RFC 3986 §3.1, §3.2.2, §6.2.3): a reader that checks them may decline the header
+SCHEME_SPECIFIC = {"https:///p"}
 
 # cursor values appended to the Hub's own search URL (the part a provider controls): valid ones leave a followable next link
 VALID_CURSORS = (
     ("a1", "§3.4 unreserved"), ("b%2Bc", "§2.1"), ("b%2bc", "§2.1 lowercase hex"), ("x,y", "§3.4 sub-delims"), ("x;y", "§3.4 sub-delims"),
     ("x:y@z", "§3.4 pchar"), ("x/y", "§3.4"), ("x?y", "§3.4"), ("a+b", "§3.4"), ("a=b", "§3.4"), ("a'b", "§3.4"), ("(a)", "§3.4"), ("a*", "§3.4"),
-    ("a!$", "§3.4"), ("%E2%82%AC", "§2.1, §2.5"), ("%7E", "§2.1"), ("~-._", "§2.3 unreserved"), ("a%25b", "§2.1"), ("", "§3.4 an empty value"),
+    ("a!$", "§3.4"), ("%E2%82%AC", "§2.1 (any two HEXDIG; §2.5 only advises UTF-8 for the textual data of new schemes)"), ("%7E", "§2.1"), ("~-._", "§2.3 unreserved"), ("a%25b", "§2.1"), ("", "§3.4 an empty value"),
     ("eyJfaWQiOiI2NTAwIn0", "§2.3 base64url"),
 )
 INVALID_CURSORS = (
     ("%GG", "§2.1"), ("%G1", "§2.1"), ("%1G", "§2.1"), ("%", "§2.1"), ("%1", "§2.1"), ("a%", "§2.1"), ("%%41", "§2.1"),
-    ("%\u0663\u0663", "§2.1 HEXDIG is ASCII"), ("%\uff14\uff11", "§2.1 HEXDIG is ASCII"), ("a b", "§2.2/§2.3"), ("\u00e9", "§2, §2.5"),
-    ("\u4e2d", "§2, §2.5"), ("\U0001f600", "§2, §2.5"), ("a|b", "§2.4"), ("a\\b", "§2.4"), ("a^b", "§2.4"), ("a`b", "§2.4"), ("a{b}", "§2.4"),
-    ('a"b', "§2.4"), ("a<b", "§2.4"), ("a[0]", "§3.4 '[' ']' are not query characters"), ("a]", "§3.4"), ("a\x01b", "§2"), ("a\x7fb", "§2"),
+    ("%\u0663\u0663", "§2.1 HEXDIG is ASCII (core rule, §1.3; the ABNF terminals are US-ASCII code points, §2)"), ("%\uff14\uff11", "§2.1 HEXDIG is ASCII (core rule, §1.3; the ABNF terminals are US-ASCII code points, §2)"), ("a b", "§2.2/§2.3"), ("\u00e9", "§2, §2.1, §2.4, App. A; RFC 8288 §3.1, §6"),
+    ("\u4e2d", "§2, §2.1, §2.4, App. A; RFC 8288 §3.1, §6"), ("\U0001f600", "§2, §2.1, §2.4, App. A; RFC 8288 §3.1, §6"), ("a|b", "§2.1-§2.3, App. A"), ("a\\b", "§2.1-§2.3, App. A"), ("a^b", "§2.1-§2.3, App. A"), ("a`b", "§2.1-§2.3, App. A"), ("a{b}", "§2.1-§2.3, App. A"),
+    ('a"b', "§2.1-§2.3, App. A"), ("a<b", "§2.1-§2.3, App. A"), ("a[0]", "§3.2.2: square brackets are allowed only in an IP-literal; §3.4"), ("a]", "§3.2.2: square brackets are allowed only in an IP-literal; §3.4"), ("a\x01b", "§2"), ("a\x7fb", "§2"),
     ("a\tb", "§2"), ("a\u00a0b", "§2"), ("a\u200bb", "§2"), ("a\ufeffb", "§2"),
 )
 
@@ -348,12 +355,13 @@ RELS = (
     ('rel="next prev"', NEXT, "§3.3", "grammar", "a list holding next"),
     ('rel="prev  next"', NEXT, "§3.3: 1*SP", "grammar", "more than one space between types"),
     ('rel="n\\ext"', NEXT, "RFC 9110 §5.6.4 quoted-pair", "grammar", "a recipient replaces each quoted-pair with the character it quotes"),
-    ('rel = "next"', NEXT, "§3 link-param = token BWS [ '=' BWS ( token / quoted-string ) ]", "grammar", "whitespace around '='"),
-    ('rel\t=\tnext', NEXT, "§3 BWS", "grammar", "tabs around '='"),
-    ('REL="next"', NEXT, "RFC 9110 §5.6.6: parameter names are case-insensitive", "judgement",
-     "RFC 8288 does not restate it, so a reader may decline; it may never read the header as naming no next page"),
-    ('rel="NEXT"', NEXT, "§3.3: names are LOALPHA but compared without case", "judgement", "uppercase registered name"),
-    ('rel="Next"', NEXT, "§3.3", "judgement", "mixed case registered name"),
+    ('rel = "next"', NEXT, "§3 link-param = token BWS [ '=' BWS ( token / quoted-string ) ]; RFC 9110 §5.6.3 (a recipient MUST parse bad whitespace)", "grammar", "whitespace around '='"),
+    ('rel\t=\tnext', NEXT, "RFC 8288 §3 BWS; RFC 9110 §5.6.3 (a recipient MUST parse bad whitespace)", "grammar", "tabs around '='"),
+    ('REL="next"', NEXT, "RFC 9110 §5.6.6: \"Parameter names are case-insensitive\"; RFC 8288 §3.3 itself writes REL=\"X\" and REV=\"X\"", "grammar",
+     "the parameter name is case-insensitive"),
+    ('rel="NEXT"', NEXT, "§2.1.1: registered relation types MUST be compared character by character, case-insensitively; but §3.3 reg-rel-type is LOALPHA and §6 requires lowercase names",
+     "judgement", "uppercase registered name: compared as next, or not a conformant name; never the absence of a next page"),
+    ('rel="Next"', NEXT, "§2.1.1 (case-insensitive comparison); §3.3 and §6 (lowercase names)", "judgement", "mixed case registered name"),
     ('rel="prev"', ABSENT, "§3.3", "grammar", ""),
     ('rel="first last"', ABSENT, "§3.3", "grammar", ""),
     ('rel="n ext"', ABSENT, "§3.3: two relation types, 'n' and 'ext'", "grammar", "a space separates two types; it does not glue 'n' to 'ext'"),
@@ -412,7 +420,7 @@ RELS = (
     ('rel="\u212aeep"', UNKNOWN, "§3.3: KELVIN SIGN is not ASCII 'k' (it only case-folds to it)", "grammar", "a case-insensitive pattern that folds Unicode accepts this"),
     ('rel="\u017ftyle"', UNKNOWN, "§3.3: LATIN SMALL LETTER LONG S is not ASCII 's'", "grammar", "same trap"),
     ('rel="\uff4e\uff45\uff58\uff54"', UNKNOWN, "§3.3: FULLWIDTH LATIN letters are not LOALPHA", "grammar", "'next' spelled in fullwidth letters is not next"),
-    ('rel="https://example.org/\u00e9"', UNKNOWN, "RFC 3986 §2: non-ASCII in an extension type (R9-1)", "grammar", ""),
+    ('rel="https://example.org/\u00e9"', UNKNOWN, "RFC 3986 §2, §2.1-§2.3, App. A: non-ASCII in an extension type (R9-1)", "grammar", ""),
     ('rel="https://example.org/\u4e2d"', UNKNOWN, "RFC 3986 §2 (R9-1)", "grammar", ""),
     ('rel="https://example.org/%GG"', UNKNOWN, "RFC 3986 §2.1 (R9-1)", "grammar", ""),
     ('rel="https://example.org/%G1"', UNKNOWN, "RFC 3986 §2.1", "grammar", ""),
@@ -429,11 +437,11 @@ RELS = (
     ('rel="https://broken]/r"', UNKNOWN, "RFC 3986 §3.2.2", "grammar", ""),
     ('rel="https://example.org:80a/r"', UNKNOWN, "RFC 3986 §3.2.3", "grammar", ""),
     ('rel="https://example.org/r#a#b"', UNKNOWN, "RFC 3986 §3.5", "grammar", "two fragments"),
-    ('rel="https://example.org/a\\"b"', UNKNOWN, "RFC 3986 §2.4: a decoded quote is no URI character", "grammar", ""),
-    ('rel="https://example.org/a\\\\b"', UNKNOWN, "RFC 3986 §2.4: a decoded backslash is no URI character", "grammar", ""),
-    ('rel="https://example.org/a<b"', UNKNOWN, "RFC 3986 §2.4", "grammar", ""),
-    ('rel="https://example.org/a^b"', UNKNOWN, "RFC 3986 §2.4", "grammar", ""),
-    ('rel="https://example.org/a|b"', UNKNOWN, "RFC 3986 §2.4", "grammar", ""),
+    ('rel="https://example.org/a\\"b"', UNKNOWN, "RFC 3986 §2.1-§2.3, App. A (in neither reserved nor unreserved): a decoded quote is no URI character", "grammar", ""),
+    ('rel="https://example.org/a\\\\b"', UNKNOWN, "RFC 3986 §2.1-§2.3, App. A (in neither reserved nor unreserved): a decoded backslash is no URI character", "grammar", ""),
+    ('rel="https://example.org/a<b"', UNKNOWN, "RFC 3986 §2.1-§2.3, App. A (in neither reserved nor unreserved)", "grammar", ""),
+    ('rel="https://example.org/a^b"', UNKNOWN, "RFC 3986 §2.1-§2.3, App. A (in neither reserved nor unreserved)", "grammar", ""),
+    ('rel="https://example.org/a|b"', UNKNOWN, "RFC 3986 §2.1-§2.3, App. A (in neither reserved nor unreserved)", "grammar", ""),
     ('rel="https://u@v@example.org/"', UNKNOWN, "RFC 3986 §3.2.1", "grammar", ""),
     ('rel="next https://[broken"', UNKNOWN, "§3.3: one unreadable type makes the list unreadable", "contract", "next beside a malformed type is not a clean next"),
     ('rel="https://[broken next"', UNKNOWN, "§3.3", "contract", "same, the other way round"),
@@ -457,21 +465,22 @@ PARAMS = (
     ("title*=UTF-8''n%20p", NEXT, "RFC 9110 §5.6.2: every character is a tchar", "grammar", "an RFC 8187 extended value is a token"),
     ('type="text/html"', NEXT, "RFC 9110 §5.6.4", "grammar", "'/' needs quotes, and has them"),
     ('hreflang=en', NEXT, "RFC 9110 §5.6.2", "grammar", ""),
-    ('anchor', NEXT, "§3 link-param: the value is optional", "grammar", "a parameter without a value"),
-    ('a=b; c=d; e', NEXT, "§3", "grammar", "several parameters"),
+    ('ext', NEXT, "RFC 8288 §3 link-param: the value is optional; §3.4.2: other link-params are link-extensions", "grammar", "an extension parameter without a value"),
+    ('a=b; c=d; e', NEXT, "RFC 8288 §3", "grammar", "several parameters"),
     ('title="x', UNKNOWN, "RFC 9110 §5.6.4: no closing quote", "grammar", ""),
     ('title="x\\', UNKNOWN, "RFC 9110 §5.6.4", "grammar", "a trailing backslash escapes the closing quote"),
     ('title="x"y"', UNKNOWN, "RFC 9110 §5.6.4: an unescaped quote", "grammar", ""),
-    ('title="x\x01y"', UNKNOWN, "RFC 9110 §5.6.4: a control character", "grammar", ""),
-    ('title="x\x7fy"', UNKNOWN, "RFC 9110 §5.6.4: DEL", "grammar", ""),
-    ('title="x\\\x01y"', UNKNOWN, "RFC 9110 §5.6.4: a quoted-pair quotes no control character", "grammar", ""),
-    ('title=a b', UNKNOWN, "§3: after the token value 'a' a space is not a delimiter", "grammar", "an unquoted value with a space"),
+    ('title="x\x01y"', UNKNOWN, "RFC 9110 §5.6.4 (qdtext has no control character); §5.5 (other CTL characters make a field value invalid, though a recipient MAY retain them inside a quoted "
+     "string); PROVIDER-PAGINATION.md (a quoted string holds only what §5.6.4 allows)", "contract", "the repository's contract reads it as unreadable; RFC 9110 §5.5 would let a recipient keep it"),
+    ('title="x\x7fy"', UNKNOWN, "RFC 9110 §5.6.4 (qdtext excludes DEL); §5.5 (a recipient MAY retain other CTL characters); PROVIDER-PAGINATION.md", "contract", "as above"),
+    ('title="x\\\x01y"', UNKNOWN, "RFC 9110 §5.6.4 (a quoted-pair quotes HTAB, SP, VCHAR or obs-text only); §5.5; PROVIDER-PAGINATION.md", "contract", "as above"),
+    ('title=a b', UNKNOWN, "RFC 8288 §3: after the token value 'a' a space is not a delimiter", "grammar", "an unquoted value with a space"),
     ('title=a/b', UNKNOWN, "RFC 9110 §5.6.2: '/' is not a tchar", "grammar", "an unquoted media type"),
     ('type=text/html', UNKNOWN, "RFC 9110 §5.6.2: '/' is not a tchar", "grammar", "the commonest real-world violation; strictly, not a token"),
     ('title=a,b', UNKNOWN, "RFC 9110 §5.6.1: a comma starts the next list element, and 'b' is no link-value", "grammar", ""),
-    ('a b=c', UNKNOWN, "§3: a link-param name is one token", "grammar", ""),
-    ('=x', UNKNOWN, "§3: link-param starts with a token", "grammar", ""),
-    ('title=', UNKNOWN, "§3: '=' must be followed by a token or quoted-string", "grammar", ""),
+    ('a b=c', UNKNOWN, "RFC 8288 §3: a link-param name is one token", "grammar", ""),
+    ('=x', UNKNOWN, "RFC 8288 §3: link-param starts with a token", "grammar", ""),
+    ('title=', UNKNOWN, "RFC 8288 §3: '=' must be followed by a token or quoted-string", "grammar", ""),
     ('title=\x01', UNKNOWN, "RFC 9110 §5.6.2: a control character is no tchar", "grammar", ""),
     ('ti tle=x', UNKNOWN, "§3", "grammar", ""),
 )
@@ -498,15 +507,16 @@ FOLLOW = (
      "the same site; declining is allowed"),
     ("https://huggingface.co:443/api/datasets?search=q&limit=3&full=true&cursor=a", NEXT, "RFC 3986 §6.2.3: an explicit default port is equivalent", "judgement",
      "the same site; declining is allowed"),
-    ("//huggingface.co/api/datasets?search=q&limit=3&full=true&cursor=a", UNKNOWN, "RFC 3986 §4.2, §5 / Hugging Face", "judgement",
-     "a scheme-relative reference; resolving it against the request is allowed"),
-    ("/api/datasets?search=q&limit=3&full=true&cursor=a", UNKNOWN, "RFC 3986 §4.2, §5 / Hugging Face", "judgement",
-     "a relative reference; resolving it against the request is allowed"),
-    ("", UNKNOWN, "RFC 3986 §4.2, §5; PROVIDER-PAGINATION.md (an unchanged continuation ends the paging, not the search)", "judgement",
-     "the empty reference resolves to the request itself: a next page that is the page just asked makes no progress"),
+    ("//huggingface.co/api/datasets?search=q&limit=3&full=true&cursor=a", NEXT, "RFC 8288 §3.1: parsers MUST resolve a relative URI-Reference as per RFC 3986 §5 (§5.2.2, §5.4.1)",
+     "judgement", "a network-path reference, resolved against the request; the Hub-only rule may still decline to follow it"),
+    ("/api/datasets?search=q&limit=3&full=true&cursor=a", NEXT, "RFC 8288 §3.1; RFC 3986 §5.2.2", "judgement",
+     "an absolute-path reference, resolved against the request; the Hub-only rule may still decline to follow it"),
+    ("", NEXT, "RFC 8288 §3.1; RFC 3986 §5.2.2 and §5.4.1 (the empty reference resolves to the base URI)", "judgement",
+     "resolved against the request it is the request's own URL; the Hub-only rule may still decline to follow it"),
 )
 # what the relative references of FOLLOW resolve to against the request (RFC 3986 §5.2.2); the gateway may follow them as that URL, or decline
 RESOLVED = {
+    "": OWN,
     "//huggingface.co/api/datasets?search=q&limit=3&full=true&cursor=a": "https://huggingface.co/api/datasets?search=q&limit=3&full=true&cursor=a",
     "/api/datasets?search=q&limit=3&full=true&cursor=a": "https://huggingface.co/api/datasets?search=q&limit=3&full=true&cursor=a",
 }
@@ -517,18 +527,21 @@ def _vectors() -> list:
     add = out.append
 
     add(Vector("no-header", None, ABSENT, "PROVIDER-PAGINATION.md: no header names no next link (the end the official clients stop on)", "contract"))
-    for name, header, why in (("empty", "", "RFC 9110 §5.6.1: a #rule list may be empty"), ("spaces", "   ", "§5.6.1"), ("tab", "\t", "§5.6.1"),
-                              ("one-comma", ",", "§5.6.1: empty list elements are ignored"), ("commas", " , ,, ", "§5.6.1")):
+    for name, header, why in (("empty", "", "RFC 9110 §5.6.1.1 (`#element => [ 1#element ]`: no element at all), §5.6.1.2; RFC 8288 §3 (Link = #link-value)"),
+                              ("spaces", "   ", "RFC 9110 §5.6.1.2, §5.5 (a field value has no leading or trailing whitespace)"), ("tab", "\t", "RFC 9110 §5.6.1.2, §5.5"),
+                              ("one-comma", ",", "RFC 9110 §5.6.1.2: a recipient MUST accept `[ element ] *( OWS \",\" OWS [ element ] )`"),
+                              ("commas", " , ,, ", "RFC 9110 §5.6.1.2")):
         add(Vector(f"empty-header:{name}", header, ABSENT, why, "grammar", note="a header read whole that holds no link names no next page"))
     add(Vector("plain-next", f'<{NEXT_URL}>; rel="next"', NEXT, "RFC 8288 §3", next_url=NEXT_URL))
-    add(Vector("no-rel", f"<{OTHER}>", ABSENT, "RFC 8288 §3: a link-value need not carry parameters", "grammar", note="read whole; relation unstated"))
+    add(Vector("no-rel", f"<{OTHER}>", ABSENT, "RFC 8288 §3 (the ABNF allows a link-value with no parameter) but §3.3 (\"The rel parameter MUST be present\"): a non-conformant link, naming no relation",
+               "judgement", also=(UNKNOWN,), note="read whole, relation unstated; the RFC does not say what a recipient does with it"))
     add(Vector("only-prev", f'<{OTHER}>; rel="prev"', ABSENT, "RFC 8288 §3.3"))
     add(Vector("no-spaces", f'<{NEXT_URL}>;rel="next";title="t"', NEXT, "RFC 8288 §3: OWS may be empty", next_url=NEXT_URL))
     add(Vector("param-before-rel", f'<{NEXT_URL}>; title="t"; rel="next"', NEXT, "RFC 8288 §3: parameters come in any order", next_url=NEXT_URL))
     add(Vector("first-rel-wins", f'<{NEXT_URL}>; rel="next"; rel="prev"', NEXT, "RFC 8288 §3.3: occurrences after the first rel are ignored", next_url=NEXT_URL))
     add(Vector("first-rel-is-prev", f'<{NEXT_URL}>; rel="prev"; rel="next"', ABSENT, "RFC 8288 §3.3: occurrences after the first rel are ignored",
                note="the only rel that counts is prev, so this link is not the next page"))
-    add(Vector("trailing-ows", f'<{NEXT_URL}>; rel="next"   \t', NEXT, "RFC 9110 §5.6.1: OWS around list elements", next_url=NEXT_URL))
+    add(Vector("trailing-ows", f'<{NEXT_URL}>; rel="next"   \t', NEXT, "RFC 9110 §5.6.1 (elements are separated by a comma and OWS), §5.5", next_url=NEXT_URL))
     add(Vector("leading-ows", f'  \t<{NEXT_URL}>; rel="next"', NEXT, "RFC 9110 §5.6.1", next_url=NEXT_URL))
     add(Vector("no-angle-brackets", f'{NEXT_URL}; rel="next"', UNKNOWN, "RFC 8288 §3: the target is delimited by '<' and '>'"))
     add(Vector("unclosed-angle", f'<{NEXT_URL}; rel="next"', UNKNOWN, "RFC 8288 §3"))
@@ -536,22 +549,22 @@ def _vectors() -> list:
     add(Vector("empty-target-in-brackets", '<>; rel="prev"', ABSENT, "RFC 3986 §4.2: the empty reference is a URI-Reference", note="read whole, not next"))
     add(Vector("junk-before", f'junk <{NEXT_URL}>; rel="next"', UNKNOWN, "RFC 8288 §3: a list element is a link-value"))
     add(Vector("junk-after", f'<{NEXT_URL}>; rel="next" junk', UNKNOWN, "RFC 8288 §3"))
-    add(Vector("no-comma-between-links", f'<{OTHER}>; rel="prev" <{NEXT_URL}>; rel="next"', UNKNOWN, "RFC 9110 §5.6.1: list elements are comma-separated"))
+    add(Vector("no-comma-between-links", f'<{OTHER}>; rel="prev" <{NEXT_URL}>; rel="next"', UNKNOWN, "RFC 9110 §5.6.1: list elements are separated by a comma"))
     add(Vector("semicolon-between-links", f'<{OTHER}>; rel="prev"; <{NEXT_URL}>; rel="next"', UNKNOWN, "RFC 8288 §3: '<' cannot begin a link-param"))
     add(Vector("two-links", f'<{OTHER}>; rel="prev", <{NEXT_URL}>; rel="next"', NEXT, "RFC 9110 §5.6.1", next_url=NEXT_URL))
     add(Vector("two-links-reversed", f'<{NEXT_URL}>; rel="next", <{OTHER}>; rel="prev"', NEXT, "RFC 9110 §5.6.1", next_url=NEXT_URL))
-    add(Vector("two-lines-joined", f'<{OTHER}>; rel="first",<{NEXT_URL}>; rel="next"', NEXT, "RFC 9110 §5.3: repeated lines join with a comma", next_url=NEXT_URL))
+    add(Vector("two-lines-joined", f'<{OTHER}>; rel="first",<{NEXT_URL}>; rel="next"', NEXT, "RFC 9110 §5.3: a recipient MAY combine repeated field lines, in order, separated by a comma", next_url=NEXT_URL))
     add(Vector("same-next-twice", f'<{NEXT_URL}>; rel="next", <{NEXT_URL}>; rel="next"', NEXT, "RFC 8288 §3.3: one next page, named twice", next_url=NEXT_URL))
     add(Vector("two-different-nexts", f'<{NEXT_URL}>; rel="next", <{NEXT_URL}2>; rel="next"', UNKNOWN, "PROVIDER-PAGINATION.md: several different next pages", "contract"))
     add(Vector("next-in-two-rels", f'<{NEXT_URL}>; rel="prev", <{NEXT_URL}2>; rel="next prev"', NEXT, "RFC 8288 §3.3", next_url=NEXT_URL + "2"))
-    add(Vector("leading-trailing-empty-elements", f', ,<{NEXT_URL}>; rel="next",, ', NEXT, "RFC 9110 §5.6.1: empty list elements are ignored", next_url=NEXT_URL))
+    add(Vector("leading-trailing-empty-elements", f', ,<{NEXT_URL}>; rel="next",, ', NEXT, "RFC 9110 §5.6.1.2: a recipient MUST parse and ignore empty list elements", next_url=NEXT_URL))
     add(Vector("comma-in-target", f'<{OWN}&cursor=x,y>; rel="next"', NEXT, "RFC 3986 §3.4: ',' is a sub-delim inside a target", next_url=f"{OWN}&cursor=x,y",
                note="R7-1: a reader that splits on every comma loses the relation"))
     add(Vector("semicolon-in-target", f'<{OWN}&cursor=x;y>; rel="next"', NEXT, "RFC 3986 §3.4: ';' is a sub-delim inside a target", next_url=f"{OWN}&cursor=x;y"))
     add(Vector("target-with-percent-escapes", f'<{OWN}&cursor=b%2Bc>; rel="next"', NEXT, "RFC 3986 §2.1", next_url=f"{OWN}&cursor=b%2Bc"))
     add(Vector("comma-in-target-prev", f'<https://example.org/p?a,b>; rel="prev", <{NEXT_URL}>; rel="next"', NEXT, "RFC 3986 §3.4", next_url=NEXT_URL))
     add(Vector("extra-gt-after-target", f'<{NEXT_URL}>>; rel="next"', UNKNOWN, "RFC 8288 §3: after '>' only OWS, ';' or ',' may follow"))
-    add(Vector("lt-in-target", f'<{OWN}&cursor=a<b>; rel="next"', UNKNOWN, "RFC 3986 §2.4: '<' is no URI character"))
+    add(Vector("lt-in-target", f'<{OWN}&cursor=a<b>; rel="next"', UNKNOWN, "RFC 3986 §2.1-§2.3, App. A (in neither reserved nor unreserved): '<' is no URI character"))
 
     for text, expect, why, grade, note in RELS:
         target = NEXT_URL if expect == NEXT else OTHER
@@ -560,13 +573,32 @@ def _vectors() -> list:
                    next_url=target if expect == NEXT else None, also=also, note=note))
     for text, expect, why, grade, note in PARAMS:
         header = f'<{NEXT_URL}>; rel="next"; {text}'
-        add(Vector(f"param:{text}", header, expect, why, grade, next_url=NEXT_URL if expect == NEXT else None, note=note))
-        add(Vector(f"param-first:{text}", f'<{NEXT_URL}>; {text}; rel="next"', expect, why, grade, next_url=NEXT_URL if expect == NEXT else None, note=note))
+        cite = why if why.startswith("RFC") else f"RFC 8288 {why}"
+        add(Vector(f"param:{text}", header, expect, cite, grade, next_url=NEXT_URL if expect == NEXT else None, note=note))
+        add(Vector(f"param-first:{text}", f'<{NEXT_URL}>; {text}; rel="next"', expect, cite, grade, next_url=NEXT_URL if expect == NEXT else None, note=note))
+
+    # RFC 8288 §3.2: `anchor` overrides the link context; "link applications MUST NOT process the link without applying the anchor". A next link whose context
+    # is another resource (or a fragment of this one) is not this listing's next page. Not a next link, and not proof there is none: UNKNOWN (ABSENT also
+    # conformant); following it as if it were this page's is not.
+    ctx = "https://other.example/ctx"
+    why = "RFC 8288 §3.2: the anchor overrides the link context, and a link MUST NOT be processed without applying it; §3.3: rel is relative to that context"
+    for name, header in (("anchor-other-resource", f'<{NEXT_URL}>; rel="next"; anchor="{ctx}"'), ("anchor-first", f'<{NEXT_URL}>; anchor="{ctx}"; rel="next"'),
+                         ("anchor-fragment", f'<{NEXT_URL}>; rel="next"; anchor="#foo"')):
+        add(Vector(name, header, UNKNOWN, why, "judgement", also=(ABSENT,), note="the context of this link is not the listing"))
+    add(Vector("anchor-same-context", f'<{NEXT_URL}>; rel="next"; anchor="{OWN}"', NEXT, why, "judgement", also=(UNKNOWN,), next_url=NEXT_URL,
+               note="the anchor names the context the link has by default (the request), so applying it changes nothing"))
+    # RFC 8288 §3.3: `rev` expresses the relationship in the reverse direction (a link from B to A with REV="X" is a link from A to B with REL="X"); it is deprecated
+    # and is not a forward `next`
+    why = "RFC 8288 §3.3: rev is the reverse direction (deprecated), not rel; rel MUST be present"
+    add(Vector("rev-only", f'<{NEXT_URL}>; rev="next"', ABSENT, why, "judgement", also=(UNKNOWN,), note="no rel; the only relation is the reverse one"))
+    add(Vector("rel-prev-rev-next", f'<{NEXT_URL}>; rel="prev"; rev="next"', ABSENT, why, "judgement", also=(UNKNOWN,), note="forward prev, reverse next: not a forward next"))
 
     for target, section in ((t, s) for t, s, _ in VALID_TARGETS):
         base = f"RFC 3986 {section}"
-        add(Vector(f"target-valid:{target!r}", f'<{target}>; rel="prev"', ABSENT, base, note="a valid URI-Reference on a link that is not next"))
-        add(Vector(f"target-valid-beside-next:{target!r}", f'<{NEXT_URL}>; rel="next", <{target}>; rel="prev"', NEXT, base, next_url=NEXT_URL))
+        grade, also = ("judgement", (UNKNOWN,)) if target in SCHEME_SPECIFIC else ("grammar", ())
+        add(Vector(f"target-valid:{target!r}", f'<{target}>; rel="prev"', ABSENT, base, grade, also=also, note="a valid URI-Reference on a link that is not next"))
+        add(Vector(f"target-valid-beside-next:{target!r}", f'<{NEXT_URL}>; rel="next", <{target}>; rel="prev"', NEXT, base, grade, next_url=NEXT_URL,
+                   also=tuple(a for a in also if a != ABSENT)))
     for target, section in INVALID_TARGETS:
         base = f"RFC 3986 {section}"
         add(Vector(f"target-invalid:{target!r}", f'<{target}>; rel="prev"', UNKNOWN, base, note="not a URI-Reference: the header cannot be read, so it ends nothing"))
@@ -585,8 +617,8 @@ def _vectors() -> list:
                    note="and a header that holds one cannot be read, so it is not the end"))
     for target, expect, why, grade, note in FOLLOW:
         resolved = RESOLVED.get(target)
-        also = (NEXT,) if resolved else (UNKNOWN,) if expect == NEXT and grade == "judgement" else ()
-        next_url = resolved or (target if expect == NEXT and grade != "judgement" else None)
+        also = (UNKNOWN,) if expect == NEXT and grade == "judgement" else ()
+        next_url = resolved if resolved is not None else (target if expect == NEXT and grade != "judgement" else None)
         add(Vector(f"follow:{target}", f'<{target}>; rel="next"', expect, why, grade, next_url=next_url, also=also, note=note))
     return out
 
