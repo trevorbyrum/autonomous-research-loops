@@ -11,6 +11,7 @@ CAPABILITIES = ("find", "resolve")
 SCHEMES = ("doi",)
 AGENCIES = ("DataCite",)
 BASE = "https://api.datacite.org"
+MAX_PAGED_RECORDS = 10_000   # page-number paging: "Only the first 10,000 records ... can be retrieved"
 
 _KIND = {"Dataset": "dataset", "Software": "software", "Text": "document", "JournalArticle": "article",
          "Preprint": "article", "Report": "document", "Book": "document", "Collection": "dataset"}
@@ -36,7 +37,8 @@ def _record(d: dict) -> dict:
 
 
 def find(client: Client, query: str, *, limit: int = 20, page: int = 1, resource_type: str | None = None) -> dict:
-    params = {"query": query, "page[size]": min(limit, 100), "page[number]": page}
+    size = min(limit, 100)
+    params = {"query": query, "page[size]": size, "page[number]": page}
     if resource_type:
         params["resource-type-id"] = resource_type
     resp = client.get(SOURCE_ID, "find", f"{BASE}/dois", params=params, query=query)
@@ -44,9 +46,11 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1, resource
     j = resp.json
     data = need(SOURCE_ID, j, "data")
     total = (j.get("meta") or {}).get("total")
-    nxt = page + 1 if data and total and page * min(limit, 100) < total else None
-    end = not data or (type(total) is int and page * min(limit, 100) >= total)
-    return {"records": members(SOURCE_ID, data, _record), "total": total, "next_page": nxt, "exhausted": end}
+    # meta.total is the "Total results count": the page reaching it is the last. Page-number paging reaches only
+    # the first 10,000 records; past them nothing continues and nothing ends (docs/PROVIDER-PAGINATION.md)
+    reached = type(total) is int and page * size >= total
+    nxt = page + 1 if type(total) is int and not reached and (page + 1) * size <= MAX_PAGED_RECORDS else None
+    return {"records": members(SOURCE_ID, data, _record), "total": total, "next_page": nxt, "exhausted": reached}
 
 
 def resolve(client: Client, identity: str) -> dict | None:

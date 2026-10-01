@@ -17,6 +17,7 @@ ENRICHES = ("citations", "references", "full_text")
 SCHEMES = ("doi", "arxiv", "s2")
 BASE = "https://api.semanticscholar.org/graph/v1"
 FIELDS = "externalIds,title,year,venue,authors,openAccessPdf,citationCount,referenceCount,publicationTypes"
+SEARCH_CAP = 1000   # /paper/search: "the maximum sum of offset and limit" (docs/PROVIDER-PAGINATION.md)
 
 
 def _headers(client: Client) -> dict:
@@ -65,8 +66,9 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0, year_f
     j = need(SOURCE_ID, resp.json, kind=dict)
     # the search answer omits `data` when nothing matched; then it must say total 0
     rows = need(SOURCE_ID, j, "data") if "data" in j or j.get("total") != 0 else []
-    # `next` stops at S2's 1,000-result cap too: only the stated total reached is the end
-    end = j.get("next") is None and (not rows or (type(j.get("total")) is int and offset + len(rows) >= j["total"]))
+    # `next` is "Absent if no more data exists" — short of the 1,000-result cap, where the documentation
+    # does not say what an absent `next` means; `total` is "approximate" and ends nothing
+    end = j.get("next") is None and offset + len(rows) < SEARCH_CAP
     return {"records": members(SOURCE_ID, rows, _record), "total": j.get("total"), "next_offset": j.get("next"), "exhausted": end}
 
 

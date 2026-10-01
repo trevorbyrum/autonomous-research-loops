@@ -235,7 +235,7 @@ class EngineFixtures(unittest.TestCase):
         rec.t.by_substring.append(("cursor=c2", Response(503, {}, b"", "")))
         rec.t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [CROSSREF_WORK], "total-results": 3,
                                                                               "next-cursor": "c2"}})
-        request = {"query": "reranking", "kind": "article", "domain": "finance"}
+        request = {"query": "reranking", "kind": "article", "domain": "finance", "limit": 1}   # a page of one is a FULL page
         first = rec.send("POST", "/v1/find", request)[1]
         status, second = rec.send("POST", "/v1/find", {**request, "cursors": {"crossref": "c2"}, "lanes": ["crossref"]})
         self.assertEqual(lanes_of(first)[0], ("crossref", "searched_ok", "complete", 1, ["doi:10.1234/abc"], None, None, "c2", None))
@@ -253,7 +253,7 @@ class EngineFixtures(unittest.TestCase):
             {"message": {"items": [second], "total-results": 2, "next-cursor": "c3"}}).encode(), "")))
         rec.t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [CROSSREF_WORK], "total-results": 2,
                                                                               "next-cursor": "c2"}})
-        request = {"query": "reranking", "kind": "article", "domain": "finance"}
+        request = {"query": "reranking", "kind": "article", "domain": "finance", "limit": 1}   # a page of one is a FULL page
         first = rec.send("POST", "/v1/find", request)[1]
         status, second = rec.send("POST", "/v1/find", {**request, "cursors": {"crossref": "c2"}, "lanes": ["crossref"]})
         self.assertEqual(lanes_of(first)[0], ("crossref", "searched_ok", "complete", 1, ["doi:10.1234/abc"], None, None, "c2", None))

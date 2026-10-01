@@ -7,6 +7,7 @@
     "body": {
      "domain": "finance",
      "kind": "article",
+     "limit": 1,
      "query": "reranking"
     },
     "correlation": {
@@ -26,7 +27,7 @@
       "domain": "finance",
       "kind": "article",
       "lanes": null,
-      "limit": 20,
+      "limit": 1,
       "published_after": null,
       "query": "reranking",
       "request_type": "find",
@@ -68,7 +69,7 @@
       "captured": true,
       "invocation_id": "inv_fixture0001",
       "job_id": null,
-      "request_identity": "sha256:4050b9fe6b33b35c7aca2d3eed710c6b5f01cc5672da0ecc20dc9d1fa66e34b2",
+      "request_identity": "sha256:54332f9c17d1033d9793d8a94f6522da53b08338c93caa9d2479ef22225a087b",
       "served": "dispatched"
      },
      "records": [
@@ -176,7 +177,7 @@
        "year": 2021
       }
      ],
-     "request_identity": "sha256:4050b9fe6b33b35c7aca2d3eed710c6b5f01cc5672da0ecc20dc9d1fa66e34b2",
+     "request_identity": "sha256:54332f9c17d1033d9793d8a94f6522da53b08338c93caa9d2479ef22225a087b",
      "request_type": "find"
     },
     "content_type": "application/json",
@@ -196,6 +197,7 @@
      "lanes": [
       "crossref"
      ],
+     "limit": 1,
      "query": "reranking"
     },
     "correlation": {
@@ -219,7 +221,7 @@
       "lanes": [
        "crossref"
       ],
-      "limit": 20,
+      "limit": 1,
       "published_after": null,
       "query": "reranking",
       "request_type": "find",
@@ -250,7 +252,7 @@
       "captured": true,
       "invocation_id": "inv_fixture0001",
       "job_id": null,
-      "request_identity": "sha256:d655b03472537d3ed5f3c9cd9569bb4770d4579d3ac7b33b97b0d819c3f8d608",
+      "request_identity": "sha256:8b57c194289b61ec3c69c3f238e5fe6522c71e48283e85bd5100c4df953f399c",
       "served": "dispatched"
      },
      "records": [
@@ -358,7 +360,7 @@
        "year": 2021
       }
      ],
-     "request_identity": "sha256:d655b03472537d3ed5f3c9cd9569bb4770d4579d3ac7b33b97b0d819c3f8d608",
+     "request_identity": "sha256:8b57c194289b61ec3c69c3f238e5fe6522c71e48283e85bd5100c4df953f399c",
      "request_type": "find"
     },
     "content_type": "application/json",

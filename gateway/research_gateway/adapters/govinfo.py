@@ -46,11 +46,12 @@ def find(client: Client, query: str, *, limit: int = 20, offset_mark: str = "*",
     j = need(SOURCE_ID, resp.json, kind=dict)
     # an answer may leave `results` out only when it counts nothing
     results = need(SOURCE_ID, j, "results") if j.get("results") is not None or j.get("count") != 0 else []
-    nxt = j.get("offsetMark") if results and j.get("offsetMark") not in (None, offset_mark) else None
-    end = not results or j.get("offsetMark") == offset_mark or (offset_mark == "*" and type(j.get("count")) is int
-                                                               and len(results) >= j["count"])
-    return {"records": members(SOURCE_ID, results, _record), "total": j.get("count"), "next_offset_mark": None if end else nxt,
-            "exhausted": end}
+    # GovInfo documents only the continuation — `*` first, then the answer's offsetMark — and no last
+    # page, nor what `count` counts: a mark that moves continues, and nothing here ever ends the lane
+    # (docs/PROVIDER-PAGINATION.md); a mark handed back unchanged would only repeat this page
+    nxt = j.get("offsetMark") if j.get("offsetMark") not in (None, offset_mark) else None
+    return {"records": members(SOURCE_ID, results, _record), "total": j.get("count"), "next_offset_mark": nxt,
+            "exhausted": False}
 
 
 def resolve(client: Client, identity: str) -> dict | None:

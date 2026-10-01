@@ -47,14 +47,16 @@ def find(client: Client, query: str, *, limit: int = 20, year_from_: int | None 
         filters.append(f"from-pub-date:{year_from_}")
     if year_to:
         filters.append(f"until-pub-date:{year_to}")
-    params = {"query.bibliographic": query, "rows": min(limit, 100), "mailto": client.contact_email,
+    rows = min(limit, 100)
+    params = {"query.bibliographic": query, "rows": rows, "mailto": client.contact_email,
               "filter": ",".join(filters) or None, "cursor": cursor or "*"}   # Crossref sends next-cursor only when asked with one
     resp = client.get(SOURCE_ID, "find", f"{BASE}/works", params=params, query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     msg = need(SOURCE_ID, resp.json, "message", kind=dict)
     items, total = need(SOURCE_ID, msg, "items"), msg.get("total-results")
-    # a cursor runs on past the last work: the end is an empty page, or a first page holding every match
-    end = not items or (cursor in (None, "*") and type(total) is int and len(items) >= total)
+    # Crossref: "If the number of returned items is fewer than the number of expected rows then the end of
+    # the result set has been reached"; a full page continues by its next-cursor (docs/PROVIDER-PAGINATION.md)
+    end = len(items) < rows
     return {"records": members(SOURCE_ID, items, lambda w: _record(client, w)),
             "total": total, "next_cursor": None if end else msg.get("next-cursor"), "exhausted": end}
 

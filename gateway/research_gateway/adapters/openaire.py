@@ -106,8 +106,12 @@ def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None
     header = need(SOURCE_ID, j, "header", kind=dict)
     # an answer may leave `results` out only when its header says nothing matched
     rows = need(SOURCE_ID, j, "results") if j.get("results") is not None or header.get("numFound") != 0 else []
-    end = not rows or (cursor in (None, "*") and type(header.get("numFound")) is int and len(rows) >= header["numFound"])
-    return {"records": members(SOURCE_ID, rows, _record), "total": header.get("numFound"),
+    # OpenAIRE's end: "the nextCursor returned matches the current cursor you've already specified"; and
+    # numFound is "the total number of entities found", so a first page holding that many holds them all.
+    # A missing nextCursor is undocumented: it neither continues nor ends (docs/PROVIDER-PAGINATION.md)
+    sent, found = cursor or "*", header.get("numFound")
+    end = header.get("nextCursor") == sent or (sent == "*" and type(found) is int and len(rows) >= found)
+    return {"records": members(SOURCE_ID, rows, _record), "total": found,
             "next_cursor": None if end else header.get("nextCursor"), "exhausted": end}
 
 

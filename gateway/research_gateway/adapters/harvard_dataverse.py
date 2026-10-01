@@ -75,10 +75,12 @@ def find_in(client: Client, base: str, source_id: str, secret_name: str | None, 
     resp = client.get(source_id, "find", f"{base}/api/search", params=params, headers=headers(client, secret_name), query=query)
     check(source_id, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     data = need(source_id, resp.json, "data", kind=dict)
-    items, total = need(source_id, data, "items"), data.get("total_count") or 0
-    end = not items or (type(data.get("total_count")) is int and page * per_page >= total)   # a missing total ends nothing
+    items, total = need(source_id, data, "items"), data.get("total_count")
+    # the Dataverse guide pages by moving `start` on by the page size "until you reach the total_count"
+    # (its loop: `condition = start < total`); a missing total neither continues nor ends (docs/PROVIDER-PAGINATION.md)
+    reached = type(total) is int and page * per_page >= total
     return {"records": members(source_id, items, lambda i: search_record(base, source_id, i)), "total": total,
-            "next_page": page + 1 if items and page * per_page < total else None, "exhausted": end}
+            "next_page": page + 1 if type(total) is int and not reached else None, "exhausted": reached}
 
 
 def get_dataset(client: Client, base: str, source_id: str, secret_name: str | None, target: str, request_type: str) -> dict | None:

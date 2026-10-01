@@ -1,0 +1,334 @@
+"""Task 2b-repair-7: each find adapter's continuation and end, as its provider defines them.
+
+docs/PROVIDER-PAGINATION.md records, for every find adapter, the provider evidence its rule rests
+on (official documentation, or provider-owned source) with a quoted excerpt. The bodies below are
+offline and follow the documented response shapes (field names and nesting from the provider's own
+schema or examples; values synthetic). Each case isolates ONE decision and states its expected
+answer from that evidence, by hand: a page that continues; the page the provider's evidence calls
+the last — a normal, non-empty final page included; a page whose paging metadata is absent; and
+the provider's cap. Where the evidence names no terminal signal, the adapter never says
+`exhausted` and the router makes the page a lower bound (test_exhaustion.ReportedEnd).
+
+What these cases cannot show: that a live provider still answers as documented (Phase 4's canary
+qualifies that); they show the adapter acts on what the documentation says.
+"""
+from __future__ import annotations
+
+import unittest
+
+from research_gateway.adapters import (crossref, datacite, doaj, europepmc, govinfo, harvard_dataverse, kaggle, openaire, qdr,
+                                       semanticscholar)
+from research_gateway.adapters.base import Client, FakeTransport
+from research_gateway.core.broker import Broker, RatePolicy
+from tests import test_adapters_articles as articles, test_adapters_datasets as datasets, test_adapters_platforms as platforms
+
+NEXT_KEYS = ("next_cursor", "next_page", "next_offset", "next_offset_mark")
+
+
+def ask(mod, method: str, prefix: str, body, status: int = 200, headers: dict | None = None, **kwargs) -> tuple[dict, list]:
+    """`mod.find` against one canned provider answer: (its paging decision and record count, the requests it sent)."""
+    t = FakeTransport()
+    if mod is openaire:
+        t.add("POST", openaire.TOKEN_URL, 200, {"access_token": "tok", "expires_in": 3600})
+    t.add(method, prefix, status=status, body=body, headers=headers)
+    c = Client(broker=Broker({mod.SOURCE_ID: RatePolicy(per_second=1000)}), transport=t, secrets=lambda name, field=None: "k")
+    out = mod.find(c, "q", **kwargs)
+    nxt = next((out[k] for k in NEXT_KEYS if out.get(k) is not None), None)
+    return {"next": nxt, "exhausted": out.get("exhausted") is True, "records": len(out.get("records") or [])}, t.calls
+
+
+def more(value, records: int) -> dict:
+    return {"next": value, "exhausted": False, "records": records}
+
+
+def last(records: int) -> dict:
+    return {"next": None, "exhausted": True, "records": records}
+
+
+def neither(records: int) -> dict:
+    """No continuation and no end: the router reports such a page as a lower bound (partial_pagination)."""
+    return {"next": None, "exhausted": False, "records": records}
+
+
+class Cases(unittest.TestCase):
+    def check(self, mod, method: str, prefix: str, cases: dict) -> None:
+        for name, (body, kwargs, want, *status) in cases.items():
+            with self.subTest(name):
+                if mod is openaire:   # the process-wide token: minted here, never left for another test
+                    openaire.reset_token()
+                    self.addCleanup(openaire.reset_token)
+                got, _ = ask(mod, method, prefix, body, *status, **kwargs)
+                self.assertEqual(got, want)
+
+
+class Crossref(Cases):
+    """Crossref: "If the number of returned items is fewer than the number of expected rows then the end
+    of the result set has been reached"; a full page continues by `next-cursor`."""
+    URL = "https://api.crossref.org/works"
+
+    @staticmethod
+    def page(items: int, **message) -> dict:
+        return {"status": "ok", "message-type": "work-list",
+                "message": {"items-per-page": 2, "query": {"start-index": 0, "search-terms": "q"}, "total-results": 7,
+                            "items": [articles.CROSSREF_WORK] * items, **message}}
+
+    def test_continues(self):
+        self.check(crossref, "GET", self.URL, {
+            "a full page": (self.page(2, **{"next-cursor": "c2"}), {"limit": 2}, more("c2", 2)),
+            "a full later page": (self.page(2, **{"next-cursor": "c3"}), {"limit": 2, "cursor": "c2"}, more("c3", 2)),
+        })
+
+    def test_ends(self):
+        self.check(crossref, "GET", self.URL, {
+            "a short final page, its next-cursor notwithstanding": (self.page(1, **{"next-cursor": "c4"}), {"limit": 2, "cursor": "c3"},
+                                                                    last(1)),
+            "an empty page": (self.page(0, **{"next-cursor": "c5"}), {"limit": 2, "cursor": "c4"}, last(0)),
+        })
+
+    def test_neither(self):
+        self.check(crossref, "GET", self.URL, {
+            "a full page without its next-cursor": (self.page(2), {"limit": 2, "cursor": "c2"}, neither(2)),
+            # total-results is not documented as an exact count: a full first page holding it still continues
+            "a full first page holding total-results continues": (self.page(2, **{"next-cursor": "c2", "total-results": 2}),
+                                                                  {"limit": 2}, more("c2", 2)),
+        })
+
+    def test_the_first_page_asks_for_a_cursor(self):
+        """Crossref sends next-cursor only to a request that carries one ("cursor=*" first)."""
+        _, calls = ask(crossref, "GET", self.URL, self.page(1, **{"next-cursor": "c2"}), limit=1)
+        self.assertIn("cursor=%2A", calls[0][1])
+        self.assertIn("rows=1", calls[0][1])
+
+
+class DataCiteDois(Cases):
+    """DataCite: meta.total is the "Total results count"; page-number paging reaches only "the first
+    10,000 records". The end is the page reaching the total; past the cap nothing continues or ends."""
+    URL = "https://api.datacite.org/dois"
+
+    @staticmethod
+    def page(items: int, page: int, size: int, total=None) -> dict:
+        meta = {"totalPages": -(-total // size), "page": page, "total": total} if total is not None else {}
+        return {"data": [articles.DataCite.DOI] * items, "meta": meta,
+                "links": {"self": f"{DataCiteDois.URL}?page[number]={page}"}}
+
+    def test_continues(self):
+        self.check(datacite, "GET", self.URL, {
+            "a page short of the total": (self.page(2, 1, 2, 5), {"limit": 2}, more(2, 2)),
+            "an empty page short of the total": (self.page(0, 2, 2, 5), {"limit": 2, "page": 2}, more(3, 0)),
+            "the page before the last the cap lets page-number paging reach": (self.page(100, 99, 100, 50_000),
+                                                                               {"limit": 100, "page": 99}, more(100, 100)),
+        })
+
+    def test_ends(self):
+        self.check(datacite, "GET", self.URL, {
+            "the final non-empty page reaches the total": (self.page(1, 3, 2, 5), {"limit": 2, "page": 3}, last(1)),
+            "a full final page reaches the total": (self.page(2, 2, 2, 4), {"limit": 2, "page": 2}, last(2)),
+            "an empty first page of a total of 0": (self.page(0, 1, 2, 0), {"limit": 2}, last(0)),
+        })
+
+    def test_neither(self):
+        self.check(datacite, "GET", self.URL, {
+            "no meta.total": (self.page(2, 1, 2), {"limit": 2}, neither(2)),
+            "the last page the cap lets page-number paging reach": (self.page(100, 100, 100, 50_000), {"limit": 100, "page": 100},
+                                                                    neither(100)),
+        })
+
+
+class DoajArticles(Cases):
+    """DOAJ's own code: the last page is the one reaching `total`; a page may not START at or past record
+    1,000. The next page exists only while it starts below the cap; the cap ends nothing."""
+    URL = "https://doaj.org/api/search/articles/"
+
+    @staticmethod
+    def page(items: int, page: int, size: int, total=None) -> dict:
+        body = {"timestamp": "2026-10-01T00:00:00Z", "page": page, "pageSize": size, "query": "q", "results": [articles.Doaj.ARTICLE] * items}
+        return body if total is None else {**body, "total": total}
+
+    def test_continues(self):
+        self.check(doaj, "GET", self.URL, {
+            "a page short of the total": (self.page(2, 1, 2, 5), {"limit": 2}, more(2, 2)),
+            "a page whose successor starts below the cap": (self.page(100, 9, 100, 5000), {"limit": 100, "page": 9}, more(10, 100)),
+        })
+
+    def test_ends(self):
+        self.check(doaj, "GET", self.URL, {
+            "the final non-empty page reaches the total": (self.page(1, 3, 2, 5), {"limit": 2, "page": 3}, last(1)),
+            "a search with no matches": (self.page(0, 1, 2, 0), {"limit": 2}, last(0)),
+        })
+
+    def test_neither(self):
+        self.check(doaj, "GET", self.URL, {
+            "no total": (self.page(2, 1, 2), {"limit": 2}, neither(2)),
+            "a page whose successor would start at the cap": (self.page(100, 10, 100, 5000), {"limit": 100, "page": 10}, neither(100)),
+        })
+
+    def test_a_page_starting_past_the_cap_is_never_asked(self):
+        t = FakeTransport()
+        c = Client(broker=Broker({"doaj": RatePolicy(per_second=1000)}), transport=t)
+        out = doaj.find(c, "q", limit=100, page=11)
+        self.assertEqual((t.calls, out.get("exhausted"), out.get("next_page")), ([], None, None))
+        self.assertIn("1000", out["capability_fact"])
+
+    def test_control_a_page_starting_below_the_cap_is_asked(self):
+        """Page 34 of 30 starts at record 990: DOAJ's rule (start below 1,000) admits it."""
+        got, calls = ask(doaj, "GET", self.URL, self.page(30, 34, 30, 5000), limit=30, page=34)
+        self.assertEqual((len(calls), got), (1, neither(30)))
+
+
+class EuropePmcSearch(Cases):
+    """Europe PMC documents the continuation only — "For every following page use the value of the returned
+    nextCursorMark element" — and no last page: a moving cursor continues; nothing ever ends the lane."""
+    URL = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
+
+    @staticmethod
+    def page(items: int, cursor=None, hits: int = 5) -> dict:
+        body = {"version": "6.9", "hitCount": hits, "request": {"queryString": "q", "pageSize": 2},
+                "resultList": {"result": [platforms.EuropePmc.RESULT] * items}}
+        return body if cursor is None else {**body, "nextCursorMark": cursor}
+
+    def test_continues(self):
+        self.check(europepmc, "GET", self.URL, {
+            "a moving cursor": (self.page(2, "c2"), {"limit": 2}, more("c2", 2)),
+            "a moving cursor past an empty page": (self.page(0, "c3"), {"limit": 2, "cursor": "c2"}, more("c3", 0)),
+            "hitCount reached, which is not documented as the end": (self.page(2, "c2", hits=2), {"limit": 2}, more("c2", 2)),
+        })
+
+    def test_neither(self):
+        self.check(europepmc, "GET", self.URL, {
+            "an unchanged cursor on a non-empty page": (self.page(1, "c2"), {"limit": 2, "cursor": "c2"}, neither(1)),
+            "no nextCursorMark": (self.page(2), {"limit": 2}, neither(2)),
+        })
+
+
+class GovInfoSearch(Cases):
+    """GovInfo documents only the continuation — "*" first, then "the value from the offsetMark key in the
+    response" — and neither a last page nor what `count` counts: nothing ever ends the lane."""
+    URL = "https://api.govinfo.gov/search"
+
+    @staticmethod
+    def page(items: int, mark=None, count: int = 15) -> dict:
+        body = {"results": [datasets.GOVINFO_PKG] * items, "count": count}
+        return body if mark is None else {**body, "offsetMark": mark}
+
+    def test_continues(self):
+        self.check(govinfo, "POST", self.URL, {
+            "a moving mark": (self.page(2, "m2"), {"limit": 2}, more("m2", 2)),
+            "a first page holding `count`, which is not documented as the end": (self.page(2, "m2", count=2), {"limit": 2},
+                                                                                 more("m2", 2)),
+        })
+
+    def test_neither(self):
+        self.check(govinfo, "POST", self.URL, {
+            "an unchanged mark on a non-empty page": (self.page(1, "m2"), {"limit": 2, "offset_mark": "m2"}, neither(1)),
+            "no offsetMark": (self.page(2), {"limit": 2, "offset_mark": "m2"}, neither(2)),
+            "a search counting nothing": ({"count": 0}, {"limit": 2}, neither(0)),
+        })
+
+
+class DataverseSearch(Cases):
+    """The Dataverse guide: "increase the ``start`` parameter on each iteration until you reach the
+    ``total_count`` in the response" (its loop: `start = start + rows`, `condition = start < total`)."""
+
+    @staticmethod
+    def page(items: int, page: int, size: int, total=None) -> dict:
+        data = {"q": "q", "start": (page - 1) * size, "spelling_alternatives": {}, "items": [datasets.DV_SEARCH["data"]["items"][0]] * items,
+                "count_in_response": items}
+        return {"status": "OK", "data": data if total is None else {**data, "total_count": total}}
+
+    SOURCES = ((harvard_dataverse, "https://dataverse.harvard.edu/api/search"), (qdr, "https://data.qdr.syr.edu/api/search"))
+
+    def check_both(self, cases: dict) -> None:
+        for mod, url in self.SOURCES:   # QDR is a Dataverse: one implementation, both lanes
+            with self.subTest(mod.SOURCE_ID):
+                self.check(mod, "GET", url, cases)
+
+    def test_continues(self):
+        self.check_both({
+            "start + rows short of total_count": (self.page(2, 1, 2, 5), {"limit": 2}, more(2, 2)),
+            "an empty page short of total_count": (self.page(0, 2, 2, 5), {"limit": 2, "page": 2}, more(3, 0)),
+        })
+
+    def test_ends(self):
+        self.check_both({
+            "the final non-empty page reaches total_count": (self.page(1, 3, 2, 5), {"limit": 2, "page": 3}, last(1)),
+            "a full final page reaches total_count": (self.page(2, 2, 2, 4), {"limit": 2, "page": 2}, last(2)),
+            "nothing matched": (self.page(0, 1, 2, 0), {"limit": 2}, last(0)),
+        })
+
+    def test_neither(self):
+        self.check_both({"no total_count": (self.page(2, 1, 2), {"limit": 2}, neither(2))})
+
+
+class OpenAireProducts(Cases):
+    """OpenAIRE: page "until the nextCursor returned matches the current cursor you've already specified,
+    indicating that there are no more results"; numFound is "the total number of entities found"."""
+    URL = "https://api.openaire.eu/graph/v1/researchProducts"
+
+    @staticmethod
+    def page(items: int, cursor=None, found: int = 5) -> dict:
+        header = {"numFound": found, "maxScore": 1, "queryTime": 21, "pageSize": 2}
+        return {"header": header if cursor is None else {**header, "nextCursor": cursor}, "results": [platforms.OPENAIRE_PUB] * items}
+
+    def test_continues(self):
+        self.check(openaire, "GET", self.URL, {
+            "a new cursor": (self.page(2, "c2"), {"limit": 2}, more("c2", 2)),
+            "a later page holding numFound rows, which is not the first page": (self.page(2, "c3", found=2), {"limit": 2, "cursor": "c2"},
+                                                                                more("c3", 2)),
+        })
+
+    def test_ends(self):
+        self.check(openaire, "GET", self.URL, {
+            "the cursor handed back unchanged, on a non-empty page": (self.page(1, "c2"), {"limit": 2, "cursor": "c2"}, last(1)),
+            "a first page holding numFound": (self.page(2, "c2", found=2), {"limit": 2}, last(2)),
+            "nothing found": ({"header": {"numFound": 0, "pageSize": 2, "nextCursor": "c2"}}, {"limit": 2}, last(0)),
+        })
+
+    def test_neither(self):
+        self.check(openaire, "GET", self.URL, {"no nextCursor on a later page": (self.page(2), {"limit": 2, "cursor": "c2"}, neither(2))})
+
+
+class SemanticScholarSearch(Cases):
+    """Semantic Scholar: `next` is "Absent if no more data exists"; the endpoint "Can only return up to
+    1,000 relevance-ranked results"; `total` is "Approximate". Absent `next` short of the cap ends."""
+    URL = "https://api.semanticscholar.org/graph/v1/paper/search"
+
+    @staticmethod
+    def page(items: int, offset: int, nxt=None, total: int = 5) -> dict:
+        body = {"total": total, "offset": offset, "data": [platforms.SemanticScholar.PAPER] * items}
+        return body if nxt is None else {**body, "next": nxt}
+
+    def test_continues(self):
+        self.check(semanticscholar, "GET", self.URL, {"next present": (self.page(2, 0, 2), {"limit": 2}, more(2, 2))})
+
+    def test_ends(self):
+        self.check(semanticscholar, "GET", self.URL, {
+            "next absent on the final non-empty page": (self.page(1, 4), {"limit": 2, "offset": 4}, last(1)),
+            "next absent, whatever the approximate total says": (self.page(2, 0, total=5000), {"limit": 2}, last(2)),
+            "nothing matched": (self.page(0, 0, total=0), {"limit": 2}, last(0)),
+            "next absent just short of the cap": (self.page(2, 997, total=5000), {"limit": 2, "offset": 997}, last(2)),
+        })
+
+    def test_neither(self):
+        self.check(semanticscholar, "GET", self.URL, {
+            "next absent at the 1,000-result cap": (self.page(2, 998, total=5000), {"limit": 2, "offset": 998}, neither(2)),
+        })
+
+
+class KaggleDatasets(Cases):
+    """Kaggle answers pages of 20; the adapter keeps `limit` of them."""
+    URL = "https://www.kaggle.com/api/v1/datasets/list"
+    MEMBER = {"ref": "owner/data", "title": "A dataset", "ownerName": "owner", "lastUpdated": "2026-01-01T00:00:00Z"}
+
+    def test_a_page_cut_to_the_limit_neither_continues_nor_ends(self):
+        """Page 2 would skip the rows cut here, and a short page cut here is not the end."""
+        self.check(kaggle, "GET", self.URL, {"a full page cut": ([self.MEMBER] * 20, {"limit": 5}, neither(5)),
+                                             "a short page cut": ([self.MEMBER] * 8, {"limit": 5}, neither(5))})
+
+    def test_control_whole_pages_continue_or_end(self):
+        self.check(kaggle, "GET", self.URL, {"a full page": ([self.MEMBER] * 20, {"limit": 20}, more(2, 20)),
+                                             "a short page": ([self.MEMBER] * 5, {"limit": 20}, last(5)),
+                                             "a short page within the limit": ([self.MEMBER] * 5, {"limit": 5}, last(5))})
+
+
+if __name__ == "__main__":
+    unittest.main()

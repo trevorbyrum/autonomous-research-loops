@@ -82,7 +82,8 @@ is never conflated with "not searched" or "unavailable":
     the page that says `exhausted` ends the lane. A continuation its source can no longer
     honour — the local index's names the population it was counted in, and that population
     has since changed — reads nothing and ends nothing: `provider_unavailable`,
-    `unobserved`, `partial_pagination`, no `next` (task 2b-repair-7).
+    `unobserved`, `partial_pagination`, no `next` (task 2b-repair-7). Each find adapter's end
+    rule rests on its provider's own evidence, recorded in `PROVIDER-PAGINATION.md`.
   An unreadable successful answer (unparseable, empty, or without the container its
   results live in) and a search endpoint's 404 are `provider_unavailable` with
   `payload_invalid` / `provider_outage` — never `searched_empty`. An answer with any

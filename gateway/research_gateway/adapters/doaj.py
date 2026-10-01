@@ -10,7 +10,7 @@ SMOKE = {'capability': 'find', 'query': 'management', 'limit': 1}   # the live s
 CAPABILITIES = ("find", "resolve")
 SCHEMES = ("doi", "issn")
 BASE = "https://doaj.org/api"
-MAX_RECORDS_PER_QUERY = 1000  # DOAJ refuses results beyond record 1,000
+MAX_RECORDS_PER_QUERY = 1000  # DOAJ refuses a page that starts at or past record 1,000 (docs/PROVIDER-PAGINATION.md)
 
 
 def _record(a: dict) -> dict:
@@ -35,7 +35,7 @@ def _record(a: dict) -> dict:
 
 def find(client: Client, query: str, *, limit: int = 20, page: int = 1) -> dict:
     page_size = min(limit, 100)
-    if page * page_size > MAX_RECORDS_PER_QUERY:
+    if (page - 1) * page_size >= MAX_RECORDS_PER_QUERY:
         return {"records": [], "total": None, "next_page": None,
                 "capability_fact": f"DOAJ caps a query at {MAX_RECORDS_PER_QUERY} records"}
     resp = client.get(SOURCE_ID, "find", f"{BASE}/search/articles/{quote(query)}",
@@ -43,9 +43,12 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1) -> dict:
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     j = resp.json
     results = need(SOURCE_ID, j, "results")
-    nxt = page + 1 if results and (page + 1) * page_size <= MAX_RECORDS_PER_QUERY and page * page_size < (j.get("total") or 0) else None
-    end = not results or (type(j.get("total")) is int and page * page_size >= j["total"])   # never the cap
-    return {"records": members(SOURCE_ID, results, _record), "total": j.get("total"), "next_page": nxt, "exhausted": end}
+    total = j.get("total")
+    # DOAJ's own code: the last page is the one reaching `total` (page_count = ((total - 1) // page_size) + 1),
+    # and the next page exists only while it starts below record 1,000 — the cap ends nothing
+    reached = type(total) is int and page * page_size >= total
+    nxt = page + 1 if type(total) is int and not reached and page * page_size < MAX_RECORDS_PER_QUERY else None
+    return {"records": members(SOURCE_ID, results, _record), "total": total, "next_page": nxt, "exhausted": reached}
 
 
 def resolve(client: Client, identity: str) -> dict | None:

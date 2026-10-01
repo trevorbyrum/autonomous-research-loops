@@ -34,9 +34,12 @@ def find(client: Client, query: str, *, limit: int = 20, cursor: str | None = No
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
     j = resp.json
     results = need(SOURCE_ID, j, "resultList", "result")
-    end = not results or j.get("nextCursorMark") == (cursor or "*")   # Europe PMC's end: the cursor stops advancing
-    return {"records": members(SOURCE_ID, results, _record), "total": j.get("hitCount"),
-            "next_cursor": None if end else j.get("nextCursorMark"), "exhausted": end}
+    # Europe PMC documents only the continuation — "For every following page use the value of the returned
+    # nextCursorMark element" — and no last page: a cursor that moves continues, nothing here ends the lane, and
+    # a cursor handed back unchanged would only repeat this page (docs/PROVIDER-PAGINATION.md)
+    nxt = j.get("nextCursorMark") if j.get("nextCursorMark") not in (None, cursor or "*") else None
+    return {"records": members(SOURCE_ID, results, _record), "total": j.get("hitCount"), "next_cursor": nxt,
+            "exhausted": False}
 
 
 def resolve(client: Client, identity: str) -> dict | None:

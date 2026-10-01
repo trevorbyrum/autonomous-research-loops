@@ -75,6 +75,7 @@ def client(test, exchanges, **kw) -> tuple[GatewayClient, Replay]:
 
 
 FIND = {"request_type": "find", "query": "reranking", "kind": "article", "domain": "finance"}
+FIND_PAGED = {**FIND, "limit": 1}   # the paged scenarios ask pages of one: a page of one record is full, so it continues
 RESOLVE = {"request_type": "resolve", "identity": "doi:10.1234/abc"}
 
 
@@ -172,17 +173,17 @@ class RecordedAnswers(unittest.TestCase):
         """2b-repair A2: the failed continuation is its own observation — its request the
         page actually sent (cursor c2, lane crossref), its outcome the gateway's — and the
         first page's read stands on its own: nothing rounded up."""
-        pages = by_page(search(self, "find_paged_then_failed", pages=2))
+        pages = by_page(search(self, "find_paged_then_failed", FIND_PAGED, pages=2))
         self.assertEqual(sorted(pages), [("crossref", 1), ("crossref", 2), ("doaj", 1)], "a finished lane is not asked again")
         self.assertEqual(summary(pages["crossref", 1]), ("searched_ok", "complete", 1, None, ["doi:10.1234/abc"]))
         self.assertEqual(summary(pages["crossref", 2]), ("provider_unavailable", "unobserved", None, "provider_outage", []))
         self.assertEqual(pages["crossref", 2]["observation"]["request"],
-                         {"lane": "crossref", "page": 2, "request": {**FIND, "cursors": {"crossref": "c2"}, "lanes": ["crossref"]}})
+                         {"lane": "crossref", "page": 2, "request": {**FIND_PAGED, "cursors": {"crossref": "c2"}, "lanes": ["crossref"]}})
         self.assertEqual([pages[k]["observation"]["gateway_call_ref"] for k in (("crossref", 1), ("crossref", 2))], ["gw-call:101", "gw-call:102"])
         self.assertEqual(summary(pages["doaj", 1]), ("searched_empty", "complete", 0, None, []))
 
     def test_pages_that_all_answer_are_each_complete(self):
-        pages = by_page(search(self, "find_paged_complete", pages=2))
+        pages = by_page(search(self, "find_paged_complete", FIND_PAGED, pages=2))
         self.assertEqual(summary(pages["crossref", 1]), ("searched_ok", "complete", 1, None, ["doi:10.1234/abc"]))
         self.assertEqual(summary(pages["crossref", 2]), ("searched_ok", "complete", 1, None, ["doi:10.1234/def"]))
         self.assertEqual(summary(pages["doaj", 1]), ("searched_empty", "complete", 0, None, []))
@@ -190,9 +191,9 @@ class RecordedAnswers(unittest.TestCase):
 
     def test_control_one_page_of_the_same_answer_is_complete(self):
         c, _ = client(self, fixture("find_paged_then_failed")["exchanges"][:1])
-        out = c.search(FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
+        out = c.search(FIND_PAGED, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
         self.assertEqual(summary(by_lane(out)["crossref"]), ("searched_ok", "complete", 1, None, ["doi:10.1234/abc"]))
-        two = by_page(search(self, "find_paged_then_failed", pages=2))
+        two = by_page(search(self, "find_paged_then_failed", FIND_PAGED, pages=2))
         self.assertEqual(by_lane(out)["crossref"]["observation"]["observation_id"], two["crossref", 1]["observation"]["observation_id"],
                          "page 1 is the same observation however many pages were asked for")
 
@@ -541,7 +542,7 @@ class RecordedByTheRouter(RouterTestCase):
         self.assertEqual(self.value("SELECT count(*) FROM retrieval_events"), 2, "the lower bound's identities, one event each")
 
     def test_a_failed_continuation_is_its_own_observation_with_its_cursor(self):
-        self.admissible("find_paged_then_failed", pages=2)
+        self.admissible("find_paged_then_failed", FIND_PAGED, pages=2)
         self.assertEqual(self.observations(), [("crossref", 1, "searched_ok", "complete", 1, None),
                                                ("crossref", 2, "provider_unavailable", "unobserved", None, "provider_outage"),
                                                ("doaj", 1, "searched_empty", "complete", 0, None)])
@@ -550,7 +551,7 @@ class RecordedByTheRouter(RouterTestCase):
                          [({"crossref": "c2"}, "gw-call:102")], "the durable row keeps the failed page's own cursor and its own call")
 
     def test_pages_that_all_answer_are_each_admissible(self):
-        self.admissible("find_paged_complete", pages=2)
+        self.admissible("find_paged_complete", FIND_PAGED, pages=2)
         self.assertEqual(self.rows("SELECT provider_record_id FROM retrieval_events ORDER BY provider_record_id"),
                          [("doi:10.1234/abc",), ("doi:10.1234/def",)])
 
@@ -819,7 +820,7 @@ class RecordedByTheRouter(RouterTestCase):
         two["lanes"] = [{**outage[2]["response"]["body"]["lanes"][0], "source": "crossref", "role": "base", "cursor": "c2"}]
         two["capability_facts"] = outage[2]["response"]["body"]["capability_facts"]
         two["records"] = []
-        out = search(self, "find_paged_complete", exchanges=exchanges, pages=2)
+        out = search(self, "find_paged_complete", FIND_PAGED, exchanges=exchanges, pages=2)
         requests = observe.router_requests(out, capability_id=self.grant["capability_id"], invocation_id=INV)
         self.assertEqual([[(f["detail"], f["affected_lanes"]) for f in r["facts"]] for c, r in requests if c == "record_gateway_facts"],
                          [[("403", ["fred", "govinfo"])], [("503", ["fred", "govinfo"])]], "one command per snapshot, in page order")
