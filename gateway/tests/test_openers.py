@@ -7,7 +7,8 @@ quote loaded as ZERO journals — a successful empty result. The same layer reso
 
 core/wire.py holds the openers now (its docstring is the ruling for each, against RFC 8259, XML 1.0 and RFC 4180). This file has:
 
-  * Inventory         every parse call in the gateway, by (file, function), each classified; a parse call that is not listed fails, and every PAYLOAD opener must be in wire.py
+  * (the inventory    every parse call in the gateway, by (file, function), each classified, is tests/inventory.py now, one owner for the openers, the reads and the materializers,
+                      held by tests/test_inventory.py; the consumers of an opener it lists are the family below, by (file, function))
   * Rulings           what each opener accepts and refuses, as examples with their reasons (the accepted ones are as much the ruling as the refused)
   * ByteCorruption    the corruption family, run for every opener of the inventory THROUGH ITS REAL CONSUMER (the decoder, the DOAJ loader, the snapshot reader, the call log's
                       count): corrupted serialized bytes, each refused with the one channel, each beside a valid control; plus sweeps over every offset of a valid document
@@ -22,7 +23,6 @@ provider; and a truncation that ends at a record boundary is a well-formed short
 """
 from __future__ import annotations
 
-import ast
 import csv
 import gzip
 import io
@@ -41,159 +41,6 @@ from research_gateway.harvest import index, openalex_snapshot, registries
 
 ROOT = Path(__file__).resolve().parents[1] / "research_gateway"
 
-# --------------------------------------------------------------------------------------------------------------------------------------- the inventory
-PARSERS = {"json": {"loads", "load"}, "csv": {"reader", "DictReader"},
-           "xml.etree.ElementTree": {"fromstring", "XML", "parse", "iterparse", "XMLParser", "XMLPullParser", "fromstringlist"},
-           "xml.dom.minidom": {"parseString", "parse"}, "xml.sax": {"parseString", "parse", "make_parser"}, "tomllib": {"load", "loads"}, "ast": {"literal_eval"},
-           "pickle": {"loads", "load"}, "marshal": {"loads", "load"}, "yaml": {"load", "safe_load"}, "plistlib": {"loads", "load"}, "configparser": {"ConfigParser"}}
-OPENERS = ("open_json", "open_xml", "open_csv")   # core/wire.py: the one place a provider's bytes become structure
-
-# (file, function) -> (parse calls, class, why). PAYLOAD: it opens a provider's bytes; it may stand only in core/wire.py. Every other class is input that is not a provider's answer.
-CALLS = {
-    ("core/wire.py", "open_json"): (1, "PAYLOAD", "a provider's JSON: UTF-8, no NaN/Infinity, finite numbers, each name once, nesting bounded"),
-    ("core/wire.py", "open_xml"): (1, "PAYLOAD", "a provider's SDMX-ML: expat's well-formedness, UTF-8 read as UTF-8, a 1.x declaration, no DOCTYPE, nesting bounded"),
-    ("api/http.py", "Handler._body"): (1, "CALLER", "a caller's request body to the gateway, checked at the front door (app.py: plain JSON, no NaN/Infinity)"),
-    ("clients/cli.py", "payload_from"): (2, "CALLER", "the operator's own command-line arguments"),
-    ("clients/http_client.py", "GatewayClient._call"): (2, "GATEWAY", "the gateway's own API answering its own command-line client"),
-    ("clients/http_client.py", "raw_observation"): (1, "GATEWAY", "the gateway's own API answering its own command-line client"),
-    ("clients/mcp_stdio.py", "main"): (1, "CALLER", "an MCP host's JSON-RPC message on standard input"),
-    ("core/principals.py", "Grants.verify"): (1, "AUTH", "the claims of a token the gateway signed itself, read after its signature verified"),
-    ("core/secrets.py", "VaultBackend._fetch"): (1, "AUTH", "the secret store's answer, which the operator runs: credentials, not provider data"),
-    ("core/secrets.py", "VaultBackend._not_found"): (1, "AUTH", "the secret store's error document"),
-    ("app.py", "load_settings"): (1, "CONFIG", "the operator's settings file"),
-    ("registry/load.py", "read_seed"): (1, "CONFIG", "the operator's source registry file"),
-}
-# who calls an opener of core/wire.py, by (file, function): every provider payload reaches its bytes through these and nowhere else
-CONSUMERS = {
-    ("core/schema.py", "_open_json"): ("open_json", "the decoder: every provider's JSON answer"),
-    ("core/schema.py", "parse_xml"): ("open_xml", "the decoder: SDMX-ML"),
-    ("core/schema.py", "decode_csv"): ("open_csv", "the decoder: DOAJ's CSV dump"),
-    ("adapters/base.py", "_count_of"): ("open_json", "the call log's count of results: bookkeeping, through the same opener"),
-    ("harvest/openalex_snapshot.py", "read_snapshot"): ("open_json", "the OpenAlex snapshot's JSON lines"),
-}
-
-
-def functions(tree: ast.AST):
-    def visit(node, scope):
-        for child in ast.iter_child_nodes(node):
-            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                yield ".".join((*scope, child.name)), child
-                yield from visit(child, (*scope, child.name))
-            elif isinstance(child, ast.ClassDef):
-                yield from visit(child, (*scope, child.name))
-            else:
-                yield from visit(child, scope)
-    return visit(tree, ())
-
-
-def dotted(node) -> str | None:
-    """`a.b.c` for a chain of attributes on a name, else None."""
-    parts = []
-    while isinstance(node, ast.Attribute):
-        parts.append(node.attr)
-        node = node.value
-    return ".".join([node.id, *reversed(parts)]) if isinstance(node, ast.Name) else None
-
-
-def scan(root: Path = ROOT) -> tuple[dict, dict, list]:
-    """(parse calls by (file, function), calls of wire's openers by (file, function), parsers reached by getattr) over every module of the package. A callee is resolved through the
-    module's own imports, whatever they are spelled: `json.loads`, an alias of the module, a name imported from it, a dotted path."""
-    calls: dict = {}
-    consumers: dict = {}
-    indirect: list = []
-    for path in sorted(root.rglob("*.py")):
-        rel = path.relative_to(root).as_posix()
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        aliases: dict = {}
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                for a in node.names:
-                    aliases[a.asname or a.name.split(".")[0]] = a.name if a.asname else a.name.split(".")[0]
-            elif isinstance(node, ast.ImportFrom):
-                for a in node.names:
-                    aliases[a.asname or a.name] = f"{node.module or ''}.{a.name}".lstrip(".")
-        spans = sorted(((fn.lineno, fn.end_lineno, q) for q, fn in functions(tree)), key=lambda s: s[1] - s[0])
-
-        def where(node) -> str:
-            return next((q for a, b, q in spans if a <= node.lineno <= b), "<module>")
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            name = dotted(node.func)
-            if name:
-                head, _, rest = name.partition(".")
-                full = aliases[head] + ("." + rest if rest else "") if head in aliases else name
-                module, _, attr = full.rpartition(".")
-                if module in PARSERS and attr in PARSERS[module]:
-                    calls.setdefault((rel, where(node)), []).append(full)
-                if module.rpartition(".")[2] == "wire" or module == "wire":
-                    if attr in OPENERS:
-                        consumers.setdefault((rel, where(node)), []).append(attr)
-            if isinstance(node.func, ast.Name) and node.func.id in ("getattr", "__import__") and any(
-                    isinstance(a, ast.Constant) and a.value in ("loads", "load", "fromstring", "literal_eval") for a in node.args[1:2]):
-                indirect.append((rel, where(node)))
-    return calls, consumers, indirect
-
-
-class Inventory(unittest.TestCase):
-    def test_every_parse_call_in_the_gateway_is_listed_with_its_class(self):
-        calls, _, indirect = scan()
-        found = {k: len(v) for k, v in calls.items()}
-        listed = {k: n for k, (n, _, _) in CALLS.items()}
-        self.assertEqual(sorted(set(found) - set(listed)), [], "a parse call that is not in the inventory: is it a provider's bytes (then it belongs in core/wire.py), or not (then say so here)")
-        self.assertEqual(sorted(set(listed) - set(found)), [], "a listed parse call that is no longer there")
-        self.assertEqual({k: (found[k], n) for k, n in listed.items() if found[k] != n}, {}, "(calls found, calls listed)")
-        self.assertEqual(indirect, [], "a parser reached by getattr")
-
-    def test_a_providers_bytes_are_opened_in_wire_py_and_nowhere_else(self):
-        payload = {k for k, (_, kind, _) in CALLS.items() if kind == "PAYLOAD"}
-        self.assertEqual(sorted(payload), [("core/wire.py", "open_json"), ("core/wire.py", "open_xml")])
-        self.assertTrue(all(file == "core/wire.py" for file, _ in payload))
-        kinds = {kind for _, kind, _ in CALLS.values()}
-        self.assertEqual(kinds, {"PAYLOAD", "CALLER", "GATEWAY", "AUTH", "CONFIG"})
-        self.assertTrue(all(len(why.split()) >= 4 for _, _, why in CALLS.values()))
-
-    def test_no_module_but_wire_parses_csv_or_xml_at_all(self):
-        """The two formats whose default readers resolve malformed bytes: nothing outside core/wire.py imports a reader for them (core/payload.py and core/schema.py import ElementTree for its
-        element TYPE, which opens nothing)."""
-        for path in sorted(ROOT.rglob("*.py")):
-            rel = path.relative_to(ROOT).as_posix()
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-            for node in ast.walk(tree):
-                names = []
-                if isinstance(node, ast.Import):
-                    names = [a.name for a in node.names]
-                elif isinstance(node, ast.ImportFrom) and node.level == 0:
-                    names = [node.module or ""]
-                for name in names:
-                    if name.split(".")[0] == "csv" or name.startswith(("xml.sax", "xml.dom", "xml.parsers", "lxml")):
-                        self.fail(f"{rel} imports {name}")
-                    if name == "xml.etree.ElementTree":
-                        self.assertIn(rel, ("core/wire.py", "core/payload.py", "core/schema.py"), f"{rel} imports ElementTree")
-
-    def test_every_consumer_of_an_opener_is_listed_and_each_opener_is_used(self):
-        _, consumers, _ = scan()
-        found = {k: sorted(set(v)) for k, v in consumers.items() if k[0] != "core/wire.py"}
-        listed = {k: [opener] for k, (opener, _) in CONSUMERS.items()}
-        self.assertEqual(found, listed)
-        self.assertEqual({o for o, _ in CONSUMERS.values()}, {"open_json", "open_xml", "open_csv"})
-
-    def test_control_the_scan_finds_a_parser_however_it_is_imported(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "adapters").mkdir()
-            (root / "adapters" / "new.py").write_text(
-                "import json\nimport json as j\nfrom json import loads\nfrom json import loads as l\nimport xml.etree.ElementTree as ET\nimport xml.etree.ElementTree\nfrom xml.etree import ElementTree as ET2\nimport csv\nimport tomllib\n"
-                "def a(x):\n    return json.loads(x)\ndef b(x):\n    return j.loads(x)\ndef c(x):\n    return loads(x)\ndef d(x):\n    return l(x)\n"
-                "def e(x):\n    return ET.fromstring(x)\ndef e2(x):\n    return xml.etree.ElementTree.fromstring(x)\ndef e3(x):\n    return ET2.XML(x)\ndef f(x):\n    return list(csv.reader(x))\ndef g(x):\n    return tomllib.loads(x)\ndef h(x):\n    return getattr(json, 'loads')(x)\n"
-                "def i(x):\n    return json.dumps(x)\n")
-            calls, _, indirect = scan(root)
-        self.assertEqual({fn: v for (_, fn), v in calls.items()},
-                         {"a": ["json.loads"], "b": ["json.loads"], "c": ["json.loads"], "d": ["json.loads"], "e": ["xml.etree.ElementTree.fromstring"],
-                          "e2": ["xml.etree.ElementTree.fromstring"], "e3": ["xml.etree.ElementTree.XML"], "f": ["csv.reader"], "g": ["tomllib.loads"]})
-        self.assertEqual(indirect, [("adapters/new.py", "h")])
-
-
 # --------------------------------------------------------------------------------------------------------------------------------------- the rulings
 class Refusal(unittest.TestCase):
     def refused(self, opener, body, *, mentions: str = ""):
@@ -209,7 +56,8 @@ class JsonRulings(Refusal):
         cases = {"a name twice (RFC 8259 §4)": (b'{"a": 1, "a": 2}', "occurs twice"), "a name twice, nested in a list of objects": (b'[{"x": {"a": 1, "b": 2, "a": 3}}]', "occurs twice"),
                  "a name twice, differing only in value kind": (b'{"a": null, "a": false}', "occurs twice"),
                  "NaN (§6)": (b'{"n": NaN}', "NaN"), "Infinity": (b'[Infinity]', "Infinity"), "-Infinity": (b'[-Infinity]', "-Infinity"),
-                 "a number past a double": (b'[1e999]', "does not fit"), "a negative one": (b'[-1e999]', "does not fit"),
+                 "a number past a double": (b'[1e999]', "does not fit"), "a negative one": (b'[-1e999]', "does not fit"), "a fraction past a double": (b'[1' + b'0' * 400 + b'.5]', "does not fit"),
+                 "an integer past the interpreter's conversion limit (4,300 digits)": (b'[' + b'1' * 4301 + b']', "not JSON"),
                  "UTF-16 (§8.1)": ('{"a": 1}'.encode("utf-16"), "UTF-8"), "UTF-16 without a mark (NUL bytes are not JSON)": ('{"a": 1}'.encode("utf-16-le"), "not JSON"), "UTF-32": ('{"a": 1}'.encode("utf-32"), "UTF-8"),
                  "an encoded surrogate (not UTF-8, RFC 3629)": (b'["\xed\xa0\x80"]', "UTF-8"), "a byte that is not UTF-8": (b'["\xff"]', "UTF-8"),
                  "nesting past the bound": (b"[" * 65 + b"]" * 65, "levels deep"), "nesting past the interpreter's own limit": (b"[" * 200_000, "levels deep"),
@@ -218,6 +66,26 @@ class JsonRulings(Refusal):
         for name, (body, why) in cases.items():
             with self.subTest(name):
                 self.refused(wire.open_json, body, mentions=why)
+
+    def test_numbers_an_integer_is_exact_at_any_size_to_the_conversion_limit_and_any_other_number_is_a_finite_double(self):
+        """The corrected claim (Astra, R13C-5 and the review's number finding: 'no number beyond a double' was false). An integer is read exactly — `10**400` is accepted, as is the longest the interpreter
+        converts — and only a text past that limit is refused (as not JSON). A number with a fraction or an exponent is a double: finite, or refused; it keeps a double's precision, and a
+        literal too small for one underflows to 0.0 (finite)."""
+        self.assertEqual(wire.open_json("1" + "0" * 400), 10 ** 400)
+        self.assertEqual(wire.open_json("-1" + "0" * 400), -(10 ** 400))
+        self.assertEqual(wire.open_json("[" + "9" * 4300 + "]"), [int("9" * 4300)])
+        self.assertIsInstance(wire.open_json("1" + "0" * 400), int)
+        for text, want in (("1e308", 1e308), ("-1.7976931348623157e308", -1.7976931348623157e308), ("5e-324", 5e-324), ("1e-400", 0.0), ("123456789012345678901234567890.5", 1.2345678901234568e+29)):
+            with self.subTest(text=text):
+                got = wire.open_json(text)
+                self.assertEqual((type(got), got), (float, want))
+        for text in ("1e999", "-1e999", "1E400", "1" + "0" * 400 + ".5", "[1e999]", '{"n": 1e999}'):
+            with self.subTest(refused=text[:20]), self.assertRaises(wire.Malformed) as why:
+                wire.open_json(text)
+            self.assertIn("does not fit a double", str(why.exception))
+        with self.assertRaises(wire.Malformed) as why:
+            wire.open_json("1" * 4301)
+        self.assertIn("4300 digits", str(why.exception))
 
     def test_the_accepted(self):
         cases = {"an ordinary document": (b'{"a": [1, 2.5, {"b": null}], "c": "d"}', {"a": [1, 2.5, {"b": None}], "c": "d"}),
@@ -292,7 +160,7 @@ class CsvRulings(Refusal):
     def test_the_accepted(self):
         cases = {"an ordinary document": (b"a,b\n1,2\n", [["a", "b"], ["1", "2"]]), "CRLF line ends": (b"a,b\r\n1,2\r\n", [["a", "b"], ["1", "2"]]),
                  "no line end on the last line": (b"a,b\n1,2", [["a", "b"], ["1", "2"]]), "a quoted field holding a line end (§2.6)": (b'a,b\n"x\ny",2\n', [["a", "b"], ["x\ny", "2"]]),
-                 "a quoted field holding CRLF": (b'a\n"x\r\ny"\n', [["a"], ["x\r\ny"]]), "a quoted field holding a comma": (b'a,b\n"x,y",2\n', [["a", "b"], ["x,y", "2"]]),
+                 "a quoted field holding CRLF": (b'a\n"x\r\ny"\n', [["a"], ["x\r\ny"]]), "a bare carriage return INSIDE a quoted field is data (§2.6; outside one it is refused)": (b'a\n"x\ry"\n', [["a"], ["x\ry"]]), "a quoted field holding a comma": (b'a,b\n"x,y",2\n', [["a", "b"], ["x,y", "2"]]),
                  "a doubled quote (§2.7)": (b'a\n"x""y"\n', [["a"], ['x"y']]), "an empty quoted field": (b'a\n""\n', [["a"], [""]]),
                  "a trailing comma: an empty last cell": (b"a,b\n1,\n", [["a", "b"], ["1", ""]]), "a blank line: no record, as the csv module reads it": (b"a\n\nb\n", [["a"], [], ["b"]]),
                  "empty": (b"", []), "non-ASCII text": ("a\ncafé\n".encode(), [["a"], ["café"]]), "a cell at the limit": (b"a\n" + b"x" * wire.CELL_LIMIT + b"\n", None),
@@ -497,14 +365,21 @@ class ByteCorruption(unittest.TestCase):
             identities, refused, error = self.snapshot([ok[0], line, ok[1]])
             self.assertEqual((identities, error, len(refused)), (["issn:9999-9991", "issn:9999-9983"], None, 1), line)
 
-    def test_every_opener_of_the_inventory_is_in_this_family(self):
-        """The family's reach, derived from the inventory (not from this file's own list): each consumer of an opener has a test above that corrupts its bytes."""
-        covered = {"open_json": {"test_json_every_corruption_is_a_payload_error_from_the_decoder_and_has_no_count", "test_the_snapshot_reader_refuses_each_corrupted_line_alone_and_names_it"},
-                   "open_xml": {"test_xml_every_corruption_is_a_payload_error_from_parse_xml"}, "open_csv": {"test_csv_every_corruption_of_the_dump_is_a_payload_error_and_never_a_load"}}
+    # each consumer of an opener (tests/inventory.py: (file, function)) -> the test of this class that corrupts the bytes it opens and judges what comes out of THAT consumer
+    COVERED = {("core/schema.py", "_open_json"): "test_json_every_corruption_is_a_payload_error_from_the_decoder_and_has_no_count",
+               ("adapters/base.py", "_count_of"): "test_json_every_corruption_is_a_payload_error_from_the_decoder_and_has_no_count",
+               ("core/schema.py", "parse_xml"): "test_xml_every_corruption_is_a_payload_error_from_parse_xml",
+               ("core/schema.py", "decode_csv"): "test_csv_every_corruption_of_the_dump_is_a_payload_error_and_never_a_load",
+               ("harvest/openalex_snapshot.py", "read_snapshot"): "test_the_snapshot_reader_refuses_each_corrupted_line_alone_and_names_it"}
+
+    def test_every_consumer_of_an_opener_has_a_test_here_that_corrupts_its_bytes(self):
+        """The family's reach, by CONSUMER — (file, function) — and not by opener name: a new caller of `open_json` is listed in tests/inventory.py (tests/test_inventory.py fails until it is), and
+        fails here until a test of this class that corrupts the bytes it opens is named for it. (Counting openers by name, as this test did, would not notice a second consumer of one.)"""
+        from tests import inventory as INV
+        consumers = {(file, function) for (kind, file, function, what) in INV.SITES if kind == "opener"}
+        self.assertEqual(set(self.COVERED), consumers)
         here = {name for name in dir(ByteCorruption) if name.startswith("test_")}
-        for opener, tests in covered.items():
-            self.assertTrue(tests <= here, opener)
-        self.assertEqual({o for o, _ in CONSUMERS.values()}, set(covered))
+        self.assertEqual(sorted(set(self.COVERED.values()) - here), [])
 
 
 # --------------------------------------------------------------------------------------------------------------------------------------- the CSV opener against the csv module
@@ -585,25 +460,72 @@ class HeaderOpeners(unittest.TestCase):
 
       Link (RFC 8288 on RFC 9110's list syntax)   adapters/base.py `parse_links`/`next_link`: strict since 2b-repair-12 — a header that does not read through to its last character is
                                                   `LinkSyntax`, and the answer's next link is then neither a continuation nor an end; pinned by tests/test_link_header.py and the oracle's vectors
-      Retry-After (RFC 9110 §10.2.3)              `Response.retry_after_seconds`: an HTTP-date or `delay-seconds` (ASCII digits). Before 2b-repair-13c it was `float()`, which reads `inf`
-                                                  (a breaker open for ever), `nan`, `-5`, `1e3`, `1_0` and Arabic-Indic digits: tested here
+      Retry-After (RFC 9110 §10.2.3)              `Response.retry_after_seconds`: `delay-seconds` is ASCII digits and nothing else; a DATE is whatever `email.utils.parsedate_to_datetime` reads (its tolerance is stated in the
+                                                  method's docstring and held below), with a zone-less date read as GMT. Before 2b-repair-13c it was `float()`, which reads `inf` (a breaker open for
+                                                  ever), `nan`, `-5`, `1e3`, `1_0` and Arabic-Indic digits
       Location (redirects)                        `redirect_target`: urljoin, then scheme, downgrade and global-address checks; anything that does not parse is refused
       Content-Type / first bytes of a body        `check()`: a substring/prefix test that can only REFUSE (an HTML page wearing a success status); a heuristic by design, not an opener
-      Content-Length, chunking, compression       the transport's (urllib/http.client): a short body is an error Response
+      Content-Length, Transfer-Encoding           the transport's, since 2b-repair-14: adapters/base.py `_read_body` (RFC 9112 §6.3) — tests/test_transport_framing.py
     """
 
     def seconds(self, value):
         return Response(429, {"retry-after": value}, b"", "u").retry_after_seconds()
 
-    def test_retry_after_is_delay_seconds_or_an_http_date_and_nothing_else(self):
+    def test_retry_after_a_delay_is_ascii_digits_and_nothing_else(self):
         for value, want in (("30", 30.0), (" 30 ", 30.0), ("0", 0.0), ("3600", 3600.0), ("0030", 30.0)):
             self.assertEqual(self.seconds(value), want, value)
         for value in ("inf", "nan", "-5", "+5", "1e3", "1_0", "١٢", "5.5", ".5", "5 s", "abc", "", " ", "9" * 5000, "9" * 400, "infinity", "0x10"):
             with self.subTest(value=value[:12]):
                 self.assertIsNone(self.seconds(value))
         self.assertIsNone(Response(429, {}, b"", "u").retry_after_seconds())
-        later = self.seconds("Wed, 21 Oct 2099 07:28:00 GMT")
-        self.assertGreater(later, 10 ** 9)
+
+    def test_retry_after_a_date_is_what_the_email_date_parser_reads_and_this_is_its_stated_tolerance(self):
+        """What is asserted is the tolerance the method's docstring states, not the HTTP-date grammar's: each form below is read as a finite delay, and each refusal is None. (The earlier test of
+        this name claimed 'an HTTP-date and nothing else'; a date followed by ` GMT garbage`, a numeric zone, `PST` or no weekday is read — Astra, R13C-5.)"""
+        base = "21 Oct 2099 07:28:00"
+        accepted = {"IMF-fixdate": f"Wed, {base} GMT", "RFC 850 (two-digit year, 99 is 1999: in the past)": "Wednesday, 21-Oct-99 07:28:00 GMT", "asctime (no zone)": "Wed Oct 21 07:28:00 2099",
+                    "a numeric zone": f"Wed, {base} +0000", "a zone name the library knows": f"Wed, {base} PST", "no weekday": f"{base} GMT", "a wrong weekday (not checked)": f"Mon, {base} GMT",
+                    "a full month name": "Wed, 21 October 2099 07:28:00 GMT", "lower case": "wed, 21 oct 2099 07:28:00 gmt", "seconds left out": "Wed, 21 Oct 2099 07:28 GMT",
+                    "text after the zone, which is ignored": f"Wed, {base} GMT garbage", "an unknown zone, `-0000`": f"Wed, {base} -0000"}
+        for label, value in accepted.items():
+            with self.subTest(label):
+                got = self.seconds(value)
+                self.assertIsNotNone(got, value)
+                self.assertGreaterEqual(got, 0.0)
+        for label, value in {"IMF-fixdate": f"Wed, {base} GMT", "a numeric zone": f"Wed, {base} +0000", "text after the zone": f"Wed, {base} GMT garbage", "no weekday": f"{base} GMT"}.items():
+            with self.subTest(f"{label}: a date far ahead is the delay it says, unbounded"):
+                self.assertGreater(self.seconds(value), 10 ** 9)
+        self.assertEqual(self.seconds("Wednesday, 21-Oct-99 07:28:00 GMT"), 0.0, "a date already past is a delay of zero")
+        refused = {"ISO 8601": "2099-10-21T07:28:00Z", "words": "tomorrow", "a day out of range": "Wed, 32 Oct 2099 07:28:00 GMT", "an hour out of range": "Wed, 21 Oct 2099 25:28:00 GMT",
+                   "no time": "Wed, 21 Oct 2099 GMT", "a date and a number": "21 Oct 2099 5"}
+        for label, value in refused.items():
+            with self.subTest(label):
+                self.assertIsNone(self.seconds(value), value)
+
+    def test_retry_after_a_date_with_no_zone_is_gmt_and_never_the_hosts_local_time(self):
+        """asctime and `-0000` name no zone, and `datetime.timestamp()` of a zone-less datetime reads it in the host's local time: the delay was then off by the host's offset from GMT (up to
+        fourteen hours) wherever the gateway ran away from GMT. HTTP dates are GMT (RFC 9110 §5.6.7)."""
+        import os
+        import time as _time
+        from datetime import datetime, timedelta, timezone
+        when = datetime.now(timezone.utc) + timedelta(hours=10)
+        asctime = when.strftime("%a %b %d %H:%M:%S %Y")
+        imf = when.strftime("%a, %d %b %Y %H:%M:%S GMT")
+        original = os.environ.get("TZ")
+        try:
+            for zone in ("UTC", "America/Los_Angeles", "Asia/Kolkata", "Pacific/Kiritimati"):
+                os.environ["TZ"] = zone
+                _time.tzset()
+                with self.subTest(zone=zone):
+                    self.assertAlmostEqual(self.seconds(asctime), self.seconds(imf), delta=3.0)
+                    self.assertAlmostEqual(self.seconds(asctime), 10 * 3600, delta=5.0)
+                    self.assertAlmostEqual(self.seconds(imf.replace("GMT", "-0000")), 10 * 3600, delta=5.0)
+        finally:
+            if original is None:
+                os.environ.pop("TZ", None)
+            else:
+                os.environ["TZ"] = original
+            _time.tzset()
 
     def test_a_retry_after_that_is_not_a_delay_opens_no_breaker_of_its_own(self):
         """The consequence the strictness is for: `Retry-After: inf` on a 429 used to open the source's breaker for ever; it is no delay now, and the broker's own policy applies."""

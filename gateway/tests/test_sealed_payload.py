@@ -31,6 +31,7 @@ from research_gateway.core.broker import Broker, RatePolicy
 from research_gateway.core.canonical import make_record
 from research_gateway.core.payload import MemberList, Passive, PassiveRead, Rec, Sealed, SealedRead, UndeclaredRead, Unreadable, plain
 from tests import invariant_ops as ops
+from tests import inventory as INV
 from tests import test_member_isolation as M
 from tests.invariant_ops import corrupt_route
 from tests.test_invariants import ALL, run
@@ -45,7 +46,7 @@ class ResponseIsSealed(unittest.TestCase):
     def test_the_responses_public_names_are_a_closed_list_none_of_them_a_payload_accessor_and_its_one_door_is_sealed(self):
         """What is asserted: the public names of a Response are exactly this list (a new one fails until it is added deliberately, with why); the names a payload used to be reached by
         (`json`, `text`, `body` ...) are not among them, by `hasattr` and `getattr`; and `download()`, the one name that is a way to the bytes, returns a `Sealed` that no read opens. That the
-        decoder is the only OTHER reader of the bytes is BytesAreOpenedOnlyWhere's (tests/test_opaque_provenance.py), not this test's."""
+        decoder is the only OTHER reader of the bytes is the inventory's (tests/inventory.py, held by tests/test_inventory.py), not this test's."""
         resp = self.response()
         public = sorted(n for n in dir(resp) if not n.startswith("_"))
         self.assertEqual(public, ["download", "error", "headers", "ok", "retry_after_seconds", "status", "url"],
@@ -84,7 +85,7 @@ class ResponseIsSealed(unittest.TestCase):
 
     def test_decode_reads_the_payload_through_its_declared_schema_and_the_responses_other_names_do_not_show_it(self):
         """What is asserted: `decode` reads the marker through a schema that declares it (the positive control), and the Response's other names — its public values, its repr, its one sealed door —
-        show nothing of it. It is not a proof of exclusivity: the client reads the bytes in a few places of its own (BytesAreOpenedOnlyWhere lists them), and `plain` of the sealed door is bytes."""
+        show nothing of it. It is not a proof of exclusivity: the client reads the bytes in a few places of its own (tests/inventory.py lists them), and `plain` of the sealed door is bytes."""
         resp = self.response()
         rows = S.decode("x", S.obj({"results": S.members(S.obj({"secret_marker_7f3a": S.text()}))}), resp)["results"]
         self.assertEqual(rows.each(lambda r: r["secret_marker_7f3a"]), ["payload-bytes-must-not-be-reachable"])
@@ -113,7 +114,7 @@ class ResponseIsSealed(unittest.TestCase):
         self.assertIn("AttributeError", lane.get("error", ""), lane)
         with tempfile.TemporaryDirectory() as tmp:
             tree = M.Imports.tree(Path(tmp), **{M.Imports.OC: [(old, new)]})
-            self.assertEqual([f for f in M.reflection_in_adapters(tree) if f[0] == "adapters/opencitations.py"], [("adapters/opencitations.py", "getattr() of an answer accessor")])
+            self.assertEqual([f for f in INV.reflection_in_adapters(tree) if f[0] == "adapters/opencitations.py"], [("adapters/opencitations.py", "getattr() of an answer accessor")])
 
 
 class RawIsSealedAndLeavesAsACopy(unittest.TestCase):
@@ -310,7 +311,7 @@ class GuardsStayBounded(unittest.TestCase):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp, True)
         root = Path(tmp) / "research_gateway"
-        shutil.copytree(M.ROOT, root, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        shutil.copytree(INV.ROOT, root, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
         (root / "adapters" / "new_lane.py").write_text("from __future__ import annotations\n" + source, encoding="utf-8")
         return root
 
@@ -325,20 +326,20 @@ class GuardsStayBounded(unittest.TestCase):
         for name, (source, finding) in cases.items():
             with self.subTest(name):
                 root = self.tree_with(source)
-                self.assertIn(("adapters/new_lane.py", finding), M.reflection_in_adapters(root))
+                self.assertIn(("adapters/new_lane.py", finding), INV.reflection_in_adapters(root))
 
     def test_the_private_storage_is_not_something_an_adapter_reads_even_by_its_plain_name(self):
         for attribute in ("_body", "_value", "_raw", "_items", "_v"):
             with self.subTest(attribute):
                 root = self.tree_with(f"def f(x):\n    return x.{attribute}\n")
-                found = M.reads(root)
+                found = INV.door_sites(root)
                 self.assertIn(("adapters/new_lane.py", "f"), found)
                 self.assertEqual(found[("adapters/new_lane.py", "f")], [f"private {attribute}"])
 
     def test_the_four_spellings_astra_listed_or_a_reviewer_would_write_to_the_download_door(self):
         for source in ('def f(resp):\n    return resp.download()\n', 'def f(resp):\n    return decode("x", S, resp).raw\n'):
             root = self.tree_with(source)
-            self.assertIn(("adapters/new_lane.py", "f"), M.reads(root), source)
+            self.assertIn(("adapters/new_lane.py", "f"), INV.door_sites(root), source)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""The byte openers: where a provider's bytes become structure (task 2b-repair-13c).
+"""The byte openers: where a provider's bytes become structure (task 2b-repair-13c; the supported-format policy frozen in 2b-repair-14 by the operator's ruling of 2026-10-02).
 
 Everything the gateway decides from a provider's answer starts as bytes, and the decoder (core/schema.py) validates what a lexer has already turned into values. Until
 2b-repair-13c that lexer was each format's library at its default, and every default resolves malformed input instead of refusing it: Python's `csv` ends a quoted
@@ -8,24 +8,32 @@ became a definite answer — zero journals — before any schema could see that 
 
 An opener is therefore a layer with a contract of its own, judged against the format's specification. Each function here either returns what the bytes say, read one way,
 or raises `Malformed`; none picks a reading. The decoder turns `Malformed` into the one channel (PayloadError). The inventory of every place the gateway opens bytes, with its
-ruling, is tests/test_openers.py; it fails on a parse call that is not listed.
+classification, is tests/inventory.py (held by tests/test_inventory.py); it fails on a parse call that is not listed.
 
-  JSON  (RFC 8259)   UTF-8 only (§8.1; a leading byte order mark is ignored, which §8.1 allows); `NaN`, `Infinity` and `-Infinity` are not JSON (§6); a number that does not
-                     fit a double is refused, not read as infinity; a name that occurs twice in one object is refused (§4: the behaviour of software that receives it is unpredictable,
-                     so no reading is chosen, and the record's `raw` never silently loses a value); nesting deeper than MAX_DEPTH is refused. Accepted as they are: a lone
-                     surrogate escape (the grammar allows it, §8.2), a top-level scalar (§2), a `-0`.
+THE SUPPORTED CONTRACT. These rules are the supported-format and resource policy (STATION-CONTRACT.md, "The supported provider-input contract"): input outside it fails visibly — the lane is
+unavailable — and is never read as something shorter. They are the gateway's policy, not a claim that every provider uses exactly this subset: which live providers do is Phase 4's to qualify.
+
+  JSON  (RFC 8259)   UTF-8 only (§8.1; a leading byte order mark is ignored, which §8.1 allows); `NaN`, `Infinity` and `-Infinity` are not JSON (§6); a name that occurs twice in one object is
+                     refused (§4: the behaviour of software that receives it is unpredictable, so no reading is chosen, and the record's `raw` never silently loses a value); nesting deeper
+                     than MAX_DEPTH (64) is refused. NUMBERS (§6 leaves range and precision to the receiver): an INTEGER (no fraction, no exponent) is read exactly, of any size up to Python's
+                     integer-conversion limit (4,300 digits by default; a longer one is refused as not JSON); any other number is read as a DOUBLE — finite, or refused (`1e999` is never read as
+                     infinity), with a double's precision (a literal too small for one underflows to 0.0). Accepted as they are: a lone surrogate escape (the grammar allows it, §8.2), a top-level
+                     scalar (§2), a `-0`.
   XML   (XML 1.0)    well-formedness is expat's, and strict; the bytes are UTF-8 and read as that — an invalid byte is an error, not U+FFFD, and a declaration of any other
                      encoding is refused rather than ignored; the declaration's version must be `1.` and digits (§2.8: expat reads `2.0`, `1` and `abc`); a document type
                      declaration is refused (the supported messages have none, and an external subset or a parameter entity would be skipped without a word, §4.4.3); nesting
-                     deeper than MAX_DEPTH is refused. Namespaces are not this layer's: it returns the tree with each tag `{uri}local`, and the decoder (core/schema.py) holds a field to the namespaces it names.
+                     deeper than MAX_DEPTH (64) is refused. Namespaces are not this layer's: it returns the tree with each tag `{uri}local`, and the decoder (core/schema.py) holds a field to the
+                     namespaces it names.
   CSV   (RFC 4180)   a quoted field must be closed (§2.7) and be followed by a comma or the end of the line (§2.6); a quote may not appear inside an unquoted field (§2.5); a
-                     carriage return is half of CRLF or it is refused (§2.1); UTF-8 only. Accepted, and why: a line ending of LF alone and a last line with no ending (de
-                     facto, and no reading of either is ambiguous); a blank line (no record — what the csv module and every dump reader does); a field of any Unicode text
-                     (the RFC's TEXTDATA is ASCII, which no real dump is); a cell of at most CELL_LIMIT characters (the csv module's own limit). A byte order mark is data in CSV (the RFC says
-                     nothing of one): it stays the first character of the first cell, so a header that starts with one names no column the loader needs — as it always did.
+                     carriage return OUTSIDE a quoted field is half of CRLF or it is refused (§2.1 — inside a quoted field it is data); UTF-8 only. Accepted, and why: a line ending of LF alone and a
+                     last line with no ending (de facto, and no reading of either is ambiguous); a blank line (no record — what the csv module and every dump reader does); a field of any Unicode
+                     text (the RFC's TEXTDATA is ASCII, which no real dump is); a short row and a row with extra cells (the decoder's policy, core/schema.py: a missing cell is nothing, an extra one
+                     is kept in the row's raw and never read); a cell of at most CELL_LIMIT (131,072) characters (the csv module's own limit). A byte order mark is data in CSV (the RFC says nothing
+                     of one): it stays the first character of the first cell, so a header that starts with one names no column the loader needs — as it always did.
 
-What no opener can do: a truncation that ends exactly at a record's end is a well-formed shorter document. HTTP's own length framing is the transport's (a short body is an
-error Response, adapters/base.py Transport), not a CSV rule.
+What no opener can do: a truncation that ends exactly at a record's end is a well-formed shorter document. HTTP's own message framing is the transport's (adapters/base.py `_read_body`:
+a body shorter than its Content-Length, or a chunked body with no terminal chunk, is an error Response; tests/test_transport_framing.py), not a CSV rule — and a close-delimited body, whose
+only end is the connection closing, cannot be told from a deliberately shorter one (RFC 9112 §6.3).
 """
 from __future__ import annotations
 

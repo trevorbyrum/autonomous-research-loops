@@ -69,7 +69,7 @@ PP = "tests.test_provider_pagination."
 MD = "tests.test_member_decoding."
 LH = "tests.test_link_header."
 MI = "tests.test_member_isolation."
-DOORS = MI + "Reads.test_every_place_an_answer_leaves_the_decoder_is_listed_with_its_reason_and_every_listed_use_is_there"
+DOORS = "tests.test_inventory.Inventory.test_every_site_the_scans_find_is_listed_and_every_listed_site_is_there"
 HX = "tests.test_invariants."
 TP = "tests.test_present_means_typed."
 TF = "tests.test_typed_fields."
@@ -762,16 +762,16 @@ MUTANTS: list[Mutant] = [
            (MI + "Imports.test_every_provider_data_module_imports_only_what_the_inventory_admits",),
            (MI + "Imports.test_every_other_form_an_import_can_take_is_refused_or_analysed",)),
     Mutant("R9-module-attribute-not-analysed", "the import check does not look at what an adapter reaches through a package module it imports as a module",
-           "tests/test_member_isolation.py", "                    if use.attr not in defined_names(modules[node.id]):", "                    if False:",
+           "tests/inventory.py", "                    if use.attr not in defined_names(imported[node.id]):", "                    if False:",
            (MI + "Imports.test_a_parser_an_admitted_module_imports_is_refused_and_so_is_the_reviewers_complete_mutant",
             MI + "Imports.test_every_other_form_an_import_can_take_is_refused_or_analysed"),
            (MI + "Imports.test_control_a_module_used_for_what_it_defines_is_not_refused", MI + "Imports.test_every_provider_data_module_imports_only_what_the_inventory_admits")),
     Mutant("R9-module-used-as-a-value-not-refused", "the import check admits a package module passed on, aliased or given to getattr",
-           "tests/test_member_isolation.py", '                    out.append((rel, f"{node.id} (a module, used as a value: what it reaches cannot be bounded)"))', "                    pass",
+           "tests/inventory.py", '                    out.append((rel, f"{node.id} (a module, used as a value: what it reaches cannot be bounded)"))', "                    pass",
            (MI + "Imports.test_every_other_form_an_import_can_take_is_refused_or_analysed",),
            (MI + "Imports.test_control_a_module_used_for_what_it_defines_is_not_refused", MI + "Imports.test_a_parser_an_admitted_module_imports_is_refused_and_so_is_the_reviewers_complete_mutant")),
     Mutant("R9-assigned-alias-is-a-definition", "a name a module assigns from what it imports is offered as one it defines (`loads = json.loads`)",
-           "tests/test_member_isolation.py", "                ast.literal_eval(node.value)", "                ast.literal_eval('0')",
+           "tests/inventory.py", "                ast.literal_eval(node.value)", "                ast.literal_eval('0')",
            (MI + "Imports.test_every_other_form_an_import_can_take_is_refused_or_analysed",),
            (MI + "Imports.test_control_the_permitted_imports_are_not_refused", MI + "Imports.test_every_provider_data_module_imports_only_what_the_inventory_admits")),
     # R9-1: a URI is what RFC 3986 says
@@ -917,3 +917,8 @@ MUTANTS.extend(_xml_mutants(Mutant))
 from gen2_gateway_snapshot_mutants import build as _snapshot_mutants  # noqa: E402
 
 MUTANTS.extend(_snapshot_mutants(Mutant))
+
+# 2b-repair-14: the one owned inventory (tools/gen2_gateway_inventory_mutants.py)
+from gen2_gateway_inventory_mutants import build as _inventory_mutants  # noqa: E402
+
+MUTANTS.extend(_inventory_mutants(Mutant))

@@ -19,14 +19,13 @@ download's bytes are a `Sealed` — and the router turns the whole answer into p
   * EveryExit            canonical-record construction (raw, extra, a typed field, the identity), `download()`, an unreadable member's raw, equality as a way to read, and `plain` itself
   * WhereItBecomesPlain  before the router's boundary every operation's records still hold `Sealed` raw (nothing between the builder and the router materialized it), after it every answer is plain
                          JSON; the index load writes plain data and never the object's repr
-  * BytesAreOpenedOnlyWhere  the claim "only the decoder opens a payload's bytes", stated for what it covers: the exact inventory of reads of a Response's bytes, with what each is for
+  * TheClientsOwnReads   the client's reads of a Response's bytes on a marker body (the inventory of those reads, with what each is for, is tests/inventory.py's: one owner)
 
 What this cannot show, and nothing in Python can: that private storage is unreachable by a name (`Sealed._value`), that `x is None` on a Passive can be intercepted, or that a finite corpus proves a
 family closed. They are the language-level residuals the task report lists; no workaround is built for them.
 """
 from __future__ import annotations
 
-import ast
 import copy
 import io
 import json
@@ -43,13 +42,13 @@ from research_gateway.core import schema as S
 from research_gateway.core.canonical import make_record
 from research_gateway.core.payload import (MemberList, OMIT, Passive, PassiveRead, PayloadError, Rec, Sealed, SealedRead, Unreadable, UndeclaredRead, plain)
 from research_gateway.harvest import index, registries
+from tests import inventory as INV
 from tests import test_member_isolation as M
 from tests.invariant_ops import corrupt_route, oc_row
 from tests.test_invariants import ALL, run
 from tests.test_astra_13a import COPY_READ, OLD, SKIP_FIRST, lane_with, opencitations_with
 from tests.test_openers import Fake, doaj_client, THREE
 
-ROOT = Path(__file__).resolve().parents[1] / "research_gateway"
 THREE_IDS = ["doi:10.9000/c1", "doi:10.9000/c2", "doi:10.9000/c3"]
 
 
@@ -84,9 +83,9 @@ class TheCopyEscape(Judged):
         source, _ = opencitations_with(OLD, COPY_READ + OLD)
         with tempfile.TemporaryDirectory() as tmp:
             tree = M.Imports.tree(Path(tmp), **{M.Imports.OC: [(OLD, COPY_READ + OLD)]})
-            self.assertEqual((M.import_findings(tree), [f for f in M.reflection_in_adapters(tree) if f[0] == "adapters/opencitations.py"]), ([], []))
-            real = M.reads()
-            changed = {k: v for k, v in M.reads(tree).items() if v != real.get(k)}
+            self.assertEqual((INV.import_findings(tree), [f for f in INV.reflection_in_adapters(tree) if f[0] == "adapters/opencitations.py"]), ([], []))
+            real = INV.door_sites()
+            changed = {k: v for k, v in INV.door_sites(tree).items() if v != real.get(k)}
             self.assertEqual(changed, {}, "the mutant adds no use the inventory lists")
 
     def test_the_variants_each_fail_where_the_value_is_read(self):
@@ -233,11 +232,6 @@ class EveryExit(Judged):
         self.assertEqual(rec["id"], "a")
         self.assertIsInstance(rec.raw, Sealed)
 
-    def test_plain_is_how_a_sealed_value_leaves_and_a_provider_module_that_uses_it_is_listed(self):
-        """`plain` is the trusted boundary's door, and the inventory of doors lists every use of it in provider modules, with its reason: the one use is the index load (the storage boundary)."""
-        uses = {k: v for k, v in M.reads().items() if any(w in ("call plain", "reference plain", "attribute plain") for w in v)}
-        self.assertEqual(uses, {("harvest/index.py", "upsert"): ["call plain"]})
-
     def test_constructing_a_sealed_a_passive_or_a_rec_in_a_provider_module_is_listed(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -247,7 +241,7 @@ class EveryExit(Judged):
                 (root / "core" / f"{name}.py").write_text("")
             (root / "adapters" / "new_lane.py").write_text(
                 "from ..core.payload import Sealed, Passive, Rec\n\ndef guess(raw):\n    return raw == Sealed({'a': 1})\n\ndef issue():\n    return Sealed({'a': 1})\n\ndef make():\n    return Passive(1)\n\ndef rec():\n    return Rec({}, {'skip': True})\n")
-            found = {fn: sorted(v) for (_, fn), v in M.reads(root).items() if fn != "<module>"}
+            found = {fn: sorted(v) for (_, fn), v in INV.door_sites(root).items() if fn != "<module>"}
         self.assertEqual(found, {"guess": ["call Sealed"], "issue": ["call Sealed"], "make": ["call Passive"], "rec": ["call Rec"]})
 
 
@@ -324,9 +318,9 @@ class ConstructorCompositions(Judged):
         for new in (self.EQUALITY, self.CONTAINER):
             with tempfile.TemporaryDirectory() as tmp:
                 tree = M.Imports.tree(Path(tmp), **{M.Imports.OC: [(OLD, new + OLD)]})
-                real = M.reads()
-                self.assertEqual((M.import_findings(tree), [f for f in M.reflection_in_adapters(tree) if f[0] == "adapters/opencitations.py"],
-                                  {k: v for k, v in M.reads(tree).items() if v != real.get(k)}), ([], [], {}))
+                real = INV.door_sites()
+                self.assertEqual((INV.import_findings(tree), [f for f in INV.reflection_in_adapters(tree) if f[0] == "adapters/opencitations.py"],
+                                  {k: v for k, v in INV.door_sites(tree).items() if v != real.get(k)}), ([], [], {}))
 
     def test_each_typed_field_takes_its_own_domain_and_never_unwraps_what_the_decoder_issued(self):
         row = S.decode("x", S.obj({"id": S.text(), "m": S.any_(), "tags": S.own(S.text()), "rows": S.members(S.obj({"id": S.text()}))}), {"id": "a", "m": 1, "tags": ["t"], "rows": [{"id": "b"}]})
@@ -389,7 +383,10 @@ class WhereItBecomesPlain(Judged):
         self.assertGreater(checked, 80)
         self.assertGreater(sealed, 60)
 
-    def test_after_it_every_operations_answer_is_plain_json_with_raw_as_what_the_provider_sent(self):
+    def test_after_it_every_operations_answer_is_plain_json_with_no_sealed_passive_or_decoded_object_left(self):
+        """What is asserted: the router's answer to every operation of the harness (and its populated variants) round-trips through JSON, no record's `raw` is a Sealed or a Passive, no top-level
+        value of a record is a decoder-issued object, and a record survives the round trip. It does NOT say a `raw` is what the provider sent: that is RawIsTheMemberAsSent's, which compares it
+        with the fixture's own object at record boundaries the fixture defines."""
         for name, op in ALL.items():
             out, _ = run(op, copy.deepcopy(corrupt_route(op).body))
             with self.subTest(op=name):
@@ -475,56 +472,78 @@ class WhereItBecomesPlain(Judged):
         self.assertEqual(canonical[0]["works_count"], 1234, "an `any_()` count, stored as the number the provider sent")
 
 
-class BytesAreOpenedOnlyWhere(unittest.TestCase):
-    """The scope of "only the decoder opens bytes", stated for what it covers. A payload's bytes — what a provider's answer SAYS — are opened by core/schema.py's decode/parse_xml/decode_csv alone
-    (through core/wire.py). The client holds the bytes too, and reads them in four places for its own purposes, none of which says what a provider's data is or can produce a record or an answer:
-    this is the exact inventory, and a new read of `_body` fails until it is listed."""
+class RawIsTheMemberAsSent(Judged):
+    """A record's `raw` is the provider's member exactly as it was sent (I-8). Each case compares it, after the sink that materializes it, with the object the FIXTURE wrote — the member boundary
+    is the fixture's, not the adapter's — through the adapter alone and through the router. Raw-storage fidelity is a property worth its own assertion, since the constructors seal a raw and
+    materialize nothing (ConstructorCompositions) and the sinks do the unwrapping."""
 
-    READS = {
-        ("adapters/base.py", "Response.download"): ("returns the bytes sealed, for a file the caller asked to download: content handed to the router and never read (EveryExit)"),
-        ("adapters/base.py", "Response.__repr__"): ("the length of the body, for a diagnostic"),
-        ("adapters/base.py", "_text_of"): ("the text of a 401/403 body, to classify the failure of the CALL (calllog.classify); it never leaves the client"),
-        ("adapters/base.py", "_count_of"): ("the number of results, for the call log, through the decoder's own opener (core/wire.py): bookkeeping"),
-        ("adapters/base.py", "check"): ("the first bytes of a success answer, to refuse an HTML page wearing it: it can only make a lane unavailable, never produce a record or an empty answer"),
-        ("adapters/base.py", "FakeTransport.request"): ("the test transport copies a canned answer's body into a new Response"),
-        ("core/schema.py", "_open_json"): ("the decoder: a provider's JSON"),
-        ("core/schema.py", "_bytes_or_text"): ("the decoder: the bytes SDMX-ML and CSV openers read"),
-    }
+    def test_crossref_a_works_raw_is_the_item(self):
+        from tests.test_adapters_articles import CROSSREF_WORK, client
+        c, t = client()
+        t.add("GET", "https://api.crossref.org/works?", body={"message": {"items": [CROSSREF_WORK], "total-results": 1}})
+        from research_gateway.adapters import crossref
+        (record,) = crossref.find(c, "reranking", limit=1)["records"]
+        self.assertEqual(plain(record)["raw"], CROSSREF_WORK)
+        self.assertIsNot(plain(record)["raw"], CROSSREF_WORK, "a copy, not the fixture's own object")
 
-    @staticmethod
-    def found() -> dict:
-        out: dict = {}
-        for path in sorted(ROOT.rglob("*.py")):
-            rel = path.relative_to(ROOT).as_posix()
-            if rel.startswith("api/") or rel in ("core/payload.py",):
-                continue   # api/http.py's own `_body()` is a request body, a different thing; payload.py is where the storage is declared
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-            spans = sorted(((fn.lineno, fn.end_lineno, q) for q, fn in M.functions(tree)), key=lambda s: s[1] - s[0])
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Attribute) and node.attr == "_body":
-                    out.setdefault((rel, next((q for a, b, q in spans if a <= node.lineno <= b), "<module>")), []).append(node.lineno)
-        return out
+    def test_opencitations_each_citations_raw_is_its_row_both_through_the_adapter_and_the_router(self):
+        rows = [oc_row(i, "citing") for i in (1, 2, 3)]
+        from tests.test_adapters_articles import client
+        c, t = client()
+        t.add("GET", "https://api.opencitations.net/index/v2/citations/", body=rows)
+        items = OC.enrich(c, "doi:10.1000/a1", "citations")["items"]
+        self.assertEqual([plain(r)["raw"] for r in items], rows)
+        out, lane = run(ALL["opencitations.enrich citations"], copy.deepcopy(rows))
+        self.assertEqual((lane["completeness"], [r["raw"] for r in out["records"]]), ("complete", rows))
 
-    def test_every_read_of_a_responses_bytes_is_listed_with_what_it_is_for(self):
-        found = self.found()
-        self.assertEqual(sorted(set(found) - set(self.READS)), [], "a new read of a Response's bytes: say what it is for, and why it is not a payload decision")
-        self.assertEqual(sorted(set(self.READS) - set(found)), [], "a listed read that is no longer there")
-        self.assertTrue(all(len(why.split()) >= 5 for why in self.READS.values()))
+    def test_a_doaj_dumps_raw_is_each_row_by_its_columns(self):
+        header = ["Journal title", "Journal ISSN (print version)", "Publisher", "Journal license"]
+        want = [dict(zip(header, cells)) for cells in (["First", "9999-9991", "P", "CC-BY"], ["Second", "9999-9983", "Q", "CC-BY"], ["Third", "9999-9975", "R", "CC-BY"])]
+        self.assertEqual([plain(r)["raw"] for r in registries.doaj_journals(doaj_client(THREE.encode()))], want)
 
-    def test_no_provider_module_reads_them_at_all(self):
-        provider = {p.relative_to(ROOT).as_posix() for p in M.provider_modules()}
-        self.assertEqual([k for k in self.found() if k[0] in provider], [])
+    def test_a_snapshot_lines_raw_is_the_source_object(self):
+        from tests.test_harvest import OPENALEX_SOURCES
+        from research_gateway.harvest import openalex_snapshot as snap
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "part_000.jsonl").write_text("".join(json.dumps(o) + "\n" for o in OPENALEX_SOURCES[:2]), encoding="utf-8")
+            got = [plain(r)["raw"] for r in snap.read_snapshot(Path(tmp), report=snap.LineReport())]
+        self.assertEqual(got, OPENALEX_SOURCES[:2])
 
-    def test_the_clients_own_reads_say_nothing_a_decision_can_use(self):
-        """What each of the client's reads returns, for a body that is a marker: a count, a bool, a class name — never the marker, never a value of the payload."""
+    def test_unpaywall_each_locations_raw_is_the_location_object(self):
+        from tests.test_adapters_articles import client
+        from research_gateway.adapters import unpaywall
+        locations = [{"url_for_pdf": "https://a.example/x.pdf", "url": "https://a.example/x", "host_type": "publisher", "version": "publishedVersion", "license": "cc-by"},
+                     {"url_for_pdf": None, "url": "https://b.example/y", "host_type": "repository", "version": "acceptedVersion", "license": None}]
+        c, t = client()
+        t.add("GET", "https://api.unpaywall.org/v2/", body={"oa_locations": locations, "best_oa_location": locations[0], "title": "T", "year": 2020, "journal_name": "J", "is_oa": True, "oa_status": "gold"})
+        items = unpaywall.enrich(c, "doi:10.1000/a1")["items"]
+        self.assertEqual([plain(r)["raw"] for r in items], locations)
+        self.assertEqual([plain(r)["is_best"] for r in items], [True, False], "the best location is the one the provider repeated: Rec.same_as, between two decoded objects")
+
+
+class TheClientsOwnReads(unittest.TestCase):
+    """The client reads a Response's bytes in the places tests/inventory.py lists as kind `body` (the decoder's two, and the client's: a count for the call log, an HTML refusal, a failure's text, a
+    diagnostic, the sealed download, the test transport's copy), each classified there. That listing — held by tests/test_inventory.py — is what says which reads exist and what each is FOR.
+    This test is the behaviour of the client's reads on a marker body, and claims no more."""
+
+    def test_the_count_and_the_html_check_are_the_clients_bookkeeping_and_its_diagnostics_and_failure_class_show_no_payload(self):
+        """What is asserted, for a body that holds a marker: `_count_of` returns the number of results (3) and `check` returns True — a count and a boolean, which the call log and the lane's
+        availability use and which are decision-usable by design (they are the client's accounting of the CALL, classified BOOKKEEPING and CLIENT-READ in the inventory); neither
+        `repr(Response)` nor the failure class `calllog.classify` derives from a 403 body (through `_text_of`) shows the marker. What it does not assert is that the count or the boolean
+        cannot influence an adapter: nothing here, and nothing in Python, shows that; the inventory shows that no provider-data module reads `_body` at all."""
         from research_gateway.adapters import base
+        from research_gateway.core import calllog
         body = b'{"results": [{"secret_marker_7f3a": 1}, 2, 3]}'
         resp = Response(200, {"content-type": "application/json"}, body, "https://example.org/x")
         self.assertEqual(base._count_of(resp), 3)
-        self.assertTrue(base.check("x", resp))
+        self.assertIs(base.check("x", resp), True)
         self.assertNotIn("secret_marker_7f3a", repr(resp))
         refused = Response(403, {}, b"Forbidden secret_marker_7f3a", "https://example.org/x")
         self.assertNotIn("secret_marker_7f3a", repr(refused))
+        failure = calllog.classify(refused.status, network_error=False, body=base._text_of(refused)[:2000])
+        self.assertIsInstance(failure, str)
+        self.assertNotIn("secret_marker_7f3a", failure)
+        self.assertEqual(base._text_of(refused), "Forbidden secret_marker_7f3a", "the text the client reads is the body, for the failure's class and nothing else (it never leaves the client: the inventory lists its one reader)")
 
 
 if __name__ == "__main__":

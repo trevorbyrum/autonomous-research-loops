@@ -11,7 +11,7 @@ ruling for each, against RFC 8259, XML 1.0 and RFC 4180). The mutants here remov
                 and a column the schema reads is not named twice;
   O-a-provider-module-*  an adapter may import the byte openers;
   O-count-*     the call log's count is read by the same opener as the decoder's;
-  O-retry-after-*  a Retry-After header is `delay-seconds` or an HTTP-date, not whatever `float()` reads;
+  O-retry-after-*  a Retry-After header is `delay-seconds` (ASCII digits) or a date the email parser reads (zone-less ones GMT), not whatever `float()` reads;
   O-a-parser-*  a parse call outside core/wire.py fails the inventory.
 
 A killer must FAIL in its assertions, not error (tools/gen2_gateway_mutations.py). A control takes the accepted path through the same code.
@@ -22,7 +22,7 @@ WIRE = "research_gateway/core/wire.py"
 SCHEMA = "research_gateway/core/schema.py"
 BASE = "research_gateway/adapters/base.py"
 OP = "tests.test_openers."
-JR, XR, CR, BC, AG, AS, INV = (OP + "JsonRulings.", OP + "XmlRulings.", OP + "CsvRulings.", OP + "ByteCorruption.", OP + "AgainstTheCsvModule.", "tests.test_astra_13a.R13A1.", OP + "Inventory.")
+JR, XR, CR, BC, AG, AS = (OP + "JsonRulings.", OP + "XmlRulings.", OP + "CsvRulings.", OP + "ByteCorruption.", OP + "AgainstTheCsvModule.", "tests.test_astra_13a.R13A1.")
 JSON_FAMILY = BC + "test_json_every_corruption_is_a_payload_error_from_the_decoder_and_has_no_count"
 XML_FAMILY = BC + "test_xml_every_corruption_is_a_payload_error_from_parse_xml"
 CSV_FAMILY = BC + "test_csv_every_corruption_of_the_dump_is_a_payload_error_and_never_a_load"
@@ -91,16 +91,19 @@ def build(Mutant) -> list:
         Mutant("O-retry-after-is-read-by-float", "a Retry-After of `inf`, `nan`, `-5`, `1e3` or `1_0` is a delay (the header was read with `float()`)", BASE,
                "        if v.isascii() and v.isdigit():\n            try:\n                return float(int(v))\n            except (ValueError, OverflowError):   # more digits than int() converts, or more seconds than a double holds\n                return None\n",
                "        try:\n            return float(v)\n        except ValueError:\n            pass\n",
-               (OP + "HeaderOpeners.test_retry_after_is_delay_seconds_or_an_http_date_and_nothing_else", OP + "HeaderOpeners.test_a_retry_after_that_is_not_a_delay_opens_no_breaker_of_its_own"),
+               (OP + "HeaderOpeners.test_retry_after_a_delay_is_ascii_digits_and_nothing_else", OP + "HeaderOpeners.test_a_retry_after_that_is_not_a_delay_opens_no_breaker_of_its_own"),
                ("tests.test_broker.FromRows.test_retry_after_http_date_and_no_shortening", "tests.test_core_foundations.MeteredClient.test_retry_after_is_honoured")),
+        Mutant("O-retry-after-a-date-with-no-zone-is-read-in-local-time", "an asctime date (or `-0000`) is read in the host's local time, not GMT: the delay is off by the host's offset", BASE,
+               "            if when.tzinfo is None:   # asctime and `-0000` name no zone: an HTTP date is GMT, and timestamp() of a zone-less datetime reads the host's local time\n                when = when.replace(tzinfo=datetime.timezone.utc)\n", "",
+               (OP + "HeaderOpeners.test_retry_after_a_date_with_no_zone_is_gmt_and_never_the_hosts_local_time",), (OP + "HeaderOpeners.test_retry_after_a_date_is_what_the_email_date_parser_reads_and_this_is_its_stated_tolerance",)),
         Mutant("O-csv-a-byte-order-mark-is-dropped", "a byte order mark before a CSV header is ignored (it is data: the first character of the first cell)", WIRE,
                '    text = _text(body, "the CSV", bom=False)', '    text = _text(body, "the CSV")',
                (CR + "test_the_accepted", CSV_FAMILY), (CR + "test_the_refused",)),
-        Mutant("O-a-provider-module-may-import-the-byte-openers", "the import inventory admits `from ..core.wire import open_json` (and the module) in an adapter", "tests/test_member_isolation.py",
-               ('                if module.name == f"{OPENERS}.py" and rel not in OPENER_USERS:\n', "                    if a.name == OPENERS and where.is_dir() and rel not in OPENER_USERS:\n"),
+        Mutant("O-a-provider-module-may-import-the-byte-openers", "the import inventory admits `from ..core.wire import open_json` (and the module) in an adapter", "tests/inventory.py",
+               ('                if module.name == f"{WIRE}.py" and rel not in OPENER_USERS:\n', "                    if a.name == WIRE and where.is_dir() and rel not in OPENER_USERS:\n"),
                ('                if False:\n', "                    if False:\n"),
                ("tests.test_member_isolation.Imports.test_every_other_form_an_import_can_take_is_refused_or_analysed",), ("tests.test_member_isolation.Imports.test_every_provider_data_module_imports_only_what_the_inventory_admits",)),
         Mutant("O-a-parser-outside-wire", "the decoder parses JSON with the library itself again", SCHEMA,
                ("from . import wire\n", "        return wire.open_json(body)\n"), ("import json\nfrom . import wire\n", "        return json.loads(body)\n"),
-               (INV + "test_every_parse_call_in_the_gateway_is_listed_with_its_class", JSON_FAMILY), (INV + "test_control_the_scan_finds_a_parser_however_it_is_imported",)),
+               ("tests.test_inventory.Inventory.test_every_site_the_scans_find_is_listed_and_every_listed_site_is_there", JSON_FAMILY), ("tests.test_inventory.Scans.test_control_the_parse_scan_finds_a_parser_however_it_is_imported",)),
     ]

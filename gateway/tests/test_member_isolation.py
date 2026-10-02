@@ -11,19 +11,16 @@ adapter receives only what the decoder returns:
     through members(), first_member(), take() and expand(), which isolate each member (Views and Bypasses below, run, not scanned for);
   * a provider's object is a `Rec` holding exactly its declared fields: reading another raises UndeclaredRead, which is not a member's loss (Decoded);
   * a payload is reached only through `decode(...)`: the client's Response holds no readable payload at all (no `.json`, `.text` or `.body`: tests/test_sealed_payload.py runs every
-    spelling of asking for one), so no adapter parses, subscripts or `.get`s a provider's answer. ("Payload" is what the answer says, which can produce a record or an answer: the client
-    reads the bytes in four named places of its own, tests/test_opaque_provenance.py BytesAreOpenedOnlyWhere;) and what the decoder keeps of it for provenance is sealed (Reads below, a source check of where an answer or
-    a list may leave the decoder — each place listed with its reason, so a reviewer reads it; since 2b-repair-13a a BOUNDED GUARD behind the construction, not the thing that makes it so).
+    spelling of asking for one), so no adapter parses, subscripts or `.get`s a provider's answer.
 
-What the source check cannot see: a use of `.raw` or `each` whose listed reason is wrong for the list it reads. Whether a given list is one record's own data
-(`own(...)` in the schema) or a set of independent candidates (`members(...)`) is the schema author's declaration; the reason beside it is where a reviewer
-reads it, and tests/test_schema_corruption.py corrupts every position the schema declares. The behaviour of the lists that ARE members is tested in
-tests/test_member_decoding.py.
+What this file holds: the runtime behaviour above, and the IMPORT guard (`Imports`: what a provider-data module may import, closed over every import form). The inventory of where an answer
+leaves the decoder — the doors, each listed with its reason — is tests/inventory.py (held by tests/test_inventory.py): one owner for it since 2b-repair-14, a finite syntax guard for review
+and not the thing that makes the property so. What it cannot see: a use of `.raw` or `each` whose listed reason is wrong for the list it reads. Whether a given list is one record's own data
+(`own(...)` in the schema) or a set of independent candidates (`members(...)`) is the schema author's declaration; the reason beside it is where a reviewer reads it, and
+tests/test_schema_corruption.py corrupts every position the schema declares. The behaviour of the lists that ARE members is tested in tests/test_member_decoding.py.
 """
 from __future__ import annotations
 
-import ast
-import functools
 import shutil
 import tempfile
 import textwrap
@@ -34,396 +31,7 @@ from research_gateway.adapters.base import first_member, members
 from research_gateway.core import schema as S, sdmx
 from research_gateway.core.canonical import make_record
 from research_gateway.core.payload import MemberList, OMIT, PayloadError, Rec, Sealed, UndeclaredRead, Unreadable, plain
-
-ROOT = Path(__file__).resolve().parents[1] / "research_gateway"
-DOORS = ("plain",)                       # functions that hand a decoded value back as plain data
-CONSTRUCTORS = ("MemberList", "Sealed", "Passive", "Rec")   # `MemberList(items)` wraps a list the caller already holds; a Sealed, a Passive or a Rec an adapter builds is no decoder-issued value (core/payload.py)
-METHODS = ("each", "at", "unreadable", "without", "empty", "same_as")   # a MemberList's ways to a plain list or one member: each() hands back a plain list of whatever the builder returned; Sealed.without() a sealed object less some fields; and the two sanctioned questions about a decoded object: did it hold anything (empty), is it the same provider object as another (same_as)
-PRIVATE = ("_items", "_v", "_value", "_raw", "_body", "_frozen")   # the storage of a MemberList, a Rec, a Passive/Sealed/Unreadable and a Response
-ANSWER = ("json", "json_or_none", "_parsed", "_body", "text", "body", "download", "content")   # what a Response held or holds of the provider's answer (the first are gone: nothing is there to find)
-DECODERS = ("decode", "data_xml", "flows", "dimensions_xml", "message")   # the calls an answer may be an argument of
-
-# Every place in the gateway where the provider's answer, or a list of it, leaves the decoder, by (file, function): how many uses there are there, and why that
-# is not a pass over a provider's independent members. A use added to a function already listed changes its count, so it is read, not inherited.
-USES = {
-    ("adapters/bea.py", "data"): (1, "BEA's rows are the payload of ONE table record, kept whole for its `rows` and never decoded one by one (Astra, 2b-repair-7)"),
-    ("adapters/globe.py", "fetch"): (1, "the bytes of a file the caller asked to download: content, not a payload"),
-    ("adapters/govinfo.py", "fetch"): (1, "the bytes of a file the caller asked to download: content, not a payload"),
-    ("adapters/harvard_dataverse.py", "fetch_in"): (1, "the bytes of a file the caller asked to download: content, not a payload"),
-    ("adapters/huggingface.py", "fetch"): (1, "the bytes of a file the caller asked to download: content, not a payload"),
-    ("adapters/kaggle.py", "fetch"): (1, "the bytes of a file the caller asked to download: content, not a payload"),
-    ("adapters/openml.py", "fetch"): (1, "the bytes of a file the caller asked to download: content, not a payload"),
-    ("adapters/socrata.py", "_vouched"): (1, "the portal-vouching predicate: a guarded security check that fails closed when the portal cannot be established, not a record-producing list"),
-    ("adapters/core.py", "_record"): (1, "the record's raw is the payload less its full text (I-7): a sealed object less one field, handed on to be stored and never read"),
-    ("adapters/unpaywall.py", "enrich"): (2, "an answer with no location list is its one best location: a list of one, built here from the decoded object (an empty one is none: Rec.empty, the sanctioned shape predicate)"),
-    ("adapters/unpaywall.py", "enrich.location"): (1, "whether this location IS the best one: the two decoded objects, compared by Rec.same_as (the provider repeating itself; the one sanctioned comparison)"),
-    ("adapters/bea.py", "_error"): (1, "whether the error object BEA states beside its results says anything: Rec.empty, the sanctioned shape predicate (an empty `{}` is no error)"),
-    ("core/sdmx.py", "has_content"): (1, "whether a structure the message states says anything: Rec.empty, the sanctioned shape predicate (an empty `{}` structure says nothing)"),
-    ("core/sdmx.py", "datasets"): (1, "no data sets: an empty list, built here"),
-    ("core/sdmx.py", "flows"): (1, "the flow's element, handed to the second decode that reads its references"),
-    ("core/sdmx.py", "series_reader.read"): (1, "the value at a position of a dimension's lookup table: the position is the data (a series names its values by index)"),
-    ("core/sdmx.py", "series_xml.convert"): (1, "one <Series> element read whole into one series, as a list of one"),
-    ("harvest/index.py", "upsert"): (1, "the storage boundary (2b-repair-13c): a loader's record carries its provenance sealed until the index writes it, and is plain data from here"),
-    ("harvest/registries.py", "_built"): (1, "the rows the loader reports it skipped: their reasons, never their content"),
-}
-
-
-# ---- what a provider-data module may import (R8-3): closed over every import form, not over the names the checker happens to look for
-STDLIB_ALLOWED = {"*": {"__future__", "re", "base64", "datetime", "time", "typing"}, "adapters/openaire.py": {"threading"}}   # no JSON parser, no `ast`, no `sys`/`importlib`
-OPENERS = "wire"                            # core/wire.py: the byte openers are the decoder's (2b-repair-13c); of the provider modules only the snapshot loader, which reads files and not a Response, opens its lines with them
-OPENER_USERS = {"harvest/openalex_snapshot.py"}
-UNANALYSABLE_CALLS = ("eval", "exec", "compile", "vars", "globals", "locals", "__import__")
-
-
-def provider_modules(root: Path = ROOT) -> list[Path]:
-    """The modules that read a provider's answer: every adapter but the client, the SDMX helper, the doi.org registration-agency lookup (core/identity.py: a lookup the
-    router makes itself, with no adapter around it, which the first inventory missed — R12-1), and the harvest loaders."""
-    return sorted([*(p for p in (root / "adapters").glob("*.py") if p.name not in ("base.py", "__init__.py")), root / "core" / "sdmx.py", root / "core" / "identity.py",
-                   *(p for p in (root / "harvest").glob("*.py") if p.name != "__init__.py")])
-
-
-def literal_names(path: Path, name: str) -> list[str] | None:
-    """The strings of the module-level `name = (...)` of the file, or None when it declares none."""
-    for node in ast.parse(path.read_text(encoding="utf-8")).body:
-        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == name for t in node.targets) and isinstance(node.value, (ast.Tuple, ast.List)):
-            return [e.value for e in node.value.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)]
-    return None
-
-
-@functools.lru_cache(maxsize=None)
-def parsed(path: Path, mtime_ns: int, size: int) -> ast.Module:
-    return ast.parse(path.read_text(encoding="utf-8"))
-
-
-def source_tree(path: Path) -> ast.Module:
-    """The syntax tree of a file, parsed once per version of it (the source checks below read every module of a tree many times)."""
-    stat = path.stat()
-    return parsed(path, stat.st_mtime_ns, stat.st_size)
-
-
-def schema_value(node: ast.AST, functions_: set[str]) -> bool:
-    """Whether `node` builds a schema from the constructors in core/schema.py (`S.obj(...)`, `S.text()`, ...), literals, names and the module's own functions:
-    a schema is data, so a name bound to one is the module's own, however it is built. A call of anything else, an attribute of anything else (`json.loads`), a lambda:
-    not."""
-    if isinstance(node, (ast.Constant, ast.Name)):
-        return True
-    if isinstance(node, (ast.Dict, ast.Tuple, ast.List, ast.Set)):
-        parts = [*getattr(node, "keys", []), *getattr(node, "values", []), *getattr(node, "elts", [])]
-        return all(p is None or schema_value(p, functions_) for p in parts)
-    if isinstance(node, ast.Starred):
-        return schema_value(node.value, functions_)
-    if isinstance(node, (ast.DictComp, ast.ListComp, ast.SetComp)):
-        parts = [node.key, node.value] if isinstance(node, ast.DictComp) else [node.elt]
-        return all(schema_value(p, functions_) for p in [*parts, *(g.iter for g in node.generators)])
-    if isinstance(node, ast.Call):
-        callee = node.func
-        known = (isinstance(callee, ast.Attribute) and isinstance(callee.value, ast.Name) and callee.value.id == "S") or (isinstance(callee, ast.Name) and callee.id in functions_)
-        return known and all(schema_value(a, functions_) for a in [*node.args, *(k.value for k in node.keywords)])
-    return False
-
-
-def defined_names(path: Path) -> set[str]:
-    """What the file offers other modules, and nothing it merely imports: a function, a class, a name bound to a literal (text, a number, a tuple, list, dict or set of
-    them), or a name bound to a schema built from the constructors in core/schema.py (`schema_value`). A name assigned anything else may hold what the module imports
-    (`loads = json.loads`, `parse = cache.json`), so it is not offered: that is a re-export by another spelling."""
-    out = set()
-    tree = source_tree(path)
-    functions_ = {n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
-    for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            out.add(node.name)
-        elif isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:
-            try:
-                ast.literal_eval(node.value)
-            except ValueError:
-                if not schema_value(node.value, functions_):
-                    continue
-            for t in (node.targets if isinstance(node, ast.Assign) else [node.target]):
-                out.update(n.id for n in ast.walk(t) if isinstance(n, ast.Name))
-    return out
-
-
-def import_findings(root: Path = ROOT) -> list[tuple[str, str]]:
-    """(file, what) for every import in a provider-data module that is not one the inventory admits. Every form is analysed, in every place it
-    can stand (a function, a try block): a star import is refused (it names nothing), a stdlib module is admitted only if listed
-    (STDLIB_ALLOWED: no JSON parser, so no provider answer is read by anything but Response.json), a name from adapters.base only if it is in
-    its `__all__` (so no parser, module or helper it happens to import can be re-exported), and a name from any other module of the package only
-    if that module defines it (not merely imports it). A package module imported AS a module (`from ..core import cache`) is analysed through what is
-    done with it: only `module.name` where the module defines `name`, so `cache.json` (the parser that module imports) is refused as `from ..core.cache
-    import json` is, and the module used as a value (passed on, aliased, `getattr(module, ...)`) is refused, for what it reaches cannot be bounded."""
-    base = root / "adapters" / "base.py"
-    api = set(literal_names(base, "__all__") or [])
-    out = [] if api else [("adapters/base.py", "declares no __all__: nothing it exports is admitted")]
-    for path in provider_modules(root):
-        rel = path.relative_to(root).as_posix()
-        strict = not rel.startswith("harvest/")
-        allowed = STDLIB_ALLOWED["*"] | STDLIB_ALLOWED.get(rel, set())
-        tree, modules = source_tree(path), {}   # modules: the name this file gives each package module it imports as a module
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                out += [(rel, f"import {a.name}") for a in node.names if strict and a.name not in allowed]
-            elif isinstance(node, ast.ImportFrom):
-                if any(a.name == "*" for a in node.names):
-                    out.append((rel, f"from {'.' * node.level}{node.module or ''} import *"))
-                    continue
-                if node.level == 0:
-                    if strict and (node.module or "") not in allowed:
-                        out.append((rel, f"from {node.module} import"))
-                    continue
-                package = path.parent
-                for _ in range(node.level - 1):
-                    package = package.parent
-                where = package.joinpath(*(node.module or "").split(".")) if node.module else package
-                module = where / "__init__.py" if where.is_dir() else where.with_suffix(".py")
-                if module.name == f"{OPENERS}.py" and rel not in OPENER_USERS:
-                    out += [(rel, f"from {'.' * node.level}{node.module or ''} import {a.name} (the byte openers are the decoder's)") for a in node.names]
-                    continue
-                for a in node.names:
-                    if a.name == OPENERS and where.is_dir() and rel not in OPENER_USERS:
-                        out.append((rel, f"from {'.' * node.level}{node.module or ''} import {a.name} (the byte openers are the decoder's)"))
-                        continue
-                    if a.name.startswith("_"):   # a private name is the module's own: the decoder's openers, a class's storage — never an adapter's (2b-repair-13a)
-                        out.append((rel, f"from {'.' * node.level}{node.module or ''} import {a.name} (a private name)"))
-                        continue
-                    if where.is_dir() and (where / f"{a.name}.py").exists():
-                        if a.name == "base":   # the client is imported by name, for then its `__all__` decides what is reached; as a module, anything is
-                            out.append((rel, "from . import base (as a module: import what it exports by name)"))
-                        else:   # any other module of the package, imported as one: what is done with it is checked below
-                            modules[a.asname or a.name] = where / f"{a.name}.py"
-                        continue
-                    if not module.exists():
-                        out.append((rel, f"from {'.' * node.level}{node.module or ''} import {a.name} (no such module)"))
-                    elif module.name == "base.py" and module.parent.name == "adapters":
-                        if a.name not in api:
-                            out.append((rel, f"from base import {a.name} (not in its __all__)"))
-                    elif a.name not in defined_names(module):
-                        out.append((rel, f"from {'.' * node.level}{node.module or ''} import {a.name} (not defined there: a re-export)"))
-            elif isinstance(node, ast.Call) and getattr(node.func, "id", None) in UNANALYSABLE_CALLS:
-                out.append((rel, f"{node.func.id}()"))
-        parents = {id(child): parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Name) and node.id in modules:
-                use = parents.get(id(node))
-                if isinstance(use, ast.Attribute) and use.value is node and isinstance(node.ctx, ast.Load):
-                    if use.attr not in defined_names(modules[node.id]):
-                        out.append((rel, f"{node.id}.{use.attr} (not defined in {modules[node.id].relative_to(root).as_posix()}: a module's imports are not its exports)"))
-                else:
-                    out.append((rel, f"{node.id} (a module, used as a value: what it reaches cannot be bounded)"))
-    return sorted(set(out))
-
-
-def functions(tree: ast.AST):
-    """(qualified name, node) for every function in the module, a method under its class."""
-    def visit(node, scope):
-        for child in ast.iter_child_nodes(node):
-            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                yield ".".join((*scope, child.name)), child
-                yield from visit(child, (*scope, child.name))
-            elif isinstance(child, ast.ClassDef):
-                yield from visit(child, (*scope, child.name))
-            else:
-                yield from visit(child, scope)
-    return visit(tree, ())
-
-
-def reads(root: Path = ROOT) -> dict[tuple[str, str], list[str]]:
-    """{(file, innermost function or <module>): each place the answer or a list of it leaves the decoder, one entry per use} for every provider-data module:
-      * a door: `plain` (called, passed on or aliased, however it is imported), the `MemberList` constructor, a method that hands back a plain list or one member
-        (`each`, `at`, `unreadable`), the private storage of a MemberList or a Rec;
-      * `.raw` anywhere but as (part of) the value of a `raw=` argument: `raw` is for storing, and a record's raw is the one thing it is stored in;
-      * the answer itself — `.json`, `.json_or_none`, `.text`, `.body`, `._parsed` of a response — anywhere but as an argument of a call to a decoder."""
-    found: dict[tuple[str, str], list[str]] = {}
-    package_modules = {p.stem for p in root.rglob("*.py")}
-    for path in provider_modules(root):
-        rel = path.relative_to(root).as_posix()
-        tree = source_tree(path)
-        spans = sorted(((fn.lineno, fn.end_lineno, qual) for qual, fn in functions(tree)), key=lambda s: s[1] - s[0])   # the innermost function first
-        parents = {id(child): parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
-
-        def where(node) -> str:
-            return next((qual for a, b, qual in spans if a <= node.lineno <= b), "<module>")
-
-        def add(node, what: str) -> None:
-            found.setdefault((rel, where(node)), []).append(what)
-
-        def stored(node) -> bool:   # inside the value of a `raw=` keyword
-            while id(node) in parents:
-                node = parents[id(node)]
-                if isinstance(node, ast.keyword) and node.arg == "raw":
-                    return True
-            return False
-
-        def decoded(node) -> bool:   # a direct argument of a call to a decoder
-            parent = parents.get(id(node))
-            return isinstance(parent, ast.Call) and node in parent.args and (getattr(parent.func, "id", None) in DECODERS or getattr(parent.func, "attr", None) in DECODERS)
-
-        modules = {a.asname or a.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.level for a in n.names if a.name in package_modules}   # a package module imported AS a module (`S.text` is a constructor)
-        local = {}
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom):
-                for alias in node.names:
-                    if alias.name in DOORS + CONSTRUCTORS:
-                        local[alias.asname or alias.name] = alias.name
-        annotations = {id(n) for fn in ast.walk(tree) if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
-                       for a in (*fn.args.args, *fn.args.kwonlyargs, fn.args.vararg, fn.args.kwarg) if a is not None and a.annotation
-                       for n in ast.walk(a.annotation)}
-        annotations |= {id(n) for fn in ast.walk(tree) if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and fn.returns for n in ast.walk(fn.returns)}
-        annotations |= {id(n) for st in ast.walk(tree) if isinstance(st, ast.AnnAssign) for n in ast.walk(st.annotation)}
-        isinstance_args = {id(a) for n in ast.walk(tree) if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "isinstance" for a in n.args}
-        callee = {id(n.func) for n in ast.walk(tree) if isinstance(n, ast.Call)}
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Name) and node.id in local and not isinstance(node.ctx, ast.Store) and id(node) not in annotations:
-                kind = local[node.id]
-                if id(node) in callee:
-                    add(node, f"call {kind}")
-                elif not (kind in CONSTRUCTORS and id(node) in isinstance_args):
-                    add(node, f"reference {kind}")
-            elif isinstance(node, ast.Attribute):
-                of_a_module = isinstance(node.value, ast.Name) and node.value.id in modules
-                if node.attr in DOORS + CONSTRUCTORS and of_a_module:
-                    add(node, f"attribute {node.attr}")
-                elif node.attr in METHODS:
-                    add(node, f"method {node.attr}")
-                elif node.attr in PRIVATE:
-                    add(node, f"private {node.attr}")
-                elif node.attr == "raw" and not stored(node):
-                    add(node, "raw")
-                elif node.attr in ANSWER and not of_a_module and not decoded(node):
-                    add(node, f"answer .{node.attr}")
-    return found
-
-
-def reflection_in_adapters(root: Path = ROOT) -> list[tuple[str, str]]:
-    """(file, what) for each adapter (and the SDMX helper) that parses JSON itself, evaluates, or reaches for a private name by reflection: other ways to a
-    provider's raw answer than Response.json through a decoder."""
-    out = []
-    for path in sorted([*(root / "adapters").glob("*.py"), root / "core" / "sdmx.py", root / "core" / "identity.py"]):
-        rel = path.relative_to(root).as_posix()
-        if rel == "adapters/base.py" or not path.exists():
-            continue
-        for node in ast.walk(source_tree(path)):
-            if isinstance(node, ast.Import) and any(a.name.split(".")[0] == "json" for a in node.names):
-                out.append((rel, "import json"))
-            elif isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] in ("json", "importlib"):
-                out.append((rel, f"from {node.module} import"))
-            elif isinstance(node, ast.Call) and getattr(node.func, "id", None) in ("eval", "exec", "vars"):
-                out.append((rel, f"{node.func.id}()"))
-            elif isinstance(node, ast.Attribute) and node.attr in ("__getattribute__", "__getattr__", "__setattr__"):
-                out.append((rel, node.attr))
-            elif isinstance(node, ast.Call) and getattr(node.func, "id", None) in ("getattr", "setattr", "delattr") and any(
-                    isinstance(a, ast.Constant) and isinstance(a.value, str) and a.value.startswith("_") for a in node.args[1:2]):
-                out.append((rel, f"{node.func.id}() of a private name"))
-            elif isinstance(node, ast.Call) and getattr(node.func, "id", None) in ("getattr", "setattr", "delattr", "hasattr") and any(
-                    isinstance(a, ast.Constant) and isinstance(a.value, str) and a.value in ANSWER for a in node.args[1:2]):
-                out.append((rel, f"{node.func.id}() of an answer accessor"))   # Astra's spelling (2b-repair-12 R12-5): there is nothing public to find any more, and it is still not written
-            elif isinstance(node, ast.Call) and getattr(node.func, "id", None) in ("getattr", "setattr", "delattr", "hasattr") and len(node.args) >= 2 and not isinstance(node.args[1], ast.Constant):
-                out.append((rel, f"{node.func.id}() of a name computed at run time"))
-            elif isinstance(node, ast.Call) and getattr(node.func, "id", None) in ("dir", "vars", "globals", "locals"):
-                out.append((rel, f"{node.func.id}()"))
-            elif isinstance(node, ast.Attribute) and node.attr == "__dict__":
-                out.append((rel, "__dict__"))
-    return out
-
-
-class Reads(unittest.TestCase):
-    """The source check that remains: where an answer, or a list of it, may leave the decoder."""
-
-    def test_every_place_an_answer_leaves_the_decoder_is_listed_with_its_reason_and_every_listed_use_is_there(self):
-        found = {k: len(v) for k, v in reads().items()}
-        listed = {k: n for k, (n, _) in USES.items() if n}
-        self.assertEqual(sorted(set(found) - set(listed)), [], "a provider's answer or list leaves the decoder here: say why it is one record's own data or content, "
-                                                               "or read it through decode() and members()/first_member()")
-        self.assertEqual(sorted(set(listed) - set(found)), [], "a listed use that is no longer there")
-        self.assertEqual({k: (found[k], n) for k, n in listed.items() if found[k] != n}, {}, "(uses found, uses listed): read the new use, and update the entry's count and reason")
-
-    def test_no_use_is_unexplained(self):
-        self.assertEqual([k for k, (n, why) in USES.items() if n and len(why.split()) < 3], [])
-
-    def test_nothing_reaches_the_storage_or_parses_json_itself(self):
-        found = reads()
-        self.assertEqual({k: v for k, v in found.items() if any(w.startswith("private ") for w in v)}, {})
-        self.assertEqual({k: v for k, v in found.items() if "answer ._parsed" in v}, {})
-        self.assertEqual(reflection_in_adapters(), [])
-
-    def test_control_the_finite_syntax_guard_finds_each_spelling_it_lists_and_no_other(self):
-        """The check's own oracle, for a FINITE SYNTAX GUARD: each spelling it enumerates is found, and what is not one is not. It finds nothing it was not written to find: a decision made from
-        the copy a record builder returns was invisible to it (Astra, R13A-2), and is closed by construction instead — the record's raw and passive values stay opaque
-        (tests/test_opaque_provenance.py TheCopyEscape runs the mutant the scan cannot see, and the object it reads stops it)."""
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "adapters").mkdir()
-            (root / "core").mkdir()
-            (root / "core" / "schema.py").write_text("")
-            (root / "core" / "sdmx.py").write_text("")
-            (root / "core" / "identity.py").write_text("")
-            (root / "adapters" / "new_lane.py").write_text(textwrap.dedent('''\
-                import json
-                from .base import decode, plain, MemberList
-                from .base import plain as unwrap
-                from ..core import schema as S
-
-                def a_call(rows):
-                    return plain(rows)
-
-                def an_alias(rows):
-                    out = plain
-                    return out(rows)
-
-                def passed_on(rows):
-                    return list(map(plain, rows))
-
-                def an_import_as(rows):
-                    return unwrap(rows)
-
-                def a_constructor(items):
-                    return MemberList(items)
-
-                def storage(rows):
-                    return rows._items
-
-                def reflection(rows):
-                    return getattr(rows, "_items")
-
-                def an_isinstance(rows):
-                    return isinstance(rows, MemberList)
-
-                def an_identity_pass(rows):
-                    return [build(r) for r in rows.each(lambda member: member)]
-
-                def a_position(table):
-                    return table.at(0)
-
-                def by_the_back_door(rows):
-                    return object.__getattribute__(rows, "_items")
-
-                def storing(w, make):
-                    return make(raw=w.raw)
-
-                def reading_the_raw(w):
-                    return w.raw["x"]
-
-                def decoding(resp):
-                    return decode("x", S.obj({"a": S.text()}), resp.json)
-
-                def reading_by_hand(resp):
-                    return resp.json["results"]
-
-                def reading_the_text(resp):
-                    return resp.text.split()
-
-                def a_schema_constructor():
-                    return S.text()
-                '''))
-            found = reads(root)
-            by_function = {fn: sorted(v) for (_, fn), v in found.items() if fn != "<module>"}
-            self.assertEqual(by_function, {"a_call": ["call plain"], "an_alias": ["reference plain"], "passed_on": ["reference plain"],
-                                           "an_import_as": ["call plain"], "a_constructor": ["call MemberList"], "storage": ["private _items"],
-                                           "an_identity_pass": ["method each"], "a_position": ["method at"], "reading_the_raw": ["raw"],
-                                           "reading_by_hand": ["answer .json"], "reading_the_text": ["answer .text"]})
-            self.assertEqual(reflection_in_adapters(root), [("adapters/new_lane.py", "import json"),
-                                                            ("adapters/new_lane.py", "getattr() of a private name"),
-                                                            ("adapters/new_lane.py", "__getattribute__")])
-
+from tests.inventory import ROOT, door_sites, import_findings, literal_names, reflection_in_adapters
 
 class Imports(unittest.TestCase):
     """R8-3 (Astra, 2b-repair-8): the inventory above names the doors by what a module imports, so an import it cannot read — a star, a
@@ -490,10 +98,10 @@ class Imports(unittest.TestCase):
 
     def test_control_a_module_used_for_what_it_defines_is_not_refused(self):
         """The same import, using `identity.normalize_doi` (a function that module defines): nothing is refused, and no door is used."""
-        real = reads()
+        real = door_sites()
         with tempfile.TemporaryDirectory() as tmp:
             root = self.tree(Path(tmp), **{self.OC: self.MODULE_USE})
-            found = reads(root)
+            found = door_sites(root)
             self.assertEqual((import_findings(root), sorted(k for k in found if found[k] != real.get(k))), ([], []))
 
     def test_control_the_permitted_imports_are_not_refused(self):
@@ -502,10 +110,10 @@ class Imports(unittest.TestCase):
         permitted = [(self.OC_IMPORT, self.OC_IMPORT + ", quote as q, identified")]   # a permitted re-export (quote), and a helper in __all__
         spelled_out = [(self.OC_IMPORT, self.OC_IMPORT + ", MemberList"),
                        (self.OC_READ + self.OC_RETURN, '    rows = MemberList([row for row in []])\n' + self.OC_RETURN)]
-        real = reads()
+        real = door_sites()
 
         def changed(root: Path) -> list:
-            found = reads(root)
+            found = door_sites(root)
             return sorted(k for k in found if found[k] != real.get(k))
         with tempfile.TemporaryDirectory() as tmp:
             root = self.tree(Path(tmp), **{self.OC: permitted})
@@ -581,13 +189,6 @@ class Imports(unittest.TestCase):
         self.assertEqual(sorted(declared), sorted(base.__all__), "the checker reads the same __all__ the module has")
         for name in base.__all__:
             self.assertFalse(isinstance(getattr(base, name), ModuleType), name)
-
-    def test_provider_data_modules_are_exactly_the_ones_that_read_an_answer(self):
-        names = [p.relative_to(ROOT).as_posix() for p in provider_modules()]
-        self.assertIn("adapters/crossref.py", names)
-        self.assertIn("core/sdmx.py", names)
-        self.assertIn("harvest/registries.py", names)
-        self.assertNotIn("adapters/base.py", names)
 
 
 BODY = [{"id": "a", "n": 1}, 7, {"id": "b", "n": 2}]
