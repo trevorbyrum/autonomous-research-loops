@@ -1140,3 +1140,22 @@ Both targets pass independently.
 **Gateway family:** MITIGATION, open only at transport chunk framing. **Engine hand-off:** MITIGATION, open only at DNS.
 
 **Routing:** a single **2b-repair-15** covers F1–F4 plus Astra's two mutant controls. DNS is fixed at the root: no exchange resolves names, and resolution happens outside any exchange deadline through an owned path. Any residual is reported to the operator, not claimed closed. Codex has reset to 6% of its 7-day window, so the earlier combined-review economy no longer applies.
+
+## 2026-10-02 — 2b-repair-15 landed — Astra re-review dispatched
+**Coder (Sonnet 5.5, `af1bd4de`):** `a5e3cd2..0d53bfc`.
+- **F1:** `Transport` parses chunked bodies itself per RFC 9112 §7.1. Astra's ten wire captures are byte-identical regressions.
+- **F2:** no exchange resolves a name; it connects to an IP literal or a pre-resolved map entry. The Host header, SNI and certificate check still use the name, and `endpoint_stale` marks a failed connection.
+- **F3:** readiness is read under one deadline until the newline arrives.
+- **F4:** the 9 test items are fixed, and Astra's socket controls are paired.
+
+The coder reports both targets exiting 0 at `0d53bfc`.
+
+**Residual, honestly reported:** the lookup itself, at client construction or in `resolve()`, is unbounded in-process, and no gen-2 code constructs the client yet. The options are:
+- **(a)** build the client only inside supervised job children, so the job deadline bounds it;
+- **(b)** a resolver child owned by the supervisor;
+- **(c)** a bounded resolver written for the client;
+- **(d)** accept the unbounded wait at start-up, with an owner and a removal condition.
+
+**Operator ruling needed.**
+
+**Orchestrator:** the oracle is unchanged and gen-1 is unchanged (PID 1040). Astra's re-review is `7efecde2`; its task is `private/reviews/gen2-2b-repair-15-review-task-20261002.md`.
