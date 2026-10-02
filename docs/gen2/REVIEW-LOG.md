@@ -798,3 +798,21 @@ Unnamed-flow cases pass on current code and kill a boundary-level reproduction o
 - **OpenAlex snapshot defaults:** left as is. Astra's 2b-repair-8 ruling (offline ingestion outside the A4 lane contract) already covers this, so no operator question; Astra is asked to confirm.
 
 Sent to a fresh Astra once the orchestrator's verification completes.
+
+## 2026-10-02 — 2b-repair-11 re-review (Astra, xhigh) — BLOCK, narrow; dispatch HELD for operator
+Full report: `~/work/research-loops-public/private/reviews/gen2-2b-repair-11-astra-review-20261001.md`. Boundary PASS at PID 1040. Gate B PASS.
+
+**Accepted:**
+- The original 68 oracle assertions pass.
+- The BIS/ECB fabrication mutants are killed.
+- The scalar fallback repair (`preferred` / `identity_from`) is ROOT-CAUSE.
+- Requested-flow selection works.
+- The OpenAlex snapshot tolerance is confirmed under the repair-8 scope ruling.
+
+**Blocking:**
+- **R11-1:** a correctly typed outer container is checked, but its supported nested contents are decoded only after selection. Examples: Unpaywall `best_oa_location.url`, ECB alternate `structures`/`data.structure`, the Crossref journals loader `ISSN` beside `issn-type`. 20 corruption cases fail; alternate-only controls pass. Effect: malformed fallback data is ignored and records are kept (no false empty or end).
+- **R11-2:** contradictory structure references inside the requested flow (two `Ref`s, or a `Ref` plus a conflicting `URN`) silently resolve to the first. The SDMX 2.1 schema forbids such input. Effect: a possibly wrong template from schema-invalid XML.
+
+The structural scan also has an ordinary-spelling bypass; Astra asks that its claim be narrowed.
+
+**Orchestrator:** this is the twelfth 2b review round. The operator asked why the process feels like circling. The orchestrator's diagnosis: an open-ended acceptance bar, instance-level fixing until round 8, and routing without stepping back. It proposed freezing a finite acceptance contract, with later findings triaged into either blocking (false end, false empty, permission widening) or debt-register items. **No new repair is dispatched until the operator decides.**
