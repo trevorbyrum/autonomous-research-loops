@@ -172,6 +172,20 @@ MANUAL: dict[str, dict] = {
     "2B-fact-namespace-open": {"controls": ["test_gateway_client.GatewayFactsCommand.test_a_fact_is_recorded_and_replays"],
                                "why": "validates an accepted gateway.secrets.vault fact against gateway_facts' schema, whose capability pattern the "
                                       "mutant widens, and records it: the widened schema still accepts it"},
+    # task 2b-repair-13b (Gate D #3): the observation command's page_outcome and continuation schema is a module constant (gen2/router/
+    # service.py COMMANDS) read when the Router builds its SchemaSet, not by a traced line of the request's path; the accepted
+    # observations, a continuation with a string cursor and a page cap with an integer one, validate against the widened schema
+    **{mid: {"controls": ["test_gateway_client.RecordedByTheRouter.test_how_pagination_ended_is_recorded_with_its_cursor"],
+             "why": "validates and records accepted observations whose page outcomes include a continuation and a page cap with their cursors "
+                    "against the observation command's schema (gen2/router/service.py COMMANDS, which the mutant widens): the widened schema "
+                    "still accepts them"}
+       for mid in ("2B13-schema-outcome-open", "2B13-schema-cursor-length", "2B13-schema-continuation-extras")},
+    # task 2b-repair-13b (Astra's 2b-repair-12 timing ruling): the start-grace killer holds the order in which the identity appears; the
+    # accepted case, a start whose identity is recorded before recovery, is the normal-start control written beside it
+    "1C-sup-no-start-grace": {"controls": ["test_supervisor_lifecycle.ResearchPassLifecycleTest.test_control_a_start_that_has_recorded_its_identity_at_recovery_is_found_running"],
+                              "why": "executes gen2/supervisor/supervisor.py _unknown's changed grant of the start grace on its accepted path: the launcher's "
+                                     "identity is recorded before the restarted supervisor first looks, so the guard before the grace is false and the "
+                                     "supervisor finds it running and never waits; the mutant, which gives the grace nothing, leaves that unchanged"},
     # task 2a's expansion: only the killer takes the accepted rejection in the trace; the accepted rejection alone was written as a test
     # of its own, added after the trace
     "2A-rework-stale": {"controls": ["test_router_workflow.ScopeDecisionTest.test_a_rejection_of_the_current_report_reworks_it"],
