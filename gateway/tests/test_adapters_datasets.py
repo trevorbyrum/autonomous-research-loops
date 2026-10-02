@@ -6,6 +6,7 @@ import unittest
 from research_gateway.adapters import doi_org, globe, govinfo, harvard_dataverse as dv, huggingface, kaggle, openml, qdr, socrata, wms
 from research_gateway.adapters.base import AdapterError, Client, FakeTransport
 from research_gateway.core.broker import Broker, RatePolicy
+from research_gateway.core.payload import plain
 
 SIDS = ("doi_org", "govinfo", "harvard_dataverse", "qdr", "wms", "globe", "socrata", "kaggle", "huggingface", "openml")
 
@@ -49,14 +50,14 @@ class GovInfo(unittest.TestCase):
         t.add("GET", "https://api.govinfo.gov/packages/CRPT-118hrpt1/summary", body=GOVINFO_PKG)
         rec = govinfo.resolve(c, "govinfo:CRPT-118hrpt1")
         self.assertEqual(rec["formats"], ["pdf", "txt"])
-        self.assertEqual(rec["raw"], GOVINFO_PKG, "the whole source object is kept (I-8)")
+        self.assertEqual(plain(rec["raw"]), GOVINFO_PKG, "the whole source object is kept (I-8)")
         files = govinfo.fetch(c, "govinfo:CRPT-118hrpt1")
         self.assertEqual([f["format"] for f in files["records"]], ["pdf", "txt"])
         self.assertEqual(files["records"][0]["links"], ["https://api.govinfo.gov/packages/CRPT-118hrpt1/pdf"])
         self.assertIn("https://api.govinfo.gov/packages/CRPT-118hrpt1/pdf", rec["links"])
         t.add("GET", "https://api.govinfo.gov/packages/CRPT-118hrpt1/txt", body="plain text", headers={"Content-Type": "text/plain"})
         got = govinfo.fetch(c, "CRPT-118hrpt1", fmt="txt", download=True)
-        self.assertEqual(got["content"], b"plain text")
+        self.assertEqual(plain(got["content"]), b"plain text")
         with self.assertRaises(AdapterError):
             govinfo.fetch(c, "x", fmt="docx")
 
@@ -101,7 +102,7 @@ class Dataverse(unittest.TestCase):
         self.assertEqual(files["records"][0]["license"], "CC0 1.0")
         t.add("GET", "https://dataverse.harvard.edu/api/access/datafile/900", body="a,b\n1,2\n", headers={"Content-Type": "text/csv"})
         got = dv.fetch(c, "doi:10.7910/DVN/OY6CBK", file_id=900, download=True)
-        self.assertEqual(got["content"], b"a,b\n1,2\n")
+        self.assertEqual(plain(got["content"]), b"a,b\n1,2\n")
         with self.assertRaises(AdapterError):
             dv.fetch(c, "doi:10.7910/DVN/OY6CBK", download=True)
         with self.assertRaises(AdapterError):
@@ -135,7 +136,7 @@ class Globe(unittest.TestCase):
         self.assertEqual(t.calls, [])
         t.add("GET", "https://globeproject.com/data/GLOBE-Phase-2.xls", body=b"\xd0\xcf", headers={"Content-Type": "application/vnd.ms-excel"})
         got = globe.fetch(c, "url:https://globeproject.com/data/GLOBE-Phase-2.xls", download=True)
-        self.assertEqual(got["content"], b"\xd0\xcf")
+        self.assertEqual(plain(got["content"]), b"\xd0\xcf")
         with self.assertRaises(AdapterError):
             globe.fetch(c, "https://example.org/file.xls", download=True)
 
@@ -159,7 +160,7 @@ class Socrata(unittest.TestCase):
         t.add("GET", "https://data.cityofchicago.org/api/views/abcd-1234.json", body={"id": "abcd-1234", "name": "Business Licenses",
                                                                                          "license": {"name": "Public Domain", "termsLink": "https://example.org/terms"},
                                                                                          "columns": [{"fieldName": "license_id"}]})
-        rec = socrata.resolve(c, r["identity"])
+        rec = plain(socrata.resolve(c, r["identity"]))
         self.assertEqual(rec["columns"], ["license_id"])
         self.assertEqual(rec["license_link"], "https://example.org/terms")
         t.add("GET", "https://data.cityofchicago.org/resource/abcd-1234.json?", body=[{"license_id": "1"}, {"license_id": "2"}])
@@ -219,7 +220,7 @@ class Kaggle(unittest.TestCase):
         self.assertEqual(files["records"][0]["title"], "train.csv")
         self.assertEqual(files["records"][0]["links"], ["https://www.kaggle.com/api/v1/datasets/download/owner/ds/train.csv"])
         t.add("GET", "https://www.kaggle.com/api/v1/datasets/download/owner/ds/train.csv", body="x,y\n")
-        self.assertEqual(kaggle.fetch(c, "owner/ds", file_name="train.csv", download=True)["content"], b"x,y\n")
+        self.assertEqual(plain(kaggle.fetch(c, "owner/ds", file_name="train.csv", download=True)["content"]), b"x,y\n")
         with self.assertRaises(AdapterError):
             kaggle.fetch(c, "kaggle:bad")
 
@@ -252,7 +253,7 @@ class HuggingFace(unittest.TestCase):
         self.assertEqual([f["path"] for f in files["records"]], ["README.md", "data/train.parquet"])
         self.assertEqual(files["records"][1]["links"], ["https://huggingface.co/datasets/owner/corpus/resolve/main/data/train.parquet"])
         t.add("GET", "https://huggingface.co/datasets/owner/corpus/resolve/main/README.md", body="# hi")
-        self.assertEqual(huggingface.fetch(c, "owner/corpus", path="README.md", download=True)["content"], b"# hi")
+        self.assertEqual(plain(huggingface.fetch(c, "owner/corpus", path="README.md", download=True)["content"]), b"# hi")
         with self.assertRaises(AdapterError):
             huggingface.fetch(c, "owner/corpus", download=True)
         with self.assertRaises(AdapterError):
@@ -272,7 +273,7 @@ class OpenML(unittest.TestCase):
         t.add("GET", "https://www.openml.org/api/v1/json/data/list/data_name/iris/", body=OPENML_LIST)
         out = openml.find(c, "iris", limit=10)
         self.assertEqual(out["records"][0]["identity"], "openml:61")
-        self.assertEqual(out["records"][0]["instances"], "150")
+        self.assertEqual(plain(out["records"][0])["instances"], "150")
         self.assertIsNone(out["next_offset"])
         t.add("GET", "https://www.openml.org/api/v1/json/data/61", body=OPENML_DESC)
         rec = openml.resolve(c, "openml:61")
@@ -283,7 +284,7 @@ class OpenML(unittest.TestCase):
         self.assertEqual(files["records"][0]["links"], ["https://data.openml.org/datasets/0000/0061/dataset_61.pq"])
         t.add("GET", "https://api.openml.org/data/v1/download/61/iris.arff", body="@relation iris")
         got = openml.fetch(c, "openml:61", download=True, prefer="arff")
-        self.assertEqual(got["content"], b"@relation iris")
+        self.assertEqual(plain(got["content"]), b"@relation iris")
         with self.assertRaises(AdapterError):
             openml.resolve(c, "openml:iris")
 

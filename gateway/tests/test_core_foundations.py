@@ -6,6 +6,7 @@ from research_gateway.adapters.base import Client, FakeTransport, SourceUnavaila
 from research_gateway.core import schema as S
 from research_gateway.core import canonical, identity, secrets
 from research_gateway.core.broker import Broker, RatePolicy
+from research_gateway.core.payload import plain
 
 
 class Identity(unittest.TestCase):
@@ -74,7 +75,7 @@ class Canonical(unittest.TestCase):
                                   extra={"cited_by_count": 3, "raw": "ignored"}, raw={"a": 1})
         self.assertEqual(r["identity"], "doi:10.1/x")
         self.assertEqual(r["cited_by_count"], 3)
-        self.assertEqual(r["raw"], {"a": 1}, "extra cannot overwrite reserved fields")
+        self.assertEqual(plain(r["raw"]), {"a": 1}, "extra cannot overwrite reserved fields")
         with self.assertRaises(ValueError):
             canonical.make_record(identity="x", kind="novel", source_id="s")
 

@@ -31,7 +31,7 @@ from urllib.parse import quote  # re-exported: adapters quote path segments thro
 from ..core import calllog, uri
 from ..core.broker import Broker, BreakerOpen, BudgetExhausted, NoPolicy
 from ..core.identity import meaningful
-from ..core.payload import MEMBER_ERRORS, OMIT, MemberList, PayloadError, Rec, SealedAnswer, is_unreadable  # noqa: F401 (re-exported: adapters read and raise through base)
+from ..core.payload import MEMBER_ERRORS, OMIT, MemberList, PayloadError, Rec, Sealed, SealedAnswer, is_unreadable  # noqa: F401 (re-exported: adapters read and raise through base)
 from ..core.schema import decode as _decode
 from ..core.wire import Malformed, open_json as _open_json
 
@@ -41,7 +41,12 @@ class Response(SealedAnswer):
 
     There is no `.json`, `.text` or `.body`: the payload is opened by `decode` (below, core/schema.py) alone, so an adapter that wants to know what a provider said can only
     ask the declared schema, and nothing a payload decision is made from is a raw value (2b-repair-13a: Astra's `getattr(resp, "json")` has nothing to find). The one other way to the
-    bytes is `download()`, for the file a caller asked to download: content, not a payload (tests/test_member_isolation.py lists every use)."""
+    bytes is `download()`, for the file a caller asked to download: content, not a payload — and since 2b-repair-13c a `Sealed` one, which an adapter can hand to the router and
+    never read (tests/test_member_isolation.py lists every use).
+
+    What THIS module reads of the bytes, for the client's own purposes and never to say what a provider's data is: `check()` looks at the first bytes of a success answer to refuse an
+    HTML page wearing it (it can only make a lane unavailable); `_text_of` reads a 401/403 body to classify the failure; `_count_of` counts results for the call log, through the
+    decoder's own opener (core/wire.py). The decoder's openers are the only reading of a payload that can produce a record or an answer."""
     __slots__ = ("status", "headers", "url", "error")
 
     def __init__(self, status: int | None, headers: dict, body: bytes, url: str, error: str | None = None):
@@ -52,9 +57,10 @@ class Response(SealedAnswer):
     def ok(self) -> bool:
         return self.status is not None and 200 <= self.status < 300
 
-    def download(self) -> bytes:
-        """The bytes of a file the caller asked to download (a data file, a PDF): content, never parsed or decided on."""
-        return self._body
+    def download(self) -> Sealed:
+        """The bytes of a file the caller asked to download (a data file, a PDF), sealed: content that is handed on and never parsed or decided on. It becomes bytes where the router
+        serializes the answer (core/payload.py)."""
+        return Sealed(self._body, _issued=True)
 
     def __repr__(self) -> str:
         return f"<Response {self.status} {self.url!r} {len(self._body)} bytes>"

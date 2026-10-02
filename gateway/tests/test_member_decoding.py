@@ -31,6 +31,7 @@ from research_gateway.adapters.base import AdapterError, Client, FakeTransport, 
 from research_gateway.core import router as R
 from research_gateway.core.broker import Broker, RatePolicy
 from research_gateway.registry.load import read_seed
+from research_gateway.core.payload import plain
 from tests.test_routing import SEED_NO_INDEX
 
 SIDS = ("crossref", "semanticscholar", "unpaywall", "opencitations", "kaggle", "harvard_dataverse", "bls", "ecb", "bis", "core", "doaj",
@@ -360,7 +361,7 @@ class DataverseDownloadMembership(unittest.TestCase):
         t.add("GET", "https://dataverse.harvard.edu/api/datasets/:persistentId/", body=dataverse(files))
         t.add("GET", "https://dataverse.harvard.edu/api/access/datafile/", body="a,b\n", headers={"Content-Type": "text/csv"})
         try:
-            return dv.fetch(c, "doi:10.7910/DVN/OY6CBK", file_id=file_id, download=True)["content"]
+            return plain(dv.fetch(c, "doi:10.7910/DVN/OY6CBK", file_id=file_id, download=True)["content"])
         except (AdapterError, PayloadError, AttributeError) as e:
             return type(e).__name__, str(e)
 

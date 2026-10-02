@@ -22,7 +22,7 @@ class Fred(unittest.TestCase):
         t.add("GET", "https://api.stlouisfed.org/fred/series/observations?", body={"observations": [{"date": "2026-01-01", "value": "31865.7"}, {"date": "2026-04-01", "value": "32486.1"}]})
         t.add("GET", "https://api.stlouisfed.org/fred/series?", body={"seriess": [{"title": "Gross Domestic Product", "units": "Billions of Dollars", "frequency": "Quarterly", "notes": "..."}]})
         out = fred.data(c, {"series": "GDP", "start": "2026-01-01"})
-        r = out["records"][0]
+        r = plain(out["records"][0])
         self.assertEqual(r["identity"], "series:fred:GDP")
         self.assertEqual(r["observations"][-1], ("2026-04-01", "32486.1"))
         self.assertEqual(r["title"], "Gross Domestic Product")
@@ -61,7 +61,7 @@ class Census(unittest.TestCase):
         c, t = client({"census": "K"})
         t.add("GET", "https://api.census.gov/data/2022/acs/acs1?", body=[["NAME", "B01001_001E", "state"], ["North Carolina", "10698973", "37"]])
         out = census.data(c, {"dataset": "2022/acs/acs1", "get": ["NAME", "B01001_001E"], "for": "state:37"})
-        r = out["records"][0]
+        r = plain(out["records"][0])
         self.assertEqual(r["rows"], [{"NAME": "North Carolina", "B01001_001E": "10698973", "state": "37"}])
         self.assertIn("for=state%3A37", t.calls[0][1])
         self.assertIn("key=K", t.calls[0][1])
@@ -76,7 +76,7 @@ class Bls(unittest.TestCase):
             {"seriesID": "CUUR0000SA0", "catalog": {"series_title": "CPI-U All items"},
              "data": [{"year": "2026", "period": "M07", "value": "320.1"}, {"year": "2026", "period": "M06", "value": "319.5"}]}]}})
         out = bls.data(c, {"series": "CUUR0000SA0", "start_year": 2026, "catalog": True})
-        r = out["records"][0]
+        r = plain(out["records"][0])
         self.assertEqual(r["observations"], [("2026-M06", "319.5"), ("2026-M07", "320.1")])
         self.assertEqual(r["title"], "CPI-U All items")
         import json
@@ -142,7 +142,7 @@ class BisEcb(unittest.TestCase):
         t.add("GET", "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?", body=SDMX_10)
         out = ecb.data(c, {"dataflow": "EXR", "key": "D.USD.EUR.SP00.A", "start": "2026-09-01"})
         self.assertEqual(out["records"][0]["identity"], "series:ecb:EXR:D.USD")
-        self.assertEqual(out["records"][0]["observations"][0], ("2026-09-01", 1.08))
+        self.assertEqual(plain(out["records"][0])["observations"][0], ("2026-09-01", 1.08))
         self.assertIn("format=jsondata", t.calls[0][1])
         self.assertIn("startPeriod=2026-09-01", t.calls[0][1])
 

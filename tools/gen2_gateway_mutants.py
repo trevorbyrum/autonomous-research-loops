@@ -33,7 +33,9 @@ rank, works and year have no defined order, but a small fixture's ties keep thei
 so no test can reliably see it removed); the local index's separate count around the gate
 (F2-index-counts-around-gate, retired in 2b-repair-7: the page, the counts and the population digest are
 now one statement over ONE join to gateway.servable_records, so reading and counting around the gate is
-the single edit F2-index-reads-around-gate makes, and its killers include the count's).
+the single edit F2-index-reads-around-gate makes, and its killers include the count's); R8-record-keeps-views (retired in 2b-repair-13c: its guard — a record holds plain
+data, a view of the provider's answer never ends up inside one — moved from `make_record`'s return to the serialization boundary, where Q-router-does-not-materialize-the-answer and
+Q-record-materializes-its-provenance (tools/gen2_gateway_opaque_mutants.py) hold both sides of it).
 """
 from __future__ import annotations
 
@@ -590,9 +592,6 @@ MUTANTS: list[Mutant] = [
            "research_gateway/adapters/ecb.py", "    records = members(SOURCE_ID, sdmx.series_members(j), record)",
            "    records = [record(m) for m in sdmx.series_members(j).each(lambda member: member)]",
            (MD + "EveryMemberAlone.test_a_member_that_is_not_an_object_costs_that_member_only", DOORS), (MD + "EveryMemberAlone.test_control_a_readable_member_alone_is_kept_whole",)),
-    Mutant("R8-record-keeps-views", "a record may hold a view of the provider's answer", "research_gateway/core/canonical.py",
-           "    return plain(rec)   # a record is plain data", "    return rec   # a record is plain data",
-           (MI + "Views.test_a_decoded_value_is_plain_data_in_a_record",), (MI + "Views.test_each_member_is_read_alone",)),
     Mutant("A4-first-result-unreadable-is-not-found", "a lookup whose first result cannot be read answers 'not found'", "research_gateway/core/payload.py",
            "        if got and got[0] is None:\n", "        if False:\n",
            (MD + "FirstResult.test_an_unreadable_first_result_is_an_unreadable_answer", MI + "Views.test_the_first_member_is_read_like_any_other_and_never_replaced_by_the_next"),
@@ -898,3 +897,8 @@ MUTANTS.extend(_contract_mutants(Mutant))
 from gen2_gateway_opener_mutants import build as _opener_mutants  # noqa: E402
 
 MUTANTS.extend(_opener_mutants(Mutant))
+
+# 2b-repair-13c: opaque provenance (tools/gen2_gateway_opaque_mutants.py)
+from gen2_gateway_opaque_mutants import build as _opaque_mutants  # noqa: E402
+
+MUTANTS.extend(_opaque_mutants(Mutant))

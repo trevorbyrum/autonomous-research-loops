@@ -14,6 +14,7 @@ from research_gateway.core import dedup
 from research_gateway.core import router as R
 from research_gateway.core.broker import Broker, RatePolicy
 from research_gateway.core.canonical import make_record
+from research_gateway.core.payload import plain
 from research_gateway.registry.load import read_seed
 from tests.test_adapters_articles import CROSSREF_WORK
 
@@ -506,7 +507,7 @@ class RoundTripDownloadRequests(unittest.TestCase):
         arguments = mod.download_request(rec, target)
         self.assertIsNotNone(arguments, f"{mod.SOURCE_ID}: no download_request built")
         out = self._download(mod, arguments)
-        self.assertEqual(out.get("content"), self.PAYLOAD,
+        self.assertEqual(plain(out.get("content")), self.PAYLOAD,
                          f"{mod.SOURCE_ID}: generated arguments {arguments} did not retrieve the file")
 
     def test_openml(self):

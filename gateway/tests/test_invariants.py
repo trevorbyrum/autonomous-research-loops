@@ -56,6 +56,7 @@ from research_gateway.adapters.base import MEMBER_ERRORS, Client, FakeTransport,
 from research_gateway.core import router as R
 from research_gateway.core.broker import Broker, RatePolicy
 from research_gateway.registry.load import read_seed
+from research_gateway.core.payload import plain
 from tests import invariant_links as links
 from tests import invariant_ops as ops
 from tests.invariant_ops import Level, Op, corrupt_route
@@ -751,7 +752,7 @@ class RegistryLoaders(unittest.TestCase):
         c = Client(broker=Broker({"crossref": RatePolicy(per_second=1000), "datacite": RatePolicy(per_second=1000)}), transport=t, sleep=lambda s: None)
         out = []
         try:
-            out = list(load(c))
+            out = [plain(r) for r in list(load(c))]   # what a loader yields is sealed until it is written: the harness compares the plain copy
         except Exception:   # the loader's failure is judged by run_load
             pass
         return out

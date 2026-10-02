@@ -20,15 +20,17 @@ from __future__ import annotations
 import re
 
 from . import schema as S
-from .payload import MemberList, PayloadError, is_unreadable, plain
+from .payload import MemberList, PayloadError, is_unreadable
 
 ATTRIBUTES = S.table(S.text())   # `"@*"`: every attribute of an element, as text
 
 # ---------------------------------------------------------------- SDMX-JSON data messages
 DIM_VALUE = S.obj({"id": S.text(), "name": S.text()})
 DIMENSION = S.obj({"id": S.text(), "name": S.text(), "values": S.members(DIM_VALUE)})
+# the structural context kept with each record (`context`): each field is `maybe` metadata — None when the message leaves it out or sends null, else carried as sent and stored, never read —
+# so whether it is there is the schema's own fact, and `context` needs no way to look inside one
 STRUCTURE = S.obj({"dimensions": S.maybe(S.obj({"series": S.own(DIMENSION), "observation": S.own(S.obj({"values": S.own(DIM_VALUE)}))})),
-                   "attributes": S.any_(), "annotations": S.any_(), "name": S.any_(), "names": S.any_()})
+                   "attributes": S.maybe(S.any_()), "annotations": S.maybe(S.any_()), "name": S.maybe(S.any_()), "names": S.maybe(S.any_())})
 # an observation is an array whose first element is its value (`[value, status, ...]`), or the value itself: the shape is declared, what is in it is metadata
 DATASET = S.obj({"series": S.entries(S.obj({"observations": S.table(S.oneof(S.own(S.any_()), S.any_()))}))})
 _PLACE = {"structure": S.maybe(STRUCTURE), "structures": S.lookup(STRUCTURE), "dataSets": S.maybe(S.members(DATASET))}
@@ -120,7 +122,7 @@ def context(msg) -> dict:
     st = structure(msg)
     out = {}
     for k in ("dimensions", "attributes", "annotations", "name", "names"):
-        value = plain(st[k]) if st is not None else None   # stored, never read: metadata that is kept as the provider sent it, or not at all when it sent none
+        value = st[k] if st is not None else None   # stored, never read: metadata that is kept as the provider sent it (still sealed: the router makes it plain), or not at all when it sent none
         if value is not None:
             out[k] = value
     return out

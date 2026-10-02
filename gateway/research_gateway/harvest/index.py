@@ -13,6 +13,7 @@ from typing import Iterable
 
 from ..core import db
 from ..core.licenses import content_redistribution
+from ..core.payload import plain
 
 BATCH = 500
 
@@ -82,6 +83,7 @@ def upsert(cur, record: dict, source_id: str, *, metadata_license: str | None = 
     registry data (DOAJ's CC0 catalogue, a snapshot's CC0 dump): it is stored as that, and
     never stands in for the record's CONTENT licence — the record's own `license`, or unknown
     when it has none — which alone decides redistribution (2b-repair A3)."""
+    record = plain(record)   # the storage boundary (2b-repair-13c, core/payload.py): a loader's record carries its provenance sealed until it is written, and is plain data here
     incoming = {k: v for k, v in record.items() if k not in ("raw", "provenance")}
     cur.execute("SELECT canonical FROM gateway.records WHERE identity = %s", (record["identity"],))
     row = cur.fetchone()

@@ -26,6 +26,7 @@ from . import canonical as canonical_mod
 from . import identity as ident
 from . import request_identity as request_ident
 from .cache import Cache
+from .payload import plain
 from .secrets import SecretsBackendFailing
 
 from ..registry.load import DOMAINS  # one domain vocabulary: the registry's (I-2, D-24)
@@ -804,6 +805,10 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
         out["content_permissions"] = licenses.permissions(
             router.sources.get(out.pop("content_source", None), {}), {"license": out.get("content_license")},
             kind="file", has_content=True)
+    # THE SERIALIZATION BOUNDARY (2b-repair-13c, core/payload.py): every lane has run and every selection, coverage and licence decision is made. Only now do a record's `raw`, its
+    # passive `extra` values and a download's bytes become plain data — a copy, so nothing returned or cached aliases what a decoder kept. Before this point adapter code can read none
+    # of them, so none of it could have decided anything.
+    out = plain(out)
     # redaction covers the WHOLE result — records, facts, lane errors — and runs BEFORE anything
     # is cached, so no stored copy a later request could serve back carries a secret (D-24, D-25)
     out = redact_secrets(out, client.secret_values)

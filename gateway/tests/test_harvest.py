@@ -12,6 +12,7 @@ from research_gateway.adapters.base import Client, FakeTransport, PayloadError
 from research_gateway.core import db
 from research_gateway.core.broker import Broker, RatePolicy
 from research_gateway.harvest import index, openalex_snapshot, registries
+from research_gateway.core.payload import plain
 
 TAG = "harvest-test"
 
@@ -50,7 +51,7 @@ class Shapes(unittest.TestCase):
     def test_crossref_journals(self):
         c, t = client()
         t.add("GET", "https://api.crossref.org/journals?", body=CROSSREF_PAGE)
-        recs = list(registries.crossref_journals(c, limit=5))
+        recs = [plain(r) for r in registries.crossref_journals(c, limit=5)]   # a loader's records carry their provenance sealed until the index writes them: assert on the plain copy
         self.assertEqual(recs[0]["identity"], "issn:9999-9991")
         self.assertEqual(recs[1]["identity"], registries.venue_identity([], "crossref", "No ISSN Newsletter", "P")[0])
         self.assertRegex(recs[1]["identity"], r"^venue:crossref:[0-9a-f]{16}$", "no-ISSN venues are keyed by full title + publisher")
@@ -76,7 +77,7 @@ class Shapes(unittest.TestCase):
     def test_datacite_repositories(self):
         c, t = client()
         t.add("GET", "https://api.datacite.org/repositories?", body=DATACITE_PAGE)
-        recs = list(registries.datacite_repositories(c))
+        recs = [plain(r) for r in registries.datacite_repositories(c)]
         self.assertEqual(recs[0]["identity"], "repository:datacite:harvest.test")
         self.assertEqual(recs[0]["kind"], "repository")
         self.assertEqual(recs[0]["identifiers"], {"datacite_client": "harvest.test", "re3data": "r3d100000001"})

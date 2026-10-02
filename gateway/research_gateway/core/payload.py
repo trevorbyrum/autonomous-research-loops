@@ -13,9 +13,10 @@ declared; repair-13a closes the three gaps that were left, as properties of the 
     storing, and nothing else — every attempt to read it (truth, equality, ordering, iteration, text, arithmetic, attributes)
     raises PassiveRead. So a value that identifies, selects, ends, continues or is sent in a request cannot be an `any_()` one:
     its schema must give it a kind, or the first answer that reaches the read fails.
-  * THE RAW ANSWER IS SEALED. An adapter is handed a Response that holds no readable payload (adapters/base.py): the bytes are
-    opened by the decoder alone, and what leaves the decoder for provenance — a member's `raw`, an `any_()` value — is a
-    `Sealed`/`Passive` that can be compared or stored and never read, leaving as a copy (`plain`).
+  * THE RAW ANSWER IS SEALED. An adapter is handed a Response that holds no readable payload (adapters/base.py): the bytes of a payload
+    are opened by the decoder alone, and what leaves the decoder for provenance — a member's `raw`, an `any_()` value — is a
+    `Sealed`/`Passive` that can be stored and never read, leaving as a copy (`plain`). (2b-repair-13c finished the third gap: the
+    provenance stays sealed THROUGH the canonical record, not only up to it. See "Where a sealed value becomes plain" below.)
 
 The decoder returns exactly these, and nothing an adapter can read otherwise:
 
@@ -31,6 +32,18 @@ The decoder returns exactly these, and nothing an adapter can read otherwise:
 
 `Rec.raw` is the member as the provider sent it, for a record's `raw` (I-8): a `Sealed`. tests/test_member_isolation.py lists every use of it
 that is not the value of a `raw=` argument, with why, and fails one that is not listed.
+
+WHERE A SEALED VALUE BECOMES PLAIN (2b-repair-13c, Astra R13A-2). Until then `make_record` returned `plain(record)`: a record's `raw` and its `extra` values were readable
+provider data the moment the builder returned them, so `make_record(raw=row.raw)["raw"].get("timespan")` let a passive field decide which candidates an adapter kept, and no
+scan could see it. Now a record is a plain dict whose provenance is still opaque: `raw` is a `Sealed`, and every `extra` value built from a decoded `any_()` field is still a
+`Passive` (or holds one). So are the bytes of a download (`Response.download()` is a `Sealed`). Nothing adapter code can reach reads any of them, so nothing it decides — which
+candidates to keep, what a coverage count is, where a listing ends — can depend on one. They become plain exactly where the gateway serializes or stores a result, and nowhere
+else: `router.execute` (the answer and everything cached or written from it), `harvest/index.upsert` (the index load). A typed field of a record (title, venue, licence, identifiers,
+year ...) refuses an opaque value (`make_record`): what is read or decided on is declared a kind.
+
+Two Sealed objects compare equal when both were ISSUED by the decoder (a record builder asks whether the provider repeated itself); one an adapter constructs is not comparable,
+so equality against a guessed literal is no way to read one. What stays outside this: Python cannot hide an object's private storage, `x is None` cannot be intercepted, and a
+finite corpus is not a proof (tests/test_sealed_payload.py says so); and `Rec.empty` still answers one question about a provider's object — whether it held anything.
 """
 from __future__ import annotations
 
@@ -104,17 +117,23 @@ def _no_reading(error: type, what: str, readable: str):
 class Sealed:
     """The provider's object exactly as it was sent (a member, a whole answer), kept for storing in a record's `raw`.
 
-    It can be compared with another (`==`: a record builder asks whether two members are the one the provider repeated) and
+    It can be compared with another one the decoder issued (`==`: a record builder asks whether two members are the one the provider repeated) and
     stored (`plain`, which hands out a copy: the object kept here is never reachable). Reading it — truth, iteration, subscript, `.get`,
-    any attribute — raises SealedRead: what an adapter decides, it decides from what the schema declared."""
-    __slots__ = ("_value",)
+    any attribute — raises SealedRead: what an adapter decides, it decides from what the schema declared. `issued` marks one the decoder (or `make_record`, for a
+    value it seals) made: comparing it with one anybody else made is a SealedRead, or `row.raw == Sealed({"skip": True})` would read it by guessing."""
+    __slots__ = ("_value", "_issued")
     __hash__ = None
 
-    def __init__(self, value):
+    def __init__(self, value, *, _issued: bool = False):
         object.__setattr__(self, "_value", value)
+        object.__setattr__(self, "_issued", _issued)
 
     def __eq__(self, other) -> bool:
-        return isinstance(other, Sealed) and _same(self._value, other._value)
+        if not isinstance(other, Sealed):
+            return False
+        if not (self._issued and other._issued):
+            raise SealedRead("only two objects the decoder issued can be compared: an equality with one built here would read this one by guessing it")
+        return _same(self._value, other._value)
 
     def __repr__(self) -> str:
         return "<Sealed>"
@@ -123,7 +142,7 @@ class Sealed:
         """The same object without these fields, for a record whose raw may not keep part of what the provider sent (CORE's full text, I-7)."""
         if not isinstance(self._value, dict):
             raise SealedRead("without() takes fields out of an object")
-        return Sealed({k: v for k, v in self._value.items() if k not in names})
+        return Sealed({k: v for k, v in self._value.items() if k not in names}, _issued=self._issued)
 
 
 @_no_reading(PassiveRead, "this value is declared any_(): metadata carried as sent, stored and never read",
@@ -190,7 +209,7 @@ class Unreadable:
 
     @property
     def raw(self) -> Sealed:
-        return Sealed(self._value)
+        return Sealed(self._value, _issued=True)
 
     def __repr__(self) -> str:
         return f"Unreadable({self.reason!r})"
@@ -304,7 +323,7 @@ class Rec:
     @property
     def raw(self) -> Sealed:
         """The object as the provider sent it, sealed: for a record's `raw=` and for comparing, never for reading."""
-        return Sealed(self._raw)
+        return Sealed(self._raw, _issued=True)
 
     @property
     def empty(self) -> bool:
@@ -324,17 +343,35 @@ class Rec:
         raise TypeError("a Rec is read by its declared field names; it is not iterated")
 
     def __eq__(self, other) -> bool:
-        return isinstance(other, Rec) and tuple(self._v) == tuple(other._v) and Sealed(self._raw) == Sealed(other._raw)
+        return isinstance(other, Rec) and tuple(self._v) == tuple(other._v) and self.raw == other.raw
 
 
-def _copy(value):
+def detach(value):
+    """A copy of the plain structure of a value — its dicts, lists and tuples, however nested — with every other object in it (a Passive, a Sealed, a decoded Rec) kept as the
+    object it is: for a record's `extra`, which is not the adapter's to alias but whose opaque parts stay opaque."""
     if isinstance(value, dict):
-        return {k: _copy(v) for k, v in value.items()}
+        return {k: detach(v) for k, v in value.items()}
     if isinstance(value, list):
-        return [_copy(v) for v in value]
+        return [detach(v) for v in value]
     if isinstance(value, tuple):
-        return tuple(_copy(v) for v in value)
+        return tuple(detach(v) for v in value)
     return value
+
+
+def refuse_opaque(value, what: str) -> None:
+    """Raise PassiveRead or SealedRead when `value` is, or holds anywhere in its lists, tuples and dicts, a Passive or a Sealed: `what` is a field that is read and decided on, so
+    it must be declared a kind (a record's title, licence, identifiers ...), and metadata is only stored."""
+    stack = [value]
+    while stack:
+        v = stack.pop()
+        if isinstance(v, Passive):
+            raise PassiveRead(f"{what} is built from a value declared any_(): metadata is stored, and a field that is read is declared a kind in the schema")
+        if isinstance(v, Sealed):
+            raise SealedRead(f"{what} is built from the provider's raw object, which is for storing (a record's `raw=`)")
+        if isinstance(v, dict):
+            stack.extend(v.values())
+        elif isinstance(v, (list, tuple)):
+            stack.extend(v)
 
 
 def plain(value):

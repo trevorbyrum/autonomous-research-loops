@@ -6,6 +6,7 @@ from research_gateway.adapters import crossref, datacite, doaj, opencitations, u
 from research_gateway.adapters.base import Client, FakeTransport, SourceUnavailable
 from research_gateway.core.broker import Broker, RatePolicy
 from research_gateway.registry import load
+from research_gateway.core.payload import plain
 
 CROSSREF_WORK = {
     "DOI": "10.1234/ABC", "type": "journal-article", "title": ["Reranking for retrieval"],
@@ -49,7 +50,7 @@ class Crossref(unittest.TestCase):
         out = crossref.find(c, "reranking", limit=1, year_from_=2020)   # one item for rows=1: a full page, so it continues
         self.assertEqual(out["total"], 3)
         self.assertEqual((out["next_cursor"], out["exhausted"]), ("abc", False))
-        r = out["records"][0]
+        r = plain(out["records"][0])   # provenance and metadata are opaque until the router serializes them: a test that asserts on them materializes
         self.assertEqual(r["identity"], "doi:10.1234/abc")
         self.assertEqual(r["authors"], ["Ada Lovelace", "Consortium X"])
         self.assertEqual(r["year"], 2021)
@@ -111,7 +112,7 @@ class DataCite(unittest.TestCase):
         c, t = client()
         t.add("GET", "https://api.datacite.org/dois?", body={"data": [self.DOI], "meta": {"total": 150}})
         out = datacite.find(c, "climate", limit=100, page=1)
-        r = out["records"][0]
+        r = plain(out["records"][0])
         self.assertEqual(r["kind"], "dataset")
         self.assertEqual(r["identity"], "doi:10.5281/zenodo.99")
         self.assertEqual(r["license"], "cc0-1.0")

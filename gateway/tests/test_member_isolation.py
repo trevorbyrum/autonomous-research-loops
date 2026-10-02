@@ -10,8 +10,9 @@ adapter receives only what the decoder returns:
   * a provider's list of members is a `MemberList`: every member already decoded alone, and the list cannot be iterated, indexed, sliced or searched — only read
     through members(), first_member(), take() and expand(), which isolate each member (Views and Bypasses below, run, not scanned for);
   * a provider's object is a `Rec` holding exactly its declared fields: reading another raises UndeclaredRead, which is not a member's loss (Decoded);
-  * an answer is reached only through `decode(...)`: the client's Response holds no readable payload at all (no `.json`, `.text` or `.body`: tests/test_sealed_payload.py runs every
-    spelling of asking for one), so no adapter parses, subscripts or `.get`s a provider's answer; and what the decoder keeps of it for provenance is sealed (Reads below, a source check of where an answer or
+  * a payload is reached only through `decode(...)`: the client's Response holds no readable payload at all (no `.json`, `.text` or `.body`: tests/test_sealed_payload.py runs every
+    spelling of asking for one), so no adapter parses, subscripts or `.get`s a provider's answer. ("Payload" is what the answer says, which can produce a record or an answer: the client
+    reads the bytes in four named places of its own, tests/test_opaque_provenance.py BytesAreOpenedOnlyWhere;) and what the decoder keeps of it for provenance is sealed (Reads below, a source check of where an answer or
     a list may leave the decoder — each place listed with its reason, so a reviewer reads it; since 2b-repair-13a a BOUNDED GUARD behind the construction, not the thing that makes it so).
 
 What the source check cannot see: a use of `.raw` or `each` whose listed reason is wrong for the list it reads. Whether a given list is one record's own data
@@ -32,13 +33,13 @@ from pathlib import Path
 from research_gateway.adapters.base import first_member, members
 from research_gateway.core import schema as S, sdmx
 from research_gateway.core.canonical import make_record
-from research_gateway.core.payload import MemberList, OMIT, PayloadError, Rec, UndeclaredRead, Unreadable, plain
+from research_gateway.core.payload import MemberList, OMIT, PayloadError, Rec, Sealed, UndeclaredRead, Unreadable, plain
 
 ROOT = Path(__file__).resolve().parents[1] / "research_gateway"
 DOORS = ("plain",)                       # functions that hand a decoded value back as plain data
-CONSTRUCTORS = ("MemberList",)           # `MemberList(items)` wraps a list the caller already holds
+CONSTRUCTORS = ("MemberList", "Sealed", "Passive")   # `MemberList(items)` wraps a list the caller already holds; a Sealed or a Passive an adapter builds is no decoder-issued value (core/payload.py)
 METHODS = ("each", "at", "unreadable", "without")   # a MemberList's ways to a plain list or one member: each() hands back a plain list of whatever the builder returned; Sealed.without() a sealed object less some fields
-PRIVATE = ("_items", "_v", "_value", "_raw", "_body", "_frozen")   # the storage of a MemberList, a Rec, a Passive/Sealed/Unreadable and a Response
+PRIVATE = ("_items", "_v", "_value", "_raw", "_body", "_frozen", "_issued")   # the storage of a MemberList, a Rec, a Passive/Sealed/Unreadable and a Response, and the flag that marks a Sealed the decoder issued
 ANSWER = ("json", "json_or_none", "_parsed", "_body", "text", "body", "download", "content")   # what a Response held or holds of the provider's answer (the first are gone: nothing is there to find)
 DECODERS = ("decode", "data_xml", "flows", "dimensions_xml", "message")   # the calls an answer may be an argument of
 
@@ -56,11 +57,11 @@ USES = {
     ("adapters/core.py", "_record"): (1, "the record's raw is the payload less its full text (I-7): a sealed object less one field, handed on to be stored and never read"),
     ("adapters/unpaywall.py", "enrich"): (2, "an answer with no location list is its one best location: a list of one, built here from the decoded object (an empty one is none: Rec.empty); and what each listed location is compared with (sealed: equality only)"),
     ("adapters/unpaywall.py", "enrich.location"): (1, "whether this location IS the best one: the two objects as the provider sent them, compared"),
-    ("core/sdmx.py", "context"): (1, "the structural context kept with each record's raw (I-8): the structure's own definitions, stored and never read"),
     ("core/sdmx.py", "datasets"): (1, "no data sets: an empty list, built here"),
     ("core/sdmx.py", "flows"): (1, "the flow's element, handed to the second decode that reads its references"),
     ("core/sdmx.py", "series_reader.read"): (1, "the value at a position of a dimension's lookup table: the position is the data (a series names its values by index)"),
     ("core/sdmx.py", "series_xml.convert"): (1, "one <Series> element read whole into one series, as a list of one"),
+    ("harvest/index.py", "upsert"): (1, "the storage boundary (2b-repair-13c): a loader's record carries its provenance sealed until the index writes it, and is plain data from here"),
     ("harvest/registries.py", "_built"): (1, "the rows the loader reports it skipped: their reasons, never their content"),
 }
 
@@ -267,6 +268,8 @@ def reads(root: Path = ROOT) -> dict[tuple[str, str], list[str]]:
                     add(node, f"call {kind}")
                 elif not (kind in CONSTRUCTORS and id(node) in isinstance_args):
                     add(node, f"reference {kind}")
+            elif isinstance(node, ast.keyword) and node.arg == "_issued":
+                add(node, "private _issued")   # the flag that makes a Sealed comparable: only the decoder sets it
             elif isinstance(node, ast.Attribute):
                 of_a_module = isinstance(node.value, ast.Name) and node.value.id in modules
                 if node.attr in DOORS + CONSTRUCTORS and of_a_module:
@@ -334,8 +337,10 @@ class Reads(unittest.TestCase):
         self.assertEqual({k: v for k, v in found.items() if "answer ._parsed" in v}, {})
         self.assertEqual(reflection_in_adapters(), [])
 
-    def test_control_the_check_finds_an_answer_or_a_list_however_it_is_reached(self):
-        """The check's own oracle: each way out is found, and what is not one is not."""
+    def test_control_the_finite_syntax_guard_finds_each_spelling_it_lists_and_no_other(self):
+        """The check's own oracle, for a FINITE SYNTAX GUARD: each spelling it enumerates is found, and what is not one is not. It finds nothing it was not written to find: a decision made from
+        the copy a record builder returns was invisible to it (Astra, R13A-2), and is closed by construction instead — the record's raw and passive values stay opaque
+        (tests/test_opaque_provenance.py TheCopyEscape runs the mutant the scan cannot see, and the object it reads stops it)."""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "adapters").mkdir()
@@ -752,13 +757,15 @@ class Views(unittest.TestCase):
         self.assertEqual((len(flat), flat.each(lambda f: f["n"])), (5, [1, 2, None, None, 3]),
                          "the two holders that cannot be unfolded are one loss each; the series of the others stand")
 
-    def test_a_decoded_value_is_plain_data_in_a_record(self):
+    def test_a_decoded_value_is_opaque_in_a_record_and_plain_data_where_it_leaves(self):
         answer = S.decode("x", S.obj({"tags": S.own(S.text()), "card": S.obj({"k": S.any_()})}), {"tags": ["x", "y"], "card": {"k": [1]}})
         self.assertEqual(plain(answer["tags"]), ["x", "y"])
         self.assertEqual(plain({"a": answer["tags"], "b": (answer["card"],)}), {"a": ["x", "y"], "b": ({"k": [1]},)})
         record = make_record(identity="doi:10.1/x", kind="citation", source_id="x", authors=answer["tags"], extra={"card": answer["card"]}, raw=answer)
-        self.assertEqual((type(record["authors"]), type(record["card"]), type(record["raw"])), (list, dict, dict))
-        self.assertEqual(record["raw"], {"tags": ["x", "y"], "card": {"k": [1]}})
+        self.assertEqual((type(record["authors"]), type(record["card"]), type(record["raw"])), (list, Rec, Sealed), "a typed list is plain; the decoded object and the raw are not")
+        leaving = plain(record)
+        self.assertEqual((type(leaving["authors"]), type(leaving["card"]), type(leaving["raw"])), (list, dict, dict))
+        self.assertEqual(leaving["raw"], {"tags": ["x", "y"], "card": {"k": [1]}})
 
     def test_an_unreadable_member_says_why_and_what_it_was(self):
         (bad,) = decoded([7]).unreadable()

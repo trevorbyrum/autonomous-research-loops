@@ -2,13 +2,18 @@
 
 A record never carries full text. `raw` is the source's payload (or the
 relevant slice of it), kept so nothing is lost to normalisation.
+
+A record is a plain dict whose PROVENANCE IS STILL OPAQUE (2b-repair-13c, Astra R13A-2; core/payload.py "Where a sealed value becomes plain"): `raw` is a `Sealed`, and an
+`extra` value built from a decoded `any_()` field is still the `Passive` it was. Adapter code that builds, returns or inspects records can therefore read none of it, so no
+selection or coverage decision can depend on provenance. `router.execute` and `harvest/index.upsert` turn a record into plain data where it is serialized or stored. The typed
+fields (title, venue, licence, identifiers ...) are plain, and refuse an opaque value.
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
 
-from .payload import PayloadError, plain  # noqa: F401 (PayloadError: re-exported, it lives with the decoded values now)
+from .payload import Passive, PayloadError, Sealed, SealedRead, detach, plain, refuse_opaque  # noqa: F401 (PayloadError: re-exported, it lives with the decoded values now)
 from .schema import year_value
 
 
@@ -16,10 +21,18 @@ KINDS = ("article", "dataset", "software", "document", "series", "citation", "oa
          "venue", "repository")  # venue = journal/conference/book series; repository = data or publication repository
 
 
+def _typed(name: str, value):
+    """The plain data of a typed field's value. The field is read and decided on (the merge, the licence gate, the identity), so an opaque value — a Passive, a Sealed — is a
+    programming error (PassiveRead, SealedRead: not a malformed member): it would hand a record's reader what no adapter may read. Whatever else is not plain (an Unreadable, a
+    decoded Rec) is converted, and fails the kind check that follows."""
+    refuse_opaque(value, f"a record's {name}")
+    return plain(value)
+
+
 def _text(name: str, value) -> str | None:
     """A canonical text field: text, or nothing. Any other kind is an unreadable member (PayloadError) — never a title of 5, a venue of
     `false` or a licence that is a list, which every later reader of a record (the merge, the licence gate) would take for text."""
-    value = plain(value)
+    value = _typed(name, value)
     if value is None or isinstance(value, str):
         return value
     raise PayloadError(f"a record's {name} is {type(value).__name__}, not text")
@@ -28,7 +41,7 @@ def _text(name: str, value) -> str | None:
 def _texts(name: str, value) -> list[str]:
     """A canonical list of text (authors, links): the text in it, with a missing entry left out; a list that holds anything else, or a
     value that is not a list, is unreadable."""
-    value = plain(value)
+    value = _typed(name, value)
     if value is None:
         return []
     if not isinstance(value, (list, tuple)) or not all(v is None or isinstance(v, str) for v in value):
@@ -40,13 +53,13 @@ def _year(value) -> int | None:
     """A canonical year: a whole number, or the digits of one a provider sent as text; nothing when it names none. Anything else is unreadable (the rule is the
     decoder's: core/schema.py year_value)."""
     try:
-        return year_value(plain(value))
+        return year_value(_typed("year", value))
     except PayloadError as e:
         raise PayloadError(f"a record's {e}") from None
 
 
 def _identifiers(value) -> dict:
-    value = plain(value)
+    value = _typed("identifiers", value)
     if value is None:
         return {}
     if not isinstance(value, dict) or not all(isinstance(k, str) and (v is None or isinstance(v, str)) for k, v in value.items()):
@@ -61,9 +74,13 @@ def make_record(*, identity: str, kind: str, source_id: str, title: str | None =
                 raw: Any = None) -> dict:
     """The one constructor of a canonical record. Its typed fields are checked here, whatever the adapter passed: a value of the wrong
     kind makes the member that carried it unreadable (PayloadError; members() drops and counts it), instead of travelling on as a
-    title that is a number to code that calls `.lower()` on it (R8: one such member made the whole request raise)."""
+    title that is a number to code that calls `.lower()` on it (R8: one such member made the whole request raise).
+
+    What is not typed is provenance, and stays opaque: `raw` (a Sealed object — the member as sent, or any plain value, sealed here) and the values of `extra` (a copy of their
+    plain structure, with every Passive in it left as it is). The record is plain data only where the router or the index serializes it (core/payload.py)."""
     if kind not in KINDS:
         raise ValueError(f"unknown record kind {kind!r}")
+    refuse_opaque(identity, "a record's identity")
     title, venue, license, attribution = _text("title", title), _text("venue", venue), _text("license", license), _text("attribution", attribution)
     authors, links, year, identifiers = _texts("authors", authors), _texts("links", links), _year(year), _identifiers(identifiers)
     rec = {
@@ -83,9 +100,9 @@ def make_record(*, identity: str, kind: str, source_id: str, title: str | None =
         "retrieved_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
     if extra:
-        rec.update({k: v for k, v in extra.items() if k not in rec})
-    rec["raw"] = raw
-    return plain(rec)   # a record is plain data: a view of the provider's answer never ends up inside one
+        rec.update({k: detach(v) for k, v in extra.items() if k not in rec})
+    rec["raw"] = raw if raw is None or isinstance(raw, Sealed) else Sealed(plain(raw), _issued=True)
+    return rec
 
 
 PROVENANCE_SUMMARY_FIELDS = ("source_id", "identity", "license", "retrieved_at", "attribution", "link")

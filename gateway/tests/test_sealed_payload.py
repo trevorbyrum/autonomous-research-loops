@@ -6,13 +6,15 @@ the spellings it looked for. The cause is that the payload was REACHABLE. Now:
 
   * the client's Response holds no readable payload — no `json`, `text`, `body`, `json_or_none`; the bytes are opened by `decode` alone (core/schema.py), and `getattr(resp, "json")`, `resp.__dict__`, `vars(resp)`
     and every other spelling find nothing, because there is nothing to find (ResponseIsSealed);
-  * what the decoder keeps of the answer for provenance is `Sealed`: it can be compared and stored, never read, and it leaves only as a COPY (`plain`), so a record's `raw` is a frozen copy of what the provider
-    sent and not an alias of anything the decoder holds (RawIsSealedAndLeavesAsACopy);
+  * what the decoder keeps of the answer for provenance is `Sealed`: it can be compared (with another the decoder issued) and stored, never read, and it leaves only as a COPY (`plain`) — and, since
+    2b-repair-13c, not even the canonical record an adapter builds makes it readable: a record's `raw` is a Sealed, and materializing is the router's and the index's act (tests/test_opaque_provenance.py;
+    RawIsSealedAndLeavesAsACopy here);
   * a field a schema declares `any_()` is `Passive`: every way of reading it raises (PassiveIsOnlyStored);
   * and the source scans stay as a BOUNDED GUARD behind it: they catch the spellings that would have to be written to get past the construction (GuardsStayBounded).
 
 What this cannot show is that Python offers no way at all round an object's private storage: it does (`object.__getattribute__(x, "_body")`, the `gc` module, ...). What is closed is every route that needs no knowledge
-of the storage's name, and the routes that do are the ones the guards refuse to let an adapter be written with.
+of the storage's name, and the routes that do are the ones the guards refuse to let an adapter be written with. Each test below claims only what it asserts; the claims that were wider (2b-repair-13a's review,
+Gate C) are narrowed in their names and docstrings, and the exits they left open are tests/test_opaque_provenance.py's.
 """
 from __future__ import annotations
 
@@ -40,7 +42,10 @@ class ResponseIsSealed(unittest.TestCase):
     def response(self) -> Response:
         return Response(200, {"content-type": "application/json"}, MARKER, "https://example.org/x")
 
-    def test_there_is_no_public_name_that_holds_the_payload(self):
+    def test_the_responses_public_names_are_a_closed_list_none_of_them_a_payload_accessor_and_its_one_door_is_sealed(self):
+        """What is asserted: the public names of a Response are exactly this list (a new one fails until it is added deliberately, with why); the names a payload used to be reached by
+        (`json`, `text`, `body` ...) are not among them, by `hasattr` and `getattr`; and `download()`, the one name that is a way to the bytes, returns a `Sealed` that no read opens. That the
+        decoder is the only OTHER reader of the bytes is BytesAreOpenedOnlyWhere's (tests/test_opaque_provenance.py), not this test's."""
         resp = self.response()
         public = sorted(n for n in dir(resp) if not n.startswith("_"))
         self.assertEqual(public, ["download", "error", "headers", "ok", "retry_after_seconds", "status", "url"],
@@ -50,8 +55,13 @@ class ResponseIsSealed(unittest.TestCase):
                 self.assertFalse(hasattr(resp, name))
                 with self.assertRaises(AttributeError):
                     getattr(resp, name)
+        door = resp.download()
+        self.assertIsInstance(door, Sealed)
+        for what in (lambda: len(door), lambda: bytes(door), lambda: door.decode(), lambda: door[0], lambda: list(door), lambda: b"secret" in door, lambda: str(door)):
+            with self.assertRaises(SealedRead):
+                what()
 
-    def test_no_value_reachable_by_public_name_holds_the_marker_except_the_one_declared_download(self):
+    def test_no_value_reachable_by_public_name_shows_the_marker_and_the_one_door_is_sealed(self):
         resp = self.response()
         found = []
         for name in dir(resp):
@@ -62,7 +72,8 @@ class ResponseIsSealed(unittest.TestCase):
             if b"secret_marker_7f3a" in repr(value).encode():
                 found.append(name)
         self.assertEqual(found, [])
-        self.assertEqual(resp.download(), MARKER, "the one other way to the bytes is the file a caller asked to download")
+        self.assertEqual(repr(resp.download()), "<Sealed>", "the one other way to the bytes is the file a caller asked to download, and it shows nothing of them")
+        self.assertEqual(plain(resp.download()), MARKER, "it is the trusted boundary that makes it bytes (core/payload.py)")
 
     def test_it_has_no_dictionary_to_reach_into(self):
         resp = self.response()
@@ -71,9 +82,14 @@ class ResponseIsSealed(unittest.TestCase):
         with self.assertRaises(TypeError):
             vars(resp)
 
-    def test_decode_opens_it_and_nothing_else_does(self):
-        rows = S.decode("x", S.obj({"results": S.members(S.obj({"secret_marker_7f3a": S.text()}))}), self.response())["results"]
+    def test_decode_reads_the_payload_through_its_declared_schema_and_the_responses_other_names_do_not_show_it(self):
+        """What is asserted: `decode` reads the marker through a schema that declares it (the positive control), and the Response's other names — its public values, its repr, its one sealed door —
+        show nothing of it. It is not a proof of exclusivity: the client reads the bytes in a few places of its own (BytesAreOpenedOnlyWhere lists them), and `plain` of the sealed door is bytes."""
+        resp = self.response()
+        rows = S.decode("x", S.obj({"results": S.members(S.obj({"secret_marker_7f3a": S.text()}))}), resp)["results"]
         self.assertEqual(rows.each(lambda r: r["secret_marker_7f3a"]), ["payload-bytes-must-not-be-reachable"])
+        shown = [repr(resp), repr(resp.download()), repr(resp.headers), repr(resp.url), repr(resp.status), repr(resp.error), repr(resp.ok)]
+        self.assertFalse(any("payload-bytes-must-not-be-reachable" in text or "secret_marker_7f3a" in text for text in shown), shown)
 
     def test_astras_prefilter_mutant_has_nothing_to_find_and_fails_loudly_instead_of_passing_quietly(self):
         """Astra's mutant of OpenCitations (2b-repair-12 review): the rows are filtered with `getattr(resp, "json")` before the decoder, so a malformed row is dropped without accounting. Now the
@@ -107,12 +123,12 @@ class RawIsSealedAndLeavesAsACopy(unittest.TestCase):
     def rec(self) -> Rec:
         return S.decode("t", self.SPEC, copy.deepcopy(self.BODY))
 
-    def test_a_sealed_object_can_be_compared_and_stored_and_not_read(self):
+    def test_a_sealed_object_the_decoder_issued_can_be_compared_with_another_and_stored_and_not_read(self):
         raw = self.rec().raw
         self.assertIsInstance(raw, Sealed)
         self.assertEqual(raw, self.rec().raw)
-        self.assertNotEqual(raw, Sealed({"id": "b"}))
-        self.assertNotEqual(Sealed({"n": 1}), Sealed({"n": True}), "equal values of different kinds are different objects (1 is not true)")
+        self.assertNotEqual(raw, S.decode("t", self.SPEC, {"id": "b"}).raw)
+        self.assertNotEqual(Sealed({"n": 1}, _issued=True), Sealed({"n": True}, _issued=True), "equal values of different kinds are different objects (1 is not true)")
         for what in (lambda: raw["id"], lambda: raw.get("id"), lambda: bool(raw), lambda: len(raw), lambda: list(raw), lambda: iter(raw), lambda: "id" in raw, lambda: str(raw), lambda: f"{raw}",
                      lambda: raw.items(), lambda: raw.keys(), lambda: raw.anything, lambda: raw + 1, lambda: sorted([raw, raw]), lambda: int(raw), lambda: dict(raw)):
             with self.assertRaises(SealedRead):
@@ -133,14 +149,22 @@ class RawIsSealedAndLeavesAsACopy(unittest.TestCase):
         self.assertEqual(plain(rec.raw), self.BODY, "what a record holds cannot reach back into what the decoder kept")
         self.assertEqual(plain(rec), self.BODY, "the object itself leaves the same way")
 
-    def test_a_records_raw_is_a_frozen_copy_the_decoder_does_not_share(self):
+    def test_a_records_raw_is_sealed_in_the_record_and_each_materialization_is_a_copy_independent_of_the_decoders(self):
+        """What is asserted: the record an adapter builds holds the raw object SEALED (it cannot be read there, in any way the Reads below try), and what `plain` hands out of it is a copy that is neither
+        another materialization's nor the decoder's. (13a's version of this test asserted the returned raw dictionary: a mutable, readable copy, which is what let an adapter decide on it.)"""
         rec = self.rec()
         a = make_record(identity="doi:10.1/a", kind="article", source_id="x", raw=rec.raw)
         b = make_record(identity="doi:10.1/a", kind="article", source_id="x", raw=rec.raw)
-        self.assertEqual(a["raw"], self.BODY)
-        self.assertIsNot(a["raw"], b["raw"])
-        a["raw"]["nested"]["list"].append("x")
-        self.assertEqual(b["raw"], self.BODY)
+        for record in (a, b):
+            self.assertIsInstance(record["raw"], Sealed)
+            for what in (lambda: record["raw"].get("id"), lambda: record["raw"]["id"], lambda: len(record["raw"]), lambda: list(record["raw"]), lambda: bool(record["raw"])):
+                with self.assertRaises(SealedRead):
+                    what()
+        out_a, out_b = plain(a), plain(b)
+        self.assertEqual(out_a["raw"], self.BODY)
+        self.assertIsNot(out_a["raw"], out_b["raw"])
+        out_a["raw"]["nested"]["list"].append("x")
+        self.assertEqual(plain(b)["raw"], self.BODY)
         self.assertEqual(plain(rec.raw), self.BODY)
 
     def test_without_takes_fields_out_of_the_copy_and_the_original_keeps_them(self):
@@ -161,7 +185,8 @@ class RawIsSealedAndLeavesAsACopy(unittest.TestCase):
             with self.assertRaises(AttributeError):
                 member.__dict__
 
-    def test_a_record_holds_plain_data_only_never_a_sealed_passive_or_decoded_value(self):
+    def test_a_materialized_record_holds_plain_data_only_never_a_sealed_passive_or_decoded_value(self):
+        """What the record is once the router or the index has turned it into data to serialize or store: plain, at every depth. (Before that point its provenance is opaque on purpose.)"""
         def check(value, path="record"):
             self.assertNotIsInstance(value, (Sealed, Passive, Rec, MemberList, Unreadable), path)
             if isinstance(value, dict):
@@ -173,8 +198,10 @@ class RawIsSealedAndLeavesAsACopy(unittest.TestCase):
         rec = S.decode("t", S.obj({"m": S.any_(), "o": S.obj({"x": S.any_()}), "l": S.own(S.any_()), "d": S.members(S.obj({"k": S.any_()}))}),
                        {"m": [1, {"a": 2}], "o": {"x": {"y": 1}}, "l": [1, [2]], "d": [{"k": 1}, 5]})
         made = make_record(identity="doi:10.1/a", kind="article", source_id="x", extra={"m": rec["m"], "o": rec["o"], "l": rec["l"], "d": rec["d"], "t": (rec["m"], rec["o"])}, raw=rec.raw)
-        check(made)
-        self.assertEqual(json.loads(json.dumps(made))["m"], [1, {"a": 2}])
+        with self.assertRaises(AssertionError):
+            check(made)   # opaque in the record: that is the point of 13c
+        check(plain(made))
+        self.assertEqual(json.loads(json.dumps(plain(made)))["m"], [1, {"a": 2}])
 
     def test_every_operations_answer_is_plain_json_nothing_of_the_decoder_leaks_into_one(self):
         """Through the real adapters and the router, every valid answer of every operation of the harness (and its populated variants) serialises: a Passive, a Sealed or a Rec left in a record, an entry or a
@@ -193,9 +220,11 @@ class PassiveIsOnlyStored(unittest.TestCase):
     def passive(self, value=None) -> Passive:
         return S.decode("t", S.obj({"m": S.any_()}), {"m": value})["m"]
 
-    def test_every_way_of_reading_a_declared_any_field_raises(self):
+    def test_the_listed_ways_of_reading_a_declared_any_field_raise(self):
+        """What is asserted: each operation LISTED below raises PassiveRead. The list is the operations a decision is written with; it is not every operation Python has, and two things are not on it
+        and cannot be: `x is None` (identity, which Python does not let a class intercept: a later test says what it returns) and an object's private storage."""
         p = self.passive([1, 2])
-        reads = {"truth": lambda: bool(p), "not": lambda: not p, "if": lambda: 1 if p else 0, "eq": lambda: p == [1, 2], "ne": lambda: p != 1, "is none": lambda: p == None,   # noqa: E711
+        reads = {"truth": lambda: bool(p), "not": lambda: not p, "if": lambda: 1 if p else 0, "eq": lambda: p == [1, 2], "ne": lambda: p != 1, "eq none": lambda: p == None,   # noqa: E711
                  "in": lambda: 1 in p, "contains": lambda: p in [1], "index": lambda: p[0], "get": lambda: p.get("a"), "iter": lambda: list(p), "len": lambda: len(p),
                  "str": lambda: str(p), "fstring": lambda: f"{p}", "format": lambda: format(p, ""), "int": lambda: int(p), "float": lambda: float(p), "add": lambda: p + 1, "radd": lambda: 1 + p,
                  "lt": lambda: p < 1, "sorted": lambda: sorted([p, p]), "max": lambda: max(p, p), "hash": lambda: hash(p), "dict key": lambda: {p: 1}, "set": lambda: {p}, "attr": lambda: p.startswith("x"),
@@ -223,7 +252,9 @@ class PassiveIsOnlyStored(unittest.TestCase):
             rows.first(lambda r: bool(r["m"]), "t")
         self.assertTrue(issubclass(PassiveRead, UndeclaredRead))
 
-    def test_plain_is_the_only_way_out_and_it_hands_out_a_copy(self):
+    def test_plain_hands_out_a_copy_and_a_record_keeps_a_passive_value_passive_until_it_is_materialized(self):
+        """What is asserted: `plain` of a Passive is a copy of the value, nested structure included; and the indirect exit — a Passive handed to `make_record` as an `extra` value — comes back from
+        the record still a Passive (reading it raises), becoming the copy only when the record is materialized, which the router and the index do (tests/test_opaque_provenance.py)."""
         value = {"a": [1, {"b": 2}]}
         p = self.passive(value)
         out = plain(p)
@@ -231,13 +262,39 @@ class PassiveIsOnlyStored(unittest.TestCase):
         out["a"][1]["b"] = 3
         self.assertEqual(plain(p), {"a": [1, {"b": 2}]})
         self.assertEqual(plain([p, (p,), {"k": p}]), [value, (value,), {"k": value}])
+        rec = make_record(identity="doi:10.1/a", kind="article", source_id="x", extra={"k": p, "l": [p]})
+        self.assertIsInstance(rec["k"], Passive)
+        with self.assertRaises(PassiveRead):
+            rec["k"] == value
+        with self.assertRaises(PassiveRead):
+            rec["l"][0]["a"]
+        self.assertEqual(plain(rec)["k"], value)
 
-    def test_a_field_left_out_and_a_null_are_passive_too_so_whether_it_is_there_is_not_readable(self):
+    def test_a_field_left_out_or_null_is_a_passive_too_and_is_none_cannot_tell_it_from_one_that_is_there(self):
+        """The limitation, named: `x is None` is identity, and Python offers no way to intercept it, so for a field declared `any_()` it says "there" whether the provider sent the field or left it
+        out. Nothing here makes a field's PRESENCE unreadable, and nothing can. What protects a decision from depending on presence is the declaration: a field code decides on is declared a kind
+        (`maybe_key`, `maybe(...)`, a `required` one), where absent is None by the schema's own rule and a Passive is never asked. The assertions state the limit and the two things that are true:
+        the value of an `any_()` field, absent or null, is not readable, and a default is for a field that is left out, not null."""
         spec = S.obj({"m": S.any_(), "d": S.any_(default=False)})
         got = S.decode("t", spec, {})
-        self.assertEqual([got["m"] is None, got["d"] is None], [False, False], "an `is None` test cannot be intercepted: it says 'there' for a field that is not, which is why no schema declares as metadata a field that code decides on")
+        self.assertEqual([got["m"] is None, got["d"] is None], [False, False], "an `is None` test cannot be intercepted: it says 'there' for a field that is not")
+        for field in ("m", "d"):
+            with self.assertRaises(PassiveRead):
+                got[field] == None   # noqa: E711
         self.assertEqual((plain(got["m"]), plain(got["d"])), (None, False))
         self.assertEqual(plain(S.decode("t", spec, {"m": None, "d": None})["d"]), None, "a default is for a field that is left out, not null")
+
+    def test_a_field_whose_absence_is_read_is_declared_maybe_so_the_schema_not_a_passive_says_it_is_absent(self):
+        """The protection, concretely: where code needs to know whether a metadata field is there (the SDMX structural context keeps only the fields the message states), the declaration is
+        `maybe(any_())` — None when left out or null, a Passive otherwise — and nothing asks a Passive whether it is there."""
+        from research_gateway.core import sdmx
+        msg = sdmx.message("ecb", {"structure": {"dimensions": {"series": [], "observation": []}, "name": "n", "attributes": None}, "dataSets": []})
+        context = sdmx.context(msg)
+        self.assertEqual(sorted(context), ["dimensions", "name"], "an absent field and a null one are left out; the ones the message states are kept")
+        self.assertIsInstance(context["name"], Passive)
+        with self.assertRaises(PassiveRead):
+            context["name"] == "n"
+        self.assertEqual(plain(context)["name"], "n")
 
 
 class GuardsStayBounded(unittest.TestCase):
