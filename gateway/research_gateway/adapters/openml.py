@@ -20,7 +20,7 @@ LISTED = S.obj({"did": S.key(), "name": S.text(), "licence": S.text(), "license"
                 "quality": S.own(S.obj({"name": S.text(), "value": S.any_()}))}, alts=(("licence", "license"),))
 DESCRIBED = S.obj({"id": S.key(), "name": S.text(), "creator": S.oneof(S.text(), S.own(S.text())), "upload_date": S.text(), "url": S.text(), "parquet_url": S.text(),
                    "licence": S.text(), "version": S.any_(), "format": S.any_(), "description": S.text(), "default_target_attribute": S.any_(), "file_id": S.any_()})
-LINKED = S.obj({"id": S.key(), "licence": S.text(), "url": S.isolated(S.text()), "parquet_url": S.isolated(S.text())})
+LINKED = S.obj({"licence": S.text(), "url": S.isolated(S.text()), "parquet_url": S.isolated(S.text())})
 FIND = S.obj({"data": S.required(S.obj({"dataset": S.required(S.members(LISTED))}))})
 RESOLVE = S.obj({"data_set_description": S.required(DESCRIBED)})
 FETCH = S.obj({"data_set_description": S.required(LINKED)})

@@ -89,7 +89,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
             vintage = d["c_vintage"]
             # unvintaged datasets (timeseries/bds and 87 friends) are real: their path IS
             # the dataset id (D-32a finding 6)
-            ds = (f"{vintage}/{path}" if vintage else path) if path else None
+            ds = (f"{vintage}/{path}" if vintage not in (None, "") else path) if path else None
             title = d["title"] or ""
             if ds:
                 named.append(ds)

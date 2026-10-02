@@ -17,7 +17,7 @@ BASE = "https://api.crossref.org"
 # What an answer must be. An author's name is `given`+`family`, else `name`: all three are declared, so all are decoded before one is chosen.
 AUTHOR = S.obj({"given": S.text(), "family": S.text(), "name": S.text()}, alts=(("given", "family", "name"),))
 WORK = S.obj({"DOI": S.text(), "URL": S.text(), "type": S.any_(), "title": S.own(S.text()), "author": S.own(AUTHOR), "container-title": S.own(S.text()),
-              "issued": S.obj({"date-parts": S.own(S.own(S.year()))}), "created": S.obj({"date-time": S.text()}),   # the issue date, else the creation date
+              "issued": S.obj({"date-parts": S.lookup(S.lookup(S.year()))}), "created": S.obj({"date-time": S.text()}),   # the issue date, else the creation date
               "license": S.own(S.obj({"URL": S.text()})), "ISSN": S.own(S.text()), "publisher": S.text(),
               "is-referenced-by-count": S.any_(), "reference-count": S.any_()},
              alts=(("issued", "created"),))
@@ -38,10 +38,9 @@ def _record(client: Client, w) -> dict:
     if not doi and not (url and url.strip()):
         raise PayloadError(f"{SOURCE_ID}: a work with neither a DOI nor a URL names nothing (A4)")
     authors = [_author(a) for a in w["author"]]
-    dated = w["issued"]["date-parts"]
+    issued = w["issued"]["date-parts"]   # the year of the first date: its other parts (month, day) are not read
     created = year_from(w["created"]["date-time"])
-    parts = dated[0] if dated else []
-    year = parts[0] if parts and parts[0] is not None else created
+    year = issued if issued is not None else created
     licenses = [u for u in (l["URL"] for l in w["license"]) if u]
     issns = [normalize_issn(i) for i in w["ISSN"] if normalize_issn(i)]
     ids = {"doi": doi} if doi else {}

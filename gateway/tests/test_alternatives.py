@@ -331,6 +331,44 @@ class LoaderAlternatives(unittest.TestCase):
         self.assertEqual(self.datacite(attributes={"symbol": None})[0]["identity"], "repository:datacite:harvest.test")
 
 
+class WhatTheSchemaDoesNotAsk(unittest.TestCase):
+    """The first comparison of the schema-first gateway with the one before it (evidence/2b-repair-12/differential) found three places where declaring a field asked more of
+    the provider than the reader ever had. A declared field is decoded; these are not asked for."""
+
+    def test_crossref_reads_the_year_of_the_first_date_and_not_its_month_or_day(self):
+        for rest in ([3, 1], [False, ""], ["March", []], []):
+            with self.subTest(rest=rest):
+                body = copy.deepcopy(corrupt_route(ops.CROSSREF_FIND_END).body)
+                body["message"]["items"][0]["issued"] = {"date-parts": [[2021, *rest], "not a date"]}
+                out, lane = run(ops.CROSSREF_FIND_END, body)
+                self.assertEqual((lane["completeness"], out["records"][0]["year"]), ("complete", 2021))
+        for first, complete in (([], True), ([None], True), (False, False), ("", False), ("x", False), ({}, False), (5, False), (["x"], False), ([False], False), ([[]], False), ([{}], False)):
+            with self.subTest(first_date=first):   # no year, or none stated: the creation date stands in; a first date that is no list, or whose year is no year, is unreadable
+                body = copy.deepcopy(corrupt_route(ops.CROSSREF_FIND_END).body)
+                body["message"]["items"][0]["issued"] = {"date-parts": [first]}
+                out, lane = run(ops.CROSSREF_FIND_END, body)
+                self.assertEqual(lane["completeness"] == "complete", complete, lane)
+
+
+    def test_openml_lists_the_files_of_a_description_without_asking_for_its_id(self):
+        """The listing of a dataset's files takes the licence and the two links from the description and names the dataset by the target; it never read the description's own `id`."""
+        for description, files in (({"licence": "Public", "url": "https://api.openml.org/data/v1/download/61/iris.arff"}, 1), ({}, 0)):
+            with self.subTest(description=description):
+                body = {"data_set_description": description}
+                out, lane = run(ops.OPENML_FETCH, body)
+                self.assertEqual((lane["coverage"], lane["completeness"], lane.get("count", 0)), ("searched_ok" if files else "searched_empty", "complete", files), lane)
+
+    def test_a_census_vintage_of_zero_is_a_vintage(self):
+        for vintage, want in ((0, "0/acs/acs1"), (2022, "2022/acs/acs1"), ("", "acs/acs1"), (None, "acs/acs1")):
+            with self.subTest(vintage=vintage):
+                body = {"dataset": [{"c_dataset": ["acs", "acs1"], "c_vintage": vintage, "title": "ACS"}]}
+                t = FakeTransport()
+                t.add("GET", "https://api.census.gov/data.json", 200, body)
+                from research_gateway.adapters import census
+                c = Client(broker=Broker({"census": RatePolicy(per_second=100000)}), transport=t, secrets=lambda n, f=None: "k", sleep=lambda s: None)
+                self.assertEqual([e["id"] for e in census.catalog(c)["entries"]], [want])
+
+
 class NestedAlternatives(unittest.TestCase):
     """R11-1 (Astra, 2b-repair-11): an alternative is decoded completely — its nested supported contents included — before one is chosen. A well-typed outer
     container whose supported fallback leaf is malformed hid behind a valid preferred value; each case has its readable control and its alternate-only control."""
