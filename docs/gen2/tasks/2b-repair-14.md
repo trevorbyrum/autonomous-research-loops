@@ -56,6 +56,16 @@
   - **Retry-After:** document the date parser's actual tolerance; don't add another parser just to rescue the wording.
   - **Number claim:** state finite floats versus exact integers accurately.
   - Recount line sizes with one consistent scope.
+- **F6 (Gate D #2), documentation only:** correct the router trust-model wording 13d wrote in INVARIANTS and the router docs (code under `gen2/` stays untouched) so it says this:
+  - "a coherent false claim by trusted station code is outside router semantic enforcement";
+  - "sampled independent re-derivation can detect it when retained evidence supports that check";
+  - "missing required evidence is itself an audit failure".
+
+  Also:
+  - cite flow **S4** step 2, not S2;
+  - say that D-1's raw-response retention covers *decision receipts*, not retrieval;
+  - say that `gateway_call_ref` acknowledges a durable call row, not a response artifact;
+  - record in `docs/gen2/BUILD-STATE.md` that **2e2** must give the retrieval audit an independently checkable evidence requirement before real workflow acceptance.
 - **8. Gateway part of the final validation.**
   - Run `make gen2-check` and `make gen2-gateway` unpiped and keep their exit status, skips, and mutation and control results.
   - Rebuild every open reproduction from 13c and Gate D #2; each fails on `37a655c` and passes now.
