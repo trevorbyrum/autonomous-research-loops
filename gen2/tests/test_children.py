@@ -182,14 +182,48 @@ class ReadinessTest(unittest.TestCase):
         self.assertIn("still running when stopped", message)
         self.assertIsNotNone(made[0].poll(), "the child that never answered is not left running")
 
-    def test_the_child_is_reaped_when_the_test_ends_even_when_the_handshake_failed(self) -> None:
-        """The cleanup is registered before anything waits on the child: a test that ends at its handshake (here: no wait at all) leaves no process."""
+    def test_a_line_whose_first_byte_is_timely_and_whose_rest_is_late_fails_at_the_deadline(self) -> None:
+        """Astra's F3 probe (2b-repair-15): the child writes `r`, flushes, and finishes `ready` 2 s later. One `select` saw the `r` and an unbounded `readline` then waited for the rest and
+        accepted it at 2 s (Astra's 0.1 s wait was accepted at 0.62 s). The line is held to the one deadline: it fails at 0.5 s, the child is ended, and the late newline is never a ready."""
+        made = self.launched()
+        began = time.monotonic()
+        message = self.failure(["-c", "import sys, time; sys.stdout.write('r'); sys.stdout.flush(); time.sleep(2); print('eady', flush=True)"], wait=0.5)
+        self.assertLess(time.monotonic() - began, 1.5, "it failed at the deadline, not when the rest of the line arrived")
+        self.assertIn("still running when stopped", message)
+        self.assertIsNotNone(made[0].poll(), "the child that never finished its line is not left running")
+
+    def test_a_line_that_never_completes_fails_at_the_deadline_and_the_child_is_reaped(self) -> None:
+        """On c0d963d this waited for ever on the `readline`, and nothing after it (the failure message, the cleanup's kill) ran."""
         made = self.launched()
         probe = unittest.TestCase()
-        child = children.started(probe, ["-c", "import time; time.sleep(60)"])
-        self.assertIsNone(child.poll())
+        began = time.monotonic()
+        with self.assertRaises(AssertionError) as caught:
+            children.started(probe, ["-c", "import sys, time; sys.stdout.write('read'); sys.stdout.flush(); time.sleep(60)"], ready="ready", wait=0.4)
+        self.assertLess(time.monotonic() - began, 5.0, "the wait is bounded")
+        self.assertIn("still running when stopped", str(caught.exception))
+        self.assertTrue(probe.doCleanups(), "the registered cleanup runs without error")
+        self.assertIsNotNone(made[0].poll(), "and the child is gone")
+
+    def test_a_line_that_arrives_in_two_timely_parts_is_accepted_and_what_follows_it_is_left_unread(self) -> None:
+        """The line is taken a byte at a time up to its newline and no further: what the child printed after it is still on the pipe for the test."""
+        child = children.started(self, ["-c", "import sys, time; sys.stdout.write('rea'); sys.stdout.flush(); time.sleep(0.2); sys.stdout.write('dy\\nmore\\n'); sys.stdout.flush(); input()"],
+                                 ready="ready", stdin=subprocess.PIPE)
+        self.assertEqual(child.stdout.readline(), "more\n")
+
+    def test_a_child_left_running_by_a_handshake_that_failed_is_reaped_when_the_test_ends(self) -> None:
+        """The cleanup is registered before anything waits on the child. Here the handshake itself fails (a stand-in that raises, and kills nothing, as a helper's own error would):
+        the child is still running when the test's body is over, and only the registered cleanup ends it."""
+        made = self.launched()
+        probe = unittest.TestCase()
+
+        def handshake_fails(test, child, ready, *, wait):
+            raise AssertionError("the handshake failed")
+        with mock.patch.object(children, "await_line", handshake_fails), self.assertRaises(AssertionError):
+            children.started(probe, ["-c", "import time; time.sleep(60)"], ready="ready")
+        child = made[0]
+        self.assertIsNone(child.poll(), "the failed handshake left the child running")
         probe.doCleanups()
-        self.assertIsNotNone(child.poll(), "the child was reaped by the cleanup the helper registered first")
+        self.assertIsNotNone(child.poll(), "the cleanup the helper registered first reaped it")
         self.assertEqual(len(made), 1)
         children.reap(child)   # and reaping again is harmless
 

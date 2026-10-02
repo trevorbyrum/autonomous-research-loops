@@ -101,7 +101,7 @@ def reap(child: subprocess.Popen, wait: float = 10.0) -> None:
 def started(test: unittest.TestCase, args: list[str], *, ready: str | None = None, wait: float = 30.0, **kwargs) -> subprocess.Popen:
     """Start `python <args>` as a child the test owns: it is reaped when the test ends (the cleanup is registered before anything waits on
     the child, so a test that fails at its handshake leaves no process behind), its stdout and stderr are pipes unless given, and with
-    `ready` the child is waited on, for at most `wait` seconds, to print that line first. A child that does not say it (it exited,
+    `ready` the child is waited on, for at most `wait` seconds in all, to print that line first (all of it: `await_line`). A child that does not say it (it exited,
     printed something else, or said nothing in time) fails the test with what it did: its exit status, what it printed and its stderr."""
     kwargs.setdefault("stdout", subprocess.PIPE)
     kwargs.setdefault("stderr", subprocess.PIPE)
@@ -114,13 +114,25 @@ def started(test: unittest.TestCase, args: list[str], *, ready: str | None = Non
 
 
 def await_line(test: unittest.TestCase, child: subprocess.Popen, ready: str, *, wait: float = 30.0) -> None:
-    """Wait at most `wait` seconds for `child` to print `ready` as its next stdout line; otherwise fail `test` with the child's exit status,
-    what it printed and its stderr (the child is ended first when it still runs, so there is a stderr to read)."""
-    began, line = time.monotonic(), ""
-    ripe, _, _ = select.select([child.stdout], [], [], wait)
-    if ripe:
-        line = child.stdout.readline()
-    if line.strip() == ready:
+    """Wait for `child` to print `ready` as its next stdout line, the whole line, newline included, inside ONE deadline of `wait` seconds from the call: a line that is still partial at the
+    deadline, or whose newline arrives after it, is not the child saying it (task 2b-repair-15, Astra F3: one bounded `select` and then an unbounded `readline` took a line of which the first
+    byte was timely and the rest 0.5 s late, and would have waited for ever on one that never ended). Otherwise fail `test` with the child's exit status, what it printed and its stderr (the
+    child is ended first when it still runs, so there is a stderr to read).
+
+    The line is read from the pipe's descriptor a byte at a time, so that nothing past its newline is taken from the pipe (what follows is the test's to read from `child.stdout`); this needs that
+    nothing has been read from `child.stdout` before, which is so for a child just started."""
+    began = time.monotonic()
+    deadline, raw, fd, last = began + wait, b"", child.stdout.fileno(), began
+    while not raw.endswith(b"\n"):
+        left = deadline - time.monotonic()
+        if left <= 0 or not select.select([fd], [], [], left)[0]:
+            break
+        more = os.read(fd, 1)
+        if not more:   # EOF: the child closed its stdout inside the line, or before it
+            break
+        raw, last = raw + more, time.monotonic()
+    line = raw.decode(errors="replace")
+    if line.endswith("\n") and last <= deadline and line.strip() == ready:   # `last`: when the byte that ended it was read
         return
     running = child.poll() is None
     if running:
