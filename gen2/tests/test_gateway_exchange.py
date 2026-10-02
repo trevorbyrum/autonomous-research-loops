@@ -368,10 +368,27 @@ def lookup(*addresses: str, port: int = 0):
     return find
 
 
+def gateway_answer() -> bytes:
+    """What a gateway answers a find with when the lane was read and found nothing: `searched_empty`, complete, 0, exhausted."""
+    return reply(json.dumps({"observation": CAPTURED, "lanes": [EMPTY_LANE], "records": []}, separators=(",", ":")).encode())
+
+
 class NoExchangeResolvesAName(ExchangeTest):
     """Task 2b-repair-15 (Astra's final 2b review, F2). `_connect` called a synchronous getaddrinfo, which cannot be interrupted: a substituted resolver that took 0.4 s made a 0.05 s exchange
     take 0.423 s, and the client-level probe 0.418 s. An exchange now resolves no name at all: an IP literal is its own address, a name was looked up beforehand by the client's owner (at
-    construction, or `resolve()` between operations), and a name that was not is a transport failure at once. No resolver here touches the network: each is a stand-in."""
+    construction, or `resolve()` between operations), and a name that was not is a transport failure at once. No resolver here touches the network: each is a stand-in.
+
+    Task 2b-repair-16 (Astra's 2b-repair-15 review, R15-1): an endpoint known to be stale is not connected to. A connection failure, and a lookup that found nothing, withdraw the addresses the
+    last good lookup found; until the owner's `resolve()` finds some, an exchange makes no connection and sends no request, so no bearer token reaches whatever now answers at the old address."""
+
+    def connections(self) -> tuple:
+        """(the targets the client's sockets were asked to connect to, the patch that records them): what a stale endpoint must leave empty."""
+        made, real = [], socket.socket.connect
+
+        def spy(sock, target):
+            made.append(target)
+            return real(sock, target)
+        return made, mock.patch.object(gateway._DeadlineSocket, "connect", spy)
 
     @staticmethod
     def slow(delay: float):
@@ -499,14 +516,93 @@ class NoExchangeResolvesAName(ExchangeTest):
         self.assertLess(elapsed, 0.2)
         self.assertTrue(c.endpoint_stale)
 
-    def test_a_lookup_that_finds_nothing_keeps_the_addresses_the_last_good_one_found(self):
-        found = ["10.0.0.5"]
-        c = GatewayClient("http://gateway:8765", "synthetic", resolver=lambda host, port, *rest: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (a, port)) for a in found])
+    def test_a_lookup_that_finds_nothing_withdraws_the_addresses_and_no_request_reaches_the_old_one(self):
+        """Reversed in 2b-repair-16 (this test required the old addresses to stay in use, which sent the bearer token to whatever answered at the last good address): a lookup that finds nothing
+        leaves the endpoint stale and without addresses, the old listener is not connected to, and the search is unobserved with no count."""
+        seen = []
+        server = self.serve(lambda s, conn, h, b: (seen.append(h), s.send(conn, [(0, gateway_answer())])))
+        found = [server.port]
+        c = GatewayClient("http://gateway:8765", "synthetic-token", clock=lambda: STAMP,
+                          resolver=lambda host, port, *rest: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", p)) for p in found])
+        self.assertEqual(c._exchange("GET", "/v1/jobs/1", None, "synthetic-token")[0], 200)
+        self.assertIn(b"Authorization: Bearer synthetic-token", seen[0], "the first exchange did carry the token: the listener would have seen it")
         found.clear()
         record = c.resolve()
         self.assertEqual((record.addresses, c.endpoint_stale), ((), True))
         self.assertIn("resolved to no address", record.error)
-        self.assertEqual([info[4] for info in c._resolved.get(("gateway", 8765), [])], [("10.0.0.5", 8765)], "the last good addresses are still the ones exchanges use")
+        made, spying = self.connections()
+        with spying:
+            out = c.search(FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
+        [only] = out["observations"]
+        o = only["observation"]
+        self.assertEqual((o["coverage_state"], o["completeness"], o["result_count"], o["error_class"], o["page_outcome"]), ("unknown", "unobserved", None, "transport_failure", "failed"))
+        self.assertEqual((made, len(seen)), ([], 1), "the old address got no connection and no request: where the last good lookup found the gateway is no longer known to be the gateway")
+
+    def test_astras_probe_an_unrelated_listener_at_the_old_address_receives_no_request_after_a_failed_lookup(self):
+        """Astra's R15-1 probe, as a regression (on 0d53bfc the last search connected to the old address, sent it the bearer token, and recorded its answer as `searched_empty/complete/0/exhausted`):
+        a gateway answers at an address and goes away (a connection failure), the owner's `resolve()` then finds nothing (NXDOMAIN), and a service that is not the gateway answers at that address.
+        It receives no request; and when a lookup finds the name at a new address, that is where the client goes."""
+        phase, seen = ["gateway"], []
+
+        def script(s, conn, head, body):
+            seen.append((phase[0], head))
+            if phase[0] != "gone":   # the gateway that was here has gone away: its address accepts, reads and closes, saying nothing
+                s.send(conn, [(0, gateway_answer())])
+        old = self.serve(script)
+        moved = self.serve(lambda s, conn, h, b: s.send(conn, [(0, gateway_answer())]))
+        found = [old.port]
+
+        def resolve(host, port, *rest):
+            if not found:
+                raise socket.gaierror(socket.EAI_NONAME, "synthetic NXDOMAIN")
+            return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", found[0]))]
+        c = GatewayClient("http://gateway.test:8765", "synthetic-token", clock=lambda: STAMP, resolver=resolve)
+        self.assertEqual(c._exchange("GET", "/v1/jobs/1", None, "synthetic-token")[0], 200)
+        phase[0] = "gone"
+        self.assertEqual(c._exchange("GET", "/v1/jobs/1", None, "synthetic-token"), (None, None, "transport_failure"))
+        self.assertTrue(c.endpoint_stale)
+        found.clear()
+        self.assertTrue(c.resolve().error.startswith("gaierror"))
+        phase[0] = "unrelated"
+        made, spying = self.connections()
+        with spying:
+            out = c.search(FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
+        [only] = out["observations"]
+        o = only["observation"]
+        self.assertEqual((o["coverage_state"], o["completeness"], o["result_count"], o["error_class"], o["page_outcome"], o["continuation"]),
+                         ("unknown", "unobserved", None, "transport_failure", "failed", None))
+        self.assertEqual((only["retrieval_events"], out["pages"][0]["call_ref"]), ([], None), "no capture reference: nothing answered")
+        self.assertEqual(made, [], "no connection was made")
+        self.assertEqual([who for who, head in seen if who == "unrelated"], [], "and the unrelated listener received no request, and no token")
+        found[:] = [moved.port]
+        self.assertEqual((c.resolve().error, c.endpoint_stale), (None, False))
+        [again] = c.search(FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1")["observations"]
+        o = again["observation"]
+        self.assertEqual((o["coverage_state"], o["completeness"], o["result_count"], o["page_outcome"]), ("searched_empty", "complete", 0, "exhausted"), "the move to a new address works")
+        self.assertEqual([who for who, head in seen if who == "unrelated"], [])
+
+    def test_a_connection_failure_withdraws_the_addresses_until_the_owners_resolve_succeeds(self):
+        """No failed lookup is needed: the connection that failed is enough. Until the owner's `resolve()` finds the name again (the same address here: still the gateway, now answering),
+        every exchange fails at once with no connection, and nothing looked the name up on its own."""
+        served = []
+
+        def script(s, conn, head, body):
+            served.append(head)
+            if len(served) > 1:   # the first connection is dropped without an answer; every later one is answered
+                s.send(conn, [(0, gateway_answer())])
+        server = self.serve(script)
+        resolve = lookup("127.0.0.1", port=server.port)
+        c = GatewayClient("http://gateway.test:8765", "synthetic-token", resolver=resolve)
+        self.assertEqual(c._exchange("GET", "/v1/jobs/1", None, "synthetic-token"), (None, None, "transport_failure"))
+        self.assertTrue(c.endpoint_stale)
+        made, spying = self.connections()
+        with spying:
+            for _ in range(3):
+                self.assertEqual(c._exchange("GET", "/v1/jobs/1", None, "synthetic-token"), (None, None, "transport_failure"))
+        self.assertEqual((made, len(served), len(resolve.calls)), ([], 1, 1), "no connection and no request while stale, and no lookup made by an exchange")
+        self.assertEqual((c.resolve().error, c.endpoint_stale), (None, False))
+        self.assertEqual(c._exchange("GET", "/v1/jobs/1", None, "synthetic-token")[0], 200)
+        self.assertEqual(len(served), 2)
 
 
 @unittest.skipUnless(shutil.which("openssl"), "a TLS server needs a certificate, which the openssl command line makes")

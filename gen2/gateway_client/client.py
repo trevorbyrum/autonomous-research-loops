@@ -54,11 +54,12 @@ An exchange connects to an address it was handed (an IP literal is its own addre
 beforehand, `GatewayClient.resolve`) and keeps the NAME for the TLS server name and the certificate check.
 The lookup is made at construction (the default transport, a name) and again only when the owner calls
 `resolve()` between operations, which a connection failure invites (`endpoint_stale`); never by an exchange,
-a poll or a search. The time it takes is the CALLER's, outside every exchange's and poll's deadline; the
-client cannot bound it (see `resolve`). The client does not rest on the transport for the rest either: a
-reply that completes after its exchange's budget is a timeout whatever it says (`_exchange`), so a late
-`done` is never a result, for any transport. The
-mechanism is in-process and stdlib-only on purpose: the client has no spawn capability (BOUNDARIES: the
+a poll or a search. A connection failure, or a lookup that finds nothing, withdraws the addresses (2b-repair-16,
+Astra R15-1): no exchange connects, or sends its request and token, until the owner's `resolve()` succeeds. The
+time it takes is the CALLER's, outside every exchange's and poll's deadline; the client cannot bound it (see
+`resolve`). The client does not rest on the transport for the rest either: a reply that completes after its
+exchange's budget is a timeout whatever it says (`_exchange`), so a late `done` is never a result, for any
+transport. The mechanism is in-process and stdlib-only on purpose: the client has no spawn capability (BOUNDARIES: the
 supervisor owns every lifecycle) and a thread cannot be killed, so a worker thread left behind a timed wait
 would be exactly what a deadline must not leave.
 
@@ -292,14 +293,21 @@ class GatewayClient:
 
     @property
     def endpoint_stale(self) -> bool:
-        """True when the gateway's name has no good lookup (the last one failed, or an exchange has failed to connect since): the owner may `resolve()` it again, between operations."""
+        """True when the gateway's name has no good lookup (the last one failed, or an exchange has failed to connect since): no exchange connects to it until the owner's `resolve()` succeeds."""
         return self._stale
+
+    def _withdraw(self) -> None:
+        """The endpoint is stale, and a stale endpoint has no addresses to connect to: both facts change here, together (2b-repair-16, Astra R15-1: a flag no exchange read let a failed re-lookup,
+        or a connection that had failed, keep sending the bearer token to whatever now answers at the old address). `last_resolution` stays as the record of what the last lookup found."""
+        self._stale = True
+        self._resolved.pop(self._origin, None)
 
     def resolve(self) -> Resolution:
         """Look the gateway's name up (again), now: the one place besides the construction where this client resolves a name, and never called by an exchange, a poll or
         a search (2b-repair-15, Astra F2: an exchange that resolves can run past its deadline by the resolver's own time, which cannot be interrupted). A connection failure
-        marks the endpoint stale (`endpoint_stale`) and nothing else; looking again is the OWNER's call, made between operations and before the next exchange's deadline
-        starts. A lookup that finds nothing keeps the addresses the last good one found. The Resolution is returned and kept (`last_resolution`) for the owner to record.
+        withdraws the endpoint's addresses (`endpoint_stale`) and nothing else; looking again is the OWNER's call, made between operations and before the next exchange's deadline
+        starts. A lookup that finds nothing withdraws them too: until a lookup finds addresses, every exchange is a transport failure at once, with no connection made and no request
+        or token sent. The Resolution is returned and kept (`last_resolution`) for the owner to record.
 
         The time this takes is the caller's, and it is NOT bounded here: getaddrinfo cannot be interrupted, and the client may not leave a thread running or start a process
         (BOUNDARIES: the supervisor owns every lifecycle), so whichever call this is made from waits for the resolver. Nothing in gen-2 constructs a GatewayClient or calls
@@ -315,7 +323,9 @@ class GatewayClient:
                 found, error = [], f"{type(e).__name__}: {e}"
         if found:
             self._resolved[self._origin] = found
-        self._stale = bool(error)
+            self._stale = False
+        else:
+            self._withdraw()
         self.last_resolution = Resolution(host, port, tuple(sorted({info[4][0] for info in found})), error, self._monotonic() - began, at)
         return self.last_resolution
 
@@ -332,7 +342,7 @@ class GatewayClient:
         status, resp_headers, raw, error = self._transport(method, self.base_url + path, hdrs, data, budget)
         if status is None:
             if (error or "transport_failure") == "transport_failure" and _literal(*self._origin) is None:
-                self._stale = True   # a connection failure invites a new lookup: the owner's `resolve()`, never made here
+                self._withdraw()   # a connection failure withdraws the addresses and invites a new lookup: the owner's `resolve()`, never made here
             return None, None, error or "transport_failure"
         if self._monotonic() - started > budget:
             return None, None, "timeout"   # a terminal reply that arrives after the deadline is not a result (Astra R13B-1)
