@@ -710,15 +710,16 @@ class XmlAnswers(unittest.TestCase):
         self.assertGreater(runs, 50)
         self.assertEqual(wrong, [], f"{len(wrong)} of {runs}: {wrong[:4]}")
 
-    LISTING = ('<s:Structure xmlns:s="urn:s"><s:Structures><s:Dataflows>%s</s:Dataflows></s:Structures></s:Structure>')
+    LISTING = (f'<m:Structure xmlns:m="{SDMX_NS}" xmlns:s="{SDMX_NS.replace("message", "structure")}" xmlns:c="{SDMX_NS.replace("message", "common")}">'
+               '<m:Structures><s:Dataflows>%s</s:Dataflows></m:Structures></m:Structure>')
 
     def test_a_dataflow_listing_names_its_flows_or_is_unreadable(self):
-        flow = lambda i, name="N": f'<s:Dataflow id="F{i}"><s:Name>{name}</s:Name></s:Dataflow>'   # noqa: E731
+        flow = lambda i, name="N": f'<s:Dataflow id="F{i}"><c:Name>{name}</c:Name></s:Dataflow>'   # noqa: E731
         request = {"request_type": "catalog", "source": "ecb"}
         url = "https://data-api.ecb.europa.eu/service/dataflow/ECB"
         for what, text, want in (("the valid listing", self.LISTING % "".join(flow(i) for i in (1, 2, 3)), ("complete", ["F1", "F2", "F3"])),
                                  ("no flows", self.LISTING % "", ("unobserved", None)),
-                                 ("flows that name nothing", self.LISTING % '<s:Dataflow><s:Name>x</s:Name></s:Dataflow>' * 2, ("unobserved", None)),
+                                 ("flows that name nothing", self.LISTING % '<s:Dataflow><c:Name>x</c:Name></s:Dataflow>' * 2, ("unobserved", None)),
                                  ("one that names nothing", self.LISTING % (flow(1) + "<s:Dataflow/>" + flow(3)), ("complete", ["F1", "F3"])),
                                  ("not XML", "x", ("unobserved", None)), ("another root", "<Foo/>", ("unobserved", None))):
             with self.subTest(what):

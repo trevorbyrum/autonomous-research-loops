@@ -25,11 +25,13 @@ from research_gateway.core.broker import Broker, RatePolicy
 from research_gateway.registry.load import read_seed
 
 HOSTS = {"ecb": "https://data-api.ecb.europa.eu/service", "bis": "https://stats.bis.org/api/v2/structure"}
+SDMX = "http://www.sdmx.org/resources/sdmxml/schemas/v2_1/"   # the namespaces SDMX-ML 2.1 puts a structure message in (core/sdmx.py): a Dataflow is `str:`, its Name `com:`, the root `mes:`
+NS = f'xmlns:mes="{SDMX}message" xmlns:str="{SDMX}structure" xmlns:com="{SDMX}common"'
 
 
 def flow(id_: str, name: str, ref: str, agency: str | None = None, version: str | None = None) -> str:
     attrs = "".join(f' {k}="{v}"' for k, v in (("id", id_), ("agencyID", agency), ("version", version)) if v is not None)
-    return f"<str:Dataflow{attrs}><str:Name>{name}</str:Name><str:Structure>{ref}</str:Structure></str:Dataflow>"
+    return f"<str:Dataflow{attrs}><com:Name>{name}</com:Name><str:Structure>{ref}</str:Structure></str:Dataflow>"
 
 
 def dsd(id_: str, dims: tuple, agency: str = "X", version: str = "1.0") -> str:
@@ -41,7 +43,7 @@ def dsd(id_: str, dims: tuple, agency: str = "X", version: str = "1.0") -> str:
 def message(*parts: str) -> str:
     flows = "".join(p for p in parts if "Dataflow" in p)
     structures = "".join(p for p in parts if "DataStructure" in p and "Dataflow" not in p)
-    return f'<mes:Structure xmlns:mes="x" xmlns:str="y"><str:Dataflows>{flows}</str:Dataflows><str:DataStructures>{structures}</str:DataStructures></mes:Structure>'
+    return f'<mes:Structure {NS}><str:Dataflows>{flows}</str:Dataflows><str:DataStructures>{structures}</str:DataStructures></mes:Structure>'
 
 
 def ref(id_: str, agency: str = "X", version: str = "1.0") -> str:
@@ -99,7 +101,7 @@ class SelectionOfTheFlow(unittest.TestCase):
                     self.named(self.read(flow("F1", "One", ref("S1"), "ECB", "1.0"), other), "F1", "ECB")
 
     def test_only_the_structure_child_of_the_flow_names_its_structure(self):
-        stray = ('<str:Dataflow id="F1" agencyID="ECB"><str:Name>One</str:Name><str:Annotations><str:Annotation><str:AnnotationText>x</str:AnnotationText>'
+        stray = ('<str:Dataflow id="F1" agencyID="ECB"><com:Name>One</com:Name><str:Annotations><str:Annotation><str:AnnotationText>x</str:AnnotationText>'
                  '<Ref id="NOT_A_STRUCTURE"/></str:Annotation></str:Annotations></str:Dataflow>')
         self.assertEqual(self.named(self.read(stray), "F1", "ECB")["structure"], {}, "a Ref that is not under the Structure child is no reference")
         nameless = '<str:Dataflow id="F1"><str:Structure><Ref id="S1"/></str:Structure></str:Dataflow>'
@@ -130,8 +132,8 @@ class BrowseOfTheFlowAskedFor(unittest.TestCase):
 
     def test_a_flow_that_names_no_structure_yields_no_template_and_is_not_guessed_from_its_own_id(self):
         for source in ("ecb", "bis"):
-            for text in (message('<str:Dataflow id="F1"><str:Name>One</str:Name></str:Dataflow>', dsd("F1", ("A", "B"))),
-                         message('<str:Dataflow id="F1"><str:Name>One</str:Name><str:Structure><Ref/></str:Structure></str:Dataflow>', dsd("F1", ("A", "B")))):
+            for text in (message('<str:Dataflow id="F1"><com:Name>One</com:Name></str:Dataflow>', dsd("F1", ("A", "B"))),
+                         message('<str:Dataflow id="F1"><com:Name>One</com:Name><str:Structure><Ref/></str:Structure></str:Dataflow>', dsd("F1", ("A", "B")))):
                 with self.subTest(source=source, text=text[:80]):
                     out = browse(source, text)
                     self.assertEqual(out["entries"], [])
@@ -213,7 +215,7 @@ class ReferencesInTheRequestedFlow(unittest.TestCase):
         """The reference is one `Structure` child of the flow; a flow with two of them states two."""
         for source in ("bis", "ecb"):
             agency = source.upper()
-            text = message(f'<str:Dataflow id="F1" agencyID="{agency}"><str:Name>One</str:Name><str:Structure>{ref("S1", agency)}</str:Structure>'
+            text = message(f'<str:Dataflow id="F1" agencyID="{agency}"><com:Name>One</com:Name><str:Structure>{ref("S1", agency)}</str:Structure>'
                            f'<str:Structure>{ref("S1", agency)}</str:Structure></str:Dataflow>', dsd("S1", ("A", "B"), agency))
             with self.subTest(source=source), self.assertRaises(PayloadError):
                 browse(source, text)

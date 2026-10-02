@@ -289,12 +289,13 @@ class Xml(unittest.TestCase):
         for text in ("<not xml", "", "<html><body/></html>"):
             with self.subTest(text=text), self.assertRaises(PayloadError):
                 S.parse_xml(text, "Structure")
-        self.assertEqual(S.parse_xml(self.TEXT, "Structure", "Other").tag.rsplit("}", 1)[-1], "Structure")
+        self.assertEqual(S.parse_xml(self.TEXT, "Structure", "Other", namespaces=("x",)).tag.rsplit("}", 1)[-1], "Structure")
 
     def test_an_element_is_read_by_attribute_text_name_and_descendant(self):
-        spec = S.obj({"@*": S.table(S.text()), "**Flow": S.own(S.obj({"%": S.text(), "@id": S.text(), "@agencyID": S.text(), "Name": S.own(S.obj({"#": S.text()})),
-                                                                   "Ref": S.own(S.obj({"@*": S.table(S.text())})), "*": S.own(S.obj({"%": S.text()}))}))})
-        got = S.decode("t", spec, S.parse_xml(self.TEXT, "Structure"))
+        in_y = lambda spec: S.in_ns(spec, "y")   # noqa: E731  (the fixture's vocabulary: the root is `x`, everything inside it `y`)
+        spec = S.obj({"@*": S.table(S.text()), "**Flow": in_y(S.own(S.obj({"%": S.text(), "@id": S.text(), "@agencyID": S.text(), "Name": in_y(S.own(S.obj({"#": S.text()}))),
+                                                                          "Ref": in_y(S.own(S.obj({"@*": S.table(S.text())}))), "*": in_y(S.own(S.obj({"%": S.text()})))})))})
+        got = S.decode("t", spec, S.parse_xml(self.TEXT, "Structure", namespaces=("x",)))
         flows = got["**Flow"]
         self.assertEqual([(f["%"], f["@id"], f["@agencyID"]) for f in flows], [("Flow", "F1", "A"), ("Flow", "F2", None)])
         self.assertEqual([n["#"] for n in flows[0]["Name"]], ["One", "Uno"])
@@ -302,14 +303,17 @@ class Xml(unittest.TestCase):
         self.assertEqual([c["%"] for c in flows[0]["*"]], ["Name", "Name", "Ref"])
         self.assertEqual((flows[1]["Name"], flows[1]["*"]), ([], []), "no such child: an empty list")
 
-    def test_an_elements_text_split_by_a_child_is_unreadable_not_its_first_chunk(self):
-        """ElementTree keeps `x` of `<Name>x<b/>y</Name>` as the element's text and `y` as the child's tail; reading `#` as `x` alone drops `y` silently (2b-repair-13c, the XML opener inventory)."""
+    def test_an_element_that_holds_a_child_has_no_scalar_text_whatever_the_child_holds(self):
+        """ElementTree keeps `x` of `<Name>x<b/>y</Name>` as the element's text and `y` as the child's tail; `#` as `x` alone dropped `y` silently (2b-repair-13c), and, as the tail was all it
+        looked at, `<Name>x<b>y</b></Name>` read as `x` and `<Name><b>y</b></Name>` as nothing (2b-repair-14, Astra R13C-3). Any child element, with or without text of its own or a tail, is
+        refused; tests/test_xml_interpretation.py ScalarText holds the family, including the declared exception (`#own`)."""
         spec = S.obj({"Name": S.own(S.obj({"#": S.text()}))})
-        for text in ("<a><Name>First<b/>Second</Name></a>", "<a><Name><b/>tail</Name></a>", "<a><Name>x<b>inner</b>\n  y</Name></a>"):
+        for text in ("<a><Name>First<b/>Second</Name></a>", "<a><Name><b/>tail</Name></a>", "<a><Name>x<b>inner</b>\n  y</Name></a>", "<a><Name>x<b>y</b></Name></a>",
+                     "<a><Name><b>hidden</b></Name></a>", "<a><Name><b/>  \n </Name></a>", "<a><Name>x<b/>  </Name></a>", "<a><Name>x<b/></Name></a>"):
             with self.subTest(text=text), self.assertRaises(PayloadError):
                 S.decode("t", spec, S.parse_xml(text, "a"))
         for text, want in (("<a><Name>First</Name></a>", ["First"]), ("<a><Name>First<!-- c --></Name></a>", ["First"]), ("<a><Name>First<![CDATA[ Second]]></Name></a>", ["First Second"]),
-                           ("<a><Name><b/>  \n </Name></a>", [None]), ("<a><Name/></a>", [None]), ("<a><Name>x<b/>  </Name></a>", ["x"])):
+                           ("<a><Name/></a>", [None])):
             with self.subTest(text=text):
                 self.assertEqual([n["#"] for n in S.decode("t", spec, S.parse_xml(text, "a"))["Name"]], want)
 

@@ -22,6 +22,17 @@ import re
 from . import schema as S
 from .payload import MemberList, PayloadError, is_unreadable
 
+# The vocabulary supported: SDMX-ML 2.1 (the message, common and structure namespaces; the generic data namespace), and the elements SDMX 2.1 itself declares unqualified. A message in any
+# other namespace — another SDMX-ML version, another vocabulary that happens to name an element `Dataflow` — is an unreadable answer (core/schema.py: an expanded name is its namespace
+# URI and its local name; a prefix is only a spelling). The URIs are from SDMXMessage.xsd, SDMXCommon.xsd and SDMXCommonReferences.xsd of SDMX 2.1 (xml.sdmx.org/2.1).
+_SDMX_21 = "http://www.sdmx.org/resources/sdmxml/schemas/v2_1/"
+NS_MESSAGE, NS_COMMON, NS_STRUCTURE = _SDMX_21 + "message", _SDMX_21 + "common", _SDMX_21 + "structure"
+NS_DATA_GENERIC = _SDMX_21 + "data/generic"
+UNQUALIFIED = S.UNQUALIFIED
+# The unqualified forms, and why each is kept (a reviewed list, held by tests/test_xml_interpretation.py):
+#   Ref, URN   SDMXCommonReferences.xsd declares both `form="unqualified"` wherever a reference is made.
+#   Series, Obs  a structure-specific data message (StructureSpecificData) declares its Series and Obs local elements unqualified, in a namespace of the data structure's own for the DataSet;
+#                a generic data message qualifies them (NS_DATA_GENERIC). The reader reads the structure-specific form's attributes (`TIME_PERIOD`, `OBS_VALUE`).
 ATTRIBUTES = S.table(S.text())   # `"@*"`: every attribute of an element, as text
 
 # ---------------------------------------------------------------- SDMX-JSON data messages
@@ -38,13 +49,16 @@ JSON_MESSAGE = S.obj({**_PLACE, "data": S.obj(_PLACE)}, alts=(("structure", "str
 
 # ---------------------------------------------------------------- SDMX-ML data messages (BIS)
 OBSERVATION = S.obj({"@*": ATTRIBUTES, "@TIME_PERIOD": S.text(), "@OBS_VALUE": S.text()})
-SERIES_XML = S.obj({"@*": ATTRIBUTES, "Obs": S.own(OBSERVATION)})
-HEADER_CHILD = S.obj({"%": S.text(), "#": S.text(), "@*": ATTRIBUTES})
-XML_MESSAGE = S.obj({"@*": ATTRIBUTES, "**Header": S.own(S.obj({"*": S.own(HEADER_CHILD)})), "**Structure": S.own(S.obj({"@*": ATTRIBUTES})),
-                     "**Series": S.members(SERIES_XML)})
+SERIES_XML = S.obj({"@*": ATTRIBUTES, "Obs": S.in_ns(S.own(OBSERVATION), UNQUALIFIED, NS_DATA_GENERIC)})
+# a header entry is kept as its own leading text, or its attributes when it has none (`<Sender id="BIS"><Name>..</Name></Sender>` is its id): its children are stored with the message and read by nothing here
+HEADER_CHILD = S.obj({"%": S.text(), "#own": S.text(), "@*": ATTRIBUTES})
+XML_MESSAGE = S.obj({"@*": ATTRIBUTES, "**Header": S.in_ns(S.own(S.obj({"*": S.in_ns(S.own(HEADER_CHILD), NS_MESSAGE)})), NS_MESSAGE),
+                     "**Structure": S.in_ns(S.own(S.obj({"@*": ATTRIBUTES})), NS_MESSAGE, NS_COMMON),   # the header's `message:Structure` and the `common:Structure` inside it
+                     "**Series": S.in_ns(S.members(SERIES_XML), UNQUALIFIED, NS_DATA_GENERIC)})
 
 # ---------------------------------------------------------------- SDMX-ML structure messages
-FLOW_NAMES = S.obj({"**Dataflow": S.own(S.obj({"@id": S.text(), "@agencyID": S.text(), "@version": S.text(), "Name": S.own(S.obj({"#": S.text()}))}))})
+FLOW_NAMES = S.obj({"**Dataflow": S.in_ns(S.own(S.obj({"@id": S.text(), "@agencyID": S.text(), "@version": S.text(),
+                                                       "Name": S.in_ns(S.own(S.obj({"#": S.text()})), NS_COMMON)})), NS_STRUCTURE)})
 _URN = re.compile(r"^urn:sdmx:org\.sdmx\.infomodel\.datastructure\.DataStructure=([^:()]+):([^:()]+)\(([^()]+)\)$")
 
 
@@ -84,11 +98,11 @@ def _reference(rec) -> dict:
     return dict(refs[0]) if refs else {}
 
 
-FLOW_BINDING = S.obj({"@id": S.text(), "@agencyID": S.text(), "@version": S.text(), "Name": S.own(S.obj({"#": S.text()})),
-                      "Structure": S.own(S.obj({"Ref": S.own(S.obj({"@*": ATTRIBUTES})), "URN": S.own(S.obj({"#": S.text()}))}))},
+FLOW_BINDING = S.obj({"@id": S.text(), "@agencyID": S.text(), "@version": S.text(), "Name": S.in_ns(S.own(S.obj({"#": S.text()})), NS_COMMON),
+                      "Structure": S.in_ns(S.own(S.obj({"Ref": S.own(S.obj({"@*": ATTRIBUTES})), "URN": S.own(S.obj({"#": S.text()}))})), NS_STRUCTURE)},   # Ref and URN: unqualified (above)
                      rule=_reference)
-DATA_STRUCTURES = S.obj({"**DataStructure": S.own(S.obj({"@id": S.text(), "@agencyID": S.text(), "@version": S.text(),
-                                                         "**Dimension": S.own(S.obj({"@id": S.text(), "@position": S.text()}))}))})
+DATA_STRUCTURES = S.obj({"**DataStructure": S.in_ns(S.own(S.obj({"@id": S.text(), "@agencyID": S.text(), "@version": S.text(),
+                                                                 "**Dimension": S.in_ns(S.own(S.obj({"@id": S.text(), "@position": S.text()})), NS_STRUCTURE)})), NS_STRUCTURE)})
 SCHEMAS = {"json": JSON_MESSAGE, "xml": XML_MESSAGE, "flows": FLOW_NAMES, "flow": FLOW_BINDING, "structures": DATA_STRUCTURES}
 
 
@@ -169,7 +183,7 @@ def series_reader(msg):
 # ---------------------------------------------------------------- SDMX-ML readers
 def data_xml(source_id: str, answer):
     """The decoded SDMX-ML data message (StructureSpecificData or GenericData); `answer` is the client's response (opened by the decoder) or its text."""
-    return S.decode(source_id, XML_MESSAGE, S.parse_xml(answer, "StructureSpecificData", "GenericData"))
+    return S.decode(source_id, XML_MESSAGE, S.parse_xml(answer, "StructureSpecificData", "GenericData", namespaces=(NS_MESSAGE,)))
 
 
 def series_xml(msg) -> MemberList:
@@ -193,16 +207,16 @@ def context_xml(msg) -> dict:
     """The SDMX-ML message context: header fields and the structure reference (I-8, D-25)."""
     out: dict = {"root_attributes": dict(msg["@*"])}
     for header in msg["**Header"]:
-        out["header"] = {c["%"]: (c["#"] or "").strip() or dict(c["@*"]) for c in header["*"]}   # the last Header element wins
+        out["header"] = {c["%"]: (c["#own"] or "").strip() or dict(c["@*"]) for c in header["*"]}   # the last Header element wins
     for st in msg["**Structure"]:
         out["structure"] = dict(st["@*"])
     return out
 
 
 def flows(source_id: str, answer) -> list[dict]:
-    """SDMX structure XML → one entry per Dataflow element, in document order: {id, agency, version, label}. Namespace-agnostic like the rest of this module. `label` is
+    """SDMX-ML 2.1 structure XML → one entry per Dataflow element, in document order: {id, agency, version, label}; an element in another namespace is another vocabulary's (PayloadError). `label` is
     the flow's own `Name` child (its id when it has none). Nothing is taken from another element of the message."""
-    decoded = S.decode(source_id, FLOW_NAMES, S.parse_xml(answer, "Structure"))
+    decoded = S.decode(source_id, FLOW_NAMES, S.parse_xml(answer, "Structure", namespaces=(NS_MESSAGE,)))
     return [{"id": f["@id"], "agency": f["@agencyID"], "version": f["@version"], "label": next((n["#"] for n in f["Name"] if n["#"]), None) or f["@id"], "element": f.raw}
             for f in decoded["**Dataflow"]]
 
@@ -242,7 +256,7 @@ def dimensions_xml(source_id: str, answer, structure_: dict) -> list[str]:
     """The dimension ids of ONE data structure IN KEY ORDER: the one `structure_` names (its `id`, and its `agencyID` and `version` when the reference states them). A message may
     hold many (a wildcard query, a `references=descendants` answer): their dimensions are theirs, never this one's. [] when the message holds none of that structure. A
     reference that more than one structure of the message answers to, with different dimensions, does not say which is meant: PayloadError."""
-    decoded = S.decode(source_id, DATA_STRUCTURES, S.parse_xml(answer, "Structure"))
+    decoded = S.decode(source_id, DATA_STRUCTURES, S.parse_xml(answer, "Structure", namespaces=(NS_MESSAGE,)))
     found = [el for el in decoded["**DataStructure"]
              if all(el["@" + k] == structure_[k] for k in ("id", "agencyID", "version") if structure_.get(k) is not None)]
     answers = {tuple(_dimension_ids(el)) for el in found}

@@ -17,7 +17,7 @@ ruling, is tests/test_openers.py; it fails on a parse call that is not listed.
   XML   (XML 1.0)    well-formedness is expat's, and strict; the bytes are UTF-8 and read as that — an invalid byte is an error, not U+FFFD, and a declaration of any other
                      encoding is refused rather than ignored; the declaration's version must be `1.` and digits (§2.8: expat reads `2.0`, `1` and `abc`); a document type
                      declaration is refused (the supported messages have none, and an external subset or a parameter entity would be skipped without a word, §4.4.3); nesting
-                     deeper than MAX_DEPTH is refused. Namespace URIs are not part of this layer: the schemas in core/sdmx.py name elements by local name.
+                     deeper than MAX_DEPTH is refused. Namespaces are not this layer's: it returns the tree with each tag `{uri}local`, and the decoder (core/schema.py) holds a field to the namespaces it names.
   CSV   (RFC 4180)   a quoted field must be closed (§2.7) and be followed by a comma or the end of the line (§2.6); a quote may not appear inside an unquoted field (§2.5); a
                      carriage return is half of CRLF or it is refused (§2.1); UTF-8 only. Accepted, and why: a line ending of LF alone and a last line with no ending (de
                      facto, and no reading of either is ambiguous); a blank line (no record — what the csv module and every dump reader does); a field of any Unicode text

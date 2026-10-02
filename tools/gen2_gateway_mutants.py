@@ -754,7 +754,7 @@ MUTANTS: list[Mutant] = [
            ('tests.test_present_means_typed.Records.test_control_the_fields_that_are_right_are_kept_and_nothing_is_nothing',)),
     # R8-3: the closed import inventory
     Mutant("R9-parser-re-exported-by-the-client", "the client binds a JSON parser at module level, which an adapter can import from it", BASE,
-           "import email.utils\nimport ipaddress\nimport re\n", "import email.utils\nimport ipaddress\nimport json\nimport re\n",
+           "import email.utils\nimport http.client\nimport ipaddress\nimport re\n", "import email.utils\nimport http.client\nimport ipaddress\nimport json\nimport re\n",
            (MI + "Imports.test_the_client_has_no_parser_to_re_export_and_exports_no_module",),
            (MI + "Imports.test_every_other_form_an_import_can_take_is_refused_or_analysed",)),
     Mutant("R9-adapter-imports-by-__import__", "an adapter imports a module by __import__, which no import check can read", "research_gateway/adapters/openaire.py",
@@ -907,3 +907,8 @@ MUTANTS.extend(_opaque_mutants(Mutant))
 from gen2_gateway_transport_mutants import build as _transport_mutants  # noqa: E402
 
 MUTANTS.extend(_transport_mutants(Mutant))
+
+# 2b-repair-14: XML interpretation (tools/gen2_gateway_xml_mutants.py)
+from gen2_gateway_xml_mutants import build as _xml_mutants  # noqa: E402
+
+MUTANTS.extend(_xml_mutants(Mutant))

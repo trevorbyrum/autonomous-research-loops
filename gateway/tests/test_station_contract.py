@@ -18,6 +18,8 @@ from research_gateway.core.payload import plain
 from research_gateway.registry.load import read_seed
 from tests.test_adapters_articles import CROSSREF_WORK
 
+SDMX = "http://www.sdmx.org/resources/sdmxml/schemas/v2_1/"   # the namespaces SDMX-ML 2.1 puts a structure message in (core/sdmx.py)
+
 SEED = read_seed()
 ADAPTERS = adapters.load_all()
 
@@ -664,10 +666,10 @@ class CatalogDiscovery(unittest.TestCase):
         out = ADAPTERS["bls"].catalog(c, within="LN")
         self.assertEqual(out["entries"][0]["data_request"]["arguments"]["params"], {"series": "LNS14000000"})
 
-    SDMX_FLOWS = ('<mes:Structure xmlns:mes="x" xmlns:str="y"><str:Dataflow id="EXR">'
-                  '<str:Name>Exchange Rates</str:Name><str:Structure><Ref id="ECB_EXR1"/></str:Structure>'
+    SDMX_FLOWS = (f'<mes:Structure xmlns:mes="{SDMX}message" xmlns:str="{SDMX}structure" xmlns:com="{SDMX}common"><str:Dataflow id="EXR">'
+                  '<com:Name>Exchange Rates</com:Name><str:Structure><Ref id="ECB_EXR1"/></str:Structure>'
                   '</str:Dataflow></mes:Structure>')
-    SDMX_DSD = ('<mes:Structure xmlns:mes="x" xmlns:str="y"><str:DataStructures><str:DataStructure id="ECB_EXR1"><str:DataStructureComponents>'
+    SDMX_DSD = (f'<mes:Structure xmlns:mes="{SDMX}message" xmlns:str="{SDMX}structure" xmlns:com="{SDMX}common"><str:DataStructures><str:DataStructure id="ECB_EXR1"><str:DataStructureComponents>'
                 '<str:DimensionList><str:Dimension id="FREQ" position="1"/><str:Dimension id="CURRENCY" position="2"/>'
                 '</str:DimensionList></str:DataStructureComponents></str:DataStructure></str:DataStructures></mes:Structure>')   # a dimension belongs to a data structure
 
@@ -693,10 +695,10 @@ class CatalogDiscovery(unittest.TestCase):
                        + "".join(f'<str:Dimension id="{d}" position="{n}"/>' for n, d in enumerate(dims, 1))
                        + (f'<str:TimeDimension id="{t}" position="{len(dims) + 1}"/>' if t else "") + "</str:DimensionList></str:DataStructureComponents></str:DataStructure>"
                        for i, a, v, dims, t in specs)
-        return f'<mes:Structure xmlns:mes="x" xmlns:str="y"><str:DataStructures>{body}</str:DataStructures></mes:Structure>'
+        return f'<mes:Structure xmlns:mes="{SDMX}message" xmlns:str="{SDMX}structure" xmlns:com="{SDMX}common"><str:DataStructures>{body}</str:DataStructures></mes:Structure>'
 
     def browse(self, source: str, message: str, ref: str = '<Ref id="S_EXR" agencyID="ECB" version="1.0"/>'):
-        flows = ('<mes:Structure xmlns:mes="x" xmlns:str="y"><str:Dataflow id="EXR"><str:Name>Exchange Rates</str:Name>'
+        flows = (f'<mes:Structure xmlns:mes="{SDMX}message" xmlns:str="{SDMX}structure" xmlns:com="{SDMX}common"><str:Dataflow id="EXR"><com:Name>Exchange Rates</com:Name>'
                  f'<str:Structure>{ref}</str:Structure></str:Dataflow></mes:Structure>')
         c, t = self._client()
         base = {"ecb": "https://data-api.ecb.europa.eu/service", "bis": "https://stats.bis.org/api/v2/structure"}[source]
@@ -852,7 +854,7 @@ class CatalogReviewPins(unittest.TestCase):
         with self.assertRaises(PayloadError, msg="an unparseable structure is an unreadable answer (task 2b)"):
             ADAPTERS["ecb"].catalog(c)
         t.routes.clear()
-        t.add("GET", "https://data-api.ecb.europa.eu/service/dataflow/ECB", body='<mes:Structure xmlns:mes="x"/>')
+        t.add("GET", "https://data-api.ecb.europa.eu/service/dataflow/ECB", body='<mes:Structure xmlns:mes="http://www.sdmx.org/resources/sdmxml/schemas/v2_1/message"/>')
         out = ADAPTERS["ecb"].catalog(c)
         self.assertIn("no dataflows", out.get("capability_fact") or "", "a readable structure listing nothing is still no catalogue")
 

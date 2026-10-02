@@ -208,7 +208,7 @@ class TheDecoderOnlyEverRaisesPayloadError(Channel):
                  "structures": (sdmx.DATA_STRUCTURES, structure, ("Structure",), None), "flow (one dataflow's binding)": (sdmx.FLOW_BINDING, structure, ("Structure",), "Dataflow")}
         runs = 0
         for name, (spec, text, roots, within) in cases.items():
-            base = S.parse_xml(text, *roots)
+            base = S.parse_xml(text, *roots, namespaces=(sdmx.NS_MESSAGE,))
             if within:
                 base = next(e for e in base.iter() if e.tag.rsplit("}", 1)[-1] == within)
             S.decode("t", spec, base)   # the control: the valid message decodes
@@ -255,7 +255,7 @@ class TheDecoderOnlyEverRaisesPayloadError(Channel):
                 for body in (raw[:k], raw[:k] + b"\xff" + raw[k:]):
                     with self.subTest(schema=name, offset=k):
                         try:
-                            S.decode("t", spec, S.parse_xml(Response(200, {}, body, "u"), *roots))
+                            S.decode("t", spec, S.parse_xml(Response(200, {}, body, "u"), *roots, namespaces=(sdmx.NS_MESSAGE,)))
                         except PayloadError:
                             pass
                         except Exception as e:

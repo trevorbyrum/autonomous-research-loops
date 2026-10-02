@@ -448,14 +448,14 @@ class ByteCorruption(unittest.TestCase):
 
     def test_xml_every_corruption_is_a_payload_error_from_parse_xml(self):
         good = b'<?xml version="1.0" encoding="UTF-8"?><m:Structure xmlns:m="urn:x"><m:Dataflow id="F" agencyID="A"><m:Name>caf\xc3\xa9</m:Name></m:Dataflow></m:Structure>'
-        self.assertEqual(S.parse_xml(Response(200, {}, good, "u"), "Structure").tag.rsplit("}", 1)[-1], "Structure", "control")
+        self.assertEqual(S.parse_xml(Response(200, {}, good, "u"), "Structure", namespaces=("urn:x",)).tag.rsplit("}", 1)[-1], "Structure", "control")
         corrupt = {"a version of 2.0": good.replace(b'"1.0"', b'"2.0"'), "an invalid byte in the text": good.replace(b"caf\xc3\xa9", b"caf\xff"), "a declared encoding that is not the bytes'": good.replace(b"UTF-8", b"ISO-8859-1"),
                    "an encoding nobody knows": good.replace(b"UTF-8", b"NOPE-9"), "a DOCTYPE": good.replace(b"<m:Structure", b'<!DOCTYPE m:Structure [<!ENTITY e "x">]><m:Structure', 1),
                    "a duplicate attribute": good.replace(b'id="F"', b'id="F" id="G"'), "a mismatched tag": good.replace(b"</m:Name>", b"</m:Nam>"), "text after the root": good + b"junk",
                    "UTF-16": good.decode().replace("UTF-8", "UTF-16").encode("utf-16"), "nesting past the bound": b"<Structure>" + b"<a>" * 70 + b"</a>" * 70 + b"</Structure>"}
         for name, body in corrupt.items():
             with self.subTest(name), self.assertRaises(PayloadError):
-                S.parse_xml(Response(200, {}, body, "u"), "Structure")
+                S.parse_xml(Response(200, {}, body, "u"), "Structure", namespaces=("urn:x", S.UNQUALIFIED))
 
     def test_xml_every_proper_prefix_of_a_document_is_refused(self):
         document = b'<?xml version="1.0"?><m:Structure xmlns:m="urn:x"><m:Dataflow id="F"><m:Name>x</m:Name></m:Dataflow></m:Structure>'

@@ -31,9 +31,18 @@ declared, so all are decoded before the adapter can choose, and what an adapter 
 A field declared `any_()` is metadata: it is handed over as a `Passive`, which can be stored and never read (core/payload.py). Whatever identifies, selects,
 ends or continues anything, or goes into a request, is declared a kind.
 
-SDMX-ML is decoded by the same decoder: an `obj` applied to an ElementTree element reads `"@name"` as an attribute, `"@*"` as all of them,
-`"#"` as its text (an element whose text is split by child elements has none: unreadable, not its first chunk), `"%"` as its own local name, `"name"` as the list of its child elements of that local name, `"*"` as the list of all its children
-and `"**name"` as the list of every descendant of it that is called that.
+XML (SDMX-ML) is decoded by the same decoder: an `obj` applied to an ElementTree element reads `"@name"` as an attribute (an unqualified one: no namespace), `"@*"` as all of them,
+`"#"` as its text, `"%"` as its own local name, `"name"` as the list of its child elements of that local name, `"*"` as the list of all its children and `"**name"` as the list of every
+descendant of it that is called that. Two rules keep an XML field's meaning whole (task 2b-repair-14; Astra F2):
+
+  * A SCALAR HAS A LOSSLESS MEANING. `"#"` is the text of an element that holds no child element: one that holds any — text before it, between, after it or inside it — has no scalar text,
+    and reading it is a PayloadError, never its first chunk (`<a>x<b>y</b></a>` is not `x`). A field that means only the element's own leading text, its children kept elsewhere or not at
+    all, says so by name: `"#own"`.
+  * A NAME IS AN EXPANDED NAME. An element is its namespace URI and its local name. A field names the namespaces its elements are read from (`in_ns(spec, *uris)`; the default is no
+    namespace, `UNQUALIFIED`, which is a declaration as much as any URI is), and an element of the right local name in any other namespace is not skipped as though absent: it is a PayloadError,
+    the answer being another vocabulary than the one supported. An element of another local name is not read, and is not this decoder's concern. The root is held to the same rule
+    (`parse_xml(..., namespaces=...)`). A prefix is only a spelling: a different prefix bound to an approved URI is the same name. No schema language is implemented: the declarations are the
+    vocabulary's lists of names (core/sdmx.py), nothing is validated that no field reads, and a document the supported vocabulary does not describe is outside the contract.
 """
 from __future__ import annotations
 
@@ -46,6 +55,7 @@ from . import wire
 from .payload import MEMBER_ERRORS, MemberList, Passive, PayloadError, Rec, Sealed, SealedAnswer, UndeclaredRead, Unreadable
 
 MISSING = object()
+UNQUALIFIED = ""   # in a namespace list: an element that is in no namespace
 
 
 @dataclass(frozen=True)
@@ -61,6 +71,7 @@ class Spec:
     bare: bool = False               # a non-empty object stands for a list of one (BEA's habit)
     rule: Callable | None = None     # obj: called with the decoded Rec; raises PayloadError when its fields contradict one another
     alts: tuple = ()                 # obj: groups of field names that are alternatives of one another
+    ns: tuple = (UNQUALIFIED,)       # XML: the namespaces the elements this field names are read from (UNQUALIFIED: none)
 
 
 # ------------------------------------------------------------------ leaves
@@ -194,6 +205,14 @@ def by(tag: str, variants: dict, other: Spec | None = None) -> Spec:
 
 def required(spec: Spec) -> Spec:
     return replace(spec, required=True)
+
+
+def in_ns(spec: Spec, *uris: str) -> Spec:
+    """`spec`, for an XML field whose elements are in one of these namespaces (UNQUALIFIED: in none): the vocabulary a message is supported in. An element the field's name matches in any
+    other namespace is a PayloadError, not an absent field."""
+    if not uris or not all(isinstance(u, str) for u in uris):
+        raise ValueError("in_ns names at least one namespace, each a URI (UNQUALIFIED for none)")
+    return replace(spec, ns=tuple(uris))
 
 
 def never_null(spec: Spec) -> Spec:
@@ -431,8 +450,22 @@ def _local(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
 
 
-def _read(v, name: str):
-    """The raw value of the declared field `name` of `v` (a JSON object or an element), MISSING when it is not there."""
+def _uri(tag: str) -> str:
+    return tag[1:tag.index("}")] if tag.startswith("{") else UNQUALIFIED
+
+
+def _belongs(element, ns: tuple, at: tuple) -> bool:
+    """True when `element` is in one of the namespaces `ns`; a PayloadError when it is not: an element called what the schema reads, in a namespace the operation does not read it from, is
+    another vocabulary's — never a field that is not there."""
+    uri = _uri(element.tag)
+    if uri not in ns:
+        listed = ", ".join(repr(n) if n else "no namespace" for n in ns)
+        raise PayloadError(f"{_where(at)}: an element {_local(element.tag)!r} in {repr(uri) if uri else 'no namespace'}, where this operation reads it from {listed} (another vocabulary than the supported one)")
+    return True
+
+
+def _read(v, name: str, ns: tuple = (UNQUALIFIED,), at: tuple = ()):
+    """The raw value of the declared field `name` of `v` (a JSON object or an element), MISSING when it is not there. For an element, `ns` are the namespaces the field's elements are in."""
     if isinstance(v, dict):
         return v.get(name, MISSING)
     if name == "@*":
@@ -440,17 +473,19 @@ def _read(v, name: str):
     if name == "%":
         return _local(v.tag)
     if name == "#":
-        if any((child.tail or "").strip() for child in v):   # `<a>x<b/>y</a>`: ElementTree keeps "x" as a's text and "y" as b's tail; reading "x" alone would drop "y" without a word
-            raise PayloadError("an element's text is split by child elements: it has no single text to read")
+        if len(v):   # `<a>x<b/>y</a>`, `<a>x<b>y</b></a>`, `<a><b>y</b></a>`: reading "x" or nothing would drop what is inside or after the child without a word
+            raise PayloadError(f"{_where(at)}: an element that holds child elements has no scalar text to read (a field that means only its own leading text is declared '#own')")
         return v.text if v.text is not None else MISSING
+    if name == "#own":
+        return v.text if v.text is not None else MISSING   # declared: the text before the first child, the children being no part of what this field says
     if name == "*":
-        return list(v) or MISSING
+        return [c for c in v if _belongs(c, ns, at)] or MISSING
     if name.startswith("@"):
         return v.attrib.get(name[1:], MISSING)
     if name.startswith("**"):
-        found = [d for d in v.iter() if d is not v and _local(d.tag) == name[2:]]
+        found = [d for d in v.iter() if d is not v and _local(d.tag) == name[2:] and _belongs(d, ns, at)]
     else:
-        found = [c for c in v if _local(c.tag) == name]
+        found = [c for c in v if _local(c.tag) == name and _belongs(c, ns, at)]
     return found or MISSING
 
 
@@ -469,7 +504,7 @@ def _decode_obj(s: Spec, v, at: tuple) -> Rec:
             prefixes, leaf = fs.of
             values[name] = {k: _decode(leaf, x, at + (k,)) for k, x in (v.items() if isinstance(v, dict) else ()) if isinstance(k, str) and k.startswith(prefixes)}
         else:
-            values[name] = _field(fs, _read(v, name), at + (name,), v)
+            values[name] = _field(fs, _read(v, name, fs.ns, at + (name,)), at + (name,), v)
     rec = Rec(values, v)
     if s.rule is not None:
         _ruled(s.rule, rec, at)
@@ -555,15 +590,16 @@ def _empty(fs: Spec):
 
 
 # ------------------------------------------------------------------ SDMX-ML
-def parse_xml(answer, *roots: str) -> ET.Element:
-    """The parsed message, whose root must be one of `roots`: unparseable XML, or a document that is not a message of that kind, is an unreadable answer. `answer`
-    is the client's response (its bytes are opened here, as for `decode`) or text."""
+def parse_xml(answer, *roots: str, namespaces: tuple = (UNQUALIFIED,)) -> ET.Element:
+    """The parsed message, whose root must be one of `roots`, in one of `namespaces`: unparseable XML, a document that is not a message of that kind and one in another vocabulary
+    (the same local name, another namespace URI) are an unreadable answer. `answer` is the client's response (its bytes are opened here, as for `decode`) or text."""
     try:
         root = wire.open_xml(_bytes_or_text(answer))
     except wire.Malformed as e:
         raise PayloadError(f"unparseable SDMX-ML ({type(e).__name__}: {e})") from None
     if _local(root.tag) not in roots:
         raise PayloadError(f"an SDMX answer rooted at {_local(root.tag)!r}, not {' or '.join(roots)}")
+    _belongs(root, namespaces, ())
     return root
 
 
