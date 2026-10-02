@@ -11,6 +11,7 @@ ruling for each, against RFC 8259, XML 1.0 and RFC 4180). The mutants here remov
                 and a column the schema reads is not named twice;
   O-snapshot-*  a line of the OpenAlex snapshot that is not JSON fails the load;
   O-count-*     the call log's count is read by the same opener as the decoder's;
+  O-retry-after-*  a Retry-After header is `delay-seconds` or an HTTP-date, not whatever `float()` reads;
   O-a-parser-*  a parse call outside core/wire.py fails the inventory.
 
 A killer must FAIL in its assertions, not error (tools/gen2_gateway_mutations.py). A control takes the accepted path through the same code.
@@ -91,6 +92,11 @@ def build(Mutant) -> list:
                "        j = _open_json(resp._body) if resp.ok and resp._body else None\n    except Malformed:\n",
                '        j = __import__("json").loads(resp._body) if resp.ok and resp._body else None\n    except ValueError:\n',
                (JSON_FAMILY,), (BC + "test_json_every_proper_prefix_of_a_document_is_refused",)),
+        Mutant("O-retry-after-is-read-by-float", "a Retry-After of `inf`, `nan`, `-5`, `1e3` or `1_0` is a delay (the header was read with `float()`)", BASE,
+               "        if v.isascii() and v.isdigit():\n            try:\n                return float(int(v))\n            except (ValueError, OverflowError):   # more digits than int() converts, or more seconds than a double holds\n                return None\n",
+               "        try:\n            return float(v)\n        except ValueError:\n            pass\n",
+               (OP + "HeaderOpeners.test_retry_after_is_delay_seconds_or_an_http_date_and_nothing_else", OP + "HeaderOpeners.test_a_retry_after_that_is_not_a_delay_opens_no_breaker_of_its_own"),
+               ("tests.test_broker.FromRows.test_retry_after_http_date_and_no_shortening", "tests.test_core_foundations.MeteredClient.test_retry_after_is_honoured")),
         Mutant("O-a-parser-outside-wire", "the decoder parses JSON with the library itself again", SCHEMA,
                ("from . import wire\n", "        return wire.open_json(body)\n"), ("import json\nfrom . import wire\n", "        return json.loads(body)\n"),
                (INV + "test_every_parse_call_in_the_gateway_is_listed_with_its_class", JSON_FAMILY), (INV + "test_control_the_scan_finds_a_parser_however_it_is_imported",)),

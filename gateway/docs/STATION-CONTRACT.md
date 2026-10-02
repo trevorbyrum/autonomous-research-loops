@@ -143,7 +143,8 @@ is never conflated with "not searched" or "unavailable":
   4180): a quoted field must be closed and followed by a comma or the end of the line, no quote inside an unquoted field, a carriage return is half of CRLF, a cell is at most
   131,072 characters, and a header that names a column the schema reads twice is refused (a column nothing reads may repeat); LF-only line ends, a last line with no ending, a
   blank line, short rows and extra cells are accepted as they always were. Malformed input is a `PayloadError` (the answer is unreadable), never a successful shorter or empty
-  one. The OpenAlex snapshot reader opens its JSON lines through the same opener, and a line that is not JSON fails the load naming the file and line (it was skipped).
+  one. The OpenAlex snapshot reader opens its JSON lines through the same opener, and a line that is not JSON fails the load naming the file and line (it was skipped). The HTTP headers the
+  gateway decides from are openers too: `Link` is strict (RFC 8288), and `Retry-After` is an HTTP-date or `delay-seconds` (ASCII digits), no longer whatever `float()` reads — `inf` held a breaker open for ever.
   `tests/test_openers.py` lists every parse call in the gateway and fails on one that is not classified. A truncation that ends exactly at a record's end is a well-formed
   shorter CSV: nothing in the format marks the end, and the transport's own length framing is what detects a short body. A schema may say a field is `never_null` where an operation's contract tells a field LEFT OUT from one sent
   null (Semantic Scholar's `data`: omitted beside `total: 0` is a search that matched nothing; null is unreadable). A Dataflow's structure reference is validated over

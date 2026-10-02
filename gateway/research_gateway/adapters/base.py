@@ -66,13 +66,17 @@ class Response(SealedAnswer):
         return f"<Response {self.status} {self.url!r} {len(self._body)} bytes>"
 
     def retry_after_seconds(self) -> float | None:
+        """How long the provider asks to be left alone, or None when the header is absent or says nothing readable. RFC 9110 §10.2.3: an HTTP-date, or `delay-seconds`, which is ASCII
+        digits and nothing else. (`float()` read `inf`, which holds a breaker open for ever, and `nan`, `-5`, `1e3`, `1_0` and Arabic-Indic digits: none of them is a delay.)"""
         v = self.headers.get("retry-after") or self.headers.get("Retry-After")
+        v = v.strip() if isinstance(v, str) else v
         if not v:
             return None
-        try:
-            return float(v)
-        except ValueError:
-            pass
+        if v.isascii() and v.isdigit():
+            try:
+                return float(int(v))
+            except (ValueError, OverflowError):   # more digits than int() converts, or more seconds than a double holds
+                return None
         try:  # the header's other legal form is an HTTP-date (RFC 9110)
             when = email.utils.parsedate_to_datetime(v)
             return max(0.0, when.timestamp() - time.time())

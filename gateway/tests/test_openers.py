@@ -15,6 +15,7 @@ core/wire.py holds the openers now (its docstring is the ruling for each, agains
   * AgainstTheCsvModule  the CSV opener against csv.reader(strict=True) on thousands of generated texts: it accepts nothing strict refuses, reads what both accept identically,
                       and refuses beyond strict only what RFC 4180 §2.5 forbids (a quote inside an unquoted field)
   * AgainstTheLibraries  a VALID document reads as json.loads and ElementTree read it, on generated documents: the strictness is all on the other side of the line
+  * HeaderOpeners        the HTTP headers the gateway decides from (Link, Retry-After, Location ...), each with its ruling; Retry-After was `float()` and is `delay-seconds` now
 
 What this does not show: that no other malformed input exists. The family is the formats' lexical rules, enumerated from their specifications (the rulings), not a proof about every
 provider; and a truncation that ends at a record boundary is a well-formed shorter document (nothing in CSV marks the end).
@@ -610,6 +611,41 @@ class AgainstTheCsvModule(unittest.TestCase):
                 out = io.StringIO()
                 csv.writer(out, quoting=quoting, lineterminator=rng.choice(["\n", "\r\n"])).writerows(rows)
                 self.assertEqual(wire.open_csv(out.getvalue()), rows, repr(out.getvalue()))
+
+
+# --------------------------------------------------------------------------------------------------------------------------------------- the HTTP header openers
+class HeaderOpeners(unittest.TestCase):
+    """The openers that are not JSON, XML or CSV: the headers whose text the gateway decides from. Inventory, with the ruling for each:
+
+      Link (RFC 8288 on RFC 9110's list syntax)   adapters/base.py `parse_links`/`next_link`: strict since 2b-repair-12 — a header that does not read through to its last character is
+                                                  `LinkSyntax`, and the answer's next link is then neither a continuation nor an end; pinned by tests/test_link_header.py and the oracle's vectors
+      Retry-After (RFC 9110 §10.2.3)              `Response.retry_after_seconds`: an HTTP-date or `delay-seconds` (ASCII digits). Before 2b-repair-13c it was `float()`, which reads `inf`
+                                                  (a breaker open for ever), `nan`, `-5`, `1e3`, `1_0` and Arabic-Indic digits: tested here
+      Location (redirects)                        `redirect_target`: urljoin, then scheme, downgrade and global-address checks; anything that does not parse is refused
+      Content-Type / first bytes of a body        `check()`: a substring/prefix test that can only REFUSE (an HTML page wearing a success status); a heuristic by design, not an opener
+      Content-Length, chunking, compression       the transport's (urllib/http.client): a short body is an error Response
+    """
+
+    def seconds(self, value):
+        return Response(429, {"retry-after": value}, b"", "u").retry_after_seconds()
+
+    def test_retry_after_is_delay_seconds_or_an_http_date_and_nothing_else(self):
+        for value, want in (("30", 30.0), (" 30 ", 30.0), ("0", 0.0), ("3600", 3600.0), ("0030", 30.0)):
+            self.assertEqual(self.seconds(value), want, value)
+        for value in ("inf", "nan", "-5", "+5", "1e3", "1_0", "١٢", "5.5", ".5", "5 s", "abc", "", " ", "9" * 5000, "9" * 400, "infinity", "0x10"):
+            with self.subTest(value=value[:12]):
+                self.assertIsNone(self.seconds(value))
+        self.assertIsNone(Response(429, {}, b"", "u").retry_after_seconds())
+        later = self.seconds("Wed, 21 Oct 2099 07:28:00 GMT")
+        self.assertGreater(later, 10 ** 9)
+
+    def test_a_retry_after_that_is_not_a_delay_opens_no_breaker_of_its_own(self):
+        """The consequence the strictness is for: `Retry-After: inf` on a 429 used to open the source's breaker for ever; it is no delay now, and the broker's own policy applies."""
+        broker = Broker({"src": RatePolicy(per_second=100)})
+        broker.record("src", 429, retry_after=Response(429, {"retry-after": "inf"}, b"", "u").retry_after_seconds())
+        self.assertFalse(broker.breaker_open("src"), "one 429 with a Retry-After that is no delay is one limit error, not a breaker")
+        broker.record("src", 429, retry_after=Response(429, {"retry-after": "75"}, b"", "u").retry_after_seconds())
+        self.assertTrue(broker.breaker_open("src"))
 
 
 class AgainstTheLibraries(unittest.TestCase):
