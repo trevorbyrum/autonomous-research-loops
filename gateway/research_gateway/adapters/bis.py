@@ -15,6 +15,9 @@ BASE = "https://stats.bis.org/api/v2/data/dataflow/BIS"
 ATTRIBUTION = "Bank for International Settlements"
 LABEL_ATTRS = ("TITLE_TS", "TITLE")  # series attributes that label rather than key the series
 
+# What the answers must be: SDMX-ML throughout (BIS serves no JSON); the schemas are shared with ECB's catalogue and live in core/sdmx.py.
+SCHEMAS = {"data": sdmx.XML_MESSAGE, "catalog:flows": sdmx.FLOW_NAMES, "catalog:flow": sdmx.FLOW_BINDING, "catalog:structures": sdmx.DATA_STRUCTURES}
+
 
 # the agent-facing data contract (research_sources; validated before dispatch, D-31)
 DATA_PARAMS = {

@@ -21,6 +21,7 @@ tests/test_member_decoding.py.
 from __future__ import annotations
 
 import ast
+import functools
 import shutil
 import tempfile
 import textwrap
@@ -85,19 +86,54 @@ def literal_names(path: Path, name: str) -> list[str] | None:
     return None
 
 
+@functools.lru_cache(maxsize=None)
+def parsed(path: Path, mtime_ns: int, size: int) -> ast.Module:
+    return ast.parse(path.read_text(encoding="utf-8"))
+
+
+def source_tree(path: Path) -> ast.Module:
+    """The syntax tree of a file, parsed once per version of it (the source checks below read every module of a tree many times)."""
+    stat = path.stat()
+    return parsed(path, stat.st_mtime_ns, stat.st_size)
+
+
+def schema_value(node: ast.AST, functions_: set[str]) -> bool:
+    """Whether `node` builds a schema from the constructors in core/schema.py (`S.obj(...)`, `S.text()`, ...), literals, names and the module's own functions:
+    a schema is data, so a name bound to one is the module's own, however it is built. A call of anything else, an attribute of anything else (`json.loads`), a lambda:
+    not."""
+    if isinstance(node, (ast.Constant, ast.Name)):
+        return True
+    if isinstance(node, (ast.Dict, ast.Tuple, ast.List, ast.Set)):
+        parts = [*getattr(node, "keys", []), *getattr(node, "values", []), *getattr(node, "elts", [])]
+        return all(p is None or schema_value(p, functions_) for p in parts)
+    if isinstance(node, ast.Starred):
+        return schema_value(node.value, functions_)
+    if isinstance(node, (ast.DictComp, ast.ListComp, ast.SetComp)):
+        parts = [node.key, node.value] if isinstance(node, ast.DictComp) else [node.elt]
+        return all(schema_value(p, functions_) for p in [*parts, *(g.iter for g in node.generators)])
+    if isinstance(node, ast.Call):
+        callee = node.func
+        known = (isinstance(callee, ast.Attribute) and isinstance(callee.value, ast.Name) and callee.value.id == "S") or (isinstance(callee, ast.Name) and callee.id in functions_)
+        return known and all(schema_value(a, functions_) for a in [*node.args, *(k.value for k in node.keywords)])
+    return False
+
+
 def defined_names(path: Path) -> set[str]:
-    """What the file offers other modules, and nothing it merely imports: a function, a class, or a name bound to a literal (text, a number, a
-    tuple, list, dict or set of them). A name assigned anything else may hold what the module imports (`loads = json.loads`, `parse = cache.json`),
-    so it is not offered: that is a re-export by another spelling."""
+    """What the file offers other modules, and nothing it merely imports: a function, a class, a name bound to a literal (text, a number, a tuple, list, dict or set of
+    them), or a name bound to a schema built from the constructors in core/schema.py (`schema_value`). A name assigned anything else may hold what the module imports
+    (`loads = json.loads`, `parse = cache.json`), so it is not offered: that is a re-export by another spelling."""
     out = set()
-    for node in ast.parse(path.read_text(encoding="utf-8")).body:
+    tree = source_tree(path)
+    functions_ = {n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             out.add(node.name)
         elif isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:
             try:
                 ast.literal_eval(node.value)
             except ValueError:
-                continue
+                if not schema_value(node.value, functions_):
+                    continue
             for t in (node.targets if isinstance(node, ast.Assign) else [node.target]):
                 out.update(n.id for n in ast.walk(t) if isinstance(n, ast.Name))
     return out
@@ -118,7 +154,7 @@ def import_findings(root: Path = ROOT) -> list[tuple[str, str]]:
         rel = path.relative_to(root).as_posix()
         strict = not rel.startswith("harvest/")
         allowed = STDLIB_ALLOWED["*"] | STDLIB_ALLOWED.get(rel, set())
-        tree, modules = ast.parse(path.read_text(encoding="utf-8")), {}   # modules: the name this file gives each package module it imports as a module
+        tree, modules = source_tree(path), {}   # modules: the name this file gives each package module it imports as a module
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 out += [(rel, f"import {a.name}") for a in node.names if strict and a.name not in allowed]
@@ -184,9 +220,10 @@ def reads(root: Path = ROOT) -> dict[tuple[str, str], list[str]]:
       * `.raw` anywhere but as (part of) the value of a `raw=` argument: `raw` is for storing, and a record's raw is the one thing it is stored in;
       * the answer itself — `.json`, `.json_or_none`, `.text`, `.body`, `._parsed` of a response — anywhere but as an argument of a call to a decoder."""
     found: dict[tuple[str, str], list[str]] = {}
+    package_modules = {p.stem for p in root.rglob("*.py")}
     for path in provider_modules(root):
         rel = path.relative_to(root).as_posix()
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+        tree = source_tree(path)
         spans = sorted(((fn.lineno, fn.end_lineno, qual) for qual, fn in functions(tree)), key=lambda s: s[1] - s[0])   # the innermost function first
         parents = {id(child): parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
 
@@ -207,7 +244,6 @@ def reads(root: Path = ROOT) -> dict[tuple[str, str], list[str]]:
             parent = parents.get(id(node))
             return isinstance(parent, ast.Call) and node in parent.args and (getattr(parent.func, "id", None) in DECODERS or getattr(parent.func, "attr", None) in DECODERS)
 
-        package_modules = {p.stem for p in root.rglob("*.py")}
         modules = {a.asname or a.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.level for a in n.names if a.name in package_modules}   # a package module imported AS a module (`S.text` is a constructor)
         local = {}
         for node in ast.walk(tree):
@@ -252,7 +288,7 @@ def reflection_in_adapters(root: Path = ROOT) -> list[tuple[str, str]]:
         rel = path.relative_to(root).as_posix()
         if rel == "adapters/base.py" or not path.exists():
             continue
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        for node in ast.walk(source_tree(path)):
             if isinstance(node, ast.Import) and any(a.name.split(".")[0] == "json" for a in node.names):
                 out.append((rel, "import json"))
             elif isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] in ("json", "importlib"):

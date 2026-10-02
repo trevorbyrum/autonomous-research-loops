@@ -14,6 +14,9 @@ AGENCY = "ECB"
 BASE = "https://data-api.ecb.europa.eu/service/data"
 ATTRIBUTION = "European Central Bank"
 
+# What the answers must be: the data is SDMX-JSON, the catalogue SDMX-ML structure messages; the schemas are shared with BIS and live in core/sdmx.py.
+SCHEMAS = {"data": sdmx.JSON_MESSAGE, "catalog:flows": sdmx.FLOW_NAMES, "catalog:flow": sdmx.FLOW_BINDING, "catalog:structures": sdmx.DATA_STRUCTURES}
+
 
 # the agent-facing data contract (research_sources; validated before dispatch, D-31)
 DATA_PARAMS = {
