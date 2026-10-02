@@ -825,3 +825,11 @@ The structural scan also has an ordinary-spelling bypass; Astra asks that its cl
 
 All accepted contracts, the unedited oracle and Astra's R11 reproductions must still pass.
 **OPERATOR:** "last night I literally had you add a review pass that specifically was meant to catch patches." **Why it didn't:** the orchestrator scoped the root-cause/mitigation classification per finding. Each fix was honestly ROOT-CAUSE for its own finding, and no brief asked whether the findings shared a cause across rounds. Gate D, the one cross-cutting review, only triggers on task acceptance, which 2b never reached. **Charter amended:** (1) every re-review classifies at family level too, and a series of local fixes for one shared cause counts as a MITIGATION of that cause; (2) a task's third consecutive BLOCK triggers a fresh-session Gate D before the next repair. Memory updated.
+
+## 2026-10-02 — 2b-repair-12 landed: the family root fix
+Sonnet 5.5 coder `ee76b68e`, 5 commits `278ab7e..a06ea5e`.
+- **What changed:** every provider operation declares a schema, and `core/schema.py` validates whole payloads before any adapter logic runs: alternatives, nested contents, consistency rules, per-member isolation. Harness corruption positions are derived from the schemas, and reading an undeclared field fails. The old views and helpers (`need`, `optional`, `nested`, `listed`, `preferred`) and the lazy-choice scan were removed as dead.
+- **Results:** Astra's R11 probes went from 24 failures to 0; the oracle is unedited and passing. The coder ran an old-vs-new differential over 67,021 single and 6,666 pair corruptions: it found 3 unintended changes (fixed and pinned) and 120 deliberate ones (documented).
+- **Disclosed limits:** SDMX-ML positions are not schema-derived; an `any_()` under-declaration can't be caught by the derived harness; a stale oracle citation remains. The engine supervisor mutant `1C-sup-no-start-grace` failed once in a full run and passed 3 of 3 alone (timing-dependent).
+
+**Dispatch:** a fresh Astra re-review, with the charter's family-level question made explicit, and **Gate D #1** (whole-system, fresh session), in parallel on the same commit, per the third-consecutive-BLOCK rule.
