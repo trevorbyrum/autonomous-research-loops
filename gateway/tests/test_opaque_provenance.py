@@ -297,6 +297,28 @@ class WhereItBecomesPlain(Judged):
         canonical = [json.loads(args[2]) for sql, args in db.statements if args and "gateway.records" in sql and "INSERT" in sql]
         self.assertEqual([c["in_doaj"] for c in canonical], [True, True, True])
 
+    def test_the_cache_is_a_storage_boundary_too_in_memory_and_in_the_database(self):
+        """`Cache.put_record` persists a record's raw: a record built straight from an adapter or a loader, with its provenance still sealed, is made plain there (the router's answer already is)."""
+        from research_gateway.core.cache import Cache
+        d = S.decode("x", S.obj({"id": S.text(), "m": S.any_()}), {"id": "a", "m": [1, {"a": 2}]})
+        record = make_record(identity="doi:10.1/a", kind="article", source_id="crossref", title="T", license="CC0", extra={"m": d["m"]}, raw=d.raw)
+        self.assertIsInstance(record["raw"], Sealed)
+        db = Fake()
+        cache = Cache()
+        cache.conn = db   # a database that records what it is asked (the constructor's own check of the stored rows is not what is tested)
+        try:
+            cache.put_record(record, storable=True, persist_members=[0])
+        except Exception as e:
+            self.fail(f"the cache raised {type(e).__name__}: {str(e)[:100]}")
+        written = [json.dumps(args, default=str) for sql, args in db.statements if args]
+        self.assertTrue(written and not any("<Sealed>" in text or "<Passive>" in text for text in written), written)
+        (stored_raw,) = [json.loads(args[2]) for sql, args in db.statements if args and "record_sources" in sql]
+        self.assertEqual(stored_raw, {"id": "a", "m": [1, {"a": 2}]}, "the stored raw is the provider's object")
+        kept = cache.get_record("doi:10.1/a")
+        self.assertEqual(kept["m"], [1, {"a": 2}])
+        self.assertEqual(kept["raw"], {"id": "a", "m": [1, {"a": 2}]})
+        self.assertIsNot(kept, record, "the cache keeps its own copy")
+
     def test_the_index_load_of_a_crossref_page_stores_the_passive_counts_as_plain_numbers(self):
         from tests.test_harvest import CROSSREF_PAGE, client
         c, t = client()

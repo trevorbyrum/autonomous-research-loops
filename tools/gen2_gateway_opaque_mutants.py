@@ -5,7 +5,7 @@ read them, so no selection or coverage decision can depend on them. The mutants 
 
   Q-record-*   `make_record` materializes provenance again, aliases its input, accepts an opaque value in a typed field, or leaves a plain raw readable;
   Q-download-* `Response.download()` hands out the bytes;
-  Q-router-*   the router does not materialize the answer at its boundary; Q-index-* the index load does not materialize what it stores;
+  Q-router-*   the router does not materialize the answer at its boundary; Q-index-* / Q-cache-* the index load and the cache do not materialize what they store;
   Q-sealed-*   a Sealed an adapter constructs can be compared with (guessing a raw object), and a Sealed or a Passive built in a provider module is no listed door.
 
 A killer must FAIL in its assertions, not error (tools/gen2_gateway_mutations.py). A control takes the accepted path through the same code.
@@ -67,6 +67,9 @@ def build(Mutant) -> list:
                "    record = plain(record)   #", "    #",
                (PLACE + "test_the_index_load_writes_plain_data_never_the_object_it_holds", PLACE + "test_the_index_load_of_a_crossref_page_stores_the_passive_counts_as_plain_numbers"),
                (PLACE + "test_after_it_every_operations_answer_is_plain_json_with_raw_as_what_the_provider_sent",)),
+        Mutant("Q-cache-does-not-materialize-what-it-stores", "the cache persists a record whose provenance is still sealed", "research_gateway/core/cache.py",
+               '        record = plain(record)\n        key = ident.canonical(record["identity"])', '        key = ident.canonical(record["identity"])',
+               (PLACE + "test_the_cache_is_a_storage_boundary_too_in_memory_and_in_the_database",), (PLACE + "test_the_index_load_writes_plain_data_never_the_object_it_holds",)),
         Mutant("Q-sealed-any-two-can-be-compared", "a Sealed an adapter constructs compares like one the decoder issued: `row.raw == Sealed({...})` reads the raw object by guessing it", PAYLOAD,
                "        if not (self._issued and other._issued):\n", "        if False:\n",
                (EXIT + "test_equality_is_not_a_way_to_read_a_sealed_object_by_guessing_it",), (SP + "RawIsSealedAndLeavesAsACopy.test_a_sealed_object_the_decoder_issued_can_be_compared_with_another_and_stored_and_not_read",)),

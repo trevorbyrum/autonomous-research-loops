@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from .payload import Passive, PayloadError, Sealed, SealedRead, detach, plain, refuse_opaque  # noqa: F401 (PayloadError: re-exported, it lives with the decoded values now)
+from .payload import PayloadError, Sealed, detach, plain, refuse_opaque  # noqa: F401 (PayloadError: re-exported, it lives with the decoded values now)
 from .schema import year_value
 
 

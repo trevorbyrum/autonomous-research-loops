@@ -17,6 +17,7 @@ from typing import Callable
 from . import identity as ident
 from .canonical import member_summary
 from .licenses import content_redistribution
+from .payload import plain
 
 
 # rows an earlier writer stored without their members' restriction inputs: registry/migrate.py
@@ -111,7 +112,11 @@ class Cache:
         else `memory_ttl` (§6: a restricted member never outlives an hour) — and persist only the
         provenance members at the given INDEXES (each judged with its own licence; two entries
         from one source are separate, D-25), skipping members that carry no raw payload so a
-        stored payload is never overwritten with nothing (D-23)."""
+        stored payload is never overwritten with nothing (D-23).
+
+        The cache is a storage boundary (2b-repair-13c, core/payload.py): the router hands it an answer it has already made plain, and a record built by a loader or a test, whose provenance
+        is still sealed, is made plain here — a copy, so what the cache keeps is never an alias of what its caller returns."""
+        record = plain(record)
         key = ident.canonical(record["identity"])
         ttl = self.metadata_ttl if storable else self.memory_ttl
         with self._lock:
