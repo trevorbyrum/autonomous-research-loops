@@ -8,7 +8,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from .payload import PayloadError, plain  # noqa: F401 (PayloadError: re-exported, it lives with the views now)
+from .payload import PayloadError, plain  # noqa: F401 (PayloadError: re-exported, it lives with the decoded values now)
+from .schema import year_value
 
 
 KINDS = ("article", "dataset", "software", "document", "series", "citation", "oa_location", "full_text", "file",
@@ -36,15 +37,12 @@ def _texts(name: str, value) -> list[str]:
 
 
 def _year(value) -> int | None:
-    """A canonical year: a whole number, or the digits of one a provider sent as text; nothing when it names none. Anything else is unreadable."""
-    value = plain(value)
-    if isinstance(value, float) and value.is_integer():
-        value = int(value)
-    if isinstance(value, str) and value.isdigit():
-        value = int(value)
-    if value is None or (isinstance(value, int) and not isinstance(value, bool)):
-        return value
-    raise PayloadError(f"a record's year is {type(value).__name__} {value!r}, not a year")
+    """A canonical year: a whole number, or the digits of one a provider sent as text; nothing when it names none. Anything else is unreadable (the rule is the
+    decoder's: core/schema.py year_value)."""
+    try:
+        return year_value(plain(value))
+    except PayloadError as e:
+        raise PayloadError(f"a record's {e}") from None
 
 
 def _identifiers(value) -> dict:
