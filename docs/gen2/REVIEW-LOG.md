@@ -1025,3 +1025,50 @@ Both targets pass independently.
   - the finite acceptance list for 2b;
   - whether the repair sequence has built accidental complexity.
 - 13d (engine, already dispatched) continues.
+
+## 2026-10-02 — Gate D #2 (fresh Astra `8d74ce90`, pinned 2c400a8) — BLOCK, with a finite finish line for 2b
+Full report: `private/reviews/gen2-gate-d-2-astra-review.md`; evidence in `private/evidence/gate-d-2/`.
+
+**Diagnosis:**
+- The provider-input validation work **is converging**.
+- The **proof obligation expanded**. The 13a/13c briefs (the orchestrator's) adopted "by-construction" confinement of first-party adapter code against deliberate misuse of public APIs. Reviewers rightly found counterexamples to that, and each one was treated as another instance of the decoder family. That was the process error behind the circling.
+- The family groups at least four mechanisms: wire completion, lexical/structural interpretation, adapter discipline, and policy preservation. They share an objective, not one root cause.
+
+**Findings:**
+- **F1 HIGH:** Content-Length truncation (R13C-1).
+- **F2 HIGH:** XML child-text loss and namespace-blind matching (R13C-3).
+- **F3 HIGH, architectural:** no stable trust boundary.
+- **F4 MEDIUM:** the two constructor compositions (R13C-2).
+- **F5 MEDIUM:** snapshot isolation regressed (R13C-4).
+- **F6 MEDIUM:** 13d's audit sentence is overstated:
+  - `gateway_call_ref` acknowledges a call row, not a response artifact;
+  - D-1 covers decision receipts, not retrieval;
+  - the cited flow section is S4, not S2.
+
+  Fix: correct the wording, and give 2e2's retrieval audit an evidence requirement.
+- **F7 LOW:** Retry-After and number claims, plus the 9 overclaimed tests and the 2 snapshot tests.
+
+**Trust model:** the source of truth supports **B**: a complete contract for supported provider input, with first-party adapter discipline enforced by guards, inventories, mutation tests and review. **A** (by-construction confinement) isn't established in same-process Python and would be a different architecture project. Adopting B is an operator amendment.
+
+**Finite acceptance checklist:**
+- **0:** amend to B (operator).
+- **1:** transport framing completion.
+- **2:** lossless scalar XML and SDMX expanded names.
+- **3:** close the two constructor compositions.
+- **4:** restore snapshot per-line isolation.
+- **5:** freeze the supported-format/resource policy and the sanctioned predicates (`Rec.empty`; `Sealed` equality only for decoded objects) (operator).
+- **6:** one consolidated inventory and guards; reconcile the rejected test claims.
+- **7:** 13d.
+- **8:** final assembled validation with a family-level account.
+
+New counterexamples *within the frozen contract* still block. Restating the same evidence limits does not.
+
+**Complexity:**
+- gateway production +688 lines since Gate D #1 (+6.2%), 84.7% of it in schema/payload/wire/base;
+- propagation cost 11.25% → 11.92%;
+- `_decode` cyclomatic complexity 57 → 64;
+- still no file-import cycles.
+
+Consolidate: canonical typed construction must not materialize raw data; one raw-materialization operation at the sinks; replace `_issued` with a narrowly specified comparison; one owned inventory. The package cycle, router collaboration and decomposition stay with 2q.
+
+**Orchestrator:** the next gateway repair is **held for the operator's rulings on items 0 and 5**. 13d continues; F6's wording fix joins the final package.
