@@ -68,6 +68,8 @@ USES = {
 
 # ---- what a provider-data module may import (R8-3): closed over every import form, not over the names the checker happens to look for
 STDLIB_ALLOWED = {"*": {"__future__", "re", "base64", "datetime", "time", "typing"}, "adapters/openaire.py": {"threading"}}   # no JSON parser, no `ast`, no `sys`/`importlib`
+OPENERS = "wire"                            # core/wire.py: the byte openers are the decoder's (2b-repair-13c); of the provider modules only the snapshot loader, which reads files and not a Response, opens its lines with them
+OPENER_USERS = {"harvest/openalex_snapshot.py"}
 UNANALYSABLE_CALLS = ("eval", "exec", "compile", "vars", "globals", "locals", "__import__")
 
 
@@ -171,7 +173,13 @@ def import_findings(root: Path = ROOT) -> list[tuple[str, str]]:
                     package = package.parent
                 where = package.joinpath(*(node.module or "").split(".")) if node.module else package
                 module = where / "__init__.py" if where.is_dir() else where.with_suffix(".py")
+                if module.name == f"{OPENERS}.py" and rel not in OPENER_USERS:
+                    out += [(rel, f"from {'.' * node.level}{node.module or ''} import {a.name} (the byte openers are the decoder's)") for a in node.names]
+                    continue
                 for a in node.names:
+                    if a.name == OPENERS and where.is_dir() and rel not in OPENER_USERS:
+                        out.append((rel, f"from {'.' * node.level}{node.module or ''} import {a.name} (the byte openers are the decoder's)"))
+                        continue
                     if a.name.startswith("_"):   # a private name is the module's own: the decoder's openers, a class's storage — never an adapter's (2b-repair-13a)
                         out.append((rel, f"from {'.' * node.level}{node.module or ''} import {a.name} (a private name)"))
                         continue
@@ -522,6 +530,8 @@ class Imports(unittest.TestCase):
             "a name another module only re-exports": ("from ..core.canonical import PayloadError",
                                                       [("adapters/new.py", "from ..core.canonical import PayloadError (not defined there: a re-export)")]),
             "a module that is not there": ("from .nowhere import thing", [("adapters/new.py", "from .nowhere import thing (no such module)")]),
+            "the byte openers, by name": ("from ..core.wire import open_json", [("adapters/new.py", "from ..core.wire import open_json (the byte openers are the decoder's)")]),
+            "the byte openers, as a module": ("from ..core import wire", [("adapters/new.py", "from ..core import wire (the byte openers are the decoder's)")]),
             "inside a function": ("def f():\n    import json", [("adapters/new.py", "import json")]),
             "inside a try": ("try:\n    import json\nexcept ImportError:\n    json = None", [("adapters/new.py", "import json")]),
             "by __import__": ("j = __import__('json')", [("adapters/new.py", "__import__()")]),

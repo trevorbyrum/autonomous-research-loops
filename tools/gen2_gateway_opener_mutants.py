@@ -6,10 +6,11 @@ ruling for each, against RFC 8259, XML 1.0 and RFC 4180). The mutants here remov
 
   O-json-*      RFC 8259: UTF-8 only, no NaN/Infinity, finite numbers, each name once;
   O-bytes-*     strict UTF-8 for every format (an invalid byte is a refusal, not U+FFFD);
-  O-xml-*       a 1.x declaration, the declared encoding is the bytes', no DOCTYPE, bounded nesting;
+  O-xml-*       a 1.x declaration, the declared encoding is the bytes', no DOCTYPE, bounded nesting, and an element's text is one text (not its first chunk);
   O-csv-*       RFC 4180: a quoted field is closed, nothing follows a closing quote, no quote inside an unquoted field, no bare carriage return, a bounded cell,
                 and a column the schema reads is not named twice;
   O-snapshot-*  a line of the OpenAlex snapshot that is not JSON fails the load;
+  O-a-provider-module-*  an adapter may import the byte openers;
   O-count-*     the call log's count is read by the same opener as the decoder's;
   O-retry-after-*  a Retry-After header is `delay-seconds` or an HTTP-date, not whatever `float()` reads;
   O-a-parser-*  a parse call outside core/wire.py fails the inventory.
@@ -59,6 +60,9 @@ def build(Mutant) -> list:
                "        if depth > MAX_DEPTH:\n", "        if False:\n",
                (XR + "test_the_refused", XML_FAMILY, "tests.test_decoder_total.TheDecoderOnlyEverRaisesPayloadError.test_nesting_past_the_gateways_operational_limit_is_refused_at_its_edge_and_nesting_within_it_is_read"),
                (XR + "test_the_accepted",)),
+        Mutant("O-xml-an-element-text-split-by-a-child-reads-its-first-chunk", "`<Name>x<b/>y</Name>` reads as `x`: the text after the child element is dropped without a word", SCHEMA,
+               '        if any((child.tail or "").strip() for child in v):', "        if False:",
+               ("tests.test_schema.Xml.test_an_elements_text_split_by_a_child_is_unreadable_not_its_first_chunk",), ("tests.test_schema.Xml.test_an_element_is_read_by_attribute_text_name_and_descendant",)),
         Mutant("O-csv-an-unterminated-quote-is-data", "a quoted field that is never closed ends at the end of the data (the csv module's default): Astra's zero-journal load", WIRE,
                """_QUOTED = re.compile(r'"([^"]*(?:""[^"]*)*)"')""", """_QUOTED = re.compile(r'"([^"]*(?:""[^"]*)*)(?:"|\\Z)')""",
                (CR + "test_the_refused", CSV_FAMILY, AS + "test_each_probe", AS + "test_the_index_load_that_returned_zero_now_fails_and_rolls_back",
@@ -97,6 +101,13 @@ def build(Mutant) -> list:
                "        try:\n            return float(v)\n        except ValueError:\n            pass\n",
                (OP + "HeaderOpeners.test_retry_after_is_delay_seconds_or_an_http_date_and_nothing_else", OP + "HeaderOpeners.test_a_retry_after_that_is_not_a_delay_opens_no_breaker_of_its_own"),
                ("tests.test_broker.FromRows.test_retry_after_http_date_and_no_shortening", "tests.test_core_foundations.MeteredClient.test_retry_after_is_honoured")),
+        Mutant("O-csv-a-byte-order-mark-is-dropped", "a byte order mark before a CSV header is ignored (it is data: the first character of the first cell)", WIRE,
+               '    text = _text(body, "the CSV", bom=False)', '    text = _text(body, "the CSV")',
+               (CR + "test_the_accepted", CSV_FAMILY), (CR + "test_the_refused",)),
+        Mutant("O-a-provider-module-may-import-the-byte-openers", "the import inventory admits `from ..core.wire import open_json` (and the module) in an adapter", "tests/test_member_isolation.py",
+               ('                if module.name == f"{OPENERS}.py" and rel not in OPENER_USERS:\n', "                    if a.name == OPENERS and where.is_dir() and rel not in OPENER_USERS:\n"),
+               ('                if False:\n', "                    if False:\n"),
+               ("tests.test_member_isolation.Imports.test_every_other_form_an_import_can_take_is_refused_or_analysed",), ("tests.test_member_isolation.Imports.test_every_provider_data_module_imports_only_what_the_inventory_admits",)),
         Mutant("O-a-parser-outside-wire", "the decoder parses JSON with the library itself again", SCHEMA,
                ("from . import wire\n", "        return wire.open_json(body)\n"), ("import json\nfrom . import wire\n", "        return json.loads(body)\n"),
                (INV + "test_every_parse_call_in_the_gateway_is_listed_with_its_class", JSON_FAMILY), (INV + "test_control_the_scan_finds_a_parser_however_it_is_imported",)),

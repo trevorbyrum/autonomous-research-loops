@@ -21,7 +21,8 @@ ruling, is tests/test_openers.py; it fails on a parse call that is not listed.
   CSV   (RFC 4180)   a quoted field must be closed (§2.7) and be followed by a comma or the end of the line (§2.6); a quote may not appear inside an unquoted field (§2.5); a
                      carriage return is half of CRLF or it is refused (§2.1); UTF-8 only. Accepted, and why: a line ending of LF alone and a last line with no ending (de
                      facto, and no reading of either is ambiguous); a blank line (no record — what the csv module and every dump reader does); a field of any Unicode text
-                     (the RFC's TEXTDATA is ASCII, which no real dump is); a cell of at most CELL_LIMIT characters (the csv module's own limit).
+                     (the RFC's TEXTDATA is ASCII, which no real dump is); a cell of at most CELL_LIMIT characters (the csv module's own limit). A byte order mark is data in CSV (the RFC says
+                     nothing of one): it stays the first character of the first cell, so a header that starts with one names no column the loader needs — as it always did.
 
 What no opener can do: a truncation that ends exactly at a record's end is a well-formed shorter document. HTTP's own length framing is the transport's (a short body is an
 error Response, adapters/base.py Transport), not a CSV rule.
@@ -49,8 +50,9 @@ class Malformed(ValueError):
         self.syntax = syntax
 
 
-def _text(body, what: str) -> str:
-    """The bytes as UTF-8 text, strictly: an invalid sequence — an encoded surrogate included — is a refusal, never a replacement character. A byte order mark is dropped."""
+def _text(body, what: str, *, bom: bool = True) -> str:
+    """The bytes as UTF-8 text, strictly: an invalid sequence — an encoded surrogate included — is a refusal, never a replacement character. A leading byte order mark is dropped for the
+    formats that say a parser may (JSON, RFC 8259 §8.1; XML, whose grammar allows it); CSV has no such rule, so there it stays what it is, the first character of the first cell."""
     if isinstance(body, str):
         text = body
     else:
@@ -58,7 +60,7 @@ def _text(body, what: str) -> str:
             text = bytes(body).decode("utf-8")
         except UnicodeDecodeError as e:
             raise Malformed(f"{what} is not UTF-8 ({e.reason} at byte {e.start})") from None
-    return text[1:] if text.startswith("﻿") else text
+    return text[1:] if bom and text.startswith("\ufeff") else text
 
 
 # ------------------------------------------------------------------ JSON (RFC 8259)
@@ -176,7 +178,7 @@ _UNQUOTED = re.compile(r'[^",\r\n]*')
 def open_csv(body) -> list[list[str]]:
     """The records of a CSV document, each a list of its cells, read one way (see the module docstring). A blank line is the empty record `[]`, as the csv module reads it; the first
     record is the header, and whether a row is too short or too long for it is the caller's."""
-    text = _text(body, "the CSV")
+    text = _text(body, "the CSV", bom=False)   # a byte order mark is the first character of the first cell, as it always was: a header that names no column the loader needs
     n, i, line, records = len(text), 0, 1, []
     while i < n:
         row, quoted = [], False

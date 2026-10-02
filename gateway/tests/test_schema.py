@@ -302,6 +302,17 @@ class Xml(unittest.TestCase):
         self.assertEqual([c["%"] for c in flows[0]["*"]], ["Name", "Name", "Ref"])
         self.assertEqual((flows[1]["Name"], flows[1]["*"]), ([], []), "no such child: an empty list")
 
+    def test_an_elements_text_split_by_a_child_is_unreadable_not_its_first_chunk(self):
+        """ElementTree keeps `x` of `<Name>x<b/>y</Name>` as the element's text and `y` as the child's tail; reading `#` as `x` alone drops `y` silently (2b-repair-13c, the XML opener inventory)."""
+        spec = S.obj({"Name": S.own(S.obj({"#": S.text()}))})
+        for text in ("<a><Name>First<b/>Second</Name></a>", "<a><Name><b/>tail</Name></a>", "<a><Name>x<b>inner</b>\n  y</Name></a>"):
+            with self.subTest(text=text), self.assertRaises(PayloadError):
+                S.decode("t", spec, S.parse_xml(text, "a"))
+        for text, want in (("<a><Name>First</Name></a>", ["First"]), ("<a><Name>First<!-- c --></Name></a>", ["First"]), ("<a><Name>First<![CDATA[ Second]]></Name></a>", ["First Second"]),
+                           ("<a><Name><b/>  \n </Name></a>", [None]), ("<a><Name/></a>", [None]), ("<a><Name>x<b/>  </Name></a>", ["x"])):
+            with self.subTest(text=text):
+                self.assertEqual([n["#"] for n in S.decode("t", spec, S.parse_xml(text, "a"))["Name"]], want)
+
     def test_a_list_of_elements_is_bounded_like_any_list(self):
         spec = S.obj({"**Flow": S.own(S.obj({"@id": S.text()}), at_most=1)})
         with self.assertRaises(PayloadError):

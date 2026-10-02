@@ -32,7 +32,7 @@ A field declared `any_()` is metadata: it is handed over as a `Passive`, which c
 ends or continues anything, or goes into a request, is declared a kind.
 
 SDMX-ML is decoded by the same decoder: an `obj` applied to an ElementTree element reads `"@name"` as an attribute, `"@*"` as all of them,
-`"#"` as its text, `"%"` as its own local name, `"name"` as the list of its child elements of that local name, `"*"` as the list of all its children
+`"#"` as its text (an element whose text is split by child elements has none: unreadable, not its first chunk), `"%"` as its own local name, `"name"` as the list of its child elements of that local name, `"*"` as the list of all its children
 and `"**name"` as the list of every descendant of it that is called that.
 """
 from __future__ import annotations
@@ -440,6 +440,8 @@ def _read(v, name: str):
     if name == "%":
         return _local(v.tag)
     if name == "#":
+        if any((child.tail or "").strip() for child in v):   # `<a>x<b/>y</a>`: ElementTree keeps "x" as a's text and "y" as b's tail; reading "x" alone would drop "y" without a word
+            raise PayloadError("an element's text is split by child elements: it has no single text to read")
         return v.text if v.text is not None else MISSING
     if name == "*":
         return list(v) or MISSING

@@ -297,7 +297,8 @@ class CsvRulings(Refusal):
                  "a trailing comma: an empty last cell": (b"a,b\n1,\n", [["a", "b"], ["1", ""]]), "a blank line: no record, as the csv module reads it": (b"a\n\nb\n", [["a"], [], ["b"]]),
                  "empty": (b"", []), "non-ASCII text": ("a\ncafé\n".encode(), [["a"], ["café"]]), "a cell at the limit": (b"a\n" + b"x" * wire.CELL_LIMIT + b"\n", None),
                  "a short row and a long one, which the decoder's policy reads and this layer does not judge": (b"a,b\n1\n1,2,3\n", [["a", "b"], ["1"], ["1", "2", "3"]]),
-                 "a tab and other control characters inside a cell": (b"a\nx\ty\x01\n", [["a"], ["x\ty\x01"]])}
+                 "a tab and other control characters inside a cell": (b"a\nx\ty\x01\n", [["a"], ["x\ty\x01"]]),
+                 "a byte order mark, which is data in CSV (RFC 4180 says nothing of it): the first character of the first cell": (b"\xef\xbb\xbfa,b\n1,2\n", [["\ufeffa", "b"], ["1", "2"]])}
         for name, (body, want) in cases.items():
             with self.subTest(name):
                 got = wire.open_csv(body)
@@ -358,6 +359,7 @@ class ByteCorruption(unittest.TestCase):
             "a quote in the middle of an unquoted cell": THREE.replace("Second", 'Sec"ond', 1),
             "a bare carriage return for a line end": THREE.replace("\n", "\r", 1),
             "a byte that is not UTF-8": None,
+            "a byte order mark before the header (it is data: the title column is then not found)": "\ufeff" + THREE,
             "a column the schema reads, named twice": HEAD.replace("Publisher", "Journal title") + "First,9999-9991,P,CC-BY\n",
             "the licence column named twice": HEAD.replace("Publisher", "Journal license") + "First,9999-9991,P,CC-BY\n",
             "the title column named twice and nothing else": "Journal title,Journal title\nFirst,\nSecond,\n",

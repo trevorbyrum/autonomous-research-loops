@@ -139,9 +139,9 @@ is never conflated with "not searched" or "unavailable":
   specification (task 2b-repair-13c; Astra R13A-1): the decoder validated the values a lexer handed it, and the lexer, each library at its default, had already resolved
   malformed input — a DOAJ dump with an unterminated quote loaded as zero journals. `core/wire.py` holds the openers and its docstring is the ruling for each. JSON (RFC
   8259): UTF-8 only, no `NaN`/`Infinity`/`-Infinity`, no number past a double, no name twice in one object, nesting bounded. XML (XML 1.0): well-formedness is expat's, the bytes
-  are read as UTF-8 (an invalid byte or another declared encoding is an error, not U+FFFD), the declaration's version must be `1.x`, no DOCTYPE, nesting bounded. CSV (RFC
+  are read as UTF-8 (an invalid byte or another declared encoding is an error, not U+FFFD), the declaration's version must be `1.x`, no DOCTYPE, nesting bounded, and an element's text split by child elements has no single text (unreadable, not its first chunk). CSV (RFC
   4180): a quoted field must be closed and followed by a comma or the end of the line, no quote inside an unquoted field, a carriage return is half of CRLF, a cell is at most
-  131,072 characters, and a header that names a column the schema reads twice is refused (a column nothing reads may repeat); LF-only line ends, a last line with no ending, a
+  131,072 characters, a byte order mark is data, and a header that names a column the schema reads twice is refused (a column nothing reads may repeat); LF-only line ends, a last line with no ending, a
   blank line, short rows and extra cells are accepted as they always were. Malformed input is a `PayloadError` (the answer is unreadable), never a successful shorter or empty
   one. The OpenAlex snapshot reader opens its JSON lines through the same opener, and a line that is not JSON fails the load naming the file and line (it was skipped). The HTTP headers the
   gateway decides from are openers too: `Link` is strict (RFC 8288), and `Retry-After` is an HTTP-date or `delay-seconds` (ASCII digits), no longer whatever `float()` reads — `inf` held a breaker open for ever.
