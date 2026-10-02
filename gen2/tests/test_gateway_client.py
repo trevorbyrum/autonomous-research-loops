@@ -819,6 +819,36 @@ class RecordedByTheRouter(RouterTestCase):
         self.assertEqual((refused[0]["status"], refused[0].get("reason")), ("refused", "observation_id_conflict"))
         self.assertEqual(self.value("SELECT count(*) FROM search_observations"), 1)
 
+    def test_linkage_suggestions_are_neither_equivalence_nor_a_denominator(self):
+        """The 2b-repair-13a review's acceptance condition for this handoff: the gateway reports candidates that merely look alike in
+        an optional top-level `linkage_suggestions` list, for a later governed assessment. The engine keeps the distinct candidates
+        and their raw retrieved identities as retrieved; a suggestion changes no observation, no count, no event and no record,
+        reaches no router command, and registers no work (equivalence is a recorded assessment, never a retrieval helper's)."""
+        ids = ["doi:10.1000/a", "doi:10.1000/b"]
+        suggestion = {"type": "possible_same_work", "identities": ids, "basis": ["same kind, year and first-author surname; similar title"],
+                      "differing_identifiers": ["doi"], "provenance": [{"source_id": "crossref"}], "disposition": "unassessed"}
+
+        def answer(with_suggestions: bool) -> dict:
+            body = {"lanes": [{"source": "crossref", "role": "base", "coverage": "searched_ok", "completeness": "complete", "count": 2, "retrieved": ids,
+                               "exhausted": True}],
+                    "records": [{"identity": i, "kind": "article", "source_id": "crossref", "title": "Annual survey", "year": 2021} for i in ids],
+                    "observation": {"invocation_id": INV, "attempt": 1, "served": "dispatched", "captured": True, "call_ref": 1}}
+            return {**body, "linkage_suggestions": [suggestion]} if with_suggestions else body
+        outs = []
+        for with_suggestions in (False, True):
+            c = GatewayClient(BASE, ENGINE_TOKEN, transport=answering(lambda payload, b=answer(with_suggestions): b), clock=lambda: "2026-09-30T10:00:00Z",
+                              sleep=lambda s: None)
+            outs.append(c.search({**FIND, "lanes": ["crossref"]}, invocation_id=INV, attempt=1, policy_version="gw-policy/1"))
+        self.assertEqual(outs[0], outs[1], "a suggestion changes nothing the client returns")
+        commands = observe.router_requests(outs[1], capability_id=self.grant["capability_id"], invocation_id=INV)
+        self.assertNotIn("linkage", json.dumps(commands), "and nothing of it reaches the router")
+        observation = outs[1]["observations"][0]
+        self.assertEqual((observation["observation"]["result_count"], [e["provider_record_id"] for e in observation["retrieval_events"]],
+                          [r["identity"] for r in observation["records"]]), (2, ids, ids), "two distinct candidates, as retrieved")
+        self.assertEqual([r["status"] for r in self.record(outs[1])], ["recorded"])
+        self.assertEqual(self.rows("SELECT provider_record_id FROM retrieval_events ORDER BY provider_record_id"), [(i,) for i in ids])
+        self.assertEqual((self.value("SELECT count(*) FROM works"), self.value("SELECT count(*) FROM record_work_links")), (0, 0))
+
     def client_for(self, lane: dict) -> dict:
         answer = PageOutcomes.lane_answer(**lane)
         c = GatewayClient(BASE, ENGINE_TOKEN, transport=answering(lambda payload: answer), clock=lambda: "2026-09-30T10:00:00Z", sleep=lambda s: None)
