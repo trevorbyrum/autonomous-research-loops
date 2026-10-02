@@ -16,6 +16,7 @@ spelled (`from .base import json as j`, `from .base import *`), is refused.
 from __future__ import annotations
 
 import email.utils
+import http.client
 import ipaddress
 import re
 import socket
@@ -323,10 +324,59 @@ def header_map(headers) -> dict:
     return out
 
 
+class FramingError(http.client.HTTPException):
+    """A response whose message framing is invalid or conflicts with itself (RFC 9112 §6), so that how long its body is cannot be told."""
+
+
+class BodyTooLarge(Exception):
+    """A response body past MAX_BODY_BYTES."""
+
+
+_DIGITS = re.compile(r"[0-9]+")
+
+
+def _read_body(resp) -> bytes:
+    """The whole body of a response, or an exception: a body that is not the message the response's own framing described is never returned as if it were (task 2b-repair-14; Astra F1).
+
+    RFC 9112 §6.3 says how long a message is: bodyless for 204 and 304; else chunked when Transfer-Encoding is `chunked`, which ends at the terminal chunk (§7.1); else the
+    Content-Length (§6.2; RFC 9110 §8.6); else, for a response, whatever arrives before the connection closes. http.client implements that, and its bounded `read(amt)`
+    returns what arrived at EOF without saying whether the framing was met: so the framing it settled on is checked first (it is lenient — `int("1_0")` is a length of ten, a
+    Content-Length list is no length at all and a body then runs to EOF), and its state read after, since CPython only raises IncompleteRead on an unbounded read.
+
+      * Transfer-Encoding with Content-Length: refused (§6.3 item 3: the message may be an attempt at smuggling or splitting); a Transfer-Encoding that is not exactly `chunked`: refused,
+        no other transfer coding is read; several Content-Length fields, or one that is not digits: refused (§6.3 item 5 lets a recipient merge identical values; this one does not).
+      * FramingError when the library's reading of the headers is not the one just made. IncompleteRead when the Content-Length is not met, or the chunked framing is not terminated (the
+        library raises that itself). BodyTooLarge past MAX_BODY_BYTES — checked on the declared length first, so a body that announces more is not read at all.
+      * A chunked body is complete when its last-chunk (size 0) has been read; a cut inside the trailer section after it loses trailer fields only (http.client takes the missing blank line at
+        EOF as their end, RFC 9112 §7.1.2), and the gateway reads none.
+      * A response with neither header is close-delimited: EOF ends it, and EOF cannot tell a deliberately shorter body from an interrupted one (§6.3 item 8). That is accepted — it is
+        what HTTP says of such a message — and is the one framing in which a connection cut at a record boundary is a well-formed shorter document."""
+    if resp.status not in (204, 304):
+        encodings, lengths = resp.headers.get_all("Transfer-Encoding", []), resp.headers.get_all("Content-Length", [])
+        if encodings and lengths:
+            raise FramingError("a response with both Transfer-Encoding and Content-Length: its framing is ambiguous (RFC 9112 §6.3)")
+        if encodings and [c.strip().lower() for v in encodings for c in v.split(",")] != ["chunked"]:
+            raise FramingError(f"Transfer-Encoding {encodings!r}: only `chunked` is read (RFC 9112 §6.1)")
+        if lengths and (len(lengths) > 1 or not _DIGITS.fullmatch(lengths[0].strip())):
+            raise FramingError(f"Content-Length {lengths!r} is not one number of digits (RFC 9110 §8.6)")
+        declared = int(lengths[0]) if lengths else None
+        if resp.chunked != bool(encodings) or resp.length != declared:
+            raise FramingError(f"the library read this response's framing as chunked={resp.chunked}, length={resp.length}, not as its headers state")
+        if declared is not None and declared > MAX_BODY_BYTES:
+            raise BodyTooLarge(f"Content-Length {declared} is past {MAX_BODY_BYTES}")
+    data = resp.read(MAX_BODY_BYTES + 1)
+    if len(data) > MAX_BODY_BYTES:
+        raise BodyTooLarge(f"more than {MAX_BODY_BYTES} bytes")
+    if resp.length:   # a Content-Length with bytes still to come: the connection ended before the message did
+        raise http.client.IncompleteRead(data, resp.length)
+    return data
+
+
 class Transport:
     """Real network transport. Never raises and never follows redirects: every outcome —
-    including a 3xx, an oversized body, or a mid-read failure — is a Response, so the
-    caller's accounting and logging always run (I-6)."""
+    including a 3xx, an oversized body, a body that ends before its framing says it should, or a mid-read failure — is a Response, so the
+    caller's accounting and logging always run (I-6). A 2xx is returned only for a complete message (`_read_body`); an error status keeps its status
+    whatever happens to its body."""
 
     def request(self, method: str, url: str, headers: dict, body: bytes | None, timeout: float) -> Response:
         try:
@@ -335,18 +385,19 @@ class Transport:
             return Response(None, {}, b"", url, error=f"{type(e).__name__}: {e}")
         try:
             with _OPENER.open(req, timeout=timeout) as resp:
-                data = resp.read(MAX_BODY_BYTES + 1)
-                if len(data) > MAX_BODY_BYTES:
+                try:
+                    data = _read_body(resp)
+                except BodyTooLarge:
                     return Response(None, header_map(resp.headers), b"", url,
                                     error=f"response exceeds {MAX_BODY_BYTES} bytes")
                 return Response(resp.status, header_map(resp.headers), data, url)
         except urllib.error.HTTPError as e:
             try:
-                payload = e.read(MAX_BODY_BYTES) or b""
-            except Exception:
-                payload = b""
-            return Response(e.code, header_map(e.headers), payload, url)
-        except Exception as e:  # URLError, timeouts, IncompleteRead, TLS errors, anything: an error Response
+                payload, why = _read_body(e.fp), None
+            except Exception as problem:   # the status stands; the body is not trusted, and the response says why it is not here
+                payload, why = b"", f"HTTP {e.code}, body unusable: {type(problem).__name__}: {problem}"
+            return Response(e.code, header_map(e.headers), payload, url, error=why)
+        except Exception as e:  # URLError, timeouts, IncompleteRead, FramingError, TLS errors, anything: an error Response
             return Response(None, {}, b"", url, error=f"{type(e).__name__}: {e}")
 
 

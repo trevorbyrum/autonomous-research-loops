@@ -902,3 +902,8 @@ MUTANTS.extend(_opener_mutants(Mutant))
 from gen2_gateway_opaque_mutants import build as _opaque_mutants  # noqa: E402
 
 MUTANTS.extend(_opaque_mutants(Mutant))
+
+# 2b-repair-14: the transport's framing completion (tools/gen2_gateway_transport_mutants.py)
+from gen2_gateway_transport_mutants import build as _transport_mutants  # noqa: E402
+
+MUTANTS.extend(_transport_mutants(Mutant))
