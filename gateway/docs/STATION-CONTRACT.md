@@ -74,6 +74,10 @@ is never conflated with "not searched" or "unavailable":
     `budget_refused`, `provider_outage`, `credentials_rejected`,
     `credentials_not_configured`, `secrets_backend_failing`, `transport_failure`,
     `partial_pagination`);
+  - a find answer's `records` are deduplicated by IDENTITY only (task 2b-repair-13a; INVARIANTS E-3): records whose normalised identities are equal merge, and nothing
+    else does — distinct DOIs never merge, whatever their titles say. Candidates that merely look alike (same kind, year and first-author surname, a similar title) are
+    reported in an optional top-level `linkage_suggestions` list — each `{type: possible_same_work, identities, basis, differing_identifiers, provenance, disposition:
+    unassessed}` — for a later governed assessment; it is present only when there is something to say, and it changes no record, no `retrieved` identity and no `count`;
   - find lanes echo the `cursor` they were asked with, so a failed continuation page
     is retried from where it failed; a failed page gets no `next` and is never
     `exhausted`. A find lane's adapter answers a continuation (`next`: more may remain),
@@ -112,8 +116,21 @@ is never conflated with "not searched" or "unavailable":
   series' observations; the rows of one table record, which FRED, Census and BEA keep whole) or a catalogue's entries (BLS, FRED, Census,
   BEA: one that cannot be read makes the whole catalogue unreadable, never a shorter one) the schema says `own(...)`, not `members(...)`;
   whether a list is one or the other is the schema author's declaration, and the source check in `tests/test_member_isolation.py` lists
-  every place an answer or a list leaves the decoder (`.raw`, `each`, `at`, the `MemberList` constructor, `.json`) with why it is not a pass
-  over independent members; a use that is not listed fails.
+  every place an answer or a list leaves the decoder (`.raw`, `each`, `at`, `without`, the `MemberList` constructor, `download()`) with why it is not a
+  pass over independent members; a use that is not listed fails — a bounded guard behind the construction below, not what makes it so.
+  The decoder's contract with the rest of the gateway is COMPLETE (task 2b-repair-13a; the defect family of repair-12's review and Gate D #1 was that it was not):
+  (1) its failure channel is TOTAL — every scalar conversion (a year: `str.isdigit()` takes `"²"`, `"①"` and a 4,301-digit string, `int()` does not) and every
+  consistency rule runs inside the decoder's own wrapper, so whatever a provider's value makes it do is a `PayloadError` at the nearest boundary (a member's loss, with
+  its readable peers kept as a partial lower bound), the opening of the answer's bytes (empty, unparseable, nested deeper than any supported answer) is inside the same
+  channel, and only a programming error (`UndeclaredRead`, `PassiveRead`, `SealedRead`) passes; (2) declarations are complete for what DECIDES — a field declared
+  `any_()` is handed over `Passive`, carried as sent for a record's `extra` and nothing else (every other use raises), so a field that identifies a candidate, selects one,
+  ends or continues a listing, goes into a request or is shown to the caller as a label is declared a kind (`maybe_key`, `text`, `key`, `flag`, ...) and a wrong one is
+  unreadable, never a returned identifier; (3) the raw answer is SEALED — the client's `Response` holds no readable payload (no `json`, `text` or `body`: only
+  `decode(...)` opens the bytes, and `download()` hands back the bytes of a file a caller asked to download), a member's `raw` is sealed and leaves only as a copy, and
+  doi.org's registration-agency answer and DOAJ's CSV dump cross the decoder like any other, so an answer that is not a list is an unreadable lookup (nothing cached)
+  and not an `unknown` agency remembered for a prefix. A schema may say a field is `never_null` where an operation's contract tells a field LEFT OUT from one sent
+  null (Semantic Scholar's `data`: omitted beside `total: 0` is a search that matched nothing; null is unreadable). A Dataflow's structure reference is validated over
+  every `Ref` and `URN` it states before any is filtered (an empty or nameless `Ref` is a malformed one), with `package` and `class` only as SDMX 2.1 fixes them.
   Alternatives, specifically (tasks 2b-repair-10b/11b R10-1, 2b-repair-12 R11-1): DataCite's `rights` beside `rightsIdentifier`, BEA's
   `Description` beside `Desc` and every spelling of a value's key, a DOI among a record's identifiers beside its own id, Unpaywall's
   `best_oa_location` beside `oa_locations`, a Crossref work's issue date beside its creation date and its authors' `given`/`family`
@@ -130,8 +147,11 @@ is never conflated with "not searched" or "unavailable":
   decoder's own rules; and `tests/test_invariants.py`, four invariants over every operation corrupted at every position of a valid answer
   (an end or a continuation only from fields it read; an unreadable container never an empty one; readable peers survive; nothing escapes
   unhandled). That harness is metamorphic (it holds a corrupted answer to how it may differ from the gateway's own answer to the valid one),
-  so it is supplementary coverage, not an independent oracle (task 2b-repair-10b, R9-4), and a schema that under-declares a field (an `any_`
-  where a typed object belongs) is invisible to a harness derived from it: the oracle and the documentation are what catch that. The
+  so it is supplementary coverage, not an independent oracle (task 2b-repair-10b, R9-4). A schema that under-declares a field is invisible to a harness
+  derived from it, which is why `any_()` is Passive: a decision cannot read an untyped value, so the first answer that reaches it fails
+  (tests/test_declarations.py audits the 65 that remain by what the adapter does with each). The derived pass goes into every `oneof` branch and `by` variant
+  (with a valid sample put in for the one the answer does not hold) and is checked against an inventory of the declared paths written apart from it; DOAJ's CSV
+  and the doi.org lookup are derived passes too. The
   lazy-choice SOURCE SCAN that used to stand here (no `or`, `and` or conditional expression over two provider reads) is retired: it was a
   guard with an ordinary-spelling bypass (Astra, 2b-repair-11: a value held in a variable first), never a proof, and with the decoder there
   is no lazy provider read for it to watch. Sites reviewed and left: a filter on a catalogue row's identifier (`if row["id"]`: the accepted rule
