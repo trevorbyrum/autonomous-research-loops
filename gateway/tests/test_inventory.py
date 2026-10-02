@@ -98,7 +98,9 @@ class Inventory(unittest.TestCase):
     def test_every_provider_data_module_imports_only_what_the_inventory_admits(self):
         self.assertEqual(INV.import_findings(), [])
 
-    def test_the_provider_data_modules_are_exactly_the_ones_that_read_an_answer(self):
+    def test_the_provider_data_modules_include_five_named_ones_and_not_the_transport_module(self):
+        """A sample, not the whole set: five modules that read an answer are among them, and adapters/base.py, which carries it and does not read it, is not. The set itself is what `provider_modules`
+        selects, and the table's equality with the source (`test_every_site_the_scans_find_is_listed_...`) is what every site in those modules answers to."""
         names = [p.relative_to(INV.ROOT).as_posix() for p in INV.provider_modules()]
         for expected in ("adapters/crossref.py", "core/sdmx.py", "core/identity.py", "harvest/registries.py", "harvest/openalex_snapshot.py"):
             self.assertIn(expected, names)

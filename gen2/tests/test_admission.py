@@ -288,11 +288,11 @@ class TheTrustModel(RouterTestCase):
         self.grant = self.started(INV, "discovery")
 
     def test_a_relabelled_outcome_is_not_detected_here(self) -> None:
-        """What the contract does NOT establish, stated as a test so it is not mistaken for a guarantee (INVARIANTS E-2; gen2/router/README.md,
-        "What an observation command is trusted for"): the router sees the command, never the gateway's reply. A well-formed command from trusted
-        station code that says `exhausted` for a page the gateway's reply left open is admitted, because nothing in it says otherwise; it carries
-        what the audit needs to catch it (the capture's reference, and the request), and the state-integrity audit's re-derivation from the
-        captured raw evidence is what does."""
+        """What the contract does NOT establish, stated as a test so it is not mistaken for a guarantee (INVARIANTS E-2; gen2/router/README.md, "What an observation command is trusted for"): the router
+        sees the command, never the gateway's reply. A well-formed command from trusted station code that says `exhausted` for a page the gateway's reply left open is admitted on its first write,
+        because nothing in it says otherwise, and the honest command for the same observation afterwards conflicts (`observation_id_conflict`) rather than correcting it. Nothing here detects it:
+        `gateway_call_ref` acknowledges the gateway's durable call row, which holds the request and no response bytes or digest, so it is no evidence of what the gateway answered, and no audit is
+        built by this task. A sampled retrieval audit with an independently checkable evidence requirement is 2e2's to give, before real workflow acceptance."""
         request = find_request()
         honest = {"observation_id": "obs_000000000001", "request": request, "request_identity": canonical.logical_hash(request), "attempt": 1, "lane": "crossref",
                   "obligation_ids": [], "started_at": "2026-09-27T10:00:00Z", "ended_at": "2026-09-27T10:00:05Z", "coverage_state": "searched_ok",

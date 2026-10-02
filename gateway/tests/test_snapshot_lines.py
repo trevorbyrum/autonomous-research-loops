@@ -167,6 +167,7 @@ class ThroughTheIndexLoad(unittest.TestCase):
             with self.subTest(label):
                 count, error, db, report = self.load({"part_000.gz": [GOOD[0], line, GOOD[1]]})
                 self.assertEqual((count, error, db.rollbacks, report.count), (2, None, 0, 1))
+                self.assertEqual(db.commits, 3, "the loader's lock, the one batch of two records, and its unlock: each committed")
                 stored = [args[0] for sql, args in db.statements if args and "INSERT INTO gateway.records" in sql]
                 self.assertEqual(stored, [identity(1), identity(2)])
 
@@ -217,8 +218,24 @@ class AFileThatCannotBeRead(unittest.TestCase):
         self.assertEqual(report.count, 1)
 
 
+class FakeWithNoVenues(Fake):
+    """`run` first loads the stored ISSN map, which asks the database for its venues: this one has none."""
+
+    def cursor(self):
+        cursor = super().cursor()
+        cursor.fetchall = lambda: []
+        return cursor
+
+
 class TheRunner(unittest.TestCase):
-    def test_run_takes_the_report_and_returns_the_loaded_count(self):
+    def test_run_returns_the_loaded_count_and_fills_the_report(self):
+        for label, lines, loaded, refused in (("a clean snapshot", GOOD, 3, 0), ("valid, bad, valid", [GOOD[0], "bad", GOOD[1]], 2, 1)):
+            with self.subTest(label), Snapshot({"part_000.gz": lines}) as d:
+                db, report = FakeWithNoVenues(), snap.LineReport()
+                self.assertEqual(snap.run(db, d.root, report=report), loaded)
+                self.assertEqual((report.count, db.rollbacks), (refused, 0))
+
+    def test_run_and_read_snapshot_take_the_report_and_it_is_not_optional(self):
         import inspect
         self.assertEqual(list(inspect.signature(snap.run).parameters), ["conn", "root", "report", "limit"])
         self.assertTrue(inspect.signature(snap.read_snapshot).parameters["report"].kind is inspect.Parameter.KEYWORD_ONLY)

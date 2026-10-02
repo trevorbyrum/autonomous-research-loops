@@ -338,10 +338,14 @@ class GuardsStayBounded(unittest.TestCase):
                 self.assertIn(("adapters/new_lane.py", "f"), found)
                 self.assertEqual(found[("adapters/new_lane.py", "f")], [f"private {attribute}"])
 
-    def test_the_four_spellings_astra_listed_or_a_reviewer_would_write_to_the_download_door(self):
-        for source in ('def f(resp):\n    return resp.download()\n', 'def f(resp):\n    return decode("x", S, resp).raw\n'):
-            root = self.tree_with(source)
-            self.assertIn(("adapters/new_lane.py", "f"), INV.door_sites(root), source)
+    def test_four_spellings_that_reach_the_download_door_or_a_records_raw_are_found(self):
+        """The two spellings of the download door and the two of `.raw` the scan is written to find (a call and a bare attribute; the raw of a decoded answer and of any record)."""
+        cases = (('def f(resp):\n    return resp.download()\n', "answer .download"), ('def f(resp):\n    return resp.download\n', "answer .download"),
+                 ('def f(resp):\n    return decode("x", S, resp).raw\n', "raw"), ('def f(record):\n    return record.raw\n', "raw"))
+        for source, finding in cases:
+            with self.subTest(source):
+                root = self.tree_with(source)
+                self.assertEqual(INV.door_sites(root).get(("adapters/new_lane.py", "f")), [finding])
 
 
 if __name__ == "__main__":
