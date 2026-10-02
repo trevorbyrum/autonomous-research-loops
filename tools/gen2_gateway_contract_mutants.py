@@ -56,7 +56,7 @@ def build(Mutant) -> list:
                 TOTAL + "test_nesting_past_the_gateways_operational_limit_is_refused_at_its_edge_and_nesting_within_it_is_read"),
                (TOTAL + "test_the_adapter_facing_decode_takes_the_clients_response_and_nothing_else",)),
         Mutant("T-nesting-unbounded", "an answer nested deeper than the gateway's limit is read", WIRE,
-               '    if _deeper_than(value, MAX_DEPTH):\n', '    if False:\n',
+               '        if depth > limit:\n            raise Malformed(f"JSON nested more than {limit} levels deep")\n', '        if False:\n            raise Malformed(f"JSON nested more than {limit} levels deep")\n',
                (TOTAL + "test_nesting_past_the_gateways_operational_limit_is_refused_at_its_edge_and_nesting_within_it_is_read",),
                (TOTAL + "test_a_malformed_answer_is_never_any_other_error_when_the_bytes_are_opened_by_the_decoder",)),
         # ---------------------------------------------------------------- the payload is sealed and metadata is passive

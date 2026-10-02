@@ -14,6 +14,7 @@ core/wire.py holds the openers now (its docstring is the ruling for each, agains
   * Astra13a          Astra's R13A-1 probes as regressions, byte for byte, including the load that returned a count of zero
   * AgainstTheCsvModule  the CSV opener against csv.reader(strict=True) on thousands of generated texts: it accepts nothing strict refuses, reads what both accept identically,
                       and refuses beyond strict only what RFC 4180 §2.5 forbids (a quote inside an unquoted field)
+  * AgainstTheLibraries  a VALID document reads as json.loads and ElementTree read it, on generated documents: the strictness is all on the other side of the line
 
 What this does not show: that no other malformed input exists. The family is the formats' lexical rules, enumerated from their specifications (the rulings), not a proof about every
 provider; and a truncation that ends at a record boundary is a well-formed shorter document (nothing in CSV marks the end).
@@ -609,6 +610,60 @@ class AgainstTheCsvModule(unittest.TestCase):
                 out = io.StringIO()
                 csv.writer(out, quoting=quoting, lineterminator=rng.choice(["\n", "\r\n"])).writerows(rows)
                 self.assertEqual(wire.open_csv(out.getvalue()), rows, repr(out.getvalue()))
+
+
+class AgainstTheLibraries(unittest.TestCase):
+    """What the openers do with a VALID document is what the libraries did: the strictness is all on the other side of the line. Generated documents, written by the libraries' own writers (so
+    well-formed by construction), are read by the opener and by the library at its default, and must come out the same."""
+
+    @staticmethod
+    def structure(rng: random.Random, depth: int = 0):
+        kinds = ["int", "float", "str", "bool", "null"] + (["list", "dict"] * 2 if depth < 6 else [])
+        kind = rng.choice(kinds)
+        if kind == "int":
+            return rng.choice([0, 1, -1, 2 ** 63, -(2 ** 70), 10 ** 400, rng.randint(-10 ** 9, 10 ** 9)])
+        if kind == "float":
+            return rng.choice([0.0, -0.0, 1.5, 1e308, 5e-324, 2.2250738585072014e-308, 1e-7, 123456.789, rng.random() * 10 ** rng.randint(-20, 20)])
+        if kind == "str":
+            return "".join(rng.choice(["a", "é", "日", "😀", " ", '"', "\\", "\n", "\t", "/", "\u0001", "e999", "NaN"]) for _ in range(rng.randint(0, 8)))
+        if kind == "bool":
+            return rng.random() < .5
+        if kind == "null":
+            return None
+        if kind == "list":
+            return [AgainstTheLibraries.structure(rng, depth + 1) for _ in range(rng.randint(0, 4))]
+        return {f"k{rng.randint(0, 99)}é{i}": AgainstTheLibraries.structure(rng, depth + 1) for i in range(rng.randint(0, 4))}
+
+    def test_json_a_valid_document_reads_as_json_loads_reads_it(self):
+        rng = random.Random(15)
+        for n in range(2000):
+            value = {"root": self.structure(rng)} if n % 2 else self.structure(rng)
+            body = json.dumps(value, ensure_ascii=rng.random() < .5, indent=rng.choice([None, 1, 2]), sort_keys=rng.random() < .5, separators=rng.choice([None, (",", ":")])).encode("utf-8")
+            if rng.random() < .1:
+                body = b"\xef\xbb\xbf" + body
+            mine, theirs = wire.open_json(body), json.loads(body.lstrip(b"\xef\xbb\xbf"))
+            self.assertEqual(repr(mine), repr(theirs), body[:80])   # repr tells 1 from 1.0 from True and -0.0 from 0.0
+
+    def test_json_the_integers_and_floats_at_the_edges_read_as_the_library_reads_them(self):
+        for text in ("0", "-0", "1E3", "1e-7", "5e-324", "1.7976931348623157e308", "-1.7976931348623157e308", "123456789012345678901234567890", "-1" + "0" * 4000, "0.1", "100000000000000000000.5", "1e308"):
+            self.assertEqual(repr(wire.open_json(f"[{text}]")), repr(json.loads(f"[{text}]")), text)
+
+    def test_xml_a_valid_document_reads_as_elementtree_reads_it(self):
+        import xml.etree.ElementTree as ET
+        from tests.oracle import xml_ops
+        docs = [xml_ops.structure_message("BIS", xml_ops.BIS_FLOWS), xml_ops.structure_message("ECB", xml_ops.ECB_FLOWS, dimensions=False), xml_ops.bis_data_message((("US", 4), ("XM", 2)))]
+        rng = random.Random(16)
+        alphabet = ["a", "é", "日", "😀", " ", "&amp;", "&lt;", "&#233;", "<![CDATA[x<y]]>", "\n"]
+        for _ in range(300):
+            def element(depth=0):
+                tag = rng.choice(["a", "m:b", "c-d", "é"]).replace("m:b", "m:b") if depth else "m:root"
+                attributes = "".join(f' x{i}="{"".join(rng.choice(["v", "é", "&amp;", "&quot;"]) for _ in range(3))}"' for i in range(rng.randint(0, 3)))
+                inside = "".join(rng.choice(alphabet) if rng.random() < .5 or depth > 3 else element(depth + 1) for _ in range(rng.randint(0, 4)))
+                return f"<{tag}{attributes}>{inside}</{tag}>" if depth else f'<m:root xmlns:m="urn:x"{attributes}>{inside}</m:root>'
+            docs.append(rng.choice(["", '<?xml version="1.0" encoding="UTF-8"?>']) + rng.choice(["", "<!-- c -->"]) + element())
+        for doc in docs:
+            with self.subTest(doc=doc[:60]):
+                self.assertEqual(ET.tostring(wire.open_xml(doc.encode("utf-8")), encoding="unicode"), ET.tostring(ET.fromstring(doc), encoding="unicode"))
 
 
 if __name__ == "__main__":

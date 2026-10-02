@@ -11,7 +11,7 @@ or raises `Malformed`; none picks a reading. The decoder turns `Malformed` into 
 ruling, is tests/test_openers.py; it fails on a parse call that is not listed.
 
   JSON  (RFC 8259)   UTF-8 only (§8.1; a leading byte order mark is ignored, which §8.1 allows); `NaN`, `Infinity` and `-Infinity` are not JSON (§6); a number that does not
-                     fit a double is not read as infinity; a name that occurs twice in one object is refused (§4: the behaviour of software that receives it is unpredictable,
+                     fit a double is refused, not read as infinity; a name that occurs twice in one object is refused (§4: the behaviour of software that receives it is unpredictable,
                      so no reading is chosen, and the record's `raw` never silently loses a value); nesting deeper than MAX_DEPTH is refused. Accepted as they are: a lone
                      surrogate escape (the grammar allows it, §8.2), a top-level scalar (§2), a `-0`.
   XML   (XML 1.0)    well-formedness is expat's, and strict; the bytes are UTF-8 and read as that — an invalid byte is an error, not U+FFFD, and a declaration of any other
@@ -66,16 +66,9 @@ def _refuse_constant(name: str):
     raise Malformed(f"the token {name} is not JSON (RFC 8259 §6)")
 
 
-def _finite(text: str) -> float:
-    value = float(text)
-    if not math.isfinite(value):
-        raise Malformed(f"the number {text[:24]!r} does not fit a double (RFC 8259 §6 leaves the range to the receiver; reading it as infinity is a guess)")
-    return value
-
-
 def _names_once(pairs: list) -> dict:
     out = dict(pairs)
-    if len(out) != len(pairs):
+    if len(out) != len(pairs):   # the common case costs one comparison; the pass that names the culprit runs only for a document that is refused
         seen = set()
         for name, _ in pairs:
             if name in seen:
@@ -84,33 +77,46 @@ def _names_once(pairs: list) -> dict:
     return out
 
 
+
 def open_json(body) -> Any:
-    """The value of a JSON text, read one way (see the module docstring). Malformed for anything else, nesting past MAX_DEPTH included."""
+    """The value of a JSON text, read one way (see the module docstring). Malformed for anything else, nesting past MAX_DEPTH and a number past a double included."""
     text = _text(body, "JSON")
     try:
-        value = json.loads(text, object_pairs_hook=_names_once, parse_constant=_refuse_constant, parse_float=_finite)
+        value = json.loads(text, object_pairs_hook=_names_once, parse_constant=_refuse_constant)
     except Malformed:
         raise
     except RecursionError:   # nesting past the interpreter's own limit is not JSON any provider sends
         raise Malformed(f"JSON nested more than {MAX_DEPTH} levels deep") from None
     except ValueError as e:
         raise Malformed(f"not JSON: {e}", syntax=True) from None
-    if _deeper_than(value, MAX_DEPTH):
-        raise Malformed(f"JSON nested more than {MAX_DEPTH} levels deep")
+    _check_shape(value, MAX_DEPTH)
     return value
 
 
-def _deeper_than(value, limit: int) -> bool:
-    """Whether containers nest past `limit` levels (the root is level 1), counted without recursion — which is the point: nothing later walks a structure this
-    answer holds with more depth than that, whatever it does with it (store it, copy it, serialise it)."""
+def _check_shape(value, limit: int) -> None:
+    """One pass over what was parsed, counted without recursion — which is the point: nothing later walks a structure this answer holds with more depth than `limit` (the root is level 1),
+    whatever it does with it (store it, copy it, serialise it) — that also finds the numbers the library read as infinity (`1e999`: the grammar allows the literal, RFC 8259 §6 leaves the
+    range to the receiver, and reading it as infinity is a guess; json.dumps would write it back as the non-JSON `Infinity`). Malformed for either."""
+    if type(value) is float and not math.isfinite(value):
+        raise Malformed("a number does not fit a double (RFC 8259 §6)")
     stack = [(value, 1)]
+    pop, push, finite = stack.pop, stack.append, math.isfinite
     while stack:
-        v, depth = stack.pop()
-        children = v.values() if isinstance(v, dict) else v if isinstance(v, list) else ()
+        v, depth = pop()
         if depth > limit:
-            return True
-        stack.extend((c, depth + 1) for c in children if isinstance(c, (dict, list)))
-    return False
+            raise Malformed(f"JSON nested more than {limit} levels deep")
+        if type(v) is dict:
+            children = v.values()
+        elif type(v) is list:
+            children = v
+        else:
+            continue   # a scalar at the root
+        for child in children:
+            kind = type(child)
+            if kind is dict or kind is list:
+                push((child, depth + 1))
+            elif kind is float and not finite(child):
+                raise Malformed("a number does not fit a double (RFC 8259 §6 leaves the range to the receiver; reading it as infinity is a guess)")
 
 
 # ------------------------------------------------------------------ XML (XML 1.0)
