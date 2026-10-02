@@ -47,13 +47,20 @@ And so is each exchange's (2b-repair-13d, Astra R13B-1): the `timeout` a transpo
 WHOLE exchange's — connect, request, status line and headers, body — not the longest it waits on one
 socket operation, which a reply arriving a chunk at a time renews for ever. The default transport
 (http_transport) takes one absolute deadline when it is called and arms every blocking socket call with what
-is left of it, so nothing runs past it but what no socket timeout reaches (name resolution; see its
-docstring). The client does not rest on that: a reply that completes after its exchange's budget is a
+is left of it, so no reply can outlast it by arriving a chunk at a time; and no exchange resolves a name
+(2b-repair-15, Astra's final 2b review F2): `getaddrinfo` cannot be interrupted in-process, and the
+constraints below leave no way to give it a deadline, so it is kept off every deadline the client holds.
+An exchange connects to an address it was handed (an IP literal is its own address; a name was looked up
+beforehand, `GatewayClient.resolve`) and keeps the NAME for the TLS server name and the certificate check.
+The lookup is made at construction (the default transport, a name) and again only when the owner calls
+`resolve()` between operations, which a connection failure invites (`endpoint_stale`); never by an exchange,
+a poll or a search. The time it takes is the CALLER's, outside every exchange's and poll's deadline; the
+client cannot bound it (see `resolve`). The client does not rest on the transport for the rest either: a
+reply that completes after its exchange's budget is a
 timeout whatever it says (`_exchange`), so a late `done` is never a result, for any transport. The
 mechanism is in-process and stdlib-only on purpose: the client has no spawn capability (BOUNDARIES: the
 supervisor owns every lifecycle) and a thread cannot be killed, so a worker thread left behind a timed wait
-would be exactly what a deadline must not leave; a supervisor-owned I/O worker that is terminated at the
-deadline could bound name resolution too, and the `transport` argument is where it would be plugged in.
+would be exactly what a deadline must not leave.
 
 What this client does not do: write the store (the router records what it returns) or
 pick lanes or policy (the gateway plans; the grant binds).
@@ -61,19 +68,23 @@ pick lanes or policy (the gateway plans; the grant binds).
 from __future__ import annotations
 
 import http.client
+import ipaddress
 import socket
 import ssl
 import time
+import types
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
-from typing import Callable, Sequence
+from typing import Callable, Mapping, NamedTuple, Sequence
 
 from gen2.core import canonical, pagination
 from gen2.gateway_client import observe
 
 REQUEST_TYPES = pagination.REQUEST_TYPES
 POLL_SECONDS = 0.5
+NO_NAMES: Mapping = types.MappingProxyType({})   # no name was looked up beforehand: only an IP literal can be connected to
 
 
 def utc_now() -> str:
@@ -144,13 +155,24 @@ class _DeadlineSSLSocket(ssl.SSLSocket):
         return super().send(*args)
 
 
-def _connect(address: tuple, deadline: _Deadline) -> _DeadlineSocket:
-    """A connected socket, whose connect took only the time left (name resolution itself has no deadline to take: see
-    http_transport)."""
+def _literal(host: str, port: int) -> list | None:
+    """The address a host that IS an address (an IPv4 or IPv6 literal) stands for, as getaddrinfo would give it; None for a name."""
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return None
+    if ip.version == 6:
+        return [(socket.AF_INET6, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (host, port, 0, 0))]
+    return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (host, port))]
+
+
+def _connect(address: tuple, deadline: _Deadline, resolved: Mapping = NO_NAMES) -> _DeadlineSocket:
+    """A connected socket, whose connect took only the time left. It never resolves a name: an IP literal is its own address, and a name must
+    have been looked up beforehand (`resolved`: (lower-case host, port) -> getaddrinfo's results); one that was not is a failed connect."""
     host, port = address
-    error: OSError = OSError(f"{host}:{port} resolved to no address")
+    error: OSError = OSError(f"{host}:{port} has no resolved address: an exchange never resolves a name")
     deadline.remaining()
-    for family, kind, proto, _, target in socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM):
+    for family, kind, proto, _, target in _literal(host, port) or resolved.get((host.lower(), port), ()):
         sock = _DeadlineSocket(family, kind, proto)
         sock.deadline = deadline
         try:
@@ -165,17 +187,17 @@ def _connect(address: tuple, deadline: _Deadline) -> _DeadlineSocket:
 
 
 class _DeadlineHTTPConnection(http.client.HTTPConnection):
-    def __init__(self, *args, deadline: _Deadline, **kwargs) -> None:
+    def __init__(self, *args, deadline: _Deadline, resolved: Mapping = NO_NAMES, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._deadline = deadline
-        self._create_connection = lambda address, timeout, source_address: _connect(address, deadline)
+        self._create_connection = lambda address, timeout, source_address: _connect(address, deadline, resolved)
 
 
 class _DeadlineHTTPSConnection(http.client.HTTPSConnection):
-    def __init__(self, *args, deadline: _Deadline, **kwargs) -> None:
+    def __init__(self, *args, deadline: _Deadline, resolved: Mapping = NO_NAMES, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._deadline = deadline
-        self._create_connection = lambda address, timeout, source_address: _connect(address, deadline)
+        self._create_connection = lambda address, timeout, source_address: _connect(address, deadline, resolved)
         self._context.sslsocket_class = _DeadlineSSLSocket
 
     def connect(self) -> None:
@@ -183,30 +205,31 @@ class _DeadlineHTTPSConnection(http.client.HTTPSConnection):
         self.sock.deadline = self._deadline
 
 
-def _opener(deadline: _Deadline) -> urllib.request.OpenerDirector:
+def _opener(deadline: _Deadline, resolved: Mapping) -> urllib.request.OpenerDirector:
     class Http(urllib.request.HTTPHandler):
         def http_open(self, req):
-            return self.do_open(lambda host, **kw: _DeadlineHTTPConnection(host, deadline=deadline, **kw), req)
+            return self.do_open(lambda host, **kw: _DeadlineHTTPConnection(host, deadline=deadline, resolved=resolved, **kw), req)
 
     class Https(urllib.request.HTTPSHandler):
         def https_open(self, req):
-            return self.do_open(lambda host, **kw: _DeadlineHTTPSConnection(host, deadline=deadline, **kw), req, context=self._context)
+            return self.do_open(lambda host, **kw: _DeadlineHTTPSConnection(host, deadline=deadline, resolved=resolved, **kw), req, context=self._context)
     return urllib.request.build_opener(_NoRedirect, Http, Https)
 
 
-def http_transport(method: str, url: str, headers: dict, body: bytes | None, timeout: float) -> tuple:
+def http_transport(method: str, url: str, headers: dict, body: bytes | None, timeout: float, resolved: Mapping | None = None) -> tuple:
     """(status, headers, body, error): one HTTP exchange that never raises and never follows a redirect.
 
     `timeout` is the whole exchange's: one absolute deadline, taken when the call starts, over the connect, the
     request, the status line and headers, and the body. Every blocking socket operation is given what is left of it
     (_DeadlineSocket) and an operation that would start after it does not, so no reply can outlast it by arriving a
-    chunk at a time. What is not a socket operation has no timeout to give: name resolution (getaddrinfo) cannot be
-    interrupted in-process, so a host that is a name can run past the deadline by the resolver's own timeout before the
-    connect is even tried; the deadline is checked as soon as it returns, and the client discards a reply that
-    completes after it (GatewayClient._exchange)."""
+    chunk at a time. The exchange resolves no name (2b-repair-15, Astra F2: getaddrinfo cannot be interrupted
+    in-process, so a lookup inside the deadline can run past it by the resolver's own time): the host of `url` is an IP
+    literal, or a name in `resolved` ((lower-case host, port) -> getaddrinfo's results, looked up beforehand by the
+    caller: GatewayClient.resolve), and a name that is in neither is a transport failure at once. The name stays the
+    host of the request: it is what the TLS server name and the certificate check use, and the Host header says."""
     req = urllib.request.Request(url, data=body, method=method, headers=headers)
     try:
-        with _opener(_Deadline(timeout)).open(req, timeout=timeout) as resp:
+        with _opener(_Deadline(timeout), NO_NAMES if resolved is None else resolved).open(req, timeout=timeout) as resp:
             return resp.status, {k.lower(): v for k, v in resp.headers.items()}, resp.read(), None
     except urllib.error.HTTPError as e:
         try:
@@ -233,12 +256,70 @@ def _captured(obs: dict) -> bool:
     return obs.get("captured") is True and type(obs.get("call_ref")) is int
 
 
+class Resolution(NamedTuple):
+    """One lookup of the gateway's name, as the record of it for whoever owns the call to keep: what was asked, what came back (the addresses) or why nothing did, and how long it took."""
+    host: str
+    port: int
+    addresses: tuple
+    error: str | None
+    elapsed: float
+    at: str
+
+
 class GatewayClient:
     def __init__(self, base_url: str, token: str, *, timeout: float = 130.0, deadline: float = 300.0,
-                 transport: Callable = http_transport, clock: Callable[[], str] = utc_now,
-                 sleep: Callable[[float], None] = time.sleep, monotonic: Callable[[], float] = time.monotonic):
+                 transport: Callable | None = None, clock: Callable[[], str] = utc_now,
+                 sleep: Callable[[float], None] = time.sleep, monotonic: Callable[[], float] = time.monotonic,
+                 resolver: Callable | None = None):
+        """`transport` None (or `http_transport` itself) is the real one, over the addresses this client looked up. With it and a gateway that is a name (`http://gateway:8765`, GEN2_GATEWAY_URL), the name is looked up HERE, once (`resolve`), outside
+        any exchange: a failed lookup does not fail the construction (a dependency's failure is a capability fact, not an outage of the engine: DEPLOYMENT-CONTRACT 1.2), it leaves
+        the endpoint stale, and every exchange then fails at once as a transport failure until the owner's `resolve()` succeeds. A transport handed in (a test's) is not the client's to
+        resolve for, and an IP literal needs no lookup. `resolver` is getaddrinfo's signature (socket.getaddrinfo when None, looked up at each call)."""
         self.base_url, self.token, self.timeout, self.deadline = base_url.rstrip("/"), token, timeout, deadline
-        self._transport, self._clock, self._sleep, self._monotonic = transport, clock, sleep, monotonic
+        self._clock, self._sleep, self._monotonic, self._resolver = clock, sleep, monotonic, resolver
+        parts = urllib.parse.urlsplit(self.base_url)
+        self._origin = ((parts.hostname or "").lower(), parts.port or (443 if parts.scheme == "https" else 80))   # the key http_transport's `resolved` is looked up by
+        self._resolved: dict = {}
+        self._stale, self.last_resolution = False, None
+        real = transport is None or transport is http_transport
+        self._transport = self._resolving_transport if real else transport
+        if real and _literal(*self._origin) is None:
+            self.resolve()
+
+    def _resolving_transport(self, method: str, url: str, headers: dict, body: bytes | None, timeout: float) -> tuple:
+        return http_transport(method, url, headers, body, timeout, resolved=self._resolved)
+
+    @property
+    def endpoint_stale(self) -> bool:
+        """True when the gateway's name has no good lookup (the last one failed, or an exchange has failed to connect since): the owner may `resolve()` it again, between operations."""
+        return self._stale
+
+    def resolve(self) -> Resolution:
+        """Look the gateway's name up (again), now: the one place besides the construction where this client resolves a name, and never called by an exchange, a poll or a search
+        (2b-repair-15, Astra F2: an exchange that resolves can run past its deadline by the resolver's own time, which cannot be interrupted). A connection failure marks the endpoint stale
+        (`endpoint_stale`) and nothing else; looking again is the OWNER's call, made between operations and before the next exchange's deadline starts. A lookup that finds nothing keeps
+        the addresses the last good one found. The Resolution is returned and kept (`last_resolution`) for the owner to record.
+
+        The time this takes is the caller's, and it is not bounded here: getaddrinfo cannot be interrupted, the client may not leave a thread running or start a process (BOUNDARIES: the
+        supervisor owns every lifecycle), so whichever call this is made from waits for the resolver. Nothing in gen-2 constructs a GatewayClient or calls this yet; the first caller must
+        place it under a bound it owns."""
+        host, port = self._origin
+        began, at = self._monotonic(), self._clock()
+        found: list = []
+        error = None
+        if _literal(host, port) is not None:   # an address needs no lookup
+            found = _literal(host, port)
+        else:
+            try:
+                found = list((self._resolver or socket.getaddrinfo)(host, port, 0, socket.SOCK_STREAM))
+                error = None if found else f"{host}:{port} resolved to no address"
+            except OSError as e:
+                error = f"{type(e).__name__}: {e}"
+        if found:
+            self._resolved[self._origin] = found
+        self._stale = bool(error)
+        self.last_resolution = Resolution(host, port, tuple(sorted({info[4][0] for info in found})), error, self._monotonic() - began, at)
+        return self.last_resolution
 
     def _exchange(self, method: str, path: str, body: dict | None, token: str, headers: dict | None = None, timeout: float | None = None):
         """(status, parsed JSON dict or None, error class or None). `timeout`: this exchange's own, never above the client's,
@@ -252,6 +333,8 @@ class GatewayClient:
         started = self._monotonic()
         status, resp_headers, raw, error = self._transport(method, self.base_url + path, hdrs, data, budget)
         if status is None:
+            if (error or "transport_failure") == "transport_failure" and _literal(*self._origin) is None:
+                self._stale = True   # a connection failure invites a new lookup: the owner's `resolve()`, never made here
             return None, None, error or "transport_failure"
         if self._monotonic() - started > budget:
             return None, None, "timeout"   # a terminal reply that arrives after the deadline is not a result (Astra R13B-1)

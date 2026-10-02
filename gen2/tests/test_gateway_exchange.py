@@ -234,7 +234,7 @@ class EachCallIsGivenWhatIsLeft(ExchangeTest):
         self.assertLess(sock.gettimeout(), 0.31)
 
     def test_no_step_starts_after_the_deadline(self):
-        """Nothing is begun, name resolution included, once the budget is spent."""
+        """Nothing is begun once the budget is spent (and no exchange resolves a name at all: `NoExchangeResolvesAName`)."""
         with mock.patch("socket.getaddrinfo", side_effect=AssertionError("a name was resolved after the deadline")):
             self.assertEqual(http_transport("GET", "http://gateway.invalid:8765/v1/jobs/1", {}, None, 0), (None, {}, b"", "timeout"))
 
@@ -357,6 +357,200 @@ class TlsExchangeIsBoundedToo(ExchangeTest):
         (status, headers, raw, error), elapsed = self.exchange(server, deadline=5.0)
         self.assertEqual((status, error, json.loads(raw)["status"]), (200, None, "done"))
         self.assertLess(elapsed, 2.0)
+
+
+def lookup(*addresses: str, port: int = 0):
+    """A resolver (getaddrinfo's signature) that finds these addresses for any name, and records each call it is given."""
+    def find(host, called_port, *rest):
+        find.calls.append((host, called_port))
+        return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (address, port or called_port)) for address in addresses]
+    find.calls = []
+    return find
+
+
+class NoExchangeResolvesAName(ExchangeTest):
+    """Task 2b-repair-15 (Astra's final 2b review, F2). `_connect` called a synchronous getaddrinfo, which cannot be interrupted: a substituted resolver that took 0.4 s made a 0.05 s exchange
+    take 0.423 s, and the client-level probe 0.418 s. An exchange now resolves no name at all: an IP literal is its own address, a name was looked up beforehand by the client's owner (at
+    construction, or `resolve()` between operations), and a name that was not is a transport failure at once. No resolver here touches the network: each is a stand-in."""
+
+    @staticmethod
+    def slow(delay: float):
+        def resolve(*args):
+            resolve.calls.append(args)
+            time.sleep(delay)
+            return []
+        resolve.calls = []
+        return resolve
+
+    def test_astras_probe_a_slow_resolver_no_longer_extends_the_transports_exchange(self):
+        resolve = self.slow(0.4)
+        with mock.patch.object(gateway.socket, "getaddrinfo", side_effect=resolve):
+            (result, elapsed) = self.timed(lambda: http_transport("GET", "http://synthetic.invalid/v1/jobs/1", {}, None, 0.05))
+        self.assertEqual(result, (None, {}, b"", "transport_failure"))
+        self.assertLess(elapsed, 0.2, "on c0d963d this took 0.423 s")
+        self.assertEqual(resolve.calls, [], "no name was resolved")
+
+    def test_astras_probe_a_slow_resolver_no_longer_extends_the_clients_exchange(self):
+        """The client-level probe: the lookup the client's construction made (outside any exchange, and as slow as its resolver) is not repeated by an exchange."""
+        resolve = self.slow(0.4)
+        with mock.patch.object(gateway.socket, "getaddrinfo", side_effect=resolve):
+            c, built = self.timed(lambda: GatewayClient("http://synthetic.invalid", "synthetic", timeout=0.05))
+            looked_up = len(resolve.calls)
+            answer, elapsed = self.timed(lambda: c._exchange("GET", "/v1/jobs/1", None, "synthetic"))
+        self.assertEqual(answer, (None, None, "transport_failure"))
+        self.assertLess(elapsed, 0.2, "on c0d963d this took 0.418 s")
+        self.assertEqual(len(resolve.calls), looked_up, "the exchange resolved nothing")
+        self.assertEqual((looked_up, built >= 0.38), (1, True), "the construction made the one lookup and waited for it: that time is the constructor's, before any exchange")
+
+    def test_an_ip_literal_is_never_resolved(self):
+        server = self.serve(lambda s, conn, h, b: s.send(conn, [(0, reply(job("done")))]))
+        refuse = mock.Mock(side_effect=AssertionError("a name was resolved for an IP literal"))
+        with mock.patch.object(gateway.socket, "getaddrinfo", refuse):
+            c = GatewayClient(server.url, "synthetic", resolver=refuse)
+            status, doc, error = c._exchange("GET", "/v1/jobs/1", None, "synthetic")
+            self.assertEqual((status, error, doc["status"]), (200, None, "done"))
+            self.assertEqual(c.resolve().addresses, ("127.0.0.1",), "and the owner's resolve() of an address is no lookup either")
+        self.assertIsNone(c.last_resolution.error)
+        refuse.assert_not_called()
+        self.assertFalse(c.endpoint_stale)
+
+    def test_both_kinds_of_ip_literal_are_their_own_address(self):
+        self.assertEqual(gateway._literal("127.0.0.1", 80), [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", 80))])
+        self.assertEqual(gateway._literal("::1", 80), [(socket.AF_INET6, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("::1", 80, 0, 0))])
+        for name in ("gateway", "gateway.test", "localhost", "1.2.3", "300.1.1.1", ""):
+            with self.subTest(name):
+                self.assertIsNone(gateway._literal(name, 80), "a name is not an address")
+
+    def test_a_name_that_was_looked_up_beforehand_is_connected_to_and_stays_the_hosts_name(self):
+        seen = []
+        server = self.serve(lambda s, conn, h, b: (seen.append(h), s.send(conn, [(0, reply(job("done")))])))
+        resolve = lookup("127.0.0.1", port=server.port)
+        c = GatewayClient(f"http://Gateway.Test:{server.port}", "synthetic", resolver=resolve)
+        self.assertEqual(resolve.calls, [("GATEWAY.TEST".lower(), server.port)], "looked up once, at construction, under the name it was given (lower-cased: the cache key)")
+        for _ in range(3):
+            status, doc, error = c._exchange("GET", "/v1/jobs/1", None, "synthetic")
+            self.assertEqual((status, error, doc["status"]), (200, None, "done"))
+        self.assertEqual(len(resolve.calls), 1, "three exchanges made no lookup")
+        self.assertTrue(all(f"Host: Gateway.Test:{server.port}".encode() in head for head in seen), "the request still names the host, not the address")
+        self.assertEqual((c.last_resolution.host, c.last_resolution.addresses, c.last_resolution.error), ("gateway.test", ("127.0.0.1",), None))
+
+    def test_the_deployment_contracts_gateway_url_is_looked_up_once_at_construction_and_a_given_transport_is_not_the_clients_to_resolve_for(self):
+        resolve = lookup("10.0.0.5")
+        c = GatewayClient("http://gateway:8765", "synthetic", resolver=resolve)
+        self.assertEqual(resolve.calls, [("gateway", 8765)])
+        self.assertEqual(c.last_resolution.addresses, ("10.0.0.5",))
+        self.assertFalse(c.endpoint_stale)
+        other = lookup("10.0.0.5")
+        GatewayClient("http://gateway:8765", "synthetic", resolver=other, transport=lambda *a: (None, {}, b"", "timeout"))
+        self.assertEqual(other.calls, [], "a test's transport has no use for an address")
+
+    def test_a_name_that_was_never_looked_up_is_a_failed_exchange_at_once_and_nothing_is_resolved(self):
+        resolve = self.slow(0.4)
+        with mock.patch.object(gateway.socket, "getaddrinfo", side_effect=resolve):
+            result, elapsed = self.timed(lambda: http_transport("GET", "http://gateway:8765/v1/jobs/1", {}, None, 5.0))
+        self.assertEqual(result, (None, {}, b"", "transport_failure"))
+        self.assertLess(elapsed, 0.2)
+        self.assertEqual(resolve.calls, [])
+
+    def test_a_connection_failure_marks_the_endpoint_stale_and_only_the_owners_resolve_looks_again(self):
+        dead = socket.socket()
+        dead.bind(("127.0.0.1", 0))
+        dead_port = dead.getsockname()[1]
+        dead.close()   # a port nothing listens on: the connect is refused
+        server = self.serve(lambda s, conn, h, b: s.send(conn, [(0, reply(job("done")))]))
+        in_flight, answers_ = [], [("127.0.0.1", dead_port)]
+        real = gateway.http_transport
+
+        def wrapped(*args, **kwargs):
+            in_flight.append(True)
+            try:
+                return real(*args, **kwargs)
+            finally:
+                in_flight.pop()
+        calls = []
+
+        def resolve(host, port, *rest):
+            calls.append(("resolved", host, port, "inside an exchange" if in_flight else "outside"))
+            return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", answers_[0])]
+        with mock.patch.object(gateway, "http_transport", wrapped):
+            c = GatewayClient(f"http://gateway:{dead_port}", "synthetic", resolver=resolve)
+            self.assertFalse(c.endpoint_stale)
+            self.assertEqual(c._exchange("GET", "/v1/jobs/1", None, "synthetic"), (None, None, "transport_failure"))
+            self.assertTrue(c.endpoint_stale, "a connection that failed invites a new lookup")
+            c.search(FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1", pages=2)   # a whole search over the dead endpoint: every exchange fails
+            self.assertEqual(calls, [("resolved", "gateway", dead_port, "outside")], "nothing looked up again: not by the exchanges, not by the search that retried them")
+            c._origin = ("gateway", server.port)   # the gateway's service moved: the name now has another address (and port) to find
+            answers_[0] = ("127.0.0.1", server.port)
+            record = c.resolve()
+            self.assertEqual(calls[1:], [("resolved", "gateway", server.port, "outside")], "the owner's call, between operations")
+            self.assertEqual((record.addresses, record.error, c.endpoint_stale), (("127.0.0.1",), None, False))
+            c.base_url = f"http://gateway:{server.port}"
+            self.assertEqual(c._exchange("GET", "/v1/jobs/1", None, "synthetic")[0], 200)
+        self.assertEqual(len(calls), 2)
+
+    def test_a_failed_lookup_leaves_the_client_built_and_stale_and_every_exchange_a_failure_at_once(self):
+        def gone(*args):
+            raise socket.gaierror(socket.EAI_NONAME, "Name or service not known")
+        c = GatewayClient("http://gateway:8765", "synthetic", resolver=gone)
+        self.assertTrue(c.endpoint_stale)
+        self.assertEqual((c.last_resolution.addresses, c.last_resolution.error.split(":")[0]), ((), "gaierror"))
+        answer, elapsed = self.timed(lambda: c._exchange("GET", "/v1/jobs/1", None, "synthetic"))
+        self.assertEqual(answer, (None, None, "transport_failure"))
+        self.assertLess(elapsed, 0.2)
+        self.assertTrue(c.endpoint_stale)
+
+    def test_a_lookup_that_finds_nothing_keeps_the_addresses_the_last_good_one_found(self):
+        found = ["10.0.0.5"]
+        c = GatewayClient("http://gateway:8765", "synthetic", resolver=lambda host, port, *rest: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (a, port)) for a in found])
+        found.clear()
+        record = c.resolve()
+        self.assertEqual((record.addresses, c.endpoint_stale), ((), True))
+        self.assertIn("resolved to no address", record.error)
+        self.assertEqual([info[4] for info in c._resolved.get(("gateway", 8765), [])], [("10.0.0.5", 8765)], "the last good addresses are still the ones exchanges use")
+
+
+@unittest.skipUnless(shutil.which("openssl"), "a TLS server needs a certificate, which the openssl command line makes")
+class TlsNamesAreChecked(ExchangeTest):
+    """A name that was looked up beforehand is still the name TLS uses: the server name it sends (SNI) and the name its certificate is checked against are the host's, never the address
+    the lookup found (2b-repair-15, Astra F2: keep TLS server-name checking correct)."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.dir = Path(tempfile.mkdtemp(prefix="gen2-tls-names-"))
+
+        def certificate(name: str, san: str) -> tuple:
+            cert, key = str(cls.dir / f"{name}-cert.pem"), str(cls.dir / f"{name}-key.pem")
+            subprocess.run(["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes", "-days", "1", "-subj", "/CN=" + name,
+                            "-addext", "subjectAltName=" + san, "-keyout", key, "-out", cert], check=True, capture_output=True)
+            return cert, key
+        cls.named, cls.addressed = certificate("gateway.test", "DNS:gateway.test"), certificate("addressed", "IP:127.0.0.1")
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        shutil.rmtree(cls.dir, ignore_errors=True)
+
+    def over_tls(self, certificate: tuple):
+        """(the client, the server names the server was sent): a client of https://gateway.test whose lookup found 127.0.0.1, against a server holding `certificate`."""
+        patch = mock.patch.dict(os.environ, {"SSL_CERT_FILE": certificate[0]})
+        patch.start()
+        self.addCleanup(patch.stop)
+        server = self.serve(lambda s, conn, h, b: s.send(conn, [(0, reply(job("done")))]), tls=certificate)
+        names = []
+        server._tls.sni_callback = lambda sock, name, context: names.append(name)
+        c = GatewayClient(f"https://gateway.test:{server.port}", "synthetic", resolver=lookup("127.0.0.1", port=server.port))
+        return c, names
+
+    def test_the_certificate_is_checked_against_the_hostname_and_the_server_name_sent_is_the_hostname(self):
+        c, names = self.over_tls(self.named)
+        status, doc, error = c._exchange("GET", "/v1/jobs/1", None, "synthetic")
+        self.assertEqual((status, error, doc["status"]), (200, None, "done"))
+        self.assertEqual(names, ["gateway.test"], "SNI is the name, not 127.0.0.1")
+
+    def test_a_certificate_for_the_address_alone_is_refused_for_the_name(self):
+        """The control that shows the check runs against the hostname: the same server, the same address, a certificate valid for 127.0.0.1 and not for gateway.test."""
+        c, names = self.over_tls(self.addressed)
+        self.assertEqual(c._exchange("GET", "/v1/jobs/1", None, "synthetic"), (None, None, "transport_failure"))
+        self.assertEqual(names, ["gateway.test"])
 
 
 if __name__ == "__main__":

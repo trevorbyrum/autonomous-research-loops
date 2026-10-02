@@ -189,6 +189,24 @@ MANUAL: dict[str, dict] = {
        for mid, control, call, what in (
            ("2B13D-recv-not-armed", "test_gateway_exchange.EachCallIsGivenWhatIsLeft.test_control_recv_returns_what_arrives_with_time_left", "recv", "that what a peer sent inside the deadline is read whole"),
            ("2B13D-send-not-armed", "test_gateway_exchange.EachCallIsGivenWhatIsLeft.test_control_send_sends_with_time_left", "send", "that a peer reading inside the deadline receives what it is given"))},
+    # task 2b-repair-15 (Astra F2): the name-resolution guards. Each control takes the accepted path through the changed code and asserts something the mutant leaves alone:
+    # a name looked up beforehand is connected to (and, over TLS, checked as the name); a failed lookup leaves the endpoint stale and every exchange a failure; an address is the client's own
+    "2B15-an-exchange-resolves-a-name": {"controls": ["test_gateway_exchange.NoExchangeResolvesAName.test_a_name_that_was_looked_up_beforehand_is_connected_to_and_stays_the_hosts_name",
+                                                       "test_gateway_exchange.TlsNamesAreChecked.test_the_certificate_is_checked_against_the_hostname_and_the_server_name_sent_is_the_hostname"],
+                                         "why": "executes gen2/gateway_client/client.py _connect's changed loop header on its accepted path: the name was looked up beforehand, so the alternative the mutant adds "
+                                                "(a lookup by the exchange itself) is never reached, and the exchange connects and reads its reply, over plain HTTP and over TLS"},
+    **{mid: {"controls": ["test_gateway_exchange.NoExchangeResolvesAName.test_a_failed_lookup_leaves_the_client_built_and_stale_and_every_exchange_a_failure_at_once"],
+             "why": "a client whose lookup failed takes a connection failure through gen2/gateway_client/client.py _exchange's changed line (the stale marking) and asserts a failure at once and a stale "
+                    "endpoint: the mutant, which looks up again there (the resolver is a stand-in that fails) or leaves the mark as the failed lookup set it, keeps both"}
+       for mid in ("2B15-an-exchange-re-resolves-after-a-failure", "2B15-a-connection-failure-leaves-the-endpoint-fresh")},
+    "2B15-an-ip-literal-is-looked-up": {"controls": ["test_gateway_exchange.NoExchangeResolvesAName.test_a_name_that_was_looked_up_beforehand_is_connected_to_and_stays_the_hosts_name"],
+                                        "why": "executes gen2/gateway_client/client.py _literal on a name, where it returns None as the mutant does for every host: the name is connected to through its beforehand lookup"},
+    "2B15-construction-does-not-look-the-name-up": {"controls": ["test_gateway_exchange.NoExchangeResolvesAName.test_a_name_that_was_never_looked_up_is_a_failed_exchange_at_once_and_nothing_is_resolved"],
+                                                    "why": "a name no one looked up, exchanged over the transport directly, fails at once and resolves nothing: the case a client built without its lookup is in, which the mutant leaves as it was"},
+    "2B15-a-failed-lookup-is-not-stale": {"controls": ["test_gateway_exchange.NoExchangeResolvesAName.test_a_name_that_was_looked_up_beforehand_is_connected_to_and_stays_the_hosts_name"],
+                                          "why": "executes gen2/gateway_client/client.py resolve's changed line with an empty error, where the endpoint is fresh: the mutant, which marks every lookup fresh, leaves it so"},
+    "2B15-a-failed-lookup-wipes-the-last-good-addresses": {"controls": ["test_gateway_exchange.NoExchangeResolvesAName.test_a_name_that_was_looked_up_beforehand_is_connected_to_and_stays_the_hosts_name"],
+                                                           "why": "executes gen2/gateway_client/client.py resolve's changed guard with addresses found, where the addresses are kept: the mutant keeps them too"},
     # task 2b-repair-13b (Astra's 2b-repair-12 timing ruling): the start-grace killer holds the order in which the identity appears; the
     # accepted case, a start whose identity is recorded before recovery, is the normal-start control written beside it
     "1C-sup-no-start-grace": {"controls": ["test_supervisor_lifecycle.ResearchPassLifecycleTest.test_control_a_start_that_has_recorded_its_identity_at_recovery_is_found_running"],

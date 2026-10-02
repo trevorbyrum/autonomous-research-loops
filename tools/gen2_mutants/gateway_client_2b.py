@@ -12,6 +12,9 @@ family below replaces it.
 Task 2b-repair-13d (R13B-1) adds the whole-exchange deadline family, 2B13D-*: its killers are test_gateway_exchange.py's real
 loopback sockets, and the client's own late-reply check is killed by a transport that breaks its contract.
 
+Task 2b-repair-15 (Astra F2) adds 2B15-*: no exchange resolves a name. Its killers are test_gateway_exchange.NoExchangeResolvesAName (a substituted resolver that
+counts, or sleeps, and loopback servers); a name is looked up at construction or by the owner's `resolve()`, never by an exchange.
+
 Task 2b-repair-13b (Gate D #3, #4) adds two families at the end: the typed page outcome (the
 client's and observe's `page_end`, the router's boundary check, its command schema and the
 store's CHECKs) and the poll's one absolute deadline.
@@ -33,6 +36,7 @@ EXC = "test_gateway_exchange."
 AR, AS, AB, ACL = "test_admission.AtTheRouter.", "test_admission.AtTheStore.", "test_admission.TheBoundaryAlone.", "test_admission.AtTheClient."
 PAGINATION = "gen2/core/pagination.py"
 EB, EC, LR, TL = EXC + "EveryBlockingStepIsBounded.", EXC + "EachCallIsGivenWhatIsLeft.", EXC + "ALateReplyIsATimeout.", EXC + "TlsExchangeIsBoundedToo."
+NR = EXC + "NoExchangeResolvesAName."
 POUT = "test_a_page_outcome_says_why_pagination_ended_and_is_consistent_with_what_was_read"
 BOUNDARY = "gen2/router/boundary.py"
 SERVICE = "gen2/router/service.py"
@@ -425,9 +429,9 @@ MUTATIONS: list[Mutation] = [
           ("plain-sockets-undeadlined", "an exchange over plain HTTP uses the standard connection, whose timeout every operation renews",
            (EB + "test_a_status_line_and_headers_that_come_a_few_bytes_at_a_time_stop_at_the_deadline", EB + "test_a_body_that_comes_slowly_stops_at_the_deadline",
             EB + "test_a_reply_that_trickles_in_one_chunk_inside_each_timeout_stops_at_the_deadline", LR + "test_a_late_terminal_reply_is_a_timeout"),
-           "class _DeadlineHTTPConnection(http.client.HTTPConnection):\n    def __init__(self, *args, deadline: _Deadline, **kwargs) -> None:\n        super().__init__(*args, **kwargs)\n        self._deadline = deadline\n"
-           "        self._create_connection = lambda address, timeout, source_address: _connect(address, deadline)",
-           "class _DeadlineHTTPConnection(http.client.HTTPConnection):\n    def __init__(self, *args, deadline: _Deadline, **kwargs) -> None:\n        super().__init__(*args, **kwargs)\n        self._deadline = deadline"),
+           "class _DeadlineHTTPConnection(http.client.HTTPConnection):\n    def __init__(self, *args, deadline: _Deadline, resolved: Mapping = NO_NAMES, **kwargs) -> None:\n        super().__init__(*args, **kwargs)\n        self._deadline = deadline\n"
+           "        self._create_connection = lambda address, timeout, source_address: _connect(address, deadline, resolved)",
+           "class _DeadlineHTTPConnection(http.client.HTTPConnection):\n    def __init__(self, *args, deadline: _Deadline, resolved: Mapping = NO_NAMES, **kwargs) -> None:\n        super().__init__(*args, **kwargs)\n        self._deadline = deadline"),
           ("tls-reads-not-armed", "a TLS socket's reads keep the timeout they were last given", (TL + "test_a_tls_reply_that_trickles_stops_at_the_deadline",),
            "    def read(self, *args):\n        self._arm()\n", "    def read(self, *args):\n"),
           ("tls-send-not-armed", "a TLS socket's send keeps the timeout the handshake ran under",
@@ -444,5 +448,33 @@ MUTATIONS: list[Mutation] = [
             PD + "test_the_search_whose_poll_answers_after_the_deadline_observes_a_timeout",
             PD + "test_a_reply_to_any_exchange_that_outlasts_the_clients_timeout_is_a_timeout"),
            '        if self._monotonic() - started > budget:\n            return None, None, "timeout"', "        if False:\n            return None, None, \"timeout\""),
+      )),
+    # 2b-repair-15, Astra F2: no exchange resolves a name (getaddrinfo cannot be interrupted, so a lookup inside a deadline can run past it)
+    *(Mutation(f"2B15-{key}", "2b-15", desc, tuple(killers), target=CLI, old=old, new=new)
+      for key, desc, killers, old, new in (
+          ("an-exchange-resolves-a-name", "a name that was not looked up beforehand is resolved by the exchange itself, inside its deadline",
+           (NR + "test_astras_probe_a_slow_resolver_no_longer_extends_the_transports_exchange", NR + "test_astras_probe_a_slow_resolver_no_longer_extends_the_clients_exchange",
+            NR + "test_a_name_that_was_never_looked_up_is_a_failed_exchange_at_once_and_nothing_is_resolved"),
+           "    for family, kind, proto, _, target in _literal(host, port) or resolved.get((host.lower(), port), ()):\n",
+           "    for family, kind, proto, _, target in _literal(host, port) or resolved.get((host.lower(), port)) or socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM):\n"),
+          ("an-exchange-re-resolves-after-a-failure", "a connection failure is followed, inside the exchange, by a new lookup of the name",
+           (NR + "test_a_connection_failure_marks_the_endpoint_stale_and_only_the_owners_resolve_looks_again",),
+           "                self._stale = True   # a connection failure invites a new lookup: the owner's `resolve()`, never made here\n", "                self.resolve()\n"),
+          ("a-connection-failure-leaves-the-endpoint-fresh", "a failed connection does not mark the endpoint stale, so the owner is never invited to look again",
+           (NR + "test_a_connection_failure_marks_the_endpoint_stale_and_only_the_owners_resolve_looks_again",),
+           "                self._stale = True   # a connection failure invites a new lookup: the owner's `resolve()`, never made here\n", "                pass\n"),
+          ("an-ip-literal-is-looked-up", "an IPv4 or IPv6 literal is not its own address: it is resolved like a name",
+           (NR + "test_an_ip_literal_is_never_resolved", NR + "test_both_kinds_of_ip_literal_are_their_own_address"),
+           "    try:\n        ip = ipaddress.ip_address(host)\n    except ValueError:\n        return None\n", "    return None\n"),
+          ("construction-does-not-look-the-name-up", "the client built over the real transport and a name makes no lookup, so every exchange fails until the owner's resolve()",
+           (NR + "test_the_deployment_contracts_gateway_url_is_looked_up_once_at_construction_and_a_given_transport_is_not_the_clients_to_resolve_for",
+            NR + "test_a_name_that_was_looked_up_beforehand_is_connected_to_and_stays_the_hosts_name"),
+           "        if real and _literal(*self._origin) is None:\n            self.resolve()\n", ""),
+          ("a-failed-lookup-is-not-stale", "a lookup that failed or found nothing leaves the endpoint marked fresh",
+           (NR + "test_a_failed_lookup_leaves_the_client_built_and_stale_and_every_exchange_a_failure_at_once", NR + "test_a_lookup_that_finds_nothing_keeps_the_addresses_the_last_good_one_found"),
+           "        self._stale = bool(error)\n", "        self._stale = False\n"),
+          ("a-failed-lookup-wipes-the-last-good-addresses", "a lookup that finds nothing replaces the addresses the last good one found with none",
+           (NR + "test_a_lookup_that_finds_nothing_keeps_the_addresses_the_last_good_one_found",),
+           "        if found:\n            self._resolved[self._origin] = found\n", "        self._resolved[self._origin] = found\n"),
       )),
 ]
