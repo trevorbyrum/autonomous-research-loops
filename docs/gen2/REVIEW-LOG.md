@@ -833,3 +833,23 @@ Sonnet 5.5 coder `ee76b68e`, 5 commits `278ab7e..a06ea5e`.
 - **Disclosed limits:** SDMX-ML positions are not schema-derived; an `any_()` under-declaration can't be caught by the derived harness; a stale oracle citation remains. The engine supervisor mutant `1C-sup-no-start-grace` failed once in a full run and passed 3 of 3 alone (timing-dependent).
 
 **Dispatch:** a fresh Astra re-review, with the charter's family-level question made explicit, and **Gate D #1** (whole-system, fresh session), in parallel on the same commit, per the third-consecutive-BLOCK rule.
+
+## 2026-10-02 — 2b-repair-12 re-review (Astra, xhigh) — BLOCK; family verdict MITIGATION/incomplete
+Full report: `~/work/research-loops-public/private/reviews/gen2-2b-repair-12-astra-review-20261002.md`; evidence in `private/evidence/astra-2b-repair-12/`. Boundary PASS at PID 1040. Gate B PASS. The orchestrator's verification: `make gen2-check` exit 0 (1,615 tests, 1,701/1,701 mutants; the supervisor mutant passed this time); `make gen2-gateway` result logged in `orch-2b-repair-12/`.
+
+**Family-level verdict (the first under the amended charter): MITIGATION / incomplete structural correction.** Schemas and eager decoding remove the lazy-read mechanism for correctly declared fields. The family cause survives on concrete paths:
+- `any_()` declarations still admit decision fields;
+- doi.org bypasses the decoder;
+- XML shape constraints are partly ad hoc;
+- raw responses remain reachable before decoding.
+
+The R11 reproductions are closed (ROOT-CAUSE at their sites).
+
+**Findings:**
+- **R12-1:** decision fields under-declared as `any_()`. BEA `DatasetName`/`ParameterName`, BLS `survey_abbreviation`/`seriesID` and FRED `id` accept `true`/list/object as identifiers and selectors. The doi.org lookup still bypasses the decoder.
+- **R12-2:** the SDMX reference reader filters `Ref`s by a truthy `id` before counting, so a valid Ref beside `<Ref/>` or `<Ref id=""/>` still binds. Fixed `package`/`class` attributes are not checked. Same family as R11-2.
+- **R12-3, regression:** Semantic Scholar `data:null` + `total:0` is newly promoted to complete-empty (false empty). The generic decoder's absent rule erased an operation-specific distinction.
+- **R12-4, regression:** `year_value` uses `isdigit()` then `int()`, so Unicode digits or a 4,301-digit string raise a `ValueError` that escapes the member boundary and aborts the whole answer.
+- **R12-5:** the derived harness doesn't descend into `oneof` unions (50 positions, 0 descendants), and DOAJ CSV and doi.org are absent from the derived passes. Raw-response access via `getattr(resp,"json")` bypasses the structural checks.
+
+**Routing:** held until Gate D #1 (running in parallel) reports, so that one repair brief addresses both, per the charter's rule that Gate D runs before the next repair.
