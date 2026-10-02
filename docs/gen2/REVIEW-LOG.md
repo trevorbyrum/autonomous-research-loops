@@ -891,3 +891,33 @@ It also covers per-operation `never_null` (Semantic Scholar restored), reference
 - `linkage_suggestions` has no consumer yet.
 
 **Orchestrator:** clean tree; the oracle and `gen2/` are unchanged; gen-1 is unchanged (user unit, PID 1040). Independent reruns are in progress. Astra's task: `private/reviews/gen2-2b-repair-13a-review-task-20261002.md`.
+
+## 2026-10-02 — Astra re-review of 2b-repair-13a (`180914e7`, pinned 2d62753) — BLOCK (A, C); PASS (B)
+Full report: `private/reviews/gen2-2b-repair-13a-astra-review-20261002.md`.
+
+**ROOT-CAUSE at their sites:**
+- R12-1: the typed BEA/BLS/FRED fields (30 wrong-kind and 8 malformed-label cases refuse), and doi.org decoding;
+- R12-2: SDMX references;
+- R12-3: Semantic Scholar null (all four pairs restored);
+- R12-4 and Gate D #1: the scalar failure channel;
+- R12-5: union reach, 40 union-descendant positions, every declared path reached;
+- Gate D #2: identity-only dedup (120 distinct-identity pairs, no merges; raw inventory preserved).
+
+Both targets pass independently: gateway 1,334+1,334 tests, 295/295 mutants; engine 1,615 tests, 1,701/1,701. Astra rebuilt 4 mutants and all were killed.
+
+**Family verdict: MITIGATION / incomplete, but narrowed.** Two places remain where the decoder contract stops short:
+- **R13A-1 (MEDIUM, boundary drift):** `decode_csv` uses Python's permissive CSV default. An unterminated quoted header gives a DOAJ load of **0 journals that reports success**. Unterminated fields collapse rows; duplicate headers silently pick one. This is inherited (the same result on `a06ea5e`). Cause: the lexical opener layer below the decoder resolves malformed bytes into structure.
+- **R13A-2 (MEDIUM, deviation):** `make_record` returns `plain(rec)`, so adapter code can read `raw`/`extra` and let a passive field decide selection. Shown with a reviewer source mutant (OpenCitations omits a citation, the lane still reports complete, and no scan fires); no shipped code does this. The "by construction" claim is therefore not met.
+
+**Gate C:** 90 of the 100 new test claims are bounded; 10 overbroad claims need rewriting.
+
+**Disclosed limits:** all judged MITIGATION of the universal claim, with no current misuse found. TypeError paths fail closed. The 64-level JSON depth limit is an explicit operational limit.
+
+**Orchestrator routing:**
+- **13b (engine) first**, since it is independent of these findings.
+- **Then 2b-repair-13c (gateway):**
+  - inventory every byte opener and make each strict against its format spec: CSV quoting and duplicate headers, JSON duplicate keys and NaN, XML as checked;
+  - keep provenance opaque through `make_record` until the router's serialization boundary;
+  - rewrite the 10 test claims;
+  - narrow the "only decode opens bytes" wording.
+- Language-level residuals (`is None` on `Passive`, reachable private names, a finite corpus) can never be closed by construction in Python. **Escalated to the operator for a ruling** on accepting them as permanent, scan-guarded limits.
