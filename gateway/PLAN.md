@@ -319,10 +319,12 @@ R-10 A source with an open breaker or exhausted budget is skipped and the job
   share-alike terms this list once wrongly included — are not allow-listed
   (D-18, corrected by D-23). Recognition is exact (SPDX ids, names, canonical
   URLs); unknown or annotated licence text fails closed.
-- Dedup stages: DOI normalise → exact identity → fuzzy (title ≥ 0.92 AND same
-  year AND same first author, all three present — a missing year or author
-  never merges) → cluster, greedily in lane order (the base lane's record is
-  canonical); provenance kept for every member.
+- Dedup is by IDENTITY only (changed in task 2b-repair-13a; gen-2 INVARIANTS E-3): DOI/ISSN/arXiv
+  normalise → equal identities cluster, greedily in lane order (the base lane's record is
+  canonical); provenance kept for every member. The fuzzy stage this section once described
+  (title ≥ 0.92 AND same year AND same first author) no longer merges: it records a
+  `linkage_suggestions` entry (both identities, the basis, each side's provenance, `disposition:
+  unassessed`) for a later governed assessment. Distinct identities, distinct DOIs included, never merge.
 - Paging is stateless: opaque resumption token = (query hash, offset, lane cursor set).
 
 ---

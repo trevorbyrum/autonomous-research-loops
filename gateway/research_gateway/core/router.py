@@ -794,7 +794,10 @@ def execute(router: Router, payload: dict, client: Client, cache: Cache | None =
         out["lanes"].append({"source": sid, "role": "skipped", "coverage": COVERAGE_SKIPPED, "completeness": "unobserved"})
     records = _drop_unlicensed(records, router, payload, out["facts"])
     if rt == "find":
-        records = dedup.cluster(records)
+        records = dedup.cluster(records)   # one record per IDENTITY: nothing else merges (INVARIANTS E-3). The raw retrieval inventory is the lanes' `retrieved`, untouched
+        linked = dedup.suggestions(records)   # candidates that look alike are suggested for a governed linkage assessment, with provenance; never merged
+        if linked:
+            out["linkage_suggestions"] = linked
     out["records"] = [router.annotate(r) for r in records]
     if out.get("content") is not None:
         # a delivered download's own four facts: its content licence decides redistribution

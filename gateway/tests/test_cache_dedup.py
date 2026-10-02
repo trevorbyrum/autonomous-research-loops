@@ -72,7 +72,9 @@ class Dedup(unittest.TestCase):
         self.assertEqual(len(out[0]["links"]), 2)
         self.assertNotIn("raw", out[0])
 
-    def test_fuzzy_title_year_author(self):
+    def test_a_fuzzy_match_never_merges_anything(self):
+        """INVARIANTS E-3 and the methodology: deduplication removes identity duplicates only. A similar title with the same year and first author is not an identity (task 2b-repair-13a,
+        Gate D #2): each of these is its own candidate, with its own identity, and none takes another's identifiers."""
         a = rec("doi:10.1000/x", "crossref", "Reranking with large language models: a survey")
         b = rec("title:reranking", "openaire", "Reranking with Large Language Models — A Survey", authors=("Lovelace, Ada",))
         c = rec("title:other", "openaire", "Reranking with large language models: a survey", year=2019)
@@ -80,8 +82,39 @@ class Dedup(unittest.TestCase):
         e = rec("title:noyear", "openaire", "Reranking with large language models: a survey", year=None)
         f = rec("title:noauthor", "openaire", "Reranking with large language models: a survey", authors=())
         out = dedup.cluster([a, b, c, d, e, f])
-        self.assertEqual(len(out), 5, "same title+year+author merges; a different or missing year/author never does")
-        self.assertEqual(out[0]["sources"], ["crossref", "openaire"])
+        self.assertEqual([r["identity"] for r in out], ["doi:10.1000/x", "title:reranking", "title:other", "title:other2", "title:noyear", "title:noauthor"])
+        self.assertEqual(out[0]["sources"], ["crossref"], "the lead is not given the look-alike's source")
+        self.assertEqual(out[0]["identifiers"], {"doi": "10.1000/x"})
+        self.assertEqual([p["source_id"] for r in out for p in r["provenance"]], ["crossref", "openaire", "openaire", "openaire", "openaire", "openaire"])
+
+    def test_distinct_dois_never_merge_whatever_else_they_share(self):
+        a = rec("doi:10.1000/a", "crossref", "Annual survey")
+        b = rec("doi:10.1000/b", "datacite", "Annual survey")
+        out = dedup.cluster([a, b])
+        self.assertEqual([r["identity"] for r in out], ["doi:10.1000/a", "doi:10.1000/b"])
+        self.assertEqual([r["identifiers"] for r in out], [{"doi": "10.1000/a"}, {"doi": "10.1000/b"}], "neither has the other's DOI")
+        self.assertEqual(len(dedup.cluster([a, rec("doi:10.1000/A", "datacite", "Annual survey")])), 1, "control: the same DOI, in another case, is one candidate")
+
+    def test_what_looks_alike_is_a_linkage_suggestion_with_provenance_and_decides_nothing(self):
+        a = rec("doi:10.1000/x", "crossref", "Reranking with large language models: a survey")
+        b = rec("title:reranking", "openaire", "Reranking with Large Language Models — A Survey", authors=("Lovelace, Ada",))
+        c = rec("title:other", "openaire", "Reranking with large language models: a survey", year=2019)
+        d = rec("title:other2", "openaire", "Reranking with large language models: a survey", authors=("Grace Hopper",))
+        e = rec("title:noyear", "openaire", "Reranking with large language models: a survey", year=None)
+        f = rec("title:noauthor", "openaire", "Reranking with large language models: a survey", authors=())
+        out = dedup.cluster([a, b, c, d, e, f])
+        found = dedup.suggestions(out)
+        self.assertEqual(len(found), 1, "a different year, a different first author, a missing year and a missing author are none of them alike")
+        (suggestion,) = found
+        self.assertEqual((suggestion["type"], suggestion["identities"], suggestion["disposition"]), ("possible_same_work", ["doi:10.1000/x", "title:reranking"], "unassessed"))
+        self.assertEqual((suggestion["basis"]["year"], suggestion["basis"]["first_author"], suggestion["basis"]["title_similarity"] >= dedup.THRESHOLD), (2021, "lovelace", True))
+        self.assertEqual([(p["identity"], p["sources"]) for p in suggestion["provenance"]], [("doi:10.1000/x", ["crossref"]), ("title:reranking", ["openaire"])])
+        self.assertEqual(suggestion["differing_identifiers"], {}, "a title-keyed record states no DOI to differ")
+        self.assertEqual(len(out), 6, "and suggesting changed no candidate")
+        two = dedup.suggestions(dedup.cluster([rec("doi:10.1000/a", "crossref", "Annual survey"), rec("doi:10.1000/b", "datacite", "Annual survey")]))
+        self.assertEqual([s["differing_identifiers"] for s in two], [{"doi": ["10.1000/a", "10.1000/b"]}], "two distinct DOIs are what an assessment most needs to see")
+        self.assertEqual(dedup.suggestions([rec("doi:10.1000/a", "crossref", "Annual survey"), rec("doi:10.1000/b", "crossref", "Different title", year=2021)]), [])
+        self.assertEqual(dedup.suggestions([rec("doi:10.1000/a", "crossref", "Panel data"), rec("title:t2", "datacite", "Panel data", kind="dataset")]), [], "different kinds are never alike")
 
     def test_sources_only_records_expand_to_all_members(self):
         """D-26: a record carrying only a `sources` list contributes one member per source in a

@@ -48,10 +48,16 @@ kept for provenance (normalisation is lossy). Cache keyed by identity with a
 per-class TTL (metadata seven days, searches one hour, anything with a
 restricted member one hour); sources whose terms forbid redistribution are cached in memory
 only (bounded, at most an hour) and never persisted or exported — a merged
-record persists only its redistributable members. Dedup by normalised
-identifier, then exact identity, then fuzzy title with the same year and first
-author (all three present), greedily in lane order. Cache hits are re-checked
-against the commercial rule before they answer.
+record persists only its redistributable members. Dedup is by IDENTITY only:
+records whose normalised identities are equal merge (greedily in lane order, the
+base lane's record canonical), and nothing else does — distinct DOIs, or any
+other distinct identities, never merge whatever their titles say (gen-2
+INVARIANTS E-3: deduplication removes identity duplicates only). Candidates that
+merely look alike (a similar title with the same year and first author) are
+reported as `linkage_suggestions` — both identities, why, and each side's
+provenance, `disposition: unassessed` — for a later governed assessment; they
+are never merged. Cache hits are re-checked against the commercial rule before
+they answer.
 
 ## Local index (Tier 0)
 
