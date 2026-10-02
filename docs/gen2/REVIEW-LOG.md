@@ -1187,3 +1187,16 @@ Full report: `private/reviews/gen2-2b-repair-15-astra-review-20261002.md`.
 **DNS time residual:** Astra judged (a) the smallest mechanism if the placement fits. The operator ruled (a) earlier the same day, and 2e1 owns it.
 
 **Routing:** **2b-repair-16** (engine only): a failed re-resolution or connection makes the endpoint unusable until the owner's `resolve()` succeeds; no connection and no token while stale; the test and mutant reversed; the control re-paired. This is the second consecutive BLOCK since Gate D #2; a third triggers Gate D.
+
+## 2026-10-02 — 2b-repair-16 landed — Astra re-review dispatched
+**Coder (Sonnet 5.5, `40675310`):** `a22496a`, `6b44bb2`.
+- **Root cause:** the endpoint's addresses and an unread stale flag were two records of one fact. `GatewayClient._withdraw` now changes them together. A stale endpoint has no addresses until the owner's `resolve()` succeeds, so no connection is made and no token is sent; the result is `unknown/unobserved/null/failed`.
+- **Tests:** Astra's probe has been rebuilt; zero requests reach the unrelated listener, and the move to a new address still works.
+- **Mutants:** the mutants were reversed, all 8 `2B15-*` are killed, and the constructor control is re-paired.
+- **Size:** +125 lines.
+- **For 2e1:** after a connection failure, a gateway reached by name needs `resolve()`. Timeouts don't withdraw the endpoint, and an IP literal never goes stale.
+
+**Orchestrator:**
+- clean tree, `gateway/` unchanged, gen-1 unchanged (PID 1040);
+- independent reruns in progress;
+- Astra re-review `c8dd6ba4`, task `private/reviews/gen2-2b-repair-16-review-task-20261002.md`.
