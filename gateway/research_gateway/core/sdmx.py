@@ -7,10 +7,12 @@ What the schemas settle, and the 2b-repair-12 rounds that settled it:
   * SDMX-JSON states a message's structure in up to four places: `structure`, `structures`, and the same two under the 2.0 wrapper `data`. All four are declared, so
     all four are decoded — the first element of a `structures` list included, which is the one a lookup reads — before one is chosen. A `false`, a `0`, a `[]` or a
     string in any of them is an unreadable message, not a message with another structure to fall back on (R11-1). Data sets are members, each decoded alone.
-  * A Dataflow's structure reference is a `Ref` with an optional `URN`, or a `URN` alone (SDMX 2.1, DataflowType and ReferenceType). Every reference the flow states
-    is decoded and checked against the others: more than one, or a URN that names a different object than the Ref beside it, is a flow that does not say which
-    structure it has — unreadable, never the first of them (R11-2). A URN alone is a legitimate representation this reader does not follow: the flow names no
-    structure it can use, and no series template is invented for it.
+  * A Dataflow's structure reference is a `Ref` with an optional `URN`, or a `URN` alone (SDMX 2.1, DataflowType and DataStructureReferenceType). Its shape is checked
+    over EVERYTHING the flow states, before any of it is filtered or chosen (2b-repair-13a, R12-2): every `Ref` and every `URN` counts — an empty one, or one that
+    names no id, is a reference that is malformed, not one that is not there — so more than one of either is a flow that does not say which structure it has, and
+    a `Ref` states `package` and `class` only with the values the schema fixes (`datastructure`, `DataStructure`), or it is no data structure reference. A URN that
+    names a different object than the Ref beside it is the same contradiction (R11-2). A lone `Ref` that names no id, and a URN alone, are legitimate representations
+    this reader does not follow: the flow names no structure it can use, and no series template is invented for it. Nothing is ever the first of several.
   * A Dataflow is selected by its id and agency from a listing that is decoded as names only: a flow no one asked for is not asked for its references.
 """
 from __future__ import annotations
@@ -44,17 +46,31 @@ FLOW_NAMES = S.obj({"**Dataflow": S.own(S.obj({"@id": S.text(), "@agencyID": S.t
 _URN = re.compile(r"^urn:sdmx:org\.sdmx\.infomodel\.datastructure\.DataStructure=([^:()]+):([^:()]+)\(([^()]+)\)$")
 
 
+# DataStructureRefType (SDMXCommonReferences.xsd): `class` and `package` are optional and FIXED to these values
+_REF_FIXED = {"class": "DataStructure", "package": "datastructure"}
+
+
 def _reference(rec) -> dict:
-    """The one structure reference a Dataflow states ({} when it states none this reader follows), after checking every reference it states against the others."""
+    """The one structure reference a Dataflow states ({} when it states none this reader follows), after checking everything it states: how many `Structure` children,
+    `Ref`s and `URN`s there are — counted before any is set aside, a `Ref` that names nothing included — the fixed attributes of the `Ref`, and that a `Ref` and a `URN`
+    beside each other name the same structure."""
     structures = rec["Structure"]
     if len(structures) > 1:
         raise PayloadError(f"a dataflow with {len(structures)} structure references: nothing says which one is meant")
-    refs = [r["@*"] for st in structures for r in st["Ref"] if r["@*"].get("id")]
+    refs = [r["@*"] for st in structures for r in st["Ref"]]
     urns = [(u["#"] or "").strip() for st in structures for u in st["URN"]]
     if len(refs) > 1:
         raise PayloadError(f"a dataflow with {len(refs)} structure references: nothing says which one is meant")
     if len(urns) > 1:
         raise PayloadError(f"a dataflow with {len(urns)} structure URNs: nothing says which one is meant")
+    for ref in refs:
+        for name, fixed in _REF_FIXED.items():
+            if name in ref and ref[name] != fixed:
+                raise PayloadError(f"a dataflow whose structure Ref states {name}={ref[name]!r}, which a data structure reference fixes to {fixed!r}: it is no such reference")
+    if refs and not (refs[0].get("id") or "").strip():
+        if urns:
+            raise PayloadError("a dataflow whose structure Ref names no id beside a URN: they cannot be shown to name the same structure")
+        return {}   # a lone Ref that names nothing: no structure this reader can follow
     if refs and urns:
         named = _URN.match(urns[0])
         if not named:

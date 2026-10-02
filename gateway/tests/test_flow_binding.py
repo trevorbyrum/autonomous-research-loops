@@ -228,5 +228,74 @@ class ReferencesInTheRequestedFlow(unittest.TestCase):
                 self.assertEqual([e["dimensions_in_key_order"] for e in browse(source, text)["entries"]], [["A", "B"]])
 
 
+class ReferenceShape(unittest.TestCase):
+    """R12-2 (Astra, 2b-repair-12): the shape of a flow's structure reference is checked over EVERYTHING the flow states, before any of it is filtered or chosen.
+
+    Repair-12 refused two named Refs and a Ref beside a conflicting URN, but counted the Refs AFTER discarding every one with no id, and never looked at the fixed attributes of a data structure reference
+    — so a valid Ref followed by `<Ref/>` (or `<Ref id=""/>`), or one stating `package="codelist"` or `class="Codelist"`, still returned a complete template. SDMX 2.1 (SDMXCommonReferences.xsd,
+    DataStructureReferenceType and DataStructureRefType): one `Ref` with an optional `URN`, or a `URN` alone, and `class` and `package` optional with FIXED values `DataStructure` and `datastructure`. A
+    lone Ref that names no id, and a URN alone, stay the accepted conservative refusal (no template, a capability fact)."""
+
+    def flow_with(self, source: str, references: str) -> str:
+        agency = source.upper()
+        return message(flow("F1", "One", references, agency), dsd("S1", ("A", "B"), agency), dsd("S2", ("C", "D", "E"), agency))
+
+    def unreadable(self, source: str, references: str):
+        lane = routed(source, self.flow_with(source, references))
+        self.assertEqual((lane["coverage"], lane["completeness"], lane.get("error_class"), "count" in lane), ("provider_unavailable", "unobserved", "payload_invalid", False), references)
+        with self.assertRaises(PayloadError):
+            browse(source, self.flow_with(source, references))
+
+    def test_the_astra_cases_for_both_providers_are_unreadable_and_the_controls_read(self):
+        for source in ("bis", "ecb"):
+            agency = source.upper()
+            good = ref("S1", agency)
+            self.assertEqual([e["dimensions_in_key_order"] for e in browse(source, self.flow_with(source, good))["entries"]], [["A", "B"]], f"{source}: control")
+            self.assertEqual(routed(source, self.flow_with(source, good))["completeness"], "complete")
+            for label, references in (("a valid Ref, then an empty Ref", good + "<Ref/>"), ("an empty Ref, then a valid Ref", "<Ref/>" + good),
+                                      ("a valid Ref, then a Ref with an empty id", good + '<Ref id=""/>'), ("a valid Ref, then a Ref of blanks", good + '<Ref id="  "/>'),
+                                      ("a Ref that says package=codelist", good.replace("/>", ' package="codelist"/>')), ("a Ref that says class=Codelist", good.replace("/>", ' class="Codelist"/>')),
+                                      ("a Ref that says the wrong case", good.replace("/>", ' package="DataStructure"/>')), ("two nameless Refs", "<Ref/><Ref/>")):
+                with self.subTest(source=source, references=label):
+                    self.unreadable(source, references)
+
+    def test_the_fixed_attributes_may_be_stated_with_their_own_values(self):
+        for source in ("bis", "ecb"):
+            agency = source.upper()
+            for label, extra in (("both", ' package="datastructure" class="DataStructure"'), ("package", ' package="datastructure"'), ("class", ' class="DataStructure"')):
+                references = ref("S1", agency).replace("/>", extra + "/>")
+                with self.subTest(source=source, stated=label):
+                    self.assertEqual([e["dimensions_in_key_order"] for e in browse(source, self.flow_with(source, references))["entries"]], [["A", "B"]])
+                    self.assertEqual(routed(source, self.flow_with(source, references))["completeness"], "complete")
+
+    def test_the_fixed_attributes_are_checked_even_when_the_ref_names_nothing(self):
+        for source in ("bis", "ecb"):
+            for references in ('<Ref class="Codelist"/>', '<Ref package="codelist"/>', '<Ref id="" class="Codelist"/>'):
+                with self.subTest(source=source, references=references):
+                    self.unreadable(source, references)
+
+    def test_a_lone_ref_that_names_nothing_and_a_urn_alone_stay_the_conservative_refusal_and_are_not_unreadable(self):
+        for source in ("bis", "ecb"):
+            agency = source.upper()
+            for label, references in (("a lone empty Ref", "<Ref/>"), ("a lone Ref with an empty id", '<Ref id=""/>'), ("a lone Ref with only attributes", '<Ref agencyID="X" version="1.0"/>'),
+                                      ("a URN alone", urn("S1", agency))):
+                with self.subTest(source=source, references=label):
+                    out = browse(source, self.flow_with(source, references))
+                    self.assertEqual(out["entries"], [])
+                    self.assertIn("names no data structure", out["capability_fact"])
+
+    def test_a_ref_that_names_nothing_beside_a_urn_cannot_be_shown_to_name_the_same_structure(self):
+        for source in ("bis", "ecb"):
+            for label, references in (("an empty Ref and a URN", "<Ref/>" + urn("S1", source.upper())), ("a Ref of blanks and a URN", '<Ref id=" "/>' + urn("S1", source.upper()))):
+                with self.subTest(source=source, references=label):
+                    self.unreadable(source, references)
+
+    def test_what_is_counted_is_every_ref_and_every_urn_wherever_they_stand_in_the_one_structure_child(self):
+        agency = "ECB"
+        for label, references in (("three Refs", ref("S1", agency) * 3), ("one Ref and two URNs", ref("S1", agency) + urn("S1", agency) * 2), ("a nameless Ref, a Ref and a URN", "<Ref/>" + ref("S1", agency) + urn("S1", agency))):
+            with self.subTest(references=label):
+                self.unreadable("ecb", references)
+
+
 if __name__ == "__main__":
     unittest.main()

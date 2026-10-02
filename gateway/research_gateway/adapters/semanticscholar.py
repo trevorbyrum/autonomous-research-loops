@@ -25,9 +25,11 @@ PAPER = S.obj({"paperId": S.text(), "externalIds": S.obj({"DOI": S.text(), "ArXi
                "openAccessPdf": S.obj({"url": S.text(), "license": S.text()}), "title": S.text(), "year": S.year(), "venue": S.text(),
                "authors": S.own(S.obj({"name": S.text()})), "citationCount": S.any_(), "referenceCount": S.any_(), "publicationTypes": S.any_()},
               alts=(("externalIds.DOI", "externalIds.ArXiv", "paperId"),))
-# `data` may be left out only when the answer counts nothing (`total` is 0); `next` is read by whether it is there ("Absent if no more data exists"), so
-# one that is there and cannot be read is neither a continuation nor an end.
-FIND = S.obj({"data": S.members(PAPER, empty_when=("total",)), "total": S.soft(S.whole()), "next": S.isolated(S.whole())})
+# `data` may be left out only when the answer counts nothing (`total` is 0), and it is never null: the Graph API's `PaperRelevanceSearchBatch.data` is `type: array`, its
+# swagger (https://api.semanticscholar.org/graph/v1/swagger.json) declares no nullable value anywhere, and the accepted reading of an omitted `data` beside `total: 0` is "a search that
+# matched nothing" — which a present `null` is not (2b-repair-13a, R12-3). `next` is read by whether it is there ("Absent if no more data exists"), so one that is there and cannot be
+# read is neither a continuation nor an end.
+FIND = S.obj({"data": S.never_null(S.members(PAPER, empty_when=("total",))), "total": S.soft(S.whole()), "next": S.isolated(S.whole())})
 RESOLVE = PAPER
 CITATIONS, REFERENCES = (S.obj({"data": S.required(S.members(S.obj({key: PAPER})))}) for key in ("citingPaper", "citedPaper"))
 SCHEMAS = {"find": FIND, "resolve": RESOLVE, "enrich:citations": CITATIONS, "enrich:references": REFERENCES}
