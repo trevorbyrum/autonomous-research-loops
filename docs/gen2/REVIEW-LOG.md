@@ -1162,3 +1162,6 @@ The coder reports both targets exiting 0 at `0d53bfc`.
 
 ## 2026-10-02 — Operator ruling: the DNS residual (2b-repair-15 F2)
 **Option (a) is chosen.** A `GatewayClient` (and its `resolve()`) is constructed only inside a supervised job child. The supervisor's job `deadline_at` termination (SIGTERM then SIGKILL; `gen2/supervisor/supervisor.py`) bounds the lookup. No new code is needed now. 2e1 owns this as a wiring rule, and its review must verify there is no other construction site. This is recorded in BUILD-STATE's 2e1 entry. Astra's 2b-repair-15 review will be told of the ruling when it reports.
+
+## 2026-10-02 — Operator ruling: Gate D sequencing after 2b (one-time)
+2b's acceptance won't trigger its own Gate D. Gate D #2 reviewed the whole system that day, and 2q builds the ratcheted metrics Gate D relies on. **Gate D #3 runs at 2q's acceptance, before 2c starts.** The charter's cadence is otherwise unchanged.
