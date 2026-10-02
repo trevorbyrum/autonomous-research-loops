@@ -853,3 +853,23 @@ The R11 reproductions are closed (ROOT-CAUSE at their sites).
 - **R12-5:** the derived harness doesn't descend into `oneof` unions (50 positions, 0 descendants), and DOAJ CSV and doi.org are absent from the derived passes. Raw-response access via `getattr(resp,"json")` bypasses the structural checks.
 
 **Routing:** held until Gate D #1 (running in parallel) reports, so that one repair brief addresses both, per the charter's rule that Gate D runs before the next repair.
+
+## 2026-10-02 — Gate D #1 (fresh Astra, whole system, pinned a06ea5e) — BLOCK
+Full report: `~/work/research-loops-public/private/reviews/gen2-gate-d-1-astra-review.md`; evidence in `private/evidence/gate-d-1/`. The first whole-system review.
+
+**Blocking (HIGH):**
+1. The schema decoder's member-failure boundary is not total: a Unicode digit or a huge year raises a `ValueError` that loses the whole lane (same as R12-4).
+2. The gateway's fuzzy dedup merges records with distinct DOIs into one canonical record. That violates the methodology and INVARIANTS E-3 (identity duplicates only); it is inherited gen-1 behaviour.
+3. The engine drops pagination and exhaustion at the durable handoff. A page that has another cursor and an exhausted page produce identical client outputs and router commands, so 2c could never recover the distinction.
+
+**Non-blocking:**
+4. MEDIUM: the poll deadline counts only sleep time, not network time (bounded-liveness defect; must be fixed before 2e1).
+5. MEDIUM: import-only checks understate coupling. The Router's six mixins make 132 cross-file self-calls, and the gateway's adapters/core/registry packages form a cycle (→2q).
+6. LOW: stale locators (→2q).
+
+**Measurements:** propagation cost 13.6% (engine), 11.3% (gateway); 43 functions over CC 20; top hotspots are `_decode`, `Router._write_evidence` and `_commit_in_transaction`. Size rules pass. Mechanical crash/replay/fencing coverage is judged substantial, and most unfinished workflow features have owners. **Directive: don't build or accept accounting/stopping behaviour on the current 2b handoff.**
+
+**Orchestrator routing:** the Astra repair-12 and Gate D findings are combined.
+- **2b-repair-13a (gateway)** closes the decoder contract's three gaps by construction (total failure algebra, declaration completeness for decision fields enforced in `Rec`, a sealed raw payload), plus per-operation null policy, XML reference shape, union-branch harness reach and identity-only dedup.
+- **2b-repair-13b (engine)** then carries a typed page outcome through client, router and store, adds an absolute poll deadline, and makes the 1c supervisor mutant test deterministic. Astra ruled the rerun a MITIGATION; the owner is engine test maintenance.
+- 2q's scope absorbs Gate D findings 5 and 6.
