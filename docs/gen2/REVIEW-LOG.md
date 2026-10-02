@@ -873,3 +873,21 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-gate-d-1-astra-r
 - **2b-repair-13a (gateway)** closes the decoder contract's three gaps by construction (total failure algebra, declaration completeness for decision fields enforced in `Rec`, a sealed raw payload), plus per-operation null policy, XML reference shape, union-branch harness reach and identity-only dedup.
 - **2b-repair-13b (engine)** then carries a typed page outcome through client, router and store, adds an absolute poll deadline, and makes the 1c supervisor mutant test deterministic. Astra ruled the rerun a MITIGATION; the owner is engine test maintenance.
 - 2q's scope absorbs Gate D findings 5 and 6.
+
+## 2026-10-02 — 2b-repair-13a landed (gateway decoder contract) — Astra re-review dispatched
+**Coder (Sonnet 5.5, `c8ceb127`):** `42a155d`..`2d62753`. It claims the three gaps in the decoder contract are closed by construction:
+- every conversion and consistency rule goes through one failure channel to a member-level `PayloadError`;
+- `any_()` values are `Passive`, so storage via `plain()` is the only use and anything else raises `PassiveRead`; 26 of the 89 audited uses are now typed and 63 stay passive under a table test;
+- `Response` is sealed: only `decode` opens the bytes, and doi.org and DOAJ CSV are decoded.
+
+It also covers per-operation `never_null` (Semantic Scholar restored), reference cardinality before filtering, union-branch harness reach, and identity-only dedup with optional `linkage_suggestions`. Gateway production grows by 399 lines. The differential against `a06ea5e` has 0 unexplained rows. The coder reports both targets exiting 0.
+
+**The coder's own limits, which the review judges as findings:**
+- `is None` on a `Passive` always reads as present;
+- some string operations raise `TypeError` rather than `PassiveRead`;
+- `plain()`/`download()` are guarded only by the scan;
+- totality rests on a finite corpus;
+- a new 64-level nesting limit;
+- `linkage_suggestions` has no consumer yet.
+
+**Orchestrator:** clean tree; the oracle and `gen2/` are unchanged; gen-1 is unchanged (user unit, PID 1040). Independent reruns are in progress. Astra's task: `private/reviews/gen2-2b-repair-13a-review-task-20261002.md`.
