@@ -824,3 +824,4 @@ The structural scan also has an ordinary-spelling bypass; Astra asks that its cl
 - harness corruption derived from the schemas.
 
 All accepted contracts, the unedited oracle and Astra's R11 reproductions must still pass.
+**OPERATOR:** "last night I literally had you add a review pass that specifically was meant to catch patches." **Why it didn't:** the orchestrator scoped the root-cause/mitigation classification per finding. Each fix was honestly ROOT-CAUSE for its own finding, and no brief asked whether the findings shared a cause across rounds. Gate D, the one cross-cutting review, only triggers on task acceptance, which 2b never reached. **Charter amended:** (1) every re-review classifies at family level too, and a series of local fixes for one shared cause counts as a MITIGATION of that cause; (2) a task's third consecutive BLOCK triggers a fresh-session Gate D before the next repair. Memory updated.
