@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from .payload import PayloadError, Sealed, detach, plain, refuse_opaque  # noqa: F401 (PayloadError: re-exported, it lives with the decoded values now)
+from .payload import PayloadError, Sealed, detach, refuse_opaque  # noqa: F401 (PayloadError: re-exported, it lives with the decoded values now)
 from .schema import year_value
 
 
@@ -21,49 +21,45 @@ KINDS = ("article", "dataset", "software", "document", "series", "citation", "oa
          "venue", "repository")  # venue = journal/conference/book series; repository = data or publication repository
 
 
-def _typed(name: str, value):
-    """The plain data of a typed field's value. The field is read and decided on (the merge, the licence gate, the identity), so an opaque value — a Passive, a Sealed — is a
-    programming error (PassiveRead, SealedRead: not a malformed member): it would hand a record's reader what no adapter may read. Whatever else is not plain (an Unreadable, a
-    decoded Rec) is converted, and fails the kind check that follows."""
+def _wrong(name: str, value, belongs: str):
+    """`value` is not in the typed domain of the field `name`. What the decoder issued is a programming error or a member that could not be read (`refuse_opaque`); anything else is a value of the
+    wrong kind, which makes the member that carried it unreadable."""
     refuse_opaque(value, f"a record's {name}")
-    return plain(value)
+    raise PayloadError(f"a record's {name} is {type(value).__name__}, not {belongs}")
 
 
 def _text(name: str, value) -> str | None:
-    """A canonical text field: text, or nothing. Any other kind is an unreadable member (PayloadError) — never a title of 5, a venue of
-    `false` or a licence that is a list, which every later reader of a record (the merge, the licence gate) would take for text."""
-    value = _typed(name, value)
+    """A canonical text field: text, or nothing. Any other kind is an unreadable member (PayloadError) — never a title of 5, a venue of `false` or a licence that is a list, which every later
+    reader of a record (the merge, the licence gate) would take for text. A field that is read and decided on takes plain text only: what the decoder issued is refused, never unwrapped."""
     if value is None or isinstance(value, str):
         return value
-    raise PayloadError(f"a record's {name} is {type(value).__name__}, not text")
+    return _wrong(name, value, "text")
 
 
 def _texts(name: str, value) -> list[str]:
-    """A canonical list of text (authors, links): the text in it, with a missing entry left out; a list that holds anything else, or a
-    value that is not a list, is unreadable."""
-    value = _typed(name, value)
+    """A canonical list of text (authors, links): the text in it, with a missing entry left out; a list that holds anything else, or a value that is not a list, is unreadable."""
     if value is None:
         return []
     if not isinstance(value, (list, tuple)) or not all(v is None or isinstance(v, str) for v in value):
-        raise PayloadError(f"a record's {name} is not a list of text")
+        return _wrong(name, value, "a list of text")
     return [v for v in value if v is not None]
 
 
 def _year(value) -> int | None:
     """A canonical year: a whole number, or the digits of one a provider sent as text; nothing when it names none. Anything else is unreadable (the rule is the
     decoder's: core/schema.py year_value)."""
+    refuse_opaque(value, "a record's year")
     try:
-        return year_value(_typed("year", value))
+        return year_value(value)
     except PayloadError as e:
         raise PayloadError(f"a record's {e}") from None
 
 
 def _identifiers(value) -> dict:
-    value = _typed("identifiers", value)
     if value is None:
         return {}
     if not isinstance(value, dict) or not all(isinstance(k, str) and (v is None or isinstance(v, str)) for k, v in value.items()):
-        raise PayloadError("a record's identifiers are not a map of text")
+        return _wrong("identifiers", value, "a map of text")
     return {k: v for k, v in value.items() if v is not None}
 
 
@@ -101,7 +97,7 @@ def make_record(*, identity: str, kind: str, source_id: str, title: str | None =
     }
     if extra:
         rec.update({k: detach(v) for k, v in extra.items() if k not in rec})
-    rec["raw"] = raw if raw is None or isinstance(raw, Sealed) else Sealed(plain(raw), _issued=True)
+    rec["raw"] = raw if raw is None or isinstance(raw, Sealed) else Sealed(detach(raw))   # sealed as it is, a copy of its structure: stored, never read, compared with nothing
     return rec
 
 

@@ -61,7 +61,7 @@ class Response(SealedAnswer):
     def download(self) -> Sealed:
         """The bytes of a file the caller asked to download (a data file, a PDF), sealed: content that is handed on and never parsed or decided on. It becomes bytes where the router
         serializes the answer (core/payload.py)."""
-        return Sealed(self._body, _issued=True)
+        return Sealed(self._body)
 
     def __repr__(self) -> str:
         return f"<Response {self.status} {self.url!r} {len(self._body)} bytes>"

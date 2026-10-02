@@ -748,7 +748,7 @@ MUTANTS: list[Mutant] = [
            (TP + "DatasetFiles.test_a_licence_that_cannot_be_read_costs_every_file_because_every_file_carries_it",)),
     # (d): nothing escapes unhandled
     Mutant('R9-record-fields-unchecked', 'make_record carries a field of any kind, so a title that is a number reaches the merge and raises out of the router', 'research_gateway/core/canonical.py',
-           '    raise PayloadError(f"a record\'s {name} is {type(value).__name__}, not text")',
+           '    raise PayloadError(f"a record\'s {name} is {type(value).__name__}, not {belongs}")',
            '    return value',
            ('tests.test_present_means_typed.Records.test_a_field_of_the_wrong_kind_is_unreadable_whatever_its_truth',),
            ('tests.test_present_means_typed.Records.test_control_the_fields_that_are_right_are_kept_and_nothing_is_nothing',)),

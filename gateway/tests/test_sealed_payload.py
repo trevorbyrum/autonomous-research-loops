@@ -123,12 +123,18 @@ class RawIsSealedAndLeavesAsACopy(unittest.TestCase):
     def rec(self) -> Rec:
         return S.decode("t", self.SPEC, copy.deepcopy(self.BODY))
 
-    def test_a_sealed_object_the_decoder_issued_can_be_compared_with_another_and_stored_and_not_read(self):
+    def test_a_sealed_object_is_stored_and_not_read_and_compares_with_no_other_sealed_object(self):
+        """What is asserted: the listed operations on a Sealed raise SealedRead, and so does comparing it with another Sealed, in either order, of any origin (tests/test_opaque_provenance.py
+        EveryExit holds the origins); the comparison of two decoded OBJECTS is `Rec.same_as` (TheOneComparison there). It does not claim every operation Python has."""
         raw = self.rec().raw
         self.assertIsInstance(raw, Sealed)
-        self.assertEqual(raw, self.rec().raw)
-        self.assertNotEqual(raw, S.decode("t", self.SPEC, {"id": "b"}).raw)
-        self.assertNotEqual(Sealed({"n": 1}, _issued=True), Sealed({"n": True}, _issued=True), "equal values of different kinds are different objects (1 is not true)")
+        with self.assertRaises(SealedRead):
+            raw == self.rec().raw
+        with self.assertRaises(SealedRead):
+            raw == Sealed({"id": "a"})
+        self.assertTrue(self.rec().same_as(self.rec()))
+        self.assertFalse(self.rec().same_as(S.decode("t", self.SPEC, {"id": "b"})))
+        self.assertFalse(S.decode("t", S.obj({"n": S.any_()}), {"n": 1}).same_as(S.decode("t", S.obj({"n": S.any_()}), {"n": True})), "equal values of different kinds are different objects (1 is not true)")
         for what in (lambda: raw["id"], lambda: raw.get("id"), lambda: bool(raw), lambda: len(raw), lambda: list(raw), lambda: iter(raw), lambda: "id" in raw, lambda: str(raw), lambda: f"{raw}",
                      lambda: raw.items(), lambda: raw.keys(), lambda: raw.anything, lambda: raw + 1, lambda: sorted([raw, raw]), lambda: int(raw), lambda: dict(raw)):
             with self.assertRaises(SealedRead):

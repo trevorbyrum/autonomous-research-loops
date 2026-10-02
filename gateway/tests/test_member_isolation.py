@@ -37,9 +37,9 @@ from research_gateway.core.payload import MemberList, OMIT, PayloadError, Rec, S
 
 ROOT = Path(__file__).resolve().parents[1] / "research_gateway"
 DOORS = ("plain",)                       # functions that hand a decoded value back as plain data
-CONSTRUCTORS = ("MemberList", "Sealed", "Passive")   # `MemberList(items)` wraps a list the caller already holds; a Sealed or a Passive an adapter builds is no decoder-issued value (core/payload.py)
-METHODS = ("each", "at", "unreadable", "without")   # a MemberList's ways to a plain list or one member: each() hands back a plain list of whatever the builder returned; Sealed.without() a sealed object less some fields
-PRIVATE = ("_items", "_v", "_value", "_raw", "_body", "_frozen", "_issued")   # the storage of a MemberList, a Rec, a Passive/Sealed/Unreadable and a Response, and the flag that marks a Sealed the decoder issued
+CONSTRUCTORS = ("MemberList", "Sealed", "Passive", "Rec")   # `MemberList(items)` wraps a list the caller already holds; a Sealed, a Passive or a Rec an adapter builds is no decoder-issued value (core/payload.py)
+METHODS = ("each", "at", "unreadable", "without", "empty", "same_as")   # a MemberList's ways to a plain list or one member: each() hands back a plain list of whatever the builder returned; Sealed.without() a sealed object less some fields; and the two sanctioned questions about a decoded object: did it hold anything (empty), is it the same provider object as another (same_as)
+PRIVATE = ("_items", "_v", "_value", "_raw", "_body", "_frozen")   # the storage of a MemberList, a Rec, a Passive/Sealed/Unreadable and a Response
 ANSWER = ("json", "json_or_none", "_parsed", "_body", "text", "body", "download", "content")   # what a Response held or holds of the provider's answer (the first are gone: nothing is there to find)
 DECODERS = ("decode", "data_xml", "flows", "dimensions_xml", "message")   # the calls an answer may be an argument of
 
@@ -55,8 +55,10 @@ USES = {
     ("adapters/openml.py", "fetch"): (1, "the bytes of a file the caller asked to download: content, not a payload"),
     ("adapters/socrata.py", "_vouched"): (1, "the portal-vouching predicate: a guarded security check that fails closed when the portal cannot be established, not a record-producing list"),
     ("adapters/core.py", "_record"): (1, "the record's raw is the payload less its full text (I-7): a sealed object less one field, handed on to be stored and never read"),
-    ("adapters/unpaywall.py", "enrich"): (2, "an answer with no location list is its one best location: a list of one, built here from the decoded object (an empty one is none: Rec.empty); and what each listed location is compared with (sealed: equality only)"),
-    ("adapters/unpaywall.py", "enrich.location"): (1, "whether this location IS the best one: the two objects as the provider sent them, compared"),
+    ("adapters/unpaywall.py", "enrich"): (2, "an answer with no location list is its one best location: a list of one, built here from the decoded object (an empty one is none: Rec.empty, the sanctioned shape predicate)"),
+    ("adapters/unpaywall.py", "enrich.location"): (1, "whether this location IS the best one: the two decoded objects, compared by Rec.same_as (the provider repeating itself; the one sanctioned comparison)"),
+    ("adapters/bea.py", "_error"): (1, "whether the error object BEA states beside its results says anything: Rec.empty, the sanctioned shape predicate (an empty `{}` is no error)"),
+    ("core/sdmx.py", "has_content"): (1, "whether a structure the message states says anything: Rec.empty, the sanctioned shape predicate (an empty `{}` structure says nothing)"),
     ("core/sdmx.py", "datasets"): (1, "no data sets: an empty list, built here"),
     ("core/sdmx.py", "flows"): (1, "the flow's element, handed to the second decode that reads its references"),
     ("core/sdmx.py", "series_reader.read"): (1, "the value at a position of a dimension's lookup table: the position is the data (a series names its values by index)"),
@@ -276,8 +278,6 @@ def reads(root: Path = ROOT) -> dict[tuple[str, str], list[str]]:
                     add(node, f"call {kind}")
                 elif not (kind in CONSTRUCTORS and id(node) in isinstance_args):
                     add(node, f"reference {kind}")
-            elif isinstance(node, ast.keyword) and node.arg == "_issued":
-                add(node, "private _issued")   # the flag that makes a Sealed comparable: only the decoder sets it
             elif isinstance(node, ast.Attribute):
                 of_a_module = isinstance(node.value, ast.Name) and node.value.id in modules
                 if node.attr in DOORS + CONSTRUCTORS and of_a_module:

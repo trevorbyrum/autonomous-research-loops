@@ -57,6 +57,16 @@ class Judged(unittest.TestCase):
     """A read or a build that must be a programming error (UndeclaredRead): anything else — including the right result — is a FAILURE of the assertion, not an error of the test, so that a mutant that
     removes the construction is killed by an assertion (tools/gen2_gateway_mutations.py)."""
 
+    def raises_exactly(self, error: type, call, label: str = "") -> None:
+        """`call` must raise `error`; anything else — another exception, or no exception — is a FAILURE of the assertion, not an error of the test."""
+        try:
+            call()
+        except error:
+            return
+        except Exception as e:
+            self.fail(f"{label}raised {type(e).__name__} where {error.__name__} belongs: {str(e)[:80]}")
+        self.fail(f"{label}was accepted")
+
     def programming_error(self, call, label: str = "") -> None:
         try:
             call()
@@ -185,19 +195,37 @@ class EveryExit(Judged):
             self.assertIsInstance(raw, Sealed)
             self.programming_error(lambda: raw.get("id"))
 
-    def test_equality_is_not_a_way_to_read_a_sealed_object_by_guessing_it(self):
-        """A record builder may ask whether the provider repeated itself (two decoder-issued objects compare); `row.raw == Sealed({...})` asks whether it holds a value the adapter chose, which is
-        reading it one guess at a time. Only objects the decoder issued compare."""
-        a, b = S.decode("x", S.obj({"id": S.text()}), {"id": "a"}), S.decode("x", S.obj({"id": S.text()}), {"id": "a"})
-        self.assertEqual(a.raw, b.raw)
-        self.assertNotEqual(a.raw, S.decode("x", S.obj({"id": S.text()}), {"id": "b"}).raw)
-        self.assertEqual(a, b)
-        for guess in (Sealed({"id": "a"}), Sealed({"id": "b"}), Sealed({"id": "a"}, _issued=False)):
-            with self.subTest(guess=repr(guess)):
-                self.programming_error(lambda: a.raw == guess, "a comparison with a guess ")
-                self.programming_error(lambda: guess == a.raw, "a comparison with a guess ")
-        self.assertFalse(a.raw == {"id": "a"}, "a sealed object is not equal to a plain value, and asking reads nothing")
-        self.assertFalse(a.raw == None)   # noqa: E711
+    def test_no_two_sealed_objects_compare_whoever_made_them_and_a_sealed_equals_no_plain_value(self):
+        """What is asserted: comparing two Sealed objects is a SealedRead whatever made them — a decoded object's raw, a record's raw built from a literal or a Passive (`make_record`), a download,
+        `without()`, an adapter's own constructor call — in either order; and a Sealed is not equal to a plain value or to None, whatever it holds (asking reads nothing). Equality of Sealed objects
+        was how a guess could read a raw object (Astra R13A-2, R13C-2), and it was permitted between objects 'the decoder issued' by a flag `make_record` set for any raw it was given: there is
+        no such comparison now, so there is no flag. The one comparison of provider data is `Rec.same_as` (TheOneComparison below). This does not show that no other composition of the public
+        API reads a raw object; the routed mutants of ConstructorCompositions are the known ones, and the inventory (tests/inventory.py) lists what may be written."""
+        row = S.decode("x", S.obj({"id": S.text(), "m": S.any_()}), {"id": "a", "m": {"skip": True}})
+        made = {"a decoded object's raw": row.raw, "a record's raw from a literal": make_record(identity="doi:10.1/a", kind="article", source_id="x", raw={"skip": True})["raw"],
+                "a record's raw from a Passive": make_record(identity="doi:10.1/a", kind="article", source_id="x", raw=row["m"])["raw"],
+                "a record's raw from a decoded object": make_record(identity="doi:10.1/a", kind="article", source_id="x", raw=row.raw)["raw"],
+                "a download": Response(200, {}, b"bytes", "u").download(), "without()": row.raw.without("id"), "a constructor call": Sealed({"skip": True})}
+        for (first, a), (second, b) in [(x, y) for x in made.items() for y in made.items()]:
+            with self.subTest(f"{first} / {second}"):
+                self.programming_error(lambda: a == b, "a comparison of two sealed objects ")
+                self.programming_error(lambda: a != b, "a comparison of two sealed objects ")
+        for label, a in made.items():
+            with self.subTest(label):
+                self.assertFalse(a == {"skip": True})
+                self.assertFalse(a == None)   # noqa: E711
+                self.assertFalse(a == b"bytes")
+                self.assertTrue(a != {"id": "a"})
+
+    def test_a_decoded_object_compares_with_nothing_and_is_not_hashable(self):
+        a, b = (S.decode("x", S.obj({"id": S.text()}), {"id": "a"}) for _ in range(2))
+        for label, compare in {"with another decoded object": lambda: a == b, "with a plain value": lambda: a == {"id": "a"}, "with None": lambda: a == None,   # noqa: E711
+                               "with its own raw": lambda: a == a.raw, "inequality": lambda: a != b}.items():
+            with self.subTest(label):
+                self.programming_error(compare, "a comparison of a decoded object ")
+        with self.assertRaises(TypeError):
+            hash(a)
+
 
     def test_a_decoded_object_kept_in_a_record_is_not_a_way_to_its_raw(self):
         rec = S.decode("x", S.obj({"id": S.text()}), {"id": "a", "hidden": 1})
@@ -210,7 +238,7 @@ class EveryExit(Judged):
         uses = {k: v for k, v in M.reads().items() if any(w in ("call plain", "reference plain", "attribute plain") for w in v)}
         self.assertEqual(uses, {("harvest/index.py", "upsert"): ["call plain"]})
 
-    def test_constructing_a_sealed_or_passive_in_a_provider_module_is_listed_and_so_is_the_issuing_flag(self):
+    def test_constructing_a_sealed_a_passive_or_a_rec_in_a_provider_module_is_listed(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "adapters").mkdir()
@@ -218,9 +246,128 @@ class EveryExit(Judged):
             for name in ("schema", "sdmx", "identity"):
                 (root / "core" / f"{name}.py").write_text("")
             (root / "adapters" / "new_lane.py").write_text(
-                "from ..core.payload import Sealed, Passive\n\ndef guess(raw):\n    return raw == Sealed({'a': 1})\n\ndef issue():\n    return Sealed({'a': 1}, _issued=True)\n\ndef make():\n    return Passive(1)\n")
+                "from ..core.payload import Sealed, Passive, Rec\n\ndef guess(raw):\n    return raw == Sealed({'a': 1})\n\ndef issue():\n    return Sealed({'a': 1})\n\ndef make():\n    return Passive(1)\n\ndef rec():\n    return Rec({}, {'skip': True})\n")
             found = {fn: sorted(v) for (_, fn), v in M.reads(root).items() if fn != "<module>"}
-        self.assertEqual(found, {"guess": ["call Sealed"], "issue": ["call Sealed", "private _issued"], "make": ["call Passive"]})
+        self.assertEqual(found, {"guess": ["call Sealed"], "issue": ["call Sealed"], "make": ["call Passive"], "rec": ["call Rec"]})
+
+
+class TheOneComparison(Judged):
+    """`Rec.same_as`: the sanctioned equality between two DECODED provider objects (did the provider repeat itself: Unpaywall's best location also listed). It tells a relation between two things
+    the provider sent; there is nothing in the API that relates a provider's object to a value an adapter chose."""
+
+    SPEC = S.obj({"id": S.text(), "n": S.any_()})
+
+    def rec(self, body):
+        return S.decode("x", self.SPEC, body)
+
+    def test_the_same_object_twice_is_the_same_and_a_different_one_is_not(self):
+        a = self.rec({"id": "a", "n": [1, {"k": 2}]})
+        self.assertTrue(a.same_as(self.rec({"id": "a", "n": [1, {"k": 2}]})))
+        self.assertTrue(a.same_as(a))
+        for other in ({"id": "b", "n": [1, {"k": 2}]}, {"id": "a", "n": [1, {"k": 3}]}, {"id": "a", "n": [1, {"k": 2}], "extra": 0}, {"id": "a"}, {"id": "a", "n": [1, {"k": 2.0}]},
+                      {"id": "a", "n": [True, {"k": 2}]}):
+            with self.subTest(other=other):
+                self.assertFalse(a.same_as(self.rec(other)))
+
+    def test_it_takes_two_decoded_objects_and_nothing_else(self):
+        a = self.rec({"id": "a"})
+        for other in (a.raw, {"id": "a"}, None, "a", Sealed({"id": "a"}), make_record(identity="doi:10.1/a", kind="article", source_id="x", raw={"id": "a"})["raw"]):
+            with self.subTest(other=repr(other)[:30]), self.assertRaises(TypeError):
+                a.same_as(other)
+
+    def test_it_reads_nothing_it_returns_one_bit_about_two_provider_objects(self):
+        a, b = self.rec({"id": "a", "n": {"secret": 1}}), self.rec({"id": "a", "n": {"secret": 1}})
+        self.assertIs(a.same_as(b), True)
+        self.assertEqual(repr(a), "<Rec id, n>")
+        self.programming_error(lambda: a["n"] == {"secret": 1})
+
+
+class ConstructorCompositions(Judged):
+    """Astra's R13C-2: two public constructor compositions a source mutant of the OpenCitations adapter used to let provenance decide which of three citations were kept — each without a private
+    name, `plain`, `Sealed` or `_issued`, so that every source scan passed — and both returned a COMPLETE lane of two. They fail safely now: the lane is not complete, names the read, and has no
+    count; the valid adapter keeps all three. These are the known compositions of the typed fields and `raw` (the trust model's reviewed-code boundary, INVARIANTS B-1, keeps the rest to review
+    and the inventory); the unit cases below are the typed domain of each field and the one thing `raw` takes."""
+
+    THREE = [oc_row(i, "citing") for i in (1, 2, 3)]
+    BODY = [{**oc_row(1, "citing"), "timespan": "P999Y"}, oc_row(2, "citing"), oc_row(3, "citing")]
+    EQUALITY = ('    copied = make_record(identity="doi:10.1000/copy", kind="citation", source_id=SOURCE_ID, raw=row["timespan"])["raw"]\n'
+                '    guessed = make_record(identity="doi:10.1000/guess", kind="citation", source_id=SOURCE_ID, raw={"skip": True})["raw"]\n'
+                '    if copied == guessed:\n        return OMIT\n')
+    CONTAINER = '    if make_record(identity="doi:10.1000/x", kind="citation", source_id=SOURCE_ID, identifiers=row)["identifiers"].get("timespan") == "P999Y":\n        return OMIT\n'
+
+    def assert_fails_safely(self, new: str, body, error: str):
+        _, enrich = opencitations_with(OLD, new + OLD)
+        _, lane = lane_with(enrich, body)
+        self.assertNotEqual(lane["completeness"], "complete", lane)
+        self.assertEqual((lane["coverage"], "count" in lane), ("provider_unavailable", False), lane)
+        self.assertIn(error, lane.get("error", ""), lane)
+
+    def test_control_the_valid_adapter_keeps_all_three(self):
+        _, lane = lane_with(OC.enrich, self.BODY)
+        self.assertEqual((lane["coverage"], lane["completeness"], lane["count"], lane["retrieved"]), ("searched_ok", "complete", 3, THREE_IDS))
+
+    def test_a_literal_passed_as_raw_has_no_comparison_with_a_decoded_object(self):
+        self.assert_fails_safely(self.EQUALITY, self.BODY, "SealedRead")
+        self.assert_fails_safely(self.EQUALITY, self.THREE, "SealedRead")   # it fails on the comparison, not on the data
+
+    def test_a_decoded_object_passed_as_a_typed_container_is_not_unwrapped_into_its_original(self):
+        self.assert_fails_safely(self.CONTAINER, self.BODY, "SealedRead")
+        self.assert_fails_safely(self.CONTAINER, self.THREE, "SealedRead")
+
+    def test_the_original_copy_escape_still_fails_safely(self):
+        _, enrich = opencitations_with(OLD, COPY_READ + OLD)
+        _, lane = lane_with(enrich, SKIP_FIRST)
+        self.assertNotEqual(lane["completeness"], "complete", lane)
+        self.assertIn("SealedRead", lane.get("error", ""), lane)
+
+    def test_the_scans_see_neither_composition_which_is_why_the_constructors_are_what_stops_them(self):
+        for new in (self.EQUALITY, self.CONTAINER):
+            with tempfile.TemporaryDirectory() as tmp:
+                tree = M.Imports.tree(Path(tmp), **{M.Imports.OC: [(OLD, new + OLD)]})
+                real = M.reads()
+                self.assertEqual((M.import_findings(tree), [f for f in M.reflection_in_adapters(tree) if f[0] == "adapters/opencitations.py"],
+                                  {k: v for k, v in M.reads(tree).items() if v != real.get(k)}), ([], [], {}))
+
+    def test_each_typed_field_takes_its_own_domain_and_never_unwraps_what_the_decoder_issued(self):
+        row = S.decode("x", S.obj({"id": S.text(), "m": S.any_(), "tags": S.own(S.text()), "rows": S.members(S.obj({"id": S.text()}))}), {"id": "a", "m": 1, "tags": ["t"], "rows": [{"id": "b"}]})
+        (unreadable,) = S.decode("x", S.members(S.obj({"id": S.key()})), [{"id": False}]).unreadable()
+        fields = ("title", "venue", "license", "attribution", "authors", "links", "identifiers", "year")
+        decoder_issued = {"a decoded object": (row, SealedRead), "a passive value": (row["m"], PassiveRead), "a sealed raw": (row.raw, SealedRead), "a list of members": (row["rows"], UndeclaredRead),
+                          "an unreadable member": (unreadable, PayloadError)}
+        for field in fields:
+            for label, (value, error) in decoder_issued.items():
+                for shape, wrap in (("bare", lambda v: v), ("in a list", lambda v: [v]), ("in a map", lambda v: {"k": v})):
+                    with self.subTest(field=field, value=label, shape=shape):
+                        self.raises_exactly(error, lambda: make_record(identity="doi:10.1/a", kind="article", source_id="x", **{field: wrap(value)}))
+
+    def test_the_identity_takes_text_not_what_the_decoder_issued(self):
+        row = S.decode("x", S.obj({"id": S.text(), "m": S.any_()}), {"id": "a", "m": "x"})
+        for label, value, error in (("a decoded object", row, SealedRead), ("a passive value", row["m"], PassiveRead), ("a sealed raw", row.raw, SealedRead)):
+            with self.subTest(label):
+                self.raises_exactly(error, lambda: make_record(identity=value, kind="article", source_id="x"))
+
+    def test_control_the_typed_domains_are_taken_whole(self):
+        rec = make_record(identity="doi:10.1/a", kind="article", source_id="x", title="T", venue="V", license="CC0", attribution="A", authors=["a", None, "b"], links=("u", "v"),
+                          identifiers={"doi": "10.1/a", "pmid": None}, year="2020")
+        self.assertEqual((rec["title"], rec["venue"], rec["license"], rec["attribution"], rec["authors"], rec["links"], rec["identifiers"], rec["year"]),
+                         ("T", "V", "CC0", "A", ["a", "b"], ["u", "v"], {"doi": "10.1/a"}, 2020))
+        for field, wrong in (("title", 5), ("venue", False), ("license", ["x"]), ("authors", "ab"), ("authors", [1]), ("links", {"k": "v"}), ("identifiers", ["x"]), ("identifiers", {"k": 1}), ("year", "x"),
+                             ("year", True)):
+            with self.subTest(field=field, wrong=repr(wrong)), self.assertRaises(PayloadError):
+                make_record(identity="doi:10.1/a", kind="article", source_id="x", **{field: wrong})
+
+    def test_a_raw_is_sealed_as_it_is_without_being_materialized_or_read(self):
+        """`make_record` is not a materializer: the raw it is given — a literal, a decoded object, a Passive, a list of them — is carried inside a Sealed that nothing in the record's reach reads."""
+        row = S.decode("x", S.obj({"id": S.text(), "m": S.any_()}), {"id": "a", "m": {"deep": [1]}})
+        for label, raw in {"a literal": {"skip": True}, "a decoded object": row, "a passive value": row["m"], "a list holding one": [row["m"], {"k": row["m"]}], "bytes": b"x"}.items():
+            with self.subTest(label):
+                rec = make_record(identity="doi:10.1/a", kind="article", source_id="x", raw=raw)
+                self.assertIsInstance(rec["raw"], Sealed)
+                self.programming_error(lambda: rec["raw"].get("skip"))
+                self.programming_error(lambda: rec["raw"]["skip"])
+                self.programming_error(lambda: bool(rec["raw"]))
+        self.assertEqual(plain(make_record(identity="doi:10.1/a", kind="article", source_id="x", raw=row)["raw"]), {"id": "a", "m": {"deep": [1]}})
+        self.assertEqual(plain(make_record(identity="doi:10.1/a", kind="article", source_id="x", raw=[row["m"], {"k": row["m"]}])["raw"]), [{"deep": [1]}, {"k": {"deep": [1]}}])
 
 
 class WhereItBecomesPlain(Judged):

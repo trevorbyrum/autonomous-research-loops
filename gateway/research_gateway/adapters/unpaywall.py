@@ -36,7 +36,6 @@ def enrich(client: Client, identity: str, what: str = "oa_location") -> dict:
         if best_unreadable:
             raise PayloadError(f"{SOURCE_ID}: no listed location, and the best location cannot be read")
         locations = MemberList([best] if not best.empty else [])
-    best_raw = None if best_unreadable else best.raw   # what each listed location is compared with, to say whether it is the best one
 
     def location(loc):
         url = loc["url_for_pdf"] or loc["url"]
@@ -47,7 +46,7 @@ def enrich(client: Client, identity: str, what: str = "oa_location") -> dict:
             year=j["year"], venue=j["journal_name"], identifiers={"doi": doi}, links=[url],
             license=loc["license"],
             extra={"is_oa": j["is_oa"], "oa_status": j["oa_status"], "host_type": loc["host_type"],
-                   "version": loc["version"], "is_best": loc.raw == best_raw},
+                   "version": loc["version"], "is_best": not best_unreadable and loc.same_as(best)},   # is this listed location the one the answer also states as best: the provider repeating itself
             raw=loc.raw,
         )
     items = members(SOURCE_ID, locations, location)
