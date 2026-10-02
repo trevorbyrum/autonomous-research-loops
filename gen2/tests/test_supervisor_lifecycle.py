@@ -32,14 +32,17 @@ import os
 import signal
 import subprocess
 import sys
+import tempfile
 import time
+import types
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from unittest import mock
 
 from gen2.core import canonical
 from gen2.core.instants import utc_instant_ns
-from gen2.supervisor import jobs
+from gen2.supervisor import jobs, supervisor as supervisor_module
 from gen2.tests import children
 from gen2.tests import router_fixtures as rf
 from gen2.tests.supervisor_fixtures import AFTER_DEADLINE, DEADLINE, MAIN, PARENT, SupervisedTestCase, outcome_text, released, succeed
@@ -385,25 +388,69 @@ class LifecycleFaults:
         self.assertEqual(self.ended(), self.failed("never_started", via=("admitted", "launching", "failed")))
         self.assertEqual(self.spawns(), 0)
 
+    def gated_launcher(self) -> Path:
+        """A launcher a supervisor that then died had started, and the gate file it holds back for. Once the gate exists it
+        becomes the real job shim (which takes its lock and records its identity). It is released by a file, not by time:
+        nothing about how long anything takes decides when its identity appears."""
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        gate = Path(directory.name) / "gate"
+        job = self.root / "jobs" / f"job-{MAIN}"
+        late = subprocess.Popen(["sh", "-c", 'while [ ! -e "$1" ]; do sleep 0.01; done; exec "$2" "$3" "$4"', "sh", str(gate), sys.executable,
+                                 children.path("gen2/supervisor/jobshim.py"), str(job)],
+                                start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(late.wait)
+        self.addCleanup(gate.touch)   # whatever the test found, the launcher is let go (cleanups run last in, first out: released, waited for, removed)
+        return gate
+
     def test_a_slow_start_found_after_a_restart_is_given_its_grace(self) -> None:
-        """A start recorded by a supervisor that then died, whose launcher takes
-        0.3 s (plus an interpreter's start) to appear: the restarted
-        supervisor waits its start grace for it instead of abandoning it, and
-        finds it running. The grace here is 20 s, far above the delay: under
-        load an interpreter took longer than the suite's 1 s (task 1c-repair
-        C2: found with its evidence kept — the launcher held its lock with no
-        identity yet when a 1 s grace ended, and the supervisor rightly
-        answered unknown_unresolved). The wait ends when the identity
-        appears, so the normal cost is the delay."""
+        """A start recorded by a supervisor that then died, whose launcher has not yet recorded its identity when the restarted
+        supervisor looks: the restarted supervisor waits its start grace for it instead of abandoning it, and finds it running.
+
+        The order that matters is fixed, not raced (Astra's 2b-repair-12 timing ruling: the earlier killer raced a 0.3 s shell
+        delay against the parent reaching recovery, and a parent that resumed after the identity existed never needed the grace,
+        so the mutant that gives it none passed). Here the launcher is held back by a gate file that opens only when the
+        supervisor SLEEPS in its start-grace wait — which it does only after a lookup found no identity and the grace was not
+        spent. So the identity cannot exist at recovery's first look, however slowly the parent gets there, and it appears
+        only because the parent waited: a supervisor with no grace never sleeps, never opens the gate, and finds a start with no
+        identity. The grace is 20 s, far above anything the wait costs: it ends when the identity appears."""
         self.prepare(self.KIND)
         self.supervisor.prepare(self.order(self.KIND, [*GATED, *succeed()]))
         self.stop_at("spawning")
-        job = self.root / "jobs" / f"job-{MAIN}"
-        late = subprocess.Popen(["sh", "-c", f'sleep 0.3; exec "{sys.executable}" "{children.path("gen2/supervisor/jobshim.py")}" "{job}"'],
-                                start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        self.addCleanup(late.wait)
+        job, gate = self.root / "jobs" / f"job-{MAIN}", self.gated_launcher()
+        waits = []
+
+        def wait(seconds: float) -> None:
+            waits.append((job / "identity.json").exists())   # what the parent's own look had found when it chose to wait
+            gate.touch()
+            time.sleep(seconds)
         self.supervisor = self.make_supervisor(policy=replace(self.POLICY, start_grace_s=20.0))
-        self.assertEqual(self.supervisor.recover()[MAIN], "running")
+        with mock.patch.object(supervisor_module, "time", types.SimpleNamespace(monotonic=time.monotonic, sleep=wait)):
+            self.assertEqual(self.supervisor.recover()[MAIN], "running")
+        self.assertTrue(waits and not waits[0], "the supervisor waited for an identity that did not yet exist: the order the grace is for")
+        self.gate()
+        self.assertEqual(self.supervisor.run(MAIN), "committed")
+        self.assertEqual(self.ended()["reconciliations"], ["found_running"])
+        self.assertFalse((job / "abandoned").exists())
+
+    def test_control_a_start_that_has_recorded_its_identity_at_recovery_is_found_running(self) -> None:
+        """The normal start the grace is not for: the launcher's identity exists before the restarted supervisor first looks (the
+        test waits for the file, with a bound far above its cost, so this order too is fixed). The supervisor finds it running at
+        once and never waits."""
+        self.prepare(self.KIND)
+        self.supervisor.prepare(self.order(self.KIND, [*GATED, *succeed()]))
+        self.stop_at("spawning")
+        job, gate = self.root / "jobs" / f"job-{MAIN}", self.gated_launcher()
+        gate.touch()
+        deadline = time.monotonic() + 60
+        while not (job / "identity.json").exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertTrue((job / "identity.json").exists(), "the launcher recorded its identity")
+        waits = []
+        self.supervisor = self.make_supervisor(policy=replace(self.POLICY, start_grace_s=20.0))
+        with mock.patch.object(supervisor_module, "time", types.SimpleNamespace(monotonic=time.monotonic, sleep=lambda s: waits.append(s))):
+            self.assertEqual(self.supervisor.recover()[MAIN], "running")
+        self.assertEqual(waits, [], "an identity already there is not waited for")
         self.gate()
         self.assertEqual(self.supervisor.run(MAIN), "committed")
         self.assertEqual(self.ended()["reconciliations"], ["found_running"])
