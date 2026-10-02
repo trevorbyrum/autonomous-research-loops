@@ -921,3 +921,18 @@ Both targets pass independently: gateway 1,334+1,334 tests, 295/295 mutants; eng
   - rewrite the 10 test claims;
   - narrow the "only decode opens bytes" wording.
 - Language-level residuals (`is None` on `Passive`, reachable private names, a finite corpus) can never be closed by construction in Python. **Escalated to the operator for a ruling** on accepting them as permanent, scan-guarded limits.
+
+## 2026-10-02 — 2b-repair-13b landed (engine hand-off) — Astra re-review dispatched
+**Coder (Sonnet 5.5, `d6988b45`):** `1178e97`..`a5a2afb`.
+- **Gate D #3:** each page observation now carries `page_outcome` (exhausted / continuation / end_unknown / limit_reached / failed) and a typed `continuation`, end to end, with store CHECKs. Only a whole page reporting `exhausted` establishes exhaustion.
+- **Gate D #4:** one monotonic deadline; each exchange's timeout is clamped to the time left; sleeps are bounded.
+- **Supervisor test:** the start-grace test is synchronized by a gate file and has a normal-start control.
+- **13a condition:** `linkage_suggestions` is shown to be inert in the engine.
+- **Results:** 1,641 tests; 1,739/1,739 mutants; engine production +94 lines.
+
+**Coder's disclosed limits, judged as findings:**
+- The clamp is per socket operation, so a reply that trickles in can outlast the deadline.
+- `end_unknown` also covers requests that don't page.
+- One unexplained intermittent failure in a multi-process store test (`test_a_report_recorded_after_a_newer_one_never_displaces_it`), not investigated.
+
+**Orchestrator:** clean tree; `gateway/` and the oracle untouched; gen-1 unchanged (PID 1040). Independent reruns in progress. Astra's task: `private/reviews/gen2-2b-repair-13b-review-task-20261002.md`.
