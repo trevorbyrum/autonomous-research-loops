@@ -16,7 +16,7 @@ What a failure costs is decided by where it is, never by the adapter:
 And what can FAIL is total (2b-repair-13a): PayloadError is the one channel. Every scalar conversion goes through `_normalized` and every consistency rule
 through `_ruled`, so whatever a provider's value makes them do — a Unicode digit that `int()` refuses, a number past the conversion limit, a rule that
 indexes what is not there — is a PayloadError at the nearest boundary above it, never an exception that escapes the member. Only UndeclaredRead, a programming
-error, passes. The parse of the answer's bytes is inside the same channel (an empty body, bad JSON, nesting no supported answer has).
+error, passes. The parse of the answer's bytes is inside the same channel (an empty body, and bytes that are not the document their format requires: core/wire.py is the ruling for JSON, XML and CSV).
 
 "Missing or null" and "present but malformed" are different things, as the accepted contracts say: a field that is left out (or null)
 is the empty value of its kind (None, False, [], {}, an object of empty fields) unless it is `required`; one that is there and is

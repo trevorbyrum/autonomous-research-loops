@@ -121,14 +121,31 @@ is never conflated with "not searched" or "unavailable":
   The decoder's contract with the rest of the gateway is COMPLETE (task 2b-repair-13a; the defect family of repair-12's review and Gate D #1 was that it was not):
   (1) its failure channel is TOTAL — every scalar conversion (a year: `str.isdigit()` takes `"²"`, `"①"` and a 4,301-digit string, `int()` does not) and every
   consistency rule runs inside the decoder's own wrapper, so whatever a provider's value makes it do is a `PayloadError` at the nearest boundary (a member's loss, with
-  its readable peers kept as a partial lower bound), the opening of the answer's bytes (empty, unparseable, nested deeper than any supported answer) is inside the same
-  channel, and only a programming error (`UndeclaredRead`, `PassiveRead`, `SealedRead`) passes; (2) declarations are complete for what DECIDES — a field declared
+  its readable peers kept as a partial lower bound), the opening of the answer's bytes (empty, not the document its format requires, nested deeper than the gateway's
+  limit of 64 levels) is inside the same channel, and only a programming error (`UndeclaredRead`, `PassiveRead`, `SealedRead`) passes; (2) declarations are complete for what DECIDES — a field declared
   `any_()` is handed over `Passive`, carried as sent for a record's `extra` and nothing else (every other use raises), so a field that identifies a candidate, selects one,
   ends or continues a listing, goes into a request or is shown to the caller as a label is declared a kind (`maybe_key`, `text`, `key`, `flag`, ...) and a wrong one is
   unreadable, never a returned identifier; (3) the raw answer is SEALED — the client's `Response` holds no readable payload (no `json`, `text` or `body`: only
-  `decode(...)` opens the bytes, and `download()` hands back the bytes of a file a caller asked to download), a member's `raw` is sealed and leaves only as a copy, and
-  doi.org's registration-agency answer and DOAJ's CSV dump cross the decoder like any other, so an answer that is not a list is an unreadable lookup (nothing cached)
-  and not an `unknown` agency remembered for a prefix. A schema may say a field is `never_null` where an operation's contract tells a field LEFT OUT from one sent
+  `decode(...)` opens a payload's bytes — see "scope" below — and `download()` hands back the bytes of a file a caller asked to download, sealed), a member's `raw` is sealed and
+  leaves only as a copy, and so is every record an adapter builds (task 2b-repair-13c): a record's `raw`, its `extra` values built from an `any_()` field and a download's
+  bytes stay opaque from `make_record` until the router serializes the answer (`router.execute`, after every lane has run and every selection, coverage and licence decision
+  is made) or the index stores a loaded record (`harvest/index.upsert`), so no adapter can read provenance to decide what to keep, and a typed field of a record (title,
+  venue, licence, identifiers, year) refuses an opaque value. doi.org's registration-agency answer and DOAJ's CSV dump cross the decoder like any other, so an answer that is
+  not a list is an unreadable lookup (nothing cached) and not an `unknown` agency remembered for a prefix. **Scope of "only the decoder opens a payload's bytes":** it covers
+  every payload decision — what a provider's answer says, which can produce a record, a count, an end or an empty answer. The client also reads a `Response`'s bytes in four
+  named places for its own purposes (`check()`'s look at the first bytes to refuse an HTML page wearing a success status, which can only make a lane unavailable;
+  `_text_of`'s read of a 401/403 body to classify the failure of the call; `_count_of`'s count for the call log, through the decoder's own opener; `download()`'s sealed
+  bytes): `tests/test_opaque_provenance.py` `BytesAreOpenedOnlyWhere` is the exact inventory, and a new read fails it. (4) every BYTE OPENER is strict against its format's
+  specification (task 2b-repair-13c; Astra R13A-1): the decoder validated the values a lexer handed it, and the lexer, each library at its default, had already resolved
+  malformed input — a DOAJ dump with an unterminated quote loaded as zero journals. `core/wire.py` holds the openers and its docstring is the ruling for each. JSON (RFC
+  8259): UTF-8 only, no `NaN`/`Infinity`/`-Infinity`, no number past a double, no name twice in one object, nesting bounded. XML (XML 1.0): well-formedness is expat's, the bytes
+  are read as UTF-8 (an invalid byte or another declared encoding is an error, not U+FFFD), the declaration's version must be `1.x`, no DOCTYPE, nesting bounded. CSV (RFC
+  4180): a quoted field must be closed and followed by a comma or the end of the line, no quote inside an unquoted field, a carriage return is half of CRLF, a cell is at most
+  131,072 characters, and a header that names a column the schema reads twice is refused (a column nothing reads may repeat); LF-only line ends, a last line with no ending, a
+  blank line, short rows and extra cells are accepted as they always were. Malformed input is a `PayloadError` (the answer is unreadable), never a successful shorter or empty
+  one. The OpenAlex snapshot reader opens its JSON lines through the same opener, and a line that is not JSON fails the load naming the file and line (it was skipped).
+  `tests/test_openers.py` lists every parse call in the gateway and fails on one that is not classified. A truncation that ends exactly at a record's end is a well-formed
+  shorter CSV: nothing in the format marks the end, and the transport's own length framing is what detects a short body. A schema may say a field is `never_null` where an operation's contract tells a field LEFT OUT from one sent
   null (Semantic Scholar's `data`: omitted beside `total: 0` is a search that matched nothing; null is unreadable). A Dataflow's structure reference is validated over
   every `Ref` and `URN` it states before any is filtered (an empty or nameless `Ref` is a malformed one), with `package` and `class` only as SDMX 2.1 fixes them.
   Alternatives, specifically (tasks 2b-repair-10b/11b R10-1, 2b-repair-12 R11-1): DataCite's `rights` beside `rightsIdentifier`, BEA's
