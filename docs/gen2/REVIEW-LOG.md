@@ -816,3 +816,4 @@ Full report: `~/work/research-loops-public/private/reviews/gen2-2b-repair-11-ast
 The structural scan also has an ordinary-spelling bypass; Astra asks that its claim be narrowed.
 
 **Orchestrator:** this is the twelfth 2b review round. The operator asked why the process feels like circling. The orchestrator's diagnosis: an open-ended acceptance bar, instance-level fixing until round 8, and routing without stepping back. It proposed freezing a finite acceptance contract, with later findings triaged into either blocking (false end, false empty, permission widening) or debt-register items. **No new repair is dispatched until the operator decides.**
+**OPERATOR RULING:** "or why don't we try to address the bugs" — fix R11-1 and R11-2 now. Dispatched 2b-repair-12 (Sonnet 5.5) with Astra's reproductions as the required tests. The acceptance-process change is not adopted; the existing process continues.
