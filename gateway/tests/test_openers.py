@@ -11,7 +11,7 @@ core/wire.py holds the openers now (its docstring is the ruling for each, agains
   * Rulings           what each opener accepts and refuses, as examples with their reasons (the accepted ones are as much the ruling as the refused)
   * ByteCorruption    the corruption family, run for every opener of the inventory THROUGH ITS REAL CONSUMER (the decoder, the DOAJ loader, the snapshot reader, the call log's
                       count): corrupted serialized bytes, each refused with the one channel, each beside a valid control; plus sweeps over every offset of a valid document
-  * Astra13a          Astra's R13A-1 probes as regressions, byte for byte, including the load that returned a count of zero
+  * (tests/test_astra_13a.py  Astra's R13A-1 probes as regressions, byte for byte, including the load that returned a count of zero, written to run unchanged on 2d62753, where they fail)
   * AgainstTheCsvModule  the CSV opener against csv.reader(strict=True) on thousands of generated texts: it accepts nothing strict refuses, reads what both accept identically,
                       and refuses beyond strict only what RFC 4180 §2.5 forbids (a quote inside an unquoted field)
   * AgainstTheLibraries  a VALID document reads as json.loads and ElementTree read it, on generated documents: the strictness is all on the other side of the line
@@ -499,9 +499,9 @@ class ByteCorruption(unittest.TestCase):
         self.assertEqual({o for o, _ in CONSUMERS.values()}, set(covered))
 
 
-# --------------------------------------------------------------------------------------------------------------------------------------- Astra's probes
+# --------------------------------------------------------------------------------------------------------------------------------------- the CSV opener against the csv module
 class Fake:
-    """A database that records what it is asked: Astra's index-zero probe."""
+    """A database that records what it is asked (the index-zero probe's, tests/test_astra_13a.py)."""
     def __init__(self):
         self.statements, self.commits, self.rollbacks = [], 0, 0
 
@@ -529,48 +529,6 @@ class Fake:
         self.rollbacks += 1
 
 
-class Astra13a(unittest.TestCase):
-    """The probes of Astra's 13a review (evidence/astra-2b-repair-13a/new-parser-probes.json, index-zero-probe.json), byte for byte. On 2d62753 every refused case below loads."""
-
-    PROBES = {
-        "unterminated_title": (HEAD + '"First,9999-9991,P,CC-BY\nSecond,9999-9983,Q,CC-BY\nThird,9999-9975,R,CC-BY\n', "refused"),
-        "unterminated_publisher": (HEAD + 'First,9999-9991,"P,CC-BY\nSecond,9999-9983,Q,CC-BY\nThird,9999-9975,R,CC-BY\n', "refused"),
-        "unterminated_header": ('Journal title,"Journal ISSN (print version),Publisher,Journal license\nFirst,9999-9991,P,CC-BY\nSecond,9999-9983,Q,CC-BY\n', "refused"),
-        "junk_after_closing_quote": (HEAD + '"First"junk,9999-9991,P,CC-BY\nSecond,9999-9983,Q,CC-BY\n', "refused"),
-        "duplicate_title_erases_identity": ("Journal title,Journal title\nFirst,\nSecond,\n", "refused"),
-        "duplicate_license": ("Journal title,Journal ISSN (print version),Journal license,Journal license\nFirst,9999-9991,All rights reserved,CC-BY\n", "refused"),
-        "valid_three": (THREE, ["issn:9999-9991", "issn:9999-9983", "issn:9999-9975"]),
-        "valid_quoted_multiline": (HEAD + '"First\nJournal",9999-9991,P,CC-BY\nSecond,9999-9983,Q,CC-BY\n', ["issn:9999-9991", "issn:9999-9983"]),
-    }
-
-    def test_each_probe(self):
-        for name, (text, want) in self.PROBES.items():
-            identities, error = load_doaj(text)
-            with self.subTest(name):
-                if want == "refused":
-                    self.assertIsInstance(error, PayloadError, f"loaded {identities}")
-                else:
-                    self.assertEqual((identities, error), (want, None))
-
-    def test_the_valid_multiline_title_is_one_journal_with_its_newline(self):
-        (record,) = list(registries.doaj_journals(doaj_client((HEAD + '"First\nJournal",9999-9991,P,CC-BY\n').encode())))
-        self.assertEqual(record["title"], "First\nJournal")
-
-    def test_the_index_load_that_returned_zero_now_fails_and_rolls_back(self):
-        """Astra's index-zero probe: the unterminated header through the real `index.load` with a fake connection. It returned a loaded count of 0 with no rollback."""
-        text, _ = self.PROBES["unterminated_header"]
-        db = Fake()
-        with self.assertRaises(PayloadError):
-            index.load(db, lambda: registries.doaj_journals(doaj_client(text.encode())), "doaj", metadata_license="CC0")
-        self.assertEqual(db.rollbacks, 1, "the failed load is rolled back, not committed as a load of nothing")
-
-    def test_the_valid_dump_still_loads_through_index_load(self):
-        db = Fake()
-        n = index.load(db, lambda: registries.doaj_journals(doaj_client(THREE.encode())), "doaj", metadata_license="CC0")
-        self.assertEqual((n, db.rollbacks), (3, 0))
-
-
-# --------------------------------------------------------------------------------------------------------------------------------------- the CSV opener against the csv module
 class AgainstTheCsvModule(unittest.TestCase):
     ALPHABET = ("a", "b", " ", "x", "é", '"', ",", "\n", "\r\n", '""', ",,", '","')
 

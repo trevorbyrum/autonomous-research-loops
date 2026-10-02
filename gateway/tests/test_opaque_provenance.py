@@ -15,7 +15,7 @@ The construction now: `make_record` returns a plain dict whose provenance is sti
 download's bytes are a `Sealed` — and the router turns the whole answer into plain data at one place, after every lane has run and every selection, coverage and licence decision is made
 (`router.execute`), as the index does for what it stores (`harvest/index.upsert`). This file runs, for every exit the review listed:
 
-  * TheCopyEscape        Astra's mutant, rebuilt: the unmodified adapter, the mutant (which now fails loudly instead of dropping a candidate), the scan that cannot see it, and the variants
+  * TheCopyEscape        Astra's mutant (tests/test_astra_13a.py runs it as a regression that fails on 2d62753): the scan that cannot see it, and the variants
   * EveryExit            canonical-record construction (raw, extra, a typed field, the identity), `download()`, an unreadable member's raw, equality as a way to read, and `plain` itself
   * WhereItBecomesPlain  before the router's boundary every operation's records still hold `Sealed` raw (nothing between the builder and the router materialized it), after it every answer is plain
                          JSON; the index load writes plain data and never the object's repr
@@ -46,35 +46,11 @@ from research_gateway.harvest import index, registries
 from tests import test_member_isolation as M
 from tests.invariant_ops import corrupt_route, oc_row
 from tests.test_invariants import ALL, run
+from tests.test_astra_13a import COPY_READ, OLD, SKIP_FIRST, lane_with, opencitations_with
 from tests.test_openers import Fake, doaj_client, THREE
 
 ROOT = Path(__file__).resolve().parents[1] / "research_gateway"
-SKIP_FIRST = [{**oc_row(1, "citing"), "timespan": {"skip": True}}, oc_row(2, "citing"), oc_row(3, "citing")]   # Astra's three citations: the first one's timespan is {"skip": true}
 THREE_IDS = ["doi:10.9000/c1", "doi:10.9000/c2", "doi:10.9000/c3"]
-
-# Astra's source mutant of the OpenCitations builder (evidence/astra-2b-repair-13a/copy-escape.diff), byte for byte
-OLD = '    doi = next((part[4:] for part in (row[key] or "").split(" ") if part.startswith("doi:")), None)\n'
-COPY_READ = ('    copied = make_record(identity="doi:10.1000/copy", kind="citation", source_id=SOURCE_ID, raw=row.raw)["raw"]\n'
-             '    if copied.get("timespan") == {"skip": True}:\n        return OMIT\n')
-
-
-def opencitations_with(old: str, new: str):
-    """The OpenCitations adapter with one edit, as a module-level namespace whose `enrich` can stand in for the real one."""
-    source = Path(OC.__file__).read_text(encoding="utf-8")
-    assert source.count(old) == 1, old
-    namespace = dict(OC.__dict__)
-    exec(compile(source.replace(old, new), OC.__file__, "exec"), namespace)
-    return source.replace(old, new), namespace["enrich"]
-
-
-def lane_with(enrich, body) -> tuple[dict, dict]:
-    original = OC.enrich
-    OC.enrich = enrich
-    try:
-        op = next(op for name, op in ALL.items() if name.startswith("opencitations.enrich citations"))
-        return run(op, body)
-    finally:
-        OC.enrich = original
 
 
 class Judged(unittest.TestCase):
@@ -92,21 +68,6 @@ class Judged(unittest.TestCase):
 
 
 class TheCopyEscape(Judged):
-    def test_the_unmodified_adapter_keeps_all_three_citations(self):
-        out, lane = lane_with(OC.enrich, SKIP_FIRST)
-        self.assertEqual((lane["coverage"], lane["completeness"], lane["count"], lane["retrieved"]), ("searched_ok", "complete", 3, THREE_IDS))
-
-    def test_astras_mutant_cannot_read_the_copy_it_made_so_it_fails_loudly_instead_of_dropping_a_candidate(self):
-        """On 2d62753 this lane was `complete`, count 2, the first identity silently omitted. Now the returned record's `raw` is Sealed: `.get` is a SealedRead, a programming error that no builder net
-        swallows and no lane blames on the provider."""
-        _, enrich = opencitations_with(OLD, COPY_READ + OLD)
-        out, lane = lane_with(enrich, SKIP_FIRST)
-        self.assertNotEqual(lane["completeness"], "complete", lane)
-        self.assertIn("SealedRead", lane.get("error", ""), lane)
-        self.assertNotIn("count", lane, "no count: nothing was established")
-        _, control = lane_with(enrich, [oc_row(i, "citing") for i in (1, 2, 3)])   # the same mutant over rows with no skip marker still fails: it fails on the READ, not on the data
-        self.assertNotEqual(control["completeness"], "complete")
-
     def test_the_source_scan_still_cannot_see_it_which_is_why_the_scan_is_a_backstop(self):
         """The inventory of reads and the import and reflection checks find nothing in the mutated tree (Astra's own finding). That is unchanged and no longer matters: what stops the mutant is the
         object it reads."""

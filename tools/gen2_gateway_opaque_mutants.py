@@ -21,7 +21,8 @@ OP = "tests.test_opaque_provenance."
 COPY, EXIT, PLACE = OP + "TheCopyEscape.", OP + "EveryExit.", OP + "WhereItBecomesPlain."
 MI = "tests.test_member_isolation."
 SP = "tests.test_sealed_payload."
-CONTROL = COPY + "test_the_unmodified_adapter_keeps_all_three_citations"
+ASTRA = "tests.test_astra_13a.R13A2."
+CONTROL = ASTRA + "test_the_unmodified_adapter_keeps_all_three_citations"
 
 
 def build(Mutant) -> list:
@@ -30,7 +31,7 @@ def build(Mutant) -> list:
         Mutant("Q-record-materializes-its-provenance", "`make_record` returns `plain(record)` again: the raw object and the passive values are readable in the returned dictionary (Astra's copy escape)", CANON,
                '    rec["raw"] = raw if raw is None or isinstance(raw, Sealed) else Sealed(plain(raw), _issued=True)\n    return rec\n',
                '    rec["raw"] = raw if raw is None or isinstance(raw, Sealed) else Sealed(plain(raw), _issued=True)\n    return plain(rec)\n',
-               (COPY + "test_astras_mutant_cannot_read_the_copy_it_made_so_it_fails_loudly_instead_of_dropping_a_candidate", COPY + "test_the_variants_each_fail_where_the_value_is_read",
+               (ASTRA + "test_astras_mutant_cannot_read_the_copy_it_made_so_it_fails_loudly_instead_of_dropping_a_candidate", COPY + "test_the_variants_each_fail_where_the_value_is_read",
                 COPY + "test_each_variant_run_through_the_real_adapter_and_router_is_never_a_complete_lane",
                 EXIT + "test_a_record_is_a_plain_dict_with_plain_typed_fields_and_opaque_provenance", PLACE + "test_before_the_routers_boundary_every_operations_records_still_hold_a_sealed_raw",
                 SP + "RawIsSealedAndLeavesAsACopy.test_a_records_raw_is_sealed_in_the_record_and_each_materialization_is_a_copy_independent_of_the_decoders"),
