@@ -1097,3 +1097,25 @@ Consolidate: canonical typed construction must not materialize raw data; one raw
 - clean tree; `gateway/` untouched; gen-1 unchanged (PID 1040);
 - independent reruns in progress;
 - **review held for a combined 13d + 14 review**, to conserve the Codex window (90% of 7 days used, resets in about 5 days).
+
+## 2026-10-02 — 2b-repair-14 landed (gateway finish line); combined final 2b review dispatched
+**Coder (Sonnet 5.5, `39fc2492`):** `071eb9a`..`373c3dc`. Gate D #2 checklist:
+- **0:** B amendment.
+- **1:** `Transport.request` owns message completeness: framing validated, an unmet Content-Length raises `IncompleteRead`, 256 MiB bound.
+- **2:** lossless XML scalars; matching by expanded name.
+- **3:** no `Sealed` comparison; `Rec.same_as` is the one comparison; typed fields unwrap nothing; `plain` at three sinks only.
+- **4:** snapshot per-line isolation restored, with a report of refused lines.
+- **5:** STATION-CONTRACT §5 freezes the format policy.
+- **6:** one owned inventory (65 sites); the 9 overclaims and 2 snapshot failures resolved; Retry-After documented (zone-less dates are now GMT, previously host-local); the number claim corrected.
+- **F6:** INVARIANTS E-2 and the router README corrected, and the 2e2 requirement recorded.
+- **8:** the family account under B.
+
+**Results:** gateway 1,491+1,491 tests, 366/366 mutants; engine 1,700 tests, 1,781/1,781 mutants. All ten open reproductions fail on `37a655c` and pass now. Gateway production +168 lines. The coder flagged stale "detected by the audit" wording in two engine files that its brief kept it from touching; **the orchestrator fixed both, comment-only, in `c0d963d`**.
+
+**Judgement calls sent to the review:**
+- **SDMX-ML 2.1 only.** The BIS adapter uses `stats.bis.org/api/v2` with `Accept: application/xml`, and its default response version isn't confirmed from public docs, which are rendered by JavaScript.
+- repeated Content-Length is refused;
+- a cut inside the chunked trailer is accepted;
+- record identity must be text.
+
+**Review:** one combined Astra Gate A+B+C review of 13d + 14 (`ef030fc5`, pinned `c0d963d`; task `private/reviews/gen2-2b-final-review-task-20261002.md`), judged against the operator rulings and Gate D #2's acceptance rule. Combining them conserves the Codex window. Orchestrator reruns at `c0d963d` are in progress.
