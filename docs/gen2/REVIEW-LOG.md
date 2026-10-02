@@ -936,3 +936,32 @@ Both targets pass independently: gateway 1,334+1,334 tests, 295/295 mutants; eng
 - One unexplained intermittent failure in a multi-process store test (`test_a_report_recorded_after_a_newer_one_never_displaces_it`), not investigated.
 
 **Orchestrator:** clean tree; `gateway/` and the oracle untouched; gen-1 unchanged (PID 1040). Independent reruns in progress. Astra's task: `private/reviews/gen2-2b-repair-13b-review-task-20261002.md`.
+
+## 2026-10-02 — Astra re-review of 2b-repair-13b (`5539a8d8`, pinned a5a2afb) — BLOCK (A, C); PASS (B)
+Full report: `private/reviews/gen2-2b-repair-13b-astra-review-20261002.md`.
+
+**ROOT-CAUSE:**
+- Gate D #3's information loss: "more remains" and "finished" now differ in client output, command and row;
+- the supervisor start-grace test (killed in all four schedules, control passes);
+- `linkage_suggestions` inert in the engine.
+
+Both targets pass independently (1,641 tests and 1,739/1,739; gateway 1,334+1,334 and 295/295). Astra rebuilt 3 mutants and all were killed. New corruption families (cursor repeat, cursor cycle, cap equal to total) produced no false exhaustion. Pre-change stores are refused by the opener, which is safe; Phase 4 owns reconciliation.
+
+**Family verdict: MITIGATION / incomplete at the engine hand-off.**
+- **R13B-1 (MEDIUM):** the deadline is a per-socket-operation timeout, so a 6-chunk trickle took 0.5 s under a 0.2 s budget, and a late `done` was accepted and persisted as `searched_empty/complete/exhausted`.
+- **R13B-2 (MEDIUM):** the boundary checks compare assertions with each other but never with evidence. Admitted today:
+  - complete/exhausted with `gateway_call_ref=null`;
+  - a missing or invented request type;
+  - the `exhausted` sentinel as a cursor;
+  - router and DDL disagreeing on the cursor domain;
+  - a first-write relabel of `limit_reached` as `exhausted` with a valid capability.
+- **R13B-3 (MEDIUM, test reliability):** the recorder-startup failure is unexplained. Readiness has no bound and the child's exit/stderr aren't kept.
+
+**Gate C:** 1 of 27 test claims is rejected (the after-deadline test receives its reply before the deadline).
+
+**Orchestrator routing → 2b-repair-13d (engine, after 13c):**
+- a whole-exchange deadline over connect, headers and body, where a late terminal reply counts as a timeout;
+- the admission contract enforced in both router and DDL: capture acknowledgement, a closed request discriminator, per-type `end_unknown`, no exhausted unobserved lane, one cursor domain;
+- the startup failure instrumented and diagnosed.
+
+**Trust model:** taken from the source of truth, not adjudicated as a mitigation. Trusted station/gateway code is the capture boundary (flow §S2, BOUNDARIES' station supervisor, D-1), and relabelling by trusted code is detected by the state-integrity audit's re-derivation from the raw ledgers (BOUNDARIES "checked by", flow §state integrity). 13d documents it, and the next review judges that reading. **Reported to the operator for override.**
