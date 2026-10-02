@@ -107,6 +107,26 @@ def answering(body_of) -> callable:
     return transport
 
 
+class VirtualTime:
+    """A monotonic clock the test moves: `sleep` advances it and so does a transport that takes time (`took`), so
+    polling is exercised without waiting, and what it costs in (virtual) seconds is exact."""
+
+    def __init__(self) -> None:
+        self.now, self.sleeps = 0.0, []
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+    def took(self, seconds: float, timeout: float) -> bool:
+        """Spend a request's time, up to its timeout: True when the transport answered inside it, False when it timed out."""
+        self.now += min(seconds, timeout)
+        return seconds <= timeout
+
+
 class RecordedAnswers(unittest.TestCase):
     def test_a_complete_answer_is_one_observation_per_lane(self):
         out = search(self, "find_complete")
@@ -473,7 +493,9 @@ class TransportOutcomes(unittest.TestCase):
     def outcome(self, status, body=None, error=None, headers=None, request=FIND):
         def transport(method, url, hdrs, data, timeout):
             return status, headers or HEADERS, json.dumps(body).encode() if body is not None else b"", error
-        c = GatewayClient(BASE, ENGINE_TOKEN, transport=transport, clock=lambda: "2026-09-30T10:00:00Z", sleep=lambda s: None, deadline=2)
+        clock = VirtualTime()
+        c = GatewayClient(BASE, ENGINE_TOKEN, transport=transport, clock=lambda: "2026-09-30T10:00:00Z", deadline=2,
+                          sleep=clock.sleep, monotonic=clock.monotonic)
         return [summary(o) + (o["observation"]["lane"],) for o in
                 c.search(request, invocation_id=INV, attempt=1, policy_version="gw-policy/1")["observations"]]
 
@@ -497,14 +519,15 @@ class TransportOutcomes(unittest.TestCase):
     POLLED = {"invocation_id": INV, "attempt": 1, "served": "polled", "job_id": 7, "captured": True, "call_ref": 900, "capture_loss": None}
 
     def queued_client(self, answers, seen=None) -> GatewayClient:
-        answers = iter(answers)
+        answers, clock = iter(answers), VirtualTime()
 
         def transport(method, url, hdrs, data, timeout):
             if seen is not None:
                 seen.append((method, hdrs.get("X-Research-Invocation"), hdrs.get("X-Research-Attempt")))
             status, body = next(answers)
             return status, HEADERS, json.dumps(body).encode(), None
-        return GatewayClient(BASE, ENGINE_TOKEN, transport=transport, clock=lambda: "2026-09-30T10:00:00Z", sleep=lambda s: None, deadline=2)
+        return GatewayClient(BASE, ENGINE_TOKEN, transport=transport, clock=lambda: "2026-09-30T10:00:00Z", deadline=2,
+                             sleep=clock.sleep, monotonic=clock.monotonic)
 
     def done(self):
         done = fixture("find_complete")["exchanges"][0]["response"]["body"]
@@ -592,6 +615,91 @@ def recorded_in_order(name: str, seen: list):
         seen.append((h.path, canonical.parse_json_strict(h.body) if h.body else None))
         _write(h, responses[len(seen) - 1])
     return answer
+
+
+class PollDeadline(unittest.TestCase):
+    """Gate D #4 (task 2b-repair-13b): polling a queued job has ONE absolute monotonic deadline. A poll's own time comes out
+    of it, each poll's timeout is clamped to what remains, and each sleep is bounded by it. Virtual time: no test waits,
+    and every figure is the exact number of (virtual) seconds."""
+    CTX = {"token": "synthetic", "invocation_id": INV, "attempt": 1}
+    RUNNING = {"x-research-gateway": "result", "content-type": "application/json"}
+
+    def close(self, got: list, want: list, label: str = "") -> None:
+        self.assertEqual(len(got), len(want), f"{label}: {got} != {want}")
+        for g, w in zip(got, want):
+            self.assertAlmostEqual(g, w, msg=f"{label}: {got} != {want}")
+
+    def poller(self, request_seconds: float, *, deadline: float, timeout: float = 130.0, answers=None):
+        """(client, clock, the timeouts its polls were given). A poll takes `request_seconds` and is cut off at its timeout."""
+        clock, timeouts, answers = VirtualTime(), [], iter(answers or ())
+
+        def transport(method, url, headers, body, request_timeout):
+            timeouts.append(request_timeout)
+            if not clock.took(request_seconds, request_timeout):
+                return None, {}, b"", "timeout"
+            status, doc = next(answers, (200, {"status": "running"}))
+            return status, self.RUNNING, json.dumps(doc).encode(), None
+        return GatewayClient(BASE, ENGINE_TOKEN, timeout=timeout, deadline=deadline, transport=transport, sleep=clock.sleep,
+                             monotonic=clock.monotonic), clock, timeouts
+
+    def test_gate_d_a_slow_gateway_cannot_stretch_one_second_into_three(self):
+        """Gate D's probe: deadline 1 s, each poll 0.6 s, timeout 130. The old loop counted only its half-second sleeps — three
+        polls, each handed the full 130, 3.3 s in all. Now the first poll is handed the one second there is, and polling stops there."""
+        c, clock, timeouts = self.poller(0.6, deadline=1.0)
+        self.assertEqual(c._poll(1, self.CTX), (None, None))
+        self.close(timeouts, [1.0], "the one poll the deadline allows, clamped to the deadline, not the client's 130")
+        self.assertAlmostEqual(clock.now, 1.0)
+        self.assertLessEqual(clock.now, 1.0 + 1e-9)
+
+    def test_each_poll_is_clamped_to_what_remains_and_each_sleep_to_the_same(self):
+        c, clock, timeouts = self.poller(0.0, deadline=2.0)
+        self.assertEqual(c._poll(1, self.CTX), (None, None))
+        self.close(timeouts, [2.0, 1.5, 1.0, 0.5])
+        self.close(clock.sleeps, [0.5, 0.5, 0.5, 0.5])
+        c, clock, timeouts = self.poller(0.0, deadline=0.7)
+        c._poll(1, self.CTX)
+        self.close(timeouts, [0.7, 0.2])
+        self.close(clock.sleeps, [0.5, 0.2], "the last sleep ends at the deadline, not half a second after it")
+        c, _, timeouts = self.poller(0.0, deadline=2.0, timeout=0.7)
+        c._poll(1, self.CTX)
+        self.close(timeouts, [0.7, 0.7, 0.7, 0.5], "a poll is never given more than the client's own timeout either")
+
+    def test_the_defaults_end_within_the_deadline_where_gate_d_counted_about_21_hours(self):
+        c, clock, timeouts = self.poller(130.0, deadline=300.0)
+        self.assertEqual(c._poll(1, self.CTX), (None, None))
+        self.close(timeouts, [130.0, 130.0, 39.0])
+        self.assertAlmostEqual(clock.now, 300.0)
+
+    def test_a_deadline_that_passes_is_a_timeout_observation_and_never_an_empty_result(self):
+        clock, timeouts = VirtualTime(), []
+        queued = TransportOutcomes.QUEUED
+
+        def transport(method, url, headers, body, request_timeout):
+            timeouts.append(request_timeout)
+            if method == "POST":
+                return 202, HEADERS, json.dumps({**queued, "observation": fixture("find_complete")["exchanges"][0]["response"]["body"]["observation"]}).encode(), None
+            clock.took(130.0, request_timeout)
+            return None, {}, b"", "timeout"   # every poll waits out its timeout
+        c = GatewayClient(BASE, ENGINE_TOKEN, deadline=5.0, transport=transport, sleep=clock.sleep, monotonic=clock.monotonic, clock=lambda: "2026-09-30T10:00:00Z")
+        out = c.search(FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
+        self.assertEqual([summary(o) for o in out["observations"]], [("unknown", "unobserved", None, "timeout", [])])
+        self.close(timeouts[1:], [5.0], "one poll, given the five seconds there are")
+        self.assertAlmostEqual(clock.now, 5.0)
+
+    def test_control_a_job_that_finishes_inside_the_deadline_is_read(self):
+        done = {"status": "done", "result": {"lanes": [], "records": []}, "observation": TransportOutcomes.POLLED}
+        c, clock, timeouts = self.poller(0.1, deadline=2.0, answers=[(200, {"status": "running"}), (200, {"status": "running"}), (200, done)])
+        job, poll = c._poll(7, self.CTX)
+        self.assertEqual((job["status"], poll["call_ref"]), ("done", 900))
+        self.assertEqual(len(timeouts), 3, "polled until it finished, and no longer")
+        self.assertLess(clock.now, 2.0)
+
+    def test_a_poll_that_comes_back_after_the_deadline_still_ends_it(self):
+        """A reply that arrives (inside its clamped timeout) and is not the end leaves nothing of the deadline to sleep on."""
+        c, clock, timeouts = self.poller(0.4, deadline=0.5)
+        self.assertEqual(c._poll(1, self.CTX), (None, None))
+        self.close(timeouts, [0.5])
+        self.close(clock.sleeps, [0.1])
 
 
 class OverRealHttp(unittest.TestCase):

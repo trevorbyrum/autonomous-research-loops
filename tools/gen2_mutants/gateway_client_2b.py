@@ -9,8 +9,9 @@ whose killers require the named state instead. `2B-pages-rounded-up` guarded the
 multi-page observation, which is gone (each page is its own observation, A2); the page
 family below replaces it.
 
-Task 2b-repair-13b (Gate D #3) adds a family at the end: the typed page outcome (the client's
-and observe's `page_end`, the router's boundary check, its command schema and the store's CHECKs).
+Task 2b-repair-13b (Gate D #3, #4) adds two families at the end: the typed page outcome (the
+client's and observe's `page_end`, the router's boundary check, its command schema and the
+store's CHECKs) and the poll's one absolute deadline.
 
 The gateway service's own guards are a separate inventory (tools/gen2_gateway_mutants.py,
 run by tools/gen2_gateway_mutations.py on the gateway's suite).
@@ -24,7 +25,7 @@ RA, UA, TO, RR, OH = GC + "RecordedAnswers.", GC + "UnreadableAnswers.", GC + "T
 GF = GC + "GatewayFactsCommand."
 OBS, CLI, CAPS, CANON = "gen2/gateway_client/observe.py", "gen2/gateway_client/client.py", "gen2/router/capabilities.py", "gen2/core/canonical.py"
 PAGE_DOC = 'request={"lane": entry["source"], "page": page, "request": sent},'
-PO, ROB = GC + "PageOutcomes.", "test_router_ops.ObservationTest."
+PO, PD, ROB = GC + "PageOutcomes.", GC + "PollDeadline.", "test_router_ops.ObservationTest."
 POUT = "test_a_page_outcome_says_why_pagination_ended_and_is_consistent_with_what_was_read"
 BOUNDARY = "gen2/router/boundary.py"
 SERVICE = "gen2/router/service.py"
@@ -129,8 +130,8 @@ MUTATIONS: list[Mutation] = [
            '            if job.get("status") != "done" or not isinstance(job.get("result"), dict):', '            if not isinstance(job.get("result"), dict):'),
           # 2b-repair A5: every poll is this caller's
           ("poll-uncorrelated", "a poll carries no invocation or attempt", (TO + "test_a_queued_answer_is_polled_to_its_result_under_this_invocation",), CLI,
-           '            status, job, _ = self._exchange("GET", f"/v1/jobs/{job_id}", None, ctx["token"], _headers(ctx))',
-           '            status, job, _ = self._exchange("GET", f"/v1/jobs/{job_id}", None, ctx["token"])'),
+           '            status, job, _ = self._exchange("GET", f"/v1/jobs/{job_id}", None, ctx["token"], _headers(ctx), timeout=remaining)',
+           '            status, job, _ = self._exchange("GET", f"/v1/jobs/{job_id}", None, ctx["token"], timeout=remaining)'),
           ("poll-echo-unchecked", "a poll's answer for another caller is attributed to this one",
            (TO + "test_a_poll_not_attributed_to_this_caller_or_not_captured_degrades",), CLI,
            "                return job, (obs if _echoes(obs, ctx) else None)", "                return job, obs"),
@@ -289,5 +290,34 @@ MUTATIONS: list[Mutation] = [
            "  CHECK (page_outcome NOT IN ('continuation', 'limit_reached') OR completeness != 'unobserved'),\n", ""),
           ("ddl-end-needs-a-whole-page", "a partial page, or a lane never searched, may report the end", (OB + POUT,), "ddl",
            "  CHECK (page_outcome != 'exhausted' OR completeness = 'complete' OR coverage_state = 'exhausted')\n) STRICT;", "  CHECK (1)\n) STRICT;"),
+      )),
+    # 2b-repair-13b, Gate D #4: the poll's one absolute monotonic deadline
+    Mutation("2B13-poll-deadline-sleeps-only", "2b-13b",
+             "the deadline counts the half-second sleeps and not the time a poll takes (Gate D's probe: three polls, 3.3 s on a 1 s deadline)",
+             (PD + "test_gate_d_a_slow_gateway_cannot_stretch_one_second_into_three", PD + "test_each_poll_is_clamped_to_what_remains_and_each_sleep_to_the_same",
+              PD + "test_the_defaults_end_within_the_deadline_where_gate_d_counted_about_21_hours"), target=CLI,
+             old='        deadline = self._monotonic() + self.deadline\n        while (remaining := deadline - self._monotonic()) > 0:\n'
+                 '            status, job, _ = self._exchange("GET", f"/v1/jobs/{job_id}", None, ctx["token"], _headers(ctx), timeout=remaining)',
+             new='        waited = 0.0\n        while waited <= self.deadline:\n'
+                 '            status, job, _ = self._exchange("GET", f"/v1/jobs/{job_id}", None, ctx["token"], _headers(ctx))',
+             also=(('            self._sleep(min(POLL_SECONDS, max(deadline - self._monotonic(), 0.0)))', '            self._sleep(POLL_SECONDS)\n            waited += POLL_SECONDS'),)),
+    *(Mutation(f"2B13-{key}", "2b-13b", desc, tuple(killers), target=target, old=old, new=new)
+      for key, desc, killers, target, old, new in (
+          ("poll-timeout-unclamped", "a poll is given the client's whole timeout, not what remains of the deadline",
+           (PD + "test_gate_d_a_slow_gateway_cannot_stretch_one_second_into_three", PD + "test_each_poll_is_clamped_to_what_remains_and_each_sleep_to_the_same",
+            PD + "test_a_deadline_that_passes_is_a_timeout_observation_and_never_an_empty_result"), CLI,
+           '_headers(ctx), timeout=remaining)', "_headers(ctx))"),
+          ("poll-timeout-restarts", "a poll is given the whole deadline, not what remains of it",
+           (PD + "test_each_poll_is_clamped_to_what_remains_and_each_sleep_to_the_same", PD + "test_the_defaults_end_within_the_deadline_where_gate_d_counted_about_21_hours"), CLI,
+           '_headers(ctx), timeout=remaining)', "_headers(ctx), timeout=self.deadline)"),
+          ("poll-sleep-unbounded", "the last sleep runs its half second past the deadline",
+           (PD + "test_each_poll_is_clamped_to_what_remains_and_each_sleep_to_the_same", PD + "test_a_poll_that_comes_back_after_the_deadline_still_ends_it"), CLI,
+           '            self._sleep(min(POLL_SECONDS, max(deadline - self._monotonic(), 0.0)))', "            self._sleep(POLL_SECONDS)"),
+          ("exchange-timeout-ignored", "an exchange's own timeout is not passed to the transport",
+           (PD + "test_gate_d_a_slow_gateway_cannot_stretch_one_second_into_three", PD + "test_each_poll_is_clamped_to_what_remains_and_each_sleep_to_the_same"), CLI,
+           "self.timeout if timeout is None else min(self.timeout, timeout)", "self.timeout"),
+          ("exchange-timeout-above-the-clients", "a poll may be given more than the client's own timeout",
+           (PD + "test_each_poll_is_clamped_to_what_remains_and_each_sleep_to_the_same",), CLI,
+           "self.timeout if timeout is None else min(self.timeout, timeout)", "self.timeout if timeout is None else timeout"),
       )),
 ]

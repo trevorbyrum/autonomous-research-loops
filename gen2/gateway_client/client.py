@@ -37,7 +37,13 @@ cursor in hand; `end_unknown` for a page with neither a continuation nor a repor
 continuation hides that more remains.
 
 Queued answers are polled until the job finishes or the client's deadline passes; a
-deadline that passes is `unknown`/`timeout`, never an empty result.
+deadline that passes is `unknown`/`timeout`, never an empty result. The deadline is ONE
+absolute point on the monotonic clock, set when polling starts (Gate D #4, task
+2b-repair-13b): each poll's timeout is clamped to what remains of it, each sleep is
+bounded by it, and the time a request itself takes counts — so polling never outlasts
+its deadline by more than one clamped exchange, however slow the gateway is. (The
+transport's timeout is the longest it waits on the socket, not a cap on a slow reply
+that keeps arriving; the deadline is checked between exchanges.)
 
 What this client does not do: write the store (the router records what it returns) or
 pick lanes or policy (the gateway plans; the grant binds).
@@ -103,18 +109,18 @@ def _captured(obs: dict) -> bool:
 class GatewayClient:
     def __init__(self, base_url: str, token: str, *, timeout: float = 130.0, deadline: float = 300.0,
                  transport: Callable = http_transport, clock: Callable[[], str] = utc_now,
-                 sleep: Callable[[float], None] = time.sleep):
+                 sleep: Callable[[float], None] = time.sleep, monotonic: Callable[[], float] = time.monotonic):
         self.base_url, self.token, self.timeout, self.deadline = base_url.rstrip("/"), token, timeout, deadline
-        self._transport, self._clock, self._sleep = transport, clock, sleep
+        self._transport, self._clock, self._sleep, self._monotonic = transport, clock, sleep, monotonic
 
-    def _exchange(self, method: str, path: str, body: dict | None, token: str, headers: dict | None = None):
-        """(status, parsed JSON dict or None, error class or None)."""
+    def _exchange(self, method: str, path: str, body: dict | None, token: str, headers: dict | None = None, timeout: float | None = None):
+        """(status, parsed JSON dict or None, error class or None). `timeout`: this exchange's own, never above the client's."""
         hdrs = {"Accept": "application/json", "Authorization": f"Bearer {token}", **(headers or {})}
         data = None
         if body is not None:
             data = canonical.canonical_bytes(body)
             hdrs["Content-Type"] = "application/json"
-        status, resp_headers, raw, error = self._transport(method, self.base_url + path, hdrs, data, self.timeout)
+        status, resp_headers, raw, error = self._transport(method, self.base_url + path, hdrs, data, self.timeout if timeout is None else min(self.timeout, timeout))
         if status is None:
             return None, None, error or "transport_failure"
         if resp_headers.get("x-research-gateway") != "result" or "json" not in resp_headers.get("content-type", ""):
@@ -253,17 +259,17 @@ class GatewayClient:
         """(the finished job — done or failed —, this caller's observation of it), polled under
         the caller's own invocation and attempt (the gateway binds and records every poll,
         2b-repair A5): (None, None) when it does not finish by the deadline, (job, None) when
-        the poll's answer does not echo this caller."""
+        the poll's answer does not echo this caller. The deadline is one absolute monotonic
+        point (Gate D #4): what a poll takes comes out of it, and so does every sleep."""
         if isinstance(job_id, bool) or not isinstance(job_id, int):
             return None, None
-        waited = 0.0
-        while waited <= self.deadline:
-            status, job, _ = self._exchange("GET", f"/v1/jobs/{job_id}", None, ctx["token"], _headers(ctx))
+        deadline = self._monotonic() + self.deadline
+        while (remaining := deadline - self._monotonic()) > 0:
+            status, job, _ = self._exchange("GET", f"/v1/jobs/{job_id}", None, ctx["token"], _headers(ctx), timeout=remaining)
             if status == 200 and job and job.get("status") in ("done", "failed"):
                 obs = job.get("observation") if isinstance(job.get("observation"), dict) else {}
                 return job, (obs if _echoes(obs, ctx) else None)
-            self._sleep(POLL_SECONDS)
-            waited += POLL_SECONDS
+            self._sleep(min(POLL_SECONDS, max(deadline - self._monotonic(), 0.0)))
         return None, None
 
 
