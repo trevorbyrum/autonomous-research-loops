@@ -9,18 +9,25 @@ whose killers require the named state instead. `2B-pages-rounded-up` guarded the
 multi-page observation, which is gone (each page is its own observation, A2); the page
 family below replaces it.
 
+Task 2b-repair-13b (Gate D #3) adds a family at the end: the typed page outcome (the client's
+and observe's `page_end`, the router's boundary check, its command schema and the store's CHECKs).
+
 The gateway service's own guards are a separate inventory (tools/gen2_gateway_mutants.py,
 run by tools/gen2_gateway_mutations.py on the gateway's suite).
 """
 from __future__ import annotations
 
-from .base import Mutation
+from .base import OB, Mutation
 
 GC = "test_gateway_client."
 RA, UA, TO, RR, OH = GC + "RecordedAnswers.", GC + "UnreadableAnswers.", GC + "TransportOutcomes.", GC + "RecordedByTheRouter.", GC + "OverRealHttp."
 GF = GC + "GatewayFactsCommand."
 OBS, CLI, CAPS, CANON = "gen2/gateway_client/observe.py", "gen2/gateway_client/client.py", "gen2/router/capabilities.py", "gen2/core/canonical.py"
 PAGE_DOC = 'request={"lane": entry["source"], "page": page, "request": sent},'
+PO, ROB = GC + "PageOutcomes.", "test_router_ops.ObservationTest."
+POUT = "test_a_page_outcome_says_why_pagination_ended_and_is_consistent_with_what_was_read"
+BOUNDARY = "gen2/router/boundary.py"
+SERVICE = "gen2/router/service.py"
 
 MUTATIONS: list[Mutation] = [
     *(Mutation(f"2B-{key}", "2b", desc, tuple(killers), target=target, old=old, new=new)
@@ -184,4 +191,103 @@ MUTATIONS: list[Mutation] = [
              (RR + "test_a_report_recorded_after_a_newer_one_never_displaces_it",), target=CAPS, via_child=True,
              old='            behind = current is not None and instant(current["since"]) == instant(fact["since"]) and current["revision"] > fact["revision"]',
              new="            behind = False"),
+    # 2b-repair-13b, Gate D #3: how pagination ended or continued, carried from the client to the store
+    *(Mutation(f"2B13-{key}", "2b-13b", desc, tuple(killers), target=target, old=old, new=new)
+      for key, desc, killers, target, old, new in (
+          ("end-inferred-from-no-cursor", "a complete page without a continuation is the end of the population, though its lane reported none",
+           (PO + "test_each_page_says_why_pagination_ended_or_continued", PO + "test_a_continuation_that_cannot_be_used_is_not_an_end_and_not_a_cursor"), OBS,
+           '    return ("exhausted" if completeness == "complete" and entry.get("exhausted") is True and not unreadable else "end_unknown"), None',
+           '    return ("exhausted" if completeness == "complete" and not unreadable else "end_unknown"), None'),
+          ("partial-page-ends", "a partial or uncaptured page's own report of an end ends the population",
+           (PO + "test_an_end_is_reported_by_a_page_read_whole_only", PO + "test_each_page_says_why_pagination_ended_or_continued"), OBS,
+           '    return ("exhausted" if completeness == "complete" and entry.get("exhausted") is True and not unreadable else "end_unknown"), None',
+           '    return ("exhausted" if entry.get("exhausted") is True and not unreadable else "end_unknown"), None'),
+          ("unreadable-next-ends", "a `next` that cannot be read leaves the lane's own report of an end standing",
+           (PO + "test_a_continuation_that_cannot_be_used_is_not_an_end_and_not_a_cursor",), OBS,
+           '    unreadable = entry.get("next") not in (None, EXHAUSTED_CURSOR)', "    unreadable = False"),
+          ("restated-end-unreported", "a lane never searched, or one that says nothing of its end, is an exhausted one",
+           (PO + "test_a_lane_not_searched_and_a_lane_restating_its_end",), OBS,
+           '        return ("exhausted" if coverage == "exhausted" and entry.get("exhausted") is True else "end_unknown"), None',
+           '        return "exhausted", None'),
+          ("failed-page-unknown-end", "a page nothing could be read from is an unknown end, not a failed page",
+           (PO + "test_each_page_says_why_pagination_ended_or_continued",), OBS,
+           '    if coverage in UNREAD:\n        return "failed", None\n', "    if False:\n        return 'failed', None\n"),
+          ("cap-hides-the-cursor", "a page cap with its cursor in hand reads as an ordinary continuation",
+           (PO + "test_each_page_says_why_pagination_ended_or_continued", PO + "test_gate_d_a_page_with_more_to_read_and_a_finished_one_are_different_records"), OBS,
+           '        return ("limit_reached" if capped else "continuation"), cursor', '        return "continuation", cursor'),
+          ("cursor-dropped", "a continuation does not keep the cursor it was handed",
+           (PO + "test_each_page_says_why_pagination_ended_or_continued", PO + "test_an_integer_cursor_keeps_its_type"), OBS,
+           '        return ("limit_reached" if capped else "continuation"), cursor', '        return ("limit_reached" if capped else "continuation"), None'),
+          ("cap-never-applied", "the client never says its own page cap stopped a lane",
+           (PO + "test_each_page_says_why_pagination_ended_or_continued", PO + "test_gate_d_a_page_with_more_to_read_and_a_finished_one_are_different_records"), CLI,
+           '                                          capped=page == pages and entry["source"] in going,', "                                          capped=False,"),
+          ("cap-on-any-last-page", "a partial page that handed back a cursor, on the last page, is called a page cap",
+           (PO + "test_a_partial_page_keeps_the_cursor_it_was_handed_without_following_it",), CLI,
+           '                                          capped=page == pages and entry["source"] in going,', "                                          capped=page == pages,"),
+          ("partial-page-continues", "a lower bound's cursor is followed (the page is partial, and asked past)",
+           (PO + "test_a_partial_page_keeps_the_cursor_it_was_handed_without_following_it",), CLI,
+           '                     if e.get("completeness") == "complete" and observe.cursor_of(e) is not None}', "                     if observe.cursor_of(e) is not None}"),
+          ("sentinel-is-a-cursor", "the finished-lane sentinel is a cursor to send",
+           (PO + "test_a_continuation_that_cannot_be_used_is_not_an_end_and_not_a_cursor",), OBS,
+           "    if type(nxt) is str and 0 < len(nxt) <= CURSOR_MAX_CHARS and nxt != EXHAUSTED_CURSOR:", "    if type(nxt) is str and 0 < len(nxt) <= CURSOR_MAX_CHARS:"),
+          ("cursor-unbounded", "an empty cursor, or one too long to keep, is a cursor",
+           (PO + "test_a_continuation_that_cannot_be_used_is_not_an_end_and_not_a_cursor",), OBS,
+           "    if type(nxt) is str and 0 < len(nxt) <= CURSOR_MAX_CHARS and nxt != EXHAUSTED_CURSOR:", "    if type(nxt) is str and nxt != EXHAUSTED_CURSOR:"),
+          ("bool-cursor", "true is a cursor", (PO + "test_a_continuation_that_cannot_be_used_is_not_an_end_and_not_a_cursor",), OBS,
+           "    if type(nxt) is int and 0 <= nxt <= canonical.INT_BOUND:", "    if isinstance(nxt, int) and 0 <= nxt <= canonical.INT_BOUND:"),
+          ("negative-cursor", "a negative integer is a cursor", (PO + "test_a_continuation_that_cannot_be_used_is_not_an_end_and_not_a_cursor",), OBS,
+           "    if type(nxt) is int and 0 <= nxt <= canonical.INT_BOUND:", "    if type(nxt) is int and nxt <= canonical.INT_BOUND:"),
+          # the router's boundary, then its command schema (module constants: their controls are by hand)
+          ("boundary-unchecked", "the router does not check how pagination ended against what was read",
+           (ROB + "test_a_page_outcome_is_typed_and_consistent_with_what_was_read",), BOUNDARY,
+           "    check_page_outcome(observation)\n    if observation[\"completeness\"] == \"unobserved\":", "    if observation[\"completeness\"] == \"unobserved\":"),
+          ("boundary-failed-iff-unread", "a page that was read may be called failed, and one that was not read may not be",
+           (ROB + "test_a_page_outcome_is_typed_and_consistent_with_what_was_read",), BOUNDARY,
+           '    if (coverage in ("provider_unavailable", "auth_failed", "unknown")) != (outcome == "failed"):', "    if False:"),
+          ("boundary-cursor-iff-continuation", "a cursor on an end, or a continuation with none, is recorded",
+           (ROB + "test_a_page_outcome_is_typed_and_consistent_with_what_was_read",), BOUNDARY,
+           '    if (outcome in ("continuation", "limit_reached")) != (observation["continuation"] is not None):', "    if False:"),
+          ("boundary-continuation-unread", "a cursor from a page nothing was read from is recorded",
+           (ROB + "test_a_page_outcome_is_typed_and_consistent_with_what_was_read",), BOUNDARY,
+           '    if outcome in ("continuation", "limit_reached") and completeness == "unobserved":', "    if False:"),
+          ("boundary-partial-end", "a partial page's reported end is recorded as the population's",
+           (ROB + "test_a_page_outcome_is_typed_and_consistent_with_what_was_read",), BOUNDARY,
+           '    if outcome == "exhausted" and completeness != "complete" and coverage != "exhausted":', "    if False:"),
+          ("schema-outcome-open", "the command accepts any string as a page outcome",
+           (ROB + "test_a_page_outcome_is_typed_and_consistent_with_what_was_read",), SERVICE,
+           '"page_outcome": {"enum": ["exhausted", "continuation", "end_unknown", "limit_reached", "failed"]},', '"page_outcome": {"type": "string"},'),
+          ("schema-cursor-length", "the command accepts an empty cursor, or one longer than the router keeps",
+           (ROB + "test_a_page_outcome_is_typed_and_consistent_with_what_was_read",), SERVICE,
+           '                                                                {"$ref": "common.schema.json#/$defs/long_text"}]}}}]}}},', '                                                                {"type": "string"}]}}}]}}},'),
+          ("schema-continuation-extras", "a continuation may carry more than its cursor",
+           (ROB + "test_a_page_outcome_is_typed_and_consistent_with_what_was_read",), SERVICE,
+           '                            "type": "object", "additionalProperties": False, "required": ["cursor"],', '                            "type": "object", "required": ["cursor"],'),
+          # the store
+          ("ddl-outcome-vocabulary", "the store accepts any page outcome", (OB + POUT,), "ddl",
+           "CHECK (page_outcome IN ('exhausted', 'continuation', 'end_unknown', 'limit_reached', 'failed')),", "CHECK (1),"),
+          ("ddl-continuation-shape", "the store accepts any text as a continuation", (OB + POUT,), "ddl",
+           "  continuation TEXT CHECK (continuation IS NULL OR (json_valid(continuation) AND json_type(continuation) = 'object'\n"
+           "    AND COALESCE(json_type(continuation, '$.cursor') IN ('text', 'integer'), 0) AND json_remove(continuation, '$.cursor') = '{}')),",
+           "  continuation TEXT,"),
+          ("ddl-continuation-needs-its-cursor", "a continuation without a cursor passes (a missing key is NULL, which a CHECK does not refuse)", (OB + POUT,), "ddl",
+           "AND COALESCE(json_type(continuation, '$.cursor') IN ('text', 'integer'), 0) AND", "AND json_type(continuation, '$.cursor') IN ('text', 'integer') AND"),
+          ("ddl-continuation-extras", "a continuation may carry more than its cursor", (OB + POUT,), "ddl",
+           " AND json_remove(continuation, '$.cursor') = '{}')),", ")),"),
+          ("ddl-unread-is-failed", "a page nothing could be read from need not be failed", (OB + POUT,), "ddl",
+           "  CHECK ((coverage_state IN ('provider_unavailable', 'auth_failed', 'unknown')) = (page_outcome = 'failed')),",
+           "  CHECK (coverage_state NOT IN ('provider_unavailable', 'auth_failed', 'unknown') OR page_outcome = 'failed'),\n  CHECK (1),"),
+          ("ddl-failed-is-unread", "a page that was read may be failed", (OB + POUT,), "ddl",
+           "  CHECK ((coverage_state IN ('provider_unavailable', 'auth_failed', 'unknown')) = (page_outcome = 'failed')),",
+           "  CHECK (page_outcome != 'failed' OR coverage_state IN ('provider_unavailable', 'auth_failed', 'unknown')),\n  CHECK (1),"),
+          ("ddl-continuation-has-its-cursor", "a continuation or page cap may carry no cursor", (OB + POUT,), "ddl",
+           "  CHECK ((page_outcome IN ('continuation', 'limit_reached')) = (continuation IS NOT NULL)),",
+           "  CHECK (continuation IS NULL OR page_outcome IN ('continuation', 'limit_reached')),"),
+          ("ddl-cursor-has-its-continuation", "a cursor may sit on an end or an unknown end", (OB + POUT,), "ddl",
+           "  CHECK ((page_outcome IN ('continuation', 'limit_reached')) = (continuation IS NOT NULL)),",
+           "  CHECK (page_outcome NOT IN ('continuation', 'limit_reached') OR continuation IS NOT NULL),"),
+          ("ddl-continuation-needs-a-read-page", "a page nothing was read from may hand back a cursor", (OB + POUT,), "ddl",
+           "  CHECK (page_outcome NOT IN ('continuation', 'limit_reached') OR completeness != 'unobserved'),\n", ""),
+          ("ddl-end-needs-a-whole-page", "a partial page, or a lane never searched, may report the end", (OB + POUT,), "ddl",
+           "  CHECK (page_outcome != 'exhausted' OR completeness = 'complete' OR coverage_state = 'exhausted')\n) STRICT;", "  CHECK (1)\n) STRICT;"),
+      )),
 ]

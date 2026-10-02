@@ -110,7 +110,7 @@ COMMANDS = {  # the router's own request shapes (commands, not stored documents)
                     "type": "object", "additionalProperties": False,
                     "required": ["observation_id", "request", "request_identity", "attempt", "lane", "obligation_ids", "started_at", "ended_at",
                                  "coverage_state", "result_count", "completeness", "error_class", "capability_fact_id", "policy_version",
-                                 "cost_units", "gateway_call_ref"],
+                                 "cost_units", "gateway_call_ref", "page_outcome", "continuation"],
                     "properties": {
                         "observation_id": {"type": "string", "pattern": "^obs_[A-Za-z0-9_-]{8,64}$"},
                         "request": {"type": "object"}, "request_identity": {"$ref": "common.schema.json#/$defs/sha256"},
@@ -125,7 +125,12 @@ COMMANDS = {  # the router's own request shapes (commands, not stored documents)
                                                  "telemetry_missing", "partial_pagination"]},
                         "capability_fact_id": _OPT, "policy_version": _ID,
                         "cost_units": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 0, "maximum": 9007199254740991}]},
-                        "gateway_call_ref": _OPT}},
+                        "gateway_call_ref": _OPT,
+                        "page_outcome": {"enum": ["exhausted", "continuation", "end_unknown", "limit_reached", "failed"]},
+                        "continuation": {"oneOf": [{"type": "null"}, {
+                            "type": "object", "additionalProperties": False, "required": ["cursor"],
+                            "properties": {"cursor": {"oneOf": [{"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+                                                                {"$ref": "common.schema.json#/$defs/long_text"}]}}}]}}},
                 "retrieval_events": {
                     "type": "array", "maxItems": 10000,
                     "items": {"type": "object", "additionalProperties": False, "required": ["event_id", "provider_record_id", "rank", "captured_at"],

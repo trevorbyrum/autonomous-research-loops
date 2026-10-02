@@ -160,7 +160,7 @@ class ContractWorld(RouterTestCase):
         observation = {"observation_id": "obs_000000000001", "request": request, "request_identity": canonical.logical_hash(request), "attempt": 1, "lane": "crossref",
                        "obligation_ids": ["O-1"], "started_at": "2026-09-27T10:00:00Z", "ended_at": "2026-09-27T10:00:01Z", "coverage_state": "searched_empty",
                        "result_count": 0, "completeness": "complete", "error_class": None, "capability_fact_id": None, "policy_version": "pol-1", "cost_units": None,
-                       "gateway_call_ref": None}
+                       "gateway_call_ref": None, "page_outcome": "end_unknown", "continuation": None}
         assert self.router.record_observation({"capability_id": grant["capability_id"], "invocation_id": inv, "observation": observation, "retrieval_events": []})["status"] == "recorded"
         return grant
 
@@ -577,7 +577,7 @@ class InventoryImpactTest(ContractWorld):
         observation = {"observation_id": "obs_cost000001", "request": request, "request_identity": canonical.logical_hash(request), "attempt": 1, "lane": "crossref",
                        "obligation_ids": ["O-2"], "started_at": "2026-09-27T10:00:00Z", "ended_at": "2026-09-27T10:00:01Z", "coverage_state": "searched_empty",
                        "result_count": 0, "completeness": "complete", "error_class": None, "capability_fact_id": None, "policy_version": "pol-1", "cost_units": None,
-                       "gateway_call_ref": None}
+                       "gateway_call_ref": None, "page_outcome": "end_unknown", "continuation": None}
         self.assertEqual(self.router.record_observation({"capability_id": grant["capability_id"], "invocation_id": "inv_research01", "observation": observation,
                                                          "retrieval_events": []})["status"], "recorded")
         return grant

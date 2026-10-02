@@ -225,7 +225,7 @@ class CancellationTest(LifecycleTestCase):
         observation = {"observation_id": "obs_000000000001", "request": request, "request_identity": canonical.logical_hash(request), "attempt": 1,
                        "lane": "crossref", "obligation_ids": [], "started_at": "2026-09-27T10:00:00Z", "ended_at": "2026-09-27T10:00:05Z",
                        "coverage_state": "searched_empty", "result_count": 0, "completeness": "complete", "error_class": None, "capability_fact_id": None,
-                       "policy_version": "gw-policy/1", "cost_units": None, "gateway_call_ref": "call-1"}
+                       "policy_version": "gw-policy/1", "cost_units": None, "gateway_call_ref": "call-1", "page_outcome": "end_unknown", "continuation": None}
         response = self.router.record_observation({"capability_id": self.grant["capability_id"], "invocation_id": "inv_research01",
                                                    "observation": observation, "retrieval_events": []})
         self.refused(response, "invocation_state_invalid", before, "cancellation")

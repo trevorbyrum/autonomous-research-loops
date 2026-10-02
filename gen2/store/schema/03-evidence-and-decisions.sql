@@ -18,6 +18,22 @@
 -- observation never establishes exhausted coverage, negative evidence or
 -- saturation (accounting reads completeness), and searched_empty is only
 -- ever complete.
+-- page_outcome and continuation (Gate D #3; flow S4 step 2, S7 coverage
+-- integrity; the methodology's coverage model: query identity and
+-- pagination/exhaustion): why this page's pagination ended or continued.
+-- completeness says whether THIS PAGE was read whole; page_outcome says what
+-- is known of the search POPULATION behind it, and neither stands in for the
+-- other. 'exhausted' is the lane's own report that nothing remains, made on a
+-- page read whole (or restated for a lane already finished) and is the only
+-- value that establishes exhaustion; 'continuation' and 'limit_reached' (the
+-- client's own page cap stopped it) carry the cursor the lane handed back,
+-- {"cursor": <string or integer>} (its type kept), which the next page's
+-- attempted request echoes; 'end_unknown' is
+-- a page with neither a continuation nor a reported end (a partial page, an
+-- unreadable continuation, a request that does not page, a lane never
+-- searched) and stays unknown, never an end; 'failed' is a page nothing could
+-- be read from. attempted-request identity (request, request_identity) holds
+-- none of this: it is what the answer said, not what was asked.
 CREATE TABLE search_observations (
   observation_id TEXT PRIMARY KEY,
   invocation_id TEXT NOT NULL REFERENCES invocations (invocation_id),
@@ -42,6 +58,9 @@ CREATE TABLE search_observations (
   policy_version TEXT NOT NULL,
   cost_units INTEGER CHECK (cost_units >= 0),
   gateway_call_ref TEXT,
+  page_outcome TEXT NOT NULL CHECK (page_outcome IN ('exhausted', 'continuation', 'end_unknown', 'limit_reached', 'failed')),
+  continuation TEXT CHECK (continuation IS NULL OR (json_valid(continuation) AND json_type(continuation) = 'object'
+    AND COALESCE(json_type(continuation, '$.cursor') IN ('text', 'integer'), 0) AND json_remove(continuation, '$.cursor') = '{}')),
   UNIQUE (invocation_id, request_identity, attempt),
   CHECK (coverage_state NOT IN ('searched_ok', 'metadata_only') OR (result_count IS NOT NULL AND result_count >= 1)),
   CHECK (coverage_state != 'searched_empty' OR (result_count IS NOT NULL AND result_count = 0)),
@@ -51,7 +70,11 @@ CREATE TABLE search_observations (
   CHECK (coverage_state != 'searched_empty' OR completeness = 'complete'),
   CHECK (completeness != 'partial' OR error_class IS NOT NULL),
   CHECK (coverage_state NOT IN ('searched_ok', 'searched_empty') OR completeness = 'partial' OR error_class IS NULL),
-  CHECK (error_class IS NOT 'secrets_backend_failing' OR capability_fact_id IS NOT NULL)
+  CHECK (error_class IS NOT 'secrets_backend_failing' OR capability_fact_id IS NOT NULL),
+  CHECK ((coverage_state IN ('provider_unavailable', 'auth_failed', 'unknown')) = (page_outcome = 'failed')),
+  CHECK ((page_outcome IN ('continuation', 'limit_reached')) = (continuation IS NOT NULL)),
+  CHECK (page_outcome NOT IN ('continuation', 'limit_reached') OR completeness != 'unobserved'),
+  CHECK (page_outcome != 'exhausted' OR completeness = 'complete' OR coverage_state = 'exhausted')
 ) STRICT;
 
 CREATE TRIGGER search_observations_invocation_topic

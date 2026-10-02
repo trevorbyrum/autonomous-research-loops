@@ -57,7 +57,8 @@ def observation_request(grant: dict) -> dict:
             "observation": {"observation_id": "obs_000000000001", "request": request, "request_identity": canonical.logical_hash(request), "attempt": 1,
                             "lane": "crossref", "obligation_ids": [], "started_at": "2026-09-27T10:30:00Z", "ended_at": "2026-09-27T10:30:01Z",
                             "coverage_state": "searched_ok", "result_count": 1, "completeness": "complete", "error_class": None,
-                            "capability_fact_id": None, "policy_version": "gw-policy/1", "cost_units": None, "gateway_call_ref": "call-1"},
+                            "capability_fact_id": None, "policy_version": "gw-policy/1", "cost_units": None, "gateway_call_ref": "call-1",
+                            "page_outcome": "end_unknown", "continuation": None},
             "retrieval_events": [{"event_id": "rev_000000000001", "provider_record_id": "rec-1", "rank": 1, "captured_at": "2026-09-27T10:30:01Z"}]}
 
 

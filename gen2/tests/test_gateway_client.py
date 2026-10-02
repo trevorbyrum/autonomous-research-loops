@@ -343,6 +343,132 @@ class UnreadableAnswers(unittest.TestCase):
         self.assertEqual(summary(self.lanes_of(mutated("find_complete", 0, found))["crossref"]), ("metadata_only", "complete", 1, None, ["doi:10.1234/abc"]))
 
 
+class PageOutcomes(unittest.TestCase):
+    """Gate D #3 (task 2b-repair-13b): each page observation says why pagination ended or continued — `exhausted` only on the
+    lane's own reported end, `continuation` or `limit_reached` with the cursor handed back, `end_unknown` and `failed` — and a
+    page read whole (`completeness`) is never the search population exhausted. Inputs are the gateway's recorded answers and
+    answers stated by hand from STATION-CONTRACT.md; the expected outcomes are stated by hand."""
+
+    @staticmethod
+    def outcomes(out) -> dict:
+        return {k: (o["observation"]["page_outcome"], o["observation"]["continuation"]) for k, o in by_page(out).items()}
+
+    @staticmethod
+    def lane_answer(**lane) -> dict:
+        base = {"source": "crossref", "role": "base", "coverage": "searched_ok", "completeness": "complete", "count": 1, "retrieved": ["doi:10.1/a"]}
+        return {"lanes": [{**base, **lane}], "records": [{"identity": "doi:10.1/a", "source_id": "crossref"}],
+                "observation": {"invocation_id": INV, "attempt": 1, "served": "dispatched", "captured": True, "call_ref": 1}}
+
+    def one_page(self, pages: int = 1, **lane) -> tuple[dict, list]:
+        sent: list = []
+        c = GatewayClient(BASE, ENGINE_TOKEN, transport=answering(lambda payload: sent.append(payload) or self.lane_answer(**lane)),
+                          clock=lambda: "2026-09-30T10:00:00Z", sleep=lambda s: None)
+        return c.search({**FIND, "lanes": ["crossref"]}, invocation_id=INV, attempt=1, policy_version="gw-policy/1", pages=pages), sent
+
+    def test_each_page_says_why_pagination_ended_or_continued(self):
+        cases = (
+            ("an answer whose lanes report their end", "find_complete", FIND, {},
+             {("crossref", 1): ("exhausted", None), ("doaj", 1): ("exhausted", None)}),
+            ("a continuation followed, then the page cap", "find_paged_complete", FIND_PAGED, {"pages": 2},
+             {("crossref", 1): ("continuation", {"cursor": "c2"}), ("crossref", 2): ("limit_reached", {"cursor": "c3"}), ("doaj", 1): ("exhausted", None)}),
+            ("a continuation, then its page failed", "find_paged_then_failed", FIND_PAGED, {"pages": 2},
+             {("crossref", 1): ("continuation", {"cursor": "c2"}), ("crossref", 2): ("failed", None), ("doaj", 1): ("exhausted", None)}),
+            ("a lane the gateway could only call a lower bound", "find_partial_records",
+             {"request_type": "find", "query": "q", "kind": "article", "lanes": ["crossref"]}, {}, {("crossref", 1): ("end_unknown", None)}),
+            ("an answer the gateway did not capture", "find_not_captured", FIND, {},
+             {("crossref", 1): ("end_unknown", None), ("doaj", 1): ("failed", None)}),
+            ("an unreadable lane beside one that ended", "find_unreadable_lane", FIND, {},
+             {("crossref", 1): ("failed", None), ("doaj", 1): ("exhausted", None)}),
+            ("a request that does not page", "resolve_from_the_record_cache", RESOLVE, {"exchanges": fixture("resolve_from_the_record_cache")["exchanges"][:1]},
+             {("crossref", 1): ("end_unknown", None)}))
+        for label, name, request, kw, expected in cases:
+            with self.subTest(label):
+                self.assertEqual(self.outcomes(search(self, name, request, **kw)), expected)
+
+    def test_a_page_read_whole_is_not_the_population_exhausted(self):
+        """The first page of a continuing lane is complete — read whole, nothing rounded — and says more remains; it is
+        the lane's own end, not the page's completeness, that ends the population."""
+        pages = by_page(search(self, "find_paged_complete", FIND_PAGED, pages=2))
+        for key in (("crossref", 1), ("crossref", 2)):
+            self.assertEqual(pages[key]["observation"]["completeness"], "complete")
+            self.assertNotEqual(pages[key]["observation"]["page_outcome"], "exhausted")
+        self.assertEqual([e["provider_record_id"] for e in pages["crossref", 2]["retrieval_events"]], ["doi:10.1234/def"],
+                         "the records read before the cap stand as read")
+
+    def test_gate_d_a_page_with_more_to_read_and_a_finished_one_are_different_records(self):
+        """Gate D's probe: with one page asked, a lane answering with a cursor and one reporting its end gave identical client
+        outputs and identical router commands. They now differ in the one fact the handoff was dropping."""
+        outs = {}
+        for label, lane in (("more", {"next": "cursor-for-page-two"}), ("end", {"exhausted": True})):
+            outs[label], _ = self.one_page(**lane)
+        commands = {k: observe.router_requests(v, capability_id="cap_probe", invocation_id=INV) for k, v in outs.items()}
+        self.assertNotEqual(outs["more"], outs["end"])
+        self.assertNotEqual(commands["more"], commands["end"])
+        got = {k: {f: v["observations"][0]["observation"][f] for f in ("page_outcome", "continuation", "completeness", "result_count")} for k, v in outs.items()}
+        self.assertEqual(got, {"more": {"page_outcome": "limit_reached", "continuation": {"cursor": "cursor-for-page-two"}, "completeness": "complete", "result_count": 1},
+                               "end": {"page_outcome": "exhausted", "continuation": None, "completeness": "complete", "result_count": 1}})
+        self.assertEqual(outs["more"]["observations"][0]["observation"]["observation_id"], outs["end"]["observations"][0]["observation"]["observation_id"],
+                         "attempted-request identity is untouched: the same attempt answered another way, which the router refuses as a conflict")
+
+    def test_a_continuation_outranks_a_reported_end(self):
+        out, sent = self.one_page(pages=2, next="c2", exhausted=True)
+        self.assertEqual(len(sent), 2, "the cursor is followed")
+        self.assertEqual(self.outcomes(out), {("crossref", 1): ("continuation", {"cursor": "c2"}), ("crossref", 2): ("limit_reached", {"cursor": "c2"})})
+
+    def test_an_integer_cursor_keeps_its_type(self):
+        out, sent = self.one_page(pages=2, next=20)
+        self.assertEqual([p.get("cursors") for p in sent], [None, {"crossref": 20}])
+        self.assertEqual(self.outcomes(out), {("crossref", 1): ("continuation", {"cursor": 20}), ("crossref", 2): ("limit_reached", {"cursor": 20})})
+
+    def test_a_continuation_that_cannot_be_used_is_not_an_end_and_not_a_cursor(self):
+        """A `next` that is a boolean, a float, empty, too long to keep, negative, a list, or the finished-lane sentinel is no
+        cursor: the page's records stand as read, the page is still complete, nothing is asked again — and the end stays unknown
+        even beside the lane's own `exhausted`, which a `next` it cannot read contradicts."""
+        for bad in (True, 1.5, "", "c" * 8001, -1, ["c2"], {"cursor": "c2"}):
+            for ended in (None, True):
+                with self.subTest(next=repr(bad)[:20], exhausted=ended):
+                    out, sent = self.one_page(pages=3, next=bad, **({"exhausted": True} if ended else {}))
+                    self.assertEqual(len(sent), 1)
+                    obs = out["observations"][0]["observation"]
+                    self.assertEqual((obs["page_outcome"], obs["continuation"], obs["completeness"], obs["result_count"]), ("end_unknown", None, "complete", 1))
+        out, sent = self.one_page(pages=3, next="exhausted")   # the sentinel alone is no report of an end
+        self.assertEqual((len(sent), out["observations"][0]["observation"]["page_outcome"]), (1, "end_unknown"))
+        out, _ = self.one_page(pages=3, next="exhausted", exhausted=True)   # the sentinel with the lane's own report is one
+        self.assertEqual(out["observations"][0]["observation"]["page_outcome"], "exhausted")
+        out, sent = self.one_page(pages=3, next="c" * 8000)   # control: the longest cursor kept is followed
+        self.assertEqual((len(sent), out["observations"][0]["observation"]["page_outcome"]), (3, "continuation"))
+
+    def test_an_end_is_reported_by_a_page_read_whole_only(self):
+        """A partial page and an uncaptured one never end the population, whatever the lane said."""
+        for label, lane in (("partial", {"completeness": "partial", "error_class": "payload_invalid", "exhausted": True}),):
+            with self.subTest(label):
+                out, _ = self.one_page(**lane)
+                self.assertEqual(self.outcomes(out), {("crossref", 1): ("end_unknown", None)})
+        out, _ = self.one_page(exhausted=True)   # control: the same lane read whole ends
+        self.assertEqual(self.outcomes(out), {("crossref", 1): ("exhausted", None)})
+
+    def test_a_partial_page_keeps_the_cursor_it_was_handed_without_following_it(self):
+        """Not followed, and not a page cap either: the cap is what stops a lane that could go on, and this page is a lower bound
+        whatever the cap (the same on the last page the client was asked for as before it)."""
+        for pages in (1, 3):
+            with self.subTest(pages=pages):
+                out, sent = self.one_page(pages=pages, completeness="partial", error_class="payload_invalid", next="c2")
+                self.assertEqual(len(sent), 1, "a lower bound never continues (2b-repair A2)")
+                obs = out["observations"][0]["observation"]
+                self.assertEqual((obs["completeness"], obs["page_outcome"], obs["continuation"]), ("partial", "continuation", {"cursor": "c2"}))
+
+    def test_a_lane_not_searched_and_a_lane_restating_its_end(self):
+        def body(payload):
+            return {"lanes": [{"source": "crossref", "role": "base", "coverage": "not_searched", "completeness": "unobserved"},
+                              {"source": "doaj", "role": "base", "coverage": "exhausted", "completeness": "unobserved", "cursor": "exhausted", "exhausted": True},
+                              {"source": "core", "role": "base", "coverage": "exhausted", "completeness": "unobserved"}],
+                    "records": [], "observation": {"invocation_id": INV, "attempt": 1, "served": "dispatched", "captured": True, "call_ref": 1}}
+        c = GatewayClient(BASE, ENGINE_TOKEN, transport=answering(body), clock=lambda: "2026-09-30T10:00:00Z", sleep=lambda s: None)
+        out = c.search({**FIND, "lanes": ["crossref", "doaj", "core"]}, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
+        self.assertEqual(self.outcomes(out), {("crossref", 1): ("end_unknown", None), ("doaj", 1): ("exhausted", None), ("core", 1): ("end_unknown", None)},
+                         "never searched is no end; a finished lane restating it is; coverage `exhausted` without the lane's report is not")
+
+
 class TransportOutcomes(unittest.TestCase):
     def outcome(self, status, body=None, error=None, headers=None, request=FIND):
         def transport(method, url, hdrs, data, timeout):
@@ -554,6 +680,41 @@ class RecordedByTheRouter(RouterTestCase):
         self.admissible("find_paged_complete", FIND_PAGED, pages=2)
         self.assertEqual(self.rows("SELECT provider_record_id FROM retrieval_events ORDER BY provider_record_id"),
                          [("doi:10.1234/abc",), ("doi:10.1234/def",)])
+
+    def test_how_pagination_ended_is_recorded_with_its_cursor(self):
+        """Gate D #3: the durable row says why each page ended or continued, and a page read whole stays complete
+        whatever it says of the population."""
+        self.admissible("find_paged_complete", FIND_PAGED, pages=2)
+        self.assertEqual(self.rows("SELECT lane, json_extract(request, '$.page'), completeness, page_outcome, continuation FROM search_observations "
+                                   "ORDER BY lane, json_extract(request, '$.page')"),
+                         [("crossref", 1, "complete", "continuation", '{"cursor":"c2"}'), ("crossref", 2, "complete", "limit_reached", '{"cursor":"c3"}'),
+                          ("doaj", 1, "complete", "exhausted", None)])
+        self.assertEqual(self.rows("SELECT json_extract(request, '$.request.cursors.crossref'), json_extract(continuation, '$.cursor') FROM search_observations "
+                                   "WHERE lane = 'crossref' ORDER BY json_extract(request, '$.page')"),
+                         [(None, "c2"), ("c2", "c3")], "each continuation is the cursor the next page was asked with")
+
+    def test_a_failed_page_is_recorded_failed_and_a_lower_bound_end_unknown(self):
+        self.admissible("find_paged_then_failed", FIND_PAGED, pages=2)
+        self.admissible("find_not_captured")
+        self.assertEqual(self.rows("SELECT lane, json_extract(request, '$.page'), coverage_state, page_outcome, continuation FROM search_observations "
+                                   "WHERE invocation_id = ? ORDER BY lane, json_extract(request, '$.page'), page_outcome", INV),
+                         [("crossref", 1, "searched_ok", "continuation", '{"cursor":"c2"}'), ("crossref", 1, "searched_ok", "end_unknown", None),
+                          ("crossref", 2, "provider_unavailable", "failed", None), ("doaj", 1, "searched_empty", "exhausted", None),
+                          ("doaj", 1, "unknown", "failed", None)])
+
+    def test_the_same_attempt_answered_with_another_end_is_a_conflict_not_a_second_observation(self):
+        """Gate D's probe through the router: one attempt that said `more remains` cannot later say `finished`."""
+        more, end = (self.client_for(lane) for lane in ({"next": "c2"}, {"exhausted": True}))
+        self.assertEqual([r["status"] for r in self.record(more)], ["recorded"])
+        self.assertEqual([r["status"] for r in self.record(more)], ["replayed"])
+        refused = self.record(end)
+        self.assertEqual((refused[0]["status"], refused[0].get("reason")), ("refused", "observation_id_conflict"))
+        self.assertEqual(self.value("SELECT count(*) FROM search_observations"), 1)
+
+    def client_for(self, lane: dict) -> dict:
+        answer = PageOutcomes.lane_answer(**lane)
+        c = GatewayClient(BASE, ENGINE_TOKEN, transport=answering(lambda payload: answer), clock=lambda: "2026-09-30T10:00:00Z", sleep=lambda s: None)
+        return c.search({**FIND, "lanes": ["crossref"]}, invocation_id=INV, attempt=1, policy_version="gw-policy/1", pages=1)
 
     def test_one_attempt_is_one_observation(self):
         """A different outcome for the same invocation, request and attempt is refused at the

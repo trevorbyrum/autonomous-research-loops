@@ -223,7 +223,8 @@ class ObservationTest(RouterTestCase):
         observation = {"observation_id": oid, "request": request, "request_identity": identity or canonical.logical_hash(request), "attempt": 1,
                        "lane": "crossref", "obligation_ids": [], "started_at": "2026-09-27T10:00:00Z", "ended_at": "2026-09-27T10:00:05Z",
                        "coverage_state": coverage, "result_count": n_events if count == "same" else count, "completeness": completeness,
-                       "error_class": error, "capability_fact_id": None, "policy_version": "gw-policy/1", "cost_units": None, "gateway_call_ref": "call-1"}
+                       "error_class": error, "capability_fact_id": None, "policy_version": "gw-policy/1", "cost_units": None, "gateway_call_ref": "call-1",
+                       "page_outcome": "failed" if coverage in ("provider_unavailable", "auth_failed", "unknown") else "end_unknown", "continuation": None}
         observation.update(extra)
         events = [{"event_id": f"rev_{oid[4:]}{i:04d}", "provider_record_id": f"rec-{i}", "rank": i + 1, "captured_at": "2026-09-27T10:00:04Z"}
                   for i in range(n_events)]
@@ -249,6 +250,49 @@ class ObservationTest(RouterTestCase):
         self.refused(self.observe(2, count=4, completeness="partial", error="partial_pagination"), "payload_invalid", before, "result_count 4 is not the 2")
         self.assertEqual(self.observe(2, completeness="partial", error="partial_pagination")["status"], "recorded")
         self.assertEqual(self.rows("SELECT result_count, completeness, error_class FROM search_observations"), [(2, "partial", "partial_pagination")])
+
+    def test_a_page_outcome_is_typed_and_consistent_with_what_was_read(self) -> None:
+        """Gate D #3 (2b-repair-13b): how pagination ended or continued is part of the observation. The vocabulary and the
+        cursor's shape are the command schema's; that a page nothing could be read from failed (and only it), that a cursor
+        belongs to a continuation or a page cap read off a page that was read, and that a partial page never reports an end
+        are the boundary's own checks (the store enforces the same). Each refused observation differs from the recorded
+        one in that one respect."""
+        before = self.state(exclude=())
+        unread = dict(count=None, coverage="provider_unavailable", completeness="unobserved", error="provider_outage")
+        for label, kwargs, reason, detail in (
+                ("outside the vocabulary", dict(page_outcome="finished"), "request_invalid", "page_outcome"),
+                ("a page that was read, failed", dict(page_outcome="failed"), "payload_invalid", "is failed, and only it is"),
+                ("a page nothing could be read from, with an unknown end", {**unread, "page_outcome": "end_unknown"}, "payload_invalid", "is failed, and only it is"),
+                ("a continuation without its cursor", dict(page_outcome="continuation"), "payload_invalid", "carry one"),
+                ("a page cap without its cursor", dict(page_outcome="limit_reached"), "payload_invalid", "carry one"),
+                ("a cursor on an end", dict(page_outcome="exhausted", continuation={"cursor": "c2"}), "payload_invalid", "carry one"),
+                ("a cursor on an unknown end", dict(continuation={"cursor": "c2"}), "payload_invalid", "carry one"),
+                ("a cursor from a page nothing was read from",
+                 dict(count=None, coverage="not_searched", completeness="unobserved", page_outcome="continuation", continuation={"cursor": 2}),
+                 "payload_invalid", "has no continuation"),
+                ("an end reported by a partial page", dict(completeness="partial", error="partial_pagination", page_outcome="exhausted"),
+                 "payload_invalid", "an exhausted end is reported by a page read whole"),
+                ("a cursor that is not a string or an integer", dict(page_outcome="continuation", continuation={"cursor": 1.5}), "request_invalid", "continuation"),
+                ("an empty cursor", dict(page_outcome="continuation", continuation={"cursor": ""}), "request_invalid", "continuation"),
+                ("a cursor too long to keep", dict(page_outcome="continuation", continuation={"cursor": "c" * 8001}), "request_invalid", "continuation"),
+                ("a cursor with company", dict(page_outcome="continuation", continuation={"cursor": "c2", "x": 1}), "request_invalid", "continuation"),
+                ("a bare cursor", dict(page_outcome="continuation", continuation="c2"), "request_invalid", "continuation")):
+            with self.subTest(label):
+                kwargs = dict(kwargs)
+                events = 0 if kwargs.get("coverage") in ("not_searched", "provider_unavailable") else 1
+                self.refused(self.observe(events, **kwargs), reason, before, detail)
+        for oid, (outcome, cursor) in enumerate((("continuation", {"cursor": "c2"}), ("limit_reached", {"cursor": 20}), ("end_unknown", None), ("exhausted", None)), start=1):
+            with self.subTest(recorded=outcome):
+                self.assertEqual(self.observe(1, oid=f"obs_00000000000{oid}", request={"q": outcome}, page_outcome=outcome, continuation=cursor)["status"], "recorded")
+        self.assertEqual(self.rows("SELECT json_extract(request, '$.q'), page_outcome, completeness, continuation FROM search_observations ORDER BY observation_id"),
+                         [("continuation", "continuation", "complete", '{"cursor":"c2"}'), ("limit_reached", "limit_reached", "complete", '{"cursor":20}'),
+                          ("end_unknown", "end_unknown", "complete", None), ("exhausted", "exhausted", "complete", None)],
+                         "a page read whole stays complete whatever it says of the population; the cursor keeps its type")
+        again = dict(request={"q": "continuation"}, oid="obs_000000000001", page_outcome="continuation")
+        self.assertEqual(self.observe(1, continuation={"cursor": "c2"}, **again)["status"], "replayed")
+        conflicting = self.state(exclude=())
+        self.refused(self.observe(1, **{**again, "page_outcome": "exhausted"}, continuation=None), "observation_id_conflict", conflicting, "different content")
+        self.refused(self.observe(1, continuation={"cursor": "c3"}, **again), "observation_id_conflict", conflicting, "different content")
 
     def test_unknown_is_not_zero(self) -> None:
         before = self.state(exclude=())
@@ -278,7 +322,7 @@ class ObservationTest(RouterTestCase):
         return {"observation_id": "obs_000000000001", "request": request, "request_identity": canonical.logical_hash(request), "attempt": 1,
                 "lane": "crossref", "obligation_ids": [], "started_at": "2026-09-27T10:00:00Z", "ended_at": "2026-09-27T10:00:05Z",
                 "coverage_state": "searched_ok", "result_count": count, "completeness": "complete", "error_class": None, "capability_fact_id": None,
-                "policy_version": "gw-policy/1", "cost_units": None, "gateway_call_ref": "call-1"}
+                "policy_version": "gw-policy/1", "cost_units": None, "gateway_call_ref": "call-1", "page_outcome": "end_unknown", "continuation": None}
 
     def test_an_unobserved_result_set_is_recorded_with_no_count(self) -> None:
         """The accepted case of test_unknown_is_not_zero, split out as a control of its own (task 1c-repair-3; Astra 1c re-review 2 BLOCK 2): an

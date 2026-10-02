@@ -85,6 +85,7 @@ Enforced now:
 - **Timestamps** as real instants (schema `date-time` via `gen2/core/instants.py`), compared as instants (`utc_instant_ns`) for expiry and deadlines.
 - **A10 comparisons**:
   - an observed result set's `result_count` is exactly the retrieval events captured with it. An unobserved set carries neither events nor a count. Partial stays partial, and unknown is never zero.
+  - how pagination ended or continued (`page_outcome`, `continuation`; Gate D #3) is consistent with what was read: a page nothing could be read from is `failed`, and only such a page is; a cursor belongs to a `continuation` or a `limit_reached` and to nothing else, and only from a page that was read; a partial page, or a lane never searched, never reports an end (`exhausted`).
   - a screening assessment's criteria are its pinned protocol version's, each decided no earlier than its stage. An exclusion rests on a criterion not met; an inclusion has none not met.
   - a provider-written assessment is exactly its qualified receipt's committed answer, about that work, under a spec whose protocol context is the committing invocation's admission: its topic, its contract revision, that revision's content hash, and the eligibility protocol version (Astra 1b review A3). Qualification is authority for one spec, not for that spec under another contract.
   - payload digests against staged bytes, read under the invocation's topic (the spool is topic-scoped), and every staged artifact's media type against the spool's own record of it (1c).

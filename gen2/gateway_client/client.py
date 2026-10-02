@@ -28,6 +28,14 @@ the same invocation and attempt. EACH PAGE a lane was asked is its own observati
 keeps its own cursor and outcome, and what the earlier pages read stands on their own
 observations; nothing is rounded up to what the provider claimed.
 
+Each page observation also says why pagination ended or continued (Gate D #3, task
+2b-repair-13b; observe.page_end): `exhausted` only on the lane's own reported end, a page read
+whole and a population exhausted being different facts; `continuation` with the cursor the
+lane handed back; `limit_reached` when this client's `pages` cap stopped a lane with its
+cursor in hand; `end_unknown` for a page with neither a continuation nor a reported end; and
+`failed`. The cursor is kept on the observation, so neither the cap nor an unfollowed
+continuation hides that more remains.
+
 Queued answers are polled until the job finishes or the client's deadline passes; a
 deadline that passes is `unknown`/`timeout`, never an empty result.
 
@@ -156,15 +164,17 @@ class GatewayClient:
                                  "call_ref": answer["call_ref"]})
             fact_id = next((f["fact_id"] for f in answer["facts"] if f["capability"].startswith("gateway.secrets")), None)
             call_ref = f"gw-call:{answer['call_ref']}" if answer["call_ref"] is not None else None
+            going = {e["source"]: observe.cursor_of(e) for e in answer["lanes"]
+                     if e.get("completeness") == "complete" and observe.cursor_of(e) is not None}
             for entry in answer["lanes"]:
+                # a lane still going when the page cap is reached ends here with its cursor in hand: limit_reached, not an end
                 obs = observe.observation(entry, request={"lane": entry["source"], "page": page, "request": sent},
                                           started_at=started, ended_at=ended, call_ref=call_ref, fact_id=fact_id,
+                                          capped=page == pages and entry["source"] in going,
                                           **{k: ctx[k] for k in ("invocation_id", "attempt", "obligation_ids", "policy_version")})
                 obs["records"] = observe.lane_records({"records": answer["records"]}, entry["source"])
                 obs["delivery"] = answer["delivery"]
                 out["observations"].append(obs)
-            going = {e["source"]: e["next"] for e in answer["lanes"]
-                     if e.get("completeness") == "complete" and type(e.get("next")) in (str, int) and e["next"] != "exhausted"}
             if not going:
                 break
             sent = {**request, "cursors": going, "lanes": sorted(going)}

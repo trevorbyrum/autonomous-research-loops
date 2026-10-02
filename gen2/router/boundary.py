@@ -227,6 +227,7 @@ def check_observation(observation: dict, events: list[dict]) -> None:
     records = [event["provider_record_id"] for event in events]
     if len(set(records)) != len(records):
         raise Refusal("payload_invalid", f"{oid}: a provider record is captured twice")
+    check_page_outcome(observation)
     if observation["completeness"] == "unobserved":
         if events or observation["result_count"] is not None:
             raise Refusal("payload_invalid", f"{oid}: an unobserved result set has no captured records and no count; unknown is not zero (RG-U)")
@@ -234,6 +235,24 @@ def check_observation(observation: dict, events: list[dict]) -> None:
     if observation["result_count"] != len(events):
         raise Refusal("payload_invalid", f"{oid}: result_count {observation['result_count']} is not the {len(events)} retrieval events captured "
                                          "with it; a count without its captured identities is not a denominator (E-2)")
+
+
+def check_page_outcome(observation: dict) -> None:
+    """Gate D #3: how pagination ended or continued is consistent with what was observed (the store's
+    page_outcome rules, refused here with a reason). A page that could not be read FAILED, and only such a page; a
+    cursor is carried by a continuation or a page cap and by nothing else, and only from a page that was read; an
+    end is reported only by a page read whole (or a lane restating one). Whether THIS PAGE was read whole
+    (`completeness`) never stands for the population being exhausted (`page_outcome`), so a partial page or an unknown
+    end never establishes exhaustion (RG-4)."""
+    oid, outcome, completeness, coverage = observation["observation_id"], observation["page_outcome"], observation["completeness"], observation["coverage_state"]
+    if (coverage in ("provider_unavailable", "auth_failed", "unknown")) != (outcome == "failed"):
+        raise Refusal("payload_invalid", f"{oid}: coverage {coverage} with page outcome {outcome}; a page nothing could be read from is failed, and only it is")
+    if (outcome in ("continuation", "limit_reached")) != (observation["continuation"] is not None):
+        raise Refusal("payload_invalid", f"{oid}: page outcome {outcome} with continuation {observation['continuation']!r}; a cursor belongs to a continuation or a page cap, and they carry one")
+    if outcome in ("continuation", "limit_reached") and completeness == "unobserved":
+        raise Refusal("payload_invalid", f"{oid}: a page nothing was read from has no continuation")
+    if outcome == "exhausted" and completeness != "complete" and coverage != "exhausted":
+        raise Refusal("payload_invalid", f"{oid}: an exhausted end is reported by a page read whole, not a {completeness} one (RG-4)")
 
 
 def check_manifest(manifest: dict, topic_id: str, extensions, bundle_raw: bytes, schemas) -> str:

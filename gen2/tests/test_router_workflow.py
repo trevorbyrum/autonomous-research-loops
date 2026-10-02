@@ -157,7 +157,7 @@ class Workflow(RouterTestCase):
         observation = {"observation_id": observation_id, "request": request, "request_identity": canonical.logical_hash(request), "attempt": 1, "lane": "crossref",
                        "obligation_ids": ["O-1"], "started_at": "2026-09-27T10:00:00Z", "ended_at": "2026-09-27T10:00:01Z", "coverage_state": "searched_ok",
                        "result_count": len(events), "completeness": "complete", "error_class": None, "capability_fact_id": None, "policy_version": "pol-1",
-                       "cost_units": None, "gateway_call_ref": None}
+                       "cost_units": None, "gateway_call_ref": None, "page_outcome": "end_unknown", "continuation": None}
         out = self.router.record_observation({"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"], "observation": observation,
                                               "retrieval_events": events})
         assert out["status"] == "recorded", out
@@ -941,7 +941,7 @@ class ReviewClosureTest(Workflow):
 UNAVAILABLE = {"observation_id": "obs_t1scope002", "request": {"q": "cost"}, "request_identity": canonical.logical_hash({"q": "cost"}), "attempt": 1,
                "lane": "semantic_scholar", "obligation_ids": [], "started_at": "2026-09-27T10:00:00Z", "ended_at": "2026-09-27T10:00:01Z",
                "coverage_state": "provider_unavailable", "result_count": None, "completeness": "unobserved", "error_class": "provider_outage",
-               "capability_fact_id": None, "policy_version": "pol-1", "cost_units": None, "gateway_call_ref": None}
+               "capability_fact_id": None, "policy_version": "pol-1", "cost_units": None, "gateway_call_ref": None, "page_outcome": "failed", "continuation": None}
 
 
 class ScopingReportTest(Workflow):
