@@ -1072,3 +1072,9 @@ New counterexamples *within the frozen contract* still block. Restating the same
 Consolidate: canonical typed construction must not materialize raw data; one raw-materialization operation at the sinks; replace `_issued` with a narrowly specified comparison; one owned inventory. The package cycle, router collaboration and decomposition stay with 2q.
 
 **Orchestrator:** the next gateway repair is **held for the operator's rulings on items 0 and 5**. 13d continues; F6's wording fix joins the final package.
+
+## 2026-10-02 — Operator rulings on Gate D #2
+1. **Trust model B is adopted.** The gateway guarantees a complete contract for supported provider input. First-party adapters are trusted, reviewed code, with their discipline enforced by inventories, guards, mutation tests and review. This is a design boundary, not by-construction confinement. Python identity checks, private-field access, importable helpers and finite testing are documented boundaries under B, not debt. This also answers the language-residual question pending since the 13a review.
+2. **The supported-format and resource policy is frozen as listed in Gate D #2 item 5.** It covers UTF-8, JSON duplicates and non-finite numbers, finite floats versus exact integers, depth 64 for JSON and XML, no DOCTYPE, the CSV extensions, the 131,072-character CSV cell and the 256 MiB body limit. There are two sanctioned predicates: `Rec.empty` at the reviewed shape predicates, and equality between decoded provider objects for the intended comparisons only.
+
+**Routing:** 2b-repair-14 (gateway) implements Gate D #2 checklist items 0–6 and 8 in one pass, after 13d. The next reviews judge against the frozen contract: new counterexamples *within* it block; restating the same evidence limits doesn't.
