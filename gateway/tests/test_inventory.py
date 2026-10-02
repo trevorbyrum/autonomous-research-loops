@@ -5,8 +5,8 @@ reason (its module docstring says what it is, and what it is not). This file hol
 
   Inventory   every site the scans find is listed and every listed site is there; each entry's role may stand where it stands (RULES); the sanctioned predicates (`Rec.empty`, `Rec.same_as`) and the
               one materialization (`plain`) stand exactly where the operator's ruling of 2026-10-02 puts them; no CSV/XML reader is imported outside core/wire.py; the real tree passes the import guard
-  TheProviderTransport  the family account's first boundary made executable: the one network site that receives a provider's bytes is adapters/base.py `Transport`, the one stream read in that
-              module is `_read_body`, and every body a Response carries out of the transport comes from it (AST, line by line)
+  TheProviderTransport  the family account's first boundary made executable: the one network site that receives a provider's bytes is adapters/base.py `Transport`, the only stream reads in that
+              module are `_read_body`'s and its chunked reader's (`_read_chunked`), and every body a Response carries out of the transport comes from it (AST, line by line)
   Scans       a CONTROL for each scan: the spellings it finds are found, the ones it is not written to find are not, and both are stated — a finite syntax guard, not an analysis of Python. The spelling
               the 13c review found the old parser scan missed, `json.JSONDecoder().decode(...)`, is among the found ones.
 
@@ -115,9 +115,10 @@ class TheProviderTransport(unittest.TestCase):
         self.assertEqual({role for k, role in network.items() if k[1] != "adapters/base.py"}, {"GATEWAY", "ALERT-SINK", "AUTH"}, "every other network site is the gateway's own, classified as not provider data")
         self.assertEqual({k[2] for k, role in network.items() if role == "PROVIDER-TRANSPORT" and k[2] != "<module>"}, {"Transport.request"})
 
-    def test_the_only_read_of_a_connections_stream_in_the_transport_module_is_read_body(self):
-        self.assertEqual(set(INV.netread_sites()), {("adapters/base.py", "_read_body", "read")})
-        self.assertEqual({k for k in SITES if k[0] == "netread"}, {("netread", "adapters/base.py", "_read_body", "read")})
+    def test_the_only_reads_of_a_connections_stream_in_the_transport_module_are_read_body_and_its_chunked_reader(self):
+        reads = {("adapters/base.py", "_read_body", "read"), ("adapters/base.py", "_read_chunked", "read"), ("adapters/base.py", "_read_chunked.line", "readline")}
+        self.assertEqual(set(INV.netread_sites()), reads)
+        self.assertEqual({k for k in SITES if k[0] == "netread"}, {("netread", *r) for r in reads})
 
     def functions_of_base(self):
         import ast

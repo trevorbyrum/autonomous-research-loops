@@ -23,7 +23,7 @@ WHAT IT IS. Five scans of the package's own source (`gateway/research_gateway`),
                receives a PROVIDER's bytes is adapters/base.py `Transport`; the others are the gateway's own client, its secret store and its alerts, and are classified as such.
   response     a construction of a `Response`, the one carrier of a provider's bytes into adapters: the transport (bodies read by `_read_body`), the test transport, and the client's own
                refusals (empty bodies).
-  netread      a read of a connection's stream in adapters/base.py: `_read_body`, and nowhere else.
+  netread      a read of a connection's stream in adapters/base.py: `_read_body` and the chunked reader it hands a chunked body to (`_read_chunked`), and nowhere else.
 
 Each site found must be listed in SITES with a ROLE and a reason, and each listed site must be found; ROLES says where each role may stand (RULES, held by tests/test_inventory.py). The guards
 that are not inventories live here too, because they are this module's scans' neighbours and share their syntax machinery: `import_findings` (what a provider-data module may import),
@@ -572,7 +572,7 @@ RULES = {
     "DISCOVERY": _in(("adapters/__init__.py", "load_all")),
     "CALLER": lambda file, function, what: file in ("api/http.py", "clients/cli.py", "clients/mcp_stdio.py"),
     "GATEWAY": lambda file, function, what: file == "clients/http_client.py",
-    "PROVIDER-TRANSPORT": lambda file, function, what: file == "adapters/base.py" and (function in ("<module>", "_read_body") or function.startswith("Transport.")),
+    "PROVIDER-TRANSPORT": lambda file, function, what: file == "adapters/base.py" and (function in ("<module>", "_read_body") or function.startswith("_read_chunked") or function.startswith("Transport.")),
     "ALERT-SINK": lambda file, function, what: file == "core/alerts.py",
     "EMPTY-BODY": lambda file, function, what: file == "adapters/base.py" and what == "Response",
     "AUTH": lambda file, function, what: file in ("core/principals.py", "core/secrets.py"),
@@ -641,7 +641,9 @@ SITES = {
     ("response", "adapters/base.py", "Client._call", "Response"): (4, "EMPTY-BODY", "a refusal (breaker, budget, policy) or a redirect failure: the client's own words for it, no provider body"),
     ("response", "adapters/base.py", "check", "Response"): (1, "EMPTY-BODY", "an HTML page wearing a success status becomes an unavailable answer with no body"),
     # ---------------------------------------------------------------- netread: the one read of a provider's stream
-    ("netread", "adapters/base.py", "_read_body", "read"): (1, "PROVIDER-TRANSPORT", "the bounded read of a response's body, followed by the framing's completeness check (RFC 9112 §6.3)"),
+    ("netread", "adapters/base.py", "_read_body", "read"): (1, "PROVIDER-TRANSPORT", "the bounded read of a response's body that is not chunked, followed by the framing's completeness check (RFC 9112 §6.3)"),
+    ("netread", "adapters/base.py", "_read_chunked", "read"): (2, "PROVIDER-TRANSPORT", "a chunk's data, read a megabyte at a time, and the two bytes that must follow it (RFC 9112 §7.1)"),
+    ("netread", "adapters/base.py", "_read_chunked.line", "readline"): (1, "PROVIDER-TRANSPORT", "a line of a chunked body's framing: a chunk-size line or a trailer line, bounded and CRLF-ended or refused (RFC 9112 §7.1)"),
     # ---------------------------------------------------------------- door: where a decoded answer leaves the decoder in a provider-data module
     ("door", "adapters/bea.py", "data", "raw"): (1, "SEALED-STORE", "BEA's rows are the payload of ONE table record, kept whole for its `rows` and never decoded one by one (Astra, 2b-repair-7)"),
     ("door", "adapters/bea.py", "_error", "method empty"): (1, "SANCTIONED-PREDICATE", "whether the error object BEA states beside its results says anything: an empty `{}` is no error"),

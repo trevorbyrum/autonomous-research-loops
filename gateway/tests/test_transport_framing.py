@@ -8,7 +8,9 @@ Everything below goes over a real loopback socket, through the real Transport, C
 response written by hand so that its framing is exactly what the case says. What it covers, and what it cannot:
 
   * Content-Length  complete / cut after the headers / cut mid-record / cut at a record boundary / one byte short — only the complete one loads
-  * chunked         complete (several chunks, an extension, a trailer) / cut after the headers / cut mid-chunk / cut at a chunk boundary with no terminal chunk — only the complete one loads
+  * chunked         the transport reads the framing itself (RFC 9112 §7.1; task 2b-repair-15, Astra F1): complete (several chunks, an extension, a trailer, a header-only CSV that is complete) loads; a size that is
+                    not 1*HEXDIG, a chunk's data not followed by CRLF, and EOF anywhere before the final CRLF (after the headers, mid-chunk, at a chunk boundary, inside the last-chunk line or the
+                    trailer) do not: Astra's ten wire captures are rebuilt byte for byte
   * the bound       a declared length, a chunked body and a close-delimited body past MAX_BODY_BYTES are refused; a body of exactly the bound is read
   * deliberate handling of framing that is invalid or conflicts: Transfer-Encoding with Content-Length, a coding other than `chunked`, a Content-Length that repeats, a list, or is not digits
   * error statuses keep their status; a bodyless status (304) is bodyless whatever its Content-Length says
@@ -18,6 +20,7 @@ response written by hand so that its framing is exactly what the case says. What
 from __future__ import annotations
 
 import contextlib
+import email.message
 import socket
 import threading
 import unittest
@@ -93,6 +96,25 @@ def raw_response(raw: bytes) -> base.Response:
         return Transport().request("GET", url, {}, None, 5)
 
 
+class Spy:
+    """What `_read_body` is given in place of a response when the test must see whether the body is read: a read of data fails the test, and `readline` serves `lines` (the framing the response
+    shows before any data)."""
+    status = 200
+
+    def __init__(self, headers: dict, *, lines=(), chunked: bool = False, length: int | None = None):
+        self.headers = email.message.Message()
+        for name, value in headers.items():
+            self.headers[name] = value
+        self.chunked, self.length, self.fp, self.lines, self.reads = chunked, length, self, list(lines), 0
+
+    def readline(self, limit: int = -1) -> bytes:
+        return self.lines.pop(0) if self.lines else b""
+
+    def read(self, *args) -> bytes:
+        self.reads += 1
+        raise AssertionError(f"the body was read: read{args}")
+
+
 class Loaded(unittest.TestCase):
     """The outcome of a response that was a complete message: the whole dump, committed once, HTTP 200."""
 
@@ -132,6 +154,25 @@ class ContentLength(Loaded):
         self.assert_loaded(outcome(message(b"Content-Length:   " + str(len(FULL)).encode() + b"   \r\n", FULL)))
 
 
+# Astra's wire captures (private/evidence/astra-2b-final/wire-*.bin): the whole response, the data chunk being the CSV (header, three journals) unless the name says otherwise
+WIRE_HEAD = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
+HEADER_ONLY, ONE_ROW = RECORDS[0], b"".join(RECORDS[:2])
+ASTRA_REFUSED = {   # name: (the chunked body after the headers, the exception that must refuse it, or None for a message that is complete and loads: its count)
+    "early_zero_bare_eof": (f"{len(ONE_ROW):X}\r\n".encode() + ONE_ROW + b"\r\n0", "IncompleteRead"),
+    "empty_zero_bare_eof": (f"{len(HEADER_ONLY):X}\r\n".encode() + HEADER_ONLY + b"\r\n0", "IncompleteRead"),
+    "early_zero_signed": (f"{len(ONE_ROW):X}\r\n".encode() + ONE_ROW + b"\r\n+0\r\n\r\n", "FramingError"),
+    "early_zero_hex_prefix": (f"{len(ONE_ROW):X}\r\n".encode() + ONE_ROW + b"\r\n0x0\r\n\r\n", "FramingError"),
+    "size_signed": (b"+" + f"{len(FULL):X}\r\n".encode() + FULL + b"\r\n0\r\n\r\n", "FramingError"),
+    "data_delimiter_XX": (f"{len(FULL):X}\r\n".encode() + FULL + b"XX0\r\n\r\n", "FramingError"),
+    "cut_trailer": (f"{len(FULL):X}\r\n".encode() + FULL + b"\r\n0\r\nIgnored: cut", "IncompleteRead"),
+}
+ASTRA_CONTROLS = {   # the same captures' complete counterparts: each must load
+    "empty_complete_control": (f"{len(HEADER_ONLY):X}\r\n".encode() + HEADER_ONLY + b"\r\n0\r\n\r\n", 0),
+    "valid_extension": (f"{len(FULL):X};foo=\"bar\"\r\n".encode() + FULL + b"\r\n0\r\n\r\n", 3),
+    "complete_trailer": (f"{len(FULL):X}\r\n".encode() + FULL + b"\r\n0\r\nIgnored: complete\r\n\r\n", 3),
+}
+
+
 class Chunked(Loaded):
     def test_control_complete_chunked_bodies_load_all_three(self):
         cases = {"one chunk": chunked(FULL), "several chunks, cut inside a record": chunked(FULL[:25], FULL[25:60], FULL[60:]),
@@ -141,21 +182,71 @@ class Chunked(Loaded):
             with self.subTest(label):
                 self.assert_loaded(outcome(message(CHUNKED, body)))
 
-    def test_a_chunked_body_with_no_terminal_chunk_is_not_a_load(self):
-        cases = {"after the headers": b"", "mid-chunk": f"{len(FULL):X}\r\n".encode() + FULL[:40],
-                 "at a chunk boundary, one chunk delivered": chunked(FULL[:len(RECORDS[0]) + len(RECORDS[1])], end=b""),
-                 "after the last chunk's data, before its line end": f"{len(FULL):X}\r\n".encode() + FULL,
-                 "a chunk size that is not hexadecimal": b"zz\r\n" + FULL}
+    def test_control_the_syntax_the_grammar_allows_is_read(self):
+        """Lower-case and padded sizes, white space around an extension, a quoted extension value, several extensions, extensions on the last chunk, a last chunk written `00`, several trailer fields."""
+        n = len(FULL)
+        cases = {"a lower-case size": f"{n:x}\r\n".encode() + FULL + b"\r\n0\r\n\r\n", "leading zeros": f"{n:06X}\r\n".encode() + FULL + b"\r\n0\r\n\r\n",
+                 "white space around the extension": f"{n:X} ; a = b\r\n".encode() + FULL + b"\r\n0\r\n\r\n",
+                 "a quoted value with an escaped quote": f'{n:X};a="b\\"c"\r\n'.encode() + FULL + b"\r\n0\r\n\r\n", "several extensions, one without a value": f"{n:X};a=b;c;d=e\r\n".encode() + FULL + b"\r\n0\r\n\r\n",
+                 "extensions on the last chunk": chunked(FULL, end=b"0;done=1\r\n\r\n"), "a last chunk of two zeros": chunked(FULL, end=b"00\r\n\r\n"),
+                 "several trailer fields": chunked(FULL, end=b"0\r\nA: 1\r\nB:\r\nC: x y\r\n\r\n")}
         for label, body in cases.items():
             with self.subTest(label):
-                self.assert_refused(outcome(message(CHUNKED, body)), "IncompleteRead")
+                self.assert_loaded(outcome(message(CHUNKED, body)))
 
+    def test_a_chunked_body_with_no_terminal_chunk_is_not_a_load(self):
+        cases = {"after the headers": (b"", "IncompleteRead"), "mid-chunk": (f"{len(FULL):X}\r\n".encode() + FULL[:40], "IncompleteRead"),
+                 "at a chunk boundary, one chunk delivered": (chunked(FULL[:len(RECORDS[0]) + len(RECORDS[1])], end=b""), "IncompleteRead"),
+                 "after the last chunk's data, before its line end": (f"{len(FULL):X}\r\n".encode() + FULL, "IncompleteRead"),
+                 "after one byte of the line end": (f"{len(FULL):X}\r\n".encode() + FULL + b"\r", "IncompleteRead"),
+                 "a chunk size that is not hexadecimal": (b"zz\r\n" + FULL, "FramingError")}
+        for label, (body, why) in cases.items():
+            with self.subTest(label):
+                self.assert_refused(outcome(message(CHUNKED, body)), why)
 
-    def test_a_cut_inside_the_trailer_section_loses_trailer_fields_only(self):
-        """The last-chunk (size 0) was read: every octet of the body arrived, and trailer fields are not the body (RFC 9112 §7.1.2). http.client takes the missing blank line at EOF as the end of
-        the trailers (its own reading, kept), and the gateway reads no trailer field."""
-        self.assert_loaded(outcome(message(CHUNKED, chunked(FULL, end=b"0\r\n"))))
-        self.assert_loaded(outcome(message(CHUNKED, chunked(FULL, end=b"0\r\nX-Checksum: 1\r\n"))))
+    def test_astras_wire_captures_each_row_of_her_table_is_refused_with_no_count(self):
+        """Task 2b-repair-15 (Astra F1): on c0d963d each of these was a load, counts of 0, 1 or 3, committed, HTTP 200 / `ok`. Her captures are replayed whole (`WIRE_HEAD` is her status line and headers)."""
+        for name, (body, why) in ASTRA_REFUSED.items():
+            with self.subTest(name):
+                got = outcome(WIRE_HEAD + body)
+                self.assert_refused(got, why)
+
+    def test_astras_controls_the_complete_counterparts_load_and_a_complete_header_only_csv_is_zero(self):
+        for name, (body, count) in ASTRA_CONTROLS.items():
+            with self.subTest(name):
+                self.assert_loaded(outcome(WIRE_HEAD + body), count)
+
+    def test_a_cut_inside_the_last_chunk_or_the_trailer_section_is_not_a_load(self):
+        """Rewritten (task 2b-repair-15; Astra F1 and F4, the contract test): this test required SUCCESS for these, on the ground that trailer fields are not the body. A message without its final CRLF is not
+        complete (RFC 9112 §7.1): whether anything was lost cannot be told from the wire, and what the frozen contract promises is a complete message or a visible refusal. The trailer fields
+        themselves are still not read."""
+        cases = {"EOF after the data chunk's CRLF": b"", "EOF in the last-chunk line": b"0", "EOF after the last-chunk line": b"0\r\n", "EOF inside a trailer field": b"0\r\nX-Checksum: 1",
+                 "EOF after a trailer field, before the final CRLF": b"0\r\nX-Checksum: 1\r\n", "EOF after the final CR": b"0\r\n\r"}
+        for label, end in cases.items():
+            with self.subTest(label):
+                self.assert_refused(outcome(message(CHUNKED, chunked(FULL, end=end))), "IncompleteRead")
+
+    def test_framing_the_grammar_does_not_allow_is_refused_beside_its_control(self):
+        n = len(FULL)
+        cases = {"a signed size": f"+{n:X}\r\n".encode() + FULL + b"\r\n0\r\n\r\n", "a negative size": f"-{n:X}\r\n".encode() + FULL + b"\r\n0\r\n\r\n",
+                 "a 0x prefix": f"0x{n:X}\r\n".encode() + FULL + b"\r\n0\r\n\r\n", "an underscore (Python's int() reads it)": f"{n:X}\r\n".replace("8", "8_").encode() + FULL + b"\r\n0\r\n\r\n",
+                 "an empty size": b"\r\n" + FULL + b"\r\n0\r\n\r\n", "a leading space": f" {n:X}\r\n".encode() + FULL + b"\r\n0\r\n\r\n",
+                 "a trailing space": f"{n:X} \r\n".encode() + FULL + b"\r\n0\r\n\r\n", "a size line ended by a bare LF": f"{n:X}\n".encode() + FULL + b"\r\n0\r\n\r\n",
+                 "a size of 0 written +0 (the last chunk)": chunked(FULL, end=b"+0\r\n\r\n"), "an extension that is not one": f"{n:X};\r\n".encode() + FULL + b"\r\n0\r\n\r\n",
+                 "an unterminated quoted extension value": f'{n:X};a="b\r\n'.encode() + FULL + b"\r\n0\r\n\r\n", "an extension after a stray character": f"{n:X}x;a=b\r\n".encode() + FULL + b"\r\n0\r\n\r\n",
+                 "a chunk's data followed by two other bytes": f"{n:X}\r\n".encode() + FULL + b"XX0\r\n\r\n", "a chunk's data followed by a bare LF": f"{n:X}\r\n".encode() + FULL + b"\n0\r\n\r\n",
+                 "a chunk's data followed by CR and another byte": f"{n:X}\r\n".encode() + FULL + b"\rX0\r\n\r\n", "the next chunk's size run into the data": f"{n:X}\r\n".encode() + FULL + b"0\r\n\r\n",
+                 "a trailer line that is no field": chunked(FULL, end=b"0\r\nnot a field\r\n\r\n"), "a trailer line that begins with a space (an obsolete fold)": chunked(FULL, end=b"0\r\nA: 1\r\n  more\r\n\r\n"),
+                 "a trailer line ended by a bare LF": chunked(FULL, end=b"0\r\nA: 1\n\r\n"), "a last chunk with no line end before the next bytes": chunked(FULL, end=b"0X\r\n\r\n")}
+        for label, body in cases.items():
+            with self.subTest(label):
+                self.assert_refused(outcome(message(CHUNKED, body)), "FramingError")
+        self.assert_loaded(outcome(message(CHUNKED, chunked(FULL))))   # the control: the same bytes, framed
+
+    def test_a_framing_line_past_the_line_bound_is_refused(self):
+        for label, body in (("a size line", b"1;a=" + b"x" * base._MAX_LINE + b"\r\n" + b"x\r\n0\r\n\r\n"), ("a trailer line", chunked(FULL, end=b"0\r\nA: " + b"x" * base._MAX_LINE + b"\r\n\r\n"))):
+            with self.subTest(label):
+                self.assert_refused(outcome(message(CHUNKED, body)), "FramingError")
 
 
 class CloseDelimited(Loaded):
@@ -164,7 +255,8 @@ class CloseDelimited(Loaded):
 
     def test_the_ambiguity_stated_a_close_delimited_body_cut_at_a_record_boundary_is_a_shorter_document(self):
         """RFC 9112 §6.3 item 8: the end of such a message IS the close. A connection cut after the first journal is indistinguishable from a provider that sent one, so it loads as one
-        (the CSV opener sees a well-formed document, tests/test_openers.py). A cut inside a record is still refused by the opener, whatever the framing."""
+        (the CSV opener sees a well-formed document, tests/test_openers.py). So is a cut that leaves a short row (the second case): the opener loads a row with fewer cells than the header, as it does
+        whatever the framing, and a close-delimited cut inside a record is therefore not refused here."""
         self.assert_loaded(outcome(message(b"", FULL[:len(RECORDS[0]) + len(RECORDS[1])])), 1)
         got = outcome(message(b"", FULL[:len(RECORDS[0]) + 8]))
         self.assertEqual((got["count"], got["rollbacks"]), (1, 0), "a cut inside the first record is a short row: the same ambiguity, and not what the opener can know")
@@ -191,10 +283,31 @@ class Bound(Loaded):
                 self.assertEqual((got.status, got._body), (None, b""))
                 self.assertIn(f"response exceeds {self.BOUND} bytes", got.error)
 
-    def test_a_declared_length_past_the_bound_is_refused_before_any_of_the_body_is_read(self):
+    def test_a_declared_length_past_the_bound_is_refused(self):
         got = self.request(message(CL(10 ** 12), b"x" * 10))   # a length that cannot be met, and a body that is shorter than the bound: it is the declared size that is refused
         self.assertEqual((got.status, got._body), (None, b""))
         self.assertIn("response exceeds", got.error)
+
+    def test_a_declared_length_past_the_bound_is_refused_before_the_stream_is_read(self):
+        """The refusal is made on the header: a response whose stream fails the test when it is read is refused all the same."""
+        spy = Spy({"Content-Length": str(10 ** 12)}, length=10 ** 12)
+        with self.assertRaises(base.BodyTooLarge):
+            base._read_body(spy)
+        self.assertEqual(spy.reads, 0)
+
+    def test_a_chunk_that_announces_more_than_the_bound_is_refused_before_its_data_is_read(self):
+        spy = Spy({"Transfer-Encoding": "chunked"}, lines=[b"%X\r\n" % 10 ** 12], chunked=True)
+        with self.assertRaises(base.BodyTooLarge):
+            base._read_body(spy)
+        self.assertEqual(spy.reads, 0)
+
+    def test_chunks_that_together_pass_the_bound_and_a_trailer_section_past_it_are_refused(self):
+        half, trailer = b"x" * (self.BOUND // 2 + 1), b"y" * self.BOUND
+        for label, wire in (("two chunks of 33 bytes", chunked(half, half)), ("a trailer section", chunked(b"x" * 8, end=b"0\r\nA: " + trailer + b"\r\n\r\n"))):
+            with self.subTest(label):
+                got = self.request(message(CHUNKED, wire))
+                self.assertEqual((got.status, got._body), (None, b""))
+                self.assertIn(f"response exceeds {self.BOUND} bytes", got.error)
 
     def test_an_error_status_past_the_bound_keeps_its_status(self):
         got = self.request(message(CL(self.BOUND + 1), b"x" * (self.BOUND + 1), status=b"503 Service Unavailable"))

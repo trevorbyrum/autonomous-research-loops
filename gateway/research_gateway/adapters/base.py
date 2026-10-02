@@ -344,21 +344,84 @@ class BodyTooLarge(Exception):
 
 _DIGITS = re.compile(r"[0-9]+")
 
+_MAX_LINE = 65536     # http.client's own bound on one line of framing
+_READ_STEP = 1 << 20  # a chunk is read a megabyte at a time: the size it announces is not memory to reserve
+_TOKEN = rb"[!#$%&'*+\-.^_`|~0-9A-Za-z]+"
+_QUOTED = rb'"(?:[\t \x21\x23-\x5b\x5d-\x7e\x80-\xff]|\\[\t \x21-\x7e\x80-\xff])*"'
+_CHUNK_HEAD = re.compile(rb"([0-9A-Fa-f]+)(?:[ \t]*;[ \t]*" + _TOKEN + rb"(?:[ \t]*=[ \t]*(?:" + _TOKEN + rb"|" + _QUOTED + rb"))?)*")   # chunk-size [ chunk-ext ]
+_TRAILER_FIELD = re.compile(_TOKEN + rb":[\t \x21-\x7e\x80-\xff]*")                                                                  # field-line
+
+
+def _read_chunked(fp) -> bytes:
+    """The body of a chunked message (RFC 9112 §7.1), read here and not by http.client. Its decoder takes `int(line, 16)` for a size (`+0` and `0x0` pass), never looks at the CRLF after a chunk's
+    data, and takes EOF for the end of the trailer section: a message cut after a chunk, or inside the last-chunk line, or inside the trailer, arrives as a whole one (task 2b-repair-15; Astra F1).
+
+        chunked-body = *chunk last-chunk trailer-section CRLF     chunk = chunk-size [ chunk-ext ] CRLF chunk-data CRLF
+        chunk-size   = 1*HEXDIG                                   last-chunk = 1*("0") [ chunk-ext ] CRLF
+
+    The body is complete when its final CRLF has arrived. EOF anywhere before it is IncompleteRead, and what the grammar does not allow (a size that is not 1*HEXDIG, a chunk's data not followed by CRLF,
+    a line ended by a bare LF, a trailer line that is no field line) is FramingError: neither returns a body. Extensions and trailer fields have to be well-formed, and are not read. The data is held
+    to MAX_BODY_BYTES like every body, and the trailer section to the same: a chunk that announces more than is left is refused before any of it is read."""
+    pieces: list[bytes] = []
+    total = 0
+
+    def line(what: str) -> bytes:
+        got = fp.readline(_MAX_LINE + 1)
+        if len(got) > _MAX_LINE:
+            raise FramingError(f"chunked framing: {what} is longer than {_MAX_LINE} bytes")
+        if not got.endswith(b"\n"):
+            raise http.client.IncompleteRead(b"".join(pieces))   # the connection ended inside the line
+        if not got.endswith(b"\r\n"):
+            raise FramingError(f"chunked framing: {what} ends in a bare LF (RFC 9112 §7.1)")
+        return got[:-2]
+
+    while True:
+        head = line("a chunk-size line")
+        match = _CHUNK_HEAD.fullmatch(head)
+        if match is None:
+            raise FramingError(f"chunked framing: {head[:40]!r} is no chunk size (1*HEXDIG, then extensions: RFC 9112 §7.1)")
+        size = int(match.group(1), 16)
+        if size == 0:
+            break
+        total += size
+        if total > MAX_BODY_BYTES:
+            raise BodyTooLarge(f"the chunks announce more than {MAX_BODY_BYTES} bytes")
+        left = size
+        while left:
+            piece = fp.read(min(left, _READ_STEP))
+            if not piece:
+                raise http.client.IncompleteRead(b"".join(pieces), left)
+            pieces.append(piece)
+            left -= len(piece)
+        end = fp.read(2)
+        if len(end) < 2:
+            raise http.client.IncompleteRead(b"".join(pieces))
+        if end != b"\r\n":
+            raise FramingError(f"chunked framing: a chunk's data is followed by {end!r}, not CRLF (RFC 9112 §7.1)")
+    seen = 0
+    while True:   # the trailer section: field lines up to the empty line that ends the message
+        field = line("a trailer line")
+        if not field:
+            return b"".join(pieces)
+        seen += len(field) + 2
+        if seen > MAX_BODY_BYTES:
+            raise BodyTooLarge(f"the trailer section is past {MAX_BODY_BYTES} bytes")
+        if _TRAILER_FIELD.fullmatch(field) is None:
+            raise FramingError(f"chunked framing: {field[:40]!r} is no trailer field (RFC 9112 §7.1.2)")
+
 
 def _read_body(resp) -> bytes:
     """The whole body of a response, or an exception: a body that is not the message the response's own framing described is never returned as if it were (task 2b-repair-14; Astra F1).
 
-    RFC 9112 §6.3 says how long a message is: bodyless for 204 and 304; else chunked when Transfer-Encoding is `chunked`, which ends at the terminal chunk (§7.1); else the
-    Content-Length (§6.2; RFC 9110 §8.6); else, for a response, whatever arrives before the connection closes. http.client implements that, and its bounded `read(amt)`
-    returns what arrived at EOF without saying whether the framing was met: so the framing it settled on is checked first (it is lenient — `int("1_0")` is a length of ten, a
-    Content-Length list is no length at all and a body then runs to EOF), and its state read after, since CPython only raises IncompleteRead on an unbounded read.
+    RFC 9112 §6.3 says how long a message is: bodyless for 204 and 304; else chunked when Transfer-Encoding is `chunked`, which ends at the final CRLF after the last chunk and its trailer section (§7.1);
+    else the Content-Length (§6.2; RFC 9110 §8.6); else, for a response, whatever arrives before the connection closes. http.client settles which of these a response has; its bounded `read(amt)`
+    returns what arrived at EOF without saying whether the framing was met, so the framing it settled on is checked first (it is lenient — `int("1_0")` is a length of ten, a Content-Length list is no
+    length at all and a body then runs to EOF), and its state read after, since CPython only raises IncompleteRead on an unbounded read. A chunked body is not read by http.client at all (`_read_chunked`).
 
       * Transfer-Encoding with Content-Length: refused (§6.3 item 3: the message may be an attempt at smuggling or splitting); a Transfer-Encoding that is not exactly `chunked`: refused,
         no other transfer coding is read; several Content-Length fields, or one that is not digits: refused (§6.3 item 5 lets a recipient merge identical values; this one does not).
-      * FramingError when the library's reading of the headers is not the one just made. IncompleteRead when the Content-Length is not met, or the chunked framing is not terminated (the
-        library raises that itself). BodyTooLarge past MAX_BODY_BYTES — checked on the declared length first, so a body that announces more is not read at all.
-      * A chunked body is complete when its last-chunk (size 0) has been read; a cut inside the trailer section after it loses trailer fields only (http.client takes the missing blank line at
-        EOF as their end, RFC 9112 §7.1.2), and the gateway reads none.
+      * FramingError when the library's reading of the headers is not the one just made. IncompleteRead when the Content-Length is not met, or the chunked framing is not complete (`_read_chunked`).
+        BodyTooLarge past MAX_BODY_BYTES — checked on the declared length first, so a body that announces more is not read at all.
       * A response with neither header is close-delimited: EOF ends it, and EOF cannot tell a deliberately shorter body from an interrupted one (§6.3 item 8). That is accepted — it is
         what HTTP says of such a message — and is the one framing in which a connection cut at a record boundary is a well-formed shorter document."""
     if resp.status not in (204, 304):
@@ -374,6 +437,8 @@ def _read_body(resp) -> bytes:
             raise FramingError(f"the library read this response's framing as chunked={resp.chunked}, length={resp.length}, not as its headers state")
         if declared is not None and declared > MAX_BODY_BYTES:
             raise BodyTooLarge(f"Content-Length {declared} is past {MAX_BODY_BYTES}")
+    if resp.chunked:
+        return _read_chunked(resp.fp)
     data = resp.read(MAX_BODY_BYTES + 1)
     if len(data) > MAX_BODY_BYTES:
         raise BodyTooLarge(f"more than {MAX_BODY_BYTES} bytes")
