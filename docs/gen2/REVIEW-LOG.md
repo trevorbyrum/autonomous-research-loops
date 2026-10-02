@@ -1119,3 +1119,24 @@ Consolidate: canonical typed construction must not materialize raw data; one raw
 - record identity must be text.
 
 **Review:** one combined Astra Gate A+B+C review of 13d + 14 (`ef030fc5`, pinned `c0d963d`; task `private/reviews/gen2-2b-final-review-task-20261002.md`), judged against the operator rulings and Gate D #2's acceptance rule. Combining them conserves the Codex window. Orchestrator reruns at `c0d963d` are in progress.
+
+## 2026-10-02 — Astra final 2b review (13d + 14; `ef030fc5`, pinned c0d963d) — BLOCK (A, C); PASS (B)
+Full report: `private/reviews/gen2-2b-final-astra-review-20261002.md`.
+
+**ROOT-CAUSE:**
+- **13d:** R13B-1 deadline renewal and late-result admission; R13B-2 admission under B; R13B-3 the WAL cause (100/100 stress runs in each journal mode); the late-reply test.
+- **14:** items 0, 2, 3, 4, 5, 6 and F6.
+- **Judgement calls:** SDMX-ML 2.1 only (BIS's published OpenAPI document gives SDMX 2.1 for data queries, and the adapter requests `format=sdmx-2.1` for structures); duplicate Content-Length refused; text identity; the snapshot report; Retry-After policy; 2e2 audit ownership; the wall-clock margins.
+- **Two missing socket-mutant controls:** supplied by Astra.
+
+Both targets pass independently.
+
+**Open, as a finite list:**
+- **F1 HIGH:** chunked framing is delegated to `http.client`, which parses sizes with permissive `int(x, 16)`, skips the CRLF check after data, and treats EOF as the end of trailers. So `\r\n0` + EOF, `+0`, `0x0`, signed sizes, `XX` in place of the CRLF, and a cut trailer all produce a successful count (0, 1 or 3). This shares the transport-completion cause with R13C-1.
+- **F2 MEDIUM:** `getaddrinfo` sits outside the deadline. A slow resolver turned a 0.05 s exchange into 0.42 s; no late answer was admitted.
+- **F3 MEDIUM:** the readiness helper uses an unbounded `readline` after `select`.
+- **F4 LOW:** 8 test claims and 1 contract test (the cut-trailer test).
+
+**Gateway family:** MITIGATION, open only at transport chunk framing. **Engine hand-off:** MITIGATION, open only at DNS.
+
+**Routing:** a single **2b-repair-15** covers F1–F4 plus Astra's two mutant controls. DNS is fixed at the root: no exchange resolves names, and resolution happens outside any exchange deadline through an owned path. Any residual is reported to the operator, not claimed closed. Codex has reset to 6% of its 7-day window, so the earlier combined-review economy no longer applies.
