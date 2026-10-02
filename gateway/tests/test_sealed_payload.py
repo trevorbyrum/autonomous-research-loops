@@ -1,20 +1,22 @@
-"""Task 2b-repair-13a (Astra R12-1 doi.org, R12-5): the raw answer is SEALED, by construction, and the decoder is its only consumer.
+"""Task 2b-repair-13a (Astra R12-1 doi.org, R12-5): the raw answer is SEALED at the public API, and the decoder is its only public reader — under trust model B (2b-repair-14).
 
 Repair-12 kept the rule "an adapter reads a provider's answer through `decode(...)`" as a source scan: no `.json`, `.text` or `.body` outside a decoder's argument. Astra wrote `getattr(resp, "json")` in
 a mutant of the OpenCitations adapter (a prefilter of the rows before the decoder ran), and every structural check passed: imports, reflection and the inventory of reads found nothing, because the scan knew
 the spellings it looked for. The cause is that the payload was REACHABLE. Now:
 
-  * the client's Response holds no readable payload — no `json`, `text`, `body`, `json_or_none`; the bytes are opened by `decode` alone (core/schema.py), and `getattr(resp, "json")`, `resp.__dict__`, `vars(resp)`
-    and every other spelling find nothing, because there is nothing to find (ResponseIsSealed);
-  * what the decoder keeps of the answer for provenance is `Sealed`: it can be compared (with another the decoder issued) and stored, never read, and it leaves only as a COPY (`plain`) — and, since
-    2b-repair-13c, not even the canonical record an adapter builds makes it readable: a record's `raw` is a Sealed, and materializing is the router's and the index's act (tests/test_opaque_provenance.py;
+  * the client's Response exposes no payload — no `json`, `text`, `body`, `json_or_none`; the bytes are opened by `decode` (core/schema.py), and `getattr(resp, "json")`, `resp.__dict__`, `vars(resp)`
+    and every other public spelling find nothing, because there is nothing public to find (ResponseIsSealed);
+  * what the decoder keeps of the answer for provenance is `Sealed`: it is stored, compared with no other Sealed, and read by nothing public, and it leaves only as a COPY (`plain`) — and, since
+    2b-repair-13c, not even the canonical record an adapter builds makes it readable: a record's `raw` is a Sealed, and materializing is the sinks' act (tests/test_opaque_provenance.py;
     RawIsSealedAndLeavesAsACopy here);
-  * a field a schema declares `any_()` is `Passive`: every way of reading it raises (PassiveIsOnlyStored);
-  * and the source scans stay as a BOUNDED GUARD behind it: they catch the spellings that would have to be written to get past the construction (GuardsStayBounded).
+  * a field a schema declares `any_()` is `Passive`: every listed way of reading it raises (PassiveIsOnlyStored);
+  * and the source scans (tests/inventory.py, held by tests/test_inventory.py; GuardsStayBounded here) are the discipline that keeps the trusted adapter code honest: they catch the spellings that
+    would have to be written to go past the public API, for review.
 
-What this cannot show is that Python offers no way at all round an object's private storage: it does (`object.__getattribute__(x, "_body")`, the `gc` module, ...). What is closed is every route that needs no knowledge
-of the storage's name, and the routes that do are the ones the guards refuse to let an adapter be written with. Each test below claims only what it asserts; the claims that were wider (2b-repair-13a's review,
-Gate C) are narrowed in their names and docstrings, and the exits they left open are tests/test_opaque_provenance.py's.
+TRUST MODEL B (INVARIANTS B-1; the operator's ruling of 2026-10-02). Python offers ways round an object's private storage (`object.__getattribute__(x, "_body")`, the `gc` module, ...), and
+`plain` and `Sealed` are importable. Those are documented boundaries of the model: first-party adapters are reviewed code, and the guards refuse to let an adapter be written with the spellings that need
+them. Each test below claims only what it asserts; the claims that were wider (2b-repair-13a's review, Gate C) are narrowed in their names and docstrings, and the exits they left open are
+tests/test_opaque_provenance.py's.
 """
 from __future__ import annotations
 

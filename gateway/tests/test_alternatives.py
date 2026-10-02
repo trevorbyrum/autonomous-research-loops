@@ -18,7 +18,7 @@ decoder (core/schema.py) decodes every declared field of an object, nested conte
 values, so `a or b` cannot skip reading `b`. The syntactic scan this file used to hold (no `or`, `and` or conditional expression over two provider reads) was a guard
 with a demonstrated ordinary-spelling bypass (Astra, 2b-repair-11), not a proof, and it is gone with the reads it watched; the evidence that nothing is skipped is
 behavioural: the classes below, tests/test_schema_corruption.py (which corrupts every alternative the schemas declare, beside a valid preferred value and alone),
-and tests/test_member_isolation.py (an adapter reads only decoded values: where it may leave the decoder is listed).
+and tests/test_member_isolation.py with tests/inventory.py (an adapter reads only decoded values: where it may leave the decoder is listed).
 """
 from __future__ import annotations
 

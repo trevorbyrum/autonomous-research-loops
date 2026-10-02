@@ -13,16 +13,23 @@ source scan had been the guarantee. It was a convention: the exit it knew about 
 
 The construction now: `make_record` returns a plain dict whose provenance is still opaque — `raw` is a `Sealed`, every `extra` value built from an `any_()` field is the `Passive` it was, and a
 download's bytes are a `Sealed` — and the router turns the whole answer into plain data at one place, after every lane has run and every selection, coverage and licence decision is made
-(`router.execute`), as the index does for what it stores (`harvest/index.upsert`). This file runs, for every exit the review listed:
+(`router.execute`), as the cache and the index do for what they store (`Cache.put_record`, `harvest/index.upsert`). 2b-repair-14 (Astra R13C-2) finished the constructors: nothing compares a
+Sealed with another (`Rec.same_as` is the one comparison, of two decoded objects), a typed field takes its own domain and unwraps nothing, and `make_record` materializes nothing. This file
+runs, for every exit the reviews listed:
 
-  * TheCopyEscape        Astra's mutant (tests/test_astra_13a.py runs it as a regression that fails on 2d62753): the scan that cannot see it, and the variants
-  * EveryExit            canonical-record construction (raw, extra, a typed field, the identity), `download()`, an unreadable member's raw, equality as a way to read, and `plain` itself
-  * WhereItBecomesPlain  before the router's boundary every operation's records still hold `Sealed` raw (nothing between the builder and the router materialized it), after it every answer is plain
-                         JSON; the index load writes plain data and never the object's repr
-  * TheClientsOwnReads   the client's reads of a Response's bytes on a marker body (the inventory of those reads, with what each is for, is tests/inventory.py's: one owner)
+  * TheCopyEscape          Astra's mutant (tests/test_astra_13a.py runs it as a regression that fails on 2d62753): the scan that cannot see it, and the variants
+  * EveryExit              canonical-record construction (raw, extra, a typed field, the identity), `download()`, an unreadable member's raw, equality as a way to read, and `plain` itself
+  * TheOneComparison       `Rec.same_as`, the sanctioned equality between two decoded objects
+  * ConstructorCompositions  Astra's two R13C-2 mutants through the real adapter and router, each typed field against everything the decoder issues, and what `raw` takes
+  * RawIsTheMemberAsSent   a record's raw is the member the fixture wrote, adapter by adapter and through the router
+  * WhereItBecomesPlain    before the router's boundary every operation's records still hold `Sealed` raw (nothing between the builder and the router materialized it), after it every answer is plain
+                           JSON; the index load writes plain data and never the object's repr
+  * TheClientsOwnReads     the client's reads of a Response's bytes on a marker body (the inventory of those reads, with what each is for, is tests/inventory.py's: one owner)
 
-What this cannot show, and nothing in Python can: that private storage is unreachable by a name (`Sealed._value`), that `x is None` on a Passive can be intercepted, or that a finite corpus proves a
-family closed. They are the language-level residuals the task report lists; no workaround is built for them.
+TRUST MODEL B (INVARIANTS B-1; the operator's ruling of 2026-10-02). First-party adapters are trusted, reviewed code; these tests run the known compositions of the public API and the inventory
+lists every site where adapter code goes past it. What neither shows, and nothing in Python can: that private storage is unreachable by a name (`Sealed._value`), that `x is None` on a Passive can
+be intercepted, that `plain` and `Sealed` cannot be imported, or that a finite corpus proves a family closed. They are documented boundaries of the model, not debts, and no workaround is built
+for them. A concrete counterexample within the supported input contract still blocks; a restatement of these boundaries does not.
 """
 from __future__ import annotations
 

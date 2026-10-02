@@ -39,12 +39,12 @@ from ..core.wire import Malformed, open_json as _open_json
 
 
 class Response(SealedAnswer):
-    """What the client received: the status, the headers, the URL and any error — and the answer's bytes, which NO adapter can read.
+    """What the client received: the status, the headers, the URL and any error — and the answer's bytes, which the public API gives an adapter no way to read.
 
-    There is no `.json`, `.text` or `.body`: the payload is opened by `decode` (below, core/schema.py) alone, so an adapter that wants to know what a provider said can only
-    ask the declared schema, and nothing a payload decision is made from is a raw value (2b-repair-13a: Astra's `getattr(resp, "json")` has nothing to find). The one other way to the
-    bytes is `download()`, for the file a caller asked to download: content, not a payload — and since 2b-repair-13c a `Sealed` one, which an adapter can hand to the router and
-    never read (tests/test_member_isolation.py lists every use).
+    There is no `.json`, `.text` or `.body`: the payload is opened by `decode` (below, core/schema.py), so an adapter that wants to know what a provider said asks the declared schema, and
+    the public operations give a payload decision no raw value (2b-repair-13a: Astra's `getattr(resp, "json")` has nothing to find; the private `_body` is a documented boundary of trust
+    model B, INVARIANTS B-1, and tests/inventory.py lists every read of it). The one other public way to the bytes is `download()`, for the file a caller asked to download: content, not
+    a payload — and since 2b-repair-13c a `Sealed` one, which an adapter can hand to the router and not read (the inventory lists every use).
 
     What THIS module reads of the bytes, for the client's own purposes and never to say what a provider's data is: `check()` looks at the first bytes of a success answer to refuse an
     HTML page wearing it (it can only make a lane unavailable); `_text_of` reads a 401/403 body to classify the failure; `_count_of` counts results for the call log, through the
@@ -749,8 +749,8 @@ def members(source_id: str, items: MemberList, build) -> list:
     return OMIT for a member it read whole and found to name nothing to report: no record, and no dropped member either.
 
     `items` is what the decoder returned for a `members(...)` schema node (core/schema.py, core/payload.py MemberList): every member already
-    decoded alone, in a list that cannot be iterated, indexed or searched — so no adapter can have lost one to another's malformed fields, and
-    none can pass over the list any other way than through here. A field an adapter reads and the schema does not declare raises UndeclaredRead,
+    decoded alone, in a list that cannot be iterated, indexed or searched — so the public API offers no way to lose one to another's malformed fields, and
+    no other way to pass over the list than through here. A field an adapter reads and the schema does not declare raises UndeclaredRead,
     which is not caught here."""
     if not isinstance(items, MemberList):
         raise TypeError(f"{source_id}: members() takes what the decoder returned for a members(...) node (a MemberList), not a {type(items).__name__}")

@@ -89,7 +89,7 @@ def _names_once(pairs: list) -> dict:
 
 
 def open_json(body) -> Any:
-    """The value of a JSON text, read one way (see the module docstring). Malformed for anything else, nesting past MAX_DEPTH and a number past a double included."""
+    """The value of a JSON text, read one way (see the module docstring). Malformed for anything else, nesting past MAX_DEPTH and a float literal that overflows a double (`1e999`) included; an integer is read exactly."""
     text = _text(body, "JSON")
     try:
         value = json.loads(text, object_pairs_hook=_names_once, parse_constant=_refuse_constant)

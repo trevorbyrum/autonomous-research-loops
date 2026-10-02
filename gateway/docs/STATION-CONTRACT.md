@@ -88,95 +88,110 @@ is never conflated with "not searched" or "unavailable":
     has since changed — reads nothing and ends nothing: `provider_unavailable`,
     `unobserved`, `partial_pagination`, no `next` (task 2b-repair-7). Each find adapter's end
     rule rests on its provider's own evidence, recorded in `PROVIDER-PAGINATION.md`.
-  A provider's answer is read through a schema the operation declares, and nothing else (task 2b-repair-12). Every 2b round since
-  repair-7 patched another access pattern of one cause: adapters read a payload field by field with no declared shape (malformed
-  members, falsy wrong-kind holders, lazy `a or b` fallbacks, alternatives whose nested contents were decoded after the choice,
-  references reduced to the first). Now each operation declares, in its adapter module (`SCHEMAS`, plain data built from
-  `core/schema.py`), the payload it supports: each field's type, which containers are lists of independent members, which fields are
-  required, which are alternatives of one another (`alts`) and any rule that ties fields together (a flow's `Ref` and `URN`). ONE decoder
-  (`schema.decode`) checks the whole declared payload before any adapter logic runs and hands back values an adapter cannot read any
-  other way: an object is a `Rec` holding exactly its declared fields (reading another raises `UndeclaredRead`, which is not a member's
-  loss, so an adapter cannot read what its schema does not say), a provider's list of candidates is a `MemberList` (every member decoded
-  alone; it cannot be iterated, indexed, sliced or filtered, only read through `base.members()`, `base.first_member()`, `take()` and
-  `expand()`), a record's own list is an ordinary list. Choosing between alternatives therefore happens on decoded values: every
-  declared field of an object is decoded, nested contents included, whether or not the adapter will use it, so `a or b` cannot skip reading
-  `b`. What a failure costs is decided by where it is: a field missing or null is the empty value of its kind (None, false, an empty
-  list, an object of nothing) unless the schema requires it; one that is there and is not its kind is unreadable, `false`, `0`, `""`, `[]`
-  and `{}` included, and costs the nearest boundary around it. A member of a list that cannot be read costs that member only (it is
-  dropped and counted, so the lane is `partial` with a lower-bound `count`; a member that is readable and names nothing to report, a
-  reference with no DOI, is omitted, not counted); a lookup's first result that cannot be read is an unreadable answer, never "not found",
-  and never answered by the result after it; a member that holds members of its own and cannot be unfolded (an SDMX data set) is one
-  dropped member in place of what it held; a field declared `isolated` costs only itself (Unpaywall's `best_oa_location`, which the listed
-  locations may not hold: the lane is `partial`, the listed locations stay); a field declared `soft` (a total, a cursor, a count of pages)
-  says nothing when it cannot be read and never ends or continues anything (`base.total`: a whole number no smaller than what was
-  read; `base.offset_after`: a number past the page); anywhere else the answer is unreadable (`provider_unavailable`, `payload_invalid`,
-  `unobserved`, no count). A list a provider may leave out only when it counts nothing (`results` beside `numFound: 0`) is empty only
-  when that count is the whole number zero. `make_record` still checks the canonical fields, so one member whose title is a number is
-  dropped and counted, not raised out of the router. Where a list is one record's own data (a record's authors, tags or licences; a
-  series' observations; the rows of one table record, which FRED, Census and BEA keep whole) or a catalogue's entries (BLS, FRED, Census,
-  BEA: one that cannot be read makes the whole catalogue unreadable, never a shorter one) the schema says `own(...)`, not `members(...)`;
-  whether a list is one or the other is the schema author's declaration, and the source check in `tests/test_member_isolation.py` lists
-  every place an answer or a list leaves the decoder (`.raw`, `each`, `at`, `without`, the `MemberList` constructor, `download()`) with why it is not a
-  pass over independent members; a use that is not listed fails — a bounded guard behind the construction below, not what makes it so.
-  The decoder's contract with the rest of the gateway is COMPLETE (task 2b-repair-13a; the defect family of repair-12's review and Gate D #1 was that it was not):
-  (1) its failure channel is TOTAL — every scalar conversion (a year: `str.isdigit()` takes `"²"`, `"①"` and a 4,301-digit string, `int()` does not) and every
-  consistency rule runs inside the decoder's own wrapper, so whatever a provider's value makes it do is a `PayloadError` at the nearest boundary (a member's loss, with
-  its readable peers kept as a partial lower bound), the opening of the answer's bytes (empty, not the document its format requires, nested deeper than the gateway's
-  limit of 64 levels) is inside the same channel, and only a programming error (`UndeclaredRead`, `PassiveRead`, `SealedRead`) passes; (2) declarations are complete for what DECIDES — a field declared
-  `any_()` is handed over `Passive`, carried as sent for a record's `extra` and nothing else (every other use raises), so a field that identifies a candidate, selects one,
-  ends or continues a listing, goes into a request or is shown to the caller as a label is declared a kind (`maybe_key`, `text`, `key`, `flag`, ...) and a wrong one is
-  unreadable, never a returned identifier; (3) the raw answer is SEALED — the client's `Response` holds no readable payload (no `json`, `text` or `body`: only
-  `decode(...)` opens a payload's bytes — see "scope" below — and `download()` hands back the bytes of a file a caller asked to download, sealed), a member's `raw` is sealed and
-  leaves only as a copy, and so is every record an adapter builds (task 2b-repair-13c): a record's `raw`, its `extra` values built from an `any_()` field and a download's
-  bytes stay opaque from `make_record` until the router serializes the answer (`router.execute`, after every lane has run and every selection, coverage and licence decision
-  is made) or the index stores a loaded record (`harvest/index.upsert`), so no adapter can read provenance to decide what to keep, and a typed field of a record (title,
-  venue, licence, identifiers, year) refuses an opaque value. doi.org's registration-agency answer and DOAJ's CSV dump cross the decoder like any other, so an answer that is
-  not a list is an unreadable lookup (nothing cached) and not an `unknown` agency remembered for a prefix. **Scope of "only the decoder opens a payload's bytes":** it covers
-  every payload decision — what a provider's answer says, which can produce a record, a count, an end or an empty answer. The client also reads a `Response`'s bytes in four
-  named places for its own purposes (`check()`'s look at the first bytes to refuse an HTML page wearing a success status, which can only make a lane unavailable;
-  `_text_of`'s read of a 401/403 body to classify the failure of the call; `_count_of`'s count for the call log, through the decoder's own opener; `download()`'s sealed
-  bytes): `tests/test_opaque_provenance.py` `BytesAreOpenedOnlyWhere` is the exact inventory, and a new read fails it. (4) every BYTE OPENER is strict against its format's
-  specification (task 2b-repair-13c; Astra R13A-1): the decoder validated the values a lexer handed it, and the lexer, each library at its default, had already resolved
-  malformed input — a DOAJ dump with an unterminated quote loaded as zero journals. `core/wire.py` holds the openers and its docstring is the ruling for each. JSON (RFC
-  8259): UTF-8 only, no `NaN`/`Infinity`/`-Infinity`, no number past a double, no name twice in one object, nesting bounded. XML (XML 1.0): well-formedness is expat's, the bytes
-  are read as UTF-8 (an invalid byte or another declared encoding is an error, not U+FFFD), the declaration's version must be `1.x`, no DOCTYPE, nesting bounded, and an element's text split by child elements has no single text (unreadable, not its first chunk). CSV (RFC
-  4180): a quoted field must be closed and followed by a comma or the end of the line, no quote inside an unquoted field, a carriage return is half of CRLF, a cell is at most
-  131,072 characters, a byte order mark is data, and a header that names a column the schema reads twice is refused (a column nothing reads may repeat); LF-only line ends, a last line with no ending, a
-  blank line, short rows and extra cells are accepted as they always were. Malformed input is a `PayloadError` (the answer is unreadable), never a successful shorter or empty
-  one. The OpenAlex snapshot reader opens its JSON lines through the same opener, and a line that is not JSON fails the load naming the file and line (it was skipped). The HTTP headers the
-  gateway decides from are openers too: `Link` is strict (RFC 8288), and `Retry-After` is an HTTP-date or `delay-seconds` (ASCII digits), no longer whatever `float()` reads — `inf` held a breaker open for ever.
-  `tests/test_openers.py` lists every parse call in the gateway and fails on one that is not classified. A truncation that ends exactly at a record's end is a well-formed
-  shorter CSV: nothing in the format marks the end, and the transport's own length framing is what detects a short body. A schema may say a field is `never_null` where an operation's contract tells a field LEFT OUT from one sent
-  null (Semantic Scholar's `data`: omitted beside `total: 0` is a search that matched nothing; null is unreadable). A Dataflow's structure reference is validated over
-  every `Ref` and `URN` it states before any is filtered (an empty or nameless `Ref` is a malformed one), with `package` and `class` only as SDMX 2.1 fixes them.
-  Alternatives, specifically (tasks 2b-repair-10b/11b R10-1, 2b-repair-12 R11-1): DataCite's `rights` beside `rightsIdentifier`, BEA's
-  `Description` beside `Desc` and every spelling of a value's key, a DOI among a record's identifiers beside its own id, Unpaywall's
-  `best_oa_location` beside `oa_locations`, a Crossref work's issue date beside its creation date and its authors' `given`/`family`
-  beside `name`, the Crossref journals loader's typed `issn-type` beside its plain `ISSN`, SDMX-JSON's `structure`, `structures` (its first
-  element is the one a lookup reads, and it is decoded) and the same two under `data`: each is a declared field, so a malformed one,
-  nested contents included, beside a valid preferred value makes what holds it unreadable by the scope's rule above. SDMX-ML is decoded by
-  the same decoder (an element's attributes, text and children are fields of the schema; `"**Name"` is every descendant of that name).
-  The evidence, in the order of independence: the oracle (`tests/test_oracle.py`, `tests/oracle/`: the canonical fields every valid answer
-  must produce, hand-written from the providers' documentation and the fixtures, the RFC 3986 / 8288 `Link` vectors written from the RFC
-  text, the BIS and ECB catalogue cases, the registry loaders' records, and a coverage record computed from what actually ran; written by
-  an author who had not read the gateway); `tests/test_schema_corruption.py`, which DERIVES its corruption positions from the declared
-  schemas (every declared field with a wrong kind, left out where required, every alternative beside a valid other and alone, what each
-  must cost read from where the schema puts it) and fails an adapter that reads what it does not declare; `tests/test_schema.py`, the
-  decoder's own rules; and `tests/test_invariants.py`, four invariants over every operation corrupted at every position of a valid answer
-  (an end or a continuation only from fields it read; an unreadable container never an empty one; readable peers survive; nothing escapes
-  unhandled). That harness is metamorphic (it holds a corrupted answer to how it may differ from the gateway's own answer to the valid one),
-  so it is supplementary coverage, not an independent oracle (task 2b-repair-10b, R9-4). A schema that under-declares a field is invisible to a harness
-  derived from it, which is why `any_()` is Passive: a decision cannot read an untyped value, so the first answer that reaches it fails
-  (tests/test_declarations.py audits the 65 that remain by what the adapter does with each). The derived pass goes into every `oneof` branch and `by` variant
-  (with a valid sample put in for the one the answer does not hold) and is checked against an inventory of the declared paths written apart from it; DOAJ's CSV
-  and the doi.org lookup are derived passes too. The
-  lazy-choice SOURCE SCAN that used to stand here (no `or`, `and` or conditional expression over two provider reads) is retired: it was a
-  guard with an ordinary-spelling bypass (Astra, 2b-repair-11: a value held in a variable first), never a proof, and with the decoder there
-  is no lazy provider read for it to watch. Sites reviewed and left: a filter on a catalogue row's identifier (`if row["id"]`: the accepted rule
-  that a row naming nothing is skipped, and a listing in which none names anything is not a catalogue, `base.identified`); credentials
-  and token lifetimes (`expires_in or 3600`: no candidate data); Socrata's portal-vouching predicate (fails closed: a member that cannot
-  be read vouches for nothing); the OpenAlex snapshot loader's tolerant reading of a local file; and pass-through `extra` fields
-  (`cited_by_count`, `type`, `version`, ...), declared `any_`, which are carried as the provider sent them and are not decisions.
+
+  **A provider's answer is read through a schema the operation declares, and nothing else (task 2b-repair-12), under trust model B (task 2b-repair-14).**
+
+  *The guarantee, exactly.* For SUPPORTED provider input — bytes within the supported provider-input contract (section 5) — the gateway guarantees a complete contract at four
+  boundaries: the response is a complete HTTP message (the transport), its bytes are valid in their format (the byte openers), the document is in the supported vocabulary and its
+  fields mean what the schema says (the decoder), and what a lane reports is what was read through them (adapters and storage exits). Input that fails any of them is an
+  unreadable lane — `provider_unavailable`, with `payload_invalid` or `transport_failure`, `unobserved`, no count — and never a shorter, emptier or different answer. First-party
+  adapters are TRUSTED, REVIEWED CODE. Their discipline — whatever identifies, selects, ends or continues anything is read through a declared kind; a provider's raw object and
+  metadata are stored and not read; materialization happens at the reviewed sinks — is enforced by declared-read inventories (`gateway/tests/inventory.py`, held by
+  `tests/test_inventory.py`), import and parser guards, mutation tests with positive controls (`make gen2-gateway`) and review, as a documented design boundary. It is **not**
+  by-construction confinement of Python code against deliberate misuse: Python identity checks (`x is None` on an `any_()` value), reachable private fields, importable privileged
+  helpers (`plain`, `Sealed`) and finite testing are documented boundaries of the model, not debts. Who may supply adapter code, runner isolation and credential and network
+  separation are not claimed here (the supervisor's, 2e1). The operator adopted this model on 2026-10-02 (Gate D #2; INVARIANTS B-1).
+
+  *Transport completion (task 2b-repair-14; Astra F1).* The shared transport (`adapters/base.py` `_read_body`; RFC 9112 §6.3, §7.1) returns a success only for a complete message.
+  It validates the framing headers (Transfer-Encoding with Content-Length, a coding other than exactly `chunked`, and a Content-Length that repeats, is a list or is not digits
+  are refused as invalid or conflicting framing, not guessed at), checks that `http.client` settled on the framing the headers state, bounds the body at 256 MiB (a declared
+  length past it is refused unread), and raises `IncompleteRead` when a Content-Length is not met or chunked framing is not terminated. An error status keeps its status whatever
+  happens to its body. **Disclosed ambiguity:** a response with neither Content-Length nor chunked framing is close-delimited, its only end is the connection closing (RFC 9112
+  §6.3), and EOF cannot tell a deliberately shorter body from an interrupted one — so a close-delimited body cut at a record boundary is a well-formed shorter document and loads
+  as one. Whether a live provider's responses are close-delimited is Phase 4's to qualify.
+
+  *The decoder.* ONE decoder (`schema.decode`) checks the whole declared payload before any adapter logic runs and hands back values read through these public operations: an
+  object is a `Rec` holding exactly its declared fields (reading another raises `UndeclaredRead`, which is not a member's loss: the public way to read a field the schema does not
+  declare fails visibly), a provider's list of candidates is a `MemberList` (every member decoded alone; it cannot be iterated, indexed, sliced or filtered, only read through
+  `base.members()`, `base.first_member()`, `take()` and `expand()`), a record's own list is an ordinary list. Choosing between alternatives therefore happens on decoded values:
+  every declared field of an object is decoded, nested contents included, whether or not the adapter will use it, so `a or b` cannot skip reading `b`. What a failure costs is
+  decided by where it is: a field missing or null is the empty value of its kind (None, false, an empty list, an object of nothing) unless the schema requires it; one that is
+  there and is not its kind is unreadable, `false`, `0`, `""`, `[]` and `{}` included, and costs the nearest boundary around it. A member of a list that cannot be read costs that
+  member only (it is dropped and counted, so the lane is `partial` with a lower-bound `count`; a member that is readable and names nothing to report, a reference with no DOI, is
+  omitted, not counted); a lookup's first result that cannot be read is an unreadable answer, never "not found", and never answered by the result after it; a member that holds
+  members of its own and cannot be unfolded (an SDMX data set) is one dropped member in place of what it held; a field declared `isolated` costs only itself (Unpaywall's
+  `best_oa_location`, which the listed locations may not hold: the lane is `partial`, the listed locations stay); a field declared `soft` (a total, a cursor, a count of pages)
+  says nothing when it cannot be read and never ends or continues anything (`base.total`: a whole number no smaller than what was read; `base.offset_after`: a number past the
+  page); anywhere else the answer is unreadable (`provider_unavailable`, `payload_invalid`, `unobserved`, no count). A list a provider may leave out only when it counts nothing
+  (`results` beside `numFound: 0`) is empty only when that count is the whole number zero. `make_record` checks the canonical fields, so one member whose title is a number is
+  dropped and counted, not raised out of the router. Where a list is one record's own data (a record's authors, tags or licences; a series' observations; the rows of one table
+  record, which FRED, Census and BEA keep whole) or a catalogue's entries (BLS, FRED, Census, BEA: one that cannot be read makes the whole catalogue unreadable, never a shorter
+  one) the schema says `own(...)`, not `members(...)`; whether a list is one or the other is the schema author's declaration, and the inventory (`gateway/tests/inventory.py`)
+  lists every place an answer or a list leaves the decoder (`.raw`, `each`, `at`, `without`, `empty`, `same_as`, the `MemberList`, `Sealed`, `Passive` and `Rec` constructors,
+  `download()`) with why it is not a pass over independent members; a use that is not listed fails — a finite syntax guard for review behind the construction, not what makes it
+  so.
+
+  *Totality, declarations, sealed provenance (task 2b-repair-13a, -13c, -14).* (1) The decoder's failure channel is TOTAL — every scalar conversion (a year: `str.isdigit()` takes
+  `"²"`, `"①"` and a 4,301-digit string, `int()` does not) and every consistency rule runs inside the decoder's own wrapper, so whatever a provider's value makes it do is a
+  `PayloadError` at the nearest boundary (a member's loss, with its readable peers kept as a partial lower bound), the opening of the answer's bytes (empty, not the document its
+  format requires, nested deeper than the gateway's limit of 64 levels) is inside the same channel, and only a programming error (`UndeclaredRead`, `PassiveRead`, `SealedRead`)
+  passes. (2) Declarations are complete for what DECIDES — a field declared `any_()` is handed over `Passive`, carried as sent for a record's `extra` and nothing else (every
+  public way of reading it raises), so a field that identifies a candidate, selects one, ends or continues a listing, goes into a request or is shown to the caller as a label is
+  declared a kind (`maybe_key`, `text`, `key`, `flag`, ...) and a wrong one is unreadable, never a returned identifier. (3) The raw answer is SEALED: the client's `Response`
+  exposes no payload (no `json`, `text` or `body`: `decode(...)` opens a payload's bytes — see "scope" below — and `download()` hands back the bytes of a file a caller asked to
+  download, sealed), a member's `raw` is sealed and leaves only as a copy, and so is every record an adapter builds: a record's `raw`, its `extra` values built from an `any_()`
+  field and a download's bytes stay opaque from `make_record` until the router serializes the answer (`router.execute`, after every lane has run and every selection, coverage and
+  licence decision is made), the cache persists a record (`Cache.put_record`) or the index stores a loaded record (`harvest/index.upsert`) — the three sinks that call `plain`,
+  the one materialization. The public operations on a Sealed or a Passive do not read: **nothing compares a Sealed with another** (a literal passed as `raw` has no comparison
+  with a decoded object), a decoded object compares with nothing but another decoded object through `Rec.same_as`, and a typed field of a record (title, venue, licence,
+  attribution, authors, links, identifiers, year, identity) takes its own typed domain and unwraps nothing the decoder issued. Two information-bearing predicates are sanctioned
+  by name (the operator's ruling of 2026-10-02) and listed, each with its reason: `Rec.empty`, used only at the reviewed provider-shape predicates (BEA's error object,
+  Unpaywall's best location, an SDMX structure that says nothing), and `Rec.same_as`, used only for the intended comparison of decoded provider objects (Unpaywall's best-location
+  check) and never for a value an adapter wrote. doi.org's registration-agency answer and DOAJ's CSV dump cross the decoder like any other, so an answer that is not a list is an
+  unreadable lookup (nothing cached) and not an `unknown` agency remembered for a prefix. **Scope of "only the decoder opens a payload's bytes":** it covers every payload
+  decision — what a provider's answer says, which can produce a record, a count, an end or an empty answer. The client also reads a `Response`'s bytes in named places for its own
+  purposes (`check()`'s look at the first bytes to refuse an HTML page wearing a success status, which can only make a lane unavailable; `_text_of`'s read of a 401/403 body to
+  classify the failure of the call; `_count_of`'s count for the call log, through the decoder's own opener; `download()`'s sealed bytes): the inventory lists each read of `_body`
+  with what it is for, and a new one fails it.
+
+  *The byte openers (task 2b-repair-13c; Astra R13A-1; frozen in 2b-repair-14).* The decoder validated the values a lexer handed it, and the lexer, each library at its default,
+  had already resolved malformed input — a DOAJ dump with an unterminated quote loaded as zero journals. `core/wire.py` holds the openers and its docstring is the ruling for
+  each; the supported provider-input contract (section 5) is their policy. Malformed input, and input outside the policy, is a `PayloadError` (the answer is unreadable), never a
+  successful shorter or empty one. The OpenAlex snapshot reader opens its JSON lines through the same opener, per line: a line that cannot be read is refused, counted and named
+  (file, line, reason) and the lines around it are loaded, and a file that cannot be read, decompressed or framed fails the load. The HTTP headers the gateway decides from are
+  openers too: `Link` is strict (RFC 8288), and `Retry-After` is `delay-seconds` (ASCII digits) or a date the library's email-date parser reads (its tolerance is stated in
+  `Response.retry_after_seconds` and held by a test; a date with no zone is GMT). `tests/inventory.py` lists every parser entry point in the package — a call or not, a parser
+  object included — and fails on one that is not classified. A truncation that ends exactly at a record's end is a well-formed shorter CSV: nothing in the format marks the end,
+  and the transport's framing check (above) is what detects a short body. A schema may say a field is `never_null` where an operation's contract tells a field LEFT OUT from one
+  sent null (Semantic Scholar's `data`: omitted beside `total: 0` is a search that matched nothing; null is unreadable). A Dataflow's structure reference is validated over every
+  `Ref` and `URN` it states before any is filtered (an empty or nameless `Ref` is a malformed one), with `package` and `class` only as SDMX 2.1 fixes them.
+
+  *Alternatives, specifically* (tasks 2b-repair-10b/11b R10-1, 2b-repair-12 R11-1): DataCite's `rights` beside `rightsIdentifier`, BEA's `Description` beside `Desc` and every
+  spelling of a value's key, a DOI among a record's identifiers beside its own id, Unpaywall's `best_oa_location` beside `oa_locations`, a Crossref work's issue date beside its
+  creation date and its authors' `given`/`family` beside `name`, the Crossref journals loader's typed `issn-type` beside its plain `ISSN`, SDMX-JSON's `structure`, `structures`
+  (its first element is the one a lookup reads, and it is decoded) and the same two under `data`: each is a declared field, so a malformed one, nested contents included, beside a
+  valid preferred value makes what holds it unreadable by the scope's rule above. SDMX-ML is decoded by the same decoder (an element's attributes, text and children are fields of
+  the schema; `"**Name"` is every descendant of that name): an element is its namespace URI and its local name, a scalar element that holds a child element has no scalar text
+  (unreadable, never its first chunk), and a message outside SDMX-ML 2.1 is an unreadable answer (section 5).
+
+  *The evidence, in the order of independence:* the oracle (`tests/test_oracle.py`, `tests/oracle/`: the canonical fields every valid answer must produce, hand-written from the
+  providers' documentation and the fixtures, the RFC 3986 / 8288 `Link` vectors written from the RFC text, the BIS and ECB catalogue cases, the registry loaders' records, and a
+  coverage record computed from what actually ran; written by an author who had not read the gateway); `tests/test_schema_corruption.py`, which DERIVES its corruption positions
+  from the declared schemas (every declared field with a wrong kind, left out where required, every alternative beside a valid other and alone, what each must cost read from
+  where the schema puts it) and fails an adapter that reads what it does not declare; `tests/test_schema.py`, the decoder's own rules; `tests/test_transport_framing.py`,
+  `tests/test_xml_interpretation.py` and `tests/test_snapshot_lines.py`, which drive the transport, the XML rules and the snapshot loader from independently written bytes; and
+  `tests/test_invariants.py`, four invariants over every operation corrupted at every position of a valid answer (an end or a continuation only from fields it read; an unreadable
+  container never an empty one; readable peers survive; nothing escapes unhandled). That harness is metamorphic (it holds a corrupted answer to how it may differ from the
+  gateway's own answer to the valid one), so it is supplementary coverage, not an independent oracle (task 2b-repair-10b, R9-4); schema-derived cases show consistency with the
+  declarations, and declarations cannot certify their own completeness. A schema that under-declares a field is invisible to a harness derived from it, which is why `any_()` is
+  Passive: a decision cannot read an untyped value, so the first answer that reaches it fails (tests/test_declarations.py audits the 65 that remain by what the adapter does with
+  each). The derived pass goes into every `oneof` branch and `by` variant (with a valid sample put in for the one the answer does not hold) and is checked against an inventory of
+  the declared paths written apart from it; DOAJ's CSV and the doi.org lookup are derived passes too. The lazy-choice SOURCE SCAN that used to stand here (no `or`, `and` or
+  conditional expression over two provider reads) is retired: it was a guard with an ordinary-spelling bypass (Astra, 2b-repair-11: a value held in a variable first), never a
+  proof, and with the decoder there is no lazy provider read for it to watch. Sites reviewed and left: a filter on a catalogue row's identifier (`if row["id"]`: the accepted rule
+  that a row naming nothing is skipped, and a listing in which none names anything is not a catalogue, `base.identified`); credentials and token lifetimes (`expires_in or 3600`:
+  no candidate data); Socrata's portal-vouching predicate (fails closed: a member that cannot be read vouches for nothing); the OpenAlex snapshot loader's per-line reading of a
+  local file; and pass-through `extra` fields (`cited_by_count`, `type`, `version`, ...), declared `any_`, which are carried as the provider sent them and are not decisions.
   A dataflow browse is about the flow asked for (task 2b-repair-11b, R10-2). BIS and ECB select the Dataflow whose id was
   asked (`sdmx.dataflow_named`: the flow its agency maintains), then the DataStructure that flow's own `Structure` reference
   names (id, agency and version as stated), and the label, the dimensions and the request template all come from that one
@@ -288,3 +303,32 @@ The surface teaches; an agent never has to guess a source's shape:
   attempt. The job answer carries the caller's own `observation` (`served: polled`, its
   `call_ref` or `capture_loss`); when the job was created by another invocation or attempt,
   `dispatched_by` names it — a shared job never lends its creator's identity to the caller.
+
+
+## 5. The supported provider-input contract (trust model B)
+
+Operator rulings of 2026-10-02, recorded in INVARIANTS B-1 (Gate D #2). **Trust model B:** the gateway guarantees a complete contract for *supported provider input*; first-party adapters are trusted,
+reviewed code, held to their discipline by declared-read inventories, import and parser guards, mutation tests with positive controls and review — a documented design boundary, not by-construction
+confinement against deliberate misuse (§2, "The guarantee, exactly"). **Input outside the policy below fails visibly — the lane is unavailable — and is never read as something shorter, emptier or
+different.** This is the gateway's policy. It does not claim that every provider uses exactly this subset, and it is not a provider qualification: Phase 4 qualifies the live providers against it.
+
+| Layer | Supported | Outside it (the lane is unavailable) |
+|-------|-----------|--------------------------------------|
+| Transport | a complete HTTP message: the declared Content-Length met, or chunked framing terminated; a body of at most 256 MiB; a response with neither (close-delimited) is accepted, see below | a body short of its Content-Length; chunked framing with no terminal chunk; Transfer-Encoding together with Content-Length; a coding other than `chunked`; a Content-Length that repeats, is a list or is not digits; a body past 256 MiB (a declared length past it is refused unread) |
+| Encoding | UTF-8 only, for JSON, XML and CSV; a leading byte order mark is ignored in JSON and XML and is data in CSV | UTF-16/32, Latin-1 and every other encoding; an invalid UTF-8 sequence (an encoded surrogate included), which is an error and never U+FFFD; an XML declaration of another encoding |
+| JSON (RFC 8259) | each name once in an object; finite floats; exact integers (of any size to Python's 4,300-digit conversion limit); nesting of at most 64 levels | a duplicate name; `NaN`, `Infinity`, `-Infinity`; a number that does not fit a double (`1e999`: never read as infinity); an integer past the conversion limit; nesting past 64; anything RFC 8259 refuses |
+| XML (SDMX-ML) | well-formed XML 1.x in UTF-8; the SDMX-ML 2.1 vocabulary, by expanded name (namespace URI and local name — the prefix is only a spelling), with the four elements the standard declares unqualified (`Ref`, `URN`, and a structure-specific data message's `Series` and `Obs`); a scalar element that holds no child element; nesting of at most 64 levels | a DOCTYPE; a declared version that is not `1.x`; an element of a name the schema reads in a namespace it does not read it from (another SDMX-ML version, 2.0 or 3.0, included); a scalar element that holds a child element (its first chunk is never taken); nesting past 64 |
+| CSV (RFC 4180, with stated extensions) | quoted fields closed and followed by a comma or the line end; LF-only lines; no final newline; blank lines; short rows (a missing cell is nothing); extra cells (kept in the row's raw, never read); a bare CR inside a quoted field (data); cells of at most 131,072 characters | an unclosed quote; text after a closing quote; a quote inside an unquoted field; a bare carriage return outside a quoted field; a cell past 131,072 characters; a header that names a column the schema reads twice |
+| Snapshot (a local JSON Lines file) | one source object per line, each line read on its own; a line refused is counted and named, the lines around it are loaded | a file that cannot be read, decompressed or framed fails the load |
+| Headers | `Link` read to its last character (RFC 8288); `Retry-After` as `delay-seconds` (ASCII digits) or a date the library's email-date parser reads, a zone-less date being GMT | a `Link` header that does not read through (neither a continuation nor an end); a `Retry-After` that is neither |
+
+The two information-bearing predicates (§2) are part of the policy, not exceptions to it: `Rec.empty`, used only at the reviewed provider-shape predicates, and `Rec.same_as`, equality between
+decoded provider objects, used only for the intended comparisons (Unpaywall's best-location check) and never for a value an adapter minted. Both are listed in `gateway/tests/inventory.py`.
+
+**Compatibility limits, stated.** Valid general XML that the policy refuses — a DOCTYPE, a non-UTF-8 document, a namespace other than SDMX-ML 2.1's — is a supported-message restriction, not a claim that
+such XML is malformed; the 13c Gate C review read the BIS, ECB, SDMX 2.1, OpenAlex and DOAJ public documentation and found no provider contract that requires those forms (and 2b-repair-14 read the SDMX 2.1 schemas for the namespaces and the unqualified forms), which is a bounded result and no certificate. A structure-specific
+data message whose `Series` and `Obs` are qualified in the data structure's own namespace (rather than unqualified, as SDMX 2.1 declares them) is outside the policy and fails visibly until a
+provider needs it. Duplicate JSON names are refused although the grammar permits them (RFC 8259 §4 leaves their meaning unpredictable). **Close-delimited bodies:** a response whose only end is the
+connection closing (RFC 9112 §6.3) cannot be told from a deliberately shorter body by anything the gateway can see; a CSV cut at a record boundary in such a response is a well-formed shorter
+document and loads as one, and a Content-Length or chunked response cut the same way does not. **What is not claimed:** that every provider response is within the policy; that an unused provider
+field is valid (nothing is validated that no field reads); universal XML support or an XSD engine; proof over arbitrary adapter programs; live canaries (Phase 4).

@@ -28,7 +28,7 @@ alternatives rule: `rightsIdentifier` and `rights`, `best_oa_location` and `oa_l
 declared, so all are decoded before the adapter can choose, and what an adapter reads is a decoded value (core/payload.py: Rec).
 `alts` names the groups of fields that are alternatives of one another, for the tests that corrupt each beside a valid other.
 
-A field declared `any_()` is metadata: it is handed over as a `Passive`, which can be stored and never read (core/payload.py). Whatever identifies, selects,
+A field declared `any_()` is metadata: it is handed over as a `Passive`, which is stored and whose every public reading raises (core/payload.py). Whatever identifies, selects,
 ends or continues anything, or goes into a request, is declared a kind.
 
 XML (SDMX-ML) is decoded by the same decoder: an `obj` applied to an ElementTree element reads `"@name"` as an attribute (an unqualified one: no namespace), `"@*"` as all of them,

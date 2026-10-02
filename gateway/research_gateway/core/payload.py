@@ -1,51 +1,52 @@
-"""What a provider's answer is once it has been decoded (task 2b-repair-12, completed in 2b-repair-13a).
+"""What a provider's answer is once it has been decoded (task 2b-repair-12, completed in 2b-repair-13a and -13c, and put under its trust model in 2b-repair-14).
 
-One defect family came back in every 2b round since repair-7 under a new spelling: malformed members, falsy wrong-kind
-holders, lazy `a or b` fallbacks, nested alternatives, contradictory references, an untyped identifier, a conversion that
-raised. Each repair fixed the access patterns found and the next one got past it, because the cause was never removed: the
-contract between a provider's answer and the rest of the gateway was incomplete. Repair-12 made validation eager and
-declared; repair-13a closes the three gaps that were left, as properties of the decoder and of what it hands out:
+TRUST MODEL B (INVARIANTS B-1; the operator's ruling of 2026-10-02; gateway/docs/STATION-CONTRACT.md, "The supported provider-input contract"). The gateway guarantees a complete contract for
+SUPPORTED provider input: the response is a complete message, its bytes are valid in their format, the document is in the supported vocabulary, and what a lane reports is what was read — or the
+lane is unavailable. First-party adapters are TRUSTED, REVIEWED CODE. What this module hands them — and what it withholds — is how that code is kept honest, not a confinement of Python: the
+public operations that would read what an adapter must not decide from do not exist or raise, a declared-read inventory (tests/inventory.py) lists every place the code goes past them, and
+review reads that list. Python identity checks (`x is None` on an `any_()` value), the private fields of these classes, importable helpers such as `plain` and finite testing are documented
+boundaries of that model, not debts.
 
-  * FAILURES ARE TOTAL. Whatever a provider's value makes a conversion or a consistency rule do, the decoder's one channel
-    for it is PayloadError, at the narrowest member boundary around it (core/schema.py); only UndeclaredRead — a programming
-    error — passes through. MEMBER_ERRORS below is the one statement of what a builder's own reading of a member may raise.
-  * DECLARATIONS ARE COMPLETE FOR WHAT DECIDES. A field declared `any_()` is handed over as a `Passive`: carried as sent, for
-    storing, and nothing else — every attempt to read it (truth, equality, ordering, iteration, text, arithmetic, attributes)
-    raises PassiveRead. So a value that identifies, selects, ends, continues or is sent in a request cannot be an `any_()` one:
-    its schema must give it a kind, or the first answer that reaches the read fails.
-  * THE RAW ANSWER IS SEALED. An adapter is handed a Response that holds no readable payload (adapters/base.py): the bytes of a payload
-    are opened by the decoder alone, and what leaves the decoder for provenance — a member's `raw`, an `any_()` value — is a
-    `Sealed`/`Passive` that can be stored and never read, leaving as a copy (`plain`). (2b-repair-13c finished the third gap: the
-    provenance stays sealed THROUGH the canonical record, not only up to it. See "Where a sealed value becomes plain" below.)
+One defect family came back in every 2b round since repair-7 under a new spelling: malformed members, falsy wrong-kind holders, lazy `a or b` fallbacks, nested alternatives, contradictory
+references, an untyped identifier, a conversion that raised. Each repair fixed the access patterns found and the next one got past it, because the cause was never removed: the contract
+between a provider's answer and the rest of the gateway was incomplete. Repair-12 made validation eager and declared; repair-13a closed three gaps, as properties of the decoder and of
+what it hands out:
 
-The decoder returns exactly these, and nothing an adapter can read otherwise:
+  * FAILURES ARE TOTAL. Whatever a provider's value makes a conversion or a consistency rule do, the decoder's one channel for it is PayloadError, at the narrowest member boundary around it
+    (core/schema.py); only UndeclaredRead — a programming error — passes through. MEMBER_ERRORS below is the one statement of what a builder's own reading of a member may raise.
+  * DECLARATIONS ARE COMPLETE FOR WHAT DECIDES. A field declared `any_()` is handed over as a `Passive`: carried as sent, for storing, and nothing else — every public way of reading it (truth,
+    equality, ordering, iteration, text, arithmetic, attributes) raises PassiveRead. So a value that identifies, selects, ends, continues or is sent in a request is declared a kind in
+    its schema, or the first answer that reaches the read fails.
+  * THE RAW ANSWER IS SEALED. An adapter is handed a Response that exposes no payload (adapters/base.py): the bytes of a payload are opened by the decoder, and what leaves the decoder for
+    provenance — a member's `raw`, an `any_()` value — is a `Sealed`/`Passive` that is stored and not read, and leaves as a copy (`plain`).
 
-  * an object is a `Rec`, which holds exactly its declared fields. Reading one it does not declare raises UndeclaredRead
-    — a failure, never a member's loss (it is not in MEMBER_ERRORS) — so an adapter cannot read what its schema does not say;
-  * a list of independent members is a `MemberList`: every member already decoded alone (a `Rec`, or Unreadable where it could not be), and the
-    list cannot be iterated, indexed or searched by an adapter — only read through `members()`, `first_member()`, `take()` and `expand()`, which
-    isolate each member — so no spelling of a pass over a provider's candidates (a filter, a `while`, `rows[0]`, a flatten) can lose a readable
-    member to a malformed one (R7-2, three times). A record's OWN list (its authors, its tags) is an ordinary list: it is all-or-nothing by nature;
-  * every alternative a provider may state (`rightsIdentifier` or `rights`, `best_oa_location` or `oa_locations`, a
-    structure's `Ref` or `URN`) is a declared field, decoded completely, nested contents included, before the adapter can
-    choose between them.
+What the decoder returns:
 
-`Rec.raw` is the member as the provider sent it, for a record's `raw` (I-8): a `Sealed`. tests/test_member_isolation.py lists every use of it
-that is not the value of a `raw=` argument, with why, and fails one that is not listed.
+  * an object is a `Rec`, which holds exactly its declared fields. Reading one it does not declare raises UndeclaredRead — a failure, never a member's loss (it is not in MEMBER_ERRORS);
+  * a list of independent members is a `MemberList`: every member already decoded alone (a `Rec`, or Unreadable where it could not be), and the list cannot be iterated, indexed or searched —
+    only read through `members()`, `first_member()`, `take()` and `expand()`, which isolate each member, so none of the passes over a provider's candidates that lost a readable member to a
+    malformed one (R7-2, three times: a filter, a `while`, `rows[0]`, a flatten) is an operation of the public API. A record's OWN list (its authors, its tags) is an ordinary list: it is
+    all-or-nothing by nature;
+  * every alternative a provider may state (`rightsIdentifier` or `rights`, `best_oa_location` or `oa_locations`, a structure's `Ref` or `URN`) is a declared field, decoded completely,
+    nested contents included, before the adapter can choose between them.
 
-WHERE A SEALED VALUE BECOMES PLAIN (2b-repair-13c, Astra R13A-2). Until then `make_record` returned `plain(record)`: a record's `raw` and its `extra` values were readable
-provider data the moment the builder returned them, so `make_record(raw=row.raw)["raw"].get("timespan")` let a passive field decide which candidates an adapter kept, and no
-scan could see it. Now a record is a plain dict whose provenance is still opaque: `raw` is a `Sealed`, and every `extra` value built from a decoded `any_()` field is still a
-`Passive` (or holds one). So are the bytes of a download (`Response.download()` is a `Sealed`). Nothing adapter code can reach reads any of them, so nothing it decides — which
-candidates to keep, what a coverage count is, where a listing ends — can depend on one. They become plain exactly where the gateway serializes or stores a result, and nowhere
-else: `router.execute` (the answer and everything cached or written from it), `harvest/index.upsert` (the index load). A typed field of a record (title, venue, licence, identifiers, year ...) accepts its own typed domain and nothing the decoder issued (`make_record`): what is read or decided on is
-declared a kind, and no typed field unwraps a decoded object.
+`Rec.raw` is the member as the provider sent it, for a record's `raw` (I-8): a `Sealed`. The inventory (tests/inventory.py) lists every use of it that is not the value of a `raw=` argument,
+with why, and fails one that is not listed.
 
-Nothing compares a Sealed object with another (2b-repair-14): a raw an adapter passed `make_record` is a Sealed like any other, so a literal it chose cannot be compared with a decoded object to
-learn whether they match. The one comparison of provider data is `Rec.same_as`, between two decoded objects (did the provider repeat itself), and the one question about an object's contents
-besides its declared fields is `Rec.empty` (did it hold anything); the inventory (tests/inventory.py) lists every use of each. What stays outside this, and is a documented boundary of the
-trust model and not a defect (INVARIANTS B-1; the operator's ruling of 2026-10-02): Python cannot hide an object's private storage, `x is None` cannot be intercepted, and a finite corpus is not
-a proof (tests/test_sealed_payload.py says so).
+WHERE A SEALED VALUE BECOMES PLAIN (2b-repair-13c, Astra R13A-2). Until then `make_record` returned `plain(record)`: a record's `raw` and its `extra` values were readable provider data the
+moment the builder returned them, so `make_record(raw=row.raw)["raw"].get("timespan")` let a passive field decide which candidates an adapter kept, and no scan could see it. Now a record is
+a plain dict whose provenance is still opaque: `raw` is a `Sealed`, and every `extra` value built from a decoded `any_()` field is still a `Passive` (or holds one). So are the bytes of a
+download (`Response.download()` is a `Sealed`). The public operations on them do not read; they become plain at the reviewed sinks — where the gateway serializes or stores a result — and
+`plain` is the one materialization, called nowhere else: `router.execute` (the answer and everything cached or written from it), `Cache.put_record` and `harvest/index.upsert` (the inventory
+holds those three). A typed field of a record (title, venue, licence, identifiers, year ...) accepts its own typed domain and nothing the decoder issued (`make_record`): what is read or
+decided on is declared a kind, and no typed field unwraps a decoded object.
+
+Nothing compares a Sealed object with another (2b-repair-14): a raw an adapter passed `make_record` is a Sealed like any other, so a literal it chose cannot be compared with a decoded object
+to learn whether they match. Two information-bearing predicates are sanctioned by name (the operator's ruling of 2026-10-02), each listed with its reason in the inventory: `Rec.empty`,
+whether a decoded object held anything, used only at the reviewed provider-shape predicates; and `Rec.same_as`, whether two DECODED objects are the same one (did the provider repeat itself:
+Unpaywall's best-location check), never for a value an adapter wrote. What stays outside the public operations, and is a documented boundary of the model and not a defect: Python cannot hide
+an object's private storage, `x is None` cannot be intercepted, `plain` and `Sealed` are importable, and a finite corpus is not a proof (tests/test_sealed_payload.py says so). An adapter that
+goes around the API is a reviewed-code failure the inventory is built to make visible.
 """
 from __future__ import annotations
 

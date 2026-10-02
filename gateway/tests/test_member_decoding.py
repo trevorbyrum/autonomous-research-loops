@@ -18,7 +18,7 @@ gone: a provider's list reaches an adapter as a `Members` that can only be decod
     metadata lookup read `rows[0]` itself until 2b-repair-8).
 
 Oracle: the identities the bodies below name, stated here by hand. What the lists that are NOT members do — a table's
-rows, a catalogue's entries — is not decided here: tests/test_member_isolation.py lists them, with why.
+rows, a catalogue's entries — is not decided here: tests/inventory.py lists them, with why (held by tests/test_inventory.py).
 """
 from __future__ import annotations
 

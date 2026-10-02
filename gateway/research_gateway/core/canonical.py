@@ -4,9 +4,11 @@ A record never carries full text. `raw` is the source's payload (or the
 relevant slice of it), kept so nothing is lost to normalisation.
 
 A record is a plain dict whose PROVENANCE IS STILL OPAQUE (2b-repair-13c, Astra R13A-2; core/payload.py "Where a sealed value becomes plain"): `raw` is a `Sealed`, and an
-`extra` value built from a decoded `any_()` field is still the `Passive` it was. Adapter code that builds, returns or inspects records can therefore read none of it, so no
-selection or coverage decision can depend on provenance. `router.execute` and `harvest/index.upsert` turn a record into plain data where it is serialized or stored. The typed
-fields (title, venue, licence, identifiers ...) are plain, and refuse an opaque value.
+`extra` value built from a decoded `any_()` field is still the `Passive` it was. The public operations on them do not read, so adapter code that builds, returns or inspects records is
+not handed provenance to decide on: a selection or coverage decision that depended on it would be code outside this API, listed by the inventory (tests/inventory.py) and caught in
+review (trust model B, INVARIANTS B-1). `router.execute`, `Cache.put_record` and `harvest/index.upsert` turn a record into plain data where it is serialized or stored, with `plain`, the one
+materialization. The typed fields (title, venue, licence, identifiers ...) are plain data that take their own typed domain and nothing the decoder issued: no typed field unwraps a decoded
+object, and `make_record` materializes nothing.
 """
 from __future__ import annotations
 

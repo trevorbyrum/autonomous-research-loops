@@ -12,8 +12,8 @@ whatever a provider's value makes ANY conversion or consistency rule do surfaces
   * a consistency rule that fails on a provider's value is the object's failure, and one that reads what its schema does not declare is a programming error that still passes (UndeclaredRead, PassiveRead);
   * the opening of the answer's bytes: empty, unparseable, absurdly nested.
 
-What this cannot show: that no other exception can come out of a value nobody has thought of. The corpus is finite; `_normalized` and `_ruled` are what make the channel total by construction (every call out of the
-decoder into code that reads a provider's value goes through one of them), and the corpus checks that construction on the values that broke it.
+What this cannot show: that no other exception can come out of a value nobody has thought of. The corpus is finite; `_normalized` and `_ruled` are what the channel's totality rests on (every call out of the
+decoder into code that reads a provider's value goes through one of them: a property of that module's source, kept by review), and the corpus checks it on the values that broke it.
 """
 from __future__ import annotations
 
