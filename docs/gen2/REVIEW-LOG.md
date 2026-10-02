@@ -1159,3 +1159,6 @@ The coder reports both targets exiting 0 at `0d53bfc`.
 **Operator ruling needed.**
 
 **Orchestrator:** the oracle is unchanged and gen-1 is unchanged (PID 1040). Astra's re-review is `7efecde2`; its task is `private/reviews/gen2-2b-repair-15-review-task-20261002.md`.
+
+## 2026-10-02 — Operator ruling: the DNS residual (2b-repair-15 F2)
+**Option (a) is chosen.** A `GatewayClient` (and its `resolve()`) is constructed only inside a supervised job child. The supervisor's job `deadline_at` termination (SIGTERM then SIGKILL; `gen2/supervisor/supervisor.py`) bounds the lookup. No new code is needed now. 2e1 owns this as a wiring rule, and its review must verify there is no other construction site. This is recorded in BUILD-STATE's 2e1 entry. Astra's 2b-repair-15 review will be told of the ruling when it reports.
