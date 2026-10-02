@@ -1200,3 +1200,24 @@ Full report: `private/reviews/gen2-2b-repair-15-astra-review-20261002.md`.
 - clean tree, `gateway/` unchanged, gen-1 unchanged (PID 1040);
 - independent reruns in progress;
 - Astra re-review `c8dd6ba4`, task `private/reviews/gen2-2b-repair-16-review-task-20261002.md`.
+
+## 2026-10-02 — Astra re-review of 2b-repair-16 (`c8dd6ba4`, pinned 6b44bb2) — BLOCK (A, C); PASS (B)
+Full report: `private/reviews/gen2-2b-repair-16-astra-review-20261002.md`.
+
+**ROOT-CAUSE:**
+- **The sequential R15-1 case:** the original probe, run unmodified, shows zero requests to the stale listener; the move to a new address works.
+- **R15-2:** the constructor control was verified by trace.
+
+**Blocking:**
+- **R16-1 (HIGH):** `_withdraw()` doesn't coordinate with an exchange already running. `_connect()`'s iterator over the withdrawn list survives, so an exchange that started before withdrawal still connects, sends the token, and accepts `searched_empty/complete/0/exhausted`.
+- **R16-2 (HIGH):** `_opener()` keeps urllib's automatic `ProxyHandler`. With `http_proxy` set, the connection goes to the proxy's literal address, so withdrawal is bypassed and the token goes through the proxy to an unrelated listener.
+
+Both are client-output reproductions using ordinary APIs.
+
+**Routing (charter):** this is the **third consecutive BLOCK since Gate D #2**: the final review, 15, and 16. A fresh-session **Gate D #3** (`e5989aa9`, task `private/reviews/gen2-gate-d-3-task.md`) runs before the next repair. It is to:
+- name the engine hand-off guarantee and its family cause (endpoint authority is not a single owned fact);
+- inventory every route by which a request can leave the client;
+- set the client's threat model: concurrency, and the ambient environment;
+- give a finite checklist.
+
+The post-2q Gate D is renumbered #4.
