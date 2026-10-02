@@ -16,11 +16,10 @@ import copy
 import unittest
 
 from research_gateway.adapters import bea, harvard_dataverse as dv
-from research_gateway.adapters.base import Client, FakeTransport, PayloadError, boolean
-from research_gateway.core import sdmx
+from research_gateway.adapters.base import Client, FakeTransport, PayloadError, decode
+from research_gateway.core import schema as S, sdmx
 from research_gateway.core.broker import Broker, RatePolicy
 from research_gateway.core.identity import RegistrationAgencies
-from research_gateway.core.payload import view
 
 from tests import invariant_ops as ops
 from tests.invariant_ops import corrupt_route
@@ -148,12 +147,14 @@ class RestrictionsAreReadAsWhatTheyAre(unittest.TestCase):
                 out, lane = populated(ops.DV_FETCH, lambda b: b["data"]["latestVersion"]["files"][0].update({"restricted": ok}))
                 self.assertEqual((lane["completeness"], out["records"][0]["restricted"]), ("complete", want))
 
-    def test_boolean_reads_a_flag_as_one(self):
+    def test_a_flag_is_read_as_one(self):
+        def flag(value):
+            return decode("x", S.obj({"f": S.flag()}), {"f": value})["f"]
         for value, want in ((True, True), (False, False), (None, False)):
-            self.assertIs(boolean("x", value), want)
+            self.assertIs(flag(value), want)
         for wrong in (0, 1, "", "no", [], {}, 0.0):
             with self.assertRaises(PayloadError):
-                boolean("x", wrong)
+                flag(wrong)
 
     def test_a_dataverse_dataset_whose_identifier_is_not_text_is_unreadable_not_a_dataset_with_no_doi(self):
         for wrong in (False, 0, [], {}, 5):
@@ -199,17 +200,28 @@ class CatalogueEntries(unittest.TestCase):
         out, lane = populated(ops.BEA_VALUES, lambda b: b["BEAAPI"]["Results"]["ParamValue"][0].update({"Desc": None, "Description": "other"}))
         self.assertEqual(out["entries"][0]["label"], "other")
 
+    @staticmethod
+    def envelope(answer):
+        """The error BEA states in `answer`, with the envelope decoded as any BEA operation decodes it (and no requirement of its results)."""
+        return bea._error(decode("bea", bea._answer({}, None), answer)["BEAAPI"])
+
     def test_bea_an_envelope_that_is_not_an_object_is_unreadable_and_reports_no_error(self):
         for wrong in (False, 0, [], "", "x", 5):
             with self.subTest(envelope=repr(wrong)):
                 with self.assertRaises(PayloadError):
-                    bea._error(view({"BEAAPI": wrong}))
+                    self.envelope({"BEAAPI": wrong})
                 out, lane = populated(ops.BEA_VALUES, lambda b: b.update({"BEAAPI": wrong}))
                 self.assertTrue(unreadable(lane), lane)
         for ok in ({}, {"Results": {}}, {"Results": {"Error": None}, "Error": None}):
-            self.assertIsNone(bea._error(view({"BEAAPI": ok})))
-        self.assertEqual(bea._error(view({"BEAAPI": {"Results": {"Error": {"APIErrorDescription": "bad key"}}}})), "bad key")
-        self.assertEqual(bea._error(view({"BEAAPI": {"Error": {"APIErrorDescription": "bad key"}}})), "bad key")
+            self.assertIsNone(self.envelope({"BEAAPI": ok}))
+        self.assertEqual(self.envelope({"BEAAPI": {"Results": {"Error": {"APIErrorDescription": "bad key"}}}}), "bad key")
+        self.assertEqual(self.envelope({"BEAAPI": {"Error": {"APIErrorDescription": "bad key"}}}), "bad key")
+
+
+def sdmx_named(entry):
+    """What an SDMX-JSON entry is called: its `id`, else its `name`, both decoded as text first."""
+    rec = decode("ecb", sdmx.DIM_VALUE, entry)
+    return rec["id"] or rec["name"]
 
 
 class SdmxEntries(unittest.TestCase):
@@ -220,11 +232,11 @@ class SdmxEntries(unittest.TestCase):
             with self.subTest(wrong=repr(wrong)):
                 for entry in ({"id": wrong, "name": "N"}, {"id": "I", "name": wrong}, {"name": wrong}):
                     with self.assertRaises(PayloadError):
-                        sdmx._named(entry)
+                        sdmx_named(entry)
 
     def test_control_the_id_wins_and_the_name_stands_in(self):
         for entry, want in (({"id": "I", "name": "N"}, "I"), ({"id": None, "name": "N"}, "N"), ({"id": "", "name": "N"}, "N"), ({"name": "N"}, "N"), ({}, None)):
-            self.assertEqual(sdmx._named(entry), want)
+            self.assertEqual(sdmx_named(entry), want)
 
 
 class RegistrationAgency(unittest.TestCase):
@@ -281,16 +293,18 @@ class Publisher(unittest.TestCase):
     def test_dataverse_the_datasets_own_and_a_hits(self):
         """No route reaches `dataset_record` (a DOI goes to its registration agency's resolver), so it is stated directly, as test_present_means_typed does."""
         dataset = ops.DV_DATASET["data"]
-        record = dv.dataset_record(dv.BASE, "harvard_dataverse", view(copy.deepcopy(dataset)))
+        def dataset_record(d):
+            return dv.dataset_record(dv.BASE, "harvard_dataverse", decode("harvard_dataverse", dv.SCHEMAS["resolve"], {"data": d})["data"])
+        record = dataset_record(copy.deepcopy(dataset))
         self.assertEqual((record.get("publisher"), record.get("venue")), ("Harvard Dataverse", "Harvard Dataverse"))
-        hit = dv.search_record(dv.BASE, "harvard_dataverse", {"global_id": "doi:10.7910/DVN/X1", "name": "N", "publisher": "Harvard Dataverse"})
+        hit = dv.search_record(dv.BASE, "harvard_dataverse", decode("harvard_dataverse", dv.HIT, {"global_id": "doi:10.7910/DVN/X1", "name": "N", "publisher": "Harvard Dataverse"}))
         self.assertEqual(hit.get("publisher"), "Harvard Dataverse")
         for wrong in WRONG:
             with self.subTest(publisher=repr(wrong)):
                 with self.assertRaises(PayloadError):
-                    dv.dataset_record(dv.BASE, "harvard_dataverse", view({**copy.deepcopy(dataset), "publisher": wrong}))
+                    dataset_record({**copy.deepcopy(dataset), "publisher": wrong})
                 with self.assertRaises(PayloadError):
-                    dv.search_record(dv.BASE, "harvard_dataverse", {"global_id": "doi:10.7910/DVN/X1", "name": "N", "publisher": wrong})
+                    dv.search_record(dv.BASE, "harvard_dataverse", decode("harvard_dataverse", dv.HIT, {"global_id": "doi:10.7910/DVN/X1", "name": "N", "publisher": wrong}))
 
 
 def populated_openaire(fields: dict):

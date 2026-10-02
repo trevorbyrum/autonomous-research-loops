@@ -11,17 +11,20 @@ each is stated here through the real adapter and router, on the harness's valid 
   alone          the alternate of the wrong kind with the preferred value left out (the isolation Astra used: the alternate IS a read field)
 
 and the outcome of a malformed one is the contract's, by scope: a member of a list is dropped and counted (partial, the others stand); a lookup's record, a
-single record or a whole catalogue is unreadable (provider_unavailable, payload_invalid, unobserved, no count). The structural half is `AlternativesAreAllRead`
-below: no `or`, `and` or conditional expression reads two provider values lazily, apart from the listed reasons.
+single record or a whole catalogue is unreadable (provider_unavailable, payload_invalid, unobserved, no count).
+
+2b-repair-12 (R11-1) removed the cause this file used to guard against with a source scan. Every alternative is a field the operation's schema declares, and the one
+decoder (core/schema.py) decodes every declared field of an object, nested contents included, before an adapter sees any of it; an adapter chooses between decoded
+values, so `a or b` cannot skip reading `b`. The syntactic scan this file used to hold (no `or`, `and` or conditional expression over two provider reads) was a guard
+with a demonstrated ordinary-spelling bypass (Astra, 2b-repair-11), not a proof, and it is gone with the reads it watched; the evidence that nothing is skipped is
+behavioural: the classes below, tests/test_schema_corruption.py (which corrupts every alternative the schemas declare, beside a valid preferred value and alone),
+and tests/test_member_isolation.py (an adapter reads only decoded values: where it may leave the decoder is listed).
 """
 from __future__ import annotations
 
-import ast
 import copy
-import tempfile
 import unittest
 from dataclasses import dataclass
-from pathlib import Path
 
 from research_gateway.adapters.base import Client, FakeTransport
 from research_gateway.core.broker import Broker, RatePolicy
@@ -328,98 +331,57 @@ class LoaderAlternatives(unittest.TestCase):
         self.assertEqual(self.datacite(attributes={"symbol": None})[0]["identity"], "repository:datacite:harvest.test")
 
 
-# ------------------------------------------------------------------ the structural half: no site reads two provider values lazily
-GATEWAY = Path(__file__).resolve().parent.parent / "research_gateway"
-SCANNED = ([p for p in sorted((GATEWAY / "adapters").glob("*.py")) if p.name != "base.py"] + [GATEWAY / "core" / "sdmx.py", GATEWAY / "core" / "identity.py", GATEWAY / "core" / "canonical.py"]
-           + sorted((GATEWAY / "harvest").glob("*.py")))
-READERS = frozenset({"text", "key", "maybe_key", "boolean", "listed", "optional", "nested", "need", "field", "plain", "normalize_doi", "normalize_issn", "normalize_arxiv",
-                     "year_from", "first_member", "member_key", "_named", "_held", "_yes", "_identifier", "token", "total", "offset_after", "counts_nothing", "_bytes"})
+class NestedAlternatives(unittest.TestCase):
+    """R11-1 (Astra, 2b-repair-11): an alternative is decoded completely — its nested supported contents included — before one is chosen. A well-typed outer
+    container whose supported fallback leaf is malformed hid behind a valid preferred value; each case has its readable control and its alternate-only control."""
 
+    def test_unpaywall_the_best_location_is_decoded_as_a_location_beside_readable_listed_ones(self):
+        for listed in (True, False):
+            for bad in ("https://example.org/best", False, 0, [], {}):
+                with self.subTest(listed=listed, best_url=repr(bad)):
+                    body = copy.deepcopy(corrupt_route(ops.UNPAYWALL).body)
+                    body["best_oa_location"] = {"url": bad}
+                    if not listed:
+                        body["oa_locations"] = []
+                    out, lane = run(ops.UNPAYWALL, body)
+                    expected = "complete" if isinstance(bad, str) else ("partial" if listed else "unobserved")
+                    self.assertEqual(lane["completeness"], expected, lane)
+                    if listed:
+                        self.assertEqual(lane["retrieved"], list(ops.UNPAYWALL.ids), "the readable listed locations are all kept")
+                    if not isinstance(bad, str) and listed:
+                        self.assertEqual(lane.get("error_class"), "payload_invalid")
 
-def reads(node: ast.AST) -> bool:
-    """Whether evaluating `node` reads provider data: a `.get`, a subscript or a call of one of the readers every provider value passes through."""
-    for n in ast.walk(node):
-        if isinstance(n, ast.Subscript):
-            return True
-        if isinstance(n, ast.Call):
-            f = n.func
-            if isinstance(f, ast.Attribute) and f.attr in ("get", "pop", "first", "each", "entries"):
-                return True
-            if (f.id if isinstance(f, ast.Name) else f.attr if isinstance(f, ast.Attribute) else None) in READERS:
-                return True
-    return False
+    def test_sdmx_json_every_place_a_structure_is_stated_is_decoded_beside_a_valid_one(self):
+        for place in ("structures_first", "data_structure", "data_structures_first"):
+            for preferred in (True, False):
+                for bad in (False, 0, [], "bad", "CONTROL"):
+                    with self.subTest(place=place, preferred_present=preferred, value=repr(bad)):
+                        body = copy.deepcopy(corrupt_route(ops.ECB_DATA).body)
+                        value = copy.deepcopy(body["structure"]) if bad == "CONTROL" else bad
+                        if place == "structures_first":
+                            body["structures"] = [value]
+                        elif place == "data_structure":
+                            body["data"] = {"structure": value}
+                        else:
+                            body["data"] = {"structures": [value]}
+                        if not preferred:
+                            del body["structure"]
+                        out, lane = run(ops.ECB_DATA, body)
+                        self.assertEqual(lane["completeness"], "complete" if bad == "CONTROL" else "unobserved", lane)
+                        if bad != "CONTROL":
+                            self.assertNotIn("count", lane, "an unreadable message has no count")
 
-
-def lazy_sites(path: Path):
-    """(line, kind, source) of every `or`, `and` and conditional expression with TWO OR MORE operands that read provider data inside the expression: the later
-    operand is not evaluated when an earlier one decides, so a present malformed value there is never read."""
-    for n in ast.walk(ast.parse(path.read_text())):
-        if isinstance(n, ast.BoolOp):
-            if sum(1 for v in n.values if reads(v)) >= 2:
-                yield n.lineno, "or" if isinstance(n.op, ast.Or) else "and", ast.unparse(n)
-        elif isinstance(n, ast.IfExp):
-            if reads(n.body) and reads(n.orelse):
-                yield n.lineno, "ifexp", ast.unparse(n)
-
-
-# What the scan does not call a defect, with the reason; every entry is a site the scan finds and the sweep (evidence/2b-repair-11b/fallback-sites.md) classified.
-# adapters/base.py is the metered client (HTTP headers, request parameters), not a reader of a provider's payload. A key is (file, the expression as `ast.unparse` writes it). The reasons: QUERY a search predicate over our own catalogue entries; GUARD a type or presence guard of
-# one value, whose second operand is the same value read again; OWN our own canonical record or request, not a provider's answer; DISPATCH one field read once, by its kind;
-# CONDITION a condition that decides whether to read, never which of two fields is chosen; FILE the operator's local snapshot, read tolerantly by design (test_harvest).
-EXEMPT = {
-    ("adapters/bea.py", "q in str(e.get('id', '')).lower() or q in str(e.get('label', '')).lower()"): "QUERY",
-    ("adapters/bis.py", "not q or q in str(f['id']).lower() or q in str(f['label']).lower()"): "QUERY",
-    ("adapters/ecb.py", "not q or q in str(f['id']).lower() or q in str(f['label']).lower()"): "QUERY",
-    ("adapters/bls.py", "s.get('survey_abbreviation') and (not q or q in str(s.get('survey_name', '')).lower() or q in str(s.get('survey_abbreviation', '')).lower())"): "QUERY",
-    ("adapters/bls.py", "not q or q in str(s.get('survey_name', '')).lower() or q in str(s.get('survey_abbreviation', '')).lower()"): "QUERY",
-    ("adapters/census.py", "not all((isinstance(r, list) for r in j[1:])) or not all((isinstance(h, str) for h in j[0]))"): "GUARD",
-    ("adapters/fred.py", "not s.get('id') and (not s.get('title'))"): "CONDITION",
-    ("adapters/govinfo.py", "j.get('results') is not None or not counts_nothing(j.get('count'))"): "CONDITION",
-    ("adapters/govinfo.py", "record.get('format') or (record.get('extra') or {}).get('format')"): "OWN",
-    ("adapters/harvard_dataverse.py", "not allow_listed(ds.get('license')) or ds.get('terms_of_use') or file_restricted"): "CONDITION",
-    ("adapters/huggingface.py", "record.get('path') or (record.get('extra') or {}).get('path')"): "OWN",
-    ("adapters/huggingface.py", "record.get('revision') or (record.get('extra') or {}).get('revision') or 'main'"): "OWN",
-    ("adapters/openaire.py", "_TOKEN.get('value') and float(_TOKEN.get('exp', 0)) > time.time() + 60"): "OWN",
-    ("adapters/openaire.py", "j.get('results') is not None or not counts_nothing(field(j, 'header', 'numFound'))"): "CONDITION",
-    ("adapters/openml.py", "[d.get('creator')] if isinstance(d.get('creator'), str) else listed(SOURCE_ID, d, 'creator')"): "DISPATCH",
-    ("adapters/openml.py", "not files or files[0] is None or (not files[0]['links'][0].startswith(HOSTS))"): "CONDITION",
-    ("adapters/semanticscholar.py", "text(SOURCE_ID, paper.get('paperId')) or text(SOURCE_ID, nested(SOURCE_ID, paper, 'externalIds').get('DOI'))"): "CONDITION",
-    ("adapters/socrata.py", "len(parts) != 3 or parts[0] != 'socrata' or (not parts[1]) or (not parts[2])"): "GUARD",
-    ("adapters/socrata.py", "r and isinstance(r.get('venue'), str) and r['venue']"): "GUARD",
-    ("core/canonical.py", "isinstance(member.get(k), str) and member[k]"): "GUARD",
-    ("core/sdmx.py", "_local(el.tag) == 'Dimension' and el.attrib.get('id') and all((el.attrib['id'] != d for _, d in dims))"): "GUARD",
-    ("core/sdmx.py", "f['id'] == wanted and f['agency'] in (None, agency)"): "CONDITION",
-    ("harvest/openalex_snapshot.py", "normalize_issn(s.get('issn_l')) or (issns[0] if issns else None)"): "FILE",
-    ("harvest/registries.py", "s.get('name') if isinstance(s, dict) else text('datacite', s)"): "DISPATCH",
-}
-
-
-class AlternativesAreAllRead(unittest.TestCase):
-    def test_no_site_chooses_between_two_provider_values_it_reads_lazily(self):
-        found, seen = [], set()
-        for path in SCANNED:
-            rel = str(path.relative_to(GATEWAY))
-            for line, kind, source in lazy_sites(path):
-                seen.add((rel, source))
-                if (rel, source) not in EXEMPT:
-                    found.append(f"{rel}:{line} [{kind}] {source[:150]}")
-        self.assertEqual(found, [], "read every operand first and choose after (base.preferred, base.identity_from), or list the site in EXEMPT with its reason: " + "; ".join(found))
-        self.assertEqual(sorted(set(EXEMPT) - seen), [], "an exemption for a site that is no longer there")
-
-    def test_the_scan_sees_the_shape_it_is_about(self):
-        """Mutation check of the scan itself: the shapes the sweep replaced are found when written again."""
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "probe.py"
-            for source in ("def f(r, SOURCE_ID):\n    return text(SOURCE_ID, r.get('a')) or text(SOURCE_ID, r.get('b'))\n",
-                           "def f(r, S):\n    return text(S, r.get('a')) and text(S, r.get('b'))\n",
-                           "def f(a, S):\n    return normalize_doi(a.get('id')) if a.get('doi') in (None, '') else normalize_doi(a.get('doi'))\n"):
-                path.write_text(source)
-                self.assertEqual(len(list(lazy_sites(path))), 1, source)
-            for source in ("def f(r, S):\n    a, b = text(S, r.get('a')), text(S, r.get('b'))\n    return a or b\n",
-                           "def f(r, S):\n    return preferred(text(S, r.get('a')), text(S, r.get('b')))\n",
-                           "def f(r, S):\n    return text(S, r.get('a')) or ''\n"):
-                path.write_text(source)
-                self.assertEqual(list(lazy_sites(path)), [], source)
+    def test_crossref_journals_a_plain_issn_list_is_decoded_beside_a_typed_one(self):
+        probe = LoaderAlternatives()
+        for preferred in (True, False):
+            for bad in ("9999-9983", False, 0, [], {}):
+                with self.subTest(typed_list_present=preferred, issn=repr(bad)):
+                    fields = {"ISSN": [bad]}
+                    if not preferred:
+                        fields["issn-type"] = []
+                    recs, skipped = probe.crossref(**fields)
+                    want = (1, 0) if isinstance(bad, str) else (0, 1)
+                    self.assertEqual((len(recs), len(skipped)), want)
 
 
 if __name__ == "__main__":

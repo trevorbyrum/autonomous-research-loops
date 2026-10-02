@@ -4,15 +4,28 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
+from ..core import schema as S
 from ..core.canonical import make_record, year_from
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, Obj, PayloadError, check, key, listed, members, need, nested, plain, preferred, text, total
+from .base import AdapterError, Client, PayloadError, Rec, check, decode, members, total
 
 SOURCE_ID = "socrata"
 SMOKE = {'capability': 'find', 'query': 'business licenses', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("find", "resolve", "fetch")
 DISCOVERY = "https://api.us.socrata.com/api/catalog/v1"
 SEARCH_WINDOW = 10_000   # Socrata refuses a search whose offset + limit exceeds 10,000 (docs/PROVIDER-PAGINATION.md)
+
+# What an answer must be. A catalogue hit links to its dataset by its `permalink`, else its `link`: both declared, so both decoded before one is chosen. A portal is
+# vouched for only by a catalogue member that names it, so a member that cannot be read vouches for nothing (fail closed, R-6). A view's licence is an object that
+# names it or the name itself; its timestamp is epoch seconds.
+HIT = S.obj({"resource": S.obj({"id": S.key(), "name": S.text(), "updatedAt": S.text(), "description": S.text(), "type": S.any_(), "attribution": S.any_()}),
+             "metadata": S.obj({"domain": S.key(), "license": S.text()}), "permalink": S.text(), "link": S.text()}, alts=(("permalink", "link"),))
+SEARCH = S.obj({"results": S.required(S.members(HIT)), "resultSetSize": S.soft(S.whole())})
+VOUCH = S.obj({"results": S.required(S.members(S.obj({"metadata": S.obj({"domain": S.text()})})))})
+VIEW = S.obj({"id": S.any_(), "name": S.text(), "rowsUpdatedAt": S.whole(), "description": S.text(), "columns": S.own(S.obj({"fieldName": S.text()})),
+              "license": S.oneof(S.obj({"name": S.text(), "termsLink": S.any_()}), S.text()), "attribution": S.any_()})
+ROWS = S.own(S.any_())
+SCHEMAS = {"find": SEARCH, "vouch": VOUCH, "resolve": VIEW, "fetch": ROWS}
 
 
 def _headers(client: Client) -> dict:
@@ -44,8 +57,8 @@ def _vouched(client: Client, domain: str) -> None:
         return
     resp = client.get(SOURCE_ID, "resolve", DISCOVERY, params={"domains": domain, "limit": 1, "only": "datasets"},
                       headers=_headers(client), identity=f"socrata:{domain}")
-    vouched = {((r.get("metadata") or {}).get("domain") or "").lower() for r in plain(need(SOURCE_ID, resp.json, "results"))
-               if isinstance(r, dict)} if check(SOURCE_ID, resp) else set()
+    vouched = {d for d in decode(SOURCE_ID, VOUCH, resp.json)["results"].each(lambda r: (r["metadata"]["domain"] or "").lower())
+               if d is not None} if check(SOURCE_ID, resp) else set()
     if domain not in vouched:
         raise AdapterError(f"{domain} is not a Socrata portal known to the discovery catalog (R-6)")
     _KNOWN_DOMAINS.add(domain)
@@ -55,15 +68,15 @@ def reset_known_domains() -> None:
     _KNOWN_DOMAINS.clear()
 
 
-def _catalog_record(r: dict) -> dict:
-    res, meta = nested(SOURCE_ID, r, "resource"), nested(SOURCE_ID, r, "metadata")
-    domain, did = key(SOURCE_ID, meta.get("domain")), key(SOURCE_ID, res.get("id"))
-    return make_record(identity=f"socrata:{domain}:{did}", kind="dataset", source_id=SOURCE_ID, title=res.get("name"),
-                       year=year_from(res.get("updatedAt")), venue=domain, identifiers={"dataset_id": did},
-                       links=[preferred(text(SOURCE_ID, r.get("permalink")), text(SOURCE_ID, r.get("link")), f"https://{domain}/d/{did}")], license=meta.get("license"),
-                       extra={"description": (text(SOURCE_ID, res.get("description")) or "")[:1000], "type": res.get("type"), "updated_at": res.get("updatedAt"),
-                              "attribution": res.get("attribution")},
-                       raw=r)
+def _catalog_record(r) -> dict:
+    res, meta = r["resource"], r["metadata"]
+    domain, did = meta["domain"], str(res["id"])
+    return make_record(identity=f"socrata:{domain}:{did}", kind="dataset", source_id=SOURCE_ID, title=res["name"],
+                       year=year_from(res["updatedAt"]), venue=str(domain), identifiers={"dataset_id": did},
+                       links=[r["permalink"] or r["link"] or f"https://{domain}/d/{did}"], license=meta["license"],
+                       extra={"description": (res["description"] or "")[:1000], "type": res["type"], "updated_at": res["updatedAt"],
+                              "attribution": res["attribution"]},
+                       raw=r.raw)
 
 
 def find(client: Client, query: str, *, limit: int = 20, offset: int = 0, portal: str | None = None) -> dict:
@@ -73,9 +86,9 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0, portal
     params = {"q": query, "only": "datasets", "limit": size, "offset": offset, "domains": portal}
     resp = client.get(SOURCE_ID, "find", DISCOVERY, params=params, headers=_headers(client), query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
-    j = resp.json
-    results = need(SOURCE_ID, j, "results")
-    count = total(j.get("resultSetSize"), offset + len(results))
+    j = decode(SOURCE_ID, SEARCH, resp.json)
+    results = j["results"]
+    count = total(j["resultSetSize"], offset + len(results))
     records = members(SOURCE_ID, results, _catalog_record)
     # the catalog vouches for a portal only through a member read whole: learning domains from the raw
     # members, before each is decoded alone, let one non-object member lose the whole page (A4)
@@ -91,11 +104,9 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0, portal
 
 def _epoch_year(value) -> int | None:
     """The year of a view's timestamp, which Socrata states as epoch seconds (the leading digits of 1694726470 are not a year); none when
-    the view states none, and anything but a whole number of seconds is unreadable."""
+    the view states none (the schema made it a whole number or nothing)."""
     if value is None:
         return None
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise PayloadError(f"{SOURCE_ID}: {type(value).__name__} where a timestamp belongs")
     try:
         return datetime.fromtimestamp(value, timezone.utc).year
     except (OverflowError, OSError, ValueError):
@@ -108,17 +119,17 @@ def resolve(client: Client, identity: str) -> dict | None:
     resp = client.get(SOURCE_ID, "resolve", f"https://{domain}/api/views/{did}.json", headers=_headers(client), identity=identity)
     if not check(SOURCE_ID, resp):
         return None
-    v = need(SOURCE_ID, resp.json, kind=dict)
-    if not v.get("id"):
+    v = decode(SOURCE_ID, VIEW, resp.json)
+    if not v["id"]:
         raise PayloadError(f"{SOURCE_ID}: the view answer carries no id")
-    lic = v.get("license")
-    return make_record(identity=identity, kind="dataset", source_id=SOURCE_ID, title=v.get("name"), year=_epoch_year(v.get("rowsUpdatedAt")),
+    lic = v["license"]
+    return make_record(identity=identity, kind="dataset", source_id=SOURCE_ID, title=v["name"], year=_epoch_year(v["rowsUpdatedAt"]),
                        venue=domain, identifiers={"dataset_id": did}, links=[f"https://{domain}/d/{did}"],
-                       license=lic.get("name") if isinstance(lic, Obj) else lic,
-                       extra={"description": (text(SOURCE_ID, v.get("description")) or "")[:1000],
-                              "columns": [text(SOURCE_ID, c.get("fieldName")) for c in listed(SOURCE_ID, v, "columns")],
-                              "attribution": v.get("attribution"), "license_link": lic.get("termsLink") if isinstance(lic, Obj) else None},
-                       raw=v)
+                       license=lic["name"] if isinstance(lic, Rec) else lic,
+                       extra={"description": (v["description"] or "")[:1000],
+                              "columns": [c["fieldName"] for c in v["columns"]],
+                              "attribution": v["attribution"], "license_link": lic["termsLink"] if isinstance(lic, Rec) else None},
+                       raw=v.raw)
 
 
 def fetch(client: Client, target: str, *, limit: int = 1000, offset: int = 0, where: str | None = None) -> dict:
@@ -136,7 +147,7 @@ def fetch(client: Client, target: str, *, limit: int = 1000, offset: int = 0, wh
     resp = client.get(SOURCE_ID, "fetch", f"https://{domain}/resource/{did}.json", params=params, headers=_headers(client), identity=target)
     if not check(SOURCE_ID, resp):
         return {"identity": target, "records": []}
-    rows = need(SOURCE_ID, resp.json)
+    rows = decode(SOURCE_ID, ROWS, resp.json)
     rec = make_record(identity=f"{target}#rows", kind="file", source_id=SOURCE_ID, title=f"{did} rows {offset}-{offset + len(rows)}",
                       links=[f"https://{domain}/resource/{did}.json"], license=meta.get("license"),
                       extra={"rows": rows, "row_count": len(rows), "offset": offset}, raw=None)

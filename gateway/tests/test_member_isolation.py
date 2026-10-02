@@ -1,32 +1,22 @@
-"""Task 2b-repair-8 R7-2: member isolation is a property of the data, not of a name scan.
+"""Task 2b-repair-12 (R7-2, restated for the decoder): a malformed member never costs the readable members beside it, and nothing reads a provider's answer
+except through its declared schema.
 
-The defect came back three times (Socrata; then OpenCitations and eight more paths; then Hugging Face's file
-siblings and ECB's data sets): one malformed member of a provider's list lost every readable member beside it,
-because an adapter held its provider's list as a plain Python list and iterated, filtered, indexed or flattened it
-before the member-by-member decoder ran. The check that was meant to prevent it scanned the source for loops that
-call a record builder, so it missed a filter comprehension, a `while` loop, a builder under another name, `rows[0]`
-and a helper outside adapters/ (Astra, 2b-repair-7 review). Each repair narrowed the same fix to the next spelling.
+The defect came back three times in 2b-repair-7 and -8 (Socrata; then OpenCitations and eight more paths; then Hugging Face's file siblings and ECB's data sets):
+one malformed member of a provider's list lost every readable member beside it, because an adapter held its provider's list as a plain Python list and iterated,
+filtered, indexed or flattened it before the member-by-member decoder ran. Repair-8 made the list a view that could not be iterated. Repair-12 removes the deeper
+cause (core/payload.py, core/schema.py): every operation declares the payload it supports, ONE decoder checks the whole payload before any adapter logic runs, and an
+adapter receives only what the decoder returns:
 
-The structure now (core/payload.py): `Response.json` returns a VIEW. A provider's list is a `Members`, which has no
-iteration, indexing, slicing or membership test, only decoding that isolates each member (`decode`, `first`,
-`expand`); a provider's object is an `Obj`, whose values are views and which has no `items()` or `values()`. There
-is nothing to preprocess with, so no spelling can do it. Three groups of tests hold that:
+  * a provider's list of members is a `MemberList`: every member already decoded alone, and the list cannot be iterated, indexed, sliced or searched — only read
+    through members(), first_member(), take() and expand(), which isolate each member (Views and Bypasses below, run, not scanned for);
+  * a provider's object is a `Rec` holding exactly its declared fields: reading another raises UndeclaredRead, which is not a member's loss (Decoded);
+  * an answer is reached only through `decode(...)`: no adapter parses, subscripts or `.get`s `resp.json` (Reads below, a source check of where an answer or
+    a list may leave the decoder — each place listed with its reason, so a reviewer reads it).
 
-  * Views: the operations are absent, and a provider's list is refused where a decoded one is required.
-  * Bypasses: each of Astra's checker-bypass shapes (and the old check's own forms) is RUN against a view and
-    fails, not scanned for. The same source runs against the plain list the adapters used to hold, as the control:
-    that is what makes each a real bypass, and shows that what stops it is the data and not the shape.
-  * Doors: what the property does not cover is the one way out of a view, `plain()` (and the constructors
-    `Members(...)` and `view(...)`, which wrap a list the caller already holds). A source check lists every use
-    in the gateway with why it is not a provider's set of independent members: one record's own data, a table's
-    rows, a catalogue's entries. A use that is not listed fails, whatever it is named: an alias, an import
-    `as`, an attribute of a module. This is the check that remains, and it is small: it reads where a raw list may
-    leave the wrapper, not what a loop does with it.
-
-What it cannot see: a list reached by reflection (a `getattr` of a private name is refused in adapters), and a use
-of `plain()` that is listed here with a reason that is wrong for the list it reads — whether a given list is one
-record's data or a set of independent candidates is the author's declaration, and the reason beside it is where a
-reviewer reads it. The behaviour of the lists that ARE members is tested in tests/test_member_decoding.py.
+What the source check cannot see: a use of `.raw` or `each` whose listed reason is wrong for the list it reads. Whether a given list is one record's own data
+(`own(...)` in the schema) or a set of independent candidates (`members(...)`) is the schema author's declaration; the reason beside it is where a reviewer
+reads it, and tests/test_schema_corruption.py corrupts every position the schema declares. The behaviour of the lists that ARE members is tested in
+tests/test_member_decoding.py.
 """
 from __future__ import annotations
 
@@ -37,67 +27,47 @@ import textwrap
 import unittest
 from pathlib import Path
 
-from research_gateway.adapters.base import first_member, members, need
-from research_gateway.core import sdmx
+from research_gateway.adapters.base import first_member, members
+from research_gateway.core import schema as S, sdmx
 from research_gateway.core.canonical import make_record
-from research_gateway.core.payload import OMIT, Members, Obj, PayloadError, plain, view
+from research_gateway.core.payload import MemberList, OMIT, PayloadError, Rec, UndeclaredRead, Unreadable, plain
 
 ROOT = Path(__file__).resolve().parents[1] / "research_gateway"
-DOORS = ("plain", "view", "listed")   # functions that hand a raw value back (`listed`: one record's own list, plain), or wrap one the caller holds
-CONSTRUCTORS = ("Members",)       # `Members(items)` wraps a list the caller already holds
-METHODS = ("each",)               # `Members.each(build)` hands back a plain list of whatever the builder returned
+DOORS = ("plain",)                       # functions that hand a decoded value back as plain data
+CONSTRUCTORS = ("MemberList",)           # `MemberList(items)` wraps a list the caller already holds
+METHODS = ("each", "at", "unreadable")   # a MemberList's ways to a plain list or one member: each() hands back a plain list of whatever the builder returned
+PRIVATE = ("_items", "_v")               # the storage of a MemberList and of a Rec
+ANSWER = ("json", "json_or_none", "_parsed", "text", "body")   # what a Response holds of the provider's answer
+DECODERS = ("decode", "data_xml", "flows", "dimensions_xml", "message")   # the calls an answer may be an argument of
 
-# Every use of a door in the gateway, by (file, function): how many there are there, and why they are not a pass over a
-# provider's independent members. A use added to a function already listed changes its count, so it is read, not inherited.
+# Every place in the gateway where the provider's answer, or a list of it, leaves the decoder, by (file, function): how many uses there are there, and why that
+# is not a pass over a provider's independent members. A use added to a function already listed changes its count, so it is read, not inherited.
 USES = {
-    ("adapters/base.py", "<module>"): (2, "NO_MEMBERS, the empty list, and the table from a kind to its view"),
-    ("adapters/base.py", "members"): (1, "the one place that reads a list's members with each(): it keeps only records that name something and leaves the rest dropped"),
-    ("adapters/base.py", "Response.json"): (1, "the one place a parsed answer becomes a view"),
-    ("adapters/base.py", "listed"): (1, "the one place a record's own list is handed out as plain data: every call of `listed` is a use of it, listed below like plain()"),
-    ("adapters/base.py", "need"): (2, "wraps what it is given (a plain dict or list handed to it is made a view, never read) and maps a requested kind to its view"),
-    ("adapters/bea.py", "data"): (3, "BEA's rows and the table's notes are the payload of ONE table record, kept whole and never decoded one by one (Astra, 2b-repair-7)"),
-    ("adapters/bea.py", "catalog.call"): (1, "a catalogue's entries, answered whole: one that cannot be read makes the catalogue unreadable, never a shorter one"),
-    ("adapters/bis.py", "data.record"): (1, "the dimension attributes of ONE <Series> element"),
-    ("adapters/bls.py", "_series"): (1, "the observations of ONE series: rows of one record"),
-    ("adapters/bls.py", "_messages"): (1, "the answer's `message` strings, carried back to the caller"),
-    ("adapters/bls.py", "catalog"): (2, "a catalogue's entries (surveys, a survey's popular series), answered whole"),
-    ("adapters/census.py", "data"): (1, "the rows of ONE table record: a malformed row makes the table unreadable rather than shorter"),
-    ("adapters/census.py", "catalog"): (3, "a catalogue's entries, answered whole, and each dataset entry's own path parts"),
-    ("adapters/core.py", "_record"): (3, "ONE work's own download URLs and authors, and its payload minus the full text for the record's raw"),
-    ("adapters/crossref.py", "_record"): (6, "ONE work's own authors, licences, ISSNs, titles and date parts"),
-    ("adapters/datacite.py", "_record"): (3, "ONE DOI's own rights, titles and creators"),
-    ("adapters/doaj.py", "_record"): (5, "ONE article's own identifiers, links, authors and licence"),
-    ("adapters/doaj.py", "_journal"): (3, "ONE journal's own links, licence and subjects"),
-    ("adapters/fred.py", "data"): (2, "ONE series' observations and its metadata list: rows of one record"),
-    ("adapters/fred.py", "catalog"): (2, "a catalogue's entries, answered whole"),
-    ("adapters/govinfo.py", "_record"): (1, "ONE package's download links"),
-    ("adapters/harvard_dataverse.py", "dataset_record"): (1, "ONE dataset's citation fields"),
-    ("adapters/huggingface.py", "_license"): (2, "ONE repository's licence value and tags (its files are members, read by fetch)"),
-    ("adapters/huggingface.py", "_record"): (1, "ONE repository's own tags"),
-    ("adapters/harvard_dataverse.py", "search_record"): (2, "ONE dataset hit's own authors and subjects"),
-    ("adapters/openaire.py", "_record"): (6, "ONE product's own pids, instances (their alternate identifiers, pids and urls) and authors"),
-    ("adapters/openml.py", "_list_record"): (1, "ONE dataset's own qualities"),
-    ("adapters/openml.py", "_desc_record"): (1, "ONE dataset's own creators"),
-    ("adapters/semanticscholar.py", "_record"): (2, "ONE paper's own authors and publication types"),
+    ("adapters/bea.py", "_error"): (1, "whether the error object beside the results is empty: tested for emptiness only, an object the provider left empty says nothing"),
+    ("adapters/bea.py", "data"): (1, "BEA's rows are the payload of ONE table record, kept whole for its `rows` and never decoded one by one (Astra, 2b-repair-7)"),
+    ("adapters/globe.py", "fetch"): (1, "the bytes of a file the caller asked to download: content, not a payload"),
+    ("adapters/govinfo.py", "fetch"): (1, "the bytes of a file the caller asked to download: content, not a payload"),
+    ("adapters/harvard_dataverse.py", "fetch_in"): (1, "the bytes of a file the caller asked to download: content, not a payload"),
+    ("adapters/huggingface.py", "fetch"): (1, "the bytes of a file the caller asked to download: content, not a payload"),
+    ("adapters/kaggle.py", "fetch"): (1, "the bytes of a file the caller asked to download: content, not a payload"),
+    ("adapters/openml.py", "fetch"): (1, "the bytes of a file the caller asked to download: content, not a payload"),
+    ("adapters/openml.py", "find"): (1, "an error answer that cannot be read is no `no results`: read for its error code through a schema when it is an object, below"),
     ("adapters/socrata.py", "_vouched"): (1, "the portal-vouching predicate: a guarded security check that fails closed when the portal cannot be established, not a record-producing list"),
-    ("adapters/socrata.py", "resolve"): (1, "ONE view's own columns"),
-    ("adapters/unpaywall.py", "enrich"): (4, "an answer with no location list is its one best location: a list of one, built here from an object; and the two flags handed back"),
-    ("core/canonical.py", "make_record"): (1, "a record is plain data: no view of the provider's answer ends up inside one"),
-    ("core/canonical.py", "_text"): (1, "one typed field of a record, read as plain data to check its kind (never a candidate list)"),
-    ("core/canonical.py", "_texts"): (1, "one list field of a record (authors, links), read as plain data to check its kind"),
-    ("core/canonical.py", "_year"): (1, "one typed field of a record, read as plain data to check its kind"),
-    ("core/canonical.py", "_identifiers"): (1, "one map field of a record, read as plain data to check its kind"),
-    ("core/sdmx.py", "<module>"): (1, "NO_SERIES, the empty list"),
-    ("core/sdmx.py", "series_xml"): (1, "the series of an XML message the gateway parsed itself, as members"),
-    ("core/sdmx.py", "_held"): (1, "the message's shared structure definitions (its dimensions), read once and whole: every series needs them"),
-    ("harvest/registries.py", "crossref_journals.build"): (3, "ONE journal's own ISSNs and subjects"),
-    ("harvest/registries.py", "datacite_repositories.build"): (1, "ONE repository's own subjects"),
+    ("adapters/unpaywall.py", "enrich"): (3, "an answer with no location list is its one best location: a list of one, built here from the decoded object; and what each listed location is compared with"),
+    ("adapters/unpaywall.py", "enrich.location"): (1, "whether this location IS the best one: the two objects as the provider sent them, compared"),
+    ("core/sdmx.py", "context"): (1, "the structural context kept with each record's raw (I-8): the structure's own definitions, stored and never read"),
+    ("core/sdmx.py", "datasets"): (1, "no data sets: an empty list, built here"),
+    ("core/sdmx.py", "flows"): (1, "the flow's element, handed to the second decode that reads its references"),
+    ("core/sdmx.py", "has_content"): (1, "whether the structure says anything: tested for emptiness only"),
+    ("core/sdmx.py", "series_reader.read"): (1, "the value at a position of a dimension's lookup table: the position is the data (a series names its values by index)"),
+    ("core/sdmx.py", "series_xml.convert"): (1, "one <Series> element read whole into one series, as a list of one"),
+    ("harvest/registries.py", "_built"): (1, "the rows the loader reports it skipped: their reasons, never their content"),
+    ("harvest/registries.py", "doaj_journals"): (1, "DOAJ's CSV dump, parsed by the csv module; each of its rows is decoded against the row schema"),
 }
 
 
 # ---- what a provider-data module may import (R8-3): closed over every import form, not over the names the checker happens to look for
-STDLIB_ALLOWED = {"*": {"__future__", "re", "base64", "datetime", "time", "typing"}, "core/sdmx.py": {"xml.etree.ElementTree"},
-                  "adapters/openaire.py": {"threading"}}   # no JSON parser, no `ast`, no `sys`/`importlib`
+STDLIB_ALLOWED = {"*": {"__future__", "re", "base64", "datetime", "time", "typing"}, "adapters/openaire.py": {"threading"}}   # no JSON parser, no `ast`, no `sys`/`importlib`
 UNANALYSABLE_CALLS = ("eval", "exec", "compile", "vars", "globals", "locals", "__import__")
 
 
@@ -207,18 +177,18 @@ def functions(tree: ast.AST):
     return visit(tree, ())
 
 
-def door_uses(root: Path = ROOT) -> dict[tuple[str, str], list[str]]:
-    """{(file, innermost function or <module>): each door used there, one entry per use} for every module under `root` but the views' own.
-    A door is used when the module imports it (under any name: `as`, from base, canonical or payload), calls it,
-    passes it on or aliases it (a bare reference), reaches it as an attribute of a module (`payload.plain`), calls
-    the one method that hands back a plain list (`.each`), or reaches for the views' private storage."""
+def reads(root: Path = ROOT) -> dict[tuple[str, str], list[str]]:
+    """{(file, innermost function or <module>): each place the answer or a list of it leaves the decoder, one entry per use} for every provider-data module:
+      * a door: `plain` (called, passed on or aliased, however it is imported), the `MemberList` constructor, a method that hands back a plain list or one member
+        (`each`, `at`, `unreadable`), the private storage of a MemberList or a Rec;
+      * `.raw` anywhere but as (part of) the value of a `raw=` argument: `raw` is for storing, and a record's raw is the one thing it is stored in;
+      * the answer itself — `.json`, `.json_or_none`, `.text`, `.body`, `._parsed` of a response — anywhere but as an argument of a call to a decoder."""
     found: dict[tuple[str, str], list[str]] = {}
-    for path in sorted(root.rglob("*.py")):
+    for path in provider_modules(root):
         rel = path.relative_to(root).as_posix()
-        if rel == "core/payload.py":
-            continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         spans = sorted(((fn.lineno, fn.end_lineno, qual) for qual, fn in functions(tree)), key=lambda s: s[1] - s[0])   # the innermost function first
+        parents = {id(child): parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
 
         def where(node) -> str:
             return next((qual for a, b, qual in spans if a <= node.lineno <= b), "<module>")
@@ -226,20 +196,31 @@ def door_uses(root: Path = ROOT) -> dict[tuple[str, str], list[str]]:
         def add(node, what: str) -> None:
             found.setdefault((rel, where(node)), []).append(what)
 
-        local = {}   # the name this module gives each door
+        def stored(node) -> bool:   # inside the value of a `raw=` keyword
+            while id(node) in parents:
+                node = parents[id(node)]
+                if isinstance(node, ast.keyword) and node.arg == "raw":
+                    return True
+            return False
+
+        def decoded(node) -> bool:   # a direct argument of a call to a decoder
+            parent = parents.get(id(node))
+            return isinstance(parent, ast.Call) and node in parent.args and (getattr(parent.func, "id", None) in DECODERS or getattr(parent.func, "attr", None) in DECODERS)
+
+        package_modules = {p.stem for p in root.rglob("*.py")}
+        modules = {a.asname or a.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.level for a in n.names if a.name in package_modules}   # a package module imported AS a module (`S.text` is a constructor)
+        local = {}
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
                 for alias in node.names:
                     if alias.name in DOORS + CONSTRUCTORS:
-                        local[alias.asname or alias.name] = alias.name   # importing is not using: the uses below are
-        isinstance_args = {id(a) for n in ast.walk(tree) if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "isinstance"
-                           for a in n.args}
+                        local[alias.asname or alias.name] = alias.name
         annotations = {id(n) for fn in ast.walk(tree) if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
-                       for a in (*fn.args.args, *fn.args.kwonlyargs, fn.args.vararg, fn.args.kwarg, ) if a is not None and a.annotation
+                       for a in (*fn.args.args, *fn.args.kwonlyargs, fn.args.vararg, fn.args.kwarg) if a is not None and a.annotation
                        for n in ast.walk(a.annotation)}
-        annotations |= {id(n) for fn in ast.walk(tree) if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and fn.returns
-                        for n in ast.walk(fn.returns)}
+        annotations |= {id(n) for fn in ast.walk(tree) if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and fn.returns for n in ast.walk(fn.returns)}
         annotations |= {id(n) for st in ast.walk(tree) if isinstance(st, ast.AnnAssign) for n in ast.walk(st.annotation)}
+        isinstance_args = {id(a) for n in ast.walk(tree) if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "isinstance" for a in n.args}
         callee = {id(n.func) for n in ast.walk(tree) if isinstance(n, ast.Call)}
         for node in ast.walk(tree):
             if isinstance(node, ast.Name) and node.id in local and not isinstance(node.ctx, ast.Store) and id(node) not in annotations:
@@ -248,18 +229,24 @@ def door_uses(root: Path = ROOT) -> dict[tuple[str, str], list[str]]:
                     add(node, f"call {kind}")
                 elif not (kind in CONSTRUCTORS and id(node) in isinstance_args):
                     add(node, f"reference {kind}")
-            elif isinstance(node, ast.Attribute) and node.attr in DOORS + CONSTRUCTORS + METHODS:
-                add(node, f"attribute {node.attr}")
-            elif isinstance(node, ast.Attribute) and node.attr in ("_d", "_items"):
-                add(node, f"private {node.attr}")
-            elif isinstance(node, ast.Attribute) and node.attr == "_parsed" and rel != "adapters/base.py":
-                add(node, "private _parsed")
+            elif isinstance(node, ast.Attribute):
+                of_a_module = isinstance(node.value, ast.Name) and node.value.id in modules
+                if node.attr in DOORS + CONSTRUCTORS and of_a_module:
+                    add(node, f"attribute {node.attr}")
+                elif node.attr in METHODS:
+                    add(node, f"method {node.attr}")
+                elif node.attr in PRIVATE:
+                    add(node, f"private {node.attr}")
+                elif node.attr == "raw" and not stored(node):
+                    add(node, "raw")
+                elif node.attr in ANSWER and not of_a_module and not decoded(node):
+                    add(node, f"answer .{node.attr}")
     return found
 
 
 def reflection_in_adapters(root: Path = ROOT) -> list[tuple[str, str]]:
-    """(file, what) for each adapter (and the SDMX helper) that parses JSON itself, evaluates, or reaches for a
-    private name by reflection: other ways to a provider's raw list than Response.json."""
+    """(file, what) for each adapter (and the SDMX helper) that parses JSON itself, evaluates, or reaches for a private name by reflection: other ways to a
+    provider's raw answer than Response.json through a decoder."""
     out = []
     for path in sorted([*(root / "adapters").glob("*.py"), root / "core" / "sdmx.py"]):
         rel = path.relative_to(root).as_posix()
@@ -282,37 +269,39 @@ def reflection_in_adapters(root: Path = ROOT) -> list[tuple[str, str]]:
     return out
 
 
-class Doors(unittest.TestCase):
-    """The source check that remains: where a raw list may leave the wrapper."""
+class Reads(unittest.TestCase):
+    """The source check that remains: where an answer, or a list of it, may leave the decoder."""
 
-    def test_every_use_of_a_door_is_listed_with_its_reason_and_every_listed_use_is_there(self):
-        found = {k: len(v) for k, v in door_uses().items()}
-        self.assertEqual(sorted(set(found) - set(USES)), [], "a provider's list leaves its view here: say why it is one record's own data, "
-                                                              "or decode it with members()/first_member()/expand()")
-        self.assertEqual(sorted(set(USES) - set(found)), [], "a listed use that is no longer there")
-        self.assertEqual({k: (found[k], n) for k, (n, _) in USES.items() if found[k] != n}, {},
-                         "(uses found, uses listed): read the new use, and update the entry's count and reason")
+    def test_every_place_an_answer_leaves_the_decoder_is_listed_with_its_reason_and_every_listed_use_is_there(self):
+        found = {k: len(v) for k, v in reads().items()}
+        listed = {k: n for k, (n, _) in USES.items() if n}
+        self.assertEqual(sorted(set(found) - set(listed)), [], "a provider's answer or list leaves the decoder here: say why it is one record's own data or content, "
+                                                               "or read it through decode() and members()/first_member()")
+        self.assertEqual(sorted(set(listed) - set(found)), [], "a listed use that is no longer there")
+        self.assertEqual({k: (found[k], n) for k, n in listed.items() if found[k] != n}, {}, "(uses found, uses listed): read the new use, and update the entry's count and reason")
 
     def test_no_use_is_unexplained(self):
-        self.assertEqual([k for k, (n, why) in USES.items() if len(why.split()) < 3 or n < 1], [])
+        self.assertEqual([k for k, (n, why) in USES.items() if n and len(why.split()) < 3], [])
 
-    def test_nothing_reaches_the_views_storage_or_parses_json_itself(self):
-        found = door_uses()
-        self.assertEqual({k: v for k, v in found.items() if any(w.startswith("private _d") or w.startswith("private _items") for w in v)}, {})
-        self.assertEqual({k: v for k, v in found.items() if "private _parsed" in v}, {})
+    def test_nothing_reaches_the_storage_or_parses_json_itself(self):
+        found = reads()
+        self.assertEqual({k: v for k, v in found.items() if any(w.startswith("private ") for w in v)}, {})
+        self.assertEqual({k: v for k, v in found.items() if "answer ._parsed" in v}, {})
         self.assertEqual(reflection_in_adapters(), [])
 
-    def test_control_the_check_finds_a_door_however_it_is_reached(self):
-        """The check's own oracle: each way to a raw list is found, and what is not one is not."""
+    def test_control_the_check_finds_an_answer_or_a_list_however_it_is_reached(self):
+        """The check's own oracle: each way out is found, and what is not one is not."""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "adapters").mkdir()
             (root / "core").mkdir()
+            (root / "core" / "schema.py").write_text("")
+            (root / "core" / "sdmx.py").write_text("")
             (root / "adapters" / "new_lane.py").write_text(textwrap.dedent('''\
                 import json
-                from .base import need, plain, Members
+                from .base import decode, plain, MemberList
                 from .base import plain as unwrap
-                from ..core import payload
+                from ..core import schema as S
 
                 def a_call(rows):
                     return plain(rows)
@@ -327,11 +316,8 @@ class Doors(unittest.TestCase):
                 def an_import_as(rows):
                     return unwrap(rows)
 
-                def a_module_attribute(rows):
-                    return payload.plain(rows)
-
                 def a_constructor(items):
-                    return Members(items)
+                    return MemberList(items)
 
                 def storage(rows):
                     return rows._items
@@ -340,23 +326,41 @@ class Doors(unittest.TestCase):
                     return getattr(rows, "_items")
 
                 def an_isinstance(rows):
-                    return isinstance(rows, Members)
+                    return isinstance(rows, MemberList)
 
-                def an_identity_decode(rows):
+                def an_identity_pass(rows):
                     return [build(r) for r in rows.each(lambda member: member)]
+
+                def a_position(table):
+                    return table.at(0)
 
                 def by_the_back_door(rows):
                     return object.__getattribute__(rows, "_items")
 
-                def reading(resp):
-                    return need("x", resp.json, "results")
+                def storing(w, make):
+                    return make(raw=w.raw)
+
+                def reading_the_raw(w):
+                    return w.raw["x"]
+
+                def decoding(resp):
+                    return decode("x", S.obj({"a": S.text()}), resp.json)
+
+                def reading_by_hand(resp):
+                    return resp.json["results"]
+
+                def reading_the_text(resp):
+                    return resp.text.split()
+
+                def a_schema_constructor():
+                    return S.text()
                 '''))
-            found = door_uses(root)
+            found = reads(root)
             by_function = {fn: sorted(v) for (_, fn), v in found.items() if fn != "<module>"}
             self.assertEqual(by_function, {"a_call": ["call plain"], "an_alias": ["reference plain"], "passed_on": ["reference plain"],
-                                           "an_import_as": ["call plain"], "a_module_attribute": ["attribute plain"],
-                                           "a_constructor": ["call Members"], "storage": ["private _items"],
-                                           "an_identity_decode": ["attribute each"]})
+                                           "an_import_as": ["call plain"], "a_constructor": ["call MemberList"], "storage": ["private _items"],
+                                           "an_identity_pass": ["method each"], "a_position": ["method at"], "reading_the_raw": ["raw"],
+                                           "reading_by_hand": ["answer .json"], "reading_the_text": ["answer .text"]})
             self.assertEqual(reflection_in_adapters(root), [("adapters/new_lane.py", "import json"),
                                                             ("adapters/new_lane.py", "getattr() of a private name"),
                                                             ("adapters/new_lane.py", "__getattribute__")])
@@ -387,22 +391,20 @@ class Imports(unittest.TestCase):
         return copy
 
     OC = "adapters__opencitations.py"
-    OC_IMPORT = "from .base import OMIT, Client, check, first_member, members, need, text"
-    OC_READ = '    return {"identity": f"doi:{doi}", "what": what, "items": members(SOURCE_ID, need(SOURCE_ID, resp.json), lambda row: _link(key, row))}'
+    OC_IMPORT = "from .base import OMIT, Client, check, decode, first_member, members"
+    OC_READ = '    rows = decode(SOURCE_ID, SCHEMAS[f"enrich:{what}"], resp.json)\n'
+    OC_RETURN = '    return {"identity": f"doi:{doi}", "what": what, "items": members(SOURCE_ID, rows, lambda row: _link(key, row))}\n'
     # the reviewer's first mutant: the rows are filtered with plain() before the decoder runs; the checker saw no `plain` because nothing named it
     STAR = [(OC_IMPORT, "from .base import *"),
-            (OC_READ, '    rows = need(SOURCE_ID, [row for row in plain(need(SOURCE_ID, resp.json)) if row.get(key)])\n'
-                      '    return {"identity": f"doi:{doi}", "what": what, "items": members(SOURCE_ID, rows, lambda row: _link(key, row))}')]
+            (OC_READ + OC_RETURN, '    rows = decode(SOURCE_ID, SCHEMAS[f"enrich:{what}"], [row for row in plain(resp.json) if row.get(key)])\n' + OC_RETURN)]
     # the second: the body is parsed and filtered by a parser imported from the client, which uses no door at all
     PARSER = [(OC_IMPORT, OC_IMPORT + ", json as provider_json"),
-              (OC_READ, '    rows = need(SOURCE_ID, [row for row in provider_json.loads(resp.body) if row.get(key)])\n'
-                        '    return {"identity": f"doi:{doi}", "what": what, "items": members(SOURCE_ID, rows, lambda row: _link(key, row))}')]
+              (OC_READ + OC_RETURN, '    rows = decode(SOURCE_ID, SCHEMAS[f"enrich:{what}"], [row for row in provider_json.loads(resp.body) if row.get(key)])\n' + OC_RETURN)]
 
     # the third (R9-3): the body is parsed by a parser that an admitted package module imports, reached as an attribute of that module
     CACHE_IMPORT = "from ..core import cache as provider_helpers"
     CACHE_MODULE = [(OC_IMPORT, OC_IMPORT + "\n" + CACHE_IMPORT),
-                    (OC_READ, '    rows = need(SOURCE_ID, [row for row in provider_helpers.json.loads(resp.body) if row.get(key)])\n'
-                              '    return {"identity": f"doi:{doi}", "what": what, "items": members(SOURCE_ID, rows, lambda row: _link(key, row))}')]
+                    (OC_READ + OC_RETURN, '    rows = decode(SOURCE_ID, SCHEMAS[f"enrich:{what}"], [row for row in provider_helpers.json.loads(resp.body) if row.get(key)])\n' + OC_RETURN)]
     # and what the same import does when it only uses what the module defines
     DOI_LINE = '    return normalize_doi(identity.split(":", 1)[-1] if identity.startswith("doi:") else identity)'
     MODULE_USE = [(OC_IMPORT, OC_IMPORT + "\nfrom ..core import identity as ids"),
@@ -429,21 +431,21 @@ class Imports(unittest.TestCase):
 
     def test_control_a_module_used_for_what_it_defines_is_not_refused(self):
         """The same import, using `identity.normalize_doi` (a function that module defines): nothing is refused, and no door is used."""
-        real = door_uses()
+        real = reads()
         with tempfile.TemporaryDirectory() as tmp:
             root = self.tree(Path(tmp), **{self.OC: self.MODULE_USE})
-            found = door_uses(root)
+            found = reads(root)
             self.assertEqual((import_findings(root), sorted(k for k in found if found[k] != real.get(k))), ([], []))
 
     def test_control_the_permitted_imports_are_not_refused(self):
         """What the same two edits do when they only use what the client exports: nothing is refused for the import — the one thing a name
         from `__all__` can still be is an unlisted door, which the inventory above catches by name, as it always did."""
-        permitted = [(self.OC_IMPORT, self.OC_IMPORT + ", quote as q, optional")]   # a permitted re-export (quote), and a helper in __all__
+        permitted = [(self.OC_IMPORT, self.OC_IMPORT + ", quote as q, identified")]   # a permitted re-export (quote), and a helper in __all__
         spelled_out = [(self.OC_IMPORT, self.OC_IMPORT + ", plain"), self.STAR[1]]
-        real = door_uses()
+        real = reads()
 
         def changed(root: Path) -> list:
-            found = door_uses(root)
+            found = reads(root)
             return sorted(k for k in found if found[k] != real.get(k))
         with tempfile.TemporaryDirectory() as tmp:
             root = self.tree(Path(tmp), **{self.OC: permitted})
@@ -459,7 +461,7 @@ class Imports(unittest.TestCase):
             "a parser from a stdlib module": ("from json import loads", [("adapters/new.py", "from json import")]),
             "importlib": ("import importlib", [("adapters/new.py", "import importlib")]),
             "sys": ("import sys", [("adapters/new.py", "import sys")]),
-            "the module the client imports it as": ("from .base import _parsed", [("adapters/new.py", "from base import _parsed (not in its __all__)")]),
+            "the client's private parser": ("from .base import _parsed", [("adapters/new.py", "from base import _parsed (not in its __all__)")]),
             "a module of the client, by name": ("from .base import urllib", [("adapters/new.py", "from base import urllib (not in its __all__)")]),
             "the client as a module": ("from . import base", [("adapters/new.py", "from . import base (as a module: import what it exports by name)")]),
             "a star from another module": ("from ..core.canonical import *", [("adapters/new.py", "from ..core.canonical import *")]),
@@ -525,12 +527,17 @@ class Imports(unittest.TestCase):
 
 
 BODY = [{"id": "a", "n": 1}, 7, {"id": "b", "n": 2}]
+ROW = S.obj({"id": S.text(), "n": S.any_()})
+
+
+def decoded(body):
+    """A provider's list of members, as the decoder hands it to an adapter."""
+    return S.decode("x", S.members(ROW), body)
 
 
 def fixture(source: str):
     """A function `run(rows)` compiled from adapter-shaped source, with the names an adapter has in hand."""
-    scope = {"members": members, "make_record": make_record, "OMIT": OMIT, "need": need, "first_member": first_member, "build": build,
-             "Members": Members}
+    scope = {"members": members, "make_record": make_record, "OMIT": OMIT, "first_member": first_member, "build": build, "MemberList": MemberList}
     exec(textwrap.dedent(source), scope)
     return scope["run"]
 
@@ -543,8 +550,8 @@ def build(row):
 SHAPES = {
     "a filter comprehension before the decoder": '''
         def run(rows):
-            rows = [r for r in rows if r.get("id")]
-            return members("x", Members(rows), build)''',
+            rows = [r for r in rows if r["id"]]
+            return members("x", MemberList(rows), build)''',
     "a while loop over an index": '''
         def run(rows):
             out, i = [], 0
@@ -576,41 +583,38 @@ SHAPES = {
             return [build(r) for r in rows[:2]]''',
     "a copy of the list": '''
         def run(rows):
-            return members("x", Members(list(rows)), build)''',
+            return members("x", MemberList(list(rows)), build)''',
     "a sorted copy": '''
         def run(rows):
-            return members("x", Members(sorted(rows, key=lambda r: str(r))), build)''',
+            return members("x", MemberList(sorted(rows, key=lambda r: str(r))), build)''',
     "a membership test": '''
         def run(rows):
             return 7 in rows''',
     "a generator expression": '''
         def run(rows):
-            return members("x", Members(list(r for r in rows)), build)''',
+            return members("x", MemberList(list(r for r in rows)), build)''',
 }
 
 
 class Bypasses(unittest.TestCase):
-    """Run, not scanned for: each shape fails against a view, whatever it is called and wherever it stands."""
-
-    def run_shape(self, source: str, body):
-        return fixture(source)(view(body))
+    """Run, not scanned for: each shape fails against a provider's list as the decoder hands it over, whatever it is called and wherever it stands."""
 
     def test_each_shape_is_impossible_against_a_providers_list(self):
         for name, source in SHAPES.items():
             with self.subTest(name):
                 with self.assertRaises(TypeError):
-                    self.run_shape(source, BODY)
+                    fixture(source)(decoded(BODY))
 
     def test_each_shape_is_impossible_even_on_a_list_of_readable_members_only(self):
         """It is not that the body is malformed: the operation does not exist, for any list a provider sends."""
         for name, source in SHAPES.items():
             with self.subTest(name):
                 with self.assertRaises(TypeError):
-                    self.run_shape(source, [{"id": "a"}, {"id": "b"}])
+                    fixture(source)(decoded([{"id": "a"}, {"id": "b"}]))
 
     def test_control_each_shape_is_a_real_bypass_on_the_plain_list_the_adapters_used_to_hold(self):
-        """On a plain list the same source runs: the readable members only, it builds what the shape builds; with a
-        malformed member in the list it loses the answer (the defect) or reads past it. This is what the views take away."""
+        """On a plain list the same source runs: the readable members only, it builds what the shape builds; with a malformed member in the list it loses the
+        answer (the defect) or reads past it. This is what the member list takes away."""
         working = {"a filter comprehension before the decoder", "a for loop that builds", "a comprehension that builds",
                    "a map over the rows", "a slice, then a loop", "a while loop over an index", "a record builder under another name",
                    "the first row, indexed directly"}
@@ -621,120 +625,120 @@ class Bypasses(unittest.TestCase):
                 with self.assertRaises(Exception):   # a member that is not an object loses what the shape would have built
                     run(BODY) if name != "the first row, indexed directly" else run([7, {"id": "a"}])
 
-    def test_the_decoder_refuses_a_plain_list(self):
+    def test_the_helpers_refuse_a_plain_list(self):
         with self.assertRaises(TypeError):
             members("x", [{"id": "a"}], build)
         with self.assertRaises(TypeError):
             first_member("x", [{"id": "a"}], build)
 
-    def test_the_accessor_gives_a_list_as_members_and_an_object_as_an_obj(self):
-        answer = view({"results": [{"id": "a"}], "meta": {"total": 1}, "total": 3})
-        self.assertIsInstance(need("x", answer, "results"), Members)
-        self.assertIsInstance(need("x", answer, "meta", kind=dict), Obj)
-        self.assertEqual(need("x", answer, "total", kind=int), 3)
-        with self.assertRaises(PayloadError) as why:
-            need("x", answer, "results", kind=dict)
-        self.assertIn("is list, not dict", str(why.exception))
+    def test_the_decoder_gives_a_list_of_members_as_a_member_list_and_a_record_s_own_list_as_a_list(self):
+        answer = S.decode("x", S.obj({"results": S.members(ROW), "tags": S.own(S.text()), "meta": S.obj({"total": S.whole()})}),
+                          {"results": [{"id": "a"}], "tags": ["x"], "meta": {"total": 1}})
+        self.assertIsInstance(answer["results"], MemberList)
+        self.assertEqual(answer["tags"], ["x"])
+        self.assertIsInstance(answer["meta"], Rec)
 
 
 class Views(unittest.TestCase):
     """The operations are absent; what is left reads each member alone."""
 
     def test_a_list_cannot_be_iterated_indexed_sliced_or_searched(self):
-        rows = view([{"id": "a"}, 7])
+        rows = decoded([{"id": "a"}, 7])
         for what in (lambda: iter(rows), lambda: list(rows), lambda: rows[0], lambda: rows[:1], lambda: 7 in rows, lambda: sorted(rows),
                      lambda: next(iter(rows)), lambda: [*rows], lambda: tuple(rows), lambda: max(rows), lambda: dict(enumerate(rows)),
                      lambda: reversed(rows)):
             with self.assertRaises(TypeError):
                 what()
-        self.assertEqual((len(rows), bool(rows), bool(view([]))), (2, True, False), "its length and truth are all it shows")
+        self.assertEqual((len(rows), bool(rows), bool(decoded([]))), (2, True, False), "its length and truth are all it shows")
 
-    def test_an_object_cannot_be_walked_to_get_at_its_values(self):
-        """A keyed container holds members the same way a list does (ECB's series, keyed by position): looping over
-        its keys and indexing each would be the same bypass, so there is nothing to loop over."""
-        series = view({"0:0": {"observations": {}}, "0:1": 7})
-        for what in (lambda: iter(series), lambda: list(series), lambda: series.keys(), lambda: series.items(), lambda: series.values(),
-                     lambda: sorted(series), lambda: dict(series), lambda: {**series}, lambda: [series[k] for k in series]):
+    def test_an_object_holds_its_declared_fields_and_nothing_else(self):
+        rec = S.decode("x", S.obj({"id": S.text(), "inner": S.obj({"n": S.whole()})}), {"id": "a", "inner": {"n": 1}, "undeclared": 5})
+        self.assertEqual((rec["id"], rec["inner"]["n"], rec.raw["undeclared"]), ("a", 1, 5))
+        for what in (lambda: rec["undeclared"], lambda: rec.get("undeclared"), lambda: rec["inner"]["m"]):
+            with self.assertRaises(UndeclaredRead):
+                what()
+        for what in (lambda: iter(rec), lambda: list(rec)):
             with self.assertRaises(TypeError):
                 what()
-        self.assertEqual((len(series), "0:0" in series, "9" in series, series.get("9", "none")), (2, True, False, "none"),
-                         "what is left reads one key at a time")
-        self.assertIsInstance(series["0:0"], Obj)
+        self.assertFalse(issubclass(UndeclaredRead, (PayloadError, KeyError, AttributeError, TypeError, ValueError, IndexError)),
+                         "an undeclared read is a failure, never a member's loss: no builder's net catches it")
 
-    def test_a_list_inside_an_object_is_a_view_too(self):
-        member = view({"siblings": [{"rfilename": "a"}], "tags": ["x"], "card": {"inner": [1]}})
-        self.assertIsInstance(member["siblings"], Members)
-        self.assertIsInstance(member["tags"], Members)
-        self.assertIsInstance(member["card"]["inner"], Members)
+    def test_a_keyed_container_hands_its_members_as_entries(self):
+        entries = S.decode("x", S.entries(S.obj({"v": S.whole()})), {"a": {"v": 1}, "b": 7})
+        self.assertEqual(entries.each(lambda e: (e["key"], e["value"]["v"])), [("a", 1), None])
+        self.assertEqual(len(entries), 2)
+
+    def test_a_list_inside_a_member_is_a_member_list_too(self):
+        member = S.decode("x", S.obj({"siblings": S.members(ROW), "tags": S.own(S.text())}), {"siblings": [{"id": "a"}], "tags": ["x"]})
+        self.assertIsInstance(member["siblings"], MemberList)
 
     def test_each_member_is_read_alone(self):
-        rows = view([{"id": "a"}, 7, {"id": "b"}, "x", {"boom": 1}, {"skip": 1}])
+        rows = S.decode("x", S.members(S.obj({"id": S.text(), "boom": S.any_(), "skip": S.any_()})),
+                        [{"id": "a"}, 7, {"id": "b"}, "x", {"boom": 1}, {"skip": 1}])
 
         def read(row):
-            if "boom" in row:
+            if row["boom"]:
                 raise KeyError("id")
-            if "skip" in row:
+            if row["skip"]:
                 return OMIT
             return row["id"]
         self.assertEqual(rows.each(read), ["a", None, "b", None, None])
 
     def test_the_first_member_is_read_like_any_other_and_never_replaced_by_the_next(self):
-        self.assertIsNone(view([]).first(lambda r: r["id"]))
-        self.assertEqual(view([{"id": "a"}, 7]).first(lambda r: r["id"]), "a")
-        for rows in ([7], [7, {"id": "a"}], [{"boom": 1}, {"id": "a"}]):
+        self.assertIsNone(decoded([]).first(lambda r: r["id"]))
+        self.assertEqual(decoded([{"id": "a"}, 7]).first(lambda r: r["id"]), "a")
+        for rows in ([7], [7, {"id": "a"}]):
             with self.assertRaises(PayloadError) as why:
-                view(rows).first(lambda r: r["id"], "src")
+                decoded(rows).first(lambda r: r["id"], "src")
             self.assertEqual(str(why.exception), "src: the answer's first result cannot be read")
+        def boom(row):
+            raise KeyError("id")
+        with self.assertRaises(PayloadError):   # the first cannot be built
+            decoded([{"id": "a"}, {"id": "b"}]).first(boom)
 
     def test_members_held_by_members_unfold_with_each_unreadable_holder_one_loss(self):
         """Hugging Face's siblings and ECB's data sets: the container is a member too."""
-        sets = view([{"files": [{"n": 1}, {"n": 2}]}, 7, {"files": 5}, {"files": [{"n": 3}]}])
-        flat = sets.expand(lambda s: need("x", s, "files"))
+        sets = S.decode("x", S.members(S.obj({"files": S.members(S.obj({"n": S.whole()}))})), [{"files": [{"n": 1}, {"n": 2}]}, 7, {"files": 5}, {"files": [{"n": 3}]}])
+        flat = sets.expand(lambda s: s["files"])
         self.assertEqual((len(flat), flat.each(lambda f: f["n"])), (5, [1, 2, None, None, 3]),
                          "the two holders that cannot be unfolded are one loss each; the series of the others stand")
 
-    def test_a_keyed_container_hands_its_members_as_entries(self):
-        entries = view({"a": {"v": 1}, "b": 7}).entries()
-        self.assertEqual(entries.each(lambda e: (e["key"], e["value"]["v"])), [("a", 1), None])
-        self.assertEqual(len(entries), 2)
-
-    def test_plain_is_the_one_way_out_and_a_record_is_plain(self):
-        answer = view({"tags": ["x", "y"], "card": {"k": [1]}})
+    def test_a_decoded_value_is_plain_data_in_a_record(self):
+        answer = S.decode("x", S.obj({"tags": S.own(S.text()), "card": S.obj({"k": S.any_()})}), {"tags": ["x", "y"], "card": {"k": [1]}})
         self.assertEqual(plain(answer["tags"]), ["x", "y"])
         self.assertEqual(plain({"a": answer["tags"], "b": (answer["card"],)}), {"a": ["x", "y"], "b": ({"k": [1]},)})
-        record = make_record(identity="doi:10.1/x", kind="citation", source_id="x", authors=answer["tags"], extra={"card": answer["card"]},
-                             raw=answer)
+        record = make_record(identity="doi:10.1/x", kind="citation", source_id="x", authors=answer["tags"], extra={"card": answer["card"]}, raw=answer)
         self.assertEqual((type(record["authors"]), type(record["card"]), type(record["raw"])), (list, dict, dict))
         self.assertEqual(record["raw"], {"tags": ["x", "y"], "card": {"k": [1]}})
 
-    def test_the_views_compare_by_what_they_hold(self):
-        self.assertEqual(view({"a": [1]}), {"a": [1]})
-        self.assertEqual(view([1, 2]), [1, 2])
-        self.assertNotEqual(view([1, 2]), [1, 3])
+    def test_an_unreadable_member_says_why_and_what_it_was(self):
+        (bad,) = decoded([7]).unreadable()
+        self.assertIsInstance(bad, Unreadable)
+        self.assertEqual(bad.value, 7)
+        self.assertIn("where an object belongs", bad.reason)
 
 
 class Sdmx(unittest.TestCase):
-    """core/sdmx.py is outside adapters/: its data sets flattened before the decoder ran (R7-2, ECB). Now a data set is a
-    member too (series_members expands them), and every helper that reads the message takes views."""
+    """core/sdmx.py is outside adapters/: its data sets flattened before the decoder ran (R7-2, ECB). Now a data set is a member too (series_members expands
+    them), and every helper that reads the message takes the decoded message."""
 
-    def test_the_helpers_take_and_give_views(self):
-        message = view({"structure": {"dimensions": {"series": [{"id": "FREQ", "values": [{"id": "D"}]}],
-                                                      "observation": [{"id": "TIME_PERIOD", "values": [{"id": "2026-01-01"}]}]}},
-                        "dataSets": [{"series": {"0": {"observations": {"0": [1.25]}}}}, 7, {"series": 5}, {"series": {"0": 9}}]})
+    def test_the_helpers_take_and_give_decoded_values(self):
+        message = sdmx.message("ecb", {"structure": {"dimensions": {"series": [{"id": "FREQ", "values": [{"id": "D"}]}],
+                                                                    "observation": [{"id": "TIME_PERIOD", "values": [{"id": "2026-01-01"}]}]}},
+                                       "dataSets": [{"series": {"0": {"observations": {"0": [1.25]}}}}, 7, {"series": 5}, {"series": {"0": 9}}]})
         found = sdmx.series_members(message)
         self.assertEqual(len(found), 4, "one series, two data sets that cannot be unfolded, one series that is not an object")
         read = sdmx.series_reader(message)
-        self.assertEqual(found.each(read), [{"key": {"FREQ": "D"}, "observations": [("2026-01-01", 1.25)], "observations_raw": {"0": [1.25]}},
-                                              None, None, None])
+        self.assertEqual(found.each(read), [{"key": {"FREQ": "D"}, "observations": [("2026-01-01", 1.25)], "observations_raw": {"0": [1.25]}}, None, None, None])
 
     def test_a_data_sets_that_is_not_a_list_is_an_unreadable_message_not_an_empty_one(self):
         for body in ({"dataSets": {"series": {}}}, {"dataSets": "x"}, {"data": {"dataSets": 5}}):
             with self.subTest(body=body):
                 with self.assertRaises(PayloadError):
-                    sdmx.datasets(view(body))
+                    sdmx.message("ecb", body)
         for body in ({}, {"dataSets": None}, {"dataSets": []}, {"data": {"dataSets": []}}, {"data": {}}):
             with self.subTest(body=body):
-                self.assertEqual(len(sdmx.datasets(view(body))), 0)
+                self.assertEqual(len(sdmx.datasets(sdmx.message("ecb", body))), 0)
 
 
 if __name__ == "__main__":

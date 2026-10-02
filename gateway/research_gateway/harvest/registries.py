@@ -16,8 +16,9 @@ import os
 import sys
 from typing import Iterator
 
-from ..adapters.base import Client, Members, Obj, check, field, listed, members, nested, optional, preferred, text, token, total
+from ..adapters.base import Client, MemberList, PayloadError, Rec, check, decode, members, total
 from ..core import db
+from ..core import schema as S
 from ..core.canonical import make_record
 from ..core.identity import normalize_issn, normalize_title
 from . import index
@@ -43,45 +44,44 @@ def venue_identity(issns: list[str | None], registry: str, title: str | None, pu
     return f"venue:{registry}:{key}", []
 
 
-def _safe(fn, item, facts: list[str]):
-    """Build one record or explain why it was skipped; a malformed registry row never stops a load."""
-    try:
-        return fn(item)
-    except (TypeError, ValueError, KeyError, AttributeError) as e:
-        facts.append(f"{type(e).__name__}: {e}"[:120])
-        return None
-
-
 # ---------------------------------------------------------------- Crossref journals
+# What a page must be. A journal's ISSNs are its typed list (`issn-type`), else its plain one (`ISSN`): both are declared, so both are decoded,
+# nested members included, before one is chosen (R11-1) — a malformed plain list is a malformed journal even beside a typed one that reads.
+JOURNAL = S.obj({"title": S.text(), "publisher": S.text(), "issn-type": S.own(S.obj({"value": S.text()})), "ISSN": S.own(S.text()),
+                 "subjects": S.own(S.obj({"name": S.text()})), "counts": S.obj({"total-dois": S.any_(), "current-dois": S.any_()})},
+                alts=(("issn-type", "ISSN"),))
+JOURNALS_PAGE = S.obj({"message": S.required(S.obj({"items": S.required(S.members(JOURNAL)), "next-cursor": S.soft(S.token())}))})
+
+
 def crossref_journals(client: Client, *, limit: int | None = None, rows: int = 1000, issn_map: index.IssnMap | None = None,
                       skipped: list[str] | None = None) -> Iterator[dict]:
     cursor, seen, skipped = "*", 0, skipped if skipped is not None else []
 
-    def build(j: Obj) -> dict | None:
-        typed, untyped = [text("crossref", x.get("value")) for x in listed("crossref", j, "issn-type")], listed("crossref", j, "ISSN")   # both lists are read before one is chosen
-        issns = typed or untyped
-        title, publisher = text("crossref", j.get("title")), text("crossref", j.get("publisher"))
+    def build(j) -> dict | None:
+        typed = [x["value"] for x in j["issn-type"]]
+        issns = typed or j["ISSN"]
+        title, publisher = j["title"], j["publisher"]
         identity, clean = venue_identity(issns, "crossref", title, publisher, issn_map)
         if identity is None:
             return None
-        counts = nested("crossref", j, "counts")
+        counts = j["counts"]
         return make_record(identity=identity, kind="venue", source_id="crossref", title=title, venue=publisher,
                            identifiers={"issn": clean[0]} if clean else {}, links=[],
-                           extra={"issns": clean, "subjects": [n for n in (text("crossref", s.get("name")) for s in listed("crossref", j, "subjects")) if n],
-                                  "works_count": counts.get("total-dois"), "current_dois": counts.get("current-dois")},
-                           raw=j)
+                           extra={"issns": clean, "subjects": [n for n in (s["name"] for s in j["subjects"]) if n],
+                                  "works_count": counts["total-dois"], "current_dois": counts["current-dois"]},
+                           raw=j.raw)
 
     while cursor is not None:
         resp = client.get("crossref", "find", CROSSREF_JOURNALS,
                           params={"rows": rows, "cursor": cursor, "mailto": client.contact_email}, query="journals harvest")
         check("crossref", resp, allow_404=False)   # a failed page fails the load (D-23)
-        j = resp.json
-        msg = j.get("message") if isinstance(j, Obj) else None
-        if not isinstance(msg, Obj) or not isinstance(msg.get("items"), Members):
-            raise ValueError(f"Crossref journals answered 200 but not with an items list "
-                             f"(content-type {resp.headers.get('content-type')!r}) — load failed, not empty (D-24/D-25)")
+        try:
+            msg = decode("crossref", JOURNALS_PAGE, resp.json)["message"]
+        except PayloadError as e:
+            raise PayloadError(f"Crossref journals answered 200 but not with an items list (content-type {resp.headers.get('content-type')!r}) — "
+                               f"load failed, not empty (D-24/D-25): {e}") from None
         items = msg["items"]
-        for rec in members("crossref", items, lambda member: _safe(build, member, skipped)):   # each member alone; None is one that was skipped
+        for rec in _built("crossref", items, build, skipped):   # each member alone; None is one that was skipped
             if rec is None:
                 continue
             yield rec
@@ -91,9 +91,24 @@ def crossref_journals(client: Client, *, limit: int | None = None, rows: int = 1
         if len(items) < rows:   # Crossref: "fewer than the number of expected rows" is the end of the result set
             cursor = None
         else:
-            cursor = token(msg.get("next-cursor"))
+            cursor = msg["next-cursor"]
             if cursor is None:   # a full page whose continuation cannot be read is not the end of the registry (the lane's own rule)
                 raise ValueError("Crossref journals answered a full page without a next-cursor that can be read — load failed, not complete (D-23)")
+
+
+def _built(source_id: str, items: MemberList, build, skipped: list[str]) -> list:
+    """Each decoded member through `build`; a malformed registry row never stops a load. A row that was an object and could not be decoded, or whose
+    record cannot be built, is reported in `skipped`; one that was not an object is skipped without a word (it is not a row of the registry at all)."""
+    def reported(member):
+        try:
+            return build(member)
+        except (TypeError, ValueError, KeyError, AttributeError) as e:
+            skipped.append(f"{type(e).__name__}: {e}"[:120])
+            return None
+    for member in items.unreadable():
+        if isinstance(member.value, dict):
+            skipped.append(f"PayloadError: {member.reason}"[:120])
+    return members(source_id, items, reported)
 
 
 # ---------------------------------------------------------------- DOAJ journals (CSV)
@@ -121,40 +136,48 @@ def doaj_journals(client: Client, *, limit: int | None = None, issn_map: index.I
 
 
 # ---------------------------------------------------------------- DataCite repositories
+REPOSITORY = S.obj({"id": S.text(), "attributes": S.obj({"symbol": S.text(), "re3data": S.text(), "url": S.text(), "name": S.text(), "description": S.text(),
+                                                         "clientType": S.any_(), "isActive": S.any_(), "language": S.any_(),
+                                                         "subjects": S.own(S.oneof(S.obj({"name": S.any_()}), S.text()))})},
+                   alts=(("attributes.symbol", "id"),))
+REPOSITORIES_PAGE = S.obj({"data": S.required(S.members(REPOSITORY)), "meta.totalPages": S.deep(("meta", "totalPages"), S.whole())})
+
+
 def datacite_repositories(client: Client, *, limit: int | None = None, size: int = 1000) -> Iterator[dict]:
     page, seen = 1, 0
     while True:
         resp = client.get("datacite", "find", DATACITE_REPOSITORIES, params={"page[size]": size, "page[number]": page},
                           query="repositories harvest")
         check("datacite", resp, allow_404=False)   # a failed page fails the load (D-23)
-        j = resp.json
-        if not isinstance(j, Obj) or not isinstance(j.get("data"), Members):
-            raise ValueError(f"DataCite repositories answered 200 but not with a data list "
-                             f"(content-type {resp.headers.get('content-type')!r}) — load failed, not empty (D-24/D-25)")
+        try:
+            j = decode("datacite", REPOSITORIES_PAGE, resp.json)
+        except PayloadError as e:
+            raise PayloadError(f"DataCite repositories answered 200 but not with a data list (content-type {resp.headers.get('content-type')!r}) — "
+                               f"load failed, not empty (D-24/D-25): {e}") from None
         data = j["data"]
 
-        def build(d: Obj) -> dict | None:
-            a = nested("datacite", d, "attributes")
-            symbol = preferred(text("datacite", a.get("symbol")), text("datacite", d.get("id")), "").lower()
+        def build(d) -> dict | None:
+            a = d["attributes"]
+            symbol = (a["symbol"] or d["id"] or "").lower()
             if not symbol:
                 return None
-            re3data, url = text("datacite", a.get("re3data")), text("datacite", a.get("url"))
-            return make_record(identity=f"repository:datacite:{symbol}", kind="repository", source_id="datacite", title=a.get("name"),
+            re3data, url = a["re3data"], a["url"]
+            return make_record(identity=f"repository:datacite:{symbol}", kind="repository", source_id="datacite", title=a["name"],
                                identifiers={"datacite_client": symbol, **({"re3data": re3data} if re3data else {})},
                                links=[url] if url else [],
-                               extra={"description": (text("datacite", a.get("description")) or "")[:1000], "client_type": a.get("clientType"),
-                                      "subjects": [s.get("name") if isinstance(s, dict) else text("datacite", s) for s in listed("datacite", a, "subjects")],
-                                      "active": a.get("isActive"), "language": a.get("language")},
-                               raw=d)
+                               extra={"description": (a["description"] or "")[:1000], "client_type": a["clientType"],
+                                      "subjects": [s["name"] if isinstance(s, Rec) else s for s in a["subjects"]],
+                                      "active": a["isActive"], "language": a["language"]},
+                               raw=d.raw)
 
-        for rec in members("datacite", data, lambda member: _safe(build, member, [])):
+        for rec in _built("datacite", data, build, []):
             if rec is None:
                 continue
             yield rec
             seen += 1
             if limit and seen >= limit:
                 return
-        pages = total(field(j, "meta", "totalPages"), page)   # the last page reaches the number of pages, and no page is past it
+        pages = total(j["meta.totalPages"], page)   # the last page reaches the number of pages, and no page is past it
         if pages is None:
             raise ValueError("DataCite repositories answered a page whose meta.totalPages cannot be read — load failed, not complete (D-23)")
         if not data or page >= pages:

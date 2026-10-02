@@ -6,7 +6,6 @@ from research_gateway.adapters import bea, bis, bls, census, ecb, fred
 from research_gateway.adapters.base import AdapterError, Client, FakeTransport
 from research_gateway.core import sdmx
 from research_gateway.core.broker import Broker, RatePolicy
-from research_gateway.core.payload import view
 
 
 def client(secrets=None):
@@ -121,7 +120,7 @@ BIS_XML = """<?xml version="1.0" encoding="UTF-8"?>
 
 def read_series(message: dict) -> list:
     """Every series of an SDMX-JSON message, each read alone (None for one that cannot be)."""
-    j = view(message)
+    j = sdmx.message("ecb", message)
     return sdmx.series_members(j).each(sdmx.series_reader(j))
 
 
@@ -161,7 +160,7 @@ class BisEcb(unittest.TestCase):
         from research_gateway.core.canonical import PayloadError
         for text in ("<not xml", "<html><body>challenge</body></html>"):
             with self.assertRaises(PayloadError, msg=text):
-                sdmx.series_xml(text)
+                sdmx.data_xml("bis", text)
         with self.assertRaises(AdapterError):
             bis.data(c, {})
 

@@ -9,9 +9,10 @@ import base64
 import threading
 import time
 
+from ..core import schema as S
 from ..core.canonical import make_record, year_from
 from ..core.identity import normalize_doi
-from .base import NO_MEMBERS, Client, check, counts_nothing, field, first_member, identity_from, listed, maybe_key, members, need, nested, text, token, total
+from .base import Client, check, decode, first_member, identity_from, members, total
 
 SOURCE_ID = "openaire"
 SMOKE = {'capability': 'find', 'query': 'management practices', 'limit': 1}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -25,6 +26,21 @@ _TOKEN_LOCK = threading.Lock()   # single-flight mint under parallel lanes: a co
                                                # refresh must never hand out a token the requesting
                                                # client did not register for redaction (9·2b)
 _KIND = {"publication": "article", "dataset": "dataset", "software": "software", "other": "document"}
+
+# What an answer must be. A product is named by the DOI among its identifiers (the product's `pids`, and each instance's `alternateIdentifiers` and `pids`; all
+# are decoded), else by its own id. A list may be left out only when the header's `numFound` is the whole number 0; a header that cannot be read costs the members
+# beside it only what it alone establishes — an end, a continuation.
+PID = S.obj({"scheme": S.text(), "value": S.text()})
+PRODUCT = S.obj({"id": S.maybe_key(), "mainTitle": S.text(), "type": S.text(), "publicationDate": S.text(), "publisher": S.text(),
+                 "pids": S.own(PID), "authors": S.own(S.obj({"fullName": S.text()})),
+                 "instances": S.own(S.obj({"alternateIdentifiers": S.own(PID), "pids": S.own(PID), "urls": S.own(S.text()), "license": S.text()})),
+                 "container": S.obj({"name": S.text()}), "bestAccessRight": S.obj({"label": S.any_()})},
+                alts=(("pids", "instances", "id"),))
+RESULTS = S.members(PRODUCT, empty_when=("header", "numFound"))
+FIND = S.obj({"results": RESULTS, "header.numFound": S.deep(("header", "numFound"), S.whole()), "header.nextCursor": S.deep(("header", "nextCursor"), S.token())})
+RESOLVE = S.obj({"results": RESULTS})
+TOKEN = S.obj({"access_token": S.any_(), "expires_in": S.any_()})
+SCHEMAS = {"find": FIND, "resolve": RESOLVE, "token": TOKEN}
 
 
 def _headers(client: Client) -> dict:
@@ -48,11 +64,11 @@ def _headers_locked(client: Client) -> dict:
                        query="token exchange")
     if not resp.ok:
         return {}   # a refused exchange: the lane reports the missing credentials
-    j = need(SOURCE_ID, resp.json, kind=dict)   # an unreadable 200 is an unreadable answer, not "no credentials"
-    if not j.get("access_token"):
+    j = decode(SOURCE_ID, TOKEN, resp.json)   # an unreadable 200 is an unreadable answer, not "no credentials"
+    if not j["access_token"]:
         return {}
     try:
-        ttl = float(j.get("expires_in") or 3600)
+        ttl = float(j["expires_in"] or 3600)
     except (TypeError, ValueError):
         ttl = 3600.0
     _TOKEN["value"], _TOKEN["exp"] = str(j["access_token"]), time.time() + ttl
@@ -64,32 +80,31 @@ def reset_token() -> None:
     _TOKEN.clear()
 
 
-def _record(r: dict) -> dict:
-    pids = list(listed(SOURCE_ID, r, "pids"))
+def _record(r) -> dict:
+    pids = list(r["pids"])
     links, licenses = [], []
-    for inst in listed(SOURCE_ID, r, "instances"):
-        pids += listed(SOURCE_ID, inst, "alternateIdentifiers") + listed(SOURCE_ID, inst, "pids")
-        links += [u for u in (text(SOURCE_ID, u) for u in listed(SOURCE_ID, inst, "urls")) if u]
-        license_ = text(SOURCE_ID, inst.get("license"))
-        if license_:
-            licenses.append(license_)
-    schemes = [(text(SOURCE_ID, p.get("scheme")) or "").lower() for p in pids]
-    dois = [normalize_doi(p.get("value")) for p, scheme in zip(pids, schemes) if scheme == "doi"]   # every DOI it lists is read; the first that is one is its DOI
+    for inst in r["instances"]:
+        pids += inst["alternateIdentifiers"] + inst["pids"]
+        links += [u for u in inst["urls"] if u]
+        if inst["license"]:
+            licenses.append(inst["license"])
+    schemes = [(p["scheme"] or "").lower() for p in pids]
+    dois = [normalize_doi(p["value"]) for p, scheme in zip(pids, schemes) if scheme == "doi"]   # every DOI it lists is read; the first that is one is its DOI
     doi = next((d for d in dois if d), None)
-    others = {scheme: p.get("value") for p, scheme in zip(pids, schemes) if scheme and scheme != "doi"}
+    others = {scheme: p["value"] for p, scheme in zip(pids, schemes) if scheme and scheme != "doi"}
     ids = {"doi": doi} if doi else {}
     ids.update({k: v for k, v in others.items() if k in ("handle", "arxiv", "pmid", "urn")})
-    typ, publisher, own = text(SOURCE_ID, r.get("type")) or "", text(SOURCE_ID, r.get("publisher")), maybe_key(SOURCE_ID, r.get("id"))
+    typ, publisher, own = r["type"] or "", r["publisher"], r["id"]
     return make_record(
         identity=identity_from(SOURCE_ID, ("doi", doi), ("openaire", own)),
-        kind=_KIND.get(typ, "document"), source_id=SOURCE_ID, title=r.get("mainTitle"),
-        authors=[n for n in (text(SOURCE_ID, a.get("fullName")) for a in listed(SOURCE_ID, r, "authors")) if n],
-        year=year_from(r.get("publicationDate")), venue=text(SOURCE_ID, nested(SOURCE_ID, r, "container").get("name")) or publisher,
+        kind=_KIND.get(typ, "document"), source_id=SOURCE_ID, title=r["mainTitle"],
+        authors=[n for n in (a["fullName"] for a in r["authors"]) if n],
+        year=year_from(r["publicationDate"]), venue=r["container"]["name"] or publisher,
         identifiers=ids, links=links, license=licenses[0] if licenses else None,
         attribution="OpenAIRE",   # the CC-BY verdict is conditional on attribution (seed evidence)
-        extra={"openaire_id": r.get("id"), "publisher": publisher, "access_right": nested(SOURCE_ID, r, "bestAccessRight").get("label"),
+        extra={"openaire_id": r["id"], "publisher": publisher, "access_right": r["bestAccessRight"]["label"],
                "has_doi": bool(doi)},
-        raw=r,
+        raw=r.raw,
     )
 
 
@@ -106,14 +121,12 @@ def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None
               "fromPublicationDate": f"{year_from_}-01-01" if year_from_ else None}
     resp = client.get(SOURCE_ID, "find", f"{BASE}/researchProducts", params=params, headers=hdrs, query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
-    j = need(SOURCE_ID, resp.json, kind=dict)
-    # an answer may leave `results` out only when its header says nothing matched; a header that cannot be read says nothing, and costs the
-    # members beside it only what it alone establishes — an end, a continuation
-    rows = need(SOURCE_ID, j, "results") if j.get("results") is not None or not counts_nothing(field(j, "header", "numFound")) else NO_MEMBERS
+    j = decode(SOURCE_ID, FIND, resp.json)
+    rows = j["results"]
     # OpenAIRE's end: "the nextCursor returned matches the current cursor you've already specified"; and
     # numFound is "the total number of entities found", so a first page holding that many holds them all.
     # A missing nextCursor is undocumented: it neither continues nor ends (docs/PROVIDER-PAGINATION.md)
-    sent, found, mark = cursor or "*", total(field(j, "header", "numFound"), len(rows)), token(field(j, "header", "nextCursor"))
+    sent, found, mark = cursor or "*", total(j["header.numFound"], len(rows)), j["header.nextCursor"]
     end = mark == sent or (sent == "*" and found is not None and len(rows) >= found)
     return {"records": members(SOURCE_ID, rows, _record), "total": found,
             "next_cursor": None if end else mark, "exhausted": end}
@@ -130,6 +143,4 @@ def resolve(client: Client, identity: str) -> dict | None:
                       headers=hdrs, identity=f"doi:{doi}")
     if not check(SOURCE_ID, resp):
         return None
-    j = need(SOURCE_ID, resp.json, kind=dict)
-    rows = need(SOURCE_ID, j, "results") if j.get("results") is not None or not counts_nothing(field(j, "header", "numFound")) else NO_MEMBERS
-    return first_member(SOURCE_ID, rows, _record)
+    return first_member(SOURCE_ID, decode(SOURCE_ID, RESOLVE, resp.json)["results"], _record)

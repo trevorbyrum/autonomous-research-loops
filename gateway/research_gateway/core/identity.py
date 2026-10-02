@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import re
 
-from .payload import Members, PayloadError
+from . import schema as S
+from .payload import PayloadError
 
 _DOI_RE = re.compile(r"10\.\d{4,9}/\S+", re.I)
 _ISSN_RE = re.compile(r"^\d{4}-?\d{3}[\dXx]$")
@@ -144,15 +145,9 @@ def doi_prefix(doi: str) -> str:
     return doi.split("/", 1)[0]
 
 
-def _agency_named(row) -> str:
-    """The agency doi.org names for a DOI: its `RA` text; `unknown` when it names none (a DOI doi.org does not know has no `RA`). An `RA` that is there and is not
-    text — `false`, `0`, `[]`, `{}`, a number — is unreadable, not an unknown agency (and a number or a list is not an agency's name)."""
-    named = row.get("RA")
-    if named is None or named == "":
-        return "unknown"
-    if not isinstance(named, str):
-        raise PayloadError(f"doi.org: {type(named).__name__} where an agency's name belongs")
-    return named
+# doi.org/ra answers one object per DOI asked: the agency is its `RA` text, and `unknown` when it names none (a DOI doi.org does not know has no `RA`).
+# An `RA` that is there and is not text — `false`, `0`, `[]`, `{}`, a number — is unreadable, not an unknown agency (and a number or a list is not an agency's name).
+RA_ROWS = S.members(S.obj({"RA": S.text()}))
 
 
 class RegistrationAgencies:
@@ -176,9 +171,9 @@ class RegistrationAgencies:
             return "unknown"   # a failed lookup is not remembered as the prefix's answer (task 2b)
         rows = resp.json   # an unreadable 200 raises PayloadError: the caller reports it, nothing is cached
         agency = None
-        if isinstance(rows, Members):   # one object per DOI asked, and one was: its first result, read like any lookup's
+        if isinstance(rows, list):   # one object per DOI asked, and one was: its first result, read like any lookup's
             try:
-                agency = rows.first(_agency_named)
+                agency = S.decode("doi.org", RA_ROWS, rows).first(lambda row: row["RA"] or "unknown")
             except PayloadError:   # a first result that is not an object, or whose `RA` is there and is not text, names no agency — and is not remembered as one
                 return "unknown"
         agency = agency or "unknown"

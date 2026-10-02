@@ -1,8 +1,9 @@
 """FRED: macro and financial time series (attribution required; some series restricted)."""
 from __future__ import annotations
 
+from ..core import schema as S
 from ..core.canonical import make_record
-from .base import AdapterError, Client, check, identified, need, plain, text
+from .base import AdapterError, Client, check, decode, identified
 
 SOURCE_ID = "fred"
 SMOKE = {'capability': 'data', 'params': {'series': 'GDP', 'limit': 1}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -13,11 +14,18 @@ ATTRIBUTION = "Source: FRED, Federal Reserve Bank of St. Louis"
 _RESTRICTION_MARKERS = ("restrict", "non-commercial", "noncommercial", "written permission", "prohibited",
                         "may not be", "copyrighted", "proprietary", "licens")
 
+# What an answer must be. Series metadata is where FRED flags third-party restrictions, so its notes are text or the series is unreadable (`[]` or `false` are not
+# notes that say nothing). A catalogue's entries are answered whole: a series row that is not an object makes the catalogue unreadable, never a shorter one.
+OBSERVATIONS = S.obj({"observations": S.required(S.own(S.obj({"date": S.any_(), "value": S.any_()})))})
+SERIES = S.obj({"seriess": S.required(S.members(S.obj({"id": S.any_(), "title": S.text(), "units": S.any_(), "frequency": S.any_(), "notes": S.text()})))})
+CATALOG = S.obj({"seriess": S.required(S.own(S.obj({"id": S.any_(), "title": S.any_(), "units": S.any_(), "frequency": S.any_(),
+                                                    "observation_start": S.any_(), "observation_end": S.any_()})))})
+SCHEMAS = {"data:observations": OBSERVATIONS, "data:series": SERIES, "catalog": CATALOG}
+
 
 def _restricted(notes) -> bool:
-    """Whether the series' notes carry a restriction marker. Notes that are there and are not text cannot be checked, and a series whose restrictions
-    cannot be checked is unreadable: `[]` or `false` are not notes that say nothing."""
-    low = (text(SOURCE_ID, notes) or "").lower()
+    """Whether the series' notes carry a restriction marker (the notes are text: the schema saw to it)."""
+    low = (notes or "").lower()
     return any(m in low for m in _RESTRICTION_MARKERS)
 
 
@@ -48,23 +56,22 @@ def data(client: Client, params: dict) -> dict:
                       identity=f"series:fred:{series_id}")
     if not check(SOURCE_ID, resp):
         return {"identity": f"series:fred:{series_id}", "records": []}
-    obs = [(o.get("date"), o.get("value")) for o in plain(need(SOURCE_ID, resp.json, "observations"))]
+    observed = decode(SOURCE_ID, OBSERVATIONS, resp.json)
+    obs = [(o["date"], o["value"]) for o in observed["observations"]]
     m = client.get(SOURCE_ID, "data", f"{BASE}/series", params={**common, "series_id": series_id},
                    identity=f"series:fred:{series_id}")
-    seriess = plain(need(SOURCE_ID, m.json, "seriess")) if m.ok else []
-    s = seriess[0] if seriess and isinstance(seriess[0], dict) else {}
-    if not s.get("id") and not s.get("title"):
+    described = decode(SOURCE_ID, SERIES, m.json) if m.ok else None
+    s = described["seriess"].first(lambda one: one, SOURCE_ID) if described else None   # the series asked for: one that cannot be read is not a series with no metadata
+    if s is None or (not s["id"] and not s["title"]):
         # an empty or shapeless metadata object is no metadata: the restriction check could not
         # run, so there is no answer (fail closed, D-24/D-25)
         return {"identity": f"series:fred:{series_id}", "records": [],
                 "capability_fact": "series metadata unavailable; observations withheld because the third-party-restriction check could not run"}
-    series_payload = m.json
-    meta = {k: s.get(k) for k in ("title", "units", "frequency", "seasonal_adjustment", "last_updated", "notes")}
-    rec = make_record(identity=f"series:fred:{series_id}", kind="series", source_id=SOURCE_ID, title=meta.get("title"),
+    rec = make_record(identity=f"series:fred:{series_id}", kind="series", source_id=SOURCE_ID, title=s["title"],
                       links=[f"https://fred.stlouisfed.org/series/{series_id}"], attribution=ATTRIBUTION,
-                      extra={"units": meta.get("units"), "frequency": meta.get("frequency"), "observations": obs,
-                             "third_party_restricted": _restricted(meta.get("notes"))},
-                      raw={"observations": resp.json, "series": series_payload})
+                      extra={"units": s["units"], "frequency": s["frequency"], "observations": obs,
+                             "third_party_restricted": _restricted(s["notes"])},
+                      raw={"observations": observed.raw, "series": described.raw})
     return {"identity": rec["identity"], "records": [rec]}
 
 
@@ -81,7 +88,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                           identity=f"series:fred:{within}")
         if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
-        seriess = plain(need(SOURCE_ID, resp.json, "seriess"))
+        seriess = decode(SOURCE_ID, CATALOG, resp.json)["seriess"]
     else:
         if not query:
             return {"entries": [], "capability_fact": "fred catalog needs a query (or within=<series id>)"}
@@ -91,12 +98,12 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                           query=query)
         if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
-        seriess = plain(need(SOURCE_ID, resp.json, "seriess"))
-    entries = identified(SOURCE_ID, seriess, [{"id": s.get("id"), "label": s.get("title"), "kind": "series",
-                                               "units": s.get("units"), "frequency": s.get("frequency"),
-                                               "observation_range": f"{s.get('observation_start')}..{s.get('observation_end')}",
+        seriess = decode(SOURCE_ID, CATALOG, resp.json)["seriess"]
+    entries = identified(SOURCE_ID, seriess, [{"id": s["id"], "label": s["title"], "kind": "series",
+                                               "units": s["units"], "frequency": s["frequency"],
+                                               "observation_range": f"{s['observation_start']}..{s['observation_end']}",
                                                "data_request": {"tool": "research_data",
-                                                                "arguments": {"source": SOURCE_ID, "params": {"series": s.get("id")}}}}
-                                              for s in seriess if s.get("id")])
+                                                                "arguments": {"source": SOURCE_ID, "params": {"series": s["id"]}}}}
+                                              for s in seriess if s["id"]])
     nxt = str(int(cursor or 0) + limit) if (not within and len(entries) == limit) else None
     return {"entries": entries, "next": nxt}

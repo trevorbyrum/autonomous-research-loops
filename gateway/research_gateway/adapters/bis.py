@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core import sdmx
 from ..core.canonical import make_record
-from .base import AdapterError, Client, check, identified, members, plain
+from .base import AdapterError, Client, check, identified, members
 
 SOURCE_ID = "bis"
 SMOKE = {'capability': 'data', 'params': {'dataflow': 'WS_EER', 'key': 'M.N.B.US', 'start': '2026-01'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -39,16 +39,17 @@ def data(client: Client, params: dict) -> dict:
                       headers={"Accept": "application/xml"}, identity=identity)
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "records": []}
-    ctx = sdmx.context_xml(resp.text)
+    msg = sdmx.data_xml(SOURCE_ID, resp.text)
+    ctx = sdmx.context_xml(msg)
 
     def record(s: dict) -> dict:
-        dims = {k: v for k, v in plain(s["key"]).items() if k not in LABEL_ATTRS}   # the attributes of ONE <Series> element
+        dims = {k: v for k, v in s["key"].items() if k not in LABEL_ATTRS}   # the attributes of ONE <Series> element
         skey = ".".join(dims.values())
         return make_record(identity=f"series:bis:{flow}:{skey}", kind="series", source_id=SOURCE_ID,
                            title=s["key"].get("TITLE_TS") or f"{flow} {skey}", links=["https://data.bis.org/topics"],
                            attribution=ATTRIBUTION, extra={"dimensions": dims, "observations": s["observations"]},
                            raw={"series": s, "context": ctx})
-    records = members(SOURCE_ID, sdmx.series_xml(resp.text), record)
+    records = members(SOURCE_ID, sdmx.series_xml(msg), record)
     return {"identity": identity, "records": records}
 
 def catalog(client: Client, *, query: str | None = None, within: str | None = None,
@@ -65,7 +66,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                           params=STRUCTURE_PARAMS or None, headers={"Accept": "application/xml"}, query=query)
         if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
-        flows = sdmx.dataflows_xml(resp.text)
+        flows = sdmx.flows(SOURCE_ID, resp.text)
         if not flows:
             return {"entries": [], "capability_fact": "no dataflows in the structure answer (a readable listing of nothing is not a catalogue)"}
         q = (query or "").lower()
@@ -80,7 +81,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                       identity=f"series:{SOURCE_ID}:{within}")
     if not check(SOURCE_ID, resp, allow_404=False):
         return {"entries": []}
-    flow = sdmx.dataflow_named(sdmx.dataflows_xml(resp.text), within, AGENCY)   # the flow asked for, and everything below is that flow's own (R10-2)
+    flow = sdmx.dataflow_named(SOURCE_ID, sdmx.flows(SOURCE_ID, resp.text), within, AGENCY)   # the flow asked for, and everything below is that flow's own (R10-2)
     if flow is None:
         return {"entries": [], "capability_fact": f"dataflow {within!r}: no such dataflow in the structure answer"}
     ref = flow["structure"]
@@ -91,7 +92,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                     identity=f"series:{SOURCE_ID}:{within}")
     if not check(SOURCE_ID, ds, allow_404=False):
         return {"entries": []}
-    dims = sdmx.dimensions_xml(ds.text, ref)
+    dims = sdmx.dimensions_xml(SOURCE_ID, ds.text, ref)
     if not dims:
         return {"entries": [], "capability_fact": f"datastructure {ref['id']!r}: no dimensions parsed — refusing to "
                                                   "invent an empty series template"}

@@ -1,8 +1,9 @@
 """BEA: U.S. national, regional and international economic accounts."""
 from __future__ import annotations
 
+from ..core import schema as S
 from ..core.canonical import make_record
-from .base import AdapterError, Client, PayloadError, check, identified, key as member_key, listed, need, optional, plain, preferred, text
+from .base import AdapterError, Client, PayloadError, check, decode, identified
 
 SOURCE_ID = "bea"
 SMOKE = {'capability': 'data', 'params': {'method': 'GETDATASETLIST'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -10,36 +11,67 @@ CAPABILITIES = ("data", "catalog",)
 BASE = "https://apps.bea.gov/api/data/"
 ATTRIBUTION = "U.S. Bureau of Economic Analysis"
 
-
-def _listing(results: dict, *keys: str, required: bool = False) -> list:
-    """The rows BEA lists under the first of `keys` its answer carries: a list, or the one row as a bare object (BEA's habit for a list of
-    one). Every key the answer carries is read before the first is chosen: one that is there and is anything else — `false`, `0`, `""` — is
-    unreadable, and is not an empty list, whichever key stands before it. None of the keys is an empty listing, unless the listing is `required`."""
-    found = []
-    for key in keys:
-        value = results.get(key)
-        if value is None:
-            continue
-        if isinstance(value, list):
-            found.append(value)
-        elif isinstance(value, dict) and value:   # a row has something in it
-            found.append([value])
-        else:
-            raise PayloadError(f"{SOURCE_ID}: the answer's {key} is {type(value).__name__}, not a list")
-    if found:
-        return found[0]
-    if required:
-        raise PayloadError(f"{SOURCE_ID}: the answer has none of {', '.join(keys)}: a listing of nothing is not a catalogue")
-    return []
+# What an answer must be. BEA states an error inside an HTTP-200 answer, beside the results or in the envelope: both places are declared, so both are decoded before
+# one is chosen, and an answer that states an error needs nothing else (it has no results). Any other answer must have its results, and the rows the operation reads.
+# A list of rows is a list, or the one row as a bare object (BEA's habit for a list of one); `{}` is no row. A table is ONE record, kept whole: a row that is not an
+# object makes the answer unreadable, not shorter. The listing keys are alternatives: the first the answer carries is the listing, and every one it carries is decoded.
+ERROR = S.obj({"APIErrorDescription": S.text()})
+NOTES = S.own(S.obj({"NoteText": S.text()}))
+TABLE_ROW = S.obj({"TableName": S.text(), "LineDescription": S.text()})
+LISTING_KEYS = ("Dataset", "ParamValue", "Parameter")
 
 
-def _error(j: dict) -> str | None:
-    """The error BEA reports inside a 200 answer, if it reports one. The envelope and its results are objects before anything is read from them: a
-    `BEAAPI` that is `false` or `[]` is an unreadable answer, not one that reports no error. BEA states an error beside the results or in the envelope; both places
-    are read (each an object when it is there) before one is chosen, so a malformed one never hides behind the other."""
-    api = optional(SOURCE_ID, j, "BEAAPI", dict)
-    err = preferred(optional(SOURCE_ID, optional(SOURCE_ID, api, "Results", dict), "Error", dict), optional(SOURCE_ID, api, "Error", dict))
-    return text(SOURCE_ID, err.get("APIErrorDescription"))
+def _error(api) -> str | None:
+    """The error BEA reports inside a 200 answer, if it reports one: the one beside the results, else the envelope's."""
+    results = api["Results"]
+    beside = results["Error"] if results is not None else None
+    return (beside if beside is not None and beside.raw else api["Error"])["APIErrorDescription"]
+
+
+def _stated(*needs: str):
+    """The rule of an answer: it states an error, or it has its results and, in them, `needs`."""
+    def rule(root) -> None:
+        api = root["BEAAPI"]
+        if _error(api):
+            return
+        results = api["Results"]
+        if results is None:
+            raise PayloadError("the answer has no BEAAPI.Results")
+        missing = [n for n in needs if results[n] is None]
+        if missing:
+            raise PayloadError(f"the answer has no {', '.join(missing)}: a listing of nothing is not a catalogue")
+    return rule
+
+
+def _answer(results: dict, rule) -> S.Spec:
+    return S.obj({"BEAAPI": S.obj({"Results": S.maybe(S.obj({**results, "Error": ERROR})), "Error": ERROR})}, rule=rule)
+
+
+def _rows(row: S.Spec) -> S.Spec:
+    return S.maybe(S.own(row, bare=True))
+
+
+def values_schema(parameter: str) -> S.Spec:
+    """A parameter's values: each row carries the value under the parameter's own spelling (or `Key`), with a description; or, for a parameter that is a span (Year),
+    the table and the first/last of it. Every spelling the row carries is decoded before the first is chosen."""
+    spellings = {name: S.maybe_key(only_empty=True) for name in (parameter, parameter.capitalize(), parameter.upper(), "Key")}
+    return _answer({"ParamValue": _rows(S.obj({"Desc": S.text(), "Description": S.text(), "TableName": S.text(), **spellings, "span": S.matching(("First", "Last"), S.any_())}))},
+                   _stated("ParamValue"))
+
+
+def _table_name(v) -> str | None:
+    name = v["TableName"]
+    if name is not None and not isinstance(name, str):
+        raise PayloadError(f"{SOURCE_ID}: a table name that is {type(name).__name__}, not text")
+    return name or None
+
+
+DATA_GET = _answer({"Data": S.maybe(S.own(TABLE_ROW)), "Notes": NOTES}, _stated("Data"))
+DATA_LIST = _answer({**{k: _rows(TABLE_ROW) for k in LISTING_KEYS}, "Notes": NOTES}, _stated())   # a listing is not required here: BEA may name none
+CATALOG_DATASETS = _answer({"Dataset": _rows(S.obj({"DatasetName": S.any_(), "DatasetDescription": S.any_()}))}, _stated("Dataset"))
+CATALOG_PARAMETERS = _answer({"Parameter": _rows(S.obj({"ParameterName": S.any_(), "ParameterDescription": S.any_()}))}, _stated("Parameter"))
+SCHEMAS = {"data:getdata": DATA_GET, "data:list": DATA_LIST, "catalog:datasets": CATALOG_DATASETS, "catalog:parameters": CATALOG_PARAMETERS,
+           "catalog:values": values_schema("Frequency")}
 
 
 # the agent-facing data contract (research_sources; validated before dispatch, D-31).
@@ -76,21 +108,20 @@ def data(client: Client, params: dict) -> dict:
     resp = client.get(SOURCE_ID, "data", BASE, params=query, identity=identity)
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "records": []}
-    j = need(SOURCE_ID, resp.json, kind=dict)
-    err = _error(j)
+    j = decode(SOURCE_ID, DATA_GET if method.lower() == "getdata" else DATA_LIST, resp.json)
+    err = _error(j["BEAAPI"])
     if err:
         return {"identity": identity, "records": [], "capability_fact": f"BEA: {err}"}
-    results = plain(need(SOURCE_ID, j, "BEAAPI", "Results", kind=dict))   # the rows of ONE table record, kept whole
+    results = j["BEAAPI"]["Results"]   # the rows of ONE table record, kept whole
     # GetData answers carry Data; a GetData answer without it is unreadable, never an empty table
-    rows = plain(need(SOURCE_ID, results, "Data")) if method.lower() == "getdata" else _listing(results, "Dataset", "ParamValue", "Parameter")
-    notes = [t for t in (text(SOURCE_ID, n.get("NoteText")) for n in listed(SOURCE_ID, results, "Notes")) if t]
-    if rows and not isinstance(rows[0], dict):
-        raise PayloadError(f"{SOURCE_ID}: the table's first row is {type(rows[0]).__name__}, not an object")
+    parsed = results["Data"] if method.lower() == "getdata" else next((results[k] for k in LISTING_KEYS if results[k] is not None), [])
+    rows = [r.raw for r in parsed]
+    notes = [t for t in (n["NoteText"] for n in results["Notes"]) if t]
     rec = make_record(identity=identity, kind="series", source_id=SOURCE_ID,
-                      title=preferred(text(SOURCE_ID, rows[0].get("TableName")), text(SOURCE_ID, rows[0].get("LineDescription"))) if rows else method,
+                      title=(parsed[0]["TableName"] or parsed[0]["LineDescription"]) if parsed else method,
                       links=["https://apps.bea.gov/iTable/"], attribution=ATTRIBUTION,
                       extra={"rows": rows, "row_count": len(rows), "notes": notes, "method": method,
-                             "query": {k: v for k, v in query.items() if k != "UserID"}}, raw=j)
+                             "query": {k: v for k, v in query.items() if k != "UserID"}}, raw=j.raw)
     return {"identity": identity, "records": [rec]}
 
 
@@ -109,56 +140,54 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
     dataset, _, parameter = (within or "").partition("/")
     offset = int(cursor or 0)
 
-    def call(method, **extra):
+    def call(method, schema, **extra):
         resp = client.get(SOURCE_ID, "catalog", BASE, params={**base_q, "method": method, **extra}, query=query)
         if not check(SOURCE_ID, resp, allow_404=False):
             return None, None
-        j = need(SOURCE_ID, resp.json, kind=dict)
-        err = _error(j)
+        j = decode(SOURCE_ID, schema, resp.json)
+        err = _error(j["BEAAPI"])
         if err:
             return None, f"BEA: {err}"
-        return plain(need(SOURCE_ID, j, "BEAAPI", "Results", kind=dict)), None   # a catalogue: its entries are read whole
-
-    def rows_of(results, *keys):
-        return _listing(results, *keys, required=True)
+        return j["BEAAPI"]["Results"], None   # a catalogue: its entries are read whole
 
     if not dataset:
-        results, err = call("GETDATASETLIST")
+        results, err = call("GETDATASETLIST", CATALOG_DATASETS)
         if results is None:
             return {"entries": [], **({"capability_fact": err} if err else {})}
-        rows = rows_of(results, "Dataset")
-        entries = identified(SOURCE_ID, rows, [{"id": d.get("DatasetName"), "label": d.get("DatasetDescription"), "kind": "dataset",
-                                                "children": True, "within": d.get("DatasetName")}
-                                               for d in rows if d.get("DatasetName")])
+        rows = results["Dataset"]
+        entries = identified(SOURCE_ID, rows, [{"id": d["DatasetName"], "label": d["DatasetDescription"], "kind": "dataset",
+                                                "children": True, "within": d["DatasetName"]}
+                                               for d in rows if d["DatasetName"]])
     elif not parameter:
-        results, err = call("GetParameterList", DataSetName=dataset)
+        results, err = call("GetParameterList", CATALOG_PARAMETERS, DataSetName=dataset)
         if results is None:
             return {"entries": [], **({"capability_fact": err} if err else {})}
-        rows = rows_of(results, "Parameter")
-        entries = identified(SOURCE_ID, rows, [{"id": p.get("ParameterName"), "label": p.get("ParameterDescription"), "kind": "parameter",
-                                                "children": True, "within": f"{dataset}/{p.get('ParameterName')}"}
-                                               for p in rows if p.get("ParameterName")])
+        rows = results["Parameter"]
+        entries = identified(SOURCE_ID, rows, [{"id": p["ParameterName"], "label": p["ParameterDescription"], "kind": "parameter",
+                                                "children": True, "within": f"{dataset}/{p['ParameterName']}"}
+                                               for p in rows if p["ParameterName"]])
     else:
-        results, err = call("GetParameterValues", DataSetName=dataset, ParameterName=parameter)
+        results, err = call("GetParameterValues", values_schema(parameter), DataSetName=dataset, ParameterName=parameter)
         if results is None:
             return {"entries": [], **({"capability_fact": err} if err else {})}
-        entries, rows = [], rows_of(results, "ParamValue")
+        entries, rows = [], results["ParamValue"]
         for v in rows:
-            range_keys = [k for k in v if k.startswith(("First", "Last"))]
-            spellings = [member_key(SOURCE_ID, v[k]) for k in (parameter, parameter.capitalize(), parameter.upper(), "Key") if v.get(k) not in (None, "")]   # every spelling the row carries is read
+            range_keys = v["span"]
+            spellings = [str(v[k]) for k in (parameter, parameter.capitalize(), parameter.upper(), "Key") if v[k] not in (None, "")]   # every spelling the row carries was read
             exact = spellings[0] if spellings else None
             if exact is not None and not range_keys:
-                entries.append({"id": exact, "label": preferred(text(SOURCE_ID, v.get("Desc")), text(SOURCE_ID, v.get("Description")), exact), "kind": "value",
+                entries.append({"id": exact, "label": v["Desc"] or v["Description"] or exact, "kind": "value",
                                 "data_request": {"tool": "research_data", "partial": True,
                                                  "arguments": {"source": SOURCE_ID,
                                                                "params": {"dataset": dataset, parameter.lower(): exact}},
                                                  "missing": "the dataset's other required parameters (browse them the same way)"}})
-            elif range_keys and text(SOURCE_ID, v.get("TableName")):
-                spans = ", ".join(f"{k}={v[k]}" for k in sorted(range_keys) if v.get(k))
-                entries.append({"id": v["TableName"], "label": f"{v['TableName']}: {spans}", "kind": "range",
+            elif range_keys and _table_name(v):
+                table = _table_name(v)
+                spans = ", ".join(f"{k}={range_keys[k]}" for k in sorted(range_keys) if range_keys[k])
+                entries.append({"id": table, "label": f"{table}: {spans}", "kind": "range",
                                 "data_request": {"tool": "research_data", "partial": True,
                                                  "arguments": {"source": SOURCE_ID,
-                                                               "params": {"dataset": dataset, "table": v["TableName"]}},
+                                                               "params": {"dataset": dataset, "table": table}},
                                                  "missing": f"a {parameter.lower()} within the listed span (plus frequency)"}})
     identified(SOURCE_ID, rows, entries)
     if query:

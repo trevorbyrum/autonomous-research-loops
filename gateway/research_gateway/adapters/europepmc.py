@@ -1,9 +1,10 @@
 """Europe PMC: biomedical-domain article lane (per-item licences)."""
 from __future__ import annotations
 
+from ..core import schema as S
 from ..core.canonical import make_record
 from ..core.identity import normalize_doi
-from .base import Client, check, first_member, identity_from, members, need, text, token, total
+from .base import Client, check, decode, first_member, identity_from, members, total
 
 SOURCE_ID = "europepmc"
 SMOKE = {'capability': 'resolve', 'identity': 'doi:10.1038/nature12373'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -11,28 +12,34 @@ CAPABILITIES = ("find", "resolve")
 SCHEMES = ("doi", "pmid")
 BASE = "https://www.ebi.ac.uk/europepmc/webservices/rest"
 
+# What an answer must be. The identity is the DOI, else the PMID, else the id: all declared, so all decoded before one is chosen. The "Y"/"N" flags are
+# text (a flag that is a list, a number or `false` is unreadable, not an N), and a year that is text and no number names none.
+RECORD = S.obj({"doi": S.text(), "pmid": S.text(), "pmcid": S.text(), "id": S.text(), "source": S.text(), "title": S.text(), "authorString": S.text(),
+                "pubYear": S.oneof(S.year(), S.text()), "journalTitle": S.text(), "license": S.text(),
+                "hasTextMinedTerms": S.text(), "inEPMC": S.text(), "isOpenAccess": S.text()},
+               alts=(("doi", "pmid", "id"),))
+RESULTS = S.required(S.obj({"result": S.required(S.members(RECORD))}))
+FIND = S.obj({"resultList": RESULTS, "hitCount": S.soft(S.whole()), "nextCursorMark": S.soft(S.token())})
+RESOLVE = S.obj({"resultList": RESULTS})
+SCHEMAS = {"find": FIND, "resolve": RESOLVE}
 
-def _yes(r: dict, name: str) -> bool:
-    """One of Europe PMC's "Y"/"N" flags: whether it says Y. A flag that is not text (a list, a number, `false`) is unreadable, not an N."""
-    return text(SOURCE_ID, r.get(name)) == "Y"
 
-
-def _record(r: dict) -> dict:
-    doi = normalize_doi(r.get("doi"))
-    mined, in_epmc = _yes(r, "hasTextMinedTerms"), _yes(r, "inEPMC")   # both are read before either decides
-    pmid, pmcid, published = text(SOURCE_ID, r.get("pmid")), text(SOURCE_ID, r.get("pmcid")), r.get("pubYear")
+def _record(r) -> dict:
+    doi = normalize_doi(r["doi"])
+    mined, in_epmc = r["hasTextMinedTerms"] == "Y", r["inEPMC"] == "Y"
+    pmid, pmcid, published = r["pmid"], r["pmcid"], r["pubYear"]
     ids = {k: v for k, v in (("doi", doi), ("pmid", pmid), ("pmcid", pmcid)) if v}
-    own, source = text(SOURCE_ID, r.get("id")), text(SOURCE_ID, r.get("source"))   # both are read: the identity falls back to the id, and the link needs both
+    own, source = r["id"], r["source"]
     identity = identity_from(SOURCE_ID, ("doi", doi), ("pmid", pmid), ("europepmc", own))
     links = [f"https://europepmc.org/abstract/{source}/{own}"] if own and source else []
     return make_record(
-        identity=identity, kind="article", source_id=SOURCE_ID, title=r.get("title"),
-        authors=[a.strip() for a in (text(SOURCE_ID, r.get("authorString")) or "").rstrip(".").split(",") if a.strip()],
-        year=None if isinstance(published, str) and not published.isdigit() else published, venue=r.get("journalTitle"),   # text that is no year names none
-        identifiers=ids, links=links, license=r.get("license"),  # per-article CC variant when the source states one
-        extra={"open_access": _yes(r, "isOpenAccess"), "has_full_text": mined or in_epmc,
+        identity=identity, kind="article", source_id=SOURCE_ID, title=r["title"],
+        authors=[a.strip() for a in (r["authorString"] or "").rstrip(".").split(",") if a.strip()],
+        year=None if isinstance(published, str) else published, venue=r["journalTitle"],   # text that is no year names none
+        identifiers=ids, links=links, license=r["license"],  # per-article CC variant when the source states one
+        extra={"open_access": r["isOpenAccess"] == "Y", "has_full_text": mined or in_epmc,
                "redistributable": False},
-        raw=r,
+        raw=r.raw,
     )
 
 
@@ -40,14 +47,14 @@ def find(client: Client, query: str, *, limit: int = 20, cursor: str | None = No
     params = {"query": query, "format": "json", "pageSize": min(limit, 100), "cursorMark": cursor or "*", "resultType": "lite"}
     resp = client.get(SOURCE_ID, "find", f"{BASE}/search", params=params, query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
-    j = resp.json
-    results = need(SOURCE_ID, j, "resultList", "result")
+    j = decode(SOURCE_ID, FIND, resp.json)
+    results = j["resultList"]["result"]
     # Europe PMC documents only the continuation — "For every following page use the value of the returned
     # nextCursorMark element" — and no last page: a cursor that moves continues, nothing here ends the lane, and
     # a cursor handed back unchanged would only repeat this page (docs/PROVIDER-PAGINATION.md)
-    mark = token(j.get("nextCursorMark"))
+    mark = j["nextCursorMark"]
     nxt = mark if mark not in (None, cursor or "*") else None
-    return {"records": members(SOURCE_ID, results, _record), "total": total(j.get("hitCount"), len(results)), "next_cursor": nxt,
+    return {"records": members(SOURCE_ID, results, _record), "total": total(j["hitCount"], len(results)), "next_cursor": nxt,
             "exhausted": False}
 
 
@@ -60,4 +67,4 @@ def resolve(client: Client, identity: str) -> dict | None:
                       identity=identity)
     if not check(SOURCE_ID, resp):
         return None
-    return first_member(SOURCE_ID, need(SOURCE_ID, resp.json, "resultList", "result"), _record)
+    return first_member(SOURCE_ID, decode(SOURCE_ID, RESOLVE, resp.json)["resultList"]["result"], _record)

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core import sdmx
 from ..core.canonical import make_record
-from .base import AdapterError, Client, PayloadError, check, identified, members, need
+from .base import AdapterError, Client, PayloadError, check, identified, members
 
 SOURCE_ID = "ecb"
 SMOKE = {'capability': 'data', 'params': {'dataflow': 'EXR', 'key': 'D.USD.EUR.SP00.A', 'start': '2026-08-01'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -37,8 +37,8 @@ def data(client: Client, params: dict) -> dict:
                       identity=identity)
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "records": []}
-    j = need(SOURCE_ID, resp.json, kind=dict)
-    if not sdmx.datasets(j) and not sdmx.structure(j):
+    j = sdmx.message(SOURCE_ID, resp.json)
+    if not sdmx.has_content(j):
         raise PayloadError(f"{SOURCE_ID}: the answer is not an SDMX-JSON message (no structure, no data sets)")
     ctx, read = sdmx.context(j), sdmx.series_reader(j)
 
@@ -66,7 +66,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                           params=STRUCTURE_PARAMS or None, headers={"Accept": "application/xml"}, query=query)
         if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
-        flows = sdmx.dataflows_xml(resp.text)
+        flows = sdmx.flows(SOURCE_ID, resp.text)
         if not flows:
             return {"entries": [], "capability_fact": "no dataflows in the structure answer (a readable listing of nothing is not a catalogue)"}
         q = (query or "").lower()
@@ -81,7 +81,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                       identity=f"series:{SOURCE_ID}:{within}")
     if not check(SOURCE_ID, resp, allow_404=False):
         return {"entries": []}
-    flow = sdmx.dataflow_named(sdmx.dataflows_xml(resp.text), within, AGENCY)   # the flow asked for, and everything below is that flow's own (R10-2)
+    flow = sdmx.dataflow_named(SOURCE_ID, sdmx.flows(SOURCE_ID, resp.text), within, AGENCY)   # the flow asked for, and everything below is that flow's own (R10-2)
     if flow is None:
         return {"entries": [], "capability_fact": f"dataflow {within!r}: no such dataflow in the structure answer"}
     ref = flow["structure"]
@@ -92,7 +92,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                     identity=f"series:{SOURCE_ID}:{within}")
     if not check(SOURCE_ID, ds, allow_404=False):
         return {"entries": []}
-    dims = sdmx.dimensions_xml(ds.text, ref)
+    dims = sdmx.dimensions_xml(SOURCE_ID, ds.text, ref)
     if not dims:
         return {"entries": [], "capability_fact": f"datastructure {ref['id']!r}: no dimensions parsed — refusing to "
                                                   "invent an empty series template"}

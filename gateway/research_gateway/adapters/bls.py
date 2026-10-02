@@ -1,14 +1,26 @@
 """BLS: Consumer Expenditure, CPI and other series (v2 API; optional registration key)."""
 from __future__ import annotations
 
+from ..core import schema as S
 from ..core.canonical import make_record
-from .base import AdapterError, Client, PayloadError, check, identified, key, listed, members, need, optional, plain, text
+from .base import AdapterError, Client, check, decode, identified, members
 
 SOURCE_ID = "bls"
 SMOKE = {'capability': 'data', 'params': {'series': 'CUUR0000SA0', 'start_year': 2025, 'end_year': 2025}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("data", "catalog",)
 BASE = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
 ATTRIBUTION = "U.S. Bureau of Labor Statistics"
+
+# What an answer must be. Every answer states its status; the results are required only when it says the request succeeded (a failure states none, and its
+# `message` is read as commentary: one that is not a list of text is dropped and the answer stands without it). A series with no data has none; data that
+# is not a list is unreadable. A catalogue's entries are answered whole.
+SERIES = S.obj({"seriesID": S.key(), "data": S.own(S.obj({"year": S.key(), "period": S.key(), "value": S.any_()})),
+                "catalog": S.obj({"series_title": S.text(), "survey_name": S.any_(), "seasonality": S.any_()})})
+DATA = S.obj({"status": S.required(S.text()), "message": S.soft(S.own(S.text())),
+              "Results": S.by("status", {"REQUEST_SUCCEEDED": S.required(S.obj({"series": S.required(S.members(SERIES))}))})})
+SURVEYS = S.obj({"Results": S.required(S.obj({"survey": S.required(S.own(S.obj({"survey_abbreviation": S.any_(), "survey_name": S.any_(default="")})))}))})
+POPULAR = S.obj({"Results": S.required(S.obj({"series": S.required(S.own(S.obj({"seriesID": S.any_()})))}))})
+SCHEMAS = {"data": DATA, "catalog:surveys": SURVEYS, "catalog:popular": POPULAR}
 
 
 # the agent-facing data contract (research_sources; validated before dispatch, D-31)
@@ -23,25 +35,15 @@ DATA_PARAMS = {
     "notes": "at most 50 series ids per call; larger lists are rejected, never silently truncated",
 }
 
-def _series(s: dict) -> dict:
-    series_id = key(SOURCE_ID, s.get("seriesID"))
-    obs = [(f"{key(SOURCE_ID, d.get('year'))}-{key(SOURCE_ID, d.get('period'))}", d.get("value"))
-           for d in reversed(plain(optional(SOURCE_ID, s, "data")))]   # a series with no data has none; data that is not a list is unreadable
-    cat = optional(SOURCE_ID, s, "catalog", dict)
+def _series(s) -> dict:
+    series_id = s["seriesID"]
+    obs = [(f"{d['year']}-{d['period']}", d["value"]) for d in reversed(s["data"])]
+    cat = s["catalog"]
     return make_record(identity=f"series:bls:{series_id}", kind="series", source_id=SOURCE_ID,
-                       title=text(SOURCE_ID, cat.get("series_title")) or series_id,
+                       title=cat["series_title"] or str(series_id),
                        links=[f"https://data.bls.gov/timeseries/{series_id}"], attribution=ATTRIBUTION,
-                       extra={"observations": obs, "survey": cat.get("survey_name"), "seasonality": cat.get("seasonality")},
-                       raw=s)
-
-
-def _messages(j) -> list[str]:
-    """What BLS says beside the data, as text. Commentary that is not a list of text is dropped and the answer stands without it: nothing
-    is claimed from it, and the series beside it are readable."""
-    try:
-        return [text(SOURCE_ID, m) or "" for m in listed(SOURCE_ID, j, "message")]
-    except PayloadError:
-        return []
+                       extra={"observations": obs, "survey": cat["survey_name"], "seasonality": cat["seasonality"]},
+                       raw=s.raw)
 
 
 def data(client: Client, params: dict) -> dict:
@@ -68,12 +70,11 @@ def data(client: Client, params: dict) -> dict:
     resp = client.post(SOURCE_ID, "data", BASE, body=body, identity=identity)
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "records": []}
-    j = need(SOURCE_ID, resp.json, kind=dict)
-    need(SOURCE_ID, j, "status", kind=str)   # every BLS answer states its status; one without it is unreadable
-    messages = _messages(j)
-    if j.get("status") != "REQUEST_SUCCEEDED":
-        return {"identity": identity, "records": [], "capability_fact": f"BLS: {j.get('status')} {'; '.join(messages)}"[:300]}
-    records = members(SOURCE_ID, need(SOURCE_ID, j, "Results", "series"), _series)
+    j = decode(SOURCE_ID, DATA, resp.json)
+    messages = [m or "" for m in j["message"] or []]
+    if j["status"] != "REQUEST_SUCCEEDED":
+        return {"identity": identity, "records": [], "capability_fact": f"BLS: {j['status']} {'; '.join(messages)}"[:300]}
+    records = members(SOURCE_ID, j["Results"]["series"], _series)
     return {"identity": identity, "records": records, "messages": messages}
 
 
@@ -87,14 +88,14 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
         q = (query or "").lower()
-        surveys = plain(need(SOURCE_ID, resp.json, "Results", "survey"))
-        identified(SOURCE_ID, surveys, [s for s in surveys if s.get("survey_abbreviation")])
-        entries = [{"id": s.get("survey_abbreviation"), "label": s.get("survey_name"), "kind": "survey",
-                    "children": True, "within": s.get("survey_abbreviation")}
+        surveys = decode(SOURCE_ID, SURVEYS, resp.json)["Results"]["survey"]
+        identified(SOURCE_ID, surveys, [s for s in surveys if s["survey_abbreviation"]])
+        entries = [{"id": s["survey_abbreviation"], "label": s["survey_name"], "kind": "survey",
+                    "children": True, "within": s["survey_abbreviation"]}
                    for s in surveys
-                   if s.get("survey_abbreviation")
-                   and (not q or q in str(s.get("survey_name", "")).lower()
-                        or q in str(s.get("survey_abbreviation", "")).lower())]
+                   if s["survey_abbreviation"]
+                   and (not q or q in str(s["survey_name"]).lower()
+                        or q in str(s["survey_abbreviation"]).lower())]
         offset = int(cursor or 0)
         page = entries[offset:offset + limit]
         return {"entries": page, "next": str(offset + limit) if len(entries) > offset + limit else None,
@@ -103,11 +104,11 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                       identity=f"series:bls:{within}")
     if not check(SOURCE_ID, resp, allow_404=False):
         return {"entries": []}
-    series = plain(need(SOURCE_ID, resp.json, "Results", "series"))
-    entries = identified(SOURCE_ID, series, [{"id": s.get("seriesID"), "label": s.get("seriesID"), "kind": "series",
+    series = decode(SOURCE_ID, POPULAR, resp.json)["Results"]["series"]
+    entries = identified(SOURCE_ID, series, [{"id": s["seriesID"], "label": s["seriesID"], "kind": "series",
                                               "data_request": {"tool": "research_data",
-                                                               "arguments": {"source": SOURCE_ID, "params": {"series": s.get("seriesID")}}}}
-                                             for s in series if s.get("seriesID")])
+                                                               "arguments": {"source": SOURCE_ID, "params": {"series": s["seriesID"]}}}}
+                                             for s in series if s["seriesID"]])
     offset = int(cursor or 0)
     page = entries[offset:offset + limit]
     return {"entries": page, "next": str(offset + limit) if len(entries) > offset + limit else None,

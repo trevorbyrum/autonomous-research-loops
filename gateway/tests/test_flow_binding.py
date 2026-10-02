@@ -9,7 +9,10 @@ order, a flow absent, defined twice and with its structure missing. This file st
   * the same flow defined twice identically is one flow; two definitions that differ in any way that is bound (version, agency, name, structure) are not;
   * a flow's own `Structure` child names its structure: a `Ref` anywhere else under the flow is no reference, and a flow whose reference names no structure id
     names none: no template, and the structure is never guessed from the flow's own id (the old `structure_ref or within`);
-  * a reference that more than one structure of the message answers to, with different dimensions, is ambiguous; with the same dimensions it is not.
+  * a reference that more than one structure of the message answers to, with different dimensions, is ambiguous; with the same dimensions it is not;
+  * (2b-repair-12, R11-2) the references a flow states are decoded and checked together, never reduced to the first: SDMX 2.1 gives a Dataflow ONE structure reference,
+    a `Ref` with an optional `URN`, or a `URN` alone (DataflowType, ReferenceType); two of them, or a `Ref` and a `URN` that name different structures, are a flow
+    that does not say which structure it has: unreadable, no template. A `Ref` with a matching `URN` is one reference; a `URN` alone is not followed (no template).
 """
 from __future__ import annotations
 
@@ -67,47 +70,51 @@ def routed(source: str, text: str, within: str = "F1") -> dict:
 
 class SelectionOfTheFlow(unittest.TestCase):
     def read(self, *parts: str):
-        return sdmx.dataflows_xml(message(*parts))
+        return sdmx.flows("ecb", message(*parts))
+
+    @staticmethod
+    def named(flows, wanted, agency):
+        return sdmx.dataflow_named("ecb", flows, wanted, agency)
 
     def test_the_flow_asked_for_is_the_one_found_by_its_id(self):
         flows = self.read(flow("F0", "Zero", ref("S0"), "ECB"), flow("F1", "One", ref("S1"), "ECB"), flow("F2", "Two", ref("S2"), "ECB"))
-        self.assertEqual([sdmx.dataflow_named(flows, w, "ECB")["label"] for w in ("F2", "F0", "F1")], ["Two", "Zero", "One"])
-        self.assertIsNone(sdmx.dataflow_named(flows, "F9", "ECB"))
-        self.assertEqual(sdmx.dataflow_named(flows, "F1", "ECB")["structure"]["id"], "S1")
+        self.assertEqual([self.named(flows, w, "ECB")["label"] for w in ("F2", "F0", "F1")], ["Two", "Zero", "One"])
+        self.assertIsNone(self.named(flows, "F9", "ECB"))
+        self.assertEqual(self.named(flows, "F1", "ECB")["structure"]["id"], "S1")
 
     def test_a_flow_another_agency_maintains_is_not_the_flow_asked_for(self):
         flows = self.read(flow("F1", "Other", ref("S1"), "OTHER"))
-        self.assertIsNone(sdmx.dataflow_named(flows, "F1", "ECB"))
-        self.assertIsNotNone(sdmx.dataflow_named(self.read(flow("F1", "No agency", ref("S1"))), "F1", "ECB"), "a flow that states no agency is read")
+        self.assertIsNone(self.named(flows, "F1", "ECB"))
+        self.assertIsNotNone(self.named(self.read(flow("F1", "No agency", ref("S1"))), "F1", "ECB"), "a flow that states no agency is read")
         flows = self.read(flow("F1", "Other", ref("S1"), "OTHER"), flow("F1", "Ours", ref("S1"), "ECB"))
-        self.assertEqual(sdmx.dataflow_named(flows, "F1", "ECB")["label"], "Ours")
+        self.assertEqual(self.named(flows, "F1", "ECB")["label"], "Ours")
 
     def test_the_same_definition_twice_is_one_flow_and_a_different_one_is_ambiguous(self):
         twice = self.read(flow("F1", "One", ref("S1"), "ECB", "1.0"), flow("F1", "One", ref("S1"), "ECB", "1.0"))
-        self.assertEqual(sdmx.dataflow_named(twice, "F1", "ECB")["label"], "One")
+        self.assertEqual(self.named(twice, "F1", "ECB")["label"], "One")
         for other in (flow("F1", "One", ref("S1"), "ECB", "2.0"), flow("F1", "Renamed", ref("S1"), "ECB", "1.0"), flow("F1", "One", ref("S2"), "ECB", "1.0"),
                       flow("F1", "One", ref("S1"), None, "1.0")):
             with self.subTest(other=other[:90]):
                 with self.assertRaises(PayloadError):
-                    sdmx.dataflow_named(self.read(flow("F1", "One", ref("S1"), "ECB", "1.0"), other), "F1", "ECB")
+                    self.named(self.read(flow("F1", "One", ref("S1"), "ECB", "1.0"), other), "F1", "ECB")
 
     def test_only_the_structure_child_of_the_flow_names_its_structure(self):
         stray = ('<str:Dataflow id="F1" agencyID="ECB"><str:Name>One</str:Name><str:Annotations><str:Annotation><str:AnnotationText>x</str:AnnotationText>'
                  '<Ref id="NOT_A_STRUCTURE"/></str:Annotation></str:Annotations></str:Dataflow>')
-        self.assertEqual(sdmx.dataflow_named(self.read(stray), "F1", "ECB")["structure"], {}, "a Ref that is not under the Structure child is no reference")
+        self.assertEqual(self.named(self.read(stray), "F1", "ECB")["structure"], {}, "a Ref that is not under the Structure child is no reference")
         nameless = '<str:Dataflow id="F1"><str:Structure><Ref id="S1"/></str:Structure></str:Dataflow>'
-        found = sdmx.dataflow_named(self.read(nameless), "F1", "ECB")
+        found = self.named(self.read(nameless), "F1", "ECB")
         self.assertEqual((found["label"], found["structure"]["id"]), ("F1", "S1"), "a flow with no name is labelled by its id")
 
     def test_a_reference_that_more_than_one_structure_answers_to_is_ambiguous_unless_they_agree(self):
         reference = {"id": "S1", "agencyID": "X"}
         two = message(dsd("S1", ("A", "B"), "X", "1.0"), dsd("S1", ("A", "C"), "X", "2.0"))
         with self.assertRaises(PayloadError):
-            sdmx.dimensions_xml(two, reference)
-        self.assertEqual(sdmx.dimensions_xml(two, {**reference, "version": "2.0"}), ["A", "C"])
+            sdmx.dimensions_xml("ecb", two, reference)
+        self.assertEqual(sdmx.dimensions_xml("ecb", two, {**reference, "version": "2.0"}), ["A", "C"])
         same = message(dsd("S1", ("A", "B"), "X", "1.0"), dsd("S1", ("A", "B"), "X", "2.0"))
-        self.assertEqual(sdmx.dimensions_xml(same, reference), ["A", "B"])
-        self.assertEqual(sdmx.dimensions_xml(message(dsd("S2", ("A",))), reference), [], "none of the structure in the message: no dimensions, no template")
+        self.assertEqual(sdmx.dimensions_xml("ecb", same, reference), ["A", "B"])
+        self.assertEqual(sdmx.dimensions_xml("ecb", message(dsd("S2", ("A",))), reference), [], "none of the structure in the message: no dimensions, no template")
 
 
 class BrowseOfTheFlowAskedFor(unittest.TestCase):
@@ -149,6 +156,76 @@ class BrowseOfTheFlowAskedFor(unittest.TestCase):
         for source in ("ecb", "bis"):
             lane = routed(source, message(flow("F1", "One", ref("S1"), source.upper(), "1.0"), dsd("S1", ("A", "B"))))
             self.assertEqual((lane["coverage"], lane["completeness"], lane["retrieved"]), ("searched_ok", "complete", ["F1"]), source)
+
+
+def urn(id_: str, agency: str, version: str = "1.0") -> str:
+    return f"<URN>urn:sdmx:org.sdmx.infomodel.datastructure.DataStructure={agency}:{id_}({version})</URN>"
+
+
+class ReferencesInTheRequestedFlow(unittest.TestCase):
+    """R11-2 (Astra, 2b-repair-11): a requested flow with S1 = [A, B] and S2 = [C, D, E] states its structure reference in every way SDMX 2.1 allows or forbids."""
+
+    def flow_with(self, source: str, references: str) -> str:
+        agency = source.upper()
+        return message(flow("F1", "One", references, agency), dsd("S1", ("A", "B"), agency), dsd("S2", ("C", "D", "E"), agency))
+
+    def dimensions(self, source: str, references: str):
+        return [e["dimensions_in_key_order"] for e in browse(source, self.flow_with(source, references))["entries"]]
+
+    def test_one_reference_is_the_flows_structure(self):
+        for source in ("bis", "ecb"):
+            agency = source.upper()
+            for label, references in (("a Ref", ref("S1", agency)), ("a Ref with the URN that names it", ref("S1", agency) + urn("S1", agency)),
+                                      ("a Ref that states no agency or version, with its URN", '<Ref id="S1"/>' + urn("S1", agency))):
+                with self.subTest(source=source, references=label):
+                    self.assertEqual(self.dimensions(source, references), [["A", "B"]])
+                    self.assertEqual((routed(source, self.flow_with(source, references))["completeness"]), "complete")
+
+    def test_two_references_are_not_reduced_to_the_first_in_either_order(self):
+        for source in ("bis", "ecb"):
+            agency = source.upper()
+            for label, references in (("S1 then S2", ref("S1", agency) + ref("S2", agency)), ("S2 then S1", ref("S2", agency) + ref("S1", agency)),
+                                      ("the same twice", ref("S1", agency) + ref("S1", agency))):
+                with self.subTest(source=source, references=label):
+                    lane = routed(source, self.flow_with(source, references))
+                    self.assertEqual((lane["coverage"], lane["completeness"], lane.get("error_class"), "count" in lane), ("provider_unavailable", "unobserved", "payload_invalid", False))
+                    with self.assertRaises(PayloadError):
+                        browse(source, self.flow_with(source, references))
+
+    def test_a_ref_beside_a_urn_that_names_something_else_is_a_flow_that_does_not_say_which(self):
+        for source in ("bis", "ecb"):
+            agency = source.upper()
+            for label, references in (("another structure", ref("S1", agency) + urn("S2", agency)), ("another agency", ref("S1", agency) + urn("S1", "OTHER")),
+                                      ("another version", ref("S1", agency) + urn("S1", agency, "2.0")), ("a URN that cannot be read", ref("S1", agency) + "<URN>not a urn</URN>"),
+                                      ("two URNs", ref("S1", agency) + urn("S1", agency) + urn("S1", agency))):
+                with self.subTest(source=source, references=label):
+                    lane = routed(source, self.flow_with(source, references))
+                    self.assertEqual((lane["coverage"], lane["completeness"], lane.get("error_class"), "count" in lane), ("provider_unavailable", "unobserved", "payload_invalid", False))
+
+    def test_a_urn_alone_is_the_disclosed_unsupported_case_and_yields_no_template(self):
+        for source in ("bis", "ecb"):
+            with self.subTest(source=source):
+                out = browse(source, self.flow_with(source, urn("S1", source.upper())))
+                self.assertEqual(out["entries"], [])
+                self.assertIn("names no data structure", out["capability_fact"])
+
+    def test_two_structure_children_are_two_references(self):
+        """The reference is one `Structure` child of the flow; a flow with two of them states two."""
+        for source in ("bis", "ecb"):
+            agency = source.upper()
+            text = message(f'<str:Dataflow id="F1" agencyID="{agency}"><str:Name>One</str:Name><str:Structure>{ref("S1", agency)}</str:Structure>'
+                           f'<str:Structure>{ref("S1", agency)}</str:Structure></str:Dataflow>', dsd("S1", ("A", "B"), agency))
+            with self.subTest(source=source), self.assertRaises(PayloadError):
+                browse(source, text)
+
+    def test_a_flow_nobody_asked_for_is_not_asked_for_its_references(self):
+        """Another flow of the message may state a reference that contradicts itself: the requested flow is still read."""
+        for source in ("bis", "ecb"):
+            agency = source.upper()
+            text = message(flow("F0", "Zero", ref("S1", agency) + ref("S2", agency), agency), flow("F1", "One", ref("S1", agency), agency),
+                           dsd("S1", ("A", "B"), agency), dsd("S2", ("C", "D", "E"), agency))
+            with self.subTest(source=source):
+                self.assertEqual([e["dimensions_in_key_order"] for e in browse(source, text)["entries"]], [["A", "B"]])
 
 
 if __name__ == "__main__":

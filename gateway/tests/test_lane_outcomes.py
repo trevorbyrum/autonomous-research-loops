@@ -15,7 +15,8 @@ import unittest
 
 from research_gateway import adapters
 from research_gateway.adapters import socrata
-from research_gateway.adapters.base import Client, FakeTransport, PayloadError, Response, SourceUnavailable, members, view
+from research_gateway.adapters.base import Client, FakeTransport, PayloadError, Response, SourceUnavailable, decode, members
+from research_gateway.core import schema as S
 from research_gateway.core import router as R
 from research_gateway.core.broker import Broker, RatePolicy
 from research_gateway.core.cache import Cache
@@ -314,11 +315,12 @@ class RealAdapterMembers(unittest.TestCase):
         """The helper every find path decodes members with: a non-object member, a member whose
         decoding raises, and one whose record names nothing are each None beside a good one."""
         def build(m):
-            if "boom" in m:
+            if m["boom"] is not None:
                 raise KeyError("DOI")
             return {"identity": m["id"], "kind": "article"}
+        decoded = decode("stub", S.members(S.obj({"id": S.text(), "boom": S.any_()})), [{"id": "doi:10.1/a"}, 7, {"boom": 1}, {"id": "url:None"}, {"id": "doi:10.1/b"}])   # as the decoder hands it over
         try:
-            got = members("stub", view([{"id": "doi:10.1/a"}, 7, {"boom": 1}, {"id": "url:None"}, {"id": "doi:10.1/b"}]), build)   # as need() hands it over
+            got = members("stub", decoded, build)
         except KeyError as e:
             self.fail(f"one member's decoding failure escaped as {e!r}: it is that member's, not the answer's")
         self.assertEqual(got, [{"identity": "doi:10.1/a", "kind": "article"}, None, None, None, {"identity": "doi:10.1/b", "kind": "article"}])

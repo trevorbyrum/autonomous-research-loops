@@ -17,11 +17,10 @@ from datetime import datetime, timezone
 
 from research_gateway import adapters
 from research_gateway.adapters import bea, census, harvard_dataverse as dv, huggingface, socrata
-from research_gateway.adapters.base import (Client, FakeTransport, Members, Obj, PayloadError, counts_nothing, field, identified, key, listed, nested,
-                                            offset_after, optional, text, token, total)
+from research_gateway.adapters.base import Client, FakeTransport, PayloadError, decode, identified, is_unreadable, offset_after, total
 from research_gateway.core import canonical, identity as ident, router as R, sdmx
 from research_gateway.core.broker import Broker, RatePolicy
-from research_gateway.core.payload import view
+from research_gateway.core.schema import counts_nothing
 from research_gateway.harvest import registries
 from research_gateway.registry.load import read_seed
 from tests.test_member_decoding import dataverse, sdmx_sets, siblings
@@ -94,7 +93,7 @@ class HoldersOfMembers(unittest.TestCase):
     def test_hf_file_count_is_unknown_when_the_siblings_cannot_be_read_and_never_zero(self):
         for wrong, want in ((False, None), ({}, None), ("x", None), ([], 0), (None, 0), ([{"rfilename": "a"}, 7], 2)):
             with self.subTest(siblings=wrong):
-                record = huggingface._record(view({**siblings([]), "siblings": wrong}))
+                record = huggingface._record(decode("huggingface", huggingface.DATASET, {**siblings([]), "siblings": wrong}))
                 self.assertEqual(record["file_count"], want)
 
     def crossref_references(self, reference):
@@ -181,52 +180,16 @@ class ListsLeftOutWhenNothingMatched(unittest.TestCase):
 
 
 class Readers(unittest.TestCase):
-    """The readers of provider data in adapters.base: what each accepts is stated here, and every other kind is unreadable."""
+    """The readers of provider metadata in adapters.base: what each accepts is stated here, and every other kind is no count and no continuation. (How a field of
+    each kind is DECODED — missing, null and malformed — is stated in tests/test_schema.py.)"""
 
-    def test_optional_is_empty_only_when_the_provider_leaves_it_out(self):
-        answer = view({"a": [{"x": 1}], "b": {"k": 1}, "n": None, "f": False, "z": 0, "s": "", "o": {}, "l": []})
-        self.assertEqual((len(optional("s", answer, "a")), len(optional("s", answer, "n")), len(optional("s", answer, "missing")), len(optional("s", answer, "l"))),
-                         (1, 0, 0, 0))
-        self.assertIsInstance(optional("s", answer, "n"), Members)
-        self.assertEqual((dict(optional("s", answer, "b", dict)._d), optional("s", answer, "n", dict)._d, optional("s", answer, "o", dict)._d), ({"k": 1}, {}, {}))
-        for key_ in ("f", "z", "s", "o", "b"):          # not a list, whatever its truth
-            with self.assertRaises(PayloadError, msg=key_):
-                optional("s", answer, key_)
-        for key_ in ("f", "z", "s", "l", "a"):          # not an object
-            with self.assertRaises(PayloadError, msg=key_):
-                optional("s", answer, key_, dict)
-
-    def test_nested_reaches_through_optional_objects_and_listed_and_text_read_own_data(self):
-        answer = view({"a": {"b": {"c": 1}}, "n": None, "bad": {"b": 5}, "l": [1, 2], "t": "x", "w": 5})
-        self.assertEqual((nested("s", answer, "a", "b")["c"], len(nested("s", answer, "n", "x")), len(nested("s", answer, "missing"))), (1, 0, 0))
-        for path in (("bad", "b"), ("t",), ("w",)):
-            with self.assertRaises(PayloadError, msg=path):
-                nested("s", answer, *path)
-        self.assertEqual((listed("s", answer, "l"), listed("s", answer, "n"), listed("s", answer, "missing")), ([1, 2], [], []))
-        self.assertIsInstance(listed("s", answer, "n"), list, "always a list, never the tuple the shared empty holds")
-        with self.assertRaises(PayloadError):
-            listed("s", answer, "t")
-        self.assertEqual((text("s", "x"), text("s", ""), text("s", None)), ("x", "", None))
-        for wrong in (False, 0, 5, [], {}, ["x"]):
-            with self.assertRaises(PayloadError, msg=repr(wrong)):
-                text("s", wrong)
-
-    def test_key_is_what_a_provider_names_a_member_by(self):
-        self.assertEqual((key("s", "S1"), key("s", 61), key("s", " x ")), ("S1", "61", " x "))
-        for wrong in (None, "", "  ", False, True, 0.5, [], {}, ["a"]):
-            with self.assertRaises(PayloadError, msg=repr(wrong)):
-                key("s", wrong)
-
-    def test_a_token_is_text_or_a_non_negative_number_and_a_total_a_whole_number_no_smaller_than_what_was_read(self):
-        self.assertEqual([token(v) for v in ("AoE", "x y")], ["AoE", "x y"])
-        for wrong in (None, "", "  ", 0, 3, -1, True, False, 1.5, [], {}, ["a"], view([1]), view({"a": 1})):
-            self.assertIsNone(token(wrong), repr(wrong))
+    def test_an_offset_is_a_whole_number_past_where_the_page_started_and_a_total_a_whole_number_no_smaller_than_what_was_read(self):
         self.assertEqual([offset_after(v, 0) for v in (1, 3, 10 ** 9)], [1, 3, 10 ** 9])
-        for wrong in (None, 0, -1, True, False, 1.5, "3", [], {}, view([1])):
+        for wrong in (None, 0, -1, True, False, 1.5, "3", [], {}, [1]):
             self.assertIsNone(offset_after(wrong, 0), repr(wrong))
         self.assertIsNone(offset_after(100, 100), "an offset that does not advance")
         self.assertEqual([total(v, 3) for v in (3, 9, 10 ** 12)], [3, 9, 10 ** 12])
-        for wrong in (None, 2, 0, -1, True, False, 3.0, "9", [], {}, view([1]), view({"a": 1})):
+        for wrong in (None, 2, 0, -1, True, False, 3.0, "9", [], {}, [1], {"a": 1}):
             self.assertIsNone(total(wrong, 3), repr(wrong))
         self.assertEqual(total(0, 0), 0, "zero is a count when nothing was read")
 
@@ -234,12 +197,6 @@ class Readers(unittest.TestCase):
         self.assertTrue(counts_nothing(0))
         for other in (False, 0.0, "0", None, [], {}, 1, -1):
             self.assertFalse(counts_nothing(other), repr(other))
-
-    def test_field_reads_through_objects_and_gives_nothing_for_anything_else(self):
-        answer = view({"meta": {"total": 7}, "bad": 5, "list": [{"total": 1}]})
-        self.assertEqual((field(answer, "meta", "total"), field(answer, "bad", "total"), field(answer, "list", "total"), field(answer, "none", "total")),
-                         (7, None, None, None))
-        self.assertIsNone(field(5, "a"))
 
     def test_a_listing_of_rows_none_of_which_names_anything_is_not_an_empty_catalogue(self):
         self.assertEqual(identified("s", [{"x": 1}], [{"id": 1}]), [{"id": 1}])
@@ -268,7 +225,6 @@ class Records(unittest.TestCase):
                          ("T", None, "CC0", ["A"], ["u"], 2021, {"doi": "10.1/x"}))
         self.assertEqual(self.make(year=2021.0)["year"], 2021)
         self.assertEqual((self.make()["authors"], self.make()["identifiers"], self.make(title="")["title"]), ([], {}, ""))
-        self.assertEqual(self.make(authors=view(["A"]), title=view("T").__class__ and "T")["authors"], ["A"], "a view is read as the plain data it holds")
 
     def test_the_normalisers_take_an_identifier_that_is_not_text_for_unreadable_not_for_none(self):
         for normalise in (ident.normalize_doi, ident.normalize_issn, ident.normalize_arxiv):
@@ -333,15 +289,16 @@ class DatasetRecords(unittest.TestCase):
     resolver, never to Dataverse; qdr's resolve is the same code), so what they do with a container of the wrong kind is stated here directly."""
 
     @staticmethod
-    def dataset(**version) -> Obj:
+    def dataset(**version) -> dict:
         body = dataverse([{"label": "a.csv", "restricted": False, "dataFile": {"id": 1, "filename": "a.csv"}}])["data"]
         body["latestVersion"]["metadataBlocks"]["citation"]["fields"].append(
             {"typeName": "author", "value": [{"authorName": {"value": "Bloom, Nicholas"}}, {"authorName": {"value": "Van Reenen, John"}}]})
         body["latestVersion"].update(version)
-        return view(body)
+        return body
 
-    def record(self, d):
-        return dv.dataset_record(dv.BASE, "harvard_dataverse", d)
+    def record(self, body):
+        """The dataset record the resolve operation makes of `body` (the dataset object of Dataverse's answer): decoded against the operation's schema first."""
+        return dv.dataset_record(dv.BASE, "harvard_dataverse", decode("harvard_dataverse", dv.SCHEMAS["resolve"], {"data": body})["data"])
 
     def test_a_dataset_is_read_whole(self):
         r = self.record(self.dataset())
@@ -351,9 +308,9 @@ class DatasetRecords(unittest.TestCase):
     def test_a_container_that_is_there_and_the_wrong_kind_is_unreadable_not_empty(self):
         for version in (False, 0, "", [], "x"):
             with self.subTest(latestVersion=version), self.assertRaises(PayloadError):
-                body = self.dataset()._d
+                body = self.dataset()
                 body["latestVersion"] = version
-                self.record(view(body))
+                self.record(body)
         for what, wrong in (("metadataBlocks", True), ("metadataBlocks", []), ("metadataBlocks", {"citation": 5}),
                             ("metadataBlocks", {"citation": {"fields": {}}}), ("metadataBlocks", {"citation": {"fields": False}})):
             with self.subTest(what=what, wrong=wrong), self.assertRaises(PayloadError):
@@ -361,15 +318,14 @@ class DatasetRecords(unittest.TestCase):
         for wrong in ({}, "x", 5, [5], [{"authorName": 5}], [{"authorName": {"value": 5}}], [7]):
             with self.subTest(author=wrong), self.assertRaises(PayloadError):
                 d = self.dataset()
-                d["latestVersion"]["metadataBlocks"]["citation"]["fields"]._items[-1]["value"] = wrong
+                d["latestVersion"]["metadataBlocks"]["citation"]["fields"][-1]["value"] = wrong
                 self.record(d)
 
     def test_nothing_where_a_container_may_be_left_out_is_nothing(self):
         for version in (None, {}):
-            d = self.dataset()
-            body = d._d
+            body = self.dataset()
             body["latestVersion"] = version
-            r = self.record(view(body))
+            r = self.record(body)
             self.assertEqual((r["title"], r["authors"], r["file_count"]), (None, [], 0))
 
     def test_the_file_count_is_unknown_when_the_files_cannot_be_read_and_never_zero(self):
@@ -379,10 +335,12 @@ class DatasetRecords(unittest.TestCase):
 
     def test_a_search_hit_whose_lists_are_not_lists_is_unreadable(self):
         hit = {"name": "N", "global_id": "doi:10.7910/DVN/X1", "authors": ["B"], "subjects": ["S"], "published_at": "2021-05-01T00:00:00Z", "fileCount": 2}
-        self.assertEqual(dv.search_record(dv.BASE, "harvard_dataverse", view(hit))["identity"], "doi:10.7910/dvn/x1")
+        def search_record(item):
+            return dv.search_record(dv.BASE, "harvard_dataverse", decode("harvard_dataverse", dv.HIT, item))
+        self.assertEqual(search_record(hit)["identity"], "doi:10.7910/dvn/x1")
         for name, wrong in (("authors", 5), ("authors", {}), ("authors", "B"), ("subjects", False), ("subjects", ""), ("global_id", 5), ("description", [1])):
             with self.subTest(name=name, wrong=wrong), self.assertRaises(PayloadError):
-                dv.search_record(dv.BASE, "harvard_dataverse", view({**hit, name: wrong}))
+                search_record({**hit, name: wrong})
 
 
 class StatisticalAnswers(unittest.TestCase):
@@ -431,39 +389,51 @@ class StatisticalAnswers(unittest.TestCase):
 class Structures(unittest.TestCase):
     """SDMX: the message's structure, data sets and observations are what they are, or the message is unreadable."""
 
+    @staticmethod
+    def message(value):
+        return sdmx.message("ecb", value)
+
     def test_a_structure_that_is_there_and_is_not_an_object_is_unreadable_not_none(self):
         for wrong in (False, 0, "", [], "x", 5):
             with self.subTest(structure=wrong), self.assertRaises(PayloadError):
-                sdmx.structure(view({"structure": wrong, "dataSets": []}))
+                self.message({"structure": wrong, "dataSets": []})
         for nothing in ({}, {"structure": None}, {"structures": None}, {"structures": []}, {"data": None}):
-            self.assertEqual(sdmx.structure(view(nothing)), {})
-        self.assertEqual(sdmx.structure(view({"structures": [{"a": 1}]})), {"a": 1})
-        self.assertEqual(sdmx.structure(view({"data": {"structures": [{"a": 2}]}})), {"a": 2})
+            self.assertIsNone(sdmx.structure(self.message(nothing)))
+        self.assertEqual(sdmx.structure(self.message({"structures": [{"a": 1}]})).raw, {"a": 1})
+        self.assertEqual(sdmx.structure(self.message({"data": {"structures": [{"a": 2}]}})).raw, {"a": 2})
         for wrong in ({"structures": {"a": 1}}, {"structures": 5}, {"structures": [5]}, {"data": 5}, {"data": []}, {"data": ""}):
             with self.subTest(message=wrong), self.assertRaises(PayloadError):
-                sdmx.structure(view(wrong))
+                self.message(wrong)
 
     def test_data_sets_inside_a_data_wrapper_that_is_not_one_are_unreadable(self):
         for wrong in (False, 0, "", [], 5):
             with self.subTest(data=wrong), self.assertRaises(PayloadError):
-                sdmx.datasets(view({"data": wrong}))
-        self.assertEqual(len(sdmx.datasets(view({"data": None}))), 0)
+                self.message({"data": wrong})
+        self.assertEqual(len(sdmx.datasets(self.message({"data": None}))), 0)
 
     def test_dimensions_and_observations_that_are_there_and_the_wrong_kind_are_unreadable(self):
         good = {"dimensions": {"series": [{"id": "FREQ", "values": [{"id": "D"}]}], "observation": [{"id": "T", "values": [{"id": "2026"}]}]}}
         for dims in (False, 0, "", [], 5):
             with self.subTest(dimensions=dims), self.assertRaises(PayloadError):
-                sdmx.series_reader(view({"structure": {"dimensions": dims}, "dataSets": []}))
+                self.message({"structure": {"dimensions": dims}, "dataSets": []})
         for part in ("series", "observation"):
             for wrong in (False, 0, "", {}, 5):
                 with self.subTest(part=part, value=wrong), self.assertRaises(PayloadError):
-                    sdmx.series_reader(view({"structure": {"dimensions": {**good["dimensions"], part: wrong}}}))
-        read = sdmx.series_reader(view({"structure": good}))
-        self.assertEqual(read(view({"key": "0", "value": {"observations": {"0": [1.5]}}}))["observations"], [("2026", 1.5)])
+                    self.message({"structure": {"dimensions": {**good["dimensions"], part: wrong}}})
+
+        def series(observations):
+            msg = self.message({"structure": good, "dataSets": [{"series": {"0": {"observations": observations}}}]})
+            members_ = sdmx.series_members(msg)
+            assert len(members_) == 1
+            return members_.at(0), sdmx.series_reader(msg)
+        member, read = series({"0": [1.5]})
+        self.assertEqual(read(member)["observations"], [("2026", 1.5)])
         for wrong in (False, 0, "", [], 5):
-            with self.subTest(observations=wrong), self.assertRaises(PayloadError):
-                read(view({"key": "0", "value": {"observations": wrong}}))
-        self.assertEqual(read(view({"key": "0", "value": {}}))["observations"], [], "a series that has none")
+            with self.subTest(observations=wrong):
+                member, read = series(wrong)
+                self.assertTrue(is_unreadable(member), "a series whose observations are not an object is one unreadable series")
+        member, read = series(None)
+        self.assertEqual(read(member)["observations"], [], "a series that has none")
 
 
 class Loaders(unittest.TestCase):
@@ -519,9 +489,11 @@ class SocrataTimestamps(unittest.TestCase):
             self.assertEqual(socrata._epoch_year(seconds), year, seconds)
             self.assertEqual(datetime.fromtimestamp(seconds, timezone.utc).year, year, "the oracle: the standard library's reading of the same seconds")
         self.assertIsNone(socrata._epoch_year(None))
-        for wrong in ("2023", "", False, True, [], {}, 1.5, 10 ** 30):
+        for wrong in ("2023", "", False, True, [], {}, 1.5):   # not a whole number of seconds: the view does not decode
             with self.assertRaises(PayloadError, msg=repr(wrong)):
-                socrata._epoch_year(wrong)
+                decode("socrata", socrata.VIEW, {"id": "abcd-1231", "rowsUpdatedAt": wrong})
+        with self.assertRaises(PayloadError):   # a whole number that is no moment in time
+            socrata._epoch_year(10 ** 30)
 
 
 if __name__ == "__main__":

@@ -1,14 +1,31 @@
 """U.S. Census Bureau Data API: tables of variables by geography."""
 from __future__ import annotations
 
+from ..core import schema as S
 from ..core.canonical import make_record
-from .base import AdapterError, Client, PayloadError, boolean, check, identified, key, listed, need, plain, text
+from .base import AdapterError, Client, PayloadError, check, decode, identified
 
 SOURCE_ID = "census"
 SMOKE = {'capability': 'data', 'params': {'dataset': '2022/acs/acs1', 'get': ['NAME'], 'for': 'state:37'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
 CAPABILITIES = ("data", "catalog",)
 BASE = "https://api.census.gov/data"
 ATTRIBUTION = "U.S. Census Bureau"
+
+
+def _is_a_table(rows: list) -> None:
+    if not rows:
+        raise PayloadError("the answer is not a table (no header row)")
+    if not all(isinstance(h, str) for h in rows[0]):
+        raise PayloadError("a column name of the table is not what it should be: the table is unreadable, not shorter")
+
+
+# What an answer must be. A table is ONE record: a header row of column names and rows that are lists, read whole — a malformed row makes it unreadable, not shorter.
+# The dataset directory and a dataset's variables are catalogues answered whole, too: an entry that is not what it should be makes the catalogue unreadable, not
+# shorter. A dataset with no vintage (timeseries/bds and 87 friends) is real: its path is its id (D-32a finding 6).
+TABLE = S.own(S.own(S.any_()), rule=_is_a_table)
+DATASETS = S.obj({"dataset": S.required(S.own(S.obj({"c_dataset": S.own(S.text()), "c_vintage": S.maybe_key(only_empty=True), "title": S.text()})))})
+VARIABLES = S.obj({"variables": S.required(S.table(S.obj({"label": S.text(), "predicateOnly": S.flag()})))})
+SCHEMAS = {"data": TABLE, "catalog:datasets": DATASETS, "catalog:variables": VARIABLES}
 
 
 # the agent-facing data contract (research_sources; validated before dispatch, D-31).
@@ -45,11 +62,7 @@ def data(client: Client, params: dict) -> dict:
         return {"identity": identity, "records": []}
     if resp.status == 204:   # the Census API's answer to a query no data matches: successful and empty
         return {"identity": identity, "records": []}
-    j = plain(need(SOURCE_ID, resp.json))   # the rows of ONE table record: read whole, a malformed row makes it unreadable
-    if not j or not isinstance(j[0], list):
-        raise PayloadError(f"{SOURCE_ID}: the answer is not a table (no header row)")
-    if not all(isinstance(r, list) for r in j[1:]) or not all(isinstance(h, str) for h in j[0]):
-        raise PayloadError(f"{SOURCE_ID}: a row or a column name of the table is not what it should be: the table is unreadable, not shorter")
+    j = decode(SOURCE_ID, TABLE, resp.json)   # the rows of ONE table record: read whole, a malformed row makes it unreadable
     header, rows = j[0], [dict(zip(j[0], r)) for r in j[1:]]
     rec = make_record(identity=identity, kind="series", source_id=SOURCE_ID, title=f"{dataset}: {query['get']}",
                       links=[f"https://api.census.gov/data/{dataset.strip('/')}.html"], attribution=ATTRIBUTION,
@@ -70,15 +83,14 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
         q = (query or "").lower()
-        entries, rows, named = [], plain(need(SOURCE_ID, resp.json, "dataset")), []
+        entries, rows, named = [], decode(SOURCE_ID, DATASETS, resp.json)["dataset"], []
         for d in rows:
-            path = "/".join(text(SOURCE_ID, part) or "" for part in listed(SOURCE_ID, d, "c_dataset"))
-            stated = d.get("c_vintage")
-            vintage = key(SOURCE_ID, stated) if stated not in (None, "") else None
+            path = "/".join(part or "" for part in d["c_dataset"])
+            vintage = d["c_vintage"]
             # unvintaged datasets (timeseries/bds and 87 friends) are real: their path IS
             # the dataset id (D-32a finding 6)
             ds = (f"{vintage}/{path}" if vintage else path) if path else None
-            title = text(SOURCE_ID, d.get("title")) or ""
+            title = d["title"] or ""
             if ds:
                 named.append(ds)
             if not ds or (q and q not in title.lower() and q not in ds.lower()):
@@ -93,13 +105,11 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         return {"entries": []}
     q = (query or "").lower()
     entries = []
-    for name, meta in plain(need(SOURCE_ID, resp.json, "variables", kind=dict)).items():
-        if not isinstance(meta, dict):
-            raise PayloadError(f"{SOURCE_ID}: the variable {name!r} is {type(meta).__name__}, not an object: the catalogue is unreadable, not shorter")
-        label = text(SOURCE_ID, meta.get("label")) or ""   # a label that is not text makes the catalogue unreadable, not a variable without one
+    for name, meta in decode(SOURCE_ID, VARIABLES, resp.json)["variables"].items():
+        label = meta["label"] or ""   # a label that is not text makes the catalogue unreadable, not a variable without one
         if q and q not in name.lower() and q not in label.lower():
             continue
-        if boolean(SOURCE_ID, meta.get("predicateOnly")):
+        if meta["predicateOnly"]:
             # a predicate is a FILTER, never a selectable column: putting it in `get`
             # produces an HTTP 400 (D-32a finding 5)
             entries.append({"id": name, "label": label, "kind": "predicate",
