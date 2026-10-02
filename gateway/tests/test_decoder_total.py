@@ -177,7 +177,9 @@ class TheDecoderOnlyEverRaisesPayloadError(Channel):
                         self.fail(f"{name}: {pos!r} <- {value!r:.40}: {type(e).__name__}: {e}")
         self.assertGreater(runs, 50_000)
 
-    def test_the_loaders_the_lookup_and_the_xml_schemas_too(self):
+    def test_the_registry_loaders_the_doi_org_lookup_and_the_sdmx_json_schema_are_total_over_the_hostile_values(self):
+        """The JSON schemas that are not an adapter operation's: the Crossref and DataCite registry pages, doi.org's registration-agency lookup and SDMX-JSON. (The DOAJ dump's row schema is
+        a CSV one, whose cells are all text: tests/test_schema_corruption.py CsvCorruptions. The SDMX-ML schemas are the next test, which exercises them explicitly.)"""
         from research_gateway.core.identity import SCHEMAS as lookup
         from research_gateway.harvest import registries
         specs = {**{f"registries.{k}": v for k, v in registries.SCHEMAS.items() if k != "doaj journals (csv)"}, "identity.lookup": lookup["lookup"], "sdmx.json": sdmx.JSON_MESSAGE}
@@ -189,6 +191,75 @@ class TheDecoderOnlyEverRaisesPayloadError(Channel):
                         S.decode("t", spec, {"data": value, "message": value, "results": value, "structure": value, "dataSets": value, "meta": {"total": value}})
                     except PayloadError:
                         pass
+                    except Exception as e:
+                        self.fail(f"escaped the channel as {type(e).__name__}: {str(e)[:80]}")
+
+    HOSTILE_XML_TEXT = ("", " ", "²", "①", "٢٠٢١", "9" * 4301, "x" * 100_000, "\ud800", "not a number", "0", "-1")
+
+    def test_the_sdmx_xml_schemas_over_hostile_attributes_text_and_shapes_through_parse_xml(self):
+        """The SDMX-ML schemas (core/sdmx.py: the data message, the flow listing, one flow's binding, the data structures), explicitly: take each valid message of the oracle's own documents (read
+        only), and at EVERY element change each attribute and the text to each hostile value, take the element out, repeat it, and empty it. The decoder returns or raises PayloadError — nothing else;
+        and the same documents corrupted as bytes come back through `parse_xml` and the decoder the same way."""
+        import xml.etree.ElementTree as ET
+        from tests.oracle import xml_ops
+        data = xml_ops.bis_data_message((("US", 4), ("XM", 2)))
+        structure = xml_ops.structure_message("BIS", xml_ops.BIS_FLOWS[:2])
+        cases = {"xml (data message)": (sdmx.XML_MESSAGE, data, ("StructureSpecificData",), None), "flows": (sdmx.FLOW_NAMES, structure, ("Structure",), None),
+                 "structures": (sdmx.DATA_STRUCTURES, structure, ("Structure",), None), "flow (one dataflow's binding)": (sdmx.FLOW_BINDING, structure, ("Structure",), "Dataflow")}
+        runs = 0
+        for name, (spec, text, roots, within) in cases.items():
+            base = S.parse_xml(text, *roots)
+            if within:
+                base = next(e for e in base.iter() if e.tag.rsplit("}", 1)[-1] == within)
+            S.decode("t", spec, base)   # the control: the valid message decodes
+            count = sum(1 for _ in base.iter())
+            for i in range(count):
+                edits = []
+                element = list(base.iter())[i]
+                for attribute in element.attrib:
+                    edits += [("attribute", attribute, v) for v in self.HOSTILE_XML_TEXT]
+                edits += [("text", None, v) for v in self.HOSTILE_XML_TEXT[:6]] + [("remove", None, None), ("repeat", None, None), ("empty", None, None)]
+                for how, what, value in edits:
+                    tree = copy.deepcopy(base)
+                    nodes = list(tree.iter())
+                    target = nodes[i]
+                    parent = next((p for p in nodes if target in list(p)), None)
+                    if how == "attribute":
+                        target.set(what, value)
+                    elif how == "text":
+                        target.text = value
+                    elif how == "empty":
+                        target.attrib.clear()
+                        target.text = None
+                        del target[:]
+                    elif parent is None:
+                        continue   # the root cannot be taken out or repeated
+                    elif how == "remove":
+                        parent.remove(target)
+                    else:
+                        parent.insert(list(parent).index(target), copy.deepcopy(target))
+                    runs += 1
+                    with self.subTest(schema=name, element=i, how=how, what=what, value=repr(value)[:12]):
+                        try:
+                            S.decode("t", spec, tree)
+                        except PayloadError:
+                            pass
+                        except Exception as e:
+                            self.fail(f"escaped the channel as {type(e).__name__}: {str(e)[:80]}")
+        self.assertGreater(runs, 2000)
+        for name, (spec, text, roots, within) in cases.items():
+            if within:
+                continue
+            raw = text.encode("utf-8")
+            for k in range(0, len(raw), 37):   # the document cut at every 37th byte, and an invalid byte put at the same offsets: parse_xml refuses or the decoder reads, never anything else
+                for body in (raw[:k], raw[:k] + b"\xff" + raw[k:]):
+                    with self.subTest(schema=name, offset=k):
+                        try:
+                            S.decode("t", spec, S.parse_xml(Response(200, {}, body, "u"), *roots))
+                        except PayloadError:
+                            pass
+                        except Exception as e:
+                            self.fail(f"escaped the channel as {type(e).__name__}: {str(e)[:80]}")
 
     def test_a_malformed_answer_is_never_any_other_error_when_the_bytes_are_opened_by_the_decoder(self):
         spec = S.obj({"a": S.members(S.obj({"n": S.year()}))})
@@ -204,12 +275,25 @@ class TheDecoderOnlyEverRaisesPayloadError(Channel):
         got = self.reads(lambda: S.decode("t", spec, Response(200, {}, b'{"a": [{"n": "' + b"9" * 6000 + b'"}, {"n": 2021}]}', "u")))
         self.assertEqual(got["a"].each(lambda m: m["n"]), [None, 2021], "an oversized number in a member costs that member, from the bytes up")
 
-    def test_nesting_deeper_than_any_supported_answer_is_unreadable_and_nesting_within_it_is_read(self):
-        within = b'{"a":' * 60 + b"1" + b"}" * 60
-        beyond = b'{"a":' * 80 + b"1" + b"}" * 80
-        any_ = S.obj({"a": S.any_()})
-        self.assertIsNotNone(self.reads(lambda: S.decode("t", any_, Response(200, {}, within, "u"))))
-        self.refuses(lambda: S.decode("t", any_, Response(200, {}, beyond, "u")))
+    def test_nesting_past_the_gateways_operational_limit_is_refused_at_its_edge_and_nesting_within_it_is_read(self):
+        """MAX_DEPTH (core/payload.py) is a limit the GATEWAY sets — deep enough for every answer of its supported operations' fixtures, shallow enough that nothing later (a copy, a
+        serialisation, a comparison) can recurse past the interpreter's limit on an answer it holds — and not a statement about what any provider sends. It is tested where it bites: at
+        MAX_DEPTH levels the answer is read, one level more it is a PayloadError, for JSON objects, JSON arrays and XML elements, and far beyond it (past the interpreter's own limit) too."""
+        from research_gateway.core.payload import MAX_DEPTH
+        bodies = {"objects": lambda n: b'{"a":' * n + b"1" + b"}" * n, "arrays": lambda n: b"[" * n + b"]" * n}   # n levels each: the scalar inside is not one
+        for label, body in bodies.items():
+            for n in (MAX_DEPTH - 1, MAX_DEPTH):
+                with self.subTest(label=label, levels=n):
+                    self.assertIsNotNone(self.reads(lambda: S.decode("t", S.any_(), Response(200, {}, body(n), "u"))))
+            for n in (MAX_DEPTH + 1, MAX_DEPTH * 100, 200_000):
+                with self.subTest(label=label, levels=n):
+                    self.refuses(lambda: S.decode("t", S.any_(), Response(200, {}, body(n), "u")))
+        for n in (MAX_DEPTH - 1, MAX_DEPTH):
+            with self.subTest(label="elements", levels=n):
+                self.assertIsNotNone(self.reads(lambda: S.parse_xml(Response(200, {}, b"<a>" * n + b"</a>" * n, "u"), "a")))
+        for n in (MAX_DEPTH + 1, MAX_DEPTH * 100, 20_000):
+            with self.subTest(label="elements", levels=n):
+                self.refuses(lambda: S.parse_xml(Response(200, {}, b"<a>" * n + b"</a>" * n, "u"), "a"))
 
     def test_the_adapter_facing_decode_takes_the_clients_response_and_nothing_else(self):
         for value in ({}, [], "x", b"{}", None, 5):

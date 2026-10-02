@@ -15,8 +15,9 @@ import sys
 from pathlib import Path
 from typing import Iterator
 
-from ..core import db
+from ..core import db, wire
 from ..core.canonical import make_record
+from ..core.payload import PayloadError
 from ..core.identity import normalize_issn
 from . import index
 
@@ -58,14 +59,17 @@ def read_snapshot(root: Path, *, limit: int | None = None, issn_map: index.IssnM
     for path in files:
         opener = gzip.open if path.suffix == ".gz" else open
         with opener(path, "rt", encoding="utf-8") as f:
-            for line in f:
+            for number, line in enumerate(f, 1):
                 line = line.strip()
                 if not line:
                     continue
                 try:
-                    obj = json.loads(line)
+                    obj = wire.open_json(line)
+                except wire.Malformed as e:   # a line that is not JSON is a snapshot that is not whole: the load fails, it does not come out shorter (2b-repair-13c)
+                    raise PayloadError(f"{path.name} line {number}: {e}") from None
+                try:
                     rec = record_from(obj, issn_map)
-                except (ValueError, TypeError, AttributeError):
+                except (ValueError, TypeError, AttributeError):   # a source object this reader cannot make a record of is skipped, as it always was
                     continue
                 if rec is None:
                     continue

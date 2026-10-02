@@ -37,15 +37,13 @@ and `"**name"` as the list of every descendant of it that is called that.
 """
 from __future__ import annotations
 
-import csv
-import io
-import json
 import math
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, replace
 from typing import Any, Callable
 
-from .payload import MAX_DEPTH, MEMBER_ERRORS, MemberList, Passive, PayloadError, Rec, Sealed, SealedAnswer, UndeclaredRead, Unreadable
+from . import wire
+from .payload import MEMBER_ERRORS, MemberList, Passive, PayloadError, Rec, Sealed, SealedAnswer, UndeclaredRead, Unreadable
 
 MISSING = object()
 
@@ -224,7 +222,7 @@ def decode(source_id: str, spec: Spec, answer: Any) -> Any:
 
 def _open_json(answer):
     """The parsed value of an answer: its bytes opened as JSON when it is the client's, as it is when it is already a value (or the Sealed raw of a part of one).
-    An empty body, JSON that does not parse, and nesting deeper than any supported answer (MAX_DEPTH) are PayloadErrors: the answer is not one."""
+    An empty body and JSON that wire.open_json refuses (not JSON, not UTF-8, a name twice, `NaN`, nesting past MAX_DEPTH ...) are PayloadErrors: the answer is not one."""
     if isinstance(answer, Sealed):
         return answer._value
     if not isinstance(answer, SealedAnswer):
@@ -233,31 +231,15 @@ def _open_json(answer):
     if not body:
         raise PayloadError(f"empty body (HTTP {getattr(answer, 'status', None)})")
     try:
-        value = json.loads(body)
-    except (ValueError, UnicodeDecodeError, RecursionError):   # RecursionError: nesting past the interpreter's own limit is not JSON any provider sends
-        raise PayloadError(f"unparseable JSON (HTTP {getattr(answer, 'status', None)}, {len(body)} bytes)") from None
-    if _deeper_than(value, MAX_DEPTH):
-        raise PayloadError(f"JSON nested more than {MAX_DEPTH} levels deep (HTTP {getattr(answer, 'status', None)}, {len(body)} bytes)")
-    return value
+        return wire.open_json(body)
+    except wire.Malformed as e:
+        raise PayloadError(f"unparseable JSON (HTTP {getattr(answer, 'status', None)}, {len(body)} bytes)" + ("" if e.syntax else f": {e}")) from None
 
 
-def _deeper_than(value, limit: int) -> bool:
-    """Whether containers nest past `limit` levels (the root is level 1), counted without recursion — which is the point: nothing later walks a structure this
-    answer holds with more depth than that, whatever it does with it (store it, copy it, serialise it)."""
-    stack = [(value, 1)]
-    while stack:
-        v, depth = stack.pop()
-        children = v.values() if isinstance(v, dict) else v if isinstance(v, list) else ()
-        if depth > limit:
-            return True
-        stack.extend((c, depth + 1) for c in children if isinstance(c, (dict, list)))
-    return False
-
-
-def _open_text(answer) -> str:
-    """The text of an answer: the client's bytes as UTF-8 (a character that is not is replaced, as a browser would), or a string already."""
+def _bytes_or_text(answer):
+    """What a byte opener reads of an answer: the client's bytes, or text already."""
     if isinstance(answer, SealedAnswer):
-        return answer._body.decode("utf-8", "replace")
+        return answer._body
     if isinstance(answer, str):
         return answer
     raise TypeError(f"an answer is the client's response or text, not a {type(answer).__name__}")
@@ -575,8 +557,8 @@ def parse_xml(answer, *roots: str) -> ET.Element:
     """The parsed message, whose root must be one of `roots`: unparseable XML, or a document that is not a message of that kind, is an unreadable answer. `answer`
     is the client's response (its bytes are opened here, as for `decode`) or text."""
     try:
-        root = ET.fromstring(_open_text(answer))
-    except (ET.ParseError, RecursionError) as e:
+        root = wire.open_xml(_bytes_or_text(answer))
+    except wire.Malformed as e:
         raise PayloadError(f"unparseable SDMX-ML ({type(e).__name__}: {e})") from None
     if _local(root.tag) not in roots:
         raise PayloadError(f"an SDMX answer rooted at {_local(root.tag)!r}, not {' or '.join(roots)}")
@@ -585,20 +567,31 @@ def parse_xml(answer, *roots: str) -> ET.Element:
 
 def decode_csv(source_id: str, spec: Spec, answer, *, columns: tuple = ()) -> MemberList:
     """A CSV answer as the independent members it holds: each row decoded alone against `spec` (an `obj` of its columns), the header first checked for `columns` — a file
-    without them is not the file the operation supports, and a file that does not parse is no file. A cell the row is too short to hold is nothing (the csv module's own
-    reading of a short row). `answer` is the client's response, opened here."""
+    without them is not the file the operation supports — and for a column the header names twice that `spec` declares (which of the two is meant is not for the reader to
+    choose). A file that does not parse (core/wire.py: an unclosed quote, text after one, a quote in an unquoted field, a bare carriage return, bytes that are not UTF-8) is no
+    file: PayloadError, never a shorter one. A cell the row is too short to hold is nothing and cells past the header are not read (the csv module's own reading of a short
+    or long row, kept). `answer` is the client's response, opened here."""
     try:
-        reader = csv.DictReader(io.StringIO(_open_text(answer)))
-        names = list(reader.fieldnames or [])
-        missing = [c for c in columns if c not in names]
-        if missing:
-            raise PayloadError(f"{source_id}: the CSV shape changed: columns {names[:5]!r} lack {missing!r}")
-        out = []
-        for row in reader:
-            try:
-                out.append(_decode(spec, row, ()))
-            except PayloadError as e:
-                out.append(Unreadable(str(e), row))
-        return MemberList(out)
-    except csv.Error as e:
+        records = wire.open_csv(_bytes_or_text(answer))
+    except wire.Malformed as e:
         raise PayloadError(f"{source_id}: the CSV does not parse ({e})") from None
+    names = list(records[0]) if records else []
+    missing = [c for c in columns if c not in names]
+    if missing:
+        raise PayloadError(f"{source_id}: the CSV shape changed: columns {names[:5]!r} lack {missing!r}")
+    twice = sorted(c for c in set(names) if names.count(c) > 1 and c in spec.of)
+    if twice:
+        raise PayloadError(f"{source_id}: the CSV header names {twice!r} twice: which column is meant cannot be told")
+    out = []
+    for cells in records[1:]:
+        if not cells:   # a blank line is no row
+            continue
+        row = dict(zip(names, cells))
+        if len(cells) > len(names):
+            row[None] = cells[len(names):]   # the csv module's restkey: cells past the header, kept in the row's raw and never read
+        row.update((c, None) for c in names[len(cells):])   # a row too short for a column holds nothing there
+        try:
+            out.append(_decode(spec, row, ()))
+        except PayloadError as e:
+            out.append(Unreadable(str(e), row))
+    return MemberList(out)

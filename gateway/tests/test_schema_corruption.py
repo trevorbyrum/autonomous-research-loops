@@ -799,15 +799,42 @@ class CsvCorruptions(unittest.TestCase):
                     identities, error = self.load(self.dump(self.columns, short))
                     self.assertEqual((error, len(identities)), (None, 2), "a row too short to hold a column holds nothing there")
 
-    def test_cells_past_the_header_are_not_read_and_a_dump_that_does_not_parse_is_unreadable_not_empty(self):
+    def test_cells_past_the_header_are_not_read(self):
         longer = [row + ["extra", "more"] for row in self.rows()]
         self.assertEqual(self.load(self.dump(self.columns, longer)), (["issn:9999-9991", "issn:9999-9983"], None))
-        huge = self.dump(self.columns, [["x" * 200_000] + ["y"] * (len(self.columns) - 1)])   # a cell past the csv module's own field limit: it raises, which is not an empty dump
+
+    def test_a_cell_past_the_field_limit_and_a_file_with_no_usable_header_are_unreadable_not_empty(self):
+        """Two of the ways a dump is no dump: a cell past the opener's field limit (the csv module's own, 131,072 characters), and a file whose first line is not a header with the title
+        column. Neither says anything about quoting: the framing of the serialized bytes is the next test's, and tests/test_openers.py's."""
+        huge = self.dump(self.columns, [["x" * 200_000] + ["y"] * (len(self.columns) - 1)])
         identities, error = self.load(huge)
         self.assertIsInstance(error, PayloadError)
         for text in ("", "\n", "no header here\n1,2\n"):
             with self.subTest(text=text):
                 self.assertIsInstance(self.load(text)[1], PayloadError)
+
+    def test_a_dump_whose_serialized_framing_is_broken_is_unreadable_not_shorter_or_empty(self):
+        """The serialized bytes are corrupted, not the rows (R13A-1): a writer produces the valid dump, with a quoted multiline cell as the control, and the text is edited. An unterminated
+        quote in the header, in a cell and in the last cell, text after a closing quote, a quote inside an unquoted cell, a column the schema reads named twice. Each is a PayloadError and
+        never a successful load of fewer journals (the unterminated header was a load of ZERO)."""
+        rows = self.rows()
+        rows[0][0] = "Journal of\nHarvest Testing"
+        valid = self.dump(self.columns, rows)
+        self.assertEqual(self.load(valid), (["issn:9999-9991", "issn:9999-9983"], None), "control: a quoted multiline cell is one cell")
+        first, second = rows[0][0], rows[1][0]
+        corrupt = {"an unterminated quote in the header": valid.replace(self.columns[1], '"' + self.columns[1], 1),
+                   "the multiline cell's closing quote removed": valid.replace('Harvest Testing"', "Harvest Testing", 1),
+                   "an unterminated quote in the second journal's title": valid.replace(second, '"' + second, 1),
+                   "an unterminated quote in the last cell of the file": valid.rstrip("\n")[:-1] + '"' + valid.rstrip("\n")[-1:],
+                   "text after a closing quote": valid.replace('Harvest Testing"', 'Harvest Testing"junk', 1),
+                   "a quote inside an unquoted cell": valid.replace(second, 'Open "Data" Quarterly', 1),
+                   "a column the schema reads, named twice": valid.replace(self.columns[3], self.columns[0], 1),
+                   "the licence column named twice": valid.replace(self.columns[0], self.columns[6], 1)}
+        for name, text in corrupt.items():
+            self.assertNotEqual(text, valid, name)
+            identities, error = self.load(text)
+            with self.subTest(name):
+                self.assertIsInstance(error, PayloadError, f"loaded {identities}")
 
 
 class LookupCorruptions(unittest.TestCase):

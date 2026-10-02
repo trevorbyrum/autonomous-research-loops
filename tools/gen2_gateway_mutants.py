@@ -166,7 +166,7 @@ MUTANTS: list[Mutant] = [
            (SC + "F1NoHomeFallback.test_control_an_explicit_token_file_starts_the_service",)),
     # ---- item 3: response shape at the adapter boundary --------------------------------------------------
     Mutant("P-json-lenient", "unparseable JSON reads as an empty object", SCHEMA,
-           '''        raise PayloadError(f"unparseable JSON (HTTP {getattr(answer, 'status', None)}, {len(body)} bytes)") from None''',
+           '''        raise PayloadError(f"unparseable JSON (HTTP {getattr(answer, 'status', None)}, {len(body)} bytes)" + ("" if e.syntax else f": {e}")) from None''',
            "        return {}",
            (PS + "test_the_json_reader_refuses_what_it_cannot_read",),
            (PS + "test_control_the_apis_own_empty_answer_stays_empty",)),
@@ -893,3 +893,8 @@ MUTANTS[:] = [_with_readable_any(m) if ("S.any_(" in (m.new if isinstance(m.new,
 from gen2_gateway_contract_mutants import build as _contract_mutants  # noqa: E402
 
 MUTANTS.extend(_contract_mutants(Mutant))
+
+# 2b-repair-13c: the byte openers (tools/gen2_gateway_opener_mutants.py)
+from gen2_gateway_opener_mutants import build as _opener_mutants  # noqa: E402
+
+MUTANTS.extend(_opener_mutants(Mutant))

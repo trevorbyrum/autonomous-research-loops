@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from research_gateway.adapters import openalex_snapshot as local_index
-from research_gateway.adapters.base import Client, FakeTransport
+from research_gateway.adapters.base import Client, FakeTransport, PayloadError
 from research_gateway.core import db
 from research_gateway.core.broker import Broker, RatePolicy
 from research_gateway.harvest import index, openalex_snapshot, registries
@@ -97,10 +97,14 @@ class Shapes(unittest.TestCase):
             with gzip.open(part, "wt") as f:
                 for s in OPENALEX_SOURCES:
                     f.write(json.dumps(s) + "\n")
-                f.write("not json\n")
             got = list(openalex_snapshot.read_snapshot(Path(d)))
             self.assertEqual([r["identity"] for r in got], ["issn:9999-9991", "repository:openalex:s999999902"])
             self.assertEqual(len(list(openalex_snapshot.read_snapshot(Path(d), limit=1))), 1)
+            with gzip.open(part, "at") as f:   # a line that is not JSON is a snapshot that is not whole: the load fails naming the line, it does not come out shorter (2b-repair-13c; before, it was skipped)
+                f.write("not json\n")
+            with self.assertRaises(PayloadError) as why:
+                list(openalex_snapshot.read_snapshot(Path(d)))
+            self.assertIn("part_000.gz line 4", str(why.exception))
 
     def test_issn_map_joins_print_electronic_and_issn_l(self):
         m = index.IssnMap(None)

@@ -33,6 +33,7 @@ from ..core.broker import Broker, BreakerOpen, BudgetExhausted, NoPolicy
 from ..core.identity import meaningful
 from ..core.payload import MEMBER_ERRORS, OMIT, MemberList, PayloadError, Rec, SealedAnswer, is_unreadable  # noqa: F401 (re-exported: adapters read and raise through base)
 from ..core.schema import decode as _decode
+from ..core.wire import Malformed, open_json as _open_json
 
 
 class Response(SealedAnswer):
@@ -79,11 +80,11 @@ def _text_of(resp: Response) -> str:
 
 
 def _count_of(resp: Response) -> int | None:
-    """How many results the call log says an answer held: read leniently, for bookkeeping only (an answer that cannot be read has no count)."""
-    import json   # here and nowhere else at module level or in the module's namespace: nothing in adapters.base is a parser to re-export
+    """How many results the call log says an answer held, for bookkeeping only. The bytes are opened by the decoder's own opener (core/wire.py), so an answer the decoder
+    would refuse — a name twice, `NaN`, not UTF-8 — has no count here either, not a count of whichever reading a lenient parser chose."""
     try:
-        j = json.loads(resp._body) if resp.ok and resp._body else None
-    except (ValueError, UnicodeDecodeError, RecursionError):
+        j = _open_json(resp._body) if resp.ok and resp._body else None
+    except Malformed:
         return None
     if isinstance(j, list):
         return len(j)

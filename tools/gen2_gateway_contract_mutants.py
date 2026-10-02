@@ -17,6 +17,7 @@ turn an exception that escapes the channel into an assertion failure for that re
 from __future__ import annotations
 
 SCHEMA = "research_gateway/core/schema.py"
+WIRE = "research_gateway/core/wire.py"
 PAYLOAD = "research_gateway/core/payload.py"
 DT, SP, DC = "tests.test_decoder_total.", "tests.test_sealed_payload.", "tests.test_declarations."
 SC, NP, FB, CD, IO = "tests.test_schema.", "tests.test_null_policy.", "tests.test_flow_binding.", "tests.test_cache_dedup.", "tests.test_identity_only."
@@ -49,13 +50,14 @@ def build(Mutant) -> list:
                'MEMBER_ERRORS = (PayloadError, KeyError, TypeError, AttributeError, ValueError, IndexError)',
                (DT + "RulesAndProgrammingErrors.test_a_rule_that_fails_on_a_providers_value_is_the_objects_failure_not_an_escaping_exception",),
                (DT + "RulesAndProgrammingErrors.test_a_rule_that_reads_what_the_schema_does_not_declare_is_a_programming_error_and_passes",)),
-        Mutant("T-nesting-recursion-escapes-the-parse", "JSON nested past the interpreter's own limit raises RecursionError out of the decoder", SCHEMA,
-               '    except (ValueError, UnicodeDecodeError, RecursionError):', '    except (ValueError, UnicodeDecodeError):',
-               (TOTAL + "test_a_malformed_answer_is_never_any_other_error_when_the_bytes_are_opened_by_the_decoder",),
-               (TOTAL + "test_nesting_deeper_than_any_supported_answer_is_unreadable_and_nesting_within_it_is_read",)),
-        Mutant("T-nesting-unbounded", "an answer nested deeper than any supported one is read", SCHEMA,
+        Mutant("T-nesting-recursion-escapes-the-parse", "JSON nested past the interpreter's own limit raises RecursionError out of the opener", WIRE,
+               '    except RecursionError:   # nesting past the interpreter\'s own limit is not JSON any provider sends\n        raise Malformed(f"JSON nested more than {MAX_DEPTH} levels deep") from None\n', '',
+               (TOTAL + "test_a_malformed_answer_is_never_any_other_error_when_the_bytes_are_opened_by_the_decoder",
+                TOTAL + "test_nesting_past_the_gateways_operational_limit_is_refused_at_its_edge_and_nesting_within_it_is_read"),
+               (TOTAL + "test_the_adapter_facing_decode_takes_the_clients_response_and_nothing_else",)),
+        Mutant("T-nesting-unbounded", "an answer nested deeper than the gateway's limit is read", WIRE,
                '    if _deeper_than(value, MAX_DEPTH):\n', '    if False:\n',
-               (TOTAL + "test_nesting_deeper_than_any_supported_answer_is_unreadable_and_nesting_within_it_is_read",),
+               (TOTAL + "test_nesting_past_the_gateways_operational_limit_is_refused_at_its_edge_and_nesting_within_it_is_read",),
                (TOTAL + "test_a_malformed_answer_is_never_any_other_error_when_the_bytes_are_opened_by_the_decoder",)),
         # ---------------------------------------------------------------- the payload is sealed and metadata is passive
         Mutant("S-the-response-exposes-its-parsed-payload", "the client's Response has a `json` property again", "research_gateway/adapters/base.py",
@@ -92,12 +94,13 @@ def build(Mutant) -> list:
                ("tests.test_schema_corruption.LookupCorruptions.test_the_outer_shapes_that_skipped_the_decoder_and_cached_unknown", "tests.test_schema_corruption.LookupCorruptions.test_every_declared_position_every_wrong_kind"),
                ("tests.test_typed_fields.RegistrationAgency.test_control_text_is_the_agency_and_no_agency_is_unknown",)),
         Mutant("S-the-doaj-dump-is-opened-without-its-header-check", "a CSV without the title column is read as a dump of journals", SCHEMA,
-               '        if missing:\n            raise PayloadError(f"{source_id}: the CSV shape changed:', '        if False:\n            raise PayloadError(f"{source_id}: the CSV shape changed:',
+               '    if missing:\n        raise PayloadError(f"{source_id}: the CSV shape changed:', '    if False:\n        raise PayloadError(f"{source_id}: the CSV shape changed:',
                (CORR + "CsvCorruptions.test_every_column_left_out_of_the_header_costs_the_load_only_when_the_loader_needs_it",),
                (CORR + "CsvCorruptions.test_the_valid_dump_loads_and_every_column_is_one_the_schema_declares",)),
-        Mutant("S-the-csv-parse-error-escapes", "a CSV the csv module cannot parse raises its own error out of the decoder", SCHEMA,
-               '    except csv.Error as e:\n        raise PayloadError(f"{source_id}: the CSV does not parse ({e})") from None\n', '    except ZeroDivisionError:\n        raise\n',
-               (CORR + "CsvCorruptions.test_cells_past_the_header_are_not_read_and_a_dump_that_does_not_parse_is_unreadable_not_empty",),
+        Mutant("S-the-csv-parse-error-escapes", "a CSV the opener refuses raises its own error out of the decoder", SCHEMA,
+               '    except wire.Malformed as e:\n        raise PayloadError(f"{source_id}: the CSV does not parse ({e})") from None\n', '    except ZeroDivisionError:\n        raise\n',
+               (CORR + "CsvCorruptions.test_a_cell_past_the_field_limit_and_a_file_with_no_usable_header_are_unreadable_not_empty",
+                CORR + "CsvCorruptions.test_a_dump_whose_serialized_framing_is_broken_is_unreadable_not_shorter_or_empty"),
                (CORR + "CsvCorruptions.test_the_valid_dump_loads_and_every_column_is_one_the_schema_declares",)),
         # ---------------------------------------------------------------- declarations are complete for what decides
         Mutant("D-bea-dataset-name-declared-any", "BEA's catalogue declares the dataset name `any_()` again", "research_gateway/adapters/bea.py",
