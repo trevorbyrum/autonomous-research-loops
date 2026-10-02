@@ -1078,3 +1078,22 @@ Consolidate: canonical typed construction must not materialize raw data; one raw
 2. **The supported-format and resource policy is frozen as listed in Gate D #2 item 5.** It covers UTF-8, JSON duplicates and non-finite numbers, finite floats versus exact integers, depth 64 for JSON and XML, no DOCTYPE, the CSV extensions, the 131,072-character CSV cell and the 256 MiB body limit. There are two sanctioned predicates: `Rec.empty` at the reviewed shape predicates, and equality between decoded provider objects for the intended comparisons only.
 
 **Routing:** 2b-repair-14 (gateway) implements Gate D #2 checklist items 0–6 and 8 in one pass, after 13d. The next reviews judge against the frozen contract: new counterexamples *within* it block; restating the same evidence limits doesn't.
+
+## 2026-10-02 — 2b-repair-13d landed (engine: deadline, admission, startup failure)
+**Coder (Sonnet 5.5, `63cce017`):** `34ed64b`..`fd414d4`.
+- **R13B-1 (deadline):** one absolute deadline, taken when the transport is called, arms every blocking socket call: connect, send, status and headers, body, and TLS. `_exchange` also discards a reply that completes after its budget. On Astra's probe, a 0.2 s deadline that previously took 0.508 s now takes 0.20 s, and the late `done` is now `unknown/unobserved/timeout/failed`.
+- **R13B-2 (admission):** the router and the DDL enforce the same contract: capture acknowledgement, a closed request discriminator, per-type ends, no exhausted unobserved lane, and one cursor domain (see `gen2/core/pagination.py`).
+- **R13B-3 (startup failure):** diagnosed as SQLite's `busy_timeout` not covering the switch from rollback journal to WAL on first open beside a writer, and fixed in `store/db.py`.
+- **Test claim:** the after-deadline test was renamed and a real late-reply test added.
+
+**Disclosed:**
+- DNS resolution (`getaddrinfo`) can overrun the deadline by the resolver's own timeout. A late reply is still never admitted.
+- The relabel case awaits the 2e2 retrieval audit.
+- The TLS tests need `openssl`, which is present on this host.
+- The real-socket tests use wall-clock margins.
+- Two socket mutants have no paired control.
+
+**Orchestrator:**
+- clean tree; `gateway/` untouched; gen-1 unchanged (PID 1040);
+- independent reruns in progress;
+- **review held for a combined 13d + 14 review**, to conserve the Codex window (90% of 7 days used, resets in about 5 days).
