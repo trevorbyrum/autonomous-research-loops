@@ -817,3 +817,10 @@ The structural scan also has an ordinary-spelling bypass; Astra asks that its cl
 
 **Orchestrator:** this is the twelfth 2b review round. The operator asked why the process feels like circling. The orchestrator's diagnosis: an open-ended acceptance bar, instance-level fixing until round 8, and routing without stepping back. It proposed freezing a finite acceptance contract, with later findings triaged into either blocking (false end, false empty, permission widening) or debt-register items. **No new repair is dispatched until the operator decides.**
 **OPERATOR RULING:** "or why don't we try to address the bugs" — fix R11-1 and R11-2 now. Dispatched 2b-repair-12 (Sonnet 5.5) with Astra's reproductions as the required tests. The acceptance-process change is not adopted; the existing process continues.
+**OPERATOR (same exchange):** "at their root — which is a constraint I know I applied." Correct: the charter's root-cause rule and third-round redesign rule cover this. The orchestrator had applied them per finding, not per defect family. **Family root cause:** adapters read provider payloads field by field, ad hoc, with no declared shape, so each round patched one access pattern. **2b-repair-12 is redirected to the root fix:**
+- per-operation declared schemas for supported payloads (types, nesting, cardinality, alternatives and their consistency, member lists);
+- one shared decoder that validates whole payloads before adapter logic;
+- adapters choose only between already-validated values;
+- harness corruption derived from the schemas.
+
+All accepted contracts, the unedited oracle and Astra's R11 reproductions must still pass.

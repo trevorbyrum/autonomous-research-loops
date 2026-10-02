@@ -1,4 +1,46 @@
-# Task 2b-repair-12 — fix R11-1 and R11-2
+# Task 2b-repair-12 — fix the 2b defect family at its root: schema-first provider decoding
+
+**Operator ruling (2026-10-02): "address the bugs at their root."** This overrides the narrower brief below. R11-1 and R11-2 are just the latest instances of one family. Every 2b round since 2b-repair-7 has patched a different *access pattern* of the same cause:
+- malformed members;
+- falsy wrong-kind holders;
+- lazy `a or b` fallbacks;
+- nested alternatives;
+- contradictory references.
+
+**Root cause: adapters read provider payloads field by field, ad hoc, with no declared shape.** Every new spelling of access is a new hole.
+
+## The root fix (required)
+1. **Schemas.** Every provider operation declares a schema for the payload it supports. The schema covers:
+   - each supported field's type, including nested containers and member types;
+   - cardinality;
+   - alternatives (for example `rightsIdentifier`/`rights`, `best_oa_location`/`oa_locations`, SDMX `Ref`/`URN`) and their consistency rules;
+   - which containers are member lists, to be isolated per member;
+   - which fields are required and which are optional.
+
+   Write it as plain, stdlib-only Python data in one place per adapter.
+2. **One shared decoder.** It validates the **whole supported payload** against the schema before any adapter logic runs:
+   - it decodes every supported alternative completely, nested contents included;
+   - it applies alternative-consistency rules (conflicting `Ref`/`URN` → unreadable);
+   - it isolates list members per member, with dropped-member accounting;
+   - it maps "missing/null" vs. "present but malformed" exactly as the accepted contracts say.
+3. **Adapters receive only validated, typed data.** Choosing between alternatives happens **after** validation, on decoded values. `preferred()`, `optional()`, `members()` and the escape inventory should collapse into this decoder or become thin views over it. Remove whatever becomes dead.
+4. **The harness derives its corruption positions from the declared schemas.** That way every declared field and alternative is corrupted automatically, and a field an adapter reads without declaring it is itself a failure.
+
+## Required outcomes
+- Everything that is accepted today keeps passing, behaviourally unchanged:
+  - the independent oracle (unedited);
+  - the invariant harness;
+  - every earlier regression;
+  - Astra's R11 reproductions, below;
+  - the per-member isolation, partial-lower-bound, no-false-end, no-false-zero and permission contracts.
+- Do this for every adapter operation that produces candidates, ends or continuations, and for the registry loaders. The accepted exclusions stay: the local index; the offline OpenAlex snapshot loader; genuine single-object resolves.
+- Keep each hand-written file under 1,500 lines. Report gateway net lines. The schema and decoder may legitimately grow the gateway; say by how much.
+
+The original R11 detail below still defines the reproductions this redesign must pass.
+
+---
+
+# (Original scope, now a subset) R11-1 and R11-2
 
 **Read first, in full:**
 - `~/work/research-loops-public/private/reviews/gen2-2b-repair-11-astra-review-20261001.md`, findings R11-1 and R11-2, and the required corrections.
