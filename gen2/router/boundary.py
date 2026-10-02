@@ -251,15 +251,16 @@ def check_page_outcome(observation: dict) -> None:
       depends on it: for a `find`, a paged request, that its end is not known; for any other type, which does not page, there is no end
       to know. Only a find's page can be an `exhausted`, a `continuation` or a `limit_reached`.
     * THE CAPTURE ACKNOWLEDGEMENT. A page read `complete`, and so every `exhausted` end, names the gateway's durable row of the request
-      (`gateway_call_ref`): an answer the gateway did not durably capture is at most a partial lower bound (INVARIANTS RG-4, E-2), and
-      the reference is what the state-integrity audit re-derives an end from.
+      (`gateway_call_ref`): an answer the gateway did not durably capture is at most a partial lower bound (INVARIANTS RG-4, E-2). The
+      reference acknowledges a durable call row, not a retained response artifact.
     * THE CURSOR DOMAIN. A continuation's cursor is an integer from 0 to the JSON bound, or a string of 1..8000 characters, none of them
       NUL, other than the finished-lane sentinel (gen2/core/pagination.py; the command schema holds only the shape).
 
     What this does NOT establish: that an outcome the observation asserts is the one the gateway's answer implied. The router sees the
-    command, never the reply; a well-formed command from trusted station code that relabelled a captured outcome is detected by the
-    state-integrity audit's re-derivation from the captured raw evidence (INVARIANTS E-2; gen2/router/README.md, "What an observation
-    command is trusted for")."""
+    command, never the reply. A coherent false claim by trusted station code is outside router semantic enforcement; sampled
+    independent re-derivation can detect it when retained evidence supports that check, and missing required evidence is itself an
+    audit failure (INVARIANTS E-2; gen2/router/README.md, "What an observation command is trusted for"; the retrieval-audit evidence
+    requirement is task 2e2's)."""
     oid, outcome, completeness, coverage = observation["observation_id"], observation["page_outcome"], observation["completeness"], observation["coverage_state"]
     if (coverage in ("provider_unavailable", "auth_failed", "unknown")) != (outcome == "failed"):
         raise Refusal("payload_invalid", f"{oid}: coverage {coverage} with page outcome {outcome}; a page nothing could be read from is failed, and only it is")

@@ -43,12 +43,13 @@
 -- 'exhausted', a 'continuation' or a 'limit_reached'. A page read 'complete',
 -- an 'exhausted' end among them, names the gateway's durable row of its request
 -- (gateway_call_ref): an answer the gateway did not capture is at most a
--- partial lower bound, and the reference is what the state-integrity audit
--- re-derives an end from. A cursor is an integer from 0 to 2^53-1, or a text of
+-- partial lower bound; the reference acknowledges a durable call row, not a
+-- retained response artifact. A cursor is an integer from 0 to 2^53-1, or a text of
 -- 1..8000 characters without NUL other than the finished-lane sentinel
 -- 'exhausted'. What none of this establishes: that an asserted outcome is the
 -- one the gateway's answer implied (the router sees the command, not the reply;
--- the state-integrity audit re-derives it from the captured raw evidence).
+-- a coherent false claim by trusted station code is outside its enforcement, and
+-- sampled re-derivation can detect it only where retained evidence allows: 2e2).
 CREATE TABLE search_observations (
   observation_id TEXT PRIMARY KEY,
   invocation_id TEXT NOT NULL REFERENCES invocations (invocation_id),
