@@ -84,83 +84,72 @@ is never conflated with "not searched" or "unavailable":
     has since changed — reads nothing and ends nothing: `provider_unavailable`,
     `unobserved`, `partial_pagination`, no `next` (task 2b-repair-7). Each find adapter's end
     rule rests on its provider's own evidence, recorded in `PROVIDER-PAGINATION.md`.
-  One member of a provider's list that cannot be read costs that member only, in every lane that returns
-  records (find, resolve, enrich, fetch, data) from such a list. A provider's list reaches an adapter as a
-  `Members` (`core/payload.py`), which cannot be iterated, indexed, sliced or filtered, so no adapter can touch a
-  member before it is decoded; it is read only through `base.members()` (each member decoded alone: one that is not
-  an object, whose decoding fails, or whose record names nothing is dropped and counted, so the lane is `partial`
-  with a lower-bound `count`, and one that is readable and names nothing to report, a reference with no DOI, is
-  omitted, not counted), `base.first_member()` (a lookup's first result: one that cannot be read is an unreadable
-  answer, never "not found", and never answered by the result after it) or `Members.expand()` (a member that
-  holds members of its own, an SDMX data set's series, and cannot be unfolded is one dropped member in place of
-  what it held: the series of the other data sets stand). The same holds for a list inside a member whose members
-  become records (a Hugging Face dataset's files), because the member's own lists are views too. What this does NOT
-  cover is the one way out of a view, `plain()`: a list that is one record's own data (its authors, tags or
-  licences; a series' observations; the rows of one table record, which FRED, Census and BEA keep whole), the
-  local index's own rows, Socrata's portal vouching (a guarded predicate that fails closed), and a catalogue's
-  entries (BLS, FRED, Census, BEA), which are not records: one that cannot be read makes its whole catalogue answer
-  unreadable, never a shorter catalogue. The source check in `tests/test_member_isolation.py` lists every use of
-  `plain()` in the gateway with why it is not a pass over independent members; a use that is not listed fails. Whether
-  a given list is one record's data or a set of independent candidates is the adapter author's declaration, and that
-  list is where a reviewer reads it (tasks 2b-repair-7b, 2b-repair-8).
-  A container a provider sends is validated for its kind before its length or its truth is looked at (task
-  2b-repair-9, R8-2). One the provider may leave out (a Hugging Face repository's `siblings`, an ECB data set's
-  `series`, a Crossref work's `reference`, a Dataverse version's `files`, a GovInfo package's `download`) is empty
-  only when it is missing or null (`base.optional`); a `false`, `0`, `""`, `{}` where a list belongs, or `[]` where an
-  object does, is an unreadable holder, never an empty one: it is dropped-member accounting (the lane is `partial`
-  beside readable peers, `unobserved` with no count when there are none), and a count derived from it (a repository's
-  `file_count`) is unknown, never zero. The same rule reads every container and every typed field of a record
-  (`nested`, `listed`, `text`, `key`; `make_record` checks the canonical fields, so one member whose title is a number is
-  dropped and counted, not raised out of the router), and a lane's end and continuation: a total is a whole number no
-  smaller than what was read (`base.total`), an opaque cursor a non-blank string (`base.token`), a next offset a
-  number past the page (`base.offset_after`), and a metadata container that cannot be read costs only what it alone
-  establishes (`base.field`), never the members beside it. `tests/test_invariants.py` asserts this as four
-  invariants over every adapter operation, corrupted at every position of a valid answer (an end or a continuation
-  only from fields it read; an unreadable container never an empty one; readable peers survive; nothing escapes
-  unhandled). That harness is metamorphic: it holds a corrupted answer to how it may differ from the gateway's own
-  answer to the valid one, so it is supplementary coverage, not an independent oracle (task 2b-repair-10b, R9-4).
-  The independent oracles are `tests/test_oracle.py`'s (`tests/oracle/`): the canonical fields every valid answer
-  must produce, hand-written from the providers' documentation and the fixtures, the RFC 3986 / 8288 `Link`
-  vectors written from the RFC text, the BIS and ECB catalogue cases, the registry loaders' records, and a coverage
-  record computed from what actually ran. They were written by an author who had not read the gateway.
-  A present value is read as what it is before a fallback chooses between spellings and before its truth decides
-  anything (task 2b-repair-10b, R9-2): `license=d.get("licence") or d.get("license")` made a present `false`, `0`,
-  `[]` or `{}` licence into no licence, because `or` looks at truth and the value never reached the validator.
-  Each spelling is read as text (`base.text`), a flag as a flag (`base.boolean`: true, false, or missing; a
-  restriction read by its truth would make a falsy wrong kind "not restricted"), an object as an object
-  (`base.optional`, `base.nested`), and only then is one chosen. A member that carries a wrong-kind present value is
-  dropped and counted, never read as holding nothing. Sites the sweep of the adapters, the SDMX reader and the
-  loaders changed: OpenML's `licence`/`license`, Europe PMC's `Y`/`N` flags, DOAJ's journal `ref`, FRED's
-  `notes` (a restriction note), Dataverse's `restricted` flag and `identifier`/`authority`, Census's
-  `predicateOnly` and `label`, BEA's error envelope and value labels, SDMX-JSON's `id`/`name`, and doi.org's `RA` (the agency of a DOI: an
-  `RA` that is not text is unreadable and not remembered as the prefix's agency).
-  Every operand of a choice between alternatives is read before one is chosen (task 2b-repair-11b, R10-1). `text(a) or
-  text(b)` is not an exemption: `or` evaluates `text(b)` only when `a` is empty, so a present, malformed `b` beside a valid
-  `a` (DataCite's `rights` beside `rightsIdentifier`, BEA's `Description` beside `Desc`) was never read. A choice
-  between two provider values is made by `base.preferred` (what `a or b` chooses, with both already read: they are
-  its arguments), an identity between identifiers by `base.identity_from` (the preferred identifier first, the
-  member's own id read through `base.maybe_key` whether or not a preferred one makes it unnecessary), and the first
-  of several list entries (the article's DOI among its identifiers, the DOI among a record's pids) only after every
-  such entry was read. A malformed one makes what holds it unreadable by the scope's rule: a member is dropped and
-  counted, a lookup's record, a single record or a whole catalogue is unreadable; an answer-level alternative beside
-  members that are readable (Unpaywall's `best_oa_location`) costs the lane its completeness, never the members. The
-  same holds where a message states one thing in more than one place (SDMX-JSON's `structure`, `structures` and
-  `data`, BEA's error and its listing keys). `tests/test_alternatives.py` states each site and scans the adapters, the SDMX
-  reader, `canonical.py`, `identity.py` and the loaders for any `or`, `and` or conditional expression that reads two
-  provider values inside itself, so a new one fails unless it is listed there with its reason. Sites reviewed and
-  left, with the reason: a filter on
-  a catalogue row's identifier (`if row.get("id")`: the accepted rule that a row naming nothing is skipped, and a
-  listing in which none names anything is not a catalogue, `base.identified`); credentials and token lifetimes
-  (`expires_in or 3600`: no candidate data); Socrata's portal-vouching predicate (fails closed); the OpenAlex
-  snapshot loader's tolerant reading of a local file; and pass-through `extra` fields (`cited_by_count`,
-  `type`, `version`, ...), which are carried as the provider sent them and are not decisions. Every site of
-  the sweep, with what it did and what it does, is in `~/work/research-loops-public/private/evidence/2b-repair-11b/fallback-sites.md`.
+  A provider's answer is read through a schema the operation declares, and nothing else (task 2b-repair-12). Every 2b round since
+  repair-7 patched another access pattern of one cause: adapters read a payload field by field with no declared shape (malformed
+  members, falsy wrong-kind holders, lazy `a or b` fallbacks, alternatives whose nested contents were decoded after the choice,
+  references reduced to the first). Now each operation declares, in its adapter module (`SCHEMAS`, plain data built from
+  `core/schema.py`), the payload it supports: each field's type, which containers are lists of independent members, which fields are
+  required, which are alternatives of one another (`alts`) and any rule that ties fields together (a flow's `Ref` and `URN`). ONE decoder
+  (`schema.decode`) checks the whole declared payload before any adapter logic runs and hands back values an adapter cannot read any
+  other way: an object is a `Rec` holding exactly its declared fields (reading another raises `UndeclaredRead`, which is not a member's
+  loss, so an adapter cannot read what its schema does not say), a provider's list of candidates is a `MemberList` (every member decoded
+  alone; it cannot be iterated, indexed, sliced or filtered, only read through `base.members()`, `base.first_member()`, `take()` and
+  `expand()`), a record's own list is an ordinary list. Choosing between alternatives therefore happens on decoded values: every
+  declared field of an object is decoded, nested contents included, whether or not the adapter will use it, so `a or b` cannot skip reading
+  `b`. What a failure costs is decided by where it is: a field missing or null is the empty value of its kind (None, false, an empty
+  list, an object of nothing) unless the schema requires it; one that is there and is not its kind is unreadable, `false`, `0`, `""`, `[]`
+  and `{}` included, and costs the nearest boundary around it. A member of a list that cannot be read costs that member only (it is
+  dropped and counted, so the lane is `partial` with a lower-bound `count`; a member that is readable and names nothing to report, a
+  reference with no DOI, is omitted, not counted); a lookup's first result that cannot be read is an unreadable answer, never "not found",
+  and never answered by the result after it; a member that holds members of its own and cannot be unfolded (an SDMX data set) is one
+  dropped member in place of what it held; a field declared `isolated` costs only itself (Unpaywall's `best_oa_location`, which the listed
+  locations may not hold: the lane is `partial`, the listed locations stay); a field declared `soft` (a total, a cursor, a count of pages)
+  says nothing when it cannot be read and never ends or continues anything (`base.total`: a whole number no smaller than what was
+  read; `base.offset_after`: a number past the page); anywhere else the answer is unreadable (`provider_unavailable`, `payload_invalid`,
+  `unobserved`, no count). A list a provider may leave out only when it counts nothing (`results` beside `numFound: 0`) is empty only
+  when that count is the whole number zero. `make_record` still checks the canonical fields, so one member whose title is a number is
+  dropped and counted, not raised out of the router. Where a list is one record's own data (a record's authors, tags or licences; a
+  series' observations; the rows of one table record, which FRED, Census and BEA keep whole) or a catalogue's entries (BLS, FRED, Census,
+  BEA: one that cannot be read makes the whole catalogue unreadable, never a shorter one) the schema says `own(...)`, not `members(...)`;
+  whether a list is one or the other is the schema author's declaration, and the source check in `tests/test_member_isolation.py` lists
+  every place an answer or a list leaves the decoder (`.raw`, `each`, `at`, the `MemberList` constructor, `.json`) with why it is not a pass
+  over independent members; a use that is not listed fails.
+  Alternatives, specifically (tasks 2b-repair-10b/11b R10-1, 2b-repair-12 R11-1): DataCite's `rights` beside `rightsIdentifier`, BEA's
+  `Description` beside `Desc` and every spelling of a value's key, a DOI among a record's identifiers beside its own id, Unpaywall's
+  `best_oa_location` beside `oa_locations`, a Crossref work's issue date beside its creation date and its authors' `given`/`family`
+  beside `name`, the Crossref journals loader's typed `issn-type` beside its plain `ISSN`, SDMX-JSON's `structure`, `structures` (its first
+  element is the one a lookup reads, and it is decoded) and the same two under `data`: each is a declared field, so a malformed one,
+  nested contents included, beside a valid preferred value makes what holds it unreadable by the scope's rule above. SDMX-ML is decoded by
+  the same decoder (an element's attributes, text and children are fields of the schema; `"**Name"` is every descendant of that name).
+  The evidence, in the order of independence: the oracle (`tests/test_oracle.py`, `tests/oracle/`: the canonical fields every valid answer
+  must produce, hand-written from the providers' documentation and the fixtures, the RFC 3986 / 8288 `Link` vectors written from the RFC
+  text, the BIS and ECB catalogue cases, the registry loaders' records, and a coverage record computed from what actually ran; written by
+  an author who had not read the gateway); `tests/test_schema_corruption.py`, which DERIVES its corruption positions from the declared
+  schemas (every declared field with a wrong kind, left out where required, every alternative beside a valid other and alone, what each
+  must cost read from where the schema puts it) and fails an adapter that reads what it does not declare; `tests/test_schema.py`, the
+  decoder's own rules; and `tests/test_invariants.py`, four invariants over every operation corrupted at every position of a valid answer
+  (an end or a continuation only from fields it read; an unreadable container never an empty one; readable peers survive; nothing escapes
+  unhandled). That harness is metamorphic (it holds a corrupted answer to how it may differ from the gateway's own answer to the valid one),
+  so it is supplementary coverage, not an independent oracle (task 2b-repair-10b, R9-4), and a schema that under-declares a field (an `any_`
+  where a typed object belongs) is invisible to a harness derived from it: the oracle and the documentation are what catch that. The
+  lazy-choice SOURCE SCAN that used to stand here (no `or`, `and` or conditional expression over two provider reads) is retired: it was a
+  guard with an ordinary-spelling bypass (Astra, 2b-repair-11: a value held in a variable first), never a proof, and with the decoder there
+  is no lazy provider read for it to watch. Sites reviewed and left: a filter on a catalogue row's identifier (`if row["id"]`: the accepted rule
+  that a row naming nothing is skipped, and a listing in which none names anything is not a catalogue, `base.identified`); credentials
+  and token lifetimes (`expires_in or 3600`: no candidate data); Socrata's portal-vouching predicate (fails closed: a member that cannot
+  be read vouches for nothing); the OpenAlex snapshot loader's tolerant reading of a local file; and pass-through `extra` fields
+  (`cited_by_count`, `type`, `version`, ...), declared `any_`, which are carried as the provider sent them and are not decisions.
   A dataflow browse is about the flow asked for (task 2b-repair-11b, R10-2). BIS and ECB select the Dataflow whose id was
   asked (`sdmx.dataflow_named`: the flow its agency maintains), then the DataStructure that flow's own `Structure` reference
   names (id, agency and version as stated), and the label, the dimensions and the request template all come from that one
-  selection. A flow the message does not hold, one that names no structure, and a structure the message does not hold give
-  no entry and no template (a capability fact: unobserved); a flow or structure the message defines twice differently is
-  an unreadable answer (`payload_invalid`), never the first of them; the structure is never guessed from the flow's own id.
+  selection. The references a flow states are decoded and checked together (task 2b-repair-12, R11-2): SDMX 2.1 gives a Dataflow ONE
+  structure reference, a `Ref` with an optional `URN`, or a `URN` alone (DataflowType, ReferenceType), so two `Ref`s, two `URN`s, two
+  `Structure` children, or a `URN` that names a different structure than the `Ref` beside it, are a flow that does not say which structure
+  it has: an unreadable answer (`payload_invalid`), never the first of them. A `Ref` with the `URN` that names it is one reference; a
+  `URN` alone is a legitimate representation this reader does not follow, so the flow yields no template (a capability fact). A flow the
+  message does not hold, one that names no structure, and a structure the message does not hold give no entry and no template
+  (a capability fact: unobserved); a flow or structure the message defines twice differently is an unreadable answer, never the first of
+  them; the structure is never guessed from the flow's own id; a flow nobody asked for is not asked for its references.
   A flow listing in which no dataflow names itself is unreadable, not a catalogue (`base.identified`).
   The canonical record carries `publisher` (the sample the engine's contract fixtures ship has it beside `venue`)
   wherever the provider states one for a work, a dataset or a venue (Crossref, DataCite, DOAJ journals, CORE,

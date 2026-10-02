@@ -76,9 +76,13 @@ def run_tests(tree: Path, names: list[str]) -> dict:
 def verdict(m, tree: Path) -> tuple[str, str]:
     target = tree / m.target
     text = target.read_text(encoding="utf-8")
-    if text.count(m.old) != 1:
-        return "INVALID", f"the edit is found {text.count(m.old)} times in {m.target}"
-    target.write_text(text.replace(m.old, m.new), encoding="utf-8")
+    edits = list(zip(m.old, m.new)) if isinstance(m.old, tuple) else [(m.old, m.new)]   # a guard with two layers is removed in both: one edit each, each found exactly once
+    mutated = text
+    for old, new in edits:
+        if mutated.count(old) != 1:
+            return "INVALID", f"the edit {old[:60]!r} is found {mutated.count(old)} times in {m.target}"
+        mutated = mutated.replace(old, new)
+    target.write_text(mutated, encoding="utf-8")
     try:
         outcomes = run_tests(tree, [*m.killers, *m.controls])
     finally:

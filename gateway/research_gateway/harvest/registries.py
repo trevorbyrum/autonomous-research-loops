@@ -112,25 +112,33 @@ def _built(source_id: str, items: MemberList, build, skipped: list[str]) -> list
 
 
 # ---------------------------------------------------------------- DOAJ journals (CSV)
+# What a row of DOAJ's CSV dump must be: the columns the index takes, each text (a cell the row is too short to hold is nothing). The dump is parsed by the csv module; each
+# row is decoded against this before the loader reads it.
+DOAJ_ROW = S.obj({"Journal title": S.text(), "Journal ISSN (print version)": S.text(), "Journal EISSN (online version)": S.text(), "Publisher": S.text(),
+                  "Subjects": S.text(), "Journal URL": S.text(), "Journal license": S.text(), "Country of publisher": S.text(), "APC": S.text(),
+                  "Languages in which the journal accepts manuscripts": S.text()})
+
+
 def doaj_journals(client: Client, *, limit: int | None = None, issn_map: index.IssnMap | None = None) -> Iterator[dict]:
     resp = client.get("doaj", "find", DOAJ_CSV, headers={"Accept": "text/csv"}, query="journals csv")
     check("doaj", resp, allow_404=False)   # a missing catalogue is a failed load, never a zero-row success (D-23)
     reader = csv.DictReader(io.StringIO(resp.text))
     if not reader.fieldnames or "Journal title" not in reader.fieldnames:
         raise ValueError(f"DOAJ CSV shape changed: columns {list(reader.fieldnames or [])[:5]!r} lack 'Journal title'")
-    for n, row in enumerate(reader, 1):
-        title = row.get("Journal title")
-        identity, clean = venue_identity([row.get("Journal ISSN (print version)"), row.get("Journal EISSN (online version)")],
-                                         "doaj", title, row.get("Publisher"), issn_map)
+    for n, csv_row in enumerate(reader, 1):
+        row = decode("doaj", DOAJ_ROW, csv_row)
+        title = row["Journal title"]
+        identity, clean = venue_identity([row["Journal ISSN (print version)"], row["Journal EISSN (online version)"]],
+                                         "doaj", title, row["Publisher"], issn_map)
         if identity is None:
             continue
-        subjects = [s.strip() for s in (row.get("Subjects") or "").split("|") if s.strip()]
-        yield make_record(identity=identity, kind="venue", source_id="doaj", title=title, venue=row.get("Publisher"),
-                          identifiers={"issn": clean[0]} if clean else {}, links=[u for u in (row.get("Journal URL"),) if u],
-                          license=row.get("Journal license"),
-                          extra={"issns": clean, "subjects": subjects, "country": row.get("Country of publisher"),
-                                 "in_doaj": True, "apc": row.get("APC"), "language": row.get("Languages in which the journal accepts manuscripts")},
-                          raw=row)
+        subjects = [s.strip() for s in (row["Subjects"] or "").split("|") if s.strip()]
+        yield make_record(identity=identity, kind="venue", source_id="doaj", title=title, venue=row["Publisher"],
+                          identifiers={"issn": clean[0]} if clean else {}, links=[u for u in (row["Journal URL"],) if u],
+                          license=row["Journal license"],
+                          extra={"issns": clean, "subjects": subjects, "country": row["Country of publisher"],
+                                 "in_doaj": True, "apc": row["APC"], "language": row["Languages in which the journal accepts manuscripts"]},
+                          raw=row.raw)
         if limit and n >= limit:
             return
 
@@ -184,6 +192,8 @@ def datacite_repositories(client: Client, *, limit: int | None = None, size: int
             return
         page += 1
 
+
+SCHEMAS = {"crossref journals": JOURNALS_PAGE, "doaj journals (csv)": DOAJ_ROW, "datacite repositories": REPOSITORIES_PAGE}
 
 # each loader and the METADATA licence of the registry it reads (never a record's content licence, A3)
 LOADERS = {"crossref": (crossref_journals, "Metadata: no rights asserted (facts)"),

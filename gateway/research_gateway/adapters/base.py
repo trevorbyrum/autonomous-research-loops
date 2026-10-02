@@ -31,7 +31,7 @@ from urllib.parse import quote  # re-exported: adapters quote path segments thro
 from ..core import calllog, uri
 from ..core.broker import Broker, BreakerOpen, BudgetExhausted, NoPolicy
 from ..core.identity import meaningful
-from ..core.payload import MEMBER_ERRORS, OMIT, MemberList, PayloadError, Rec, UndeclaredRead, Unreadable, is_unreadable, plain  # noqa: F401 (re-exported: adapters read and raise through base)
+from ..core.payload import MEMBER_ERRORS, OMIT, MemberList, PayloadError, Rec, is_unreadable  # noqa: F401 (re-exported: adapters read and raise through base)
 from ..core.schema import decode  # noqa: F401 (re-exported: an adapter's only way into a provider's answer)
 
 
@@ -751,7 +751,7 @@ __all__ = (
     # the metered client, and what an adapter says when it cannot answer
     "Client", "AdapterError", "ContinuationInvalid", "PayloadError", "MEMBER_ERRORS", "check",
     # a provider's answer: decoded against the operation's declared schema (core/schema.py), and read as what it decodes to
-    "decode", "members", "first_member", "plain", "OMIT", "MemberList", "Unreadable", "is_unreadable", "Rec",
+    "decode", "members", "first_member", "OMIT", "MemberList", "is_unreadable", "Rec",
     # what a record is named by, and a provider's metadata: totals, the end and the next page
     "identity_from", "offset_after", "total", "identified", "next_link", "own_link", "quote",
 )

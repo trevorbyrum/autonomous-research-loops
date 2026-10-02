@@ -477,7 +477,8 @@ class Imports(unittest.TestCase):
         """What the same two edits do when they only use what the client exports: nothing is refused for the import — the one thing a name
         from `__all__` can still be is an unlisted door, which the inventory above catches by name, as it always did."""
         permitted = [(self.OC_IMPORT, self.OC_IMPORT + ", quote as q, identified")]   # a permitted re-export (quote), and a helper in __all__
-        spelled_out = [(self.OC_IMPORT, self.OC_IMPORT + ", plain"), self.STAR[1]]
+        spelled_out = [(self.OC_IMPORT, self.OC_IMPORT + ", MemberList"),
+                       (self.OC_READ + self.OC_RETURN, '    rows = MemberList([row for row in []])\n' + self.OC_RETURN)]
         real = reads()
 
         def changed(root: Path) -> list:

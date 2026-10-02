@@ -29,6 +29,7 @@ import unittest
 from research_gateway import adapters
 from research_gateway.core import schema as S
 from tests import invariant_ops as ops
+from tests.oracle import loaders as loaders_oracle
 from tests.invariant_ops import corrupt_route
 from research_gateway.adapters.base import MEMBER_ERRORS
 from tests.test_invariants import ALL, MISSING, Member, get, members_of, put, run
@@ -477,6 +478,74 @@ class DirectResolves(unittest.TestCase):
                     with self.subTest(op=name, position=repr(pos), value=repr(value)):
                         self.assertEqual(verdict, want, got)
         self.assertGreater(runs, 100)
+
+
+class LoaderCorruptions(unittest.TestCase):
+    """The registry loaders' pages (harvest/registries.py), the same derivation: a position inside a journal or repository costs that row (the load goes on, and a row that
+    was an object and could not be read is reported); the page's envelope costs the load; the end of the registry is read from a count that, unreadable, is a failed load."""
+
+    PAGES = (("crossref journals", "https://api.crossref.org/journals", loaders_oracle.CROSSREF_JOURNALS, "crossref_journals", False),
+             ("datacite repositories", "https://api.datacite.org/repositories", loaders_oracle.DATACITE_REPOSITORIES, "datacite_repositories", True))
+    LOAD_FAILS = {("datacite repositories", ("meta", "totalPages")): "a page whose count of pages cannot be read does not say it is the last: a failed load, not a complete one"}
+
+    def load(self, loader: str, url: str, body):
+        import json
+        from research_gateway.adapters.base import Client, FakeTransport
+        from research_gateway.core.broker import Broker, RatePolicy
+        from research_gateway.harvest import registries
+        t = FakeTransport()
+        t.add("GET", url, 200, json.dumps(body).encode())
+        c = Client(broker=Broker({"crossref": RatePolicy(per_second=100000), "datacite": RatePolicy(per_second=100000)}), transport=t, sleep=lambda s: None)
+        skipped = []
+        try:
+            fn = getattr(registries, loader)
+            records = list(fn(c, skipped=skipped) if loader == "crossref_journals" else fn(c))
+            return [r["identity"] for r in records], skipped, None
+        except ValueError as e:
+            return None, skipped, e
+
+    def test_every_declared_position_every_wrong_kind(self):
+        runs = 0
+        for name, url, body, loader, _ in self.PAGES:
+            spec = adapters_registries_schema(name)
+            valid, skipped, error = self.load(loader, url, body)
+            self.assertEqual((error, skipped, len(valid)), (None, [], 2), name)
+            for pos in walk(spec, body, (), (), ("answer",)):
+                if not pos.path:
+                    continue
+                for value in wrong_for(pos.spec) + (tuple([MISSING, None]) if pos.required else ()):
+                    if (value is MISSING or value is None) and (not pos.present or isinstance(pos.path[-1], int)):
+                        continue
+                    runs += 1
+                    identities, skipped, error = self.load(loader, url, grow(body, pos.path, value))
+                    kind = pos.boundary[0]
+                    label = f"{name}: {pos!r} <- {value!r}"
+                    with self.subTest(page=name, position=repr(pos), value=repr(value)):
+                        if (name, pos.path) in self.LOAD_FAILS:
+                            self.assertIsNotNone(error, label)
+                        elif kind == "answer":
+                            self.assertIsNotNone(error, label)
+                        elif kind == "soft":
+                            self.assertEqual((error, identities), (None, valid), label)
+                        else:   # a row: the others stand; it is gone; a row that was an object and could not be read is reported (the Crossref loader keeps the list)
+                            index = pos.boundary[1][-1] if isinstance(pos.boundary[1][-1], int) else None
+                            self.assertIsNone(error, label)
+                            self.assertEqual(identities, [i for n, i in enumerate(valid) if n != index], label)
+        self.assertGreater(runs, 100)
+
+    def test_a_crossref_row_that_was_an_object_and_cannot_be_read_is_reported_and_one_that_was_not_an_object_is_not(self):
+        name, url, body, loader, _ = self.PAGES[0]
+        for value, reported in (({"title": "J", "ISSN": "notalist"}, 1), (7, 0), ("x", 0), ({"title": "J", "issn-type": [{"value": False}]}, 1)):
+            page = copy.deepcopy(body)
+            page["message"]["items"][1] = value
+            identities, skipped, error = self.load(loader, url, page)
+            self.assertEqual((error, len(identities), len(skipped)), (None, 1, reported), value)
+            self.assertTrue(all("PayloadError" in why for why in skipped), skipped)
+
+
+def adapters_registries_schema(name: str) -> S.Spec:
+    from research_gateway.harvest import registries
+    return registries.SCHEMAS[name]
 
 
 class UndeclaredReads(unittest.TestCase):

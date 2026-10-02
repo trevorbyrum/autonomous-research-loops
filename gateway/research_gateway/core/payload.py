@@ -19,8 +19,8 @@ runs; adapters receive only what the decoder returns, and what it returns cannot
     structure's `Ref` or `URN`) is a declared field, decoded completely, nested contents included, before the adapter can
     choose between them.
 
-`Rec.raw` is the member exactly as the provider sent it, for a record's `raw` (I-8). It is for storing, not for reading:
-tests/test_schema_corruption.py fails an adapter that subscripts or `.get`s it.
+`Rec.raw` is the member exactly as the provider sent it, for a record's `raw` (I-8). It is for storing, not for reading: tests/test_member_isolation.py
+lists every use of it that is not the value of a `raw=` argument, with why, and fails one that is not listed.
 """
 from __future__ import annotations
 

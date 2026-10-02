@@ -29,7 +29,8 @@ _KIND = {"publication": "article", "dataset": "dataset", "software": "software",
 
 # What an answer must be. A product is named by the DOI among its identifiers (the product's `pids`, and each instance's `alternateIdentifiers` and `pids`; all
 # are decoded), else by its own id. A list may be left out only when the header's `numFound` is the whole number 0; a header that cannot be read costs the members
-# beside it only what it alone establishes — an end, a continuation.
+# beside it only what it alone establishes — an end, a continuation. Graph API V1: `GraphResult.pids` and `Instance.pids` are arrays of `ResultPid`, `Instance.alternateIdentifiers`
+# an array of `AlternateIdentifier`; each has a string `scheme` and `value`.
 PID = S.obj({"scheme": S.text(), "value": S.text()})
 PRODUCT = S.obj({"id": S.maybe_key(), "mainTitle": S.text(), "type": S.text(), "publicationDate": S.text(), "publisher": S.text(),
                  "pids": S.own(PID), "authors": S.own(S.obj({"fullName": S.text()})),
