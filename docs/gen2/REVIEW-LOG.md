@@ -965,3 +965,26 @@ Both targets pass independently (1,641 tests and 1,739/1,739; gateway 1,334+1,33
 - the startup failure instrumented and diagnosed.
 
 **Trust model:** taken from the source of truth, not adjudicated as a mitigation. Trusted station/gateway code is the capture boundary (flow §S2, BOUNDARIES' station supervisor, D-1), and relabelling by trusted code is detected by the state-integrity audit's re-derivation from the raw ledgers (BOUNDARIES "checked by", flow §state integrity). 13d documents it, and the next review judges that reading. **Reported to the operator for override.**
+
+## 2026-10-02 — 2b-repair-13c landed (gateway: strict openers, opaque provenance) — Astra re-review dispatched
+**Coder (Sonnet 5.5, `6dcd87e1`):** `dd61431`..`37a655c`. Claims and results:
+- **Openers:** all JSON/XML/CSV lexing goes through `core/wire.py`, each opener strict to its specification (RFC 8259, XML 1.0, RFC 4180). `Retry-After` follows the header grammar; it was `float()`, so `inf` held a breaker open. `test_openers.py` inventories every parse call.
+- **Provenance:** `make_record` keeps `raw` Sealed and `extra` Passive. Materialization happens only at the router, the harvest index and the cache.
+- **Byte reads:** the "only decode opens bytes" claim is scoped to payload decisions, with an exact inventory of the four other reads.
+- **Tests:** 10 claims rewritten. Astra's 13a probes fail on `2d62753` and pass now.
+- **Differential:** zero unexplained differences.
+- **Size and results:** gateway production +289 lines; 1,398+1,398 tests, 327/327 mutants.
+
+**Residuals left for review:**
+- The Python-language residuals are pending the operator's ruling.
+- Snapshot-loader lines that aren't JSON now fail the load instead of being skipped.
+- Live-provider compatibility of the strict refusals is unverified (Phase 4).
+- SDMX namespace URIs are unchecked.
+- A CSV truncated at a record boundary reads as complete; the review is asked whether the transport detects truncation.
+- `Rec.empty` exposes one bit; decoder-issued `Sealed` values can be compared; lone surrogates are accepted.
+
+**Orchestrator:**
+- clean tree; `gen2/` and the oracle untouched; gen-1 unchanged (PID 1040);
+- independent reruns in progress.
+
+Astra's task (`private/reviews/gen2-2b-repair-13c-review-task-20261002.md`) asks explicitly whether anything other than the language-level limits stands between the gateway and structural closure.
