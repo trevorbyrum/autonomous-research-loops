@@ -143,7 +143,7 @@ MUTATIONS: list[Mutation] = [
            (TO + "test_a_poll_not_attributed_to_this_caller_or_not_captured_degrades",), CLI,
            "                return job, (obs if _echoes(obs, ctx) else None)", "                return job, obs"),
           ("redirects-followed", "the default transport follows a redirect (the bearer token goes elsewhere)", (OH + "test_a_redirect_is_never_followed",), CLI,
-           "_OPENER = urllib.request.build_opener(_NoRedirect)", "_OPENER = urllib.request.build_opener()"),
+           "    return urllib.request.build_opener(_NoRedirect, Http, Https)", "    return urllib.request.build_opener(Http, Https)"),
           # 2b-repair A6: the gateway's facts through the router's own command, before the observations naming them
           ("facts-not-recorded", "the facts a search reported are not among the router's requests",
            (RR + "test_a_secrets_failure_is_recorded_through_the_routers_own_commands",), OBS,
