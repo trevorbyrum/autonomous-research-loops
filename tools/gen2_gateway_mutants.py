@@ -912,3 +912,8 @@ MUTANTS.extend(_transport_mutants(Mutant))
 from gen2_gateway_xml_mutants import build as _xml_mutants  # noqa: E402
 
 MUTANTS.extend(_xml_mutants(Mutant))
+
+# 2b-repair-14: the snapshot loader's failure scope (tools/gen2_gateway_snapshot_mutants.py)
+from gen2_gateway_snapshot_mutants import build as _snapshot_mutants  # noqa: E402
+
+MUTANTS.extend(_snapshot_mutants(Mutant))

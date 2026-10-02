@@ -98,14 +98,22 @@ class Shapes(unittest.TestCase):
             with gzip.open(part, "wt") as f:
                 for s in OPENALEX_SOURCES:
                     f.write(json.dumps(s) + "\n")
-            got = list(openalex_snapshot.read_snapshot(Path(d)))
+            report = openalex_snapshot.LineReport()
+            got = list(openalex_snapshot.read_snapshot(Path(d), report=report))
             self.assertEqual([r["identity"] for r in got], ["issn:9999-9991", "repository:openalex:s999999902"])
-            self.assertEqual(len(list(openalex_snapshot.read_snapshot(Path(d), limit=1))), 1)
-            with gzip.open(part, "at") as f:   # a line that is not JSON is a snapshot that is not whole: the load fails naming the line, it does not come out shorter (2b-repair-13c; before, it was skipped)
+            self.assertEqual((report.count, report.lines), (1, ["part_000.gz line 3: a source object with no id"]), "the object with no id is refused and named, not skipped without a word")
+            self.assertEqual(len(list(openalex_snapshot.read_snapshot(Path(d), report=openalex_snapshot.LineReport(), limit=1))), 1)
+            with gzip.open(part, "at") as f:   # a line that is not JSON is REFUSED and named: the lines around it are loaded (the accepted per-line scope of 2b-repair-8; 13c made it abort the whole load)
                 f.write("not json\n")
-            with self.assertRaises(PayloadError) as why:
-                list(openalex_snapshot.read_snapshot(Path(d)))
-            self.assertIn("part_000.gz line 4", str(why.exception))
+                f.write(json.dumps(OPENALEX_SOURCES[0]).replace("S999999901", "S999999903").replace("9999-9991", "9999-9983") + "\n")
+            report = openalex_snapshot.LineReport()
+            try:
+                got = list(openalex_snapshot.read_snapshot(Path(d), report=report))
+            except PayloadError as e:
+                self.fail(f"a line that is not JSON ended the load: {e}")
+            self.assertEqual([r["identity"] for r in got], ["issn:9999-9991", "repository:openalex:s999999902", "issn:9999-9983"])
+            self.assertEqual(report.count, 2)
+            self.assertTrue(report.lines[1].startswith("part_000.gz line 4: not JSON"), report.lines)
 
     def test_issn_map_joins_print_electronic_and_issn_l(self):
         m = index.IssnMap(None)
@@ -225,7 +233,7 @@ class IndexRoundTrip(unittest.TestCase):
             with gzip.open(Path(d) / "part_000.gz", "wt") as f:
                 for s in OPENALEX_SOURCES:
                     f.write(json.dumps(s) + "\n")
-            self.assertEqual(openalex_snapshot.run(self.conn, Path(d)), 2)
+            self.assertEqual(openalex_snapshot.run(self.conn, Path(d), report=openalex_snapshot.LineReport()), 2)
         with self.conn.cursor() as cur:
             cur.execute("SELECT canonical FROM gateway.records WHERE identity = %s", ("issn:9999-9991",))
             merged = cur.fetchone()[0]

@@ -465,35 +465,41 @@ class ByteCorruption(unittest.TestCase):
                 wire.open_xml(document[:k])
 
     def snapshot(self, lines: list[str], *, gz: bool = True):
+        """(the identities the reader yields, the lines it refused, the exception that ended it) over a one-file snapshot of these lines."""
         with tempfile.TemporaryDirectory() as tmp:
             part = Path(tmp) / "updated_date=2026-09-01" / ("part_000.gz" if gz else "part_000.jsonl")
             part.parent.mkdir()
             opener = gzip.open if gz else open
             with opener(part, "wt", encoding="utf-8") as f:
                 f.write("".join(line + "\n" for line in lines))
+            report = openalex_snapshot.LineReport()
             try:
-                return [r["identity"] for r in openalex_snapshot.read_snapshot(Path(tmp))], None
+                return [r["identity"] for r in openalex_snapshot.read_snapshot(Path(tmp), report=report)], report.lines, None
             except Exception as e:
-                return None, e
+                return None, report.lines, e
 
-    def test_the_snapshot_reader_every_corruption_of_a_line_fails_the_load_naming_it(self):
+    def test_the_snapshot_reader_refuses_each_corrupted_line_alone_and_names_it(self):
+        """A snapshot's unit is its line (the accepted scope of 2b-repair-8; 13c made one bad line abort the load, Astra R13C-4): each corruption of one line is refused by the strict opener,
+        counted and named, and the readable lines on either side of it are read. tests/test_snapshot_lines.py holds the family; a file that cannot be read fails the load."""
         ok = ['{"id": "https://openalex.org/S1", "issn_l": "9999-9991", "issn": ["9999-9991"], "display_name": "J", "type": "journal"}',
               '{"id": "https://openalex.org/S2", "issn_l": "9999-9983", "issn": ["9999-9983"], "display_name": "K", "type": "journal"}']
-        self.assertEqual(self.snapshot(ok), (["issn:9999-9991", "issn:9999-9983"], None), "control")
-        self.assertEqual(self.snapshot(ok, gz=False), (["issn:9999-9991", "issn:9999-9983"], None), "control: plain JSON lines")
+        self.assertEqual(self.snapshot(ok), (["issn:9999-9991", "issn:9999-9983"], [], None), "control")
+        self.assertEqual(self.snapshot(ok, gz=False), (["issn:9999-9991", "issn:9999-9983"], [], None), "control: plain JSON lines")
         corrupt = {"a line that is not JSON": "not json", "a line cut short": ok[1][:-9], "a name twice": ok[1].replace('"display_name": "K"', '"display_name": "K", "display_name": "L"'),
                    "NaN": ok[1].replace('"K"', "NaN"), "an overflowing number": ok[1].replace('"K"', "1e999"), "text after the object": ok[1] + " x"}
         for name, line in corrupt.items():
-            identities, error = self.snapshot([ok[0], line, ok[0].replace("S1", "S3").replace("9991", "9975")])
+            identities, refused, error = self.snapshot([ok[0], line, ok[0].replace("S1", "S3").replace("9991", "9975")])
             with self.subTest(name):
-                self.assertIsInstance(error, PayloadError, f"loaded {identities}")
-                self.assertIn("line 2", str(error))
-        for line in ("[]", '"x"', "5", "null"):   # JSON that is not a source object is not malformed: record_from has no record to make of it, as it always had none
-            self.assertEqual(self.snapshot([ok[0], line, ok[1]]), (["issn:9999-9991", "issn:9999-9983"], None), line)
+                self.assertEqual((identities, error), (["issn:9999-9991", "issn:9999-9975"], None))
+                self.assertEqual(len(refused), 1, refused)
+                self.assertTrue(refused[0].startswith("part_000.gz line 2: "), refused)
+        for line in ("[]", '"x"', "5", "null"):   # JSON that is not a source object is not a record: refused and named, the lines beside it read
+            identities, refused, error = self.snapshot([ok[0], line, ok[1]])
+            self.assertEqual((identities, error, len(refused)), (["issn:9999-9991", "issn:9999-9983"], None, 1), line)
 
     def test_every_opener_of_the_inventory_is_in_this_family(self):
         """The family's reach, derived from the inventory (not from this file's own list): each consumer of an opener has a test above that corrupts its bytes."""
-        covered = {"open_json": {"test_json_every_corruption_is_a_payload_error_from_the_decoder_and_has_no_count", "test_the_snapshot_reader_every_corruption_of_a_line_fails_the_load_naming_it"},
+        covered = {"open_json": {"test_json_every_corruption_is_a_payload_error_from_the_decoder_and_has_no_count", "test_the_snapshot_reader_refuses_each_corrupted_line_alone_and_names_it"},
                    "open_xml": {"test_xml_every_corruption_is_a_payload_error_from_parse_xml"}, "open_csv": {"test_csv_every_corruption_of_the_dump_is_a_payload_error_and_never_a_load"}}
         here = {name for name in dir(ByteCorruption) if name.startswith("test_")}
         for opener, tests in covered.items():

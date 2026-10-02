@@ -9,7 +9,6 @@ ruling for each, against RFC 8259, XML 1.0 and RFC 4180). The mutants here remov
   O-xml-*       a 1.x declaration, the declared encoding is the bytes', no DOCTYPE, bounded nesting (a scalar element's text and its names' namespaces are X-*, below);
   O-csv-*       RFC 4180: a quoted field is closed, nothing follows a closing quote, no quote inside an unquoted field, no bare carriage return, a bounded cell,
                 and a column the schema reads is not named twice;
-  O-snapshot-*  a line of the OpenAlex snapshot that is not JSON fails the load;
   O-a-provider-module-*  an adapter may import the byte openers;
   O-count-*     the call log's count is read by the same opener as the decoder's;
   O-retry-after-*  a Retry-After header is `delay-seconds` or an HTTP-date, not whatever `float()` reads;
@@ -22,13 +21,12 @@ from __future__ import annotations
 WIRE = "research_gateway/core/wire.py"
 SCHEMA = "research_gateway/core/schema.py"
 BASE = "research_gateway/adapters/base.py"
-SNAPSHOT = "research_gateway/harvest/openalex_snapshot.py"
 OP = "tests.test_openers."
 JR, XR, CR, BC, AG, AS, INV = (OP + "JsonRulings.", OP + "XmlRulings.", OP + "CsvRulings.", OP + "ByteCorruption.", OP + "AgainstTheCsvModule.", "tests.test_astra_13a.R13A1.", OP + "Inventory.")
 JSON_FAMILY = BC + "test_json_every_corruption_is_a_payload_error_from_the_decoder_and_has_no_count"
 XML_FAMILY = BC + "test_xml_every_corruption_is_a_payload_error_from_parse_xml"
 CSV_FAMILY = BC + "test_csv_every_corruption_of_the_dump_is_a_payload_error_and_never_a_load"
-SNAPSHOT_FAMILY = BC + "test_the_snapshot_reader_every_corruption_of_a_line_fails_the_load_naming_it"
+SNAPSHOT_FAMILY = BC + "test_the_snapshot_reader_refuses_each_corrupted_line_alone_and_names_it"   # the snapshot's mutants are tools/gen2_gateway_snapshot_mutants.py
 
 
 def build(Mutant) -> list:
@@ -86,9 +84,6 @@ def build(Mutant) -> list:
                "    if twice:\n        raise PayloadError(", "    if False:\n        raise PayloadError(",
                (CSV_FAMILY, AS + "test_each_probe", "tests.test_schema_corruption.CsvCorruptions.test_a_dump_whose_serialized_framing_is_broken_is_unreadable_not_shorter_or_empty"),
                (BC + "test_csv_a_column_the_schema_does_not_read_may_be_named_twice", AS + "test_the_valid_dump_still_loads_through_index_load")),
-        Mutant("O-snapshot-a-line-that-is-not-json-is-skipped", "a snapshot line that is not JSON is skipped and the load comes out shorter", SNAPSHOT,
-               '                    raise PayloadError(f"{path.name} line {number}: {e}") from None\n', "                    continue\n",
-               (SNAPSHOT_FAMILY, "tests.test_harvest.Shapes.test_openalex_records_and_snapshot_reader"), ()),
         Mutant("O-count-is-read-by-a-lenient-parser", "the call log's count of results is read by `json.loads`, whatever the decoder would refuse", BASE,
                "        j = _open_json(resp._body) if resp.ok and resp._body else None\n    except Malformed:\n",
                '        j = __import__("json").loads(resp._body) if resp.ok and resp._body else None\n    except ValueError:\n',

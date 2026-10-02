@@ -5,6 +5,14 @@ The operator fetches the snapshot the way OpenAlex documents it (an S3 sync of
 reads the gzipped JSON-lines part files and never opens a network connection.
 
     python3 -m research_gateway.harvest.openalex_snapshot /path/to/openalex-snapshot/data/sources [--limit N]
+
+WHAT A FAILURE COSTS (task 2b-repair-14; Astra R13C-4; the accepted scope of 2b-repair-8). The unit of a snapshot is its LINE: JSON Lines frames each source object on a line of its own,
+so a line that cannot be read does not touch the lines beside it. A line that is not JSON in the gateway's strict reading (core/wire.py: not UTF-8, a name twice, `NaN`, a number past a
+double, nesting past the limit, text after the object), one that is JSON but not a source object, and one that holds an object no record can be made of is REFUSED — never skipped
+silently: it is counted and named in the `LineReport` the caller passes (its file and line, and why), and the readable lines around it are loaded. A FILE that cannot be read, decompressed
+or framed (a truncated or corrupt gzip member, a file that is not gzip, an unreadable path) fails the load, naming the file: nothing says which of its lines were lost. This loader is not a
+lane of the live gateway: it loads a local subset into the index, and a load that refused lines is a load of the rest, reported; it claims nothing about the snapshot's completeness.
+An uncompressed `.jsonl` file cut mid-line has a refused last line like any other; one cut at a line boundary is a shorter file (nothing in JSON Lines marks the end).
 """
 from __future__ import annotations
 
@@ -12,6 +20,7 @@ import argparse
 import gzip
 import json
 import sys
+import zlib
 from pathlib import Path
 from typing import Iterator
 
@@ -23,6 +32,21 @@ from . import index
 
 SOURCE_ID = "openalex_snapshot"
 REPOSITORY_TYPES = {"repository"}
+
+
+class LineReport:
+    """The lines a load refused: how many, and which (file, line number and why), the first `keep` of them in full — a snapshot of garbage must not fill memory with its own account."""
+
+    def __init__(self, keep: int = 1000):
+        self.keep, self.count, self.lines = keep, 0, []
+
+    def refuse(self, path: Path, number: int, why: str) -> None:
+        self.count += 1
+        if len(self.lines) < self.keep:
+            self.lines.append(f"{path.name} line {number}: {why}"[:300])
+
+    def as_dict(self) -> dict:
+        return {"refused": self.count, "refused_lines": self.lines, "refused_lines_listed": len(self.lines)}
 
 
 def record_from(s: dict, issn_map: index.IssnMap | None = None) -> dict | None:
@@ -52,35 +76,45 @@ def record_from(s: dict, issn_map: index.IssnMap | None = None) -> dict | None:
                        raw=s)
 
 
-def read_snapshot(root: Path, *, limit: int | None = None, issn_map: index.IssnMap | None = None) -> Iterator[dict]:
-    """Every source object in the snapshot directory (part files under updated_date=* folders)."""
+def read_snapshot(root: Path, *, report: LineReport, limit: int | None = None, issn_map: index.IssnMap | None = None) -> Iterator[dict]:
+    """Every source object in the snapshot directory (part files under updated_date=* folders). A line that cannot be read, or made a record of, is refused into `report` (see the module
+    docstring) and the lines beside it are read; a file that cannot be read, decompressed or framed is a PayloadError."""
     n = 0
     files = sorted(root.rglob("*.gz")) + sorted(p for p in root.rglob("*.jsonl") if p.is_file()) + sorted(root.rglob("*.json"))
     for path in files:
         opener = gzip.open if path.suffix == ".gz" else open
-        with opener(path, "rt", encoding="utf-8") as f:
-            for number, line in enumerate(f, 1):
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = wire.open_json(line)
-                except wire.Malformed as e:   # a line that is not JSON is a snapshot that is not whole: the load fails, it does not come out shorter (2b-repair-13c)
-                    raise PayloadError(f"{path.name} line {number}: {e}") from None
-                try:
-                    rec = record_from(obj, issn_map)
-                except (ValueError, TypeError, AttributeError):   # a source object this reader cannot make a record of is skipped, as it always was
-                    continue
-                if rec is None:
-                    continue
-                yield rec
-                n += 1
-                if limit and n >= limit:
-                    return
+        try:
+            with opener(path, "rb") as f:   # bytes: each line is decoded (UTF-8, strictly) by the opener on its own, so an invalid byte spoils its line and no other
+                for number, line in enumerate(f, 1):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = wire.open_json(line)
+                    except wire.Malformed as e:
+                        report.refuse(path, number, str(e))
+                        continue
+                    if not isinstance(obj, dict):
+                        report.refuse(path, number, f"JSON that is not a source object ({type(obj).__name__})")
+                        continue
+                    try:
+                        rec = record_from(obj, issn_map)
+                    except (ValueError, TypeError, AttributeError) as e:
+                        report.refuse(path, number, f"a source object no record can be made of ({type(e).__name__}: {str(e)[:100]})")
+                        continue
+                    if rec is None:
+                        report.refuse(path, number, "a source object with no id")
+                        continue
+                    yield rec
+                    n += 1
+                    if limit and n >= limit:
+                        return
+        except (OSError, EOFError, zlib.error) as e:   # gzip.BadGzipFile is an OSError; a gzip member cut short is an EOFError; a corrupt one a zlib.error
+            raise PayloadError(f"{path.name}: the file cannot be read, decompressed or framed ({type(e).__name__}: {e})") from None
 
 
-def run(conn, root: Path, *, limit: int | None = None) -> int:
-    return index.load(conn, lambda: read_snapshot(root, limit=limit, issn_map=index.IssnMap(conn)),
+def run(conn, root: Path, *, report: LineReport, limit: int | None = None) -> int:
+    return index.load(conn, lambda: read_snapshot(root, report=report, limit=limit, issn_map=index.IssnMap(conn)),
                       SOURCE_ID, metadata_license="CC0")   # the snapshot's own licence, not its works' (A3)
 
 
@@ -92,15 +126,16 @@ def main(argv: list[str] | None = None) -> int:
     if not args.snapshot_dir.is_dir():
         print(f"not a directory: {args.snapshot_dir}", file=sys.stderr)
         return 2
+    report = LineReport()
     with db.connect() as conn:
-        n = run(conn, args.snapshot_dir, limit=args.limit)
-        with conn.cursor() as cur:  # proof of a COMPLETED refresh, written only on success (8f, finding 5)
+        n = run(conn, args.snapshot_dir, report=report, limit=args.limit)
+        with conn.cursor() as cur:  # proof of a COMPLETED refresh, written only on success (8f, finding 5); it says how many lines were refused
             cur.execute("INSERT INTO gateway.meta (key, value, updated_at) VALUES (%s, %s, now()) "
                         "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()",
-                        (f"harvest:{SOURCE_ID}", json.dumps({"loaded": n, "limit": args.limit,
+                        (f"harvest:{SOURCE_ID}", json.dumps({"loaded": n, "limit": args.limit, "refused_lines": report.count,
                                                              "snapshot_dir": str(args.snapshot_dir)})))
         conn.commit()
-        print(json.dumps({"loader": SOURCE_ID, "loaded": n, **index.counts(conn)}, indent=1))
+        print(json.dumps({"loader": SOURCE_ID, "loaded": n, **report.as_dict(), **index.counts(conn)}, indent=1))
     return 0
 
 
