@@ -40,7 +40,7 @@ def build(Mutant) -> list:
                (JR + "test_the_refused", JSON_FAMILY), (JR + "test_the_accepted",)),
         Mutant("O-json-an-overflowing-number-is-infinity", "`1e999` is read as infinity: the pass over what was parsed does not look at numbers", WIRE,
                "            elif kind is float and not finite(child):\n", "            elif False:\n",
-               (JR + "test_the_refused", JSON_FAMILY, SNAPSHOT_FAMILY), (JR + "test_the_accepted",)),
+               (JR + "test_the_refused", JSON_FAMILY, "tests.test_snapshot_lines.OneBadLine.test_each_bad_line_is_refused_and_named_and_both_neighbours_are_loaded"), (JR + "test_the_accepted",)),
         Mutant("O-bytes-are-read-with-replacement", "bytes that are not UTF-8 are read with U+FFFD in their place, for JSON, XML and CSV alike", WIRE,
                '            text = bytes(body).decode("utf-8")\n', '            text = bytes(body).decode("utf-8", "replace")\n',
                (JR + "test_the_refused", XR + "test_the_refused", CR + "test_the_refused", JSON_FAMILY, XML_FAMILY, CSV_FAMILY),

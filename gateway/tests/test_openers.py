@@ -354,7 +354,8 @@ class ByteCorruption(unittest.TestCase):
         self.assertEqual(self.snapshot(ok), (["issn:9999-9991", "issn:9999-9983"], [], None), "control")
         self.assertEqual(self.snapshot(ok, gz=False), (["issn:9999-9991", "issn:9999-9983"], [], None), "control: plain JSON lines")
         corrupt = {"a line that is not JSON": "not json", "a line cut short": ok[1][:-9], "a name twice": ok[1].replace('"display_name": "K"', '"display_name": "K", "display_name": "L"'),
-                   "NaN": ok[1].replace('"K"', "NaN"), "an overflowing number": ok[1].replace('"K"', "1e999"), "text after the object": ok[1] + " x"}
+                   "NaN": ok[1].replace('"K"', "NaN"), "an overflowing number (in a field the record only stores)": ok[1].replace('"type": "journal"', '"type": "journal", "works_count": 1e999'),
+                   "text after the object": ok[1] + " x"}
         for name, line in corrupt.items():
             identities, refused, error = self.snapshot([ok[0], line, ok[0].replace("S1", "S3").replace("9991", "9975")])
             with self.subTest(name):

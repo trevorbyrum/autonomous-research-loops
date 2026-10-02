@@ -1,10 +1,12 @@
 """Task 2b-repair-14 (Gate D #2, checklist 6): the one owned inventory of the gateway's provider-input discipline, held equal to the source, and the controls of its scans.
 
-tests/inventory.py is the inventory: five scans of the package's own source and one table, each site with a role and a reason (its module docstring says what it is, and what it is not). This file
-holds it:
+tests/inventory.py is the inventory: scans of the package's own source (parse, opener, door, body, materialize, dynamic, network, response, netread) and one table, each site with a role and a
+reason (its module docstring says what it is, and what it is not). This file holds it:
 
   Inventory   every site the scans find is listed and every listed site is there; each entry's role may stand where it stands (RULES); the sanctioned predicates (`Rec.empty`, `Rec.same_as`) and the
               one materialization (`plain`) stand exactly where the operator's ruling of 2026-10-02 puts them; no CSV/XML reader is imported outside core/wire.py; the real tree passes the import guard
+  TheProviderTransport  the family account's first boundary made executable: the one network site that receives a provider's bytes is adapters/base.py `Transport`, the one stream read in that
+              module is `_read_body`, and every body a Response carries out of the transport comes from it (AST, line by line)
   Scans       a CONTROL for each scan: the spellings it finds are found, the ones it is not written to find are not, and both are stated — a finite syntax guard, not an analysis of Python. The spelling
               the 13c review found the old parser scan missed, `json.JSONDecoder().decode(...)`, is among the found ones.
 
@@ -103,6 +105,57 @@ class Inventory(unittest.TestCase):
         self.assertNotIn("adapters/base.py", names)
 
 
+class TheProviderTransport(unittest.TestCase):
+    """The shared transport (adapters/base.py) is where a response becomes complete or an error. These tests make the claim that every provider byte an adapter can reach came through it a
+    claim about the source, not about intentions: they are as strong as the scans' syntax (the inventory's module docstring says what that is)."""
+
+    def test_the_transport_is_the_one_network_site_that_receives_a_providers_bytes(self):
+        network = {k: role for k, (_, role, _) in SITES.items() if k[0] == "network"}
+        self.assertEqual({k[1] for k, role in network.items() if role == "PROVIDER-TRANSPORT"}, {"adapters/base.py"})
+        self.assertEqual({role for k, role in network.items() if k[1] != "adapters/base.py"}, {"GATEWAY", "ALERT-SINK", "AUTH"}, "every other network site is the gateway's own, classified as not provider data")
+        self.assertEqual({k[2] for k, role in network.items() if role == "PROVIDER-TRANSPORT" and k[2] != "<module>"}, {"Transport.request"})
+
+    def test_the_only_read_of_a_connections_stream_in_the_transport_module_is_read_body(self):
+        self.assertEqual(set(INV.netread_sites()), {("adapters/base.py", "_read_body", "read")})
+        self.assertEqual({k for k in SITES if k[0] == "netread"}, {("netread", "adapters/base.py", "_read_body", "read")})
+
+    def functions_of_base(self):
+        import ast
+        return dict(INV.functions(ast.parse((INV.ROOT / "adapters" / "base.py").read_text(encoding="utf-8"))))
+
+    def test_every_body_the_transport_returns_comes_from_read_body(self):
+        """In `Transport.request` every Response carries a body that is empty (b"") or a name assigned only `_read_body(...)` (or b""): there is no other read of the connection to take a body from."""
+        import ast
+        request = self.functions_of_base()["Transport.request"]
+        assigned = {}
+        for node in ast.walk(request):
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    pairs = zip(target.elts, node.value.elts) if isinstance(target, ast.Tuple) and isinstance(node.value, ast.Tuple) else [(target, node.value)]
+                    for name, value in pairs:
+                        if isinstance(name, ast.Name):
+                            assigned.setdefault(name.id, []).append(value)
+        from_read_body = lambda v: (isinstance(v, ast.Call) and getattr(v.func, "id", None) == "_read_body") or (isinstance(v, ast.Constant) and v.value == b"")   # noqa: E731
+        bodies = {name for name in ("data", "payload")}
+        self.assertEqual(sorted(bodies - set(assigned)), [])
+        for name in bodies:
+            self.assertTrue(all(from_read_body(v) for v in assigned[name]), f"{name} is assigned something that is not _read_body's")
+        responses = [n for n in ast.walk(request) if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "Response"]
+        self.assertEqual(len(responses), 5)
+        for call in responses:
+            body = call.args[2]
+            self.assertTrue((isinstance(body, ast.Constant) and body.value == b"") or (isinstance(body, ast.Name) and body.id in bodies), ast.dump(body))
+
+    def test_every_other_response_the_client_makes_carries_no_body(self):
+        import ast
+        functions = self.functions_of_base()
+        for name in ("Client._call", "check"):
+            calls = [n for n in ast.walk(functions[name]) if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "Response"]
+            self.assertTrue(calls, name)
+            for call in calls:
+                self.assertTrue(isinstance(call.args[2], ast.Constant) and call.args[2].value == b"", f"{name}: a Response with a body")
+
+
 def tree(files: dict) -> tempfile.TemporaryDirectory:
     """A synthetic package: these files (relative path -> source) under a temporary root, with the empty modules the provider-module list expects."""
     tmp = tempfile.TemporaryDirectory()
@@ -196,6 +249,17 @@ class Scans(unittest.TestCase):
         for label, source in dynamic.items():
             with self.subTest(label):
                 self.assertEqual(list(sites(INV.dynamic_sites, {"adapters/new.py": source}).values()), [1])
+
+    def test_control_the_network_response_and_netread_scans(self):
+        files = {"adapters/base.py": "import urllib.request\nfrom urllib.request import urlopen as fetch\nimport http.client\nimport socket\n"
+                                     "class Response:\n    pass\n"
+                                     "def a(u): return urllib.request.Request(u)\ndef b(u): return fetch(u)\ndef c(h): return http.client.HTTPSConnection(h)\ndef d(h): return socket.create_connection(h)\n"
+                                     "def e(h): return socket.getaddrinfo(h, 80)\ndef f(r): return r.read(10), r.readline(), r.close()\ndef g(): return Response(200, {}, b'', 'u')\n",
+                 "clients/other.py": "from ..adapters.base import Response\nfrom ..adapters import base\ndef h(): return Response(1, {}, b'', 'u')\ndef i(): return base.Response(1, {}, b'', 'u')\n"
+                                     "def j(r): return r.read()\n"}
+        self.assertEqual(sites(INV.network_sites, files), {("a", "urllib.request.Request"): 1, ("b", "urllib.request.urlopen"): 1, ("c", "http.client.HTTPSConnection"): 1, ("d", "socket.create_connection"): 1})
+        self.assertEqual(sites(INV.response_sites, files), {("g", "Response"): 1, ("h", "Response"): 1, ("i", "Response"): 1})
+        self.assertEqual(sites(INV.netread_sites, files), {("f", "read"): 1, ("f", "readline"): 1})
 
     def test_control_the_opener_scan_finds_a_reference_to_wire_however_it_is_imported(self):
         files = {"adapters/new.py": "from ..core import wire\nfrom ..core.wire import open_csv as csv_opener\nfrom ..core import wire as w\n"

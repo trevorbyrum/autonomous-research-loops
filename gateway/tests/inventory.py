@@ -19,6 +19,11 @@ WHAT IT IS. Five scans of the package's own source (`gateway/research_gateway`),
   body         a read of a Response's `_body`, the bytes: the client's own bookkeeping and the decoder.
   materialize  a reference to `plain`, the ONE materialization (core/payload.py), anywhere in the package but payload.py.
   dynamic      `__import__`, `importlib.import_module`, `eval`, `exec`, `compile`, anywhere: code the scans cannot read.
+  network      a reference to a library's connection-making entry point (`urllib.request.Request`, `urlopen`, `build_opener` ...): every place the package reaches over a network. The one that
+               receives a PROVIDER's bytes is adapters/base.py `Transport`; the others are the gateway's own client, its secret store and its alerts, and are classified as such.
+  response     a construction of a `Response`, the one carrier of a provider's bytes into adapters: the transport (bodies read by `_read_body`), the test transport, and the client's own
+               refusals (empty bodies).
+  netread      a read of a connection's stream in adapters/base.py: `_read_body`, and nowhere else.
 
 Each site found must be listed in SITES with a ROLE and a reason, and each listed site must be found; ROLES says where each role may stand (RULES, held by tests/test_inventory.py). The guards
 that are not inventories live here too, because they are this module's scans' neighbours and share their syntax machinery: `import_findings` (what a provider-data module may import),
@@ -49,6 +54,9 @@ PARSERS = {"json": {"loads", "load", "JSONDecoder"}, "json.decoder": {"JSONDecod
            "html.parser": {"HTMLParser"}, "tomllib": {"load", "loads"}, "ast": {"literal_eval"}, "pickle": {"loads", "load", "Unpickler"}, "marshal": {"loads", "load"},
            "yaml": {"load", "safe_load"}, "plistlib": {"loads", "load"}, "configparser": {"ConfigParser"}}
 INDIRECT_NAMES = {name for names in PARSERS.values() for name in names} | {"decode", "raw_decode"}   # a constant that names a parser, given to getattr
+NETWORK = {"urllib.request": {"Request", "urlopen", "build_opener", "OpenerDirector", "HTTPRedirectHandler"}, "http.client": {"HTTPConnection", "HTTPSConnection", "HTTPResponse"},
+           "socket": {"create_connection", "socket"}}   # connection-making entry points (DNS lookups and exception classes carry no payload and are not listed)
+STREAM_READS = ("read", "read1", "readinto", "readline", "recv")
 OPENERS = ("open_json", "open_xml", "open_csv")   # core/wire.py: the one place a provider's bytes become structure
 DYNAMIC_CALLS = ("__import__", "eval", "exec", "compile")
 DYNAMIC_DOTTED = ("importlib.import_module", "importlib.__import__")
@@ -225,6 +233,47 @@ def dynamic_sites(root: Path = ROOT) -> Counter:
     return out
 
 
+def network_sites(root: Path = ROOT) -> Counter:
+    """{(file, function, entry point): references} to a library's connection-making entry points, anywhere in the package."""
+    out: Counter = Counter()
+    for rel, tree, where in modules(root):
+        for node, full in references(tree):
+            module, _, attr = full.rpartition(".")
+            if attr in NETWORK.get(module, ()):
+                out[(rel, where(node), full)] += 1
+    return out
+
+
+def response_sites(root: Path = ROOT) -> Counter:
+    """{(file, function, "Response"): constructions} of the client's Response, anywhere in the package (in adapters/base.py by its bare name, elsewhere through the module's imports)."""
+    out: Counter = Counter()
+    for rel, tree, where in modules(root):
+        aliases = aliases_of(tree)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            name = dotted(node.func)
+            if name is None:
+                continue
+            head, _, rest = name.partition(".")
+            full = aliases[head] + ("." + rest if rest else "") if head in aliases else name
+            if (rel == "adapters/base.py" and full == "Response") or full.endswith("base.Response"):
+                out[(rel, where(node), "Response")] += 1
+    return out
+
+
+def netread_sites(root: Path = ROOT) -> Counter:
+    """{(file, function, the read): references} to a stream read (`read`, `read1`, `readinto`, `readline`, `recv`) in adapters/base.py, the module that holds the transport."""
+    out: Counter = Counter()
+    for rel, tree, where in modules(root):
+        if rel != "adapters/base.py":
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr in STREAM_READS:
+                out[(rel, where(node), node.attr)] += 1
+    return out
+
+
 def door_sites(root: Path = ROOT) -> dict[tuple[str, str], list[str]]:
     """{(file, innermost function or <module>): each place the answer or a list of it leaves the decoder, one entry per use} for every provider-data module:
       * a construction of a MemberList, a Sealed, a Passive or a Rec, however imported (`isinstance` tests and annotations are not constructions);
@@ -293,7 +342,8 @@ def door_sites(root: Path = ROOT) -> dict[tuple[str, str], list[str]]:
 def scan(root: Path = ROOT) -> Counter:
     """Every site of every kind: {(kind, file, function, what): count}. The table SITES is held equal to this."""
     out: Counter = Counter()
-    for kind, found in (("parse", parse_sites(root)), ("opener", opener_sites(root)), ("body", body_sites(root)), ("materialize", materializer_sites(root)), ("dynamic", dynamic_sites(root))):
+    for kind, found in (("parse", parse_sites(root)), ("opener", opener_sites(root)), ("body", body_sites(root)), ("materialize", materializer_sites(root)), ("dynamic", dynamic_sites(root)),
+                        ("network", network_sites(root)), ("response", response_sites(root)), ("netread", netread_sites(root))):
         for (rel, function, what), n in found.items():
             out[(kind, rel, function, what)] += n
     for (rel, function), whats in door_sites(root).items():
@@ -497,6 +547,9 @@ ROLES = {
     "MATERIALIZER": "the one materialization (`plain`): where the gateway serializes or stores a result",
     "DISCOVERY": "imports the gateway's own adapter modules by name from its own package directory",
     "TEST-TRANSPORT": "the test transport copies a canned answer into a new Response",
+    "PROVIDER-TRANSPORT": "receives a provider's bytes over the network: adapters/base.py `Transport`, whose every body comes from `_read_body` (the message is complete or it is an error Response)",
+    "ALERT-SINK": "the gateway's own outbound alert (a webhook post): no provider data, the response is not read",
+    "EMPTY-BODY": "a Response the client makes itself (a refusal, a redirect failure, an HTML challenge): it carries no provider body",
 }
 
 
@@ -510,7 +563,7 @@ RULES = {
     "LOADER": lambda file, function, what: file.startswith("harvest/"),
     "BOOKKEEPING": lambda file, function, what: file == "adapters/base.py",
     "CLIENT-READ": lambda file, function, what: file == "adapters/base.py" and what == "_body",
-    "TEST-TRANSPORT": _in(("adapters/base.py", "FakeTransport.request")),
+    "TEST-TRANSPORT": lambda file, function, what: file == "adapters/base.py" and function.startswith("FakeTransport."),
     "SEALED-STORE": lambda file, function, what: what in ("_body", "method without", "raw"),
     "DOWNLOAD-BYTES": lambda file, function, what: what == "answer .download" and function.startswith("fetch"),
     "SANCTIONED-PREDICATE": lambda file, function, what: what == "method empty",
@@ -519,6 +572,9 @@ RULES = {
     "DISCOVERY": _in(("adapters/__init__.py", "load_all")),
     "CALLER": lambda file, function, what: file in ("api/http.py", "clients/cli.py", "clients/mcp_stdio.py"),
     "GATEWAY": lambda file, function, what: file == "clients/http_client.py",
+    "PROVIDER-TRANSPORT": lambda file, function, what: file == "adapters/base.py" and (function in ("<module>", "_read_body") or function.startswith("Transport.")),
+    "ALERT-SINK": lambda file, function, what: file == "core/alerts.py",
+    "EMPTY-BODY": lambda file, function, what: file == "adapters/base.py" and what == "Response",
     "AUTH": lambda file, function, what: file in ("core/principals.py", "core/secrets.py"),
     "CONFIG": lambda file, function, what: file in ("app.py", "registry/load.py"),
     "OWN-DATA": lambda file, function, what: what == "call MemberList",
@@ -567,6 +623,25 @@ SITES = {
     ("materialize", "harvest/index.py", "upsert", "plain"): (1, "MATERIALIZER", "the storage boundary: a loader's record carries its provenance sealed until the index writes it, and is plain data from here"),
     # ---------------------------------------------------------------- dynamic: code the scans cannot read
     ("dynamic", "adapters/__init__.py", "load_all", "importlib.import_module"): (1, "DISCOVERY", "imports each adapter module of the package by name from the package's own directory: the gateway's code, not provider data"),
+    # ---------------------------------------------------------------- network: every place the package reaches over a network, and which of them receives a provider's bytes
+    ("network", "adapters/base.py", "<module>", "urllib.request.HTTPRedirectHandler"): (1, "PROVIDER-TRANSPORT", "the redirect handler that hands a 3xx back to the metered client instead of following it underneath it"),
+    ("network", "adapters/base.py", "<module>", "urllib.request.build_opener"): (1, "PROVIDER-TRANSPORT", "the one opener of provider requests, built with the no-redirect handler"),
+    ("network", "adapters/base.py", "Transport.request", "urllib.request.Request"): (1, "PROVIDER-TRANSPORT", "the request a provider's call makes: the only one in the package that receives a provider's bytes"),
+    ("network", "clients/http_client.py", "GatewayClient._call", "urllib.request.Request"): (1, "GATEWAY", "the gateway's own command-line client calling the gateway's own API"),
+    ("network", "clients/http_client.py", "GatewayClient._call", "urllib.request.urlopen"): (1, "GATEWAY", "the gateway's own command-line client calling the gateway's own API"),
+    ("network", "core/alerts.py", "ntfy_sender.send", "urllib.request.Request"): (1, "ALERT-SINK", "the alert post to the operator's notification endpoint"),
+    ("network", "core/alerts.py", "ntfy_sender.send", "urllib.request.urlopen"): (1, "ALERT-SINK", "the alert post to the operator's notification endpoint"),
+    ("network", "core/secrets.py", "<module>", "urllib.request.HTTPRedirectHandler"): (1, "AUTH", "the secret store's opener refuses redirects: credentials go nowhere else"),
+    ("network", "core/secrets.py", "<module>", "urllib.request.build_opener"): (1, "AUTH", "the secret store's opener, which the operator runs: credentials, not provider data"),
+    ("network", "core/secrets.py", "VaultBackend._fetch", "urllib.request.Request"): (1, "AUTH", "the request for a secret from the store the operator runs"),
+    # ---------------------------------------------------------------- response: where a Response, the carrier of a provider's bytes into adapters, is made
+    ("response", "adapters/base.py", "Transport.request", "Response"): (5, "PROVIDER-TRANSPORT", "the transport's Responses: every body in them is `_read_body`'s (the message complete) or empty; checked line by line by tests/test_inventory.py"),
+    ("response", "adapters/base.py", "FakeTransport.add", "Response"): (1, "TEST-TRANSPORT", "the test transport records a canned answer"),
+    ("response", "adapters/base.py", "FakeTransport.request", "Response"): (2, "TEST-TRANSPORT", "the test transport copies a canned answer into a new Response"),
+    ("response", "adapters/base.py", "Client._call", "Response"): (4, "EMPTY-BODY", "a refusal (breaker, budget, policy) or a redirect failure: the client's own words for it, no provider body"),
+    ("response", "adapters/base.py", "check", "Response"): (1, "EMPTY-BODY", "an HTML page wearing a success status becomes an unavailable answer with no body"),
+    # ---------------------------------------------------------------- netread: the one read of a provider's stream
+    ("netread", "adapters/base.py", "_read_body", "read"): (1, "PROVIDER-TRANSPORT", "the bounded read of a response's body, followed by the framing's completeness check (RFC 9112 §6.3)"),
     # ---------------------------------------------------------------- door: where a decoded answer leaves the decoder in a provider-data module
     ("door", "adapters/bea.py", "data", "raw"): (1, "SEALED-STORE", "BEA's rows are the payload of ONE table record, kept whole for its `rows` and never decoded one by one (Astra, 2b-repair-7)"),
     ("door", "adapters/bea.py", "_error", "method empty"): (1, "SANCTIONED-PREDICATE", "whether the error object BEA states beside its results says anything: an empty `{}` is no error"),
