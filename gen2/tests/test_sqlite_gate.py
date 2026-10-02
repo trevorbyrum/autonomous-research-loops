@@ -24,6 +24,7 @@ import json
 import sqlite3
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -322,6 +323,106 @@ class OpenStoreTest(unittest.TestCase):
                 exc = self.open_error(path)
                 self.assertIsInstance(exc, db.StoreOpenError)
                 self.assertIn("store schema is not the DDL in gen2/store/schema/", str(exc))
+
+
+class FirstOpenContentionTest(unittest.TestCase):
+    """A store first opened in rollback-journal mode while another connection holds its write lock (task 2b-repair-13d, Astra R13B-3).
+
+    The 13b multi-process test sometimes saw one of its two recorders die in open_store with `database is locked`. Cause, reproduced here
+    without a second process: switching a store from the rollback journal to WAL is a statement that has read the file's header, so SQLite
+    does not call the busy handler for it (waiting for the write lock could deadlock with a writer waiting for this connection's read
+    lock) and `busy_timeout` does not apply. A store made by `create=True` is WAL from the start; one that was copied or restored
+    (sqlite3's backup, which the test uses) is not, and every opener of it before the first switch was exposed. `db._wal` retries
+    within the same budget the busy timeout promises. Oracle: SQLite's own behaviour, observed on real connections, and the clock."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.path = Path(self._tmp.name) / "restored.sqlite3"
+        source = sqlite3.connect(":memory:")
+        source.executescript(db.schema_text())
+        disk = sqlite3.connect(self.path)
+        source.backup(disk)
+        disk.close()
+        source.close()
+
+    def writer(self) -> sqlite3.Connection:
+        """Another connection, in the middle of a write transaction on the store."""
+        holder = sqlite3.connect(self.path, isolation_level=None)
+        self.addCleanup(holder.close)
+        holder.execute("BEGIN IMMEDIATE")
+        return holder
+
+    def journal_mode(self) -> str:
+        check = sqlite3.connect(self.path)
+        try:
+            return check.execute("PRAGMA journal_mode").fetchone()[0]
+        finally:
+            check.close()
+
+    def test_sqlite_does_not_apply_the_busy_timeout_to_the_switch_to_wal(self) -> None:
+        """The cause, observed: a generous timeout and a writer that lets go in a moment, and the switch still fails at once."""
+        self.assertEqual(self.journal_mode(), "delete")
+        self.writer()
+        other = sqlite3.connect(self.path, timeout=5.0, isolation_level=None)
+        self.addCleanup(other.close)
+        began = time.monotonic()
+        with self.assertRaises(sqlite3.OperationalError) as caught:
+            other.execute("PRAGMA journal_mode = WAL")
+        self.assertLess(time.monotonic() - began, 1.0, "it did not wait for the 5 s it was given")
+        self.assertEqual(caught.exception.sqlite_errorcode & 0xFF, sqlite3.SQLITE_BUSY)
+
+    def test_the_first_open_waits_for_the_lock_to_clear(self) -> None:
+        holder, sleeps = self.writer(), []
+
+        def sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+            if len(sleeps) == 3:
+                holder.execute("COMMIT")   # the other writer finishes while the opener is waiting
+            self.assertLess(len(sleeps), 50, "the opener waits for ever")
+        with mock.patch.object(db, "_sleep", sleep):
+            try:
+                conn, observed = db.connect(self.path)
+            except (sqlite3.OperationalError, db.StoreOpenError) as e:
+                self.fail(f"the first open failed instead of waiting for the writer: {e}")
+        conn.close()
+        self.assertEqual((len(sleeps), observed["operational"]["journal_mode"], self.journal_mode()), (3, "wal", "wal"))
+        self.assertEqual(sleeps, [0.005, 0.01, 0.02], "a short wait first, doubling")
+
+    def test_the_wait_is_bounded_by_the_busy_timeout(self) -> None:
+        self.writer()   # never lets go
+        clock, sleeps = [0.0], []
+
+        def sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+            clock[0] += seconds
+            self.assertLess(len(sleeps), 1000, "the wait never ends")
+        with mock.patch.object(db, "_sleep", sleep), mock.patch.object(db, "_monotonic", lambda: clock[0]):
+            with self.assertRaises(db.StoreOpenError) as caught:
+                db.connect(self.path)
+        self.assertIn("database is locked", str(caught.exception))
+        self.assertAlmostEqual(sum(sleeps), db.BUSY_TIMEOUT_MS / 1000, delta=0.11, msg="it waited out the busy timeout, and no longer")
+        self.assertEqual(self.journal_mode(), "delete", "and the store is as it was")
+
+    def test_only_a_busy_database_is_waited_for(self) -> None:
+        refusal = sqlite3.OperationalError("disk I/O error")
+        refusal.sqlite_errorcode = sqlite3.SQLITE_IOERR
+
+        class Failing:
+            def execute(self, sql):
+                raise refusal
+        with mock.patch.object(db, "_sleep", side_effect=AssertionError("it waited for an error that is not a lock")):
+            with self.assertRaises(sqlite3.OperationalError) as caught:
+                db._wal(Failing())
+        self.assertIs(caught.exception, refusal)
+
+    def test_a_store_that_is_already_wal_opens_beside_a_writer_without_waiting(self) -> None:
+        db.connect(self.path)[0].close()   # the first open makes it WAL
+        self.writer()
+        with mock.patch.object(db, "_sleep", side_effect=AssertionError("it waited with nothing to wait for")):
+            conn, observed = db.connect(self.path)
+        conn.close()
+        self.assertEqual(observed["operational"]["journal_mode"], "wal")
 
 
 class GateCommandTest(unittest.TestCase):

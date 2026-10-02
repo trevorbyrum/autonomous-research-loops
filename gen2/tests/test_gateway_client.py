@@ -1171,8 +1171,12 @@ class RecordedByTheRouter(RouterTestCase):
         for grant, out in ((self.grant, narrow), (grant_b, wider)):
             job = Path(tmp.name) / f"{grant['invocation_id']}.json"
             job.write_text(json.dumps({"db": path, "now": now, "out": out, "capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"]}))
-            workers.append(children.popen(["-c", RECORDER, str(job)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True))
-        self.assertEqual([w.stdout.readline().strip() for w in workers], ["ready", "ready"], "both processes hold the store open")
+            # both are started, and each reaped when the test ends, before either is waited on; a recorder that does not say `ready` within
+            # the bound fails the test with its exit status and stderr (2b-repair-13d: the unexplained startup failure was an empty
+            # first line, a recorder that had died in open_store, and the test kept nothing of why)
+            workers.append(children.started(self, ["-c", RECORDER, str(job)], stdin=subprocess.PIPE))
+        for worker in workers:
+            children.await_line(self, worker, "ready", wait=30)
         replies = {}
         for label, worker in (("wider first", workers[1]), ("narrow delayed", workers[0])):
             stdout, stderr = worker.communicate("go\n", timeout=60)

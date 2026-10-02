@@ -479,11 +479,7 @@ class BackstopAndCrashTest(SupervisedTestCase):
         free: the next recover() takes it at once and the job commits,
         started once."""
         self.supervisor.prepare(self.order("research_pass", succeed()))
-        child = children.popen(["-m", "gen2.tests.supervisor_child", str(self.root), MAIN, "launch_recorded", LATER, "hold"],
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        self.addCleanup(child.communicate)
-        self.addCleanup(child.kill)
-        self.assertEqual(child.stdout.readline().strip(), "holding")
+        child = children.started(self, ["-m", "gen2.tests.supervisor_child", str(self.root), MAIN, "launch_recorded", LATER, "hold"], ready="holding")
         path = self.root / "jobs" / f"job-{MAIN}" / "journal.json"
         journal, impatient = path.read_bytes(), self.make_supervisor(policy=IMPATIENT)
         self.assertEqual((impatient.advance(MAIN), impatient.recover()), ("busy", {MAIN: "busy"}))

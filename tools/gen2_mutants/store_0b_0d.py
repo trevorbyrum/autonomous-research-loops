@@ -94,7 +94,26 @@ MUTATIONS: list[Mutation] = [
            "    changed = sorted(f\"{k} {n}\" for (k, n) in expected.keys() & actual.keys() if expected[(k, n)] != actual[(k, n)])", "    changed = []"),
           ("user-version-ignored", "another schema version is admitted",
            ("OpenStoreTest.test_a_store_with_another_schema_is_not_admitted",),
-           "    if missing or extra or changed or stored_version != version:", "    if missing or extra or changed:"))),
+           "    if missing or extra or changed or stored_version != version:", "    if missing or extra or changed:"),
+          # 2b-repair-13d (Astra R13B-3): a store first opened in rollback-journal mode beside a writer
+          ("wal-switch-not-retried", "the switch to WAL is attempted once: a first open beside a writer fails at once with `database is locked`",
+           ("FirstOpenContentionTest.test_the_first_open_waits_for_the_lock_to_clear",),
+           "            if (getattr(e, \"sqlite_errorcode\", 0) or 0) & 0xFF != sqlite3.SQLITE_BUSY:   # BUSY or one of its extended codes\n                raise",
+           "            if True:\n                raise"),
+          ("wal-switch-retries-any-error", "any operational error, not only a busy database, is waited for",
+           ("FirstOpenContentionTest.test_only_a_busy_database_is_waited_for",),
+           "            if (getattr(e, \"sqlite_errorcode\", 0) or 0) & 0xFF != sqlite3.SQLITE_BUSY:   # BUSY or one of its extended codes\n                raise",
+           "            if False:\n                raise"),
+          ("wal-switch-wait-unbounded", "the wait for the lock has no deadline",
+           ("FirstOpenContentionTest.test_the_wait_is_bounded_by_the_busy_timeout",),
+           "            if _monotonic() + pause > deadline:", "            if False:"),
+          ("wal-switch-no-budget", "the wait's budget is nothing",
+           ("FirstOpenContentionTest.test_the_first_open_waits_for_the_lock_to_clear", "FirstOpenContentionTest.test_the_wait_is_bounded_by_the_busy_timeout"),
+           "    deadline, pause = _monotonic() + BUSY_TIMEOUT_MS / 1000, 0.005", "    deadline, pause = _monotonic(), 0.005"),
+          ("wal-switch-bypasses-the-wait", "the open sets journal_mode with the plain statement",
+           ("FirstOpenContentionTest.test_the_first_open_waits_for_the_lock_to_clear",),
+           "        got = _wal(conn) if name == \"journal_mode\" else conn.execute(f\"PRAGMA {name} = {value}\").fetchone()",
+           "        got = conn.execute(f\"PRAGMA {name} = {value}\").fetchone()"))),
     # --- 0b carried requirements: writer-side JCS storage and identity bounds (RA2/RA8 rulings) ----
     *(Mutation(f"WR-{key}", "0b-writer", desc, tuple("test_writer." + k for k in killers), target="gen2/store/api.py", old=old, new=new)
       for key, desc, killers, old, new in (

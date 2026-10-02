@@ -29,9 +29,12 @@ from __future__ import annotations
 
 import ast
 import os
+import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from gen2.tests import children
 
@@ -129,6 +132,66 @@ class HelperImportRootTest(unittest.TestCase):
                     children.python(["-c", "pass"], env={**os.environ, name: value}, timeout=60)
         self.assertEqual(children.python(["-c", "pass"], env=dict(os.environ), timeout=60).returncode, 0)  # the same environment, unset: accepted
 
+
+
+class ReadinessTest(unittest.TestCase):
+    """children.started / await_line (task 2b-repair-13d, Astra R13B-3): the multi-process tests waited on a child's `ready` with a blocking
+    readline, kept nothing of why a child that never said it had died, and registered no cleanup before the handshake. A child that does not
+    say its line within the bound now fails the test with its exit status and stderr, and it is reaped whatever the outcome. Oracle: children
+    written here, one behaviour each, and the operating system's own account of them (poll, returncode)."""
+
+    def launched(self) -> list:
+        """children.popen, recording every child it starts."""
+        made, real = [], children.popen
+
+        def record(*args, **kwargs):
+            made.append(real(*args, **kwargs))
+            return made[-1]
+        patch = mock.patch.object(children, "popen", record)
+        patch.start()
+        self.addCleanup(patch.stop)
+        return made
+
+    def failure(self, args: list[str], wait: float = 5.0) -> str:
+        with self.assertRaises(AssertionError) as caught:
+            children.started(self, args, ready="ready", wait=wait)
+        return str(caught.exception)
+
+    def test_a_child_that_says_its_line_is_started(self) -> None:
+        child = children.started(self, ["-c", "print('ready', flush=True); input()"], ready="ready", stdin=subprocess.PIPE)
+        self.assertIsNone(child.poll(), "and it is still running, for the test to use")
+
+    def test_a_child_that_died_before_saying_it_fails_the_test_with_its_exit_status_and_stderr(self) -> None:
+        made = self.launched()
+        message = self.failure(["-c", "import sys; sys.stderr.write('open failed: database is locked'); sys.exit(3)"])
+        self.assertIn("it had exited", message)
+        self.assertIn("exit status 3", message)
+        self.assertIn("open failed: database is locked", message)
+        self.assertIn("first line ''", message, "the empty read the 13b failure showed")
+        self.assertEqual([c.returncode for c in made], [3])
+
+    def test_a_child_that_said_something_else_fails_the_test_with_what_it_said(self) -> None:
+        message = self.failure(["-c", "print('starting'); print('ready', flush=True)"])
+        self.assertIn("first line 'starting\\n'", message)
+
+    def test_a_child_that_says_nothing_in_time_fails_the_test_and_is_ended(self) -> None:
+        made = self.launched()
+        began = time.monotonic()
+        message = self.failure(["-c", "import time; time.sleep(60)"], wait=0.4)
+        self.assertLess(time.monotonic() - began, 5.0, "the wait is bounded")
+        self.assertIn("still running when stopped", message)
+        self.assertIsNotNone(made[0].poll(), "the child that never answered is not left running")
+
+    def test_the_child_is_reaped_when_the_test_ends_even_when_the_handshake_failed(self) -> None:
+        """The cleanup is registered before anything waits on the child: a test that ends at its handshake (here: no wait at all) leaves no process."""
+        made = self.launched()
+        probe = unittest.TestCase()
+        child = children.started(probe, ["-c", "import time; time.sleep(60)"])
+        self.assertIsNone(child.poll())
+        probe.doCleanups()
+        self.assertIsNotNone(child.poll(), "the child was reaped by the cleanup the helper registered first")
+        self.assertEqual(len(made), 1)
+        children.reap(child)   # and reaping again is harmless
 
 
 class KillAttestationTest(unittest.TestCase):

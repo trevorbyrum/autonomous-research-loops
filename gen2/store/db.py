@@ -23,6 +23,7 @@ the connection; the router is its only intended caller (boundaries.toml).
 from __future__ import annotations
 
 import sqlite3
+import time
 from pathlib import Path
 
 from gen2.store import compat
@@ -32,6 +33,7 @@ BUSY_TIMEOUT_MS = 5000
 # Operational settings (they do not change which rows the schema admits, so
 # they are not in connection.sql), each read back after it is set.
 OPERATIONAL_PRAGMAS = (("journal_mode", "WAL", "wal"), ("synchronous", "FULL", 2), ("busy_timeout", str(BUSY_TIMEOUT_MS), BUSY_TIMEOUT_MS))
+_monotonic, _sleep = time.monotonic, time.sleep   # the clock and the wait of the journal-mode retry (a test drives them)
 
 
 def schema_parts(schema_dir: Path = SCHEMA_DIR) -> list[Path]:
@@ -81,10 +83,33 @@ def check_schema_identity(conn: sqlite3.Connection, ddl_text: str | None = None)
             f"missing {missing[:5]}{'...' if len(missing) > 5 else ''}, unexpected {extra[:5]}, changed {changed[:5]})")
 
 
+def _wal(conn: sqlite3.Connection) -> tuple:
+    """PRAGMA journal_mode = WAL, waiting up to BUSY_TIMEOUT_MS for another connection to let go of the file.
+
+    `busy_timeout` does not do this for the switch out of rollback-journal mode: the statement has already read the
+    file's header, so waiting for the write lock could deadlock with a writer that is waiting for this connection's read
+    lock, and SQLite then returns SQLITE_BUSY at once instead of calling the busy handler (sqlite.org/c3ref/busy_handler,
+    "may not be invoked"). A store opened for the first time in rollback-journal mode (a restored or copied file; one
+    `create=True` makes is WAL from the start) therefore failed with `database is locked` whenever another process was
+    opening it, or writing to it, at that moment. The documented answer is to retry, within the same budget as the
+    timeout itself; once any connection has made the file WAL, the statement is a no-op and takes no lock."""
+    deadline, pause = _monotonic() + BUSY_TIMEOUT_MS / 1000, 0.005
+    while True:
+        try:
+            return conn.execute("PRAGMA journal_mode = WAL").fetchone()
+        except sqlite3.OperationalError as e:
+            if (getattr(e, "sqlite_errorcode", 0) or 0) & 0xFF != sqlite3.SQLITE_BUSY:   # BUSY or one of its extended codes
+                raise
+            if _monotonic() + pause > deadline:
+                raise StoreOpenError(f"PRAGMA journal_mode = WAL: {e} for {BUSY_TIMEOUT_MS} ms (another connection holds the store)") from e
+            _sleep(pause)
+            pause = min(pause * 2, 0.1)
+
+
 def _apply_operational(conn: sqlite3.Connection) -> dict:
     observed = {}
     for name, value, expected in OPERATIONAL_PRAGMAS:
-        got = conn.execute(f"PRAGMA {name} = {value}").fetchone()
+        got = _wal(conn) if name == "journal_mode" else conn.execute(f"PRAGMA {name} = {value}").fetchone()
         got = conn.execute(f"PRAGMA {name}").fetchone() if got is None else got
         observed[name] = got[0]
         if got[0] != expected:

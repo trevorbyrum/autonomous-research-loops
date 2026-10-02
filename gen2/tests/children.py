@@ -29,8 +29,11 @@ env() gives them the same import path.
 from __future__ import annotations
 
 import os
+import select
 import subprocess
 import sys
+import time
+import unittest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -80,3 +83,49 @@ def popen(args: list[str], **kwargs) -> subprocess.Popen:
     kwargs.setdefault("cwd", code_root())
     kwargs["env"] = env(kwargs.get("env"))
     return subprocess.Popen([sys.executable, *args], **kwargs)
+
+
+def reap(child: subprocess.Popen, wait: float = 10.0) -> None:
+    """End `child` if it still runs, wait for it, and close its pipes. Safe to call twice, and after the test collected the child itself."""
+    if child.poll() is None:
+        child.kill()
+    try:
+        child.communicate(timeout=wait)
+    except (ValueError, subprocess.TimeoutExpired):   # already collected (its pipes closed), or it will not die: nothing more to do
+        pass
+    for pipe in (child.stdin, child.stdout, child.stderr):
+        if pipe is not None and not pipe.closed:
+            pipe.close()
+
+
+def started(test: unittest.TestCase, args: list[str], *, ready: str | None = None, wait: float = 30.0, **kwargs) -> subprocess.Popen:
+    """Start `python <args>` as a child the test owns: it is reaped when the test ends (the cleanup is registered before anything waits on
+    the child, so a test that fails at its handshake leaves no process behind), its stdout and stderr are pipes unless given, and with
+    `ready` the child is waited on, for at most `wait` seconds, to print that line first. A child that does not say it (it exited,
+    printed something else, or said nothing in time) fails the test with what it did: its exit status, what it printed and its stderr."""
+    kwargs.setdefault("stdout", subprocess.PIPE)
+    kwargs.setdefault("stderr", subprocess.PIPE)
+    kwargs.setdefault("text", True)
+    child = popen(args, **kwargs)
+    test.addCleanup(reap, child)
+    if ready is not None:
+        await_line(test, child, ready, wait=wait)
+    return child
+
+
+def await_line(test: unittest.TestCase, child: subprocess.Popen, ready: str, *, wait: float = 30.0) -> None:
+    """Wait at most `wait` seconds for `child` to print `ready` as its next stdout line; otherwise fail `test` with the child's exit status,
+    what it printed and its stderr (the child is ended first when it still runs, so there is a stderr to read)."""
+    began, line = time.monotonic(), ""
+    ripe, _, _ = select.select([child.stdout], [], [], wait)
+    if ripe:
+        line = child.stdout.readline()
+    if line.strip() == ready:
+        return
+    running = child.poll() is None
+    if running:
+        child.kill()
+    out, err = child.communicate(timeout=10)
+    test.fail(f"the child did not say {ready!r} within {wait}s ({'still running when stopped' if running else 'it had exited'}, "
+              f"waited {time.monotonic() - began:.1f}s): exit status {child.returncode}; first line {line!r}; "
+              f"the rest of stdout {out!r}; stderr {err!r}")
