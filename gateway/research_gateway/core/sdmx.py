@@ -27,7 +27,8 @@ DIM_VALUE = S.obj({"id": S.text(), "name": S.text()})
 DIMENSION = S.obj({"id": S.text(), "name": S.text(), "values": S.members(DIM_VALUE)})
 STRUCTURE = S.obj({"dimensions": S.maybe(S.obj({"series": S.own(DIMENSION), "observation": S.own(S.obj({"values": S.own(DIM_VALUE)}))})),
                    "attributes": S.any_(), "annotations": S.any_(), "name": S.any_(), "names": S.any_()})
-DATASET = S.obj({"series": S.entries(S.obj({"observations": S.table(S.any_())}))})
+# an observation is an array whose first element is its value (`[value, status, ...]`), or the value itself: the shape is declared, what is in it is metadata
+DATASET = S.obj({"series": S.entries(S.obj({"observations": S.table(S.oneof(S.own(S.any_()), S.any_()))}))})
 _PLACE = {"structure": S.maybe(STRUCTURE), "structures": S.lookup(STRUCTURE), "dataSets": S.maybe(S.members(DATASET))}
 JSON_MESSAGE = S.obj({**_PLACE, "data": S.obj(_PLACE)}, alts=(("structure", "structures", "data.structure", "data.structures"),))
 
@@ -94,14 +95,19 @@ def datasets(msg) -> MemberList:
 def has_content(msg) -> bool:
     """Whether the message has any data set, or a structure that says anything (an empty `{}` structure says nothing)."""
     st = structure(msg)
-    return bool(datasets(msg)) or bool(st is not None and st.raw)
+    return bool(datasets(msg)) or bool(st is not None and not st.empty)
 
 
 def context(msg) -> dict:
     """The SDMX-JSON structural context (dimension and attribute definitions) without the data — kept with each record's raw so nothing needed to reread the
     observations is lost (I-8, D-25)."""
     st = structure(msg)
-    return {} if st is None else {k: plain(st[k]) for k in ("dimensions", "attributes", "annotations", "name", "names") if st[k] is not None}
+    out = {}
+    for k in ("dimensions", "attributes", "annotations", "name", "names"):
+        value = plain(st[k]) if st is not None else None   # stored, never read: metadata that is kept as the provider sent it, or not at all when it sent none
+        if value is not None:
+            out[k] = value
+    return out
 
 
 def series_members(msg) -> MemberList:
@@ -143,9 +149,9 @@ def series_reader(msg):
 
 
 # ---------------------------------------------------------------- SDMX-ML readers
-def data_xml(source_id: str, text: str):
-    """The decoded SDMX-ML data message (StructureSpecificData or GenericData)."""
-    return S.decode(source_id, XML_MESSAGE, S.parse_xml(text, "StructureSpecificData", "GenericData"))
+def data_xml(source_id: str, answer):
+    """The decoded SDMX-ML data message (StructureSpecificData or GenericData); `answer` is the client's response (opened by the decoder) or its text."""
+    return S.decode(source_id, XML_MESSAGE, S.parse_xml(answer, "StructureSpecificData", "GenericData"))
 
 
 def series_xml(msg) -> MemberList:
@@ -175,10 +181,10 @@ def context_xml(msg) -> dict:
     return out
 
 
-def flows(source_id: str, text: str) -> list[dict]:
+def flows(source_id: str, answer) -> list[dict]:
     """SDMX structure XML → one entry per Dataflow element, in document order: {id, agency, version, label}. Namespace-agnostic like the rest of this module. `label` is
     the flow's own `Name` child (its id when it has none). Nothing is taken from another element of the message."""
-    decoded = S.decode(source_id, FLOW_NAMES, S.parse_xml(text, "Structure"))
+    decoded = S.decode(source_id, FLOW_NAMES, S.parse_xml(answer, "Structure"))
     return [{"id": f["@id"], "agency": f["@agencyID"], "version": f["@version"], "label": next((n["#"] for n in f["Name"] if n["#"]), None) or f["@id"], "element": f.raw}
             for f in decoded["**Dataflow"]]
 
@@ -214,11 +220,11 @@ def _dimension_ids(structure_: dict) -> list[str]:
     return [d for _, d in sorted(dims)]
 
 
-def dimensions_xml(source_id: str, text: str, structure_: dict) -> list[str]:
+def dimensions_xml(source_id: str, answer, structure_: dict) -> list[str]:
     """The dimension ids of ONE data structure IN KEY ORDER: the one `structure_` names (its `id`, and its `agencyID` and `version` when the reference states them). A message may
     hold many (a wildcard query, a `references=descendants` answer): their dimensions are theirs, never this one's. [] when the message holds none of that structure. A
     reference that more than one structure of the message answers to, with different dimensions, does not say which is meant: PayloadError."""
-    decoded = S.decode(source_id, DATA_STRUCTURES, S.parse_xml(text, "Structure"))
+    decoded = S.decode(source_id, DATA_STRUCTURES, S.parse_xml(answer, "Structure"))
     found = [el for el in decoded["**DataStructure"]
              if all(el["@" + k] == structure_[k] for k in ("id", "agencyID", "version") if structure_.get(k) is not None)]
     answers = {tuple(_dimension_ids(el)) for el in found}

@@ -17,9 +17,11 @@ from datetime import datetime, timezone
 
 from research_gateway import adapters
 from research_gateway.adapters import bea, census, harvard_dataverse as dv, huggingface, socrata
-from research_gateway.adapters.base import Client, FakeTransport, PayloadError, decode, identified, is_unreadable, offset_after, total
+from research_gateway.adapters.base import Client, FakeTransport, PayloadError, identified, is_unreadable, offset_after, total
+from research_gateway.core.schema import decode   # parsed values, as these tests state them (an adapter decodes the client's response, adapters.base.decode)
 from research_gateway.core import canonical, identity as ident, router as R, sdmx
 from research_gateway.core.broker import Broker, RatePolicy
+from research_gateway.core.payload import plain
 from research_gateway.core.schema import counts_nothing
 from research_gateway.harvest import registries
 from research_gateway.registry.load import read_seed
@@ -399,8 +401,8 @@ class Structures(unittest.TestCase):
                 self.message({"structure": wrong, "dataSets": []})
         for nothing in ({}, {"structure": None}, {"structures": None}, {"structures": []}, {"data": None}):
             self.assertIsNone(sdmx.structure(self.message(nothing)))
-        self.assertEqual(sdmx.structure(self.message({"structures": [{"a": 1}]})).raw, {"a": 1})
-        self.assertEqual(sdmx.structure(self.message({"data": {"structures": [{"a": 2}]}})).raw, {"a": 2})
+        self.assertEqual(plain(sdmx.structure(self.message({"structures": [{"a": 1}]})).raw), {"a": 1})
+        self.assertEqual(plain(sdmx.structure(self.message({"data": {"structures": [{"a": 2}]}})).raw), {"a": 2})
         for wrong in ({"structures": {"a": 1}}, {"structures": 5}, {"structures": [5]}, {"data": 5}, {"data": []}, {"data": ""}):
             with self.subTest(message=wrong), self.assertRaises(PayloadError):
                 self.message(wrong)
@@ -427,7 +429,7 @@ class Structures(unittest.TestCase):
             assert len(members_) == 1
             return members_.at(0), sdmx.series_reader(msg)
         member, read = series({"0": [1.5]})
-        self.assertEqual(read(member)["observations"], [("2026", 1.5)])
+        self.assertEqual(plain(read(member)["observations"]), [("2026", 1.5)])
         for wrong in (False, 0, "", [], 5):
             with self.subTest(observations=wrong):
                 member, read = series(wrong)

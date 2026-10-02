@@ -15,7 +15,10 @@ BASE = "https://huggingface.co"
 # What an answer must be. A repository's licence is its card's, else a `license:` tag: both places are declared, so both are decoded before one is chosen (R10-1).
 # A card's licence is text or a list of text; the tags are a list the repository's other entries may fill with anything. A listing needs only a dataset's name and
 # its licence and gating from the repository (R8): its files are the `siblings` members, each decoded alone, so a field no file needs cannot cost them.
-_LICENSED = {"cardData": S.obj({"license": S.oneof(S.text(), S.own(S.text()))}), "tags": S.own(S.any_()), "gated": S.any_(default=False)}
+# A repository's tags are text where they are text and anything else where they are not (a licence is read from the text ones; the others are only stored), and it is gated or not
+# (`false`, `true`, or the Hub's own `"auto"`/`"manual"`). The flag is returned to the caller, so it is a kind (2b-repair-13a, R12-1); `soft`, because one that cannot be read says
+# nothing (None: gating unknown) and costs no file beside it.
+_LICENSED = {"cardData": S.obj({"license": S.oneof(S.text(), S.own(S.text()))}), "tags": S.own(S.oneof(S.text(), S.any_())), "gated": S.soft(S.oneof(S.flag(), S.text()))}
 DATASET = S.obj({"id": S.key(), "author": S.text(), "lastModified": S.text(), "createdAt": S.text(), **_LICENSED, "downloads": S.any_(), "likes": S.any_(),
                  "private": S.any_(default=False), "description": S.text(),
                  "siblings": S.soft(S.own(S.any_()))},   # only counted: a list that cannot be read is a count that is unknown, never zero
@@ -69,7 +72,7 @@ def _context(d) -> dict:
 def _read(client: Client, request_type: str, url: str, identity: str, schema):
     """The dataset envelope at `url` as `schema` decodes it, None when the repository (or revision) is not there. A 200 without a dataset is unreadable."""
     resp = client.get(SOURCE_ID, request_type, url, headers=_headers(client), identity=identity)
-    return decode(SOURCE_ID, schema, resp.json) if check(SOURCE_ID, resp) else None
+    return decode(SOURCE_ID, schema, resp) if check(SOURCE_ID, resp) else None
 
 
 def _file(identity: str, repo: str, revision: str, license_: str | None, sibling) -> dict:
@@ -98,7 +101,7 @@ def find(client: Client, query: str, *, limit: int = 20, cursor: str | None = No
             raise ValueError(f"{SOURCE_ID}: not a continuation this lane gave")
     resp = client.get(SOURCE_ID, "find", url, params=params, headers=_headers(client), query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
-    items = decode(SOURCE_ID, SCHEMAS["find"], resp.json)
+    items = decode(SOURCE_ID, SCHEMAS["find"], resp)
     link = next_link(resp)
     # the end is a header read whole that names no next link; one that could not be read is no end (R7-1)
     return {"records": members(SOURCE_ID, items, _record), "total": None,
@@ -133,7 +136,7 @@ def fetch(client: Client, target: str, *, path: str | None = None, download: boo
         resp = client.get(SOURCE_ID, "fetch", url, headers={**_headers(client), "Accept": "*/*"}, identity=f"{identity}#{path}")
         if not check(SOURCE_ID, resp, allow_html=True):  # raw file download: an HTML document can be legitimate content here
             return {"identity": identity, "records": []}
-        return {"identity": identity, "records": [], "content": resp.body,
+        return {"identity": identity, "records": [], "content": resp.download(),
                 "content_type": resp.headers.get("content-type"), "license": rec["license"], "gated": rec["gated"]}
     if revision != "main":
         # the LISTING must come from the requested revision too — reading main and

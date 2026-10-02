@@ -24,7 +24,8 @@ import unittest
 from research_gateway.adapters import (bea, bis, bls, census, core, crossref, datacite, doaj, ecb, europepmc, fred, govinfo,
                                        harvard_dataverse, huggingface, kaggle, opencitations, openml, qdr, semanticscholar,
                                        socrata, unpaywall)
-from research_gateway.adapters.base import Client, FakeTransport, PayloadError, Response, SourceUnavailable
+from research_gateway.adapters.base import Client, FakeTransport, PayloadError, Response, SourceUnavailable, decode
+from research_gateway.core import schema as S
 from research_gateway.core.identity import RegistrationAgencies
 from research_gateway.core.broker import Broker, RatePolicy
 
@@ -179,12 +180,12 @@ class AdapterBoundary(unittest.TestCase):
     def test_the_json_reader_refuses_what_it_cannot_read(self):
         # the boundary's own reader, before any adapter's shape check: an empty or unparseable
         # success is an error, never None standing in for "nothing" (H-5)
-        for body in (b"", b'{"results": [', b"<html>x</html>", b"\xff\xfe"):
-            with self.subTest(body=body):
+        schema = S.obj({"results": S.own(S.whole())})
+        for body in (b"", b'{"results": [', b"<html>x</html>", b"\xff\xfe", b"[" * 100_000 + b"]" * 100_000, b'{"a":' * 200 + b"1" + b"}" * 200):
+            with self.subTest(body=body[:20]):
                 with self.assertRaises(PayloadError):
-                    Response(200, {}, body, "u").json
-        self.assertEqual(Response(200, {}, b'{"results": []}', "u").json, {"results": []}, "control")
-        self.assertIsNone(Response(200, {}, b"", "u").json_or_none(), "bookkeeping (the call-log count) reads leniently")
+                    decode("x", schema, Response(200, {}, body, "u"))
+        self.assertEqual(decode("x", schema, Response(200, {}, b'{"results": [1]}', "u"))["results"], [1], "control")
 
     def test_a_garbled_registration_agency_answer_is_not_remembered(self):
         c, t = client()

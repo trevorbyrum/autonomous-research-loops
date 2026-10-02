@@ -40,7 +40,7 @@ PRODUCT = S.obj({"id": S.maybe_key(), "mainTitle": S.text(), "type": S.text(), "
 RESULTS = S.members(PRODUCT, empty_when=("header", "numFound"))
 FIND = S.obj({"results": RESULTS, "header.numFound": S.deep(("header", "numFound"), S.whole()), "header.nextCursor": S.deep(("header", "nextCursor"), S.token())})
 RESOLVE = S.obj({"results": RESULTS})
-TOKEN = S.obj({"access_token": S.any_(), "expires_in": S.any_()})
+TOKEN = S.obj({"access_token": S.text(), "expires_in": S.oneof(S.number(), S.text())})   # the token is sent as a credential and its lifetime says when to ask again: kinds, not metadata
 SCHEMAS = {"find": FIND, "resolve": RESOLVE, "token": TOKEN}
 
 
@@ -65,7 +65,7 @@ def _headers_locked(client: Client) -> dict:
                        query="token exchange")
     if not resp.ok:
         return {}   # a refused exchange: the lane reports the missing credentials
-    j = decode(SOURCE_ID, TOKEN, resp.json)   # an unreadable 200 is an unreadable answer, not "no credentials"
+    j = decode(SOURCE_ID, TOKEN, resp)   # an unreadable 200 is an unreadable answer, not "no credentials"
     if not j["access_token"]:
         return {}
     try:
@@ -122,7 +122,7 @@ def find(client: Client, query: str, *, limit: int = 20, kind: str | None = None
               "fromPublicationDate": f"{year_from_}-01-01" if year_from_ else None}
     resp = client.get(SOURCE_ID, "find", f"{BASE}/researchProducts", params=params, headers=hdrs, query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
-    j = decode(SOURCE_ID, FIND, resp.json)
+    j = decode(SOURCE_ID, FIND, resp)
     rows = j["results"]
     # OpenAIRE's end: "the nextCursor returned matches the current cursor you've already specified"; and
     # numFound is "the total number of entities found", so a first page holding that many holds them all.
@@ -144,4 +144,4 @@ def resolve(client: Client, identity: str) -> dict | None:
                       headers=hdrs, identity=f"doi:{doi}")
     if not check(SOURCE_ID, resp):
         return None
-    return first_member(SOURCE_ID, decode(SOURCE_ID, RESOLVE, resp.json)["results"], _record)
+    return first_member(SOURCE_ID, decode(SOURCE_ID, RESOLVE, resp)["results"], _record)

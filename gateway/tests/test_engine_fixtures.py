@@ -63,7 +63,7 @@ class Transport(FakeTransport):
         for part, resp in self.by_substring:
             if part in url:
                 self.calls.append((method.upper(), url, headers, body))
-                return Response(resp.status, resp.headers, resp.body, url)
+                return Response(resp.status, resp.headers, resp._body, url)
         return super().request(method, url, headers, body, timeout)
 
 

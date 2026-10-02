@@ -24,7 +24,7 @@ LINKED = S.obj({"licence": S.text(), "url": S.isolated(S.text()), "parquet_url":
 FIND = S.obj({"data": S.required(S.obj({"dataset": S.required(S.members(LISTED))}))})
 RESOLVE = S.obj({"data_set_description": S.required(DESCRIBED)})
 FETCH = S.obj({"data_set_description": S.required(LINKED)})
-ERROR = S.obj({"error.code": S.deep(("error", "code"), S.any_())})
+ERROR = S.soft(S.obj({"error.code": S.deep(("error", "code"), S.oneof(S.whole(), S.text()))}))   # the one thing read of an error answer: its code, a number or text; a body that says none says none
 SCHEMAS = {"find": FIND, "resolve": RESOLVE, "fetch": FETCH}
 
 
@@ -64,14 +64,14 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0) -> dic
     """OpenML's public API filters by exact data_name only; free-text search is not documented."""
     url = f"{BASE}/data/list/data_name/{quote(query, safe='')}/limit/{min(limit, 100)}/offset/{offset}/status/active"
     resp = client.get(SOURCE_ID, "find", url, query=query)
-    body = resp.json_or_none()   # an error answer that cannot be read is no "no results": it is an outage, below
-    code = decode(SOURCE_ID, ERROR, body)["error.code"] if isinstance(body, dict) else None
+    error = decode(SOURCE_ID, ERROR, resp)   # an error answer that cannot be read is no "no results": it is an outage, below
+    code = error["error.code"] if error is not None else None
     if resp.status == 412 and code is not None and str(code) == "372":
         # OpenML's list API answers "no results" — no match at this offset — as HTTP 412 with error code 372;
         # its own client ends a listing there: a successful empty page, not an outage (any other 412 still is one)
         return {"records": [], "total": 0, "next_offset": None, "exhausted": True}
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
-    items = decode(SOURCE_ID, FIND, resp.json)["data"]["dataset"]
+    items = decode(SOURCE_ID, FIND, resp)["data"]["dataset"]
     # openml-python, OpenML's own client, ends a listing on a batch shorter than the limit it asked
     # (docs/PROVIDER-PAGINATION.md); a full page continues at the next offset
     return {"records": members(SOURCE_ID, items, _list_record), "total": None,
@@ -84,7 +84,7 @@ def _description(client: Client, did: str, schema):
     resp = client.get(SOURCE_ID, "resolve", f"{BASE}/data/{did}", identity=f"openml:{did}")
     if not check(SOURCE_ID, resp):
         return None
-    return decode(SOURCE_ID, schema, resp.json)["data_set_description"]
+    return decode(SOURCE_ID, schema, resp)["data_set_description"]
 
 
 def resolve(client: Client, identity: str) -> dict | None:
@@ -121,7 +121,7 @@ def fetch(client: Client, target: str, *, download: bool = False, prefer: str = 
     resp = client.get(SOURCE_ID, "fetch", files[0]["links"][0], headers={"Accept": "*/*"}, identity=files[0]["identity"])
     if not check(SOURCE_ID, resp, allow_html=True):  # raw file download: an HTML document can be legitimate content here
         return {"identity": identity, "records": files}
-    return {"identity": identity, "records": files, "content": resp.body,
+    return {"identity": identity, "records": files, "content": resp.download(),
             "content_type": resp.headers.get("content-type"), "license": license_}
 
 

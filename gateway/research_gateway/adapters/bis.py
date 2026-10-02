@@ -42,7 +42,7 @@ def data(client: Client, params: dict) -> dict:
                       headers={"Accept": "application/xml"}, identity=identity)
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "records": []}
-    msg = sdmx.data_xml(SOURCE_ID, resp.text)
+    msg = sdmx.data_xml(SOURCE_ID, resp)
     ctx = sdmx.context_xml(msg)
 
     def record(s: dict) -> dict:
@@ -69,7 +69,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                           params=STRUCTURE_PARAMS or None, headers={"Accept": "application/xml"}, query=query)
         if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
-        flows = sdmx.flows(SOURCE_ID, resp.text)
+        flows = sdmx.flows(SOURCE_ID, resp)
         if not flows:
             return {"entries": [], "capability_fact": "no dataflows in the structure answer (a readable listing of nothing is not a catalogue)"}
         q = (query or "").lower()
@@ -84,7 +84,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                       identity=f"series:{SOURCE_ID}:{within}")
     if not check(SOURCE_ID, resp, allow_404=False):
         return {"entries": []}
-    flow = sdmx.dataflow_named(SOURCE_ID, sdmx.flows(SOURCE_ID, resp.text), within, AGENCY)   # the flow asked for, and everything below is that flow's own (R10-2)
+    flow = sdmx.dataflow_named(SOURCE_ID, sdmx.flows(SOURCE_ID, resp), within, AGENCY)   # the flow asked for, and everything below is that flow's own (R10-2)
     if flow is None:
         return {"entries": [], "capability_fact": f"dataflow {within!r}: no such dataflow in the structure answer"}
     ref = flow["structure"]
@@ -95,7 +95,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                     identity=f"series:{SOURCE_ID}:{within}")
     if not check(SOURCE_ID, ds, allow_404=False):
         return {"entries": []}
-    dims = sdmx.dimensions_xml(SOURCE_ID, ds.text, ref)
+    dims = sdmx.dimensions_xml(SOURCE_ID, ds, ref)
     if not dims:
         return {"entries": [], "capability_fact": f"datastructure {ref['id']!r}: no dimensions parsed — refusing to "
                                                   "invent an empty series template"}

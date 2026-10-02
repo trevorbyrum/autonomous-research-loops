@@ -17,7 +17,7 @@ FORMATS = ("pdf", "htm", "xml", "txt", "zip")
 PACKAGE = S.obj({"packageId": S.key(), "title": S.text(), "governmentAuthor1": S.text(), "governmentAuthor2": S.text(), "dateIssued": S.text(),
                  "collectionCode": S.text(), "lastModified": S.any_(), "docClass": S.any_(), "download": S.table(S.text())})
 FIND = S.obj({"results": S.members(PACKAGE, empty_when=("count",)), "count": S.soft(S.whole()), "offsetMark": S.soft(S.token())})
-FORMATS_OF = S.obj({"packageId": S.any_(), "title": S.text(), "download": S.entries(S.any_())})
+FORMATS_OF = S.obj({"packageId": S.key(), "title": S.text(), "download": S.entries(S.any_())})   # the summary must name its package (a decision); a link's value is never read: its key selects the format
 SCHEMAS = {"find": FIND, "resolve": PACKAGE, "fetch": FORMATS_OF}
 
 
@@ -53,7 +53,7 @@ def find(client: Client, query: str, *, limit: int = 20, offset_mark: str = "*",
             "sorts": [{"field": "score", "sortOrder": "DESC"}]}
     resp = client.post(SOURCE_ID, "find", f"{BASE}/search", body=body, headers=hdrs, query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
-    j = decode(SOURCE_ID, FIND, resp.json)
+    j = decode(SOURCE_ID, FIND, resp)
     results = j["results"]   # an answer may leave `results` out only when it counts nothing
     # GovInfo documents only the continuation — `*` first, then the answer's offsetMark — and no last
     # page, nor what `count` counts: a mark that moves continues, and nothing here ever ends the lane
@@ -69,7 +69,7 @@ def _summary(client: Client, pid: str, hdrs: dict, request_type: str, schema: st
     resp = client.get(SOURCE_ID, request_type, f"{BASE}/packages/{quote(pid, safe='')}/summary", headers=hdrs, identity=f"govinfo:{pid}")
     if not check(SOURCE_ID, resp):
         return None
-    summary = decode(SOURCE_ID, SCHEMAS[schema], resp.json)
+    summary = decode(SOURCE_ID, SCHEMAS[schema], resp)
     if not summary["packageId"]:
         raise PayloadError(f"{SOURCE_ID}: the package summary carries no packageId")
     return summary
@@ -112,7 +112,7 @@ def fetch(client: Client, target: str, *, fmt: str = "pdf", download: bool = Fal
     resp = client.get(SOURCE_ID, "fetch", f"{BASE}/packages/{quote(pid, safe='')}/{fmt}", headers={**hdrs, "Accept": "*/*"}, identity=identity)
     if not check(SOURCE_ID, resp, allow_html=True):  # raw file download: an HTML document can be legitimate content here
         return {"identity": identity, "records": []}
-    return {"identity": identity, "records": [], "content": resp.body, "content_type": resp.headers.get("content-type"),
+    return {"identity": identity, "records": [], "content": resp.download(), "content_type": resp.headers.get("content-type"),
             "format": fmt, "license": "US Government Work"}
 
 

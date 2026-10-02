@@ -27,7 +27,7 @@ FILE = S.obj({"label": S.text(), "restricted": S.flag(),
               "dataFile": S.obj({"id": S.key(), "filename": S.text(), "contentType": S.any_(), "filesize": S.any_(), "description": S.any_()})})
 _DATASET = {"id": S.maybe_key(), "identifier": S.text(), "authority": S.text()}
 DATASET = S.obj({**_DATASET, "publisher": S.text(), "persistentUrl": S.text(),
-                 "latestVersion": S.obj({"license": LICENSE, "termsOfUse": S.text(), "releaseTime": S.text(), "versionNumber": S.any_(), "versionMinorNumber": S.any_(),
+                 "latestVersion": S.obj({"license": LICENSE, "termsOfUse": S.text(), "releaseTime": S.text(), "versionNumber": S.maybe_key(), "versionMinorNumber": S.maybe_key(),
                                          "metadataBlocks": S.obj({"citation": S.obj({"fields": S.own(CITATION_FIELD)})}),
                                          "files": S.soft(S.own(S.any_()))})},   # only counted here: a list that cannot be read is a count that is unknown
                 alts=(("identifier", "id"),))
@@ -116,7 +116,7 @@ def find_in(client: Client, base: str, source_id: str, secret_name: str | None, 
     params = {"q": query, "type": "dataset", "per_page": per_page, "start": (page - 1) * per_page, "subtree": subtree}
     resp = client.get(source_id, "find", f"{base}/api/search", params=params, headers=headers(client, secret_name), query=query)
     check(source_id, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
-    data = decode(source_id, SEARCH, resp.json)["data"]
+    data = decode(source_id, SEARCH, resp)["data"]
     items = data["items"]
     count = total(data["total_count"], (page - 1) * per_page + len(items))
     # the Dataverse guide pages by moving `start` on by the page size "until you reach the total_count"
@@ -135,7 +135,7 @@ def get_dataset(client: Client, base: str, source_id: str, secret_name: str | No
                       headers=headers(client, secret_name), identity=f"doi:{doi}")
     if not check(source_id, resp):
         return None
-    return decode(source_id, SCHEMAS[schema], resp.json)["data"]
+    return decode(source_id, SCHEMAS[schema], resp)["data"]
 
 
 def fetch_in(client: Client, base: str, source_id: str, secret_name: str | None, target: str, *, file_id=None, download: bool = False) -> dict:
@@ -168,7 +168,7 @@ def fetch_in(client: Client, base: str, source_id: str, secret_name: str | None,
                           identity=f"{ds['identity']}#{file_id}")
         if not check(source_id, resp, allow_html=True):  # raw file download: an HTML document can be legitimate content here
             return {"identity": ds["identity"], "records": []}
-        return {"identity": ds["identity"], "records": [], "content": resp.body,
+        return {"identity": ds["identity"], "records": [], "content": resp.download(),
                 "content_type": resp.headers.get("content-type"), "license": ds.get("license")}
     d = get_dataset(client, base, source_id, secret_name, target, "fetch", "fetch")
     if d is None:

@@ -85,7 +85,7 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0, year_f
               "year": f"{year_from_}-" if year_from_ else None}
     resp = client.get(SOURCE_ID, "find", f"{BASE}/paper/search", params=params, headers=_headers(client), query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
-    j = decode(SOURCE_ID, FIND, resp.json)
+    j = decode(SOURCE_ID, FIND, resp)
     rows = j["data"]   # the search answer omits `data` when nothing matched; then it must say total 0
     # `next` is "Absent if no more data exists" — short of the 1,000-result cap, where the documentation
     # does not say what an absent `next` means; `total` is "approximate" and ends nothing
@@ -98,7 +98,7 @@ def _paper(client: Client, identity: str, pid: str):
                       headers=_headers(client), identity=identity)
     if not check(SOURCE_ID, resp):
         return None
-    paper = decode(SOURCE_ID, RESOLVE, resp.json)
+    paper = decode(SOURCE_ID, RESOLVE, resp)
     if not paper["paperId"]:
         raise PayloadError(f"{SOURCE_ID}: the paper answer carries no paperId")
     return paper
@@ -133,4 +133,4 @@ def enrich(client: Client, identity: str, what: str = "citations") -> dict:
                       params={"fields": "externalIds,title,year,venue", "limit": 100}, headers=_headers(client), identity=identity)
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "what": what, "items": []}
-    return {"identity": identity, "what": what, "items": members(SOURCE_ID, decode(SOURCE_ID, SCHEMAS[f"enrich:{what}"], resp.json)["data"], lambda row: _linked(key, row))}
+    return {"identity": identity, "what": what, "items": members(SOURCE_ID, decode(SOURCE_ID, SCHEMAS[f"enrich:{what}"], resp)["data"], lambda row: _linked(key, row))}

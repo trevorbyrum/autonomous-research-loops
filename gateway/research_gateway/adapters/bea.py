@@ -25,7 +25,7 @@ def _error(api) -> str | None:
     """The error BEA reports inside a 200 answer, if it reports one: the one beside the results, else the envelope's."""
     results = api["Results"]
     beside = results["Error"] if results is not None else None
-    return (beside if beside is not None and beside.raw else api["Error"])["APIErrorDescription"]
+    return (beside if beside is not None and not beside.empty else api["Error"])["APIErrorDescription"]
 
 
 def _stated(*needs: str):
@@ -55,7 +55,7 @@ def values_schema(parameter: str) -> S.Spec:
     """A parameter's values: each row carries the value under the parameter's own spelling (or `Key`), with a description; or, for a parameter that is a span (Year),
     the table and the first/last of it. Every spelling the row carries is decoded before the first is chosen."""
     spellings = {name: S.maybe_key(only_empty=True) for name in (parameter, parameter.capitalize(), parameter.upper(), "Key")}
-    return _answer({"ParamValue": _rows(S.obj({"Desc": S.text(), "Description": S.text(), "TableName": S.text(), **spellings, "span": S.matching(("First", "Last"), S.any_())}))},
+    return _answer({"ParamValue": _rows(S.obj({"Desc": S.text(), "Description": S.text(), "TableName": S.text(), **spellings, "span": S.matching(("First", "Last"), S.maybe_key())}))},
                    _stated("ParamValue"))
 
 
@@ -68,8 +68,11 @@ def _table_name(v) -> str | None:
 
 DATA_GET = _answer({"Data": S.maybe(S.own(TABLE_ROW)), "Notes": NOTES}, _stated("Data"))
 DATA_LIST = _answer({**{k: _rows(TABLE_ROW) for k in LISTING_KEYS}, "Notes": NOTES}, _stated())   # a listing is not required here: BEA may name none
-CATALOG_DATASETS = _answer({"Dataset": _rows(S.obj({"DatasetName": S.any_(), "DatasetDescription": S.any_()}))}, _stated("Dataset"))
-CATALOG_PARAMETERS = _answer({"Parameter": _rows(S.obj({"ParameterName": S.any_(), "ParameterDescription": S.any_()}))}, _stated("Parameter"))
+# A catalogue's names are what a caller selects by and what its next request carries (`within`, a request's DataSetName/ParameterName): a name is text, a number, or nothing (a
+# row with none is skipped), and a `true`, a list or an object is a name that cannot be read: the catalogue is unreadable, never one with that for an identifier. A description and a
+# span's first/last are shown as labels, so they are kinds too (2b-repair-13a, R12-1).
+CATALOG_DATASETS = _answer({"Dataset": _rows(S.obj({"DatasetName": S.maybe_key(), "DatasetDescription": S.text()}))}, _stated("Dataset"))
+CATALOG_PARAMETERS = _answer({"Parameter": _rows(S.obj({"ParameterName": S.maybe_key(), "ParameterDescription": S.text()}))}, _stated("Parameter"))
 SCHEMAS = {"data:getdata": DATA_GET, "data:list": DATA_LIST, "catalog:datasets": CATALOG_DATASETS, "catalog:parameters": CATALOG_PARAMETERS,
            "catalog:values": values_schema("Frequency")}
 
@@ -108,7 +111,7 @@ def data(client: Client, params: dict) -> dict:
     resp = client.get(SOURCE_ID, "data", BASE, params=query, identity=identity)
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "records": []}
-    j = decode(SOURCE_ID, DATA_GET if method.lower() == "getdata" else DATA_LIST, resp.json)
+    j = decode(SOURCE_ID, DATA_GET if method.lower() == "getdata" else DATA_LIST, resp)
     err = _error(j["BEAAPI"])
     if err:
         return {"identity": identity, "records": [], "capability_fact": f"BEA: {err}"}
@@ -144,7 +147,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         resp = client.get(SOURCE_ID, "catalog", BASE, params={**base_q, "method": method, **extra}, query=query)
         if not check(SOURCE_ID, resp, allow_404=False):
             return None, None
-        j = decode(SOURCE_ID, schema, resp.json)
+        j = decode(SOURCE_ID, schema, resp)
         err = _error(j["BEAAPI"])
         if err:
             return None, f"BEA: {err}"

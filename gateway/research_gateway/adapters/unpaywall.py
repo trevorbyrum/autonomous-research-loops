@@ -17,7 +17,7 @@ BASE = "https://api.unpaywall.org/v2"
 # one, which the listed ones may not hold: it is `isolated`, and the adapter says what that loses.
 LOCATION = S.obj({"url_for_pdf": S.text(), "url": S.text(), "host_type": S.any_(), "version": S.any_(), "license": S.text()})
 SCHEMA = S.obj({"oa_locations": S.required(S.members(LOCATION)), "best_oa_location": S.isolated(LOCATION), "title": S.text(), "year": S.year(),
-                "journal_name": S.text(), "is_oa": S.any_(), "oa_status": S.any_()},
+                "journal_name": S.text(), "is_oa": S.soft(S.maybe(S.flag())), "oa_status": S.soft(S.text())},   # both are returned to the caller as facts: kinds; one that cannot be read says nothing (None) and costs no location
                alts=(("oa_locations", "best_oa_location"),))
 
 
@@ -29,13 +29,13 @@ def enrich(client: Client, identity: str, what: str = "oa_location") -> dict:
                       identity=f"doi:{doi}")
     if not check(SOURCE_ID, resp):
         return {"identity": f"doi:{doi}", "what": what, "items": []}
-    j = decode(SOURCE_ID, SCHEMA, resp.json)
+    j = decode(SOURCE_ID, SCHEMA, resp)
     locations, best = j["oa_locations"], j["best_oa_location"]
     best_unreadable = is_unreadable(best)
     if not locations:   # none listed: the best location alone stands in, and nothing stands in for it when it cannot be read
         if best_unreadable:
             raise PayloadError(f"{SOURCE_ID}: no listed location, and the best location cannot be read")
-        locations = MemberList([best] if best.raw else [])
+        locations = MemberList([best] if not best.empty else [])
     best_raw = None if best_unreadable else best.raw   # what each listed location is compared with, to say whether it is the best one
 
     def location(loc):

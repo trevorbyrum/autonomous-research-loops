@@ -2,8 +2,8 @@
 
 A schema is plain data, built from the constructors below, declared once per operation in its adapter module. It says, for the
 payload the operation supports: each field's type, which containers are lists of independent members, which fields are required
-and which may be left out, which fields are alternatives of one another, and any rule that ties fields together. `decode` checks
-the WHOLE declared payload against it, before any adapter logic runs, and hands back what adapters read.
+and which may be left out, which fields are alternatives of one another, and any rule that ties fields together. `decode`
+checks the WHOLE declared payload against it, before any adapter logic runs, and hands back what adapters read.
 
 What a failure costs is decided by where it is, never by the adapter:
 
@@ -13,14 +13,23 @@ What a failure costs is decided by where it is, never by the adapter:
   soft(x)                 metadata that says nothing when it cannot be read (a total, a cursor): None. It never ends or continues anything.
   everything else         the answer is unreadable: PayloadError, and the lane is unavailable with payload_invalid.
 
+And what can FAIL is total (2b-repair-13a): PayloadError is the one channel. Every scalar conversion goes through `_normalized` and every consistency rule
+through `_ruled`, so whatever a provider's value makes them do — a Unicode digit that `int()` refuses, a number past the conversion limit, a rule that
+indexes what is not there — is a PayloadError at the nearest boundary above it, never an exception that escapes the member. Only UndeclaredRead, a programming
+error, passes. The parse of the answer's bytes is inside the same channel (an empty body, bad JSON, nesting no supported answer has).
+
 "Missing or null" and "present but malformed" are different things, as the accepted contracts say: a field that is left out (or null)
 is the empty value of its kind (None, False, [], {}, an object of empty fields) unless it is `required`; one that is there and is
-not its kind is unreadable — `false`, `0`, `""`, `[]` and `{}` included, which a truthiness test would take for "nothing".
+not its kind is unreadable — `false`, `0`, `""`, `[]` and `{}` included, which a truthiness test would take for "nothing". An operation whose
+contract tells the two apart says so (`never_null`): a field it lets the provider leave out but not send as null.
 
 Every field an `obj` declares is decoded, nested contents included, whether or not the adapter will use it. That is the whole of the
 alternatives rule: `rightsIdentifier` and `rights`, `best_oa_location` and `oa_locations`, a structure's `Ref` and `URN` are all
 declared, so all are decoded before the adapter can choose, and what an adapter reads is a decoded value (core/payload.py: Rec).
 `alts` names the groups of fields that are alternatives of one another, for the tests that corrupt each beside a valid other.
+
+A field declared `any_()` is metadata: it is handed over as a `Passive`, which can be stored and never read (core/payload.py). Whatever identifies, selects,
+ends or continues anything, or goes into a request, is declared a kind.
 
 SDMX-ML is decoded by the same decoder: an `obj` applied to an ElementTree element reads `"@name"` as an attribute, `"@*"` as all of them,
 `"#"` as its text, `"%"` as its own local name, `"name"` as the list of its child elements of that local name, `"*"` as the list of all its children
@@ -28,11 +37,15 @@ and `"**name"` as the list of every descendant of it that is called that.
 """
 from __future__ import annotations
 
+import csv
+import io
+import json
+import math
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, replace
 from typing import Any, Callable
 
-from .payload import MemberList, PayloadError, Rec, Unreadable
+from .payload import MAX_DEPTH, MEMBER_ERRORS, MemberList, Passive, PayloadError, Rec, Sealed, SealedAnswer, UndeclaredRead, Unreadable
 
 MISSING = object()
 
@@ -43,6 +56,7 @@ class Spec:
     kind: str
     of: Any = None                   # obj: {field: Spec}; own/members/entries/table/soft/isolated: Spec; oneof: (Spec, ...)
     required: bool = False           # the field must be there, and not null
+    never_null: bool = False         # the field may be left out, but a null is unreadable: the operation's contract tells the two apart
     default: Any = None              # any_: what a field that is left out (not null) is
     empty_when: tuple | None = None  # a list that may be left out only when the number at this path (from the parent object) is exactly 0
     at_most: int | None = None       # the most elements a list may hold
@@ -52,9 +66,9 @@ class Spec:
 
 
 # ------------------------------------------------------------------ leaves
-def text() -> Spec:
-    """Text, or nothing (missing, null). A number, a boolean, a list, an object is unreadable."""
-    return Spec("text")
+def text(default: str | None = None) -> Spec:
+    """Text, or nothing (missing, null). A number, a boolean, a list, an object is unreadable. `default` is what the field is when it is left out (not when it is null)."""
+    return Spec("text", default=default)
 
 
 def key() -> Spec:
@@ -78,6 +92,11 @@ def whole() -> Spec:
     return Spec("whole")
 
 
+def number() -> Spec:
+    """A finite number, whole or not (not a boolean), or nothing."""
+    return Spec("number")
+
+
 def year() -> Spec:
     """What a record's year may be: a whole number, the digits of one as text, an integral float, or nothing."""
     return Spec("year")
@@ -89,7 +108,9 @@ def token() -> Spec:
 
 
 def any_(default: Any = None) -> Spec:
-    """Carried as sent, for storing in a record; no kind is demanded. `default` is what the field is when it is left out (not when it is null)."""
+    """Metadata, carried as sent and stored in a record (`extra`, provenance): no kind is demanded, and none can be relied on, so what is handed over is a
+    `Passive` that nothing can read (core/payload.py). A field that identifies, selects, ends or continues anything — or goes into a request, or is shown
+    as a label — is declared a kind instead. `default` is what the field is when it is left out (not when it is null)."""
     return Spec("any", default=default)
 
 
@@ -124,6 +145,13 @@ def own(elem: Spec, *, bare: bool = False, at_most: int | None = None, empty_whe
 def members(elem: Spec, *, bare: bool = False, at_most: int | None = None, empty_when: tuple | None = None) -> Spec:
     """A list of independent members, each decoded alone (see the module docstring)."""
     return Spec("members", elem, bare=bare, at_most=at_most, empty_when=empty_when)
+
+
+def grid(header: Spec, cell: Spec) -> Spec:
+    """A table as a list of lists: its first row names the columns (each cell decodes as `header` and none may be left out), every other row is data (each cell as
+    `cell`). It is one record's own data: a row that is not a list, or a cell that is not what it should be, makes it unreadable, not shorter. The decoded value is a
+    plain list of lists, the header first."""
+    return Spec("grid", (header, cell))
 
 
 def lookup(elem: Spec) -> Spec:
@@ -170,13 +198,69 @@ def required(spec: Spec) -> Spec:
     return replace(spec, required=True)
 
 
+def never_null(spec: Spec) -> Spec:
+    """`spec`, for a field the operation's contract lets the provider LEAVE OUT but not send as null: left out it is what `spec` says, null it is unreadable. The generic
+    rule (null is left out) is wrong for such an operation, and the schema is where it says so (Semantic Scholar's `data`)."""
+    return replace(spec, never_null=True)
+
+
 # ------------------------------------------------------------------ the decoder
-def decode(source_id: str, spec: Spec, value: Any) -> Any:
-    """`value` (a parsed answer: JSON data, or an ElementTree element) as `spec` says it must be; PayloadError when its envelope is unreadable."""
+def decode(source_id: str, spec: Spec, answer: Any) -> Any:
+    """`answer` as `spec` says it must be; PayloadError when its envelope is unreadable — and that is the only thing a provider's answer can make this raise.
+
+    `answer` is what the client received (a Response: its bytes are opened HERE and nowhere else, so nothing but the decoder ever holds the parsed payload), or
+    a value already parsed — JSON data, an ElementTree element, or the Sealed raw of a part of an earlier answer (a second pass over it)."""
+    try:
+        value = _open_json(answer)
+    except PayloadError:
+        if spec.kind == "soft":   # metadata that says nothing when it cannot be read: the body that cannot be opened included
+            return None
+        raise   # an empty or unparseable body: the client's own words for it (the call log and the answer's error text say so)
     try:
         return _decode(spec, value, ())
     except PayloadError as e:
         raise PayloadError(f"{source_id}: {e}") from None
+
+
+def _open_json(answer):
+    """The parsed value of an answer: its bytes opened as JSON when it is the client's, as it is when it is already a value (or the Sealed raw of a part of one).
+    An empty body, JSON that does not parse, and nesting deeper than any supported answer (MAX_DEPTH) are PayloadErrors: the answer is not one."""
+    if isinstance(answer, Sealed):
+        return answer._value
+    if not isinstance(answer, SealedAnswer):
+        return answer
+    body = answer._body
+    if not body:
+        raise PayloadError(f"empty body (HTTP {getattr(answer, 'status', None)})")
+    try:
+        value = json.loads(body)
+    except (ValueError, UnicodeDecodeError, RecursionError):   # RecursionError: nesting past the interpreter's own limit is not JSON any provider sends
+        raise PayloadError(f"unparseable JSON (HTTP {getattr(answer, 'status', None)}, {len(body)} bytes)") from None
+    if _deeper_than(value, MAX_DEPTH):
+        raise PayloadError(f"JSON nested more than {MAX_DEPTH} levels deep (HTTP {getattr(answer, 'status', None)}, {len(body)} bytes)")
+    return value
+
+
+def _deeper_than(value, limit: int) -> bool:
+    """Whether containers nest past `limit` levels (the root is level 1), counted without recursion — which is the point: nothing later walks a structure this
+    answer holds with more depth than that, whatever it does with it (store it, copy it, serialise it)."""
+    stack = [(value, 1)]
+    while stack:
+        v, depth = stack.pop()
+        children = v.values() if isinstance(v, dict) else v if isinstance(v, list) else ()
+        if depth > limit:
+            return True
+        stack.extend((c, depth + 1) for c in children if isinstance(c, (dict, list)))
+    return False
+
+
+def _open_text(answer) -> str:
+    """The text of an answer: the client's bytes as UTF-8 (a character that is not is replaced, as a browser would), or a string already."""
+    if isinstance(answer, SealedAnswer):
+        return answer._body.decode("utf-8", "replace")
+    if isinstance(answer, str):
+        return answer
+    raise TypeError(f"an answer is the client's response or text, not a {type(answer).__name__}")
 
 
 def _where(at: tuple) -> str:
@@ -200,20 +284,60 @@ def counts_nothing(value) -> bool:
 
 
 def year_value(value) -> int | None:
-    """A year: a whole number, or the digits of one a provider sent as text; nothing when it names none. Anything else is unreadable."""
+    """A year: a whole number, or the digits of one a provider sent as text; nothing when it names none. Anything else is unreadable — including digits that are
+    no number `int()` accepts (`"²"`, `"①"`) and a string of them past the interpreter's conversion limit, which `str.isdigit()` lets through."""
     if isinstance(value, float) and value.is_integer():
         value = int(value)
     if isinstance(value, str) and value.isdigit():
-        value = int(value)
+        try:
+            value = int(value)
+        except ValueError:
+            raise PayloadError(f"a year is text that is not a number ({len(value)} characters)") from None
     if value is None or (isinstance(value, int) and not isinstance(value, bool)):
         return value
     raise PayloadError(f"a year is {_kind(value)} {value!r}, not a year")
 
 
+def _number(value):
+    if value is None or (isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)):
+        return value
+    raise PayloadError(f"{_kind(value)} where a number belongs")
+
+
+# the scalar normalizers: the functions that turn a provider's value into the kind's. Each is called through `_normalized`, so none can fail any way but one
+_NORMALIZERS = {"year": year_value, "number": _number}
+
+
+def _normalized(at: tuple, kind: str, v):
+    """What the normalizer of `kind` makes of a provider's value. Its only input is that value, so whatever it raises — PayloadError, or any exception a conversion of an
+    odd value can throw (a Unicode digit, a number past the conversion limit, nesting) — is that value's failure, and surfaces as the one channel: a PayloadError at `at`,
+    which the nearest boundary above takes as its own (a member's, a field's, the answer's)."""
+    try:
+        return _NORMALIZERS[kind](v)
+    except PayloadError as e:
+        raise PayloadError(f"{_where(at)}: {e}") from None
+    except Exception as e:   # a normalizer reads nothing but `v`: nothing it raises is a programming error of the caller's
+        raise PayloadError(f"{_where(at)}: {_kind(v)} cannot be read as a {kind} ({type(e).__name__})") from None
+
+
+def _ruled(rule: Callable, arg, at: tuple) -> None:
+    """A schema's consistency rule, run on what its object or list decoded to. It reads declared fields and the provider's values, so a PayloadError, or whatever a
+    provider's value makes it raise (MEMBER_ERRORS), is the answer's contradiction, at `at`. UndeclaredRead is not in that set: a rule that reads what its schema does not
+    declare is a programming error, and passes."""
+    try:
+        rule(arg)
+    except PayloadError as e:
+        raise PayloadError(f"{_where(at)}: {e}") from None
+    except UndeclaredRead:
+        raise
+    except MEMBER_ERRORS as e:
+        raise PayloadError(f"{_where(at)}: the rule could not read the answer ({type(e).__name__})") from None
+
+
 def _decode(s: Spec, v, at: tuple):
     k = s.kind
     if k == "any":
-        return v
+        return Passive(v)
     if k == "text":
         if v is None or isinstance(v, str):
             return v
@@ -236,11 +360,8 @@ def _decode(s: Spec, v, at: tuple):
         if v is None or (isinstance(v, int) and not isinstance(v, bool)):
             return v
         raise _bad(at, v, "a whole number")
-    if k == "year":
-        try:
-            return year_value(v)
-        except PayloadError as e:
-            raise PayloadError(f"{_where(at)}: {e}") from None
+    if k in _NORMALIZERS:
+        return _normalized(at, k, v)
     if k == "token":
         if isinstance(v, str) and v.strip():
             return v
@@ -276,10 +397,7 @@ def _decode(s: Spec, v, at: tuple):
         if k == "own":
             out = [_decode(s.of, m, at + (i,)) for i, m in enumerate(items)]
             if s.rule is not None:
-                try:
-                    s.rule(out)
-                except PayloadError as e:
-                    raise PayloadError(f"{_where(at)}: {e}") from None
+                _ruled(s.rule, out, at)
             return out
         out = []
         for i, m in enumerate(items):
@@ -288,6 +406,20 @@ def _decode(s: Spec, v, at: tuple):
             except PayloadError as e:
                 out.append(Unreadable(str(e), m))
         return MemberList(out)
+    if k == "grid":
+        header, cell = s.of
+        if not isinstance(v, list):
+            raise _bad(at, v, "a list")
+        if not v:
+            raise PayloadError(f"{_where(at)} is not a table (no header row)")
+        rows = []
+        for i, row in enumerate(v):
+            if not isinstance(row, list):
+                raise _bad(at + (i,), row, "a list")
+            rows.append([_decode(header if i == 0 else cell, c, at + (i, j)) for j, c in enumerate(row)])
+        if any(c is None for c in rows[0]):
+            raise PayloadError(f"{_where(at + (0,))} names a column that is not text: the table is unreadable, not shorter")
+        return rows
     if k in ("entries", "table"):
         if not isinstance(v, dict):
             raise _bad(at, v, "an object")
@@ -356,10 +488,7 @@ def _decode_obj(s: Spec, v, at: tuple) -> Rec:
             values[name] = _field(fs, _read(v, name), at + (name,), v)
     rec = Rec(values, v)
     if s.rule is not None:
-        try:
-            s.rule(rec)
-        except PayloadError as e:
-            raise PayloadError(f"{_where(at)}: {e}") from None
+        _ruled(s.rule, rec, at)
     return rec
 
 
@@ -386,6 +515,8 @@ def _field(fs: Spec, raw, at: tuple, parent):
             return _field(fs.of, raw, at, parent)
         except PayloadError as e:
             return Unreadable(str(e), None if raw is MISSING else raw)
+    if raw is None and fs.never_null:
+        raise PayloadError(f"{_where(at)} is null where {fs.kind} belongs: the answer may leave it out, but this operation's contract does not let it send null")
     if raw is MISSING or raw is None:
         return _absent(fs, at, parent, raw is MISSING)
     return _decode(fs, raw, at)
@@ -403,7 +534,9 @@ def _absent(fs: Spec, at: tuple, parent, missing: bool):
             raise PayloadError(f"{_where(at)} is left out, and the answer does not count nothing ({'.'.join(fs.empty_when)} is not 0)")
     if fs.kind == "key":
         raise PayloadError(f"{_where(at)} is {'missing' if missing else 'null'} where a member's identifier belongs")
-    if fs.kind == "any" and missing:
+    if fs.kind == "any":
+        return Passive(fs.default if missing else None)
+    if fs.kind == "text" and missing:
         return fs.default
     return _empty(fs)
 
@@ -430,16 +563,42 @@ def _empty(fs: Spec):
         return {}
     if k == "oneof":
         return _empty(fs.of[0])
+    if k == "any":
+        return Passive(None)
+    if k == "grid":
+        return []
     return None
 
 
 # ------------------------------------------------------------------ SDMX-ML
-def parse_xml(text_: str, *roots: str) -> ET.Element:
-    """The parsed message, whose root must be one of `roots`: unparseable XML, or a document that is not a message of that kind, is an unreadable answer."""
+def parse_xml(answer, *roots: str) -> ET.Element:
+    """The parsed message, whose root must be one of `roots`: unparseable XML, or a document that is not a message of that kind, is an unreadable answer. `answer`
+    is the client's response (its bytes are opened here, as for `decode`) or text."""
     try:
-        root = ET.fromstring(text_)
-    except ET.ParseError as e:
-        raise PayloadError(f"unparseable SDMX-ML ({e})") from None
+        root = ET.fromstring(_open_text(answer))
+    except (ET.ParseError, RecursionError) as e:
+        raise PayloadError(f"unparseable SDMX-ML ({type(e).__name__}: {e})") from None
     if _local(root.tag) not in roots:
         raise PayloadError(f"an SDMX answer rooted at {_local(root.tag)!r}, not {' or '.join(roots)}")
     return root
+
+
+def decode_csv(source_id: str, spec: Spec, answer, *, columns: tuple = ()) -> MemberList:
+    """A CSV answer as the independent members it holds: each row decoded alone against `spec` (an `obj` of its columns), the header first checked for `columns` — a file
+    without them is not the file the operation supports, and a file that does not parse is no file. A cell the row is too short to hold is nothing (the csv module's own
+    reading of a short row). `answer` is the client's response, opened here."""
+    try:
+        reader = csv.DictReader(io.StringIO(_open_text(answer)))
+        names = list(reader.fieldnames or [])
+        missing = [c for c in columns if c not in names]
+        if missing:
+            raise PayloadError(f"{source_id}: the CSV shape changed: columns {names[:5]!r} lack {missing!r}")
+        out = []
+        for row in reader:
+            try:
+                out.append(_decode(spec, row, ()))
+            except PayloadError as e:
+                out.append(Unreadable(str(e), row))
+        return MemberList(out)
+    except csv.Error as e:
+        raise PayloadError(f"{source_id}: the CSV does not parse ({e})") from None

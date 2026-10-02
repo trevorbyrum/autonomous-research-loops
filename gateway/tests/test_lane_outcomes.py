@@ -15,7 +15,8 @@ import unittest
 
 from research_gateway import adapters
 from research_gateway.adapters import socrata
-from research_gateway.adapters.base import Client, FakeTransport, PayloadError, Response, SourceUnavailable, decode, members
+from research_gateway.adapters.base import Client, FakeTransport, PayloadError, Response, SourceUnavailable, members
+from research_gateway.core.schema import decode   # a parsed value, as this test states it
 from research_gateway.core import schema as S
 from research_gateway.core import router as R
 from research_gateway.core.broker import Broker, RatePolicy
@@ -318,7 +319,7 @@ class RealAdapterMembers(unittest.TestCase):
             if m["boom"] is not None:
                 raise KeyError("DOI")
             return {"identity": m["id"], "kind": "article"}
-        decoded = decode("stub", S.members(S.obj({"id": S.text(), "boom": S.any_()})), [{"id": "doi:10.1/a"}, 7, {"boom": 1}, {"id": "url:None"}, {"id": "doi:10.1/b"}])   # as the decoder hands it over
+        decoded = decode("stub", S.members(S.obj({"id": S.text(), "boom": S.whole()})), [{"id": "doi:10.1/a"}, 7, {"boom": 1}, {"id": "url:None"}, {"id": "doi:10.1/b"}])   # as the decoder hands it over
         try:
             got = members("stub", decoded, build)
         except KeyError as e:

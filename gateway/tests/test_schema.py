@@ -12,7 +12,7 @@ import unittest
 import xml.etree.ElementTree as ET
 
 from research_gateway.core import schema as S
-from research_gateway.core.payload import MemberList, PayloadError, Rec, UndeclaredRead, Unreadable
+from research_gateway.core.payload import MemberList, Passive, PassiveRead, PayloadError, Rec, UndeclaredRead, Unreadable, plain
 
 WRONG_TEXT = (False, True, 0, 5, 1.5, [], {}, ["x"], {"a": 1})
 
@@ -70,8 +70,18 @@ class Leaves(unittest.TestCase):
 
     def test_any_is_carried_as_sent_and_its_default_is_for_a_field_that_is_left_out_not_null(self):
         for value in (False, 0, "", [], {}, [1], {"a": 1}, 1.5):
-            self.assertEqual(one(S.any_(), value), value)
-        self.assertEqual((absent(S.any_(default=False)), one(S.any_(default=False), None)), (False, None))
+            got = one(S.any_(), value)
+            self.assertIsInstance(got, Passive, "metadata is handed over passive: it can be stored and nothing else (tests/test_declarations.py)")
+            self.assertEqual(plain(got), value)
+        self.assertEqual((plain(absent(S.any_(default=False))), plain(one(S.any_(default=False), None))), (False, None))
+
+    def test_text_may_name_what_it_is_when_it_is_left_out_and_only_then(self):
+        self.assertEqual((absent(S.text(default="")), one(S.text(default=""), None), one(S.text(default=""), "x")), ("", None, "x"))
+        self.refuses(S.text(default=""), WRONG_TEXT)
+
+    def test_a_number_is_finite_and_not_a_boolean(self):
+        self.assertEqual([one(S.number(), v) for v in (0, 7, 3599.5, -1, None)], [0, 7, 3599.5, -1, None])
+        self.refuses(S.number(), (False, True, "7", [], {}, float("nan"), float("inf"), -float("inf")))
 
     def test_the_counts_a_provider_may_leave_a_list_out_for_is_the_whole_number_zero_only(self):
         self.assertTrue(S.counts_nothing(0))
@@ -86,7 +96,8 @@ class WhatAFailureCosts(unittest.TestCase):
         items = S.decode("t", S.members(self.ITEM), [{"id": "a"}, 7, {"id": "b", "n": "x"}, {"id": False}, {"id": "c", "n": 3}])
         self.assertIsInstance(items, MemberList)
         self.assertEqual(items.each(lambda m: m["id"]), ["a", None, None, None, "c"])
-        self.assertEqual([u.value for u in items.unreadable()], [7, {"id": "b", "n": "x"}, {"id": False}])
+        self.assertEqual([plain(u) for u in items.unreadable()], [7, {"id": "b", "n": "x"}, {"id": False}])
+        self.assertEqual([u.was_object for u in items.unreadable()], [False, True, True])
         self.assertTrue(all(isinstance(u, Unreadable) and u.reason for u in items.unreadable()))
 
     def test_a_failure_nested_in_a_member_is_the_members_even_inside_its_own_lists(self):
@@ -106,7 +117,6 @@ class WhatAFailureCosts(unittest.TestCase):
         got = S.decode("t", spec, {"best": {"url": False}, "listed": [{"url": "u"}]})
         self.assertIsInstance(got["best"], Unreadable)
         self.assertEqual(got["listed"].each(lambda m: m["url"]), ["u"])
-        self.assertIsNone(S.decode("t", spec, {"listed": []})["best"].raw.get("url") if False else None)
         self.assertEqual(S.decode("t", spec, {"listed": []})["best"]["url"], None, "left out, it is an empty location and not an unreadable one")
 
     def test_a_soft_field_says_nothing_when_it_cannot_be_read(self):
@@ -129,7 +139,7 @@ class Containers(unittest.TestCase):
             with self.subTest(wrong=repr(wrong)), self.assertRaises(PayloadError):
                 S.decode("t", spec, wrong)
         rec = S.decode("t", spec, {"a": "x", "inner": {"b": 1}, "extra": 9})
-        self.assertEqual((rec["a"], rec["inner"]["b"], rec.raw["extra"], rec.declared), ("x", 1, 9, ("a", "inner")))
+        self.assertEqual((rec["a"], rec["inner"]["b"], plain(rec.raw)["extra"], rec.declared), ("x", 1, 9, ("a", "inner")))
         with self.assertRaises(UndeclaredRead):
             rec["extra"]
         for wrong in (False, 0, "", [], "x", 5):
@@ -140,7 +150,7 @@ class Containers(unittest.TestCase):
         spec = S.obj({"inner": S.obj({"b": S.whole(), "c": S.flag(), "l": S.members(S.obj({})), "o": S.own(S.text()), "t": S.table(S.text())})})
         for body in ({}, {"inner": None}):
             inner = S.decode("t", spec, body)["inner"]
-            self.assertEqual((inner["b"], inner["c"], len(inner["l"]), inner["o"], inner["t"], inner.raw), (None, False, 0, [], {}, {}))
+            self.assertEqual((inner["b"], inner["c"], len(inner["l"]), inner["o"], inner["t"], plain(inner.raw), inner.empty), (None, False, 0, [], {}, {}, True))
 
     def test_required_means_there_and_not_null(self):
         spec = S.obj({"f": S.required(S.own(S.text()))})
@@ -156,6 +166,22 @@ class Containers(unittest.TestCase):
             for wrong in (False, True, 0, 1.5, "", "x", {}, {"a": 1}):
                 with self.subTest(kind=spec.kind, wrong=repr(wrong)), self.assertRaises(PayloadError):
                     one(spec, wrong)
+
+    def test_never_null_tells_a_field_that_is_left_out_from_one_that_is_sent_null(self):
+        """Where an operation's accepted contract distinguishes the two, the schema says so (2b-repair-13a, R12-3): the generic rule — null is left out — is wrong for it, and `_absent` may not erase the difference."""
+        spec = S.obj({"data": S.never_null(S.members(S.obj({}), empty_when=("total",))), "total": S.soft(S.whole())})
+        for body in ({"total": 0}, {"data": [], "total": 0}, {"data": [], "total": 9}, {"data": [{}], "total": 9}):
+            self.assertEqual(len(S.decode("t", spec, body)["data"]) in (0, 1), True, body)
+        for body in ({"data": None, "total": 0}, {"data": None}, {"data": None, "total": 9}, {"total": 9}, {}):
+            with self.subTest(body=body), self.assertRaises(PayloadError) as why:
+                S.decode("t", spec, body)
+            if body.get("data", 1) is None:
+                self.assertIn("null", str(why.exception))
+        plain_null = S.obj({"data": S.members(S.obj({}), empty_when=("total",)), "total": S.soft(S.whole())})
+        self.assertEqual(len(S.decode("t", plain_null, {"data": None, "total": 0})["data"]), 0, "control: without the declaration null is left out, as everywhere")
+        with self.assertRaises(PayloadError):   # never_null reads through the failure wrappers, and the field is the answer's
+            S.decode("t", S.obj({"d": S.never_null(S.own(S.text()))}), {"d": None})
+        self.assertEqual(S.decode("t", S.obj({"d": S.never_null(S.own(S.text()))}), {})["d"], [])
 
     def test_an_own_list_is_all_or_nothing(self):
         spec = S.own(S.obj({"n": S.whole()}))
@@ -227,7 +253,7 @@ class Containers(unittest.TestCase):
         spec = S.obj({"typeName": S.text(), "value": S.by("typeName", {"title": S.text(), "author": S.own(S.text())})})
         self.assertEqual(S.decode("t", spec, {"typeName": "title", "value": "T"})["value"], "T")
         self.assertEqual(S.decode("t", spec, {"typeName": "author", "value": ["A"]})["value"], ["A"])
-        self.assertEqual(S.decode("t", spec, {"typeName": "other", "value": {"x": 1}})["value"], {"x": 1}, "a kind no variant names is carried as sent")
+        self.assertEqual(plain(S.decode("t", spec, {"typeName": "other", "value": {"x": 1}})["value"]), {"x": 1}, "a kind no variant names is carried as sent, passive")
         for body in ({"typeName": "title", "value": 5}, {"typeName": "author", "value": "A"}, {"typeName": "author", "value": [5]}):
             with self.subTest(body=body), self.assertRaises(PayloadError):
                 S.decode("t", spec, body)

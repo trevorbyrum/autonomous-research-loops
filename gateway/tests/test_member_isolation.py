@@ -10,8 +10,9 @@ adapter receives only what the decoder returns:
   * a provider's list of members is a `MemberList`: every member already decoded alone, and the list cannot be iterated, indexed, sliced or searched — only read
     through members(), first_member(), take() and expand(), which isolate each member (Views and Bypasses below, run, not scanned for);
   * a provider's object is a `Rec` holding exactly its declared fields: reading another raises UndeclaredRead, which is not a member's loss (Decoded);
-  * an answer is reached only through `decode(...)`: no adapter parses, subscripts or `.get`s `resp.json` (Reads below, a source check of where an answer or
-    a list may leave the decoder — each place listed with its reason, so a reviewer reads it).
+  * an answer is reached only through `decode(...)`: the client's Response holds no readable payload at all (no `.json`, `.text` or `.body`: tests/test_sealed_payload.py runs every
+    spelling of asking for one), so no adapter parses, subscripts or `.get`s a provider's answer; and what the decoder keeps of it for provenance is sealed (Reads below, a source check of where an answer or
+    a list may leave the decoder — each place listed with its reason, so a reviewer reads it; since 2b-repair-13a a BOUNDED GUARD behind the construction, not the thing that makes it so).
 
 What the source check cannot see: a use of `.raw` or `each` whose listed reason is wrong for the list it reads. Whether a given list is one record's own data
 (`own(...)` in the schema) or a set of independent candidates (`members(...)`) is the schema author's declaration; the reason beside it is where a reviewer
@@ -36,15 +37,14 @@ from research_gateway.core.payload import MemberList, OMIT, PayloadError, Rec, U
 ROOT = Path(__file__).resolve().parents[1] / "research_gateway"
 DOORS = ("plain",)                       # functions that hand a decoded value back as plain data
 CONSTRUCTORS = ("MemberList",)           # `MemberList(items)` wraps a list the caller already holds
-METHODS = ("each", "at", "unreadable")   # a MemberList's ways to a plain list or one member: each() hands back a plain list of whatever the builder returned
-PRIVATE = ("_items", "_v")               # the storage of a MemberList and of a Rec
-ANSWER = ("json", "json_or_none", "_parsed", "text", "body")   # what a Response holds of the provider's answer
+METHODS = ("each", "at", "unreadable", "without")   # a MemberList's ways to a plain list or one member: each() hands back a plain list of whatever the builder returned; Sealed.without() a sealed object less some fields
+PRIVATE = ("_items", "_v", "_value", "_raw", "_body", "_frozen")   # the storage of a MemberList, a Rec, a Passive/Sealed/Unreadable and a Response
+ANSWER = ("json", "json_or_none", "_parsed", "_body", "text", "body", "download", "content")   # what a Response held or holds of the provider's answer (the first are gone: nothing is there to find)
 DECODERS = ("decode", "data_xml", "flows", "dimensions_xml", "message")   # the calls an answer may be an argument of
 
 # Every place in the gateway where the provider's answer, or a list of it, leaves the decoder, by (file, function): how many uses there are there, and why that
 # is not a pass over a provider's independent members. A use added to a function already listed changes its count, so it is read, not inherited.
 USES = {
-    ("adapters/bea.py", "_error"): (1, "whether the error object beside the results is empty: tested for emptiness only, an object the provider left empty says nothing"),
     ("adapters/bea.py", "data"): (1, "BEA's rows are the payload of ONE table record, kept whole for its `rows` and never decoded one by one (Astra, 2b-repair-7)"),
     ("adapters/globe.py", "fetch"): (1, "the bytes of a file the caller asked to download: content, not a payload"),
     ("adapters/govinfo.py", "fetch"): (1, "the bytes of a file the caller asked to download: content, not a payload"),
@@ -52,18 +52,16 @@ USES = {
     ("adapters/huggingface.py", "fetch"): (1, "the bytes of a file the caller asked to download: content, not a payload"),
     ("adapters/kaggle.py", "fetch"): (1, "the bytes of a file the caller asked to download: content, not a payload"),
     ("adapters/openml.py", "fetch"): (1, "the bytes of a file the caller asked to download: content, not a payload"),
-    ("adapters/openml.py", "find"): (1, "an error answer that cannot be read is no `no results`: read for its error code through a schema when it is an object, below"),
     ("adapters/socrata.py", "_vouched"): (1, "the portal-vouching predicate: a guarded security check that fails closed when the portal cannot be established, not a record-producing list"),
-    ("adapters/unpaywall.py", "enrich"): (3, "an answer with no location list is its one best location: a list of one, built here from the decoded object; and what each listed location is compared with"),
+    ("adapters/core.py", "_record"): (1, "the record's raw is the payload less its full text (I-7): a sealed object less one field, handed on to be stored and never read"),
+    ("adapters/unpaywall.py", "enrich"): (2, "an answer with no location list is its one best location: a list of one, built here from the decoded object (an empty one is none: Rec.empty); and what each listed location is compared with (sealed: equality only)"),
     ("adapters/unpaywall.py", "enrich.location"): (1, "whether this location IS the best one: the two objects as the provider sent them, compared"),
     ("core/sdmx.py", "context"): (1, "the structural context kept with each record's raw (I-8): the structure's own definitions, stored and never read"),
     ("core/sdmx.py", "datasets"): (1, "no data sets: an empty list, built here"),
     ("core/sdmx.py", "flows"): (1, "the flow's element, handed to the second decode that reads its references"),
-    ("core/sdmx.py", "has_content"): (1, "whether the structure says anything: tested for emptiness only"),
     ("core/sdmx.py", "series_reader.read"): (1, "the value at a position of a dimension's lookup table: the position is the data (a series names its values by index)"),
     ("core/sdmx.py", "series_xml.convert"): (1, "one <Series> element read whole into one series, as a list of one"),
     ("harvest/registries.py", "_built"): (1, "the rows the loader reports it skipped: their reasons, never their content"),
-    ("harvest/registries.py", "doaj_journals"): (1, "DOAJ's CSV dump, parsed by the csv module; each of its rows is decoded against the row schema"),
 }
 
 
@@ -73,8 +71,9 @@ UNANALYSABLE_CALLS = ("eval", "exec", "compile", "vars", "globals", "locals", "_
 
 
 def provider_modules(root: Path = ROOT) -> list[Path]:
-    """The modules that read a provider's answer: every adapter but the client, the SDMX helper, and the harvest loaders."""
-    return sorted([*(p for p in (root / "adapters").glob("*.py") if p.name not in ("base.py", "__init__.py")), root / "core" / "sdmx.py",
+    """The modules that read a provider's answer: every adapter but the client, the SDMX helper, the doi.org registration-agency lookup (core/identity.py: a lookup the
+    router makes itself, with no adapter around it, which the first inventory missed — R12-1), and the harvest loaders."""
+    return sorted([*(p for p in (root / "adapters").glob("*.py") if p.name not in ("base.py", "__init__.py")), root / "core" / "sdmx.py", root / "core" / "identity.py",
                    *(p for p in (root / "harvest").glob("*.py") if p.name != "__init__.py")])
 
 
@@ -172,6 +171,9 @@ def import_findings(root: Path = ROOT) -> list[tuple[str, str]]:
                 where = package.joinpath(*(node.module or "").split(".")) if node.module else package
                 module = where / "__init__.py" if where.is_dir() else where.with_suffix(".py")
                 for a in node.names:
+                    if a.name.startswith("_"):   # a private name is the module's own: the decoder's openers, a class's storage — never an adapter's (2b-repair-13a)
+                        out.append((rel, f"from {'.' * node.level}{node.module or ''} import {a.name} (a private name)"))
+                        continue
                     if where.is_dir() and (where / f"{a.name}.py").exists():
                         if a.name == "base":   # the client is imported by name, for then its `__all__` decides what is reached; as a module, anything is
                             out.append((rel, "from . import base (as a module: import what it exports by name)"))
@@ -284,7 +286,7 @@ def reflection_in_adapters(root: Path = ROOT) -> list[tuple[str, str]]:
     """(file, what) for each adapter (and the SDMX helper) that parses JSON itself, evaluates, or reaches for a private name by reflection: other ways to a
     provider's raw answer than Response.json through a decoder."""
     out = []
-    for path in sorted([*(root / "adapters").glob("*.py"), root / "core" / "sdmx.py"]):
+    for path in sorted([*(root / "adapters").glob("*.py"), root / "core" / "sdmx.py", root / "core" / "identity.py"]):
         rel = path.relative_to(root).as_posix()
         if rel == "adapters/base.py" or not path.exists():
             continue
@@ -300,6 +302,13 @@ def reflection_in_adapters(root: Path = ROOT) -> list[tuple[str, str]]:
             elif isinstance(node, ast.Call) and getattr(node.func, "id", None) in ("getattr", "setattr", "delattr") and any(
                     isinstance(a, ast.Constant) and isinstance(a.value, str) and a.value.startswith("_") for a in node.args[1:2]):
                 out.append((rel, f"{node.func.id}() of a private name"))
+            elif isinstance(node, ast.Call) and getattr(node.func, "id", None) in ("getattr", "setattr", "delattr", "hasattr") and any(
+                    isinstance(a, ast.Constant) and isinstance(a.value, str) and a.value in ANSWER for a in node.args[1:2]):
+                out.append((rel, f"{node.func.id}() of an answer accessor"))   # Astra's spelling (2b-repair-12 R12-5): there is nothing public to find any more, and it is still not written
+            elif isinstance(node, ast.Call) and getattr(node.func, "id", None) in ("getattr", "setattr", "delattr", "hasattr") and len(node.args) >= 2 and not isinstance(node.args[1], ast.Constant):
+                out.append((rel, f"{node.func.id}() of a name computed at run time"))
+            elif isinstance(node, ast.Call) and getattr(node.func, "id", None) in ("dir", "vars", "globals", "locals"):
+                out.append((rel, f"{node.func.id}()"))
             elif isinstance(node, ast.Attribute) and node.attr == "__dict__":
                 out.append((rel, "__dict__"))
     return out
@@ -333,6 +342,7 @@ class Reads(unittest.TestCase):
             (root / "core").mkdir()
             (root / "core" / "schema.py").write_text("")
             (root / "core" / "sdmx.py").write_text("")
+            (root / "core" / "identity.py").write_text("")
             (root / "adapters" / "new_lane.py").write_text(textwrap.dedent('''\
                 import json
                 from .base import decode, plain, MemberList
@@ -428,19 +438,19 @@ class Imports(unittest.TestCase):
 
     OC = "adapters__opencitations.py"
     OC_IMPORT = "from .base import OMIT, Client, check, decode, first_member, members"
-    OC_READ = '    rows = decode(SOURCE_ID, SCHEMAS[f"enrich:{what}"], resp.json)\n'
+    OC_READ = '    rows = decode(SOURCE_ID, SCHEMAS[f"enrich:{what}"], resp)\n'
     OC_RETURN = '    return {"identity": f"doi:{doi}", "what": what, "items": members(SOURCE_ID, rows, lambda row: _link(key, row))}\n'
     # the reviewer's first mutant: the rows are filtered with plain() before the decoder runs; the checker saw no `plain` because nothing named it
     STAR = [(OC_IMPORT, "from .base import *"),
-            (OC_READ + OC_RETURN, '    rows = decode(SOURCE_ID, SCHEMAS[f"enrich:{what}"], [row for row in plain(resp.json) if row.get(key)])\n' + OC_RETURN)]
+            (OC_READ + OC_RETURN, '    rows = decode(SOURCE_ID, SCHEMAS[f"enrich:{what}"], [row for row in plain(resp.download()) if row.get(key)])\n' + OC_RETURN)]
     # the second: the body is parsed and filtered by a parser imported from the client, which uses no door at all
     PARSER = [(OC_IMPORT, OC_IMPORT + ", json as provider_json"),
-              (OC_READ + OC_RETURN, '    rows = decode(SOURCE_ID, SCHEMAS[f"enrich:{what}"], [row for row in provider_json.loads(resp.body) if row.get(key)])\n' + OC_RETURN)]
+              (OC_READ + OC_RETURN, '    rows = decode(SOURCE_ID, SCHEMAS[f"enrich:{what}"], [row for row in provider_json.loads(resp.download()) if row.get(key)])\n' + OC_RETURN)]
 
     # the third (R9-3): the body is parsed by a parser that an admitted package module imports, reached as an attribute of that module
     CACHE_IMPORT = "from ..core import cache as provider_helpers"
     CACHE_MODULE = [(OC_IMPORT, OC_IMPORT + "\n" + CACHE_IMPORT),
-                    (OC_READ + OC_RETURN, '    rows = decode(SOURCE_ID, SCHEMAS[f"enrich:{what}"], [row for row in provider_helpers.json.loads(resp.body) if row.get(key)])\n' + OC_RETURN)]
+                    (OC_READ + OC_RETURN, '    rows = decode(SOURCE_ID, SCHEMAS[f"enrich:{what}"], [row for row in provider_helpers.json.loads(resp.download()) if row.get(key)])\n' + OC_RETURN)]
     # and what the same import does when it only uses what the module defines
     DOI_LINE = '    return normalize_doi(identity.split(":", 1)[-1] if identity.startswith("doi:") else identity)'
     MODULE_USE = [(OC_IMPORT, OC_IMPORT + "\nfrom ..core import identity as ids"),
@@ -498,7 +508,9 @@ class Imports(unittest.TestCase):
             "a parser from a stdlib module": ("from json import loads", [("adapters/new.py", "from json import")]),
             "importlib": ("import importlib", [("adapters/new.py", "import importlib")]),
             "sys": ("import sys", [("adapters/new.py", "import sys")]),
-            "the client's private parser": ("from .base import _parsed", [("adapters/new.py", "from base import _parsed (not in its __all__)")]),
+            "the client's private parser": ("from .base import _parsed", [("adapters/new.py", "from .base import _parsed (a private name)")]),
+            "the decoder's private opener": ("from ..core.schema import _open_json", [("adapters/new.py", "from ..core.schema import _open_json (a private name)")]),
+            "a class's private storage": ("from ..core.payload import _same", [("adapters/new.py", "from ..core.payload import _same (a private name)")]),
             "a module of the client, by name": ("from .base import urllib", [("adapters/new.py", "from base import urllib (not in its __all__)")]),
             "the client as a module": ("from . import base", [("adapters/new.py", "from . import base (as a module: import what it exports by name)")]),
             "a star from another module": ("from ..core.canonical import *", [("adapters/new.py", "from ..core.canonical import *")]),
@@ -690,7 +702,7 @@ class Views(unittest.TestCase):
 
     def test_an_object_holds_its_declared_fields_and_nothing_else(self):
         rec = S.decode("x", S.obj({"id": S.text(), "inner": S.obj({"n": S.whole()})}), {"id": "a", "inner": {"n": 1}, "undeclared": 5})
-        self.assertEqual((rec["id"], rec["inner"]["n"], rec.raw["undeclared"]), ("a", 1, 5))
+        self.assertEqual((rec["id"], rec["inner"]["n"], plain(rec.raw)["undeclared"]), ("a", 1, 5))
         for what in (lambda: rec["undeclared"], lambda: rec.get("undeclared"), lambda: rec["inner"]["m"]):
             with self.assertRaises(UndeclaredRead):
                 what()
@@ -710,7 +722,7 @@ class Views(unittest.TestCase):
         self.assertIsInstance(member["siblings"], MemberList)
 
     def test_each_member_is_read_alone(self):
-        rows = S.decode("x", S.members(S.obj({"id": S.text(), "boom": S.any_(), "skip": S.any_()})),
+        rows = S.decode("x", S.members(S.obj({"id": S.text(), "boom": S.whole(), "skip": S.whole()})),
                         [{"id": "a"}, 7, {"id": "b"}, "x", {"boom": 1}, {"skip": 1}])
 
         def read(row):
@@ -751,7 +763,7 @@ class Views(unittest.TestCase):
     def test_an_unreadable_member_says_why_and_what_it_was(self):
         (bad,) = decoded([7]).unreadable()
         self.assertIsInstance(bad, Unreadable)
-        self.assertEqual(bad.value, 7)
+        self.assertEqual((plain(bad), bad.was_object), (7, False))
         self.assertIn("where an object belongs", bad.reason)
 
 
@@ -766,7 +778,7 @@ class Sdmx(unittest.TestCase):
         found = sdmx.series_members(message)
         self.assertEqual(len(found), 4, "one series, two data sets that cannot be unfolded, one series that is not an object")
         read = sdmx.series_reader(message)
-        self.assertEqual(found.each(read), [{"key": {"FREQ": "D"}, "observations": [("2026-01-01", 1.25)], "observations_raw": {"0": [1.25]}}, None, None, None])
+        self.assertEqual(plain(found.each(read)), [{"key": {"FREQ": "D"}, "observations": [("2026-01-01", 1.25)], "observations_raw": {"0": [1.25]}}, None, None, None])
 
     def test_a_data_sets_that_is_not_a_list_is_an_unreadable_message_not_an_empty_one(self):
         for body in ({"dataSets": {"series": {}}}, {"dataSets": "x"}, {"data": {"dataSets": 5}}):

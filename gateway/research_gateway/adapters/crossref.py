@@ -81,7 +81,7 @@ def find(client: Client, query: str, *, limit: int = 20, year_from_: int | None 
               "filter": ",".join(filters) or None, "cursor": cursor or "*"}   # Crossref sends next-cursor only when asked with one
     resp = client.get(SOURCE_ID, "find", f"{BASE}/works", params=params, query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
-    msg = decode(SOURCE_ID, FIND, resp.json)["message"]
+    msg = decode(SOURCE_ID, FIND, resp)["message"]
     items = msg["items"]
     # Crossref: "If the number of returned items is fewer than the number of expected rows then the end of
     # the result set has been reached"; a full page continues by its next-cursor (docs/PROVIDER-PAGINATION.md)
@@ -98,7 +98,7 @@ def resolve(client: Client, identity: str) -> dict | None:
                       identity=f"doi:{doi}")
     if not check(SOURCE_ID, resp):
         return None
-    msg = decode(SOURCE_ID, RESOLVE, resp.json)["message"]
+    msg = decode(SOURCE_ID, RESOLVE, resp)["message"]
     if not normalize_doi(msg["DOI"]):
         # an HTTP 200 that is not a Crossref work envelope is not a record (D-23) — and not
         # "no such DOI" either: it is an unreadable answer (task 2b, H-5)
@@ -115,5 +115,5 @@ def enrich(client: Client, identity: str, what: str = "references") -> dict:
                       identity=f"doi:{doi}")
     if not check(SOURCE_ID, resp):
         return {"identity": f"doi:{doi}", "what": what, "items": []}
-    refs = decode(SOURCE_ID, ENRICH, resp.json)["message"]["reference"]   # a work that deposited no references has none; one whose `reference` is not a list is unreadable
+    refs = decode(SOURCE_ID, ENRICH, resp)["message"]["reference"]   # a work that deposited no references has none; one whose `reference` is not a list is unreadable
     return {"identity": f"doi:{doi}", "what": what, "items": members(SOURCE_ID, refs, _reference)}

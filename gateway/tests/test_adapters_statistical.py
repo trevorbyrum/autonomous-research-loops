@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, urlsplit
 from research_gateway.adapters import bea, bis, bls, census, ecb, fred
 from research_gateway.adapters.base import AdapterError, Client, FakeTransport
 from research_gateway.core import sdmx
+from research_gateway.core.payload import plain
 from research_gateway.core.broker import Broker, RatePolicy
 
 
@@ -121,7 +122,7 @@ BIS_XML = """<?xml version="1.0" encoding="UTF-8"?>
 def read_series(message: dict) -> list:
     """Every series of an SDMX-JSON message, each read alone (None for one that cannot be)."""
     j = sdmx.message("ecb", message)
-    return sdmx.series_members(j).each(sdmx.series_reader(j))
+    return plain(sdmx.series_members(j).each(sdmx.series_reader(j)))   # the series as a record stores them: plain data
 
 
 class Sdmx(unittest.TestCase):

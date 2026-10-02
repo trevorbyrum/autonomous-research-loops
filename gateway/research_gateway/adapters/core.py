@@ -38,7 +38,7 @@ def _record(w, *, with_text: bool = False) -> dict:
         venue=publisher or None, identifiers={"doi": doi} if doi else {"core": str(own)},
         links=links, license=None, attribution="CORE",
         extra={"core_id": w["id"], "publisher": publisher, "redistributable": False, "has_full_text": bool(full_text)},
-        raw={k: v for k, v in w.raw.items() if k != "fullText"},  # the payload minus the text itself (I-7)
+        raw=w.raw.without("fullText"),  # the payload minus the text itself (I-7)
     )
     if with_text and full_text:
         rec["text"] = full_text  # returned to the caller, never stored (I-7)
@@ -50,7 +50,7 @@ def _lookup(client: Client, doi: str, request_type: str, *, want_text: bool) -> 
                       params={"q": f'doi:"{doi}"', "limit": 1, "exclude": None if want_text else "fullText"},
                       headers=_headers(client), identity=f"doi:{doi}")
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
-    return first_member(SOURCE_ID, decode(SOURCE_ID, SEARCH, resp.json)["results"], lambda w: _record(w, with_text=want_text))
+    return first_member(SOURCE_ID, decode(SOURCE_ID, SEARCH, resp)["results"], lambda w: _record(w, with_text=want_text))
 
 
 def resolve(client: Client, identity: str) -> dict | None:

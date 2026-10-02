@@ -56,7 +56,7 @@ def enrich(client: Client, identity: str, what: str = "citations") -> dict:
         if not check(SOURCE_ID, resp):
             return {"identity": f"doi:{doi}", "what": what, "items": []}
         # a list, empty when OpenCitations Meta has no record; its first result is read like any lookup's
-        rec = first_member(SOURCE_ID, decode(SOURCE_ID, METADATA, resp.json), lambda m: _article(doi, m))
+        rec = first_member(SOURCE_ID, decode(SOURCE_ID, METADATA, resp), lambda m: _article(doi, m))
         return {"identity": f"doi:{doi}", "what": what, "items": [rec] if rec else []}
     if what not in ("citations", "references"):
         return {"identity": f"doi:{doi}", "what": what, "items": []}
@@ -64,5 +64,5 @@ def enrich(client: Client, identity: str, what: str = "citations") -> dict:
     if not check(SOURCE_ID, resp):
         return {"identity": f"doi:{doi}", "what": what, "items": []}
     key = "citing" if what == "citations" else "cited"
-    rows = decode(SOURCE_ID, SCHEMAS[f"enrich:{what}"], resp.json)
+    rows = decode(SOURCE_ID, SCHEMAS[f"enrich:{what}"], resp)
     return {"identity": f"doi:{doi}", "what": what, "items": members(SOURCE_ID, rows, lambda row: _link(key, row))}

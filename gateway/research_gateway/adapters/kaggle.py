@@ -59,7 +59,7 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1) -> dict:
         return {"records": [], "total": None, "next_page": None, "capability_fact": "no Kaggle username/key configured"}
     resp = client.get(SOURCE_ID, "find", f"{BASE}/datasets/list", params={"search": query, "page": page}, headers=hdrs, query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
-    items = decode(SOURCE_ID, SCHEMAS["find"], resp.json)
+    items = decode(SOURCE_ID, SCHEMAS["find"], resp)
     # Kaggle's own clients page this listing by number and document neither its page size, a last page nor a
     # total (docs/PROVIDER-PAGINATION.md): a non-empty page read whole continues at page + 1, and nothing here
     # ever ends the lane. A page cut to `limit` cannot continue: page + 1 would skip the rows cut here
@@ -80,11 +80,11 @@ def fetch(client: Client, target: str, *, file_name: str | None = None, download
         resp = client.get(SOURCE_ID, "fetch", url, headers={**hdrs, "Accept": "*/*"}, identity=identity)
         if not check(SOURCE_ID, resp, allow_html=True):  # raw file download: an HTML document can be legitimate content here
             return {"identity": identity, "records": []}
-        return {"identity": identity, "records": [], "content": resp.body, "content_type": resp.headers.get("content-type")}
+        return {"identity": identity, "records": [], "content": resp.download(), "content_type": resp.headers.get("content-type")}
     resp = client.get(SOURCE_ID, "fetch", f"{BASE}/datasets/list/{ref}", headers=hdrs, identity=identity)
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "records": []}
-    records = members(SOURCE_ID, decode(SOURCE_ID, SCHEMAS["fetch"], resp.json)["datasetFiles"], lambda f: _file(identity, ref, f))
+    records = members(SOURCE_ID, decode(SOURCE_ID, SCHEMAS["fetch"], resp)["datasetFiles"], lambda f: _file(identity, ref, f))
     return {"identity": identity, "records": records}
 
 

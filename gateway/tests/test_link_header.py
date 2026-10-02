@@ -247,7 +247,7 @@ class RepeatedFieldLines(unittest.TestCase):
                 finally:
                     server.shutdown()
                     server.server_close()
-                self.assertEqual(next_link(Response(resp.status, resp.headers, resp.body, ASKED)), want)
+                self.assertEqual(next_link(Response(resp.status, resp.headers, resp._body, ASKED)), want)
 
 
 class HuggingFace(unittest.TestCase):

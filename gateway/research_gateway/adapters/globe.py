@@ -28,7 +28,7 @@ def fetch(client: Client, target: str | None = None, *, download: bool = False) 
     resp = client.get(SOURCE_ID, "fetch", url, headers={"Accept": "*/*"}, identity=identity)
     if not check(SOURCE_ID, resp, allow_html=True):  # raw file download: an HTML document can be legitimate content here
         return {"identity": identity, "records": []}
-    return {"identity": identity, "records": [], "content": resp.body, "content_type": resp.headers.get("content-type")}
+    return {"identity": identity, "records": [], "content": resp.download(), "content_type": resp.headers.get("content-type")}
 
 
 def download_request(record: dict, target: str) -> dict | None:

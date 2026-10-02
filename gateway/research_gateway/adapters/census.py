@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core import schema as S
 from ..core.canonical import make_record
-from .base import AdapterError, Client, PayloadError, check, decode, identified
+from .base import AdapterError, Client, check, decode, identified
 
 SOURCE_ID = "census"
 SMOKE = {'capability': 'data', 'params': {'dataset': '2022/acs/acs1', 'get': ['NAME'], 'for': 'state:37'}}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)
@@ -12,17 +12,11 @@ BASE = "https://api.census.gov/data"
 ATTRIBUTION = "U.S. Census Bureau"
 
 
-def _is_a_table(rows: list) -> None:
-    if not rows:
-        raise PayloadError("the answer is not a table (no header row)")
-    if not all(isinstance(h, str) for h in rows[0]):
-        raise PayloadError("a column name of the table is not what it should be: the table is unreadable, not shorter")
-
-
-# What an answer must be. A table is ONE record: a header row of column names and rows that are lists, read whole — a malformed row makes it unreadable, not shorter.
+# What an answer must be. A table is ONE record: a header row of column names (text: they name the columns of every row) and rows that are lists whose cells are metadata, read
+# whole — a malformed row makes it unreadable, not shorter.
 # The dataset directory and a dataset's variables are catalogues answered whole, too: an entry that is not what it should be makes the catalogue unreadable, not
 # shorter. A dataset with no vintage (timeseries/bds and 87 friends) is real: its path is its id (D-32a finding 6).
-TABLE = S.own(S.own(S.any_()), rule=_is_a_table)
+TABLE = S.grid(S.text(), S.any_())
 DATASETS = S.obj({"dataset": S.required(S.own(S.obj({"c_dataset": S.own(S.text()), "c_vintage": S.maybe_key(only_empty=True), "title": S.text()})))})
 VARIABLES = S.obj({"variables": S.required(S.table(S.obj({"label": S.text(), "predicateOnly": S.flag()})))})
 SCHEMAS = {"data": TABLE, "catalog:datasets": DATASETS, "catalog:variables": VARIABLES}
@@ -62,7 +56,7 @@ def data(client: Client, params: dict) -> dict:
         return {"identity": identity, "records": []}
     if resp.status == 204:   # the Census API's answer to a query no data matches: successful and empty
         return {"identity": identity, "records": []}
-    j = decode(SOURCE_ID, TABLE, resp.json)   # the rows of ONE table record: read whole, a malformed row makes it unreadable
+    j = decode(SOURCE_ID, TABLE, resp)   # the rows of ONE table record: read whole, a malformed row makes it unreadable
     header, rows = j[0], [dict(zip(j[0], r)) for r in j[1:]]
     rec = make_record(identity=identity, kind="series", source_id=SOURCE_ID, title=f"{dataset}: {query['get']}",
                       links=[f"https://api.census.gov/data/{dataset.strip('/')}.html"], attribution=ATTRIBUTION,
@@ -83,7 +77,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
         q = (query or "").lower()
-        entries, rows, named = [], decode(SOURCE_ID, DATASETS, resp.json)["dataset"], []
+        entries, rows, named = [], decode(SOURCE_ID, DATASETS, resp)["dataset"], []
         for d in rows:
             path = "/".join(part or "" for part in d["c_dataset"])
             vintage = d["c_vintage"]
@@ -105,7 +99,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         return {"entries": []}
     q = (query or "").lower()
     entries = []
-    for name, meta in decode(SOURCE_ID, VARIABLES, resp.json)["variables"].items():
+    for name, meta in decode(SOURCE_ID, VARIABLES, resp)["variables"].items():
         label = meta["label"] or ""   # a label that is not text makes the catalogue unreadable, not a variable without one
         if q and q not in name.lower() and q not in label.lower():
             continue

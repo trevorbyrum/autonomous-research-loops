@@ -16,8 +16,9 @@ import copy
 import unittest
 
 from research_gateway.adapters import bea, harvard_dataverse as dv
-from research_gateway.adapters.base import Client, FakeTransport, PayloadError, decode
+from research_gateway.adapters.base import Client, FakeTransport, PayloadError
 from research_gateway.core import schema as S, sdmx
+from research_gateway.core.schema import decode   # parsed values, as these tests state them (an adapter decodes the client's response, adapters.base.decode)
 from research_gateway.core.broker import Broker, RatePolicy
 from research_gateway.core.identity import RegistrationAgencies
 

@@ -148,6 +148,7 @@ def doi_prefix(doi: str) -> str:
 # doi.org/ra answers one object per DOI asked: the agency is its `RA` text, and `unknown` when it names none (a DOI doi.org does not know has no `RA`).
 # An `RA` that is there and is not text — `false`, `0`, `[]`, `{}`, a number — is unreadable, not an unknown agency (and a number or a list is not an agency's name).
 RA_ROWS = S.members(S.obj({"RA": S.text()}))
+SCHEMAS = {"lookup": RA_ROWS}
 
 
 class RegistrationAgencies:
@@ -169,13 +170,13 @@ class RegistrationAgencies:
         resp = self._client.get("doi_org", "resolve", self.URL + doi, identity=f"doi:{doi}")
         if not resp.ok:
             return "unknown"   # a failed lookup is not remembered as the prefix's answer (task 2b)
-        rows = resp.json   # an unreadable 200 raises PayloadError: the caller reports it, nothing is cached
-        agency = None
-        if isinstance(rows, list):   # one object per DOI asked, and one was: its first result, read like any lookup's
-            try:
-                agency = S.decode("doi.org", RA_ROWS, rows).first(lambda row: row["RA"] or "unknown")
-            except PayloadError:   # a first result that is not an object, or whose `RA` is there and is not text, names no agency — and is not remembered as one
-                return "unknown"
+        # The whole answer crosses the decoder before anything is decided from it or remembered (2b-repair-13a, R12-1): an answer that is not a list of results — empty, unparseable,
+        # `false`, an object, text — is an unreadable one, a PayloadError the caller reports, and nothing is cached. It is never an `unknown` agency remembered for the prefix.
+        rows = S.decode("doi.org", RA_ROWS, resp)
+        try:   # one object per DOI asked, and one was: its first result, read like any lookup's
+            agency = rows.first(lambda row: row["RA"] or "unknown")
+        except PayloadError:   # a first result that is not an object, or whose `RA` is there and is not text, names no agency — and is not remembered as one
+            return "unknown"
         agency = agency or "unknown"
         self._cache[prefix] = agency
         return agency

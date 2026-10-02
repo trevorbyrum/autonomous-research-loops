@@ -17,9 +17,11 @@ _RESTRICTION_MARKERS = ("restrict", "non-commercial", "noncommercial", "written 
 # What an answer must be. Series metadata is where FRED flags third-party restrictions, so its notes are text or the series is unreadable (`[]` or `false` are not
 # notes that say nothing). A catalogue's entries are answered whole: a series row that is not an object makes the catalogue unreadable, never a shorter one.
 OBSERVATIONS = S.obj({"observations": S.required(S.own(S.obj({"date": S.any_(), "value": S.any_()})))})
-SERIES = S.obj({"seriess": S.required(S.members(S.obj({"id": S.any_(), "title": S.text(), "units": S.any_(), "frequency": S.any_(), "notes": S.text()})))})
-CATALOG = S.obj({"seriess": S.required(S.own(S.obj({"id": S.any_(), "title": S.any_(), "units": S.any_(), "frequency": S.any_(),
-                                                    "observation_start": S.any_(), "observation_end": S.any_()})))})
+# A series' id is what a caller requests by and what says the metadata is metadata at all (an id and a title that are both nothing: the restriction check could not run); a
+# catalogue entry's units, frequency, title and range are shown: kinds, not `any_()` (2b-repair-13a, R12-1). A series' own `units` and `frequency` are only stored in its record.
+SERIES = S.obj({"seriess": S.required(S.members(S.obj({"id": S.maybe_key(), "title": S.text(), "units": S.any_(), "frequency": S.any_(), "notes": S.text()})))})
+CATALOG = S.obj({"seriess": S.required(S.own(S.obj({"id": S.maybe_key(), "title": S.text(), "units": S.text(), "frequency": S.text(),
+                                                    "observation_start": S.text(), "observation_end": S.text()})))})
 SCHEMAS = {"data:observations": OBSERVATIONS, "data:series": SERIES, "catalog": CATALOG}
 
 
@@ -56,11 +58,11 @@ def data(client: Client, params: dict) -> dict:
                       identity=f"series:fred:{series_id}")
     if not check(SOURCE_ID, resp):
         return {"identity": f"series:fred:{series_id}", "records": []}
-    observed = decode(SOURCE_ID, OBSERVATIONS, resp.json)
+    observed = decode(SOURCE_ID, OBSERVATIONS, resp)
     obs = [(o["date"], o["value"]) for o in observed["observations"]]
     m = client.get(SOURCE_ID, "data", f"{BASE}/series", params={**common, "series_id": series_id},
                    identity=f"series:fred:{series_id}")
-    described = decode(SOURCE_ID, SERIES, m.json) if m.ok else None
+    described = decode(SOURCE_ID, SERIES, m) if m.ok else None
     s = described["seriess"].first(lambda one: one, SOURCE_ID) if described else None   # the series asked for: one that cannot be read is not a series with no metadata
     if s is None or (not s["id"] and not s["title"]):
         # an empty or shapeless metadata object is no metadata: the restriction check could not
@@ -88,7 +90,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                           identity=f"series:fred:{within}")
         if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
-        seriess = decode(SOURCE_ID, CATALOG, resp.json)["seriess"]
+        seriess = decode(SOURCE_ID, CATALOG, resp)["seriess"]
     else:
         if not query:
             return {"entries": [], "capability_fact": "fred catalog needs a query (or within=<series id>)"}
@@ -98,7 +100,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                           query=query)
         if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
-        seriess = decode(SOURCE_ID, CATALOG, resp.json)["seriess"]
+        seriess = decode(SOURCE_ID, CATALOG, resp)["seriess"]
     entries = identified(SOURCE_ID, seriess, [{"id": s["id"], "label": s["title"], "kind": "series",
                                                "units": s["units"], "frequency": s["frequency"],
                                                "observation_range": f"{s['observation_start']}..{s['observation_end']}",

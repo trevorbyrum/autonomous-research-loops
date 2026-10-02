@@ -59,7 +59,7 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1, resource
         params["resource-type-id"] = resource_type
     resp = client.get(SOURCE_ID, "find", f"{BASE}/dois", params=params, query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
-    j = decode(SOURCE_ID, FIND, resp.json)
+    j = decode(SOURCE_ID, FIND, resp)
     data = j["data"]
     count = total(j["meta.total"], (page - 1) * size + len(data))
     # meta.total is the "Total results count": the page reaching it is the last. Page-number paging reaches only
@@ -76,4 +76,4 @@ def resolve(client: Client, identity: str) -> dict | None:
     resp = client.get(SOURCE_ID, "resolve", f"{BASE}/dois/{doi}", identity=f"doi:{doi}")
     if not check(SOURCE_ID, resp):
         return None
-    return _record(decode(SOURCE_ID, RESOLVE, resp.json)["data"])
+    return _record(decode(SOURCE_ID, RESOLVE, resp)["data"])

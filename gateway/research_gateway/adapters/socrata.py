@@ -22,7 +22,7 @@ HIT = S.obj({"resource": S.obj({"id": S.key(), "name": S.text(), "updatedAt": S.
              "metadata": S.obj({"domain": S.key(), "license": S.text()}), "permalink": S.text(), "link": S.text()}, alts=(("permalink", "link"),))
 SEARCH = S.obj({"results": S.required(S.members(HIT)), "resultSetSize": S.soft(S.whole())})
 VOUCH = S.obj({"results": S.required(S.members(S.obj({"metadata": S.obj({"domain": S.text()})})))})
-VIEW = S.obj({"id": S.any_(), "name": S.text(), "rowsUpdatedAt": S.whole(), "description": S.text(), "columns": S.own(S.obj({"fieldName": S.text()})),
+VIEW = S.obj({"id": S.key(), "name": S.text(), "rowsUpdatedAt": S.whole(), "description": S.text(), "columns": S.own(S.obj({"fieldName": S.text()})),
               "license": S.oneof(S.obj({"name": S.text(), "termsLink": S.any_()}), S.text()), "attribution": S.any_()})
 ROWS = S.own(S.any_())
 SCHEMAS = {"find": SEARCH, "vouch": VOUCH, "resolve": VIEW, "fetch": ROWS}
@@ -57,7 +57,7 @@ def _vouched(client: Client, domain: str) -> None:
         return
     resp = client.get(SOURCE_ID, "resolve", DISCOVERY, params={"domains": domain, "limit": 1, "only": "datasets"},
                       headers=_headers(client), identity=f"socrata:{domain}")
-    vouched = {d for d in decode(SOURCE_ID, VOUCH, resp.json)["results"].each(lambda r: (r["metadata"]["domain"] or "").lower())
+    vouched = {d for d in decode(SOURCE_ID, VOUCH, resp)["results"].each(lambda r: (r["metadata"]["domain"] or "").lower())
                if d is not None} if check(SOURCE_ID, resp) else set()
     if domain not in vouched:
         raise AdapterError(f"{domain} is not a Socrata portal known to the discovery catalog (R-6)")
@@ -86,7 +86,7 @@ def find(client: Client, query: str, *, limit: int = 20, offset: int = 0, portal
     params = {"q": query, "only": "datasets", "limit": size, "offset": offset, "domains": portal}
     resp = client.get(SOURCE_ID, "find", DISCOVERY, params=params, headers=_headers(client), query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
-    j = decode(SOURCE_ID, SEARCH, resp.json)
+    j = decode(SOURCE_ID, SEARCH, resp)
     results = j["results"]
     count = total(j["resultSetSize"], offset + len(results))
     records = members(SOURCE_ID, results, _catalog_record)
@@ -119,7 +119,7 @@ def resolve(client: Client, identity: str) -> dict | None:
     resp = client.get(SOURCE_ID, "resolve", f"https://{domain}/api/views/{did}.json", headers=_headers(client), identity=identity)
     if not check(SOURCE_ID, resp):
         return None
-    v = decode(SOURCE_ID, VIEW, resp.json)
+    v = decode(SOURCE_ID, VIEW, resp)
     if not v["id"]:
         raise PayloadError(f"{SOURCE_ID}: the view answer carries no id")
     lic = v["license"]
@@ -147,7 +147,7 @@ def fetch(client: Client, target: str, *, limit: int = 1000, offset: int = 0, wh
     resp = client.get(SOURCE_ID, "fetch", f"https://{domain}/resource/{did}.json", params=params, headers=_headers(client), identity=target)
     if not check(SOURCE_ID, resp):
         return {"identity": target, "records": []}
-    rows = decode(SOURCE_ID, ROWS, resp.json)
+    rows = decode(SOURCE_ID, ROWS, resp)
     rec = make_record(identity=f"{target}#rows", kind="file", source_id=SOURCE_ID, title=f"{did} rows {offset}-{offset + len(rows)}",
                       links=[f"https://{domain}/resource/{did}.json"], license=meta.get("license"),
                       extra={"rows": rows, "row_count": len(rows), "offset": offset}, raw=None)

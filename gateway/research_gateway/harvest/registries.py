@@ -8,9 +8,7 @@ DataCite repositories — each through the metered client under its own source's
 from __future__ import annotations
 
 import argparse
-import csv
 import hashlib
-import io
 import json
 import os
 import sys
@@ -76,7 +74,7 @@ def crossref_journals(client: Client, *, limit: int | None = None, rows: int = 1
                           params={"rows": rows, "cursor": cursor, "mailto": client.contact_email}, query="journals harvest")
         check("crossref", resp, allow_404=False)   # a failed page fails the load (D-23)
         try:
-            msg = decode("crossref", JOURNALS_PAGE, resp.json)["message"]
+            msg = decode("crossref", JOURNALS_PAGE, resp)["message"]
         except PayloadError as e:
             raise PayloadError(f"Crossref journals answered 200 but not with an items list (content-type {resp.headers.get('content-type')!r}) — "
                                f"load failed, not empty (D-24/D-25): {e}") from None
@@ -106,7 +104,7 @@ def _built(source_id: str, items: MemberList, build, skipped: list[str]) -> list
             skipped.append(f"{type(e).__name__}: {e}"[:120])
             return None
     for member in items.unreadable():
-        if isinstance(member.value, dict):
+        if member.was_object:
             skipped.append(f"PayloadError: {member.reason}"[:120])
     return members(source_id, items, reported)
 
@@ -119,26 +117,31 @@ DOAJ_ROW = S.obj({"Journal title": S.text(), "Journal ISSN (print version)": S.t
                   "Languages in which the journal accepts manuscripts": S.text()})
 
 
+DOAJ_COLUMNS = ("Journal title",)   # the file must have this column: one that does not is not the dump the loader supports
+
+
 def doaj_journals(client: Client, *, limit: int | None = None, issn_map: index.IssnMap | None = None) -> Iterator[dict]:
     resp = client.get("doaj", "find", DOAJ_CSV, headers={"Accept": "text/csv"}, query="journals csv")
     check("doaj", resp, allow_404=False)   # a missing catalogue is a failed load, never a zero-row success (D-23)
-    reader = csv.DictReader(io.StringIO(resp.text))
-    if not reader.fieldnames or "Journal title" not in reader.fieldnames:
-        raise ValueError(f"DOAJ CSV shape changed: columns {list(reader.fieldnames or [])[:5]!r} lack 'Journal title'")
-    for n, csv_row in enumerate(reader, 1):
-        row = decode("doaj", DOAJ_ROW, csv_row)
+    rows = S.decode_csv("doaj", DOAJ_ROW, resp, columns=DOAJ_COLUMNS)   # the dump is opened and parsed by the decoder; each row is decoded against the row schema, alone
+
+    def build(row) -> dict | None:
         title = row["Journal title"]
         identity, clean = venue_identity([row["Journal ISSN (print version)"], row["Journal EISSN (online version)"]],
                                          "doaj", title, row["Publisher"], issn_map)
         if identity is None:
-            continue
+            return None
         subjects = [s.strip() for s in (row["Subjects"] or "").split("|") if s.strip()]
-        yield make_record(identity=identity, kind="venue", source_id="doaj", title=title, venue=row["Publisher"],
-                          identifiers={"issn": clean[0]} if clean else {}, links=[u for u in (row["Journal URL"],) if u],
-                          license=row["Journal license"],
-                          extra={"issns": clean, "subjects": subjects, "country": row["Country of publisher"],
-                                 "in_doaj": True, "apc": row["APC"], "language": row["Languages in which the journal accepts manuscripts"]},
-                          raw=row.raw)
+        return make_record(identity=identity, kind="venue", source_id="doaj", title=title, venue=row["Publisher"],
+                           identifiers={"issn": clean[0]} if clean else {}, links=[u for u in (row["Journal URL"],) if u],
+                           license=row["Journal license"],
+                           extra={"issns": clean, "subjects": subjects, "country": row["Country of publisher"],
+                                  "in_doaj": True, "apc": row["APC"], "language": row["Languages in which the journal accepts manuscripts"]},
+                           raw=row.raw)
+    for n, rec in enumerate(_built("doaj", rows, build, []), 1):   # a row that could not be read, or names no journal, is skipped (position kept: `limit` counts rows)
+        if rec is None:
+            continue
+        yield rec
         if limit and n >= limit:
             return
 
@@ -158,7 +161,7 @@ def datacite_repositories(client: Client, *, limit: int | None = None, size: int
                           query="repositories harvest")
         check("datacite", resp, allow_404=False)   # a failed page fails the load (D-23)
         try:
-            j = decode("datacite", REPOSITORIES_PAGE, resp.json)
+            j = decode("datacite", REPOSITORIES_PAGE, resp)
         except PayloadError as e:
             raise PayloadError(f"DataCite repositories answered 200 but not with a data list (content-type {resp.headers.get('content-type')!r}) — "
                                f"load failed, not empty (D-24/D-25): {e}") from None

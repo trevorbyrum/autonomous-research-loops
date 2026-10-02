@@ -47,7 +47,7 @@ def find(client: Client, query: str, *, limit: int = 20, cursor: str | None = No
     params = {"query": query, "format": "json", "pageSize": min(limit, 100), "cursorMark": cursor or "*", "resultType": "lite"}
     resp = client.get(SOURCE_ID, "find", f"{BASE}/search", params=params, query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
-    j = decode(SOURCE_ID, FIND, resp.json)
+    j = decode(SOURCE_ID, FIND, resp)
     results = j["resultList"]["result"]
     # Europe PMC documents only the continuation — "For every following page use the value of the returned
     # nextCursorMark element" — and no last page: a cursor that moves continues, nothing here ends the lane, and
@@ -67,4 +67,4 @@ def resolve(client: Client, identity: str) -> dict | None:
                       identity=identity)
     if not check(SOURCE_ID, resp):
         return None
-    return first_member(SOURCE_ID, decode(SOURCE_ID, RESOLVE, resp.json)["resultList"]["result"], _record)
+    return first_member(SOURCE_ID, decode(SOURCE_ID, RESOLVE, resp)["resultList"]["result"], _record)

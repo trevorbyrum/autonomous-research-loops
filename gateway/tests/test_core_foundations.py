@@ -2,7 +2,8 @@
 import os
 import unittest
 
-from research_gateway.adapters.base import Client, FakeTransport, SourceUnavailable, check
+from research_gateway.adapters.base import Client, FakeTransport, SourceUnavailable, check, decode
+from research_gateway.core import schema as S
 from research_gateway.core import canonical, identity, secrets
 from research_gateway.core.broker import Broker, RatePolicy
 
@@ -95,7 +96,7 @@ class MeteredClient(unittest.TestCase):
         c = make_client(transport=t)
         r = c.get("src", "find", "https://api.example/items", params={"q": "x", "skip": None}, query="x")
         self.assertTrue(r.ok)
-        self.assertEqual(r.json["items"], [1, 2, 3])
+        self.assertEqual(decode("src", S.obj({"items": S.own(S.whole())}), r)["items"], [1, 2, 3], "the answer is read through a declared schema: the response holds no parsed payload")
         self.assertIn("q=x", t.calls[0][1])
         self.assertNotIn("skip", t.calls[0][1])
         self.assertEqual(t.calls[0][2]["User-Agent"], c.user_agent)

@@ -31,46 +31,32 @@ from urllib.parse import quote  # re-exported: adapters quote path segments thro
 from ..core import calllog, uri
 from ..core.broker import Broker, BreakerOpen, BudgetExhausted, NoPolicy
 from ..core.identity import meaningful
-from ..core.payload import MEMBER_ERRORS, OMIT, MemberList, PayloadError, Rec, is_unreadable  # noqa: F401 (re-exported: adapters read and raise through base)
-from ..core.schema import decode  # noqa: F401 (re-exported: an adapter's only way into a provider's answer)
+from ..core.payload import MEMBER_ERRORS, OMIT, MemberList, PayloadError, Rec, SealedAnswer, is_unreadable  # noqa: F401 (re-exported: adapters read and raise through base)
+from ..core.schema import decode as _decode
 
 
-@dataclass
-class Response:
-    status: int | None
-    headers: dict
-    body: bytes
-    url: str
-    error: str | None = None
+class Response(SealedAnswer):
+    """What the client received: the status, the headers, the URL and any error — and the answer's bytes, which NO adapter can read.
+
+    There is no `.json`, `.text` or `.body`: the payload is opened by `decode` (below, core/schema.py) alone, so an adapter that wants to know what a provider said can only
+    ask the declared schema, and nothing a payload decision is made from is a raw value (2b-repair-13a: Astra's `getattr(resp, "json")` has nothing to find). The one other way to the
+    bytes is `download()`, for the file a caller asked to download: content, not a payload (tests/test_member_isolation.py lists every use)."""
+    __slots__ = ("status", "headers", "url", "error")
+
+    def __init__(self, status: int | None, headers: dict, body: bytes, url: str, error: str | None = None):
+        super().__init__(body)
+        self.status, self.headers, self.url, self.error = status, headers, url, error
 
     @property
     def ok(self) -> bool:
         return self.status is not None and 200 <= self.status < 300
 
-    @property
-    def text(self) -> str:
-        return self.body.decode("utf-8", "replace")
+    def download(self) -> bytes:
+        """The bytes of a file the caller asked to download (a data file, a PDF): content, never parsed or decided on."""
+        return self._body
 
-    @property
-    def json(self):
-        """The parsed body, as plain data. For the client's own bookkeeping and for `decode(SOURCE_ID, SCHEMA, resp.json)`: an adapter
-        reads a provider's answer through its schema and never by hand (tests/test_schema_corruption.py scans for it). An empty or
-        unparseable body raises PayloadError instead of standing in as None — the `(resp.json or {})` of an adapter can no longer make
-        it 'no results'."""
-        if not self.body:
-            raise PayloadError(f"empty body (HTTP {self.status})")
-        import json   # here and nowhere else at module level or in the module's namespace: nothing in adapters.base is a parser to re-export
-        try:
-            return json.loads(self.body)
-        except (ValueError, UnicodeDecodeError):
-            raise PayloadError(f"unparseable JSON (HTTP {self.status}, {len(self.body)} bytes)") from None
-
-    def json_or_none(self):
-        """The body parsed, or None — for a check that must never raise (the call log's count; OpenML's error code on a 412)."""
-        try:
-            return self.json
-        except PayloadError:
-            return None
+    def __repr__(self) -> str:
+        return f"<Response {self.status} {self.url!r} {len(self._body)} bytes>"
 
     def retry_after_seconds(self) -> float | None:
         v = self.headers.get("retry-after") or self.headers.get("Retry-After")
@@ -85,6 +71,38 @@ class Response:
             return max(0.0, when.timestamp() - time.time())
         except (TypeError, ValueError):
             return None
+
+
+def _text_of(resp: Response) -> str:
+    """The body as text, for the client's own bookkeeping (a refusal's reason) — never for an adapter."""
+    return resp._body.decode("utf-8", "replace")
+
+
+def _count_of(resp: Response) -> int | None:
+    """How many results the call log says an answer held: read leniently, for bookkeeping only (an answer that cannot be read has no count)."""
+    import json   # here and nowhere else at module level or in the module's namespace: nothing in adapters.base is a parser to re-export
+    try:
+        j = json.loads(resp._body) if resp.ok and resp._body else None
+    except (ValueError, UnicodeDecodeError, RecursionError):
+        return None
+    if isinstance(j, list):
+        return len(j)
+    if isinstance(j, dict):
+        for k in ("items", "results", "data", "observations", "hits", "message"):
+            v = j.get(k)
+            if isinstance(v, list):
+                return len(v)
+            if isinstance(v, dict) and isinstance(v.get("items"), list):
+                return len(v["items"])
+    return None
+
+
+def decode(source_id: str, spec, resp: Response):
+    """The answer `resp` as `spec` says it must be (core/schema.py): the only way an adapter reads a provider's answer. It takes the client's response and nothing else —
+    not a value an adapter has parsed or copied out — so the schema it names is the schema the answer is held to."""
+    if not isinstance(resp, Response):
+        raise TypeError(f"{source_id}: decode() takes the client's response, not a {type(resp).__name__}: an adapter reads a provider's answer through its declared schema only")
+    return _decode(source_id, spec, resp)
 
 
 MAX_BODY_BYTES = 256 * 1024 * 1024   # a response bigger than this is an error, not a memory event
@@ -341,7 +359,7 @@ class FakeTransport:
         self.calls.append((method.upper(), url, headers, body))
         for m, prefix, resp in self.routes:
             if m == method.upper() and url.startswith(prefix):
-                return Response(resp.status, resp.headers, resp.body, url)
+                return Response(resp.status, resp.headers, resp._body, url)
         return Response(404, {}, b"", url)
 
 
@@ -508,19 +526,7 @@ class Client:
     def _record(self, source_id, request_type, identity, query, resp: Response, latency: int, credits: float,
                 refused: bool = False, attempt_id: int | None = None, wait_ms: int | None = None,
                 hop: int | None = None) -> None:
-        count = None
-        j = resp.json_or_none() if resp.ok else None
-        if isinstance(j, list):
-            count = len(j)
-        elif isinstance(j, dict):
-            for k in ("items", "results", "data", "observations", "hits", "message"):
-                v = j.get(k)
-                if isinstance(v, list):
-                    count = len(v)
-                    break
-                if isinstance(v, dict) and isinstance(v.get("items"), list):
-                    count = len(v["items"])
-                    break
+        count = _count_of(resp)
         rec = calllog.CallRecord(
             source_id=source_id, request_type=request_type, status=resp.status, latency_ms=latency,
             job_id=self.job_id, identity=identity, query=(query or "")[:500] or None,
@@ -529,7 +535,7 @@ class Client:
             iteration=self.iteration, batch_entry=self.batch_entry, wait_ms=wait_ms,
             topic=self.topic, params_fp=self.request_fingerprint, hop=hop, **self.correlation(),
             failure_class="refused" if refused else calllog.classify(resp.status, network_error=resp.status is None,
-                                                                     body=resp.text[:2000] if resp.status in (401, 403) else ""),
+                                                                     body=_text_of(resp)[:2000] if resp.status in (401, 403) else ""),
         )
         self.log.append(rec)
         if self.conn is not None:
@@ -730,9 +736,9 @@ def check(source_id: str, resp: Response, *, allow_404: bool = True, allow_html:
     flowing on to become a false `searched_empty` (pass-1 finding 7). Raw-file fetch
     paths that may legitimately retrieve HTML documents pass allow_html=True."""
     if resp.ok:
-        if not allow_html and resp.body:
+        if not allow_html and resp._body:
             ctype = next((v for k, v in (resp.headers or {}).items() if k.lower() == "content-type"), "")
-            head = resp.body.lstrip(b"\xef\xbb\xbf \t\r\n")[:15].lower()
+            head = resp._body.lstrip(b"\xef\xbb\xbf \t\r\n")[:15].lower()
             # the declared type is the robust signal (a BOM or leading comment defeats any
             # sniff); the prefix sniff covers answers that omit the header
             # a bare leading comment counts only without a declared type: an XML answer

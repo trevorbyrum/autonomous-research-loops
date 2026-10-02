@@ -18,8 +18,10 @@ SERIES = S.obj({"seriesID": S.key(), "data": S.own(S.obj({"year": S.key(), "peri
                 "catalog": S.obj({"series_title": S.text(), "survey_name": S.any_(), "seasonality": S.any_()})})
 DATA = S.obj({"status": S.required(S.text()), "message": S.soft(S.own(S.text())),
               "Results": S.by("status", {"REQUEST_SUCCEEDED": S.required(S.obj({"series": S.required(S.members(SERIES))}))})})
-SURVEYS = S.obj({"Results": S.required(S.obj({"survey": S.required(S.own(S.obj({"survey_abbreviation": S.any_(), "survey_name": S.any_(default="")})))}))})
-POPULAR = S.obj({"Results": S.required(S.obj({"series": S.required(S.own(S.obj({"seriesID": S.any_()})))}))})
+# A survey's abbreviation and a series' id are what a caller browses and requests by (`within`, `research_data`'s `series`): names, or nothing (a row with none is skipped).
+# Nothing in a catalogue that is shown or sent is left to `any_()`: the survey's name is a label (2b-repair-13a, R12-1).
+SURVEYS = S.obj({"Results": S.required(S.obj({"survey": S.required(S.own(S.obj({"survey_abbreviation": S.maybe_key(), "survey_name": S.text(default="")})))}))})
+POPULAR = S.obj({"Results": S.required(S.obj({"series": S.required(S.own(S.obj({"seriesID": S.maybe_key()})))}))})
 SCHEMAS = {"data": DATA, "catalog:surveys": SURVEYS, "catalog:popular": POPULAR}
 
 
@@ -70,7 +72,7 @@ def data(client: Client, params: dict) -> dict:
     resp = client.post(SOURCE_ID, "data", BASE, body=body, identity=identity)
     if not check(SOURCE_ID, resp):
         return {"identity": identity, "records": []}
-    j = decode(SOURCE_ID, DATA, resp.json)
+    j = decode(SOURCE_ID, DATA, resp)
     messages = [m or "" for m in j["message"] or []]
     if j["status"] != "REQUEST_SUCCEEDED":
         return {"identity": identity, "records": [], "capability_fact": f"BLS: {j['status']} {'; '.join(messages)}"[:300]}
@@ -88,7 +90,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
         if not check(SOURCE_ID, resp, allow_404=False):
             return {"entries": []}
         q = (query or "").lower()
-        surveys = decode(SOURCE_ID, SURVEYS, resp.json)["Results"]["survey"]
+        surveys = decode(SOURCE_ID, SURVEYS, resp)["Results"]["survey"]
         identified(SOURCE_ID, surveys, [s for s in surveys if s["survey_abbreviation"]])
         entries = [{"id": s["survey_abbreviation"], "label": s["survey_name"], "kind": "survey",
                     "children": True, "within": s["survey_abbreviation"]}
@@ -104,7 +106,7 @@ def catalog(client: Client, *, query: str | None = None, within: str | None = No
                       identity=f"series:bls:{within}")
     if not check(SOURCE_ID, resp, allow_404=False):
         return {"entries": []}
-    series = decode(SOURCE_ID, POPULAR, resp.json)["Results"]["series"]
+    series = decode(SOURCE_ID, POPULAR, resp)["Results"]["series"]
     entries = identified(SOURCE_ID, series, [{"id": s["seriesID"], "label": s["seriesID"], "kind": "series",
                                               "data_request": {"tool": "research_data",
                                                                "arguments": {"source": SOURCE_ID, "params": {"series": s["seriesID"]}}}}

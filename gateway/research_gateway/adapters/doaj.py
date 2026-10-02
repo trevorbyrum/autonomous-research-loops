@@ -60,7 +60,7 @@ def find(client: Client, query: str, *, limit: int = 20, page: int = 1) -> dict:
     resp = client.get(SOURCE_ID, "find", f"{BASE}/search/articles/{quote(query)}",
                       params={"page": page, "pageSize": page_size, "sort": "created_date:desc"}, query=query)
     check(SOURCE_ID, resp, allow_404=False)   # a search endpoint's 404 is not "no results"
-    j = decode(SOURCE_ID, FIND, resp.json)
+    j = decode(SOURCE_ID, FIND, resp)
     results = j["results"]
     count = total(j["total"], (page - 1) * page_size + len(results))
     # DOAJ's own code: the last page is the one reaching `total` (page_count = ((total - 1) // page_size) + 1),
@@ -92,7 +92,7 @@ def resolve(client: Client, identity: str) -> dict | None:
                           params={"pageSize": 1}, identity=f"issn:{issn}")
         if not check(SOURCE_ID, resp):
             return None
-        return first_member(SOURCE_ID, decode(SOURCE_ID, RESOLVE_JOURNAL, resp.json)["results"], lambda a: _journal(issn, a))
+        return first_member(SOURCE_ID, decode(SOURCE_ID, RESOLVE_JOURNAL, resp)["results"], lambda a: _journal(issn, a))
     doi = normalize_doi(value)
     if not doi:
         return None
@@ -100,4 +100,4 @@ def resolve(client: Client, identity: str) -> dict | None:
                       params={"pageSize": 1}, identity=f"doi:{doi}")
     if not check(SOURCE_ID, resp):
         return None
-    return first_member(SOURCE_ID, decode(SOURCE_ID, RESOLVE_ARTICLE, resp.json)["results"], _record)
+    return first_member(SOURCE_ID, decode(SOURCE_ID, RESOLVE_ARTICLE, resp)["results"], _record)
