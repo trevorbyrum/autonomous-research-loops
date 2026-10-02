@@ -1165,3 +1165,25 @@ The coder reports both targets exiting 0 at `0d53bfc`.
 
 ## 2026-10-02 — Operator ruling: Gate D sequencing after 2b (one-time)
 2b's acceptance won't trigger its own Gate D. Gate D #2 reviewed the whole system that day, and 2q builds the ratcheted metrics Gate D relies on. **Gate D #3 runs at 2q's acceptance, before 2c starts.** The charter's cadence is otherwise unchanged.
+
+## 2026-10-02 — Astra re-review of 2b-repair-15 (`7efecde2`, pinned 0d53bfc) — BLOCK (A, C); PASS (B)
+Full report: `private/reviews/gen2-2b-repair-15-astra-review-20261002.md`.
+
+**Gateway input contract: ROOT-CAUSE, closed under trust model B.**
+- **F1:** `Transport` owns chunked completion per RFC 9112 §7.1.
+- No new counterexample within the frozen contract.
+- Normalization, member isolation, XML, snapshot and identity behaviour all stand.
+
+**Engine:**
+- **F2:** exchange-time resolution is removed. 0 resolver calls per exchange; a 0.05 s budget now holds at 0.02 s. TLS SNI and certificate checks stay correct.
+- **F3:** readiness is closed.
+- **F4:** all 9 items are closed.
+- Six rebuilt mutants are killed. Both targets pass.
+
+**Blocking:**
+- **R15-1 (HIGH, engine hand-off):** `resolve()` keeps the old addresses when a re-lookup finds nothing, and `_exchange()` ignores `endpoint_stale`. An unrelated listener at the old address received the bearer token and returned an observation recorded as `searched_empty/complete/0/exhausted`. A test currently *requires* this fallback.
+- **R15-2 (LOW):** one constructor-mutant control never reaches the constructor. Astra verified a replacement.
+
+**DNS time residual:** Astra judged (a) the smallest mechanism if the placement fits. The operator ruled (a) earlier the same day, and 2e1 owns it.
+
+**Routing:** **2b-repair-16** (engine only): a failed re-resolution or connection makes the endpoint unusable until the owner's `resolve()` succeeds; no connection and no token while stale; the test and mutant reversed; the control re-paired. This is the second consecutive BLOCK since Gate D #2; a third triggers Gate D.
