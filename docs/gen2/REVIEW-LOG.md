@@ -988,3 +988,40 @@ Both targets pass independently (1,641 tests and 1,739/1,739; gateway 1,334+1,33
 - independent reruns in progress.
 
 Astra's task (`private/reviews/gen2-2b-repair-13c-review-task-20261002.md`) asks explicitly whether anything other than the language-level limits stands between the gateway and structural closure.
+
+## 2026-10-02 — Astra re-review of 2b-repair-13c (`f3e1f1c2`, pinned 37a655c) — BLOCK (A, C); PASS (B)
+Full report: `private/reviews/gen2-2b-repair-13c-astra-review-20261002.md`.
+
+**ROOT-CAUSE:**
+- the R13A-1 lexical defects (CSV quoting and headers, JSON duplicate names and non-finite numbers, malformed UTF-8);
+- the R13A-2 direct-copy escape, sealed downloads, and materialization at router, index and cache;
+- the earlier R12 and Gate D fixes, retained.
+
+Both targets pass independently.
+
+**Family verdict: MITIGATION; not structurally closed**, and the gaps go beyond the language-level residuals:
+- **R13C-1 (MEDIUM, boundary drift):** `resp.read(n)` returns a short body without `IncompleteRead`. A DOAJ CSV cut short of its declared Content-Length loads 0 or 1 journals and reports success (status 200 / `ok`). Chunked truncation is detected. The contract docs claim short bodies are detected.
+- **R13C-2 (MEDIUM):** provenance escapes through public constructors:
+  - `make_record` seals an adapter literal with decoder (`_issued`) authority, so `copied == guessed` decides selection;
+  - a decoded `Rec` passed as `identifiers` is materialized by `plain()`.
+
+  Both are shown with OpenCitations mutants that drop a citation and still report complete. Neither uses private names.
+- **R13C-3 (MEDIUM):**
+  - XML scalar text inside a child element is silently dropped (BIS label `Policy <b>rates</b>` becomes `Policy `, still complete);
+  - SDMX matching is namespace-blind, so a foreign namespace is accepted as SDMX.
+- **R13C-4 (MEDIUM):** the snapshot loader now aborts the whole file on one malformed line. That regresses the per-line isolation accepted in repair-8.
+- **R13C-5 (LOW):** the `Retry-After` date path still uses the permissive email parser, contradicting the "strict grammar" claim.
+
+**Gate C:** 85 of the 96 new or changed tests are bounded; 9 overclaims and 2 rejected contract changes. The "no number beyond a double" claim is false (`10**400` is accepted). The tools line count (+613) doesn't reproduce; Astra counts +205.
+
+**Asked for operator confirmation, separately from the language residuals:**
+- sanctioned exceptions for `Rec.empty` and for equality between `Sealed` values the decoder issued;
+- the supported-format and depth limits.
+
+**Orchestrator routing:**
+- **Charter trigger:** this is the third consecutive BLOCK since Gate D #1 (13a, 13b, 13c). A fresh **Gate D #2** (`8d74ce90`) is dispatched before any further gateway repair. Its task (`private/reviews/gen2-gate-d-2-task.md`) asks:
+  - whether the family definition is stable or the review standard is drifting;
+  - which threat model the source of truth requires for first-party adapter code: by-construction confinement, or a provider-input contract plus guards;
+  - the finite acceptance list for 2b;
+  - whether the repair sequence has built accidental complexity.
+- 13d (engine, already dispatched) continues.
