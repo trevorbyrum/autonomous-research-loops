@@ -14,6 +14,7 @@ loopback sockets, and the client's own late-reply check is killed by a transport
 
 Task 2b-repair-15 (Astra F2) adds 2B15-*: no exchange resolves a name. Its killers are test_gateway_exchange.NoExchangeResolvesAName (a substituted resolver that
 counts, or sleeps, and loopback servers); a name is looked up at construction or by the owner's `resolve()`, never by an exchange.
+Task 2b-repair-16 (Astra R15-1) adds the pair that keep a stale endpoint's addresses in use, and reverses the mutant that treated wiping them as a defect.
 
 Task 2b-repair-13b (Gate D #3, #4) adds two families at the end: the typed page outcome (the
 client's and observe's `page_end`, the router's boundary check, its command schema and the
@@ -459,10 +460,11 @@ MUTATIONS: list[Mutation] = [
            "    for family, kind, proto, _, target in _literal(host, port) or resolved.get((host.lower(), port)) or socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM):\n"),
           ("an-exchange-re-resolves-after-a-failure", "a connection failure is followed, inside the exchange, by a new lookup of the name",
            (NR + "test_a_connection_failure_marks_the_endpoint_stale_and_only_the_owners_resolve_looks_again",),
-           "                self._stale = True   # a connection failure invites a new lookup: the owner's `resolve()`, never made here\n", "                self.resolve()\n"),
-          ("a-connection-failure-leaves-the-endpoint-fresh", "a failed connection does not mark the endpoint stale, so the owner is never invited to look again",
-           (NR + "test_a_connection_failure_marks_the_endpoint_stale_and_only_the_owners_resolve_looks_again",),
-           "                self._stale = True   # a connection failure invites a new lookup: the owner's `resolve()`, never made here\n", "                pass\n"),
+           "                self._withdraw()   # a connection failure withdraws the addresses and invites a new lookup: the owner's `resolve()`, never made here\n", "                self.resolve()\n"),
+          ("a-connection-failure-leaves-the-endpoint-fresh", "a failed connection neither marks the endpoint stale nor withdraws its addresses, so the owner is never invited to look again",
+           (NR + "test_a_connection_failure_marks_the_endpoint_stale_and_only_the_owners_resolve_looks_again",
+            NR + "test_a_connection_failure_withdraws_the_addresses_until_the_owners_resolve_succeeds"),
+           "                self._withdraw()   # a connection failure withdraws the addresses and invites a new lookup: the owner's `resolve()`, never made here\n", "                pass\n"),
           ("an-ip-literal-is-looked-up", "an IPv4 or IPv6 literal is not its own address: it is resolved like a name",
            (NR + "test_an_ip_literal_is_never_resolved", NR + "test_both_kinds_of_ip_literal_are_their_own_address"),
            "    try:\n        ip = ipaddress.ip_address(host)\n    except ValueError:\n        return None\n", "    return None\n"),
@@ -470,11 +472,15 @@ MUTATIONS: list[Mutation] = [
            (NR + "test_the_deployment_contracts_gateway_url_is_looked_up_once_at_construction_and_a_given_transport_is_not_the_clients_to_resolve_for",
             NR + "test_a_name_that_was_looked_up_beforehand_is_connected_to_and_stays_the_hosts_name"),
            "        if real and _literal(*self._origin) is None:\n            self.resolve()\n", ""),
-          ("a-failed-lookup-is-not-stale", "a lookup that failed or found nothing leaves the endpoint marked fresh",
-           (NR + "test_a_failed_lookup_leaves_the_client_built_and_stale_and_every_exchange_a_failure_at_once", NR + "test_a_lookup_that_finds_nothing_keeps_the_addresses_the_last_good_one_found"),
-           "        self._stale = bool(error)\n", "        self._stale = False\n"),
-          ("a-failed-lookup-wipes-the-last-good-addresses", "a lookup that finds nothing replaces the addresses the last good one found with none",
-           (NR + "test_a_lookup_that_finds_nothing_keeps_the_addresses_the_last_good_one_found",),
-           "        if found:\n            self._resolved[self._origin] = found\n", "        self._resolved[self._origin] = found\n"),
+          ("a-failed-lookup-is-not-stale", "a lookup that failed or found nothing leaves the endpoint marked fresh (its addresses are withdrawn all the same)",
+           (NR + "test_a_failed_lookup_leaves_the_client_built_and_stale_and_every_exchange_a_failure_at_once",
+            NR + "test_a_lookup_that_finds_nothing_withdraws_the_addresses_and_no_request_reaches_the_old_one"),
+           "        else:\n            self._withdraw()\n", "        else:\n            self._withdraw()\n            self._stale = False\n"),
+          ("a-failed-lookup-keeps-the-last-good-addresses-in-use", "a lookup that finds nothing marks the endpoint stale and leaves the addresses the last good one found in use (Astra R15-1)",
+           (NR + "test_a_lookup_that_finds_nothing_withdraws_the_addresses_and_no_request_reaches_the_old_one",),   # not Astra's probe: its earlier connection failure withdraws them too (a doubled guard)
+           "        else:\n            self._withdraw()\n", "        else:\n            self._stale = True\n"),
+          ("a-connection-failure-keeps-the-addresses-in-use", "a failed connection marks the endpoint stale and leaves its addresses in use, so the next exchange connects to the old address (Astra R15-1)",
+           (NR + "test_a_connection_failure_withdraws_the_addresses_until_the_owners_resolve_succeeds",),
+           "                self._withdraw()   # a connection failure withdraws the addresses and invites a new lookup: the owner's `resolve()`, never made here\n", "                self._stale = True\n"),
       )),
 ]
