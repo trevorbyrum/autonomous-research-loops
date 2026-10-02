@@ -9,6 +9,9 @@ whose killers require the named state instead. `2B-pages-rounded-up` guarded the
 multi-page observation, which is gone (each page is its own observation, A2); the page
 family below replaces it.
 
+Task 2b-repair-13d (R13B-1) adds the whole-exchange deadline family, 2B13D-*: its killers are test_gateway_exchange.py's real
+loopback sockets, and the client's own late-reply check is killed by a transport that breaks its contract.
+
 Task 2b-repair-13b (Gate D #3, #4) adds two families at the end: the typed page outcome (the
 client's and observe's `page_end`, the router's boundary check, its command schema and the
 store's CHECKs) and the poll's one absolute deadline.
@@ -26,6 +29,8 @@ GF = GC + "GatewayFactsCommand."
 OBS, CLI, CAPS, CANON = "gen2/gateway_client/observe.py", "gen2/gateway_client/client.py", "gen2/router/capabilities.py", "gen2/core/canonical.py"
 PAGE_DOC = 'request={"lane": entry["source"], "page": page, "request": sent},'
 PO, PD, ROB = GC + "PageOutcomes.", GC + "PollDeadline.", "test_router_ops.ObservationTest."
+EXC = "test_gateway_exchange."
+EB, EC, LR, TL = EXC + "EveryBlockingStepIsBounded.", EXC + "EachCallIsGivenWhatIsLeft.", EXC + "ALateReplyIsATimeout.", EXC + "TlsExchangeIsBoundedToo."
 POUT = "test_a_page_outcome_says_why_pagination_ended_and_is_consistent_with_what_was_read"
 BOUNDARY = "gen2/router/boundary.py"
 SERVICE = "gen2/router/service.py"
@@ -311,7 +316,7 @@ MUTATIONS: list[Mutation] = [
            (PD + "test_each_poll_is_clamped_to_what_remains_and_each_sleep_to_the_same", PD + "test_the_defaults_end_within_the_deadline_where_gate_d_counted_about_21_hours"), CLI,
            '_headers(ctx), timeout=remaining)', "_headers(ctx), timeout=self.deadline)"),
           ("poll-sleep-unbounded", "the last sleep runs its half second past the deadline",
-           (PD + "test_each_poll_is_clamped_to_what_remains_and_each_sleep_to_the_same", PD + "test_a_poll_that_comes_back_after_the_deadline_still_ends_it"), CLI,
+           (PD + "test_each_poll_is_clamped_to_what_remains_and_each_sleep_to_the_same", PD + "test_a_reply_that_arrives_inside_its_timeout_and_is_not_the_end_leaves_only_what_remains_to_sleep"), CLI,
            '            self._sleep(min(POLL_SECONDS, max(deadline - self._monotonic(), 0.0)))', "            self._sleep(POLL_SECONDS)"),
           ("exchange-timeout-ignored", "an exchange's own timeout is not passed to the transport",
            (PD + "test_gate_d_a_slow_gateway_cannot_stretch_one_second_into_three", PD + "test_each_poll_is_clamped_to_what_remains_and_each_sleep_to_the_same"), CLI,
@@ -319,5 +324,56 @@ MUTATIONS: list[Mutation] = [
           ("exchange-timeout-above-the-clients", "a poll may be given more than the client's own timeout",
            (PD + "test_each_poll_is_clamped_to_what_remains_and_each_sleep_to_the_same",), CLI,
            "self.timeout if timeout is None else min(self.timeout, timeout)", "self.timeout if timeout is None else timeout"),
+      )),
+    # 2b-repair-13d, R13B-1: one absolute deadline over the whole exchange (the transport's sockets and the client's own check)
+    *(Mutation(f"2B13D-{key}", "2b-13d", desc, tuple(killers), target=CLI, old=old, new=new)
+      for key, desc, killers, old, new in (
+          ("reads-never-armed", "no socket call is armed with what is left: each read gets the timeout it already had, which a trickle renews",
+           (EB + "test_a_status_line_and_headers_that_come_a_few_bytes_at_a_time_stop_at_the_deadline", EB + "test_a_body_that_comes_slowly_stops_at_the_deadline",
+            EB + "test_a_reply_that_trickles_in_one_chunk_inside_each_timeout_stops_at_the_deadline", LR + "test_a_late_terminal_reply_is_a_timeout",
+            EC + "test_recv", EC + "test_recv_into", EC + "test_send", EC + "test_sendall"),
+           "        if self.deadline is not None:\n            self.settimeout(self.deadline.remaining())\n\n    def recv(self, *args):",
+           "        if False:\n            self.settimeout(self.deadline.remaining())\n\n    def recv(self, *args):"),
+          ("recv-not-armed", "recv keeps the timeout it was last given", (EC + "test_recv",),
+           "    def recv(self, *args):\n        self._arm()\n", "    def recv(self, *args):\n"),
+          ("recv-into-not-armed", "recv_into (what a response is read through) keeps the timeout it was last given",
+           (EB + "test_a_status_line_and_headers_that_come_a_few_bytes_at_a_time_stop_at_the_deadline", EB + "test_a_body_that_comes_slowly_stops_at_the_deadline",
+            EB + "test_a_reply_that_trickles_in_one_chunk_inside_each_timeout_stops_at_the_deadline", LR + "test_a_late_terminal_reply_is_a_timeout", EC + "test_recv_into"),
+           "    def recv_into(self, *args):\n        self._arm()\n", "    def recv_into(self, *args):\n"),
+          ("send-not-armed", "send keeps the timeout it was last given", (EC + "test_send",),
+           "    def send(self, *args):\n        self._arm()\n        return super().send(*args)\n\n    def sendall", "    def send(self, *args):\n        return super().send(*args)\n\n    def sendall"),
+          ("sendall-not-armed", "sendall keeps the timeout it was last given", (EC + "test_sendall",),
+           "    def sendall(self, *args):\n        self._arm()\n", "    def sendall(self, *args):\n"),
+          ("deadline-never-passes", "an exhausted deadline hands out its (negative) remainder instead of ending the step; name resolution starts after it",
+           (EC + "test_no_step_starts_after_the_deadline",),
+           "        if left <= 0:\n            raise TimeoutError(\"the exchange's deadline passed\")", "        if False:\n            raise TimeoutError(\"the exchange's deadline passed\")"),
+          ("connect-takes-a-fresh-timeout", "the connect is given a timeout of its own, not what is left",
+           (EB + "test_a_connect_that_never_completes_stops_at_the_deadline",),
+           "            sock.settimeout(deadline.remaining())\n            sock.connect(target)", "            sock.settimeout(1.5)\n            sock.connect(target)"),
+          ("connect-time-not-counted", "what the connect took is not taken from the timeout the handshake that follows runs under",
+           (EC + "test_the_time_a_connect_took_comes_out_of_what_a_handshake_may_take",),
+           "            sock.connect(target)\n            sock.settimeout(deadline.remaining())", "            sock.connect(target)"),
+          ("plain-sockets-undeadlined", "an exchange over plain HTTP uses the standard connection, whose timeout every operation renews",
+           (EB + "test_a_status_line_and_headers_that_come_a_few_bytes_at_a_time_stop_at_the_deadline", EB + "test_a_body_that_comes_slowly_stops_at_the_deadline",
+            EB + "test_a_reply_that_trickles_in_one_chunk_inside_each_timeout_stops_at_the_deadline", LR + "test_a_late_terminal_reply_is_a_timeout"),
+           "class _DeadlineHTTPConnection(http.client.HTTPConnection):\n    def __init__(self, *args, deadline: _Deadline, **kwargs) -> None:\n        super().__init__(*args, **kwargs)\n        self._deadline = deadline\n"
+           "        self._create_connection = lambda address, timeout, source_address: _connect(address, deadline)",
+           "class _DeadlineHTTPConnection(http.client.HTTPConnection):\n    def __init__(self, *args, deadline: _Deadline, **kwargs) -> None:\n        super().__init__(*args, **kwargs)\n        self._deadline = deadline"),
+          ("tls-reads-not-armed", "a TLS socket's reads keep the timeout they were last given", (TL + "test_a_tls_reply_that_trickles_stops_at_the_deadline",),
+           "    def read(self, *args):\n        self._arm()\n", "    def read(self, *args):\n"),
+          ("tls-send-not-armed", "a TLS socket's send keeps the timeout the handshake ran under",
+           (TL + "test_a_tls_request_the_server_never_reads_stops_at_the_deadline_after_a_slow_handshake",),
+           "    def send(self, *args):\n        self._arm()\n        return super().send(*args)\n\n\ndef _connect(", "    def send(self, *args):\n        return super().send(*args)\n\n\ndef _connect("),
+          ("tls-socket-class-unset", "a TLS exchange wraps its socket in the standard class, which has no deadline",
+           (TL + "test_a_tls_reply_that_trickles_stops_at_the_deadline", TL + "test_a_tls_request_the_server_never_reads_stops_at_the_deadline_after_a_slow_handshake"),
+           "        self._context.sslsocket_class = _DeadlineSSLSocket\n", ""),
+          ("tls-deadline-unset", "the TLS socket is never handed its deadline",
+           (TL + "test_a_tls_reply_that_trickles_stops_at_the_deadline", TL + "test_a_tls_request_the_server_never_reads_stops_at_the_deadline_after_a_slow_handshake"),
+           "        super().connect()\n        self.sock.deadline = self._deadline", "        super().connect()"),
+          ("late-reply-kept", "a reply that completes after the exchange's budget is a result, whatever it says",
+           (PD + "test_a_terminal_reply_that_completes_after_the_deadline_is_a_timeout_whatever_it_says",
+            PD + "test_the_search_whose_poll_answers_after_the_deadline_observes_a_timeout",
+            PD + "test_a_reply_to_any_exchange_that_outlasts_the_clients_timeout_is_a_timeout"),
+           '        if self._monotonic() - started > budget:\n            return None, None, "timeout"', "        if False:\n            return None, None, \"timeout\""),
       )),
 ]

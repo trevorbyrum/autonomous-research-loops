@@ -694,12 +694,59 @@ class PollDeadline(unittest.TestCase):
         self.assertEqual(len(timeouts), 3, "polled until it finished, and no longer")
         self.assertLess(clock.now, 2.0)
 
-    def test_a_poll_that_comes_back_after_the_deadline_still_ends_it(self):
-        """A reply that arrives (inside its clamped timeout) and is not the end leaves nothing of the deadline to sleep on."""
+    def test_a_reply_that_arrives_inside_its_timeout_and_is_not_the_end_leaves_only_what_remains_to_sleep(self):
+        """Final-sleep arithmetic, not a late reply (that is the next test, and test_gateway_exchange's real ones): the reply
+        arrives at 0.4 s of a 0.5 s deadline, inside its clamped timeout, and the sleep after it is the 0.1 s that is left."""
         c, clock, timeouts = self.poller(0.4, deadline=0.5)
         self.assertEqual(c._poll(1, self.CTX), (None, None))
         self.close(timeouts, [0.5])
         self.close(clock.sleeps, [0.1])
+
+    def test_a_terminal_reply_that_completes_after_the_deadline_is_a_timeout_whatever_it_says(self):
+        """The client's own check, over a transport that breaks the contract it is handed (a fake that honoured the timeout
+        could not show it): a `done` that returns after the exchange's whole budget is no result, and neither is a failed job
+        or one that is still running. Then the poll is over, and the search says `timeout`, never what the late reply said."""
+        for status in ("done", "failed", "running"):
+            with self.subTest(status):
+                clock = VirtualTime()
+
+                def transport(method, url, headers, body, request_timeout, status=status):
+                    clock.now += request_timeout + 0.1   # the reply is in hand 0.1 s after the exchange's whole budget
+                    doc = {"status": status, "result": {"lanes": [{"source": "crossref", "coverage": "searched_empty", "completeness": "complete",
+                                                                  "count": 0, "retrieved": [], "exhausted": True}], "records": []},
+                           "observation": TransportOutcomes.POLLED}
+                    return 200, self.RUNNING, json.dumps(doc).encode(), None
+                c = GatewayClient(BASE, ENGINE_TOKEN, deadline=2.0, transport=transport, sleep=clock.sleep, monotonic=clock.monotonic)
+                self.assertEqual(c._poll(1, self.CTX), (None, None))
+                self.assertEqual(sum(clock.sleeps), 0, "no time is waited on a deadline that has passed")
+
+    def test_the_search_whose_poll_answers_after_the_deadline_observes_a_timeout(self):
+        clock = VirtualTime()
+        done = {"status": "done", "observation": TransportOutcomes.POLLED,
+                "result": {"lanes": [{"source": "crossref", "coverage": "searched_empty", "completeness": "complete", "count": 0, "retrieved": [], "exhausted": True}],
+                           "records": []}}
+        queued = {**TransportOutcomes.QUEUED, "observation": fixture("find_complete")["exchanges"][0]["response"]["body"]["observation"]}
+
+        def transport(method, url, headers, body, request_timeout):
+            if method == "POST":
+                return 202, HEADERS, json.dumps(queued).encode(), None
+            clock.now += request_timeout + 1.0
+            return 200, HEADERS, json.dumps(done).encode(), None
+        c = GatewayClient(BASE, ENGINE_TOKEN, deadline=5.0, transport=transport, sleep=clock.sleep, monotonic=clock.monotonic, clock=lambda: "2026-09-30T10:00:00Z")
+        out = c.search(FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
+        self.assertEqual([summary(o) for o in out["observations"]], [("unknown", "unobserved", None, "timeout", [])])
+        self.assertEqual(out["observations"][0]["observation"]["page_outcome"], "failed")
+
+    def test_a_reply_to_any_exchange_that_outlasts_the_clients_timeout_is_a_timeout(self):
+        """The first request's own budget is the client's timeout, and the same check holds it."""
+        clock = VirtualTime()
+
+        def transport(method, url, headers, body, request_timeout):
+            clock.now += request_timeout + 0.5
+            return 200, HEADERS, json.dumps(fixture("find_complete")["exchanges"][0]["response"]["body"]).encode(), None
+        c = GatewayClient(BASE, ENGINE_TOKEN, timeout=3.0, transport=transport, sleep=clock.sleep, monotonic=clock.monotonic, clock=lambda: "2026-09-30T10:00:00Z")
+        out = c.search(FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
+        self.assertEqual({summary(o)[:4] for o in out["observations"]}, {("unknown", "unobserved", None, "timeout")})
 
 
 class OverRealHttp(unittest.TestCase):

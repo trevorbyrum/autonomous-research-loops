@@ -40,16 +40,28 @@ Queued answers are polled until the job finishes or the client's deadline passes
 deadline that passes is `unknown`/`timeout`, never an empty result. The deadline is ONE
 absolute point on the monotonic clock, set when polling starts (Gate D #4, task
 2b-repair-13b): each poll's timeout is clamped to what remains of it, each sleep is
-bounded by it, and the time a request itself takes counts — so polling never outlasts
-its deadline by more than one clamped exchange, however slow the gateway is. (The
-transport's timeout is the longest it waits on the socket, not a cap on a slow reply
-that keeps arriving; the deadline is checked between exchanges.)
+bounded by it, and the time a request itself takes counts.
+
+And so is each exchange's (2b-repair-13d, Astra R13B-1): the `timeout` a transport is handed is the
+WHOLE exchange's — connect, request, status line and headers, body — not the longest it waits on one
+socket operation, which a reply arriving a chunk at a time renews for ever. The default transport
+(http_transport) takes one absolute deadline when it is called and arms every blocking socket call with what
+is left of it, so nothing runs past it but what no socket timeout reaches (name resolution; see its
+docstring). The client does not rest on that: a reply that completes after its exchange's budget is a
+timeout whatever it says (`_exchange`), so a late `done` is never a result, for any transport. The
+mechanism is in-process and stdlib-only on purpose: the client has no spawn capability (BOUNDARIES: the
+supervisor owns every lifecycle) and a thread cannot be killed, so a worker thread left behind a timed wait
+would be exactly what a deadline must not leave; a supervisor-owned I/O worker that is terminated at the
+deadline could bound name resolution too, and the `transport` argument is where it would be plugged in.
 
 What this client does not do: write the store (the router records what it returns) or
 pick lanes or policy (the gateway plans; the grant binds).
 """
 from __future__ import annotations
 
+import http.client
+import socket
+import ssl
 import time
 import urllib.error
 import urllib.request
@@ -72,14 +84,128 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None   # a gateway answer is never a redirect; following one could send the bearer token elsewhere
 
 
-_OPENER = urllib.request.build_opener(_NoRedirect)
+class _Deadline:
+    """One absolute point on the monotonic clock, shared by every blocking step of one exchange."""
+
+    def __init__(self, seconds: float) -> None:
+        self._at = time.monotonic() + seconds
+
+    def remaining(self) -> float:
+        """Seconds left, or TimeoutError when none are: a step that would start after the deadline never starts."""
+        left = self._at - time.monotonic()
+        if left <= 0:
+            raise TimeoutError("the exchange's deadline passed")
+        return left
+
+
+class _DeadlineSocket(socket.socket):
+    """A socket whose every blocking call is armed with what is left of the exchange's deadline, never with a fresh
+    timeout: a reply that trickles in, one chunk inside each socket timeout, still stops at the deadline. (`sendall`'s
+    timeout is already the whole call's.)"""
+    deadline: _Deadline | None = None
+
+    def _arm(self) -> None:
+        if self.deadline is not None:
+            self.settimeout(self.deadline.remaining())
+
+    def recv(self, *args):
+        self._arm()
+        return super().recv(*args)
+
+    def recv_into(self, *args):
+        self._arm()
+        return super().recv_into(*args)
+
+    def send(self, *args):
+        self._arm()
+        return super().send(*args)
+
+    def sendall(self, *args):
+        self._arm()
+        return super().sendall(*args)
+
+
+class _DeadlineSSLSocket(ssl.SSLSocket):
+    """The same for a TLS socket, whose reads and writes go through `read` and `send`; its handshake, done inside
+    wrap_socket, runs under the timeout the connected socket was armed with, itself the time that was left."""
+    deadline: _Deadline | None = None
+
+    def _arm(self) -> None:
+        if self.deadline is not None:
+            self.settimeout(self.deadline.remaining())
+
+    def read(self, *args):
+        self._arm()
+        return super().read(*args)
+
+    def send(self, *args):
+        self._arm()
+        return super().send(*args)
+
+
+def _connect(address: tuple, deadline: _Deadline) -> _DeadlineSocket:
+    """A connected socket, whose connect took only the time left (name resolution itself has no deadline to take: see
+    http_transport)."""
+    host, port = address
+    error: OSError = OSError(f"{host}:{port} resolved to no address")
+    deadline.remaining()
+    for family, kind, proto, _, target in socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM):
+        sock = _DeadlineSocket(family, kind, proto)
+        sock.deadline = deadline
+        try:
+            sock.settimeout(deadline.remaining())
+            sock.connect(target)
+            sock.settimeout(deadline.remaining())   # the next step (a TLS handshake) runs under what is left after the connect
+            return sock
+        except OSError as e:   # a TimeoutError among them: the next address finds no time either, and the last error is raised
+            sock.close()
+            error = e
+    raise error
+
+
+class _DeadlineHTTPConnection(http.client.HTTPConnection):
+    def __init__(self, *args, deadline: _Deadline, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._deadline = deadline
+        self._create_connection = lambda address, timeout, source_address: _connect(address, deadline)
+
+
+class _DeadlineHTTPSConnection(http.client.HTTPSConnection):
+    def __init__(self, *args, deadline: _Deadline, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._deadline = deadline
+        self._create_connection = lambda address, timeout, source_address: _connect(address, deadline)
+        self._context.sslsocket_class = _DeadlineSSLSocket
+
+    def connect(self) -> None:
+        super().connect()
+        self.sock.deadline = self._deadline
+
+
+def _opener(deadline: _Deadline) -> urllib.request.OpenerDirector:
+    class Http(urllib.request.HTTPHandler):
+        def http_open(self, req):
+            return self.do_open(lambda host, **kw: _DeadlineHTTPConnection(host, deadline=deadline, **kw), req)
+
+    class Https(urllib.request.HTTPSHandler):
+        def https_open(self, req):
+            return self.do_open(lambda host, **kw: _DeadlineHTTPSConnection(host, deadline=deadline, **kw), req, context=self._context)
+    return urllib.request.build_opener(_NoRedirect, Http, Https)
 
 
 def http_transport(method: str, url: str, headers: dict, body: bytes | None, timeout: float) -> tuple:
-    """(status, headers, body, error): one HTTP exchange that never raises and never follows a redirect."""
+    """(status, headers, body, error): one HTTP exchange that never raises and never follows a redirect.
+
+    `timeout` is the whole exchange's: one absolute deadline, taken when the call starts, over the connect, the
+    request, the status line and headers, and the body. Every blocking socket operation is given what is left of it
+    (_DeadlineSocket) and an operation that would start after it does not, so no reply can outlast it by arriving a
+    chunk at a time. What is not a socket operation has no timeout to give: name resolution (getaddrinfo) cannot be
+    interrupted in-process, so a host that is a name can run past the deadline by the resolver's own timeout before the
+    connect is even tried; the deadline is checked as soon as it returns, and the client discards a reply that
+    completes after it (GatewayClient._exchange)."""
     req = urllib.request.Request(url, data=body, method=method, headers=headers)
     try:
-        with _OPENER.open(req, timeout=timeout) as resp:
+        with _opener(_Deadline(timeout)).open(req, timeout=timeout) as resp:
             return resp.status, {k.lower(): v for k, v in resp.headers.items()}, resp.read(), None
     except urllib.error.HTTPError as e:
         try:
@@ -114,15 +240,20 @@ class GatewayClient:
         self._transport, self._clock, self._sleep, self._monotonic = transport, clock, sleep, monotonic
 
     def _exchange(self, method: str, path: str, body: dict | None, token: str, headers: dict | None = None, timeout: float | None = None):
-        """(status, parsed JSON dict or None, error class or None). `timeout`: this exchange's own, never above the client's."""
+        """(status, parsed JSON dict or None, error class or None). `timeout`: this exchange's own, never above the client's,
+        and the whole exchange's (the transport's contract): a reply that completes after it is a timeout, whatever it says."""
         hdrs = {"Accept": "application/json", "Authorization": f"Bearer {token}", **(headers or {})}
         data = None
         if body is not None:
             data = canonical.canonical_bytes(body)
             hdrs["Content-Type"] = "application/json"
-        status, resp_headers, raw, error = self._transport(method, self.base_url + path, hdrs, data, self.timeout if timeout is None else min(self.timeout, timeout))
+        budget = self.timeout if timeout is None else min(self.timeout, timeout)
+        started = self._monotonic()
+        status, resp_headers, raw, error = self._transport(method, self.base_url + path, hdrs, data, budget)
         if status is None:
             return None, None, error or "transport_failure"
+        if self._monotonic() - started > budget:
+            return None, None, "timeout"   # a terminal reply that arrives after the deadline is not a result (Astra R13B-1)
         if resp_headers.get("x-research-gateway") != "result" or "json" not in resp_headers.get("content-type", ""):
             return status, None, "payload_invalid"   # not a gateway answer (a proxy page, a raw file)
         try:
