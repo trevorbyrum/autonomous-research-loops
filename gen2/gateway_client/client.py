@@ -56,8 +56,8 @@ The lookup is made at construction (the default transport, a name) and again onl
 `resolve()` between operations, which a connection failure invites (`endpoint_stale`); never by an exchange,
 a poll or a search. The time it takes is the CALLER's, outside every exchange's and poll's deadline; the
 client cannot bound it (see `resolve`). The client does not rest on the transport for the rest either: a
-reply that completes after its exchange's budget is a
-timeout whatever it says (`_exchange`), so a late `done` is never a result, for any transport. The
+reply that completes after its exchange's budget is a timeout whatever it says (`_exchange`), so a late
+`done` is never a result, for any transport. The
 mechanism is in-process and stdlib-only on purpose: the client has no spawn capability (BOUNDARIES: the
 supervisor owns every lifecycle) and a thread cannot be killed, so a worker thread left behind a timed wait
 would be exactly what a deadline must not leave.
@@ -271,10 +271,11 @@ class GatewayClient:
                  transport: Callable | None = None, clock: Callable[[], str] = utc_now,
                  sleep: Callable[[float], None] = time.sleep, monotonic: Callable[[], float] = time.monotonic,
                  resolver: Callable | None = None):
-        """`transport` None (or `http_transport` itself) is the real one, over the addresses this client looked up. With it and a gateway that is a name (`http://gateway:8765`, GEN2_GATEWAY_URL), the name is looked up HERE, once (`resolve`), outside
-        any exchange: a failed lookup does not fail the construction (a dependency's failure is a capability fact, not an outage of the engine: DEPLOYMENT-CONTRACT 1.2), it leaves
-        the endpoint stale, and every exchange then fails at once as a transport failure until the owner's `resolve()` succeeds. A transport handed in (a test's) is not the client's to
-        resolve for, and an IP literal needs no lookup. `resolver` is getaddrinfo's signature (socket.getaddrinfo when None, looked up at each call)."""
+        """`transport` None (or `http_transport` itself) is the real one, over the addresses this client looked up. With it and a gateway that is a name
+        (`http://gateway:8765`, GEN2_GATEWAY_URL), the name is looked up HERE, once (`resolve`), outside any exchange: a failed lookup does not fail the construction
+        (a dependency's failure is a capability fact, not an outage of the engine: DEPLOYMENT-CONTRACT 1.2), it leaves the endpoint stale, and every exchange then fails at
+        once as a transport failure until the owner's `resolve()` succeeds. A transport handed in (a test's) is not the client's to resolve for, and an IP literal needs
+        no lookup. `resolver` is getaddrinfo's signature (socket.getaddrinfo when None, looked up at each call)."""
         self.base_url, self.token, self.timeout, self.deadline = base_url.rstrip("/"), token, timeout, deadline
         self._clock, self._sleep, self._monotonic, self._resolver = clock, sleep, monotonic, resolver
         parts = urllib.parse.urlsplit(self.base_url)
@@ -295,26 +296,23 @@ class GatewayClient:
         return self._stale
 
     def resolve(self) -> Resolution:
-        """Look the gateway's name up (again), now: the one place besides the construction where this client resolves a name, and never called by an exchange, a poll or a search
-        (2b-repair-15, Astra F2: an exchange that resolves can run past its deadline by the resolver's own time, which cannot be interrupted). A connection failure marks the endpoint stale
-        (`endpoint_stale`) and nothing else; looking again is the OWNER's call, made between operations and before the next exchange's deadline starts. A lookup that finds nothing keeps
-        the addresses the last good one found. The Resolution is returned and kept (`last_resolution`) for the owner to record.
+        """Look the gateway's name up (again), now: the one place besides the construction where this client resolves a name, and never called by an exchange, a poll or
+        a search (2b-repair-15, Astra F2: an exchange that resolves can run past its deadline by the resolver's own time, which cannot be interrupted). A connection failure
+        marks the endpoint stale (`endpoint_stale`) and nothing else; looking again is the OWNER's call, made between operations and before the next exchange's deadline
+        starts. A lookup that finds nothing keeps the addresses the last good one found. The Resolution is returned and kept (`last_resolution`) for the owner to record.
 
-        The time this takes is the caller's, and it is not bounded here: getaddrinfo cannot be interrupted, the client may not leave a thread running or start a process (BOUNDARIES: the
-        supervisor owns every lifecycle), so whichever call this is made from waits for the resolver. Nothing in gen-2 constructs a GatewayClient or calls this yet; the first caller must
-        place it under a bound it owns."""
+        The time this takes is the caller's, and it is NOT bounded here: getaddrinfo cannot be interrupted, and the client may not leave a thread running or start a process
+        (BOUNDARIES: the supervisor owns every lifecycle), so whichever call this is made from waits for the resolver. Nothing in gen-2 constructs a GatewayClient or calls
+        this yet; the first caller must place it under a bound it owns."""
         host, port = self._origin
         began, at = self._monotonic(), self._clock()
-        found: list = []
-        error = None
-        if _literal(host, port) is not None:   # an address needs no lookup
-            found = _literal(host, port)
-        else:
+        found, error = _literal(host, port), None   # an address needs no lookup
+        if found is None:
             try:
                 found = list((self._resolver or socket.getaddrinfo)(host, port, 0, socket.SOCK_STREAM))
                 error = None if found else f"{host}:{port} resolved to no address"
             except OSError as e:
-                error = f"{type(e).__name__}: {e}"
+                found, error = [], f"{type(e).__name__}: {e}"
         if found:
             self._resolved[self._origin] = found
         self._stale = bool(error)
