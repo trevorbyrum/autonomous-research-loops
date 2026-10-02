@@ -44,6 +44,12 @@ TOPIC = "fleet-a:t1"
 OTHER = "fleet-a:t2"
 
 
+def find_request(query: str = "intake latency", **sent) -> dict:
+    """The attempted-request document of a find observation (gen2/core/pagination.py): the lane, the page, and the request sent,
+    which names its type (`request_type`, from a closed set) because what an end means depends on it."""
+    return {"lane": "crossref", "page": 1, "request": {"request_type": "find", "query": query, **sent}}
+
+
 def question(qid: str = "Q-screen", version: int = 1, text: str = "Does this work meet the pinned eligibility criteria?") -> dict:
     """A question registry entry (config-bundle/1) with its true content hash."""
     entry = {"question_id": qid, "version": version, "text": text}

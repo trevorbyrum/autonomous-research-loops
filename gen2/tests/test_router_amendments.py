@@ -43,7 +43,7 @@ from pathlib import Path
 from gen2.core import canonical
 from gen2.store import api
 from gen2.tests import router_fixtures as rf, store_fixtures
-from gen2.tests.router_fixtures import OTHER, TOPIC, RouterTestCase, empty_outcome, h, jcs
+from gen2.tests.router_fixtures import OTHER, TOPIC, RouterTestCase, empty_outcome, find_request, h, jcs
 from gen2.tests import test_router_commit  # its verification-receipt builder (the module, so its tests are not collected twice)
 
 EXAMPLE = json.loads((rf.EXAMPLES / "contract-v2" / "valid-two-obligations.json").read_text())["instance"]
@@ -156,11 +156,11 @@ class ContractWorld(RouterTestCase):
             {"assessment_id": "asm_000000000002", "work_id": "wrk_00000001", "stage": "abstract", "decision": "exclude", "reason_code": "EC-outcome",
              "criterion_results": {"EC-outcome": "not_met"}, "actor_kind": "primary", "decision_receipt_id": None, "supersedes_assessment_id": None}]
         assert self.router.commit_outcome(self.envelope(grant, "op_capture0001", outcome, refs=[text]))["status"] == "committed"
-        request = {"q": "intake omissions"}
+        request = find_request("intake omissions")
         observation = {"observation_id": "obs_000000000001", "request": request, "request_identity": canonical.logical_hash(request), "attempt": 1, "lane": "crossref",
                        "obligation_ids": ["O-1"], "started_at": "2026-09-27T10:00:00Z", "ended_at": "2026-09-27T10:00:01Z", "coverage_state": "searched_empty",
                        "result_count": 0, "completeness": "complete", "error_class": None, "capability_fact_id": None, "policy_version": "pol-1", "cost_units": None,
-                       "gateway_call_ref": None, "page_outcome": "end_unknown", "continuation": None}
+                       "gateway_call_ref": "call-1", "page_outcome": "end_unknown", "continuation": None}
         assert self.router.record_observation({"capability_id": grant["capability_id"], "invocation_id": inv, "observation": observation, "retrieval_events": []})["status"] == "recorded"
         return grant
 
@@ -573,11 +573,11 @@ class InventoryImpactTest(ContractWorld):
         self.x("INSERT INTO claim_source_links (claim_id, claim_revision, work_id, source_version, topic_id, contract_revision, obligation_id, spans, contribution, "
                "evidence_origin_lineage, created_at) VALUES ('clm_00000001', 1, 'wrk_00000001', 'v1', ?, 2, 'O-2', '[]', 'answer', 'review-source', "
                "'2026-09-27T10:00:00Z')", TOPIC)
-        request = {"q": "cost comparison"}
+        request = find_request("cost comparison")
         observation = {"observation_id": "obs_cost000001", "request": request, "request_identity": canonical.logical_hash(request), "attempt": 1, "lane": "crossref",
                        "obligation_ids": ["O-2"], "started_at": "2026-09-27T10:00:00Z", "ended_at": "2026-09-27T10:00:01Z", "coverage_state": "searched_empty",
                        "result_count": 0, "completeness": "complete", "error_class": None, "capability_fact_id": None, "policy_version": "pol-1", "cost_units": None,
-                       "gateway_call_ref": None, "page_outcome": "end_unknown", "continuation": None}
+                       "gateway_call_ref": "call-1", "page_outcome": "end_unknown", "continuation": None}
         self.assertEqual(self.router.record_observation({"capability_id": grant["capability_id"], "invocation_id": "inv_research01", "observation": observation,
                                                          "retrieval_events": []})["status"], "recorded")
         return grant

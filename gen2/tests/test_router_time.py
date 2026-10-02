@@ -52,7 +52,7 @@ def claim_request(inv: str, *, lease: str = NOON, deadline: str = NOON, kind: st
 
 
 def observation_request(grant: dict) -> dict:
-    request = {"lane": "crossref", "query": "intake latency", "cursor": None}
+    request = rf.find_request()
     return {"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"],
             "observation": {"observation_id": "obs_000000000001", "request": request, "request_identity": canonical.logical_hash(request), "attempt": 1,
                             "lane": "crossref", "obligation_ids": [], "started_at": "2026-09-27T10:30:00Z", "ended_at": "2026-09-27T10:30:01Z",

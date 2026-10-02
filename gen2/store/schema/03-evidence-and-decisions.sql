@@ -24,16 +24,31 @@
 -- completeness says whether THIS PAGE was read whole; page_outcome says what
 -- is known of the search POPULATION behind it, and neither stands in for the
 -- other. 'exhausted' is the lane's own report that nothing remains, made on a
--- page read whole (or restated for a lane already finished) and is the only
--- value that establishes exhaustion; 'continuation' and 'limit_reached' (the
--- client's own page cap stopped it) carry the cursor the lane handed back,
--- {"cursor": <string or integer>} (its type kept), which the next page's
--- attempted request echoes; 'end_unknown' is
+-- page read whole and is the only value that establishes exhaustion;
+-- 'continuation' and 'limit_reached' (the client's own page cap stopped it)
+-- carry the cursor the lane handed back, {"cursor": <string or integer>} (its
+-- type kept), which the next page's attempted request echoes; 'end_unknown' is
 -- a page with neither a continuation nor a reported end (a partial page, an
--- unreadable continuation, a request that does not page, a lane never
--- searched) and stays unknown, never an end; 'failed' is a page nothing could
--- be read from. attempted-request identity (request, request_identity) holds
--- none of this: it is what the answer said, not what was asked.
+-- unreadable continuation, a lane never searched, or one restating an end it
+-- reported earlier) and stays unknown, never an end; 'failed' is a page
+-- nothing could be read from. attempted-request identity (request,
+-- request_identity) holds none of this: it is what the answer said, not what
+-- was asked.
+-- The admission contract (task 2b-repair-13d, Astra R13B-2; INVARIANTS RG-4,
+-- E-2; the router's boundary.check_page_outcome says the same, and a test holds
+-- the two equal). The request names its type, from a closed set
+-- (request.request.request_type), because what 'end_unknown' means depends on
+-- it: for a find, which pages, that the end is not known; for any other type,
+-- which does not page, there is no end to know, so only a find's page is an
+-- 'exhausted', a 'continuation' or a 'limit_reached'. A page read 'complete',
+-- an 'exhausted' end among them, names the gateway's durable row of its request
+-- (gateway_call_ref): an answer the gateway did not capture is at most a
+-- partial lower bound, and the reference is what the state-integrity audit
+-- re-derives an end from. A cursor is an integer from 0 to 2^53-1, or a text of
+-- 1..8000 characters without NUL other than the finished-lane sentinel
+-- 'exhausted'. What none of this establishes: that an asserted outcome is the
+-- one the gateway's answer implied (the router sees the command, not the reply;
+-- the state-integrity audit re-derives it from the captured raw evidence).
 CREATE TABLE search_observations (
   observation_id TEXT PRIMARY KEY,
   invocation_id TEXT NOT NULL REFERENCES invocations (invocation_id),
@@ -41,7 +56,8 @@ CREATE TABLE search_observations (
   request_identity TEXT NOT NULL CHECK (request_identity GLOB 'sha256:*'),
   attempt INTEGER NOT NULL CHECK (attempt >= 1),
   lane TEXT NOT NULL,
-  request TEXT NOT NULL CHECK (json_valid(request)),
+  request TEXT NOT NULL CHECK (json_valid(request)
+    AND COALESCE(json_extract(request, '$.request.request_type') IN ('find', 'resolve', 'enrich', 'fetch', 'data'), 0)),
   obligation_ids TEXT NOT NULL CHECK (json_valid(obligation_ids) AND json_type(obligation_ids) = 'array'),
   started_at TEXT NOT NULL,
   ended_at TEXT,
@@ -60,7 +76,11 @@ CREATE TABLE search_observations (
   gateway_call_ref TEXT,
   page_outcome TEXT NOT NULL CHECK (page_outcome IN ('exhausted', 'continuation', 'end_unknown', 'limit_reached', 'failed')),
   continuation TEXT CHECK (continuation IS NULL OR (json_valid(continuation) AND json_type(continuation) = 'object'
-    AND COALESCE(json_type(continuation, '$.cursor') IN ('text', 'integer'), 0) AND json_remove(continuation, '$.cursor') = '{}')),
+    AND COALESCE(json_type(continuation, '$.cursor') IN ('text', 'integer'), 0) AND json_remove(continuation, '$.cursor') = '{}'
+    AND CASE json_type(continuation, '$.cursor')
+          WHEN 'integer' THEN json_extract(continuation, '$.cursor') BETWEEN 0 AND 9007199254740991
+          ELSE length(json_extract(continuation, '$.cursor')) BETWEEN 1 AND 8000
+            AND instr(json_extract(continuation, '$.cursor'), char(0)) = 0 AND json_extract(continuation, '$.cursor') != 'exhausted' END)),
   UNIQUE (invocation_id, request_identity, attempt),
   CHECK (coverage_state NOT IN ('searched_ok', 'metadata_only') OR (result_count IS NOT NULL AND result_count >= 1)),
   CHECK (coverage_state != 'searched_empty' OR (result_count IS NOT NULL AND result_count = 0)),
@@ -74,7 +94,9 @@ CREATE TABLE search_observations (
   CHECK ((coverage_state IN ('provider_unavailable', 'auth_failed', 'unknown')) = (page_outcome = 'failed')),
   CHECK ((page_outcome IN ('continuation', 'limit_reached')) = (continuation IS NOT NULL)),
   CHECK (page_outcome NOT IN ('continuation', 'limit_reached') OR completeness != 'unobserved'),
-  CHECK (page_outcome != 'exhausted' OR completeness = 'complete' OR coverage_state = 'exhausted')
+  CHECK (page_outcome != 'exhausted' OR completeness = 'complete'),
+  CHECK (completeness != 'complete' OR COALESCE(gateway_call_ref != '', 0)),
+  CHECK (page_outcome IN ('end_unknown', 'failed') OR json_extract(request, '$.request.request_type') = 'find')
 ) STRICT;
 
 CREATE TRIGGER search_observations_invocation_topic

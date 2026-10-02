@@ -22,7 +22,7 @@ from __future__ import annotations
 import sqlite3
 import unittest
 
-from gen2.tests.store_fixtures import OTHER, TOPIC, StoreTestCase, T, h
+from gen2.tests.store_fixtures import FIND_REQUEST, OTHER, TOPIC, StoreTestCase, T, h
 
 
 class VerificationTest(StoreTestCase):
@@ -427,8 +427,8 @@ class ContractAdmittedSupportTest(StoreTestCase):
 
 
 class ObservationTest(StoreTestCase):
-    INSERT = ("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, error_class, capability_fact_id, policy_version, completeness, page_outcome, continuation) "
-              "VALUES (?, 'inv_pppppppp', ?, ?, 1, 'crossref', '{}', '[]', ?, ?, ?, ?, ?, 'pol1', ?, ?, ?)")
+    INSERT = ("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, error_class, capability_fact_id, policy_version, completeness, page_outcome, continuation, gateway_call_ref) "
+              "VALUES (?, 'inv_pppppppp', ?, ?, 1, 'crossref', ?, '[]', ?, ?, ?, ?, ?, 'pol1', ?, ?, ?, ?)")
 
     def setUp(self) -> None:
         super().setUp()
@@ -436,12 +436,14 @@ class ObservationTest(StoreTestCase):
         self.invocation("inv_pppppppp")
 
     def obs(self, oid: str, state: str, count, error=None, fact=None, ident: str = "1", completeness: str | None = None,
-            outcome: str | None = None, cursor: str | None = None) -> None:
+            outcome: str | None = None, cursor: str | None = None, request: str = FIND_REQUEST, call: str | None = "default") -> None:
         if completeness is None:
             completeness = "complete" if state in ("searched_ok", "searched_empty", "metadata_only") else "unobserved"
         if outcome is None:   # a page nothing could be read from failed; any other says only that its end is unknown
             outcome = "failed" if state in ("provider_unavailable", "auth_failed", "unknown") else "end_unknown"
-        self.x(self.INSERT, oid, TOPIC, h(ident), T, state, count, error, fact, completeness, outcome, cursor)
+        if call == "default":   # a page read whole names the gateway's durable row of its request; any other has none to name
+            call = "gw-call:1" if completeness == "complete" else None
+        self.x(self.INSERT, oid, TOPIC, h(ident), request, T, state, count, error, fact, completeness, outcome, cursor, call)
 
     def test_degraded_search_cannot_report_zero(self) -> None:
         with self.assertRaises(sqlite3.IntegrityError):
@@ -667,8 +669,8 @@ class ObservationTest(StoreTestCase):
         """A10: search_observations binds its invocation's topic."""
         self.lease("lease_zzzzzzzz", 1, tid=OTHER)
         self.invocation("inv_oooooooo", tid=OTHER, lease="lease_zzzzzzzz")
-        self.rejects("invocation of its own topic", self.INSERT.replace("'inv_pppppppp'", "'inv_oooooooo'"), "o1", TOPIC, h("1"), T, "searched_ok", 3, None, None, "complete", "end_unknown", None)
-        self.x(self.INSERT.replace("'inv_pppppppp'", "'inv_oooooooo'"), "o1", OTHER, h("1"), T, "searched_ok", 3, None, None, "complete", "end_unknown", None)
+        self.rejects("invocation of its own topic", self.INSERT.replace("'inv_pppppppp'", "'inv_oooooooo'"), "o1", TOPIC, h("1"), FIND_REQUEST, T, "searched_ok", 3, None, None, "complete", "end_unknown", None, "gw-call:1")
+        self.x(self.INSERT.replace("'inv_pppppppp'", "'inv_oooooooo'"), "o1", OTHER, h("1"), FIND_REQUEST, T, "searched_ok", 3, None, None, "complete", "end_unknown", None, "gw-call:1")
 
     def test_partial_results_are_kept_and_marked_incomplete(self) -> None:
         """A11 / RG-4: a partial result set keeps its observed records (count as a
@@ -692,7 +694,7 @@ class ObservationTest(StoreTestCase):
     def test_a_page_outcome_says_why_pagination_ended_and_is_consistent_with_what_was_read(self) -> None:
         """Gate D #3 (2b-repair-13b): `page_outcome` is typed; a page nothing could be read from FAILED, and only
         such a page; a cursor belongs to a continuation or a page cap, and only from a page that was read; and an
-        end is reported only by a page read whole (a lane already finished restates it). Each refused row differs
+        end is reported only by a page read whole (a lane already finished restates it, and reports none). Each refused row differs
         from an accepted one in that one respect."""
         cursor = '{"cursor": "c2"}'
         n = iter(range(1, 1000))
@@ -732,7 +734,7 @@ class ObservationTest(StoreTestCase):
         with self.subTest("an end"):
             refused("searched_ok", 3, "partial_pagination", completeness="partial", outcome="exhausted")   # a partial page ends nothing (RG-4)
             refused("not_searched", None, outcome="exhausted")                           # nor does a lane never searched
-            accepted("exhausted", None, outcome="exhausted")                             # a finished lane restating its end
+            refused("exhausted", None, outcome="exhausted")                              # nor does a lane restating an end it reported earlier
             accepted("exhausted", None, outcome="end_unknown")
             accepted("searched_ok", 3, outcome="end_unknown")                            # read whole, end unknown: the page is not the population
         self.assertGreater(self.rows("SELECT count(*) FROM search_observations WHERE completeness = 'complete' AND page_outcome IN ('end_unknown', 'limit_reached', 'continuation')")[0][0], 0)

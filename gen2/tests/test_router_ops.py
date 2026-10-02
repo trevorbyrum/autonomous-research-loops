@@ -22,7 +22,7 @@ from __future__ import annotations
 import copy
 
 from gen2.core import canonical
-from gen2.tests.router_fixtures import CONFIG, DEADLINE, EXPIRES, OTHER, TOPIC, RouterTestCase, empty_outcome, h, jcs
+from gen2.tests.router_fixtures import CONFIG, DEADLINE, EXPIRES, OTHER, TOPIC, RouterTestCase, empty_outcome, find_request, h, jcs
 
 
 class ClaimTest(RouterTestCase):
@@ -219,7 +219,7 @@ class ObservationTest(RouterTestCase):
 
     def observe(self, n_events: int, *, count: int | None = "same", coverage: str = "searched_ok", completeness: str = "complete",
                 error: str | None = None, oid: str = "obs_000000000001", request: dict | None = None, identity: str | None = None, **extra) -> dict:
-        request = request or {"lane": "crossref", "query": "intake latency", "cursor": None}
+        request = request or find_request()
         observation = {"observation_id": oid, "request": request, "request_identity": identity or canonical.logical_hash(request), "attempt": 1,
                        "lane": "crossref", "obligation_ids": [], "started_at": "2026-09-27T10:00:00Z", "ended_at": "2026-09-27T10:00:05Z",
                        "coverage_state": coverage, "result_count": n_events if count == "same" else count, "completeness": completeness,
@@ -254,9 +254,10 @@ class ObservationTest(RouterTestCase):
     def test_a_page_outcome_is_typed_and_consistent_with_what_was_read(self) -> None:
         """Gate D #3 (2b-repair-13b): how pagination ended or continued is part of the observation. The vocabulary and the
         cursor's shape are the command schema's; that a page nothing could be read from failed (and only it), that a cursor
-        belongs to a continuation or a page cap read off a page that was read, and that a partial page never reports an end
-        are the boundary's own checks (the store enforces the same). Each refused observation differs from the recorded
-        one in that one respect."""
+        belongs to a continuation or a page cap read off a page that was read, that a partial page never reports an end, and
+        the cursor's domain are the boundary's own checks (the store enforces the same). Each refused observation differs from
+        the recorded one in that one respect. (The rest of the admission contract — the request type, the capture
+        acknowledgement — is test_admission.py's, at the router and the store together.)"""
         before = self.state(exclude=())
         unread = dict(count=None, coverage="provider_unavailable", completeness="unobserved", error="provider_outage")
         for label, kwargs, reason, detail in (
@@ -273,8 +274,10 @@ class ObservationTest(RouterTestCase):
                 ("an end reported by a partial page", dict(completeness="partial", error="partial_pagination", page_outcome="exhausted"),
                  "payload_invalid", "an exhausted end is reported by a page read whole"),
                 ("a cursor that is not a string or an integer", dict(page_outcome="continuation", continuation={"cursor": 1.5}), "request_invalid", "continuation"),
-                ("an empty cursor", dict(page_outcome="continuation", continuation={"cursor": ""}), "request_invalid", "continuation"),
-                ("a cursor too long to keep", dict(page_outcome="continuation", continuation={"cursor": "c" * 8001}), "request_invalid", "continuation"),
+                ("an empty cursor", dict(page_outcome="continuation", continuation={"cursor": ""}), "payload_invalid", "1..8000 characters, not 0"),
+                ("a cursor too long to keep", dict(page_outcome="continuation", continuation={"cursor": "c" * 8001}), "payload_invalid", "1..8000 characters, not 8001"),
+                ("a negative cursor", dict(page_outcome="continuation", continuation={"cursor": -1}), "payload_invalid", "outside 0.."),
+                ("the finished-lane sentinel as a cursor", dict(page_outcome="limit_reached", continuation={"cursor": "exhausted"}), "payload_invalid", "sentinel"),
                 ("a cursor with company", dict(page_outcome="continuation", continuation={"cursor": "c2", "x": 1}), "request_invalid", "continuation"),
                 ("a bare cursor", dict(page_outcome="continuation", continuation="c2"), "request_invalid", "continuation")):
             with self.subTest(label):
@@ -283,12 +286,12 @@ class ObservationTest(RouterTestCase):
                 self.refused(self.observe(events, **kwargs), reason, before, detail)
         for oid, (outcome, cursor) in enumerate((("continuation", {"cursor": "c2"}), ("limit_reached", {"cursor": 20}), ("end_unknown", None), ("exhausted", None)), start=1):
             with self.subTest(recorded=outcome):
-                self.assertEqual(self.observe(1, oid=f"obs_00000000000{oid}", request={"q": outcome}, page_outcome=outcome, continuation=cursor)["status"], "recorded")
-        self.assertEqual(self.rows("SELECT json_extract(request, '$.q'), page_outcome, completeness, continuation FROM search_observations ORDER BY observation_id"),
+                self.assertEqual(self.observe(1, oid=f"obs_00000000000{oid}", request=find_request(outcome), page_outcome=outcome, continuation=cursor)["status"], "recorded")
+        self.assertEqual(self.rows("SELECT json_extract(request, '$.request.query'), page_outcome, completeness, continuation FROM search_observations ORDER BY observation_id"),
                          [("continuation", "continuation", "complete", '{"cursor":"c2"}'), ("limit_reached", "limit_reached", "complete", '{"cursor":20}'),
                           ("end_unknown", "end_unknown", "complete", None), ("exhausted", "exhausted", "complete", None)],
                          "a page read whole stays complete whatever it says of the population; the cursor keeps its type")
-        again = dict(request={"q": "continuation"}, oid="obs_000000000001", page_outcome="continuation")
+        again = dict(request=find_request("continuation"), oid="obs_000000000001", page_outcome="continuation")
         self.assertEqual(self.observe(1, continuation={"cursor": "c2"}, **again)["status"], "replayed")
         conflicting = self.state(exclude=())
         self.refused(self.observe(1, **{**again, "page_outcome": "exhausted"}, continuation=None), "observation_id_conflict", conflicting, "different content")
@@ -300,13 +303,13 @@ class ObservationTest(RouterTestCase):
         self.refused(self.observe(0, count=0, coverage="provider_unavailable", completeness="unobserved", error="provider_outage"), "payload_invalid", before, "unknown is not zero")
         self.assertEqual(self.observe(0, count=None, coverage="provider_unavailable", completeness="unobserved", error="provider_outage")["status"], "recorded")
         self.assertEqual(self.rows("SELECT result_count FROM search_observations"), [(None,)])
-        self.assertEqual(self.observe(0, coverage="searched_empty", oid="obs_000000000002", request={"q": "nothing"})["status"], "recorded")
+        self.assertEqual(self.observe(0, coverage="searched_empty", oid="obs_000000000002", request=find_request("nothing"))["status"], "recorded")
         self.assertEqual(self.rows("SELECT result_count FROM search_observations WHERE observation_id = 'obs_000000000002'"), [(0,)])
 
     def test_a_request_identity_is_the_hash_of_its_request(self) -> None:
         """H-5: two different requests never share an identity."""
         before = self.state(exclude=())
-        self.refused(self.observe(1, identity=canonical.logical_hash({"lane": "crossref", "query": "something else", "cursor": None})), "payload_invalid", before, "request_identity is not the hash")
+        self.refused(self.observe(1, identity=canonical.logical_hash(find_request("something else"))), "payload_invalid", before, "request_identity is not the hash")
         self.assertEqual(self.observe(1)["status"], "recorded")
 
     def test_a_record_is_captured_once_per_observation(self) -> None:
@@ -318,7 +321,7 @@ class ObservationTest(RouterTestCase):
         self.refused(out, "payload_invalid", before, "captured twice")
 
     def observation_doc(self, count: int) -> dict:
-        request = {"lane": "crossref", "query": "intake latency", "cursor": None}
+        request = find_request()
         return {"observation_id": "obs_000000000001", "request": request, "request_identity": canonical.logical_hash(request), "attempt": 1,
                 "lane": "crossref", "obligation_ids": [], "started_at": "2026-09-27T10:00:00Z", "ended_at": "2026-09-27T10:00:05Z",
                 "coverage_state": "searched_ok", "result_count": count, "completeness": "complete", "error_class": None, "capability_fact_id": None,

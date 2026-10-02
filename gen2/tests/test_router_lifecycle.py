@@ -18,7 +18,7 @@ schedules named.
 from __future__ import annotations
 
 from gen2.core import canonical
-from gen2.tests.router_fixtures import TOPIC, RouterTestCase, empty_outcome, h, jcs
+from gen2.tests.router_fixtures import TOPIC, RouterTestCase, empty_outcome, find_request, h, jcs
 
 IDENTITY = {"host_id": "host-1", "boot_id": "boot-1", "start_fingerprint": "ticks=1"}
 
@@ -221,7 +221,7 @@ class CancellationTest(LifecycleTestCase):
         before = self.state(exclude=())
         self.refused(self.transition("result_ready", result_payload_digest=digest), "cancel_requested", before)
         self.assertIsNotNone(self.spool.read(digest, topic_id=TOPIC))  # the result stays retained (C-10)
-        request = {"lane": "crossref", "query": "q", "cursor": None}
+        request = find_request("q")
         observation = {"observation_id": "obs_000000000001", "request": request, "request_identity": canonical.logical_hash(request), "attempt": 1,
                        "lane": "crossref", "obligation_ids": [], "started_at": "2026-09-27T10:00:00Z", "ended_at": "2026-09-27T10:00:05Z",
                        "coverage_state": "searched_empty", "result_count": 0, "completeness": "complete", "error_class": None, "capability_fact_id": None,

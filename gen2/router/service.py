@@ -48,7 +48,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Mapping
 
-from gen2.core import canonical, instants
+from gen2.core import canonical, instants, pagination
 from gen2.router import boundary
 from gen2.router.amendments import AMENDMENT_COMMANDS, COMPATIBLE, Amendments, brief_compatibility, contract_compatibility
 from gen2.router.boundary import Refusal, instant
@@ -126,11 +126,10 @@ COMMANDS = {  # the router's own request shapes (commands, not stored documents)
                         "capability_fact_id": _OPT, "policy_version": _ID,
                         "cost_units": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 0, "maximum": 9007199254740991}]},
                         "gateway_call_ref": _OPT,
-                        "page_outcome": {"enum": ["exhausted", "continuation", "end_unknown", "limit_reached", "failed"]},
+                        "page_outcome": {"enum": list(pagination.PAGE_OUTCOMES)},
                         "continuation": {"oneOf": [{"type": "null"}, {
                             "type": "object", "additionalProperties": False, "required": ["cursor"],
-                            "properties": {"cursor": {"oneOf": [{"type": "integer", "minimum": 0, "maximum": 9007199254740991},
-                                                                {"$ref": "common.schema.json#/$defs/long_text"}]}}}]}}},
+                            "properties": {"cursor": {"type": ["integer", "string"]}}}]}}},   # the shape; the cursor domain is boundary.check_page_outcome's
                 "retrieval_events": {
                     "type": "array", "maxItems": 10000,
                     "items": {"type": "object", "additionalProperties": False, "required": ["event_id", "provider_record_id", "rank", "captured_at"],

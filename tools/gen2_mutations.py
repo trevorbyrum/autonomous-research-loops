@@ -167,6 +167,10 @@ FILE_TARGETS = {
     "gen2/router/capabilities.py": ("module", "gen2.router.capabilities", "gen2.router.service", "gen2.app.station", "gen2.app.engine",
                                     "gen2.tests.router_fixtures", "gen2.tests.operator_fixtures"),
     "gen2/supervisor/probe.py": ("module", "gen2.supervisor.probe", "gen2.app.station", "gen2.app.engine", "gen2.tests.operator_fixtures"),
+    # task 2b-repair-13d: the page vocabulary and cursor domain the client and the router both read; their dependents are reloaded after it
+    "gen2/core/pagination.py": ("module", "gen2.core.pagination", "gen2.gateway_client.observe", "gen2.gateway_client.client", "gen2.router.boundary",
+                                "gen2.router.lifecycle", "gen2.router.registries", "gen2.router.amendments", "gen2.router.scheduling", "gen2.router.service",
+                                "gen2.tests.router_fixtures"),
     # task 2b: the engine's gateway client; the client module binds names from observe, so it is reloaded after it
     "gen2/gateway_client/observe.py": ("module", "gen2.gateway_client.observe", "gen2.gateway_client.client"),
     "gen2/gateway_client/client.py": ("module", "gen2.gateway_client.client"),

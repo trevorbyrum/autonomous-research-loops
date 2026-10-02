@@ -404,6 +404,9 @@ class PageOutcomes(unittest.TestCase):
         for label, name, request, kw, expected in cases:
             with self.subTest(label):
                 self.assertEqual(self.outcomes(search(self, name, request, **kw)), expected)
+        with self.subTest("a find's page read whole that says nothing of its end"):
+            out, _ = self.one_page()
+            self.assertEqual(self.outcomes(out), {("crossref", 1): ("end_unknown", None)}, "no cursor is not an end: the lane has to say it")
 
     def test_a_page_read_whole_is_not_the_population_exhausted(self):
         """The first page of a continuing lane is complete — read whole, nothing rounded — and says more remains; it is
@@ -429,6 +432,36 @@ class PageOutcomes(unittest.TestCase):
                                "end": {"page_outcome": "exhausted", "continuation": None, "completeness": "complete", "result_count": 1}})
         self.assertEqual(outs["more"]["observations"][0]["observation"]["observation_id"], outs["end"]["observations"][0]["observation"]["observation_id"],
                          "attempted-request identity is untouched: the same attempt answered another way, which the router refuses as a conflict")
+
+    def test_a_request_that_does_not_page_has_no_end_to_report(self):
+        """Astra's 13b contract probe: a resolve, enrich, fetch or data answer whose lane says `exhausted: true` (or hands back a `next`)
+        was recorded `exhausted` (or `limit_reached` with a cursor). Such a request has no end to know: its page is `end_unknown`, whatever
+        the lane says; the same lane in a find is the control."""
+        for kind in ("resolve", "enrich", "fetch", "data"):
+            for claim in ({"exhausted": True}, {"exhausted": True, "next": "exhausted"}, {"next": "c2"}, {"next": "c2", "exhausted": True}):
+                with self.subTest(kind=kind, claim=claim):
+                    sent: list = []
+                    c = GatewayClient(BASE, ENGINE_TOKEN, transport=answering(lambda payload: sent.append(payload) or self.lane_answer(**claim)),
+                                      clock=lambda: "2026-09-30T10:00:00Z", sleep=lambda s: None)
+                    out = c.search({"request_type": kind, "identity": "doi:10.1/a"}, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
+                    [only] = out["observations"]
+                    self.assertEqual((only["observation"]["completeness"], only["observation"]["page_outcome"], only["observation"]["continuation"]),
+                                     ("complete", "end_unknown", None))
+                    self.assertEqual(only["observation"]["request"]["request"]["request_type"], kind, "and the observation names the request it answers")
+        out, _ = self.one_page(exhausted=True)
+        self.assertEqual(self.outcomes(out), {("crossref", 1): ("exhausted", None)}, "the control: a find's lane that says it, in a page read whole")
+
+    def test_a_lane_that_was_not_read_reports_no_end_whatever_it_restates(self):
+        """Astra's 13b probe: an unobserved lane marked `coverage: exhausted, exhausted: true` ignored a contradictory malformed `next` and
+        persisted `exhausted`, and a plain restatement did too. Nothing was read from it, so nothing ends."""
+        for label, extra in (("a restatement", {}), ("a restatement with a malformed next", {"next": ["more"]}), ("a restatement with a cursor", {"next": "c2"}),
+                             ("the sentinel", {"next": "exhausted"})):
+            with self.subTest(label):
+                lane = {"source": "crossref", "coverage": "exhausted", "completeness": "unobserved", "exhausted": True, **extra}
+                answer = {"lanes": [lane], "records": [], "observation": {"invocation_id": INV, "attempt": 1, "served": "dispatched", "captured": True, "call_ref": 1}}
+                c = GatewayClient(BASE, ENGINE_TOKEN, transport=answering(lambda payload: answer), clock=lambda: "2026-09-30T10:00:00Z", sleep=lambda s: None)
+                out = c.search({**FIND, "lanes": ["crossref"]}, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
+                self.assertEqual(self.outcomes(out), {("crossref", 1): ("end_unknown", None)})
 
     def test_a_continuation_outranks_a_reported_end(self):
         out, sent = self.one_page(pages=2, next="c2", exhausted=True)
@@ -477,7 +510,7 @@ class PageOutcomes(unittest.TestCase):
                 obs = out["observations"][0]["observation"]
                 self.assertEqual((obs["completeness"], obs["page_outcome"], obs["continuation"]), ("partial", "continuation", {"cursor": "c2"}))
 
-    def test_a_lane_not_searched_and_a_lane_restating_its_end(self):
+    def test_a_lane_not_searched_and_a_lane_restating_its_end_report_no_end(self):
         def body(payload):
             return {"lanes": [{"source": "crossref", "role": "base", "coverage": "not_searched", "completeness": "unobserved"},
                               {"source": "doaj", "role": "base", "coverage": "exhausted", "completeness": "unobserved", "cursor": "exhausted", "exhausted": True},
@@ -485,8 +518,9 @@ class PageOutcomes(unittest.TestCase):
                     "records": [], "observation": {"invocation_id": INV, "attempt": 1, "served": "dispatched", "captured": True, "call_ref": 1}}
         c = GatewayClient(BASE, ENGINE_TOKEN, transport=answering(body), clock=lambda: "2026-09-30T10:00:00Z", sleep=lambda s: None)
         out = c.search({**FIND, "lanes": ["crossref", "doaj", "core"]}, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
-        self.assertEqual(self.outcomes(out), {("crossref", 1): ("end_unknown", None), ("doaj", 1): ("exhausted", None), ("core", 1): ("end_unknown", None)},
-                         "never searched is no end; a finished lane restating it is; coverage `exhausted` without the lane's report is not")
+        self.assertEqual(self.outcomes(out), {("crossref", 1): ("end_unknown", None), ("doaj", 1): ("end_unknown", None), ("core", 1): ("end_unknown", None)},
+                         "a page nothing was read from reports no end: not a lane never searched, not one restating an end it reported earlier (that "
+                         "earlier page holds it), and not one whose restatement is explicit")
 
 
 class TransportOutcomes(unittest.TestCase):
@@ -847,6 +881,18 @@ class RecordedByTheRouter(RouterTestCase):
         self.assertEqual(self.rows("SELECT json_extract(request, '$.request.cursors.crossref'), json_extract(continuation, '$.cursor') FROM search_observations "
                                    "WHERE lane = 'crossref' ORDER BY json_extract(request, '$.page')"),
                          [(None, "c2"), ("c2", "c3")], "each continuation is the cursor the next page was asked with")
+
+    def test_a_request_that_does_not_page_is_recorded_with_its_type_and_no_end(self):
+        """The client's output for each request type is admitted by the router and the store (the admission contract: gen2/router/boundary.py),
+        its type in the row, and a lane's claim of an end for a request that does not page stays an unknown one."""
+        kinds = ("resolve", "enrich", "fetch", "data")
+        for kind in kinds:
+            c = GatewayClient(BASE, ENGINE_TOKEN, transport=answering(lambda payload: PageOutcomes.lane_answer(exhausted=True)),
+                              clock=lambda: "2026-09-30T10:00:00Z", sleep=lambda s: None)
+            out = c.search({"request_type": kind, "identity": "doi:10.1/a"}, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
+            self.assertEqual([r["status"] for r in self.record(out)], ["recorded"], kind)
+        self.assertEqual(sorted(self.rows("SELECT json_extract(request, '$.request.request_type'), page_outcome, completeness, gateway_call_ref FROM search_observations")),
+                         sorted((kind, "end_unknown", "complete", "gw-call:1") for kind in kinds))
 
     def test_a_failed_page_is_recorded_failed_and_a_lower_bound_end_unknown(self):
         self.admissible("find_paged_then_failed", FIND_PAGED, pages=2)

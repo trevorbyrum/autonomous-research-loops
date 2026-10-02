@@ -32,9 +32,10 @@ Each page observation also says why pagination ended or continued (Gate D #3, ta
 2b-repair-13b; observe.page_end): `exhausted` only on the lane's own reported end, a page read
 whole and a population exhausted being different facts; `continuation` with the cursor the
 lane handed back; `limit_reached` when this client's `pages` cap stopped a lane with its
-cursor in hand; `end_unknown` for a page with neither a continuation nor a reported end; and
-`failed`. The cursor is kept on the observation, so neither the cap nor an unfollowed
-continuation hides that more remains.
+cursor in hand; `end_unknown` for a page with neither a continuation nor a reported end (and the
+only outcome, but `failed`, of a request that does not page — resolve, enrich, fetch, data — which has no
+end to know: 2b-repair-13d); and `failed`. The cursor is kept on the observation, so neither the cap
+nor an unfollowed continuation hides that more remains.
 
 Queued answers are polled until the job finishes or the client's deadline passes; a
 deadline that passes is `unknown`/`timeout`, never an empty result. The deadline is ONE
@@ -68,10 +69,10 @@ import urllib.request
 from datetime import datetime, timezone
 from typing import Callable, Sequence
 
-from gen2.core import canonical
+from gen2.core import canonical, pagination
 from gen2.gateway_client import observe
 
-REQUEST_TYPES = ("find", "resolve", "enrich", "fetch", "data")
+REQUEST_TYPES = pagination.REQUEST_TYPES
 POLL_SECONDS = 0.5
 
 

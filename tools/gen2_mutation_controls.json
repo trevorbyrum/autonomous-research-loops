@@ -7101,7 +7101,7 @@
  },
  "2B13-exchange-timeout-above-the-clients": {
   "controls": [
-   "test_gateway_client.PollDeadline.test_a_poll_that_comes_back_after_the_deadline_still_ends_it"
+   "test_gateway_client.PollDeadline.test_a_reply_that_arrives_inside_its_timeout_and_is_not_the_end_leaves_only_what_remains_to_sleep"
   ],
   "rejected": [
    "test_gateway_client.PollDeadline.test_the_defaults_end_within_the_deadline_where_gate_d_counted_about_21_hours"
@@ -7114,7 +7114,7 @@
   ],
   "rejected": [
    "test_gateway_client.PollDeadline.test_a_deadline_that_passes_is_a_timeout_observation_and_never_an_empty_result",
-   "test_gateway_client.PollDeadline.test_a_poll_that_comes_back_after_the_deadline_still_ends_it",
+   "test_gateway_client.PollDeadline.test_a_reply_that_arrives_inside_its_timeout_and_is_not_the_end_leaves_only_what_remains_to_sleep",
    "test_gateway_client.PollDeadline.test_the_defaults_end_within_the_deadline_where_gate_d_counted_about_21_hours"
   ],
   "why": "gen2/gateway_client/client.py: executes line 123"
@@ -7149,7 +7149,7 @@
   ],
   "rejected": [
    "test_gateway_client.PollDeadline.test_a_deadline_that_passes_is_a_timeout_observation_and_never_an_empty_result",
-   "test_gateway_client.PollDeadline.test_a_poll_that_comes_back_after_the_deadline_still_ends_it"
+   "test_gateway_client.PollDeadline.test_a_reply_that_arrives_inside_its_timeout_and_is_not_the_end_leaves_only_what_remains_to_sleep"
   ],
   "why": "gen2/gateway_client/client.py: executes line 266; or executes line 267; or executes line 268; or executes line 272"
  },
@@ -7166,7 +7166,7 @@
  },
  "2B13-poll-timeout-restarts": {
   "controls": [
-   "test_gateway_client.PollDeadline.test_a_poll_that_comes_back_after_the_deadline_still_ends_it"
+   "test_gateway_client.PollDeadline.test_a_reply_that_arrives_inside_its_timeout_and_is_not_the_end_leaves_only_what_remains_to_sleep"
   ],
   "why": "gen2/gateway_client/client.py: executes line 268; or executes line 267"
  },
@@ -7175,7 +7175,7 @@
    "test_gateway_client.PollDeadline.test_control_a_job_that_finishes_inside_the_deadline_is_read"
   ],
   "rejected": [
-   "test_gateway_client.PollDeadline.test_a_poll_that_comes_back_after_the_deadline_still_ends_it",
+   "test_gateway_client.PollDeadline.test_a_reply_that_arrives_inside_its_timeout_and_is_not_the_end_leaves_only_what_remains_to_sleep",
    "test_gateway_client.PollDeadline.test_the_defaults_end_within_the_deadline_where_gate_d_counted_about_21_hours"
   ],
   "why": "gen2/gateway_client/client.py: executes line 268; or executes line 267"

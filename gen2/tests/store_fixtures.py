@@ -27,6 +27,8 @@ CONNECTION_TEXT = (STORE_DIR / "connection.sql").read_text(encoding="utf-8")
 
 T = "2026-09-25T12:00:00Z"
 TOPIC = "fleet-a:t1"
+# the attempted request of a find observation: it names its request type, from a closed set (gen2/core/pagination.py)
+FIND_REQUEST = '{"lane":"crossref","page":1,"request":{"query":"q","request_type":"find"}}'
 OTHER = "fleet-a:t2"
 
 # The one subject kind each operator-decision kind admits (hand-copied from
@@ -617,8 +619,8 @@ class StoreTestCase(unittest.TestCase):
         self.x("INSERT INTO capability_facts (fact_id, capability, state, detail, since, affected_lanes, recorded_at) VALUES ('cf-1', 'secrets_backend', 'failing', 'vault 403', ?, '[\"semantic_scholar\"]', ?)", T, T)
         self.x("INSERT INTO holds (hold_id, topic_id, subject_ref, hold_class, cause, recoverability, required_authority, owner, deadline_at, clears_when, capability_fact_id, created_at) "
                "VALUES ('hold_00000001', ?, 'lane:semantic_scholar', 'capability', 'vault 403', 'needs_remediation', 'router', 'router', ?, 'secrets backend healthy', 'cf-1', ?)", TOPIC, T, T)
-        self.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, completeness, policy_version, page_outcome) "
-               "VALUES ('o1', 'inv_pppppppp', ?, ?, 1, 'crossref', '{}', '[\"O-1\"]', ?, 'searched_ok', 1, 'complete', 'pol1', 'end_unknown')", TOPIC, h("4"), T)
+        self.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, completeness, policy_version, page_outcome, gateway_call_ref) "
+               "VALUES ('o1', 'inv_pppppppp', ?, ?, 1, 'crossref', ?, '[\"O-1\"]', ?, 'searched_ok', 1, 'complete', 'pol1', 'end_unknown', 'gw-call:1')", TOPIC, h("4"), FIND_REQUEST, T)
         self.x("INSERT INTO retrieval_events (event_id, observation_id, topic_id, provider_record_id, rank, captured_at) VALUES ('e1', 'o1', ?, 'rec-1', 1, ?)", TOPIC, T)
         self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000001', 'doi', '10.1/x', ?)", T)
         self.x("INSERT INTO record_work_links (event_id, work_id, dedup_method_version, linked_at) VALUES ('e1', 'wrk_00000001', 'dedup-1', ?)", T)

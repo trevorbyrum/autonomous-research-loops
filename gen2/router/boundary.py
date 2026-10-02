@@ -16,7 +16,7 @@ with one of the response vocabulary's reasons; nothing here writes.
 """
 from __future__ import annotations
 
-from gen2.core import canonical, instants
+from gen2.core import canonical, instants, pagination
 from gen2.core.canonical import CanonicalizationError
 
 TIER = {"bibliographic": 1, "abstract": 2, "full_text": 3, "reproduced": 4}
@@ -218,7 +218,9 @@ def check_observation(observation: dict, events: list[dict]) -> None:
     the identities behind it (E-2: an uncaptured count is an unknown
     denominator, and the station records the set as partial or the coverage
     as unknown instead); a set not observed carries no events and no count,
-    which the store also refuses (RG-4)."""
+    which the store also refuses (RG-4). And the admission contract
+    (check_page_outcome): what an observation must carry to assert how a
+    search ended."""
     oid = observation["observation_id"]
     if canonical.logical_hash(observation["request"]) != observation["request_identity"]:
         raise Refusal("payload_invalid", f"{oid}: request_identity is not the hash of its request (H-5)")
@@ -238,12 +240,26 @@ def check_observation(observation: dict, events: list[dict]) -> None:
 
 
 def check_page_outcome(observation: dict) -> None:
-    """Gate D #3: how pagination ended or continued is consistent with what was observed (the store's
-    page_outcome rules, refused here with a reason). A page that could not be read FAILED, and only such a page; a
-    cursor is carried by a continuation or a page cap and by nothing else, and only from a page that was read; an
-    end is reported only by a page read whole (or a lane restating one). Whether THIS PAGE was read whole
-    (`completeness`) never stands for the population being exhausted (`page_outcome`), so a partial page or an unknown
-    end never establishes exhaustion (RG-4)."""
+    """The admission contract of one observation (Gate D #3; task 2b-repair-13d, Astra R13B-2) — what it must carry to say how its
+    search ended or continued. The store's CHECKs say the same (a test holds the two equal, case by case).
+
+    * COHERENCE. A page that could not be read FAILED, and only such a page; a cursor is carried by a continuation or a page cap and
+      by nothing else, and only from a page that was read; an end is reported by a page read whole, and a page nothing was read from
+      reports none (a lane restating an end it reported earlier included). Whether THIS PAGE was read whole (`completeness`) never
+      stands for the population being exhausted (`page_outcome`), so a partial page or an unknown end never establishes exhaustion (RG-4).
+    * THE REQUEST DISCRIMINATOR. The request names its type, from a closed set (the command schema), and what `end_unknown` means
+      depends on it: for a `find`, a paged request, that its end is not known; for any other type, which does not page, there is no end
+      to know. Only a find's page can be an `exhausted`, a `continuation` or a `limit_reached`.
+    * THE CAPTURE ACKNOWLEDGEMENT. A page read `complete`, and so every `exhausted` end, names the gateway's durable row of the request
+      (`gateway_call_ref`): an answer the gateway did not durably capture is at most a partial lower bound (INVARIANTS RG-4, E-2), and
+      the reference is what the state-integrity audit re-derives an end from.
+    * THE CURSOR DOMAIN. A continuation's cursor is an integer from 0 to the JSON bound, or a string of 1..8000 characters, none of them
+      NUL, other than the finished-lane sentinel (gen2/core/pagination.py; the command schema holds the type and length).
+
+    What this does NOT establish: that an outcome the observation asserts is the one the gateway's answer implied. The router sees the
+    command, never the reply; a well-formed command from trusted station code that relabelled a captured outcome is detected by the
+    state-integrity audit's re-derivation from the captured raw evidence (INVARIANTS E-2; gen2/router/README.md, "What an observation
+    command is trusted for")."""
     oid, outcome, completeness, coverage = observation["observation_id"], observation["page_outcome"], observation["completeness"], observation["coverage_state"]
     if (coverage in ("provider_unavailable", "auth_failed", "unknown")) != (outcome == "failed"):
         raise Refusal("payload_invalid", f"{oid}: coverage {coverage} with page outcome {outcome}; a page nothing could be read from is failed, and only it is")
@@ -251,8 +267,18 @@ def check_page_outcome(observation: dict) -> None:
         raise Refusal("payload_invalid", f"{oid}: page outcome {outcome} with continuation {observation['continuation']!r}; a cursor belongs to a continuation or a page cap, and they carry one")
     if outcome in ("continuation", "limit_reached") and completeness == "unobserved":
         raise Refusal("payload_invalid", f"{oid}: a page nothing was read from has no continuation")
-    if outcome == "exhausted" and completeness != "complete" and coverage != "exhausted":
+    if outcome == "exhausted" and completeness != "complete":
         raise Refusal("payload_invalid", f"{oid}: an exhausted end is reported by a page read whole, not a {completeness} one (RG-4)")
+    kind = pagination.request_type(observation["request"])
+    if kind is None:
+        raise Refusal("payload_invalid", f"{oid}: its request names no type from {list(pagination.REQUEST_TYPES)}; what an end means depends on the request")
+    if outcome in pagination.PAGING_OUTCOMES and kind not in pagination.PAGED_REQUEST_TYPES:
+        raise Refusal("payload_invalid", f"{oid}: a {kind} request does not page, so its answer cannot be {outcome}; its only outcome is end_unknown")
+    if completeness == "complete" and not observation["gateway_call_ref"]:
+        raise Refusal("payload_invalid", f"{oid}: a page read whole, an exhausted end among them, names the gateway's durable row of its request; "
+                                         "an answer the gateway did not capture is at most a partial lower bound (RG-4, E-2)")
+    if observation["continuation"] is not None and (problem := pagination.cursor_problem(observation["continuation"]["cursor"])):
+        raise Refusal("payload_invalid", f"{oid}: {problem}")
 
 
 def check_manifest(manifest: dict, topic_id: str, extensions, bundle_raw: bytes, schemas) -> str:

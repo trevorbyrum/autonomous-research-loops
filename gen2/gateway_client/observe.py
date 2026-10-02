@@ -36,14 +36,18 @@ carries a typed `page_outcome` and, when the lane handed one back, the `continua
 `completeness` says whether THIS PAGE was read whole; `page_outcome` says what is known of the
 search population behind it, and the two never stand in for each other — a page read whole can
 still end in `continuation`, `limit_reached` or `end_unknown`. Only `exhausted`, said by the
-lane's own report on a page read whole, ever establishes that the population is exhausted; an
-unknown end and a page cap stay unknown for coverage. See `page_end`.
+lane's own report on a page read whole, of a request that pages, ever establishes that the population is
+exhausted; an unknown end and a page cap stay unknown for coverage. Which request an observation answers
+is part of it (`request.request.request_type`, a closed set: gen2/core/pagination.py), because `end_unknown`
+means "paged, and its end is not known" for a `find` and "does not page" for any other request type, which can
+say nothing else (task 2b-repair-13d). See `page_end`.
 """
 from __future__ import annotations
 
 import hashlib
 
-from gen2.core import canonical
+from gen2.core import canonical, pagination
+from gen2.core.pagination import EXHAUSTED_CURSOR
 
 COVERAGE = ("searched_ok", "searched_empty", "not_searched", "provider_unavailable", "auth_failed",
             "metadata_only", "exhausted", "unknown")
@@ -52,16 +56,15 @@ ERROR_CLASSES = ("payload_invalid", "timeout", "rate_limited", "breaker_open", "
                  "credentials_rejected", "credentials_not_configured", "secrets_backend_failing", "transport_failure",
                  "telemetry_missing", "partial_pagination")
 FACT_STATES = ("healthy", "degraded", "failing", "unknown")
-# Why a lane's pagination ended or continued at one page (the store's search_observations.page_outcome):
-#   exhausted     the lane itself reported that nothing remains, on a page read whole (or restated it for a lane already finished)
+# Why a lane's pagination ended or continued at one page (the store's search_observations.page_outcome; the vocabulary is
+# gen2/core/pagination.py's, shared with the router that admits it):
+#   exhausted     the lane itself reported that nothing remains, on a page read whole, of a request that pages
 #   continuation  the lane handed back a cursor for the next page
-#   end_unknown   no continuation and no reported end — more may remain (also every request that does not page, and a lane never searched)
+#   end_unknown   no continuation and no reported end — more may remain; for a request that does not page (resolve, enrich,
+#                 fetch, data) there is no end to know, and so no other outcome (also a lane never searched, or restating an end)
 #   limit_reached the client's own page cap stopped it with a continuation in hand
 #   failed        the page could not be read at all (an unobserved lane with an error)
-PAGE_OUTCOMES = ("exhausted", "continuation", "end_unknown", "limit_reached", "failed")
 UNREAD = ("provider_unavailable", "auth_failed", "unknown")   # the coverage states of a page nothing could be read from
-EXHAUSTED_CURSOR = "exhausted"   # the gateway's `next` sentinel for a finished lane: never a cursor to send
-CURSOR_MAX_CHARS = 8000          # the longest cursor the router records (long_text)
 GATEWAY_LANE = "gateway"   # the pseudo-lane of an answer that named no lanes: the gateway itself, not a source
 
 
@@ -103,31 +106,29 @@ def lane_problem(entry: object) -> str | None:
 
 
 def cursor_of(entry: dict) -> str | int | None:
-    """The continuation a lane entry hands back, if it is one the client can send and the store can keep: a non-empty
-    string within CURSOR_MAX_CHARS or a non-negative integer — never the finished-lane sentinel, a boolean or anything
-    else. A `next` that is none of these is no continuation, and (page_end) no end either."""
+    """The continuation a lane entry hands back, if it is one the client can send and the store can keep (the cursor domain of
+    gen2/core/pagination.py, which the router and the store hold to as well): never the finished-lane sentinel, a boolean or
+    anything else. A `next` that is none of these is no continuation, and (page_end) no end either."""
     nxt = entry.get("next")
-    if type(nxt) is int and 0 <= nxt <= canonical.INT_BOUND:
-        return nxt
-    if type(nxt) is str and 0 < len(nxt) <= CURSOR_MAX_CHARS and nxt != EXHAUSTED_CURSOR:
-        return nxt
-    return None
+    return nxt if pagination.cursor_problem(nxt) is None else None
 
 
-def page_end(entry: dict, *, capped: bool = False) -> tuple[str, str | int | None]:
-    """(page_outcome, continuation) for one validated lane entry (Gate D #3). A lane that could not be read FAILED. A
-    lane that was not read this time (never searched, or restating an end it already reported) is `exhausted` only on
-    its own report of it. A page that hands back a cursor is a `continuation` — `limit_reached` when `capped`, the
-    client's own page cap, is what stopped it with that cursor in hand — and a continuation outranks a reported end,
-    as at the gateway. Otherwise only the lane's own `exhausted: true` on a page read whole is an end; a page without a
-    continuation or a reported end (a partial or uncaptured page, an unreadable `next`, a request that does not page)
-    is `end_unknown`: the end of the search population is never inferred from a missing cursor, and a `next` that cannot be
-    read never lets the lane's `exhausted` stand."""
+def page_end(entry: dict, *, capped: bool = False, paged: bool = True) -> tuple[str, str | int | None]:
+    """(page_outcome, continuation) for one validated lane entry (Gate D #3). A lane that could not be read FAILED. A page
+    of a request that does not page (`paged` False: resolve, enrich, fetch, data) has no end to know and says only
+    `end_unknown`, whatever the answer claims of one. A lane that was not read this time (never searched, or restating an end it
+    already reported) is `end_unknown` too: an end is reported by a page read whole, which this was not (2b-repair-13d; the
+    earlier page that reported it holds it). A page that hands back a cursor is a `continuation` — `limit_reached` when
+    `capped`, the client's own page cap, is what stopped it with that cursor in hand — and a continuation outranks a reported
+    end, as at the gateway. Otherwise only the lane's own `exhausted: true` on a page read whole is an end; a page without a
+    continuation or a reported end (a partial or uncaptured page, an unreadable `next`) is `end_unknown`: the end of the search
+    population is never inferred from a missing cursor, and a `next` that cannot be read never lets the lane's `exhausted`
+    stand."""
     coverage, completeness = entry["coverage"], entry["completeness"]
     if coverage in UNREAD:
         return "failed", None
-    if completeness == "unobserved":
-        return ("exhausted" if coverage == "exhausted" and entry.get("exhausted") is True else "end_unknown"), None
+    if not paged or completeness == "unobserved":
+        return "end_unknown", None
     cursor = cursor_of(entry)
     if cursor is not None:
         return ("limit_reached" if capped else "continuation"), cursor
@@ -196,7 +197,7 @@ def observation(entry: dict, *, request: dict, invocation_id: str, attempt: int,
            "result_count": len(seen) if observed else None, "completeness": entry["completeness"], "error_class": entry.get("error_class"),
            "capability_fact_id": fact_id if entry.get("error_class") == "secrets_backend_failing" else None,
            "policy_version": policy_version, "cost_units": None, "gateway_call_ref": call_ref}
-    outcome, cursor = page_end(entry, capped=capped)
+    outcome, cursor = page_end(entry, capped=capped, paged=pagination.request_type(request) in pagination.PAGED_REQUEST_TYPES)
     doc["page_outcome"], doc["continuation"] = outcome, None if cursor is None else {"cursor": cursor}
     events = [{"event_id": "rev_" + _digest("event", oid, identity), "provider_record_id": identity, "rank": rank,
                "captured_at": ended_at} for rank, identity in enumerate(seen, start=1)]

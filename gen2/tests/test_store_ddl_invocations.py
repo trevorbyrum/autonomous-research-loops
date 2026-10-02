@@ -25,7 +25,7 @@ import sqlite3
 import unittest
 
 from gen2.tests import store_fixtures
-from gen2.tests.store_fixtures import DROP, OTHER, STORE_DIR, TOPIC, StoreTestCase, T, connect, facet, h, obligation
+from gen2.tests.store_fixtures import DROP, FIND_REQUEST, OTHER, STORE_DIR, TOPIC, StoreTestCase, T, connect, facet, h, obligation
 
 
 class LeaseFencingTest(StoreTestCase):
@@ -740,8 +740,8 @@ class AdmissionAndLeaseTest(StoreTestCase):
         self.invocation("inv_draft001", lease="lease_rrrrrrrr", pre_contract=True)
         self.receipt("op_00000001", "inv_draft001", lease="lease_rrrrrrrr", kind="final_outcome")
         self.evidence_basics()
-        self.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, completeness, policy_version, page_outcome) "
-               "VALUES ('o1', 'inv_draft001', ?, ?, 1, 'crossref', '{}', '[]', ?, 'searched_ok', 1, 'complete', 'pol1', 'end_unknown')", TOPIC, h("4"), T)
+        self.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, completeness, policy_version, page_outcome, gateway_call_ref) "
+               "VALUES ('o1', 'inv_draft001', ?, ?, 1, 'crossref', ?, '[]', ?, 'searched_ok', 1, 'complete', 'pol1', 'end_unknown', 'gw-call:1')", TOPIC, h("4"), FIND_REQUEST, T)
         self.claim("clm_00000001", "inv_draft001")
         refused = "recorded by contract-admitted work under the approved protocol revision it names"
         for rev in (1, 2):
@@ -862,8 +862,8 @@ class ZeroContractDiscoveryTest(StoreTestCase):
         self.lease("lease_dddddddd", 1, scope="discovery")
         self.invocation("inv_scope001", kind="discovery", lease="lease_dddddddd", pre_contract=True)
         self.to_running("inv_scope001")
-        self.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, completeness, policy_version, page_outcome) "
-               "VALUES ('o1', 'inv_scope001', ?, ?, 1, 'crossref', '{}', '[]', ?, 'searched_ok', 2, 'complete', 'pol1', 'end_unknown')", TOPIC, h("4"), T)
+        self.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, completeness, policy_version, page_outcome, gateway_call_ref) "
+               "VALUES ('o1', 'inv_scope001', ?, ?, 1, 'crossref', ?, '[]', ?, 'searched_ok', 2, 'complete', 'pol1', 'end_unknown', 'gw-call:1')", TOPIC, h("4"), FIND_REQUEST, T)
         self.receipt("op_00000001", "inv_scope001", lease="lease_dddddddd", kind="final_outcome")
         self.x("UPDATE invocations SET state = 'result_ready', result_payload_digest = ?, result_staged_at = ? WHERE invocation_id = 'inv_scope001'", h("d"), T)
         self.x("UPDATE invocations SET state = 'committed' WHERE invocation_id = 'inv_scope001'")
