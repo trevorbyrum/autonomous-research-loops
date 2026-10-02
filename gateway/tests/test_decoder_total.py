@@ -39,12 +39,31 @@ HOSTILE = (*NOT_A_NUMBER, "", " ", "x" * 100_000, "\x00", "\ud800", "٢٠٢١", 
            [[[[[["deep"]]]]]], {"id": "²"}, ["²"], 1.5)
 
 
-class ScalarNormalizers(unittest.TestCase):
+class Channel(unittest.TestCase):
+    """What an exception that is not a PayloadError means here: the channel was not total. It is a FAILURE of the test (an assertion), not an error of its setup, so that a mutant that opens the
+    channel is killed by it (tools/gen2_gateway_contract_mutants.py)."""
+
+    def refuses(self, call, label: str = "") -> None:
+        try:
+            call()
+        except PayloadError:
+            return
+        except Exception as e:
+            self.fail(f"{label}escaped the channel as {type(e).__name__}: {str(e)[:80]}")
+        self.fail(f"{label}raised nothing")
+
+    def reads(self, call, label: str = ""):
+        try:
+            return call()
+        except Exception as e:
+            self.fail(f"{label}escaped the channel as {type(e).__name__}: {str(e)[:80]}")
+
+
+class ScalarNormalizers(Channel):
     def test_a_year_that_is_no_number_is_a_payload_error_and_never_any_other_exception(self):
         for value in NOT_A_NUMBER:
             with self.subTest(value=value[:12] + f"…({len(value)})"):
-                with self.assertRaises(PayloadError):
-                    S.year_value(value)
+                self.refuses(lambda: S.year_value(value))
         for value, year in READS_AS_A_YEAR.items():
             self.assertEqual(S.year_value(value), year, value)
 
@@ -53,7 +72,7 @@ class ScalarNormalizers(unittest.TestCase):
         spec = S.members(S.obj({"id": S.key(), "year": S.year()}))
         for value in NOT_A_NUMBER + ("bad",):
             with self.subTest(value=value[:12]):
-                got = S.decode("review", spec, [{"id": "bad", "year": value}, {"id": "good", "year": 2021}])
+                got = self.reads(lambda: S.decode("review", spec, [{"id": "bad", "year": value}, {"id": "good", "year": 2021}]))
                 self.assertEqual(got.each(lambda row: row["id"]), [None, "good"])
                 (lost,) = got.unreadable()
                 self.assertIn("year", lost.reason)
@@ -70,7 +89,7 @@ class ScalarNormalizers(unittest.TestCase):
             spec = S.members(S.obj({"n": S.Spec("boom")}))
             S._NORMALIZERS["boom"] = boom
             try:
-                got = S.decode("t", spec, [{"n": 1}, {}])
+                got = self.reads(lambda: S.decode("t", spec, [{"n": 1}, {}]), type(error).__name__ + ": ")
             finally:
                 del S._NORMALIZERS["boom"]
             with self.subTest(error=type(error).__name__):
@@ -79,8 +98,7 @@ class ScalarNormalizers(unittest.TestCase):
 
     def test_a_number_that_is_not_finite_or_not_a_number_is_unreadable(self):
         for value in (float("nan"), float("inf"), "3", True, [], {}):
-            with self.assertRaises(PayloadError):
-                S.decode("t", S.obj({"n": S.number()}), {"n": value})
+            self.refuses(lambda: S.decode("t", S.obj({"n": S.number()}), {"n": value}), repr(value))
         self.assertEqual(S.decode("t", S.obj({"n": S.number()}), {"n": 3599.5})["n"], 3599.5)
 
 
@@ -141,7 +159,7 @@ class YearsThroughRealOperations(unittest.TestCase):
                 self.assertEqual(lane.get("error_class"), None if want == 3 else "payload_invalid")
 
 
-class TheDecoderOnlyEverRaisesPayloadError(unittest.TestCase):
+class TheDecoderOnlyEverRaisesPayloadError(Channel):
     """Every operation's schema, at every declared position, with every hostile value: `decode` returns or raises PayloadError."""
 
     def test_every_declared_position_with_every_hostile_value(self):
@@ -181,36 +199,42 @@ class TheDecoderOnlyEverRaisesPayloadError(unittest.TestCase):
                     S.decode("t", spec, Response(200, {}, body, "u"))
                 except PayloadError:
                     pass
-        got = S.decode("t", spec, Response(200, {}, b'{"a": [{"n": "' + b"9" * 6000 + b'"}, {"n": 2021}]}', "u"))
+                except Exception as e:
+                    self.fail(f"escaped the channel as {type(e).__name__}: {str(e)[:80]}")
+        got = self.reads(lambda: S.decode("t", spec, Response(200, {}, b'{"a": [{"n": "' + b"9" * 6000 + b'"}, {"n": 2021}]}', "u")))
         self.assertEqual(got["a"].each(lambda m: m["n"]), [None, 2021], "an oversized number in a member costs that member, from the bytes up")
 
     def test_nesting_deeper_than_any_supported_answer_is_unreadable_and_nesting_within_it_is_read(self):
         within = b'{"a":' * 60 + b"1" + b"}" * 60
         beyond = b'{"a":' * 80 + b"1" + b"}" * 80
         any_ = S.obj({"a": S.any_()})
-        self.assertIsNotNone(S.decode("t", any_, Response(200, {}, within, "u")))
-        with self.assertRaises(PayloadError):
-            S.decode("t", any_, Response(200, {}, beyond, "u"))
+        self.assertIsNotNone(self.reads(lambda: S.decode("t", any_, Response(200, {}, within, "u"))))
+        self.refuses(lambda: S.decode("t", any_, Response(200, {}, beyond, "u")))
 
     def test_the_adapter_facing_decode_takes_the_clients_response_and_nothing_else(self):
         for value in ({}, [], "x", b"{}", None, 5):
-            with self.subTest(value=repr(value)), self.assertRaises(TypeError):
-                adapter_decode("t", S.obj({}), value)
+            with self.subTest(value=repr(value)):
+                try:
+                    adapter_decode("t", S.obj({}), value)
+                except TypeError:
+                    continue
+                except Exception as e:
+                    self.fail(f"a {type(e).__name__}, not a TypeError, for {value!r}")
+                self.fail(f"{value!r} was decoded")
         self.assertIsNotNone(adapter_decode("t", S.obj({}), Response(200, {}, b"{}", "u")))
 
 
-class RulesAndProgrammingErrors(unittest.TestCase):
+class RulesAndProgrammingErrors(Channel):
     def test_a_rule_that_fails_on_a_providers_value_is_the_objects_failure_not_an_escaping_exception(self):
         for error in (TypeError, KeyError, IndexError, ValueError, AttributeError, ZeroDivisionError, OverflowError, RecursionError):
             def rule(rec, error=error):
                 raise error("the provider's value broke it")
             spec = S.members(S.obj({"a": S.text()}, rule=rule))
-            got = S.decode("t", spec, [{"a": "x"}])
+            got = self.reads(lambda: S.decode("t", spec, [{"a": "x"}]), error.__name__ + ": ")
             with self.subTest(error=error.__name__):
                 self.assertEqual([m.reason.startswith("[0]: the rule could not read the answer") for m in got.unreadable()], [True])
         listed = S.own(S.text(), rule=lambda items: items[5])   # IndexError on a list that is shorter than the rule assumes
-        with self.assertRaises(PayloadError):
-            S.decode("t", S.obj({"l": listed}), {"l": ["a"]})
+        self.refuses(lambda: S.decode("t", S.obj({"l": listed}), {"l": ["a"]}))
 
     def test_a_rule_that_reads_what_the_schema_does_not_declare_is_a_programming_error_and_passes(self):
         spec = S.members(S.obj({"a": S.text()}, rule=lambda rec: rec["undeclared"]))

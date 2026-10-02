@@ -757,7 +757,7 @@ class CsvCorruptions(unittest.TestCase):
         c = Client(broker=Broker({"doaj": RatePolicy(per_second=100000)}), transport=t, sleep=lambda s: None)
         try:
             return [r["identity"] for r in registries.doaj_journals(c)], None
-        except ValueError as e:
+        except Exception as e:   # what comes out is the test's to judge: a PayloadError is the channel, anything else is a failure of it
             return None, e
 
     @property

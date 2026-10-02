@@ -173,10 +173,13 @@ class Containers(unittest.TestCase):
         for body in ({"total": 0}, {"data": [], "total": 0}, {"data": [], "total": 9}, {"data": [{}], "total": 9}):
             self.assertEqual(len(S.decode("t", spec, body)["data"]) in (0, 1), True, body)
         for body in ({"data": None, "total": 0}, {"data": None}, {"data": None, "total": 9}, {"total": 9}, {}):
-            with self.subTest(body=body), self.assertRaises(PayloadError) as why:
-                S.decode("t", spec, body)
-            if body.get("data", 1) is None:
-                self.assertIn("null", str(why.exception))
+            with self.subTest(body=body):
+                try:
+                    S.decode("t", spec, body)
+                except PayloadError as e:
+                    self.assertEqual("null" in str(e), body.get("data", 1) is None, str(e))
+                else:
+                    self.fail(f"{body} was read")
         plain_null = S.obj({"data": S.members(S.obj({}), empty_when=("total",)), "total": S.soft(S.whole())})
         self.assertEqual(len(S.decode("t", plain_null, {"data": None, "total": 0})["data"]), 0, "control: without the declaration null is left out, as everywhere")
         with self.assertRaises(PayloadError):   # never_null reads through the failure wrappers, and the field is the answer's

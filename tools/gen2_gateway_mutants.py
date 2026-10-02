@@ -55,6 +55,7 @@ class Mutant:
 SC = "tests.test_secrets_contract."
 PS, LO = "tests.test_payload_shapes.AdapterBoundary.", "tests.test_lane_outcomes."
 CO, SP, PV = "tests.test_correlation.", "tests.test_server_policy.", "tests.test_provenance."
+SCHEMA = "research_gateway/core/schema.py"
 SECRETS, ROUTER, BASE, APP = "research_gateway/core/secrets.py", "research_gateway/core/router.py", "research_gateway/adapters/base.py", "research_gateway/app.py"
 PRINC, HTTP, MCP, STDIO = "research_gateway/core/principals.py", "research_gateway/api/http.py", "research_gateway/mcp/homelab_adapter.py", "research_gateway/clients/mcp_stdio.py"
 LIC = "research_gateway/core/licenses.py"
@@ -164,13 +165,13 @@ MUTANTS: list[Mutant] = [
            (SC + "F2ExplicitFileUnreadable.test_a_token_read_that_fails_at_startup_is_refused_as_failing",),
            (SC + "F1NoHomeFallback.test_control_an_explicit_token_file_starts_the_service",)),
     # ---- item 3: response shape at the adapter boundary --------------------------------------------------
-    Mutant("P-json-lenient", "unparseable JSON reads as None", BASE,
-           '            raise PayloadError(f"unparseable JSON (HTTP {self.status}, {len(self.body)} bytes)") from None',
-           "            return None",
-           (PS + "test_the_json_reader_refuses_what_it_cannot_read", PS + "test_a_garbled_registration_agency_answer_is_not_remembered"),
+    Mutant("P-json-lenient", "unparseable JSON reads as an empty object", SCHEMA,
+           '''        raise PayloadError(f"unparseable JSON (HTTP {getattr(answer, 'status', None)}, {len(body)} bytes)") from None''',
+           "        return {}",
+           (PS + "test_the_json_reader_refuses_what_it_cannot_read",),
            (PS + "test_control_the_apis_own_empty_answer_stays_empty",)),
-    Mutant("P-empty-lenient", "an empty body reads as None", BASE,
-           '            raise PayloadError(f"empty body (HTTP {self.status})")', "            return None",
+    Mutant("P-empty-lenient", "an empty body reads as an empty object", SCHEMA,
+           '''        raise PayloadError(f"empty body (HTTP {getattr(answer, 'status', None)})")''', "        return {}",
            (PS + "test_the_json_reader_refuses_what_it_cannot_read",), (PS + "test_control_the_apis_own_empty_answer_stays_empty",)),
     Mutant("P-search-404-empty", "crossref's search 404 reads as no results", "research_gateway/adapters/crossref.py",
            '    resp = client.get(SOURCE_ID, "find", f"{BASE}/works", params=params, query=query)\n    check(SOURCE_ID, resp, allow_404=False)',
@@ -567,7 +568,7 @@ MUTANTS: list[Mutant] = [
     # 2b-repair-7: Socrata's portal cache is learnt only from members read whole (A4)
     Mutant('A4-socrata-domains-from-raw-members', 'Socrata learns portal domains from the raw members before decoding each alone', 'research_gateway/adapters/socrata.py',
            '    _KNOWN_DOMAINS.update(r["venue"].lower() for r in records if r and isinstance(r.get("venue"), str) and r["venue"])\n',
-           '    _KNOWN_DOMAINS.update((r.raw.get("metadata") or {}).get("domain", "").lower() for r in results.each(lambda member: member) if r.raw.get("metadata"))\n',
+           '    _KNOWN_DOMAINS.update((__import__("research_gateway.core.payload", fromlist=["plain"]).plain(r.raw).get("metadata") or {}).get("domain", "").lower() for r in results.each(lambda member: member) if __import__("research_gateway.core.payload", fromlist=["plain"]).plain(r.raw).get("metadata"))\n',
            ('tests.test_lane_outcomes.RealAdapterMembers.test_a_socrata_member_that_is_not_an_object_keeps_the_readable_ones',),
            ('tests.test_lane_outcomes.RealAdapterMembers.test_control_a_whole_socrata_page_is_complete',)),
     # 2b-repair-7b / 2b-repair-8: every provider member is decoded alone, and a provider's list is a Members that cannot be
@@ -811,7 +812,7 @@ MUTANTS: list[Mutant] = [
            (TF + "Publisher.test_the_record_carries_what_the_provider_states", "tests.test_oracle.ExpectedCanonicalFields.test_the_valid_answer_of_every_operation_says_what_the_fixture_says"),
            (TF + "Publisher.test_a_publisher_that_is_not_text_costs_its_member",)),
     Mutant("R9-agency-unreadable-is-remembered", "an agency answer that cannot be read is remembered as the prefix's unknown", "research_gateway/core/identity.py",
-           '                return "unknown"\n        agency = agency or "unknown"\n', '                pass\n        agency = agency or "unknown"\n',
+           '            return "unknown"\n        agency = agency or "unknown"\n', '            agency = None\n        agency = agency or "unknown"\n',
            (TF + "RegistrationAgency.test_an_agency_that_is_not_text_is_neither_one_nor_remembered",),
            (TF + "RegistrationAgency.test_control_text_is_the_agency_and_no_agency_is_unknown",)),
     # R9-5: a dimension browse is the flow's own structure's
@@ -866,3 +867,29 @@ MUTANTS: list[Mutant] = [
 from gen2_gateway_schema_mutants import build as _schema_mutants  # noqa: E402
 
 MUTANTS.extend(_schema_mutants(Mutant))
+
+# 2b-repair-13a: since a field declared `any_()` is handed over Passive (core/payload.py), the mutants that restore an old lazy or loose read by declaring a field `any_()` and reading it
+# as before would only make the first read raise PassiveRead — the Passive rule, which tests/test_declarations.py's own mutants kill, standing in for the guard each of them is about. They
+# restore the defect they name by ALSO making `any_()` readable again: the same three edits to the decoder (each `any_()` field a bare value, as before), then the loosened declaration
+# and its read as the mutant always had them. A mutant carrying them has a target per edit.
+SCHEMA_FILE = "research_gateway/core/schema.py"
+LEGACY_ANY = ((SCHEMA_FILE, '    if k == "any":\n        return Passive(v)\n', '    if k == "any":\n        return v\n'),
+              (SCHEMA_FILE, '        return Passive(fs.default if missing else None)\n', '        return fs.default if missing else None\n'),
+              (SCHEMA_FILE, '    if k == "any":\n        return Passive(None)\n', '    if k == "any":\n        return None\n'))
+
+
+def _with_readable_any(m):
+    from dataclasses import replace
+    olds = m.old if isinstance(m.old, tuple) else (m.old,)
+    news = m.new if isinstance(m.new, tuple) else (m.new,)
+    targets = m.target if isinstance(m.target, tuple) else (m.target,) * len(olds)
+    return replace(m, target=(*targets, *(t for t, _, _ in LEGACY_ANY)), old=(*olds, *(o for _, o, _ in LEGACY_ANY)), new=(*news, *(n for _, _, n in LEGACY_ANY)))
+
+
+MUTANTS[:] = [_with_readable_any(m) if ("S.any_(" in (m.new if isinstance(m.new, str) else " ".join(m.new))
+                                        or m.mid == "D-a-field-is-read-as-the-same-kind-whatever-its-sibling-says") else m for m in MUTANTS]
+
+# 2b-repair-13a: the decoder's completed contract (tools/gen2_gateway_contract_mutants.py)
+from gen2_gateway_contract_mutants import build as _contract_mutants  # noqa: E402
+
+MUTANTS.extend(_contract_mutants(Mutant))

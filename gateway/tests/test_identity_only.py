@@ -39,6 +39,7 @@ class IdentityOnly(unittest.TestCase):
 
     def test_the_look_alike_is_recorded_as_a_suggestion_for_a_later_assessment_with_both_provenances(self):
         answer = routed([work("10.1000/a", "Annual survey"), work("10.1000/b", "Annual survey")])
+        self.assertEqual(len(answer.get("linkage_suggestions", [])), 1)
         (suggestion,) = answer["linkage_suggestions"]
         self.assertEqual((suggestion["type"], suggestion["identities"], suggestion["disposition"]), ("possible_same_work", ["doi:10.1000/a", "doi:10.1000/b"], "unassessed"))
         self.assertEqual(suggestion["differing_identifiers"], {"doi": ["10.1000/a", "10.1000/b"]})
