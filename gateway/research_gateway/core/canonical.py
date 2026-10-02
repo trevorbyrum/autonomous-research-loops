@@ -78,7 +78,8 @@ def make_record(*, identity: str, kind: str, source_id: str, title: str | None =
     plain structure, with every Passive in it left as it is). The record is plain data only where the router or the index serializes it (core/payload.py)."""
     if kind not in KINDS:
         raise ValueError(f"unknown record kind {kind!r}")
-    refuse_opaque(identity, "a record's identity")
+    if not isinstance(identity, str):   # the identity is text: what the decoder issued is refused (a programming error), anything else is a member that cannot be named
+        _wrong("identity", identity, "text")
     title, venue, license, attribution = _text("title", title), _text("venue", venue), _text("license", license), _text("attribution", attribution)
     authors, links, year, identifiers = _texts("authors", authors), _texts("links", links), _year(year), _identifiers(identifiers)
     rec = {
