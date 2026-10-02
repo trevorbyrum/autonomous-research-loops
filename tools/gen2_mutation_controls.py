@@ -181,12 +181,14 @@ MANUAL: dict[str, dict] = {
                     "still accepts them"}
        for mid in ("2B13-schema-outcome-open", "2B13-schema-cursor-type", "2B13-schema-continuation-extras")},
     # task 2b-repair-13d: `recv` and `send` of the deadline socket are the two calls an HTTP exchange never makes (http.client reads through
-    # recv_into and writes with sendall); they are armed so that no call is left with the timeout it was last given, and only the unit tests
-    # that call them directly execute them, so no accepted path through them exists to pair
-    **{mid: {"controls": [],
-             "why": "gen2/gateway_client/client.py _DeadlineSocket's own call: an HTTP exchange reads with recv_into and writes with sendall, so "
-                    "no test but its killer, which calls it directly, executes it: there is no accepted path through it to pair"}
-       for mid in ("2B13D-recv-not-armed", "2B13D-send-not-armed")},
+    # recv_into and writes with sendall), so only the unit tests that call them directly execute them. Task 2b-repair-15 (Astra's final 2b
+    # review) added a timely call of each, written as a test of its own: with time left, the call returns what arrived / sends what it is given
+    **{mid: {"controls": [control],
+             "why": f"calls gen2/gateway_client/client.py _DeadlineSocket.{call} directly, as no exchange does, with time left on the deadline, and asserts "
+                    f"{what}: the mutant, which drops only the arming, leaves that unchanged"}
+       for mid, control, call, what in (
+           ("2B13D-recv-not-armed", "test_gateway_exchange.EachCallIsGivenWhatIsLeft.test_control_recv_returns_what_arrives_with_time_left", "recv", "that what a peer sent inside the deadline is read whole"),
+           ("2B13D-send-not-armed", "test_gateway_exchange.EachCallIsGivenWhatIsLeft.test_control_send_sends_with_time_left", "send", "that a peer reading inside the deadline receives what it is given"))},
     # task 2b-repair-13b (Astra's 2b-repair-12 timing ruling): the start-grace killer holds the order in which the identity appears; the
     # accepted case, a start whose identity is recorded before recovery, is the normal-start control written beside it
     "1C-sup-no-start-grace": {"controls": ["test_supervisor_lifecycle.ResearchPassLifecycleTest.test_control_a_start_that_has_recorded_its_identity_at_recovery_is_found_running"],

@@ -7401,13 +7401,17 @@
  },
  "2B13D-recv-not-armed": {
   "by_hand": true,
-  "controls": [],
-  "why": "gen2/gateway_client/client.py _DeadlineSocket's own call: an HTTP exchange reads with recv_into and writes with sendall, so no test but its killer, which calls it directly, executes it: there is no accepted path through it to pair"
+  "controls": [
+   "test_gateway_exchange.EachCallIsGivenWhatIsLeft.test_control_recv_returns_what_arrives_with_time_left"
+  ],
+  "why": "calls gen2/gateway_client/client.py _DeadlineSocket.recv directly, as no exchange does, with time left on the deadline, and asserts that what a peer sent inside the deadline is read whole: the mutant, which drops only the arming, leaves that unchanged"
  },
  "2B13D-send-not-armed": {
   "by_hand": true,
-  "controls": [],
-  "why": "gen2/gateway_client/client.py _DeadlineSocket's own call: an HTTP exchange reads with recv_into and writes with sendall, so no test but its killer, which calls it directly, executes it: there is no accepted path through it to pair"
+  "controls": [
+   "test_gateway_exchange.EachCallIsGivenWhatIsLeft.test_control_send_sends_with_time_left"
+  ],
+  "why": "calls gen2/gateway_client/client.py _DeadlineSocket.send directly, as no exchange does, with time left on the deadline, and asserts that a peer reading inside the deadline receives what it is given: the mutant, which drops only the arming, leaves that unchanged"
  },
  "2B13D-sendall-not-armed": {
   "controls": [

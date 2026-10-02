@@ -16,6 +16,7 @@ import shutil
 import socket
 import subprocess
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -188,6 +189,14 @@ class EachCallIsGivenWhatIsLeft(ExchangeTest):
     def test_recv_into(self):
         self.blocked(lambda sock: sock.recv_into(bytearray(10)), False)
 
+    def test_control_recv_returns_what_arrives_with_time_left(self):
+        """The accepted path through `recv` (task 2b-repair-15; Astra's control for the recv-not-armed mutant, which she supplied by hand because no exchange calls it: http.client reads through
+        recv_into): a peer that sends inside the deadline is read, whole, by a call armed with what is left."""
+        server = self.serve(lambda s, conn, h, b: s.send(conn, [(0, b"OK")]), read=False)
+        sock = gateway._connect(("127.0.0.1", server.port), gateway._Deadline(5.0))
+        self.addCleanup(sock.close)
+        self.assertEqual(sock.recv(2), b"OK")
+
     def test_send(self):
         def send_until_full(sock):
             while True:
@@ -196,6 +205,20 @@ class EachCallIsGivenWhatIsLeft(ExchangeTest):
 
     def test_sendall(self):
         self.blocked(lambda sock: sock.sendall(b"x" * (64 * 1024 * 1024)), False)
+
+    def test_control_send_sends_with_time_left(self):
+        """The accepted path through `send` (as for recv: no exchange calls it, http.client writes through sendall): a peer that reads inside the deadline is sent what it is given."""
+        received, got = [], threading.Event()
+
+        def read_two(s, conn, h, b):
+            received.append(conn.recv(2))
+            got.set()
+        server = self.serve(read_two, read=False)
+        sock = gateway._connect(("127.0.0.1", server.port), gateway._Deadline(5.0))
+        self.addCleanup(sock.close)
+        self.assertEqual(sock.send(b"OK"), 2)
+        self.assertTrue(got.wait(5.0), "the peer never read it")
+        self.assertEqual(received, [b"OK"])
 
     def test_the_time_a_connect_took_comes_out_of_what_a_handshake_may_take(self):
         """A connect that takes 0.2 s of 0.5 leaves the socket armed with the 0.3 s that are left, which is what the TLS
