@@ -179,7 +179,7 @@ MANUAL: dict[str, dict] = {
              "why": "validates and records accepted observations whose page outcomes include a continuation and a page cap with their cursors "
                     "against the observation command's schema (gen2/router/service.py COMMANDS, which the mutant widens): the widened schema "
                     "still accepts them"}
-       for mid in ("2B13-schema-outcome-open", "2B13-schema-cursor-length", "2B13-schema-continuation-extras")},
+       for mid in ("2B13-schema-outcome-open", "2B13-schema-cursor-type", "2B13-schema-continuation-extras")},
     # task 2b-repair-13b (Astra's 2b-repair-12 timing ruling): the start-grace killer holds the order in which the identity appears; the
     # accepted case, a start whose identity is recorded before recovery, is the normal-start control written beside it
     "1C-sup-no-start-grace": {"controls": ["test_supervisor_lifecycle.ResearchPassLifecycleTest.test_control_a_start_that_has_recorded_its_identity_at_recovery_is_found_running"],

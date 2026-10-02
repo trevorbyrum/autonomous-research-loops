@@ -349,7 +349,7 @@ MUTATIONS: list[Mutation] = [
           ("ddl-request-type-incomplete", "the store's list of request types leaves one out", (AS + "test_the_request_names_its_type_from_a_closed_set",), "ddl",
            "IN ('find', 'resolve', 'enrich', 'fetch', 'data'), 0)),", "IN ('find', 'resolve', 'enrich', 'fetch'), 0)),"),
           ("ddl-only-a-find-pages", "a request that does not page may report an end, a continuation or a page cap", (AS + "test_only_a_request_that_pages_can_report_an_end_or_a_continuation",), "ddl",
-           ",\n  CHECK (page_outcome IN ('end_unknown', 'failed') OR json_extract(request, '$.request.request_type') = 'find')\n) STRICT;", "\n) STRICT;"),
+           ",\n  CHECK (page_outcome IN ('end_unknown', 'failed') OR COALESCE(json_extract(request, '$.request.request_type') = 'find', 0))\n) STRICT;", "\n) STRICT;"),
           ("ddl-complete-needs-its-capture", "a page read whole may name no durable row of its request", (AS + "test_a_page_read_whole_names_the_gateways_durable_row_of_its_request",), "ddl",
            "  CHECK (completeness != 'complete' OR COALESCE(gateway_call_ref != '', 0)),\n", ""),
           ("ddl-capture-may-be-empty", "an empty string is a capture acknowledgement", (AS + "test_a_page_read_whole_names_the_gateways_durable_row_of_its_request",), "ddl",

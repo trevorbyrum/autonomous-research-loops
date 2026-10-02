@@ -312,6 +312,9 @@ class OpenStoreTest(unittest.TestCase):
             "weakened trigger": ddl.replace("SELECT RAISE(ABORT, 'contract revisions are never deleted (G-1)');", "SELECT 1;"),
             "extra table": ddl + "\nCREATE TABLE shadow (x TEXT) STRICT;\n",
             "user_version": ddl.replace("PRAGMA user_version = 1;", "PRAGMA user_version = 2;"),
+            # a store written before the observation admission contract (2b-repair-13d): refused by the same identity check, never migrated
+            # or read back as if it were current; any later reconciliation must mark an unrecoverable end unknown, never exhausted
+            "observations before the admission contract": ddl.replace("  CHECK (completeness != 'complete' OR COALESCE(gateway_call_ref != '', 0)),\n", ""),
         }
         for case, text in cases.items():
             with self.subTest(case=case):

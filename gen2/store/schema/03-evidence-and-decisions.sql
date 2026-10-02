@@ -96,7 +96,7 @@ CREATE TABLE search_observations (
   CHECK (page_outcome NOT IN ('continuation', 'limit_reached') OR completeness != 'unobserved'),
   CHECK (page_outcome != 'exhausted' OR completeness = 'complete'),
   CHECK (completeness != 'complete' OR COALESCE(gateway_call_ref != '', 0)),
-  CHECK (page_outcome IN ('end_unknown', 'failed') OR json_extract(request, '$.request.request_type') = 'find')
+  CHECK (page_outcome IN ('end_unknown', 'failed') OR COALESCE(json_extract(request, '$.request.request_type') = 'find', 0))
 ) STRICT;
 
 CREATE TRIGGER search_observations_invocation_topic

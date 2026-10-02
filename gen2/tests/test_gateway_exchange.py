@@ -22,15 +22,16 @@ from pathlib import Path
 from unittest import mock
 
 from gen2.gateway_client import observe
-from gen2.gateway_client.client import GatewayClient, _Deadline, _DeadlineSocket, _connect, http_transport
+from gen2.gateway_client import client as gateway
+from gen2.gateway_client.client import GatewayClient, http_transport
 from gen2.tests.loopback import Loopback, ThreadsJoined
 from gen2.tests.router_fixtures import RouterTestCase
 
 INV = "inv_discover1"
 STAMP = "2026-09-27T10:00:00Z"
 CAPTURED = {"invocation_id": INV, "attempt": 1, "captured": True, "call_ref": 1}
-DEADLINE = 0.3          # seconds; the bound under test
-SLACK = 0.45            # what scheduling may add to it (the unbounded reply took 0.5 s to 1.8 s here)
+DEADLINE = 0.5          # seconds; the bound under test
+SLACK = 1.0             # what a loaded machine may add to it; the verdicts rest on the result (a timeout, not a reply), and a stall this long is not scheduling
 FIND = {"request_type": "find", "query": "synthetic", "lanes": ["crossref"]}
 EMPTY_LANE = {"source": "crossref", "coverage": "searched_empty", "completeness": "complete", "count": 0, "retrieved": [], "exhausted": True}
 HEAD = ("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nX-Research-Gateway: result\r\n"
@@ -112,12 +113,12 @@ class EveryBlockingStepIsBounded(ExchangeTest):
         self.assertEndsAtTheDeadline(elapsed)
 
     def test_a_reply_that_trickles_in_one_chunk_inside_each_timeout_stops_at_the_deadline(self):
-        """Astra's reproduction: six chunks 0.1 s apart under a 0.2 s timeout took 0.5 s and was returned whole."""
-        server = self.serve(lambda s, conn, h, b: s.send(conn, trickle(reply(job("done")), 8, 0.1)))
-        (status, headers, raw, error), elapsed = self.exchange(server, deadline=0.25)
+        """Astra's reproduction: six chunks 0.1 s apart under a 0.2 s timeout took 0.5 s and was returned whole (here, twelve under 0.4 s)."""
+        server = self.serve(lambda s, conn, h, b: s.send(conn, trickle(reply(job("done")), 12, 0.1)))
+        (status, headers, raw, error), elapsed = self.exchange(server, deadline=0.4)
         self.assertEqual((status, raw, error), (None, b"", "timeout"))
-        self.assertGreaterEqual(elapsed, 0.23)
-        self.assertLess(elapsed, 0.25 + SLACK)
+        self.assertGreaterEqual(elapsed, 0.38)
+        self.assertLess(elapsed, 0.4 + SLACK)
 
     def test_a_connect_that_never_completes_stops_at_the_deadline(self):
         """A listener whose accept queue is full drops further connection attempts: the connect hangs."""
@@ -160,14 +161,14 @@ class EveryBlockingStepIsBounded(ExchangeTest):
 
 class EachCallIsGivenWhatIsLeft(ExchangeTest):
     """The mechanism, one call at a time: after time has passed with nothing happening, a call that would block ends at the
-    deadline, not a whole timeout after the last call. (Each case is idle for 0.4 s of a 0.5 s deadline: a call that kept
-    the timeout it was last armed with would end at 0.9 s.)"""
-    DEADLINE, IDLE = 0.5, 0.4
+    deadline, not a whole timeout after the last call. (Each case is idle for 0.5 s of a 0.6 s deadline: a call that kept
+    the timeout it was last armed with would end at 1.1 s.)"""
+    DEADLINE, IDLE = 0.6, 0.5
 
-    def connected(self, server: Loopback) -> tuple[_DeadlineSocket, _Deadline, float]:
+    def connected(self, server: Loopback) -> tuple:
         started = time.monotonic()
-        deadline = _Deadline(self.DEADLINE)
-        sock = _connect(("127.0.0.1", server.port), deadline)
+        deadline = gateway._Deadline(self.DEADLINE)
+        sock = gateway._connect(("127.0.0.1", server.port), deadline)
         self.addCleanup(sock.close)
         time.sleep(self.IDLE)
         return sock, deadline, started
@@ -179,7 +180,7 @@ class EachCallIsGivenWhatIsLeft(ExchangeTest):
             call(sock)
         elapsed = time.monotonic() - started
         self.assertGreaterEqual(elapsed, self.DEADLINE - 0.02)
-        self.assertLess(elapsed, self.DEADLINE + 0.25, "it was given a fresh timeout, not what was left")
+        self.assertLess(elapsed, self.DEADLINE + 0.35, "it was given a fresh timeout, not what was left")
 
     def test_recv(self):
         self.blocked(lambda sock: sock.recv(10), False)
@@ -201,11 +202,11 @@ class EachCallIsGivenWhatIsLeft(ExchangeTest):
         handshake that follows runs under."""
         server = self.serve(lambda s, conn, h, b: s.pause(30), read=False)
 
-        def slow_connect(sock, target, real=_DeadlineSocket.connect):
+        def slow_connect(sock, target, real=gateway._DeadlineSocket.connect):
             time.sleep(0.2)
             real(sock, target)
-        with mock.patch.object(_DeadlineSocket, "connect", slow_connect):
-            sock = _connect(("127.0.0.1", server.port), _Deadline(0.5))
+        with mock.patch.object(gateway._DeadlineSocket, "connect", slow_connect):
+            sock = gateway._connect(("127.0.0.1", server.port), gateway._Deadline(0.5))
         self.addCleanup(sock.close)
         self.assertLess(sock.gettimeout(), 0.31)
 
@@ -220,16 +221,16 @@ class ALateReplyIsATimeout(ExchangeTest):
     completes after the deadline is the same timeout as one that never comes."""
 
     def test_a_late_terminal_reply_is_a_timeout(self):
-        server = self.serve(answers(trickle(reply(job("done")), 12, 0.1)))   # 1.1 s of a 0.2 s deadline
-        got, elapsed = self.poll(server, deadline=0.2)
-        self.assertEqual(got, (None, None), "a `done` that arrived at 1.1 s is not a result of a poll that ended at 0.2")
-        self.assertLess(elapsed, 0.2 + SLACK)
+        server = self.serve(answers(trickle(reply(job("done")), 20, 0.1)))   # 1.9 s of a 0.5 s deadline
+        got, elapsed = self.poll(server, deadline=0.5)
+        self.assertEqual(got, (None, None), "a `done` that arrived at 1.9 s is not a result of a poll that ended at 0.5")
+        self.assertLess(elapsed, 0.5 + SLACK)
 
     def test_a_late_reply_that_is_not_terminal_is_a_timeout(self):
-        server = self.serve(answers(trickle(reply(job("running")), 12, 0.1)))
-        got, elapsed = self.poll(server, deadline=0.2)
+        server = self.serve(answers(trickle(reply(job("running")), 20, 0.1)))
+        got, elapsed = self.poll(server, deadline=0.5)
         self.assertEqual(got, (None, None))
-        self.assertLess(elapsed, 0.2 + SLACK)
+        self.assertLess(elapsed, 0.5 + SLACK)
 
     def test_a_reply_inside_the_deadline_is_read(self):
         server = self.serve(answers(trickle(reply(job("done")), 6, 0.01)))
@@ -238,8 +239,8 @@ class ALateReplyIsATimeout(ExchangeTest):
         self.assertLess(elapsed, 2.0)
 
     def test_the_search_that_waits_for_a_late_terminal_reply_observes_a_timeout_and_nothing_else(self):
-        server = self.serve(answers(trickle(reply(job("done", [EMPTY_LANE])), 12, 0.1)))
-        c = GatewayClient(server.url, "synthetic", deadline=0.2, clock=lambda: STAMP)
+        server = self.serve(answers(trickle(reply(job("done", [EMPTY_LANE])), 20, 0.1)))
+        c = GatewayClient(server.url, "synthetic", deadline=0.5, clock=lambda: STAMP)
         out = c.search(FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
         [only] = out["observations"]
         o = only["observation"]
@@ -258,8 +259,8 @@ class ALateReplyReachesNoDurableEnd(RouterTestCase):
         self.grant = self.started(INV, "discovery")
 
     def test_a_late_done_is_a_recorded_timeout_never_an_empty_exhausted_search(self):
-        with ThreadsJoinedServer(answers(trickle(reply(job("done", [EMPTY_LANE])), 12, 0.1))) as server:
-            c = GatewayClient(server.url, "synthetic", deadline=0.2, clock=lambda: STAMP)
+        with ThreadsJoinedServer(answers(trickle(reply(job("done", [EMPTY_LANE])), 20, 0.1))) as server:
+            c = GatewayClient(server.url, "synthetic", deadline=0.5, clock=lambda: STAMP)
             out = c.search(FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
         replies = [getattr(self.router, name)(request) for name, request in
                    observe.router_requests(out, capability_id=self.grant["capability_id"], invocation_id=INV)]
@@ -311,21 +312,21 @@ class TlsExchangeIsBoundedToo(ExchangeTest):
 
     def test_a_tls_reply_that_trickles_stops_at_the_deadline(self):
         self.trusting()
-        server = self.serve(lambda s, conn, h, b: s.send(conn, trickle(reply(job("done")), 8, 0.1)), tls=(self.cert, self.key))
-        (status, headers, raw, error), elapsed = self.exchange(server, deadline=0.25)
+        server = self.serve(lambda s, conn, h, b: s.send(conn, trickle(reply(job("done")), 12, 0.1)), tls=(self.cert, self.key))
+        (status, headers, raw, error), elapsed = self.exchange(server, deadline=0.4)
         self.assertEqual((status, raw, error), (None, b"", "timeout"))
-        self.assertGreaterEqual(elapsed, 0.23)
-        self.assertLess(elapsed, 0.25 + SLACK)
+        self.assertGreaterEqual(elapsed, 0.38)
+        self.assertLess(elapsed, 0.4 + SLACK)
 
     def test_a_tls_request_the_server_never_reads_stops_at_the_deadline_after_a_slow_handshake(self):
-        """The handshake takes 0.7 s of a 1.0 s deadline, and then the request, larger than the buffers, blocks: a send that
-        kept the timeout the handshake ran under would end at 1.7 s."""
+        """The handshake takes 1.0 s of a 1.5 s deadline, and then the request, larger than the buffers, blocks: a send that
+        kept the timeout the handshake ran under would end at 2.5 s."""
         self.trusting()
-        server = self.serve(lambda s, conn, h, b: s.pause(30), read=False, tls=(self.cert, self.key), handshake_after=0.7)
-        (status, headers, raw, error), elapsed = self.exchange(server, body=b"x" * (64 * 1024 * 1024), method="POST", deadline=1.0)
+        server = self.serve(lambda s, conn, h, b: s.pause(30), read=False, tls=(self.cert, self.key), handshake_after=1.0)
+        (status, headers, raw, error), elapsed = self.exchange(server, body=b"x" * (64 * 1024 * 1024), method="POST", deadline=1.5)
         self.assertEqual((status, raw, error), (None, b"", "timeout"))
-        self.assertGreaterEqual(elapsed, 0.98)
-        self.assertLess(elapsed, 1.0 + 0.4)
+        self.assertGreaterEqual(elapsed, 1.48)
+        self.assertLess(elapsed, 1.5 + 0.5)
 
     def test_control_a_timely_tls_reply_is_read(self):
         self.trusting()

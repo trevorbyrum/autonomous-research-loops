@@ -277,7 +277,7 @@ class OneVocabulary(unittest.TestCase):
         self.assertIn(f"BETWEEN 0 AND {canonical.INT_BOUND}", DDL)
         self.assertIn("BETWEEN 1 AND 8000", DDL)
         self.assertIn("!= 'exhausted'", DDL)
-        paged = re.search(r"CHECK \(page_outcome IN \(([^)]*)\) OR json_extract\(request, '\$\.request\.request_type'\) = '([a-z]+)'\)", DDL)
+        paged = re.search(r"CHECK \(page_outcome IN \(([^)]*)\) OR COALESCE\(json_extract\(request, '\$\.request\.request_type'\) = '([a-z]+)', 0\)\)", DDL)
         self.assertEqual((set(listed(paged.group(1))), (paged.group(2),)), ({"end_unknown", "failed"}, PAGED))
 
 
