@@ -1,5 +1,7 @@
 # Auth-volume demonstrations (DEPLOYMENT-CONTRACT §4) — task 1f evidence
 
+> **Disposition (added in task 2q-a; the evidence below is as of 2026-09-29, unchanged).** The operator ruled on F1 on 2026-09-29: the offline scope, (a), (b), (c), (d1) and (d2a), satisfies §4(d) for the Phase 1 gate (DEPLOYMENT-CONTRACT.md §4, "Operator amendment to (d)"), and (d2b), a revoked credential or one that expired without declaring it, is a binding requirement of task 2e1 before any productive call (`docs/gen2/DEBT-REGISTER.md`, DEBT-004). Where this document says the question "is the operator's", it was; where it says d2b fails, it still does, by design: the requirement has not been reworded to make it pass.
+
 `DEPLOYMENT-CONTRACT.md` §4 requires, before Phase 1 is accepted, that the
 deployment demonstrate with the pinned runner: (a) a credential refresh inside
 a live auth volume picked up without a rebuild; (b) container replacement

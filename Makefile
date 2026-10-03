@@ -14,9 +14,9 @@ PYTHON ?= $(GEN2_VENV)/bin/python
 
 GEN2_SQLITE_REPORT ?=
 
-.PHONY: gen2-check gen2-venv gen2-sqlite gen2-boundaries gen2-metrics gen2-metrics-rebaseline gen2-hotspots gen2-debt gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount gen2-auth-demo gen2-gateway
+.PHONY: gen2-check gen2-venv gen2-sqlite gen2-boundaries gen2-metrics gen2-metrics-rebaseline gen2-hotspots gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount gen2-auth-demo gen2-gateway
 
-gen2-check: gen2-sqlite gen2-boundaries gen2-metrics gen2-debt gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size
+gen2-check: gen2-sqlite gen2-boundaries gen2-metrics gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size
 	@echo "gen2-check: all checks passed"
 
 # (Re)built when either lock changes; `venv --clear` starts from an empty
@@ -68,6 +68,12 @@ gen2-hotspots: gen2-venv
 # entry. A task or phase is set to closed in the status file when it is accepted.
 gen2-debt: gen2-venv
 	$(PYTHON) tools/check_gen2_debt.py
+
+# Every file and function locator in backticks in docs/gen2/INVARIANTS.md and
+# DEBT-REGISTER.md must exist (task 2q-a; tools/check_gen2_locators.py): line numbers
+# may drift, names may not.
+gen2-locators: gen2-venv
+	$(PYTHON) tools/check_gen2_locators.py
 
 # Needs the hash-locked runtime deps (rfc8785, used by gen2/core/canonical.py)
 # and the dev-only validator (jsonschema) — both in $(GEN2_VENV); each check
