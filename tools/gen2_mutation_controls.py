@@ -207,6 +207,17 @@ MANUAL: dict[str, dict] = {
     "2B15-construction-does-not-look-the-name-up": {"controls": ["test_gateway_exchange.NoExchangeResolvesAName.test_an_ip_literal_is_never_resolved"],
                                                     "why": "constructs a GatewayClient over an IP literal, so that gen2/gateway_client/client.py's changed guard (`self._real and _literal(...) is None`) is evaluated and false: no lookup is due for an "
                                                            "address, which the mutant, that makes none for a name either, leaves as it was; the client then exchanges and reads its reply"},
+    # task 2b-repair-17: a mutant that takes the ownership decoration off a method changes a line that runs once, at import, which no traced test executes; the accepted path through the
+    # decorated definition is its own call, alone, which the control makes and which passes undecorated (nothing overlaps it). The failover mutant adds a `break` inside the handler of a failed
+    # connect; the accepted path is the first address answering, where the handler is never entered and the loop's try completes
+    **{mid: {"controls": ["test_gateway_ownership.OneOperationAtATime.test_control_the_same_operations_run_alone_and_a_search_then_a_grant_then_a_resolve_follow_each_other"],
+             "why": f"calls {what} alone on a client (a search, a grant, a resolve, each through its exchange) with nothing running beside it: the accepted path through gen2/gateway_client/client.py's "
+                    f"definition whose ownership decoration the mutant removes; undecorated it runs the same, nothing being there to refuse"}
+       for mid, what in (("2B17-a-search-is-not-an-operation", "`search`"), ("2B17-a-grant-is-not-an-operation", "`grant`"), ("2B17-a-resolve-is-not-an-operation", "`resolve`"),
+                         ("2B17-an-exchange-ignores-the-owner", "`_exchange`"))},
+    "2B17-failover-stops-at-the-first-address": {"controls": ["test_gateway_ownership.ConnectionLifetimes.test_control_the_first_address_answering_leaves_the_others_untried"],
+                                                 "why": "connects to a first address that answers, so gen2/gateway_client/client.py _connect's handler of a failed connect, where the mutant adds its `break`, is never entered "
+                                                        "and the loop's try completes: the path on which no handler runs, which the mutant leaves as it was"},
     # task 2b-repair-13b (Astra's 2b-repair-12 timing ruling): the start-grace killer holds the order in which the identity appears; the
     # accepted case, a start whose identity is recorded before recovery, is the normal-start control written beside it
     "1C-sup-no-start-grace": {"controls": ["test_supervisor_lifecycle.ResearchPassLifecycleTest.test_control_a_start_that_has_recorded_its_identity_at_recovery_is_found_running"],

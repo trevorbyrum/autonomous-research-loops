@@ -15,6 +15,8 @@ loopback sockets, and the client's own late-reply check is killed by a transport
 Task 2b-repair-15 (Astra F2) adds 2B15-*: no exchange resolves a name. Its killers are test_gateway_exchange.NoExchangeResolvesAName (a substituted resolver that
 counts, or sleeps, and loopback servers); a name is looked up at construction or by the owner's `resolve()`, never by an exchange.
 Task 2b-repair-16 (Astra R15-1) adds the pair that keep a stale endpoint's addresses in use, and reverses the mutant that treated wiping them as a defect.
+Task 2b-repair-17 (Gate D #3) makes the endpoint one fact (an owner holding the addresses, and the one operation running), so the 2B15 mutants are re-expressed over it and the one that kept a stale flag
+set beside retained addresses is gone with the state it mutated; the ownership, concurrency, routing and endpoint-form mutants are 2B17-*, in gateway_client_2b17.py.
 
 Task 2b-repair-13b (Gate D #3, #4) adds two families at the end: the typed page outcome (the
 client's and observe's `page_end`, the router's boundary check, its command schema and the

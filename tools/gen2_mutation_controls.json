@@ -6679,7 +6679,7 @@
   "controls": [
    "test_gateway_client.UnreadableAnswers.test_control_a_record_cache_hit_is_its_sources_record"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 510"
+  "why": "gen2/gateway_client/client.py: executes line 573"
  },
  "2B-count-without-identities": {
   "controls": [
@@ -6691,31 +6691,31 @@
   "controls": [
    "test_gateway_client.RecordedByTheRouter.test_an_unreadable_lane_is_admissible_and_counts_nothing"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 400; or executes line 398"
+  "why": "gen2/gateway_client/client.py: executes line 463; or executes line 461"
  },
  "2B-echo-bool-attempt": {
   "controls": [
    "test_gateway_client.UnreadableAnswers.test_control_a_record_cache_hit_is_its_sources_record"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 253"
+  "why": "gen2/gateway_client/client.py: executes line 262"
  },
  "2B-echo-is-identity": {
   "controls": [
    "test_gateway_client.RecordedByTheRouter.test_an_unreadable_lane_is_admissible_and_counts_nothing"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 400; or executes line 398"
+  "why": "gen2/gateway_client/client.py: executes line 463; or executes line 461"
  },
  "2B-echo-unchecked": {
   "controls": [
    "test_gateway_client.UnreadableAnswers.test_a_repeated_identity_is_one_candidate"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 438"
+  "why": "gen2/gateway_client/client.py: executes line 501"
  },
  "2B-envelope-unchecked": {
   "controls": [
    "test_gateway_client.UnreadableAnswers.test_a_repeated_identity_is_one_candidate"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 349"
+  "why": "gen2/gateway_client/client.py: executes line 409"
  },
  "2B-fact-id-episode-only": {
   "controls": [
@@ -6818,7 +6818,7 @@
   "controls": [
    "test_gateway_client.TransportOutcomes.test_a_queued_answer_is_polled_to_its_result_under_this_invocation"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 456"
+  "why": "gen2/gateway_client/client.py: executes line 519"
  },
  "2B-id-includes-links": {
   "controls": [
@@ -6836,7 +6836,7 @@
   "controls": [
    "test_gateway_client.UnreadableAnswers.test_control_a_record_cache_hit_is_its_sources_record"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 463; or executes line 462"
+  "why": "gen2/gateway_client/client.py: executes line 526; or executes line 525"
  },
  "2B-metadata-only-empty": {
   "controls": [
@@ -6860,13 +6860,13 @@
   "controls": [
    "test_gateway_client.UnreadableAnswers.test_control_a_record_cache_hit_is_its_sources_record"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 476"
+  "why": "gen2/gateway_client/client.py: executes line 539"
  },
  "2B-page-request-first": {
   "controls": [
    "test_gateway_client.RecordedAnswers.test_a_grant_and_the_policy_it_binds"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 400; or executes line 398"
+  "why": "gen2/gateway_client/client.py: executes line 463; or executes line 461"
  },
  "2B-partial-unexplained": {
   "controls": [
@@ -6878,43 +6878,43 @@
   "controls": [
    "test_gateway_client.RecordedAnswers.test_dropped_records_are_a_lower_bound"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 433-434"
+  "why": "gen2/gateway_client/client.py: executes line 496-497"
  },
  "2B-poll-capture-ignored": {
   "controls": [
    "test_gateway_client.TransportOutcomes.test_a_queued_answer_is_polled_to_its_result_under_this_invocation"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 453"
+  "why": "gen2/gateway_client/client.py: executes line 516"
  },
  "2B-poll-echo-unchecked": {
   "controls": [
    "test_gateway_client.TransportOutcomes.test_a_queued_answer_is_polled_to_its_result_under_this_invocation"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 494; or executes line 492"
+  "why": "gen2/gateway_client/client.py: executes line 557; or executes line 555"
  },
  "2B-poll-uncorrelated": {
   "controls": [
    "test_gateway_client.TransportOutcomes.test_a_queued_answer_is_polled_and_a_job_that_never_ends_is_a_timeout"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 491; or executes line 490"
+  "why": "gen2/gateway_client/client.py: executes line 554; or executes line 553"
  },
  "2B-queued-unpolled": {
   "controls": [
    "test_gateway_client.RecordedAnswers.test_dropped_records_are_a_lower_bound"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 447"
+  "why": "gen2/gateway_client/client.py: executes line 510"
  },
  "2B-records-unchecked": {
   "controls": [
    "test_gateway_client.UnreadableAnswers.test_control_a_record_cache_hit_is_its_sources_record"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 460"
+  "why": "gen2/gateway_client/client.py: executes line 523"
  },
  "2B-redirects-followed": {
   "controls": [
    "test_gateway_client.OverRealHttp.test_the_default_transport_reads_a_real_answer"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 217"
+  "why": "gen2/gateway_client/client.py: executes line 218"
  },
  "2B-repeat-counted-twice": {
   "controls": [
@@ -6926,13 +6926,13 @@
   "controls": [
    "test_gateway_client.TransportOutcomes.test_a_queued_answer_is_polled_to_its_result_under_this_invocation"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 432; or executes line 431"
+  "why": "gen2/gateway_client/client.py: executes line 495; or executes line 494"
  },
  "2B-uncaptured-complete": {
   "controls": [
    "test_gateway_client.RecordedAnswers.test_control_a_captured_answer_keeps_its_complete_lanes"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 474; or executes line 468"
+  "why": "gen2/gateway_client/client.py: executes line 537; or executes line 531"
  },
  "2B-uncaptured-empty-kept": {
   "by_hand": true,
@@ -6948,7 +6948,7 @@
   "controls": [
    "test_gateway_client.RecordedAnswers.test_dropped_records_are_a_lower_bound"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 445; or executes line 442"
+  "why": "gen2/gateway_client/client.py: executes line 508; or executes line 505"
  },
  "2B-unobserved-counted": {
   "controls": [
@@ -7044,13 +7044,13 @@
   "controls": [
    "test_gateway_client.PageOutcomes.test_an_end_is_reported_by_a_page_read_whole_only"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 402 (else 400); or executes line 398"
+  "why": "gen2/gateway_client/client.py: executes line 465 (else 463); or executes line 461"
  },
  "2B13-cap-on-any-last-page": {
   "controls": [
    "test_gateway_client.PageOutcomes.test_gate_d_a_page_with_more_to_read_and_a_finished_one_are_different_records"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 402 (else 400); or executes line 398"
+  "why": "gen2/gateway_client/client.py: executes line 465 (else 463); or executes line 461"
  },
  "2B13-cursor-beyond-the-bound": {
   "controls": [
@@ -7226,7 +7226,7 @@
   "rejected": [
    "test_gateway_client.PollDeadline.test_the_defaults_end_within_the_deadline_where_gate_d_counted_about_21_hours"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 340"
+  "why": "gen2/gateway_client/client.py: executes line 400"
  },
  "2B13-exchange-timeout-ignored": {
   "controls": [
@@ -7237,7 +7237,7 @@
    "test_gateway_client.PollDeadline.test_a_reply_that_arrives_inside_its_timeout_and_is_not_the_end_leaves_only_what_remains_to_sleep",
    "test_gateway_client.PollDeadline.test_the_defaults_end_within_the_deadline_where_gate_d_counted_about_21_hours"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 340"
+  "why": "gen2/gateway_client/client.py: executes line 400"
  },
  "2B13-failed-page-unknown-end": {
   "controls": [
@@ -7267,7 +7267,7 @@
   "controls": [
    "test_gateway_client.PageOutcomes.test_gate_d_a_page_with_more_to_read_and_a_finished_one_are_different_records"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 397 (else 396); or executes line 385"
+  "why": "gen2/gateway_client/client.py: executes line 460 (else 459); or executes line 448"
  },
  "2B13-partial-page-ends": {
   "controls": [
@@ -7283,7 +7283,7 @@
    "test_gateway_client.PollDeadline.test_a_deadline_that_passes_is_a_timeout_observation_and_never_an_empty_result",
    "test_gateway_client.PollDeadline.test_a_reply_that_arrives_inside_its_timeout_and_is_not_the_end_leaves_only_what_remains_to_sleep"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 489; or executes line 490; or executes line 491; or executes line 495"
+  "why": "gen2/gateway_client/client.py: executes line 552; or executes line 553; or executes line 554; or executes line 558"
  },
  "2B13-poll-sleep-unbounded": {
   "controls": [
@@ -7294,13 +7294,13 @@
    "test_gateway_client.PollDeadline.test_gate_d_a_slow_gateway_cannot_stretch_one_second_into_three",
    "test_gateway_client.PollDeadline.test_the_defaults_end_within_the_deadline_where_gate_d_counted_about_21_hours"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 495; or executes line 490"
+  "why": "gen2/gateway_client/client.py: executes line 558; or executes line 553"
  },
  "2B13-poll-timeout-restarts": {
   "controls": [
    "test_gateway_client.PollDeadline.test_a_reply_that_arrives_inside_its_timeout_and_is_not_the_end_leaves_only_what_remains_to_sleep"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 491; or executes line 490"
+  "why": "gen2/gateway_client/client.py: executes line 554; or executes line 553"
  },
  "2B13-poll-timeout-unclamped": {
   "controls": [
@@ -7310,7 +7310,7 @@
    "test_gateway_client.PollDeadline.test_a_reply_that_arrives_inside_its_timeout_and_is_not_the_end_leaves_only_what_remains_to_sleep",
    "test_gateway_client.PollDeadline.test_the_defaults_end_within_the_deadline_where_gate_d_counted_about_21_hours"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 491; or executes line 490"
+  "why": "gen2/gateway_client/client.py: executes line 554; or executes line 553"
  },
  "2B13-request-type-open": {
   "controls": [
@@ -7361,43 +7361,43 @@
   "controls": [
    "test_gateway_exchange.EveryBlockingStepIsBounded.test_control_the_same_reply_is_read_when_it_is_timely"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 180; or executes line 176"
+  "why": "gen2/gateway_client/client.py: executes line 178; or executes line 174"
  },
  "2B13D-connect-time-not-counted": {
   "controls": [
    "test_gateway_exchange.ALateReplyIsATimeout.test_a_reply_inside_the_deadline_is_read"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 181; or executes line 176; or executes line 182"
+  "why": "gen2/gateway_client/client.py: executes line 179; or executes line 174; or executes line 180"
  },
  "2B13D-deadline-never-passes": {
   "controls": [
    "test_gateway_exchange.EachCallIsGivenWhatIsLeft.test_the_time_a_connect_took_comes_out_of_what_a_handshake_may_take"
   ],
-  "why": "gen2/gateway_client/client.py: leaves line 109 for a line outside 109-110 (or returns)"
+  "why": "gen2/gateway_client/client.py: leaves line 107 for a line outside 107-108 (or returns)"
  },
  "2B13D-late-reply-kept": {
   "controls": [
    "test_gateway_client.PollDeadline.test_the_defaults_end_within_the_deadline_where_gate_d_counted_about_21_hours"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 347"
+  "why": "gen2/gateway_client/client.py: executes line 407"
  },
  "2B13D-plain-sockets-undeadlined": {
   "controls": [
    "test_gateway_exchange.ALateReplyIsATimeout.test_a_reply_inside_the_deadline_is_read"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 194"
+  "why": "gen2/gateway_client/client.py: executes line 192"
  },
  "2B13D-reads-never-armed": {
   "controls": [
    "test_gateway_exchange.ALateReplyIsATimeout.test_a_reply_inside_the_deadline_is_read"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 121"
+  "why": "gen2/gateway_client/client.py: executes line 119"
  },
  "2B13D-recv-into-not-armed": {
   "controls": [
    "test_gateway_exchange.ALateReplyIsATimeout.test_a_reply_inside_the_deadline_is_read"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 129"
+  "why": "gen2/gateway_client/client.py: executes line 127"
  },
  "2B13D-recv-not-armed": {
   "by_hand": true,
@@ -7417,66 +7417,57 @@
   "controls": [
    "test_gateway_exchange.ALateReplyIsATimeout.test_a_reply_inside_the_deadline_is_read"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 137"
+  "why": "gen2/gateway_client/client.py: executes line 135"
  },
  "2B13D-tls-deadline-unset": {
   "controls": [
    "test_gateway_exchange.TlsExchangeIsBoundedToo.test_control_a_timely_tls_reply_is_read"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 206"
+  "why": "gen2/gateway_client/client.py: executes line 204"
  },
  "2B13D-tls-reads-not-armed": {
   "controls": [
    "test_gateway_exchange.TlsExchangeIsBoundedToo.test_control_a_timely_tls_reply_is_read"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 151"
+  "why": "gen2/gateway_client/client.py: executes line 149"
  },
  "2B13D-tls-send-not-armed": {
   "controls": [
    "test_gateway_exchange.TlsExchangeIsBoundedToo.test_control_a_timely_tls_reply_is_read"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 155"
+  "why": "gen2/gateway_client/client.py: executes line 153"
  },
  "2B13D-tls-socket-class-unset": {
   "controls": [
    "test_gateway_exchange.TlsExchangeIsBoundedToo.test_control_a_timely_tls_reply_is_read"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 202"
- },
- "2B15-a-connection-failure-keeps-the-addresses-in-use": {
-  "by_hand": true,
-  "controls": [
-   "test_gateway_exchange.NoExchangeResolvesAName.test_a_failed_lookup_leaves_the_client_built_and_stale_and_every_exchange_a_failure_at_once"
-  ],
-  "why": "a client whose lookup failed takes a connection failure through gen2/gateway_client/client.py _exchange's changed line (the withdrawal) and asserts a failure at once and a stale endpoint: the mutant, which looks up again there (the resolver is a stand-in that fails), leaves the endpoint as that failed lookup left it, or marks it stale without withdrawing (it has no addresses to withdraw), keeps both"
+  "why": "gen2/gateway_client/client.py: executes line 200"
  },
  "2B15-a-connection-failure-leaves-the-endpoint-fresh": {
   "by_hand": true,
   "controls": [
    "test_gateway_exchange.NoExchangeResolvesAName.test_a_failed_lookup_leaves_the_client_built_and_stale_and_every_exchange_a_failure_at_once"
   ],
-  "why": "a client whose lookup failed takes a connection failure through gen2/gateway_client/client.py _exchange's changed line (the withdrawal) and asserts a failure at once and a stale endpoint: the mutant, which looks up again there (the resolver is a stand-in that fails), leaves the endpoint as that failed lookup left it, or marks it stale without withdrawing (it has no addresses to withdraw), keeps both"
+  "why": "a client whose lookup failed takes a connection failure through gen2/gateway_client/client.py _exchange's changed line (the withdrawal) and asserts a failure at once and a stale endpoint: the mutant, which looks up again there (the resolver is a stand-in that fails, so the endpoint is withdrawn again), or leaves the endpoint as it was (it has no addresses to withdraw), keeps both"
  },
  "2B15-a-failed-lookup-is-not-stale": {
-  "by_hand": true,
   "controls": [
-   "test_gateway_exchange.NoExchangeResolvesAName.test_astras_probe_an_unrelated_listener_at_the_old_address_receives_no_request_after_a_failed_lookup"
+   "test_gateway_exchange.NoExchangeResolvesAName.test_an_ip_literal_is_never_resolved"
   ],
-  "why": "takes a failed lookup (NXDOMAIN) through gen2/gateway_client/client.py resolve's changed branch and asserts that nothing is connected to or sent afterwards, and that a later successful lookup restores the endpoint: the mutant, which marks the endpoint fresh after the withdrawal, leaves the withdrawal itself as it was"
+  "why": "gen2/gateway_client/client.py: executes line 366"
  },
  "2B15-a-failed-lookup-keeps-the-last-good-addresses-in-use": {
-  "by_hand": true,
   "controls": [
-   "test_gateway_exchange.NoExchangeResolvesAName.test_a_failed_lookup_leaves_the_client_built_and_stale_and_every_exchange_a_failure_at_once"
+   "test_gateway_exchange.NoExchangeResolvesAName.test_an_ip_literal_is_never_resolved"
   ],
-  "why": "a client whose first lookup failed takes that failure through gen2/gateway_client/client.py resolve's changed branch, with no earlier addresses to keep, and asserts it stale and every exchange a failure at once: the mutant, which marks it stale and withdraws nothing, leaves both, there being nothing to withdraw"
+  "why": "gen2/gateway_client/client.py: executes line 387"
  },
  "2B15-an-exchange-re-resolves-after-a-failure": {
   "by_hand": true,
   "controls": [
    "test_gateway_exchange.NoExchangeResolvesAName.test_a_failed_lookup_leaves_the_client_built_and_stale_and_every_exchange_a_failure_at_once"
   ],
-  "why": "a client whose lookup failed takes a connection failure through gen2/gateway_client/client.py _exchange's changed line (the withdrawal) and asserts a failure at once and a stale endpoint: the mutant, which looks up again there (the resolver is a stand-in that fails), leaves the endpoint as that failed lookup left it, or marks it stale without withdrawing (it has no addresses to withdraw), keeps both"
+  "why": "a client whose lookup failed takes a connection failure through gen2/gateway_client/client.py _exchange's changed line (the withdrawal) and asserts a failure at once and a stale endpoint: the mutant, which looks up again there (the resolver is a stand-in that fails, so the endpoint is withdrawn again), or leaves the endpoint as it was (it has no addresses to withdraw), keeps both"
  },
  "2B15-an-exchange-resolves-a-name": {
   "by_hand": true,
@@ -7498,7 +7489,154 @@
   "controls": [
    "test_gateway_exchange.NoExchangeResolvesAName.test_an_ip_literal_is_never_resolved"
   ],
-  "why": "constructs a GatewayClient over an IP literal, so that gen2/gateway_client/client.py's changed guard (`real and _literal(...) is None`) is evaluated and false: no lookup is due for an address, which the mutant, that makes none for a name either, leaves as it was; the client then exchanges and reads its reply"
+  "why": "constructs a GatewayClient over an IP literal, so that gen2/gateway_client/client.py's changed guard (`self._real and _literal(...) is None`) is evaluated and false: no lookup is due for an address, which the mutant, that makes none for a name either, leaves as it was; the client then exchanges and reads its reply"
+ },
+ "2B17-a-call-from-inside-an-operation-is-allowed": {
+  "controls": [
+   "test_gateway_client.PollDeadline.test_a_terminal_reply_that_completes_after_the_deadline_is_a_timeout_whatever_it_says"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 296"
+ },
+ "2B17-a-failed-connect-leaves-its-socket-open": {
+  "controls": [
+   "test_gateway_exchange.EachCallIsGivenWhatIsLeft.test_control_send_sends_with_time_left"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 183; or leaves line 178-181 for a line outside 177-184 (or returns)"
+ },
+ "2B17-a-failed-operation-keeps-the-client": {
+  "controls": [
+   "test_gateway_client.PollDeadline.test_a_terminal_reply_that_completes_after_the_deadline_is_a_timeout_whatever_it_says"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 317; or executes line 318; or executes line 320; or executes line 321"
+ },
+ "2B17-a-grant-is-not-an-operation": {
+  "by_hand": true,
+  "controls": [
+   "test_gateway_ownership.OneOperationAtATime.test_control_the_same_operations_run_alone_and_a_search_then_a_grant_then_a_resolve_follow_each_other"
+  ],
+  "why": "calls `grant` alone on a client (a search, a grant, a resolve, each through its exchange) with nothing running beside it: the accepted path through gen2/gateway_client/client.py's definition whose ownership decoration the mutant removes; undecorated it runs the same, nothing being there to refuse"
+ },
+ "2B17-a-resolve-is-not-an-operation": {
+  "by_hand": true,
+  "controls": [
+   "test_gateway_ownership.OneOperationAtATime.test_control_the_same_operations_run_alone_and_a_search_then_a_grant_then_a_resolve_follow_each_other"
+  ],
+  "why": "calls `resolve` alone on a client (a search, a grant, a resolve, each through its exchange) with nothing running beside it: the accepted path through gen2/gateway_client/client.py's definition whose ownership decoration the mutant removes; undecorated it runs the same, nothing being there to refuse"
+ },
+ "2B17-a-search-is-not-an-operation": {
+  "by_hand": true,
+  "controls": [
+   "test_gateway_ownership.OneOperationAtATime.test_control_the_same_operations_run_alone_and_a_search_then_a_grant_then_a_resolve_follow_each_other"
+  ],
+  "why": "calls `search` alone on a client (a search, a grant, a resolve, each through its exchange) with nothing running beside it: the accepted path through gen2/gateway_client/client.py's definition whose ownership decoration the mutant removes; undecorated it runs the same, nothing being there to refuse"
+ },
+ "2B17-a-timeout-withdraws-the-endpoint": {
+  "controls": [
+   "test_gateway_client.PollDeadline.test_the_defaults_end_within_the_deadline_where_gate_d_counted_about_21_hours"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 404"
+ },
+ "2B17-a-url-without-a-host-is-an-endpoint": {
+  "controls": [
+   "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
+  ],
+  "why": "gen2/gateway_client/client.py: leaves line 292 for a line outside 292-293 (or returns)"
+ },
+ "2B17-an-exchange-ignores-the-owner": {
+  "by_hand": true,
+  "controls": [
+   "test_gateway_ownership.OneOperationAtATime.test_control_the_same_operations_run_alone_and_a_search_then_a_grant_then_a_resolve_follow_each_other"
+  ],
+  "why": "calls `_exchange` alone on a client (a search, a grant, a resolve, each through its exchange) with nothing running beside it: the accepted path through gen2/gateway_client/client.py's definition whose ownership decoration the mutant removes; undecorated it runs the same, nothing being there to refuse"
+ },
+ "2B17-an-overlapping-call-is-allowed": {
+  "controls": [
+   "test_gateway_client.PollDeadline.test_a_terminal_reply_that_completes_after_the_deadline_is_a_timeout_whatever_it_says"
+  ],
+  "why": "gen2/gateway_client/client.py: leaves line 314 for a line outside 314-315 (or returns); or executes line 321"
+ },
+ "2B17-another-scheme-is-an-endpoint": {
+  "controls": [
+   "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
+  ],
+  "why": "gen2/gateway_client/client.py: leaves line 292 for a line outside 292-293 (or returns)"
+ },
+ "2B17-credentials-in-the-url-are-accepted": {
+  "controls": [
+   "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
+  ],
+  "why": "gen2/gateway_client/client.py: leaves line 292 for a line outside 292-293 (or returns)"
+ },
+ "2B17-failover-stops-at-the-first-address": {
+  "by_hand": true,
+  "controls": [
+   "test_gateway_ownership.ConnectionLifetimes.test_control_the_first_address_answering_leaves_the_others_untried"
+  ],
+  "why": "connects to a first address that answers, so gen2/gateway_client/client.py _connect's handler of a failed connect, where the mutant adds its `break`, is never entered and the loop's try completes: the path on which no handler runs, which the mutant leaves as it was"
+ },
+ "2B17-instances-share-a-lock": {
+  "controls": [
+   "test_gateway_client.PollDeadline.test_a_terminal_reply_that_completes_after_the_deadline_is_a_timeout_whatever_it_says"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 296; or executes line 242"
+ },
+ "2B17-instances-share-their-addresses": {
+  "controls": [
+   "test_gateway_client.PollDeadline.test_a_terminal_reply_that_completes_after_the_deadline_is_a_timeout_whatever_it_says"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 295; or executes line 301; or executes line 305; or executes line 242"
+ },
+ "2B17-proxy-dispatch-is-restored": {
+  "controls": [
+   "test_gateway_routes.DirectHttpOnly.test_no_global_opener_is_used_or_installed"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 218"
+ },
+ "2B17-the-data-handler-is-back": {
+  "controls": [
+   "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 218"
+ },
+ "2B17-the-endpoint-can-be-changed": {
+  "controls": [
+   "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 357"
+ },
+ "2B17-the-file-handler-is-back": {
+  "controls": [
+   "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 218"
+ },
+ "2B17-the-ftp-handler-is-back": {
+  "controls": [
+   "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 218"
+ },
+ "2B17-the-global-opener-is-used": {
+  "controls": [
+   "test_gateway_exchange.ALateReplyIsATimeout.test_a_reply_inside_the_deadline_is_read"
+  ],
+  "rejected": [
+   "test_gateway_exchange.TlsExchangeIsBoundedToo.test_control_a_timely_tls_reply_is_read",
+   "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 242"
+ },
+ "2B17-the-scheme-gate-is-gone": {
+  "controls": [
+   "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 238"
+ },
+ "2B17-the-unknown-scheme-handler-is-back": {
+  "controls": [
+   "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 218"
  },
  "2R-growth-counts-the-gateway": {
   "controls": [
