@@ -57,7 +57,7 @@ Smells (thresholds are the DEFAULT_THRESHOLDS below, recorded in the baseline)
   Unstable dependency (Martin's Stable Dependencies Principle). An edge A -> B
   where A is clearly stable (instability <= 30%) and B is at least 10 points
   more unstable than A. The margins keep two-decimal noise out: a strict
-  I(B) > I(A) flags seven edges at the 2q-a pin, three of them under 4 points.
+  I(B) > I(A) flags seven edges at the 2q-a pin, four of them within 6 points.
   God component. A component of >= 3,000 physical lines (two files at the
   per-file limit) that at least 5 other components import. At the 2q-a pin it
   names `research_gateway.core` (5,187 lines, imported by 7) and nothing else;

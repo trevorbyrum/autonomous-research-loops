@@ -185,6 +185,10 @@ FILE_TARGETS = {
     "gen2/schema/decision-receipt.schema.json": ("attr", "test_schema_counterfactuals", "DECISION_RECEIPT_SCHEMA"),
     "gen2/schema/invocation.schema.json": ("attr", "test_schema_counterfactuals", "INVOCATION_SCHEMA"),
     "tools/gen2_linecount.py": ("attr", "test_size_rules", "TOOL"),  # task 2r: the size rules
+    # task 2q-a: the metrics ratchet, the debt register's phase-close check and the locator check; their tests run each as a subprocess through the fixtures' globals
+    "tools/gen2_metrics.py": ("attr", "gen2.tests.tool_repo_fixtures", "TOOL"),
+    "tools/check_gen2_debt.py": ("attr", "gen2.tests.tool_repo_fixtures", "DEBT_TOOL"),
+    "tools/check_gen2_locators.py": ("attr", "gen2.tests.tool_repo_fixtures", "LOCATORS_TOOL"),
 }
 
 

@@ -98,5 +98,17 @@ class EvidenceRuleTest(unittest.TestCase):
         self.assertEqual(reqs("LIMIT = 3", "LIMIT = 4"), [("line", frozenset({21}), frozenset({21}))])
 
 
+class HolderUsersTest(unittest.TestCase):
+    """Task 2q-a: where a fixtures module holds a path-handed tool's path, its users are the test modules that import it."""
+
+    def test_the_users_of_the_tool_fixtures_are_exactly_the_modules_that_import_them(self) -> None:
+        users = TOOL["holder_users"]("gen2.tests.tool_repo_fixtures")
+        # by hand: each of these test modules imports the fixtures (`from gen2.tests import tool_repo_fixtures as fx` or
+        # `from gen2.tests.tool_repo_fixtures import ...`); no other test module does
+        self.assertEqual(users, {"test_metrics_measure", "test_metrics_ratchet", "test_debt_register", "test_locators"})
+
+    def test_a_module_nobody_imports_has_no_users(self) -> None:
+        self.assertEqual(TOOL["holder_users"]("gen2.tests.no_such_fixtures"), set())
+
 if __name__ == "__main__":
     unittest.main()

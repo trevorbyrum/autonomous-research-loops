@@ -28,7 +28,8 @@ LOCATORS_TOOL = REPO / "tools" / "check_gen2_locators.py"
 BASELINE = "docs/gen2/metrics-baseline.json"
 EXEMPTIONS = "docs/gen2/metrics-exemptions.md"
 GIT_ENV = {"GIT_AUTHOR_NAME": "Test Author", "GIT_AUTHOR_EMAIL": "test@example.invalid",
-           "GIT_COMMITTER_NAME": "Test Author", "GIT_COMMITTER_EMAIL": "test@example.invalid"}
+           "GIT_COMMITTER_NAME": "Test Author", "GIT_COMMITTER_EMAIL": "test@example.invalid",
+           "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}   # a fixture commit never depends on the host's git configuration (signing, hooks)
 
 
 class Repo:

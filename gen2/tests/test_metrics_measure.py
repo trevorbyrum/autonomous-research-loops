@@ -94,6 +94,13 @@ class GraphTest(RepoTestCase):
                 row = table[module]
                 self.assertEqual((row["fan_in"], row["fan_out"], row["instability"], row["out_reach"], row["in_reach"]), values)
 
+    def test_a_file_in_a_cycle_does_not_reach_itself(self) -> None:
+        files = {"gen2/a.py": py("import gen2.b"), "gen2/b.py": py("import gen2.a")}
+        summary, out = measured(self.repo(files))
+        table = by_module(out)
+        self.assertEqual((table["gen2/a.py"]["out_reach"], table["gen2/b.py"]["out_reach"]), ("1", "1"))   # each reaches the other, not itself
+        self.assertEqual(summary["services"]["engine"]["propagation_file"]["reach_pairs"], 4)   # (1 + 1) + (1 + 1) of 2 * 2 pairs: 100%
+
     def test_propagation_cost_counts_self_reach_over_all_ordered_pairs(self) -> None:
         summary, _ = measured(self.repo(GRAPH))
         engine = summary["services"]["engine"]["propagation_file"]
@@ -205,6 +212,11 @@ class CollaborationTest(RepoTestCase):
         calls = measured(self.repo({"gen2/x.py": one_file}))[0]["services"]["engine"]["self_calls"]
         self.assertEqual((calls["sites"], calls["pairs"], calls["families"]), (0, {}, {}))
 
+    def test_an_attribute_base_that_is_not_a_project_class_is_no_family(self) -> None:
+        source = py("import abc", "", "class A(abc.ABC):", "    def f(self):", "        return self.g()", "    def g(self):", "        return 1")
+        calls = measured(self.repo({"gen2/x.py": source}))[0]["services"]["engine"]["self_calls"]
+        self.assertEqual((calls["sites"], calls["families"]), (0, {}))
+
     def test_a_base_named_through_a_module_attribute_is_found(self) -> None:
         for how in ("import gen2.router.lifecycle as lc", "from gen2.router import lifecycle as lc", "from gen2.router import lifecycle"):
             with self.subTest(how=how):
@@ -294,6 +306,11 @@ class ComplexityTest(RepoTestCase):
         nested = py("def f(a, b):", "    if a:", "        return 1", "    else:", "        for i in b:", "            return i", "    return 0")
         self.assertEqual(self.measure_source(nested), {"f": (3, 3)})  # if 1; the for inside its else: 1 + 1
 
+    def test_a_comprehension_inside_a_branch_counts_its_depth(self) -> None:
+        source = py("def f(a):", "    if a:", "        return [x for x in a]", "    return []")
+        # cyclomatic: 1 + if + (1 + 0 conditions) = 3; cognitive: if 1 + 0, then the generator at depth 1: 1 + 1 + 0 = 2: total 3
+        self.assertEqual(self.measure_source(source), {"f": (3, 3)})
+
     def test_an_async_function_and_an_async_for(self) -> None:
         self.assertEqual(self.measure_source(py("async def f(a):", "    async for i in a:", "        pass")), {"f": (2, 1)})
 
@@ -357,6 +374,11 @@ class SmellTest(RepoTestCase):
         self.assertEqual(offenders(nest(7)), {})                                       # cognitive 1+...+7 = 28 (<= 30)
         self.assertEqual(list(offenders(nest(8))), ["gen2/m.py::g"])                   # 36 (> 30), cyclomatic 9
 
+        def at(flat: int) -> str:   # seven nested ifs (cognitive 28) and `flat` ifs beside them (1 each): cognitive 28 + flat, cyclomatic 8 + flat
+            return py("def h(a):", *(f"{'    ' * (i + 1)}if a:" for i in range(7)), f"{'    ' * 8}pass", *("    if a:\n        pass" for _ in range(flat)))
+        self.assertEqual(offenders(at(2)), {})                                         # cognitive exactly 30: at the limit, not over it
+        self.assertEqual(list(offenders(at(3))), ["gen2/m.py::h"])                     # 31: over
+
 
 class HistoryTest(RepoTestCase):
     """The git-history report: commits, churn (added + deleted), files that change together."""
@@ -396,6 +418,17 @@ class HistoryTest(RepoTestCase):
         self.assertEqual((pair[0]["jaccard"], pair[0]["p_b_given_a"], pair[0]["p_a_given_b"]), ("0.6667", "0.6667", "1.0"))
         era = rows(out / "change-coupling-gen2-era.csv")
         self.assertEqual([(r["joint_commits"], r["a_commits"], r["b_commits"], r["jaccard"]) for r in era], [("1", "2", "1", "0.5")])   # 1 / (2 + 1 - 1)
+
+    def test_the_gen2_era_starts_on_the_first_day_and_not_before(self) -> None:
+        repo = self.repo({}, commit=False)
+        repo.write({"gen2/a.py": "a = 1\n"}, date="2026-09-24T23:59:59+00:00")          # the day before: inherited history, not gen-2's
+        repo.write({"gen2/a.py": "a = 1\na = 2\n"}, date="2026-09-25T00:00:00+00:00")  # the first day: in the era
+        out = Path(tempfile.mkdtemp(dir=repo.root.parent))
+        self.assertEqual(repo.run("hotspots", str(out)).returncode, 0)
+        full = {r["file"]: (r["commits"], r["added_plus_deleted"]) for r in rows(out / "change-hotspots.csv")}
+        era = {r["file"]: (r["commits"], r["added_plus_deleted"]) for r in rows(out / "change-hotspots-gen2-era.csv")}
+        self.assertEqual(full["gen2/a.py"], ("2", "2"))   # 1 added, then 1 added
+        self.assertEqual(era["gen2/a.py"], ("1", "1"))    # only the second commit
 
     def test_the_check_prints_the_history_but_it_never_changes_the_exit_status(self) -> None:
         repo = self.history()

@@ -72,7 +72,9 @@ fails, or beside it in a subTest — as read and recorded in READ_IN_KILLER or
 MANUAL; otherwise the accepted case is split out into a test of its own.
 Only tests that passed in the trace are candidates, and only tests the
 runner points at the mutant: a path-handed tool reaches only the module
-holding its path, and a DDL mutant only the store suite. For the
+holding its path (or, where a fixtures module holds the path, the test
+modules that import it: the three documentation and metrics tools of task
+2q-a), and a DDL mutant only the store suite. For the
 supervisor's own files the canonical accepted-path tests (PREFERRED: a clean
 end commits, a regular file is staged as found, ...) are taken first where
 they are candidates. Otherwise the tests that took no refusal or error path
@@ -400,6 +402,36 @@ MANUAL: dict[str, dict] = {
                "operator — and asserts the operator's tools; the mutant changes only the field supplied from the principal, and no recovery "
                "request can be a control: the surface refuses a body naming requested_by, and without it the mutant's request is refused "
                "(probed: 0 of 9 candidates pass)"},
+    # task 2q-a: five branches that, in the traced run, only a mutant's own killer entered; each got a test of its own, added after the
+    # trace, that takes the accepted path through the changed line (the mutant leaves it passing)
+    "2Q-collab-module-attribute-base": {
+        "controls": ["test_metrics_measure.CollaborationTest.test_an_attribute_base_that_is_not_a_project_class_is_no_family"],
+        "why": "evaluates tools/gen2_metrics.py project_bases' changed elif for a base named through a module attribute (abc.ABC) that is "
+               "no project class: false, on the accepted path to no family; the mutant's `False and ...` leaves it so"},
+    "2Q-exempt-continuation-lost": {
+        "controls": ["test_metrics_ratchet.ExemptionTest.test_a_wrapped_reason_is_one_value_too"],
+        "why": "runs tools/gen2_metrics.py parse_entries' changed continuation branch on a reason wrapped over two lines, accepted either "
+               "way: the first line alone is a reason, so the exemption still holds under the mutant"},
+    "2Q-ratchet-selfcall-growth-ignored": {
+        "controls": ["test_metrics_ratchet.CollaborationTest.test_unchanged_self_calls_are_no_regression"],
+        "why": "evaluates tools/gen2_metrics.py compare's changed guard (count > was) for a baselined pair whose count is unchanged: false, on "
+               "the accepted path; the mutant's `if False` leaves it so"},
+    "2Q-ratchet-cross-service-ignored": {
+        "controls": ["test_metrics_ratchet.BaselinedCrossServiceTest.test_a_baselined_import_between_the_services_stays_allowed"],
+        "why": "evaluates tools/gen2_metrics.py compare's changed guard (edge not in the baseline) for an import between the services that "
+               "the baseline already holds: false, on the accepted path; the mutant's `if False` leaves it so"},
+    "2Q-debt-continuation-lost": {
+        "controls": ["test_debt_register.EntryTest.test_a_wrapped_what_continues_too"],
+        "why": "runs tools/check_gen2_debt.py parse_register's changed continuation branch on a `what` wrapped over two lines, accepted "
+               "either way: the first line alone is a description, so the entry still passes under the mutant"},
+    "2Q-loc-word-is-substring": {
+        "controls": ["test_locators.SymbolLocatorTest.test_a_name_in_a_markdown_file_is_found_as_a_word"],
+        "why": "runs tools/check_gen2_locators.py defines' changed word search on a markdown file for a whole word it contains: found "
+               "under the mutant's substring test too"},
+    "2Q-rebaseline-crossing-offenders-dropped": {
+        "controls": ["test_metrics_ratchet.ExemptedRegressionsAreNeverRecordedTest.test_a_new_function_over_the_threshold"],
+        "why": "evaluates tools/gen2_metrics.py tighten's changed elif for a new offender that an exemption covers (and so was an offender "
+               "under the old thresholds too): false, so it is not recorded, and the mutant's `elif False` records it no more"},
     # task 1e-repair: the server's handle_error override runs only for a failed connection
     "1E-engine-connection-fault-traceback": {
         "controls": [],
@@ -757,6 +789,17 @@ def trace(out: Path) -> int:
 
 
 # -- choose --------------------------------------------------------------------------------------
+def holder_users(holder: str) -> set[str]:
+    """The test modules (names as the runner knows them) that import `holder`, a fixtures module that holds a path-handed tool's
+    path: they read it at call time, so a mutant's path set there reaches them too. A test module that is itself the holder is
+    not asked: its candidates are its own tests (the rule for a holder that is a test module)."""
+    package, _, leaf = holder.rpartition(".")
+    pattern = re.compile(rf"^\s*(?:from {re.escape(package)} import [^\n]*\b{re.escape(leaf)}\b|from {re.escape(holder)} import\b|import {re.escape(holder)}\b)",
+                         re.MULTILINE)
+    return {path.stem for path in sorted(TESTS.glob("test_*.py")) if pattern.search(path.read_text(encoding="utf-8"))}
+
+
+
 def changed_lines(text: str, mutated: str) -> set[int]:
     """The lines of the repository file a mutant changes, by difflib over
     the whole file: each line it replaces or deletes, and for an insertion
@@ -1085,7 +1128,11 @@ def choose(trace_file: Path, runs: list[Path], probe_width: int = 0, jobs: int =
             why = (describe(m.target, reqs) if reqs else
                    f"{m.target}: the changed code is a refusal that no guard in its function governs, so no accepted path passes through it")
             if how[0] == "attr":
-                cands = {t for t in cands if t.split(".")[0] == how[1]}  # only that module is handed the mutant's path
+                if how[1].rsplit(".", 1)[-1].startswith("test_"):
+                    cands = {t for t in cands if t.split(".")[0] == how[1]}  # only that module is handed the mutant's path
+                else:  # a fixtures module holds the path (task 2q-a): every test module that imports it is handed the path through it
+                    users = holder_users(how[1])
+                    cands = {t for t in cands if t.split(".")[0] in users}
         elif m.target.startswith("gen2/schema/") and m.target.endswith(".schema.json"):
             schema = Path(m.target).name[: -len(".schema.json")]
             module = how[1]

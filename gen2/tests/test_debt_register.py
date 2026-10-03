@@ -162,7 +162,15 @@ class EntryTest(DebtTestCase):
         self.assertIn("1 entries, 1 open", done.stdout)
 
     def test_a_wrapped_value_continues_on_indented_lines(self) -> None:
-        done = self.run_check(entry(removal="the 2e1 review verifies") + "  that no other construction site exists\n", expect=0)
+        # `TODO` alone is a placeholder; with its continuation line the removal is a sentence
+        done = self.run_check(entry(removal="TODO") + "  until the 2e1 review verifies there is no other construction site\n", expect=0)
+        self.assertIn("1 entries", done.stdout)
+        self.run_check(entry(removal="TODO"), expect=1)
+
+    def test_a_wrapped_what_continues_too(self) -> None:
+        text = entry(what="a rule the task must satisfy").replace("satisfy", "satisfy\n  and a second line of the same value")
+        self.assertIn("  and a second line", text)
+        done = self.run_check(text, expect=0)
         self.assertIn("1 entries", done.stdout)
 
     def test_only_debt_sections_are_entries(self) -> None:

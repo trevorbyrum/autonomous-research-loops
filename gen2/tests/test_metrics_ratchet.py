@@ -182,38 +182,58 @@ class CycleTest(RatchetTestCase):
         self.assertIn("cycle_file engine:gen2/a.py,gen2/b.py", self.check(repo, 1).stderr)
 
 
+class CycleShrinkTest(RatchetTestCase):
+    def test_a_cycle_that_shrinks_but_remains_is_inside_the_baselined_one(self) -> None:
+        # baselined: a <-> b and a <-> c, one set {a, b, c}; then c leaves the cycle: {a, b} is inside the baselined set, and better
+        both = {"gen2/a.py": py("import gen2.b", "import gen2.c"), "gen2/b.py": py("import gen2.a"), "gen2/c.py": py("import gen2.a")}
+        repo = self.baselined(both)
+        repo.write({"gen2/a.py": py("import gen2.b"), "gen2/c.py": "v = 1\n"})
+        done = self.check(repo, 0)
+        self.assertIn("improved: cycle_file engine: the baseline cycle gen2/a.py,gen2/b.py,gen2/c.py is gone or smaller", done.stdout)
+        self.assertEqual(repo.run("rebaseline").returncode, 0)
+        self.assertEqual(repo.baseline()["services"]["engine"]["cycles_file"], [["gen2/a.py", "gen2/b.py"]])
+
+
+PAIR = "engine:gen2/router/service.py->gen2/router/lifecycle.py"
+
+
+def family_files(calls: int, extra: bool = False) -> dict[str, str]:
+    """Router(Lifecycle[, Status]) in service.py, calling `self.a()` `calls` times (and `self.s()` once with `extra`)."""
+    lifecycle = py("class Lifecycle:", "    def a(self):", "        return 1")
+    status = py("class Status:", "    def s(self):", "        return 1")
+    bases = "Lifecycle, Status" if extra else "Lifecycle"
+    service = py("from gen2.router.lifecycle import Lifecycle", *(["from gen2.router.status import Status"] if extra else []), "",
+                 f"class Router({bases}):", "    def go(self):", *(["        self.a()"] * calls), *(["        self.s()"] if extra else []), "        return 1")
+    return {"gen2/router/__init__.py": "", "gen2/router/lifecycle.py": lifecycle, "gen2/router/status.py": status, "gen2/router/service.py": service}
+
+
 class CollaborationTest(RatchetTestCase):
-    def family(self, calls: int, extra: bool = False) -> dict[str, str]:
-        lifecycle = py("class Lifecycle:", "    def a(self):", "        return 1")
-        status = py("class Status:", "    def s(self):", "        return 1")
-        bases = "Lifecycle, Status" if extra else "Lifecycle"
-        service = py("from gen2.router.lifecycle import Lifecycle", *(["from gen2.router.status import Status"] if extra else []), "",
-                     f"class Router({bases}):", "    def go(self):", *(["        self.a()"] * calls), *(["        self.s()"] if extra else []), "        return 1")
-        return {"gen2/router/__init__.py": "", "gen2/router/lifecycle.py": lifecycle, "gen2/router/status.py": status, "gen2/router/service.py": service}
-
-    PAIR = "engine:gen2/router/service.py->gen2/router/lifecycle.py"
-
     def test_more_cross_file_self_calls_on_a_baselined_pair_fail(self) -> None:
-        repo = self.baselined(self.family(2))
+        repo = self.baselined(family_files(2))
         self.assertEqual(repo.baseline()["services"]["engine"]["self_calls"], {"gen2/router/service.py->gen2/router/lifecycle.py": 2})
         self.check(repo, 0)
-        repo.write(self.family(3))
-        self.assertIn(f"self_calls {self.PAIR}: 3 against a baseline of 2", self.check(repo, 1).stderr)
+        repo.write(family_files(3))
+        self.assertIn(f"self_calls {PAIR}: 3 against a baseline of 2", self.check(repo, 1).stderr)
+
+    def test_unchanged_self_calls_are_no_regression(self) -> None:
+        repo = self.baselined(family_files(2))
+        repo.write({"gen2/router/service.py": family_files(2)["gen2/router/service.py"] + "# only a comment changed\n"})
+        self.check(repo, 0)
 
     def test_a_new_directed_pair_fails(self) -> None:
-        repo = self.baselined(self.family(2))
-        repo.write(self.family(2, extra=True))   # Router now also reaches Status through self.s()
+        repo = self.baselined(family_files(2))
+        repo.write(family_files(2, extra=True))   # Router now also reaches Status through self.s()
         self.assertIn("self_calls engine:gen2/router/service.py->gen2/router/status.py: 1 against a baseline of 0", self.check(repo, 1).stderr)
 
     def test_fewer_calls_are_an_improvement_and_the_lower_count_becomes_the_limit(self) -> None:
-        repo = self.baselined(self.family(3))
-        repo.write(self.family(1))
+        repo = self.baselined(family_files(3))
+        repo.write(family_files(1))
         done = self.check(repo, 0)
         self.assertIn("improved: self_calls engine:gen2/router/service.py->gen2/router/lifecycle.py: 1 sites, baseline 3", done.stdout)
         self.assertEqual(repo.run("rebaseline").returncode, 0)
         self.assertEqual(repo.baseline()["services"]["engine"]["self_calls"], {"gen2/router/service.py->gen2/router/lifecycle.py": 1})
-        repo.write({BASELINE: (repo.root / BASELINE).read_text(), **self.family(2)})
-        self.assertIn(f"self_calls {self.PAIR}: 2 against a baseline of 1", self.check(repo, 1).stderr)
+        repo.write({BASELINE: (repo.root / BASELINE).read_text(), **family_files(2)})
+        self.assertIn(f"self_calls {PAIR}: 2 against a baseline of 1", self.check(repo, 1).stderr)
 
 
 class SmellTest(RatchetTestCase):
@@ -302,6 +322,14 @@ class FunctionTest(RatchetTestCase):
         done = self.check(repo, 0)   # under the baseline's own limit of 30 the function is not one
         self.assertIn("thresholds function_cyclomatic", done.stdout)   # the tool notes its own are tighter
 
+    def test_the_smell_thresholds_are_the_baselines_too(self) -> None:
+        repo = self.baselined(hub_files(8, 6))   # a hub at the tool's thresholds (fan-in 8, fan-out 6)
+        def stricter(b: dict) -> None:
+            b["thresholds"]["hub_fan_in"] = 9    # the baseline was recorded under a hub threshold of 9, where this file is not a hub
+            b["services"]["engine"]["smells"]["hub_like"] = []
+        fx.rewrite_baseline(repo, stricter)
+        self.check(repo, 0)
+
     def test_rebaseline_adopts_tighter_thresholds_and_the_offenders_they_find_are_not_regressions(self) -> None:
         repo = self.baselined({"gen2/m.py": self.source(24)})   # cyclomatic 25, cognitive 24
         def loosen(b: dict) -> None:
@@ -330,6 +358,13 @@ class CrossServiceTest(RatchetTestCase):
         repo = self.baselined(BASE)
         repo.write({"gen2/a.py": py("import gen2.b", "import research_gateway.m")})
         self.assertIn("cross_service_import repo:gen2/a.py->gateway/research_gateway/m.py: 1 against a baseline of 0", self.check(repo, 1).stderr)
+
+
+class BaselinedCrossServiceTest(RatchetTestCase):
+    def test_a_baselined_import_between_the_services_stays_allowed(self) -> None:
+        repo = self.baselined(BASE | {"gen2/c.py": py("import research_gateway.m")})
+        self.assertEqual(repo.baseline()["cross_service_imports"], ["gen2/c.py->gateway/research_gateway/m.py"])
+        self.check(repo, 0)
 
 
 class RebaselineTest(RatchetTestCase):
@@ -375,6 +410,12 @@ EXEMPTION_DEFAULTS = {"metric": "function_cyclomatic", "location": "engine:gen2/
                       "accepted_by": "Astra Gate D #4, gen2-gate-d-4-astra-review.md (2026-10-05)", "removal": "split the function in 2q-b, then delete this entry"}
 
 
+def exempt_each(*entries: tuple[str, str, str | None]) -> str:
+    """One file of entries EX-1.. for (metric, location, limit)."""
+    parts = [exemption(f"EX-{n}", metric=m, location=loc, limit=limit) for n, (m, loc, limit) in enumerate(entries, 1)]
+    return parts[0] + "".join(more(p) for p in parts[1:])
+
+
 def exemption(ident: str, **given: str | None) -> str:
     """A well-formed entry with defaults; a field given as None is left out, one given as text replaces the default."""
     fields = EXEMPTION_DEFAULTS | given
@@ -386,6 +427,56 @@ def exemption(ident: str, **given: str | None) -> str:
 def more(text: str) -> str:
     """A further entry to append to a file made by `exemption` (its heading line dropped)."""
     return text.split("\n\n", 1)[1]
+
+
+class ExemptedRegressionsAreNeverRecordedTest(RatchetTestCase):
+    """`rebaseline` keeps the old value wherever an exemption covers a regression, so the exemption stays needed until the cause is fixed."""
+
+    def regress_and_rebaseline(self, files: dict[str, str], regression: dict[str, str | None], exemptions: str) -> Repo:
+        repo = self.baselined(files)
+        repo.write(regression | {EXEMPTIONS: exemptions})
+        self.check(repo, 0)                                   # the exemptions cover everything that regressed
+        self.assertEqual(repo.run("rebaseline").returncode, 0)
+        repo.write({BASELINE: (repo.root / BASELINE).read_text(), EXEMPTIONS: "# no exemptions\n"})
+        return repo
+
+    def test_a_propagation_regression(self) -> None:
+        repo = self.regress_and_rebaseline(BASE, {"gen2/c.py": py("import gen2.a")},
+                                           exempt_each(("propagation_file", "engine", "0.4375"), ("propagation_component", "engine", "0.4375")))
+        self.assertEqual(repo.baseline()["services"]["engine"]["propagation_file"], {"reach_pairs": 5, "nodes": 4})
+        self.assertEqual(repo.baseline()["services"]["engine"]["propagation_component"], {"reach_pairs": 5, "nodes": 4})
+        self.assertIn("propagation_file engine: 0.437500 against a baseline of 0.312500", self.check(repo, 1).stderr)
+
+    def test_a_self_call_regression(self) -> None:
+        repo = self.regress_and_rebaseline(family_files(2), family_files(3), exempt_each(("self_calls", PAIR, "3")))
+        self.assertEqual(repo.baseline()["services"]["engine"]["self_calls"], {"gen2/router/service.py->gen2/router/lifecycle.py": 2})
+        self.assertIn("3 against a baseline of 2", self.check(repo, 1).stderr)
+
+    def test_a_cycle_regression(self) -> None:
+        files = {"gen2/x/a.py": py("import gen2.y.b"), "gen2/y/b.py": "v = 1\n", "gen2/y/c.py": "v = 2\n", "gen2/x/d.py": "v = 3\n"}
+        # c -> d closes gen2.x -> gen2.y -> gen2.x: the file graph goes from 5 of 16 to 6 of 16 (0.375), the component graph from 3 of 4 to 4 of 4
+        repo = self.regress_and_rebaseline(files, {"gen2/y/c.py": py("import gen2.x.d")},
+                                           exempt_each(("propagation_file", "engine", "0.375"), ("propagation_component", "engine", "1"),
+                                                       ("cycle_component", "engine:gen2.x,gen2.y", None)))
+        self.assertEqual(repo.baseline()["services"]["engine"]["cycles_component"], [])
+        self.assertIn("cycle_component engine:gen2.x,gen2.y: 2 against a baseline of 0", self.check(repo, 1).stderr)
+
+    def test_a_new_function_over_the_threshold(self) -> None:
+        repo = self.regress_and_rebaseline({"gen2/m.py": with_branches(20)}, {"gen2/n.py": with_branches(20, "g")},
+                                           exempt_each(("function_cyclomatic", "engine:gen2/n.py::g", "21")))
+        self.assertEqual(set(repo.baseline()["services"]["engine"]["functions"]), {"gen2/m.py::f"})   # g is not recorded
+        self.assertIn("function_cyclomatic engine:gen2/n.py::g: 21 against a baseline of limit 20, not an offender", self.check(repo, 1).stderr)
+
+    def test_a_smell_regression(self) -> None:
+        repo = self.regress_and_rebaseline(hub_files(7, 6), hub_files(8, 6), exempt_each(("smell_hub_like", "engine:gen2/hub.py", None)))
+        self.assertEqual(repo.baseline()["services"]["engine"]["smells"]["hub_like"], [])
+        self.assertIn("smell_hub_like engine:gen2/hub.py", self.check(repo, 1).stderr)
+
+    def test_a_cross_service_import_regression(self) -> None:
+        repo = self.regress_and_rebaseline(BASE, {"gen2/c.py": py("import research_gateway.m")},
+                                           exempt_each(("cross_service_import", "repo:gen2/c.py->gateway/research_gateway/m.py", None)))
+        self.assertEqual(repo.baseline()["cross_service_imports"], [])
+        self.assertIn("cross_service_import repo:gen2/c.py->gateway/research_gateway/m.py", self.check(repo, 1).stderr)
 
 
 class ExemptionTest(RatchetTestCase):
@@ -488,7 +579,14 @@ class ExemptionTest(RatchetTestCase):
         self.assertNotIn("EX-9", done.stderr)
 
     def test_a_wrapped_value_continues_on_indented_lines(self) -> None:
-        text = exemption("EX-1", limit="22", reason="first part of the reason") + "  and the second part\n"
+        # `later` alone is no condition (under fifteen characters); with its continuation line it is one
+        text = exemption("EX-1", limit="22", removal="later") + "  then delete this entry after the split\n"
+        self.check(self.regressed(text), 0)
+        self.check(self.regressed(exemption("EX-1", limit="22", removal="later")), 1)
+
+    def test_a_wrapped_reason_is_one_value_too(self) -> None:
+        text = exemption("EX-1", limit="22", reason="the split is not scheduled").replace("scheduled", "scheduled\n  before 2q-b closes")
+        self.assertIn("  before 2q-b closes", text)
         self.check(self.regressed(text), 0)
 
     def test_the_exemption_file_is_optional(self) -> None:
