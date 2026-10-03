@@ -234,13 +234,49 @@ class RealRegisterTest(unittest.TestCase):
                   ("revision lifetime", "phase 3", "2b-repair-3"),           # the Phase 3 item Gate D #1 finding 6 asked to carry
                   ("rejected-credential", "task 2e1", "2026-09-29"),         # the operator's §4(d) decision, which AUTH-DEMO's residual becomes
                   ("adapter compatibility", "phase 3", "2026-10-01"),         # BUILD-STATE's "Phase 3 items"
-                  ("catalogue partial-result", "phase 3", "2026-10-01")]
+                  ("catalogue partial-result", "phase 3", "2026-10-01"),
+                  ("unexamined files", "phase 4", "0b-repair"),               # the importer's inventory (Astra's 2q-a review F3)
+                  ("usage estimator", "phase 3", "2026-09-29")]               # the operator's request of 2026-09-29 (Astra's 2q-a review F3)
         for words, owner, source in wanted:
             with self.subTest(words=words):
                 matching = [e for e in entries.values() if words in e["title"].lower()]
                 self.assertEqual(len(matching), 1, msg=f"one entry about {words!r}")
                 self.assertEqual((matching[0]["kind"], matching[0]["status"], matching[0]["owner"]), ("obligation", "open", owner))
                 self.assertIn(source, matching[0]["source"])
+
+    def test_closing_phase_3_or_phase_4_with_the_two_new_entries_open_fails_naming_them(self) -> None:
+        """The entries are armed: Astra's phase-close probe on the real register, now with DEBT-014 and DEBT-015 among the blockers."""
+        files = {p: (fx.REPO / p).read_text(encoding="utf-8") for p in (REGISTER, "docs/gen2/phase-status.json")}
+        for phase, ident in (("3", "DEBT-015"), ("4", "DEBT-014")):
+            with self.subTest(phase=phase):
+                repo = fx.Repo(files)
+                self.addCleanup(repo.close)
+                status = json.loads(files["docs/gen2/phase-status.json"])
+                status["phases"][phase] = "closed"
+                repo.write({"docs/gen2/phase-status.json": json.dumps(status)})
+                done = repo.run(tool=fx.DEBT_TOOL)
+                self.assertEqual(done.returncode, 1)
+                self.assertIn(f"DEBT OWNED BY A CLOSED PHASE OR TASK IS STILL OPEN: {ident} (phase {phase} is closed)", done.stderr)
+
+    def test_the_importer_inventory_keeps_its_before_use_prerequisite(self) -> None:
+        """Astra's 2q-a review F3: it must exist BEFORE a dry-run report is used as planning evidence; a phase-close deadline alone is too late."""
+        entry = next(e for e in self.sections().values() if "unexamined files" in e["title"].lower())
+        for words in ("BEFORE any dry-run report", "migration planning", "no-follow", "too late", "gen2/store/README.md"):
+            self.assertIn(words, entry["what"])
+        self.assertIn("before the first use of a dry-run report", entry["removal"])
+        self.assertIn("0b-repair-astra-review-20260925.md", entry["source"])
+
+    def test_the_usage_estimator_keeps_its_uncertainty_and_the_account_wide_distinction(self) -> None:
+        entry = next(e for e in self.sections().values() if "usage estimator" in e["title"].lower())
+        for words in ("RANGES", "uncertainty", "account-wide", "never per-run attribution", "quiet-account", "unknown"):
+            self.assertIn(words, entry["what"])
+
+    def test_the_inclusion_rule_covers_obligations_a_review_assigned_and_prerequisites(self) -> None:
+        text = (fx.REPO / REGISTER).read_text(encoding="utf-8")
+        self.assertIn("not who assigned it", text)
+        self.assertIn("a review at any gate", text)
+        self.assertIn("A prerequisite is part of the obligation", text)
+        self.assertIn("reviews at any gate", " ".join(fx.DEBT_TOOL.read_text(encoding="utf-8").split()))
 
 
 if __name__ == "__main__":

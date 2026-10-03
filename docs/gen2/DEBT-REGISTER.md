@@ -7,6 +7,8 @@ This register holds two kinds of entry, and nothing else:
 - **mitigation**: a correction that makes a reproduction pass without removing its cause, accepted by the operator, with the review that found it, the operator's acceptance and its date, an owner, and the condition that removes it.
 - **obligation**: something an operator ruling or a review has already assigned to a later task or phase, written down so it cannot be lost: a rule that task must satisfy, a release step that phase must run. An obligation is not a mitigation and nothing in the code is pretending to be finished; it is a promise with an owner.
 
+**What goes in.** The test is whether the build could lose it, not who assigned it: an obligation assigned by an operator ruling, by a review at any gate (Astra's A, B, C or D, or a re-review's ruling on a coder question), or by an operator request that a later phase carries, has an entry, with its owner and the condition that closes it. A prerequisite is part of the obligation: where a ruling says something must exist BEFORE something else is used (DEBT-014), the entry says so in `what` and `removal`, because the phase-close check can enforce only a deadline (an open entry when its owner closes) and cannot see an early use; whoever reviews the early use reads the entry. An item recorded only in BUILD-STATE or REVIEW-LOG prose is not in the register until it has an entry.
+
 **What is not debt.** An epistemic fact is neither. Under trust model B (operator ruling 2026-10-02, "Operator rulings on Gate D #2", item 1) Python's language limits (identity checks, private-field access, importable helpers, a monkeypatched standard library), finite testing, the frozen supported-format and resource policy (item 2) and the two sanctioned predicates are documented boundaries of the design, stated where they apply (INVARIANTS B-1, H-5, H-6 "What this does not establish"), not obligations to be paid. They have no entries here.
 
 ## How this is checked
@@ -129,3 +131,19 @@ None. As of 2026-10-03 the operator has accepted no mitigation. The record: the 
 - what: The BLS, FRED, Census and BEA catalogues keep their readable entries and report the dropped ones, with an explicit entry, drop and continuation contract, instead of failing the whole answer closed.
 - source: operator ruling 2026-10-01, commissioned for Phase 3 (REVIEW-LOG.md; BUILD-STATE.md "Phase 3 items")
 - removal: the four catalogues implement that contract, tested, before Phase 3 closes.
+
+### DEBT-014 - the importer's inventory of unexamined files (Phase 4)
+- kind: obligation
+- status: open
+- owner: phase 4
+- what: The dry-run importer's report lists only the files it tried to read (`sources`). An extra state file, a topic log that is not JSONL, or an unknown topic file under the gen-1 root is invisible to it (Astra's 0b-repair re-review put all three in a synthetic root). The report must list every entry under the gen-1 root that it never examined, each with a reason, from a no-follow metadata walk from the root descriptor with its scope stated; the walk parses and imports nothing. This inventory must exist BEFORE any dry-run report is used as completeness or reconciliation evidence for Phase 4 migration planning: until it exists a report is not evidence of whole-tree completeness, and the accepted 40-record inventory fixture covers only its own input families (`gen2/store/README.md`). A deadline at Phase 4's close alone would be too late, because the planning that relies on the report comes first. No importer change is required before that use.
+- source: Astra's 0b-repair re-review, ruling on coder question 3 (private/reviews/gen2-0b-repair-astra-review-20260925.md), accepted into `gen2/store/README.md` and carried by Gate D #1; recorded by Astra's 2q-a review F3 (private/reviews/gen2-2q-a-astra-review-20261003.md)
+- removal: The importer's report carries that inventory, tested against a synthetic root holding an extra state file, a non-JSONL topic log and an unknown topic file, and it exists before the first use of a dry-run report as migration-planning evidence; Phase 4 does not close without it.
+
+### DEBT-015 - the cadence usage estimator (Phase 3)
+- kind: obligation
+- status: open
+- owner: phase 3
+- what: Given a topic profile and a cadence, estimate the API cost and the subscription-plan share (for example, the percent of a weekly window) that the cadence brings. It is calibrated from the Phase 2+ usage records (task 2e1 captures them per invocation and attempt: tokens, model, provider-reported cost when there is one, wall time, correlated gateway calls and credits, kind, topic and cadence), by fitting tokens per percent-of-window from quiet-account windows, and it reports RANGES with the calibration's uncertainty, never a bare point; an unreported value is `unknown`, not zero. A provider's subscription window is account-wide, shared by everything that uses the account, so the before and after readings 2e1 stores are context and never per-run attribution: the estimator may use them only through the quiet-account calibration and must not present a per-run (or per-agent) share read from them. One Phase 2 run cannot calibrate it, which is why it waits for Phase 3.
+- source: operator request 2026-09-29, "OPERATOR REQUEST: per-run usage metrics sufficient to estimate cadence cost (API and subscription share)" (REVIEW-LOG.md; BUILD-STATE.md "Carried to Phase 3 - usage estimator"); recorded by Astra's 2q-a review F3 (private/reviews/gen2-2q-a-astra-review-20261003.md)
+- removal: Phase 3 delivers the estimator with its calibration method, reporting ranges and the uncertainty of the fit, and with account-wide readings never attributed to a run; the Phase 3 review confirms it before Phase 3 closes.

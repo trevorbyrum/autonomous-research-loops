@@ -77,25 +77,30 @@ class ChildLaunchRuleTest(unittest.TestCase):
     def test_the_helper_runs_children_from_the_named_tree(self) -> None:
         """children.python honours GEN2_CHILD_ROOT: a child imports gen2 from
         that tree, not from the repository (the positive control for the
-        runner's loading check)."""
-        with tempfile.TemporaryDirectory() as tmp:
-            marker = Path(tmp) / "gen2"
-            marker.mkdir()
-            (marker / "__init__.py").write_text("WHERE = 'the named tree'\n", encoding="utf-8")
-            saved = os.environ.get(children.ROOT_VARIABLE)
-            os.environ[children.ROOT_VARIABLE] = tmp
-            try:
-                named = children.python(["-c", "import gen2, sys; sys.stdout.write(gen2.WHERE)"], capture_output=True, text=True, timeout=60)
-                self.assertEqual(children.path("gen2/__init__.py"), marker / "__init__.py")
-            finally:
-                if saved is None:
+        runner's loading check). An outer runner may already name its own tree
+        (the mutation runner does, and so does a snapshot run); the test clears
+        that for its own two cases and restores it, so that "the default" it
+        checks is the repository's whatever the environment it is started in
+        (task 2q-a-repair F7: it used to assume the variable was absent)."""
+        outer = os.environ.pop(children.ROOT_VARIABLE, None)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                marker = Path(tmp) / "gen2"
+                marker.mkdir()
+                (marker / "__init__.py").write_text("WHERE = 'the named tree'\n", encoding="utf-8")
+                os.environ[children.ROOT_VARIABLE] = tmp
+                try:
+                    named = children.python(["-c", "import gen2, sys; sys.stdout.write(gen2.WHERE)"], capture_output=True, text=True, timeout=60)
+                    self.assertEqual(children.path("gen2/__init__.py"), marker / "__init__.py")
+                finally:
                     os.environ.pop(children.ROOT_VARIABLE)
-                else:
-                    os.environ[children.ROOT_VARIABLE] = saved
-            self.assertEqual((named.returncode, named.stdout), (0, "the named tree"), named.stderr)
-        default = children.python(["-c", "import gen2.core.canonical as c, sys; sys.stdout.write(c.__file__)"], capture_output=True, text=True, timeout=60)
-        self.assertEqual(Path(default.stdout).resolve(), (children.REPO / "gen2" / "core" / "canonical.py").resolve(), default.stderr)
-
+                self.assertEqual((named.returncode, named.stdout), (0, "the named tree"), named.stderr)
+            default = children.python(["-c", "import gen2.core.canonical as c, sys; sys.stdout.write(c.__file__)"], capture_output=True, text=True, timeout=60)
+            self.assertEqual(Path(default.stdout).resolve(), (children.REPO / "gen2" / "core" / "canonical.py").resolve(), default.stderr)
+        finally:
+            if outer is not None:
+                os.environ[children.ROOT_VARIABLE] = outer
+        self.assertEqual(os.environ.get(children.ROOT_VARIABLE), outer)   # and the environment is as it was found
 
 
 class HelperImportRootTest(unittest.TestCase):

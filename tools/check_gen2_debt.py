@@ -6,11 +6,12 @@ Charter "Root-cause fixes, not patches": "A MITIGATION always blocks and
 escalates to the operator. Only the operator can accept one, and an accepted
 one is logged in docs/gen2/DEBT-REGISTER.md with its owning phase and removal
 condition; the build fails if that phase closes with the entry still open."
-The register also holds the OWNED OBLIGATIONS that operator rulings carry
-(a rule a later task must satisfy, a release step a later phase must run): not
-mitigations, but they must not be lost. An epistemic fact (a documented
-boundary of the trust model, finite testing, a language limit) is neither and
-has no entry.
+The register also holds the OWNED OBLIGATIONS that operator rulings, reviews
+at any gate, and operator requests carry (a rule a later task must satisfy, a
+release step a later phase must run, a prerequisite that must exist before
+something is used): not mitigations, but they must not be lost, whoever
+assigned them. An epistemic fact (a documented boundary of the trust model,
+finite testing, a language limit) is neither and has no entry.
 
 Two files, both read from the repository root:
   docs/gen2/DEBT-REGISTER.md   the entries
@@ -39,9 +40,12 @@ no `closed by`; a phase marked closed that has a task not closed. Exit 2: a
 file is missing or unreadable.
 
 What this does not establish: that the register is COMPLETE (it checks the
-entries that exist; whoever records an operator ruling adds its entry), or
-that a `closed by` is true. The phase-close check is only as good as the
-discipline of setting a task or phase to closed at its acceptance.
+entries that exist; whoever records an operator ruling, a review's ruling or an
+operator request that a later task carries adds its entry), or that a `closed
+by` is true, or that a "before X is used" prerequisite is met (it can enforce
+only a deadline: an open entry when its owner closes). The phase-close check is
+only as good as the discipline of setting a task or phase to closed at its
+acceptance.
 
 Trace: task 2q-a; charter "Root-cause fixes, not patches"; Gate D #2 (trust
 model B: documented boundaries are not debt).

@@ -1397,7 +1397,7 @@ Full report: `private/reviews/gen2-2b-repair-19-astra-review-20261003.md`.
 **Disclosed:**
 - The smell thresholds are operating points.
 - The locator check only sees backticked locators in INVARIANTS and the register.
-- Three tests failed in the coder's traced snapshot run but pass in the real tree; they were not investigated.
+- Three tests failed in the coder's traced snapshot run but pass in the real tree; they were not investigated. *(Corrected 2026-10-03 by Astra's 2q-a review F7 and task 2q-a-repair: they were not three failed behaviours. One, `test_the_helper_runs_children_from_the_named_tree`, depended on its environment: it assumed `GEN2_CHILD_ROOT` was unset, so in a run that names a tree it saw that tree instead of the repository's. The other two, `test_recovery_starts_nothing_once_the_lease_is_replaced` of `DelegateCrashTest` and `ResearchPassCrashTest`, are intentional skips in every run, ordinary or snapshot, with the reason in their skip message. The first is fixed and both facts are tested in `gen2/tests/test_child_root_environment.py`.)*
 
 **Review:** Astra `8e5c3480`, task file `private/reviews/gen2-2q-a-review-task-20261003.md`.
 
