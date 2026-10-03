@@ -71,7 +71,7 @@ class BaselineFileTest(RatchetTestCase):
         self.assertEqual(baseline["services"]["engine"]["propagation_file"], {"reach_pairs": 5, "nodes": 4})   # 5 of 16, worked out above BASE
         self.assertEqual(baseline["services"]["gateway"]["propagation_file"], {"reach_pairs": 4, "nodes": 3})
         self.assertEqual(baseline["thresholds"]["function_cyclomatic"], 20)
-        self.assertEqual(baseline["version"], 2)
+        self.assertEqual(baseline["version"], 3)
         self.assertEqual(baseline["cross_service_imports"], [])
 
     def test_a_clean_tree_passes(self) -> None:
@@ -96,8 +96,8 @@ class BaselineFileTest(RatchetTestCase):
 
     def test_an_unreadable_or_other_version_baseline_is_a_tool_failure(self) -> None:
         repo = self.baselined(BASE)
-        fx.rewrite_baseline(repo, lambda b: b.update(version=3))
-        self.assertIn("is not version 2", self.check(repo, 2).stderr)
+        fx.rewrite_baseline(repo, lambda b: b.update(version=99))
+        self.assertIn("is not version 3", self.check(repo, 2).stderr)
         fx.rewrite_baseline(repo, lambda b: b.update(version=1))
         done = self.check(repo, 2)   # the version before the dependency ratchet: refused by `check`, upgraded by `rebaseline`
         self.assertIn("is version 1", done.stderr)
@@ -135,6 +135,8 @@ class PropagationTest(RatchetTestCase):
     def test_a_lower_cost_passes_says_so_and_names_the_remedy(self) -> None:
         repo = self.baselined(BASE)
         repo.write({"gen2/d.py": "v = 4\n"})   # an isolated file: 6 of 25 = 0.24, below 5 of 16 = 0.3125
+        from gen2.tests.test_metrics_identity import population
+        population(repo)
         done = self.check(repo, 0)
         self.assertIn("improved: propagation_file engine: 0.240000 is below the baseline 0.312500", done.stdout)
         self.assertIn("make gen2-metrics-rebaseline", done.stdout)
@@ -178,8 +180,10 @@ class CycleTest(RatchetTestCase):
     def test_a_cycle_that_shrinks_or_disappears_is_an_improvement_and_rebaseline_records_it(self) -> None:
         repo = self.baselined(self.CYCLE)
         repo.write({"gen2/b.py": "v = 3\n"})   # the cycle is gone
+        from gen2.tests.test_metrics_identity import population
+        population(repo)
         done = self.check(repo, 0)
-        self.assertIn("improved: cycle_file engine: the baseline cycle gen2/a.py,gen2/b.py is gone or smaller", done.stdout)
+        self.assertIn("note: ledger retire", done.stdout)
         self.assertEqual(repo.run("rebaseline").returncode, 0)
         self.assertEqual(repo.baseline()["services"]["engine"]["cycles_file"], [])
         repo.write({BASELINE: (repo.root / BASELINE).read_text(), "gen2/b.py": py("import gen2.a")})   # and it may not come back
@@ -192,8 +196,10 @@ class CycleShrinkTest(RatchetTestCase):
         both = {"gen2/a.py": py("import gen2.b", "import gen2.c"), "gen2/b.py": py("import gen2.a"), "gen2/c.py": py("import gen2.a")}
         repo = self.baselined(both)
         repo.write({"gen2/a.py": py("import gen2.b"), "gen2/c.py": "v = 1\n"})
+        from gen2.tests.test_metrics_identity import population
+        population(repo)
         done = self.check(repo, 0)
-        self.assertIn("improved: cycle_file engine: the baseline cycle gen2/a.py,gen2/b.py,gen2/c.py is gone or smaller", done.stdout)
+        self.assertIn("note: ledger retire", done.stdout)
         self.assertEqual(repo.run("rebaseline").returncode, 0)
         self.assertEqual(repo.baseline()["services"]["engine"]["cycles_file"], [["gen2/a.py", "gen2/b.py"]])
 
@@ -250,7 +256,9 @@ class SmellTest(RatchetTestCase):
         repo = self.baselined(hub_files(8, 6))
         self.check(repo, 0)
         repo.write({"gen2/imp7.py": "v = 1\n"})   # fan-in 7: no longer a hub (the file stays, so the graph's cost falls too)
-        self.assertIn("improved: smell_hub_like engine: gen2/hub.py is gone", self.check(repo, 0).stdout)
+        from gen2.tests.test_metrics_identity import population
+        population(repo)
+        self.assertIn("note: ledger retire", self.check(repo, 0).stdout)
 
     def test_a_new_unstable_dependency_fails(self) -> None:
         repo = self.baselined(unstable_files(9, 0, 4, 1))   # A 1/10 = 0.1, B 1/6 = 0.1667: a gap of 0.0667
@@ -298,9 +306,9 @@ class FunctionTest(RatchetTestCase):
         repo.write({"gen2/m.py": self.source(19)})   # cyclomatic 20: no longer over the threshold
         self.assertIn("improved: function engine:gen2/m.py::f is no longer over the thresholds", self.check(repo, 0).stdout)
         self.assertEqual(repo.run("rebaseline").returncode, 0)
-        self.assertEqual(repo.baseline()["services"]["engine"]["functions"], {})
+        self.assertEqual(repo.baseline()["services"]["engine"]["functions"], {"gen2/m.py::f": {"cyclomatic": 20, "cognitive": 19}})
         repo.write({BASELINE: (repo.root / BASELINE).read_text(), "gen2/m.py": self.source(20)})
-        self.assertIn("function_cyclomatic engine:gen2/m.py::f: 21 against a baseline of limit 20, not an offender", self.check(repo, 1).stderr)
+        self.assertIn("function_cyclomatic engine:gen2/m.py::f: 21 against a baseline of 20", self.check(repo, 1).stderr)
 
     def test_a_shrinking_offender_lowers_its_baseline_value(self) -> None:
         repo = self.baselined({"gen2/m.py": self.source(22)})   # 23
@@ -340,6 +348,9 @@ class FunctionTest(RatchetTestCase):
             b["thresholds"]["function_cyclomatic"] = 30
             b["services"]["engine"]["functions"] = {}
         fx.rewrite_baseline(repo, loosen)
+        self.assertEqual(repo.run("rebaseline").returncode, 1)
+        from gen2.tests.test_metrics_identity import population
+        population(repo)
         self.assertEqual(repo.run("rebaseline").returncode, 0)
         baseline = repo.baseline()
         self.assertEqual(baseline["thresholds"]["function_cyclomatic"], 20)
@@ -385,10 +396,14 @@ class RebaselineTest(RatchetTestCase):
     def test_an_improvement_tightens_the_baseline_and_the_old_level_is_then_a_regression(self) -> None:
         repo = self.baselined(BASE)
         repo.write({"gen2/d.py": "v = 4\n"})   # 6 of 25
+        from gen2.tests.test_metrics_identity import population
+        population(repo)
         done = repo.run("rebaseline")
         self.assertEqual(done.returncode, 0, msg=done.stderr)
         self.assertEqual(repo.baseline()["services"]["engine"]["propagation_file"], {"reach_pairs": 6, "nodes": 5})
         repo.write({BASELINE: (repo.root / BASELINE).read_text(), "gen2/d.py": None})   # back to 5 of 16: worse than 6 of 25
+        from gen2.tests.test_metrics_identity import population
+        population(repo)
         self.assertIn("propagation_file engine: 0.312500 against a baseline of 0.240000", self.check(repo, 1).stderr)
 
     def test_it_does_not_rewrite_the_baseline_for_a_new_commit_alone(self) -> None:
@@ -439,6 +454,8 @@ class ExemptedRegressionsAreNeverRecordedTest(RatchetTestCase):
     def regress_and_rebaseline(self, files: dict[str, str], regression: dict[str, str | None], exemptions: str) -> Repo:
         repo = self.baselined(files)
         repo.write(regression | {EXEMPTIONS: exemptions})
+        from gen2.tests.test_metrics_identity import population
+        population(repo)
         self.check(repo, 0)                                   # the exemptions cover everything that regressed
         self.assertEqual(repo.run("rebaseline").returncode, 0)
         repo.write({BASELINE: (repo.root / BASELINE).read_text(), EXEMPTIONS: "# no exemptions\n"})
@@ -458,31 +475,33 @@ class ExemptedRegressionsAreNeverRecordedTest(RatchetTestCase):
         self.assertIn("3 against a baseline of 2", self.check(repo, 1).stderr)
 
     def test_a_cycle_regression(self) -> None:
-        files = {"gen2/x/a.py": py("import gen2.y.b"), "gen2/y/b.py": "v = 1\n", "gen2/y/c.py": "v = 2\n", "gen2/x/d.py": "v = 3\n"}
-        # c -> d closes gen2.x -> gen2.y -> gen2.x: the file graph goes from 5 of 16 to 6 of 16 (0.375), the component graph from 3 of 4 to 4 of 4
-        repo = self.regress_and_rebaseline(files, {"gen2/y/c.py": py("import gen2.x.d")},
-                                           exempt_each(("propagation_file", "engine", "0.375"), ("propagation_component", "engine", "1"),
-                                                       ("cycle_component", "engine:gen2.x,gen2.y", None),
-                                                       ("fan_out", "engine:gen2/y/c.py", "1"), ("reach_gained", "engine", "1")))   # c -> d: c's fan-out 0 -> 1, c reaches d
+        repo = self.baselined({"gen2/x/a.py": py("import gen2.y.b"), "gen2/y/b.py": "v=1\n", "gen2/y/c.py": "v=2\n", "gen2/x/d.py": "v=3\n"})
+        repo.write({"gen2/y/c.py": py("import gen2.x.d"), EXEMPTIONS: exempt_each(("propagation_file", "engine", "0.375"), ("propagation_component", "engine", "1"), ("cycle_component", "engine:gen2.x,gen2.y", None), ("fan_out", "engine:gen2/y/c.py", "1"), ("reach_gained", "engine", "1"))})
+        self.assertIn("admission engine|cycle_component|gen2.x,gen2.y", self.check(repo, 1).stderr)
+        self.assertEqual(repo.run("rebaseline").returncode, 1)
         self.assertEqual(repo.baseline()["services"]["engine"]["cycles_component"], [])
-        self.assertIn("cycle_component engine:gen2.x,gen2.y: 2 against a baseline of 0", self.check(repo, 1).stderr)
 
-    def test_a_new_function_over_the_threshold(self) -> None:
-        repo = self.regress_and_rebaseline({"gen2/m.py": with_branches(20)}, {"gen2/n.py": with_branches(20, "g")},
-                                           exempt_each(("function_cyclomatic", "engine:gen2/n.py::g", "21")))
-        self.assertEqual(set(repo.baseline()["services"]["engine"]["functions"]), {"gen2/m.py::f"})   # g is not recorded
-        self.assertIn("function_cyclomatic engine:gen2/n.py::g: 21 against a baseline of limit 20, not an offender", self.check(repo, 1).stderr)
+    def test_an_exemption_cannot_admit_a_new_function_budget(self) -> None:
+        repo = self.baselined({"gen2/m.py": with_branches(20)})
+        repo.write({"gen2/n.py": with_branches(20, "g"), EXEMPTIONS: exempt_each(("function_cyclomatic", "engine:gen2/n.py::g", "21"))})
+        before = (repo.root / BASELINE).read_bytes()
+        self.assertIn("admission", self.check(repo, 1).stderr)
+        self.assertEqual(repo.run("rebaseline").returncode, 1)
+        self.assertEqual((repo.root / BASELINE).read_bytes(), before)
 
     def test_a_smell_regression(self) -> None:
-        repo = self.regress_and_rebaseline(hub_files(7, 6), hub_files(8, 6), exempt_each(("smell_hub_like", "engine:gen2/hub.py", None)))
+        repo = self.baselined(hub_files(7, 6))
+        repo.write(hub_files(8, 6) | {EXEMPTIONS: exempt_each(("smell_hub_like", "engine:gen2/hub.py", None))})
+        self.assertIn("admission engine|smell_hub_like|gen2/hub.py", self.check(repo, 1).stderr)
+        self.assertEqual(repo.run("rebaseline").returncode, 1)
         self.assertEqual(repo.baseline()["services"]["engine"]["smells"]["hub_like"], [])
-        self.assertIn("smell_hub_like engine:gen2/hub.py", self.check(repo, 1).stderr)
 
     def test_a_cross_service_import_regression(self) -> None:
-        repo = self.regress_and_rebaseline(BASE, {"gen2/c.py": py("import research_gateway.m")},
-                                           exempt_each(("cross_service_import", "repo:gen2/c.py->gateway/research_gateway/m.py", None)))
+        repo = self.baselined(BASE)
+        repo.write({"gen2/c.py": py("import research_gateway.m"), EXEMPTIONS: exempt_each(("cross_service_import", "repo:gen2/c.py->gateway/research_gateway/m.py", None))})
+        self.assertIn("admission repo|cross_service_import|gen2/c.py->gateway/research_gateway/m.py", self.check(repo, 1).stderr)
+        self.assertEqual(repo.run("rebaseline").returncode, 1)
         self.assertEqual(repo.baseline()["cross_service_imports"], [])
-        self.assertIn("cross_service_import repo:gen2/c.py->gateway/research_gateway/m.py", self.check(repo, 1).stderr)
 
 
 class ExemptionTest(RatchetTestCase):
@@ -514,7 +533,7 @@ class ExemptionTest(RatchetTestCase):
         for field in ("metric", "location", "reason", "accepted_by", "removal"):
             with self.subTest(field=field):
                 done = self.check(self.regressed(exemption("EX-1", limit="22", **{field: None})), 1)
-                self.assertIn(f"METRICS EXEMPTION PROBLEM: EX-1: field {field} is missing or a placeholder", done.stderr)
+                self.assertIn(f"METRICS LEDGER/EXEMPTION PROBLEM: EX-1: field {field} is missing or a placeholder", done.stderr)
                 self.assertIn("function_cyclomatic engine:gen2/m.py::f: 22", done.stderr)   # an invalid entry exempts nothing
 
     def test_a_placeholder_is_not_a_reason(self) -> None:
@@ -552,6 +571,8 @@ class ExemptionTest(RatchetTestCase):
     def test_a_set_metric_entry_names_the_instance_and_lets_it_pass(self) -> None:
         repo = self.baselined(hub_files(7, 6))
         repo.write({**hub_files(8, 6), EXEMPTIONS: exemption("EX-1", metric="smell_hub_like", location="engine:gen2/hub.py")})
+        from gen2.tests.test_metrics_identity import population
+        population(repo)
         self.assertIn("exempted by EX-1: smell_hub_like engine:gen2/hub.py", self.check(repo, 0).stdout)
 
     def test_a_propagation_exemption_takes_a_decimal_limit_and_the_value_must_not_exceed_it(self) -> None:
@@ -559,9 +580,13 @@ class ExemptionTest(RatchetTestCase):
         same = lambda one, two: exempt_each(("propagation_file", "engine", one), ("propagation_component", "engine", two), ("fan_out", "engine:gen2/c.py", "1"),
                                             ("reach_gained", "engine", "2"))   # the edge is also c's fan-out 0 -> 1 and two reachable pairs gained
         repo.write({"gen2/c.py": py("import gen2.a"), EXEMPTIONS: same("0.4375", "0.4375")})   # 7 of 16 = 0.4375 in both graphs
+        from gen2.tests.test_metrics_identity import population
+        population(repo)
         self.check(repo, 0)
         short = same("0.43", "0.4375")
         repo.write({EXEMPTIONS: short})
+        from gen2.tests.test_metrics_identity import population
+        population(repo)
         self.assertIn("(exemption EX-1 accepts up to 0.43)", self.check(repo, 1).stderr)
 
     def test_an_entry_no_regression_needs_is_stale_and_fails(self) -> None:

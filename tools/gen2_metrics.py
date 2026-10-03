@@ -86,59 +86,29 @@ Smells (thresholds are the DEFAULT_THRESHOLDS below, recorded in the baseline)
   These are operating points, not derived constants: they freeze the present
   state and stop it growing; they do not say the present state is right.
 
-The ratchet (charter: "ratcheted: a baseline is recorded, and any regression
-fails the check unless a reviewed, reasoned exemption entry covers it")
-  `docs/gen2/metrics-baseline.json` is written by `rebaseline` and only by it
-  (it carries a digest of its own content, so a hand edit fails the check).
-  `check` fails (exit 1) when, for either service, against the baseline:
-    - propagation cost (file graph, component graph) is higher;
-    - a cycle appears that is not inside a baseline cycle, at either level;
-    - a directed file pair has more cross-file self-call sites than before,
-      or a new pair appears;
-    - a hub-like file, unstable dependency or god component is new;
-    - a function is over the thresholds that the baseline does not hold (a
-      rename is a new function), or a function the baseline holds scores
-      higher than its baseline in EITHER dimension, whether or not it is
-      still over a threshold: the baselined functions are compared in both
-      dimensions first and the thresholds only decide the new offenders (task
-      2q-a-repair F2), so an offender cannot leave by falling under one
-      threshold while the other score grows;
-    - a file that existed at the baseline has a higher fan-out (any new import
-      edge from it, an import of a new file included), a file that was stable
-      at the baseline (instability at most the stable limit) has a higher
-      fan-in through the files that existed, or an ordered pair of existing
-      files is reachable that was not (reach gained transitively, counted in
-      absolute pairs so that a denominator that grows cannot hide it): task
-      2q-a-repair F5, whose policy and reasons `dependency_regressions` states.
-      Instability is judged by its causes and direction, not as a number: it
-      rises when a file takes on dependencies (the fan-out rule) or loses
-      dependents (not a regression), it falls when the reverse happens, and a
-      stable file depending on a less stable one is the unstable-dependency
-      smell (Martin's Stable Dependencies Principle). A file new since the
-      baseline is held by the aggregate measures and the smells until the next
-      rebaseline records it;
-    - a class base is unresolved (never baselined: an exemption naming the
-      base is the only classification);
-    - an import edge joins the engine and the gateway (baseline: none).
-  Anything else is reported, not gated (edge counts, instability, reach
-  counts, lines). The thresholds are read from the baseline, so
-  loosening the constants here changes nothing.
-  `docs/gen2/metrics-exemptions.md` is the only way past a regression: an entry
-  naming the metric and location (and, for a number, the highest value
-  accepted), the reason, the review that accepted it and a removal condition.
-  An entry that no regression needs, one that is malformed, and one a value has
-  outgrown all fail the check.
-  `rebaseline` only tightens (the tool is run explicitly; the diff is
-  committed): it refuses while an un-exempted regression exists, keeps the old
-  value wherever an exemption covers a regression, drops what improved (a
-  function leaves the baseline only when neither of its scores grew and
-  neither is over a threshold), and never records a regression.
+The ratchet (charter Architecture metrics; task 2q-a-repair-2)
+  The baseline records budgets and a persistent identity registry. The ledger
+  docs/gen2/metrics-ledger.md explicitly admits, maps, retires or classifies
+  obligations. Missing identity is failure, never improvement. Maps transport
+  old budgets before comparing both function scores. New file, import edge,
+  reach gained and collaboration/function budgets need reasoned admission.
+  Fan-out is gated for every recorded file; fan-in of a previously stable
+  target includes all dependents (its blast radius), regardless of file age.
+  Instability is judged by causes and direction: taking on dependencies or
+  losing dependents differ (Stable Dependencies Principle). Normalised
+  propagation cost and smells remain additional guards, never admissions.
+  Exemptions retain reason, accepting review and removal condition; they
+  cannot excuse missing identity or an unadmitted population. Rebaseline
+  folds committed ledger transitions and tightens all other budgets. Improved
+  functions keep both scores and their identity, even below thresholds.
+  Classification cannot restore information an AST cannot resolve.
 
 Subcommands (exit 0 pass, 1 regression / invalid exemption, 2 the tool could
 not run):
   check        the ratchet; also prints an advisory change-coupling summary
                that can never change the exit status (`make gen2-metrics`)
-  rebaseline   rewrite the baseline, tighten only (`make gen2-metrics-rebaseline`)
+  admit        draft ledger transitions and budgets with reason: TODO
+  rebaseline   fold ledger transitions; otherwise tighten only (`make gen2-metrics-rebaseline`)
   report DIR   every table as Gate D's CSV/JSON (file and component
                dependencies, function complexity, import edges, summary)
   hotspots DIR the git-history report for Gate D: churn x complexity per
@@ -168,11 +138,13 @@ from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
 
+import gen2_metrics_ledger as ledger
+
 EXIT_OK, EXIT_FAIL, EXIT_TOOL = 0, 1, 2
 SERVICES = ("engine", "gateway")
 SERVICE_PREFIX = {"engine": "gen2/", "gateway": "gateway/research_gateway/"}
 ENGINE_TESTS = "gen2/tests/"
-BASELINE_VERSION = 2
+BASELINE_VERSION = 3
 DEFAULT_BASELINE = "docs/gen2/metrics-baseline.json"
 DEFAULT_EXEMPTIONS = "docs/gen2/metrics-exemptions.md"
 GEN2_ERA = "2026-09-25"  # the first gen-2 commit date: the "gen2-era" history report excludes inherited gateway history
@@ -351,7 +323,9 @@ def c3_merge(sequences: list[list]) -> list:
 
 
 class Classes:
-    """What a class base expression names, resolved statically over the measured files (task 2q-a-repair F1).
+    """Binding occurrences stay distinct; conditional and competing alternatives fail closed.
+
+    What a class base expression names, resolved statically over the measured files (task 2q-a-repair F1).
 
     The supported surface: classes defined at module level (nested classes by `Outer.Inner`), and names bound at module level, also under
     `if`/`try`/`with`/loops, by `class`, `import m`, `import m.n`, `import m as x`, `from m import n [as x]` (relative imports resolved) and
@@ -367,6 +341,23 @@ class Classes:
         self.tops = {m.partition(".")[0] for m in names}
         self.scope = {path: self._bindings(path, tree) for path, tree in trees.items()}
         self.classes = {path: self._classes(tree) for path, tree in trees.items()}
+        self.exports = {}
+        for path, tree in trees.items():
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets):
+                    try:
+                        value = ast.literal_eval(node.value)
+                        self.exports[path] = value if isinstance(value, (list, tuple)) and all(isinstance(v, str) for v in value) else None
+                    except (ValueError, TypeError):
+                        self.exports[path] = None
+        self.conditional = set()
+        def alternatives(path, node, uncertain=False):
+            if isinstance(node, ast.ClassDef) and uncertain:
+                self.conditional.add((path, node.lineno))
+            for child in ast.iter_child_nodes(node):
+                alternatives(path, child, uncertain or isinstance(node, _COMPOUND))
+        for path, tree in trees.items():
+            alternatives(path, tree)
         self._mro: dict[tuple[str, str], list] = {}
 
     @staticmethod
@@ -376,7 +367,13 @@ class Classes:
         def walk(node: ast.AST, scope: list[str]) -> None:
             for child in ast.iter_child_nodes(node):
                 if isinstance(child, ast.ClassDef):
-                    found[".".join(scope + [child.name])] = child
+                    qual = ".".join(scope + [child.name])
+                    key = qual
+                    n = 2
+                    while key in found:
+                        key = f"{qual}#{n}"
+                        n += 1
+                    found[key] = child
                     walk(child, scope + [child.name])
                 else:
                     walk(child, scope + [getattr(child, "name", "?"), "<locals>"] if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) else scope)
@@ -385,32 +382,34 @@ class Classes:
         return found
 
     @staticmethod
-    def _bindings(path: str, tree: ast.Module) -> dict[str, set[tuple]]:
-        found: dict[str, set[tuple]] = collections.defaultdict(set)
+    def _bindings(path: str, tree: ast.Module) -> dict[str, list[tuple]]:
+        found: dict[str, list[tuple]] = collections.defaultdict(list)
 
-        def visit(statements: list[ast.stmt]) -> None:
+        def visit(statements: list[ast.stmt], conditional: bool = False) -> None:
+            def bind(name, ref):
+                found[name].append(("conditional", ref) if conditional else ref)
             for node in statements:
                 if isinstance(node, ast.ClassDef):
-                    found[node.name].add(("class", node.name))
+                    bind(node.name, ("class", node.name))
                 elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    found[node.name].add(("other",))
+                    bind(node.name, ("other",))
                 elif isinstance(node, ast.Import):
                     for alias in node.names:
-                        found[alias.asname or alias.name.partition(".")[0]].add(("module", alias.name if alias.asname else alias.name.partition(".")[0]))
+                        bind(alias.asname or alias.name.partition(".")[0], ("module", alias.name if alias.asname else alias.name.partition(".")[0]))
                 elif isinstance(node, ast.ImportFrom):
                     base = import_targets(path, node)[0]
                     for alias in node.names:
-                        found["*" if alias.name == "*" else alias.asname or alias.name].add(("star", base) if alias.name == "*" else ("from", base, alias.name))
+                        bind("*" if alias.name == "*" else alias.asname or alias.name, ("star", base) if alias.name == "*" else ("from", base, alias.name))
                 elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
                     for target in node.targets if isinstance(node, ast.Assign) else [node.target]:
                         for leaf in ast.walk(target):
                             if isinstance(leaf, ast.Name):
-                                found[leaf.id].add(("other",))
+                                bind(leaf.id, ("other",))
                 elif isinstance(node, _COMPOUND):
                     for block in ("body", "orelse", "finalbody"):
-                        visit(getattr(node, block, []))
+                        visit(getattr(node, block, []), True)
                     for handler in getattr(node, "handlers", []):
-                        visit(handler.body)
+                        visit(handler.body, True)
 
         visit(tree.body)
         return found
@@ -428,27 +427,48 @@ class Classes:
             return ref
         if ref[0] == "class":
             nested = f"{ref[2]}.{attr}"
+            if nested + "#2" in self.classes[ref[1]] or (nested in self.classes[ref[1]] and (ref[1], self.classes[ref[1]][nested].lineno) in self.conditional):
+                return ("unresolved", f"{nested} has competing class declarations")
             return ("class", ref[1], nested) if nested in self.classes[ref[1]] else ("unresolved", f"{ref[2]} defines no class {attr}")
         dotted = ref[1]
         if ref[0] == "module":
             path = self.names[dotted]
             if (path, attr) in seen:
                 return ("unresolved", f"{dotted}.{attr} is imported through itself")
+            candidates = []
             if attr in self.scope[path]:
-                return self.bound(path, attr, seen | {(path, attr)})
-            for star in sorted(b[1] for b in self.scope[path].get("*", ()) if self.module(b[1])[0] in ("module", "package")):
+                candidates.append(self.bound(path, attr, seen | {(path, attr)}))
+            for binding in self.scope[path].get("*", ()):
+                if binding[0] == "conditional":
+                    candidates.append(("unresolved", "conditional star re-export"))
+                    continue
+                star = binding[1]
+                star_path = self.names.get(star)
+                if star_path:
+                    exports = self.scope[star_path].get("__all__", [])
+                    if exports and (len(exports) != 1 or exports[0][0] == "conditional" or self.exports.get(star_path) is None):
+                        candidates.append(("unresolved", f"{star} has uncertain __all__ exports"))
+                        continue
+                    if (exports and attr not in self.exports[star_path]) or (not exports and attr.startswith("_")):
+                        continue
                 found = self.member(self.module(star), attr, seen | {(path, attr)})
-                if found[0] != "unresolved":
-                    return found
+                if found[0] != "unresolved" or "defines no" not in found[1]:
+                    candidates.append(found)
+            if len(candidates) > 1:
+                return ("unresolved", f"{dotted}.{attr} has competing binding occurrences/re-exports")
+            if candidates:
+                return candidates[0]
         sub = f"{dotted}.{attr}"
         return self.module(sub) if sub in self.names or sub in self.packages else ("unresolved", f"{dotted} defines no {attr}")
 
     def bound(self, path: str, name: str, seen: frozenset = frozenset()) -> Ref:
         """What the module-level name `name` of file `path` is bound to."""
-        options = self.scope[path].get(name, set())
+        options = self.scope[path].get(name, [])
         if not options:
+            if self.scope[path].get("*", ()):
+                return self.member(self.module(module_name(path)), name, seen)
             return ("external",) if hasattr(builtins, name) else ("unresolved", f"{name} is neither defined nor imported in {path}")
-        if len(options) > 1:
+        if len(options) > 1 and not (all(o[0] == "module" for o in options) and len(set(options)) == 1):
             return ("unresolved", f"{name} is bound more than once in {path}")
         kind, *rest = next(iter(options))
         if kind == "class":
@@ -516,6 +536,15 @@ def self_calls(resolver: Classes, files: list[str]) -> dict:
     unresolved: dict[str, str] = {}
     for path in sorted(files):
         for qual, node in resolver.classes[path].items():
+            simple = qual.split("#", 1)[0]
+            if simple + "#2" in resolver.classes[path] or (path, node.lineno) in resolver.conditional:
+                unresolved[f"{path}::{qual}(binding)"] = "competing class declarations"
+                continue
+            if "." not in simple:
+                binding = resolver.bound(path, simple)
+                if binding[0] == "unresolved":
+                    unresolved[f"{path}::{qual}(binding)"] = binding[1]
+                    continue
             bases = resolver.bases(path, qual)
             for text, ref in bases:
                 if ref[0] == "unresolved" or (ref[0] == "class" and ref[1] not in in_service):
@@ -735,6 +764,7 @@ def gated(measurement: Measurement, tracked: dict[str, set[str]] | None = None) 
             "unresolved_bases": dict(s["self_calls"]["unresolved"]),
             "smells": {kind: list(s["smells"][kind]) for kind in SMELL_KINDS},
             "functions": dict(sorted(functions.items())),
+            "all_functions": {fn.key: {"cyclomatic": fn.cyclomatic, "cognitive": fn.cognitive} for fn in measurement.functions if fn.file in s["graph"]},
         }
     return {"services": services, "cross_service_imports": list(report["cross_service_imports"])}
 
@@ -760,10 +790,10 @@ def load_baseline(path: Path, upgradable: bool = False) -> dict:
         raise ToolError(f"no baseline at {path}: record one with `make gen2-metrics-rebaseline` and commit it") from exc
     except (OSError, ValueError) as exc:
         raise ToolError(f"the baseline {path} cannot be read: {exc}") from exc
-    if isinstance(baseline, dict) and baseline.get("version") == 1 and not upgradable:
-        raise ToolError(f"the baseline {path} is version 1, before the dependency ratchet (task 2q-a-repair F5): "
+    if isinstance(baseline, dict) and baseline.get("version") in (1, 2) and not upgradable:
+        raise ToolError(f"the baseline {path} is version {baseline['version']}, before the identity ratchet: "
                         "`make gen2-metrics-rebaseline` upgrades it, recording the import graph as it is, and the diff is committed")
-    if not isinstance(baseline, dict) or baseline.get("version") not in (BASELINE_VERSION, 1):
+    if not isinstance(baseline, dict) or baseline.get("version") not in (BASELINE_VERSION, 1, 2):
         raise ToolError(f"the baseline {path} is not version {BASELINE_VERSION}")
     if baseline.get("digest") != with_digest(baseline)["digest"]:
         raise ToolError(f"the baseline {path} does not match its own digest: it was edited by hand. "
@@ -771,6 +801,11 @@ def load_baseline(path: Path, upgradable: bool = False) -> dict:
     for key in DEFAULT_THRESHOLDS:
         if not isinstance(baseline.get("thresholds", {}).get(key), int):
             raise ToolError(f"the baseline {path} has no integer threshold {key}")
+    if baseline["version"] == BASELINE_VERSION:
+        try:
+            ledger.validate_registry(baseline)
+        except (ValueError, KeyError, TypeError) as exc:
+            raise ToolError(str(exc)) from exc
     return baseline
 
 
@@ -778,8 +813,10 @@ def make_baseline(measurement: Measurement, thresholds: dict) -> dict:
     body = gated(measurement)
     for service in SERVICES:
         del body["services"][service]["unresolved_bases"]  # an unresolved base is never baselined: only an exemption classifies it
-        del body["services"][service]["graph"]  # the current graph is what a comparison reads; the baseline holds the counts and the reach drawn from it
-    return {"version": BASELINE_VERSION, "pin": measurement.report["pin"], "thresholds": dict(sorted(thresholds.items())), **body}
+        del body["services"][service]["all_functions"]
+    registry = ledger.register(body)
+    return {"version": BASELINE_VERSION, "pin": measurement.report["pin"], "thresholds": dict(sorted(thresholds.items())),
+            "identities": registry, "identity_serial": len(registry), **body}
 
 
 # --- the comparison ------------------------------------------------------------------------------------------------
@@ -808,20 +845,10 @@ def inside_a_baseline_cycle(cycle: list[str], recorded: list[list[str]]) -> bool
 
 
 def dependency_regressions(service: str, old: dict, new: dict, stable_max: Fraction) -> tuple[list[Violation], list[str]]:
-    """The per-file dependency ratchet (task 2q-a-repair F5). `old` holds the baseline's fan-out and fan-in per file and its reachable sets;
-    `new` the current graph. A file new since the baseline has no baseline to regress from (it is held by the aggregate measures and the
-    smells until a rebaseline records it); the rest, file by file:
-      fan-out    must not rise: a new import edge from an existing file is this, however much of it is already reachable, and an import of a
-                 new file counts, as the old file takes on a further dependency;
-      fan-in     must not rise for a file that was STABLE at the baseline (instability at most the stable limit), counted over the dependents
-                 that already existed: each such file re-pointed at a stable one widens the blast radius of changing it, while a NEW file
-                 depending on a stable one is the direction the Stable Dependencies Principle asks for. An unstable file's fan-in is not gated:
-                 it is expected to change;
-      reach      no ordered pair of existing files may be reachable that was not (reach gained transitively), counted in absolute pairs, so that
-                 an unrelated file added beside it cannot hide it in the denominator of the propagation cost.
-    Instability is not a number of its own here: it rises when a file takes on dependencies (fan-out), or loses dependents (nothing new is
-    coupled, so not a regression), and falls when the reverse happens (an improvement). The direction Martin's Stable Dependencies Principle
-    calls a regression - a stable file depending on a less stable one - is the unstable-dependency smell, ratcheted above."""
+    """Fan-out, stable-target fan-in (all dependents), and absolute reach gained.
+    Identity/admission accounting runs before these directional comparisons.
+    Losing dependents differs from taking on dependencies: instability alone
+    does not decide direction (Stable Dependencies Principle)."""
     survivors = set(old["fan_out"]) & set(new["fan_out"])
     violations: list[Violation] = []
     fewer = 0
@@ -830,7 +857,7 @@ def dependency_regressions(service: str, old: dict, new: dict, stable_max: Fract
         fewer += new["fan_out"][f] < old["fan_out"][f]
         total = old["fan_out"][f] + old["fan_in"][f]
         if total and Fraction(old["fan_out"][f], total) <= stable_max:
-            now = sum(f in new["graph"][x] for x in survivors)
+            now = sum(f in new["graph"][x] for x in new["graph"])
             violations += [Violation("fan_in", f"{service}:{f}", now, old["fan_in"][f])] if now > old["fan_in"][f] else []
     pairs = lambda reached: {(x, y) for x in survivors for y in reached[x] if y in survivors}
     gained, lost = pairs(new["reach"]) - pairs(old["reach"]), pairs(old["reach"]) - pairs(new["reach"])
@@ -891,7 +918,7 @@ def compare(baseline: dict, current: dict) -> tuple[list[Violation], list[str]]:
         for key, was in old["functions"].items():  # a baselined function: both dimensions against its baseline, whatever the thresholds say
             now = new["functions"].get(key)
             if now is None:
-                improvements.append(f"function {service}:{key} is no longer over the thresholds (or is gone)")
+                violations.append(Violation("identity", where(service, key), "missing", "present"))
                 continue
             grown = [(metric, field_) for metric, field_, _ in pairs if now[field_] > was[field_]]
             violations += [Violation(metric, where(service, key), now[field_], was[field_]) for metric, field_ in grown]
@@ -1010,7 +1037,7 @@ def apply_exemptions(violations: list[Violation], text: str | None) -> tuple[lis
     left: list[Violation] = []
     notes: list[str] = []
     for violation in violations:
-        entry = next((e for e in valid if (e.fields["metric"], e.fields["location"]) == (violation.metric, violation.where)), None)
+        entry = None if violation.metric in ("identity", "admission", "unresolved_base") else next((e for e in valid if (e.fields["metric"], e.fields["location"]) == (violation.metric, violation.where)), None)
         if entry is None:
             left.append(violation)
             continue
@@ -1042,11 +1069,14 @@ def tighten(baseline: dict, at_old: dict, at_new: dict, limits: dict) -> dict:
             out[key] = min((old[key], now[key]), key=gated_cost)
         for key in ("cycles_file", "cycles_component"):
             out[key] = [cycle for cycle in now[key] if inside_a_baseline_cycle(cycle, old[key])]
+        out["graph"] = {f: list(t) for f, t in now["graph"].items()}
         out["self_calls"] = {pair: min(count, old["self_calls"][pair]) for pair, count in now["self_calls"].items() if pair in old["self_calls"]}
         survivors = set(old["fan_out"]) & set(now["fan_out"])  # a record of a file that existed is only ever lowered; one that touches a new file is recorded as it is
         out["fan_out"] = {f: min(n, old["fan_out"][f]) if f in survivors else n for f, n in now["fan_out"].items()}
-        out["fan_in"] = {f: min(sum(f in now["graph"][x] for x in survivors), old["fan_in"][f]) + sum(f in now["graph"][x] for x in now["graph"] if x not in survivors)
-                         if f in survivors else n for f, n in now["fan_in"].items()}
+        out["fan_in"] = {f: min(sum(f in now["graph"][x] for x in now["graph"]), old["fan_in"][f])
+                         if f in survivors and old["fan_in"][f] + old["fan_out"][f] and
+                         Fraction(old["fan_out"][f], old["fan_in"][f] + old["fan_out"][f]) <= Fraction(limits["unstable_stable_max_pct"], 100)
+                         else n for f, n in now["fan_in"].items()}
         out["reach"] = {f: sorted(t for t in targets if not (f in survivors and t in survivors) or t in old["reach"][f]) for f, targets in now["reach"].items()}
         out["smells"] = {}
         for kind in SMELL_KINDS:  # kept: baselined, or newly flagged only because a threshold got tighter (not a regression)
@@ -1056,8 +1086,7 @@ def tighten(baseline: dict, at_old: dict, at_new: dict, limits: dict) -> dict:
             if key in old["functions"]:
                 kept = {f: min(value[f], old["functions"][key][f]) for f in ("cyclomatic", "cognitive")}
                 grown = any(value[f] > old["functions"][key][f] for f in kept)  # an exempted growth: never recorded, and the entry stays
-                if grown or kept["cyclomatic"] > limits["function_cyclomatic"] or kept["cognitive"] > limits["function_cognitive"]:
-                    out["functions"][key] = kept  # left only when neither dimension grew and neither is over a threshold any more
+                out["functions"][key] = kept  # identity persists below thresholds
             elif key not in was["functions"]:
                 out["functions"][key] = dict(value)
         services[service] = out
@@ -1215,75 +1244,143 @@ def read_exemptions(path: Path) -> str | None:
         return None
 
 
+def assess(root, args, baseline, measurement):
+    current = gated(measurement, tracked_of(baseline))
+    text = read_exemptions(root / args.ledger)
+    entries, errors = ledger.read_entries(text, parse_entries, PLACEHOLDER)
+    if entries:
+        try:
+            committed = git(root, "show", f"HEAD:{args.ledger}")
+        except ToolError:
+            committed = None
+        if text != committed:
+            errors.append("ledger entries must be committed before check/rebaseline")
+    if errors:
+        return baseline, current, entries, {}, 0, [], [], [], errors
+    old, registry, serial, accounting, used = ledger.account(baseline, current, entries, Violation)
+    violations, improvements = compare(old, current)
+    left, problems = ledger.budgets(accounting + violations, entries, METRICS_NUMERIC, used, Violation)
+    left, notes, exemptions = apply_exemptions(left, read_exemptions(root / args.exemptions))
+    errors += problems + exemptions
+    notes += [f"ledger {e.fields['action']} {e.fields.get('identity', e.fields.get('target', ''))}" for e in entries if e.fields["action"] in ("map", "retire", "admit")]
+    return old, current, entries, registry, serial, violations, left, improvements + notes, errors
+
+
+def command_admit(args):
+    root = Path(args.root)
+    baseline = load_baseline(root / args.baseline)
+    measurement = measure(root, tighter_thresholds(baseline["thresholds"], DEFAULT_THRESHOLDS))
+    current = gated(measurement, tracked_of(baseline))
+    entries, errors = parse_entries(read_exemptions(root / args.ledger) or "", "ML-", ledger.ALIASES)
+    if errors:
+        raise ToolError("; ".join(errors))
+    proposals = ledger.draft_fields(baseline, current, [])
+    subjects = [{k: v for k, v in e.fields.items() if k not in ("reason", "task")} for e in entries]
+    virtual = entries + [Exemption(f"DRAFT-{i}", f) for i, f in enumerate(proposals) if f not in subjects]
+    adjusted, _registry, _serial, _failures, _used = ledger.account(baseline, current, virtual, Violation)
+    violations, _ = compare(adjusted, current)
+    fields = ledger.draft_fields(baseline, current, violations)
+    existing = [{k: v for k, v in e.fields.items() if k not in ("reason", "task")} for e in entries]
+    rendered = [(e.ident, e.fields) for e in entries]
+    serial = max((int(e.ident[3:]) for e in entries if e.ident[3:].isdigit()), default=0)
+    for f in fields:
+        if f not in existing:
+            serial += 1
+            rendered.append((f"ML-{serial:04}", {**f, "reason": "TODO", "task": "TODO"}))
+    path = root / args.ledger
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(ledger.render(rendered), encoding="utf-8")
+    print(f"drafted {len(rendered) - len(entries)} entries in {path}; replace TODOs, review and commit")
+    return EXIT_OK
+
+
 def command_check(args: argparse.Namespace) -> int:
     root = Path(args.root)
     baseline = load_baseline(root / args.baseline)
     measurement = measure(root, baseline["thresholds"])
-    violations, improvements = compare(baseline, gated(measurement, tracked_of(baseline)))
-    left, notes, errors = apply_exemptions(violations, read_exemptions(root / args.exemptions))
-    for line in summary_lines(measurement.report):
-        print(line)
-    for note in notes:
-        print(f"note: {note}")
-    for improvement in improvements:
-        print(f"improved: {improvement}")
-    if improvements:
+    _old, _current, _entries, _registry, _serial, _violations, left, notes, errors = assess(root, args, baseline, measurement)
+    if notes:
         print("the baseline can be tightened: `make gen2-metrics-rebaseline`, then commit the diff")
     tighter = [k for k in DEFAULT_THRESHOLDS if tighter_thresholds(baseline["thresholds"], DEFAULT_THRESHOLDS)[k] != baseline["thresholds"][k]]
     if tighter:
-        print(f"note: the tool's thresholds {', '.join(tighter)} are tighter than the baseline's; `make gen2-metrics-rebaseline` adopts them")
-    for line in advisory_hotspots(measurement):
-        print(line)
+        print(f"note: thresholds {', '.join(tighter)} can be tightened")
+    for line in summary_lines(measurement.report) + notes + advisory_hotspots(measurement):
+        print((f"note: {line}" if line.startswith(("exempted", "ledger")) else f"improved: {line}") if line in notes else line)
     for violation in left:
         print(f"METRICS REGRESSION: {violation.describe()}", file=sys.stderr)
     for error in errors:
-        print(f"METRICS EXEMPTION PROBLEM: {error}", file=sys.stderr)
+        print(f"METRICS LEDGER/EXEMPTION PROBLEM: {error}", file=sys.stderr)
     if left or errors:
-        print(f"gen2-metrics: {len(left)} regression(s), {len(errors)} exemption problem(s); docs/gen2/metrics-exemptions.md "
-              "is the only way past a regression", file=sys.stderr)
+        print(f"gen2-metrics: {len(left)} regression(s), {len(errors)} ledger/exemption problem(s)", file=sys.stderr)
         return EXIT_FAIL
-    print(f"gen2-metrics: no regression against the baseline ({len(notes)} exempted)")
+    print(f"gen2-metrics: no regression against the baseline ({sum(n.startswith('exempted') for n in notes)} exempted)")
     return EXIT_OK
 
 
 def command_rebaseline(args: argparse.Namespace) -> int:
-    root = Path(args.root)
-    path = root / args.baseline
+    root, path = Path(args.root), Path(args.root) / args.baseline
     try:
         baseline = load_baseline(path, upgradable=True)
-    except ToolError as exc:
+    except ToolError:
         if path.exists():
             raise
-        print(f"no baseline yet ({exc}); recording the first one", file=sys.stderr)
         measurement = measure(root)
+        # Bootstrap cannot silently certify unresolved source.
+        unresolved = [(service, key) for service in SERVICES for key in measurement.report["services"][service]["self_calls"]["unresolved"]]
+        if unresolved:
+            print(f"unresolved bindings at bootstrap: {unresolved}", file=sys.stderr)
+            return EXIT_FAIL
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(baseline_text(make_baseline(measurement, DEFAULT_THRESHOLDS)), encoding="utf-8")
         print(f"wrote the first baseline {path}")
         return EXIT_OK
     at_old = measure(root, baseline["thresholds"])
-    upgrading = baseline["version"] == 1  # task 2q-a-repair F5: the graph is recorded as it is now (nothing to regress from); every other record is tightened as usual
+    upgrading = baseline["version"] != BASELINE_VERSION
     if upgrading:
+        if baseline["pin"]["production_sha256"] != at_old.report["pin"]["production_sha256"]:
+            print("identity migration refused: restore the exact baseline production pin first", file=sys.stderr)
+            return EXIT_FAIL
+        original = baseline
+        baseline = make_baseline(at_old, original["thresholds"])
+        # Preserve every previous budget; migration only adds graph/registry.
         for service in SERVICES:
-            baseline["services"][service].update({key: gated(at_old)["services"][service][key] for key in ("fan_out", "fan_in", "reach")})
-        baseline["version"] = BASELINE_VERSION
-    violations, _ = compare(baseline, gated(at_old, tracked_of(baseline)))
-    left, _notes, errors = apply_exemptions(violations, read_exemptions(root / args.exemptions))
+            baseline["services"][service].update(original["services"][service])
+        baseline["identities"] = ledger.register(baseline)
+        baseline["identity_serial"] = len(baseline["identities"])
+    thresholds = tighter_thresholds(baseline["thresholds"], DEFAULT_THRESHOLDS)
+    at_new = at_old if thresholds == baseline["thresholds"] else measure(root, thresholds)
+    old, current, entries, registry, serial, violations, left, _notes, errors = assess(root, args, baseline, at_new)
     if left or errors:
-        for violation in left:
-            print(f"METRICS REGRESSION: {violation.describe()}", file=sys.stderr)
+        for v in left:
+            print(f"METRICS REGRESSION: {v.describe()}", file=sys.stderr)
         for error in errors:
-            print(f"METRICS EXEMPTION PROBLEM: {error}", file=sys.stderr)
-        print("gen2-metrics-rebaseline: refused; a baseline is never loosened. Fix the regression or add a reviewed exemption", file=sys.stderr)
+            print(f"METRICS LEDGER/EXEMPTION PROBLEM: {error}", file=sys.stderr)
+        print("gen2-metrics-rebaseline: refused; resolve identity/admission and regressions first", file=sys.stderr)
         return EXIT_FAIL
     thresholds = tighter_thresholds(baseline["thresholds"], DEFAULT_THRESHOLDS)
     at_new = at_old if thresholds == baseline["thresholds"] else measure(root, thresholds)
+    folded = ledger.fold(old, current, entries, violations)
+    tracked = tracked_of(folded)
     updated = {"version": BASELINE_VERSION, "pin": at_new.report["pin"], "thresholds": dict(sorted(thresholds.items())),
-               **tighten(baseline, gated(at_old, tracked_of(baseline)), gated(at_new, tracked_of(baseline)), thresholds)}
-    if not upgrading and {k: v for k, v in updated.items() if k != "pin"} == {k: v for k, v in baseline.items() if k not in ("pin", "digest")}:
-        print("the baseline is already as tight as the code allows; nothing written")  # a new commit alone is not a reason to rewrite it
+               **tighten(folded, current, gated(at_new, tracked), thresholds)}
+    # New threshold offenders have a budget only because a tighter operating
+    # point was adopted; every previously recorded identity still persists.
+    remaining = ledger.inventory(updated) - set(registry.values())
+    if remaining:
+        raise ToolError(f"unadmitted budgets during folding: {sorted(remaining)}")
+    updated.update(identities=registry, identity_serial=serial)
+    try:
+        ledger.validate_registry(updated)
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+    unchanged = {k: v for k, v in updated.items() if k != "pin"} == {k: v for k, v in baseline.items() if k not in ("pin", "digest")}
+    if unchanged and not upgrading and not entries:
+        print("the baseline is already as tight as the code allows; nothing written")
         return EXIT_OK
     path.write_text(baseline_text(updated), encoding="utf-8")
-    print(f"wrote {path}; review the diff and commit it")
+    if entries:
+        (root / args.ledger).write_text(ledger.render([(e.ident, e.fields) for e in entries if e.fields["action"] == "classify"]), encoding="utf-8")
+    print(f"wrote {path}; review baseline and ledger diffs and commit them")
     return EXIT_OK
 
 
@@ -1308,8 +1405,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", default=str(Path(__file__).resolve().parent.parent), help="the repository (default: this one)")
     parser.add_argument("--baseline", default=DEFAULT_BASELINE)
     parser.add_argument("--exemptions", default=DEFAULT_EXEMPTIONS)
+    parser.add_argument("--ledger", default=ledger.LEDGER)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("check")
+    commands.add_parser("admit")
     commands.add_parser("rebaseline")
     report = commands.add_parser("report")
     report.add_argument("out")
@@ -1317,7 +1416,7 @@ def main(argv: list[str] | None = None) -> int:
     hotspots.add_argument("out")
     args = parser.parse_args(argv)
     try:
-        return {"check": command_check, "rebaseline": command_rebaseline, "report": command_report, "hotspots": command_hotspots}[args.command](args)
+        return {"admit": command_admit, "check": command_check, "rebaseline": command_rebaseline, "report": command_report, "hotspots": command_hotspots}[args.command](args)
     except ToolError as exc:
         print(f"gen2-metrics: {exc}", file=sys.stderr)
         return EXIT_TOOL

@@ -46,3 +46,10 @@ One `###` section per entry, headed `### EX-<id>` and any title, then `- key: va
 ## Entries
 
 None. The baseline recorded at the task 2q-a pin is the present state of the engine and the gateway, so nothing is exempt: every metric and smell the code has today is in the baseline, and only something worse than the baseline needs an entry here.
+
+Task 2q-a-repair-2: the committed metrics ledger is the only admission, mapping,
+retirement or unresolved-binding classification mechanism. Exemptions cannot
+excuse missing identities or admit a new population. Existing numeric exemptions
+remain temporary and never loosen a baseline. Improved function scores retain
+their explicit identity. See docs/gen2/metrics-ledger.md for the transition
+contract; ordinary review checks reasons and reviewing-task claims.

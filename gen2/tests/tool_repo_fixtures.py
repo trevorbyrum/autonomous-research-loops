@@ -66,7 +66,11 @@ class Repo:
 
     def run(self, *args: str, tool: Path | None = None, root: bool = True) -> subprocess.CompletedProcess:
         """The metrics tool (or another) on this repository: `args` are the tool's, after --root."""
-        command = [sys.executable, str(tool or TOOL), *(["--root", str(self.root)] if root else []), *args]
+        from gen2.tests import children
+        target = tool or TOOL
+        if target.is_relative_to(REPO):
+            target = children.path(str(target.relative_to(REPO)))
+        command = [sys.executable, str(target), *(["--root", str(self.root)] if root else []), *args]
         return subprocess.run(command, capture_output=True, text=True, timeout=120)
 
     def baseline(self) -> dict:
@@ -93,6 +97,21 @@ def rewrite_baseline(repo: Repo, edit) -> None:
     """Apply `edit(baseline_dict)` to the committed baseline and write it back with a correct digest (as a tool run would)."""
     baseline = repo.baseline()
     edit(baseline)
+    if baseline["version"] == 3:
+        refs = set()
+        for service, data in baseline["services"].items():
+            refs |= {f"{service}|file|{p}" for p in data["fan_out"]}
+            refs |= {f"{service}|function|{p}" for p in data["functions"]}
+            refs |= {f"{service}|self_calls|{p}" for p in data["self_calls"]}
+            for kind, field in (("edge", "graph"), ("reach", "reach")):
+                refs |= {f"{service}|{kind}|{a}->{b}" for a, targets in data[field].items() for b in targets}
+            refs |= {f"{service}|{m}|{service}" for m in ("propagation_file", "propagation_component")}
+            for kind in ("file", "component"):
+                refs |= {f"{service}|cycle_{kind}|{','.join(c)}" for c in data["cycles_" + kind]}
+            refs |= {f"{service}|smell_{kind}|{loc}" for kind, items in data["smells"].items() for loc in items}
+        refs |= {f"repo|cross_service_import|{edge}" for edge in baseline["cross_service_imports"]}
+        baseline["identities"] = {f"MI-{i:06}": ref for i, ref in enumerate(sorted(refs), 1)}
+        baseline["identity_serial"] = len(refs)
     baseline["digest"] = digest_of(baseline)
     (repo.root / BASELINE).write_text(json.dumps(baseline, indent=2, sort_keys=True) + "\n")
 

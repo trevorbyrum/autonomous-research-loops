@@ -8,8 +8,7 @@ way about, left the comparison and was recorded as an improvement).
 The rule under test is the tool's own promise: an existing offender may not
 grow in either metric. A baselined function is compared in BOTH dimensions
 with its baseline whatever the thresholds say; the thresholds only decide
-which OTHER functions are new offenders; a baselined entry leaves the
-baseline only when neither dimension grew and neither is over a threshold.
+which OTHER functions are new offenders; a baselined entry keeps its identity and both scores until explicitly retired.
 
 Scores are worked out by hand from the fixture's text. With `k` asserts and
 a chain of `m` nested ifs, a function has cyclomatic 1 + k + m (an assert
@@ -75,15 +74,15 @@ class BaselinedOffenderTest(RatchetTestCase):
         done = self.check(repo, 1)
         self.assertIn(f"function_cognitive {LOCATION}: 36 against a baseline of 0", done.stderr)
 
-    def test_both_scores_improving_passes_and_the_entry_leaves_the_baseline(self) -> None:
+    def test_both_scores_improving_passes_and_identity_remains(self) -> None:
         repo = self.baselined_at(scored(8, 22), {"cyclomatic": 31, "cognitive": 36})
         repo.write({PATH: scored(3, 10)})   # cyclomatic 14, cognitive 6: both fell, both are under the limits
         done = self.check(repo, 0)
         self.assertIn(f"improved: function {LOCATION} is no longer over the thresholds", done.stdout)
         self.assertEqual(repo.run("rebaseline").returncode, 0)
-        self.assertEqual(repo.baseline()["services"]["engine"]["functions"], {})
+        self.assertEqual(repo.baseline()["services"]["engine"]["functions"], {PATH + "::f": {"cyclomatic": 14, "cognitive": 6}})
         repo.write({BASELINE: (repo.root / BASELINE).read_text(), PATH: scored(0, 20)})   # and it may not come back as an offender
-        self.assertIn(f"function_cyclomatic {LOCATION}: 21 against a baseline of limit 20, not an offender", self.check(repo, 1).stderr)
+        self.assertIn(f"function_cyclomatic {LOCATION}: 21 against a baseline of 14", self.check(repo, 1).stderr)
 
     def test_one_score_improving_and_the_other_unchanged_passes_and_records_the_lower_value(self) -> None:
         repo = self.baselined_at(scored(8, 22), {"cyclomatic": 31, "cognitive": 36})
@@ -129,4 +128,4 @@ class NewOffenderTest(RatchetTestCase):
         repo.write({PATH: scored(0, 20, "g")})
         done = self.check(repo, 1)
         self.assertIn("function_cyclomatic engine:gen2/m.py::g: 21 against a baseline of limit 20, not an offender", done.stderr)
-        self.assertIn("function engine:gen2/m.py::f is no longer over the thresholds (or is gone)", done.stdout)
+        self.assertIn("engine|function|gen2/m.py::f: missing", done.stderr)

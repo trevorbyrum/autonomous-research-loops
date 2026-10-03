@@ -14,7 +14,7 @@ PYTHON ?= $(GEN2_VENV)/bin/python
 
 GEN2_SQLITE_REPORT ?=
 
-.PHONY: gen2-check gen2-venv gen2-sqlite gen2-boundaries gen2-metrics gen2-metrics-rebaseline gen2-hotspots gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount gen2-auth-demo gen2-gateway
+.PHONY: gen2-check gen2-venv gen2-sqlite gen2-boundaries gen2-metrics gen2-metrics-rebaseline gen2-metrics-admit gen2-hotspots gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount gen2-auth-demo gen2-gateway
 
 gen2-check: gen2-sqlite gen2-boundaries gen2-metrics gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size
 	@echo "gen2-check: all checks passed"
@@ -45,12 +45,16 @@ gen2-boundaries: gen2-venv
 # The architecture metrics and their ratchet (charter "Architecture metrics"; task
 # 2q-a; tools/gen2_metrics.py, stdlib only): the engine and the gateway measured
 # apart from the code, production only. Fails on any regression against
-# docs/gen2/metrics-baseline.json that docs/gen2/metrics-exemptions.md does not
-# cover. Prints, and never gates on, the git change-coupling hotspots.
+# docs/gen2/metrics-baseline.json: explicit identities and admissions use
+# docs/gen2/metrics-ledger.md; temporary numeric regressions use exemptions. Prints, and never gates on, the git change-coupling hotspots.
 gen2-metrics: gen2-venv
 	$(PYTHON) tools/gen2_metrics.py check
 
-# Rewrite the baseline, TIGHTENING only: never run by gen2-check, never automatic.
+# Draft reason: TODO ledger entries. Fill reasons and reviewing task, then commit.
+gen2-metrics-admit: gen2-venv
+	$(PYTHON) tools/gen2_metrics.py admit
+
+# Fold reviewed ledger transitions; otherwise TIGHTENING only: never run by gen2-check, never automatic.
 # Refuses while a regression stands; commit the diff.
 gen2-metrics-rebaseline: gen2-venv
 	$(PYTHON) tools/gen2_metrics.py rebaseline

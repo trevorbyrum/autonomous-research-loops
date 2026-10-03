@@ -186,7 +186,8 @@ FILE_TARGETS = {
     "gen2/schema/invocation.schema.json": ("attr", "test_schema_counterfactuals", "INVOCATION_SCHEMA"),
     "tools/gen2_linecount.py": ("attr", "test_size_rules", "TOOL"),  # task 2r: the size rules
     # task 2q-a: the metrics ratchet, the debt register's phase-close check and the locator check; their tests run each as a subprocess through the fixtures' globals
-    "tools/gen2_metrics.py": ("attr", "gen2.tests.tool_repo_fixtures", "TOOL"),
+    "tools/gen2_metrics.py": ("disk",),
+    "tools/gen2_metrics_ledger.py": ("disk",),
     "tools/check_gen2_debt.py": ("attr", "gen2.tests.tool_repo_fixtures", "DEBT_TOOL"),
     "tools/check_gen2_locators.py": ("attr", "gen2.tests.tool_repo_fixtures", "LOCATORS_TOOL"),
 }
@@ -392,6 +393,7 @@ def _child_tree(tmp: str) -> Path:
 
     tree = Path(tmp) / "tree"
     shutil.copytree(ROOT / "gen2", tree / "gen2", ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(ROOT / "tools", tree / "tools", ignore=shutil.ignore_patterns("__pycache__"))
     return tree
 
 

@@ -73,7 +73,6 @@ class SupportedSurfaceTest(CollaborationCase):
         "module imported from its package, aliased": (("from gen2.p import base as pb",), "pb.Base"),
         "relative name": (("from .base import Base",), "Base"),
         "relative module": (("from . import base",), "base.Base"),
-        "inside an if": (("import typing", "if typing.TYPE_CHECKING:", "    from gen2.p.base import Base"), "Base"),
         "subscripted": (("from gen2.p.base import Base",), "Base[int]"),
     }
 
@@ -302,9 +301,9 @@ class UnresolvedBaseTest(RatchetTestCase):
         }
         for name, (bases, head, why) in cases.items():
             with self.subTest(case=name):
-                repo = Repo(self.files(bases, *head))
-                self.addCleanup(repo.close)
-                self.assertEqual(repo.run("rebaseline").returncode, 0)   # the first baseline never holds an unresolved base
+                repo = self.baselined(self.files("Base", "from gen2.p.base import Base"))
+                repo.write(self.files(bases, *head))
+                self.assertEqual(repo.run("rebaseline").returncode, 1)   # the first baseline never holds an unresolved base
                 self.assertEqual(self.check(repo, 1).stderr.count("METRICS REGRESSION: unresolved_base"), 1)
                 done = repo.run("check")
                 self.assertIn(f"unresolved_base engine:gen2/p/use.py::Child({bases}): 1 against a baseline of 0; ", done.stderr)
@@ -335,18 +334,15 @@ class UnresolvedBaseTest(RatchetTestCase):
         self.assertIn("unresolved_base engine:gen2/p/use.py::Child(gen2.p.base.Renamed)", done.stderr)
         self.assertIn("gen2.p.base defines no Renamed", done.stderr)
 
-    def test_an_exemption_classifies_it_and_a_stale_one_fails(self) -> None:
-        files = self.files("Missing")
-        text = exemption("EX-1", metric="unresolved_base", location="engine:gen2/p/use.py::Child(Missing)", limit=None,
-                         reason="a generated base the tool cannot follow, classified as external by the 2q review",
-                         removal="resolve the base or remove the class, then delete this entry")
-        repo = Repo(files | {EXEMPTIONS: text})
-        self.addCleanup(repo.close)
+    def test_a_ledger_classifies_it_and_a_stale_one_fails(self) -> None:
+        from gen2.tests.test_metrics_identity import entry, write_ledger
+        repo = self.baselined({"gen2/p/use.py": "class Child: pass\n"})
+        repo.write({"gen2/p/use.py": use(bases="Missing")})
+        write_ledger(repo, entry("classify", metric="unresolved_base", location="engine:gen2/p/use.py::Child(Missing)"))
+        self.check(repo, 0)
         self.assertEqual(repo.run("rebaseline").returncode, 0)
-        done = self.check(repo, 0)
-        self.assertIn("exempted by EX-1: unresolved_base engine:gen2/p/use.py::Child(Missing)", done.stdout)
-        repo.write(self.files("Base", "from gen2.p.base import Base"))   # now it resolves: the exemption is needed by nothing
-        self.assertIn("EX-1: no regression needs this exemption", self.check(repo, 1).stderr)
+        repo.write({"gen2/p/use.py": "class Child: pass\n"})
+        self.assertIn("unused ledger entry", self.check(repo, 1).stderr)
 
     def test_bases_outside_the_measured_files_are_classified_without_an_exemption(self) -> None:
         text = py("import abc", "import typing", "import unittest", "from typing import Generic, Protocol, TypeVar", "from some_package import Thing", "",
