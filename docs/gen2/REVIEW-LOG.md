@@ -1335,3 +1335,33 @@ Orchestrator reruns of 18 match.
 - **Results:** both targets exit 0; 1,823/1,823 mutants killed; `gateway/` unchanged.
 
 Astra's re-review is `6fac8e6c`. If it passes, this is the review that accepts 2b.
+
+## 2026-10-03 — Astra re-review of 2b-repair-19 (`6fac8e6c`, pinned 28a2e83) — PASS (A, B, C). **TASK 2b ACCEPTED.**
+Full report: `private/reviews/gen2-2b-repair-19-astra-review-20261003.md`.
+
+**R18-1: ROOT-CAUSE, closed.**
+- The port is validated by value, on a run of at most 32 digits, and H-6 states the rule.
+- Independent domain check:
+  - all 1,846,086 valid (value, width) constructions are accepted;
+  - 65,535 33-digit paddings are refused before resolution;
+  - 5,016 mixed forms are accepted and 2,337 invalid ones refused.
+- Real-server matrix: 18 exchanges, with exact Host values and SNI, across HTTP and HTTPS, DNS, IPv4 and IPv6.
+- R17-1 and the 17 acceptances are intact.
+
+**Family verdicts:**
+- **Gateway input contract:** ROOT-CAUSE, closed under B.
+- **Engine hand-off:** ROOT-CAUSE, closed. The endpoint owner is the sole connection authority; the lease, concurrency across instances, closed routes, deadlines, admission and page outcomes all stand.
+
+**Operator confirmation:** none newly required.
+
+**Still the operator's (later phases):**
+- merges and phase transitions;
+- the real-data migration release;
+- old-writer fencing before cutover.
+
+**Owners:**
+- 2e1: construction placement, runner isolation, env/credential allowlist.
+- 2e2: retrieval-audit evidence.
+- Phase 3 and Phase 4 items as recorded.
+
+**Next:** 2q (2q-a: metrics, ratchet, debt register, locators; then 2q-b: structural consolidation). Gate D #4 runs after 2q, before 2c, per the operator's 2026-10-02 sequencing ruling.
