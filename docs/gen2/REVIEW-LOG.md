@@ -1421,3 +1421,31 @@ Full report: `private/reviews/gen2-2q-a-astra-review-20261003.md`.
 - **F7 LOW:** the three "snapshot failures" were one test that depends on the environment plus two intentional skips.
 
 **Routing:** **2q-a-repair** fixes F1–F7. F5 is enforced as the charter states, with no amendment. No operator ruling is needed.
+
+## 2026-10-03 — 2q-a-repair landed — Astra re-review dispatched
+**Coder (Sonnet 5.5 `9fc444b6`):** commits `1b5b81c`..`c87821e`.
+
+**Fixes:**
+- **F1:** the tool resolves the base-class surface and orders methods by C3. It counts each call site once, and an unresolved base fails the build. The qualified-name Router keeps 132/19.
+- **F2:** offenders are compared on both dimensions.
+- **F3:** DEBT-014 (importer inventory, which must exist before use) and DEBT-015 (usage estimator).
+- **F4:** locators are recognised by grammar only.
+- **F5:** gates added for unresolved bases, per-file fan-out, fan-in to stable files, and gained reach. Astra's edge probe now fails.
+- **F6/F7:** fixed.
+
+**Baseline:** v2, with new fields only.
+
+**Results:**
+- 51 new mutants.
+- gen2-check: 2,005 tests, 2,027/2,027 mutants.
+- gen2-gateway: 1,500+1,500 tests.
+- 65 new tests fail on `1e8dc9f` and pass now.
+- The 27/27 reproduction is intact, and there is no production change.
+
+**Policy readings sent to review:**
+- new and renamed files are held only by the aggregate measures until rebaseline;
+- the fan-in rule counts only existing dependents of files that were stable at baseline;
+- instability is judged by direction, not as a gate;
+- `code:` and `history:` markers are unchecked author choices.
+
+**Review:** Astra `98a9d2a6`, task `private/reviews/gen2-2q-a-repair-review-task-20261003.md`.
