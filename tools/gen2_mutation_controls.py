@@ -193,8 +193,8 @@ MANUAL: dict[str, dict] = {
     # a name looked up beforehand is connected to (and, over TLS, checked as the name); a failed lookup leaves the endpoint stale and every exchange a failure; an address is the client's own
     "2B15-an-exchange-resolves-a-name": {"controls": ["test_gateway_exchange.NoExchangeResolvesAName.test_a_name_that_was_looked_up_beforehand_is_connected_to_and_stays_the_hosts_name",
                                                        "test_gateway_exchange.TlsNamesAreChecked.test_the_certificate_is_checked_against_the_hostname_and_the_server_name_sent_is_the_hostname"],
-                                         "why": "executes gen2/gateway_client/client.py _connect's changed loop header on its accepted path: the name was looked up beforehand, so the alternative the mutant adds "
-                                                "(a lookup by the exchange itself) is never reached, and the exchange connects and reads its reply, over plain HTTP and over TLS"},
+                                         "why": "executes gen2/gateway_client/client.py _DeadlineHTTPConnection's changed `_create_connection` line on its accepted path: the name was looked up beforehand, so an address is admitted and the "
+                                                "alternative the mutant adds (a lookup by the exchange itself, when none is) is never reached, and the exchange connects and reads its reply, over plain HTTP and over TLS"},
     **{mid: {"controls": ["test_gateway_exchange.NoExchangeResolvesAName.test_a_failed_lookup_leaves_the_client_built_and_stale_and_every_exchange_a_failure_at_once"],
              "why": "a client whose lookup failed takes a connection failure through gen2/gateway_client/client.py _exchange's changed line (the withdrawal) and asserts a failure at once and a stale "
                     "endpoint: the mutant, which looks up again there (the resolver is a stand-in that fails, so the endpoint is withdrawn again), or leaves the endpoint as it was (it has no addresses "
@@ -202,10 +202,10 @@ MANUAL: dict[str, dict] = {
        for mid in ("2B15-an-exchange-re-resolves-after-a-failure", "2B15-a-connection-failure-leaves-the-endpoint-fresh")},
     "2B15-an-ip-literal-is-looked-up": {"controls": ["test_gateway_exchange.NoExchangeResolvesAName.test_a_name_that_was_looked_up_beforehand_is_connected_to_and_stays_the_hosts_name"],
                                         "why": "executes gen2/gateway_client/client.py _literal on a name, where it returns None as the mutant does for every host: the name is connected to through its beforehand lookup"},
-    # R15-2 (Astra's 2b-repair-15 review): the pairing must construct a client. This test builds one over a literal address, so it evaluates the constructor's changed guard (`self._real and _literal(...) is None`)
+    # R15-2 (Astra's 2b-repair-15 review): the pairing must construct a client. This test builds one over a literal address, so it evaluates the constructor's changed guard (`self._real and not self._endpoint.literal`)
     # on its false branch, where no lookup is due; Astra traced it into the constructor on the baseline and the mutant, and the mutant's killers fail by assertion where it passes
     "2B15-construction-does-not-look-the-name-up": {"controls": ["test_gateway_exchange.NoExchangeResolvesAName.test_an_ip_literal_is_never_resolved"],
-                                                    "why": "constructs a GatewayClient over an IP literal, so that gen2/gateway_client/client.py's changed guard (`self._real and _literal(...) is None`) is evaluated and false: no lookup is due for an "
+                                                    "why": "constructs a GatewayClient over an IP literal, so that gen2/gateway_client/client.py's changed guard (`self._real and not self._endpoint.literal`) is evaluated and false: no lookup is due for an "
                                                            "address, which the mutant, that makes none for a name either, leaves as it was; the client then exchanges and reads its reply"},
     # task 2b-repair-17: a mutant that takes the ownership decoration off a method changes a line that runs once, at import, which no traced test executes; the accepted path through the
     # decorated definition is its own call, alone, which the control makes and which passes undecorated (nothing overlaps it). The failover mutant adds a `break` inside the handler of a failed
