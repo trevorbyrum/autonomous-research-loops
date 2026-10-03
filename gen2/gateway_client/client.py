@@ -37,41 +37,44 @@ only outcome, but `failed`, of a request that does not page — resolve, enrich,
 end to know: 2b-repair-13d); and `failed`. The cursor is kept on the observation, so neither the cap
 nor an unfollowed continuation hides that more remains.
 
-Queued answers are polled until the job finishes or the client's deadline passes; a
-deadline that passes is `unknown`/`timeout`, never an empty result. The deadline is ONE
-absolute point on the monotonic clock, set when polling starts (Gate D #4, task
-2b-repair-13b): each poll's timeout is clamped to what remains of it, each sleep is
-bounded by it, and the time a request itself takes counts.
+THE CLIENT CONTRACT (Gate D #3, task 2b-repair-17; INVARIANTS H-6). One owner, `_Endpoint`, holds every fact that decides whether this client may do I/O; nothing else authorizes anything.
 
-And so is each exchange's (2b-repair-13d, Astra R13B-1): the `timeout` a transport is handed is the
-WHOLE exchange's — connect, request, status line and headers, body — not the longest it waits on one
-socket operation, which a reply arriving a chunk at a time renews for ever. The default transport
-(http_transport) takes one absolute deadline when it is called and arms every blocking socket call with what
-is left of it, so no reply can outlast it by arriving a chunk at a time; and no exchange resolves a name
-(2b-repair-15, Astra's final 2b review F2): `getaddrinfo` cannot be interrupted in-process, and the
-constraints below leave no way to give it a deadline, so it is kept off every deadline the client holds.
-An exchange connects to an address it was handed (an IP literal is its own address; a name was looked up
-beforehand, `GatewayClient.resolve`) and keeps the NAME for the TLS server name and the certificate check.
-The lookup is made at construction (the default transport, a name) and again only when the owner calls
-`resolve()` between operations, which a connection failure invites (`endpoint_stale`); never by an exchange,
-a poll or a search. A connection failure, or a lookup that finds nothing, withdraws the addresses (2b-repair-16,
-Astra R15-1): no exchange connects, or sends its request and token, until the owner's `resolve()` succeeds. The
-time it takes is the CALLER's, outside every exchange's and poll's deadline; the client cannot bound it (see
-`resolve`). The client does not rest on the transport for the rest either: a reply that completes after its
-exchange's budget is a timeout whatever it says (`_exchange`), so a late `done` is never a result, for any
-transport. The mechanism is in-process and stdlib-only on purpose: the client has no spawn capability (BOUNDARIES: the
-supervisor owns every lifecycle) and a thread cannot be killed, so a worker thread left behind a timed wait
-would be exactly what a deadline must not leave.
+  Guarantee. A durable observation states only what a request to the currently authorized endpoint actually returned, within its deadline. The authorized endpoint is the configured
+  scheme, host and port with the addresses its owner's last lookup found for a name (an IP literal is its own address, always authorized). It does not authenticate the process
+  listening there: a plain-HTTP gateway's address reused before any failure is indistinguishable from the gateway, and bytes already sent cannot be revoked.
+  Endpoint forms. `base_url` is an `http` or `https` URL whose host is a name or an IP literal (v4 or v6), with no credentials; anything else is a ValueError at construction, before
+  any I/O, and the endpoint is fixed for the client's life.
+  Ownership. A GatewayClient is SERIAL: it runs one public operation at a time — a `search` (every page and poll of it), a `grant`, or a `resolve` — and every exchange is part of one. A call that
+  overlaps a running one (another thread) or re-enters it (a hook) raises `ClientBusy` before any lookup, connection or byte, and changes nothing: refused, never waited on (so no wait can
+  outlast a bound), and never an observation (nothing was asked of the gateway). Separate instances share nothing (no lock, no opener, no module state) and run fully concurrently: a
+  station or job has its own client.
+  Withdrawal. An endpoint is authorized while it has addresses. A lookup that fails or finds nothing (construction, `resolve`) withdraws it (`endpoint_stale`), and so does an exchange
+  whose connection fails (a transport failure: a timeout is not one, and an IP literal has no lookup to revoke). A withdrawn endpoint is refused by every exchange at once, with no socket,
+  request or token, so the rest of a search's pages and polls end unknown, until a `resolve()` finds addresses. Only the owner's `resolve()` looks a name up, between operations and
+  at construction, never an exchange, a poll or a search (getaddrinfo cannot be interrupted in-process and the client may not leave a thread running or start a process: BOUNDARIES,
+  the supervisor owns every lifecycle). Its time is the caller's, outside every deadline here and not bounded by this client (see `resolve`).
+  Routes. The client builds its own opener from the HTTP handlers alone (`_opener`) and connects only to an address the endpoint authorizes (`_connect`), keeping the NAME for the TLS server
+  name and the certificate check: so ambient proxy variables (any case, `no_proxy`, CGI), redirects (a reply is never a destination), challenge-driven authentication, cookies, the global opener and
+  the FTP, file, data and unknown-scheme handlers do not exist for it. Hooks (transport, resolver, clock) are trusted code and test seams, not a second production route.
+  Attribution. One connection per exchange, closed with it and never reused: a reply read on it answers the one request written on it by the one operation running, and is attributed to its
+  invocation and attempt only if it echoes them (H-1). A reply that completes after its exchange's budget is a timeout whatever it says.
+  Time: three scopes, and no fourth. An EXCHANGE's `timeout` is one absolute deadline over connect, request, status line, headers and body (http_transport arms every blocking socket call with
+  what is left of it, so a reply arriving a chunk at a time cannot renew it). A JOB'S poll `deadline` is one absolute point set when polling starts: each poll's timeout is clamped to what
+  remains, each sleep is bounded by it, and what a request takes counts. The supervisor's whole-job deadline bounds everything else, a lookup included (operator ruling 2026-10-02,
+  option (a): a client is constructed and `resolve()` called only inside a supervised job child; task 2e1). A deadline that passes is `unknown`/`timeout`, never an empty result.
 
 What this client does not do: write the store (the router records what it returns) or
 pick lanes or policy (the gateway plans; the grant binds).
 """
 from __future__ import annotations
 
+import contextlib
+import functools
 import http.client
 import ipaddress
 import socket
 import ssl
+import threading
 import time
 import types
 import urllib.error
@@ -90,11 +93,6 @@ NO_NAMES: Mapping = types.MappingProxyType({})   # no name was looked up beforeh
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None   # a gateway answer is never a redirect; following one could send the bearer token elsewhere
 
 
 class _Deadline:
@@ -207,6 +205,8 @@ class _DeadlineHTTPSConnection(http.client.HTTPSConnection):
 
 
 def _opener(deadline: _Deadline, resolved: Mapping) -> urllib.request.OpenerDirector:
+    """The client's own opener, and only the HTTP handlers (2b-repair-17, Gate D #3 routes): none of build_opener's defaults (the proxy handler that reads the environment, redirects, the FTP, file, data and unknown-scheme
+    handlers). A status that is not a success reaches the default error handler and is an HTTPError, a 3xx included: no reply is ever followed."""
     class Http(urllib.request.HTTPHandler):
         def http_open(self, req):
             return self.do_open(lambda host, **kw: _DeadlineHTTPConnection(host, deadline=deadline, resolved=resolved, **kw), req)
@@ -214,11 +214,14 @@ def _opener(deadline: _Deadline, resolved: Mapping) -> urllib.request.OpenerDire
     class Https(urllib.request.HTTPSHandler):
         def https_open(self, req):
             return self.do_open(lambda host, **kw: _DeadlineHTTPSConnection(host, deadline=deadline, resolved=resolved, **kw), req, context=self._context)
-    return urllib.request.build_opener(_NoRedirect, Http, Https)
+    opener = urllib.request.OpenerDirector()
+    for handler in (Http(), Https(), urllib.request.HTTPDefaultErrorHandler(), urllib.request.HTTPErrorProcessor()):
+        opener.add_handler(handler)
+    return opener
 
 
 def http_transport(method: str, url: str, headers: dict, body: bytes | None, timeout: float, resolved: Mapping | None = None) -> tuple:
-    """(status, headers, body, error): one HTTP exchange that never raises and never follows a redirect.
+    """(status, headers, body, error): one HTTP exchange that never raises, never follows a redirect and goes nowhere but straight to the host of `url` (no proxy), over http or https only.
 
     `timeout` is the whole exchange's: one absolute deadline, taken when the call starts, over the connect, the
     request, the status line and headers, and the body. Every blocking socket operation is given what is left of it
@@ -228,6 +231,12 @@ def http_transport(method: str, url: str, headers: dict, body: bytes | None, tim
     literal, or a name in `resolved` ((lower-case host, port) -> getaddrinfo's results, looked up beforehand by the
     caller: GatewayClient.resolve), and a name that is in neither is a transport failure at once. The name stays the
     host of the request: it is what the TLS server name and the certificate check use, and the Host header says."""
+    try:
+        supported = urllib.parse.urlsplit(url).scheme in ("http", "https")
+    except ValueError:
+        supported = False
+    if not supported:
+        return None, {}, b"", "transport_failure"   # nothing but http and https has a handler: any other scheme is refused before anything is built
     req = urllib.request.Request(url, data=body, method=method, headers=headers)
     try:
         with _opener(_Deadline(timeout), NO_NAMES if resolved is None else resolved).open(req, timeout=timeout) as resp:
@@ -267,52 +276,106 @@ class Resolution(NamedTuple):
     at: str
 
 
+class ClientBusy(RuntimeError):
+    """A public operation was started on a GatewayClient that is running one, or from inside it (a hook calling back): refused before any lookup, connection or byte, with nothing about the client changed
+    (2b-repair-17: an instance is serial; separate instances run concurrently). The caller's error: it is never an observation, as nothing was asked of the gateway."""
+
+
+class _Endpoint:
+    """The one owner of whether this client may do I/O (2b-repair-17, Gate D #3: it had been four facts that could disagree: a mapping of cached addresses, a stale flag, the address list a connection already
+    running held on to, and urllib's own proxy choice). It holds the endpoint's configured origin, fixed at construction; the addresses a lookup found for a name (none: withdrawn); and the lease of the one
+    operation running on it. `Resolution` history, `last_resolution`, authorizes nothing."""
+
+    def __init__(self, base_url: str) -> None:
+        parts = urllib.parse.urlsplit(base_url)
+        port = parts.port   # a ValueError for a port that is no number
+        if parts.scheme not in ("http", "https") or not parts.hostname or parts.username is not None or parts.password is not None:
+            raise ValueError(f"{base_url!r} is not an http or https URL with a host and no credentials: the gateway's endpoint forms")
+        self.host, self.port = parts.hostname.lower(), port or (443 if parts.scheme == "https" else 80)
+        self._found: tuple = ()
+        self._lease, self._holder = threading.Lock(), None   # per instance: no lock is shared between clients
+
+    @property
+    def addresses(self) -> tuple:
+        """What an exchange may connect to, read when it starts: an IP literal is its own address; a name has the ones its last lookup found, and none once it was withdrawn."""
+        return tuple(_literal(self.host, self.port) or self._found)
+
+    def publish(self, found) -> None:
+        """The one transition: the addresses a lookup found, or none, which withdraws the endpoint (a literal's address is its own: nothing to revoke)."""
+        self._found = tuple(found)
+
+    @contextlib.contextmanager
+    def operation(self, name: str, within: bool = False):
+        """Run `name` as the client's one operation, or refuse it (ClientBusy) when one is running; never wait. `within`: an exchange, part of the operation this thread is already running (alone, it is its own)."""
+        me, running = threading.get_ident(), self._holder
+        if within and running is not None and running[1] == me:
+            yield
+            return
+        if not self._lease.acquire(blocking=False):
+            raise ClientBusy(f"{name} refused: this client is running {(self._holder or ('an operation',))[0]}, and a GatewayClient runs one operation at a time (one client per station or job)")
+        self._holder = (name, me)
+        try:
+            yield
+        finally:
+            self._holder = None
+            self._lease.release()
+
+
+def _serial(operation: str, within: bool = False):
+    """The method runs as the client's one operation (_Endpoint.operation)."""
+    def decorate(method):
+        @functools.wraps(method)
+        def run(self, *args, **kwargs):
+            with self._endpoint.operation(operation, within):
+                return method(self, *args, **kwargs)
+        return run
+    return decorate
+
+
 class GatewayClient:
     def __init__(self, base_url: str, token: str, *, timeout: float = 130.0, deadline: float = 300.0,
                  transport: Callable | None = None, clock: Callable[[], str] = utc_now,
                  sleep: Callable[[float], None] = time.sleep, monotonic: Callable[[], float] = time.monotonic,
                  resolver: Callable | None = None):
-        """`transport` None (or `http_transport` itself) is the real one, over the addresses this client looked up. With it and a gateway that is a name
-        (`http://gateway:8765`, GEN2_GATEWAY_URL), the name is looked up HERE, once (`resolve`), outside any exchange: a failed lookup does not fail the construction
-        (a dependency's failure is a capability fact, not an outage of the engine: DEPLOYMENT-CONTRACT 1.2), it leaves the endpoint stale, and every exchange then fails at
-        once as a transport failure until the owner's `resolve()` succeeds. A transport handed in (a test's) is not the client's to resolve for, and an IP literal needs
-        no lookup. `resolver` is getaddrinfo's signature (socket.getaddrinfo when None, looked up at each call)."""
-        self.base_url, self.token, self.timeout, self.deadline = base_url.rstrip("/"), token, timeout, deadline
+        """`transport` None (or `http_transport` itself) is the real one, over the addresses the endpoint authorizes. With it and a gateway that is a name (`http://gateway:8765`, GEN2_GATEWAY_URL),
+        the name is looked up HERE, once (`resolve`), outside any exchange: a failed lookup does not fail the construction (a dependency's failure is a capability fact, not an outage of the engine:
+        DEPLOYMENT-CONTRACT 1.2), it leaves the endpoint withdrawn (`endpoint_stale`), and every exchange then fails at once as a transport failure until the owner's `resolve()` succeeds. A transport
+        handed in (a test's) is not the client's to resolve for or to withdraw an endpoint of, and an IP literal needs no lookup. `resolver` is getaddrinfo's signature (socket.getaddrinfo when None,
+        looked up at each call). A `base_url` that is not an http or https URL with a host and no credentials is a ValueError."""
+        self._base_url = base_url.rstrip("/")
+        self.token, self.timeout, self.deadline = token, timeout, deadline
         self._clock, self._sleep, self._monotonic, self._resolver = clock, sleep, monotonic, resolver
-        parts = urllib.parse.urlsplit(self.base_url)
-        self._origin = ((parts.hostname or "").lower(), parts.port or (443 if parts.scheme == "https" else 80))   # the key http_transport's `resolved` is looked up by
-        self._resolved: dict = {}
-        self._stale, self.last_resolution = False, None
-        real = transport is None or transport is http_transport
-        self._transport = self._resolving_transport if real else transport
-        if real and _literal(*self._origin) is None:
+        self._endpoint = _Endpoint(self._base_url)
+        self.last_resolution = None
+        self._real = transport is None or transport is http_transport
+        self._transport = self._direct if self._real else transport
+        if self._real and _literal(self._endpoint.host, self._endpoint.port) is None:
             self.resolve()
 
-    def _resolving_transport(self, method: str, url: str, headers: dict, body: bytes | None, timeout: float) -> tuple:
-        return http_transport(method, url, headers, body, timeout, resolved=self._resolved)
+    @property
+    def base_url(self) -> str:
+        return self._base_url
+
+    def _direct(self, method: str, url: str, headers: dict, body: bytes | None, timeout: float) -> tuple:
+        """The real transport, over the addresses the endpoint authorizes as this exchange starts."""
+        return http_transport(method, url, headers, body, timeout, resolved={(self._endpoint.host, self._endpoint.port): self._endpoint.addresses})
 
     @property
     def endpoint_stale(self) -> bool:
-        """True when the gateway's name has no good lookup (the last one failed, or an exchange has failed to connect since): no exchange connects to it until the owner's `resolve()` succeeds."""
-        return self._stale
+        """True when the real transport's endpoint is withdrawn (no addresses: a lookup failed or found nothing, or an exchange failed to connect): no exchange connects to it until the owner's `resolve()` succeeds."""
+        return self._real and not self._endpoint.addresses
 
-    def _withdraw(self) -> None:
-        """The endpoint is stale, and a stale endpoint has no addresses to connect to: both facts change here, together (2b-repair-16, Astra R15-1: a flag no exchange read let a failed re-lookup,
-        or a connection that had failed, keep sending the bearer token to whatever now answers at the old address). `last_resolution` stays as the record of what the last lookup found."""
-        self._stale = True
-        self._resolved.pop(self._origin, None)
-
+    @_serial("resolve")
     def resolve(self) -> Resolution:
-        """Look the gateway's name up (again), now: the one place besides the construction where this client resolves a name, and never called by an exchange, a poll or
-        a search (2b-repair-15, Astra F2: an exchange that resolves can run past its deadline by the resolver's own time, which cannot be interrupted). A connection failure
-        withdraws the endpoint's addresses (`endpoint_stale`) and nothing else; looking again is the OWNER's call, made between operations and before the next exchange's deadline
-        starts. A lookup that finds nothing withdraws them too: until a lookup finds addresses, every exchange is a transport failure at once, with no connection made and no request
-        or token sent. The Resolution is returned and kept (`last_resolution`) for the owner to record.
+        """Look the gateway's name up (again), now: the one place besides the construction where this client resolves a name, and never called by an exchange, a poll or a search (2b-repair-15, Astra F2: an
+        exchange that resolves can run past its deadline by the resolver's own time, which cannot be interrupted). It is an operation like any other: refused (ClientBusy) while one is running, and while it
+        runs every other is. A lookup that finds addresses publishes them and authorizes the endpoint; one that finds nothing withdraws it (until a lookup finds addresses, every exchange is a transport
+        failure at once, with no connection made and no request or token sent). The Resolution is returned and kept (`last_resolution`) for the owner to record.
 
-        The time this takes is the caller's, and it is NOT bounded here: getaddrinfo cannot be interrupted, and the client may not leave a thread running or start a process
-        (BOUNDARIES: the supervisor owns every lifecycle), so whichever call this is made from waits for the resolver. Nothing in gen-2 constructs a GatewayClient or calls
-        this yet; the first caller must place it under a bound it owns."""
-        host, port = self._origin
+        The time this takes is the caller's, and it is NOT bounded here: getaddrinfo cannot be interrupted, and the client may not leave a thread running or start a process (BOUNDARIES: the supervisor owns
+        every lifecycle), so whichever call this is made from waits for the resolver. Nothing in gen-2 constructs a GatewayClient or calls this yet; the first caller (2e1: inside a supervised job child,
+        which the job's deadline terminates) must place it under a bound it owns."""
+        host, port = self._endpoint.host, self._endpoint.port
         began, at = self._monotonic(), self._clock()
         found, error = _literal(host, port), None   # an address needs no lookup
         if found is None:
@@ -321,14 +384,11 @@ class GatewayClient:
                 error = None if found else f"{host}:{port} resolved to no address"
             except OSError as e:
                 found, error = [], f"{type(e).__name__}: {e}"
-        if found:
-            self._resolved[self._origin] = found
-            self._stale = False
-        else:
-            self._withdraw()
+        self._endpoint.publish(found)
         self.last_resolution = Resolution(host, port, tuple(sorted({info[4][0] for info in found})), error, self._monotonic() - began, at)
         return self.last_resolution
 
+    @_serial("exchange", within=True)
     def _exchange(self, method: str, path: str, body: dict | None, token: str, headers: dict | None = None, timeout: float | None = None):
         """(status, parsed JSON dict or None, error class or None). `timeout`: this exchange's own, never above the client's,
         and the whole exchange's (the transport's contract): a reply that completes after it is a timeout, whatever it says."""
@@ -341,8 +401,8 @@ class GatewayClient:
         started = self._monotonic()
         status, resp_headers, raw, error = self._transport(method, self.base_url + path, hdrs, data, budget)
         if status is None:
-            if (error or "transport_failure") == "transport_failure" and _literal(*self._origin) is None:
-                self._withdraw()   # a connection failure withdraws the addresses and invites a new lookup: the owner's `resolve()`, never made here
+            if self._real and (error or "transport_failure") == "transport_failure":
+                self._endpoint.publish(())   # a connection failure withdraws the endpoint and invites a new lookup: the owner's `resolve()`, never made here
             return None, None, error or "transport_failure"
         if self._monotonic() - started > budget:
             return None, None, "timeout"   # a terminal reply that arrives after the deadline is not a result (Astra R13B-1)
@@ -355,10 +415,11 @@ class GatewayClient:
         return status, doc if isinstance(doc, dict) else None, None if isinstance(doc, dict) else "payload_invalid"
 
     # ------------------------------------------------------------------ grants
+    @_serial("grant")
     def grant(self, *, topic_id: str, commercial: bool, accept_per_item: bool, invocation_id: str,
               domain: str | None = None, ttl_seconds: int = 3600) -> dict:
         """Mint a station grant for one invocation of one topic (the engine's token must be a
-        configured grantor). Raises GrantRefused with the gateway's reason."""
+        configured grantor). Raises GrantRefused with the gateway's reason, ClientBusy when the client is running another operation."""
         req = {"topic_id": topic_id, "commercial": commercial, "accept_per_item": accept_per_item,
                "invocation_id": invocation_id, "ttl_seconds": ttl_seconds, **({"domain": domain} if domain else {})}
         status, doc, error = self._exchange("POST", "/v1/grants", req, self.token)
@@ -367,12 +428,14 @@ class GatewayClient:
         return doc
 
     # ------------------------------------------------------------------ search
+    @_serial("search")
     def search(self, request: dict, *, invocation_id: str, attempt: int, policy_version: str,
                obligation_ids: Sequence[str] = (), pages: int = 1, token: str | None = None) -> dict:
         """One logical request: `request` is a gateway payload with its `request_type`. Returns
         {"observations": [{"observation", "retrieval_events", "records", "delivery"}],
         "capability_facts", "telemetry_losses", "pages": [{"page", "sent", "effective_request",
-        "gateway_request_identity", "delivery", "call_ref"}]} — one observation per lane per page."""
+        "gateway_request_identity", "delivery", "call_ref"}]} — one observation per lane per page. It owns
+        the client until it returns, every page and poll of it: ClientBusy when another operation is running."""
         rt = request.get("request_type")
         if rt not in REQUEST_TYPES or not isinstance(attempt, int) or attempt < 1 or pages < 1:
             raise ValueError("a search is a find/resolve/enrich/fetch/data request, attempt >= 1, pages >= 1")

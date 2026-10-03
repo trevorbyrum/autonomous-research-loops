@@ -25,27 +25,12 @@ from unittest import mock
 from gen2.gateway_client import observe
 from gen2.gateway_client import client as gateway
 from gen2.gateway_client.client import GatewayClient, http_transport
+from gen2.tests.gateway_wire import CAPTURED, EMPTY_LANE, FIND, INV, STAMP, gateway_answer, job, lookup, reply
 from gen2.tests.loopback import Loopback, ThreadsJoined
 from gen2.tests.router_fixtures import RouterTestCase
 
-INV = "inv_discover1"
-STAMP = "2026-09-27T10:00:00Z"
-CAPTURED = {"invocation_id": INV, "attempt": 1, "captured": True, "call_ref": 1}
 DEADLINE = 0.5          # seconds; the bound under test
 SLACK = 1.0             # what a loaded machine may add to it; the verdicts rest on the result (a timeout, not a reply), and a stall this long is not scheduling
-FIND = {"request_type": "find", "query": "synthetic", "lanes": ["crossref"]}
-EMPTY_LANE = {"source": "crossref", "coverage": "searched_empty", "completeness": "complete", "count": 0, "retrieved": [], "exhausted": True}
-HEAD = ("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nX-Research-Gateway: result\r\n"
-        "Content-Length: {}\r\nConnection: close\r\n\r\n")
-
-
-def job(status: str, lanes=None) -> bytes:
-    return json.dumps({"status": status, "observation": CAPTURED, "result": {"lanes": lanes if lanes is not None else [], "records": []}},
-                      separators=(",", ":")).encode()
-
-
-def reply(body: bytes) -> bytes:
-    return HEAD.format(len(body)).encode() + body
 
 
 def pieces(data: bytes, n: int) -> list[bytes]:
@@ -359,20 +344,6 @@ class TlsExchangeIsBoundedToo(ExchangeTest):
         self.assertLess(elapsed, 2.0)
 
 
-def lookup(*addresses: str, port: int = 0):
-    """A resolver (getaddrinfo's signature) that finds these addresses for any name, and records each call it is given."""
-    def find(host, called_port, *rest):
-        find.calls.append((host, called_port))
-        return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (address, port or called_port)) for address in addresses]
-    find.calls = []
-    return find
-
-
-def gateway_answer() -> bytes:
-    """What a gateway answers a find with when the lane was read and found nothing: `searched_empty`, complete, 0, exhausted."""
-    return reply(json.dumps({"observation": CAPTURED, "lanes": [EMPTY_LANE], "records": []}, separators=(",", ":")).encode())
-
-
 class NoExchangeResolvesAName(ExchangeTest):
     """Task 2b-repair-15 (Astra's final 2b review, F2). `_connect` called a synchronous getaddrinfo, which cannot be interrupted: a substituted resolver that took 0.4 s made a 0.05 s exchange
     take 0.423 s, and the client-level probe 0.418 s. An exchange now resolves no name at all: an IP literal is its own address, a name was looked up beforehand by the client's owner (at
@@ -496,12 +467,10 @@ class NoExchangeResolvesAName(ExchangeTest):
             self.assertTrue(c.endpoint_stale, "a connection that failed invites a new lookup")
             c.search(FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1", pages=2)   # a whole search over the dead endpoint: every exchange fails
             self.assertEqual(calls, [("resolved", "gateway", dead_port, "outside")], "nothing looked up again: not by the exchanges, not by the search that retried them")
-            c._origin = ("gateway", server.port)   # the gateway's service moved: the name now has another address (and port) to find
-            answers_[0] = ("127.0.0.1", server.port)
+            answers_[0] = ("127.0.0.1", server.port)   # the gateway's service moved: the name now has another address (and port) to find; the configured endpoint is fixed (2b-repair-17)
             record = c.resolve()
-            self.assertEqual(calls[1:], [("resolved", "gateway", server.port, "outside")], "the owner's call, between operations")
+            self.assertEqual(calls[1:], [("resolved", "gateway", dead_port, "outside")], "the owner's call, between operations, for the configured name")
             self.assertEqual((record.addresses, record.error, c.endpoint_stale), (("127.0.0.1",), None, False))
-            c.base_url = f"http://gateway:{server.port}"
             self.assertEqual(c._exchange("GET", "/v1/jobs/1", None, "synthetic")[0], 200)
         self.assertEqual(len(calls), 2)
 
