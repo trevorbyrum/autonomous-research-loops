@@ -9,6 +9,13 @@ tracked file (line numbers and fragments may drift), a function locator must
 be defined where it says (names may not drift), and what is not a locator is
 not checked.
 
+Task 2q-a-repair F4 (Astra's 2q-a review): a dotted citation was recognised
+only while its first part named a module or class that still existed, so
+deleting the module turned the citation into unchecked prose, and a full
+`gen2...` path was never counted. Recognition is now by shape alone: a file
+span, `path::name`, a full module path of a first-party package, or an
+explicit `code:` / `history:` marker; any other dotted name is an error.
+
 What this cannot show: that a locator points at the RIGHT definition (only
 that the name exists where it is cited), or that the prose around it is true.
 """
@@ -91,8 +98,8 @@ class FileLocatorTest(LocatorTestCase):
 
 class NotALocatorTest(LocatorTestCase):
     def test_what_is_not_a_file_or_function_locator_is_not_checked(self) -> None:
-        text = ("`.py`, `/`, `$TOPIC_DIR/STOP`, `commit-fingerprint/1`, `state/control.sqlite3`, `--check`, `make gen2-check`, `os.system`, "
-                "`queue_entries.status_decision_id`, `gateway.calls`, `QueueStore.finalize_run`, `some_name`, `a/b`, `jcs-rfc8785/1`.")
+        text = ("`.py`, `/`, `$TOPIC_DIR/STOP`, `commit-fingerprint/1`, `state/control.sqlite3`, `--check`, `make gen2-check`, "
+                "`some_name`, `a/b`, `jcs-rfc8785/1`, `v1.2`, `python3.12`, `1.0`.")
         self.check(text, 0)
 
     def test_a_fenced_block_is_skipped_and_the_line_numbers_still_count(self) -> None:
@@ -144,23 +151,77 @@ class SymbolLocatorTest(LocatorTestCase):
         self.assertIn("names no tracked file", self.check("`gen2/router/gone.py::write_evidence`.", 1).stderr)
 
 
-class DottedLocatorTest(LocatorTestCase):
-    def test_a_module_or_class_member_that_exists_passes(self) -> None:
-        # service.write_evidence (module stem); Router.commit_outcome (class); Router.is_qualified (inherited from the mixin Registries);
-        # Registries.is_qualified(); ObservationTest (a class of a tests module): test_router.ObservationTest
-        self.check("`service.write_evidence`, `Router.commit_outcome`, `Router.is_qualified`, `Registries.is_qualified()`, `test_router.ObservationTest`, `base.next_link`, "
-                   "`Router.Inner.deep`.", 0)
+class ModulePathTest(LocatorTestCase):
+    def test_a_full_module_path_names_a_module_and_a_name_in_it(self) -> None:
+        done = self.check("`gen2.router.service`, `gen2.router.service.write_evidence`, `gen2.router.service.Router.commit_outcome`, "
+                          "`gen2.router.service.Router.Inner.deep`, `gen2.router.registries.Registries.SPEC`, `gen2.tests.test_router.ObservationTest`, "
+                          "`research_gateway.adapters.base.next_link`, `gen2.router`, `gen2.router.service.write_evidence()`.", 0)
+        self.assertIn("9 module path checked", done.stdout)
 
-    def test_a_member_that_does_not_exist_fails(self) -> None:
-        done = self.check("`base.optional` and `Router.missing` and `service.need()`.", 1)
-        for member in ("base.optional", "Router.missing", "service.need()"):
-            self.assertIn(f"`{member}`", done.stderr)
+    def test_a_name_that_is_not_defined_or_a_module_that_is_not_there_fails(self) -> None:
+        done = self.check("`gen2.router.service.need`, `gen2.router.gone.write_evidence`, `gen2.nothing`, `research_gateway.adapters.gone.f`.", 1)
+        self.assertIn("`gen2.router.service.need`: need is not defined in gen2/router/service.py", done.stderr)
+        self.assertEqual(done.stderr.count("names no module of this repository"), 3)
 
-    def test_an_unknown_first_part_is_not_a_locator(self) -> None:
-        self.check("`registry.anything`, `Unknown.method`.", 0)
+    def test_a_name_is_looked_for_where_it_is_defined_not_where_it_is_inherited(self) -> None:
+        self.assertIn("Router.is_qualified is not defined in gen2/router/service.py", self.check("`gen2.router.service.Router.is_qualified`.", 1).stderr)
+        self.check("`gen2.router.registries.Registries.is_qualified`, `gen2/router/registries.py::Registries.is_qualified`.", 0)
 
-    def test_a_class_member_is_a_def_or_an_assignment_of_the_class_or_a_base(self) -> None:
-        self.check("`Registries.SPEC`, `Router.SPEC`.", 0)
+
+class UnmarkedDottedNameTest(LocatorTestCase):
+    def test_a_dotted_name_that_is_neither_a_locator_form_nor_marked_is_an_error_whatever_its_prefix(self) -> None:
+        done = self.check("`service.write_evidence`, `Router.commit_outcome`, `registry.anything`, `Unknown.method`, `os.system`, `Registries.is_qualified()`.", 1)
+        self.assertEqual(done.stderr.count("UNMARKED DOTTED NAME"), 6)
+        for name in ("service.write_evidence", "Router.commit_outcome", "registry.anything", "Unknown.method", "os.system", "Registries.is_qualified()"):
+            self.assertIn(f"`{name}`: UNMARKED DOTTED NAME", done.stderr)
+
+    def test_a_marked_span_is_counted_and_not_checked(self) -> None:
+        done = self.check("`code: os.system`, `code: gateway.calls`, `history: Response.json`, `history: gen2.router.gone.f`, `code: gen2/router/gone.py`.", 0)
+        self.assertIn("3 marked code and 2 marked history", done.stdout)
+
+    def test_a_marker_needs_a_space_and_text_after_it(self) -> None:
+        done = self.check("`code:` and `history:` and `code:x`.", 0)   # none of these is a marker, a dotted name or a file: nothing to check
+        self.assertIn("0 marked code and 0 marked history", done.stdout)
+
+    def test_the_marker_does_not_turn_a_missing_file_into_prose_by_accident(self) -> None:
+        """A bare name that happens to end in a file suffix is a FILE locator; the author marks it to say it is code (the tool's docstring)."""
+        self.assertIn("`Response.json`: names no tracked file", self.check("`Response.json`.", 1).stderr)
+        self.check("`history: Response.json`.", 0)
+
+
+class DeletedPrefixTest(unittest.TestCase):
+    """Astra's probes: a citation stays while the module or class that gave it its prefix is deleted. Whatever the citation's form, the answer
+    must not depend on the deletion: an unmarked shorthand is an error before and after; a locator is found, then not found."""
+
+    BASE = {"gen2/p/base.py": py("class Base:", "    def f(self):", "        return 1", "", "f = 1")}
+
+    def before_and_after(self, span: str) -> tuple[int, int, str]:
+        repo = Repo(self.BASE | {DOC: f"# I\n\n`{span}`\n"})
+        self.addCleanup(repo.close)
+        before = repo.run(DOC, tool=fx.LOCATORS_TOOL).returncode
+        repo.write({"gen2/p/base.py": None})
+        after = repo.run(DOC, tool=fx.LOCATORS_TOOL)
+        return before, after.returncode, after.stderr
+
+    def test_a_shorthand_naming_the_module_or_the_class_is_an_error_in_both_states(self) -> None:
+        for span in ("base.f", "Base.f"):
+            with self.subTest(span=span):
+                before, after, stderr = self.before_and_after(span)
+                self.assertEqual((before, after), (1, 1))   # it used to pass while the module existed and then to pass again, counted as nothing
+                self.assertIn("UNMARKED DOTTED NAME", stderr)
+
+    def test_a_full_module_path_is_checked_and_stops_passing_when_the_module_goes(self) -> None:
+        before, after, stderr = self.before_and_after("gen2.p.base.Base.f")
+        self.assertEqual((before, after), (0, 1))
+        self.assertIn("names no module of this repository", stderr)
+
+    def test_the_symbol_form_stops_passing_when_the_file_goes(self) -> None:
+        before, after, stderr = self.before_and_after("gen2/p/base.py::Base.f")
+        self.assertEqual((before, after), (0, 1))
+        self.assertIn("names no tracked file", stderr)
+
+    def test_a_marked_span_is_the_authors_statement_and_is_not_affected(self) -> None:
+        self.assertEqual(self.before_and_after("code: base.f")[:2], (0, 0))
 
 
 class ToolFailureTest(LocatorTestCase):
@@ -172,8 +233,8 @@ class ToolFailureTest(LocatorTestCase):
         self.assertIn("cannot be read", done.stderr)
 
     def test_the_summary_counts_what_was_checked(self) -> None:
-        done = self.check("`gen2/router/service.py` `write_evidence` and `Router.commit_outcome` and `tools/check_x.py`.", 0)
-        self.assertIn("locators: 2 file, 1 symbol and 1 dotted checked in 1 documents, 0 that do not exist", done.stdout)
+        done = self.check("`gen2/router/service.py` `write_evidence` and `gen2.router.service.Router.commit_outcome` and `tools/check_x.py` and `code: os.system`.", 0)
+        self.assertIn("locators: 2 file, 1 symbol and 1 module path checked, 1 marked code and 0 marked history, in 1 documents, 0 that do not exist or are unmarked", done.stdout)
 
 
 class RealRepositoryTest(unittest.TestCase):
@@ -185,6 +246,11 @@ class RealRepositoryTest(unittest.TestCase):
         self.assertNotIn("`base.optional`", h5)
         self.assertNotIn("`Response.json`", h5)
         self.assertNotIn("2q's to reconcile", h5)
+
+    def test_the_real_documents_hold_no_unmarked_dotted_name_and_no_stale_locator(self) -> None:
+        done = fx.subprocess.run([fx.sys.executable, str(fx.LOCATORS_TOOL), "--root", str(fx.REPO)], capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, msg=f"{done.stdout}\n{done.stderr}")
+        self.assertIn("0 that do not exist or are unmarked", done.stdout)
 
 
 if __name__ == "__main__":

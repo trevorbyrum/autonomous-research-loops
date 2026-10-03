@@ -94,7 +94,7 @@ None. As of 2026-10-03 the operator has accepted no mitigation. The record: the 
 - kind: obligation
 - status: open
 - owner: phase 4
-- what: The serving principal can read stored records only through `gateway.servable_records`, never the base table; harvest, migration and writers have separate privileges. Until then the source-level check in `gateway/tests/test_record_gate.py` is not runtime access control.
+- what: The serving principal can read stored records only through `gateway/research_gateway/registry/schema.sql::servable_records`, never the base table; harvest, migration and writers have separate privileges. Until then the source-level check in `gateway/tests/test_record_gate.py` is not runtime access control.
 - source: Astra's 2b-repair-5 review (private/reviews/gen2-2b-repair-5-astra-review-20260930.md), recorded in BUILD-STATE.md "Phase 4 release items"
 - removal: Phase 4 deployment and cutover qualification include a refused direct-table read and a successful view read by the serving principal.
 
