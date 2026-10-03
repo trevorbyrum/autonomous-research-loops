@@ -8494,9 +8494,9 @@
  },
  "2Q-ratchet-cycle-equal-only": {
   "controls": [
-   "test_metrics_ratchet.CycleTest.test_a_baselined_cycle_stays_allowed"
+   "test_metrics_identity.IdentityTest.test_mapped_rename_passes_and_keeps_persistent_id_after_folding"
   ],
-  "why": "tools/gen2_metrics.py: executes line 807"
+  "why": "A unique function identity map passes the same transition guard; the mutant only over-restricts cycle mappings."
  },
  "2Q-ratchet-cycle-overlap-allowed": {
   "controls": [
@@ -8598,22 +8598,21 @@
  },
  "2Q-rebaseline-cross-service-loosens": {
   "controls": [
-   "test_metrics_ratchet.ExemptedRegressionsAreNeverRecordedTest.test_a_cycle_regression"
+   "test_metrics_identity.IdentityTest.test_an_admitted_isolated_file_is_a_positive_control"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1064"
+  "why": "The same ledger admission/folding path admits an isolated file without changing any set or function budget."
  },
  "2Q-rebaseline-crossing-offenders-dropped": {
-  "by_hand": true,
   "controls": [
-   "test_metrics_ratchet.ExemptedRegressionsAreNeverRecordedTest.test_a_new_function_over_the_threshold"
+   "test_metrics_identity.IdentityTest.test_an_admitted_isolated_file_is_a_positive_control"
   ],
-  "why": "evaluates tools/gen2_metrics.py tighten's changed elif for a new offender that an exemption covers (and so was an offender under the old thresholds too): false, so it is not recorded, and the mutant's `elif False` records it no more"
+  "why": "The same ledger admission/folding path admits an isolated file without changing any set or function budget."
  },
  "2Q-rebaseline-cycles-loosen": {
   "controls": [
-   "test_metrics_ratchet.ExemptedRegressionsAreNeverRecordedTest.test_a_self_call_regression"
+   "test_metrics_identity.IdentityTest.test_an_admitted_isolated_file_is_a_positive_control"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1044; or executes line 1043"
+  "why": "The same ledger admission/folding path admits an isolated file without changing any set or function budget."
  },
  "2Q-rebaseline-functions-loosen": {
   "controls": [
@@ -8653,9 +8652,9 @@
  },
  "2Q-rebaseline-smells-loosen": {
   "controls": [
-   "test_metrics_ratchet.ExemptedRegressionsAreNeverRecordedTest.test_a_cycle_regression"
+   "test_metrics_identity.IdentityTest.test_an_admitted_isolated_file_is_a_positive_control"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1053; or executes line 1052"
+  "why": "The same ledger admission/folding path admits an isolated file without changing any set or function budget."
  },
  "2Q-rebaseline-threshold-loosens": {
   "controls": [
@@ -8686,6 +8685,54 @@
    "test_metrics_measure.SmellTest.test_a_stable_module_depending_on_a_much_less_stable_one_is_flagged"
   ],
   "why": "tools/gen2_metrics.py: executes line 660 (else 658)"
+ },
+ "2QI-conditional-class": {
+  "controls": [
+   "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
+  ],
+  "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
+ },
+ "2QI-last-entry-binding": {
+  "controls": [
+   "test_metrics_identity.BindingTest.test_unique_reexport_matches_the_interpreter"
+  ],
+  "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
+ },
+ "2QI-map-without-comparison": {
+  "controls": [
+   "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
+  ],
+  "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
+ },
+ "2QI-missing-means-improvement": {
+  "controls": [
+   "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
+  ],
+  "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
+ },
+ "2QI-pair-disappearance": {
+  "controls": [
+   "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
+  ],
+  "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
+ },
+ "2QI-qualified-short-name": {
+  "controls": [
+   "test_locators.ModulePathTest.test_a_full_module_path_names_a_module_and_a_name_in_it"
+  ],
+  "why": "A module and class attribute that actually exist pass through the qualified lookup under both indexes."
+ },
+ "2QI-reasonless-admission": {
+  "controls": [
+   "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
+  ],
+  "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
+ },
+ "2QI-uncommitted-ledger": {
+  "controls": [
+   "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
+  ],
+  "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
  },
  "2QR-collab-depth-first-order": {
   "controls": [
@@ -8826,7 +8873,7 @@
    "test_metrics_collaboration.RouterInMiniatureTest.test_rewriting_the_bases_is_neither_an_improvement_nor_recorded_by_a_rebaseline"
   ],
   "rejected": [
-   "test_metrics_collaboration.UnresolvedBaseTest.test_an_exemption_classifies_it_and_a_stale_one_fails",
+   "test_metrics_collaboration.UnresolvedBaseTest.test_a_ledger_classifies_it_and_a_stale_one_fails",
    "test_metrics_collaboration.UnresolvedBaseTest.test_the_syntax_that_erased_the_inventory_is_now_a_resolved_base_and_an_unfollowable_one_is_a_failure_not_a_zero"
   ],
   "why": "tools/gen2_metrics.py: executes line 735 (else 729); or executes line 723"
@@ -8839,9 +8886,9 @@
  },
  "2QR-dep-fan-in-counts-new-files": {
   "controls": [
-   "test_metrics_dependencies.FanInTest.test_a_stable_file_gaining_a_dependent_among_the_existing_files_is_a_regression"
+   "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
   ],
-  "why": "tools/gen2_metrics.py: executes line 833; or executes line 832"
+  "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
  },
  "2QR-dep-fan-in-gated-for-every-file": {
   "controls": [
@@ -8878,12 +8925,9 @@
  },
  "2QR-dep-new-files-are-baselined": {
   "controls": [
-   "test_metrics_dependencies.FanOutTest.test_replacing_one_import_by_another_is_no_rise"
+   "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
   ],
-  "rejected": [
-   "test_metrics_dependencies.FanOutTest.test_an_existing_file_importing_a_new_file_takes_on_a_dependency"
-  ],
-  "why": "tools/gen2_metrics.py: executes line 825"
+  "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
  },
  "2QR-dep-reach-compared-by-total": {
   "controls": [
@@ -8998,9 +9042,9 @@
  },
  "2QR-offender-tracked-dropped": {
   "controls": [
-   "test_metrics_offenders.BaselinedOffenderTest.test_a_score_that_stays_where_it_was_is_no_growth_even_under_the_thresholds"
+   "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
   ],
-  "why": "tools/gen2_metrics.py: executes line 726; or executes line 723"
+  "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
  },
  "2QR-rebaseline-fan-in-loosens": {
   "controls": [
@@ -9022,9 +9066,9 @@
  },
  "2QR-rebaseline-reach-loosens": {
   "controls": [
-   "test_metrics_dependencies.RecordingTest.test_an_exempted_fan_in_rise_is_never_recorded"
+   "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1050; or executes line 1038"
+  "why": "Existing reach budgets take the same inventory accounting without new reach."
  },
  "2QR-upgrade-forgives-regressions": {
   "controls": [
