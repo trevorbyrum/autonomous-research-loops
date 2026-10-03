@@ -33,4 +33,7 @@ MUTATIONS = [
              target=M, old='            ref = self.expr(path, node, qual.rpartition(".")[0])', new='            ref = self.expr(path, node)'),
     Mutation("2QI-locator-owner-binding", "2q-repair-2", "a qualified method survives replacement of its owning class", (Q + "test_a_replaced_class_owner_cannot_leave_a_stale_qualified_method",),
              target=C, old='            if len(options) != 1 or options[0][1]:', new='            if options[0][1]:'),
+    Mutation("2QI-star-export-scope", "2q-repair-2", "function and class export lists replace the module export list", (B + "test_star_export_lists_are_read_only_from_the_module_namespace",),
+             target=M, old='        self.exports = {}\n        for path, tree in trees.items():\n            for node in tree.body:',
+             new='        self.exports = {}\n        for path, tree in trees.items():\n            for node in ast.walk(tree):'),
 ]

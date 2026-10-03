@@ -370,6 +370,23 @@ class BindingTest(RatchetTestCase):
             else:
                 self.assertTrue(found["unresolved"])
 
+    def test_star_export_lists_are_read_only_from_the_module_namespace(self):
+        for public, local in ((["Base"], []), ([], ["Base"])):
+            for nested in (f"def private():\n    __all__ = {local!r}\n", f"class Private:\n    __all__ = {local!r}\n"):
+                with self.subTest(public=public, nested=nested):
+                    files = tree(use("from gen2.p import Base"), **{"gen2/__init__.py": "", "gen2/p/base.py": BASE + f"__all__ = {public!r}\n" + nested,
+                                 "gen2/p/__init__.py": "from .base import *\n"})
+                    repo = Repo(files)
+                    self.addCleanup(repo.close)
+                    self.assertEqual(self.runtime(repo, "import gen2.p as p; print(hasattr(p, 'Base'))").strip(), str(bool(public)))
+                    found = calls(repo)
+                    if public:
+                        self.assertEqual(found["pairs"], {"gen2/p/use.py->gen2/p/base.py": 1})
+                        self.assertFalse(found["unresolved"])
+                    else:
+                        self.assertFalse(found["pairs"])
+                        self.assertTrue(found["unresolved"])
+
     def test_unique_reexport_matches_the_interpreter(self):
         repo = self.baselined(tree(use("from gen2.p import Base"), **{"gen2/__init__.py": "", "gen2/p/__init__.py": "from .base import *\n"}))
         self.assertEqual(self.runtime(repo, "from gen2.p.use import Child; print(Child().g())").strip(), "1")

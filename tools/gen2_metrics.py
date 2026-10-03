@@ -349,7 +349,7 @@ class Classes:
         self.class_scope = {path: {qual: self._bindings(path, node) for qual, node in classes.items()} for path, classes in self.classes.items()}
         self.exports = {}
         for path, tree in trees.items():
-            for node in ast.walk(tree):
+            for node in tree.body:
                 if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets):
                     try:
                         value = ast.literal_eval(node.value)

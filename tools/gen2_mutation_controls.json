@@ -8746,6 +8746,12 @@
   ],
   "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
  },
+ "2QI-star-export-scope": {
+  "controls": [
+   "test_metrics_identity.BindingTest.test_star_export_visibility_matches_python_or_is_unresolved"
+  ],
+  "why": "Literal module __all__ is read through the changed namespace traversal; its visibility control uses no local replacement and still matches Python under the mutant."
+ },
  "2QI-uncommitted-ledger": {
   "controls": [
    "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
