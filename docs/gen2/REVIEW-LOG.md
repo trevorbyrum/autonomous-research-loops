@@ -1277,3 +1277,19 @@ A `GatewayClient` **instance is serial**: an overlapping or re-entrant call on t
 - +1,357 lines (production +63).
 
 **Orchestrator:** clean tree; gen-1 unchanged (PID 1040). Independent reruns are in progress. Astra review `5df3cb04`; task file `private/reviews/gen2-2b-repair-17-review-task-20261003.md`. If it closes, this is the 2b acceptance review.
+
+## 2026-10-03 — Astra review of 2b-repair-17 (`5df3cb04`, pinned 4c360d0) — BLOCK (A, C); PASS (B)
+Full report: `private/reviews/gen2-2b-repair-17-astra-review-20261003.md`.
+
+**Removed structurally:** the operation-ownership race and the ambient-handler and proxy routes. The gateway input contract is still closed under B. Earlier ROOT-CAUSE items stand.
+
+**R17-1 (HIGH):** connection authority still has two interpretations. `_Endpoint` classifies `urlsplit`'s raw host, so `127.0.0.%31` is a name. urllib then unquotes it to `127.0.0.1`, and `_connect` tries `_literal()` on the decoded host before consulting the owner's mapping. As a result, a withdrawn and NXDOMAIN'd endpoint sent a search and a grant, with the bearer token, to a replacement listener. The search was recorded as `searched_empty/complete/0/exhausted`. Ordinary name and literal controls behave correctly.
+
+**Family verdict:** MITIGATION. Withdrawn owner state is not yet the sole prerequisite for network I/O.
+
+**Routing:** **2b-repair-18**:
+- one canonical origin, validated at construction: LDH names or `ipaddress` literals; percent-encoding, alternate numeric spellings and userinfo refused;
+- `_connect` takes targets only from the owner's admitted addresses;
+- Astra's probe rebuilt as a regression, plus a refused-spelling table and a mutant.
+
+No operator ruling is needed. This is the first BLOCK since Gate D #3.
