@@ -1221,3 +1221,33 @@ Both are client-output reproductions using ordinary APIs.
 - give a finite checklist.
 
 The post-2q Gate D is renumbered #4.
+
+## 2026-10-02 — Gate D #3 (fresh Astra `e5989aa9`, pinned 6b44bb2) — BLOCK, converging, with a finite engine finish line
+Full report: `private/reviews/gen2-gate-d-3-astra-review.md`; evidence in `private/evidence/gate-d-3/`.
+
+**Family cause:** endpoint authority is not one enforced fact across operation ownership and transport routing. This is behind R15-1, R16-1 (an overlapping exchange keeps its iterator over the withdrawn addresses) and R16-2 (ambient `ProxyHandler`).
+
+The §3 inventory covers every route by which a request can leave `gen2/gateway_client`:
+- public operations, URL construction, DNS, address fallback, IP literals;
+- proxy and CONNECT, redirects, auth, cookies and global opener, other urllib handlers (FTP/file/data);
+- environment variables;
+- keep-alive, retries, polls, TLS, injected hooks.
+
+**Checklist 0–7:**
+- 0: one client contract;
+- 1: one authority owner over all operations and the connect/send lifetime;
+- 2: direct HTTP/HTTPS only (no proxies, no redirects, no non-HTTP handlers);
+- 3: bounded lifetimes;
+- 4: keep the timing contracts;
+- 5: keep the hand-off and gateway contract;
+- 6: validation, with mutants and controls;
+- 7: a family account against the inventory.
+
+**Threat model:** it recommends an enforced serial client per job, which is compatible with the source of truth: the design supports concurrent invocations, not shared client instances. Ignoring ambient proxies needs no ruling (DEPLOYMENT-CONTRACT §1).
+
+**Reviewer boundary disclosure:** an initial AGENTS.md search ran recursively under `/home/trevor/work` and may have walked the live gen-1 tree's directory metadata. No file there was opened or operated on. Future task files will restrict discovery to ancestor directories.
+
+## 2026-10-03 — Operator ruling: the client model
+A `GatewayClient` **instance is serial**: an overlapping or re-entrant call on the same instance is refused before I/O. **Separate instances (one per station or job) must run fully concurrently**, proven by test. Operator: *"That's fine then as long as concurrent connections can run."*
+
+**Routing:** 2b-repair-17 implements Gate D #3 checklist 0–7.
