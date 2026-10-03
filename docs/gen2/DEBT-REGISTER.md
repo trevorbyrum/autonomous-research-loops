@@ -30,7 +30,7 @@ None. As of 2026-10-03 the operator has accepted no mitigation. The record: the 
 - kind: obligation
 - status: open
 - owner: task 2e1
-- what: A `GatewayClient`, and any call to its `resolve()`, is constructed only inside a supervised job child, so that the supervisor's job `deadline_at` termination (SIGTERM, then SIGKILL; `gen2/supervisor/supervisor.py`) bounds the name lookup that the client's own deadlines do not reach (`getaddrinfo`). Nothing enforces the placement today: no code in `gen2/` outside the client package and its tests constructs a client, so 2e1's wiring makes the first construction site.
+- what: A `GatewayClient`, and any call to its `resolve()`, is constructed only inside a supervised job child, so that the supervisor's job `deadline_at` termination (`gen2/supervisor/supervisor.py` decides on the deadline; `gen2/supervisor/jobs.py` ends the job's process group, SIGTERM then SIGKILL) bounds the name lookup that the client's own deadlines do not reach (`getaddrinfo`). Nothing enforces the placement today: no code in `gen2/` outside the client package and its tests constructs a client, so 2e1's wiring makes the first construction site.
 - source: operator ruling 2026-10-02, option (a) for the 2b-repair-15 F2 DNS residual (REVIEW-LOG.md "Operator ruling: the DNS residual"; BUILD-STATE.md 2e1 entry; INVARIANTS H-6 "Authority and withdrawal")
 - removal: The 2e1 review verifies that no other construction site exists (the engine process, the router and the operator tools have none): every construction and every `resolve()` call in `gen2/` outside tests is inside a supervised job child.
 
