@@ -1251,3 +1251,29 @@ The §3 inventory covers every route by which a request can leave `gen2/gateway_
 A `GatewayClient` **instance is serial**: an overlapping or re-entrant call on the same instance is refused before I/O. **Separate instances (one per station or job) must run fully concurrently**, proven by test. Operator: *"That's fine then as long as concurrent connections can run."*
 
 **Routing:** 2b-repair-17 implements Gate D #3 checklist 0–7.
+
+## 2026-10-03 — 2b-repair-17 landed (engine endpoint authority, Gate D #3 checklist 0–7) — Astra review dispatched
+**Coder (Sonnet 5.5, `9c21fece`):** `46edc5e`..`4c360d0`.
+
+**Root cause:** whether the client could do I/O was decided by four facts that could disagree:
+- the cached address mapping;
+- the stale flag;
+- the live connect iterator;
+- urllib's proxy choice.
+
+**Fix:** one `_Endpoint` now holds the origin, the addresses (stale is derived from them) and the operation lease.
+- `search` (across pages and polls), `grant` and `resolve` run under the lease. An overlap on the same instance raises `ClientBusy` before any I/O.
+- Endpoint forms are http/https only.
+- The opener has 4 HTTP handlers: no proxy, no redirect, no auth, no cookies, no FTP/file/data.
+- All 17 routes in §3 are mapped to tests and mutants in `family-account.md`.
+
+**Concurrency across instances is proven.** The loopback server sees N in flight for N = 2/8/32/64. The `2B17-instances-share-a-lock` mutant collapses that to 1 in flight.
+
+**Results (coder):**
+- 23 new mutants and 7 re-expressed ones;
+- gen2-check 1,752 tests, 1,811/1,811 mutants;
+- gen2-gateway 1,500+1,500 tests, 377 mutants;
+- `gateway/` and the oracle unchanged;
+- +1,357 lines (production +63).
+
+**Orchestrator:** clean tree; gen-1 unchanged (PID 1040). Independent reruns are in progress. Astra review `5df3cb04`; task file `private/reviews/gen2-2b-repair-17-review-task-20261003.md`. If it closes, this is the 2b acceptance review.
