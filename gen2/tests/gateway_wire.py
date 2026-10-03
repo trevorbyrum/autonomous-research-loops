@@ -92,6 +92,13 @@ class Recorder:
         return sum(f"Authorization: Bearer {token}".encode() in head for head, _ in self.hits)
 
 
+def paged_answer(page: int) -> bytes:
+    """A lane that read one record and, on its first page, hands back a continuation (the cursor `c2`); its second page is the end."""
+    lane = {"source": "crossref", "role": "base", "coverage": "searched_ok", "completeness": "complete", "count": 1, "retrieved": ["doi:10.1/a"],
+            **({"next": "c2"} if page == 1 else {"exhausted": True})}
+    return reply(json.dumps({"observation": CAPTURED, "lanes": [lane], "records": [{"identity": "doi:10.1/a", "source_id": "crossref"}]}, separators=(",", ":")).encode())
+
+
 def gateway_script(*, poll: bool = False):
     """A Recorder script for a gateway that answers a find with an empty, exhausted lane; with `poll`, queues it and answers the first poll."""
     def script(server, conn, head, body, index):

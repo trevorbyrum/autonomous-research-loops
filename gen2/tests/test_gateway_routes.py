@@ -75,7 +75,16 @@ class NoNameIsLookedUp:
             patch.stop()
 
 
-class DirectHttpOnly(ThreadsJoined):
+class RouteTest(ThreadsJoined):
+    def searching(self, c: GatewayClient) -> dict:
+        """`c`'s search. One that raises (a mutant that reaches a handler the client has no business with can raise from deep in urllib) is a failed test, not an error in it."""
+        try:
+            return c.search(FIND, **SEARCH)
+        except BaseException as e:
+            self.fail(f"the search raised {e!r}")
+
+
+class DirectHttpOnly(RouteTest):
     """What the environment says about proxies is not read; what a reply says about where to go is not followed; and the client's one door is the endpoint it was configured with."""
 
     def search_through(self, env: dict, *, named: bool, poll: bool, proxy: Recorder, destination: Recorder):
@@ -86,7 +95,7 @@ class DirectHttpOnly(ThreadsJoined):
                 c = GatewayClient(f"http://gateway.test:{destination.port}", TOKEN, resolver=lookup("127.0.0.1", port=destination.port), **FAST)
             else:
                 c = GatewayClient(f"http://127.0.0.1:{destination.port}", TOKEN, **FAST)
-            out = c.search(FIND, **SEARCH)
+            out = self.searching(c)
         self.assertEqual(names.calls, [], "nothing was looked up by an exchange")
         return observed(out), destination.hits[before:]
 
@@ -112,7 +121,10 @@ class DirectHttpOnly(ThreadsJoined):
     def test_a_grant_goes_the_same_way(self):
         proxy, destination = Recorder(self), Recorder(self, gateway_script())
         with environment({"http_proxy": "http://127.0.0.1:" + WHERE, "HTTP_PROXY": "http://127.0.0.1:" + WHERE}, proxy.port):
-            token = GatewayClient(f"http://127.0.0.1:{destination.port}", TOKEN, **FAST).grant(topic_id="topic_1", commercial=False, accept_per_item=False, invocation_id=INV)["token"]
+            try:
+                token = GatewayClient(f"http://127.0.0.1:{destination.port}", TOKEN, **FAST).grant(topic_id="topic_1", commercial=False, accept_per_item=False, invocation_id=INV)["token"]
+            except BaseException as e:
+                self.fail(f"the grant raised {e!r}")
         self.assertEqual((token, destination.request_lines, destination.carrying(), proxy.count), ("gwg1.synthetic", ["POST /v1/grants HTTP/1.1"], 1, 0))
 
     def test_a_redirect_is_never_followed_whatever_the_status_and_wherever_it_points(self):
@@ -126,18 +138,17 @@ class DirectHttpOnly(ThreadsJoined):
                 server.send(conn, [(0, queued_answer())])
                 return
             server.send(conn, [(0, f"HTTP/1.1 {state['code']} Redirect\r\nLocation: {state['location']}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".encode())])
-        origin = Recorder(self, redirect)
-        targets = {"same-origin, absolute": f"http://127.0.0.1:{origin.port}/v1/other", "same-origin, relative": "/v1/other", "same-origin, scheme-relative": f"//127.0.0.1:{origin.port}/v1/other",
-                   "another origin": f"http://127.0.0.1:{elsewhere.port}/v1/find"}
         for code in (301, 302, 303, 307, 308):
-            for label, location in targets.items():
+            for label in ("same-origin, absolute", "same-origin, relative", "same-origin, scheme-relative", "another origin"):
                 for poll in (False, True):
                     with self.subTest(code=code, location=label, poll=poll):
+                        origin = Recorder(self, redirect)   # one for each case: a poll that gave up leaves its last request to arrive late, and that must not be read as the next case's
+                        location = {"same-origin, absolute": f"http://127.0.0.1:{origin.port}/v1/other", "same-origin, relative": "/v1/other",
+                                    "same-origin, scheme-relative": f"//127.0.0.1:{origin.port}/v1/other", "another origin": f"http://127.0.0.1:{elsewhere.port}/v1/find"}[label]
                         state.update(code=code, location=location, poll=poll)
-                        before = origin.count
                         c = GatewayClient(f"http://127.0.0.1:{origin.port}", TOKEN, deadline=0.2, **FAST)
-                        out = c.search(FIND, **SEARCH)
-                        lines = origin.request_lines[before:]
+                        out = self.searching(c)
+                        lines = origin.request_lines
                         self.assertEqual(observed(out), unobserved("timeout" if poll else "transport_failure"))
                         self.assertEqual([line for line in lines if "/v1/other" in line], [], "the destination of a redirect was never requested")
                         self.assertEqual(elsewhere.count, 0, "and nothing went to another origin")
@@ -168,11 +179,11 @@ class DirectHttpOnly(ThreadsJoined):
         for status, expected in (("401", ("auth_failed", "unobserved", None, "failed", "credentials_rejected")), ("407", unobserved("transport_failure"))):
             with self.subTest(status=status):
                 mode["now"], before = status, listener.count
-                self.assertEqual(observed(c.search(FIND, **SEARCH)), expected)
+                self.assertEqual(observed(self.searching(c)), expected)
                 self.assertEqual(listener.count - before, 1, "no second request: the challenge was not answered")
         mode["now"], before = "cookie", listener.count
-        self.assertEqual(observed(c.search(FIND, **SEARCH)), EMPTY_AND_EXHAUSTED)
-        self.assertEqual(observed(c.search(FIND, **SEARCH)), EMPTY_AND_EXHAUSTED)
+        self.assertEqual(observed(self.searching(c)), EMPTY_AND_EXHAUSTED)
+        self.assertEqual(observed(self.searching(c)), EMPTY_AND_EXHAUSTED)
         sent = listener.hits[before:]
         self.assertEqual(len(sent), 4, "two searches, each its request and its poll")
         for head, _ in sent:
@@ -191,13 +202,14 @@ class DirectHttpOnly(ThreadsJoined):
         urllib.request.install_opener(sentinel)
         self.addCleanup(urllib.request.install_opener, saved)
         listener = Recorder(self, gateway_script())
-        self.assertEqual(observed(GatewayClient(f"http://127.0.0.1:{listener.port}", TOKEN, **FAST).search(FIND, **SEARCH)), EMPTY_AND_EXHAUSTED)
+        self.assertEqual(observed(self.searching(GatewayClient(f"http://127.0.0.1:{listener.port}", TOKEN, **FAST))), EMPTY_AND_EXHAUSTED)
         self.assertEqual((asked, urllib.request._opener is sentinel, listener.count), ([], True, 1))
 
     def test_the_opener_has_the_http_handlers_and_nothing_else(self):
         """The fixed handler inventory: HTTP and HTTPS, the default error handler (a status that is not a success is an HTTPError) and the error processor. Nothing that reads the environment,
         follows, authenticates, keeps cookies, or speaks FTP, file, data or an unknown scheme."""
-        handlers = gateway._opener(gateway._Deadline(1), {}).handlers
+        with environment({"http_proxy": "http://127.0.0.1:9", "https_proxy": "http://127.0.0.1:9", "ftp_proxy": "http://127.0.0.1:9"}, 9):   # a proxy handler registers itself only for what the environment names
+            handlers = gateway._opener(gateway._Deadline(1), {}).handlers
         self.assertEqual(sorted(type(h).__name__ for h in handlers), ["HTTPDefaultErrorHandler", "HTTPErrorProcessor", "Http", "Https"])
         for kind in (urllib.request.ProxyHandler, urllib.request.HTTPRedirectHandler, urllib.request.UnknownHandler, urllib.request.FTPHandler, urllib.request.FileHandler,
                      urllib.request.DataHandler, urllib.request.HTTPCookieProcessor, urllib.request.AbstractBasicAuthHandler, urllib.request.AbstractDigestAuthHandler):
@@ -236,14 +248,22 @@ class TheEndpointForms(ThreadsJoined):
 
     def test_an_endpoint_that_is_not_an_http_or_https_host_without_credentials_is_refused_before_any_io(self):
         resolver = mock.Mock(side_effect=AssertionError("a lookup was made"))
+
+        def refuses(url, transport):
+            try:
+                GatewayClient(url, TOKEN, resolver=resolver, transport=transport)
+            except ValueError:
+                return
+            except BaseException as e:   # a mutant that lets the URL through fails somewhere else: that is a failure of this test, not an error in it
+                self.fail(f"{url!r}: {e!r}, not a ValueError")
+            self.fail(f"{url!r} was accepted")
         refused = ("ftp://gateway:8765", "file:///etc/hosts", "data:text/plain,x", "gopher://gateway", "ws://gateway:8765", "gateway:8765", "gateway", "", "//gateway:8765",
                    "http://", "https://:8443", "http://user@gateway:8765", "http://user:secret@gateway:8765", "http://gateway:99999", "http://gateway:eight")
         with mock.patch.object(gateway._DeadlineSocket, "connect", side_effect=AssertionError("a connection was made")) as connect, NoNameIsLookedUp():
             for url in refused:
                 for transport in (None, lambda *a: (200, {}, b"", None)):
                     with self.subTest(url=url, transport=bool(transport)):
-                        with self.assertRaises(ValueError):
-                            GatewayClient(url, TOKEN, resolver=resolver, transport=transport)
+                        refuses(url, transport)
         resolver.assert_not_called()
         connect.assert_not_called()
 
@@ -259,7 +279,7 @@ class TheEndpointForms(ThreadsJoined):
 
 
 @unittest.skipUnless(shutil.which("openssl"), "a TLS server needs a certificate, which the openssl command line makes")
-class DirectHttpsOnly(ThreadsJoined):
+class DirectHttpsOnly(RouteTest):
     """The same for TLS: an https_proxy would be a CONNECT tunnel to a host the withdrawn endpoint no longer controls. The environment names one and the proxy is never connected to; the TLS exchange
     goes straight to the endpoint, and the certificate is still checked against, and the server name still is, the hostname."""
 
@@ -289,7 +309,7 @@ class DirectHttpsOnly(ThreadsJoined):
                 before, proxied = destination.count, proxy.count
                 with environment({**env, "SSL_CERT_FILE": self.cert}, proxy.port), NoNameIsLookedUp() as lookups:
                     c = GatewayClient(f"https://gateway.test:{destination.port}", TOKEN, resolver=lookup("127.0.0.1", port=destination.port), **FAST)
-                    out = c.search(FIND, **SEARCH)
+                    out = self.searching(c)
                 self.assertEqual((observed(out), destination.request_lines[before:], destination.carrying(), proxy.count - proxied, lookups.calls),
                                  (EMPTY_AND_EXHAUSTED, ["POST /v1/find HTTP/1.1"], len(destination.hits), 0, []))
                 self.assertEqual(names[-1], "gateway.test", "the server name sent is the hostname")

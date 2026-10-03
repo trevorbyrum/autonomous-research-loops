@@ -18,8 +18,8 @@ from unittest import mock
 
 from gen2.gateway_client import client as gateway
 from gen2.gateway_client.client import ClientBusy, GatewayClient, GrantRefused
-from gen2.tests.gateway_wire import (EMPTY_AND_EXHAUSTED, EMPTY_LANE, FIND, INV, STAMP, TOKEN, Recorder, gateway_answer, gateway_script, job, lookup, observed, queued_answer,
-                                     reply, unobserved)
+from gen2.tests.gateway_wire import (EMPTY_AND_EXHAUSTED, EMPTY_LANE, FIND, INV, STAMP, TOKEN, Recorder, gateway_answer, gateway_script, job, lookup, observed, paged_answer,
+                                     queued_answer, reply, unobserved)
 from gen2.tests.loopback import ThreadsJoined
 
 SEARCH = dict(invocation_id=INV, attempt=1, policy_version="gw-policy/1")
@@ -33,7 +33,7 @@ class Hold:
     def __init__(self, after: int = 0) -> None:
         self.reached, self.release, self._after, self._arrivals, self._lock = threading.Event(), threading.Event(), after, 0, threading.Lock()
 
-    def __call__(self) -> None:
+    def __call__(self, *args) -> None:
         with self._lock:
             self._arrivals += 1
             mine = self._arrivals == self._after + 1
@@ -89,6 +89,13 @@ class OwnershipTest(ThreadsJoined):
         thread.start()
         self.addCleanup(lambda: ((release.set() if release else None), thread.join(10)))
         return thread, box
+
+    def runs(self, call):
+        """What `call` returns. A ClientBusy from a call that should run (the client held after an error, refusing because of another client) is a failure of the test, not an error in it."""
+        try:
+            return call()
+        except ClientBusy as busy:
+            self.fail(f"refused, though nothing of this client was running: {busy}")
 
     def refused(self, call):
         """The ClientBusy `call` raises. Anything else is a failure of the test, and so is a call that runs: a mutant that lets it through must be caught here, by assertion."""
@@ -169,13 +176,43 @@ class OneOperationAtATime(OwnershipTest):
                 self.assertEqual((listener.request_lines, len(seen["connects"])), (["POST /v1/find HTTP/1.1", "GET /v1/jobs/1 HTTP/1.1"], 2))
                 self.assertEqual(observed(result), EMPTY_AND_EXHAUSTED)
 
+    def test_a_call_between_a_searchs_pages_and_between_its_polls_is_refused_too(self):
+        """The search owns the client, not only each exchange of it: held in the gap after one poll and before the next (its sleep), and after one page and before the next (its clock), when no
+        exchange is in flight, every other call is still refused and sends nothing, and the search then reads its next poll or page."""
+        answers = iter([reply(job("running"))])
+
+        def polling(server, conn, head, body, index):
+            server.send(conn, [(0, queued_answer() if head.startswith(b"POST") else next(answers, reply(job("done", [EMPTY_LANE]))))])
+
+        def paging(server, conn, head, body, index):
+            server.send(conn, [(0, paged_answer(index))])
+        for label, script, hook, held, extra, requests in (("sleep between polls", polling, "sleep", 0, {}, 3), ("clock between pages", paging, "clock", 3, {"pages": 2}, 2)):
+            with self.subTest(label):
+                hold, answers = Hold(after=held), iter([reply(job("running"))])
+                listener = Recorder(self, script)
+                hooks = {"sleep": hold, "clock": lambda: STAMP} if hook == "sleep" else {"clock": lambda: (hold(), STAMP)[1], "sleep": lambda s: None}
+                c = GatewayClient(f"http://gateway.test:{listener.port}", TOKEN, resolver=lookup("127.0.0.1", port=listener.port), **hooks)
+                seen, _ = self.watch()
+                thread, box = self.running(lambda: c.search(FIND, **SEARCH, **extra), hold.release)
+                self.assertTrue(hold.reached.wait(5), f"the search did not reach {label}")
+                before = (listener.count, list(seen["connects"]), c.last_resolution)
+                for second, call in operations(c).items():
+                    with self.subTest(label, second=second):
+                        self.assertIn("running search", str(self.refused(call)))
+                self.assertEqual((listener.count, list(seen["connects"]), c.last_resolution), before, "the refused calls sent nothing")
+                hold.release.set()
+                thread.join(10)
+                self.assertNotIn("error", box)
+                self.assertEqual(listener.count, requests, "and the search went on to its next poll or page")
+                self.unwatch()
+
     def test_control_the_same_operations_run_alone_and_a_search_then_a_grant_then_a_resolve_follow_each_other(self):
         """The control the refusals are measured against: no overlap, each operation one request (a resolve none), all of them accepted one after another by one client."""
         c, listener, resolver = self.gateway()
-        self.assertEqual(observed(c.search(FIND, **SEARCH)), EMPTY_AND_EXHAUSTED)
-        self.assertEqual(c.grant(**GRANT)["token"], "gwg1.synthetic")
-        self.assertEqual((c.resolve().addresses, c.endpoint_stale), (("127.0.0.1",), False))
-        self.assertEqual(observed(c.search(FIND, **SEARCH)), EMPTY_AND_EXHAUSTED)
+        self.assertEqual(observed(self.runs(lambda: c.search(FIND, **SEARCH))), EMPTY_AND_EXHAUSTED)
+        self.assertEqual(self.runs(lambda: c.grant(**GRANT))["token"], "gwg1.synthetic")
+        self.assertEqual((self.runs(c.resolve).addresses, c.endpoint_stale), (("127.0.0.1",), False))
+        self.assertEqual(observed(self.runs(lambda: c.search(FIND, **SEARCH))), EMPTY_AND_EXHAUSTED)
         self.assertEqual((listener.count, len(resolver.calls)), (3, 2), "three requests, and the lookups were the construction's and the one resolve")
 
     def test_a_call_during_a_resolution_is_refused_before_any_lookup_or_byte(self):
@@ -207,10 +244,11 @@ class OneOperationAtATime(OwnershipTest):
     def test_a_call_from_inside_an_operation_is_refused_too(self):
         """Re-entry: a hook the operation calls (the clock, the sleep between polls, the resolver) calls back into the client. Each re-entrant call is refused and the operation that was
         running finishes, with nothing sent for the re-entrant call."""
-        outcomes, holder = [], []
+        outcomes, holder, fired = [], [], set()
 
         def call_back(what):
-            if holder:
+            if holder and what not in fired:   # once for each hook: a client that let the call through would otherwise call itself back for ever
+                fired.add(what)
                 try:
                     (holder[0].search(FIND, **SEARCH) if what != "resolve" else holder[0].resolve())
                     outcomes.append((what, "ran"))
@@ -219,7 +257,7 @@ class OneOperationAtATime(OwnershipTest):
         answers = iter([reply(job("running")), reply(job("done", [EMPTY_LANE]))])
 
         def script(server, conn, head, body, index):
-            server.send(conn, [(0, queued_answer() if head.startswith(b"POST") else next(answers))])
+            server.send(conn, [(0, queued_answer() if head.startswith(b"POST") else next(answers, reply(job("done", [EMPTY_LANE]))))])
         listener = Recorder(self, script)
         c = GatewayClient(f"http://gateway.test:{listener.port}", TOKEN, resolver=lookup("127.0.0.1", port=listener.port),
                           clock=lambda: (call_back("clock"), STAMP)[1], sleep=lambda s: call_back("sleep"))
@@ -229,6 +267,7 @@ class OneOperationAtATime(OwnershipTest):
         self.assertTrue(outcomes and all(how == "refused" for _, how in outcomes), outcomes)
         self.assertEqual({what for what, _ in outcomes}, {"clock", "sleep"})
         outcomes.clear()
+        fired.clear()
         self.assertEqual(listener.count, 3)
         holder.clear()
         resolving = lookup("127.0.0.1", port=listener.port)
@@ -247,18 +286,18 @@ class OneOperationAtATime(OwnershipTest):
         c, listener, _ = self.gateway()
         with self.assertRaises(ValueError):
             c.search({"request_type": "bogus"}, **SEARCH)
-        self.assertEqual(observed(c.search(FIND, **SEARCH)), EMPTY_AND_EXHAUSTED, "after a ValueError")
+        self.assertEqual(observed(self.runs(lambda: c.search(FIND, **SEARCH))), EMPTY_AND_EXHAUSTED, "after a ValueError")
         broken = GatewayClient(f"http://gateway.test:{listener.port}", TOKEN, resolver=lookup("127.0.0.1", port=listener.port), clock=mock.Mock(side_effect=[STAMP, RuntimeError("a hook broke")]))
         with self.assertRaises(RuntimeError):
             broken.search(FIND, **SEARCH)
         broken._clock = lambda: STAMP
-        self.assertEqual(observed(broken.search(FIND, **SEARCH)), EMPTY_AND_EXHAUSTED, "after an operation a hook broke")
+        self.assertEqual(observed(self.runs(lambda: broken.search(FIND, **SEARCH))), EMPTY_AND_EXHAUSTED, "after an operation a hook broke")
         refusing = Recorder(self, lambda server, conn, head, body, index: server.send(conn, [(0, reply(b'{"error": "not a grantor"}', "403 Forbidden"))]))
         g = GatewayClient(f"http://127.0.0.1:{refusing.port}", TOKEN, **FAST)
         with self.assertRaises(GrantRefused):
-            g.grant(**GRANT)
+            self.runs(lambda: g.grant(**GRANT))
         with self.assertRaises(GrantRefused):
-            g.grant(**GRANT)   # not ClientBusy: the second grant ran, and was refused by the gateway
+            self.runs(lambda: g.grant(**GRANT))   # not ClientBusy: the second grant ran, and was refused by the gateway
         self.assertEqual(refusing.count, 2)
 
     def test_the_refusal_is_the_callers_error_and_never_an_observation(self):
@@ -436,12 +475,12 @@ class ConnectionLifetimes(OwnershipTest):
         """A slow answer is not a gone gateway (the accepted policy, Astra's repair-16 review): the first reply takes longer than the exchange's budget, the next is prompt, and the client goes on without a lookup."""
         def script(server, conn, head, body, index):
             if index == 1:
-                server.pause(3)
+                server.pause(10)   # ended at once when the test's listener is stopped
             else:
                 server.send(conn, [(0, gateway_answer())])
         listener = Recorder(self, script)
         resolver = lookup("127.0.0.1", port=listener.port)
-        c = GatewayClient(f"http://gateway.test:{listener.port}", TOKEN, resolver=resolver, timeout=0.3, **FAST)
+        c = GatewayClient(f"http://gateway.test:{listener.port}", TOKEN, resolver=resolver, timeout=1.0, **FAST)
         self.assertEqual(observed(c.search(FIND, **SEARCH)), unobserved("timeout"))
         self.assertEqual((c.endpoint_stale, len(resolver.calls)), (False, 1))
         self.assertEqual(observed(c.search(FIND, **SEARCH)), EMPTY_AND_EXHAUSTED)
@@ -551,7 +590,8 @@ class SeparateClientsRunConcurrently(OwnershipTest):
         seen, hold = self.watch("connect")
         thread, box = self.running(lambda: a.search(FIND, **SEARCH), hold.release)
         self.assertTrue(hold.reached.wait(5))
-        self.assertEqual((observed(b.search(FIND, **SEARCH)), b.grant(**GRANT)["token"], b.resolve().addresses), (EMPTY_AND_EXHAUSTED, "gwg1.synthetic", ("127.0.0.1",)))
+        self.assertEqual((observed(self.runs(lambda: b.search(FIND, **SEARCH))), self.runs(lambda: b.grant(**GRANT))["token"], self.runs(b.resolve).addresses),
+                         (EMPTY_AND_EXHAUSTED, "gwg1.synthetic", ("127.0.0.1",)))
         hold.release.set()
         thread.join(10)
         self.assertEqual((observed(box["result"]), listener.count), (EMPTY_AND_EXHAUSTED, 3), "A's search, and B's search and grant")
@@ -563,10 +603,10 @@ class SeparateClientsRunConcurrently(OwnershipTest):
         url = f"http://gateway.test:{live.port}"
         a = GatewayClient(url, TOKEN, resolver=lookup("127.0.0.1", port=dead), **FAST)
         b = GatewayClient(url, TOKEN, resolver=lookup("127.0.0.1", port=live.port), **FAST)
-        self.assertEqual(observed(a.search(FIND, **SEARCH)), unobserved("transport_failure"))
+        self.assertEqual(observed(self.runs(lambda: a.search(FIND, **SEARCH))), unobserved("transport_failure"))
         self.assertEqual((a.endpoint_stale, b.endpoint_stale), (True, False))
-        self.assertEqual((observed(b.search(FIND, **SEARCH)), live.count), (EMPTY_AND_EXHAUSTED, 1))
-        self.assertEqual(b.resolve().addresses, ("127.0.0.1",))
+        self.assertEqual((observed(self.runs(lambda: b.search(FIND, **SEARCH))), live.count), (EMPTY_AND_EXHAUSTED, 1))
+        self.assertEqual(self.runs(b.resolve).addresses, ("127.0.0.1",))
         self.assertTrue(a.endpoint_stale, "and B's resolve changed nothing of A's")
 
     def test_operations_write_no_module_state(self):

@@ -40,6 +40,16 @@ One gateway service per database (`D-25`, a decision carried over from gen-1)
 holds here too: pointing a gen-2 container at another deployment's gateway
 database or listener is a deployment error, not a configuration choice.
 
+**The engine reaches its gateway directly.** The engine's gateway client
+(`gen2/gateway_client`, INVARIANTS H-6) connects straight to the one dedicated
+gateway at `GEN2_GATEWAY_URL` (an `http` or `https` URL whose host is a name or an
+IP literal) and ignores ambient proxy configuration: `http_proxy`, `https_proxy`
+and `all_proxy` in any case, `no_proxy` and the CGI `REQUEST_METHOD` rule have no
+effect on it, so correctness never depends on a deployment remembering a
+`no_proxy` entry. A proxied route would be a feature with its own contract, not a
+setting. Each station or job has its own client; one client runs one operation at a
+time.
+
 ---
 
 ## 1. The stack

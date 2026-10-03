@@ -147,7 +147,7 @@ MUTATIONS: list[Mutation] = [
           ("poll-echo-unchecked", "a poll's answer for another caller is attributed to this one",
            (TO + "test_a_poll_not_attributed_to_this_caller_or_not_captured_degrades",), CLI,
            "                return job, (obs if _echoes(obs, ctx) else None)", "                return job, obs"),
-          ("redirects-followed", "the opener has a redirect handler, so the default transport follows a redirect (the bearer token goes elsewhere)", (OH + "test_a_redirect_is_never_followed",), CLI,
+          ("redirects-followed", "the opener has a redirect handler, so the default transport follows a redirect (the bearer token goes elsewhere)", (OH + "test_a_redirect_is_never_followed", "test_gateway_routes.DirectHttpOnly.test_a_redirect_is_never_followed_whatever_the_status_and_wherever_it_points"), CLI,
            "urllib.request.HTTPErrorProcessor()):", "urllib.request.HTTPErrorProcessor(), urllib.request.HTTPRedirectHandler()):"),
           # 2b-repair A6: the gateway's facts through the router's own command, before the observations naming them
           ("facts-not-recorded", "the facts a search reported are not among the router's requests",
@@ -460,7 +460,7 @@ MUTATIONS: list[Mutation] = [
            "    for family, kind, proto, _, target in _literal(host, port) or resolved.get((host.lower(), port)) or socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM):\n"),
           ("an-exchange-re-resolves-after-a-failure", "a connection failure is followed, inside the exchange, by a new lookup of the name",
            (NR + "test_a_connection_failure_marks_the_endpoint_stale_and_only_the_owners_resolve_looks_again",),
-           "                self._endpoint.publish(())   # a connection failure withdraws the endpoint and invites a new lookup: the owner's `resolve()`, never made here\n", "                self._endpoint.publish((self._resolver or socket.getaddrinfo)(self._endpoint.host, self._endpoint.port, 0, socket.SOCK_STREAM))\n"),
+           "                self._endpoint.publish(())   # a connection failure withdraws the endpoint and invites a new lookup: the owner's `resolve()`, never made here\n", "                try:\n                    self._endpoint.publish((self._resolver or socket.getaddrinfo)(self._endpoint.host, self._endpoint.port, 0, socket.SOCK_STREAM))\n                except OSError:\n                    self._endpoint.publish(())\n"),
           ("a-connection-failure-leaves-the-endpoint-fresh", "a failed connection neither marks the endpoint stale nor withdraws its addresses, so the owner is never invited to look again",
            (NR + "test_a_connection_failure_marks_the_endpoint_stale_and_only_the_owners_resolve_looks_again",
             NR + "test_a_connection_failure_withdraws_the_addresses_until_the_owners_resolve_succeeds"),
