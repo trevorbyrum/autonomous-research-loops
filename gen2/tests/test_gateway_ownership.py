@@ -318,9 +318,10 @@ class OneOperationAtATime(OwnershipTest):
 class TheEndpointIsOneFact(OwnershipTest):
     """R15-1, R16-1 and R16-2 are one defect: authority was kept in several places. These are Astra's reproductions, as maintained regressions, over the schedules that remain possible."""
 
-    def withdrawn_by_its_own_failure(self, poll: bool):
+    def withdrawn_by_its_own_failure(self, poll: bool, host: str = "gateway.test"):
         """R16-1's schedule with the second caller refused: A is held before its (first, or for a poll, second) connect, the gateway goes away, a second caller is refused, and A resumes to find nothing
-        there. A's failure withdraws the endpoint; an unrelated listener then takes the old address, and no later call sends it anything, nor a token."""
+        there. A's failure withdraws the endpoint; an unrelated listener then takes the old address, and no later call sends it anything, nor a token. `host` is how the endpoint's name is spelled
+        (R17-1): None when that spelling is refused at construction."""
         original = Recorder(self, gateway_script(poll=poll))
         port = original.port
         found = [("127.0.0.1", port)]
@@ -329,7 +330,10 @@ class TheEndpointIsOneFact(OwnershipTest):
             if not found:
                 raise socket.gaierror(socket.EAI_NONAME, "synthetic NXDOMAIN")
             return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", found[0])]
-        c = GatewayClient(f"http://gateway.test:{port}", TOKEN, resolver=resolver, deadline=0.3, **FAST)
+        try:
+            c = GatewayClient(f"http://{host}:{port}", TOKEN, resolver=resolver, deadline=0.3, **FAST)
+        except ValueError:
+            return None
         seen, hold = self.watch("connect", after=1 if poll else 0)
         thread, box = self.running(lambda: c.search(FIND, **SEARCH), hold.release)
         self.assertTrue(hold.reached.wait(5))
@@ -349,6 +353,8 @@ class TheEndpointIsOneFact(OwnershipTest):
         self.assertTrue(c.resolve().error.startswith("gaierror"), "the owner's lookup finds nothing: NXDOMAIN")
         for _ in range(2):
             self.assertEqual(observed(c.search(FIND, **SEARCH)), unobserved("transport_failure"))
+        with self.assertRaises(GrantRefused):
+            c.grant(**GRANT)
         self.assertEqual((replacement.count, replacement.carrying(), len(seen["connects"]) - used), (0, 0, 0), "no connection, no request and no token reached the unrelated listener")
         return c, found, box["result"], seen, port
 
@@ -365,6 +371,16 @@ class TheEndpointIsOneFact(OwnershipTest):
         c, found, result, seen, port = self.withdrawn_by_its_own_failure(poll=True)
         self.assertEqual(observed(result), unobserved("timeout"), "the job never finished by the deadline: nothing observed, never empty")
         self.assertEqual(len(seen["connects"]), 2, "the submission and the one poll that failed to connect; every later poll sent nothing")
+
+    def test_astras_r17_1_probe_the_same_for_a_poll_in_progress(self):
+        """R17-1 for the queued variant (the same transitions, the poll the held operation when the gateway goes away; the spellings are those of TheOriginIsTheOnlyAuthority, a refused one
+        going nowhere): the endpoint is withdrawn by the poll's own failed connection, and the unrelated listener is sent nothing by the searches after it, nor by a grant."""
+        for host in ("gateway.test", "127.0.0.%31", "%31%32%37.0.0.1", "127.%30.0.1", "127.0.0.%31".upper()):
+            with self.subTest(host=host):
+                got = self.withdrawn_by_its_own_failure(poll=True, host=host)
+                if got is not None:
+                    c, found, result, seen, port = got
+                    self.assertEqual((observed(result), len(seen["connects"]), c.endpoint_stale), (unobserved("timeout"), 2, True))
 
     def test_control_a_search_held_at_the_same_points_with_the_gateway_there_ends_as_it_does_alone(self):
         """No withdrawal in the schedule: the original listener answers the held search, its one request carries the token, and the endpoint was never stale. (R16-1's no-withdrawal controls.)"""
@@ -406,6 +422,78 @@ class TheEndpointIsOneFact(OwnershipTest):
             with mock.patch.dict("os.environ", {"no_proxy": "gateway.test"}):
                 self.assertEqual(observed(c.search(FIND, **SEARCH)), unobserved("transport_failure"), "the direct control")
         self.assertEqual((proxy.count, replacement.count, replacement.carrying(), len(seen["connects"]) - used, c.endpoint_stale), (0, 0, 0, 0, True))
+
+
+class TheOriginIsTheOnlyAuthority(OwnershipTest):
+    """Astra's R17-1 (2b-repair-17 review): a withdrawn endpoint still connected. The owner read the host of `http://127.0.0.%31:<port>` as a name, urllib's Request unquoted it to the address
+    127.0.0.1, and the connection tried that decoded host as a literal before it looked at what the owner admitted. After a refused connection and an NXDOMAIN, a search and a grant both reached an
+    unrelated listener at the old address, with the bearer token, and the search was recorded `searched_empty/complete/0/exhausted`. Her probe is `sequence` here, over her public operations only: no
+    private field, opener or transport is replaced, and the resolver supplies only the synthetic DNS answers. Either policy satisfies the contract (refuse the spelling at construction, or hold it as
+    one fact), so the regression asserts the wire, whichever the client does with it; the policy is pinned by `test_gateway_routes.TheEndpointForms`."""
+
+    ENCODED = ("127.0.0.%31", "%31%32%37.0.0.1", "127.%30.0.1", "127.0.0.%31".upper())   # hosts urllib unquotes to the address 127.0.0.1 (the last: the same, escape in upper case)
+
+    def sequence(self, host: str, found=None):
+        """Astra's stop/fail/NXDOMAIN/rebind sequence for a client of `http://<host>:<port>`: None if that is refused at construction; else what happened. The first listener answers, then goes
+        away; the next search meets a refused connection; the owner's lookup finds nothing (NXDOMAIN); an unrelated listener takes the old address and port; a search and a grant are made."""
+        original = Recorder(self, gateway_script())
+        port = original.port
+        found = [("127.0.0.1", port)] if found is None else found
+
+        def resolver(name, called_port, *rest):
+            if not found:
+                raise socket.gaierror(socket.EAI_NONAME, "synthetic NXDOMAIN")
+            return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", found[0])]
+        try:
+            c = GatewayClient(f"http://{host}:{port}", TOKEN, resolver=resolver, timeout=0.4, **FAST)
+        except ValueError:
+            return None
+        happened = {"client": c, "found": found, "port": port, "first": observed(c.search(FIND, **SEARCH))}
+        original.server.stop()
+        happened["failure"] = observed(c.search(FIND, **SEARCH))
+        found.clear()
+        happened["nxdomain"] = c.resolve().error
+        happened["stale"] = c.endpoint_stale
+        replacement = happened["replacement"] = Recorder(self, gateway_script(), port=port)   # an unrelated listener at the old address
+        happened["search"] = observed(c.search(FIND, **SEARCH))
+        try:
+            happened["grant"] = c.grant(**GRANT)["token"]
+        except GrantRefused:
+            happened["grant"] = None
+        happened["sent"] = (replacement.count, replacement.carrying())
+        return happened
+
+    def test_astras_r17_1_probe_a_withdrawn_endpoint_reaches_nothing_whatever_its_spelling(self):
+        """The name, and each encoded spelling of the loopback address: a spelling the client refuses (a ValueError at construction, before any I/O) cannot go anywhere; one it accepts is held
+        as a name, withdrawn by the connection failure and the NXDOMAIN, and the unrelated listener is sent nothing, not by the search, not by the grant, and no token."""
+        for host in ("gateway.test", *self.ENCODED):
+            with self.subTest(host=host):
+                got = self.sequence(host)
+                if got is None:
+                    continue
+                self.assertEqual((got["first"], got["failure"], got["stale"], got["search"], got["grant"], got["sent"]),
+                                 (EMPTY_AND_EXHAUSTED, unobserved("transport_failure"), True, unobserved("transport_failure"), None, (0, 0)),
+                                 "a withdrawn endpoint reached the listener that now answers at its old address")
+                self.assertTrue(got["nxdomain"].startswith("gaierror"))
+
+    def test_control_an_ordinary_name_withdraws_and_sends_nothing_and_the_move_to_b_works(self):
+        """The ordinary name, in the same sequence: withdrawn after the connection failure, and still after the NXDOMAIN; nothing reaches the listener at the old address, search or grant. Then the owner's
+        lookup finds the name at B (another listener): the client goes there, authorized again, with its token."""
+        got = self.sequence("gateway.test")
+        self.assertEqual((got["first"], got["failure"], got["stale"], got["search"], got["grant"], got["sent"]),
+                         (EMPTY_AND_EXHAUSTED, unobserved("transport_failure"), True, unobserved("transport_failure"), None, (0, 0)))
+        moved = Recorder(self, gateway_script())
+        got["found"][:] = [("127.0.0.1", moved.port)]
+        c = got["client"]
+        self.assertEqual((c.resolve().error, c.endpoint_stale), (None, False))
+        self.assertEqual((observed(c.search(FIND, **SEARCH)), c.grant(**GRANT)["token"], moved.count, moved.carrying(), got["replacement"].count), (EMPTY_AND_EXHAUSTED, "gwg1.synthetic", 2, 2, 0))
+
+    def test_control_an_ordinary_literal_still_connects_after_the_gateway_at_it_is_replaced(self):
+        """A literal never goes stale (nothing to revoke): the original goes away, one search meets the refused connection, an unrelated listener takes its address, and the search and the grant that
+        follow are sent to it, as the contract authorizes, with the token."""
+        got = self.sequence("127.0.0.1")
+        self.assertEqual((got["first"], got["failure"], got["stale"], got["search"], got["grant"], got["sent"]),
+                         (EMPTY_AND_EXHAUSTED, unobserved("transport_failure"), False, EMPTY_AND_EXHAUSTED, "gwg1.synthetic", (2, 2)))
 
 
 class ConnectionLifetimes(OwnershipTest):

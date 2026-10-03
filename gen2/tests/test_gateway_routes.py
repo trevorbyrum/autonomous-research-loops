@@ -8,12 +8,14 @@ what each was sent (the exact request line, so a proxy's absolute-form request i
 """
 from __future__ import annotations
 
+import http.client
 import os
 import shutil
 import socket
 import subprocess
 import tempfile
 import unittest
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from unittest import mock
@@ -243,6 +245,39 @@ class DirectHttpOnly(RouteTest):
         self.assertEqual(http_transport("GET", f"HTTP://127.0.0.1:{port}/v1/jobs/1", {"Accept": "application/json"}, None, 1.0, admitted=admitted(port))[0], 200,
                          "the control: an http URL, in any case, is the transport's business")
 
+    def test_a_request_hosts_spelling_is_never_a_connection_target(self):
+        """Astra's R17-1, at the transport. urllib unquotes the host of a request (`127.0.0.%31` is `127.0.0.1` to it), and the transport once tried that decoded host as an address before it looked at what
+        its caller admitted: with the endpoint withdrawn, a listener there was sent the request and the bearer token. The target is only ever an admitted address, so with none admitted, or with only
+        one that goes nowhere, a request whose host urllib reads as the listener's own address reaches the listener not at all, whatever it is spelled."""
+        listener = Recorder(self, gateway_script())
+        dead = socket.socket()
+        dead.bind(("127.0.0.1", 0))
+        elsewhere = dead.getsockname()[1]
+        dead.close()
+        failure = (None, {}, b"", "transport_failure")
+        with NoNameIsLookedUp():
+            for spelling in ("127.0.0.%31", "%31%32%37.0.0.1", "127.%30.0.%31", "127.0.0.1", "[::ffff:127.0.0.1]", "localhost", "%6c%6f%63%61%6c%68%6f%73%74"):
+                for where, addresses in (("nothing admitted", ()), ("only an address that goes nowhere", admitted(elsewhere))):
+                    with self.subTest(host=spelling, admitted=where):
+                        try:
+                            got = http_transport("GET", f"http://{spelling}:{listener.port}/v1/jobs/1", {"Authorization": f"Bearer {TOKEN}"}, None, 1.0, admitted=addresses)
+                        except BaseException as e:   # a mutant that connects somewhere unexpected is caught here, by assertion
+                            self.fail(f"raised {e!r}")
+                        self.assertEqual((got, listener.count), (failure, 0), "no connection, no request and no token reached the listener the request's host spells")
+
+    def test_control_the_admitted_address_is_connected_to_whatever_host_the_request_names(self):
+        """The same transport, an address admitted: it connects there and the request keeps its own host (the Host header; over TLS, the server name). A name, a literal and an encoded literal as the
+        request's host all go to the admitted address, which is the listener, not to where the host reads."""
+        listener = Recorder(self, gateway_script())
+        with NoNameIsLookedUp():
+            for spelling in ("gateway.test", "127.0.0.1", "127.0.0.%31", "%67ateway.test"):
+                with self.subTest(host=spelling):
+                    before = listener.count
+                    status, headers, raw, error = http_transport("GET", f"http://{spelling}:{listener.port}/v1/jobs/1", {"Authorization": f"Bearer {TOKEN}"}, None, 1.0,
+                                                                  admitted=admitted(listener.port))
+                    self.assertEqual((status, error, listener.count - before), (200, None, 1))
+        self.assertEqual(listener.carrying(), 4)
+
 
 class TheEndpointForms(ThreadsJoined):
     """`base_url` is an http or https URL whose host is a name or an IP literal, with no credentials; anything else is refused when the client is built, before any I/O, and the endpoint never changes."""
@@ -277,6 +312,82 @@ class TheEndpointForms(ThreadsJoined):
                 with self.assertRaises(AttributeError):
                     c.base_url = "http://elsewhere:1"   # a client's endpoint is fixed for its life: its addresses are this one's
                 self.assertEqual(c.base_url, base)
+
+    # Every spelling below is one that the standard library, a resolver or a person could read as a different host, or a different place, than another reader of the same string does; the endpoint
+    # forms are the ones all of them read alike. Task 2b-repair-18 (Astra's R17-1: `127.0.0.%31`, accepted as a name, was the address 127.0.0.1 to urllib).
+    REFUSED_SPELLINGS = {
+        "percent-encoding": ("http://127.0.0.%31:8765", "http://%31%32%37.0.0.1:8765", "http://127.%30.0.%31", "http://gate%77ay:8765", "http://gateway%2etest:8765", "http://gateway%00:8765",
+                             "http://%67ateway", "http://gateway%", "http://[::%31]:8765", "http://127.0.0.1%2f@gateway"),
+        "an alternate numeric spelling of an address": ("http://0x7f.1:8765", "http://0x7f.0.0.1:8765", "http://0x7f000001:8765", "http://0X7F000001", "http://2130706433:8765", "http://017700000001:8765",
+                                                          "http://0177.0.0.1:8765", "http://0177.0.0.01", "http://127.1:8765", "http://127.0.1:8765", "http://127.000.000.001:8765",
+                                                          "http://127.0.0.01:8765", "http://1.2.3:8765", "http://1.2.3.4.5:8765", "http://0x:8765", "http://0:8765", "http://4294967295",
+                                                          "http://256.0.0.1:8765", "http://127.0.0.1.:8765", "http://127.0.0.0x1:8765"),
+        "credentials": ("http://user@127.0.0.1:8765", "http://user:secret@gateway:8765", "http://127.0.0.1@gateway:8765", "http://gateway:80@127.0.0.1:8765", "http://:@gateway", "http://@gateway",
+                        "http://gateway@", "http://user@[::1]:8765", "http://gateway\\@127.0.0.1"),
+        "a port that is not a decimal number from 1 to 65535": ("http://gateway:0", "http://gateway:65536", "http://gateway:99999", "http://gateway:123456", "http://gateway:eight", "http://gateway:",
+                                                                "http://gateway:-1", "http://gateway:+80", "http://gateway:0x50", "http://gateway: 80", "http://gateway:8765:8765",
+                                                                "http://gateway:\uff18\uff10", "http://127.0.0.1:"),
+        "a path, query or fragment": ("http://gateway:8765/api", "http://gateway:8765/api/", "http://gateway:8765//", "http://gateway:8765/?x=1", "http://gateway:8765?x=1", "http://gateway:8765#frag",
+                                      "http://gateway:8765/#", "http://gateway/%2e%2e/", "http://gateway:8765;params"),
+        "a host that is not a DNS name of LDH labels": ("http://gate_way:8765", "http://-gateway:8765", "http://gateway-:8765", "http://gate way:8765", "http://a..b:8765", "http://.gateway:8765",
+                                                          "http://gateway.:8765", "http://gateway..test", "http://." , "http://gat\u00e9way.example", "http://b\u00fccher.example",
+                                                          "http://\uff47ateway", "http://\uff11\uff12\uff17.0.0.1", "http://gateway$", "http://gateway*", "http://gate!way", "http://gateway\\x",
+                                                          "http://" + "a" * 64 + ".example", "http://" + ".".join(["a" * 63] * 4), "http://xn--:8765", "http://x\u200bgateway"),
+        "an IPv6 literal that is not one, or not in brackets": ("http://::1", "http://::1:8765", "http://[::1", "http://::1]", "http://[::1]x", "http://[::1]:", "http://[]", "http://[::g]",
+                                                                 "http://[1::2::3]", "http://[127.0.0.1]", "http://[gateway]", "http://[::1%25eth0]:8765", "http://[fe80::1%31]:8765",
+                                                                 "http://[fe80::1%eth0]", "http://[::1]/x", "http://[[::1]]", "http://[1:2:3:4:5:6:7:8:9]", "http://[::ffff:127.0.0.256]"),
+        "a scheme that is not http or https, or not a scheme at all": ("ftp://gateway:8765", "ftps://gateway", "file:///etc/hosts", "data:text/plain,x", "ws://gateway:8765", "gopher://gateway",
+                                                                    "httpx://gateway", "http:gateway", "http:/gateway", "http:///gateway", "http:\\\\gateway", "http//gateway", "://gateway", "gateway:8765"),
+        "whitespace or a control character": (" http://gateway:8765", "http://gateway:8765 ", "http://gateway:8765\n", "http://gateway:8765\r\n", "http://gate\tway", "http://gate\nway", "http://gate\rway",
+                                              "\thttp://gateway", "http://gateway:8765\x00", "http://gateway:87\t65", "\x00http://gateway"),
+        "nothing, or no host": ("", "http://", "https://", "http://:8765", "https://:8443", "http:///", "//gateway:8765", "/"),
+    }
+
+    def refuses(self, url: str, transport) -> None:
+        try:
+            GatewayClient(url, TOKEN, resolver=self.resolver, transport=transport)
+        except ValueError:
+            return
+        except BaseException as e:   # a mutant that lets the URL through fails somewhere else: that is a failure of this test, not an error in it
+            self.fail(f"{url!r}: {e!r}, not a ValueError")
+        self.fail(f"{url!r} was accepted")
+
+    def test_every_spelling_a_reader_could_take_another_way_is_refused_before_any_io(self):
+        """Each, with the real transport and with a stand-in one, is a ValueError at construction with no lookup made and no socket asked to connect; so is the same spelling with a path after it."""
+        self.resolver = mock.Mock(side_effect=AssertionError("a lookup was made"))
+        with mock.patch.object(gateway._DeadlineSocket, "connect", side_effect=AssertionError("a connection was made")) as connect, NoNameIsLookedUp():
+            for kind, spellings in self.REFUSED_SPELLINGS.items():
+                for url in spellings:
+                    for transport in (None, lambda *a: (200, {}, b"", None)):
+                        with self.subTest(kind=kind, url=url, transport=bool(transport)):
+                            self.refuses(url, transport)
+        self.resolver.assert_not_called()
+        connect.assert_not_called()
+
+    def test_the_forms_that_are_accepted_are_one_canonical_origin_that_urllib_and_the_owner_read_alike(self):
+        """The other half of the one-representation claim. Each accepted spelling comes out as its canonical origin (lower case; an IPv6 literal compressed; the scheme's default port left off; a number
+        for the port; no trailing slash), and for each, the standard library's own reading of a request URL built from it (urlsplit's hostname and port, and the host urllib's Request hands the
+        connection after it unquotes it) is what the owner holds: nothing in it for urllib to decode into another host. A literal's address is admitted at construction; a name admits none until its lookup."""
+        accepted = (("http://gateway:8765", "http://gateway:8765", "gateway", 8765, ()), ("HTTP://GATEWAY:8765/", "http://gateway:8765", "gateway", 8765, ()),
+                    ("https://Gateway.Test:8443", "https://gateway.test:8443", "gateway.test", 8443, ()), ("http://gateway", "http://gateway", "gateway", 80, ()),
+                    ("https://gateway:443/", "https://gateway", "gateway", 443, ()), ("http://gateway:80", "http://gateway", "gateway", 80, ()), ("http://gateway:08765", "http://gateway:8765", "gateway", 8765, ()),
+                    ("http://localhost:1", "http://localhost:1", "localhost", 1, ()), ("http://xn--bcher-kva.example:9", "http://xn--bcher-kva.example:9", "xn--bcher-kva.example", 9, ()),
+                    ("http://1gateway.example", "http://1gateway.example", "1gateway.example", 80, ()), ("http://127.0.0.1.nip.example:7", "http://127.0.0.1.nip.example:7", "127.0.0.1.nip.example", 7, ()),
+                    ("http://0x7f.example", "http://0x7f.example", "0x7f.example", 80, ()), ("http://a-b.c-d:65535", "http://a-b.c-d:65535", "a-b.c-d", 65535, ()),
+                    ("http://" + ".".join(["a" * 63] * 3 + ["b" * 61]) + ":3", "http://" + ".".join(["a" * 63] * 3 + ["b" * 61]) + ":3", ".".join(["a" * 63] * 3 + ["b" * 61]), 3, ()),
+                    ("http://127.0.0.1:1", "http://127.0.0.1:1", "127.0.0.1", 1, (("127.0.0.1", 1),)), ("http://255.255.255.255", "http://255.255.255.255", "255.255.255.255", 80, (("255.255.255.255", 80),)),
+                    ("http://[::1]:8765", "http://[::1]:8765", "::1", 8765, (("::1", 8765, 0, 0),)), ("https://[0:0:0:0:0:0:0:1]:443/", "https://[::1]", "::1", 443, (("::1", 443, 0, 0),)),
+                    ("http://[FE80::ABCD]:2", "http://[fe80::abcd]:2", "fe80::abcd", 2, (("fe80::abcd", 2, 0, 0),)), ("http://[::ffff:127.0.0.1]:5", "http://[::ffff:7f00:1]:5", "::ffff:7f00:1", 5, (("::ffff:7f00:1", 5, 0, 0),)))
+        for url, base, host, port, targets in accepted:
+            with self.subTest(url=url):
+                c = GatewayClient(url, TOKEN, resolver=lookup(), **FAST)   # a lookup that finds nothing: a name has no address until one is found
+                self.assertEqual((c.base_url, c._endpoint.host, c._endpoint.port, tuple(info[4] for info in c._endpoint.addresses)), (base, host, port, targets))
+                self.assertEqual(c.endpoint_stale, not targets, "a literal is its own address, authorized from construction; a name has none until a lookup finds some")
+                request = urllib.request.Request(c.base_url + "/v1/find")
+                connection = (http.client.HTTPSConnection if c._endpoint.scheme == "https" else http.client.HTTPConnection)(request.host)
+                split = urllib.parse.urlsplit(c.base_url + "/v1/find")
+                self.assertEqual(((split.hostname, split.port or connection.default_port), (connection.host, connection.port), urllib.parse.unquote(request.host) == request.host),
+                                 ((host, port), (host, port), True), "urlsplit and http.client read the host and port the owner holds, and urllib has nothing to decode")
 
 
 @unittest.skipUnless(shutil.which("openssl"), "a TLS server needs a certificate, which the openssl command line makes")
