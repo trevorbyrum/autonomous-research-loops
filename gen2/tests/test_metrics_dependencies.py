@@ -170,6 +170,27 @@ class FanInTest(RatchetTestCase):
         self.check(repo, 0)   # m2 is new, too
 
 
+class StableLimitTest(RatchetTestCase):
+    """t has seven dependents and `leaves` imports of its own; x is then re-pointed from m to t (x's fan-out stays 1, t gains a dependent)."""
+
+    def repointed(self, leaves: int) -> Repo:
+        files = ({f"gen2/imp{i}.py": py("import gen2.t") for i in range(7)} | {"gen2/t.py": py(*(f"import gen2.l{i}" for i in range(leaves)))}
+                 | {f"gen2/l{i}.py": "v = 1\n" for i in range(leaves)} | {"gen2/x.py": py("import gen2.m"), "gen2/m.py": "v = 2\n"})
+        repo = self.baselined(files)
+        repo.write({"gen2/x.py": py("import gen2.t")})
+        return repo
+
+    def test_exactly_the_stable_limit_is_stable(self) -> None:
+        # fan-in 7, fan-out 3: instability 3 / 10 = 0.3, which is the limit and so stable: the eighth dependent is a regression
+        self.assertIn("fan_in engine:gen2/t.py: 8 against a baseline of 7", self.check(self.repointed(3), 1).stderr)
+
+    def test_one_import_more_is_not_stable(self) -> None:
+        # fan-in 7, fan-out 4: 4 / 11 = 0.364: not stable, so its eighth dependent is not gated by the fan-in rule (x gaining reach of t's leaves still fails)
+        done = self.check(self.repointed(4), 1)
+        self.assertNotIn("fan_in", done.stderr)
+        self.assertIn("reach_gained", done.stderr)
+
+
 class InstabilityTest(RatchetTestCase):
     def test_instability_rising_because_dependents_left_is_not_a_regression(self) -> None:
         files = {f"gen2/p{i}.py": py("import gen2.m") for i in range(3)} | {"gen2/m.py": py("import gen2.l"), "gen2/l.py": "v = 1\n"}   # m: fan-in 3, fan-out 1 -> 1/4
@@ -197,6 +218,16 @@ class RecordingTest(RatchetTestCase):
         done = self.check(repo, 1)
         self.assertIn("fan_out engine:gen2/c.py: 1 against a baseline of 0", done.stderr)
         self.assertIn("reach_gained engine: 2 against a baseline of 0", done.stderr)
+
+    def test_an_exempted_fan_in_rise_is_never_recorded(self) -> None:
+        files = {"gen2/x.py": py("import gen2.m"), "gen2/m.py": py("import gen2.t"), "gen2/t.py": "v = 1\n"}   # t is stable: no imports, one dependent
+        repo = self.baselined(files)
+        repo.write({"gen2/x.py": py("import gen2.t"), EXEMPTIONS: exempt_each(("fan_in", "engine:gen2/t.py", "2"))})
+        self.check(repo, 0)
+        self.assertEqual(repo.run("rebaseline").returncode, 0)
+        self.assertEqual(engine(repo, "fan_in")["gen2/t.py"], 1)   # x -> t stays an exempted regression
+        repo.write({EXEMPTIONS: "# no exemptions\n"})
+        self.assertIn("fan_in engine:gen2/t.py: 2 against a baseline of 1", self.check(repo, 1).stderr)
 
     def test_the_baseline_holds_the_counts_and_the_reach_and_not_the_graph(self) -> None:
         repo = self.baselined(CHAIN)

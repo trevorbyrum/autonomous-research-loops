@@ -27,13 +27,14 @@ outside it is reported, not guessed).
 """
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
-from gen2.tests import tool_repo_fixtures as fx
+from gen2.tests import children, tool_repo_fixtures as fx
 from gen2.tests.test_metrics_measure import RepoTestCase, measured
 from gen2.tests.test_metrics_ratchet import RatchetTestCase, exemption
 from gen2.tests.tool_repo_fixtures import BASELINE, EXEMPTIONS, Repo, py
@@ -113,6 +114,13 @@ class SupportedSurfaceTest(CollaborationCase):
         self.assertEqual((found["sites"], found["families"], found.get("unresolved", {})), (0, {}, {}))
 
 
+class NestedClassTest(CollaborationCase):
+    def test_a_nested_class_has_its_own_self(self) -> None:
+        text = py("from gen2.p.base import Base", "", "class Child(Base):", "    class Inner:", "        def h(self):", "            return self.f()")   # Inner is no Base: no f of its own
+        found = self.inventory({"gen2/p/base.py": BASE, "gen2/p/use.py": text})
+        self.assertEqual((found["sites"], found["pairs"]), (0, {}))   # the call is the Inner object's, not the Child's
+
+
 class SameFileIntermediateTest(CollaborationCase):
     def test_a_class_whose_only_cross_file_ancestor_is_reached_through_a_same_file_base_is_still_a_family(self) -> None:
         text = py("from gen2.p.base import Base", "", "class Mid(Base):", "    def m(self):", "        return self.f()",     # site 1: use.py -> base.py
@@ -131,11 +139,13 @@ class SameFileIntermediateTest(CollaborationCase):
         self.assertEqual(found["pairs"], {"gen2/p/base.py->gen2/p/use.py": 1})
 
 
-def run_in_the_interpreter(sources: list[str]) -> dict:
-    """Execute the fixture's classes in one namespace, imports dropped: the interpreter's own answer, independent of the tool."""
-    namespace: dict = {}
-    exec("\n".join(re.sub(r"^(from gen2\S* import .*|import gen2.*)$", "", text, flags=re.M) for text in sources), namespace)   # noqa: S102
-    return namespace
+def run_in_the_interpreter(sources: list[str], probe: str) -> subprocess.CompletedProcess:
+    """Run the fixture's classes (their gen2 imports dropped) and `probe` in a fresh interpreter: the interpreter's own answer, independent of the tool."""
+    text = "\n".join(re.sub(r"^(from gen2\S* import .*|import gen2.*)$", "", source, flags=re.M) for source in sources) + "\n" + probe + "\n"
+    with tempfile.TemporaryDirectory() as tmp:
+        script = Path(tmp) / "fixture.py"
+        script.write_text(text, encoding="utf-8")
+        return children.python([str(script)], capture_output=True, text=True, timeout=60)
 
 
 class MethodResolutionOrderTest(CollaborationCase):
@@ -148,9 +158,9 @@ class MethodResolutionOrderTest(CollaborationCase):
         return {"gen2/p/a.py": self.A, "gen2/p/b.py": self.B, "gen2/p/c.py": self.C, "gen2/p/d.py": self.D}
 
     def test_the_interpreter_dispatches_the_diamond_to_the_second_base(self) -> None:
-        namespace = run_in_the_interpreter([self.A, self.B, self.C, self.D])
-        self.assertEqual([c.__name__ for c in namespace["D"].__mro__], ["D", "B", "C", "A", "object"])
-        self.assertEqual((namespace["B"]().run(), namespace["D"]().run()), ("A", "C"))   # the oracle for the next test
+        done = run_in_the_interpreter([self.A, self.B, self.C, self.D], "import json\nprint(json.dumps({'mro': [c.__name__ for c in D.__mro__], 'b': B().run(), 'd': D().run()}))")
+        self.assertEqual(done.returncode, 0, msg=done.stderr)
+        self.assertEqual(json.loads(done.stdout), {"mro": ["D", "B", "C", "A", "object"], "b": "A", "d": "C"})   # the oracle for the next test
 
     def test_a_diamond_is_resolved_by_c3_not_depth_first(self) -> None:
         found = self.inventory(self.files())
@@ -163,16 +173,17 @@ class MethodResolutionOrderTest(CollaborationCase):
 
     def test_the_order_of_the_bases_decides(self) -> None:
         swapped = self.D.replace("class D(B, C)", "class D(C, B)")
-        namespace = run_in_the_interpreter([self.A, self.B, self.C, swapped])
-        self.assertEqual(namespace["D"]().run(), "C")   # C first: C.f is found before A.f, again
+        done = run_in_the_interpreter([self.A, self.B, self.C, swapped], "print(D().run())")
+        self.assertEqual((done.returncode, done.stdout.strip()), (0, "C"), msg=done.stderr)   # C first: C.f is found before A.f, again
         found = self.inventory(self.files() | {"gen2/p/d.py": swapped})
         self.assertEqual(found["families"]["D (gen2/p/d.py)"]["pairs"], {"gen2/p/b.py->gen2/p/c.py": 1})
 
     def test_an_inconsistent_order_is_reported_not_guessed(self) -> None:
         """class X(A, B) with B(A) cannot be created (TypeError); statically it is an unresolved family, never a silent zero."""
         files = {"gen2/p/a.py": self.A, "gen2/p/b.py": self.B, "gen2/p/x.py": py("from gen2.p.a import A", "from gen2.p.b import B", "", "class X(A, B):", "    pass")}
-        with self.assertRaises(TypeError):
-            run_in_the_interpreter([self.A, self.B, py("class X(A, B):", "    pass")])
+        done = run_in_the_interpreter([self.A, self.B, py("class X(A, B):", "    pass")], "")
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("TypeError", done.stderr)
         found = self.inventory(files)
         self.assertEqual(list(found["unresolved"]), ["gen2/p/x.py::X(A, B)"])
         self.assertIn("no consistent method resolution order", found["unresolved"]["gen2/p/x.py::X(A, B)"])
@@ -298,6 +309,12 @@ class UnresolvedBaseTest(RatchetTestCase):
                 done = repo.run("check")
                 self.assertIn(f"unresolved_base engine:gen2/p/use.py::Child({bases}): 1 against a baseline of 0; ", done.stderr)
                 self.assertIn(why, done.stderr)
+
+    def test_control_a_name_a_measured_module_does_not_define_is_unresolved_with_that_reason(self) -> None:
+        """The path through the member lookup that finds no submodule either: a measured module that defines no such name. Alone, so that it is
+        the accepted path a mutant of the submodule lookup leaves as it was."""
+        found = calls(self.repo_for(self.files("Missing", "from gen2.p.base import Missing")))
+        self.assertEqual(found["unresolved"], {"gen2/p/use.py::Child(Missing)": "gen2.p.base defines no Missing"})
 
     def test_an_unresolved_base_is_not_recorded_by_a_rebaseline_and_refuses_it_when_new(self) -> None:
         repo = self.baselined({"gen2/p/base.py": BASE, "gen2/p/use.py": use("from gen2.p.base import Base")})

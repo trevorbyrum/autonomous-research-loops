@@ -39,6 +39,7 @@ CODE = {
     "tools/check_x.py": "x = 1\n",
     "tools/check_y.py": "y = 1\n",
     "docs/gen2/BOUNDARIES.md": "# boundaries\n",
+    "gen2/pkg/__init__.py": "", "gen2/pkg/mod.py": py("def thing():", "    return 1"),
 }
 
 
@@ -126,6 +127,8 @@ class SymbolLocatorTest(LocatorTestCase):
     def test_a_missing_pair_is_reported_once_even_when_its_name_looks_dotted(self) -> None:
         done = self.check("`service.py` `Router.missing`.", 1)
         self.assertEqual(done.stderr.count("LOCATOR DOES NOT EXIST"), 1)
+        self.assertEqual(done.stderr.count("UNMARKED DOTTED NAME"), 0)   # the name is the file span's symbol, not a dotted name of its own
+        self.assertIn("1 that do not exist or are unmarked", done.stdout)
 
     def test_a_qualified_name_must_match_its_nesting(self) -> None:
         self.check("`gen2/router/service.py::Router.commit_outcome`.", 0)
@@ -157,6 +160,10 @@ class ModulePathTest(LocatorTestCase):
                           "`gen2.router.service.Router.Inner.deep`, `gen2.router.registries.Registries.SPEC`, `gen2.tests.test_router.ObservationTest`, "
                           "`research_gateway.adapters.base.next_link`, `gen2.router`, `gen2.router.service.write_evidence()`.", 0)
         self.assertIn("9 module path checked", done.stdout)
+
+    def test_the_longest_module_is_the_module_so_a_package_does_not_swallow_its_submodule(self) -> None:
+        self.check("`gen2.pkg`, `gen2.pkg.mod`, `gen2.pkg.mod.thing`.", 0)   # gen2/pkg/__init__.py is the package, gen2/pkg/mod.py the module that defines `thing`
+        self.assertIn("nothing is not defined in gen2/pkg/mod.py", self.check("`gen2.pkg.mod.nothing`.", 1).stderr)
 
     def test_a_name_that_is_not_defined_or_a_module_that_is_not_there_fails(self) -> None:
         done = self.check("`gen2.router.service.need`, `gen2.router.gone.write_evidence`, `gen2.nothing`, `research_gateway.adapters.gone.f`.", 1)

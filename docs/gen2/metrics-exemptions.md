@@ -2,7 +2,7 @@
 
 The ratchet (`tools/gen2_metrics.py`, `make gen2-metrics`, run by `make gen2-check`; charter "Architecture metrics") fails on any regression against `docs/gen2/metrics-baseline.json`. **This file is the only way past a regression.** An entry is a reviewed, reasoned exception. It is not a way to record that the baseline moved: the baseline only moves through `make gen2-metrics-rebaseline`, which never loosens it (it keeps the old value wherever an entry here covers a regression).
 
-An entry must be **complete**, **match one regression exactly**, and **still be needed**. The check fails on an entry that is incomplete, misspelled, a duplicate, or that no regression needs any more (remove it then: the condition under which it was to go has been met). A value above the entry's `limit` is not covered.
+An entry must be **complete**, **match one regression exactly**, and **still be needed**. The check fails on an entry that is incomplete, misspelled, a duplicate, or that no regression needs any more (remove it then: the condition under which it was to go has been met). A value above the entry's `limit` is not covered. A growth in a file's dependencies (`fan_out`, `fan_in`, `reach_gained`) is exempted one file at a time and is never recorded by a rebaseline: the entry stays needed until the code stops depending on it.
 
 ## Format
 
@@ -37,6 +37,10 @@ One `###` section per entry, headed `### EX-<id>` and any title, then `- key: va
 | `smell_unstable_dependency` | `<service>:<importing file>-><imported file>` | none |
 | `smell_god_component` | `<service>:<component>` | none |
 | `function_cyclomatic`, `function_cognitive` | `<service>:<file>::<qualified name>` (`#2` for a second function of the same name in a file) | an integer |
+| `fan_out` | `<service>:<file>` | an integer (the highest fan-out accepted) |
+| `fan_in` | `<service>:<file>` (a file that was stable at the baseline) | an integer (the highest fan-in accepted) |
+| `reach_gained` | `engine` or `gateway` | an integer (pairs of existing files that became reachable) |
+| `unresolved_base` | `<service>:<file>::<class>(<base expression as written>)` | none: the entry classifies a base the tool cannot follow (the tool prints the reason); it is the only way to |
 | `cross_service_import` | `repo:<importing file>-><imported file>` | none |
 
 ## Entries

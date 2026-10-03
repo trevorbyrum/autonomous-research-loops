@@ -91,7 +91,7 @@ class BaselinedOffenderTest(RatchetTestCase):
         done = self.check(repo, 0)
         self.assertIn(f"improved: function {LOCATION}: 23/36, baseline 31/36", done.stdout)
         self.assertEqual(repo.run("rebaseline").returncode, 0)
-        self.assertEqual(repo.baseline()["services"]["engine"]["functions"][PATH + "::f"], {"cyclomatic": 23, "cognitive": 36})
+        self.assertEqual(repo.baseline()["services"]["engine"]["functions"], {PATH + "::f": {"cyclomatic": 23, "cognitive": 36}})
 
     def test_a_score_that_stays_where_it_was_is_no_growth_even_under_the_thresholds(self) -> None:
         repo = self.baselined_at(scored(0, 20), {"cyclomatic": 21, "cognitive": 0})
@@ -104,7 +104,7 @@ class BaselinedOffenderTest(RatchetTestCase):
         self.check(repo, 0)
         self.assertEqual(repo.run("rebaseline").returncode, 0)
         # cyclomatic improved 21 -> 8 and is recorded; cognitive 0 -> 28 is exempted and is NOT: the entry stays although both scores are under the limits
-        self.assertEqual(repo.baseline()["services"]["engine"]["functions"][PATH + "::f"], {"cyclomatic": 8, "cognitive": 0})
+        self.assertEqual(repo.baseline()["services"]["engine"]["functions"], {PATH + "::f": {"cyclomatic": 8, "cognitive": 0}})
         repo.write({EXEMPTIONS: "# no exemptions\n"})
         self.assertIn(f"function_cognitive {LOCATION}: 28 against a baseline of 0", self.check(repo, 1).stderr)
 

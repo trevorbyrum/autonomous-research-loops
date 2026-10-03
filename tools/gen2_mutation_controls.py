@@ -428,6 +428,12 @@ MANUAL: dict[str, dict] = {
         "controls": ["test_locators.SymbolLocatorTest.test_a_name_in_a_markdown_file_is_found_as_a_word"],
         "why": "runs tools/check_gen2_locators.py defines' changed word search on a markdown file for a whole word it contains: found "
                "under the mutant's substring test too"},
+    # task 2q-a-repair: every traced candidate resolves a base through a submodule (a package's attribute), which this mutant breaks; the control
+    # written for it takes the line's other branch alone
+    "2QR-collab-submodule-not-an-attribute": {
+        "controls": ["test_metrics_collaboration.UnresolvedBaseTest.test_control_a_name_a_measured_module_does_not_define_is_unresolved_with_that_reason"],
+        "why": "evaluates tools/gen2_metrics.py Classes.member's changed return for a name a measured module defines nowhere, so no submodule is looked up "
+               "either: unresolved with the reason `defines no`, which the mutant's constant return gives too"},
     "2Q-rebaseline-crossing-offenders-dropped": {
         "controls": ["test_metrics_ratchet.ExemptedRegressionsAreNeverRecordedTest.test_a_new_function_over_the_threshold"],
         "why": "evaluates tools/gen2_metrics.py tighten's changed elif for a new offender that an exemption covers (and so was an offender "
