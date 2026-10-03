@@ -7713,6 +7713,12 @@
   ],
   "why": "gen2/gateway_client/client.py: executes line 377"
  },
+ "2B19-the-port-is-limited-to-five-digits": {
+  "controls": [
+   "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
+  ],
+  "why": "gen2/gateway_client/client.py: executes line 183"
+ },
  "2R-growth-counts-the-gateway": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"

@@ -94,7 +94,7 @@ from gen2.gateway_client import observe
 REQUEST_TYPES = pagination.REQUEST_TYPES
 POLL_SECONDS = 0.5
 DEFAULT_PORTS = {"http": 80, "https": 443}
-_ORIGIN = re.compile(r"(https?)://(?:\[([0-9a-f:.]+)\]|([a-z0-9.-]+))(?::([0-9]{1,5}))?/?", re.ASCII | re.IGNORECASE)   # scheme, host and port: nothing urlsplit or urllib could read otherwise
+_ORIGIN = re.compile(r"(https?)://(?:\[([0-9a-f:.]+)\]|([a-z0-9.-]+))(?::([0-9]{1,32}))?/?", re.ASCII | re.IGNORECASE)   # scheme, host and port: nothing urlsplit or urllib could read otherwise. The port is a run of at most 32 ASCII digits (H-6: RFC 3986 `port = *DIGIT`, so `:000080` is 80), whose VALUE `_origin` checks
 _LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", re.ASCII | re.IGNORECASE)   # one LDH label of a DNS name (RFC 1123)
 _NUMBER = re.compile(r"[0-9]+|0x[0-9a-f]*", re.ASCII | re.IGNORECASE)   # a last label inet_aton reads as a number: `2130706433`, `0x7f.1`, `0177.0.0.1`, `127.1` are addresses, whatever they look like
 
@@ -176,7 +176,7 @@ def _literal(host: str, port: int) -> list | None:
 def _origin(url: str) -> tuple:
     """(scheme, host, port, the addresses a literal host is: none for a name) of the one form of gateway origin this client accepts, or a ValueError, before anything is looked up or connected to
     (2b-repair-18, Astra R17-1: the owner read `127.0.0.%31` as a name and urllib decoded it to the address 127.0.0.1, two readings of one string). The form is an http or https scheme, a host, an
-    optional decimal port and at most a final `/`: no credentials, path, query or fragment, no whitespace or control character, nothing but ASCII, and no percent-encoding anywhere. The host is an IP
+    optional decimal port (a run of at most 32 ASCII digits, leading zeros allowed, whose value is 1 to 65535) and at most a final `/`: no credentials, path, query or fragment, no whitespace or control character, nothing but ASCII, and no percent-encoding anywhere. The host is an IP
     literal (`ipaddress`: four plain decimal fields, or an IPv6 address in brackets, with no zone) or a DNS name of RFC 1123 LDH labels (no empty label, so no trailing dot; an IDN only in its ASCII
     `xn--` form) whose last label is no number: a resolver reads `2130706433`, `0x7f.1`, `0177.0.0.1` and `127.1` as addresses, so they are refused, not taken for names. Everything is returned in
     its canonical form (lower case, an IPv6 address compressed, the port a number), the one representation the client then holds."""

@@ -20,6 +20,8 @@ SPELLINGS = FORMS + "test_every_spelling_a_reader_could_take_another_way_is_refu
 CANONICAL = FORMS + "test_the_forms_that_are_accepted_are_one_canonical_origin_that_urllib_and_the_owner_read_alike"
 REBIND = AUTH + "test_astras_r17_1_probe_a_withdrawn_endpoint_reaches_nothing_whatever_its_spelling"
 REBIND_POLL = FACT + "test_astras_r17_1_probe_the_same_for_a_poll_in_progress"
+PORT_VALUE = FORMS + "test_a_decimal_port_is_checked_by_its_value_not_by_its_width"   # task 2b-repair-19 (Astra R18-1)
+PORT_WIRE = DIRECT + "test_a_zero_padded_port_reaches_the_listener_it_names"
 
 CONNECT = (("def _connect(deadline: _Deadline, admitted: Sequence) -> _DeadlineSocket:", "def _connect(address: tuple, deadline: _Deadline, admitted: Sequence) -> _DeadlineSocket:"),
            ("    for family, kind, proto, _, target in admitted:\n", "    for family, kind, proto, _, target in _literal(*address) or admitted:\n"),
@@ -49,9 +51,12 @@ MUTATIONS: list[Mutation] = [
     Mutation("2B18-a-name-may-be-any-length", "2b-18", "a name over 253 characters is accepted", (SPELLINGS,), target=CLI, old="len(name) > 253 or ", new=""),
     Mutation("2B18-the-port-is-unchecked", "2b-18", "a port of 0, or over 65535, is accepted", (SPELLINGS,), target=CLI, old="not 0 < port < 65536 or ", new=""),
     Mutation("2B18-a-path-query-or-fragment-is-accepted", "2b-18", "a path, query or fragment after the origin is accepted and dropped", (SPELLINGS,), target=CLI,
-             old="(?::([0-9]{1,5}))?/?\"", new="(?::([0-9]{1,5}))?(?:[/?#].*)?\""),
+             old="(?::([0-9]{1,32}))?/?\"", new="(?::([0-9]{1,32}))?(?:[/?#].*)?\""),
     Mutation("2B18-the-host-is-not-lower-cased", "2b-18", "the owner holds the host as it was spelled (`GATEWAY` and `gateway` are two origins)", (CANONICAL,), target=CLI,
              old="host = str(ip) if ip is not None else name.lower()", new="host = str(ip) if ip is not None else name"),
     Mutation("2B18-the-request-is-built-from-the-callers-spelling", "2b-18", "requests are built from the URL as given, not from the canonical origin the owner holds", (CANONICAL,), target=CLI,
              old="        self._base_url = self._endpoint.origin\n", new='        self._base_url = base_url.rstrip("/")\n'),
+    # task 2b-repair-19 (Astra R18-1): the port is checked by its value, not its width
+    Mutation("2B19-the-port-is-limited-to-five-digits", "2b-19", "a port is at most five characters, so a zero-padded decimal port (`:000080`, `:065535`, `:037433`) is refused though its value is in 1..65535",
+             (PORT_VALUE, PORT_WIRE), target=CLI, old="(?::([0-9]{1,32}))?/?\"", new="(?::([0-9]{1,5}))?/?\""),
 ]

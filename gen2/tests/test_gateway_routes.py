@@ -129,6 +129,19 @@ class DirectHttpOnly(RouteTest):
                 self.fail(f"the grant raised {e!r}")
         self.assertEqual((token, destination.request_lines, destination.carrying(), proxy.count), ("gwg1.synthetic", ["POST /v1/grants HTTP/1.1"], 1, 0))
 
+    def test_a_zero_padded_port_reaches_the_listener_it_names(self):
+        """Astra's R18-1 on the wire: `http://127.0.0.1:037433` and `http://127.0.0.1:37433` are one endpoint. Each searches its own test-owned listener, once, with the canonical Host (no padding)."""
+        for padded in (False, True):
+            with self.subTest(padded=padded):
+                destination = Recorder(self, gateway_script())
+                url = f"http://127.0.0.1:{str(destination.port).zfill(6) if padded else destination.port}"
+                try:
+                    c = GatewayClient(url, TOKEN, **FAST)
+                except ValueError as e:
+                    self.fail(f"{url} names port {destination.port} and was refused: {e}")
+                self.assertEqual(observed(self.searching(c)), EMPTY_AND_EXHAUSTED)
+                self.assertEqual((destination.request_lines, destination.carrying(), f"Host: 127.0.0.1:{destination.port}".encode() in destination.hits[0][0]), (["POST /v1/find HTTP/1.1"], 1, True))
+
     def test_a_redirect_is_never_followed_whatever_the_status_and_wherever_it_points(self):
         """Same-origin as well as cross-origin, absolute and relative, for each of the five statuses, on a request and on a poll: the Location is never requested, the other listener is sent nothing,
         and the answer is no answer (a redirect is no gateway answer). A request is made exactly once (a POST that was redirected is not repeated at its destination, which would carry the token)."""
@@ -326,7 +339,9 @@ class TheEndpointForms(ThreadsJoined):
                         "http://gateway@", "http://user@[::1]:8765", "http://gateway\\@127.0.0.1"),
         "a port that is not a decimal number from 1 to 65535": ("http://gateway:0", "http://gateway:65536", "http://gateway:99999", "http://gateway:123456", "http://gateway:eight", "http://gateway:",
                                                                 "http://gateway:-1", "http://gateway:+80", "http://gateway:0x50", "http://gateway: 80", "http://gateway:8765:8765",
-                                                                "http://gateway:\uff18\uff10", "http://127.0.0.1:"),
+                                                                "http://gateway:\uff18\uff10", "http://127.0.0.1:",
+                                                                "http://gateway:000000", "http://gateway:" + "0" * 32, "http://gateway:065536", "http://gateway:" + "0" * 27 + "65536", "http://gateway:" + "0" * 32 + "80",
+                                                                "http://gateway:00x80", "http://gateway:-00080", "http://gateway:\u0668\u0660", "http://gateway:00\uff18\uff10"),
         "a path, query or fragment": ("http://gateway:8765/api", "http://gateway:8765/api/", "http://gateway:8765//", "http://gateway:8765/?x=1", "http://gateway:8765?x=1", "http://gateway:8765#frag",
                                       "http://gateway:8765/#", "http://gateway/%2e%2e/", "http://gateway:8765;params"),
         "a host that is not a DNS name of LDH labels": ("http://gate_way:8765", "http://-gateway:8765", "http://gateway-:8765", "http://gate way:8765", "http://a..b:8765", "http://.gateway:8765",
@@ -388,6 +403,21 @@ class TheEndpointForms(ThreadsJoined):
                 split = urllib.parse.urlsplit(c.base_url + "/v1/find")
                 self.assertEqual(((split.hostname, split.port or connection.default_port), (connection.host, connection.port), urllib.parse.unquote(request.host) == request.host),
                                  ((host, port), (host, port), True), "urlsplit and http.client read the host and port the owner holds, and urllib has nothing to decode")
+
+    def test_a_decimal_port_is_checked_by_its_value_not_by_its_width(self):
+        """Astra's R18-1: H-6 specifies a decimal port from 1 to 65535 (RFC 3986 `port = *DIGIT`), and `:08765` was already accepted, but a regex of at most five digits refused `:000080`, `:065535` and
+        `:000443`, the same ports. Each of her five cases, and the longest run the contract allows (32 digits), is accepted as its canonical origin; a construction that raises is a failed test here."""
+        for url, base, host, port in (("http://gateway.test:00080", "http://gateway.test", "gateway.test", 80), ("http://gateway.test:000080", "http://gateway.test", "gateway.test", 80),
+                                      ("https://GATEWAY.TEST:000443/", "https://gateway.test", "gateway.test", 443), ("http://gateway.test:065535", "http://gateway.test:65535", "gateway.test", 65535),
+                                      ("https://[0:0:0:0:0:0:0:1]:000443/", "https://[::1]", "::1", 443), ("http://127.0.0.1:000001", "http://127.0.0.1:1", "127.0.0.1", 1),
+                                      ("http://127.0.0.1:037433", "http://127.0.0.1:37433", "127.0.0.1", 37433), ("http://gateway:" + "0" * 30 + "80", "http://gateway", "gateway", 80),
+                                      ("http://gateway:" + "0" * 27 + "65535", "http://gateway:65535", "gateway", 65535)):
+            with self.subTest(url=url):
+                try:
+                    c = GatewayClient(url, TOKEN, resolver=lookup(), **FAST)
+                except ValueError as e:
+                    self.fail(f"port {port} is in 1..65535 and was refused: {e}")
+                self.assertEqual((c.base_url, c._endpoint.host, c._endpoint.port), (base, host, port))
 
 
 @unittest.skipUnless(shutil.which("openssl"), "a TLS server needs a certificate, which the openssl command line makes")
