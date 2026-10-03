@@ -1326,3 +1326,12 @@ Full report: `private/reviews/gen2-2b-repair-18-astra-review-20261003.md`.
 **Routing:** **2b-repair-19** validates the port by value, with a documented cap on digit count, and adds Astra's five cases and the wire case as regressions plus a mutant.
 
 Orchestrator reruns of 18 match.
+
+## 2026-10-03 — 2b-repair-19 landed — Astra re-review dispatched
+**Coder (Sonnet 5.5, `f06b02fb`):** commit `28a2e83`.
+- **Root cause:** a five-digit text-width rule that H-6 never specified.
+- **Fix:** the port is accepted as a run of 1–32 ASCII digits and range-checked by value; H-6 and DEPLOYMENT-CONTRACT state the rule.
+- **Tests:** Astra's five cases and the wire case are now regressions. The new acceptance tests failed on the old client (9 failures). A `2B19` mutant was added.
+- **Results:** both targets exit 0; 1,823/1,823 mutants killed; `gateway/` unchanged.
+
+Astra's re-review is `6fac8e6c`. If it passes, this is the review that accepts 2b.
