@@ -40,10 +40,10 @@ def read_request(conn: socket.socket) -> tuple[bytes, bytes]:
 class Loopback:
     """`script(server, conn, head, body)` runs once per accepted connection, in its own thread, after the request was
     read (`read=False`: not read at all). `tls`: a (certificate, key) path pair the connection is wrapped with first, after
-    `handshake_after` seconds."""
+    `handshake_after` seconds. `port`: a port a listener that has been stopped held (a replacement at the same address), else any."""
 
     def __init__(self, script: Callable, *, read: bool = True, tls: tuple[str, str] | None = None, backlog: int = 16,
-                 handshake_after: float = 0.0) -> None:
+                 handshake_after: float = 0.0, port: int = 0) -> None:
         self.script, self.read, self.released, self._handshake_after = script, read, threading.Event(), handshake_after
         self._tls = None
         if tls:
@@ -51,7 +51,7 @@ class Loopback:
             self._tls.load_cert_chain(*tls)
         self._listener = socket.socket()
         self._listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._listener.bind(("127.0.0.1", 0))
+        self._listener.bind(("127.0.0.1", port))
         self._listener.listen(backlog)
         self._listener.settimeout(0.05)
         self.port = self._listener.getsockname()[1]

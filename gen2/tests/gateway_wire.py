@@ -18,7 +18,7 @@ TOKEN = "synthetic-token"
 CAPTURED = {"invocation_id": INV, "attempt": 1, "captured": True, "call_ref": 1}
 FIND = {"request_type": "find", "query": "synthetic", "lanes": ["crossref"]}
 EMPTY_LANE = {"source": "crossref", "coverage": "searched_empty", "completeness": "complete", "count": 0, "retrieved": [], "exhausted": True}
-HEAD = ("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nX-Research-Gateway: result\r\n"
+HEAD = ("HTTP/1.1 {}\r\nContent-Type: application/json\r\nX-Research-Gateway: result\r\n"
         "Content-Length: {}\r\nConnection: close\r\n\r\n")
 EMPTY_AND_EXHAUSTED = ("searched_empty", "complete", 0, "exhausted", None)   # what a search answered by gateway_answer() observes (see `observed`)
 
@@ -33,8 +33,8 @@ def job(status: str, lanes=None) -> bytes:
                       separators=(",", ":")).encode()
 
 
-def reply(body: bytes) -> bytes:
-    return HEAD.format(len(body)).encode() + body
+def reply(body: bytes, status: str = "200 OK") -> bytes:
+    return HEAD.format(status, len(body)).encode() + body
 
 
 def gateway_answer() -> bytes:
@@ -95,7 +95,9 @@ class Recorder:
 def gateway_script(*, poll: bool = False):
     """A Recorder script for a gateway that answers a find with an empty, exhausted lane; with `poll`, queues it and answers the first poll."""
     def script(server, conn, head, body, index):
-        if poll and head.startswith(b"POST"):
+        if head.startswith(b"POST /v1/grants"):
+            server.send(conn, [(0, reply(json.dumps({"token": "gwg1.synthetic"}).encode(), "201 Created"))])
+        elif poll and head.startswith(b"POST"):
             server.send(conn, [(0, queued_answer())])
         elif poll:
             server.send(conn, [(0, reply(job("done", [EMPTY_LANE])))])
