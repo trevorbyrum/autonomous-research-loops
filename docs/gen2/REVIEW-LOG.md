@@ -1449,3 +1449,26 @@ Full report: `private/reviews/gen2-2q-a-astra-review-20261003.md`.
 - `code:` and `history:` markers are unchecked author choices.
 
 **Review:** Astra `98a9d2a6`, task `private/reviews/gen2-2q-a-repair-review-task-20261003.md`.
+
+## 2026-10-03 — Astra re-review of 2q-a-repair (`98a9d2a6`, pinned c87821e) — BLOCK (A, C); PASS (B)
+Full report: `private/reviews/gen2-2q-a-repair-astra-review-20261003.md`.
+
+**Still holding:**
+- the 27/27 reproduction;
+- both targets pass independently;
+- the policy readings on instability direction and on the code/history markers are sound.
+
+**Family verdict: MITIGATION.** The tool derives its obligations from a lossy representation, and lost identity reads as removal or improvement. Findings:
+- **R1:** a conditional, same-name `Router` takes the measured coupling from 132/19 to 0/0, while the runtime MRO is unchanged. Star re-export order also misattributes.
+- **R2:** renaming or moving a function resets its threshold obligation.
+- **R3:** new or renamed files are unmeasured until rebaseline. A real two-import `normalized.py` raises fan-in on stable `canonical.py` and `instants.py` and still passes.
+- **R4:** a qualified locator resolves through the flattened short-name index.
+- **R5:** two tests encode the exemption that should have been rejected, and two mutants are policy-sensitive.
+
+**Routing:** **2q-a-repair-2** is a redesign at the family level:
+- explicit identities, each in exactly one state (present, mapped or retired), with anything missing failing;
+- every new budget admitted through a committed ledger with reasons, reviewed at Gate A (`make gen2-metrics-admit` drafts the entries, and a TODO reason fails);
+- ambiguous bindings fail closed;
+- locator lookup preserves scope.
+
+This is the first coder on **GPT-6.1-Sol** (operator, 2026-10-03). It is the second consecutive BLOCK on 2q-a, so a third triggers Gate D.
