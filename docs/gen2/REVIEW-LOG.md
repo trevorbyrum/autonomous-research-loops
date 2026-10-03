@@ -1315,3 +1315,14 @@ No operator ruling is needed. This is the first BLOCK since Gate D #3.
 - clean tree; gen-1 unchanged (PID 1040);
 - independent reruns in progress;
 - Astra re-review is agent `f8ba3f2f`, task file `private/reviews/gen2-2b-repair-18-review-task-20261003.md`. If it closes, this is the 2b acceptance review.
+
+## 2026-10-03 — Astra re-review of 2b-repair-18 (`f8ba3f2f`, pinned 0d34df8) — BLOCK (A); PASS (B, C)
+Full report: `private/reviews/gen2-2b-repair-18-astra-review-20261003.md`.
+
+**R17-1 is ROOT-CAUSE.** The endpoint owner is the sole source of connection targets. No remaining client path lets urllib, http.client or ssl override them; Host, SNI, IPv6 brackets, default port, A-labels and case folding were all checked. The lease, cross-instance concurrency and closed handlers stand.
+
+**R18-1 (MEDIUM):** the port regex `[0-9]{1,5}` refuses zero-padded decimal ports of six or more digits (`:000080`, `:065535`), although H-6 defines a port by value (1–65535) and `:08765` is already accepted. This is unapproved input narrowing: compatibility, not a token leak.
+
+**Routing:** **2b-repair-19** validates the port by value, with a documented cap on digit count, and adds Astra's five cases and the wire case as regressions plus a mutant.
+
+Orchestrator reruns of 18 match.
