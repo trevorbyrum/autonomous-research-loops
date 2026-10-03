@@ -1400,3 +1400,24 @@ Full report: `private/reviews/gen2-2b-repair-19-astra-review-20261003.md`.
 - Three tests failed in the coder's traced snapshot run but pass in the real tree; they were not investigated.
 
 **Review:** Astra `8e5c3480`, task file `private/reviews/gen2-2q-a-review-task-20261003.md`.
+
+## 2026-10-03 — Astra review of 2q-a (`8e5c3480`, pinned 1e8dc9f) — BLOCK (A, C); PASS (B)
+Full report: `private/reviews/gen2-2q-a-astra-review-20261003.md`.
+
+**Accepted:**
+- **Historical reproduction is exact.** 27/27 tables match the tool's output and 27/27 match the archive at the Gate D #1, #2 and #3 pins. An independent graph computation agrees.
+- **Phase-close mechanism.** Closing 2e1, 2e2, Phase 3 or Phase 4 correctly fails on their open entries.
+- **The 13 register entries,** including the coder's four additions.
+- **Locator reconciliation.**
+- **Production identity is unchanged.**
+
+**Findings (all ROOT-CAUSE repairs required):**
+- **F1 HIGH:** `project_bases` doesn't resolve fully qualified bases. Rewriting the Router's bases in qualified form erased all 132 self-calls and 19 pairs, and the check and rebaseline both passed. Family order uses depth-first search rather than C3, so a diamond is misattributed, and overlapping families count the same site twice.
+- **F2 HIGH:** the ratchet compares only functions currently above a threshold. A baselined function that went from CC 21/cog 0 to CC 8/cog 28 vanished from the comparison and was reported as an improvement.
+- **F3 MEDIUM:** two carried obligations are missing from the register: the importer's unexamined-file inventory (Phase 4, needed before migration planning) and the Phase 3 usage estimator (operator request, 2026-09-29).
+- **F4 MEDIUM:** a dotted locator is recognised only when its prefix resolves. Deleting the module turns the citation into unchecked prose, and a full `gen2...` path is never counted.
+- **F5 MEDIUM:** per-module fan-in/out and instability are reported but not ratcheted, which narrows the charter without an amendment. A new real-tree edge (60→61) passed, and so did a probe where growth was hidden by a larger denominator.
+- **F6 LOW:** a wrong statement in the threshold rationale.
+- **F7 LOW:** the three "snapshot failures" were one test that depends on the environment plus two intentional skips.
+
+**Routing:** **2q-a-repair** fixes F1–F7. F5 is enforced as the charter states, with no amendment. No operator ruling is needed.
