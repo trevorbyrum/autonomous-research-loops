@@ -1365,3 +1365,38 @@ Full report: `private/reviews/gen2-2b-repair-19-astra-review-20261003.md`.
 - Phase 3 and Phase 4 items as recorded.
 
 **Next:** 2q (2q-a: metrics, ratchet, debt register, locators; then 2q-b: structural consolidation). Gate D #4 runs after 2q, before 2c, per the operator's 2026-10-02 sequencing ruling.
+
+## 2026-10-03 — 2q-a landed (metrics, ratchet, debt register, locators) — Astra review dispatched
+**Coder:** Sonnet 5.5 `f5ac8d3c`, commits `0306df4`..`1e8dc9f`.
+
+**Metrics:**
+- `tools/gen2_metrics.py` (stdlib) runs in `gen2-check` and measures the engine and the gateway separately.
+- It reproduces all nine Gate D tables byte for byte at the #1, #2 and #3 pins.
+
+**Baseline:**
+- **Engine:** 32 files, 60 edges, 14.16% propagation, no cycles, 132 mixin self-calls, 22 offenders.
+- **Gateway:** 68 files, 216 edges, 11.92% propagation, an `adapters`/`core`/`registry` component cycle, 30 offenders, and three smells (hub `base.py`, unstable `schema→wire`, god component `core`).
+
+**Ratchet and exemptions:**
+- The baseline is digested.
+- Rebaselining only tightens.
+- Exemptions need a review, a removal condition and a limit. There are none.
+
+**Debt register:**
+- `docs/gen2/DEBT-REGISTER.md`, with `phase-status.json` and `gen2-debt`: a closed phase or task that still owns an open entry fails the build.
+- No mitigations have been accepted.
+- 13 owned obligations, DEBT-001..013, covering 2e1, 2e2, Phase 3 and Phase 4. The coder added DEBT-004 (the §4(d) ruling) and DEBT-011..013 (the Phase 3 items) beyond the brief. The orchestrator judges these consistent with the recorded operator rulings; no new decision is needed.
+
+**Locators and mutants:**
+- `gen2-locators` checks locators.
+- Stale locators are reconciled: H-5, RG-9, §11, AUTH-DEMO and BUILD-STATE 1f.
+- 157 mutants.
+
+**Results:** no production change. gen2-check: 1,931 tests, 1,980/1,980 mutants. gen2-gateway: 1,500+1,500 tests, 377 mutants.
+
+**Disclosed:**
+- The smell thresholds are operating points.
+- The locator check only sees backticked locators in INVARIANTS and the register.
+- Three tests failed in the coder's traced snapshot run but pass in the real tree; they were not investigated.
+
+**Review:** Astra `8e5c3480`, task file `private/reviews/gen2-2q-a-review-task-20261003.md`.
