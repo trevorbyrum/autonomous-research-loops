@@ -262,3 +262,48 @@ class RealRepositoryTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class QualifiedScopeTest(unittest.TestCase):
+    """R4: module/class attributes are independent of file-wide shorthand.
+    Runtime checks do not execute product code, only literal fixture modules."""
+    def repo(self, files):
+        repo = Repo({"gen2/__init__.py": "", **files})
+        self.addCleanup(repo.close)
+        return repo
+
+    def check(self, repo, expected):
+        result = repo.run(DOC, tool=fx.LOCATORS_TOOL)
+        self.assertEqual(result.returncode, expected, f"{result.stdout}\n{result.stderr}")
+        return result
+
+    def test_a_module_function_moved_into_a_closure_no_longer_satisfies_its_qualified_locator(self) -> None:
+        from gen2.tests import children
+        repo = self.repo({"gen2/p/a.py": "def f(): return 1\n", DOC: "`gen2.p.a.f`\n"})
+        self.check(repo, 0)
+        repo.write({"gen2/p/a.py": "def wrapper():\n    def f(): return 1\n    return f\n"})
+        runtime = children.python(["-B", "-c", "import sys; sys.path.insert(0, '.'); import gen2.p.a as a; print(hasattr(a, 'f'))"], cwd=repo.root, capture_output=True, text=True)
+        self.assertEqual((runtime.returncode, runtime.stdout.strip()), (0, "False"))
+        self.assertIn("f is not defined", self.check(repo, 1).stderr)
+        repo.write({"gen2/p/a.py": "def wrapper(): return 1\n"})
+        self.check(repo, 1)
+
+    def test_class_attributes_keep_scope_and_function_locals_are_excluded(self) -> None:
+        repo = self.repo({"gen2/p/a.py": "class C:\n    def f(self):\n        def local(): pass\n", DOC: "`gen2.p.a.C.f`\n"})
+        self.check(repo, 0)
+        repo.write({DOC: "`gen2.p.a.C.f.local`\n"})
+        self.check(repo, 1)
+        repo.write({DOC: "`gen2.p.a.f`\n"})
+        self.check(repo, 1)
+
+    def test_unsupported_locator_shapes_fail_instead_of_being_ignored(self) -> None:
+        for citation in ("gen2/p/a.py::f(1)", "gen2/p/a.py::f::g", "gen2.p.a.f[0]", "gen2/p/a.py:abc"):
+            with self.subTest(citation=citation):
+                repo = self.repo({"gen2/p/a.py": "def f(): pass\n", DOC: f"`{citation}`\n"})
+                self.assertIn("unsupported locator grammar", self.check(repo, 1).stderr)
+
+    def test_empty_call_suffix_is_checked_as_a_supported_symbol_locator(self) -> None:
+        repo = self.repo({"gen2/p/a.py": "def f(): pass\n", DOC: "`gen2/p/a.py::f()`\n"})
+        self.check(repo, 0)
+        repo.write({"gen2/p/a.py": "v=1\n"})
+        self.assertIn("f() is not defined", self.check(repo, 1).stderr)

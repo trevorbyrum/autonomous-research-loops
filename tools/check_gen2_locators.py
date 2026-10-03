@@ -31,8 +31,8 @@ being recognised and so stopped being checked):
               (`gen2` or `research_gateway`): `gen2.router.service`,
               `gen2.router.service.Router.commit_outcome`. The longest prefix
               that is a tracked module of the gen-2 surface (production, tests
-              or tools) is the module, the rest is a name that must be defined
-              in it; no such module fails. A package (a directory) alone is
+              or tools) is the module; the rest follows module then class
+              attributes, never function locals or flattened short names; no such module fails. A package (a directory) alone is
               enough.
   marked      `code: text` for an ordinary code or data expression (a standard
               library name, a database column, a command) and `history: text`
@@ -114,6 +114,7 @@ def prose(text: str) -> str:
 def file_core(span: str) -> str | None:
     """The path part of a file-like span (line number, fragment, `::name` and trailing arguments removed), or None."""
     token = span.split()[0] if span.split() else ""
+    token = token.removesuffix("()")
     core = re.sub(r"(::[\w.#]+|#\S*|:\d+(?:-\d+)?)+$", "", token)
     if not PATHLIKE.match(core) or core.startswith(("$", "-")):
         return None
@@ -168,11 +169,39 @@ def python_names(text: str) -> set[str]:
     return names
 
 
-def defines(root: Path, path: str, name: str) -> bool:
+def scoped_names(text: str) -> set[str]:
+    """Module attributes followed only through class attributes; function locals
+    never become module/class attributes. Qualified locators use this index."""
+    names = set()
+
+    def block(statements, scope):
+        for child in statements:
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                qual = ".".join(scope + [child.name])
+                names.add(qual)
+                if isinstance(child, ast.ClassDef):
+                    block(child.body, scope + [child.name])
+            elif isinstance(child, (ast.Assign, ast.AnnAssign)):
+                targets = child.targets if isinstance(child, ast.Assign) else [child.target]
+                for target in targets:
+                    names.update(".".join(scope + [leaf.id]) for leaf in ast.walk(target) if isinstance(leaf, ast.Name))
+            else:
+                for field in ("body", "orelse", "finalbody"):
+                    block(getattr(child, field, []), scope)
+                for handler in getattr(child, "handlers", []):
+                    block(handler.body, scope)
+    try:
+        block(ast.parse(text).body, [])
+    except SyntaxError:
+        pass
+    return names
+
+
+def defines(root: Path, path: str, name: str, *, qualified: bool = False) -> bool:
     text = (root / path).read_text(encoding="utf-8", errors="replace")
     name = name.removesuffix("()")
     if path.endswith(".py"):
-        return name in python_names(text)
+        return name in (scoped_names(text) if qualified or "." in name else python_names(text))
     if path.endswith(".sql"):
         return re.search(rf"\b(?:TABLE|VIEW|TRIGGER|INDEX)\s+(?:IF NOT EXISTS\s+)?(?:\w+\.)?{re.escape(name)}\b", text, re.IGNORECASE) is not None
     return re.search(rf'(?<![\w]){re.escape(name)}(?![\w])', text) is not None
@@ -199,6 +228,10 @@ def check_document(root: Path, doc: str, files: list[str], modules: dict[str, st
         marked = MARKED.match(span)
         if marked:
             checked[marked.group(1)] += 1
+            continue
+        token = span.split()[0]
+        if "::" in token and (token.count("::") != 1 or not IDENT.fullmatch(token.split("::", 1)[1])):
+            fail(start, span, "unsupported locator grammar")
             continue
         core = file_core(span)
         if core is not None:
@@ -232,6 +265,9 @@ def check_document(root: Path, doc: str, files: list[str], modules: dict[str, st
             why = module_path_problem(root, name, modules)
             if why:
                 fail(start, span, why)
+            continue
+        if "::" in span or span.startswith(tuple(p + "." for p in PACKAGES)) or re.search(r"[A-Za-z0-9_]\.(?:py|sql|md|json)(?:[:#(]|$)", token):
+            fail(start, span, "unsupported locator grammar")
     return checked, problems
 
 
@@ -242,7 +278,7 @@ def module_path_problem(root: Path, name: str, modules: dict[str, str]) -> str |
         path = modules.get(".".join(parts[:length]))
         if path:
             symbol = ".".join(parts[length:])
-            return f"{symbol} is not defined in {path}" if symbol and not defines(root, path, symbol) else None
+            return f"{symbol} is not defined in {path}" if symbol and not defines(root, path, symbol, qualified=True) else None
     return None if any(m.startswith(name + ".") for m in modules) else "names no module of this repository"
 
 
