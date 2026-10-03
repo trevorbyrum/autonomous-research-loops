@@ -68,7 +68,7 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
     - fan-out, stable fan-in and reach ratcheted;
     - baseline v2.
 
-    The coder reports gen2-check at 2,005 tests and 2,027/2,027 mutants, and gen2-gateway at 1,500+1,500. **Astra re-review DISPATCHED** (`98a9d2a6`); orchestrator reruns are in progress. Previous step: 2q-a-repair DISPATCHED (brief docs/gen2/tasks/2q-a-repair.md). Astra on 2q-a (`8e5c3480`): BLOCK on A and C, PASS on B. Reproduction is exact (27/27 tables). The phase-close mechanism, the 13 register entries and the locator reconciliation are accepted. Open:
+    The coder reports gen2-check at 2,005 tests and 2,027/2,027 mutants, and gen2-gateway at 1,500+1,500. **Astra re-review DISPATCHED** (`98a9d2a6`). Orchestrator reruns match: gen2-check exit 0 (2,005 tests, 2,027/2,027 mutants), gen2-gateway exit 0 (1,500+1,500). Previous step: 2q-a-repair DISPATCHED (brief docs/gen2/tasks/2q-a-repair.md). Astra on 2q-a (`8e5c3480`): BLOCK on A and C, PASS on B. Reproduction is exact (27/27 tables). The phase-close mechanism, the 13 register entries and the locator reconciliation are accepted. Open:
     - F1 HIGH: qualified base syntax erases the 132 Router self-calls; the tool uses depth-first order instead of C3.
     - F2 HIGH: an offender that drops below a threshold escapes a growth in the other metric.
     - F3: two register entries are missing (importer unexamined-file inventory, Phase 3 usage estimator).
