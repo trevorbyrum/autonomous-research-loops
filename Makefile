@@ -14,9 +14,9 @@ PYTHON ?= $(GEN2_VENV)/bin/python
 
 GEN2_SQLITE_REPORT ?=
 
-.PHONY: gen2-check gen2-venv gen2-sqlite gen2-boundaries gen2-metrics gen2-metrics-rebaseline gen2-hotspots gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount gen2-auth-demo gen2-gateway
+.PHONY: gen2-check gen2-venv gen2-sqlite gen2-boundaries gen2-metrics gen2-metrics-rebaseline gen2-hotspots gen2-debt gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount gen2-auth-demo gen2-gateway
 
-gen2-check: gen2-sqlite gen2-boundaries gen2-metrics gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size
+gen2-check: gen2-sqlite gen2-boundaries gen2-metrics gen2-debt gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size
 	@echo "gen2-check: all checks passed"
 
 # (Re)built when either lock changes; `venv --clear` starts from an empty
@@ -61,6 +61,13 @@ gen2-metrics-rebaseline: gen2-venv
 gen2-hotspots: gen2-venv
 	$(if $(OUT),,$(error gen2-hotspots needs OUT=<directory>, e.g. ~/work/research-loops-public/private/evidence/<review>/hotspots))
 	$(PYTHON) tools/gen2_metrics.py hotspots "$(OUT)"
+
+# The debt register's phase-close check (charter "Root-cause fixes, not patches";
+# task 2q-a; tools/check_gen2_debt.py): docs/gen2/DEBT-REGISTER.md against
+# docs/gen2/phase-status.json. Fails when a closed task or phase still owns an open
+# entry. A task or phase is set to closed in the status file when it is accepted.
+gen2-debt: gen2-venv
+	$(PYTHON) tools/check_gen2_debt.py
 
 # Needs the hash-locked runtime deps (rfc8785, used by gen2/core/canonical.py)
 # and the dev-only validator (jsonschema) — both in $(GEN2_VENV); each check
