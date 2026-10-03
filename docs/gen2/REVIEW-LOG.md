@@ -1293,3 +1293,25 @@ Full report: `private/reviews/gen2-2b-repair-17-astra-review-20261003.md`.
 - Astra's probe rebuilt as a regression, plus a refused-spelling table and a mutant.
 
 No operator ruling is needed. This is the first BLOCK since Gate D #3.
+
+## 2026-10-03 — 2b-repair-18 landed — Astra re-review dispatched
+**Coder (Sonnet 5.5, `e249eca5`):** commits `a831511`..`0d34df8`.
+
+**Root cause:** the same URL string had two readings: the owner's, and urllib's decoded form tried as a literal at connect time.
+
+**Fix:**
+- A strict `_origin` parser runs at construction. It accepts http/https with an LDH name or an `ipaddress` literal, an optional port and an optional trailing `/`. It refuses percent-encoding, alternate numeric spellings, userinfo, zones, paths, queries, whitespace and non-ASCII.
+- The canonical origin is the only text request URLs are built from.
+- `_connect` takes targets only from the owner's admitted addresses.
+
+**Tests:**
+- Astra's probe is rebuilt to cover search, grant and poll. It fails on `4c360d0` and passes now.
+- Controls: a plain name withdraws, a literal connects, and moving to address B works.
+- 11 new `2B18-*` mutants.
+
+**Results:** gen2-check 1,760 tests, 1,822/1,822 mutants; gen2-gateway 1,500+1,500 tests. `gateway/` is unchanged. Production code is +31 lines.
+
+**Orchestrator:**
+- clean tree; gen-1 unchanged (PID 1040);
+- independent reruns in progress;
+- Astra re-review is agent `f8ba3f2f`, task file `private/reviews/gen2-2b-repair-18-review-task-20261003.md`. If it closes, this is the 2b acceptance review.
