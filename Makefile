@@ -14,9 +14,9 @@ PYTHON ?= $(GEN2_VENV)/bin/python
 
 GEN2_SQLITE_REPORT ?=
 
-.PHONY: gen2-check gen2-venv gen2-sqlite gen2-boundaries gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount gen2-auth-demo gen2-gateway
+.PHONY: gen2-check gen2-venv gen2-sqlite gen2-boundaries gen2-metrics gen2-metrics-rebaseline gen2-hotspots gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount gen2-auth-demo gen2-gateway
 
-gen2-check: gen2-sqlite gen2-boundaries gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size
+gen2-check: gen2-sqlite gen2-boundaries gen2-metrics gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size
 	@echo "gen2-check: all checks passed"
 
 # (Re)built when either lock changes; `venv --clear` starts from an empty
@@ -41,6 +41,26 @@ gen2-sqlite: gen2-venv
 
 gen2-boundaries: gen2-venv
 	$(PYTHON) tools/check_boundaries.py
+
+# The architecture metrics and their ratchet (charter "Architecture metrics"; task
+# 2q-a; tools/gen2_metrics.py, stdlib only): the engine and the gateway measured
+# apart from the code, production only. Fails on any regression against
+# docs/gen2/metrics-baseline.json that docs/gen2/metrics-exemptions.md does not
+# cover. Prints, and never gates on, the git change-coupling hotspots.
+gen2-metrics: gen2-venv
+	$(PYTHON) tools/gen2_metrics.py check
+
+# Rewrite the baseline, TIGHTENING only: never run by gen2-check, never automatic.
+# Refuses while a regression stands; commit the diff.
+gen2-metrics-rebaseline: gen2-venv
+	$(PYTHON) tools/gen2_metrics.py rebaseline
+
+# The git-history report for Gate D (churn x complexity, files that change
+# together), as CSV into OUT (write it under private/evidence/<review>/). Not part
+# of gen2-check and never fails the build.
+gen2-hotspots: gen2-venv
+	$(if $(OUT),,$(error gen2-hotspots needs OUT=<directory>, e.g. ~/work/research-loops-public/private/evidence/<review>/hotspots))
+	$(PYTHON) tools/gen2_metrics.py hotspots "$(OUT)"
 
 # Needs the hash-locked runtime deps (rfc8785, used by gen2/core/canonical.py)
 # and the dev-only validator (jsonschema) — both in $(GEN2_VENV); each check

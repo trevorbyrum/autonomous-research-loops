@@ -1,0 +1,301 @@
+{
+  "cross_service_imports": [],
+  "digest": "57d13207f9dd50d49d10ba04ee7271b0136fc654ecc3daa16e46820261df9f26",
+  "pin": {
+    "commit": "0306df4c57b3892feecd9d449df60baaed416ffb",
+    "production_sha256": "30d842dbcc2f4db9a7dc9a918f5a499dfd325a87f76d6d668c6c1db8ca3e0f9d"
+  },
+  "services": {
+    "engine": {
+      "cycles_component": [],
+      "cycles_file": [],
+      "functions": {
+        "gen2/gateway_client/client.py::GatewayClient._answer": {
+          "cognitive": 52,
+          "cyclomatic": 43
+        },
+        "gen2/gateway_client/observe.py::lane_problem": {
+          "cognitive": 30,
+          "cyclomatic": 31
+        },
+        "gen2/importer/dry_run.py::map_gen1": {
+          "cognitive": 87,
+          "cyclomatic": 51
+        },
+        "gen2/importer/dry_run.py::map_semantic_state": {
+          "cognitive": 47,
+          "cyclomatic": 33
+        },
+        "gen2/operator/service.py::OperatorService._mcp": {
+          "cognitive": 32,
+          "cyclomatic": 32
+        },
+        "gen2/router/amendments.py::Amendments._amendment_in_transaction": {
+          "cognitive": 43,
+          "cyclomatic": 27
+        },
+        "gen2/router/amendments.py::Amendments._record_impact": {
+          "cognitive": 49,
+          "cyclomatic": 39
+        },
+        "gen2/router/amendments.py::references": {
+          "cognitive": 50,
+          "cyclomatic": 36
+        },
+        "gen2/router/boundary.py::check_screening": {
+          "cognitive": 24,
+          "cyclomatic": 26
+        },
+        "gen2/router/capabilities.py::Capabilities._gateway_facts_in_transaction": {
+          "cognitive": 30,
+          "cyclomatic": 25
+        },
+        "gen2/router/capabilities.py::Capabilities._probe_in_transaction": {
+          "cognitive": 33,
+          "cyclomatic": 24
+        },
+        "gen2/router/lifecycle.py::Lifecycle._reconcile_in_transaction": {
+          "cognitive": 37,
+          "cyclomatic": 30
+        },
+        "gen2/router/registries.py::Registries._activate_in_transaction": {
+          "cognitive": 32,
+          "cyclomatic": 21
+        },
+        "gen2/router/scheduling.py::Scheduling._review_in_transaction": {
+          "cognitive": 30,
+          "cyclomatic": 22
+        },
+        "gen2/router/schemas.py::SchemaSet._audit": {
+          "cognitive": 33,
+          "cyclomatic": 18
+        },
+        "gen2/router/schemas.py::SchemaSet._check": {
+          "cognitive": 40,
+          "cyclomatic": 32
+        },
+        "gen2/router/service.py::Router._claim_in_transaction": {
+          "cognitive": 25,
+          "cyclomatic": 22
+        },
+        "gen2/router/service.py::Router._commit_in_transaction": {
+          "cognitive": 60,
+          "cyclomatic": 52
+        },
+        "gen2/router/service.py::Router._validate_commit": {
+          "cognitive": 65,
+          "cyclomatic": 45
+        },
+        "gen2/router/service.py::Router._write_evidence": {
+          "cognitive": 96,
+          "cyclomatic": 55
+        },
+        "gen2/supervisor/fake_executor.py::run": {
+          "cognitive": 40,
+          "cyclomatic": 19
+        },
+        "gen2/supervisor/supervisor.py::Supervisor._unknown": {
+          "cognitive": 33,
+          "cyclomatic": 27
+        }
+      },
+      "propagation_component": {
+        "nodes": 8,
+        "reach_pairs": 20
+      },
+      "propagation_file": {
+        "nodes": 32,
+        "reach_pairs": 145
+      },
+      "self_calls": {
+        "gen2/router/amendments.py->gen2/router/lifecycle.py": 1,
+        "gen2/router/amendments.py->gen2/router/registries.py": 1,
+        "gen2/router/amendments.py->gen2/router/service.py": 19,
+        "gen2/router/capabilities.py->gen2/router/registries.py": 2,
+        "gen2/router/capabilities.py->gen2/router/service.py": 9,
+        "gen2/router/lifecycle.py->gen2/router/registries.py": 1,
+        "gen2/router/lifecycle.py->gen2/router/service.py": 23,
+        "gen2/router/registries.py->gen2/router/service.py": 17,
+        "gen2/router/scheduling.py->gen2/router/amendments.py": 3,
+        "gen2/router/scheduling.py->gen2/router/registries.py": 6,
+        "gen2/router/scheduling.py->gen2/router/service.py": 20,
+        "gen2/router/service.py->gen2/router/amendments.py": 7,
+        "gen2/router/service.py->gen2/router/lifecycle.py": 6,
+        "gen2/router/service.py->gen2/router/registries.py": 3,
+        "gen2/router/service.py->gen2/router/scheduling.py": 2,
+        "gen2/router/status.py->gen2/router/amendments.py": 1,
+        "gen2/router/status.py->gen2/router/registries.py": 1,
+        "gen2/router/status.py->gen2/router/scheduling.py": 1,
+        "gen2/router/status.py->gen2/router/service.py": 9
+      },
+      "smells": {
+        "god_component": [],
+        "hub_like": [],
+        "unstable_dependency": []
+      }
+    },
+    "gateway": {
+      "cycles_component": [
+        [
+          "research_gateway.adapters",
+          "research_gateway.core",
+          "research_gateway.registry"
+        ]
+      ],
+      "cycles_file": [],
+      "functions": {
+        "gateway/research_gateway/adapters/base.py::Client._call": {
+          "cognitive": 35,
+          "cyclomatic": 22
+        },
+        "gateway/research_gateway/adapters/base.py::parse_links": {
+          "cognitive": 57,
+          "cyclomatic": 22
+        },
+        "gateway/research_gateway/adapters/bea.py::catalog": {
+          "cognitive": 53,
+          "cyclomatic": 33
+        },
+        "gateway/research_gateway/adapters/bis.py::catalog": {
+          "cognitive": 26,
+          "cyclomatic": 22
+        },
+        "gateway/research_gateway/adapters/census.py::catalog": {
+          "cognitive": 38,
+          "cyclomatic": 26
+        },
+        "gateway/research_gateway/adapters/ecb.py::catalog": {
+          "cognitive": 26,
+          "cyclomatic": 22
+        },
+        "gateway/research_gateway/adapters/harvard_dataverse.py::fetch_in": {
+          "cognitive": 35,
+          "cyclomatic": 19
+        },
+        "gateway/research_gateway/adapters/openaire.py::_record": {
+          "cognitive": 24,
+          "cyclomatic": 23
+        },
+        "gateway/research_gateway/api/http.py::Handler.do_POST": {
+          "cognitive": 28,
+          "cyclomatic": 27
+        },
+        "gateway/research_gateway/app.py::Gateway.health": {
+          "cognitive": 32,
+          "cyclomatic": 21
+        },
+        "gateway/research_gateway/app.py::validate_payload": {
+          "cognitive": 32,
+          "cyclomatic": 27
+        },
+        "gateway/research_gateway/clients/mcp_stdio.py::call_tool": {
+          "cognitive": 51,
+          "cyclomatic": 37
+        },
+        "gateway/research_gateway/clients/mcp_stdio.py::record_activity": {
+          "cognitive": 53,
+          "cyclomatic": 48
+        },
+        "gateway/research_gateway/core/dedup.py::suggestions": {
+          "cognitive": 34,
+          "cyclomatic": 21
+        },
+        "gateway/research_gateway/core/licenses.py::identify": {
+          "cognitive": 56,
+          "cyclomatic": 32
+        },
+        "gateway/research_gateway/core/router.py::Router._plan_resolve": {
+          "cognitive": 45,
+          "cyclomatic": 31
+        },
+        "gateway/research_gateway/core/router.py::_lane_observed": {
+          "cognitive": 19,
+          "cyclomatic": 21
+        },
+        "gateway/research_gateway/core/router.py::_run_lane": {
+          "cognitive": 47,
+          "cyclomatic": 37
+        },
+        "gateway/research_gateway/core/router.py::_run_serial_lanes": {
+          "cognitive": 37,
+          "cyclomatic": 19
+        },
+        "gateway/research_gateway/core/router.py::execute": {
+          "cognitive": 60,
+          "cyclomatic": 37
+        },
+        "gateway/research_gateway/core/schema.py::_decode": {
+          "cognitive": 105,
+          "cyclomatic": 64
+        },
+        "gateway/research_gateway/core/schema.py::_read": {
+          "cognitive": 27,
+          "cyclomatic": 23
+        },
+        "gateway/research_gateway/core/sdmx.py::_reference": {
+          "cognitive": 28,
+          "cyclomatic": 24
+        },
+        "gateway/research_gateway/core/wire.py::open_csv": {
+          "cognitive": 36,
+          "cyclomatic": 15
+        },
+        "gateway/research_gateway/harvest/openalex_snapshot.py::record_from": {
+          "cognitive": 27,
+          "cyclomatic": 28
+        },
+        "gateway/research_gateway/mcp/homelab_adapter.py::make_call.call": {
+          "cognitive": 49,
+          "cyclomatic": 40
+        },
+        "gateway/research_gateway/registry/docs.py::render": {
+          "cognitive": 34,
+          "cyclomatic": 16
+        },
+        "gateway/research_gateway/registry/load.py::validate": {
+          "cognitive": 62,
+          "cyclomatic": 40
+        },
+        "gateway/research_gateway/smoke.py::main": {
+          "cognitive": 26,
+          "cyclomatic": 23
+        },
+        "gateway/research_gateway/smoke.py::run": {
+          "cognitive": 29,
+          "cyclomatic": 22
+        }
+      },
+      "propagation_component": {
+        "nodes": 10,
+        "reach_pairs": 49
+      },
+      "propagation_file": {
+        "nodes": 68,
+        "reach_pairs": 551
+      },
+      "self_calls": {},
+      "smells": {
+        "god_component": [
+          "research_gateway.core"
+        ],
+        "hub_like": [
+          "gateway/research_gateway/adapters/base.py"
+        ],
+        "unstable_dependency": [
+          "gateway/research_gateway/core/schema.py->gateway/research_gateway/core/wire.py"
+        ]
+      }
+    }
+  },
+  "thresholds": {
+    "function_cognitive": 30,
+    "function_cyclomatic": 20,
+    "god_component_fan_in": 5,
+    "god_component_lines": 3000,
+    "hub_fan_in": 8,
+    "hub_fan_out": 6,
+    "unstable_margin_pct": 10,
+    "unstable_stable_max_pct": 30
+  },
+  "version": 1
+}
