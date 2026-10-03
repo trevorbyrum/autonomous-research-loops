@@ -1472,3 +1472,24 @@ Full report: `private/reviews/gen2-2q-a-repair-astra-review-20261003.md`.
 - locator lookup preserves scope.
 
 This is the first coder on **GPT-6.1-Sol** (operator, 2026-10-03). It is the second consecutive BLOCK on 2q-a, so a third triggers Gate D.
+
+## 2026-10-03 — 2q-a-repair-2 landed (identity ledger redesign; first GPT-6.1-Sol coder) — Astra re-review dispatched
+**Coder:** GPT-6.1-Sol `e34b5045`, commits `35ffdd1`..`4f1ae96`.
+
+**Root cause:** lossy indexes erased obligations and scope.
+
+**Fix:**
+- Baseline v3 tracks 1,051 persistent IDs. Each must be exactly one of present, mapped (budgets carried over) or retired; a missing ID fails.
+- New budgets are admitted only through a committed, reasoned ledger entry. A `TODO` fails. `make gen2-metrics-admit` drafts entries, and `rebaseline` folds them in without inferring identity.
+- Ambiguous bindings fail closed.
+- Qualified locators keep their scope.
+- The ledger is empty at this pin.
+
+**Results:**
+- All seven R1–R4 reproductions fail on `c87821e` and pass now.
+- 216/216 tool mutants killed.
+- gen2-check: 2,040 tests, 2,039/2,039 mutants.
+- gen2-gateway: 1,500+1,500 tests.
+- 27/27 reproduction holds; production unchanged.
+
+**Review:** Astra `0da948d1` (third round on 2q-a; a BLOCK triggers Gate D). The task also asks for a proportionality judgement on how usable the admission step is for later tasks.
