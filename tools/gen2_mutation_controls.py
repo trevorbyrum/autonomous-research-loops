@@ -218,6 +218,24 @@ MANUAL: dict[str, dict] = {
     "2B17-failover-stops-at-the-first-address": {"controls": ["test_gateway_ownership.ConnectionLifetimes.test_control_the_first_address_answering_leaves_the_others_untried"],
                                                  "why": "connects to a first address that answers, so gen2/gateway_client/client.py _connect's handler of a failed connect, where the mutant adds its `break`, is never entered "
                                                         "and the loop's try completes: the path on which no handler runs, which the mutant leaves as it was"},
+    # task 2b-repair-18 (Astra's R17-1): the controls the brief names, chosen by hand over the traced first choice (a literal grant under a hostile environment, which reaches the changed lines but shows
+    # nothing of what the mutant changes): the ordinary name that withdraws and sends nothing, the ordinary literal that still connects, the move to B, and the admitted address connected to whatever
+    # host the request names. Each passes under its mutant: the mutants differ from the code only for a request host urllib decodes into an address, which none of these controls has
+    "2B18-connect-reads-the-request-host-as-an-address": {
+        "controls": ["test_gateway_routes.DirectHttpOnly.test_control_the_admitted_address_is_connected_to_whatever_host_the_request_names",
+                     "test_gateway_ownership.TheOriginIsTheOnlyAuthority.test_control_an_ordinary_literal_still_connects_after_the_gateway_at_it_is_replaced"],
+        "why": "connects through gen2/gateway_client/client.py _connect's changed loop on its accepted path: an address is admitted, and the request names a name, a literal or an encoded literal, whose "
+               "reading as an address (the mutant's `_literal` of the request host) is the admitted address itself or nothing; the connection is made and the reply read. The ordinary literal "
+               "endpoint, replaced by another listener at its address, is still connected to, as the contract authorizes"},
+    "2B18-the-r17-1-reading-is-restored": {
+        "controls": ["test_gateway_ownership.TheOriginIsTheOnlyAuthority.test_control_an_ordinary_name_withdraws_and_sends_nothing_and_the_move_to_b_works",
+                     "test_gateway_ownership.TheOriginIsTheOnlyAuthority.test_control_an_ordinary_literal_still_connects_after_the_gateway_at_it_is_replaced"],
+        "why": "runs Astra's stop/fail/NXDOMAIN/rebind sequence over an ordinary name, which the mutant treats as the code does (a name is no address, withdrawn it admits none and sends nothing, and the "
+               "owner's lookup of it at B is then connected to), and over an ordinary literal, which is its own admitted address: through the changed validation and connect lines, on their accepted path"},
+    "2B18-a-percent-encoded-host-is-a-name": {
+        "controls": ["test_gateway_routes.TheEndpointForms.test_the_forms_that_are_accepted_are_one_canonical_origin_that_urllib_and_the_owner_read_alike"],
+        "why": "constructs a client for each accepted form through the changed host pattern and label rule (names with hyphens, digits and a maximum length, literals of both families), none of which has a "
+               "percent sign, which is all the mutant adds: each still comes out as its canonical origin"},
     # task 2b-repair-13b (Astra's 2b-repair-12 timing ruling): the start-grace killer holds the order in which the identity appears; the
     # accepted case, a start whose identity is recorded before recovery, is the normal-start control written beside it
     "1C-sup-no-start-grace": {"controls": ["test_supervisor_lifecycle.ResearchPassLifecycleTest.test_control_a_start_that_has_recorded_its_identity_at_recovery_is_found_running"],

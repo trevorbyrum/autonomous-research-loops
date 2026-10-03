@@ -26,7 +26,6 @@ NOT_AN_OBSERVATION = OP + "test_the_refusal_is_the_callers_error_and_never_an_ob
 BETWEEN = OP + "test_a_call_between_a_searchs_pages_and_between_its_polls_is_refused_too"
 R161 = FACT + "test_astras_r16_1_probe_a_search_held_before_its_connect_cannot_be_overtaken_by_a_withdrawal"
 R161_POLL = FACT + "test_astras_r16_1_probe_the_same_for_a_poll"
-R162 = FACT + "test_astras_r16_2_probe_an_ambient_proxy_does_not_carry_a_search_to_a_withdrawn_origin"
 MATRIX = DIRECT + "test_a_hostile_environment_changes_nothing_about_where_a_search_goes"
 TLS_MATRIX = HTTPS + "test_a_hostile_environment_changes_nothing_about_where_a_tls_search_goes"
 HANDLERS = DIRECT + "test_the_opener_has_the_http_handlers_and_nothing_else"
@@ -77,7 +76,7 @@ MUTATIONS: list[Mutation] = [
              old="            sock.close()\n            error = e\n    raise error\n", new="            error = e\n    raise error\n"),
     # the routing surface: direct http/https only
     Mutation("2B17-proxy-dispatch-is-restored", "2b-17", "the opener has the proxy handler again: the environment's proxy variables, in any case, choose where an exchange goes",
-             (MATRIX, DIRECT + "test_a_grant_goes_the_same_way", TLS_MATRIX, R162, HANDLERS), target=CLI,
+             (MATRIX, DIRECT + "test_a_grant_goes_the_same_way", TLS_MATRIX, HANDLERS), target=CLI,   # not Astra's R16-2 probe since 2b-repair-18: a proxy no longer chooses where the connection goes (an admitted address does), so that probe's withdrawn origin has none to be sent to
              old=HANDLER_LINE, new="urllib.request.HTTPErrorProcessor(), urllib.request.ProxyHandler()):"),
     *(Mutation(f"2B17-the-{kind}-handler-is-back", "2b-17", f"the opener has the {kind} handler again", (HANDLERS,), target=CLI,
                old=HANDLER_LINE, new=f"urllib.request.HTTPErrorProcessor(), urllib.request.{handler}()):")

@@ -149,7 +149,9 @@ MUTATIONS: list[Mutation] = [
           ("poll-echo-unchecked", "a poll's answer for another caller is attributed to this one",
            (TO + "test_a_poll_not_attributed_to_this_caller_or_not_captured_degrades",), CLI,
            "                return job, (obs if _echoes(obs, ctx) else None)", "                return job, obs"),
-          ("redirects-followed", "the opener has a redirect handler, so the default transport follows a redirect (the bearer token goes elsewhere)", (OH + "test_a_redirect_is_never_followed", "test_gateway_routes.DirectHttpOnly.test_a_redirect_is_never_followed_whatever_the_status_and_wherever_it_points"), CLI,
+          # 2b-repair-18: the cross-origin follow (OH's test: the token goes elsewhere) is no longer reachable through this mutant alone, because the connection target is the owner's admitted address, so a
+          # followed redirect re-requests that address and no other: that test passes under it, and the same-origin cases of the routes test, which see the follow-up request, are the killer
+          ("redirects-followed", "the opener has a redirect handler, so the default transport follows a redirect (to the same origin only: a connection goes to an address the owner admitted, whatever the redirect names)", ("test_gateway_routes.DirectHttpOnly.test_a_redirect_is_never_followed_whatever_the_status_and_wherever_it_points",), CLI,
            "urllib.request.HTTPErrorProcessor()):", "urllib.request.HTTPErrorProcessor(), urllib.request.HTTPRedirectHandler()):"),
           # 2b-repair A6: the gateway's facts through the router's own command, before the observations naming them
           ("facts-not-recorded", "the facts a search reported are not among the router's requests",
