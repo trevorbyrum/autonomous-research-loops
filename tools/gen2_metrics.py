@@ -79,8 +79,13 @@ fails the check unless a reviewed, reasoned exemption entry covers it")
     - a directed file pair has more cross-file self-call sites than before,
       or a new pair appears;
     - a hub-like file, unstable dependency or god component is new;
-    - a function is over the thresholds that was not at the baseline, or a
-      baselined offender's cyclomatic or cognitive value is higher;
+    - a function is over the thresholds that the baseline does not hold (a
+      rename is a new function), or a function the baseline holds scores
+      higher than its baseline in EITHER dimension, whether or not it is
+      still over a threshold: the baselined functions are compared in both
+      dimensions first and the thresholds only decide the new offenders (task
+      2q-a-repair F2), so an offender cannot leave by falling under one
+      threshold while the other score grows;
     - an import edge joins the engine and the gateway (baseline: none).
   Anything else is reported, not gated (edges, fan-in/out, instability,
   reach, counts, lines). The thresholds are read from the baseline, so
@@ -92,8 +97,9 @@ fails the check unless a reviewed, reasoned exemption entry covers it")
   outgrown all fail the check.
   `rebaseline` only tightens (the tool is run explicitly; the diff is
   committed): it refuses while an un-exempted regression exists, keeps the old
-  value wherever an exemption covers a regression, drops what improved, and
-  never records a regression.
+  value wherever an exemption covers a regression, drops what improved (a
+  function leaves the baseline only when neither of its scores grew and
+  neither is over a threshold), and never records a regression.
 
 Subcommands (exit 0 pass, 1 regression / invalid exemption, 2 the tool could
 not run):
@@ -533,20 +539,32 @@ def measure(root: Path, thresholds: dict | None = None) -> Measurement:
 
 # --- the baseline --------------------------------------------------------------------------------------------------
 
-def gated(report: dict) -> dict:
-    """The part of a measurement the ratchet compares: nothing else in a report is gated."""
+def gated(measurement: Measurement, tracked: dict[str, set[str]] | None = None) -> dict:
+    """The part of a measurement the ratchet compares: nothing else in a report is gated. `tracked` names, per service, the functions the
+    baseline holds: their scores are carried in BOTH dimensions whether or not they are still over a threshold, so that a baselined
+    function is compared with its baseline before the thresholds are applied (task 2q-a-repair F2). The thresholds only decide which
+    OTHER functions are new offenders."""
+    report, scores = measurement.report, {fn.key: fn for fn in measurement.functions}
     services = {}
     for service in SERVICES:
         s = report["services"][service]
+        functions = {key: dict(value) for key, value in sorted(s["functions"]["offenders"].items())}
+        for key in sorted((tracked or {}).get(service, ())):
+            if key in scores:
+                functions.setdefault(key, {"cyclomatic": scores[key].cyclomatic, "cognitive": scores[key].cognitive})
         services[service] = {
             "propagation_file": {"reach_pairs": s["propagation_file"]["reach_pairs"], "nodes": s["propagation_file"]["nodes"]},
             "propagation_component": {"reach_pairs": s["propagation_component"]["reach_pairs"], "nodes": s["propagation_component"]["nodes"]},
             "cycles_file": s["cycles_file"], "cycles_component": s["cycles_component"],
             "self_calls": dict(s["self_calls"]["pairs"]),
             "smells": {kind: list(s["smells"][kind]) for kind in SMELL_KINDS},
-            "functions": {key: dict(value) for key, value in sorted(s["functions"]["offenders"].items())},
+            "functions": dict(sorted(functions.items())),
         }
     return {"services": services, "cross_service_imports": list(report["cross_service_imports"])}
+
+
+def tracked_of(baseline: dict) -> dict[str, set[str]]:
+    return {service: set(baseline["services"][service]["functions"]) for service in SERVICES}
 
 
 def with_digest(body: dict) -> dict:
@@ -577,8 +595,8 @@ def load_baseline(path: Path) -> dict:
     return baseline
 
 
-def make_baseline(report: dict, thresholds: dict) -> dict:
-    return {"version": BASELINE_VERSION, "pin": report["pin"], "thresholds": dict(sorted(thresholds.items())), **gated(report)}
+def make_baseline(measurement: Measurement, thresholds: dict) -> dict:
+    return {"version": BASELINE_VERSION, "pin": measurement.report["pin"], "thresholds": dict(sorted(thresholds.items())), **gated(measurement)}
 
 
 # --- the comparison ------------------------------------------------------------------------------------------------
@@ -644,20 +662,24 @@ def compare(baseline: dict, current: dict) -> tuple[list[Violation], list[str]]:
                 if item not in new["smells"][kind]:
                     improvements.append(f"smell_{kind} {service}: {item} is gone")
         limits = baseline["thresholds"]
-        for key, now in new["functions"].items():
-            was = old["functions"].get(key)
-            for metric, field_, limit in (("function_cyclomatic", "cyclomatic", limits["function_cyclomatic"]),
-                                          ("function_cognitive", "cognitive", limits["function_cognitive"])):
-                if was is None and now[field_] > limit:
-                    violations.append(Violation(metric, where(service, key), now[field_], f"limit {limit}, not an offender"))
-                elif was is not None and now[field_] > was[field_]:
-                    violations.append(Violation(metric, where(service, key), now[field_], was[field_]))
-        for key, was in old["functions"].items():
+        pairs = (("function_cyclomatic", "cyclomatic", limits["function_cyclomatic"]), ("function_cognitive", "cognitive", limits["function_cognitive"]))
+        for key, was in old["functions"].items():  # a baselined function: both dimensions against its baseline, whatever the thresholds say
             now = new["functions"].get(key)
             if now is None:
                 improvements.append(f"function {service}:{key} is no longer over the thresholds (or is gone)")
-            elif now["cyclomatic"] < was["cyclomatic"] or now["cognitive"] < was["cognitive"]:
+                continue
+            grown = [(metric, field_) for metric, field_, _ in pairs if now[field_] > was[field_]]
+            violations += [Violation(metric, where(service, key), now[field_], was[field_]) for metric, field_ in grown]
+            if grown:
+                continue
+            if all(now[field_] <= limit for _, field_, limit in pairs):
+                improvements.append(f"function {service}:{key} is no longer over the thresholds (or is gone)")
+            elif now != was:
                 improvements.append(f"function {service}:{key}: {now['cyclomatic']}/{now['cognitive']}, baseline {was['cyclomatic']}/{was['cognitive']}")
+        for key, now in new["functions"].items():  # any other function: the thresholds decide whether it is a new offender
+            if key not in old["functions"]:
+                violations += [Violation(metric, where(service, key), now[field_], f"limit {limit}, not an offender")
+                               for metric, field_, limit in pairs if now[field_] > limit]
     for edge in current["cross_service_imports"]:
         if edge not in baseline["cross_service_imports"]:
             violations.append(Violation("cross_service_import", f"repo:{edge}", 1, 0))
@@ -784,8 +806,9 @@ def apply_exemptions(violations: list[Violation], text: str | None) -> tuple[lis
 
 # --- rebaseline: tighten only --------------------------------------------------------------------------------------
 
-def tighten(baseline: dict, at_old: dict, at_new: dict) -> dict:
-    """The new gated content: `at_old` and `at_new` are measurements under the baseline's thresholds and the (possibly tighter) new ones."""
+def tighten(baseline: dict, at_old: dict, at_new: dict, limits: dict) -> dict:
+    """The new gated content: `at_old` and `at_new` are measurements under the baseline's thresholds and the (possibly tighter) new ones,
+    `limits` the new thresholds."""
     services = {}
     for service in SERVICES:
         old, was, now = baseline["services"][service], at_old["services"][service], at_new["services"][service]
@@ -801,7 +824,10 @@ def tighten(baseline: dict, at_old: dict, at_new: dict) -> dict:
         out["functions"] = {}
         for key, value in now["functions"].items():
             if key in old["functions"]:
-                out["functions"][key] = {f: min(value[f], old["functions"][key][f]) for f in ("cyclomatic", "cognitive")}
+                kept = {f: min(value[f], old["functions"][key][f]) for f in ("cyclomatic", "cognitive")}
+                grown = any(value[f] > old["functions"][key][f] for f in kept)  # an exempted growth: never recorded, and the entry stays
+                if grown or kept["cyclomatic"] > limits["function_cyclomatic"] or kept["cognitive"] > limits["function_cognitive"]:
+                    out["functions"][key] = kept  # left only when neither dimension grew and neither is over a threshold any more
             elif key not in was["functions"]:
                 out["functions"][key] = dict(value)
         services[service] = out
@@ -963,7 +989,7 @@ def command_check(args: argparse.Namespace) -> int:
     root = Path(args.root)
     baseline = load_baseline(root / args.baseline)
     measurement = measure(root, baseline["thresholds"])
-    violations, improvements = compare(baseline, gated(measurement.report))
+    violations, improvements = compare(baseline, gated(measurement, tracked_of(baseline)))
     left, notes, errors = apply_exemptions(violations, read_exemptions(root / args.exemptions))
     for line in summary_lines(measurement.report):
         print(line)
@@ -1001,11 +1027,11 @@ def command_rebaseline(args: argparse.Namespace) -> int:
         print(f"no baseline yet ({exc}); recording the first one", file=sys.stderr)
         measurement = measure(root)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(baseline_text(make_baseline(measurement.report, DEFAULT_THRESHOLDS)), encoding="utf-8")
+        path.write_text(baseline_text(make_baseline(measurement, DEFAULT_THRESHOLDS)), encoding="utf-8")
         print(f"wrote the first baseline {path}")
         return EXIT_OK
     at_old = measure(root, baseline["thresholds"])
-    violations, _ = compare(baseline, gated(at_old.report))
+    violations, _ = compare(baseline, gated(at_old, tracked_of(baseline)))
     left, _notes, errors = apply_exemptions(violations, read_exemptions(root / args.exemptions))
     if left or errors:
         for violation in left:
@@ -1017,7 +1043,7 @@ def command_rebaseline(args: argparse.Namespace) -> int:
     thresholds = tighter_thresholds(baseline["thresholds"], DEFAULT_THRESHOLDS)
     at_new = at_old if thresholds == baseline["thresholds"] else measure(root, thresholds)
     updated = {"version": BASELINE_VERSION, "pin": at_new.report["pin"], "thresholds": dict(sorted(thresholds.items())),
-               **tighten(baseline, gated(at_old.report), gated(at_new.report))}
+               **tighten(baseline, gated(at_old, tracked_of(baseline)), gated(at_new, tracked_of(baseline)), thresholds)}
     if {k: v for k, v in updated.items() if k != "pin"} == {k: v for k, v in baseline.items() if k not in ("pin", "digest")}:
         print("the baseline is already as tight as the code allows; nothing written")  # a new commit alone is not a reason to rewrite it
         return EXIT_OK
