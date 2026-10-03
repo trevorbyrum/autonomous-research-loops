@@ -31,4 +31,6 @@ MUTATIONS = [
              target=M, old='            if self.class_scope[ref[1]][ref[2]].get(attr, []) != [("class", attr)]:', new='            if False:'),
     Mutation("2QI-lexical-base-scope", "2q-repair-2", "a nested class base guesses the module namespace", (B + "test_a_nested_class_base_uses_its_enclosing_class_namespace", B + "test_a_function_local_class_base_accounts_for_local_writes_and_parameters"),
              target=M, old='            ref = self.expr(path, node, qual.rpartition(".")[0])', new='            ref = self.expr(path, node)'),
+    Mutation("2QI-locator-owner-binding", "2q-repair-2", "a qualified method survives replacement of its owning class", (Q + "test_a_replaced_class_owner_cannot_leave_a_stale_qualified_method",),
+             target=C, old='            if len(options) != 1 or options[0][1]:', new='            if options[0][1]:'),
 ]

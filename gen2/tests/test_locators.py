@@ -296,6 +296,21 @@ class QualifiedScopeTest(unittest.TestCase):
         repo.write({DOC: "`gen2.p.a.f`\n"})
         self.check(repo, 1)
 
+    def test_a_replaced_class_owner_cannot_leave_a_stale_qualified_method(self) -> None:
+        from gen2.tests import children
+        source = "class C:\n    def f(self): return 1\n"
+        repo = self.repo({"gen2/p/a.py": source, DOC: "`gen2.p.a.C.f`\n"})
+        self.check(repo, 0)
+        for replacement in ("class C: pass\n", "C = object\n", "def C(): pass\n", "if True:\n    class C: pass\n"):
+            with self.subTest(replacement=replacement):
+                repo.write({"gen2/p/a.py": source + replacement})
+                runtime = children.python(["-B", "-c", "import sys; sys.path.insert(0, '.'); import gen2.p.a as a; print(hasattr(a.C, 'f'))"], cwd=repo.root, capture_output=True, text=True)
+                self.assertEqual((runtime.returncode, runtime.stdout.strip()), (0, "False"))
+                self.check(repo, 1)
+                repo.write({DOC: "`gen2/p/a.py::C.f`\n"})
+                self.check(repo, 1)
+                repo.write({DOC: "`gen2.p.a.C.f`\n"})
+
     def test_unsupported_locator_shapes_fail_instead_of_being_ignored(self) -> None:
         for citation in ("gen2/p/a.py::f(1)", "gen2/p/a.py::f::g", "gen2.p.a.f[0]", "gen2/p/a.py:abc"):
             with self.subTest(citation=citation):

@@ -171,25 +171,55 @@ def python_names(text: str) -> set[str]:
 
 def scoped_names(text: str) -> set[str]:
     """Module attributes followed only through class attributes; function locals
-    never become module/class attributes. Qualified locators use this index."""
+    never become module/class attributes. Each owner must have one certain
+    class binding: a stale declaration cannot survive its replacement."""
     names = set()
 
     def block(statements, scope):
-        for child in statements:
-            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                qual = ".".join(scope + [child.name])
-                names.add(qual)
-                if isinstance(child, ast.ClassDef):
-                    block(child.body, scope + [child.name])
-            elif isinstance(child, (ast.Assign, ast.AnnAssign)):
-                targets = child.targets if isinstance(child, ast.Assign) else [child.target]
-                for target in targets:
-                    names.update(".".join(scope + [leaf.id]) for leaf in ast.walk(target) if isinstance(leaf, ast.Name))
-            else:
+        bindings = {}
+        def collect(body, conditional=False):
+            def bind(name, owner=None, defined=True, uncertain=False):
+                bindings.setdefault(name, []).append((owner, conditional or uncertain, defined))
+            def writes(node, uncertain):
+                if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+                    bind(node.id, defined=isinstance(node.ctx, ast.Store), uncertain=uncertain)
+                if isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name:
+                    bind(node.name, uncertain=True)
+                if isinstance(node, ast.MatchMapping) and node.rest:
+                    bind(node.rest, uncertain=True)
+                for field, value in ast.iter_fields(node):
+                    if field in ("body", "orelse", "finalbody") or (isinstance(node, ast.comprehension) and field == "target"):
+                        continue
+                    for child in value if isinstance(value, list) else [value]:
+                        if isinstance(child, ast.AST):
+                            writes(child, uncertain)
+            for child in body:
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    bind(child.name, child if isinstance(child, ast.ClassDef) else None)
+                elif isinstance(child, (ast.Import, ast.ImportFrom)):
+                    for alias in child.names:
+                        bind(alias.asname or alias.name.partition(".")[0], defined=False)
+                writes(child, not isinstance(child, (ast.Assign, ast.AugAssign, ast.Delete)) and
+                       not (isinstance(child, ast.AnnAssign) and child.value is not None))
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    continue
                 for field in ("body", "orelse", "finalbody"):
-                    block(getattr(child, field, []), scope)
+                    collect(getattr(child, field, []), True)
                 for handler in getattr(child, "handlers", []):
-                    block(handler.body, scope)
+                    collect(handler.body, True)
+                for case in getattr(child, "cases", []):
+                    collect(case.body, True)
+        collect(statements)
+        if "*" in bindings:
+            return  # Unknown exports can replace any local owner; cite the defining module.
+        for name, options in bindings.items():
+            if len(options) != 1 or options[0][1]:
+                continue
+            owner, _, defined = options[0]
+            if defined:
+                names.add(".".join(scope + [name]))
+            if owner is not None:
+                block(owner.body, scope + [name])
     try:
         block(ast.parse(text).body, [])
     except SyntaxError:

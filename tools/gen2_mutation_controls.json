@@ -8710,6 +8710,12 @@
   ],
   "why": "A nested class with no class-local base uses the same scoped base lookup and remains accepted under the module-namespace mutant."
  },
+ "2QI-locator-owner-binding": {
+  "controls": [
+   "test_locators.QualifiedScopeTest.test_class_attributes_keep_scope_and_function_locals_are_excluded"
+  ],
+  "why": "The initial unique C.f case resolves its sole class owner through the changed occurrence guard; a function local and a short module name remain refused under the mutant."
+ },
  "2QI-map-without-comparison": {
   "controls": [
    "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"

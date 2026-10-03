@@ -334,7 +334,7 @@ MUTATIONS: list[Mutation] = [
     m("loc-symbol-unchecked", "a name is not looked for in its file", (LS + "test_a_removed_or_misspelled_name_fails_naming_the_file",),
       "                if not any(defines(root, f, symbol) for f in found):", "                if False:", LOC),
     m('loc-qualified-name-flat', 'a qualified name is not matched by its nesting', ('test_locators.SymbolLocatorTest.test_a_qualified_name_must_match_its_nesting',),
-      'names.add(qual)', 'names.add(child.name)', 'tools/check_gen2_locators.py'),
+      'names.add(".".join(scope + [name]))', 'names.add(name)', 'tools/check_gen2_locators.py'),
     m("loc-plain-def-name-lost", "a method is not found by its plain name", (LS + "test_a_defined_name_passes_in_the_double_colon_and_the_pair_forms",),
       "                names.add(child.name)\n", "                pass\n", LOC),
     m("loc-assignment-lost", "an assigned name is not found", (LS + "test_a_defined_name_passes_in_the_double_colon_and_the_pair_forms",),
