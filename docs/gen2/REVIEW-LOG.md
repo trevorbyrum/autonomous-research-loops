@@ -1493,3 +1493,22 @@ This is the first coder on **GPT-6.1-Sol** (operator, 2026-10-03). It is the sec
 - 27/27 reproduction holds; production unchanged.
 
 **Review:** Astra `0da948d1` (third round on 2q-a; a BLOCK triggers Gate D). The task also asks for a proportionality judgement on how usable the admission step is for later tasks.
+
+## 2026-10-03 — Astra re-review of 2q-a-repair-2 (`0da948d1`, pinned 4f1ae96) — BLOCK (A, C); PASS (B). Third consecutive BLOCK on 2q-a → Gate D #4
+Full report: `private/reviews/gen2-2q-a-repair-2-astra-review-20261003.md`.
+
+**What the ledger achieves.** It is a substantive improvement. Whole missing identities fail, mappings carry their budgets, and admissions need reasons. All seven R1–R4 reproductions are fixed, and the 27/27 reproduction holds. Both targets pass independently.
+
+**Family verdict: MITIGATION.** The keys and their values are still derived from a lossy reading of the code:
+- **R1:** a duplicate same-name function shifts the obligation by position, so 8/28 escapes as `f#2`.
+- **R2:** with `Router._now` placed under `if True:`, measured coupling falls from 132 to 127 sites while all 19 pairs survive, so nothing fires. Aliases, class decorators that rebind, `__all__.append`, and the order of star imports versus explicit imports are all misread.
+- **R3:** the admit draft conflicts with existing mappings.
+- **R4:** six mutants are "killed" by a `KeyError` crash, not by the behaviour under test.
+
+**Routing (charter):** a fresh **Gate D #4** (`f657c1c2`, task `private/reviews/gen2-gate-d-4-task.md`) decides:
+- (A) full Python support, or (B) a declared supported-source subset, with forms outside it refused by gen2-check (the same approach as trust model B);
+- a finite checklist;
+- proportionality for later tasks;
+- consolidation of the 2,000+-line tool.
+
+The post-2q Gate D is renumbered #5.
