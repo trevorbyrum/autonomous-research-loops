@@ -78,7 +78,11 @@ Smells (thresholds are the DEFAULT_THRESHOLDS below, recorded in the baseline)
   Function over the thresholds. Cyclomatic proxy > 20 (Gate D's "over 20"; the
   SEI "high risk" band begins at 21) or cognitive proxy > 30 (about the 97th
   percentile of the proxy at the pin, 37 functions against 46 for cyclomatic
-  > 20). Every cognitive offender at 40 and over is already a cyclomatic one.
+  > 20). The two sets overlap and neither contains the other: at the 2q-a pin
+  `gen2/supervisor/fake_executor.py::run` is cyclomatic 19 and cognitive 40, an
+  offender by the cognitive threshold alone, so neither threshold can be
+  dropped for the other (task 2q-a-repair F6 corrects an earlier claim that
+  every cognitive offender at 40 and over is a cyclomatic one).
   These are operating points, not derived constants: they freeze the present
   state and stop it growing; they do not say the present state is right.
 
@@ -99,11 +103,25 @@ fails the check unless a reviewed, reasoned exemption entry covers it")
       dimensions first and the thresholds only decide the new offenders (task
       2q-a-repair F2), so an offender cannot leave by falling under one
       threshold while the other score grows;
+    - a file that existed at the baseline has a higher fan-out (any new import
+      edge from it, an import of a new file included), a file that was stable
+      at the baseline (instability at most the stable limit) has a higher
+      fan-in through the files that existed, or an ordered pair of existing
+      files is reachable that was not (reach gained transitively, counted in
+      absolute pairs so that a denominator that grows cannot hide it): task
+      2q-a-repair F5, whose policy and reasons `dependency_regressions` states.
+      Instability is judged by its causes and direction, not as a number: it
+      rises when a file takes on dependencies (the fan-out rule) or loses
+      dependents (not a regression), it falls when the reverse happens, and a
+      stable file depending on a less stable one is the unstable-dependency
+      smell (Martin's Stable Dependencies Principle). A file new since the
+      baseline is held by the aggregate measures and the smells until the next
+      rebaseline records it;
     - a class base is unresolved (never baselined: an exemption naming the
       base is the only classification);
     - an import edge joins the engine and the gateway (baseline: none).
-  Anything else is reported, not gated (edges, fan-in/out, instability,
-  reach, counts, lines). The thresholds are read from the baseline, so
+  Anything else is reported, not gated (edge counts, instability, reach
+  counts, lines). The thresholds are read from the baseline, so
   loosening the constants here changes nothing.
   `docs/gen2/metrics-exemptions.md` is the only way past a regression: an entry
   naming the metric and location (and, for a number, the highest value
@@ -154,7 +172,7 @@ EXIT_OK, EXIT_FAIL, EXIT_TOOL = 0, 1, 2
 SERVICES = ("engine", "gateway")
 SERVICE_PREFIX = {"engine": "gen2/", "gateway": "gateway/research_gateway/"}
 ENGINE_TESTS = "gen2/tests/"
-BASELINE_VERSION = 1
+BASELINE_VERSION = 2
 DEFAULT_BASELINE = "docs/gen2/metrics-baseline.json"
 DEFAULT_EXEMPTIONS = "docs/gen2/metrics-exemptions.md"
 GEN2_ERA = "2026-09-25"  # the first gen-2 commit date: the "gen2-era" history report excludes inherited gateway history
@@ -174,7 +192,7 @@ LOOSER_IS = {  # which direction of each threshold flags fewer things
     "unstable_stable_max_pct": "lower", "unstable_margin_pct": "higher", "god_component_lines": "higher", "god_component_fan_in": "higher",
 }
 SMELL_KINDS = ("hub_like", "unstable_dependency", "god_component")
-METRICS_NUMERIC = ("propagation_file", "propagation_component", "self_calls", "function_cyclomatic", "function_cognitive")
+METRICS_NUMERIC = ("propagation_file", "propagation_component", "self_calls", "function_cyclomatic", "function_cognitive", "fan_out", "fan_in", "reach_gained")
 METRICS_SET = ("cycle_file", "cycle_component", "cross_service_import", "unresolved_base", "smell_hub_like", "smell_unstable_dependency", "smell_god_component")
 METRICS = METRICS_NUMERIC + METRICS_SET
 
@@ -676,6 +694,7 @@ def measure(root: Path, thresholds: dict | None = None) -> Measurement:
                                       "mean_other_reached": cstats["mean_other_reached"]},
             "cycles_file": stats["cycles"], "cycles_component": cstats["cycles"],
             "components": components,
+            "graph": {p: sorted(own[p]) for p in files}, "reach": {p: sorted(reach(own, p)) for p in files},
             "modules": {row["module"]: {k: row[k] for k in ("fan_in", "fan_out", "instability", "out_reach", "in_reach")} for row in rows},
             "self_calls": self_calls(resolver, files),
             "smells": smells_of(own, rows, components, thresholds),
@@ -711,6 +730,7 @@ def gated(measurement: Measurement, tracked: dict[str, set[str]] | None = None) 
             "propagation_file": {"reach_pairs": s["propagation_file"]["reach_pairs"], "nodes": s["propagation_file"]["nodes"]},
             "propagation_component": {"reach_pairs": s["propagation_component"]["reach_pairs"], "nodes": s["propagation_component"]["nodes"]},
             "cycles_file": s["cycles_file"], "cycles_component": s["cycles_component"],
+            "graph": s["graph"], **dependency_record(s["graph"], s["reach"]),
             "self_calls": dict(s["self_calls"]["pairs"]),
             "unresolved_bases": dict(s["self_calls"]["unresolved"]),
             "smells": {kind: list(s["smells"][kind]) for kind in SMELL_KINDS},
@@ -733,14 +753,17 @@ def baseline_text(baseline: dict) -> str:
     return json.dumps(with_digest(baseline), indent=2, sort_keys=True) + "\n"
 
 
-def load_baseline(path: Path) -> dict:
+def load_baseline(path: Path, upgradable: bool = False) -> dict:
     try:
         baseline = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
         raise ToolError(f"no baseline at {path}: record one with `make gen2-metrics-rebaseline` and commit it") from exc
     except (OSError, ValueError) as exc:
         raise ToolError(f"the baseline {path} cannot be read: {exc}") from exc
-    if not isinstance(baseline, dict) or baseline.get("version") != BASELINE_VERSION:
+    if isinstance(baseline, dict) and baseline.get("version") == 1 and not upgradable:
+        raise ToolError(f"the baseline {path} is version 1, before the dependency ratchet (task 2q-a-repair F5): "
+                        "`make gen2-metrics-rebaseline` upgrades it, recording the import graph as it is, and the diff is committed")
+    if not isinstance(baseline, dict) or baseline.get("version") not in (BASELINE_VERSION, 1):
         raise ToolError(f"the baseline {path} is not version {BASELINE_VERSION}")
     if baseline.get("digest") != with_digest(baseline)["digest"]:
         raise ToolError(f"the baseline {path} does not match its own digest: it was edited by hand. "
@@ -755,6 +778,7 @@ def make_baseline(measurement: Measurement, thresholds: dict) -> dict:
     body = gated(measurement)
     for service in SERVICES:
         del body["services"][service]["unresolved_bases"]  # an unresolved base is never baselined: only an exemption classifies it
+        del body["services"][service]["graph"]  # the current graph is what a comparison reads; the baseline holds the counts and the reach drawn from it
     return {"version": BASELINE_VERSION, "pin": measurement.report["pin"], "thresholds": dict(sorted(thresholds.items())), **body}
 
 
@@ -781,6 +805,43 @@ def gated_cost(entry: dict) -> Fraction:
 
 def inside_a_baseline_cycle(cycle: list[str], recorded: list[list[str]]) -> bool:
     return any(set(cycle) <= set(old) for old in recorded)
+
+
+def dependency_regressions(service: str, old: dict, new: dict, stable_max: Fraction) -> tuple[list[Violation], list[str]]:
+    """The per-file dependency ratchet (task 2q-a-repair F5). `old` holds the baseline's fan-out and fan-in per file and its reachable sets;
+    `new` the current graph. A file new since the baseline has no baseline to regress from (it is held by the aggregate measures and the
+    smells until a rebaseline records it); the rest, file by file:
+      fan-out    must not rise: a new import edge from an existing file is this, however much of it is already reachable, and an import of a
+                 new file counts, as the old file takes on a further dependency;
+      fan-in     must not rise for a file that was STABLE at the baseline (instability at most the stable limit), counted over the dependents
+                 that already existed: each such file re-pointed at a stable one widens the blast radius of changing it, while a NEW file
+                 depending on a stable one is the direction the Stable Dependencies Principle asks for. An unstable file's fan-in is not gated:
+                 it is expected to change;
+      reach      no ordered pair of existing files may be reachable that was not (reach gained transitively), counted in absolute pairs, so that
+                 an unrelated file added beside it cannot hide it in the denominator of the propagation cost.
+    Instability is not a number of its own here: it rises when a file takes on dependencies (fan-out), or loses dependents (nothing new is
+    coupled, so not a regression), and falls when the reverse happens (an improvement). The direction Martin's Stable Dependencies Principle
+    calls a regression - a stable file depending on a less stable one - is the unstable-dependency smell, ratcheted above."""
+    survivors = set(old["fan_out"]) & set(new["fan_out"])
+    violations: list[Violation] = []
+    fewer = 0
+    for f in sorted(survivors):
+        violations += [Violation("fan_out", f"{service}:{f}", new["fan_out"][f], old["fan_out"][f])] if new["fan_out"][f] > old["fan_out"][f] else []
+        fewer += new["fan_out"][f] < old["fan_out"][f]
+        total = old["fan_out"][f] + old["fan_in"][f]
+        if total and Fraction(old["fan_out"][f], total) <= stable_max:
+            now = sum(f in new["graph"][x] for x in survivors)
+            violations += [Violation("fan_in", f"{service}:{f}", now, old["fan_in"][f])] if now > old["fan_in"][f] else []
+    pairs = lambda reached: {(x, y) for x in survivors for y in reached[x] if y in survivors}
+    gained, lost = pairs(new["reach"]) - pairs(old["reach"]), pairs(old["reach"]) - pairs(new["reach"])
+    violations += [Violation("reach_gained", service, len(gained), 0)] if gained else []
+    return violations, [f"dependencies {service}: {fewer} file(s) with a lower fan-out and {len(lost)} reachable pair(s) gone"] if fewer or lost else []
+
+
+def dependency_record(graph: dict[str, list[str]], reached: dict[str, list[str]]) -> dict:
+    """What the baseline holds of a service's graph: each file's fan-out and fan-in, and the files each reaches."""
+    fan_in = {f: sum(f in targets for targets in graph.values()) for f in graph}
+    return {"fan_out": {f: len(t) for f, t in graph.items()}, "fan_in": fan_in, "reach": {f: sorted(r) for f, r in reached.items()}}
 
 
 def compare(baseline: dict, current: dict) -> tuple[list[Violation], list[str]]:
@@ -813,6 +874,9 @@ def compare(baseline: dict, current: dict) -> tuple[list[Violation], list[str]]:
         for pair, was in old["self_calls"].items():
             if new["self_calls"].get(pair, 0) < was:
                 improvements.append(f"self_calls {service}:{pair}: {new['self_calls'].get(pair, 0)} sites, baseline {was}")
+        found, notes = dependency_regressions(service, old, new, Fraction(baseline["thresholds"]["unstable_stable_max_pct"], 100))
+        violations += found
+        improvements += notes
         for item, why in new["unresolved_bases"].items():
             violations.append(Violation("unresolved_base", where(service, item), 1, f"0; {why}"))
         for kind in SMELL_KINDS:
@@ -979,6 +1043,11 @@ def tighten(baseline: dict, at_old: dict, at_new: dict, limits: dict) -> dict:
         for key in ("cycles_file", "cycles_component"):
             out[key] = [cycle for cycle in now[key] if inside_a_baseline_cycle(cycle, old[key])]
         out["self_calls"] = {pair: min(count, old["self_calls"][pair]) for pair, count in now["self_calls"].items() if pair in old["self_calls"]}
+        survivors = set(old["fan_out"]) & set(now["fan_out"])  # a record of a file that existed is only ever lowered; one that touches a new file is recorded as it is
+        out["fan_out"] = {f: min(n, old["fan_out"][f]) if f in survivors else n for f, n in now["fan_out"].items()}
+        out["fan_in"] = {f: min(sum(f in now["graph"][x] for x in survivors), old["fan_in"][f]) + sum(f in now["graph"][x] for x in now["graph"] if x not in survivors)
+                         if f in survivors else n for f, n in now["fan_in"].items()}
+        out["reach"] = {f: sorted(t for t in targets if not (f in survivors and t in survivors) or t in old["reach"][f]) for f, targets in now["reach"].items()}
         out["smells"] = {}
         for kind in SMELL_KINDS:  # kept: baselined, or newly flagged only because a threshold got tighter (not a regression)
             out["smells"][kind] = [item for item in now["smells"][kind] if item in old["smells"][kind] or item not in was["smells"][kind]]
@@ -1181,7 +1250,7 @@ def command_rebaseline(args: argparse.Namespace) -> int:
     root = Path(args.root)
     path = root / args.baseline
     try:
-        baseline = load_baseline(path)
+        baseline = load_baseline(path, upgradable=True)
     except ToolError as exc:
         if path.exists():
             raise
@@ -1192,6 +1261,11 @@ def command_rebaseline(args: argparse.Namespace) -> int:
         print(f"wrote the first baseline {path}")
         return EXIT_OK
     at_old = measure(root, baseline["thresholds"])
+    upgrading = baseline["version"] == 1  # task 2q-a-repair F5: the graph is recorded as it is now (nothing to regress from); every other record is tightened as usual
+    if upgrading:
+        for service in SERVICES:
+            baseline["services"][service].update({key: gated(at_old)["services"][service][key] for key in ("fan_out", "fan_in", "reach")})
+        baseline["version"] = BASELINE_VERSION
     violations, _ = compare(baseline, gated(at_old, tracked_of(baseline)))
     left, _notes, errors = apply_exemptions(violations, read_exemptions(root / args.exemptions))
     if left or errors:
@@ -1205,7 +1279,7 @@ def command_rebaseline(args: argparse.Namespace) -> int:
     at_new = at_old if thresholds == baseline["thresholds"] else measure(root, thresholds)
     updated = {"version": BASELINE_VERSION, "pin": at_new.report["pin"], "thresholds": dict(sorted(thresholds.items())),
                **tighten(baseline, gated(at_old, tracked_of(baseline)), gated(at_new, tracked_of(baseline)), thresholds)}
-    if {k: v for k, v in updated.items() if k != "pin"} == {k: v for k, v in baseline.items() if k not in ("pin", "digest")}:
+    if not upgrading and {k: v for k, v in updated.items() if k != "pin"} == {k: v for k, v in baseline.items() if k not in ("pin", "digest")}:
         print("the baseline is already as tight as the code allows; nothing written")  # a new commit alone is not a reason to rewrite it
         return EXIT_OK
     path.write_text(baseline_text(updated), encoding="utf-8")

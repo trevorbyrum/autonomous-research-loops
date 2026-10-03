@@ -71,7 +71,7 @@ class BaselineFileTest(RatchetTestCase):
         self.assertEqual(baseline["services"]["engine"]["propagation_file"], {"reach_pairs": 5, "nodes": 4})   # 5 of 16, worked out above BASE
         self.assertEqual(baseline["services"]["gateway"]["propagation_file"], {"reach_pairs": 4, "nodes": 3})
         self.assertEqual(baseline["thresholds"]["function_cyclomatic"], 20)
-        self.assertEqual(baseline["version"], 1)
+        self.assertEqual(baseline["version"], 2)
         self.assertEqual(baseline["cross_service_imports"], [])
 
     def test_a_clean_tree_passes(self) -> None:
@@ -96,8 +96,12 @@ class BaselineFileTest(RatchetTestCase):
 
     def test_an_unreadable_or_other_version_baseline_is_a_tool_failure(self) -> None:
         repo = self.baselined(BASE)
-        fx.rewrite_baseline(repo, lambda b: b.update(version=2))
-        self.assertIn("is not version 1", self.check(repo, 2).stderr)
+        fx.rewrite_baseline(repo, lambda b: b.update(version=3))
+        self.assertIn("is not version 2", self.check(repo, 2).stderr)
+        fx.rewrite_baseline(repo, lambda b: b.update(version=1))
+        done = self.check(repo, 2)   # the version before the dependency ratchet: refused by `check`, upgraded by `rebaseline`
+        self.assertIn("is version 1", done.stderr)
+        self.assertIn("make gen2-metrics-rebaseline", done.stderr)
         (repo.root / BASELINE).write_text("{not json")
         self.assertIn("cannot be read", self.check(repo, 2).stderr)
 
@@ -442,7 +446,8 @@ class ExemptedRegressionsAreNeverRecordedTest(RatchetTestCase):
 
     def test_a_propagation_regression(self) -> None:
         repo = self.regress_and_rebaseline(BASE, {"gen2/c.py": py("import gen2.a")},
-                                           exempt_each(("propagation_file", "engine", "0.4375"), ("propagation_component", "engine", "0.4375")))
+                                           exempt_each(("propagation_file", "engine", "0.4375"), ("propagation_component", "engine", "0.4375"),
+                                                       ("fan_out", "engine:gen2/c.py", "1"), ("reach_gained", "engine", "2")))   # c -> a: c's fan-out 0 -> 1, c reaches a and b
         self.assertEqual(repo.baseline()["services"]["engine"]["propagation_file"], {"reach_pairs": 5, "nodes": 4})
         self.assertEqual(repo.baseline()["services"]["engine"]["propagation_component"], {"reach_pairs": 5, "nodes": 4})
         self.assertIn("propagation_file engine: 0.437500 against a baseline of 0.312500", self.check(repo, 1).stderr)
@@ -457,7 +462,8 @@ class ExemptedRegressionsAreNeverRecordedTest(RatchetTestCase):
         # c -> d closes gen2.x -> gen2.y -> gen2.x: the file graph goes from 5 of 16 to 6 of 16 (0.375), the component graph from 3 of 4 to 4 of 4
         repo = self.regress_and_rebaseline(files, {"gen2/y/c.py": py("import gen2.x.d")},
                                            exempt_each(("propagation_file", "engine", "0.375"), ("propagation_component", "engine", "1"),
-                                                       ("cycle_component", "engine:gen2.x,gen2.y", None)))
+                                                       ("cycle_component", "engine:gen2.x,gen2.y", None),
+                                                       ("fan_out", "engine:gen2/y/c.py", "1"), ("reach_gained", "engine", "1")))   # c -> d: c's fan-out 0 -> 1, c reaches d
         self.assertEqual(repo.baseline()["services"]["engine"]["cycles_component"], [])
         self.assertIn("cycle_component engine:gen2.x,gen2.y: 2 against a baseline of 0", self.check(repo, 1).stderr)
 
@@ -550,10 +556,11 @@ class ExemptionTest(RatchetTestCase):
 
     def test_a_propagation_exemption_takes_a_decimal_limit_and_the_value_must_not_exceed_it(self) -> None:
         repo = self.baselined(BASE)
-        both = exemption("EX-1", metric="propagation_file", location="engine", limit="0.4375") + more(exemption("EX-2", metric="propagation_component", location="engine", limit="0.4375"))
-        repo.write({"gen2/c.py": py("import gen2.a"), EXEMPTIONS: both})   # 7 of 16 = 0.4375 in both graphs
+        same = lambda one, two: exempt_each(("propagation_file", "engine", one), ("propagation_component", "engine", two), ("fan_out", "engine:gen2/c.py", "1"),
+                                            ("reach_gained", "engine", "2"))   # the edge is also c's fan-out 0 -> 1 and two reachable pairs gained
+        repo.write({"gen2/c.py": py("import gen2.a"), EXEMPTIONS: same("0.4375", "0.4375")})   # 7 of 16 = 0.4375 in both graphs
         self.check(repo, 0)
-        short = exemption("EX-1", metric="propagation_file", location="engine", limit="0.43") + more(exemption("EX-2", metric="propagation_component", location="engine", limit="0.4375"))
+        short = same("0.43", "0.4375")
         repo.write({EXEMPTIONS: short})
         self.assertIn("(exemption EX-1 accepts up to 0.43)", self.check(repo, 1).stderr)
 

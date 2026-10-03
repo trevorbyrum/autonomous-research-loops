@@ -380,6 +380,23 @@ class SmellTest(RepoTestCase):
         self.assertEqual(list(offenders(at(3))), ["gen2/m.py::h"])                     # 31: over
 
 
+class ThresholdRationaleTest(RepoTestCase):
+    def test_a_cognitive_offender_at_forty_or_more_need_not_be_a_cyclomatic_one(self) -> None:
+        """Astra's 2q-a review F6: the docstring said every cognitive offender at 40 and over is already a cyclomatic one; at the pin
+        `gen2/supervisor/fake_executor.py::run` is cyclomatic 19 and cognitive 40. Nine nested ifs are the hand-worked counterexample:
+        cognitive 1 + 2 + ... + 9 = 45, cyclomatic 1 + 9 = 10."""
+        nine = py("def f(a):", *(f"{'    ' * (i + 1)}if a:" for i in range(9)), f"{'    ' * 10}pass")
+        functions = measured(self.repo({"gen2/m.py": nine}))[0]["services"]["engine"]["functions"]
+        self.assertEqual((functions["over_cognitive"], functions["over_cyclomatic"], list(functions["offenders"])), (1, 0, ["gen2/m.py::f"]))
+        self.assertEqual(functions["offenders"]["gen2/m.py::f"], {"cyclomatic": 10, "cognitive": 45})
+
+    def test_the_tool_no_longer_claims_it_and_says_neither_threshold_contains_the_other(self) -> None:
+        text = " ".join(fx.TOOL.read_text(encoding="utf-8").split())
+        self.assertNotIn("is already a cyclomatic one", text)
+        self.assertIn("neither contains the other", text)
+        self.assertIn("fake_executor.py::run` is cyclomatic 19 and cognitive 40", text)
+
+
 class HistoryTest(RepoTestCase):
     """The git-history report: commits, churn (added + deleted), files that change together."""
 
