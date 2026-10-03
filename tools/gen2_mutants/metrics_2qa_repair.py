@@ -43,7 +43,7 @@ def r(mid: str, description: str, killers: tuple[str, ...], old: str, new: str, 
 MUTATIONS: list[Mutation] = [
     # --- F1: what a base is resolved over --------------------------------------------------------------------------------
     r("collab-subscripted-base", "a subscripted base (Base[int]) is not followed to its class", (SPELL,),
-      "        if isinstance(node, ast.Subscript):\n            return self.expr(path, node.value)", "        if False:\n            return self.expr(path, node.value)"),
+      "        if isinstance(node, ast.Subscript):\n            return self.expr(path, node.value, scope)", "        if False:\n            return self.expr(path, node.value, scope)"),
     r("collab-from-import-unbound", "a name brought in by `from m import n` is not followed to its class", (SPELL, REEXPORT),
       '        if kind == "from":\n            return self.member(self.module(rest[0]), rest[1], seen)', '        if kind == "from":\n            return ("external",)'),
     r("collab-import-alias-unbound", "a name bound by `import m` or `import m as x` is not followed to its module", (SPELL, CR + "test_the_composed_class_has_the_hand_counted_inventory_however_its_bases_are_written"),

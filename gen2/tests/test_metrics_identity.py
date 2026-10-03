@@ -278,6 +278,58 @@ class BindingTest(RatchetTestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout
 
+    def test_class_scope_assignment_cannot_leave_a_stale_nested_class_binding(self):
+        source = "from gen2.p.base import Base\nclass Outer:\n    class Inner(Base): pass\nclass Child(Outer.Inner):\n    def g(self): return self.f()\n"
+        repo = self.baselined(tree(source, **{"gen2/__init__.py": ""}))
+        code = "from gen2.p.use import Child; print(hasattr(Child, 'f'))"
+        self.assertEqual(self.runtime(repo, code).strip(), "True")
+        repo.write({"gen2/p/use.py": source.replace("    class Inner(Base): pass\n", "    class Inner(Base): pass\n    Inner = object\n")})
+        self.assertEqual(self.runtime(repo, code).strip(), "False")
+        self.assertIn("class-scope binding", self.check(repo, 1).stderr)
+        self.assertTrue(calls(repo)["unresolved"])
+        self.assertEqual(repo.run("rebaseline").returncode, 1)
+
+    def test_header_and_expression_writes_cannot_leave_a_stale_module_binding(self):
+        for replacement in ("for Base in (object,): pass\n", "if (Base := object): pass\n",
+                            "with __import__('contextlib').nullcontext(object) as Base: pass\n",
+                            "match object:\n    case Base: pass\n", "del Base\n"):
+            with self.subTest(replacement=replacement):
+                source = use("from gen2.p.base import Base")
+                repo = self.baselined(tree(source, **{"gen2/__init__.py": ""}))
+                changed = source.replace("class Child", replacement + "class Child")
+                if replacement == "del Base\n":
+                    changed = changed.replace("class Child(Base)", "class Child(object)")
+                repo.write({"gen2/p/use.py": changed})
+                self.assertEqual(self.runtime(repo, "from gen2.p.use import Child; print(hasattr(Child, 'f'))").strip(), "False")
+                if replacement != "del Base\n":
+                    self.assertIn("unresolved_base", self.check(repo, 1).stderr)
+                else:
+                    self.assertIn("missing", self.check(repo, 1).stderr)
+                self.assertEqual(repo.run("rebaseline").returncode, 1)
+
+    def test_a_nested_class_base_uses_its_enclosing_class_namespace(self):
+        source = "from gen2.p.base import Base\nclass Outer:\n    from gen2.p.other import Base\n    class Inner(Base):\n        def g(self): return self.f()\n"
+        repo = self.baselined(tree(source, **{"gen2/__init__.py": "", "gen2/p/other.py": BASE.replace("return 1", "return 2")}))
+        self.assertEqual(self.runtime(repo, "from gen2.p.use import Outer; print(Outer.Inner().g())").strip(), "2")
+        self.assertEqual(calls(repo)["pairs"], {"gen2/p/use.py->gen2/p/other.py": 1})
+        self.check(repo)
+        repo.write({"gen2/p/use.py": source.replace("    from gen2.p.other import Base\n", "    Base = object\n")})
+        self.assertEqual(self.runtime(repo, "from gen2.p.use import Outer; print(hasattr(Outer.Inner, 'f'))").strip(), "False")
+        self.assertIn("unresolved_base", self.check(repo, 1).stderr)
+        self.assertEqual(repo.run("rebaseline").returncode, 1)
+
+    def test_a_function_local_class_base_accounts_for_local_writes_and_parameters(self):
+        source = "from gen2.p.base import Base\ndef build():\n    class Child(Base):\n        def g(self): return self.f()\n    return Child\n"
+        repo = self.baselined(tree(source, **{"gen2/__init__.py": ""}))
+        self.assertEqual(self.runtime(repo, "from gen2.p.use import build; print(build()().g())").strip(), "1")
+        self.assertEqual(calls(repo)["pairs"], {"gen2/p/use.py->gen2/p/base.py": 1})
+        self.check(repo)
+        for changed in (source.replace("def build():", "def build(Base=object):"), source.replace("    class Child", "    Base = object\n    class Child")):
+            repo.write({"gen2/p/use.py": changed})
+            self.assertEqual(self.runtime(repo, "from gen2.p.use import build; print(hasattr(build(), 'f'))").strip(), "False")
+            self.assertIn("unresolved_base", self.check(repo, 1).stderr)
+            self.assertEqual(repo.run("rebaseline").returncode, 1)
+
     def test_conditional_real_router_fails_while_runtime_mro_is_unchanged(self):
         repo = self.baselined(real_engine_files())
         code = 'from gen2.router.service import Router; print([c.__name__ for c in Router.__mro__]); print(hasattr(Router,"commit_outcome"))'

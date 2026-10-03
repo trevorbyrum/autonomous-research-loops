@@ -43,7 +43,7 @@ Definitions
   follow to a class or to something outside - a call, a name bound twice, a
   measured module that defines no such name, a first-party module that is not
   measured, an inconsistent hierarchy - is UNRESOLVED: reported by name and
-  reason and a regression (below) unless an exemption classifies it; it is
+  reason and a regression (below) unless the ledger classifies it; it is
   never read as "no collaboration". The method is resolved the way Python
   resolves it, through the C3 linearization of the family (not a depth-first
   walk: a diamond `D(B, C)` with `B(A)`, `C(A)` and `C.f` overriding `A.f`
@@ -303,7 +303,7 @@ def component_graph(graph: dict[str, set[str]]) -> dict[str, set[str]]:
 # --- implicit collaboration: self-calls between the classes of one inheritance family ---------------------------------
 
 Ref = tuple  # ("class", file, qualified name) | ("module", dotted) | ("package", dotted) | ("external",) | ("unresolved", why)
-_COMPOUND = tuple(t for t in (ast.If, ast.For, ast.AsyncFor, ast.While, ast.With, ast.AsyncWith, ast.Try, getattr(ast, "TryStar", None)) if t)
+_COMPOUND = tuple(t for t in (ast.If, ast.For, ast.AsyncFor, ast.While, ast.With, ast.AsyncWith, ast.Try, ast.Match, getattr(ast, "TryStar", None)) if t)
 
 
 def c3_merge(sequences: list[list]) -> list:
@@ -327,7 +327,10 @@ class Classes:
 
     What a class base expression names, resolved statically over the measured files (task 2q-a-repair F1).
 
-    The supported surface: classes defined at module level (nested classes by `Outer.Inner`), and names bound at module level, also under
+    The supported surface: module classes, nested classes by `Outer.Inner`, and function-local classes with recorded lexical bindings.
+    Module, enclosing class and enclosing function namespaces retain each declaration, import, write and parameter occurrence. Names
+    fall back through enclosing functions to the module, as Python does; competing or unsupported writes never select a stale class.
+    Names can be bound, also under
     `if`/`try`/`with`/loops, by `class`, `import m`, `import m.n`, `import m as x`, `from m import n [as x]` (relative imports resolved) and
     `from m import *` of a measured module. A base is a name, a dotted attribute chain (`pkg.mod.Class`) or either subscripted (`Generic[T]`).
     Names resolve through any number of re-exports. A base from outside the measured files (a standard-library or third-party module, a
@@ -340,7 +343,10 @@ class Classes:
         self.packages = {".".join(m.split(".")[:i]) for m in names for i in range(1, len(m.split(".")))} - set(names)
         self.tops = {m.partition(".")[0] for m in names}
         self.scope = {path: self._bindings(path, tree) for path, tree in trees.items()}
-        self.classes = {path: self._classes(tree) for path, tree in trees.items()}
+        self.local_scope = {path: {} for path in trees}
+        self.classes = {path: self._classes(tree, self.local_scope[path]) for path, tree in trees.items()}
+        self.local_scope = {path: {qual: self._bindings(path, node) for qual, node in scopes.items()} for path, scopes in self.local_scope.items()}
+        self.class_scope = {path: {qual: self._bindings(path, node) for qual, node in classes.items()} for path, classes in self.classes.items()}
         self.exports = {}
         for path, tree in trees.items():
             for node in ast.walk(tree):
@@ -361,7 +367,7 @@ class Classes:
         self._mro: dict[tuple[str, str], list] = {}
 
     @staticmethod
-    def _classes(tree: ast.Module) -> dict[str, ast.ClassDef]:
+    def _classes(tree: ast.Module, locals_: dict) -> dict[str, ast.ClassDef]:
         found: dict[str, ast.ClassDef] = {}
 
         def walk(node: ast.AST, scope: list[str]) -> None:
@@ -375,19 +381,40 @@ class Classes:
                         n += 1
                     found[key] = child
                     walk(child, scope + [child.name])
+                elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    inner = scope + [child.name, "<locals>"]
+                    locals_[".".join(inner)] = child
+                    walk(child, inner)
                 else:
-                    walk(child, scope + [getattr(child, "name", "?"), "<locals>"] if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) else scope)
+                    walk(child, scope)
 
         walk(tree, [])
         return found
 
     @staticmethod
-    def _bindings(path: str, tree: ast.Module) -> dict[str, list[tuple]]:
+    def _bindings(path: str, tree: ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef) -> dict[str, list[tuple]]:
         found: dict[str, list[tuple]] = collections.defaultdict(list)
+        if isinstance(tree, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for arg in ast.walk(tree.args):
+                if isinstance(arg, ast.arg):
+                    found[arg.arg].append(("other",))
 
         def visit(statements: list[ast.stmt], conditional: bool = False) -> None:
             def bind(name, ref):
                 found[name].append(("conditional", ref) if conditional else ref)
+            def writes(node):
+                if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+                    bind(node.id, ("other",))
+                if isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name:
+                    bind(node.name, ("other",))
+                if isinstance(node, ast.MatchMapping) and node.rest:
+                    bind(node.rest, ("other",))
+                for field, value in ast.iter_fields(node):
+                    if field in ("body", "orelse", "finalbody") or (isinstance(node, ast.comprehension) and field == "target"):
+                        continue  # Bodies have their own scope/conditional visit; comprehension targets are local.
+                    for child in value if isinstance(value, list) else [value]:
+                        if isinstance(child, ast.AST):
+                            writes(child)
             for node in statements:
                 if isinstance(node, ast.ClassDef):
                     bind(node.name, ("class", node.name))
@@ -400,16 +427,14 @@ class Classes:
                     base = import_targets(path, node)[0]
                     for alias in node.names:
                         bind("*" if alias.name == "*" else alias.asname or alias.name, ("star", base) if alias.name == "*" else ("from", base, alias.name))
-                elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
-                    for target in node.targets if isinstance(node, ast.Assign) else [node.target]:
-                        for leaf in ast.walk(target):
-                            if isinstance(leaf, ast.Name):
-                                bind(leaf.id, ("other",))
-                elif isinstance(node, _COMPOUND):
+                writes(node)
+                if isinstance(node, _COMPOUND):
                     for block in ("body", "orelse", "finalbody"):
                         visit(getattr(node, block, []), True)
                     for handler in getattr(node, "handlers", []):
                         visit(handler.body, True)
+                    for case in getattr(node, "cases", []):
+                        visit(case.body, True)
 
         visit(tree.body)
         return found
@@ -427,8 +452,8 @@ class Classes:
             return ref
         if ref[0] == "class":
             nested = f"{ref[2]}.{attr}"
-            if nested + "#2" in self.classes[ref[1]] or (nested in self.classes[ref[1]] and (ref[1], self.classes[ref[1]][nested].lineno) in self.conditional):
-                return ("unresolved", f"{nested} has competing class declarations")
+            if self.class_scope[ref[1]][ref[2]].get(attr, []) != [("class", attr)]:
+                return ("unresolved", f"{nested} has uncertain class-scope binding occurrences")
             return ("class", ref[1], nested) if nested in self.classes[ref[1]] else ("unresolved", f"{ref[2]} defines no class {attr}")
         dotted = ref[1]
         if ref[0] == "module":
@@ -461,10 +486,17 @@ class Classes:
         sub = f"{dotted}.{attr}"
         return self.module(sub) if sub in self.names or sub in self.packages else ("unresolved", f"{dotted} defines no {attr}")
 
-    def bound(self, path: str, name: str, seen: frozenset = frozenset()) -> Ref:
-        """What the module-level name `name` of file `path` is bound to."""
-        options = self.scope[path].get(name, [])
+    def bound(self, path: str, name: str, seen: frozenset = frozenset(), scope: str = "") -> Ref:
+        """A name in its lexical namespace, falling back through functions to the module."""
+        namespaces = self.class_scope[path] | self.local_scope[path]
+        bindings = namespaces[scope] if scope else self.scope[path]
+        options = bindings.get(name, [])
         if not options:
+            if scope:
+                parent = scope.removesuffix(".<locals>").rpartition(".")[0]
+                while parent and parent not in self.local_scope[path]:
+                    parent = parent.rpartition(".")[0]
+                return self.bound(path, name, seen, parent)
             if self.scope[path].get("*", ()):
                 return self.member(self.module(module_name(path)), name, seen)
             return ("external",) if hasattr(builtins, name) else ("unresolved", f"{name} is neither defined nor imported in {path}")
@@ -472,27 +504,27 @@ class Classes:
             return ("unresolved", f"{name} is bound more than once in {path}")
         kind, *rest = next(iter(options))
         if kind == "class":
-            return ("class", path, rest[0])
+            return ("class", path, f"{scope}.{rest[0]}" if scope else rest[0])
         if kind == "module":
             return self.module(rest[0])
         if kind == "from":
             return self.member(self.module(rest[0]), rest[1], seen)
         return ("unresolved", f"{name} is not a class or an import in {path}")
 
-    def expr(self, path: str, node: ast.expr) -> Ref:
+    def expr(self, path: str, node: ast.expr, scope: str = "") -> Ref:
         if isinstance(node, ast.Name):
-            return self.bound(path, node.id)
+            return self.bound(path, node.id, scope=scope)
         if isinstance(node, ast.Attribute):
-            return self.member(self.expr(path, node.value), node.attr)
+            return self.member(self.expr(path, node.value, scope), node.attr)
         if isinstance(node, ast.Subscript):
-            return self.expr(path, node.value)
+            return self.expr(path, node.value, scope)
         return ("unresolved", f"{ast.unparse(node)} is not a name")
 
     def bases(self, path: str, qual: str) -> list[tuple[str, Ref]]:
         """(source text, what it resolves to) for each base of a class, in order."""
         out = []
         for node in self.classes[path][qual].bases:
-            ref = self.expr(path, node)
+            ref = self.expr(path, node, qual.rpartition(".")[0])
             out.append((ast.unparse(node), ("unresolved", f"{ast.unparse(node)} is a module, not a class") if ref[0] in ("module", "package") else ref))
         return out
 
@@ -540,8 +572,9 @@ def self_calls(resolver: Classes, files: list[str]) -> dict:
             if simple + "#2" in resolver.classes[path] or (path, node.lineno) in resolver.conditional:
                 unresolved[f"{path}::{qual}(binding)"] = "competing class declarations"
                 continue
-            if "." not in simple:
-                binding = resolver.bound(path, simple)
+            parent, _, name = simple.rpartition(".")
+            if not parent or parent in resolver.classes[path]:
+                binding = resolver.member(("class", path, parent), name) if parent else resolver.bound(path, simple)
                 if binding[0] == "unresolved":
                     unresolved[f"{path}::{qual}(binding)"] = binding[1]
                     continue

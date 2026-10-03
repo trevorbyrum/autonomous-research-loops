@@ -25,5 +25,10 @@ MUTATIONS = [
     Mutation("2QI-pair-disappearance", "2q-repair-2", "classification erases missing collaboration obligations", (I + "test_classifications_do_not_replace_missing_pair_accounting",),
              target=L, old='        if dest not in present:', new='        if dest not in present and "|self_calls|" not in ref:'),
     Mutation("2QI-conditional-class", "2q-repair-2", "conditional class alternatives are not diagnosed", (I + "test_duplicate_and_conditional_nested_classes_are_unresolved",),
-             target=M, old='            if simple + "#2" in resolver.classes[path] or (path, node.lineno) in resolver.conditional:', new='            if False:'),
+             target=M, old='found[name].append(("conditional", ref) if conditional else ref)', new='found[name].append(ref)',
+             also=(('alternatives(path, child, uncertain or isinstance(node, _COMPOUND))', 'alternatives(path, child, False)'),)),
+    Mutation("2QI-class-scope-occurrences", "2q-repair-2", "a replaced nested class still resolves to its stale declaration", (B + "test_class_scope_assignment_cannot_leave_a_stale_nested_class_binding",),
+             target=M, old='            if self.class_scope[ref[1]][ref[2]].get(attr, []) != [("class", attr)]:', new='            if False:'),
+    Mutation("2QI-lexical-base-scope", "2q-repair-2", "a nested class base guesses the module namespace", (B + "test_a_nested_class_base_uses_its_enclosing_class_namespace", B + "test_a_function_local_class_base_accounts_for_local_writes_and_parameters"),
+             target=M, old='            ref = self.expr(path, node, qual.rpartition(".")[0])', new='            ref = self.expr(path, node)'),
 ]

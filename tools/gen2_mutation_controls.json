@@ -8686,17 +8686,29 @@
   ],
   "why": "tools/gen2_metrics.py: executes line 660 (else 658)"
  },
+ "2QI-class-scope-occurrences": {
+  "controls": [
+   "test_metrics_collaboration.SupportedSurfaceTest.test_a_nested_class_is_named_through_its_outer_class"
+  ],
+  "why": "Unique class-scope occurrence resolves through the same member guard; the control exercises Outer.Inner and still passes under the mutant."
+ },
  "2QI-conditional-class": {
   "controls": [
    "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
   ],
-  "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
+  "why": "The unique unconditional nested-class control traverses declaration and binding occurrence recording; discarding conditional provenance leaves this accepted selection intact."
  },
  "2QI-last-entry-binding": {
   "controls": [
    "test_metrics_identity.BindingTest.test_unique_reexport_matches_the_interpreter"
   ],
   "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
+ },
+ "2QI-lexical-base-scope": {
+  "controls": [
+   "test_metrics_collaboration.SupportedSurfaceTest.test_a_nested_class_is_named_through_its_outer_class"
+  ],
+  "why": "A nested class with no class-local base uses the same scoped base lookup and remains accepted under the module-namespace mutant."
  },
  "2QI-map-without-comparison": {
   "controls": [
